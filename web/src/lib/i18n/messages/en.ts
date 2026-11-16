@@ -3857,6 +3857,9 @@ export const en = {
   "accounts.new.label": "Account",
   "accounts.new.summaryWhat": "{what} as {account}",
   "accounts.filter.field": "account",
+  "accounts.identity.signedInAs": "Signed in as",
+  "accounts.identity.notSignedIn": "Not signed in",
+  "accounts.identity.withPlan": "{email} · {plan}",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */
@@ -3872,7 +3875,12 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = ["composer.protocol.codeRejected"] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [
+  "composer.protocol.codeRejected",
+  "accounts.identity.signedInAs",
+  "accounts.identity.notSignedIn",
+  "accounts.identity.withPlan",
+] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];

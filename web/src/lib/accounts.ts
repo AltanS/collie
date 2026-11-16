@@ -59,6 +59,16 @@ export interface AccountRow {
   unlinked?: string[];
   /** Only where the adapter can tell. */
   hooks?: "installed" | "missing";
+  /** Who is signed in, from the agent's own status command. Absent: unknown, or an older bridge. */
+  identity?: AccountIdentity;
+}
+
+/** Who is signed in on an account. The email stays on this page; the app stores it nowhere. */
+export interface AccountIdentity {
+  signedIn: boolean;
+  email?: string;
+  /** The plan as the agent names it, `max`. */
+  plan?: string;
 }
 
 /** A folder in use that is not added yet. */
@@ -178,6 +188,25 @@ export function accountName(row: AccountRow): string {
 /** The label of an agent in a body, else its id. */
 export function harnessLabel(body: AccountsBody | null, id: string): string {
   return body?.harnesses.find((h) => h.id === id)?.label ?? id;
+}
+
+// ── Who is signed in ──────────────────────────────────────────────────────────────────────────────
+
+/** A plan in plain words: `max` reads "Max", `team_plus` reads "Team Plus". */
+export function planWords(plan: string): string {
+  return plan
+    .split(/[_-]+/u)
+    .filter((word) => word !== "")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/** The details row's value: the email, then the plan when known. Null when there is nothing to say. */
+export function signedInText(identity: AccountIdentity): string | null {
+  const plan = identity.plan === undefined ? undefined : planWords(identity.plan);
+  if (identity.email !== undefined && plan !== undefined && plan !== "") return t("accounts.identity.withPlan", { email: identity.email, plan });
+  if (identity.email !== undefined) return identity.email;
+  return plan === undefined || plan === "" ? null : plan;
 }
 
 // ── Windows ───────────────────────────────────────────────────────────────────────────────────────

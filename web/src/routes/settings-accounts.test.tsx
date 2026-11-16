@@ -452,3 +452,48 @@ describe("Accounts: Add", () => {
     expect(await screen.findByText(/The sign-in did not start: /)).toBeInTheDocument();
   });
 });
+
+describe("Accounts: who is signed in", () => {
+  it("the list shows the email under the name, 'Not signed in', or nothing when the agent cannot tell", async () => {
+    serveAccounts(
+      body({
+        harnesses: [HARNESS_CLAUDE, HARNESS_CODEX],
+        accounts: [
+          defaultRow({ identity: { signedIn: true, email: "me@example.com", plan: "max" } }),
+          workRow({ identity: { signedIn: false } }),
+          defaultRow({ id: "codex:default", harness: "codex", folder: "~/.codex" }),
+        ],
+      }),
+    );
+    mount("/settings/accounts");
+    expect(await screen.findByText("me@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Not signed in")).toBeInTheDocument();
+    // The plan is for the account's page only.
+    expect(screen.queryByText(/Max/)).toBeNull();
+    const codex = screen.getByRole("region", { name: "Codex" });
+    expect(within(codex).queryByText(/signed in|@/)).toBeNull();
+  });
+
+  it("a long email keeps both ends in the list and the whole address on the account's page", async () => {
+    const email = "someone.with.a.long.name@engineering.example-company.com";
+    serveAccounts(body({ accounts: [defaultRow(), workRow({ identity: { signedIn: true, email, plan: "max" } })] }));
+    const router = mount("/settings/accounts");
+    const row = await screen.findByRole("button", { name: /Work/ });
+    expect(row).toHaveTextContent(email);
+    await router.navigate("/settings/accounts/acc-work");
+    expect(await screen.findByText("Signed in as")).toBeInTheDocument();
+    expect(screen.getByText(`${email} · Max`)).toBeInTheDocument();
+  });
+
+  it("the account's page says 'Not signed in', and draws no row when the agent cannot tell", async () => {
+    serveAccounts(body({ accounts: [defaultRow({ identity: { signedIn: false } }), workRow()] }));
+    mount(`/settings/accounts/${encodeURIComponent("claude:default")}`);
+    expect(await screen.findByText("Not signed in")).toBeInTheDocument();
+    expect(screen.queryByText("Signed in as")).toBeNull();
+    cleanup();
+    mount("/settings/accounts/acc-work");
+    expect(await screen.findByText("Shares setup and sessions with Default")).toBeInTheDocument();
+    expect(screen.queryByText("Signed in as")).toBeNull();
+    expect(screen.queryByText("Not signed in")).toBeNull();
+  });
+});

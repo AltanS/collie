@@ -99,3 +99,14 @@ and pi with kind `own`.
   sign-in field.
 - Revisit when an agent ships a profile switch of its own that keeps one history (omp has one today),
   or when a shared kind for Codex, pi or Grok has a lab test behind it.
+
+## Addendum (2026-11-16): an account shows who is signed in (M101 spec 04)
+
+The bridge now asks the agent's own status command who is signed in (`claude auth status`, an optional
+`status` field of the adapter with a pure parser). It still opens no login file. Only a sign-in flag, the
+email and the plan leave the parser; the identity is kept in memory, refreshed in the background after
+60 s, goes to the phone in the Accounts list, and is never on disk, in the audit log or in a log line. The
+command runs only in a folder where the agent has run before (one of the adapter's `status.needs` names
+exists, Claude: `.claude.json`), because elsewhere it would create the agent's state file first. "Sign in
+again" on a signed-in account adds the adapter's `signInAgainArgs` (Claude: `/login`). Codex, pi and Grok
+have no such field: their status commands name no account.

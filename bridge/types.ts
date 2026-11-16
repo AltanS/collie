@@ -2685,6 +2685,19 @@ export interface AccountRow {
   unlinked?: string[];
   /** Only where the adapter can tell. */
   hooks?: "installed" | "missing";
+  /**
+   * Who is signed in, from the agent's own status command (M101 spec 04). Absent: unknown, an agent
+   * with no status command, or not read yet. Never on disk, in an audit line or in a log line.
+   */
+  identity?: AccountIdentity;
+}
+
+/** Who is signed in on an account's folder. The email is private: memory and this wire only. */
+export interface AccountIdentity {
+  signedIn: boolean;
+  email?: string;
+  /** The plan as the agent names it, `max`. */
+  plan?: string;
 }
 
 /** A folder in use that is not added yet. */

@@ -29,6 +29,9 @@ import { museSessionNameReader } from "./journal/muse.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
+import { statusRunner } from "./account-identity.ts";
+import { createLoginPath } from "./login-path.ts";
+import { findTool } from "./tools.ts";
 import { beaconReader, fileEdgeSpool, fileSourceStore, hooksInstalledProbe, procBeaconLiveness, registerHookTarget, type HookTargetRegistration } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
@@ -974,8 +977,12 @@ const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now,
 const harnessProbe = createHarnessProbe();
 // Accounts (M101, ADR 0141): the list in Settings, the start line, and a pane's tag. Each row's windows
 // are the live or last-seen reading the usage tracker recorded for that harness and folder (usage-seen.ts).
+// Who is signed in on each account (spec 04): the agent's own status command, its binary found the way
+// the probe finds it (the login PATH), run with fixed words and no shell (bridge/account-identity.ts).
+const statusPath = createLoginPath();
 const accounts = new Accounts({
   store: accountStore,
+  status: statusRunner({ locate: async (binary) => findTool(binary, { ...process.env, PATH: await statusPath() }, homedir()) }),
   harnesses: harnessProbe,
   home: homedir(),
   env: process.env,

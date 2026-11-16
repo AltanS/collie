@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
-import { accountAdapter, ACCOUNT_HARNESSES, selectText, type AccountAdapter } from "./account-adapters.ts";
+import { accountAdapter, ACCOUNT_HARNESSES, selectText, type AccountAdapter, type AccountIdentity, type AccountStatus } from "./account-adapters.ts";
+import { AccountIdentities, IDENTITY_SIGN_IN_MS, IDENTITY_TTL_MS, IDENTITY_WAIT_MS, settledWithin, type StatusRunner } from "./account-identity.ts";
 import { accountStartLine, checkFolder, checkLabel, displayFolder, displayStartLine, isUnder, parseFolderPath, sameLabel, type FolderLook } from "./account-folder.ts";
 import { inspectLinks, prepareSharedFolder, runLinkPass, type LinkDisk } from "./account-links.ts";
 import { MAX_ACCOUNTS, type AccountRecord, type AccountStoreSurface } from "./accounts-store.ts";
@@ -22,6 +23,17 @@ import { isRequestId } from "./worktree-receipts.ts";
 // WHAT THE BRIDGE NEVER DOES HERE: open a login file, copy one, move one, or store one. The found
 // folders are found by NAMES and existence only. `hooks` reads the agent's settings file, which holds
 // no login. The usage windows come from one injected seam, so this file asks no vendor anything.
+//
+// WHO IS SIGNED IN (spec 04) is asked of the agent itself: its own status command (`claude auth
+// status`), run through one injected seam (bridge/account-identity.ts holds the runner and its guards)
+// and read by the adapter's parser, which keeps a sign-in flag, an email and a plan and drops the rest.
+// Still no login file is opened. The command never runs for a folder the agent has not run in yet
+// (none of the adapter's `status.needs` names exists there, checked by existence only), because it would
+// create the agent's state file there first: that account reads "not signed in" with no run. A held
+// identity is served at once and refreshed in the background after 60 s (5 s while its sign-in pane
+// lives); only an account with none held waits, at most 1.5 s. The identity lives in memory only and is
+// never written to disk, an audit line, a journal, a receipt, a trouble ping or a log line. It goes to
+// the phone in the list.
 //
 // WINDOWS. The start line is `NAME='<folder>' <binary>`, a form Windows shells do not take, so on a
 // Windows host there are no accounts in this milestone: the read answers `accounts.unavailable`, an add
@@ -63,6 +75,10 @@ export interface ReportedFolders {
 
 export interface AccountsDeps {
   store: AccountStoreSurface;
+  /** Runs an agent's own status command (bridge/account-identity.ts). Absent: no row shows who is signed in. */
+  status?: StatusRunner;
+  /** The longest a list read waits for identities. {@link IDENTITY_WAIT_MS} unless a test sets it. */
+  identityWaitMs?: number;
   harnesses: Pick<HarnessProbe, "list" | "launch">;
   home: string;
   env: Readonly<Record<string, string | undefined>>;
@@ -88,8 +104,19 @@ export interface AccountsCaller {
 
 /** What a launch gets back from {@link Accounts.startLine}. */
 export type AccountStart =
-  | { ok: true; command: string; account?: AccountRecord }
+  | {
+      ok: true;
+      command: string;
+      account?: AccountRecord;
+      /** A sign-in start: the account it signs in, for {@link Accounts.noteSignIn} once the line is typed. */
+      signInFor?: string;
+    }
   | { ok: false; status: number; code: ErrorCode; detail?: ApiErrorDetail };
+
+/** The key of an account's identity: the harness and the cleaned folder (the default one for Default). */
+function identityKey(harness: string, folder: string): string {
+  return `${harness}\u0000${folder}`;
+}
 
 /** The id of a harness's Default row. */
 export function defaultAccountId(harness: string): string {
@@ -117,8 +144,14 @@ function refusal(status: number, code: ErrorCode, detail?: ApiErrorDetail): Acco
 
 export class Accounts {
   private readonly notes = new Map<string, { harness: string; id: string }>();
+  /** Who is signed in, per account, in memory. Undefined without a status seam. */
+  private readonly identities: AccountIdentities | undefined;
+  /** The panes a sign-in start was typed into (`session\u0000paneId`), with the account's identity key. */
+  private readonly signIns = new Map<string, string>();
 
-  constructor(private readonly deps: AccountsDeps) {}
+  constructor(private readonly deps: AccountsDeps) {
+    this.identities = deps.status === undefined ? undefined : new AccountIdentities({ run: deps.status, now: deps.now ?? Date.now });
+  }
 
   /** Whether this machine offers accounts at all: not on Windows (README decision 16). */
   offered(): boolean {
@@ -214,12 +247,35 @@ export class Accounts {
     }
   }
 
+  /**
+   * Note that a sign-in start for an account was typed into `paneId`: its identity is dropped now, and
+   * read again at a list read once it is 5 s old, for as long as that pane lives (decision 6). The pane
+   * is the trigger because it is the one place a login changes from the phone; reading the screen for a
+   * sign-in field would tie this to every harness's screen. When the pane goes, the identity is dropped
+   * once more, so a sign-in finished just before it closed shows at the next read.
+   */
+  noteSignIn(session: string, paneId: string, signInFor: string): void {
+    this.identities?.drop(signInFor);
+    const key = `${session}\u0000${paneId}`;
+    this.signIns.delete(key);
+    this.signIns.set(key, signInFor);
+    for (const old of this.signIns.keys()) {
+      if (this.signIns.size <= MAX_NOTES) break;
+      this.signIns.delete(old);
+    }
+  }
+
   /** Drop the notes of panes that are gone from `session`. */
   keep(session: string, paneIds: readonly string[]): void {
     const alive = new Set(paneIds);
     const prefix = `${session}\u0000`;
     for (const key of this.notes.keys()) {
       if (key.startsWith(prefix) && !alive.has(key.slice(prefix.length))) this.notes.delete(key);
+    }
+    for (const [key, signInFor] of this.signIns) {
+      if (!key.startsWith(prefix) || alive.has(key.slice(prefix.length))) continue;
+      this.signIns.delete(key);
+      this.identities?.drop(signInFor);
     }
   }
 
@@ -251,6 +307,70 @@ export class Accounts {
     return reading === null ? { windows: [], seenAt: null } : { windows: reading.windows, seenAt: reading.at };
   }
 
+  /** The bridge's own environment, with the account's variable laid over it as a start sets it. */
+  private statusEnv(adapter: AccountAdapter, dir: string | undefined): Record<string, string> {
+    const own = Object.entries(this.deps.env).filter((entry): entry is [string, string] => entry[1] !== undefined);
+    const env: Record<string, string> = Object.fromEntries(own);
+    if (dir !== undefined) env[adapter.select.env] = dir;
+    return env;
+  }
+
+  /**
+   * Who is signed in on one account: `dir` is an added account's stored folder, undefined for Default.
+   * Null is unknown: no status command for this agent, no seam, or an answer the parser cannot read.
+   */
+  private async identityOf(input: { harness: string; binary: string; adapter: AccountAdapter; dir: string | undefined; maxAge: number }): Promise<AccountIdentity | null> {
+    const status = input.adapter.status;
+    if (this.identities === undefined || status === undefined) return null;
+    const folder = input.dir ?? this.defaultDir(input.adapter);
+    // A missing folder, or one the agent has not run in yet, is not signed in, with no run (decision 5,
+    // narrowed by the lead on 2026-11-16 to the adapter's `needs`).
+    if (!(await this.agentHasRun(status, folder, input.dir === undefined))) return { signedIn: false };
+    return this.identities.read({
+      key: identityKey(input.harness, folder),
+      binary: input.binary,
+      args: status.args,
+      env: this.statusEnv(input.adapter, input.dir),
+      parse: status.parse,
+      maxAge: input.maxAge,
+    });
+  }
+
+  /** Whether one of the adapter's `needs` names exists in `folder` (or, for Default, at home). Existence only. */
+  private async agentHasRun(status: AccountStatus, folder: string, isDefault: boolean): Promise<boolean> {
+    const paths = [...status.needs.map((name) => join(folder, name)), ...(isDefault ? (status.needsAtHome ?? []).map((name) => join(this.deps.home, name)) : [])];
+    for (const path of paths) {
+      if ((await this.deps.disk.kindOf(path)) !== "missing") return true;
+    }
+    return false;
+  }
+
+  /** Every listed account's identity that is ready within the wait, by identity key. */
+  private async who(listed: readonly { id: string; binary: string; adapter: AccountAdapter }[], rows: readonly AccountRecord[]): Promise<Map<string, AccountIdentity>> {
+    const out = new Map<string, AccountIdentity>();
+    if (this.identities === undefined) return out;
+    const watched = new Set(this.signIns.values());
+    const asks: { key: string; answer: Promise<AccountIdentity | null> }[] = [];
+    for (const h of listed) {
+      if (h.adapter.status === undefined) continue;
+      const dirs: (string | undefined)[] = [undefined, ...rows.filter((r) => r.harness === h.id).map((r) => r.dir)];
+      for (const dir of dirs) {
+        const key = identityKey(h.id, dir ?? this.defaultDir(h.adapter));
+        const maxAge = watched.has(key) ? IDENTITY_SIGN_IN_MS : IDENTITY_TTL_MS;
+        asks.push({ key, answer: this.identityOf({ harness: h.id, binary: h.binary, adapter: h.adapter, dir, maxAge }) });
+      }
+    }
+    const answers = await settledWithin(
+      asks.map((a) => a.answer),
+      this.deps.identityWaitMs ?? IDENTITY_WAIT_MS,
+    );
+    for (const [i, ask] of asks.entries()) {
+      const identity = answers[i];
+      if (identity !== undefined && identity !== null) out.set(ask.key, identity);
+    }
+    return out;
+  }
+
   /** The body of the read, or null when this machine offers no accounts. */
   async body(): Promise<AccountsBody | null> {
     if (!this.offered()) return null;
@@ -258,6 +378,7 @@ export class Accounts {
     if (listed.length === 0) return null;
     const rows = await this.deps.store.list();
     const live = this.liveSet();
+    const who = await this.who(listed, rows);
     const harnesses: AccountHarness[] = listed.map((h) => ({
       id: h.id,
       label: h.label,
@@ -282,13 +403,15 @@ export class Accounts {
       };
       const defaultHooks = this.hooksOf(h.adapter, defaultDir);
       if (defaultHooks !== undefined) defaultRow.hooks = defaultHooks;
+      const defaultWho = who.get(identityKey(h.id, defaultDir));
+      if (defaultWho !== undefined) defaultRow.identity = defaultWho;
       accounts.push(defaultRow);
-      for (const r of rows.filter((row) => row.harness === h.id)) accounts.push(await this.rowWire(r, h.binary, h.adapter, live.ids.has(r.id)));
+      for (const r of rows.filter((row) => row.harness === h.id)) accounts.push(await this.rowWire(r, h.binary, h.adapter, live.ids.has(r.id), who.get(identityKey(r.harness, r.dir))));
     }
     return { harnesses, accounts, found: await this.found(listed.map((h) => h.adapter), listed.map((h) => h.id), rows) };
   }
 
-  private async rowWire(r: AccountRecord, binary: string, adapter: AccountAdapter, live: boolean): Promise<AccountRow> {
+  private async rowWire(r: AccountRecord, binary: string, adapter: AccountAdapter, live: boolean, identity?: AccountIdentity): Promise<AccountRow> {
     const row: AccountRow = {
       id: r.id,
       harness: r.harness,
@@ -304,6 +427,7 @@ export class Accounts {
     }
     const hooks = this.hooksOf(adapter, r.dir);
     if (hooks !== undefined) row.hooks = hooks;
+    if (identity !== undefined) row.identity = identity;
     return row;
   }
 
@@ -465,7 +589,9 @@ export class Accounts {
     const adapter = accountAdapter(row.harness);
     const launch = this.deps.harnesses.launch(row.harness);
     if (adapter === undefined || launch === undefined) return refusal(400, "accounts.unknown");
-    return { status: 200, body: { ok: true, account: await this.rowWire(row, launch.binary, adapter, this.liveSet().ids.has(row.id)) } };
+    // The kept identity only: an add answers at once, and the list read that follows asks the agent.
+    const kept = this.identities?.peek(identityKey(row.harness, row.dir)) ?? undefined;
+    return { status: 200, body: { ok: true, account: await this.rowWire(row, launch.binary, adapter, this.liveSet().ids.has(row.id), kept) } };
   }
 
   // ── POST /api/accounts/remove ─────────────────────────────────────────────────────────────
@@ -495,13 +621,16 @@ export class Accounts {
    * The line a launch types for `harness` with `account` (an added account's id) and `signIn`.
    * `base` is the line without an account: the binary, or a recipe row's line. No account and no
    * sign-in is never asked here: the caller types `base` as it always did.
+   *
+   * A sign-in on an account that reads signed in adds the adapter's `signInAgainArgs` (Claude: `/login`),
+   * so the agent opens its login menu and not a plain session (decision 9). The bridge decides from the
+   * identity it holds, never from the request; not signed in, unknown or none held starts as before.
    */
   async startLine(input: { harness: string; base: string; account: string | undefined; signIn: boolean }): Promise<AccountStart> {
     const adapter = accountAdapter(input.harness);
-    const args = input.signIn ? (adapter?.signInArgs ?? []) : [];
-    if (input.account === undefined) return { ok: true, command: [input.base, ...args].join(" ") };
+    if (input.account === undefined) return this.defaultStart(input, adapter);
     if (!this.offered()) return { ok: false, status: 404, code: "accounts.unavailable" };
-    if (input.account === defaultAccountId(input.harness)) return { ok: true, command: [input.base, ...args].join(" ") };
+    if (input.account === defaultAccountId(input.harness)) return this.defaultStart(input, adapter);
     const row = adapter === undefined ? undefined : await this.deps.store.get(input.account);
     if (adapter === undefined || row === undefined || row.harness !== input.harness) return { ok: false, status: 400, code: "accounts.unknown" };
     if (row.kind === "shared" && adapter.share !== undefined) {
@@ -512,7 +641,33 @@ export class Accounts {
         /* reported by the page's own look */
       }
     }
-    return { ok: true, command: accountStartLine(adapter, row.dir, input.base, args), account: row };
+    const command = accountStartLine(adapter, row.dir, input.base, this.signInArgs(input, adapter, row.dir));
+    const signInFor = this.signInFor(input, adapter, row.dir);
+    return signInFor === undefined ? { ok: true, command, account: row } : { ok: true, command, account: row, signInFor };
+  }
+
+  /** The Default account's start: the base line, with the sign-in words when it is a sign-in. */
+  private defaultStart(input: { harness: string; base: string; signIn: boolean }, adapter: AccountAdapter | undefined): AccountStart {
+    if (adapter === undefined) return { ok: true, command: input.base };
+    const folder = this.defaultDir(adapter);
+    const command = [input.base, ...this.signInArgs(input, adapter, folder)].join(" ");
+    const signInFor = this.signInFor(input, adapter, folder);
+    return signInFor === undefined ? { ok: true, command } : { ok: true, command, signInFor };
+  }
+
+  /** The words after the line for a sign-in on `folder`: login-menu words while it reads signed in. */
+  private signInArgs(input: { harness: string; signIn: boolean }, adapter: AccountAdapter, folder: string): readonly string[] {
+    if (!input.signIn) return [];
+    const again = adapter.signInAgainArgs;
+    const signedIn = this.offered() && this.identities?.peek(identityKey(input.harness, folder))?.signedIn === true;
+    if (again !== undefined && signedIn) return again;
+    return adapter.signInArgs ?? [];
+  }
+
+  /** The identity key a sign-in start drops and watches, when this bridge reads identities at all. */
+  private signInFor(input: { harness: string; signIn: boolean }, adapter: AccountAdapter, folder: string): string | undefined {
+    if (!input.signIn || this.identities === undefined || adapter.status === undefined || !this.offered()) return undefined;
+    return identityKey(input.harness, folder);
   }
 
 }

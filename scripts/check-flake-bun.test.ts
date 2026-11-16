@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 525 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 535 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([295, 195, 35]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([305, 195, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -256,7 +256,7 @@ describe("the Windows check runs the flake's Bun", () => {
       "bridge/launch-by-id.test.ts",
       "bridge/worktree-from-folder.test.ts",
     ].reduce((sum, file) => sum + (readFileSync(join(ROOT, file), "utf8").match(/^\s*accountTest\(/gm) ?? []).length, 0);
-    expect(accountSkips).toBe(30);
+    expect(accountSkips).toBe(40);
     expect(script).toContain("bridge/accounts-skip.ts");
     expect(budget("Bridge")).toBe(
       viewMediaSkips.length + posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips +

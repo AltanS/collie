@@ -8876,8 +8876,16 @@ async function accountStart(
   const start = await accounts.startLine(input);
   if (!start.ok) return json({ ok: false, ...apiError(start.code, start.detail) } satisfies CreateResponse, null, start.status);
   const row = start.account;
-  if (row === undefined) return { command: start.command };
-  return { command: start.command, afterTyped: (session, paneId) => accounts.noteLaunch(session, paneId, row.harness, row.id) };
+  const signInFor = start.signInFor;
+  if (row === undefined && signInFor === undefined) return { command: start.command };
+  return {
+    command: start.command,
+    afterTyped: (session, paneId) => {
+      if (row !== undefined) accounts.noteLaunch(session, paneId, row.harness, row.id);
+      // A sign-in start drops the account's identity and watches its pane (spec 04, decision 6).
+      if (signInFor !== undefined) accounts.noteSignIn(session, paneId, signInFor);
+    },
+  };
 }
 
 /** A one-off run's gates, in order, and the line it types (ADR 0095). */

@@ -3,6 +3,7 @@ import { useParams } from "react-router";
 
 import { Bars, Foot } from "@/components/accounts-meter";
 import { AgentIcon } from "@/components/agent-icon";
+import { MiddleTruncate } from "@/components/changes-view";
 import { SettingsPage } from "@/components/settings-page";
 import { BottomBar } from "@/components/ui/bottom-bar";
 import { Button } from "@/components/ui/button";
@@ -27,10 +28,12 @@ import {
   newFolderFor,
   rememberStartError,
   seenLine,
+  signedInText,
   startLineFor,
   takeStartError,
   useAccounts,
   type AccountHarness,
+  type AccountIdentity,
   type AccountRow,
   type AccountsBody,
   type FoundFolder,
@@ -120,15 +123,7 @@ export function SettingsAccountsRoute() {
               <ListGroup as="ul" className="divide-y divide-border">
                 {group.rows.map((row) => (
                   <li key={row.id}>
-                    <button
-                      type="button"
-                      onClick={() => nav.down(accountPath(row.id, scope))}
-                      className="flex w-full flex-col gap-2 p-3.5 text-left active:bg-muted/60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
-                    >
-                      <span className="truncate font-medium">{accountName(row)}</span>
-                      <Bars windows={row.windows} />
-                      <Foot row={row} />
-                    </button>
+                    <AccountListRow row={row} onOpen={() => nav.down(accountPath(row.id, scope))} />
                   </li>
                 ))}
               </ListGroup>
@@ -156,6 +151,54 @@ export function SettingsAccountsRoute() {
         }}
       />
     </SettingsPage>
+  );
+}
+
+/**
+ * One account in the list: its name, who is signed in on the line under it, its windows and its foot.
+ * Exported for the design reference (playground/sections/accounts.tsx), which mounts this row as it ships.
+ */
+export function AccountListRow({ row, onOpen }: { row: AccountRow; onOpen: () => void }) {
+  useLocale();
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-full flex-col gap-2 p-3.5 text-left active:bg-muted/60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+    >
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="truncate font-medium">{accountName(row)}</span>
+        <IdentityLine identity={row.identity} />
+      </span>
+      <Bars windows={row.windows} />
+      <Foot row={row} />
+    </button>
+  );
+}
+
+/** The row's second line: the email, its middle given up when it does not fit, or "Not signed in". */
+function IdentityLine({ identity }: { identity: AccountIdentity | undefined }) {
+  if (identity === undefined) return null;
+  if (!identity.signedIn) return <span className="text-xs text-muted-foreground">{t("accounts.identity.notSignedIn")}</span>;
+  if (identity.email === undefined) return null;
+  return <MiddleTruncate text={identity.email} className="text-xs text-muted-foreground" />;
+}
+
+/**
+ * The details row: "Signed in as" with the full email and the plan, or "Not signed in". Unknown draws
+ * nothing. Exported for the design reference, as {@link AccountListRow} is.
+ */
+export function SignedInRow({ identity }: { identity: AccountIdentity | undefined }) {
+  useLocale();
+  if (identity === undefined) return null;
+  if (!identity.signedIn) return <p className="text-sm text-muted-foreground">{t("accounts.identity.notSignedIn")}</p>;
+  const text = signedInText(identity);
+  if (text === null) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-xs font-medium text-muted-foreground">{t("accounts.identity.signedInAs")}</p>
+      <p className="break-all text-sm">{text}</p>
+    </div>
   );
 }
 
@@ -479,6 +522,7 @@ export function SettingsAccountRoute() {
           <p className="text-xs text-muted-foreground">{[harnessLabel(body, row.harness), seen].filter((x) => x !== null).join(" · ")}</p>
         </div>
       </div>
+      <SignedInRow identity={row.identity} />
       <div className="flex flex-col gap-0.5">
         <p className="text-sm font-medium">{t(`accounts.kind.${row.kind}.title`)}</p>
         <Hint>{t(`accounts.kind.${row.kind}.body`)}</Hint>
