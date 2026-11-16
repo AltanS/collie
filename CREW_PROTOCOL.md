@@ -152,6 +152,29 @@ structural rather than aesthetic:
   log and leaves the peer's own operator with nothing.
 - **It welds Collie to Herdr.** The wire format would become Herdr method names, and the seam in rule
   1 would not exist.
+- **The socket is a bigger gun than the API.** Collie's HTTP API is a narrow, gated, audited
+  projection of the Herdr socket. The lead can do to a peer exactly what a phone plugged into that
+  peer could do, and no more. A forwarded socket would remove that bound.
+
+### The seven leaks a non-Herdr member must watch for
+
+No member other than Herdr exercises rule 1 yet, so the seam is a promise, not a verified property.
+These are the places a future non-Herdr member can leak Herdr's shape across the link:
+
+1. **Session semantics.** A member's session names are opaque labels from the lead's side, not
+   Herdr's primary-versus-named sessions or its `session.snapshot` shapes.
+2. **Pane identity.** A member's pane id is not assumed re-derivable, session-scoped, numeric or
+   stable across a member restart the way Herdr's happen to be.
+3. **Status vocabulary.** The wire carries Collie's own `AgentStatus` type, never Herdr's status values.
+4. **Journal assumed present.** `/history` may not exist on a member. A harness with no adapter has no
+   journal, and across the link an absent journal is a capability answer, not an error.
+5. **Keys assumed universal.** The `+`-joined `send_keys` grammar (`ctrl+c`, `shift+tab`) is Herdr's.
+   A member may accept a different set, or none.
+6. **`reachable` mis-read.** `SessionSummary.reachable` is this collie's link to its own multiplexer.
+   It does not mean "the member is up", which is a lead-side fact.
+7. **Paths assumed portable.** Upload paths, working directories and transcript locations mean
+   something only on the machine that produced them. The lead never resolves a path derived from a
+   member's filesystem.
 
 ---
 
@@ -1928,6 +1951,13 @@ operator controls the machine that is about to lose its terminals, its roster an
 
 ### 14.1 The approval — `collie crew approve-promote <member-id>` (on the lead)
 
+Consent lives on the machine being taken from, because a design where the claimant supplies it (a
+flag, a second signature, a token it was handed earlier) proves control of the machine that stands to
+gain, which the attacker already has. Warn-only was refused: a wildcard bind warning reports the
+operator's own decision back to them, but an unconsented demotion would report an attacker's decision
+after it had committed, once the front door had moved and the roster was handed over
+([ADR 0014](./.adr/0014-promote-is-a-confirm-on-the-lead.md)).
+
 Mints a **pending handover approval** and **restarts the lead** so the running process holds
 it. The approval is persisted in the trust store beside the crew's other state:
 
@@ -2500,6 +2530,11 @@ A peer's listener is built with **exactly one TLS anchor** — its lead's certif
 `server.reload({ tls })` does **not** swap a pinned `ca` (§8.1). Therefore a warrant that arrives over
 the crew link lands **on disk**, and is **inert at the transport until that member restarts**. No
 route, signature or warrant can climb that wall.
+
+The restart that completes phase 2 therefore rides the operator's own SSH (§18.13), and the crew link
+never carries an instruction to restart. A restart message on the wire would be a remote code path
+behind the same two factors that guard a pane read, and it would turn the link into a control plane
+only to skip an SSH leg Collie already has ([ADR 0027](./.adr/0027-the-deputy-is-named-ahead-of-time.md)).
 
 | Phase | What happens | When it takes effect |
 |---|---|---|
@@ -3372,6 +3407,17 @@ preflight, its own detached updater, its own health gate and its own rollback.
 **No code crosses this link, and no lead distributes anything.** ADR 0016's decision sentence stands
 untouched: code distribution to a member is credentialed by the operator's own SSH and by nothing
 else. What crosses here is two facts, and the second of them is a mutex token.
+
+Why the link never carries code: the crew secret is a symmetric bearer credential, and a stolen one
+must cost an outage, not a supply chain. §8.5 already grants a compromised lead every member's
+terminals, but that reach is live and ends when the lead is cleaned. An installed build persists
+across the cleanup, on machines nobody thinks to check, and an update route would run with no human
+in the loop. The operator's own SSH is a key that has to be held and used, so it stays the only
+credential for code. For the same reason the bridge never holds an SSH key or an agent so that the
+phone could drive `crew update` directly: that would be a standing shell credential for every member,
+readable by a long-lived network-facing service and still valid after the incident that exposed it.
+Outbound HTTPS to GitHub for a pinned public tag has no credential, one destination and one artifact
+kind.
 
 There is **no new route, no new verb, and no inbound update surface on a member.** A member's
 `/crew/v1/*` surface stays exactly what §5 lists. `X-Crew-Protocol` stays `1`.

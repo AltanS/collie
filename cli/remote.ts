@@ -63,6 +63,21 @@ import { unitName } from "./unit.ts";
 // Bun, and each script reports rather than fixes). The bundle and the enrollment token ride the SAME
 // stream, spliced into a quoted heredoc at {@link STDIN_MARKER}, which is what keeps the token out
 // of argv, out of the environment and out of every golden file (§8.3).
+//
+// ── WHY THE ROADS THAT LOOK CHEAPER ARE REFUSED (ADR 0015) ────────────────────
+// Not `herdr --remote`: delegating would make `crew add` work only where Herdr is on the lead, in a
+// version whose flags have not moved, behind a surface Collie cannot test or pin. `ssh` is stable and
+// testable. Herdr is still required on the member, where the dependency is real, not on the transport.
+// A PUSH of the lead's own commit (a `git bundle` on stdin), not a pull: a pull needs remote egress,
+// which an overlay-only machine often lacks, and a ref to resolve and check against the lead. The
+// bundle IS the lead's commit, so exact-version pinning is structural. SOURCE, not a prebuilt binary:
+// a binary needs architecture and libc to match across machines, and the shim already builds from a
+// checkout in the bare environment `ssh host '/bin/sh -s'` gives. The release route below is the
+// later second road for a lead with no commit.
+// Joining collapses to one machine and promoting never does: the invite token stands in for a channel
+// the operator did not have, and SSH is a stronger one, so a courier weakens nothing. A promotion
+// needs consent from the machine being taken from, and holding SSH to a member proves nothing about
+// that, so `crew add` never wraps `approve-promote` or `promote` (ADR 0014).
 
 // ── The transport ────────────────────────────────────────────────────────────
 
@@ -1510,6 +1525,28 @@ export type Route = "bundle" | "release";
  * release and then tried to level it by bundle would push a commit into a layout that has no git
  * checkout at all. A `binary` install (install.sh) and a `packaged` one (ADR 0035) have no commit,
  * and every other kind — both checkout shapes and `unknown` — has or should have one (#248).
+ *
+ * The release route needs the MEMBER to reach github.com (the installer fetches the tag and checks its
+ * sha256 against the release manifest: a consistency check, not a signature, and the trust `install.sh`
+ * already spends). A member with no route there stays a bundle member and needs a checkout lead. The
+ * member's own kind, read by leg 1 (`checkoutgit`, `installroot`), picks the row:
+ *
+ *   member    checkout lead: bundle                  binary or packaged lead: release
+ *   none      add: clone and build the commit        add: install.sh lays the tag down
+ *             update: "no Collie there"              update: "no Collie there"
+ *   git       add: prompt, push the commit, dirty    add: enrolled when already at this release, else
+ *             refused. update: the same              refused, naming `collie update --to-tag` there
+ *                                                    update: skipped, same remedy on the row
+ *   binary    add: refused, move it aside or add     add: prompt, then replace at the same root
+ *             from a release lead                    update: levelled to the lead's tag
+ *             update: skipped, the phone levels it
+ *   other     add: the push fails, left as found     add: refused, add it by hand
+ *             update: the same                       update: blocked, `collie update` there
+ *   packaged  add: not reached (the probe reads $HOME), update: skipped as `packaged`; the same on both
+ *
+ * A skipped member does not stop the run, and a blocked one stops it before anything is sent. A release
+ * mismatch after the install exits 26: the installer already laid the version down, nothing is rolled
+ * back, and the operator is told the version the member now answers with.
  */
 export function routeOf(kind: InstallKind): Route {
   return kind.kind === "binary" || kind.kind === "packaged" ? "release" : "bundle";

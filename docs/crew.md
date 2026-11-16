@@ -336,7 +336,7 @@ card. `collie trick guide` tells an agent how to write a trick.
 
 ![The deputy's standby door opens only when the lead goes quiet.](images/crew/crew-deputy-standby.svg)
 
-A deputy is one peer the lead named ahead of time. It binds a standby door with three routes, and
+A deputy is one peer the lead named ahead of time. It binds a standby door with four routes, and
 that door is never published. The lead's silence arms it, and your own pairing credential spends it,
 so the phone can reach the deputy while the lead is gone.
 

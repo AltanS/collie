@@ -382,7 +382,14 @@ export function majorVerdict(installed: string | null, fetched: string | null): 
   return b > a ? "crosses" : "same";
 }
 
-/** `--major` anywhere in the verb's argv. The flag IS the consent — there is no prompt (ADR 0020). */
+/**
+ * `--major` anywhere in the verb's argv. The flag IS the consent — there is no prompt (ADR 0020).
+ *
+ * Why a flag and never a prompt: a Herdr plugin action runs with no TTY, and the phone banner has no
+ * terminal at all. A confirm that only a shell can answer would make a major unreachable from the
+ * surface that announces it. A flag is answerable from both. `crew update` is the opposite case on
+ * purpose: it rebuilds another machine, so it asks for a human at a terminal and has no `--yes`.
+ */
 export function wantsMajor(args: readonly string[]): boolean {
   return args.includes("--major");
 }
@@ -3323,6 +3330,13 @@ function handOff(
     // the whole guarantee. The runner is then in a unit of its own, and this process may exit —
     // which, as the main process of a service, is exactly what used to kill the client mid-flight
     // (`Exec.spawnDetached`, and ADR 0037).
+    //
+    // The cause is the launch, not `systemd-run`: `detached: true` gives a child a new SESSION, never
+    // a new cgroup, so the client stays in the caller's cgroup until it exits, and under the default
+    // `KillMode=control-group` a main process that exits takes the cgroup with it. Two narrower fixes
+    // were declined: `KillMode=process` on the launching unit fixes only the path that sets it, keeps
+    // the fragile shape and orphans build children; a poll loop on the runner unit costs more code and
+    // needs a timeout of its own, when the client's exit code already is the manager's answer.
     const client = deps.exec.runLogged(plan.command, {
       cwd: layout.installRoot,
       env: runnerEnvironment,

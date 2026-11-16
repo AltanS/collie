@@ -184,13 +184,13 @@ machines and that closing the app does not stop it.
 The device that started the run cannot use the app behind the sheet. Nothing else is blocked: a
 second phone or a tablet shows one line it can tap to open, and closes again.
 
-When every machine is done and the phone is running the new app, the sheet closes itself and a short
-message names the version. On a crew it reads `Crew updated to <version>`; on one machine it names
-that machine instead.
+When every machine is done and the phone is running the new app, the sheet ends on a Done screen,
+`Update finished`, that names each machine and the version it runs. The sheet stays until you tap
+**Back to the app**.
 
 A run that updates only the members, such as **Retry crew update**, takes the screen the same way.
 The lead's row reads `already up to date`, because the lead is not part of that run and does not
-restart. The end reads `Members updated to <version>`, and a member that could not update leaves the
+restart. The end is the same Done screen, and a member that could not update leaves the
 sheet open on the phone that started the run, with its reason.
 
 Three states can stall, and each one has a way out. None of them cancels the update, and none of them
@@ -280,8 +280,9 @@ On a checkout each `versions/vX.Y.Z` is a git worktree of the release tag, shari
 so a version costs a tree and not a second object store. The build runs inside the new directory and
 writes a completeness marker last; the flip refuses without that marker, so a killed build leaves
 the live version untouched. Going live is one rename of the `current` symlink. Retention keeps
-`current` plus the two newest previous versions, and only a successful run prunes, so a run that may
-need its rollback target never removes it.
+three versions on a checkout (`current` plus the two newest previous) and two on a binary install
+(`current` plus one previous), and only a successful run prunes, so a run that may need its rollback
+target never removes it.
 
 A **Herdr-managed** checkout is the exception and keeps advancing in place
 ([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md), amended 2026-09-03). It
