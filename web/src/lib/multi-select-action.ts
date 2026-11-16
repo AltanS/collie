@@ -24,10 +24,9 @@
 //     a checkbox flip / dialog change mid-macro aborts BEFORE any Enter.
 //
 // Every flow starts with the same entry guard as the sibling actions (lib/dialog-guard.ts): a FRESH
-// pane read, the unconditional revision check, and a re-derivation THROUGH THE PANE'S ADAPTER compared
-// against what the user tapped (Herdr 0.7.x's revision is a stub — the re-derivation is the
-// load-bearing check). The mid-flight reads re-derive the same way, keyed on the
-// pointer-independent-but-not-checkbox-independent `multiSelectIdentity` so the macro's own Down/Up
+// pane read and a re-derivation THROUGH THE PANE'S ADAPTER compared against what the user tapped (the
+// re-derivation is the whole check; a moved revision is no refusal by itself). The mid-flight reads
+// re-derive the same way, keyed on the pointer-independent-but-not-checkbox-independent `multiSelectIdentity` so the macro's own Down/Up
 // moves don't read as drift while a box flipped by another device does. Both comparators are the
 // neutral contract in harness/multi-select-model.ts, wired to this kind by harness/dialog-contract.ts.
 //

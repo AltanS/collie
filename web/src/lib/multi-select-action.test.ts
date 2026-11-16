@@ -426,12 +426,14 @@ describe("toggle / escape — one guarded keystroke", () => {
     expect(mockSendKeys).not.toHaveBeenCalled();
   });
 
-  it("toggle rejects when the fresh revision differs (frozen mirror, advanced pane)", async () => {
+  // A moved revision is no refusal by itself (lib/harness/guard.ts): the dialog decides. The same
+  // checkbox screen at another revision takes the toggle; the toggle's own digit is the only key.
+  it("toggle sends when only the fresh revision differs and the dialog is the same", async () => {
     const m = model(checkboxBuffer({}));
     mockFetchPane.mockResolvedValue(paneWith(checkboxBuffer({}), 9));
     const res = await submitMultiSelectIntent({ ...base, multi: m, intent: { kind: "toggle", n: 1 } });
-    expect(res).toEqual({ status: "changed" });
-    expect(mockSendKeys).not.toHaveBeenCalled();
+    expect(res).toEqual({ status: "sent" });
+    expect(mockSendKeys).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -10,9 +10,9 @@
 //     the dialog — so every step that types is gated on a verified pane state, and Enter is never
 //     part of the recipe.
 //
-// Every flow starts with the same guard as its siblings (lib/dialog-guard.ts): a FRESH pane read, the
-// unconditional revision check, and a re-derivation THROUGH THE PANE'S ADAPTER compared against what
-// the user tapped (Herdr 0.7.x's revision is a stub — the re-derivation is the load-bearing check).
+// Every flow starts with the same guard as its siblings (lib/dialog-guard.ts): a FRESH pane read and a
+// re-derivation THROUGH THE PANE'S ADAPTER compared against what the user tapped (the re-derivation
+// is the whole check; a moved revision is no refusal by itself).
 // The mid-flight verification polls re-derive the same way; a dialog that drifts structurally at any
 // point aborts with "changed" BEFORE anything irreversible is sent. The two comparators the polls use
 // (`previewsEqual` for the entry, `previewCoreEqual` for the mid-flight identity) are the neutral

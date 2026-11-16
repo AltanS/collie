@@ -387,7 +387,8 @@ describe("submitWizardKeys — race guard (one keystroke per tap)", () => {
     expect(mockSendKeys).not.toHaveBeenCalled();
   });
 
-  it("rejects when the fresh revision differs (frozen mirror, advanced pane)", async () => {
+  // A moved revision is no refusal by itself (lib/harness/guard.ts): the same wizard step takes the key.
+  it("sends when only the fresh revision differs and the step is the same", async () => {
     const model = fixtureModel("claude--wizard-q1.txt");
     mockFetchPane.mockResolvedValue({
       paneId: "w1:p1",
@@ -403,8 +404,8 @@ describe("submitWizardKeys — race guard (one keystroke per tap)", () => {
       wizard: model,
       keys: ["1"],
     });
-    expect(res).toEqual({ status: "changed" });
-    expect(mockSendKeys).not.toHaveBeenCalled();
+    expect(res).toEqual({ status: "sent" });
+    expect(mockSendKeys).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces the bridge error when sendKeys fails", async () => {
