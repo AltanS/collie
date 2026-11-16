@@ -185,12 +185,11 @@ The rule today: A send goes through the Send Protocol, which reads the screen be
 
 ### Dialogs, cards and screen readers
 
-The rule today: A generic menu emits only keys the screen printed plus arrows it advertised, never a digit it inferred (0009); the one named exception is the Claude `/resume` picker, which commits with an unprinted Enter (0058). A dialog Collie cannot read still gets a way out (0053); 0142 widens that card and is not built yet. A tap on a pointed row is walked, verified by a fresh read, then confirmed (0080); it amends 0055, 0058, 0076 and 0078 and wins over their "one batch" wording. Every lifted card renders in one dock above the belt (0059) and can be put down (0056).
-
-One live record for this topic is being written.
+The rule today: [0151](./0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) states it in one place. A dialog becomes a card only by its own words, and a tap sends only keys the screen printed, plus the arrows of a walk, plus seven named exceptions, each with its file (three unprinted Enters on Claude, the Antigravity artifact review, the sticky edge arrow of a clamped list, the unread card's declared cancel key, and the edit keys that clear a field). A tap on a pointed row is walked, verified by a fresh read, then confirmed (0080, which stays live and wins over the "one batch" wording of 0055, 0058, 0076 and 0078), and an AskUserQuestion answer is typed into its field (0113, live). Every card renders in one dock above the belt and can be put down. A dialog Collie cannot read still gets a way out (0053); 0142 widens that card and changes 0009 in one point, and is not built yet.
 
 | # | Decision | Status |
 | --- | --- | --- |
+| [0151](./0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) | A dialog becomes a card by its own words; a tap sends what the screen printed, walked and verified. | Accepted |
 | [0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md) | A generic menu sends only keys the screen printed plus advertised arrows, never an inferred digit. | Accepted, amended in scope by 0058, 0142 |
 | [0053](./0053-an-unread-dialog-still-has-a-way-out.md) | An unread dialog still has a way out: its adapter's declared cancel key, as a card. | Accepted, amended in scope by 0076, 0142 |
 | [0054](./0054-a-printed-scale-is-tappable.md) | A printed scale is tappable: every value is a chip and a tap sends the arrow presses. | Accepted |
