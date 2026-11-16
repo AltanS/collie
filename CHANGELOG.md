@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The Stop button shows a filled square.** The outline square read as an empty checkbox, so the Belt Stop, a durable agent's Stop and the recording button now share one solid square, in every icon set.
+
 ### Fixed
 
 - **The theme step of Claude Code's first run is a choice card.** A new Claude Code login opens with "Choose the text style that looks best with your terminal". The phone showed a card with only Esc, which does nothing there. Now each of the seven styles is a button: a tap moves the terminal's pointer to it and presses Enter.

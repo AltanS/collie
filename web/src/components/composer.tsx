@@ -2086,7 +2086,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     recorder.phase === "transcribing" ? (
       <Icon name="busy" className="size-4 animate-spin" />
     ) : recorder.phase === "recording" ? (
-      <Icon name="stop" className="size-4 fill-current" />
+      <Icon name="stop" className="size-4" />
     ) : (
       <Icon name="mic" className="size-4" />
     );

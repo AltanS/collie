@@ -11,6 +11,8 @@ Phosphor's three sets share one map; the fill and duotone files add `-fill` and 
 Phosphor Fill draws these keys in the regular weight, so a cross stays a cross and an empty or
 not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, `close`, `confirm`, `copied`, `copy-failed`, `decision-dismissed`, `dismiss`, `done`, `mod-icon-check`, `mod-icon-x`, `mod-step-done`, `mod-step-failed`, `mod-step-todo`, `ok`, `plan-done`, `plan-pending`, `remove`, `selected`, `sent-ok`, `update-step-done`, `update-step-failed`, `update-step-skipped`, `voice-setup`, `zoom-out`.
 
+These keys are solid in every set: `Icon` fills the lucide and iconoir glyph, and phosphor draws the fill file in all three weights: `stop`.
+
 ## Belt
 
 | key | meaning | lucide | phosphor | iconoir |
