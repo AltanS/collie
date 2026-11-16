@@ -11,10 +11,22 @@
 // changed in that repo. Anything else is `unknown-repo` / `unknown-path` before a path exists. The
 // commit view (`view=commit`) names a repo the same way and never a revision: it reads HEAD only,
 // and serves a file only when the same read of HEAD listed it. An
-// untracked file is the one read this module does off the disk itself, and it additionally goes
-// through `containedRealpath` (bridge/journal/files.ts), so a listed symlink that points out of the
-// repo is refused on the real paths. That makes this the SECOND place a client-supplied value
-// becomes a path; files.ts's header says so and names the bound.
+// untracked file is the one read this module does off the disk itself, and it goes through the Files
+// view's own reader (bridge/read-guard.ts) with the repo as its root, so a listed symlink that points
+// out of the repo, a denied file, and a folder swapped for a link between the check and the open are
+// all refused. That makes this the SECOND place a client-supplied value becomes a path; files.ts's
+// header says so and names the bound.
+//
+// ── THE BOUNDS OF FILES (ADR 0150) ──────────────────────────────────────────────────────────────
+// Changes keeps every bound the Files view keeps, through the same functions (bridge/read-guard.ts):
+//   • The root's real path must be a folder and pass the bound (never `/`, home or above it, on the
+//     real and the given spelling), unless the caller holds the Files right (`ChangesScope.wide`, the
+//     `device-read` gate). The route lets an out-of-bound pane folder through only for such a caller.
+//   • The walk up to the nearest `.git` stops at the bound for a caller without that right, so a
+//     dotfiles repo at home is not listed for it.
+//   • Every listed path passes `isDeniedPath`: a `.git` segment, a state secret's basename, the
+//     bridge's own state and config folders. A denied path is left out of every list and every diff
+//     answers it `unknown-path`, whatever the caller's right. A repo inside those folders is not found.
 //
 // ── WHAT A REPO MAY NOT DO TO US ────────────────────────────────────────────────────────────────
 // A repo's own config is untrusted input: an agent may have cloned anything, and `git status` on a
@@ -57,8 +69,18 @@ import { lstat, readdir, readlink, realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
 import { isAbsoluteFolder } from "./changes-root.ts";
-import { HOST, isInside } from "./host.ts";
+import { HOST, type Host, isInside, splitPath } from "./host.ts";
 import { containedRealpath } from "./journal/files.ts";
+import {
+  type FilesFs,
+  foldingHost,
+  isBoundedReal,
+  isDeniedPath,
+  isGitSegment,
+  type ReadRoot,
+  readHeadUnder,
+  resolveReadRoot,
+} from "./read-guard.ts";
 import type {
   ChangeCommit,
   ChangeCommitDiff,
@@ -102,6 +124,33 @@ const REPO_CONCURRENCY = 4;
 /** Folder names discovery never enters: build output and dependency trees hold no repo worth
  *  showing and can hold a hundred thousand entries. Dot-folders are skipped by rule as well. */
 const SKIP_DIRS: ReadonlySet<string> = new Set(["node_modules", "dist", "build", "vendor", "target"]);
+
+// ── Scope ───────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Who reads, and under which bound (ADR 0150): the operator's home folder, the bridge's own private
+ * folders, and whether the caller holds the Files right (`device-read`). The route builds it; the
+ * client names none of it.
+ */
+export interface ChangesScope {
+  /** The operator's home folder, the bound's upper end. */
+  home: string;
+  /** The bridge's state folder and config folder (`filesPrivateFolders` in bridge/server.ts). */
+  privateFolders: readonly string[];
+  /**
+   * The caller holds the Files right (`device-read`). Only then does the walk up list a repo at home
+   * or above it, or a repo whose git folder belongs to one.
+   */
+  wide: boolean;
+  /**
+   * The route's one unbounded root: a pane's own folder when its workspace has no root at all, asked
+   * by a caller with the Files right. Only then is the root's real path not held to the bound. Every
+   * other root is, for every caller, as the Files root is.
+   */
+  unboundedRoot?: boolean;
+  host?: Host;
+  fs?: FilesFs;
+}
 
 // ── Params ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -344,6 +393,61 @@ async function filterOverrides(git: string, repo: RepoDirs): Promise<string[] | 
 export interface FoundRepo extends RepoDirs {
   relPath: string;
   name: string;
+  /**
+   * The real path of the git folder git will open: `<workTree>/.git` itself, or where a `.git` FILE
+   * (a gitfile: a linked worktree, a submodule, `--separate-git-dir`) points. Its objects are what a
+   * diff of a deleted file or a commit reads, so the bound is checked on it, not only on the work tree.
+   */
+  gitDirReal: string;
+}
+
+/** What may narrow a discovery. Each field absent is today's walk. */
+export interface DiscoverOptions {
+  /**
+   * Whether the walk UP may list a repo in this real folder. The Changes view passes the bound for a
+   * caller without the Files right, so a repo at home or above it is not listed for that caller.
+   */
+  upTo?: (dir: string) => Promise<boolean>;
+  /**
+   * Whether a found repo may be listed. Asked of the walk up (a refusal ends the walk there, as git's
+   * own discovery would end) and of every nested repo (a refusal skips it).
+   */
+  repoAllowed?: (repo: FoundRepo) => Promise<boolean>;
+}
+
+/** The most bytes of a gitfile read: one `gitdir:` line. */
+const MAX_GITFILE_BYTES = 4096;
+
+/**
+ * The real path of the git folder a repo's `.git` entry names: the folder itself, or the target of a
+ * gitfile's `gitdir:` line (relative to the work tree when it is relative). `null` when it names
+ * nothing git could open.
+ */
+async function realGitDir(dir: string): Promise<string | null> {
+  const entry = join(dir, ".git");
+  const st = await lstat(entry).catch(() => null);
+  if (st === null) return null;
+  if (st.isDirectory()) return realpath(entry).catch(() => null);
+  if (!st.isFile() || st.size > MAX_GITFILE_BYTES) return null;
+  const text = await Bun.file(entry).text().catch(() => "");
+  // Git's own reading: the file STARTS with `gitdir: `, and only trailing whitespace is dropped.
+  const match = /^gitdir: (.*?)\s*$/.exec(text.split("\n", 1)[0] ?? "");
+  if (match === null || match[1] === "") return null;
+  return realpath(resolve(dir, match[1]!)).catch(() => null);
+}
+
+/**
+ * The real path of the common git folder a linked worktree's git folder names in its `commondir`
+ * file (relative to that git folder), where git reads the objects, refs and config. `null` when there
+ * is none, which is every ordinary repo.
+ */
+async function realCommonDir(gitDirReal: string): Promise<string | null> {
+  const file = join(gitDirReal, "commondir");
+  const st = await lstat(file).catch(() => null);
+  if (st === null || !st.isFile() || st.size > MAX_GITFILE_BYTES) return null;
+  const line = ((await Bun.file(file).text().catch(() => "")).split("\n", 1)[0] ?? "").trimEnd();
+  if (line === "") return null;
+  return realpath(resolve(gitDirReal, line)).catch(() => null);
 }
 
 async function hasGitEntry(dir: string): Promise<boolean> {
@@ -367,21 +471,28 @@ export async function discoverRepos(
   cwd: string,
   depth: number,
   nested: boolean,
+  opts: DiscoverOptions = {},
 ): Promise<{ repos: FoundRepo[]; truncated: boolean; depthLimited: boolean }> {
   const root = await realpath(cwd);
   const repos: FoundRepo[] = [];
-  const found = (dir: string) => {
-    repos.push({
-      workTree: dir,
-      gitDir: join(dir, ".git"),
-      relPath: toRelPath(root, dir),
-      name: basename(dir),
-    });
+  /** The repo in `dir`, when its `.git` names a git folder and the caller may see it; else null. */
+  const accept = async (dir: string): Promise<FoundRepo | null> => {
+    const gitDirReal = await realGitDir(dir);
+    if (gitDirReal === null) return null;
+    // Git is run on the git folder that was checked, never on the `.git` entry it was reached through,
+    // so a gitfile rewritten after discovery cannot move a later run elsewhere.
+    const repo: FoundRepo = { workTree: dir, gitDir: gitDirReal, gitDirReal, relPath: toRelPath(root, dir), name: basename(dir) };
+    if (opts.repoAllowed !== undefined && !(await opts.repoAllowed(repo))) return null;
+    return repo;
   };
 
   for (let dir = root; ; dir = dirname(dir)) {
+    // `dir` is a real path: `root` is, and so is every folder above a real path.
+    if (opts.upTo !== undefined && !(await opts.upTo(dir))) break;
     if (await hasGitEntry(dir)) {
-      found(dir);
+      // Git would stop here, and refuse a repo it does not trust; so does the walk.
+      const repo = await accept(dir);
+      if (repo !== null) repos.push(repo);
       break;
     }
     if (dirname(dir) === dir) break;
@@ -405,12 +516,13 @@ export async function discoverRepos(
         if (!child.isDirectory()) continue;
         if (child.name.startsWith(".") || SKIP_DIRS.has(child.name)) continue;
         const dir = join(parent, child.name);
-        if (await hasGitEntry(dir)) {
+        const repo = (await hasGitEntry(dir)) ? await accept(dir) : null;
+        if (repo !== null) {
           if (repos.length >= MAX_REPOS) {
             truncated = true;
             break;
           }
-          found(dir);
+          repos.push(repo);
         }
         next.push(dir);
       }
@@ -526,11 +638,17 @@ function splitN(rec: string, n: number): string[] | null {
   return parts;
 }
 
+/** One numstat record's counts, and the old path when git paired the file with another by rename. */
+export interface NumstatCounts {
+  added: number;
+  removed: number;
+  binary: boolean;
+  renamedFrom?: string;
+}
+
 /** `git diff --numstat -z -M` → counts by NEW path. Pure + exported for the test. */
-export function parseNumstatZ(
-  raw: string,
-): Map<string, { added: number; removed: number; binary: boolean }> {
-  const out = new Map<string, { added: number; removed: number; binary: boolean }>();
+export function parseNumstatZ(raw: string): Map<string, NumstatCounts> {
+  const out = new Map<string, NumstatCounts>();
   const fields = raw.split("\0");
   for (let i = 0; i < fields.length; i++) {
     const rec = fields[i]!;
@@ -538,17 +656,17 @@ export function parseNumstatZ(
     const m = /^(-|\d+)\t(-|\d+)\t(.*)$/s.exec(rec);
     if (!m) continue;
     let path = m[3]!;
+    let renamedFrom: string | undefined;
     // A rename leaves the path empty and puts old and new in the next two fields.
     if (path === "") {
+      renamedFrom = fields[i + 1] ?? "";
       path = fields[i + 2] ?? "";
       i += 2;
     }
     const binary = m[1] === "-";
-    out.set(path, {
-      added: binary ? 0 : Number(m[1]),
-      removed: binary ? 0 : Number(m[2]),
-      binary,
-    });
+    const counts: NumstatCounts = { added: binary ? 0 : Number(m[1]), removed: binary ? 0 : Number(m[2]), binary };
+    if (renamedFrom !== undefined) counts.renamedFrom = renamedFrom;
+    out.set(path, counts);
   }
   return out;
 }
@@ -593,27 +711,54 @@ function countLines(text: string): number {
 }
 
 /**
- * An untracked file's contents, read only when its real path is inside the repo's real path.
- * `null` = refused (escaped the repo, or gone). A symlink is shown as git shows one: its target.
+ * An untracked file's contents, read through the Files view's own reader with the repo as its root
+ * (bridge/read-guard.ts): its real path inside the repo's and not denied, the open following no final
+ * link, and the opened handle checked again before a byte is read. `null` = refused (escaped the repo,
+ * denied, swapped, or gone). A symlink is shown as git shows one: its target, and only when it stays
+ * inside the repo.
  */
 async function readUntracked(
+  r: ReadRoot,
   repo: RepoDirs,
   path: string,
 ): Promise<{ kind: "file"; bytes: Uint8Array; clipped: boolean } | { kind: "link"; target: string } | null> {
-  const candidate = join(repo.workTree, path);
-  const real = await containedRealpath(candidate, repo.workTree);
-  if (real === null) return null;
-  const st = await lstat(candidate).catch(() => null);
+  const segments = path.split("/");
+  const candidate = r.host.path.join(repo.workTree, ...segments);
+  const st = await r.fs.lstat(candidate).catch(() => null);
   if (st === null) return null;
   if (st.isSymbolicLink()) {
+    if ((await containedRealpath(candidate, repo.workTree, r.host)) === null) return null;
     const target = await readlink(candidate).catch(() => null);
     return target === null ? null : { kind: "link", target };
   }
-  if (!st.isFile()) return null;
-  const file = Bun.file(real);
-  const clipped = file.size > MAX_FILE_READ_BYTES;
-  const bytes = new Uint8Array(await file.slice(0, MAX_FILE_READ_BYTES).arrayBuffer());
-  return { kind: "file", bytes, clipped };
+  const head = await readHeadUnder({ ...r, rootReal: repo.workTree }, segments, MAX_FILE_READ_BYTES);
+  if (head === null) return null;
+  return { kind: "file", bytes: head.bytes, clipped: head.size > MAX_FILE_READ_BYTES };
+}
+
+/**
+ * Whether a path git listed in a repo is one the Files view would show by name: not a `.git` segment,
+ * not a state secret's basename, not inside the bridge's own folders (`isDeniedPath`). A path that
+ * fails is left out of every list and refused as `unknown-path`, like any path git did not list.
+ */
+function shownPath(r: ReadRoot, repo: RepoDirs, path: string): boolean {
+  const segments = path.replace(/\/$/, "").split("/");
+  return !isDeniedPath(r.host.path.join(repo.workTree, ...segments), r.denied, r.host);
+}
+
+/**
+ * A file's counts as the list may carry them: none when git paired the file by rename with a path the
+ * Files view would hide, since the counts would then measure that hidden file.
+ */
+function shownCounts(r: ReadRoot, repo: RepoDirs, c: NumstatCounts | undefined): Pick<NumstatCounts, "added" | "removed" | "binary"> | undefined {
+  if (c === undefined) return undefined;
+  if (c.renamedFrom !== undefined && !shownPath(r, repo, c.renamedFrom)) return undefined;
+  return { added: c.added, removed: c.removed, binary: c.binary };
+}
+
+/** A listed entry is shown only when its path, and its old path for a rename, both are. */
+function shownEntry(r: ReadRoot, repo: RepoDirs, entry: { path: string; oldPath?: string }): boolean {
+  return shownPath(r, repo, entry.path) && (entry.oldPath === undefined || shownPath(r, repo, entry.oldPath));
 }
 
 /** One repo's status, with its hardening computed. `null` when git could not read it at all. */
@@ -635,16 +780,20 @@ async function repoStatus(
   return { entries, truncated: run.capped, config };
 }
 
-/** Drop a parent's entry for a folder that discovery lists as a repo of its own. */
-function withoutNestedRepos(repo: FoundRepo, entries: StatusEntry[], all: readonly FoundRepo[]) {
-  const nested = new Set(all.filter((r) => r !== repo).map((r) => r.workTree));
+/**
+ * A repo's status entries as the view shows them: without a folder that discovery lists as a repo of
+ * its own, and without a path the Files view would hide ({@link shownEntry}).
+ */
+function visibleEntries(r: ReadRoot, repo: FoundRepo, entries: StatusEntry[], all: readonly FoundRepo[]) {
+  const nested = new Set(all.filter((other) => other !== repo).map((other) => other.workTree));
   return entries.filter((e) => {
     const abs = join(repo.workTree, e.path.replace(/\/$/, ""));
-    return !nested.has(abs);
+    return !nested.has(abs) && shownEntry(r, repo, e);
   });
 }
 
 async function listRepo(
+  r: ReadRoot,
   git: string,
   repo: FoundRepo,
   all: readonly FoundRepo[],
@@ -652,7 +801,7 @@ async function listRepo(
 ): Promise<{ repo: ChangedRepo; truncated: boolean; committed?: boolean } | null> {
   const status = await repoStatus(git, repo);
   if (status === null) return null;
-  let entries = withoutNestedRepos(repo, status.entries, all);
+  let entries = visibleEntries(r, repo, status.entries, all);
   let truncated = status.truncated;
   if (entries.length > MAX_FILES_PER_REPO) {
     entries = entries.slice(0, MAX_FILES_PER_REPO);
@@ -664,7 +813,7 @@ async function listRepo(
     return { repo: { relPath: repo.relPath, name: repo.name, files: [] }, truncated, committed };
   }
 
-  const counts = new Map<string, { added: number; removed: number; binary: boolean }>();
+  const counts = new Map<string, NumstatCounts>();
   if (entries.some((e) => e.status !== "?")) {
     const base = await baseTree(git, repo);
     if (base !== null) {
@@ -685,10 +834,10 @@ async function listRepo(
   for (const e of entries) {
     const file: ChangedFile = { path: e.path, status: e.status, added: 0, removed: 0, binary: false };
     if (e.oldPath !== undefined) file.oldPath = e.oldPath;
-    const c = counts.get(e.path);
+    const c = shownCounts(r, repo, counts.get(e.path));
     if (c) Object.assign(file, c);
     if (e.status === "?" && !e.path.endsWith("/") && budget.bytes > 0) {
-      const read = await readUntracked(repo, e.path);
+      const read = await readUntracked(r, repo, e.path);
       if (read?.kind === "file") {
         budget.bytes -= read.bytes.byteLength;
         if (looksBinary(read.bytes)) file.binary = true;
@@ -716,24 +865,86 @@ async function mapLimited<T, R>(items: readonly T[], limit: number, fn: (item: T
   return out;
 }
 
-/** Whether `cwd` is a folder we can look in at all. */
-async function usableFolder(cwd: string): Promise<boolean> {
-  if (!isAbsoluteFolder(cwd)) return false;
-  const st = await stat(cwd).catch(() => null);
-  return st !== null && st.isDirectory();
+/**
+ * The root a Changes read runs under, checked as the Files view checks its own (ADR 0150): an absolute
+ * folder, its real path, and that real path within the bound, except the route's one unbounded root
+ * (`ChangesScope.unboundedRoot`) for a caller with the Files right.
+ * A root inside the bridge's own folders is refused whole, as Files refuses it. `null` is `no-folder`.
+ */
+async function changesRoot(cwd: string, scope: ChangesScope): Promise<ReadRoot | null> {
+  const input: Parameters<typeof resolveReadRoot>[0] = { root: cwd, home: scope.home, privateFolders: scope.privateFolders };
+  if (scope.host !== undefined) input.host = scope.host;
+  if (scope.fs !== undefined) input.fs = scope.fs;
+  // The one unbounded root is the route's, and only for a caller with the Files right.
+  const r = await resolveReadRoot(input, { unbounded: scope.unboundedRoot === true && scope.wide });
+  if (r === null || isDeniedPath(r.rootReal, r.denied, r.host)) return null;
+  return r;
+}
+
+/**
+ * The repos a Changes read sees under a checked root: discovery from its real path, and no repo whose
+ * work tree or git folder sits inside the bridge's own folders. For a caller without the Files right
+ * the walk up is held to the bound, and so is the work tree that owns each repo's git folder
+ * ({@link gitDirBounded}), so a gitfile cannot point a bounded folder at home's repo.
+ */
+async function discoverUnder(
+  r: ReadRoot,
+  params: Pick<ChangesParams, "depth" | "nested">,
+  scope: ChangesScope,
+): Promise<{ repos: FoundRepo[]; truncated: boolean; depthLimited: boolean }> {
+  const fold = foldingHost(r.host);
+  const opts: DiscoverOptions = {
+    repoAllowed: async (repo) =>
+      !isDeniedPath(repo.workTree, r.denied, r.host) &&
+      !r.denied.some((folder) => isInside(fold, repo.gitDirReal, folder)) &&
+      (scope.wide || (await gitDirBounded(repo, scope.home, r))),
+  };
+  if (!scope.wide) opts.upTo = (dir) => isBoundedReal(dir, scope.home, r.host, r.fs);
+  return discoverRepos(r.rootReal, params.depth, params.nested, opts);
+}
+
+/**
+ * Whether a repo's git folder belongs to a work tree inside the bound. A git folder inside the repo's
+ * own work tree does. One reached through a gitfile belongs to the folder above its first `.git`
+ * segment: `~/x/.git/worktrees/w` and `~/x/.git/modules/m` belong to `~/x`, and `~/.git` to home,
+ * which is out of bound. A bare `foo.git` belongs to the folder above it. A git folder with no such
+ * segment outside the work tree (a `--separate-git-dir`, a bare dotfiles repo named `.dotfiles`)
+ * names no owner, so it is refused. A linked worktree's `commondir` is held to the same rule.
+ */
+async function gitDirBounded(repo: FoundRepo, home: string, r: ReadRoot): Promise<boolean> {
+  if (!(await gitFolderBounded(repo.gitDirReal, repo.workTree, home, r))) return false;
+  // A linked worktree reads its objects from the common git folder its `commondir` names.
+  const common = await realCommonDir(repo.gitDirReal);
+  return common === null || gitFolderBounded(common, repo.workTree, home, r);
+}
+
+/**
+ * One git folder's owner inside the bound: a git folder inside the work tree passes; otherwise the
+ * folder above its first segment that is `.git` or ends in `.git` (a bare `foo.git`) owns it, and that
+ * owner must be inside the bound. No such segment: no owner, refused.
+ */
+async function gitFolderBounded(gitFolder: string, workTree: string, home: string, r: ReadRoot): Promise<boolean> {
+  if (isInside(r.host, gitFolder, workTree)) return true;
+  const { root, parts } = splitPath(r.host, gitFolder);
+  const at = parts.findIndex((part) => isGitSegment(part) || part.toLowerCase().endsWith(".git"));
+  if (at < 0) return false;
+  const owner = `${root}${parts.slice(0, at).join(r.host.path.sep)}`;
+  return isBoundedReal(owner, home, r.host, r.fs);
 }
 
 /** The Changes list for a folder (the workspace root, bridge/changes-root.ts). */
 export async function listChanges(
   cwd: string,
   params: Pick<ChangesParams, "depth" | "nested">,
+  scope: ChangesScope,
 ): Promise<ChangesList> {
-  if (!(await usableFolder(cwd))) return { available: false, reason: "no-folder" };
+  const r = await changesRoot(cwd, scope);
+  if (r === null) return { available: false, reason: "no-folder" };
   const git = await gitBinary();
   if (git === null) return { available: false, reason: "no-git" };
-  const found = await discoverRepos(cwd, params.depth, params.nested);
+  const found = await discoverUnder(r, params, scope);
   const budget = { bytes: MAX_COUNT_BUDGET_BYTES };
-  const listed = await mapLimited(found.repos, REPO_CONCURRENCY, (r) => listRepo(git, r, found.repos, budget));
+  const listed = await mapLimited(found.repos, REPO_CONCURRENCY, (repo) => listRepo(r, git, repo, found.repos, budget));
   let truncated = found.truncated;
   const repos: ChangedRepo[] = [];
   const clean: CleanRepo[] = [];
@@ -743,7 +954,7 @@ export async function listChanges(
     if (item.repo.files.length > 0) repos.push(item.repo);
     else if (item.committed === true) clean.push({ relPath: item.repo.relPath, name: item.repo.name });
   }
-  const list: ChangesList = { available: true, root: await realpath(cwd), repos, truncated, depthLimited: found.depthLimited };
+  const list: ChangesList = { available: true, root: r.rootReal, repos, truncated, depthLimited: found.depthLimited };
   if (clean.length > 0) list.clean = clean;
   return list;
 }
@@ -807,16 +1018,17 @@ export function syntheticAddedDiff(path: string, content: string): string {
 }
 
 /** One file's diff. Refuses a repo discovery did not return and a path git did not list. */
-export async function fileDiff(cwd: string, params: ChangesParams): Promise<ChangeDiff> {
-  if (!(await usableFolder(cwd))) return { available: false, reason: "no-folder" };
+export async function fileDiff(cwd: string, params: ChangesParams, scope: ChangesScope): Promise<ChangeDiff> {
+  const r = await changesRoot(cwd, scope);
+  if (r === null) return { available: false, reason: "no-folder" };
   const git = await gitBinary();
   if (git === null) return { available: false, reason: "no-git" };
-  const found = await discoverRepos(cwd, params.depth, params.nested);
-  const repo = found.repos.find((r) => r.relPath === params.repo);
+  const found = await discoverUnder(r, params, scope);
+  const repo = found.repos.find((f) => f.relPath === params.repo);
   if (repo === undefined) return { available: false, reason: "unknown-repo" };
   const status = await repoStatus(git, repo);
   if (status === null) return { available: false, reason: "unknown-repo" };
-  const entry = withoutNestedRepos(repo, status.entries, found.repos).find((e) => e.path === params.path);
+  const entry = visibleEntries(r, repo, status.entries, found.repos).find((e) => e.path === params.path);
   if (entry === undefined) return { available: false, reason: "unknown-path" };
 
   const answer: Extract<ChangeDiff, { available: true }> = {
@@ -833,7 +1045,7 @@ export async function fileDiff(cwd: string, params: ChangesParams): Promise<Chan
 
   if (entry.status === "?") {
     if (entry.path.endsWith("/")) return { ...answer, directory: true };
-    const read = await readUntracked(repo, entry.path);
+    const read = await readUntracked(r, repo, entry.path);
     if (read === null) return { available: false, reason: "unknown-path" };
     if (read.kind === "link") return { ...answer, diff: syntheticAddedDiff(entry.path, `${read.target}\n`) };
     if (looksBinary(read.bytes)) return { ...answer, binary: true };
@@ -961,7 +1173,7 @@ interface LoadedCommit {
   truncated: boolean;
 }
 
-async function loadCommit(git: string, repo: RepoDirs): Promise<LoadedCommit | "no-commit" | "unreadable"> {
+async function loadCommit(r: ReadRoot, git: string, repo: RepoDirs): Promise<LoadedCommit | "no-commit" | "unreadable"> {
   const config = await filterOverrides(git, repo);
   if (config === null) return "unreadable";
   const hash = await headCommit(git, repo);
@@ -976,9 +1188,10 @@ async function loadCommit(git: string, repo: RepoDirs): Promise<LoadedCommit | "
   const names = await runGit(git, repo, ["diff", "--name-status", ...diffFlags, ...range], config, MAX_LIST_BYTES);
   if (names.timedOut || (names.code !== 0 && !names.capped)) return "unreadable";
   const counts = await runGit(git, repo, ["diff", "--numstat", ...diffFlags, ...range], config, MAX_LIST_BYTES);
-  const numbers = counts.timedOut ? new Map() : parseNumstatZ(counts.stdout.toString("utf8"));
+  const numbers = counts.timedOut ? new Map<string, NumstatCounts>() : parseNumstatZ(counts.stdout.toString("utf8"));
   let entries = parseNameStatusZ(names.stdout.toString("utf8"));
   if (names.capped) entries.pop();
+  entries = entries.filter((e) => shownEntry(r, repo, e));
   let truncated = names.capped;
   if (entries.length > MAX_FILES_PER_REPO) {
     entries = entries.slice(0, MAX_FILES_PER_REPO);
@@ -987,7 +1200,7 @@ async function loadCommit(git: string, repo: RepoDirs): Promise<LoadedCommit | "
   const files = entries.map((e): ChangedFile => {
     const file: ChangedFile = { path: e.path, status: e.status, added: 0, removed: 0, binary: false };
     if (e.oldPath !== undefined) file.oldPath = e.oldPath;
-    const c = numbers.get(e.path);
+    const c = shownCounts(r, repo, numbers.get(e.path));
     if (c) Object.assign(file, c);
     return file;
   });
@@ -1002,19 +1215,20 @@ async function loadCommit(git: string, repo: RepoDirs): Promise<LoadedCommit | "
 }
 
 /** A repo the same discovery returns, by `relPath`. */
-async function discoveredRepo(cwd: string, params: ChangesParams): Promise<FoundRepo | undefined> {
-  const found = await discoverRepos(cwd, params.depth, params.nested);
-  return found.repos.find((r) => r.relPath === params.repo);
+async function discoveredRepo(r: ReadRoot, params: ChangesParams, scope: ChangesScope): Promise<FoundRepo | undefined> {
+  const found = await discoverUnder(r, params, scope);
+  return found.repos.find((f) => f.relPath === params.repo);
 }
 
 /** The last commit of one discovered repo. Refuses a repo discovery did not return. */
-export async function readCommit(cwd: string, params: ChangesParams): Promise<ChangeCommit> {
-  if (!(await usableFolder(cwd))) return { available: false, reason: "no-folder" };
+export async function readCommit(cwd: string, params: ChangesParams, scope: ChangesScope): Promise<ChangeCommit> {
+  const r = await changesRoot(cwd, scope);
+  if (r === null) return { available: false, reason: "no-folder" };
   const git = await gitBinary();
   if (git === null) return { available: false, reason: "no-git" };
-  const repo = await discoveredRepo(cwd, params);
+  const repo = await discoveredRepo(r, params, scope);
   if (repo === undefined) return { available: false, reason: "unknown-repo" };
-  const loaded = await loadCommit(git, repo);
+  const loaded = await loadCommit(r, git, repo);
   if (loaded === "no-commit") return { available: false, reason: "no-commit" };
   if (loaded === "unreadable") return { available: false, reason: "unknown-repo" };
   return {
@@ -1031,13 +1245,14 @@ export async function readCommit(cwd: string, params: ChangesParams): Promise<Ch
  * One file of the last commit. Refuses a repo discovery did not return and a path the same read
  * of HEAD did not list.
  */
-export async function commitFileDiff(cwd: string, params: ChangesParams): Promise<ChangeCommitDiff> {
-  if (!(await usableFolder(cwd))) return { available: false, reason: "no-folder" };
+export async function commitFileDiff(cwd: string, params: ChangesParams, scope: ChangesScope): Promise<ChangeCommitDiff> {
+  const r = await changesRoot(cwd, scope);
+  if (r === null) return { available: false, reason: "no-folder" };
   const git = await gitBinary();
   if (git === null) return { available: false, reason: "no-git" };
-  const repo = await discoveredRepo(cwd, params);
+  const repo = await discoveredRepo(r, params, scope);
   if (repo === undefined) return { available: false, reason: "unknown-repo" };
-  const loaded = await loadCommit(git, repo);
+  const loaded = await loadCommit(r, git, repo);
   if (loaded === "no-commit") return { available: false, reason: "no-commit" };
   if (loaded === "unreadable") return { available: false, reason: "unknown-repo" };
   const entry = loaded.files.find((f) => f.path === params.path);
@@ -1140,16 +1355,24 @@ export const sharedLists = new SharedReads<ChangesList>(CHANGES_SHARE_MS);
 /** The bridge's shared diff reads, keyed on (root, repo, path, depth, nested). */
 export const sharedDiffs = new SharedReads<ChangeDiff>(CHANGES_SHARE_MS);
 
+/**
+ * The part of a scope an answer depends on. A caller with the Files right and one without never share
+ * an answer: the first may read past the bound, the second may not.
+ */
+function scopeKey(scope: ChangesScope): unknown[] {
+  return [scope.wide, scope.unboundedRoot === true, scope.home, [...scope.privateFolders]];
+}
+
 /** `listChanges`, shared across askers for {@link CHANGES_SHARE_MS}. What the routes call. */
-export function sharedListChanges(cwd: string, params: Pick<ChangesParams, "depth" | "nested">): Promise<ChangesList> {
-  const key = JSON.stringify([cwd, params.depth, params.nested]);
-  return sharedLists.read(key, () => listChanges(cwd, params));
+export function sharedListChanges(cwd: string, params: Pick<ChangesParams, "depth" | "nested">, scope: ChangesScope): Promise<ChangesList> {
+  const key = JSON.stringify([cwd, params.depth, params.nested, ...scopeKey(scope)]);
+  return sharedLists.read(key, () => listChanges(cwd, params, scope));
 }
 
 /** `fileDiff`, shared across askers for {@link CHANGES_SHARE_MS}. What the routes call. */
-export function sharedFileDiff(cwd: string, params: ChangesParams): Promise<ChangeDiff> {
-  const key = JSON.stringify([cwd, params.repo, params.path, params.depth, params.nested]);
-  return sharedDiffs.read(key, () => fileDiff(cwd, params));
+export function sharedFileDiff(cwd: string, params: ChangesParams, scope: ChangesScope): Promise<ChangeDiff> {
+  const key = JSON.stringify([cwd, params.repo, params.path, params.depth, params.nested, ...scopeKey(scope)]);
+  return sharedDiffs.read(key, () => fileDiff(cwd, params, scope));
 }
 
 /** The shared last-commit reads, keyed on (root, repo, depth, nested). */
@@ -1158,13 +1381,13 @@ export const sharedCommits = new SharedReads<ChangeCommit>(CHANGES_SHARE_MS);
 export const sharedCommitDiffs = new SharedReads<ChangeCommitDiff>(CHANGES_SHARE_MS);
 
 /** `readCommit`, shared across askers for {@link CHANGES_SHARE_MS}. What the routes call. */
-export function sharedReadCommit(cwd: string, params: ChangesParams): Promise<ChangeCommit> {
-  const key = JSON.stringify([cwd, params.repo, params.depth, params.nested]);
-  return sharedCommits.read(key, () => readCommit(cwd, params));
+export function sharedReadCommit(cwd: string, params: ChangesParams, scope: ChangesScope): Promise<ChangeCommit> {
+  const key = JSON.stringify([cwd, params.repo, params.depth, params.nested, ...scopeKey(scope)]);
+  return sharedCommits.read(key, () => readCommit(cwd, params, scope));
 }
 
 /** `commitFileDiff`, shared across askers for {@link CHANGES_SHARE_MS}. What the routes call. */
-export function sharedCommitFileDiff(cwd: string, params: ChangesParams): Promise<ChangeCommitDiff> {
-  const key = JSON.stringify([cwd, params.repo, params.path, params.depth, params.nested]);
-  return sharedCommitDiffs.read(key, () => commitFileDiff(cwd, params));
+export function sharedCommitFileDiff(cwd: string, params: ChangesParams, scope: ChangesScope): Promise<ChangeCommitDiff> {
+  const key = JSON.stringify([cwd, params.repo, params.path, params.depth, params.nested, ...scopeKey(scope)]);
+  return sharedCommitDiffs.read(key, () => commitFileDiff(cwd, params, scope));
 }

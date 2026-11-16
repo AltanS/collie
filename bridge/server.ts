@@ -11,6 +11,7 @@ import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
 import {
   changesParams,
+  type ChangesScope,
   repoOfFolder,
   sharedCommitFileDiff,
   sharedFileDiff,
@@ -2377,7 +2378,7 @@ export function startServer(opts: {
       } catch {
         return text("malformed URL", 400);
       }
-      return workspaceChanges(rt.engine, workspaceId, url, req, homedir(), cfg.redact);
+      return workspaceChanges(rt.engine, workspaceId, url, req, changesScope(cfg, caller), cfg.redact);
     }
 
     // ── Files, asked by workspace (ADR 0083): one folder or one file under the same root ──
@@ -2671,7 +2672,7 @@ export function startServer(opts: {
       if (isHeldCancel(pathname, req.method)) {
         return heldCancelRoute(rt, url.searchParams.get("request") ?? "", paneId, { audit: audit_, device, acceptEncoding: req.headers.get("accept-encoding") });
       }
-      if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, homedir(), cfg.redact);
+      if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, changesScope(cfg, caller), cfg.redact);
       if (action === "files" && req.method === "GET")
         return paneFiles(rt.engine, paneId, url, req, filesPrivateFolders(cfg), homedir(), cfg.redact);
       // A pane that takes guarded controls has no screen to type into and no read-back to guard a
@@ -5747,7 +5748,8 @@ async function paneWorkspaceRoot(found: ReturnType<typeof rootOfWorkspace>, cwd:
 /**
  * GET /api/pane/:id/changes — what changed under the pane's WORKSPACE folder since the last commit
  * (ADR 0065). The root is bridge/changes-root.ts's rule over the live snapshot; when the workspace
- * has no narrow enough folder, the pane's own cwd is the root, as it was before. A pane whose own
+ * has no narrow enough folder, the pane's own cwd is the root, as it was before, and past the bound
+ * only for a caller with the Files right (`scope.wide`, ADR 0150). A pane whose own
  * folder is outside that root likewise reads its own folder, bounded (#509): an empty list when it
  * holds no repo, `no-folder` when it is too wide to scan — never the workspace's repo.
  *
@@ -5761,9 +5763,10 @@ export async function paneChanges(
   paneId: string,
   url: URL,
   req: Request,
-  home: string = homedir(),
+  scope: ChangesScope,
   redact = true,
 ): Promise<Response> {
+  const { home } = scope;
   const accept = req.headers.get("accept-encoding");
   const params = changesParams(url);
   const snap = engine.current();
@@ -5779,11 +5782,16 @@ export async function paneChanges(
     ? { paneId, workspaceId: found.workspace.workspaceId, workspaceLabel: found.workspace.label }
     : { paneId };
   const wsRoot = await paneWorkspaceRoot(found, pane.cwd);
-  // No workspace root at all: the pane's own cwd, as before ADR 0065. A root discarded because
-  // this pane sits outside it (#509): the pane's own cwd too, but bounded — a pane parked in `~`
-  // or `/` in a rooted workspace says `no-folder` rather than scanning home or inheriting the
-  // workspace's repo.
-  const root = wsRoot ?? (found?.root ? (withinBound(pane.cwd, home) ? pane.cwd : null) : pane.cwd);
+  // No workspace root at all: the pane's own cwd, as before ADR 0065, bounded like the Files root
+  // unless the caller holds the Files right (ADR 0150): a pane in `~` or `/` reads there only for a
+  // device that may browse files. A root discarded because this pane sits outside it (#509): the
+  // pane's own cwd too, bounded for every caller, so a pane parked in `~` in a rooted workspace says
+  // `no-folder` rather than scanning home or inheriting the workspace's repo. bridge/changes.ts then
+  // holds the root's REAL path to the same bound.
+  const unbounded = wsRoot === null && scope.wide && !found?.root;
+  const root = wsRoot ?? (unbounded || withinBound(pane.cwd, home) ? pane.cwd : null);
+  // Only that fallback may skip the real-path bound in bridge/changes.ts; every other root keeps it.
+  const readScope: ChangesScope = unbounded ? { ...scope, unboundedRoot: true } : scope;
   if (root === null) {
     return wantsDiff
       ? json({ ...subject, available: false, reason: "no-folder" } satisfies PaneChangeDiffResponse, accept)
@@ -5792,12 +5800,12 @@ export async function paneChanges(
   try {
     if (params.view === "commit") {
       if (params.path !== null) {
-        return json({ ...subject, ...maskDiff(await sharedCommitFileDiff(root, params), redact) } satisfies PaneChangeCommitDiffResponse, accept);
+        return json({ ...subject, ...maskDiff(await sharedCommitFileDiff(root, params, readScope), redact) } satisfies PaneChangeCommitDiffResponse, accept);
       }
-      return json({ ...subject, ...(await sharedReadCommit(root, params)) } satisfies PaneChangeCommitResponse, accept);
+      return json({ ...subject, ...(await sharedReadCommit(root, params, readScope)) } satisfies PaneChangeCommitResponse, accept);
     }
-    if (wantsDiff) return json({ ...subject, ...maskDiff(await sharedFileDiff(root, params), redact) } satisfies PaneChangeDiffResponse, accept);
-    const list = await sharedListChanges(root, params);
+    if (wantsDiff) return json({ ...subject, ...maskDiff(await sharedFileDiff(root, params, readScope), redact) } satisfies PaneChangeDiffResponse, accept);
+    const list = await sharedListChanges(root, params, readScope);
     const paneRepo = list.available ? await repoOfFolder(list.root, list.repos, pane.cwd) : undefined;
     const answer: PaneChangesResponse = { ...subject, ...list };
     if (paneRepo !== undefined) answer.paneRepo = paneRepo;
@@ -5817,9 +5825,10 @@ export async function workspaceChanges(
   workspaceId: string,
   url: URL,
   req: Request,
-  home: string = homedir(),
+  scope: ChangesScope,
   redact = true,
 ): Promise<Response> {
+  const { home } = scope;
   const accept = req.headers.get("accept-encoding");
   const params = changesParams(url);
   const wantsDiff = params.repo !== null || params.path !== null;
@@ -5837,16 +5846,16 @@ export async function workspaceChanges(
     if (params.view === "commit") {
       if (params.path !== null) {
         return json(
-          { ...subject, ...maskDiff(await sharedCommitFileDiff(found.root, params), redact) } satisfies WorkspaceChangeCommitDiffResponse,
+          { ...subject, ...maskDiff(await sharedCommitFileDiff(found.root, params, scope), redact) } satisfies WorkspaceChangeCommitDiffResponse,
           accept,
         );
       }
-      return json({ ...subject, ...(await sharedReadCommit(found.root, params)) } satisfies WorkspaceChangeCommitResponse, accept);
+      return json({ ...subject, ...(await sharedReadCommit(found.root, params, scope)) } satisfies WorkspaceChangeCommitResponse, accept);
     }
     if (wantsDiff) {
-      return json({ ...subject, ...maskDiff(await sharedFileDiff(found.root, params), redact) } satisfies WorkspaceChangeDiffResponse, accept);
+      return json({ ...subject, ...maskDiff(await sharedFileDiff(found.root, params, scope), redact) } satisfies WorkspaceChangeDiffResponse, accept);
     }
-    return json({ ...subject, ...(await sharedListChanges(found.root, params)) } satisfies WorkspaceChangesResponse, accept);
+    return json({ ...subject, ...(await sharedListChanges(found.root, params, scope)) } satisfies WorkspaceChangesResponse, accept);
   } catch (err) {
     return text(`changes read failed: ${errorText(err)}`, 502);
   }
@@ -5860,6 +5869,16 @@ export async function workspaceChanges(
  */
 export function filesPrivateFolders(cfg: Pick<Config, "stateDir" | "commandsFile">): string[] {
   return [cfg.stateDir, dirname(cfg.commandsFile)];
+}
+
+/**
+ * The scope a Changes read runs under (ADR 0150): home, this bridge's own private folders, and whether
+ * the caller holds the Files right. `wide` is the caller's own `device-read` gate, asked as a yes or
+ * no: on a crew member that is the member's own device policy (`crewGate`), as for the Files route.
+ * The gate is pure (no audit line, no state), so asking it costs a refusal nothing.
+ */
+function changesScope(cfg: Pick<Config, "stateDir" | "commandsFile">, caller: Pick<RouteCaller, "gate">): ChangesScope {
+  return { home: homedir(), privateFolders: filesPrivateFolders(cfg), wide: caller.gate("device-read") === null };
 }
 
 /** The one refusal for a path: absent, outside, denied, or the wrong kind (ADR 0083). */
