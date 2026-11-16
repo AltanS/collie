@@ -414,7 +414,12 @@ export function ThemeRefusalSheet({ entries, onClose }: RefusalSheetProps) {
 
 // ── The paste sheet ─────────────────────────────────────────────────────────────────────────────
 
-/** Text that opens with a scheme and `//`: a link, which the card never fetches (ADR 0106, 2026-11-07). */
+/**
+ * Text that opens with a scheme and `//`: a link, which the card never fetches (ADR 0148 rule 5). The
+ * reason: the page talks to no third party. Every outside fetch in Collie is the host's and follows a
+ * tap (the community list, the speech engine, the math engines), and a theme is not worth a new
+ * outbound call, so a shared theme arrives as a file or as pasted text and `connect-src` stays `'self'`.
+ */
 const LINK_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
 
 /**

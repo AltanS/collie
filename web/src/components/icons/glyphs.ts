@@ -5,9 +5,13 @@ import type { GlyphSetId } from "@/lib/glyph-sets";
 
 import type { GlyphSetData } from "./glyph-data";
 
-// THE GLYPH SET CHUNKS, loaded on demand (ADR 0137). Lucide is in the entry bundle and needs nothing.
-// Every other set is one lazy chunk under `glyphs/` (web/vite-glyphs.ts builds it), fetched the first
-// time a worn or previewed theme names it, and kept here for the life of the page.
+// THE GLYPH SET CHUNKS, loaded on demand (ADR 0148 rule 8). Lucide is in the entry bundle and needs
+// nothing. Every other set is one lazy chunk under `glyphs/` (web/vite-glyphs.ts builds it), fetched the
+// first time a worn or previewed theme names it, and kept here for the life of the page.
+//
+// WHY A THEME NAMES A SET AND NEVER CARRIES AN SVG PER ICON, OR A URL. That road puts drawn markup
+// from a stranger's file into the page, beside a strict CSP, and makes every theme a few hundred
+// kilobytes. A set is built into Collie, so the file holds one word.
 //
 // UNTIL A SET ARRIVES, and when it cannot arrive (offline right after an update: the chunks are not
 // in the precache and src/sw.ts empties their cache on an update), every icon draws its lucide glyph.

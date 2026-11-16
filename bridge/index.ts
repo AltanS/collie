@@ -2008,7 +2008,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   }
   engine.onUpdate((s) => void usage.refresh(s.agents, name).catch(() => {}));
   // The account windows ride the same poll (first reading, then every five minutes while a pane of the
-  // harness is here) and a turn's end (at most once a minute per harness). Neither waits on the ask.
+  // harness is here) and a turn's end (an ask starts at most once in five minutes per harness).
+  // Neither waits on the ask.
   engine.onUpdate((s) => accountWindows.observe(s.agents, name));
   engine.onTransition((agent, from, to) => {
     if (isTurnEnd(from, to)) accountWindows.poke(agent.agent);

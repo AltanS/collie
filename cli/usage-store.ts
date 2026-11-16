@@ -19,7 +19,8 @@ import type { Files } from "./sys.ts";
 //
 // ONE FILE, TWO WRITERS. The statusLine wrapper (`cli/statusline.ts`, the default wrap) and the beacon
 // hooks (`cli/context-reading.ts`) both write a session's file, and each knows different things: the
-// wrapper has the context, the two subscription windows and the window size Claude Code states, the
+// wrapper has the context, the account windows (every `rate_limits` key that holds a `used_percentage`,
+// up to eight) and the window size Claude Code states, the
 // beacon has the context it reads from the transcript against that stated size. Neither may erase what
 // only the other knows, so each writes through a merge
 // here: it reads the file that is there, replaces its own fields and keeps the rest.

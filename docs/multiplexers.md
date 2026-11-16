@@ -498,8 +498,8 @@ Behavior details for Claude configuration changes:
   Claude pane is open, the bridge reads your Claude login on this machine
   (`~/.claude/.credentials.json`, or `$CLAUDE_CONFIG_DIR/.credentials.json`; the Keychain on a Mac
   with no file) and asks `api.anthropic.com/api/oauth/usage`, the same call Claude Code's `/usage`
-  makes. It asks when the pane appears, after a turn ends (at most once a minute) and every five
-  minutes. It stores nothing of the login, never refreshes it and sends it nowhere else. It skips a
+  makes. It asks when the pane appears, after a turn ends and every five minutes, and never more
+  than once in five minutes per agent. It stores nothing of the login, never refreshes it and sends it nowhere else. It skips a
   login file that others may read (anything looser than `0600`) and a login that has expired, and
   Claude Code refreshes that one at its next call. An API-key, Bedrock or Vertex session has no
   windows to show. Codex panes get theirs the same way, on the same schedule, from its own session

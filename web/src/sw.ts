@@ -104,6 +104,11 @@ const FONT_CACHE = MOUNT === "/" ? "collie-fonts" : `collie-fonts:${MOUNT}`;
 const storable = (r: Response) =>
   r.status === 200 && !r.redirected && (r.headers.get("content-type") ?? "").includes("font");
 
+// AN OPERATOR'S FACE NEVER REACHES THIS ROUTE, BY POSITION (ADR 0148 rule 11). It is served at
+// `/api/fonts/<name>`, and this worker registers no runtime route that matches `/api/`, so it never
+// sees that request. The navigation denylist is not the reason: it governs navigations, and a font is
+// a subresource. A URL that began `/fonts/` would be cached here and swept on the next activate,
+// forever, so `fonts.test.ts` asserts that an operator URL never does.
 registerRoute(
   ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith(under("/fonts/")),
   async ({ request }) => {
@@ -204,9 +209,9 @@ const MATH_CACHE = MOUNT === "/" ? "collie-math" : `collie-math:${MOUNT}`;
 const mathStorable = (r: Response) =>
   r.status === 200 && !r.redirected && /javascript|css|font/.test(r.headers.get("content-type") ?? "");
 
-// The two theme marks (components/brand-mark.tsx) live under `marks/` on the same terms and the
-// same reasoning: out of the precache, because Collie is the default mark, kept on first use so the
-// chosen one starts offline, emptied on an update. Offline right after an update the header draws the
+// The nine chunked marks (every mark but the Collie mark, components/brand-mark.tsx) live under
+// `marks/` on the same terms and the same reasoning: out of the precache, because Collie is the
+// default mark, kept on first use so the chosen one starts offline, emptied on an update. Offline right after an update the header draws the
 // Collie mark until the phone is online once (brand-mark.tsx's boundary), never an empty box.
 const MARK_CACHE = MOUNT === "/" ? "collie-marks" : `collie-marks:${MOUNT}`;
 

@@ -15,8 +15,8 @@ import { DEFAULT_THEME_ID, isThemeId } from "@/lib/theme/schema";
 // migration when the first one grew a sibling. One key that already parses as a record costs
 // nothing today and is the difference between adding a field and adding a store.
 //
-// THE FACE IS A CLASS, NOT A PROPERTY. Nothing in this file knows what Space Grotesk's fallback
-// stack is, or Aldrich's, or the system one — index.css owns all three under `:root.font-*`, and
+// THE FACE IS A CLASS, NOT A PROPERTY. Nothing in this file knows what any face's fallback stack is
+// (seven faces ship, `lib/shipped-fonts.ts`); index.css owns every stack under `:root.font-*`, and
 // this module only ever swaps which class is on <html>. That is what keeps the pre-paint script
 // (public/theme-init.js, which cannot import anything) and the app agreeing about the same values:
 // they agree on a KEY NAME and a CLASS NAME, and neither carries a font list. `design.test.ts`

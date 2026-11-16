@@ -846,8 +846,9 @@ export function hooksAreBehind(deps: HooksDeps): boolean {
 /**
  * WHAT is behind: the hooks themselves (a missing registration or a stale marker), or only the
  * statusLine wrap, which counts only when the statusLine IS wrapped and names another binary. An
- * unwrapped statusLine is never behind: the wrap is opt-in. The hooks win when both are, because their
- * install re-points a wrapped statusLine as well.
+ * unwrapped statusLine is never behind: where the install did not wrap it (`--no-statusline`, or no
+ * statusLine is configured) there is nothing to re-point. The wrap is the default since 2026-11-13.
+ * The hooks win when both are, because their install re-points a wrapped statusLine as well.
  */
 export function behindReason(deps: HooksDeps): "hooks" | "statusline" | null {
   const states = claudeSettingsTargets(deps.ctx).map((target) => targetState(deps, target));

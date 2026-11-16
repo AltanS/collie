@@ -990,7 +990,8 @@ phone's own edge swipe plays the phone's own animation, never one of ours.
 
 From 1.22.0 a person can pick a theme or import one ([ADR 0106](./.adr/0106-a-theme-is-a-closed-file-of-named-tokens.md)).
 A theme is a closed JSON file: a light half and a dark half of named colour tokens, one UI face, and, from
-schema version 2, twelve more tokens that each take a closed word or a gate-checked colour. It changes the
+schema version 2, a `surface` block of thirteen closed words, a display face and a terminal palette of
+gate-checked colours. It changes the
 VALUE of a token. It never changes which token a component uses.
 
 **So every colour a component draws is a token from the list below.** A theme reaches a token and
@@ -1019,8 +1020,9 @@ come from `light-dark()`.
 
 The name "ColliePWA" in the large screen's sidebar draws "PWA" in the three status tokens, always: P `status-done`, W `status-working`, A `status-blocked` (`components/wordmark.tsx`). Unlike the website, the app does not rest in grey. It is not a token of its own, and no application state may ever drive those inks.
 
-**The twelve version 2 tokens.** Each is a closed list. A file names a word, and one table says what the word
-does (`web/src/lib/theme/surface.ts`). The default word of every token is what the stylesheet draws, which is
+**The version 2 tokens.** Each is a closed list. A file names a word, and one table says what the word
+does (`web/src/lib/theme/surface.ts`). Ten words set a style. `zoom`, `tabs` and `composer` set none: the
+app reads the word itself, and `tabs` and `composer` are described above. The default word of every token is what the stylesheet draws, which is
 the look of the Collie theme: `flat`, `bold`, `band` and `sentence` among them. `tabs` and `composer` keep
 `plain` and `field` as the word of a theme that names none, and Collie names `folder` and `box`.
 
@@ -1036,7 +1038,8 @@ the look of the Collie theme: `flat`, `bold`, `band` and `sentence` among them. 
 | `rows` | `rules`, `cards` |
 | `icons` | `default`, `thin`, `heavy` |
 | `labels` | `sentence` (default), `caps` |
-| `fonts.display` | one of the six shipped faces |
+| `zoom` | `screen` (default), `none`: whether the belt's Zoom pill shows in the Screen view (1.26.2) |
+| `fonts.display` | one of the seven shipped faces |
 | `ansi` | all 18 mirror colours (slots 0 to 15, ink, ground) or none, each held to its contrast floor |
 
 A component reads a word through the utility it already uses (`rounded-md`, `shadow-sm`, `p-4`,
@@ -1047,8 +1050,9 @@ cannot reach: a small section label wears `label-caps`, a list that follows `row
 **What a theme never reaches.** Layout, tap sizes and row heights as free values (`roomy` is a word, and it
 never goes below the default), motion, the type scale, any other free value, and the meaning of a status:
 its icon and its word stay as the status components draw them. The type scale stays out while the app
-holds about 130 arbitrary `text-[Npx]` sizes. The Collie dog in the header, the home-screen icon and the splash
-look the same under every theme. The terminal mirror keeps its dark space (§8, ADR 0002) under every
+holds about 130 arbitrary `text-[Npx]` sizes. The home-screen icon and the splash look the same under every
+theme. The header mark is the Collie dog unless a theme names a character (`character`, from schema version 4) or
+the device picks one; a character is a closed word and never a drawing. The terminal mirror keeps its dark space (§8, ADR 0002) under every
 theme. A version 2 theme may name the mirror's palette and ground, authored in dark space, and the light
 half inverts them with the mirror.
 

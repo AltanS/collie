@@ -1748,7 +1748,9 @@ async function sessionCwdOf(path: string): Promise<string | null> {
 // the next request carries less, and no turn has measured it yet, so the probe names no context then.
 // The log names no window (a `model_change` row names the model only), so the window comes from the
 // catalog in the agent dir ({@link piAgentDirOf}, bridge/journal/model-window.ts), and a model it does
-// not name has no context dot.
+// not name shows its token count and no percentage. A KNOWN LIMIT: pi's session is a tree, so after a
+// jump to another branch the newest turn row in the file may belong to the branch left behind, and the
+// figure is that branch's until the next turn.
 
 /**
  * The agent dir a session log belongs to: the parent of the nearest `sessions` folder above it. A

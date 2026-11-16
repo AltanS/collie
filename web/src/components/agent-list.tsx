@@ -869,7 +869,7 @@ export function AgentList({
       {/* IN ACTIVITY OR CACHE ORDER the workspace groups give way to ONE list under one heading that
           names the order in words, as the switcher's does (ADR 0071). No workspace heading and so no
           per-heading "+": a rank crosses every workspace, and a heading cannot answer a question
-          asked across all of them. The strip above keeps its chips. Each row is a `herd` row, whose
+          asked across all of them. The workspace filter above keeps its choices. Each row is a `herd` row, whose
           line 2 names its place (`space › tab`), so a row still says which workspace it is in. */}
       {!renderBody && bestRows === null && ranked && rankedShown.length > 0 && (
         <section id={RANKED_ID} aria-labelledby={RANKED_HEADING_ID} className="flex scroll-mt-4 flex-col gap-2">
