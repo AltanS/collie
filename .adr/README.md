@@ -233,12 +233,11 @@ The rule today: Chat is the default view of an agent pane (0082). A live session
 
 ### Layout and navigation
 
-The rule today: No pane list is ordered by status: place is the default order, the operator may ask for activity order, and a pin is a place the operator chose (0063, 0070, 0071). Back goes up one level (0067). The footer reads Crew, Dashboard, Files and the Hill, and Focus is a switch (0085, the newest of 0066, 0068 and 0085, wins on tab names). On a large screen the pane screen is a sidebar beside a strip of panes, and two fingers move between panes (0120, 0121). "Seen" is one shared bridge-side fact (0003), and the app stays on React Router in library mode (0051).
-
-One live record for this topic is being written.
+The rule today: [0147](./0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md) states the pane lists and the dashboard's footer: no list is ordered by status, the operator may ask for Activity or Cache order with the clock read once, a pin is a place the operator chose, and the footer reads Crew, Dashboard, Files and the Hill, with Needs you a switch. It wins over 0063, 0066, 0068, 0070, 0071 and 0085. Back goes up one level (0067). On a large screen the pane screen is a sidebar beside a strip of panes, and two fingers move between panes (0120, 0121). "Seen" is one shared bridge-side fact (0003), and the app stays on React Router in library mode (0051).
 
 | # | Decision | Status |
 | --- | --- | --- |
+| [0147](./0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md) | No pane list is ordered by status; Activity and Cache order read the clock once; pins lead; the footer holds Crew, Dashboard, Files and the Hill, and Needs you is a switch. | Accepted |
 | [0003](./0003-one-shared-seen.md) | "Seen" is one shared bridge-side fact, and only reads inside Collie count. | Accepted |
 | [0051](./0051-the-phone-app-runs-react-router-in-library-mode.md) | The phone app stays on React Router in library mode, and Collie owns its Vite build. | Accepted |
 | [0063](./0063-a-pane-keeps-its-place-when-its-state-changes.md) | No pane list is ordered by status; a pane's place is machine, space, tab and position. | Accepted, amended in scope by 0070, 0071 |
