@@ -153,10 +153,27 @@ const BLOCK_END = "<!-- collie:walky-talky v2 end -->";
  * the shim sets to that machine's state dir (the lead's or the member's), so an agent on the member
  * asks the member's bridge and never the lead's.
  */
-function writeCollieShim(root: string, stateDir: string): string {
+function writeCollieShim(root: string, stateDir: string, machine: Machine = "lead"): string {
   const dir = join(root, "bin");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  writeFileSync(join(dir, "collie"), `#!/bin/sh\nCOLLIE_STATE_DIR=${sq(stateDir)}\nexport COLLIE_STATE_DIR\nexec bun ${sq(join(WORKTREE, "cli", "main.ts"))} "$@"\n`, { mode: 0o700 });
+  // The state dir alone is not enough (trick-flow lab, 2026-11-16): without a config dir the CLI asks
+  // Herdr for one and reads the operator's live `.env`, and a `trick propose` or `hill` that the rig's
+  // bridge answers "not here" goes on to every bridge in the hook target registry under the real HOME.
+  // So the shim names the machine's own config, instance and port, and its bridge HOME for that lookup.
+  const m = machineDirs(machine);
+  const run = readRun();
+  const port = machine === "lead" ? run?.port : run?.member?.port;
+  const vars: [string, string][] = [
+    ["COLLIE_STATE_DIR", stateDir],
+    ["HERDR_PLUGIN_CONFIG_DIR", m.config],
+    ["COLLIE_CONFIG", m.homeCfg],
+    ["COLLIE_INSTANCE", machine === "lead" ? "rig" : "rig-member"],
+    ["COLLIE_SKILL_SYNC", "off"],
+    ["HOME", m.bridgeHome],
+  ];
+  if (port !== undefined) vars.push(["COLLIE_PORT", String(port)], ["COLLIE_HOST", "127.0.0.1"]);
+  const lines = vars.map(([name, value]) => `${name}=${sq(value)}\nexport ${name}\n`).join("");
+  writeFileSync(join(dir, "collie"), `#!/bin/sh\n${lines}exec bun ${sq(join(WORKTREE, "cli", "main.ts"))} "$@"\n`, { mode: 0o700 });
   chmodSync(join(dir, "collie"), 0o700);
   return dir;
 }
@@ -201,7 +218,7 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
   const notes: string[] = [];
   /** True for a pi or omp whose model calls the stub replays: no key is read for it. */
   let replayed = false;
-  const bin = writeCollieShim(d.root, stateDir);
+  const bin = writeCollieShim(d.root, stateDir, machine);
   // The rig's model stub, when the rig runs one (every leg does): its port and each harness's tier.
   const stub = readRun()?.stub;
   if (id === "claude") {
