@@ -6,6 +6,9 @@ Date: 2026-08-05
 Amended in scope by: [ADR 0058](./0058-the-resume-picker-commits-with-enter.md): a narrow exception,
 Enter is sent unprinted on the Claude /resume picker only. The digit ban stands everywhere else.
 
+Amended in scope by: [ADR 0142](./0142-when-collie-is-not-sure-the-person-decides.md): the card of a screen Collie cannot read may
+offer plain keys the screen did not print, labelled as keys (decided 2026-11-16, not built yet).
+
 ## Context
 
 Claude Code's `/model` picker is a full-screen modal that no Collie grammar recognised. Its footer

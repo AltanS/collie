@@ -163,12 +163,11 @@ One live record for this topic is being written.
 
 ### Sends and the input box
 
-The rule today: A send goes through the Send Protocol, which reads the screen before it types, after it types and after it submits; the protocol is described in the header of `bridge/surface/protocol.ts`, and no record states it whole. The Claude input box is found by its own frame (0048), a long send is verified through the paste placeholder and never chunked (0010), and recognising a password prompt changes what Collie says, never what it sends (0017). A plain Send always queues; a steer is the person's explicit choice (0117), a Stop is a person's tap with a receipt (0116), and a queued send stays a card until the journal shows it (0122). 0140, still Proposed, adds a second path: a part inside the agent dials the bridge.
-
-One live record for this topic is being written.
+The rule today: A send goes through the Send Protocol, which reads the screen before it types, after it types and after it submits; the protocol is described in the header of `bridge/surface/protocol.ts`. 0142 is the live record: when Collie is not sure, the person decides, every stop card carries its next step, and four hard stops stay. It names which of its rules the code follows today and which wait for their milestone. The Claude input box is found by its own frame (0048), a long send is verified through the paste placeholder and never chunked (0010), and recognising a password prompt changes what Collie says, never what it sends (0017). A plain Send always queues; a steer is the person's explicit choice (0142, which replaced 0117), a Stop is a person's tap with a receipt (0116), and a queued send stays a card until the journal shows it (0122). 0140, still Proposed, adds a second path: a part inside the agent dials the bridge.
 
 | # | Decision | Status |
 | --- | --- | --- |
+| [0142](./0142-when-collie-is-not-sure-the-person-decides.md) | When Collie is not sure, the person decides: no block without an exit, and four hard stops stay. | Accepted |
 | [0004](./0004-the-statusline-run-is-bounded.md) | The Claude statusline walk keeps a bound of 8 rows, which protects less than it looks. | Accepted, amended in scope by 0048 |
 | [0005](./0005-a-composed-key-queue-never-outlives-its-dock.md) | Closing the Keys dock discards the composed key queue. | Accepted |
 | [0010](./0010-long-sends-are-verified-via-the-paste-placeholder.md) | A long send to Claude is verified through its paste placeholder, never by chunking. | Accepted |
@@ -180,7 +179,7 @@ One live record for this topic is being written.
 | [0092](./0092-the-keys-pad-is-a-board-you-arrange.md) | The Keys pad is a board the person arranges; the operator's Presets stay separate. | Accepted |
 | [0107](./0107-sent-keeps-shell-lines-per-machine.md) | Each machine keeps its own record of the shell lines sent; agent prompts are never recorded. | Accepted |
 | [0116](./0116-a-stop-is-a-persons-tap-with-a-receipt.md) | A Stop is a person's tap with a request id and a receipt. | Accepted |
-| [0117](./0117-a-steer-is-the-persons-choice-never-the-default.md) | A plain Send always queues; a steer is the person's explicit per-send choice. | Accepted |
+| [0117](./0117-a-steer-is-the-persons-choice-never-the-default.md) | A plain Send always queues; a steer is the person's explicit per-send choice. | Superseded by 0142 |
 | [0122](./0122-a-queued-message-is-a-card-until-the-journal-shows-it.md) | A queued send is a card until the journal shows its text as a prompt. | Accepted |
 | [0123](./0123-report-a-problem-three-failed-sends-offer-a-prefilled-issue.md) | Three failed sends in a row offer a prefilled GitHub issue that the person opens. | Accepted |
 | [0124](./0124-a-sends-bound-starts-after-its-profile.md) | A send's time bound starts after its profile is known. | Accepted |
@@ -188,14 +187,14 @@ One live record for this topic is being written.
 
 ### Dialogs, cards and screen readers
 
-The rule today: A generic menu emits only keys the screen printed plus arrows it advertised, never a digit it inferred (0009); the one named exception is the Claude `/resume` picker, which commits with an unprinted Enter (0058). A dialog Collie cannot read still gets a way out (0053). A tap on a pointed row is walked, verified by a fresh read, then confirmed (0080); it amends 0055, 0058, 0076 and 0078 and wins over their "one batch" wording. Every lifted card renders in one dock above the belt (0059) and can be put down (0056).
+The rule today: A generic menu emits only keys the screen printed plus arrows it advertised, never a digit it inferred (0009); the one named exception is the Claude `/resume` picker, which commits with an unprinted Enter (0058). A dialog Collie cannot read still gets a way out (0053); 0142 widens that card and is not built yet. A tap on a pointed row is walked, verified by a fresh read, then confirmed (0080); it amends 0055, 0058, 0076 and 0078 and wins over their "one batch" wording. Every lifted card renders in one dock above the belt (0059) and can be put down (0056).
 
 One live record for this topic is being written.
 
 | # | Decision | Status |
 | --- | --- | --- |
-| [0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md) | A generic menu sends only keys the screen printed plus advertised arrows, never an inferred digit. | Accepted, amended in scope by 0058 |
-| [0053](./0053-an-unread-dialog-still-has-a-way-out.md) | An unread dialog still has a way out: its adapter's declared cancel key, as a card. | Accepted, amended in scope by 0076 |
+| [0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md) | A generic menu sends only keys the screen printed plus advertised arrows, never an inferred digit. | Accepted, amended in scope by 0058, 0142 |
+| [0053](./0053-an-unread-dialog-still-has-a-way-out.md) | An unread dialog still has a way out: its adapter's declared cancel key, as a card. | Accepted, amended in scope by 0076, 0142 |
 | [0054](./0054-a-printed-scale-is-tappable.md) | A printed scale is tappable: every value is a chip and a tap sends the arrow presses. | Accepted |
 | [0055](./0055-a-pointed-list-is-walked-then-confirmed.md) | A pointed list lifts as a prompt-select block; a tap is the arrow walk plus the commit key. | Accepted, amended in scope by 0080 |
 | [0056](./0056-a-card-can-be-put-down.md) | Every lifted card carries a Terminal control that shows the rows it replaced. | Accepted, amended in scope by 0059 |

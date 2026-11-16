@@ -3,6 +3,7 @@
 - **Status:** Accepted (2026-11-16). Rules 1, 2 and 6 hold in part today; rules 3, 4, 5 and 7 wait for
   the milestone "No block without an exit" (see "Decided, not built yet").
 - **Date:** 2026-11-16
+- **Supersedes:** ADR 0117. **Amends in scope:** ADR 0009 and ADR 0053 (rule 3).
 - **Trail:** the other road is the old posture: a provable receipt first, a block when Collie is unsure.
   It was argued in #34 (a blind Enter approved a permission dialog), in the `/model` digit probe of
   ADR 0009, in #103 (a password prompt) and in #623 (late keys). Field reports of 2026-11-16 argue
@@ -114,7 +115,5 @@ the `offersFor` table for sends).
 - 0076 to 0079, 0098, 0133: the omp and pi dialogs Collie lifts, and the Escape card for the rest.
 - 0108, 0109, 0113: a dialog over live chrome declares its tail; a notice above the box is not a
   modal; an AskUserQuestion answer is typed into its field, cleared only when it holds what was seen.
-- 0116, 0117: a Stop and a steer are a person's tap with a receipt.
-- 0122: a queued send is a card until the journal shows it, with an exit in each state.
-- 0123, 0124: three failed sends offer a prefilled issue; a send's bound starts after its profile.
-- 0140: a part inside the agent takes a send by data, one id, one road, never twice.
+- 0116, 0117, 0140: a Stop and a steer are a person's tap with a receipt; a send by data, never twice.
+- 0122 to 0124: a queued send is a card with an exit in each state; three failed sends offer an issue.
