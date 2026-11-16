@@ -12297,21 +12297,22 @@ describe("the person's word on a receipt (M102 spec 01)", () => {
   }
 });
 
-describe("an override is never held or queued (M102 spec 01)", () => {
-  const BUSY = "The agent is busy, so this was not typed. Send it when the turn ends.";
+describe("an override is never held, and goes into a turn as the manual commit does (M102 spec 01)", () => {
+  // The orchestrator, 2026-11-16: an override is never HELD by Collie, but where the harness itself
+  // queues a message in a running turn it goes in exactly as today's manual commit does, plus the word.
 
-  test("override: Claude at a running turn on a free box would queue the send; the override is refused turn_running with nothing typed", async () => {
+  test("override: Claude at a running turn on a free box queues the send exactly as a plain send does, with no word (no stop was passed)", async () => {
     const holds = new HoldStore(join(dir, "held"));
-    const { pane, send } = rig({ holds });
-    pane.over = [LIVE_ROW];
-    const plain = await send("then give it a title");
-    expect(plain.receipt).toMatchObject({ outcome: "sent", queued: true });
-    const { pane: pane2, send: send2 } = rig({ holds });
-    pane2.over = [LIVE_ROW];
-    const answer = await send2("then give it a title", { override: true, fromPhone: true });
-    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [], detail: BUSY });
-    expect(answer.receipt?.queued).toBeUndefined();
-    expect(pane2.calls).toEqual([]);
+    const plain = rig({ holds });
+    plain.pane.over = [LIVE_ROW];
+    const control = await plain.send("then give it a title");
+    expect(control.receipt).toMatchObject({ outcome: "sent", queued: true });
+    const r = rig({ holds });
+    r.pane.over = [LIVE_ROW];
+    const answer = await r.send("then give it a title", { override: true, fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: control.receipt!.keys });
+    expect(answer.receipt?.word).toBeUndefined();
+    expect(r.pane.keysSeen).toEqual(plain.pane.keysSeen);
     expect(holds.list()).toEqual([]);
   });
 
@@ -12327,7 +12328,7 @@ describe("an override is never held or queued (M102 spec 01)", () => {
     expect(pane.calls).toEqual([]);
   });
 
-  test("override: Codex on a screen with no box and a running row takes the Tab queue for a plain two-tap send; the override commit is refused turn_running", async () => {
+  test("override: Codex on a screen with no box and a running row takes the Tab queue byte for byte like today's manual commit, plus the word", async () => {
     const holds = new HoldStore(join(dir, "held"));
     const codexNoBox = (): ReturnType<typeof rig> => {
       const r = rig({ pane: new FakePane("codex"), harness: "codex", version: "0.159.2", holds });
@@ -12338,21 +12339,22 @@ describe("an override is never held or queued (M102 spec 01)", () => {
     };
     const plain = codexNoBox();
     const firstPlain = await plain.send("then add a short summary");
-    expect((await plain.send("then add a short summary", { rowsHash: firstPlain.rowsHash! })).receipt).toMatchObject({ outcome: "sent" });
+    const control = await plain.send("then add a short summary", { rowsHash: firstPlain.rowsHash! });
+    expect(control.receipt).toMatchObject({ outcome: "sent" });
+    expect(control.receipt?.word).toBeUndefined();
     expect(plain.pane.queued).toEqual(["then add a short summary"]);
 
     const r = codexNoBox();
     const first = await r.send("then add a short summary");
     const answer = await r.send("then add a short summary", { rowsHash: first.rowsHash!, override: true, fromPhone: true });
-    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [], detail: BUSY });
-    expect(answer.receipt?.queued).toBeUndefined();
-    expect(r.pane.calls).toEqual([]);
-    expect(r.pane.keysSeen).toEqual([]);
-    expect(r.pane.queued).toEqual([]);
+    expect(answer.receipt).toMatchObject({ outcome: control.receipt!.outcome, keys: control.receipt!.keys, word: "override" });
+    expect(answer.receipt?.queued).toBe(control.receipt?.queued);
+    expect(r.pane.keysSeen).toEqual(plain.pane.keysSeen);
+    expect(r.pane.queued).toEqual(plain.pane.queued);
     expect(holds.list()).toEqual([]);
   });
 
-  test("override: a turn that starts while the text is typed leaves it in the box, no Enter, where a plain send would be queued", async () => {
+  test("override: a turn that starts while the text is typed ends as a plain send does", async () => {
     const arm = (pane: FakePane): void => {
       pane.afterInput = (p, what) => {
         if (what.endsWith("then give it a title")) p.over = [LIVE_ROW];
@@ -12360,24 +12362,14 @@ describe("an override is never held or queued (M102 spec 01)", () => {
     };
     const plain = rig();
     arm(plain.pane);
-    expect((await plain.send("then give it a title")).receipt).toMatchObject({ outcome: "sent" });
-    expect(plain.pane.keysSeen).toContain("Enter");
+    const control = await plain.send("then give it a title");
+    expect(control.receipt).toMatchObject({ outcome: "sent" });
 
     const { pane, send } = rig();
     arm(pane);
     const answer = await send("then give it a title", { override: true, fromPhone: true });
-    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed", detail: "A turn started while the text was typed, so Enter was not pressed. The text is in the box. Submit it when the turn ends." });
-    expect(pane.keysSeen).not.toContain("Enter");
-    expect(answer.receipt?.queued).toBeUndefined();
-  });
-
-  test("override: an Add to it into a running turn is refused too, never queued", async () => {
-    const { pane, send } = rig();
-    pane.over = [LIVE_ROW];
-    pane.box = "a draft";
-    const answer = await send("more", { mode: "append", override: true, fromPhone: true });
-    expect(answer.receipt?.outcome).not.toBe("sent");
-    expect(answer.receipt?.queued).toBeUndefined();
-    expect(pane.keysSeen).not.toContain("Enter");
+    expect(answer.receipt).toMatchObject({ outcome: control.receipt!.outcome, keys: control.receipt!.keys });
+    expect(answer.receipt?.queued).toBe(control.receipt?.queued);
+    expect(pane.keysSeen).toEqual(plain.pane.keysSeen);
   });
 });

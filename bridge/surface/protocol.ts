@@ -748,7 +748,7 @@ export interface SendRequest {
   /**
    * The person's commit tap on a screen Collie could not read (M102 spec 01): set only by the phone's
    * commit tap. The protocol honours it only with {@link fromPhone} and a passed manual gate, and then
-   * the receipt says `word: "override"`. An override is never held and never queued: it types now or is refused.
+   * the receipt says `word: "override"`. An override is never held by Collie; where the harness queues in a turn it goes in as the manual commit does.
    */
   readonly override?: boolean;
   /**
@@ -1815,14 +1815,6 @@ function steeringTurn(state: RunState, snap: Snap): Ended | "queue" | null {
   if (!queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface: snap.surface, detail: TURN_RUNNING });
   if (isCommand && !commandQueues(state.match)) return new Ended("refused", "turn_running", { surface: snap.surface, detail: COMMAND_IN_TURN });
   return "queue";
-}
-
-/** The detail of an override that met a turn that runs (M102 spec 01): it is never queued, so nothing was typed. */
-const OVERRIDE_IN_TURN = "The agent is busy, so this was not typed. Send it when the turn ends.";
-
-/** The refusal of an override at a running turn: `turn_running`, nothing typed, and never held ({@link SendProtocol.holdsEnd}). */
-function overrideInTurn(s0: Snap): Ended {
-  return new Ended("refused", "turn_running", { surface: s0.surface, detail: OVERRIDE_IN_TURN });
 }
 
 /** The detail of a send in a turn whose submit key left the text in the box: a dialog may have taken it. */
@@ -3485,7 +3477,7 @@ export class SendProtocol {
     if (this.deps.holds === undefined || end.outcome !== "refused") return false;
     // A send from an agent view never queues: the person taps again once the session is free.
     if (state.request.view !== undefined) return false;
-    // An override is never held (M102 spec 01, ADR 0142 rule 5): it types now or is refused.
+    // An override is never held (M102 spec 01): the hold queue would type it later, on a screen nobody saw.
     if (state.request.override === true) return false;
     // A steer is never held (M69): it is for the turn that runs now, and a later turn is the wrong one.
     if (state.request.when === "steer") return false;
@@ -5486,7 +5478,6 @@ export class SendProtocol {
   private gateSteeringTurn(state: RunState, s0: Snap): void {
     const verdict = steeringTurn(state, s0);
     if (verdict instanceof Ended) throw verdict;
-    if (verdict === "queue" && !state.runsInTurn && state.request.override === true) throw overrideInTurn(s0);
     if (verdict === "queue") state.queued = true;
   }
 
@@ -5510,9 +5501,7 @@ export class SendProtocol {
     const frame = s1.surface.turn === "running" && s1.frame !== null ? s0.frame : null;
     const verdict = frame !== null ? (turnRefusal(state, s0, frame, "below") ?? "queue") : state.manual ? steeringTurn(state, s1) : null;
     if (verdict === null) return;
-    // An override is never queued (M102 spec 01): a turn that started under it ends as a refusal here does.
-    const overQueue = verdict === "queue" && !state.runsInTurn && state.request.override === true;
-    if (verdict instanceof Ended || overQueue) {
+    if (verdict instanceof Ended) {
       state.marks.s1 = s1;
       throw new Ended("typed_not_submitted", "changed", sawNote(s1, { framed: s0.frame !== null, rowsHash: s1.rowsHash, detail: TURN_STARTED }));
     }
@@ -5532,8 +5521,6 @@ export class SendProtocol {
   private gateTurn(state: RunState, s0: Snap, frame: Frame): void {
     const refusal = turnRefusal(state, s0, frame);
     if (refusal !== null) throw refusal;
-    // An override is never queued (M102 spec 01): a turn that runs refuses it, like a harness that takes nothing in a turn.
-    if (state.request.override === true && !state.runsInTurn) throw overrideInTurn(s0);
     state.queued = true;
   }
 
@@ -5564,8 +5551,6 @@ export class SendProtocol {
   private aboveMovedInTurn(state: RunState, s0: Snap, snap: Snap): boolean {
     // (The rows above may only scroll and grow from read to read: bandScrolled.)
     if (state.queued || state.manual || !queuesInTurn(state.match)) return false;
-    // An override never takes the queued path (M102 spec 01).
-    if (state.request.override === true) return false;
     const { mode } = state.request;
     // A command meets the same turn rule a command S0 read in a turn meets (turnRefusal, below): it goes
     // in where the harness queues commands or runs that one at once, and never where it would wait.
