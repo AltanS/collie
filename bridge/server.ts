@@ -8776,6 +8776,8 @@ type PickedLaunch = {
 interface LeadRowGate {
   fromLead: boolean;
   home: string;
+  /** The call came over the crew link, from this member's lead: a sign-in start is then refused (M101 spec 06). */
+  viaCrew: boolean;
 }
 
 /**
@@ -8784,7 +8786,7 @@ interface LeadRowGate {
  * an old lead never adds: it forwards a phone's body, `row` and all, unchanged.
  */
 function leadRowGate(req: Request, viaCrew: boolean | undefined, home: string): LeadRowGate {
-  return { fromLead: viaCrew === true && leadRowMarked(req.headers), home };
+  return { fromLead: viaCrew === true && leadRowMarked(req.headers), home, viaCrew: viaCrew === true };
 }
 
 /** What a one-off `run` is checked against: who asks, and the operator's switch (ADR 0095). */
@@ -8827,6 +8829,10 @@ async function pickLaunch(
   const signIn = fields.signIn === true;
   const withAccount = account !== undefined || signIn;
   if (withAccount && (shell || run)) return text("bad body", 400);
+  // A sign-in start is for the machine the phone talks to (M101 spec 06, decision 1): one that came over
+  // the crew link is refused like any other misuse of the field, before anything runs. An account alone
+  // still crosses, and is resolved below against THIS machine's own accounts.
+  if (signIn && leadGate.viaCrew) return text("bad body", 400);
   if (shell) return { kind: "shell", row: undefined };
   if (run) return pickRun(fields.run, runGate);
   if (harness !== "") {
@@ -10267,10 +10273,17 @@ export function trickViewsMediaRoute(views: AgentViewService | undefined, set: s
  * Hill's switch): no revision, so the phone empties its list and the bar loses the Hill item, and
  * `hillOff: true`, so the Hill's route and Settings say it is off. With the Hill on the body carries no
  * `hillOff` key at all, so an install that never switched it keeps its bytes.
+ *
+ * Off, while the store holds a card of Collie's own about a trick (spec 14), the body also carries
+ * `trickCardsRev`: the phone reads `GET /api/hill`, which then serves only those cards, for Settings,
+ * Tricks, the Dashboard's line and the card's own page. Still no `hillRev`, so still no Hill item.
  */
-export function withHill(body: SnapshotResponse, hill: Pick<HillService, "isOn" | "rev"> | undefined): SnapshotResponse {
+export function withHill(body: SnapshotResponse, hill: Pick<HillService, "isOn" | "rev" | "trickCardsRev"> | undefined): SnapshotResponse {
   if (hill === undefined) return body;
-  if (!hill.isOn()) return { ...body, hillOff: true };
+  if (!hill.isOn()) {
+    const cards = hill.trickCardsRev();
+    return cards === undefined ? { ...body, hillOff: true } : { ...body, hillOff: true, trickCardsRev: cards };
+  }
   return withHillRev(body, hill.rev());
 }
 

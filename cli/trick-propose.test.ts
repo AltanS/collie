@@ -25,7 +25,7 @@ import { realFiles } from "./sys.ts";
 import { cmdTrickGuide, trickGuide } from "./trick-guide.ts";
 import { GROUP_MASKED, GROUP_TOO_LARGE, groupLineEnds } from "../bridge/tricks/card-group.ts";
 import { TRICK_HELPER } from "../bridge/tricks/scan.ts";
-import { cmdTrickPropose, PROPOSE_ADDED_HERE_HINT, PROPOSE_NEEDS_CONFIG, PROPOSE_UNKNOWN, proposeExit, readTrickFolder } from "./trick-propose.ts";
+import { cmdTrickPropose, PROPOSE_ADDED_HERE_HINT, PROPOSE_NEEDS_CONFIG, PROPOSE_UNKNOWN, PROPOSE_WHERE, proposeExit, readTrickFolder } from "./trick-propose.ts";
 import { cmdTrickInit } from "./trick.ts";
 import { askSocket } from "./walky.ts";
 
@@ -46,6 +46,18 @@ function tempDir(prefix: string): string {
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
+
+describe("where the person finds a proposal (M96 spec 14)", () => {
+  test("the guide and the propose output name the Hill and Settings, Tricks, and never ask for the Hill to be switched on", () => {
+    expect(PROPOSE_WHERE).toBe("on the Hill, or in Settings, Tricks, while the Hill is off");
+    const guide = trickGuide().join("\n");
+    expect(guide).toContain("on the Hill, or in Settings, Tricks, while the Hill is off");
+    for (const text of [guide, PROPOSE_WHERE]) {
+      expect(text).not.toMatch(/switch(es)? the Hill on/iu);
+      expect(text).not.toContain("Experiments");
+    }
+  });
+});
 
 describe("collie trick guide", () => {
   test("names every manifest key and every place, from the schema", () => {
@@ -282,7 +294,7 @@ describe("collie trick propose, over the walky socket", () => {
     expect(Array.isArray(files) ? files.map((f) => asJsonObject(f)?.rel) : []).toEqual(["program.ts", "trick.toml"]);
     expect(d.io.stdout).toEqual([
       "Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, media/, captures/, config.toml).",
-      "Proposed legs. Your person sees it on the Hill as dc_k3m9x2p7q1ab. Nothing runs before their yes.",
+      "Proposed legs. Your person sees it as dc_k3m9x2p7q1ab on the Hill, or in Settings, Tricks, while the Hill is off. Nothing runs before their yes.",
       "Read the answer with: collie hill status dc_k3m9x2p7q1ab",
     ]);
     // A draft that init made in an agent's work folder proposes with nothing registered for its id.

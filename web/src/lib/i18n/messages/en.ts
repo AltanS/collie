@@ -612,6 +612,15 @@ export const en = {
   "composer.stale.hint": "The screen may be stale. Send probes it first.",
   // The placeholder of a sign-in field (the Surface's `field: "secret"`).
   "composer.secret.hint": "Sign-in code. Not saved as a draft.",
+  "composer.secret.label": "Sign-in code",
+  "composer.secret.placeholder": "Not saved. Sent once.",
+  "composer.secret.paste": "Paste",
+  "composer.secret.show": "Show the code",
+  "composer.secret.hide": "Hide the code",
+  "composer.secret.send": "Send the code",
+  "composer.secret.close": "Close the code field",
+  "composer.secret.closed": "The code field is closed. Nothing was sent.",
+  "composer.secret.reopen": "Open the code field",
   "composer.steer.queuedInstead": "Queued instead: the agent kept it for after the turn.",
   "composer.steer.steered": "Steered: the agent takes it after its current step.",
   "composer.steer.unsupported": "Steer is not available on this pane, so nothing was sent. Send again to queue it for the end of the turn.",
@@ -1364,6 +1373,8 @@ export const en = {
   "nav.prereleaseTitle": "Pre-release build {version}",
 
   // --- home (dashboard herd list) ---
+  "home.trickWaits.line": "A trick waits for your yes.",
+  "home.trickWaits.open": "Read it",
   "home.empty.disconnected": "Disconnected",
   "home.empty.disconnectedAt": "Disconnected, last seen {time}",
   "home.empty.noAgents": "No agents running.",
@@ -3508,8 +3519,9 @@ export const en = {
   "settings.tricks.by.proposedAgent": "Proposed by an agent on {host}",
   "settings.tricks.by.proposedUnconfirmed": "Proposed from {host}, session not confirmed",
   "settings.tricks.withTime": "{what} · {time}",
-  "settings.tricks.refused": "Manifest refused: {reason}",
-  "settings.tricks.refusedBare": "Manifest refused",
+  "settings.tricks.cannotRun": "This trick cannot run. {reason}",
+  "settings.tricks.cannotRunBare": "This trick cannot run.",
+  "settings.tricks.partNotShown": "Part of this trick is not shown. {reason}",
   // Warnings at the switch (M94 review 15).
   "settings.tricks.warn.label": "What a text search of its code found",
   "settings.tricks.warn.spawn": "This trick starts other programs on this machine.",
@@ -3520,8 +3532,8 @@ export const en = {
   "settings.tricks.warn.honesty": "Found by a text search of its code, not a proof.",
   "settings.tricks.hillOff": "The Hill is off: this trick's Decisions are not shown.",
   "settings.tricks.pending": "A new version waits for your yes.",
+  "settings.tricks.waiting.title": "Waiting for your yes",
   // The same row with the Hill off (2026-11-13): the new version's card is a Decision on the Hill.
-  "settings.tricks.pendingHillOff": "A new version waits. Switch the Hill on in Settings, Experiments, to read it.",
   // Fault B: the trick stopped because its code asks for a right the person's yes did not hold.
   "settings.tricks.rightsMoved": "Its rights changed. Switch it on again.",
   // Take changes without asking, and the undo of an automatic change (crew slice 3).
@@ -3900,10 +3912,25 @@ export const PENDING_TRANSLATION = [
   "composer.step.emptyBox",
   "composer.step.sendAgainWaits",
   "composer.step.sendAgainReady",
+  "composer.secret.label",
+  "composer.secret.placeholder",
+  "composer.secret.paste",
+  "composer.secret.show",
+  "composer.secret.hide",
+  "composer.secret.send",
+  "composer.secret.close",
+  "composer.secret.closed",
+  "composer.secret.reopen",
   "composer.protocol.codeRejected",
   "accounts.identity.signedInAs",
   "accounts.identity.notSignedIn",
   "accounts.identity.withPlan",
+  "settings.tricks.cannotRun",
+  "settings.tricks.cannotRunBare",
+  "settings.tricks.partNotShown",
+  "settings.tricks.waiting.title",
+  "home.trickWaits.line",
+  "home.trickWaits.open",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

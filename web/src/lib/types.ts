@@ -1464,6 +1464,12 @@ export interface SnapshotResponse {
    * while the Hill is on, so an install that never switched it keeps its bytes.
    */
   hillOff?: true;
+  /**
+   * With the Hill off (M96 spec 14): the hill's revision while it holds a card of Collie's own about a
+   * trick. The phone reads `GET /api/hill`, which then serves only those cards, for Settings, Tricks, the
+   * Dashboard's line and the card's page. Absent with the Hill on (then `hillRev` rides) and when none is held.
+   */
+  trickCardsRev?: number;
   ts: number;
 }
 

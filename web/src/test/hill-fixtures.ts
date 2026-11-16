@@ -1,7 +1,7 @@
 // Decisions and receipts for the hill's tests (M96), shaped by `lib/hill/wire.ts`. One builder with
 // the contract's defaults, so a case sets only the fields it is about.
 
-import type { HillDecision, HillReceipt } from "@/lib/hill/wire";
+import type { HillCollieRefType, HillDecision, HillReceipt } from "@/lib/hill/wire";
 
 export const HILL_T0 = 1_762_000_000_000;
 
@@ -77,6 +77,24 @@ export function groupDecision(cards = 3, over: Partial<HillDecision> = {}): Hill
       decline: "later",
       parts: Array.from({ length: cards }, (_, i) => ({ view: [{ kind: "para", text: `Card ${String(i + 1)} words.` }], sha256: String(i).repeat(64) })),
     },
+    ...over,
+  };
+}
+
+/** A card of Collie's own about the trick `id` (M96 spec 14): a proposal, a version, rights or a carried trick. */
+export function collieCard(type: HillCollieRefType, id: string, over: Partial<HillDecision> = {}): HillDecision {
+  const base = hillDecision();
+  return {
+    ...base,
+    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type, id, hash: "a".repeat(64) } },
+    title: type === "version" ? `Use the new version of ${id}?` : `Switch on the trick ${id}?`,
+    summary: "An agent session (repo#one) on lodge proposes it. It reaches the network.",
+    target: null,
+    text: "none",
+    options: [
+      { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+      { intent: "later", label: "Not now" },
+    ],
     ...over,
   };
 }

@@ -27,6 +27,9 @@ import { useOptionalRootData } from "@/lib/route-data";
 import { setStatus } from "@/lib/status";
 import { isReadOnly } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useOpenTrickCard } from "@/components/trick-cards";
+import { useTrickCards } from "@/lib/hill/store";
+import type { HillDecision } from "@/lib/hill/wire";
 
 // Settings → Tricks (M94 slice 04). One row per trick on this machine, each with one switch. Collie draws
 // this page, not the trick: the words are Collie's, the trick's own name is the only text a trick supplies,
@@ -93,7 +96,9 @@ import { cn } from "@/lib/utils";
 //
 // THE HILL IS NOT HERE. It had a built-in row above the person's tricks from 2026-11-11 to 2026-11-13; the Hill
 // is an experiment now, and its one switch is on Settings, Experiments (components/hill-switch-card.tsx). A row
-// here says only that a trick's Decisions wait for the Hill (`hillOff`).
+// here says only that a trick's own Decisions wait for the Hill (`hillOff`). A card of Collie's own about a
+// trick needs no Hill (M96 spec 14): a row whose new version waits opens that card from its slot line, and the
+// cards about new tricks are a group of their own above this card (components/trick-cards.tsx).
 //
 // NO PROSE but the one muted line at the foot. What a trick may do is the docs' to say.
 
@@ -131,33 +136,36 @@ function whoWords(by: WireTrickInfo["provenance"]): string {
 export interface SlotLine {
   text: string;
   trouble: boolean;
+  /** The line says a new version waits for a yes: the row opens its card from it, when the phone holds one. */
+  waits?: true;
 }
 
 /**
  * The third line: the reason a trick is not well (a trick stopped for its rights in the phone's own words,
  * fault B; a part the bridge refused, in any state), else that a new version waits for a yes (`pending`,
- * from a bridge since crew slice 2; with the Hill off, the line says to switch the Hill on in Settings,
- * Experiments, to read it), else the one note that the Hill is off for a trick that is on and
- * asks Decisions (`hillOff`, the snapshot's; bridge/tricks/hill.ts: they are not posted, the trick keeps
- * running), else where it came from.
+ * from a bridge since crew slice 2, or `versionWaits`: the phone holds an open card of Collie's own about a
+ * new version of it; the row opens that card, with the Hill on or off, M96 spec 14), else the one note that
+ * the Hill is off for a trick that is on and asks Decisions (`hillOff`, the snapshot's; bridge/tricks/hill.ts:
+ * they are not posted, the trick keeps running), else where it came from.
  */
-export function slotLine(trick: WireTrickInfo, now: number, hillOff = false): SlotLine {
+export function slotLine(trick: WireTrickInfo, now: number, hillOff = false, versionWaits = false): SlotLine {
   if (trick.state === "skipped") {
     const reason = trick.refusals?.[0]?.reason ?? trick.error;
-    return { text: reason === undefined ? t("settings.tricks.refusedBare") : t("settings.tricks.refused", { reason }), trouble: true };
+    return { text: reason === undefined ? t("settings.tricks.cannotRunBare") : t("settings.tricks.cannotRun", { reason }), trouble: true };
   }
   // A part the bridge refused, in every other state (the first full trick run, 2026-11-16, decision 5): the
-  // trick runs, but what it drew is not shown, and the row is the one place that says why. The words of
-  // `skipped`; a note the parser only ignored is not a refusal.
+  // trick runs, but what it drew is not shown, and the row is the one place that says why. Its own words
+  // (`partNotShown`), not those of `skipped`; a note the parser only ignored is not a refusal. A reason is
+  // a whole sentence that names its own key, so no path rides in front of it.
   const refused = trick.refusals?.find((r) => r.code !== "ignored" && r.code !== "more");
   // Fault B: the bridge's flag, in the phone's words; its `error` is the same line in the bridge's English.
   // Such a trick comes as off (stopped is not on): its switch shows off, and one tap on is the approval.
   if (trick.rightsMoved === true) return { text: t("settings.tricks.rightsMoved"), trouble: true };
   const failing = trick.state === "failing" || trick.state === "stopped";
   if (failing && trick.error !== undefined) return { text: trick.error, trouble: true };
-  if (refused !== undefined) return { text: t("settings.tricks.refused", { reason: refused.reason }), trouble: true };
-  // The new version's card is a Decision on the Hill: with the Hill off nobody can read it, so the row says where to switch it on.
-  if (trick.on && trick.pending !== undefined) return { text: t(hillOff ? "settings.tricks.pendingHillOff" : "settings.tricks.pending"), trouble: false };
+  if (refused !== undefined) return { text: t("settings.tricks.partNotShown", { reason: refused.reason }), trouble: true };
+  // The new version's card is Collie's own: it needs no Hill (spec 14), and the row opens it.
+  if (trick.on && (trick.pending !== undefined || versionWaits)) return { text: t("settings.tricks.pending"), trouble: false, waits: true };
   if (hillOff && trick.on && trick.decides === true) return { text: t("settings.tricks.hillOff"), trouble: false };
   return { text: provenanceLine(trick, now), trouble: false };
 }
@@ -433,10 +441,19 @@ interface TrickRowProps {
   origin?: TrickOrigin | undefined;
   /** An official entry of this id that the trick holds (`taken`): the row says why it is not the list's. */
   taken?: WireOfficialTrick | undefined;
+  /** Opens the open card of Collie's own about a new version of this trick, when the phone holds one (spec 14). */
+  onCard?: (() => void) | undefined;
 }
 
-function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, onUndo, onAbout, update, origin, taken }: TrickRowProps) {
-  const slot = slotLine(trick, clock, hillOff);
+/**
+ * The slot line as its own target, above the row's stretched layer: it opens the waiting version's card. The
+ * line keeps its drawn height; a transparent `::before` reaches 14px above and below, the 44px floor
+ * (DESIGN.md §6), as a Notice's action does (ui/notice.tsx `NOTICE_ACTION_TAP`).
+ */
+const SLOT_OPENS = "relative z-10 block w-full truncate text-left text-xs text-muted-foreground underline decoration-dotted underline-offset-2 before:absolute before:inset-x-0 before:-inset-y-3.5 before:content-['']";
+
+function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, onUndo, onAbout, update, origin, taken, onCard }: TrickRowProps) {
+  const slot = slotLine(trick, clock, hillOff, onCard !== undefined);
   const changed = autoLine(trick, clock);
   const warnings = warningLines(trick);
   // Before the switch: off, or on with code nobody approved yet. A tap on the switch closes the list.
@@ -482,9 +499,15 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
               {readsLine(trick.inputs)}
             </p>
           )}
-          <p data-line="slot" data-trouble={slot.trouble ? "true" : undefined} className="truncate text-xs text-muted-foreground">
-            {slot.text}
-          </p>
+          {slot.waits === true && onCard !== undefined ? (
+            <button type="button" data-line="slot" data-slot="trick-card-open" onClick={onCard} className={SLOT_OPENS}>
+              {slot.text}
+            </button>
+          ) : (
+            <p data-line="slot" data-trouble={slot.trouble ? "true" : undefined} className="truncate text-xs text-muted-foreground">
+              {slot.text}
+            </p>
+          )}
           {taken !== undefined && (
             <p data-line="taken" className="text-xs text-muted-foreground">
               {takenLine(taken)}
@@ -531,6 +554,9 @@ function TricksList({
   const clock = useBridgeNow(now);
   const root = useOptionalRootData();
   const offHill = hillOff ?? root?.hillOff === true;
+  // The open cards of Collie's own about a trick (spec 14): a new version's opens from its trick's row.
+  const cards = useTrickCards();
+  const openCard = useOpenTrickCard();
   const { refused } = usePairing();
   const canWrite = readOnly === undefined ? !isReadOnly(root?.device) && !refused : !readOnly;
   // The position a flipped switch holds until the list agrees, and the switches with a post in flight
@@ -759,6 +785,7 @@ function TricksList({
                     update={officialUpdate(trick)}
                     origin={row.origin}
                     taken={row.entry?.state === "taken" ? row.entry : undefined}
+                    onCard={versionCardOpener(cards, trick, openCard)}
                   />
                 </TrickBoundary>
               );
@@ -800,6 +827,16 @@ function TricksList({
     if (entry === undefined || official.list?.runsOn !== undefined) return undefined;
     return { busy: adding.get(trick.id) === "update", onUpdate: () => void addOfficial(entry, "update") };
   }
+}
+
+/**
+ * The opener of the open card about a new version of `trick` (a version the runner found, or one a proposal
+ * sent), or undefined when the phone holds none. A card about a NEW trick has no row of its own: it is in
+ * the group above (components/trick-cards.tsx).
+ */
+export function versionCardOpener(cards: readonly HillDecision[], trick: Pick<WireTrickInfo, "id">, open: (decision: HillDecision) => void): (() => void) | undefined {
+  const card = cards.find((decision) => decision.from.ref?.id === trick.id && (decision.from.ref.type === "version" || decision.from.ref.type === "proposal"));
+  return card === undefined ? undefined : () => open(card);
 }
 
 /** What the card holds of the official list. */

@@ -49,7 +49,7 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/pane").then((m) => ({ default: m.PaneSection })),
   },
   {
-    def: { id: "composer-states", group: "Pane", title: "Composer states", keywords: ["composer", "reply", "way-out", "held", "send", "queue", "draft", "steer", "hold", "confirm", "really-send", "send-it-again", "unknown", "destructive", "two-tap", "refusal", "stop-card", "send-again", "RefusalActions", "SendRefusalNotice"] },
+    def: { id: "composer-states", group: "Pane", title: "Composer states", keywords: ["composer", "reply", "way-out", "held", "send", "queue", "draft", "steer", "hold", "confirm", "really-send", "send-it-again", "unknown", "destructive", "two-tap", "sign-in", "secret", "code", "SecretField", "refusal", "stop-card", "send-again", "RefusalActions", "SendRefusalNotice"] },
     load: () => import("./sections/composer-states").then((m) => ({ default: m.ComposerStatesSection })),
   },
   {
@@ -185,7 +185,7 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/trick-menu").then((m) => ({ default: m.TrickMenuSection })),
   },
   {
-    def: { id: "trick-settings", group: "Tricks and Hill", title: "Trick settings", keywords: ["tricks", "TricksSettingsCard", "TrickAboutSheet", "about", "provenance", "official"] },
+    def: { id: "trick-settings", group: "Tricks and Hill", title: "Trick settings", keywords: ["tricks", "TricksSettingsCard", "TrickAboutSheet", "about", "provenance", "official", "TrickCardsWaiting", "TrickCardsLine", "waiting", "TrickCardRoute"] },
     load: () => import("./sections/trick-settings").then((m) => ({ default: m.TrickSettingsSection })),
   },
   {

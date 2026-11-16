@@ -75,6 +75,9 @@ const SNAPSHOT_KEYS = {
   trickViewsRev: true,
   // Not a crew dimension: the Hill's switch, present only while it is off, so no solo byte moved.
   hillOff: true,
+  // Not a crew dimension: with the Hill off, the hill's revision while it holds a card of Collie's own
+  // about a trick (M96 spec 14), absent otherwise, so no solo byte moved.
+  trickCardsRev: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -275,6 +278,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "sessions",
       "shellPanes",
       "tabs",
+      "trickCardsRev",
       "trickViewsRev",
       "tricksRev",
       "ts",

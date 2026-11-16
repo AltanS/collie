@@ -315,11 +315,14 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
 }
 
 /** A stale Surface: every claim only the screen may make becomes unknown. An ask or `unreadable`
- *  stays, since neither is ever free. */
+ *  stays, since neither is ever free. So does a sign-in field (`field: "secret"`): a stale read never
+ *  downgrades it, so a code typed while the read is old keeps no draft and no line (fail closed). A
+ *  stale read never adds one either; the next fresh read decides it again. */
 function staled(surface: Surface): Surface {
   const modal: SurfaceModal = surface.modal === "none" ? "unknown" : surface.modal;
   const composer: SurfaceComposer = surface.composer === "unreachable" ? "unreachable" : "unknown";
-  return { revision: surface.revision, turn: "unknown", modal, composer, reason: "stale" };
+  const stale: Surface = { revision: surface.revision, turn: "unknown", modal, composer, reason: "stale" };
+  return surface.field === "secret" ? { ...stale, field: "secret" } : stale;
 }
 
 /**

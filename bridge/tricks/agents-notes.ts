@@ -12,21 +12,28 @@ export type InitForm = "ts" | "sh";
 export const NOTES_FILE = "AGENTS.md";
 /**
  * The version of the notes this Collie ships, named on a proposal card. Bump it with any change to the
- * text below: agents-notes.test.ts pins the text's hash to it.
+ * text below: agents-notes.test.ts pins the text's hash to it. v2 (M96 spec 14, 2026-11-16): a proposal's
+ * card needs no Hill, so the draft's last step no longer sends it "to the Hill".
  */
-export const NOTES_VERSION = 1;
+export const NOTES_VERSION = 2;
+
+/** Every version of the notes a Collie shipped. A proposal names an older one byte for byte as that version. */
+const NOTES_VERSIONS = [1, 2] as const;
+type NotesVersion = (typeof NOTES_VERSIONS)[number];
 
 /**
  * The last step of the loop. A draft (made in an agent's pane, or with `--dir`) is outside the tricks folder:
- * `propose` sends it to the Hill, and nothing is added to this machine's tricks before the person's yes.
+ * `propose` sends it to the person, and nothing is added to this machine's tricks before their yes.
  */
-function handOff(id: string, draft: boolean): string {
+function handOff(id: string, draft: boolean, version: NotesVersion): string {
   if (!draft) return `Ask a person to switch the trick on (\`collie trick on ${id}\`, outside an agent's pane). It runs\n   while a phone watches.`;
-  return `Run \`collie trick propose .\` to send this draft to the Hill. This folder is your own work folder,\n   and nothing is added to this machine's tricks before the person's yes. Never switch the trick on yourself:\n   \`collie trick on\` refuses inside an agent's pane.`;
+  // v1's words, kept so a draft that init wrote before v2 is still named and not shown.
+  if (version === 1) return `Run \`collie trick propose .\` to send this draft to the Hill. This folder is your own work folder,\n   and nothing is added to this machine's tricks before the person's yes. Never switch the trick on yourself:\n   \`collie trick on\` refuses inside an agent's pane.`;
+  return `Run \`collie trick propose .\` to send this draft to the person. They read it on the Hill, or in\n   Settings, Tricks, while the Hill is off. This folder is your own work folder,\n   and nothing is added to this machine's tricks before the person's yes. Never switch the trick on yourself:\n   \`collie trick on\` refuses inside an agent's pane.`;
 }
 
 /** The loop and the helper's table, for a TypeScript trick. */
-function agentsTsLoop(id: string, draft: boolean): string {
+function agentsTsLoop(id: string, draft: boolean, version: NotesVersion): string {
   return `## The loop
 
 1. Change \`program.ts\`. It imports \`./trick.ts\`, the helper. Collie runs the program with its own
@@ -36,7 +43,7 @@ function agentsTsLoop(id: string, draft: boolean): string {
    \`collie trick dev . --watch\` runs it again on each change; \`--tap <intent>\` runs it as a tap;
    \`--facts <file.json>\`, \`--state <dir>\` and \`--rid <uuid>\` set the facts, the state folder and the tap's id.
 3. Run \`collie trick check --run .\` and fix every error it prints. Read its warnings too.
-4. ${handOff(id, draft)}
+4. ${handOff(id, draft, version)}
 
 ## The helper
 
@@ -78,23 +85,23 @@ trick has no session.
 }
 
 /** The loop of a shell trick. */
-function agentsShLoop(id: string, draft: boolean): string {
+function agentsShLoop(id: string, draft: boolean, version: NotesVersion): string {
   return `## The loop
 
 1. Change \`program.sh\` (or point \`run\` at another program in this folder).
 2. Run \`collie trick check --run .\` and fix every error it prints. Read its warnings too.
-3. ${handOff(id, draft)}
+3. ${handOff(id, draft, version)}
 `;
 }
 
 /** The `AGENTS.md` `init` writes: the contract, in prose, for the agent that grows the trick. `draft`: the folder is outside the tricks folder. */
-export function sampleAgents(id: string, form: InitForm = "ts", draft = false): string {
+export function sampleAgents(id: string, form: InitForm = "ts", draft = false, version: NotesVersion = NOTES_VERSION): string {
   return `# The Collie trick "${id}"
 
 This folder is a Collie trick. Collie's bridge runs the program named by \`run\` in \`trick.toml\` and
 draws what it prints on the phone, with Collie's own parts in the current theme.
 
-${form === "ts" ? agentsTsLoop(id, draft) : agentsShLoop(id, draft)}
+${form === "ts" ? agentsTsLoop(id, draft, version) : agentsShLoop(id, draft, version)}
 ## Switching on approves this code
 
 The trick runs with the full rights of the user who runs Collie: it can read and change any file that
@@ -208,6 +215,12 @@ Everything printed, stderr too, goes through Collie's secret mask.
 }
 
 /** Every text of {@link NOTES_FILE} that `init` writes for the trick `id`: each form, in the tricks folder and as a draft. */
-export function shippedNotesTexts(id: string): string[] {
-  return (["ts", "sh"] as const).flatMap((form) => [false, true].map((draft) => sampleAgents(id, form, draft)));
+export function shippedNotesTexts(id: string, version: NotesVersion = NOTES_VERSION): string[] {
+  return (["ts", "sh"] as const).flatMap((form) => [false, true].map((draft) => sampleAgents(id, form, draft, version)));
+}
+
+/** The version of the notes a Collie shipped that `text` is byte for byte, for the trick `id`, or null. */
+export function shippedNotesVersion(id: string, text: string): NotesVersion | null {
+  // Newest first: a text no version changed (the tricks folder's notes) is named as the newest.
+  return NOTES_VERSIONS.toReversed().find((version) => shippedNotesTexts(id, version).includes(text)) ?? null;
 }

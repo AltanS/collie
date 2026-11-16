@@ -52,20 +52,45 @@ import { HOST_PARAM, type PeerState } from "./registry.ts";
  *
  * The mapping is the identity minus the `/api/` prefix — `/api/pane/w1:p1/reply` →
  * `pane/w1:p1/reply` — because §5's peer table IS the phone's route table re-exposed 1:1. The
- * allowlist below is therefore the whole of the federation-visible surface, and everything §5
- * excludes (`subscribe`, `notifications/*`, `update/check`, `config`, `snapshot`) is excluded here
- * by simply not appearing: push subscriptions live on the lead, notification policy is one crew-wide
+ * allowlist below, with its GET-only half ({@link FORWARDABLE_GET_ONLY}, which needs `method`), is
+ * therefore the whole of the federation-visible surface, and everything §5 excludes (`subscribe`,
+ * `notifications/*`, `update/check`, `config`, `snapshot`) is excluded here by simply not appearing: push subscriptions live on the lead, notification policy is one crew-wide
  * setting, update checking is per-machine, and `snapshot` is merged rather than proxied.
  *
  * The pane id is carried through **verbatim, still percent-encoded**: it is a Herdr pane id on the
  * peer's registry and never a path on anybody's disk, and re-encoding it here is how `w1:p1` on the
  * lead would quietly become something else on the peer.
  */
-export function crewRouteFor(pathname: string): string | null {
+export function crewRouteFor(pathname: string, method?: string): string | null {
   if (!pathname.startsWith("/api/")) return null;
   const route = pathname.slice("/api/".length);
-  return FORWARDABLE.some((re) => re.test(route)) ? route : null;
+  return crosses(route, method) ? route : null;
 }
+
+/**
+ * Whether `route` crosses the link for `method`: any route of {@link FORWARDABLE}, and a route of
+ * {@link FORWARDABLE_GET_ONLY} for a GET only. No method (a caller that does not say) is never a GET,
+ * so the GET-only routes stay closed to it.
+ */
+function crosses(route: string, method: string | undefined): boolean {
+  if (FORWARDABLE.some((re) => re.test(route))) return true;
+  return method === "GET" && FORWARDABLE_GET_ONLY.some((re) => re.test(route));
+}
+
+/**
+ * The routes that cross the link for a GET and for nothing else, on both sides: the lead forwards no
+ * other method on them ({@link crewRouteFor}), and the member's peer surface dispatches no other method
+ * on them ({@link apiPathFor}). The same local path also takes writes the crew link must never carry.
+ */
+const FORWARDABLE_GET_ONLY: readonly RegExp[] = [
+  // Accounts (M101 spec 06): `GET /api/accounts` is the list of the member's OWN accounts, read where the
+  // folders are, so the pick in New shows the chosen machine's accounts. Only the list crosses. The add
+  // (`POST /api/accounts`) and the remove (`POST /api/accounts/remove`) stay on the machine that answers
+  // the phone: the lead refuses them `route_not_federated`, and a member's surface answers them 404. A
+  // member that predates it (1.28.x) answers 404 too, which the phone reads as "no accounts here" and
+  // hides the pick, as on a Windows member, which answers its own 404 `accounts.unavailable`.
+  /^accounts$/,
+];
 
 /**
  * The route grammars, mirroring `PANE_ROUTE` / `TAB_ACTION_ROUTE` in bridge/server.ts one-for-one.
@@ -225,9 +250,13 @@ function isPaneRead(action: string | undefined): action is undefined | "history"
   return action === undefined || action === "history" || action === "chat" || action === "changes" || action === "files";
 }
 
-/** The inverse of {@link crewRouteFor}, for the peer dispatching a crew route into its own routes. */
-export function apiPathFor(route: string): string | null {
-  return FORWARDABLE.some((re) => re.test(route)) ? `/api/${route}` : null;
+/**
+ * The inverse of {@link crewRouteFor}, for the peer dispatching a crew route into its own routes. The
+ * peer passes the request's method, so a GET-only route ({@link FORWARDABLE_GET_ONLY}) is dispatched
+ * for a GET alone, whatever the lead sent.
+ */
+export function apiPathFor(route: string, method?: string): string | null {
+  return crosses(route, method) ? `/api/${route}` : null;
 }
 
 /**
@@ -288,6 +317,8 @@ export function forwardKind(route: string, method?: string): ForwardKind {
   // this lead has not heard from in a while, never refused before it is tried (§10.3's "a READ to a
   // dead member is still attempted").
   if (route === "launchers") return "read";
+  // The member's accounts list (M101 spec 06) changes nothing there: a read, tried against a stale member too.
+  if (route === "accounts") return "read";
   // The line check is a POST that changes nothing: attempted even against a stale member, never refused
   // before it is tried (§10.3).
   if (route === "launch/check") return "read";
@@ -386,6 +417,9 @@ export function forwardAuditAction(route: string, method?: string): string | nul
   if (route === "launch/recent/remove") return "launch.recent.remove";
   if (route === "launch/recent/clear") return "launch.recent.clear";
   if (route === "launchers" || route === "launch/check") return null;
+  // The accounts list is a read, audited on neither side, and its rows (an email among them) are the
+  // member's: the lead writes no line about them (M101 spec 06).
+  if (route === "accounts") return null;
   // The member writes the same two names for Sent's writes (ADR 0107); its list is a read.
   if (route === "sent/remove") return "sent.remove";
   if (route === "sent/clear") return "sent.clear";
@@ -961,7 +995,7 @@ async function isTextSubmit(req: Request, route: string): Promise<boolean> {
  * function is called from inside the request path of the lead's only front door.
  */
 export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): Promise<Response> {
-  const route = crewRouteFor(url.pathname);
+  const route = crewRouteFor(url.pathname, req.method);
   if (route === null) {
     // Not a federated route. Reached only if a caller wires a route into the host gate without
     // adding it to §5's table — a bug, answered legibly rather than by forwarding something the

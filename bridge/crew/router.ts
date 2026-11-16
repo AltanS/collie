@@ -1640,13 +1640,14 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     // Three rules hold this together, and each is one line below:
     //   1. The route must be on the allowlist (`apiPathFor`), so a route §5 excludes — subscribe,
     //      notifications, update/check — is not reachable across a link merely because it exists.
+    //      It takes the method, so a GET-only route (the accounts list) dispatches nothing else.
     //   2. `host=` is REFUSED, never forwarded. A peer has no peers (§4); accepting one would be the
     //      first hop of a chain this protocol does not have.
     //   3. The dispatched response is stamped with the crew headers §6 requires. That is not
     //      cosmetic: the lead checks the version before it reads a byte (§7), and an unstamped
     //      response would read as a version skew.
     const route = pathname.slice(CREW_PREFIX.length);
-    const apiPath = apiPathFor(route);
+    const apiPath = apiPathFor(route, req.method);
     if (apiPath !== null && deps.dispatch !== undefined) {
       if (url.searchParams.has(HOST_PARAM)) {
         return new Response(JSON.stringify({ error: "a crew request may not name a host" }), {

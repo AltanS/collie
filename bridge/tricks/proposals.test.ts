@@ -353,10 +353,40 @@ describe("a proposal for a new trick", () => {
     expect(await stat(join(l.configDir, TRICKS_DIR, PROPOSED_DIR, "ghost")).catch(() => null)).toBeNull();
   });
 
-  test("the Hill switched off refuses with its own words, and nothing is stored", async () => {
+  // M96 spec 14: a proposal's card is Collie's own about a trick, an approval that needs no Hill.
+  test("spec 14: with the Hill off a proposal is taken, its card is served, the yes installs and the answer is typed", async () => {
     const l = await lead({ hillOff: true });
-    expect(await l.proposals.propose(proposal("legs"), AGENT)).toEqual({ ok: false, code: "hill_off", error: HILL_OFF });
-    expect(await readdir(join(l.configDir, TRICKS_DIR))).toEqual([]);
+    expect(l.hill.isOn()).toBe(false);
+    const p = proposal("legs");
+    expect(await l.proposals.propose(p, AGENT)).toMatchObject({ ok: true, kind: "proposal", id: "legs", hash: p.hash });
+    const [card] = openCards(l);
+    expect(card?.title).toBe("Switch on the trick legs?");
+    expect(l.hill.list().open.map((d) => d.id)).toEqual([card!.id]);
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "ok", state: "answered", delivery: "typed" });
+    expect(await listed(l)).toEqual(["legs"]);
+    expect(l.sent.at(-1)).toMatchObject({ to: "workshop/%3#abcd" });
+    expect(l.sent.at(-1)?.body).toContain(`Option: on (Switch it on)\n${proposalTold("legs", "on", "new")}`);
+    // A new version of it, the Hill still off: its card, and its yes.
+    const v2 = proposal("legs", "console.log(2)\n");
+    expect(await l.proposals.propose(v2, AGENT)).toMatchObject({ ok: true, kind: "version", id: "legs" });
+    const [version] = openCards(l);
+    expect(version?.title).toBe("Use the new version of legs?");
+    expect(await tap(l, version!, "on")).toMatchObject({ code: "ok", state: "answered" });
+    expect(await readFile(join(l.configDir, TRICKS_DIR, "legs", "program.ts"), "utf8")).toBe("console.log(2)\n");
+    expect(l.sent.at(-1)?.body).toContain(proposalTold("legs", "on", "version"));
+  });
+
+  test("spec 14: with the Hill off every cap of a proposal still holds", async () => {
+    const l = await lead({ hillOff: true });
+    for (let i = 0; i < PROPOSALS_SENDER_OPEN_MAX; i += 1) expect((await l.proposals.propose(proposal(`t${String(i)}`), AGENT)).ok).toBe(true);
+    expect(await l.proposals.propose(proposal("more"), AGENT)).toMatchObject({ ok: false, code: "too_many_open" });
+    expect(await l.proposals.propose(proposal("legs"), OTHER)).toMatchObject({ ok: true });
+    expect(await l.proposals.propose(proposal("legs"), TERMINAL)).toMatchObject({ ok: false, code: "open_elsewhere" });
+    // Not now with the Hill off: declined, the copy goes, nothing is installed.
+    const [first] = openCards(l);
+    expect(await tap(l, first!, "later")).toMatchObject({ code: "ok" });
+    expect(await listed(l)).toEqual([]);
+    expect(HILL_OFF).toContain("Settings, Experiments");
   });
 });
 
@@ -886,6 +916,15 @@ describe("nothing outside the store moves before the yes (review S5)", () => {
     expect(sent).toHaveLength(1);
     expect(local).toBe(0);
     expect(await wholeTree(l, () => false)).toEqual(before);
+  });
+
+  test("spec 14: a member's proposal reaches a lead whose Hill is off, and its card goes up there", async () => {
+    const l = await lead({ hillOff: true });
+    const door = new ProposeDoor({ mode: () => "lead", proposals: () => l.proposals, memberId: "lodge", machine: "lodge", place: () => null });
+    const res = await door.fromMember({ requestId: nextRid(), files: wireFiles(proposal("legs").files), from: { address: "laptop/%1#abcd" } }, "laptop");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, kind: "proposal", id: "legs" });
+    expect(openCards(l).map((d) => d.title)).toEqual(["Switch on the trick legs?"]);
   });
 });
 

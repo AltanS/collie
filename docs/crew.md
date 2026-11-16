@@ -526,7 +526,7 @@ The deputy trusts what its lead says you approved. It cannot see your yes on the
 starts, the deputy checks that its code is the version the lead names. A trick that does not match does
 not start, and the Hill says so after the takeover, with an OK button. It also checks that the trick
 asks for the rights the lead says you approved. A trick that asks for other rights stays off, and the
-Hill says "The trick <name> is off after the takeover". Read its rights in Settings → Tricks before you
+Hill says "The trick `<name>` is off after the takeover". Read its rights in Settings → Tricks before you
 switch it on. When the deputy
 already has a trick folder of that name, Collie leaves the folder as it is, runs the approved version,
 and shows the folder's own code as a new version that waits for your yes.
@@ -546,7 +546,7 @@ how many come along, and the Take over button or `collie promote` on the deputy 
 deputy's Hill. Each keeps its place, and no phone gets a second notification for it.
 
 A picture that did not reach the deputy is left out, and the card says
-"A picture stayed on <old lead>." A question from a trick that did not start on the deputy closes,
+"A picture stayed on `<old lead>`." A question from a trick that did not start on the deputy closes,
 with the reason "Its trick did not start on this machine after the takeover."
 
 Collie's own cards about a trick's new version or a proposed trick stay on the old lead, because their

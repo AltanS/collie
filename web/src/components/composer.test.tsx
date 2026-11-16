@@ -797,13 +797,13 @@ describe("Composer: sign-in field", () => {
     let typed = "";
     server.use(...replyHandler((text) => (typed = text)));
     renderComposer({ surface: SIGN_IN });
-    const box = screen.getByPlaceholderText("Sign-in code. Not saved as a draft.");
+    const box = screen.getByRole("textbox", { name: "Sign-in code" });
 
     await user.type(box, CODE);
     expect(loadDraft(undefined, "w1:p1")).toBeNull();
     expect(storedAnywhere(CODE)).toBe(false);
 
-    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.click(screen.getByRole("button", { name: "Send the code" }));
     await waitFor(() => expect(typed).toBe(CODE));
     expect(recordedSends()[0]?.secret).toBe(true);
     expect(storedAnywhere(CODE)).toBe(false);
@@ -814,10 +814,10 @@ describe("Composer: sign-in field", () => {
     const user = userEvent.setup();
     server.use(http.post("*/api/send", () => HttpResponse.error()));
     renderComposer({ surface: SIGN_IN });
-    const box = screen.getByPlaceholderText("Sign-in code. Not saved as a draft.");
+    const box = screen.getByRole("textbox", { name: "Sign-in code" });
 
     await user.type(box, CODE);
-    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.click(screen.getByRole("button", { name: "Send the code" }));
     await screen.findByText("No answer from the bridge. Look at the agent's screen before you send the code again.");
     expect(screen.queryByText(/it does not send twice/u)).toBeNull();
     expect(storedAnywhere(CODE)).toBe(false);
@@ -833,11 +833,93 @@ describe("Composer: sign-in field", () => {
     expect(screen.queryByText(/Look at the agent's screen/u)).toBeNull();
   });
 
+  // M102 spec 09: the phone's picture may be a moment old (`reason: "stale"`, composer unknown). The
+  // field stays named on such a read, and the secret rules hold there too.
+  it("on a stale read of the field: the framed sign-in field, no autocorrect, no draft, and a send marked secret", async () => {
+    const user = userEvent.setup();
+    let typed = "";
+    server.use(...replyHandler((text) => (typed = text)));
+    const STALE: Surface = { revision: 3, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale", field: "secret" };
+    renderComposer({ surface: STALE });
+    const box = screen.getByRole("textbox", { name: "Sign-in code" });
+    expect(box).toHaveAttribute("autocorrect", "off");
+
+    await user.type(box, CODE);
+    expect(loadDraft(undefined, "w1:p1")).toBeNull();
+    expect(storedAnywhere(CODE)).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Send the code" }));
+    await waitFor(() => expect(typed).toBe(CODE));
+    expect(recordedSends()[0]?.secret).toBe(true);
+    expect(storedAnywhere(CODE)).toBe(false);
+  });
+
   it("a plain box still keeps its draft", async () => {
     const user = userEvent.setup();
     renderComposer({ surface: FREE });
     await user.type(screen.getByRole("textbox"), "an ordinary reply");
     expect(loadDraft(undefined, "w1:p1")).toBe("an ordinary reply");
+  });
+
+  // M102 spec 06, the picked option "Framed field".
+  it("secret field: a framed field names what it waits for, shows a code by default, and Show masks it", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithContainer({ surface: SIGN_IN });
+    const frame = container.querySelector<HTMLElement>('[data-slot="secret-field"]');
+    expect(frame).not.toBeNull();
+    expect(within(frame!).getByText("Sign-in code")).toBeInTheDocument();
+    const box = screen.getByRole("textbox", { name: "Sign-in code" });
+    expect(box).toHaveAttribute("placeholder", "Not saved. Sent once.");
+    // No Attach, no long-press Send menu: the frame has Paste, Send and Close only.
+    expect(container.querySelector('[data-slot="composer-box"]')).toBeNull();
+    await user.type(box, "ABC");
+    expect(box.className).not.toMatch(/text-security/u);
+    await user.click(screen.getByRole("button", { name: "Hide the code" }));
+    expect(box.className).toMatch(/text-security:disc/u);
+    expect(screen.getByRole("button", { name: "Show the code" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("secret field: close sends nothing, the normal draft comes back, and the notice opens the field again", async () => {
+    const user = userEvent.setup();
+    saveDraft(undefined, "w1:p1", "my normal draft");
+    renderComposer({ surface: SIGN_IN });
+    await user.type(screen.getByRole("textbox", { name: "Sign-in code" }), "HALF");
+    await user.click(screen.getByRole("button", { name: "Close the code field" }));
+    expect(recordedSends()).toHaveLength(0);
+    expect(screen.getByRole("textbox")).toHaveValue("my normal draft");
+    expect(screen.getByText("The code field is closed. Nothing was sent.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open the code field" }));
+    // The half-typed code was not kept: the field opens empty.
+    expect(screen.getByRole("textbox", { name: "Sign-in code" })).toHaveValue("");
+    expect(storedAnywhere("HALF")).toBe(false);
+  });
+
+  it("secret field: a send empties the field and the normal draft stays apart", async () => {
+    const user = userEvent.setup();
+    let typed = "";
+    server.use(...replyHandler((text) => (typed = text)));
+    saveDraft(undefined, "w1:p1", "my normal draft");
+    renderComposer({ surface: SIGN_IN });
+    const box = screen.getByRole("textbox", { name: "Sign-in code" });
+    await user.type(box, CODE);
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(typed).toBe(CODE));
+    expect(box).toHaveValue("");
+    expect(loadDraft(undefined, "w1:p1")).toBe("my normal draft");
+  });
+
+  it("secret field: Paste trims the clipboard's code, and focuses the field where the clipboard cannot be read", async () => {
+    const user = userEvent.setup();
+    const readText = vi.fn(() => Promise.resolve("  PASTED-CODE-1234\n"));
+    Object.defineProperty(navigator, "clipboard", { value: { readText }, configurable: true });
+    renderComposer({ surface: SIGN_IN });
+    await user.click(screen.getByRole("button", { name: "Paste" }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Sign-in code" })).toHaveValue("PASTED-CODE-1234"));
+    cleanup();
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    renderComposer({ surface: SIGN_IN });
+    await user.click(screen.getByRole("button", { name: "Paste" }));
+    expect(screen.getByRole("textbox", { name: "Sign-in code" })).toHaveFocus();
   });
 });
 

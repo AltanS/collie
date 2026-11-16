@@ -42,7 +42,7 @@ A card holds, from top to bottom:
 - who asked, with their mark, the machine and how old the card is,
 - the title and the summary,
 - the pictures, as one sideways row,
-- the poster's own facts, in a quiet frame captioned "From <sender>",
+- the poster's own facts, in a quiet frame captioned "From `<sender>`",
 - the recommendation, with the reason, between two rules,
 - "More", which opens the longer text and the links, and "Add a note",
 - the options, numbered 1, 2, 3, and
@@ -77,8 +77,8 @@ Three kinds of sender post a Decision.
 - **An agent** posts with `collie hill post`, and the bridge names the agent from its pane.
 - **A trick** posts with its `decisions` list
   ([A program trick](tricks-authoring.md#a-program-trick)).
-- **Collie itself** posts its own cards. "Use the new version of <name>?" asks about a trick's new
-  code ([A new version of a trick](tricks.md#a-new-version-of-a-trick)). "Switch on the trick <id>?"
+- **Collie itself** posts its own cards. "Use the new version of `<name>`?" asks about a trick's new
+  code ([A new version of a trick](tricks.md#a-new-version-of-a-trick)). "Switch on the trick `<id>`?"
   asks about a trick an agent proposed ([A trick an agent proposes](#a-trick-an-agent-proposes)).
 
 A Decision is in one of seven states. A closed one keeps its state and shows it.
@@ -169,7 +169,7 @@ prints the same text.
 
 1. Post only what needs your person. A worker with a lead asks its lead first.
 2. One question per post. To change it, post again with `--supersedes <id>`.
-3. Do not wait or poll. The answer starts your next turn as "Answer to <id> ...". None arrived:
+3. Do not wait or poll. The answer starts your next turn as "Answer to `<id>` ...". None arrived:
    `collie hill status <id>`.
 4. Settled in your session: `collie hill withdraw <id>`.
 5. A result that ends "Crew state: quiet." or "Crew state: away.": your person is not there. Ask
@@ -271,8 +271,8 @@ Go ahead after the e2e gate.
 
 That message goes to the session that posted. When the answer goes to another session, because the
 post named `--reply-to`, or because a trick asked, the message does not quote the title or the label.
-It holds only the id, the option's word, your words and the line "Read the decision with: collie hill
-status <id>". Another session must not carry the poster's own words with your authority.
+It holds only the id, the option's word, your words and the line
+`"Read the decision with: collie hill status <id>"`. Another session must not carry the poster's own words with your authority.
 
 ## Receipts
 
@@ -280,20 +280,20 @@ After a tap the card says "Sending…", then one line that says what came of it.
 
 | The card says | What happened |
 | --- | --- |
-| "Sent to <session>" | The answer was typed into the session |
-| "Sent. <session> gets it when its turn ends" | The session was busy, and the message waits for its turn |
+| "Sent to `<session>`" | The answer was typed into the session |
+| "Sent. `<session>` gets it when its turn ends" | The session was busy, and the message waits for its turn |
 | "Sent, not confirmed" | The send did not confirm. The session can read the answer with `collie hill status` |
 | "Dismissed" | The card is closed, and nothing was sent |
-| "Recorded by <trick>" | A trick took your answer |
+| "Recorded by `<trick>`" | A trick took your answer |
 | "Now running the new version." | You said yes to a trick's new version or to a proposed trick |
 | "Kept the old version." | You kept the version that runs |
-| "Sent, but <trick> did not take it" | The message went, and the trick's program failed on the answer. Collie does not retry it |
-| "Not accepted" or "Not accepted: <reason>" | The bridge refused it. For example "an answer in words is required" |
+| "Sent, but `<trick>` did not take it" | The message went, and the trick's program failed on the answer. Collie does not retry it |
+| "Not accepted" or "Not accepted: `<reason>`" | The bridge refused it. For example "an answer in words is required" |
 | "This Decision was already answered" | Someone answered first |
 | "The session that asked has ended" | There is no session to send to. The Decision closes as undeliverable |
 | "This Decision is closed" | It expired or was withdrawn |
 | "This device may not answer" | The device is read-only |
-| "<machine> is not answering. Your answer was not sent." | A crew machine is down. The card stays open, and you can answer again |
+| "`<machine>` is not answering. Your answer was not sent." | A crew machine is down. The card stays open, and you can answer again |
 | "Not sent." with "Try again" | The answer did not reach the bridge |
 
 When the line Collie typed was not confirmed, the answered card under Answered also says "Your
@@ -345,9 +345,9 @@ switch asks you to tap again before it switches off. The commands move the same 
 phone of this Collie, and the bridge reads it with no restart.
 
 The installed WalkyTalky skill names the Hill only while it is on: each change of the switch
-rewrites the skill as `collie skill sync` does. A running agent keeps the text it loaded; its next
-session gets the new one. So a session that started while the Hill was off does not know the Hill:
-tell it, or start a new session.
+rewrites the skill as `collie skill sync` does. In our tests, a running Claude Code or
+Codex session read the new skill text. If a session does not know the Hill, tell it, or start a new
+session.
 
 A Collie that used the Hill before it became an experiment has the Hill off after the update. Its
 open Decisions stay stored, and their expiry still runs. They show again when you switch the Hill on.
@@ -363,15 +363,18 @@ agents on a member the Hill text, run `collie hill on` on that member.
 
 With the Hill off:
 
-- Agents and tricks cannot post, and agents cannot propose a trick. Nothing about a Decision is
-  pushed.
-- The phone takes no answer, so no message is typed and no trick runs.
+- Agents and tricks cannot post. Nothing about a Decision is pushed.
+- The phone takes no answer to their Decisions, so no message is typed and no trick runs.
 - The Hill leaves the bar. Its page says "The Hill is off." and offers "Switch the Hill on".
 - The open Decisions stay, and their expiry still runs. They show again when you switch it on.
 - An agent can still run `status`, `list` and `withdraw`, so it can clean up.
 - The crew state and "Tell all sessions now" are off too.
-- A trick whose new version waits says on its row in Settings → Tricks: "A new version waits. Switch
-  the Hill on in Settings, Experiments, to read it."
+
+Collie's own cards about a trick are not Decisions of an agent or a trick, so they need no Hill. The
+switch does not stop them: a proposed trick, a new version, a trick's changed rights and a carried
+trick still get their card, and your answer still acts and reaches the agent that asked. With the Hill
+off they are under **Waiting for your yes** in Settings → Tricks, and the Dashboard shows "A trick
+waits for your yes." with a button to the oldest card. Every limit on proposals still holds.
 
 A post is refused with: "the Hill is off on this Collie; your person can switch it on in Settings,
 Experiments, on the phone, or with: collie hill on".
@@ -423,7 +426,7 @@ before your yes.
 collie trick propose ~/work/disk-space
 ```
 
-The card's title is "Switch on the trick <id>?". Its summary is Collie's own facts: who proposed it,
+The card's title is "Switch on the trick `<id>`?". Its summary is Collie's own facts: who proposed it,
 how many files it has, and what it asks for. Below come the powers it asks for, the warnings of the
 text search, the author's words under "Its author's words. Collie did not check them.", and then
 every file of its code, as a group of cards.
@@ -447,7 +450,7 @@ Collie never recommends either option. A proposal is code from an agent, and you
 whole check. So the yes stays off until every card of the code was on screen.
 
 A trick that a proposal made can get a new version the same way. Its card asks "Use the new version
-of <id>?" and replaces the code only on your yes.
+of `<id>`?" and replaces the code only on your yes.
 
 An agent cannot propose a trick that has rules or an agent view: "A trick that gives agents
 instructions cannot be proposed by an agent. Ask your person to add it on the machine." The limits on

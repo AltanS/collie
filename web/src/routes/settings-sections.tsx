@@ -44,6 +44,7 @@ import { TypefaceControl } from "@/components/typeface-control";
 import { TelemetrySettingsCard, TelemetrySettingsRow } from "@/components/telemetry-settings-card";
 import { MathControl } from "@/components/math-control";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
+import { TrickCardsWaiting } from "@/components/trick-cards";
 import { ZenControl } from "@/components/zen-control";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
 import { EMPTY_DEVICES, type DevicesData } from "@/lib/loaders";
@@ -296,6 +297,8 @@ export function SettingsExperimentsRoute() {
 export function SettingsTricksRoute() {
   return (
     <SettingsPage title="settings.section.tricks.title">
+      {/* First, the cards of Collie's own that wait for a yes (M96 spec 14): with the Hill off, the one list of them. */}
+      <TrickCardsWaiting />
       <TricksSettingsCard />
     </SettingsPage>
   );

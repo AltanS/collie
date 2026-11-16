@@ -13,7 +13,8 @@ import { TAKEOVER_NOTICES_FILE, type CarryFailure } from "./carry-adopt.ts";
 // process that is still a peer, which cannot post; it leaves the failures in a file, and the next boot,
 // as the lead, posts one Decision of Collie's own for each: the trick's name, the old lead, and why. It
 // asks nothing: one button, OK, which closes it. A post that did not land stays in the file for the next
-// boot while the Hill is off or full; the file goes once nothing is left to post.
+// boot while the Hill is full; the file goes once nothing is left to post. The Hill off does not stop it: it
+// is a card of Collie's own about a trick (M96 spec 14), so `hill_off` below no longer comes for it.
 
 /** The sender's name on the card, as on Collie's other cards. */
 export const CARRIED_CARD_SENDER = "Collie";

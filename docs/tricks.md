@@ -415,7 +415,8 @@ is a speed bump, not a lock. Your user account is the real boundary
 Collie runs the approved copy. When you edit the trick's folder, or `collie trick update` fetches new
 code, the trick keeps running the old version. Its row says "A new version waits for your yes."
 
-A card on the [Hill](hill.md) asks "Use the new version of <name>?". It shows the files that changed
+A card asks "Use the new version of `<name>`?". It is on the [Hill](hill.md), and in Settings → Tricks
+under **Waiting for your yes**, where the trick's row opens it too, with the Hill on or off. It shows the files that changed
 and any new power the version asks for. You have three options:
 
 - **Use the new version** approves the code on the card, and the trick runs it.
@@ -503,7 +504,8 @@ tries it with `collie trick dev`, and then proposes it to you:
 collie trick propose ~/work/disk-space
 ```
 
-A card appears on your Hill with the whole code on it. Collie never recommends "Switch it on": your
+A card appears with the whole code on it: on your Hill, or in Settings → Tricks under **Waiting for
+your yes** while the Hill is off. Collie never recommends "Switch it on": your
 own reading is the check. Nothing of the trick runs before your yes, and an agent cannot switch a
 trick on itself.
 
@@ -535,9 +537,9 @@ Most problems show in the trick's row in Settings → Tricks, or in `collie tric
 | What you see | What it means and what to do |
 | --- | --- |
 | No Tricks section in Settings | The config folder has no `tricks/` folder yet. `collie trick add` or `collie trick init <id>` makes it |
-| "Manifest refused: ..." | `trick.toml` has an error. Run `collie trick check <folder>` and fix each line it prints |
-| "A new version waits for your yes." | The folder moved past the approved copy. Open the card on the Hill, or run `collie trick on <id>` |
-| "A new version waits. Switch the Hill on in Settings, Experiments, to read it." | The same, and the Hill is off, so its card cannot be read. Switch the Hill on in Settings → Experiments, or run `collie hill on` |
+| "This trick cannot run. ..." | `trick.toml` has an error, and the rest of the line says which. Run `collie trick check <folder>` and fix each line it prints |
+| "Part of this trick is not shown. ..." | The trick runs, but Collie refused one part of what it printed, for example a status line over its length. The rest of the line says which. Run `collie trick dev <folder>` to see each refusal |
+| "A new version waits for your yes." | The folder moved past the approved copy. Tap the line to open its card, or run `collie trick on <id>` |
 | "The approved copy changed on disk, so the trick stopped. ..." | A program edited the approved copy. Read the code, then switch the trick on again |
 | "The approved copy holds a symbolic link, so the trick stopped. ..." | A trick holds regular files only. Replace the link, then switch it on again |
 | "No version of this trick is approved yet. ..." | The switch file has no approved code for the trick. Switch it on again |
@@ -546,10 +548,10 @@ Most problems show in the trick's row in Settings → Tricks, or in `collie tric
 | "This Collie cannot draw this part" | A crew member's older Collie does not know the kind. Update Collie |
 | "The Hill is off: this trick's Decisions are not shown." | Switch the Hill on in Settings → Experiments, or run `collie hill on` |
 | "Tricks run on the lead of this crew. This machine runs none." | You are on a member. Switch tricks on from the lead |
-| "Could not switch <name>. Try again." | The phone could not write the switch. Check that the device may write, and that the bridge answers |
+| "Could not switch `<name>`. Try again." | The phone could not write the switch. Check that the device may write, and that the bridge answers |
 | "error: collie trick on is a person's yes to the code, ..." | An agent ran the command. Run it in a shell pane, or tap the switch on the phone |
-| "a trick <id> is already in <folder>. ..." | The id is taken. Use `collie trick update`, or `remove` the old one first |
-| "<id> is on. Switch it off first: collie trick off <id>" | `remove` works only on a trick that is off |
+| "a trick `<id>` is already in `<folder>`. ..." | The id is taken. Use `collie trick update`, or `remove` the old one first |
+| "`<id>` is on. Switch it off first: collie trick off `<id>`" | `remove` works only on a trick that is off |
 | "This trick needs a newer Collie: ..." | The trick was written for a later Collie. Run `collie update` |
 | "The trick is busy. Try again in a moment." | A tap came while another waited. Tap again |
 | "The bridge restarted while this tap ran. ..." | Check the result, then tap again if needed |

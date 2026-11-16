@@ -7,13 +7,19 @@
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
+import { AppHeaderHost } from "@/components/app-header";
+import { DecisionCard } from "@/components/decision-card";
+import { SettingsPage } from "@/components/settings-page";
 import { StatusArea } from "@/components/status-area";
+import { TrickCardsLineView, TrickCardsWaitingList } from "@/components/trick-cards";
+import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
 import { addOfficialTrick } from "@/lib/api";
 import { clearStatus } from "@/lib/status";
 import { homeSolo } from "../fixtures";
 import { VIEW_TRICK } from "../fixtures/agent-view";
+import { proposalGroup, versionGroup } from "../fixtures/hill/decisions";
 import { ABOUT_MAX, type OfficialState, type OfficialTricksReply, type TricksGate, type TricksReply, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 
@@ -27,6 +33,11 @@ export const DEF: SectionDef = {
 };
 
 const NOW = Date.parse("2026-11-08T09:41:00Z");
+
+const noop = (): void => undefined;
+/** Two cards that wait (spec 14): a proposed trick and a new version of one. */
+const WAITING_CARDS = [proposalGroup(), versionGroup];
+const PAGE_CARD = proposalGroup();
 
 function trick(id: string, name: string, extra: Partial<WireTrickInfo> = {}): WireTrickInfo {
   return { host: "lodge", id, name, icon: "plug", on: true, state: "ok", places: ["belt", "session"], provenance: { via: "folder" }, ...extra };
@@ -284,8 +295,8 @@ export function TrickSettingsSection(): ReactNode {
         <ListCard
           n={4}
           state="trick-settings-refused"
-          label="manifest refused"
-          tricks={[trick("bad", "Bad manifest", { on: false, state: "skipped", places: [], refusals: [{ code: "place", path: "/places/0", reason: 'places[0]: "nowhere" is not a place' }] })]}
+          label="cannot run"
+          tricks={[trick("bad", "Bad manifest", { on: false, state: "skipped", places: [], refusals: [{ code: "place", path: "/places/0", reason: '"nowhere" is not a place this Collie knows.' }] })]}
         />
         <ListCard
           n={5}
@@ -465,10 +476,35 @@ export function TrickSettingsSection(): ReactNode {
         <ListCard
           n={11}
           state="trick-settings-hill-off-pending"
-          label="Hill off, a new version waits: the row says where to switch the Hill on"
+          label="Hill off, a new version waits: the row says so, as with the Hill on (spec 14)"
           tricks={[trick("legs", "Browser leg", { on: true, pending: { hash: "b7e1d0a4c2f9".repeat(5).slice(0, 64), files: { added: 0, changed: 1, removed: 0 }, powersChanged: false, warnings: [] }, provenance: { via: "agent", at: "2026-11-08T07:41:00Z" } })]}
           hillOff
         />
+      </Group>
+      {/* M96 spec 14: a card of Collie's own about a trick needs no Hill. With the Hill off the phone reaches it from
+          Settings, Tricks (the group, and a waiting version's row) and from the Dashboard's line. */}
+      <Group title="Waiting for your yes (spec 14)">
+        <Card state="trick-settings-waiting" label="43 · the first group of Settings, Tricks: one row per open card, oldest first (Hill on or off)">
+          <div className="w-[390px] max-w-full bg-background p-4">
+            <TrickCardsWaitingList cards={WAITING_CARDS} onOpen={noop} />
+          </div>
+        </Card>
+        <Card state="trick-settings-waiting-line" label="44 · the Dashboard's line, only while the Hill is off and a card waits">
+          <div className="w-[390px] max-w-full bg-background p-4">
+            <TrickCardsLineView onOpen={noop} />
+          </div>
+        </Card>
+        <Card state="trick-settings-card-page" label="45 · the card's page: the Hill's card, Settings' shell, no Hill words">
+          <div className="flex h-[844px] w-[390px] max-w-full flex-col bg-background">
+            <RootRouter data={homeSolo}>
+              <AppHeaderHost bridge="connected" error={false}>
+                <SettingsPage title="settings.section.tricks.title">
+                  <DecisionCard decision={PAGE_CARD} answer={HILL_IDLE} onSend={noop} />
+                </SettingsPage>
+              </AppHeaderHost>
+            </RootRouter>
+          </div>
+        </Card>
       </Group>
       {/* A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): one line, no rows, no switches. */}
       <Group title="A Windows bridge">

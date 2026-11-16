@@ -6,7 +6,7 @@ import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } f
 import type { HillCollieRef, HillDecision, HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import type { JsonObject } from "../json.ts";
 import { givesAgentsInstructions, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
-import { HILL_OFF, type HillCollieSender, type HillCollieVerdict, type HillOneAnswer, type HillPostAnswer, type HillPostOptions } from "../hill/service.ts";
+import { type HillCollieSender, type HillCollieVerdict, type HillOneAnswer, type HillPostAnswer, type HillPostOptions } from "../hill/service.ts";
 import { codeHashOfFiles, isCodePath, unsafeText } from "./code-hash.ts";
 import type { ProposalOrigin } from "./origin.ts";
 import { hash16, tricksConfigDir, tricksStateDir } from "./paths.ts";
@@ -110,7 +110,6 @@ export type ProposeAnswer = { ok: true; kind: "proposal" | "version"; id: string
 
 /** What proposals need of the Hill: Collie's own door, which no agent and no crew member reaches. */
 export interface ProposalsHill {
-  isOn(): boolean;
   isAnswering(id: string): boolean;
   postCollie(from: HillCollieSender, input: HillPostInput, opts?: Pick<HillPostOptions, "tellOf">): HillPostAnswer;
   withdrawCollie(from: HillCollieSender, id: string, reason: string): HillOneAnswer;
@@ -367,7 +366,8 @@ export class TrickProposals {
   private async take(proposal: ProposalRead, proposer: Proposer): Promise<ProposeAnswer> {
     // The wire refuses it first; here again, so no caller that skips the wire hands agents an author's words.
     if (givesAgentsInstructions(proposal.manifest)) return refused("has_rules", PROPOSE_HAS_RULES);
-    if (!this.deps.hill.isOn()) return refused("hill_off", HILL_OFF);
+    // No Hill switch here (spec 14): a proposal's card is Collie's own about a trick, an approval that works
+    // with the Hill on or off (hill/service.ts `postAny`). Every cap below holds either way.
     const tricks = this.deps.tricks();
     if (tricks === null) return refused("no_tricks", PROPOSAL_NO_TRICKS);
     const state = await this.load();
@@ -450,7 +450,6 @@ export class TrickProposals {
     const posted = this.deps.hill.postCollie(senderOf(id, hash), input, proposer.address === null ? {} : { tellOf: proposer.address });
     if (!posted.ok) {
       await rm(dir, { recursive: true, force: true });
-      if (posted.code === "hill_off") return refused("hill_off", HILL_OFF);
       if (posted.code === "bad_supersedes") return refused("answering", "Your person is answering your last proposal of this trick right now. Try again in a moment.");
       return refused("failed", `The Hill did not take the card, so nothing was proposed: ${posted.error}`);
     }

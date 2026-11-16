@@ -281,6 +281,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: the Hill's switch, present only while it is off. The Hill is off by default
   // (2026-11-13), so a body of a bridge built with the Hill carries it until the person switches the Hill on.
   hillOff: true,
+  // Not a crew dimension: with the Hill off, the hill's revision while it holds a card of Collie's own about
+  // a trick (M96 spec 14), absent otherwise, so a body that never had such a card carries no such key.
+  trickCardsRev: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -535,6 +538,8 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "tabs",
       // The agent views' revision: present only once a view was used on this bridge, a number and
       // nothing of the crew; the phone refetches `GET /api/trick-views` when it moves.
+      // With the Hill off, the hill's revision while it holds a card of Collie's own about a trick.
+      "trickCardsRev",
       "trickViewsRev",
       "tricksRev",
       "ts",

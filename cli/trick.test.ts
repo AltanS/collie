@@ -1170,7 +1170,7 @@ describe("approving from inside an agent's pane, auto, and a version waiting", (
     await cmdTrickList(d, []);
     expect(d.out[0]).toContain("VERSION");
     expect(d.out[1]).toMatch(/ NEW +on, not seen by the bridge/);
-    expect(d.out).toContain("NEW: a new version waits for your yes. Approve it on the Hill, or with collie trick on <id>.");
+    expect(d.out).toContain("NEW: a new version waits for your yes. Approve it in Settings, Tricks, on the phone, or with collie trick on <id>.");
     d.out.length = 0;
     await cmdTrickList(d, ["--json"]);
     // SAFETY: `list --json` prints one document, checked by value below.

@@ -1,10 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 
-import { HILL_T0, hillDecision, hillReceipt } from "@/test/hill-fixtures";
+import { collieCard, HILL_T0, hillDecision, hillReceipt } from "@/test/hill-fixtures";
 import { server } from "@/test/setup";
 
-import { __resetHill, __settleHill, clearClosedLocally, hillDraft, noteHillAnswer, noteHillDraft, noteHillSendEnded, noteHillSending, readHillNow, syncHill, useHillAnswerHeld, useHillClosed, useHillClosedTotal, useHillCount, useHillKept, useHillKeptTitles, useHillOpen } from "./store";
+import { __resetHill, __settleHill, clearClosedLocally, hillDraft, noteHillAnswer, noteHillDraft, noteHillSendEnded, noteHillSending, readHillNow, syncHill, useHillAnswerHeld, useHillClosed, useHillClosedTotal, useHillCount, useHillKept, useHillKeptTitles, useHillOpen, useTrickCards } from "./store";
 import type { HillDecision } from "./wire";
 
 // The snapshot's hillRev says when to read. The same number reads nothing, a higher one reads with
@@ -339,5 +339,41 @@ describe("a note whose card leaves the open list (M96 spec 10)", () => {
     await sync(1);
     act(() => noteHillAnswer(decision.id, { receipt: hillReceipt({ code: "gone", state: null, delivery: null }), intent: "yes", text: "my words" }));
     expect(result.current.get(decision.id)).toBe("Ship it?");
+  });
+});
+
+// M96 spec 14: with the Hill off the snapshot names `trickCardsRev`, and the bridge serves only Collie's own
+// cards about a trick. The store reads under that scope; a change of scope empties it and reads afresh.
+describe("the trick cards' scope", () => {
+  it("lists the open trick cards oldest first, and no agent's", async () => {
+    const newer = collieCard("version", "legs", { at: HILL_T0 + 2 });
+    const older = collieCard("proposal", "git", { at: HILL_T0 + 1 });
+    serve(() => list(4, [newer, hillDecision(), older]));
+    const { result } = renderHook(() => useTrickCards());
+    await sync(4);
+    expect(result.current.map((d) => d.id)).toEqual([older.id, newer.id]);
+  });
+
+  it("a change of scope at the same number empties the store and reads the whole list again", async () => {
+    const card = collieCard("proposal", "legs");
+    const agent = hillDecision();
+    // `serve` records the read before it answers: the first read is the first entry.
+    serve(() => (reads.length === 1 ? list(4, [card, agent]) : list(4, [card])));
+    const { result } = renderHook(() => ({ open: useHillOpen(), cards: useTrickCards() }));
+    await sync(4);
+    expect(result.current.open).toHaveLength(2);
+    await act(async () => {
+      syncHill(4, "tricks");
+      await __settleHill();
+    });
+    expect(reads).toEqual([null, null]);
+    expect(result.current.open.map((d) => d.id)).toEqual([card.id]);
+    expect(result.current.cards.map((d) => d.id)).toEqual([card.id]);
+    // The same scope and number again reads nothing.
+    await act(async () => {
+      syncHill(4, "tricks");
+      await __settleHill();
+    });
+    expect(reads).toEqual([null, null]);
   });
 });

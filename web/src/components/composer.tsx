@@ -33,6 +33,7 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { SendOfferStrip } from "@/components/send-offer-strip";
 import { HeldCard, drawnHeldRows, type HeldAction } from "@/components/composer-held";
 import { offerMode, type SendNote } from "@/lib/send-protocol";
+import { SecretField } from "@/components/secret-field";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { viewRefusalKey, type ViewRequestNote } from "@/lib/agent-view/reader";
 import { fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
@@ -623,6 +624,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const secretField = surface.field === "secret";
   const secretFieldRef = useRef(secretField);
   secretFieldRef.current = secretField;
+  // THE FRAMED SIGN-IN FIELD (M102 spec 06): while the screen asks for a code, the box gives way to
+  // `SecretField`, which holds its own text, so the normal draft is kept apart. Its cross closes it for
+  // this field and sends nothing; the notice then offers it back. A field that goes away resets it.
+  const [secretClosed, setSecretClosed] = useState(false);
+  useEffect(() => {
+    if (!secretField) setSecretClosed(false);
+  }, [secretField]);
   const unreachableWords =
     missingSend !== null
       ? missingSend.note || translate("composer.placeholder.noMuxSend")
@@ -2113,6 +2121,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const refusalCard = sendRefusal?.toCard === true && onAnswerDialog !== undefined && dialogCard;
   const refusalScreen = sendRefusal?.screen === true && screen !== undefined && !screen.on;
   const refusalKeys = way.keysOpen && drawer !== "keys";
+  // The sign-in field the person closed is one tap away again, from the notice that says it is closed.
+  const refusalSecret = secretField && secretClosed;
+  const secretOpen = secretField && !secretClosed && !direct.active;
   // THE STEP (M102 spec 02): the one button that changes the situation, first in the notice. The card (or,
   // with no card, the Screen) and Open Keys follow it, so the notice holds at most two buttons plus the
   // card. A step that cannot act here draws nothing: the card and the Keys pad still show.
@@ -3422,10 +3433,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               refusal={sendRefusal}
               onDismiss={hideRefusal}
               action={
-                (stepButton && stepWord !== null) || refusalCard || refusalScreen || refusalKeys ? (
+                refusalSecret || (stepButton && stepWord !== null) || refusalCard || refusalScreen || refusalKeys ? (
                   <RefusalActions
-                    step={stepButton && stepWord !== null ? { word: stepWord, disabled: sending || stepWaiting, onPress: onRefusalStep } : null}
-                    wait={stepButton && refusalStep === "sendAgain" && sendRefusal.waits === true ? (stepWaiting ? "waits" : "ready") : null}
+                    step={
+                      refusalSecret
+                        ? {
+                            word: translate("composer.secret.reopen"),
+                            disabled: false,
+                            onPress: () => {
+                              setSecretClosed(false);
+                              setSendRefusal(null);
+                            },
+                          }
+                        : stepButton && stepWord !== null
+                          ? { word: stepWord, disabled: sending || stepWaiting, onPress: onRefusalStep }
+                          : null
+                    }
+                    wait={!refusalSecret && stepButton && refusalStep === "sendAgain" && sendRefusal.waits === true ? (stepWaiting ? "waits" : "ready") : null}
                     onCard={refusalCard ? () => onAnswerDialog?.() : null}
                     onScreen={refusalScreen && !refusalCard && refusalStep !== "screen" ? () => screen?.onToggle() : null}
                     onKeys={refusalKeys ? () => requestDrawer("keys") : null}
@@ -3527,6 +3551,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             source={{ kind: "commands", commands: commandSuggestions, onPick: selectSuggestion }}
           />
         )}
+        {secretOpen ? (
+          <SecretField
+            disabled={starting || sending || locked}
+            onSend={(code) => send(code, false)}
+            onClose={() => {
+              setSecretClosed(true);
+              setSendRefusal(phoneRefusal(translate("composer.secret.closed")));
+            }}
+          />
+        ) : (
         <div
           data-slot="composer-box"
           data-layout={box ? "box" : undefined}
@@ -4049,6 +4083,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </Button>
           )}
         </div>
+        )}
       </div>
 
       {/* THE VOICE TAKEOVER (design 3.3): over the whole chrome block, in its own box, from the mic's

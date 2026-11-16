@@ -145,6 +145,12 @@ export interface HomeData {
    * TYPE only, so hand-built fixtures stay valid.
    */
   hillOff?: boolean;
+  /**
+   * Whether the hill's store has a list to read for Collie's cards about a trick (M96 spec 14): the
+   * snapshot carries `hillRev`, or with the Hill off `trickCardsRev`. A trick card's page with neither has
+   * nothing to wait for. Optional in the TYPE only, so hand-built fixtures stay valid.
+   */
+  trickCards?: boolean;
   /** The bridge's session registry (primary-first); empty on a single-session / older bridge. */
   sessions: SessionSummary[];
   /**
@@ -421,6 +427,7 @@ function toHomeData(
     trickSessions: split.trickSessions,
     hill: snap.hillRev !== undefined,
     hillOff: snap.hillOff === true,
+    trickCards: snap.hillRev !== undefined || snap.trickCardsRev !== undefined,
     sessions: snap.sessions ?? [],
     servers: snap.servers ?? [],
     ts: snap.ts ?? 0,
@@ -527,7 +534,9 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
     answeredLive = true;
     // The hill reads its list when the snapshot's number moved (lib/hill/store.ts). Live snapshots
     // only: a saved copy's number is as old as the copy, and the store keeps what it last read.
-    syncHill(snap.hillRev);
+    // With the Hill off, the cards of Collie's own about a trick ride on their own number (spec 14).
+    if (snap.hillRev === undefined && snap.trickCardsRev !== undefined) syncHill(snap.trickCardsRev, "tricks");
+    else syncHill(snap.hillRev);
     // The agent views are read the same way, on their own number (lib/agent-view/store.ts).
     syncAgentViews(snap.trickViewsRev);
     lastSnapshot.set(snapshotKey(scope, viewAll), snap);

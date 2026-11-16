@@ -69,6 +69,12 @@ const SIGN_IN = [
   "claude--v2325-first-run-url--w120.txt",
   "claude--v2325-first-run-url--w40.txt",
   "claude--v2325-first-run-url--w61.txt",
+  // A bridge-made account folder in fullscreen mode: a hint row between the address and the field.
+  "claude--v2325-first-run-url-fullscreen--w120.txt",
+  "claude--v2325-first-run-url-fullscreen--w200.txt",
+  "claude--v2325-first-run-url-fullscreen--w219.txt",
+  "claude--v2325-first-run-url-fullscreen--w61.txt",
+  "claude--v2325-first-run-url-fullscreen--w80.txt",
   "claude--v2325-first-run-url-pasted--w120.txt",
   "claude--v2325-first-run-url-pasted--w61.txt",
   "claude--v2325-first-run-url-typed--w40.txt",

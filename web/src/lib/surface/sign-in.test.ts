@@ -13,6 +13,8 @@ import { buildBlocks } from "../harness";
 import { adapterFor } from "../harness/registry";
 import { detectSignInCard } from "../harness/sign-in-card";
 import { asJsonObject, parseJsonObject, type JsonObject, type JsonValue } from "../json";
+import { paneSurface, unreachable } from "../send-slot";
+import { foldSurface, type SurfaceInput } from "./fold";
 import { parseProfile, ProfileError } from "./profile";
 import { fieldShows, maskedText } from "./secret-field";
 
@@ -297,6 +299,20 @@ describe("the first run's sign-in field", () => {
     });
   }
 
+  // An account folder the bridge makes (`shared`, links to the default folder's settings) with
+  // `tui: "fullscreen"`: a hint row (`Hold Shift … native copy`, one row or two) stands between the
+  // address and the field. Lab 2026-11-16, M102 spec 09; the address's query masked as `X`.
+  for (const width of [61, 80, 120, 200, 219]) {
+    const name = `claude--v2325-first-run-url-fullscreen--w${width}.txt`;
+    it(`${name}: the hint row over the field leaves the field a free secret field`, () => {
+      const { harness, rows, read } = screen(name);
+      expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty", field: "secret" });
+      expect(read.frame?.secret).toEqual({ mask: { glyph: "*", clear: 6 }, wrap: true });
+      const card = detectSignInCard(rows, idleFor(harness)!);
+      expect(card!.model.title.startsWith("Browser didn't open? Use the")).toBe(true);
+    });
+  }
+
   it("a row under the field that is not its own wrapped text leaves no field", () => {
     const texts = textsOf("claude--v2325-first-run-url-typed--w61.txt");
     const at = texts.findIndex((text) => text.startsWith(" Paste code here"));
@@ -458,5 +474,47 @@ describe("the first run's theme step is a choice card", () => {
   it("the profile grammar refuses a dialog row that matches a blank row", () => {
     expect(failure(change(raw("claude"), ["idle", "dialogRows"], ["^\\s*$"])).message).toMatch(/idle\.dialogRows\[0\]/u);
     expect(failure(change(raw("claude"), ["idle", "dialogRows"], "Let's")).message).toMatch(/idle\.dialogRows/u);
+  });
+});
+
+// A stale read never downgrades a sign-in field (M102 spec 09): the phone's picture of the screen may be
+// a moment old (a slow poll, a hook edge newer than the read), and a code typed then must still keep no
+// draft and no line. Turn, modal and composer go unknown as for any stale read; the field stays. A
+// stale read never adds the field, and the first fresh read without it drops it at once.
+describe("a stale read keeps the sign-in field, and only the sign-in field", () => {
+  const CODE_SCREEN = screen("claude--v2325-first-run-url-fullscreen--w219.txt").rows;
+  const IDLE_BOX = screen("claude-lab--idle-after-turn--w200.txt").rows;
+  const context = { idle: idleFor("claude"), pollMs: 1000 };
+  const read = (seq: number, at: number, rows: typeof CODE_SCREEN): SurfaceInput => ({ seq, source: "screen", at, revision: seq, rows, ask: null });
+  const STALE_SECRET = { revision: 1, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale", field: "secret" };
+
+  it("a code screen read that went stale on the clock keeps `field: secret`", () => {
+    expect(foldSurface([read(1, 0, CODE_SCREEN)], context).surface).toMatchObject({ composer: "empty", field: "secret" });
+    expect(foldSurface([read(1, 0, CODE_SCREEN), { seq: 2, source: "tick", at: 2001 }], context).surface).toEqual(STALE_SECRET);
+  });
+
+  it("a code screen read made stale by a hook edge keeps `field: secret`", () => {
+    expect(foldSurface([read(1, 0, CODE_SCREEN), { seq: 2, source: "edge", at: 5000, kind: "reread" }], context).surface).toEqual(STALE_SECRET);
+  });
+
+  it("a stale read of an ordinary box adds no field", () => {
+    const surface = foldSurface([read(1, 0, IDLE_BOX), { seq: 2, source: "tick", at: 2001 }], context).surface;
+    expect(surface).toMatchObject({ composer: "unknown", reason: "stale" });
+    expect(surface.field).toBeUndefined();
+  });
+
+  it("the first fresh read after the code screen is gone drops the field at once", () => {
+    const log: SurfaceInput[] = [read(1, 0, CODE_SCREEN), { seq: 2, source: "tick", at: 2001 }, read(3, 2100, IDLE_BOX)];
+    const surface = foldSurface(log, context).surface;
+    expect(surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    expect(surface.field).toBeUndefined();
+  });
+
+  it("a box the phone cannot reach (a host refusal, sending off) keeps the field it was read with, and adds none", () => {
+    const secret = { revision: 4, turn: "idle", modal: "none", composer: "empty", field: "secret" } as const;
+    expect(unreachable(secret)).toEqual({ revision: 4, turn: "unknown", modal: "unknown", composer: "unreachable", field: "secret" });
+    expect(paneSurface(secret, true, "the host is away").surface.field).toBe("secret");
+    expect(paneSurface(secret, false, undefined).surface.field).toBe("secret");
+    expect(unreachable({ revision: 4, turn: "idle", modal: "none", composer: "empty" }).field).toBeUndefined();
   });
 });

@@ -58,14 +58,16 @@ describe("a carried trick that did not start is said on the Hill (§25)", () => 
     expect(hill.collieDecisions("carried")).toHaveLength(1);
   });
 
-  test("a Hill that is off keeps the file for a later boot, which posts it", async () => {
+  // M96 spec 14: the carried card is Collie's own about a trick, so the Hill's switch does not hold it back.
+  test("a Hill that is off still posts the card, and the file goes", async () => {
     const m = await machine("deputy");
     await writeCarryNotices(m.stateDir, "desk", T0, [FAIL]);
     const warned: string[] = [];
-    expect(await postCarryNotices({ stateDir: m.stateDir, hill: hillOf({ on: false }), warn: (l) => void warned.push(l) })).toBe(0);
-    expect(await readdir(tricksStateDir(m.stateDir))).toContain(TAKEOVER_NOTICES_FILE);
-    expect(warned).toHaveLength(1);
-    expect(await postCarryNotices({ stateDir: m.stateDir, hill: hillOf(), warn: () => {} })).toBe(1);
+    const hill = hillOf({ on: false });
+    expect(await postCarryNotices({ stateDir: m.stateDir, hill, warn: (l) => void warned.push(l) })).toBe(1);
+    expect(await readdir(tricksStateDir(m.stateDir))).not.toContain(TAKEOVER_NOTICES_FILE);
+    expect(warned).toEqual([]);
+    expect(hill.collieDecisions("carried")).toHaveLength(1);
   });
 
   test("a deposed lead takes no post: its Hill is nobody's after the takeover", async () => {

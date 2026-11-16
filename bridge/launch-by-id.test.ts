@@ -690,6 +690,12 @@ describe("POST /api/launch — with an account", () => {
     expect(mux.texts).toEqual([["w1:p1", "CODEX_HOME='/home/op/.codex-work' codex"]]);
     const started: AgentView = { paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "app", workspaceNumber: 1, tabId: "w1:t1", agent: "codex", status: "idle", cwd: "/home/op/src/app", focused: false };
     expect(accounts.paneAccount("default", started)).toEqual({ id: ACCOUNT, label: "Work" });
+    // Over the crew link (M101 spec 06, decision 5): the member types ITS OWN folder for its own id, and a
+    // folder the forwarded body names is never read.
+    const crewMux = new FakeMux();
+    const forwarded = { harness: "codex", account: ACCOUNT, cwd: "/home/op/src/app", path: "/tmp/elsewhere", dir: "/tmp/elsewhere", folder: "/tmp/elsewhere" };
+    expect((await run(crewMux, forwarded, { accounts, viaCrew: true })).status).toBe(200);
+    expect(crewMux.texts).toEqual([["w1:p1", "CODEX_HOME='/home/op/.codex-work' codex"]]);
   });
 
   test("an unknown id, another agent's id, no service, and Windows are refused before anything runs", async () => {
@@ -738,5 +744,44 @@ describe("POST /api/launch — with an account", () => {
     const mux = new FakeMux();
     expect((await run(mux, { harness: "claude", signIn: true }, { accounts: await accountsWith() })).status).toBe(200);
     expect(mux.texts).toEqual([["w1:p1", "claude"]]);
+  });
+});
+
+// ── A start on a crew member with an account (M101 spec 06, decisions 1 and 5) ──────────────────
+//
+// The lead forwards the phone's launch body unchanged (bridge/crew/forward.ts), `account` with it. The
+// member resolves that id against ITS OWN accounts, never against a folder in the request, and refuses
+// an id it does not hold with the existing sentence. A sign-in start does not cross the link.
+
+describe("POST /api/launch — over the crew link, with an account", () => {
+  const ACCOUNT = "6f1c2a4e-3b5d-4c7e-9f00-112233445566";
+  const LEADS = "6f1c2a4e-3b5d-4c7e-9f00-998877665544";
+
+  async function memberAccounts() {
+    const store = memoryAccountStore();
+    await store.add({ id: ACCOUNT, harness: "codex", label: "Work", kind: "own", dir: "/home/op/.codex-work", addedAt: 1, device: "pixel" });
+    return new Accounts({ store, harnesses: { list: () => Promise.resolve([]), launch: harnessLaunch }, home: "/home/op", env: {}, platform: "linux", disk: realLinkDisk });
+  }
+
+  test("an id the member does not hold (the lead's own, or a folder) is refused with the existing sentence, nothing runs", async () => {
+    const accounts = await memberAccounts();
+    for (const account of [LEADS, "/home/op/.codex-work", "~/.codex-work"]) {
+      const mux = new FakeMux();
+      const out = await run(mux, { harness: "codex", account }, { accounts, viaCrew: true });
+      expect([out.status, out.body?.ok === false ? out.body.code : undefined]).toEqual([400, "accounts.unknown"]);
+      expect(mux.spaces).toEqual([]);
+    }
+  });
+
+  test("a sign-in start over the crew link is refused before anything runs; locally it still starts", async () => {
+    const accounts = await memberAccounts();
+    for (const body of [{ harness: "claude", signIn: true }, { harness: "codex", account: ACCOUNT, signIn: true }]) {
+      const mux = new FakeMux();
+      expect((await run(mux, body, { accounts, viaCrew: true })).status).toBe(400);
+      expect(mux.spaces).toEqual([]);
+      expect(mux.texts).toEqual([]);
+    }
+    const mux = new FakeMux();
+    expect((await run(mux, { harness: "claude", signIn: true }, { accounts })).status).toBe(200);
   });
 });

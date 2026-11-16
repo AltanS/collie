@@ -153,6 +153,19 @@ describe("accounts: the read hook", () => {
     expect(result.current.body).toBeNull();
   });
 
+  it("a crew member that cannot answer the list reads as no feature, never as failed (M101 spec 06)", async () => {
+    // Through the lead: a 1.28.x member's peer surface answers its own `not found`, a Windows member
+    // its own `accounts.unavailable`. Both are a 404 at the phone, so the pick hides quietly.
+    for (const answer of [{ error: "not found" }, { ok: false, error: "this machine offers no accounts", code: "accounts.unavailable" }]) {
+      server.use(http.get("/api/accounts", () => HttpResponse.json(answer, { status: 404 })));
+      const { result, unmount } = renderHook(() => useAccounts({ host: "old-member" }));
+      await waitFor(() => expect(result.current.status).toBe("unavailable"));
+      expect(result.current.body).toBeNull();
+      expect(result.current.loadedFor).toBe("old-member\u0000");
+      unmount();
+    }
+  });
+
   it("any other failure is a failed read that also hides the feature", async () => {
     serveAccountsStatus(500);
     const { result } = renderHook(() => useAccounts());
