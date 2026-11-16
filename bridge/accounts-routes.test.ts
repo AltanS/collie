@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { AccountStatusRun } from "./account-adapters.ts";
 import type { StatusAsk, StatusRunner } from "./account-identity.ts";
 import { realLinkDisk } from "./account-links.ts";
-import { Accounts, defaultAccountId, ownJournalRoots, seenReading, type AccountsAnswer, type AccountsCaller, type AccountsDeps } from "./accounts-routes.ts";
+import { Accounts, defaultAccountId, ownJournalRoots, seenReading, withoutBridgeSettings, type AccountsAnswer, type AccountsCaller, type AccountsDeps } from "./accounts-routes.ts";
 import { accountTest } from "./accounts-skip.ts";
 import { AccountStore, MAX_ACCOUNTS, type AccountRecord } from "./accounts-store.ts";
 import { AuditLog } from "./audit.ts";
@@ -445,6 +445,29 @@ describe("who is signed in", () => {
     expect(status.asks).toHaveLength(2);
     expect(status.asks).toContainEqual({ binary: "claude", args: ["auth", "status"], env: { HOME: home } });
     expect(status.asks).toContainEqual({ binary: "claude", args: ["auth", "status"], env: { HOME: home, CLAUDE_CONFIG_DIR: join(home, ".claude-work") } });
+  });
+
+  test("the bridge's own settings stay out of a status run's environment", () => {
+    expect(withoutBridgeSettings({ PATH: "/usr/bin", HOME: "/home/you", COLLIE_X: "1", COLLIE_STATE_DIR: "/home/you/.local/state/collie", GONE: undefined })).toEqual({ PATH: "/usr/bin", HOME: "/home/you" });
+  });
+
+  accountTest("a status run gets PATH, HOME and the account's variable, never a COLLIE_ setting", async () => {
+    await ranIn(join(home, ".claude-work"));
+    const status = fakeStatus((folder) => signedInAs(folder === join(home, ".claude-work") ? "work@example.com" : "me@example.com"));
+    const env = { PATH: "/usr/bin", HOME: home, COLLIE_X: "1", COLLIE_PORT: "8788" };
+    const accounts = build({ status: status.run, env });
+    await added(accounts, { requestId: ID, harness: "claude", label: "Work", kind: "own", path: "~/.claude-work" });
+    await bodyOf(accounts);
+    expect(status.asks).toHaveLength(2);
+    expect(status.asks.map((a) => a.env)).toContainEqual({ PATH: "/usr/bin", HOME: home });
+    expect(status.asks.map((a) => a.env)).toContainEqual({ PATH: "/usr/bin", HOME: home, CLAUDE_CONFIG_DIR: join(home, ".claude-work") });
+  });
+
+  accountTest("CLAUDE_CONFIG_DIR from the bridge's own environment still reaches a Default run", async () => {
+    await ranIn(join(home, "elsewhere"));
+    const status = fakeStatus(() => signedInAs("me@example.com"));
+    await bodyOf(build({ status: status.run, env: { HOME: home, CLAUDE_CONFIG_DIR: join(home, "elsewhere"), COLLIE_X: "1" } }));
+    expect(status.asks.map((a) => a.env)).toEqual([{ HOME: home, CLAUDE_CONFIG_DIR: join(home, "elsewhere") }]);
   });
 
   accountTest("a missing folder, or one the agent has not run in, reads not signed in with no run", async () => {

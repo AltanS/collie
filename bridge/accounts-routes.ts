@@ -118,6 +118,15 @@ function identityKey(harness: string, folder: string): string {
   return `${harness}\u0000${folder}`;
 }
 
+/**
+ * The bridge's environment for a status run: every set variable but the bridge's own settings (names that
+ * start with `COLLIE_`, from the instance's config file), which the agent's status command never needs.
+ */
+export function withoutBridgeSettings(env: Readonly<Record<string, string | undefined>>): Record<string, string> {
+  const kept = Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined && !entry[0].startsWith("COLLIE_"));
+  return Object.fromEntries(kept);
+}
+
 /** The id of a harness's Default row. */
 export function defaultAccountId(harness: string): string {
   return `${harness}:default`;
@@ -307,10 +316,9 @@ export class Accounts {
     return reading === null ? { windows: [], seenAt: null } : { windows: reading.windows, seenAt: reading.at };
   }
 
-  /** The bridge's own environment, with the account's variable laid over it as a start sets it. */
+  /** The bridge's own environment less its own settings, with the account's variable laid over it as a start sets it. */
   private statusEnv(adapter: AccountAdapter, dir: string | undefined): Record<string, string> {
-    const own = Object.entries(this.deps.env).filter((entry): entry is [string, string] => entry[1] !== undefined);
-    const env: Record<string, string> = Object.fromEntries(own);
+    const env = withoutBridgeSettings(this.deps.env);
     if (dir !== undefined) env[adapter.select.env] = dir;
     return env;
   }

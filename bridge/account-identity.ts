@@ -11,8 +11,9 @@ import type { AccountIdentity, AccountStatusRun } from "./account-adapters.ts";
 //   • The binary is the bridge's own harness table's word (`harnesses.launch(id).binary`), resolved on
 //     the PATH the way the probe finds it. The argv after it is the adapter's fixed `status.args`.
 //   • No shell: `spawn(file, args, { shell: false })`, so no character of a folder or a word is a command.
-//   • Nothing from a request reaches the argv or the environment. The environment is the bridge's own,
-//     with the account's variable laid over it as a start sets it (nothing for Default), and the folder
+//   • Nothing from a request reaches the argv or the environment. The environment is the bridge's own
+//     without its own settings (every `COLLIE_` name), with the account's variable laid over it as a
+//     start sets it (nothing for Default), and the folder
 //     is a stored account's cleaned folder, never a value a request carried.
 //   • stdin is closed (`ignore`), so a status command that ever asked a question reads end-of-file.
 //   • A timeout kills it ({@link STATUS_TIMEOUT_MS}, SIGKILL), and so does output over the cap
