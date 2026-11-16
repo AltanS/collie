@@ -145,13 +145,14 @@ import { useTabLook } from "@/lib/tab-look";
 import { zoomPillShown } from "@/lib/zoom-pill";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
+import { useAccounts } from "@/lib/accounts";
 import { openReport, signalTrouble, unreadDialogReport } from "@/lib/report/store";
 import { unreadDialogScreen } from "@/lib/report/screen";
 import { answerRouteFor, holdAnswerRouteFor, textRouteFor } from "@/lib/send-path";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
-import { changesPath, filesPath, historyPath, trickSessionPath, newPath, panePath, spacePath } from "@/lib/nav";
+import { changeLoginPath, changesPath, filesPath, historyPath, trickSessionPath, newPath, panePath, spacePath } from "@/lib/nav";
 import { beltMarksOf, beltTapHandlers } from "@/components/belt-trick-mark";
 import { statusItemsOf } from "@/components/trick-status-item";
 import { useTrickParts } from "@/lib/tricks/store";
@@ -1047,6 +1048,13 @@ export function AgentChat({
     () => paneSurface(agent?.surface, agent?.sendProtocol === true, hostBlock),
     [agent?.surface, agent?.sendProtocol, hostBlock],
   );
+  // Change login (M101): a sign-in card opens its address through one button, only on the hosts the
+  // agent's adapter lists (`signInHosts` on GET /api/accounts of the pane's machine). The list is read
+  // only while the screen holds a sign-in field under a box card. An agent with no hosts listed keeps
+  // the card as it was.
+  const signInScreen = composerSurface.field === "secret" && blocks.some((b) => b.kind === "box-text");
+  const signInAccounts = useAccounts(scope, signInScreen);
+  const signInHosts = signInScreen ? signInAccounts.body?.harnesses.find((h) => h.id === agent?.agent)?.signInHosts : undefined;
   // Ask v1 (M56 spec 08): a tap on a dialog card answers the ask the bridge's Surface carries, by its
   // single-use id. A refusal for a changed dialog hands back the bridge's ask for the screen now; the
   // next tap uses it while the snapshot still names the id that was refused, and the snapshot's own
@@ -3254,6 +3262,7 @@ export function AgentChat({
               promptDisabled={readOnly || gone}
               paneId={paneId}
               scope={scope}
+              signInHosts={signInHosts}
               stale={actsDisabledByCache}
               composing={composing}
               wrap={prefs.wrap}
@@ -3909,6 +3918,20 @@ export function AgentChat({
           scope={scope}
           hooks={agent?.hooks}
           program={gridless}
+          // Change login (M101) for the account this session runs under: this machine's panes only, on a
+          // device that may write, never a program. The row itself shows only when the account is listed.
+          changeLogin={
+            agent && agent.kind !== "shell" && !readOnly && !gridless && isLead(scope)
+              ? {
+                  harness: agent.agent,
+                  account: agent.account?.id,
+                  onOpen: (accountId) => {
+                    closeDrawer();
+                    nav.down(changeLoginPath(accountId, scope));
+                  },
+                }
+              : undefined
+          }
           // The header's name tap lands here, so the row that edits the name is here too. It hands
           // over to the ⋮ sheet's rename view in one event. Hidden where that view cannot save: a
           // read-only device, an unreachable machine, a multiplexer with no rename.

@@ -2714,7 +2714,14 @@ export function startServer(opts: {
       if (action === "keys" && req.method === "POST")
         return afterPaneInput(rt.engine, await keysPane(herdr, cfg, paneId, req, audit_, device, session, paneReadHint(rt.engine, paneId)));
       if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, audit_, device, session);
-      if (action === "close" && req.method === "POST") return closePane(herdr, rt.engine, paneId, req, audit_, device, session);
+      if (action === "close" && req.method === "POST") {
+        const closed = await closePane(herdr, rt.engine, paneId, req, audit_, device, session);
+        // A closed sign-in session's account (M101, Change login) is read again at the next list read,
+        // not at the next snapshot: the phone that ended it reads the list right after this answer.
+        const now = rt.engine.current();
+        opts.accounts?.keep(rt.name, [...now.agents, ...now.shellPanes].map((p) => p.paneId));
+        return closed;
+      }
       if (action === "rename" && req.method === "POST") return renamePane(herdr, rt.engine, paneId, req, audit_, device, session);
       if (action === "focus" && req.method === "POST") return focusPane(herdr, rt.engine, paneId, req, audit_, device, session);
       // An answer to an ask, by id, from a person's tap (ADR 0100). The receipt is written before

@@ -132,10 +132,21 @@ export function defaultAccountId(harness: string): string {
   return `${harness}:default`;
 }
 
-/** Which accounts have a pane running now: harnesses whose Default does, and added account ids. */
+/**
+ * Which accounts have a pane running now, and how many: harnesses whose Default does, and added account
+ * ids. A sign-in session is left out of the counts (Change login: "N sessions continue").
+ */
 interface LiveAccounts {
   defaults: Set<string>;
   ids: Set<string>;
+  /** Agent panes per harness on its Default, sign-in sessions left out. */
+  defaultCounts: Map<string, number>;
+  /** Agent panes per added account id, sign-in sessions left out. */
+  idCounts: Map<string, number>;
+}
+
+function bump(counts: Map<string, number>, key: string): void {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
 }
 
 /** How many launch notes are kept at most; the oldest go first. */
@@ -291,13 +302,21 @@ export class Accounts {
   private liveSet(): LiveAccounts {
     const defaults = new Set<string>();
     const ids = new Set<string>();
+    const defaultCounts = new Map<string, number>();
+    const idCounts = new Map<string, number>();
     for (const { session, pane } of this.deps.panes?.() ?? []) {
       if (pane.kind === "shell" || accountAdapter(pane.agent) === undefined) continue;
       const row = this.accountOf(session, pane);
-      if (row !== undefined) ids.add(row.id);
-      else if (typeof this.deps.reported?.reportedConfigDir(pane) !== "string") defaults.add(pane.agent);
+      const signIn = this.signIns.has(`${session}\u0000${pane.paneId}`);
+      if (row !== undefined) {
+        ids.add(row.id);
+        if (!signIn) bump(idCounts, row.id);
+      } else if (typeof this.deps.reported?.reportedConfigDir(pane) !== "string") {
+        defaults.add(pane.agent);
+        if (!signIn) bump(defaultCounts, pane.agent);
+      }
     }
-    return { defaults, ids };
+    return { defaults, ids, defaultCounts, idCounts };
   }
 
   // ── GET /api/accounts ─────────────────────────────────────────────────────────────────────
@@ -387,14 +406,19 @@ export class Accounts {
     const rows = await this.deps.store.list();
     const live = this.liveSet();
     const who = await this.who(listed, rows);
-    const harnesses: AccountHarness[] = listed.map((h) => ({
-      id: h.id,
-      label: h.label,
-      select: selectText(h.adapter.select),
-      kinds: this.kinds(h.adapter),
-      newFolder: h.adapter.newFolder,
-      binary: h.binary,
-    }));
+    const harnesses: AccountHarness[] = listed.map((h) => {
+      const out: AccountHarness = {
+        id: h.id,
+        label: h.label,
+        select: selectText(h.adapter.select),
+        kinds: this.kinds(h.adapter),
+        newFolder: h.adapter.newFolder,
+        binary: h.binary,
+      };
+      if (h.adapter.reachesRunningSessions === true) out.reachesRunningSessions = true;
+      if (h.adapter.signInHosts !== undefined && h.adapter.signInHosts.length > 0) out.signInHosts = [...h.adapter.signInHosts];
+      return out;
+    });
     const accounts: AccountRow[] = [];
     for (const h of listed) {
       const defaultDir = this.defaultDir(h.adapter);
@@ -409,12 +433,19 @@ export class Accounts {
         ...this.windowsOf(h.id, undefined),
         live: isLive,
       };
+      const defaultRunning = live.defaultCounts.get(h.id) ?? 0;
+      if (defaultRunning > 0) defaultRow.running = defaultRunning;
       const defaultHooks = this.hooksOf(h.adapter, defaultDir);
       if (defaultHooks !== undefined) defaultRow.hooks = defaultHooks;
       const defaultWho = who.get(identityKey(h.id, defaultDir));
       if (defaultWho !== undefined) defaultRow.identity = defaultWho;
       accounts.push(defaultRow);
-      for (const r of rows.filter((row) => row.harness === h.id)) accounts.push(await this.rowWire(r, h.binary, h.adapter, live.ids.has(r.id), who.get(identityKey(r.harness, r.dir))));
+      for (const r of rows.filter((row) => row.harness === h.id)) {
+        const row = await this.rowWire(r, h.binary, h.adapter, live.ids.has(r.id), who.get(identityKey(r.harness, r.dir)));
+        const running = live.idCounts.get(r.id) ?? 0;
+        if (running > 0) row.running = running;
+        accounts.push(row);
+      }
     }
     return { harnesses, accounts, found: await this.found(listed.map((h) => h.adapter), listed.map((h) => h.id), rows) };
   }

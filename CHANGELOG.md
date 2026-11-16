@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Change login moves an account to another login while its sessions keep running.** On a signed-in account's page, or from a session's name, Change login shows who is signed in and starts the agent's own sign-in for that folder. Open sign-in page opens the agent's sign-in address in the phone's browser, the code goes into the Sign-in code field, and Finish closes the sign-in session and says who is signed in now. Running Claude Code sessions of the account use the new login from their next message, with no restart; for Codex, pi and Grok, new sessions use it. The old login stays until the new sign-in succeeds.
+
 ### Changed
 
 - **After the update the Hill and every trick are off until you switch them on.** Switch the Hill on in Settings, Experiments, or with `collie hill on`, and each trick in Settings, Tricks. A trick's card works with the Hill off.
