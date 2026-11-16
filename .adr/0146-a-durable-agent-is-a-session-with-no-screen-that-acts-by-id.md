@@ -2,6 +2,8 @@
 
 - **Status:** Accepted (2026-11-16)
 - **Date:** 2026-11-16
+- **Supersedes:** ADR 0099, ADR 0100, ADR 0101, ADR 0103, ADR 0104, ADR 0114
+- **Retires:** ADR 0102 (rule in `bridge/starter-launch.ts`), ADR 0105 (rule in `packages/durable-sdk/README.md`)
 - **Trail:** a Pi Durable program that wanted into the crew (ADR 0099: fake a terminal, or a new crew
   role); users of Cloudflare Durable Objects on 2026-10-13 (ADR 0103: a relay, or stay out); four
   advisors on 2026-10-13 (ADR 0104: a second Collie per program); the owner on 2026-10-14 (ADR 0105:
@@ -114,6 +116,5 @@ stays the contract. People read "durable agent"; the code, `program` and old rec
 - 0099: an agent was a mux adapter on a peer of its own. Its points 3 and 4 (socket only, no
   token), 5 (SDK as example code) and 10 (one peer, one mux) were overtaken by 0103, 0105, 0104.
 - 0100, 0101: asks and controls by id with a receipt; 0104 added the session to the guard key.
-- 0102: starters are launcher rows, not a second list. 0103: TLS with a token beside the socket.
-- 0104: a session of the running Collie, not a second Collie. 0105: an npm package, not a folder to
-  copy. 0114: a host with no process keeps its state in its log, not in a server.
+- 0102, 0103: starters are launcher rows, not a second list; TLS with a token beside the socket.
+- 0104, 0105, 0114: a session, not a second Collie; an npm package, not a copy; a log, not a server.

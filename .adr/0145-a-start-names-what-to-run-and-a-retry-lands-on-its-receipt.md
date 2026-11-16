@@ -2,6 +2,7 @@
 
 - **Status:** Accepted (2026-11-16)
 - **Date:** 2026-11-16
+- **Supersedes:** ADR 0089, ADR 0091, ADR 0093, ADR 0094, ADR 0095, ADR 0127
 - **Trail:** ADR 0032 (the multiplexer makes the worktree, reversed by 0126), the New page on the
   Herdr core on 2026-11-02 (M81), the owner's report of 2026-11-02 that rows were locked to machines
   (M82), the counsel on M82 spec 07 (a header marks a lead row, not the body), the release counsel

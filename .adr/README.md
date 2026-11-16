@@ -270,7 +270,7 @@ One live record for this topic is being written.
 
 ### Launch, worktrees, files and changes
 
-The rule today: [0145](./0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md) states the launch half in one place. A start names a row, an agent id, a shell or a one-off line, and the bridge, never the phone, turns it into what is typed. One request id per intent, with one receipt, so a retry never starts a second pane; a create nobody can confirm stays unknown. Collie makes a worktree with git in the bridge and opens it as a space, in a folder it checks at every use, and a half-done create is only opened again. The lead's launcher rows are the crew's rows. Two records stay live beside it: 0126 (why the multiplexer no longer makes the worktree) and 0131 (the "+" opens the rows, with the roads it turned down). The files half is its own: the Changes view reads git read-only against HEAD (0065), and a pane outside its workspace folder reads its own folder (0112). Files reads one path relative to the Changes root, and a path the agent prints is a link only inside that root (0083, 0088, 0090).
+The rule today: [0145](./0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md) states the launch half in one place. A start names a row, an agent id, a shell or a one-off line, and the bridge, never the phone, turns it into what is typed. One request id per intent, with one receipt, so a retry never starts a second pane; a create nobody can confirm stays unknown. Collie makes a worktree with git in the bridge and opens it as a space, in a folder it checks at every use, and a half-done create is only opened again. The lead's launcher rows are the crew's rows. Two records stay live beside it: 0126 (why the multiplexer no longer makes the worktree) and 0131 (the "+" opens the rows, with the roads it turned down). The files half is its own: the Changes view reads git read-only against HEAD (0065), and a pane outside its workspace folder reads its own folder (0112). Files reads one path relative to the Changes root, and a path the agent prints is a link only inside that root (0083, 0088, 0090). These five records wait for a record of their own and stay as they are.
 
 | # | Decision | Status |
 | --- | --- | --- |
@@ -278,33 +278,33 @@ The rule today: [0145](./0145-a-start-names-what-to-run-and-a-retry-lands-on-its
 | [0065](./0065-the-changes-view-reads-git-read-only.md) | The Changes view reads git read-only against HEAD, hardened and offline. | Accepted, amended in scope by 0112 |
 | [0083](./0083-the-files-view-reads-the-changes-root.md) | Files reads one folder or file relative to the Changes root, contained on real paths. | Accepted, amended in scope by 0086 |
 | [0088](./0088-paths-the-agent-prints-are-links.md) | A printed path is tappable only when it resolves inside the pane's Changes root. | Accepted |
-| [0089](./0089-a-second-agent-on-a-branch.md) | A pane menu starts a second agent on a new branch; a request id and a receipt stop duplicates. | Accepted |
+| [0089](./0089-a-second-agent-on-a-branch.md) | A pane menu starts a second agent on a new branch; a request id and a receipt stop duplicates. | Superseded by 0145 |
 | [0090](./0090-files-shows-images.md) | Files shows raster pictures typed by their own bytes; an SVG is never served. | Accepted |
-| [0091](./0091-launch-by-id-with-a-request-id.md) | The bridge owns the list of startable agents and starts one by id, with a request id and a receipt. | Accepted |
-| [0093](./0093-a-branch-folder-is-named-by-its-parent.md) | A branch's folder is named by its parent, and checked on every use. | Accepted, amended in scope by 0126 |
-| [0094](./0094-launchers-added-from-a-phone.md) | Launchers added from a phone live on the machine, under the operator's switches. | Accepted, amended in scope by 0127 |
-| [0095](./0095-one-off-commands-and-their-history.md) | A one-off command can start from a paired phone and is kept in a history of twelve lines. | Accepted |
+| [0091](./0091-launch-by-id-with-a-request-id.md) | The bridge owns the list of startable agents and starts one by id, with a request id and a receipt. | Superseded by 0145 |
+| [0093](./0093-a-branch-folder-is-named-by-its-parent.md) | A branch's folder is named by its parent, and checked on every use. | Superseded by 0145 |
+| [0094](./0094-launchers-added-from-a-phone.md) | Launchers added from a phone live on the machine, under the operator's switches. | Superseded by 0145 |
+| [0095](./0095-one-off-commands-and-their-history.md) | A one-off command can start from a paired phone and is kept in a history of twelve lines. | Superseded by 0145 |
 | [0112](./0112-a-pane-outside-its-workspace-folder-reads-its-own.md) | A pane outside its workspace folder reads its own folder. | Accepted |
 | [0126](./0126-collie-makes-a-worktree-with-git-and-opens-it-as-a-space.md) | Collie runs `git worktree add` in the bridge and opens the checkout as a space. | Accepted |
-| [0127](./0127-the-leads-launcher-rows-are-the-crews-rows.md) | The lead's merged launcher rows are the crew's rows. | Accepted |
+| [0127](./0127-the-leads-launcher-rows-are-the-crews-rows.md) | The lead's merged launcher rows are the crew's rows. | Superseded by 0145 |
 | [0131](./0131-the-plus-offers-the-launcher-rows.md) | The "+" opens a sheet of the machine's launcher rows. | Accepted |
 | [0032](./0032-a-worktree-is-opened-by-the-multiplexer-not-by-git.md) | A worktree is opened by the multiplexer, never by Git. | Superseded by 0126 |
 
 ### Durable agents and the wire
 
-The rule today: [0146](./0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md) states it in one place. A durable agent is a session with no screen of the Collie the person already runs, listed in `sources.json`, and Chat is its only view. The wire has two transports, a private socket of the same user or HTTPS with a bearer token, exactly one per agent. An ask is data, answered by its id with a receipt, and a send, a stop or a belt action names the turn the phone saw. The push guard caps pushes, never what is shown. The SDK is the npm package `@colliepwa/durable-sdk` under the dist-tag `experimental`, and a host with no process keeps every fact the phone sees in its log. Where the older records disagree (0099 points 3, 4, 5 and 10 against 0103, 0104 and 0105), 0146 follows the code. People read "durable agent"; the code, the API value `program` and these records say "program".
+The rule today: [0146](./0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md) states it in one place. A durable agent is a session with no screen of the Collie the person already runs, listed in `sources.json`, and Chat is its only view. The wire has two transports, a private socket of the same user or HTTPS with a bearer token, exactly one per agent. An ask is data, answered by its id with a receipt, and a send, a stop or a belt action names the turn the phone saw. The push guard caps pushes, never what is shown. The SDK is the npm package `@colliepwa/durable-sdk` under the dist-tag `experimental`, and a host with no process keeps every fact the phone sees in its log. The records it replaced, now stubs, disagreed in places (0099 points 3, 4, 5 and 10 against 0103, 0104 and 0105), and 0146 follows the code. People read "durable agent"; the code, the API value `program` and these records say "program".
 
 | # | Decision | Status |
 | --- | --- | --- |
 | [0146](./0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md) | A durable agent is a session with no screen; asks and controls act only by id, with a receipt. | Accepted |
-| [0099](./0099-a-durable-program-is-a-mux-with-no-screen.md) | A durable program is a mux adapter with no screen. | Accepted, amended in scope by 0103, 0104, 0105 |
-| [0100](./0100-an-ask-travels-as-data-and-is-answered-by-id.md) | An ask travels as pane data and is answered by its id, with a receipt. | Accepted |
-| [0101](./0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md) | A send or an abort on a screenless pane names the turn it saw; a stale name gets 409. | Accepted |
-| [0102](./0102-starters-are-launcher-rows.md) | A durable program's starters are launcher rows. | Accepted |
-| [0103](./0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md) | The wire has two transports: a private socket, or TLS with a bearer token. | Accepted |
-| [0104](./0104-a-program-is-a-session.md) | A durable program is a session of the Collie already running, listed in `sources.json`. | Accepted, amended in scope by 0105 |
-| [0105](./0105-the-durable-sdk-is-an-npm-package.md) | The durable SDK is the npm package `@colliepwa/durable-sdk`. | Accepted |
-| [0114](./0114-a-host-with-no-process-keeps-its-state-in-the-log.md) | A host with no process keeps every phone-visible fact in the log. | Accepted |
+| [0099](./0099-a-durable-program-is-a-mux-with-no-screen.md) | A durable program is a mux adapter with no screen. | Superseded by 0146 |
+| [0100](./0100-an-ask-travels-as-data-and-is-answered-by-id.md) | An ask travels as pane data and is answered by its id, with a receipt. | Superseded by 0146 |
+| [0101](./0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md) | A send or an abort on a screenless pane names the turn it saw; a stale name gets 409. | Superseded by 0146 |
+| [0102](./0102-starters-are-launcher-rows.md) | A durable program's starters are launcher rows. | Retired: the rule lives in `bridge/starter-launch.ts` |
+| [0103](./0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md) | The wire has two transports: a private socket, or TLS with a bearer token. | Superseded by 0146 |
+| [0104](./0104-a-program-is-a-session.md) | A durable program is a session of the Collie already running, listed in `sources.json`. | Superseded by 0146 |
+| [0105](./0105-the-durable-sdk-is-an-npm-package.md) | The durable SDK is the npm package `@colliepwa/durable-sdk`. | Retired: the rule lives in `packages/durable-sdk/README.md` |
+| [0114](./0114-a-host-with-no-process-keeps-its-state-in-the-log.md) | A host with no process keeps every phone-visible fact in the log. | Superseded by 0146 |
 
 ### Usage and accounts
 
