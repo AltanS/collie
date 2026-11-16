@@ -36,6 +36,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Collie reads Grok Build 1.0.77 right.** A running turn no longer reads as idle: Grok now says `Ctrl+c:cancel` where it said `Esc:cancel`. A draft of three rows or more reads as a draft, where it read as a list Collie could not send into. A message sent while Grok works is queued, and Grok runs it after the turn, where Collie refused it. A pasted text folded as `[Pasted: N lines]` and the grey completion after a typed command now read right.
 - **`collie trick guide` names the status line's limit.** A status text is at most 12 characters, and the guide says so next to the helper's calls, so an agent's message for a missing setting fits.
 - **A trick's code warnings start with one word.** `collie trick check`, `on`, `add` and `propose` print each warning as `warning: <file>:<line> ...`; `propose` printed `warning: warn:`.
 - **A trick's row in Settings says when the bridge refused one of its parts.** A trick that runs but prints a part the bridge cannot draw, such as a status line over its length, now shows the reason on its row in Settings, Tricks, as "Part of this trick is not shown" with the reason after it; before, the part was missing with no word why. A trick that cannot run at all says "This trick cannot run" with its reason, where the row said "Manifest refused".

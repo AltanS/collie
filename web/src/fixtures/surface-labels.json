@@ -2835,6 +2835,76 @@
    "version": "unversioned",
    "state": "running"
   },
+  "grok--v1.0.77-done--w120.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "idle"
+  },
+  "grok--v1.0.77-draft-lines--w61.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "draft"
+  },
+  "grok--v1.0.77-draft-six-rows--w120.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "draft"
+  },
+  "grok--v1.0.77-draft-wrapped--w61.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "draft"
+  },
+  "grok--v1.0.77-draft-wrapped--w80.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "draft"
+  },
+  "grok--v1.0.77-idle-optin--w120.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "idle"
+  },
+  "grok--v1.0.77-model-picker--w61.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "dialog"
+  },
+  "grok--v1.0.77-paste-fold--w120.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "draft"
+  },
+  "grok--v1.0.77-queued--w120.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "running"
+  },
+  "grok--v1.0.77-running--w120.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "running"
+  },
+  "grok--v1.0.77-running-draft--w120.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "running"
+  },
+  "grok--v1.0.77-settings--w61.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "dialog"
+  },
+  "grok--v1.0.77-slash-ghost--w120.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "popup"
+  },
+  "grok--v1.0.77-trust--w80.txt": {
+   "harness": "grok",
+   "version": "1.0.77",
+   "state": "dialog"
+  },
   "hermes--approval-long-full.txt": {
    "harness": "hermes",
    "version": "0.22.2",

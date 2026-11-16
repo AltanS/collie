@@ -518,7 +518,7 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     binary: "grok",
     versionOutput: "1.0.46 (2765805b9442) [stable]\n",
     version: "1.0.46",
-    above: "1.0.52",
+    above: "1.0.78",
     takes: [
       { anchor: "top", row: "  ╭──────────────────────────────────╮" },
       { anchor: "top", row: "╭──────────────────────────────────" },
@@ -534,7 +534,9 @@ const SPEC14_CASES: readonly Spec14Case[] = [
     collapse: { text: "[Pasted 3003 chars]", group: "", value: "" },
     submit: ["Enter"],
     probeStatus: "provisional",
-    enterWhileRunning: undefined,
+    // Lab 2026-11-16 on Grok Build 1.0.77: the hint row reads `Enter:queue` in a turn, the text stood
+    // under `▾ Queued 1` over the box and ran after the turn.
+    enterWhileRunning: "queues",
   },
   {
     id: "agy",
