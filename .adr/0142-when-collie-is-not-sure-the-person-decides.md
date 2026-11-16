@@ -37,8 +37,8 @@ a failure. About 30 records shaped this road one case at a time, and none states
 4. "Cannot tell if this was sent" shows the screen as it is now and two actions. "It arrived" clears
    the card. "Send again" is a new request, made by the person's tap.
 5. The receipt stays honest, but it is no gate. A send by the person's override is recorded as sent
-   on the person's word, not as verified. An override types on the rows the person saw: a screen that
-   moved since the tap is refused, and an override is never held or queued.
+   on the person's word, not as verified. Collie never holds an override: it types now on the rows
+   the person saw or is refused. A message the agent queues in a running turn goes in as any send.
 6. Four hard stops stay, because the risk is real. Each card names the reason and the next step.
    a. No message into an open permission prompt or question: text can approve a command.
    b. No secret into a normal field, the hold queue or any store. Where Collie knows the screen asks
