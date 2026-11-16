@@ -254,12 +254,11 @@ One live record for this topic is being written.
 
 ### Themes, fonts, icons and the mark
 
-The rule today: A theme is a closed file of named tokens, and an unknown key is refused, never dropped (0106). A theme may name a mark and a glyph set from closed lists, never a drawing (0136, 0137), and a device's own choice of character wins on that device (0136, amendment of 2026-11-12). The terminal mirror is dark space inverted in light (0002), except Muse panes, which render natively (0047). The app's typeface is a per-device preference with a shipped default, and an operator's fonts add to the list (0033). The mark moves while the page is visible and a "Character moves" switch turns it off; the amendments of 0138 reverse its title and first rules.
-
-One live record for this topic is being written.
+The rule today: [0148](./0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md) states it in one place. A theme is one closed JSON file of colours and words from closed lists; an unknown key is refused with its name, never dropped, and the default theme applies nothing. A theme arrives by a file, a paste or the community list, and the page fetches nothing. A theme may name a character and a glyph set, never a drawing; the device's own pick of character wins on that device. The resting character drifts in steps while the page is visible, and "Character moves" or a theme's `characterMotion` stops it. The UI face is a device preference (default Atkinson Hyperlegible Next) that dresses chrome only, and an operator's fonts add to the list. The terminal mirror is dark space inverted in light, with Muse and a per-pane override as the exceptions; 0002 stays live for why it is not re-themed with a light palette.
 
 | # | Decision | Status |
 | --- | --- | --- |
+| [0148](./0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md) | A theme names words, never drawings, and the device's own choice wins: the look rule of today. | Accepted |
 | [0002](./0002-invert-the-light-terminal-mirror.md) | The light terminal mirror is inverted by CSS, not re-themed with a light palette. | Accepted, amended in scope by 0047 |
 | [0033](./0033-the-app-face-is-a-device-preference.md) | The app's typeface is a per-device preference, and an operator's fonts add to the list. | Accepted, amended in scope by 0106 |
 | [0047](./0047-muse-panes-render-natively.md) | Muse panes render natively in light, with no inversion filter. | Accepted |
