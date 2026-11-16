@@ -479,6 +479,31 @@ describe("ScreenStop, hold to stop", () => {
     expect(stop()).not.toHaveTextContent("Hold");
   });
 
+  it("a turn that ends by itself under the finger is not stopped at the end of the hold, nor is the next one", async () => {
+    vi.useFakeTimers();
+    const onStop = vi.fn(async () => {});
+    const { rerender } = render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+    down();
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    rerender(<ScreenStop paneId="w1:p1" running={false} onStop={onStop} />);
+    expect(document.querySelector("[data-slot='belt-stop-fill']")).toBeNull();
+    // A new turn starts before the old hold's two seconds are up: the old press does not reach it.
+    rerender(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+    await act(async () => {
+      vi.advanceTimersByTime(STOP_HOLD_MS);
+    });
+    expect(onStop).not.toHaveBeenCalled();
+    up();
+    // A fresh hold on the new turn works.
+    down();
+    await act(async () => {
+      vi.advanceTimersByTime(STOP_HOLD_MS);
+    });
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps every sizing class while it says Hold", () => {
     vi.useFakeTimers();
     render(<ScreenStop paneId="w1:p1" running onStop={async () => {}} />);

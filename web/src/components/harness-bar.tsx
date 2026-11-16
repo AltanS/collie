@@ -501,6 +501,20 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
   }, [paneId, disarm, unhint]);
 
   const pressable = disabled !== true && running && !busy;
+  // A hold belongs to the turn, the pane and the button state it began in. The hook's timer keeps the
+  // callback it was armed with, so the stop would still go out after the turn ended by itself mid-hold
+  // (or for a NEW turn). Every change of these bumps the epoch; a hold whose stamp is older goes nowhere.
+  const epoch = useRef(0);
+  const pressStamp = useRef(0);
+  useEffect(() => {
+    epoch.current += 1;
+  }, [pressable, paneId]);
+
+  // The hold's end. A stamp older than the epoch means the turn, the pane or the button changed under the finger.
+  function stopHeld() {
+    if (pressStamp.current !== epoch.current) return;
+    void run();
+  }
 
   async function run() {
     if (flying.current) return;
@@ -517,7 +531,7 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
   }
 
   // The hold: the timer fires with the finger still down. An idle, greyed or flying button takes none.
-  const hold = useLongPress(pressable ? () => void run() : undefined, {
+  const hold = useLongPress(pressable ? stopHeld : undefined, {
     delayMs: STOP_HOLD_MS,
     // Lifted too early: say what the button wants.
     onTap: () => {
@@ -527,7 +541,8 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
       hintTimer.current = setTimeout(() => setHinted(false), STOP_HINT_MS);
     },
   });
-  const holding = hold["data-holding"] !== undefined;
+  // The fill stops with the turn: a finger still down on a button that no longer presses shows no clock.
+  const holding = pressable && hold["data-holding"] !== undefined;
 
   function click(detail: number) {
     const byPointer = pointerMade.current && detail !== 0;
@@ -553,8 +568,10 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
       disabled={disabled === true || busy}
       aria-label={translate(armed ? "belt.stopArmedAria" : "belt.stopAria")}
       {...hold}
+      data-holding={holding ? "" : undefined}
       onPointerDown={(e) => {
         pointerMade.current = true;
+        pressStamp.current = epoch.current;
         hold.onPointerDown(e);
       }}
       // A phone's long-press raises `contextmenu` half a second in. Here it is no shortcut to the Stop
