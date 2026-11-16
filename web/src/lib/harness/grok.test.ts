@@ -135,6 +135,7 @@ const UNPRINTED_KEY_FINDINGS: Readonly<Record<string, string>> = Object.fromEntr
     "grok--model-picker.txt",
     "grok--model-window-moved.txt",
     "grok--model-window.txt",
+    "grok--v1.0.77-model-picker--w61.txt",
   ].map((name) => [name, MODEL_PICKER_CTRL_C]),
 );
 

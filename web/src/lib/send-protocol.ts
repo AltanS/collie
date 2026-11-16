@@ -251,6 +251,8 @@ export type SendNote =
   | "draftCommand"
   | "draftUnseen"
   | "typed"
+  | "overrideTyped"
+  | "menuOpen"
   | "unconfirmed"
   | "noticeKey"
   | "noticeKeyHeld"
@@ -379,6 +381,8 @@ function refusalNote(reason: SendReason | null): SendNote {
       return "moved";
     case "code_rejected":
       return "codeRejected";
+    case "menu_open":
+      return "menuOpen";
     default:
       return "refused";
   }
@@ -405,7 +409,7 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
     case "cancelled":
       return "cancelled";
     case "typed_not_submitted":
-      return "typed";
+      return reason === "override" ? "overrideTyped" : "typed";
     case "refused":
       return refusalNote(reason);
     case "unknown":
@@ -555,6 +559,9 @@ export function nextStep(reply: SendReply, verdict: Verdict, toCard: boolean, su
       return "emptyBox";
     case "turn_running":
       return "stop";
+    // A menu or a yes/no prompt stood in the way of an override: the person answers it on the pad.
+    case "menu_open":
+      return "screen";
     case "reserved_lead":
     case "multiline":
     case "bad_head":

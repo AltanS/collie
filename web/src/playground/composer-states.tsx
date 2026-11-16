@@ -853,6 +853,20 @@ export function wayOutGroups(): ReactNode[] {
       <SignInCase n={38} state="unread-card-secret" title="Unread screen asks a secret" reach="The unread screen asks for a password or a code. Type it anyway is gone, and the card says to use Type, one key at a time.">
         <UnreadCardPhone cancel={UNREAD_CANCEL} secret />
       </SignInCase>
+      <StopCardCase
+        n={39}
+        state="unread-menu-open"
+        title="Menu in the way"
+        reach="Type it anyway on a screen that shows a menu or a yes/no prompt. Nothing is typed, and the Keys pad opens."
+        c={{ outcome: "refused", reason: "menu_open", surface: { ...STOP_FREE, modal: "unknown", composer: "unknown" } }}
+      />
+      <StopCardCase
+        n={40}
+        state="unread-override-typed"
+        title="Text waits for Enter"
+        reach="Type it anyway on a screen Collie cannot read. The text is in the agent's box, no Enter was pressed, and the person presses Enter on the Keys pad."
+        c={{ outcome: "typed_not_submitted", reason: "override", surface: { ...STOP_FREE, modal: "unknown", composer: "unknown" } }}
+      />
     </Group>,
   ];
 }

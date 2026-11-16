@@ -110,10 +110,21 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
   const [armedFor, setArmedFor] = useState<string | null>(null);
   const armed = armedFor === identity;
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Enter on this card asks the same second tap as the declared key (the review of 2026-11-16, point
+  // 3): the screen may hold a menu whose highlighted default is "Yes", and Enter would confirm it.
+  const [enterArmedFor, setEnterArmedFor] = useState<string | null>(null);
+  const enterArmed = enterArmedFor === identity;
+  const enterTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const caption = t("unreadDialog.caption");
   const dismissWording = lines.some((l) => NAMES_A_DISMISS.test(lineText(l)));
 
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(timer.current);
+      clearTimeout(enterTimer.current);
+    },
+    [],
+  );
   // The trouble signal (M86 spec 05): once per instance for each pane and dialog identity, the same
   // identity the arm keys on. A poll that re-renders the same dialog calls nothing.
   const shownKey = `${paneId ?? ""}\n${identity}`;
@@ -127,8 +138,23 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
   useEffect(() => {
     if (!disabled) return;
     clearTimeout(timer.current);
+    clearTimeout(enterTimer.current);
     setArmedFor(null);
+    setEnterArmedFor(null);
   }, [disabled]);
+
+  function pressCap(step: string) {
+    if (disabled || onPadKeys === undefined) return;
+    if (step === "Enter" && !enterArmed) {
+      setEnterArmedFor(identity);
+      clearTimeout(enterTimer.current);
+      enterTimer.current = setTimeout(() => setEnterArmedFor(null), ARM_MS);
+      return;
+    }
+    clearTimeout(enterTimer.current);
+    setEnterArmedFor(null);
+    void onPadKeys([step]);
+  }
 
   async function press() {
     if (locked || cancel === null) return;
@@ -152,6 +178,8 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
     ? t("unreadDialog.confirmDismiss")
     : t("unreadDialog.confirmKey", { key: cancel === null ? "" : keyLabel(cancel.key) });
   const capsShown = onPadKeys !== undefined && lost.length > 0;
+  const enterArmedLabel = t("unreadDialog.confirmKey", { key: keyLabel("Enter") });
+  const spoken = armed ? armedLabel : enterArmed ? enterArmedLabel : "";
 
   return (
     // rawMode (ADR 0056 counsel fix): this card always shows the mirror by default (below), so
@@ -182,17 +210,27 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
           lost.map((name) => {
             const step = CORE_KEYS.find((core) => core.name === name)?.step ?? name;
             const face = CORE_FACE.get(name);
+            const capArmed = step === "Enter" && enterArmed;
             return (
               <button
                 key={name}
                 type="button"
                 data-slot="unread-dialog-cap"
                 disabled={disabled}
-                aria-label={name}
-                onClick={() => void onPadKeys([step])}
-                className="flex h-11 w-12 shrink-0 items-center justify-center rounded-md border border-border bg-muted/40 font-mono text-xs text-foreground active:bg-muted disabled:opacity-60"
+                aria-label={capArmed ? enterArmedLabel : name}
+                onClick={() => pressCap(step)}
+                className={cn(
+                  "flex h-11 shrink-0 items-center justify-center rounded-md border font-mono text-xs text-foreground disabled:opacity-60",
+                  capArmed ? "min-w-12 border-primary bg-primary/25 px-2" : "w-12 border-border bg-muted/40 active:bg-muted",
+                )}
               >
-                {face === undefined ? keyLabel(step) : <Icon name={face} className="size-4" aria-hidden="true" />}
+                {capArmed ? (
+                  <span className="font-content truncate">{enterArmedLabel}</span>
+                ) : face === undefined ? (
+                  keyLabel(step)
+                ) : (
+                  <Icon name={face} className="size-4" aria-hidden="true" />
+                )}
               </button>
             );
           })}
@@ -213,7 +251,7 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
       {secret && <p className="text-xs text-muted-foreground">{t("unreadDialog.secret")}</p>}
       {/* A live region on the button itself is unreliable; this one announces the armed wording. */}
       <span role="status" className="sr-only">
-        {armed ? armedLabel : ""}
+        {spoken}
       </span>
       {/* Report a problem: a quiet row under the key, always there when offered, so nothing moves.
           It only opens the sheet; nothing leaves the phone without the person's own taps there. */}

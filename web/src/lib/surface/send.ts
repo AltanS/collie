@@ -45,6 +45,8 @@ export const SEND_REASONS = [
   // does not say it queues), or the text is a command its profile does not queue. A bridge with a
   // hold queue (M56 spec 15) holds such a send instead; only a Submit of a box in a turn is refused.
   "turn_running",
+  // refused (M102 spec 12): an override met a menu or a yes/no prompt on the screen; nothing typed
+  "menu_open",
   // typed_not_submitted: the text is in the box, Enter was not sent
   "mismatch",
   "changed",
@@ -56,6 +58,9 @@ export const SEND_REASONS = [
   // modal it cannot tell (`unreadable`). The text is in the box; no key was pressed.
   "dialog_open",
   "unreadable",
+  // typed_not_submitted (M102 spec 12): the person's override on a screen Collie cannot read; the text
+  // is in place and Collie pressed no Enter. The person presses Enter on the Keys pad, the screen above.
+  "override",
   // unknown: the request ended without evidence either way. `bound` also refuses: an S0 past its own
   // bound (2 reads, 1200 ms) ends `refused(bound)`, since nothing was written yet.
   "bound",
@@ -507,6 +512,9 @@ export function offersFor(outcome: SendOutcome, reason: SendReason | undefined, 
   if (outcome === "refused" && reason === "draft_present") return framed ? (command ? ["replace", "cancel"] : ["append", "replace", "cancel"]) : ["keys"];
   if (outcome === "refused" && reason === "unconfirmed") return ["commit", "keys"];
   // Every reason: the person reads the screen and decides; with no frame the bridge binds both to the rows hash.
+  // An override's text sits on a screen Collie cannot read: no Submit and no Discard Collie would press
+  // blind; the person's own Enter on the Keys pad is the way (M102 spec 12).
+  if (outcome === "typed_not_submitted" && reason === "override") return ["keys"];
   if (outcome === "typed_not_submitted") return ["submit", "discard", "keys"];
   if (outcome === "refused" || outcome === "unknown") return ["keys"];
   return [];

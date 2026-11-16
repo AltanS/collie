@@ -386,6 +386,20 @@ describe("unread card: your Keys pad (M102 spec 03)", () => {
     }
   });
 
+  it("unread card: an Enter cap asks a second tap, as the declared key does, and the arrows do not", async () => {
+    let board = DEFAULT_BOARD;
+    for (let cell = 0; cell < board.cells.length; cell++) board = setCell(board, cell, null);
+    setKeyBoard(board);
+    const { onPadKeys } = mount();
+    const user = userEvent.setup();
+    await user.click(caps().find((b) => b.getAttribute("aria-label") === "Enter")!);
+    expect(onPadKeys).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /^Tap again to send / }));
+    expect(onPadKeys).toHaveBeenCalledExactlyOnceWith(["Enter"]);
+    await user.click(caps().find((b) => b.getAttribute("aria-label") === "Down")!);
+    expect(onPadKeys).toHaveBeenLastCalledWith(["Down"]);
+  });
+
   it("unread card: Type it anyway opens the composer's one send; the declared key keeps its second tap", async () => {
     const { onTypeAnyway } = mount();
     await userEvent.setup().click(screen.getByRole("button", { name: "Type it anyway" }));

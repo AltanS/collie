@@ -854,6 +854,25 @@ describe("NavTray — operator preset rows", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("unread card: while it is open, Enter asks a second tap, and only the second tap sends (M102 spec 03)", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const { rerender } = render(<NavTray onSend={onSend} confirmEnter />);
+    await user.click(screen.getByRole("button", { name: "Enter" }));
+    expect(onSend).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Enter, tap again to send" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["Enter"]);
+    // The arrows stay one tap: only Enter can confirm a menu's default.
+    onSend.mockClear();
+    await user.click(screen.getByRole("button", { name: "Up" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["Up"]);
+    // With no card, Enter is one tap again.
+    onSend.mockClear();
+    rerender(<NavTray onSend={onSend} />);
+    await user.click(screen.getByRole("button", { name: "Enter" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["Enter"]);
+  });
+
   describe("a modifier key made in the editor", () => {
     // What the builder saves: a plain `{kind:"mod"}`, here two cells wide in a free spot of row 2.
     const withMod = boardOf(2, [

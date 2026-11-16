@@ -6270,6 +6270,50 @@ describe("the unread card (M102 spec 03)", () => {
     expect(recordedSends()[1]).toMatchObject({ text: "yes, go on", rowsHash: "0b0e1f", override: true });
   });
 
+  it("unread card: an override that met a menu says so, opens the Keys pad, and stays armed on the screen now", async () => {
+    let n = 0;
+    server.use(
+      ...sendHandler((request) => {
+        n += 1;
+        if (request.mode === "prepare") return sendAnswer(request.id, null, undefined, { rowsHash: "0aaa01" });
+        if (n === 2) return sendAnswer(request.id, "refused", "menu_open", { offers: ["keys"], rowsHash: "0bbb02", surface: UNREAD });
+        return sendAnswer(request.id, "sent");
+      }),
+    );
+    const user = userEvent.setup();
+    const { handle } = renderUnread(null);
+    act(() => handle.current?.typeAnyway());
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    await user.type(screen.getByRole("textbox"), "carry on");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/A menu or a question is on the screen, so nothing was typed/u));
+    expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "true");
+    // The next tap binds to the rows the refusal carried, still with the person's word.
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(3));
+    expect(recordedSends()[2]).toMatchObject({ text: "carry on", rowsHash: "0bbb02", override: true });
+  });
+
+  it("unread card: an override typed with no Enter offers no Submit; the person presses Enter on the pad", async () => {
+    server.use(
+      ...sendHandler((request) =>
+        request.mode === "prepare"
+          ? sendAnswer(request.id, null, undefined, { rowsHash: "0ccc03" })
+          : sendAnswer(request.id, "typed_not_submitted", "override", { offers: ["keys"], surface: UNREAD }),
+      ),
+    );
+    const user = userEvent.setup();
+    const { handle } = renderUnread(null);
+    act(() => handle.current?.typeAnyway());
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    await user.type(screen.getByRole("textbox"), "yes please");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/Collie pressed no Enter\. Check the screen, then press Enter on the Keys pad/u));
+    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "true");
+    expect(recordedSends()).toHaveLength(2);
+  });
+
   it("unread card: a refusal whose step is the screen asks the pane to show the card", async () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "not_free", { offers: ["keys"], surface: { ...UNREAD, modal: "unknown", composer: "unknown" } })));
     const onScreenUnread = vi.fn();

@@ -873,6 +873,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [previewDismissed, setPreviewDismissed] = useState(false);
   // Composer sheets are mutually exclusive — at most one open (Keys / Quick / Agent / Display).
   const [drawer, setDrawer] = useState<ComposerDrawer>(null);
+  // The drawer as it is now, for an answer that arrives after the render its send started in.
+  const drawerRef = useRef<ComposerDrawer>(null);
+  drawerRef.current = drawer;
   // Keys staged in the (unmounted-on-close) NavTray, pushed up so leaving the Keys dock can guard a
   // composed sequence. See requestDrawer.
   const [queuedKeys, setQueuedKeys] = useState(0);
@@ -1105,6 +1108,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the tap, read fresh by a `prepare`. The next send from the field carries it with `override`, so the
   // bridge types only while the screen still hashes the same. One send; any answer disarms it.
   const [overrideHash, setOverrideHash] = useState<string | null>(null);
+  // The send in flight is the one "Type it anyway" armed (not a commit tap's override): only its refusal
+  // re-arms on the rows the bridge read now.
+  const typeAnywaySendRef = useRef(false);
   const direct = useDirectTyping({
     paneKey: `${scopeId}\0${paneId}`,
     inputRef,
@@ -1883,9 +1889,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // hash and the person's word, override, and the armed state goes with this send (M102 spec 03).
       const past = tap === undefined && view === undefined ? overrideHash : null;
       if (past !== null) setOverrideHash(null);
+      typeAnywaySendRef.current = past !== null;
       const sent =
         past !== null
-          ? await sendThroughProtocol(t, isDraft, modeFor(trimmed), past, false, undefined, undefined, undefined, t, true)
+          ? await sendThroughProtocol(t, isDraft, modeFor(trimmed), past, false, undefined, undefined, undefined, t, true).finally(() => {
+              typeAnywaySendRef.current = false;
+            })
           : await sendThroughProtocol(tap === undefined ? t : "", isDraft, tap === undefined ? modeFor(trimmed) : "send", null, false, undefined, view === undefined ? when : undefined, view, t);
       tell(sent ? "sent" : "failed", sent ? null : refusalWordsRef.current);
       return sent;
@@ -2011,6 +2020,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // A screen Collie cannot read: the pane opens its card, with the person's Keys pad and "Type it
       // anyway", instead of a sentence only (M102 spec 03).
       if (reading.step === "screen") onScreenUnread?.();
+      // An override that met a menu, or whose text waits for the person's Enter (M102 spec 12): the Keys
+      // pad opens, unless the person has a drawer open. A refused override carries the screen now and
+      // its hash, so "Type it anyway" stays armed on the rows the card shows next.
+      if (reply.reason === "menu_open" || reading.note === "overrideTyped") {
+        if (drawerRef.current === null) requestDrawer("keys");
+      }
+      if (override && typeAnywaySendRef.current && reply.outcome === "refused" && reply.cap === null && reply.rowsHash !== null) setOverrideHash(reply.rowsHash);
       setSendRefusal(
         returnedDraft && reading.note === "draft" ? { ...refusal, sentence: translate("composer.protocol.draftIsReturned") } : refusal,
         reply.surface ?? shownSurface,
@@ -3085,6 +3101,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               board={keyBoard}
               clearBox={{ available: clearOffered, onClear: clearBox }}
               onQueueChange={setQueuedKeys}
+              // While the card of a screen Collie cannot read is open, Enter asks a second tap (M102 spec 03).
+              confirmEnter={unreadIdentity !== null}
               disabled={!way.keysSendable}
             />
           </ComposerDock>

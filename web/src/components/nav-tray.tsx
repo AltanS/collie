@@ -98,6 +98,12 @@ interface NavTrayProps {
    * everything it renders from its parent, so a test can drive it without a config fetch.
    */
   unsupportedKeys?: readonly string[];
+  /**
+   * Enter asks a second tap, as Ctrl+D does (M102 spec 03): while a card for a screen Collie cannot
+   * read is open, the pad opened by itself next to the thumb, and Enter there may confirm a menu's
+   * highlighted default ("Yes"). The person's own second tap is the decision.
+   */
+  confirmEnter?: boolean;
 }
 
 /** Stable default so an omitted prop never re-renders the pad. */
@@ -149,6 +155,7 @@ export function NavTray({
   disabled,
   clearBox,
   unsupportedKeys = NO_REFUSED_KEYS,
+  confirmEnter = false,
 }: NavTrayProps) {
   useLocale();
   const [open, setOpen] = useState<OpenPanel>(null);
@@ -397,7 +404,7 @@ export function NavTray({
           only !== undefined && REPEATS.has(only),
           cn("w-full", KEY_TAP_TARGET, tall(key)),
           isEnter ? "bg-primary/15 border-primary/40" : undefined,
-          needsSecondTap(key),
+          needsSecondTap(key) || (confirmEnter && key.steps.includes("Enter")),
           areaCss(cell, key),
         )}
       </Fragment>
