@@ -2975,7 +2975,7 @@ describe("the lead's tricks at a handover (CREW_PROTOCOL §25)", () => {
     const lines: AuditEntry[] = [];
     const tricks = new StandbyTricksStore(deputy.stateDir);
     const hill = new StandbyHillStore(deputy.stateDir);
-    await adoptAtBoot({ stateDir: deputy.stateDir, configDir: deputy.configDir, tricks, hill, leads: true, self: "laptop", machine: "laptop", now: () => T0, audit: (e) => void lines.push(e), log: () => {} });
+    await adoptAtBoot({ stateDir: deputy.stateDir, configDir: deputy.configDir, tricks, hill, leads: true, self: "laptop", machine: "laptop", now: () => T0, audit: (e) => void lines.push(e), log: () => {}, followSkill: null });
     const switches = parseSwitches(await readFile(switchesPath(deputy.stateDir), "utf8")).switches;
     expect(switches.on.get("legs")).toMatchObject({ by: "handover", from: "desk", auto: true });
     expect(new HillStore(hillDir(deputy.stateDir)).get("dc_carried00001")?.state).toBe("open");

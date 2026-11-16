@@ -15,7 +15,7 @@ import { readDecision } from "../bridge/hill/parse.ts";
 import { HILL_MAX_EXPIRY_DAYS, HILL_MAX_EXPIRY_MS, HILL_STATE_ON_LEAD } from "../bridge/hill/service.ts";
 import { deriveMode } from "../bridge/crew/mode.ts";
 import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
-import { readHillSwitch, writeHillSwitch } from "../bridge/hill/switch.ts";
+import { readHillSwitch, setHillSwitch, type SwitchFollower } from "../bridge/hill/switch.ts";
 import { hillCrewStatePath, readHillCrewState, writeHillCrewState } from "../bridge/hill/crew-state.ts";
 import { readCrewStateView } from "../bridge/hill/crew.ts";
 import { parseAddress } from "../bridge/walky/address.ts";
@@ -797,9 +797,15 @@ export const HILL_ON_WORDS = "The Hill is on. Agents and tricks can ask you agai
 /**
  * `hill on|off`: the Hill's switch for this Collie (bridge/hill/switch.ts). Written straight into this
  * instance's state folder, as `collie trick on|off` writes the tricks' switch; the running bridge reads
- * it again within seconds, with no restart. Works with no bridge running.
+ * it again within seconds, with no restart. Works with no bridge running. A real change lets the
+ * WalkyTalky skill follow (`followSkill`, cli/skill-install.ts `skillFollowsSwitch`); a fault of that is
+ * one line on stderr and does not change the exit.
  */
-export function cmdHillSwitch(deps: Pick<HillDeps, "ctx" | "io" | "now">, verb: "on" | "off", args: readonly string[]): number {
+export function cmdHillSwitch(
+  deps: Pick<HillDeps, "ctx" | "io" | "now"> & { readonly followSkill: SwitchFollower | null },
+  verb: "on" | "off",
+  args: readonly string[],
+): number {
   const unknown = args.find((arg) => arg !== "--json");
   if (unknown !== undefined) {
     deps.io.err(`error: unknown argument \`${unknown}\``);
@@ -815,7 +821,7 @@ export function cmdHillSwitch(deps: Pick<HillDeps, "ctx" | "io" | "now">, verb: 
     return EXIT.OK;
   }
   try {
-    writeHillSwitch(deps.ctx.stateDir, on, (deps.now ?? Date.now)());
+    setHillSwitch(deps.ctx.stateDir, on, { now: (deps.now ?? Date.now)(), follow: deps.followSkill, warn: (line) => deps.io.err(`hill: ${line}`) });
   } catch (err) {
     deps.io.err(`hill: could not write the switch in ${deps.ctx.stateDir}: ${err instanceof Error ? err.message : String(err)}`);
     return EXIT.FAIL;

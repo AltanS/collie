@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { dirname, isAbsolute, join } from "node:path";
 
+import { hillSwitchPath, parseHillSwitch, type SwitchFollower } from "../bridge/hill/switch.ts";
 import { WALKY_TALKY_SKILL_TEMPLATE } from "./docs-embed.ts";
 import { type CliContext, collieVersion } from "./context.ts";
 import { claudeSettingsTargets, realpathVia, resolveHookCommand } from "./hooks.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { LinkReader } from "./link.ts";
-import { recoveryOf, type SyncResult, syncLines } from "./skill-sync-result.ts";
+import { recoveryOf, type SyncResult, skillSyncEnabled, syncLines } from "./skill-sync-result.ts";
 import type { Files } from "./sys.ts";
 
 // `collie skill install|uninstall|sync|status [--check]|print` — putting the walky talky skill into the
@@ -14,11 +15,23 @@ import type { Files } from "./sys.ts";
 //
 // It is the same shape as `collie hooks install` (cli/hooks.ts), and it borrows that file's guards:
 //
-//  - ONLY THE SKILL VERBS AND THE UPDATE WRITE. `collie skill install` and `collie skill sync` write a
-//    harness file, and every successful `collie update` (rollback and switch included) runs `skill
-//    sync` through the new binary (ADR 0111). No bridge start, and no other verb, touches one.
-//    `collie skill uninstall` leaves a marker under the state dir, so the next sync leaves that
-//    target out.
+//  - ONLY THE SKILL VERBS, THE UPDATE AND A CHANGE OF THE HILL'S SWITCH WRITE. `collie skill install`
+//    and `collie skill sync` write a harness file, and every successful `collie update` (rollback and
+//    switch included) runs `skill sync` through the new binary (ADR 0111). Since 2026-11-16 (M96 spec
+//    12, ADR 0111's addendum) a real change of this instance's Hill switch runs the same sync: the
+//    phone's `POST /api/hill/switch` and the takeover's adopt spawn this build's own `skill sync
+//    --json` from the bridge (bridge/hill/skill-follow.ts), and `collie hill on|off` calls
+//    {@link syncSkills} in its own process ({@link skillFollowsSwitch}). A write of the same value, and a
+//    bridge start, write nothing. No other verb touches a harness file. `collie skill uninstall` leaves
+//    a marker under the state dir, so the next sync, this one included, leaves that target out.
+//  - THE HILL'S WORDS FOLLOW THE SWITCH. The template's Hill parts sit between `{{HILL}}` and
+//    `{{/HILL}}`, inline in the description and as marker lines around the Hill section. On keeps them,
+//    and the text is the one of before the markers; off cuts them, so an agent's context holds no Hill
+//    word while the Hill is off. `status`, `--check`, `doctor` and `print` render for the switch as it
+//    reads now, so a switch never turns them red. A running agent keeps the description it loaded; the
+//    change reaches the sessions started after it.
+//  - KNOWN LIMIT (true before the switch too): two instances on one machine share one skill file per
+//    harness, and the instance that synced last decides its text, its binary path and now its Hill part.
 //  - A SYMLINKED FILE IS REFUSED, an unreadable one too. A rename onto a symlink replaces the link
 //    (home-manager's read-only store profile). A symlinked DIRECTORY resolves, as in hooks.
 //  - ONE `.collie-backup` BEFORE THE FIRST CHANGE, temp file plus rename, and a second install changes
@@ -62,13 +75,43 @@ const STAMP_LINE = /^<!-- collie-skill walky-talky v\d+ .*-->[ \t]*$/mu;
 /** The skill's own name, which is the folder Claude Code reads it from. */
 export const SKILL_NAME = "collie-walky-talky";
 
-/** The embedded template with `{{COLLIE_BIN}}` and `{{COLLIE_VERSION}}` resolved. Front matter included. */
-export function renderWalkySkill(ctx: CliContext, fs: LinkReader): string {
+/** A Hill part that fills whole lines: the marker lines go in both states, the lines between only when off. */
+const HILL_LINES = /^\{\{HILL\}\}\n([\s\S]*?)^\{\{\/HILL\}\}\n/gmu;
+/** A Hill part inside one line (the description's words). */
+const HILL_WORDS = /\{\{HILL\}\}([\s\S]*?)\{\{\/HILL\}\}/gu;
+
+/**
+ * The template's Hill parts kept (on) or cut (off). With the Hill on the text is byte for byte the text of
+ * before the markers; with it off no Hill word is left, in the description or the body (M96 spec 12).
+ */
+function withHill(template: string, hillOn: boolean): string {
+  return template.replace(HILL_LINES, hillOn ? "$1" : "").replace(HILL_WORDS, hillOn ? "$1" : "");
+}
+
+/**
+ * The embedded template with `{{COLLIE_BIN}}` and `{{COLLIE_VERSION}}` resolved and its Hill parts kept or
+ * cut for `hillOn`. Front matter included.
+ */
+export function renderWalkySkill(ctx: CliContext, fs: LinkReader, hillOn: boolean): string {
   const binary = resolveHookCommand(ctx, fs).binary;
   const version = collieVersion(ctx.root);
-  return WALKY_TALKY_SKILL_TEMPLATE.replaceAll("{{COLLIE_BIN}}", binary)
+  return withHill(WALKY_TALKY_SKILL_TEMPLATE, hillOn)
+    .replaceAll("{{COLLIE_BIN}}", binary)
     .replaceAll("{{COLLIE_VERSION}}", version)
     .replace(/\n+$/u, "\n");
+}
+
+/**
+ * This instance's Hill switch, read through the injected files: on only when the file says on. No file,
+ * an unreadable file or a damaged one reads off, as the bridge reads it on a lead (bridge/hill/switch.ts).
+ */
+export function hillIsOn(deps: Pick<SkillReadDeps, "ctx" | "files">): boolean {
+  return parseHillSwitch(deps.files.read(hillSwitchPath(deps.ctx.stateDir))).on;
+}
+
+/** The text for this build and the switch as it reads now: what every verb compares and writes. */
+export function renderedNow(deps: SkillReadDeps): string {
+  return renderWalkySkill(deps.ctx, deps.fs, hillIsOn(deps));
 }
 
 /** The text without its `---` front matter: what a harness reads inside an instruction file. */
@@ -405,7 +448,7 @@ export interface SkillReport {
 
 /** Every target's verdict. The one reading `status`, `--check` and `doctor` all use. */
 export function skillReport(deps: SkillReadDeps): SkillReport[] {
-  const rendered = renderWalkySkill(deps.ctx, deps.fs);
+  const rendered = renderedNow(deps);
   return skillFiles(deps.ctx).map((file) => ({ file, state: skillState(deps, file, rendered), legacy: legacyState(deps, file) }));
 }
 
@@ -536,7 +579,7 @@ function updateUninstalled(files: Files, stateDir: string, add: readonly string[
 
 /** What `sync` decided and did. `failed` is an unexpected I/O error: the verb exits 1 on it. */
 export function syncSkills(deps: SkillReadDeps, dryRun: boolean): SyncResult & { failed: boolean } {
-  const rendered = renderWalkySkill(deps.ctx, deps.fs);
+  const rendered = renderedNow(deps);
   const uninstalled = readUninstalled(deps.files, deps.ctx.stateDir);
   const result: SyncResult & { failed: boolean } = { changed: [], refused: [], skipped: [], failed: false };
   for (const file of skillFiles(deps.ctx)) {
@@ -613,6 +656,24 @@ function syncLegacy(deps: SkillReadDeps, harness: string, legacy: LegacyState, d
 }
 
 /**
+ * What `collie hill on|off` runs after a real change of the switch (M96 spec 12): {@link syncSkills} in
+ * this process, the very path of `collie skill sync`, with its lines on stderr, so `--json` stays one
+ * document. `COLLIE_SKILL_SYNC=off` keeps the files as they are and says so, as the update does. A sync
+ * that could not write throws, and the switch's own writer turns that into one line.
+ */
+export function skillFollowsSwitch(deps: SkillDeps): SwitchFollower {
+  return () => {
+    if (!skillSyncEnabled(deps.ctx.env.COLLIE_SKILL_SYNC)) {
+      deps.io.err("note: COLLIE_SKILL_SYNC is off, so the WalkyTalky skill did not follow the switch; run `collie skill sync`.");
+      return;
+    }
+    const { failed, ...result } = syncSkills(deps, false);
+    for (const line of syncLines(result)) deps.io.err(line);
+    if (failed) throw new Error("a skill file could not be written; run `collie skill sync`");
+  };
+}
+
+/**
  * `collie skill sync [--json] [--dry-run]` — idempotent: a second run prints nothing. Exit 0 always,
  * a refusal included, except an unexpected I/O error (exit 1). `--json` prints the whole result.
  */
@@ -667,7 +728,7 @@ export function cmdSkillInstall(deps: SkillDeps, args: readonly string[]): numbe
   const harnesses = chooseHarnesses(deps, "install", args, false);
   if (harnesses === null) return EXIT.USAGE;
   const everything = args.includes("all");
-  const rendered = renderWalkySkill(deps.ctx, deps.fs);
+  const rendered = renderedNow(deps);
   let failed = false;
   let wrote = 0;
   // Asking for a harness by name, or for `all`, takes back an earlier uninstall: sync follows it again.
@@ -830,7 +891,7 @@ export function cmdSkillStatus(deps: SkillDeps, args: readonly string[] = []): n
 /** `collie skill print <harness|all>` — the text an install would write, to stdout. */
 export function cmdSkillPrint(deps: SkillDeps, args: readonly string[]): number {
   const name = args.find((a) => !a.startsWith("-"));
-  const rendered = renderWalkySkill(deps.ctx, deps.fs);
+  const rendered = renderedNow(deps);
   const emit = (text: string): void => {
     for (const line of text.replace(/\n+$/u, "").split("\n")) deps.io.out(line);
   };

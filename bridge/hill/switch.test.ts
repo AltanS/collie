@@ -74,7 +74,7 @@ function rig(): Rig {
   const taps: string[] = [];
   const state = { pushes, audit, sent, taps, clock: 1000 };
   const store = new HillStore(null, () => state.clock);
-  const sw = new HillSwitch(dir, () => undefined, () => state.clock);
+  const sw = new HillSwitch(dir, null, () => undefined, () => state.clock);
   const hill = new HillService({
     store,
     receipts: memoryHillReceipts(),
@@ -127,7 +127,7 @@ describe("the switch file", () => {
   test("the bridge's reader follows a write by another process, with no restart, and warns once for a file that does not read", () => {
     const dir = stateDir();
     const warnings: string[] = [];
-    const sw = new HillSwitch(dir, (line) => warnings.push(line));
+    const sw = new HillSwitch(dir, null, (line) => warnings.push(line));
     expect(sw.reading()).toBe("unset");
     expect(sw.on()).toBe(false);
     writeHillSwitch(dir, true);
@@ -146,7 +146,7 @@ describe("the switch file", () => {
 
   test("three readings: no file is unset and reads as off; a written file is on or off; a removed file is unset again", () => {
     const dir = stateDir();
-    const sw = new HillSwitch(dir, () => undefined);
+    const sw = new HillSwitch(dir, null, () => undefined);
     expect(sw.reading()).toBe("unset");
     expect(sw.on()).toBe(false);
     expect(sw.set(true)).toBe(true);
@@ -159,7 +159,7 @@ describe("the switch file", () => {
 
   test("set writes the value and answers true once the reading follows", () => {
     const dir = stateDir();
-    const sw = new HillSwitch(dir, () => undefined);
+    const sw = new HillSwitch(dir, null, () => undefined);
     expect(sw.set(false)).toBe(true);
     expect(sw.on()).toBe(false);
     expect(readHillSwitch(dir).on).toBe(false);

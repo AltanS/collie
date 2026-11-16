@@ -14,7 +14,7 @@ import { HillPush } from "../hill/push.ts";
 import { memoryHillReceipts } from "../hill/receipts.ts";
 import { HILL_DEPOSED, HillService } from "../hill/service.ts";
 import { hillDir, HillStore } from "../hill/store.ts";
-import { hillSwitchPath } from "../hill/switch.ts";
+import { hillSwitchPath, readHillSwitch, writeHillSwitch } from "../hill/switch.ts";
 import { HillCrewStateFile, readHillCrewState, writeHillCrewState } from "../hill/crew-state.ts";
 import { TRICKS_MAP_FILE } from "../tricks/hill.ts";
 import { hillCarryRoutes } from "./carry-surface.ts";
@@ -214,7 +214,7 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
 
   test("an agent's Decision keeps its id and its picture, and no push goes out", async () => {
     const { deputy, copy } = await carried([agent(1, { media: [MEDIA] })]);
-    const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
+    const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0, followSkill: null, log: () => {} });
     expect(result).toEqual({ open: 1, closed: 0, dropped: 0 });
     const held = deputy.store.get(agent(1).id);
     expect(held?.state).toBe("open");
@@ -228,7 +228,7 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
   test("a picture that did not come along leaves a line on the card", async () => {
     const { deputy, copy } = await carried([agent(1, { media: [MEDIA], body: "Look at this." })]);
     await writeFile(join(copy.dir, "media", agent(1).id, MEDIA.id), new Uint8Array([1, 2, 3]));
-    await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
+    await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0, followSkill: null, log: () => {} });
     const held = deputy.store.get(agent(1).id);
     expect(held?.media).toEqual([]);
     expect(held?.body).toBe(`Look at this.\n\n${pictureStayed("desk")}`);
@@ -237,7 +237,7 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
   test("a trick that did not start closes with its reason; a started trick's Decision moves here; only the carried notice of Collie's own comes", async () => {
     const tricks: JsonObject = { legs: { gen: 0, keys: { k: { decisionId: trickCard("legs", 3).id, hash: "abc", state: "open", seq: 0 } } } };
     const { deputy, copy } = await carried([collieCard("version", 1), collieCard("proposal", 2), trickCard("legs", 3), trickCard("gone", 4), collieCard("carried", 5)], { tricks });
-    const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(["legs"]), stateDir: deputy.m.stateDir, now: () => T0 });
+    const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(["legs"]), stateDir: deputy.m.stateDir, now: () => T0, followSkill: null, log: () => {} });
     expect(result).toEqual({ open: 2, closed: 1, dropped: 2 });
     const reason = (id: string) => [deputy.store.get(id)?.state, deputy.store.get(id)?.closedReason];
     // A new version card and a proposal card never cross: their files stay on the lead.
@@ -253,29 +253,48 @@ describe("the takeover tap brings the open Decisions along (§25)", () => {
 
   test("a lead with no switch file carries off: the Decisions still move, and no switch file is written on the deputy", async () => {
     const { deputy, copy } = await carried([agent(1)], { on: false });
-    const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
+    const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0, followSkill: null, log: () => {} });
     expect(result).toEqual({ open: 1, closed: 0, dropped: 0 });
     expect(deputy.store.get(agent(1).id)?.state).toBe("open");
     expect(existsSync(hillSwitchPath(deputy.m.stateDir))).toBe(false);
   });
 
+  test("the carried on turns the Hill on here and the WalkyTalky skill follows once; a switch this machine holds stays and syncs nothing (M96 spec 12)", async () => {
+    const followed: boolean[] = [];
+    const lines: string[] = [];
+    const opts = { lead: "desk", self: "laptop", machine: "laptop", started: new Set<string>(), now: () => T0, followSkill: (on: boolean) => void followed.push(on), log: (line: string) => void lines.push(line) };
+    const first = await carried([agent(1)]);
+    await adoptCarriedHill({ ...opts, store: first.copy, hill: first.deputy.hill, stateDir: first.deputy.m.stateDir });
+    expect(followed).toEqual([true]);
+    const own = await carried([agent(2)]);
+    writeHillSwitch(own.deputy.m.stateDir, false);
+    await adoptCarriedHill({ ...opts, store: own.copy, hill: own.deputy.hill, stateDir: own.deputy.m.stateDir });
+    expect(followed).toEqual([true]);
+    // A sync that throws is one line, and the adopt still turns the Hill on.
+    const broken = await carried([agent(3)]);
+    const result = await adoptCarriedHill({ ...opts, store: broken.copy, hill: broken.deputy.hill, stateDir: broken.deputy.m.stateDir, followSkill: () => { throw new Error("EIO"); } });
+    expect(result.open).toBe(1);
+    expect(readHillSwitch(broken.deputy.m.stateDir)).toEqual({ on: true, problem: null });
+    expect(lines).toEqual(["[hill] the WalkyTalky skill did not follow the switch: EIO"]);
+  });
+
   test("an id this Hill already holds is left as it is here", async () => {
     const { deputy, copy } = await carried([agent(1, { title: "From the lead" })]);
     deputy.store.put(agent(1, { title: "Mine", state: "answered", closedAt: T0 }));
-    await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
+    await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0, followSkill: null, log: () => {} });
     expect(deputy.store.get(agent(1).id)).toMatchObject({ title: "Mine", state: "answered" });
   });
 
   test("a copy from another lead brings nothing", async () => {
     const { deputy, copy } = await carried([agent(1)]);
-    expect(await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "attic", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 })).toEqual({ open: 0, closed: 0, dropped: 0 });
+    expect(await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "attic", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0, followSkill: null, log: () => {} })).toEqual({ open: 0, closed: 0, dropped: 0 });
   });
 
   test("a forged Collie card with an acting answer never lands: only the carried notice with its one OK is a Collie card from the wire", async () => {
     const approve = [{ intent: "approve", label: "Approve" }];
     const { deputy, copy } = await carried([collieCard("version", 7, approve), collieCard("carried", 8, approve), collieCard("carried", 9, [...approve, { intent: "ok", label: "OK" }]), collieCard("carried", 10)]);
     expect((await copy.load())?.dropped).toBe(3);
-    const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
+    const result = await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0, followSkill: null, log: () => {} });
     expect(result).toEqual({ open: 1, closed: 0, dropped: 3 });
     for (const n of [7, 8, 9]) expect(deputy.store.get(collieCard("carried", n).id)).toBeUndefined();
     expect(deputy.store.get(collieCard("carried", 10).id)?.state).toBe("open");
@@ -353,7 +372,7 @@ describe("the crew state crosses with the Hill copy (1.29.0)", () => {
     const routes = hillCarryRoutes(copy);
     writeHillCrewState(deputy.m.stateDir, { state: "here", by: "terminal" }, T0 - 50_000);
     await routes.handle(CREW_HILL_COPY_PATH, { from: "desk", crewId: "crew-1" }, { seq: 1, on: true, decisions: [], closed: [], tricks: {}, crewState: { state: "away", at: T0 - 9, by: "Pixel 9" } });
-    await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
+    await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0, followSkill: null, log: () => {} });
     expect(readHillCrewState(deputy.m.stateDir).view).toEqual({ state: "away", at: T0 - 9, by: "Pixel 9", told: null });
   });
 
@@ -365,7 +384,7 @@ describe("the crew state crosses with the Hill copy (1.29.0)", () => {
       if (own) writeHillCrewState(deputy.m.stateDir, { state: "quiet", by: "terminal" }, T0 - 5);
       await routes.handle(CREW_HILL_COPY_PATH, { from: "desk", crewId: "crew-1" }, { seq: 1, on: true, decisions: [], closed: [], tricks: {}, crewState: { state: "away", at: T0 - 9, by: "Pixel 9" } });
       expect((await copy.load())?.crewState).toEqual({ state: "away", at: T0 - 9, by: "Pixel 9" });
-      await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0 });
+      await adoptCarriedHill({ store: copy, hill: deputy.hill, lead: "desk", self: "laptop", machine: "laptop", started: new Set(), stateDir: deputy.m.stateDir, now: () => T0, followSkill: null, log: () => {} });
       expect(readHillCrewState(deputy.m.stateDir).view).toEqual(own ? { state: "quiet", at: T0 - 5, by: "terminal", told: null } : { state: "away", at: T0 - 9, by: "Pixel 9", told: null });
     }
   });

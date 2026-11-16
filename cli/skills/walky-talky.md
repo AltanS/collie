@@ -1,6 +1,6 @@
 ---
 name: collie-walky-talky
-description: Send a short message to another agent session, or read one sent to you, with Collie's WalkyTalky. Use it when you need to tell, ask or answer another agent, when a prompt starts with "[walky-talky wt_", or when the operator mentions WalkyTalky. Also for hill Decisions and tricks.
+description: Send a short message to another agent session, or read one sent to you, with Collie's WalkyTalky. Use it when you need to tell, ask or answer another agent, when a prompt starts with "[walky-talky wt_", or when the operator mentions WalkyTalky. Also for {{HILL}}hill Decisions and {{/HILL}}tricks.
 ---
 
 # WalkyTalky
@@ -191,6 +191,7 @@ minutes, and a reply chain stops after 4 replies. A refusal says which limit it 
 
 If a send prints `not sent: off`, or the command cannot find a bridge, tell your operator. Do not work around it.
 
+{{HILL}}
 ## Decisions (the hill)
 
 The Hill is off unless your operator switched it on. Use it for a question that can wait: post it, end your turn, and the answer starts your next turn.
@@ -202,6 +203,7 @@ The Hill is off unless your operator switched it on. Use it for a question that 
 
 Rules and flags: {{COLLIE_BIN}} hill --help
 
+{{/HILL}}
 ## Tricks
 
 A trick is a small program in a folder on this machine. It draws a view on your operator's phone. A trick may

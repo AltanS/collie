@@ -7,6 +7,7 @@ import { asJsonNumber, asJsonString, parseJsonObject } from "../../web/src/lib/j
 import { HillMediaStore } from "../hill/media.ts";
 import { adoptCarriedInto } from "../hill/service.ts";
 import { hillDir, HillStore } from "../hill/store.ts";
+import type { SwitchFollower } from "../hill/switch.ts";
 import { adoptCarriedTricks, writeCarryNotices, type AdoptTricksResult } from "./carry-adopt.ts";
 import { adoptCarriedHill, type AdoptHillResult } from "./hill-adopt.ts";
 import type { StandbyHillStore } from "./standby-hill.ts";
@@ -123,6 +124,8 @@ export interface BootAdoptDeps {
   readonly now: () => number;
   readonly audit: (entry: AuditEntry) => void;
   readonly log: (line: string) => void;
+  /** The skill sync when the adopt turns the Hill on here (hill/skill-follow.ts); null where nothing follows. */
+  readonly followSkill: SwitchFollower | null;
 }
 
 export interface BootAdoptResult {
@@ -177,6 +180,8 @@ export async function adoptAtBoot(deps: BootAdoptDeps): Promise<BootAdoptResult 
     started: new Set(tricks.started.map((t) => t.id)),
     stateDir: deps.stateDir,
     now: deps.now,
+    followSkill: deps.followSkill,
+    log: deps.log,
   });
   const from = marker.lead;
   const by = marker.by;

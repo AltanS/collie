@@ -28,6 +28,22 @@ import { hillDir } from "./store.ts";
 //
 // A FILE THAT DOES NOT READ reads as OFF, with one warning per change of the file. An experiment that
 // cannot be read stays shut. It is an explicit off, so a member does not follow its lead past it.
+//
+// THE SKILL FOLLOWS THE SWITCH (M96 spec 12, ADR 0111's addendum of 2026-11-16). The installed WalkyTalky
+// skill holds the Hill's words only while the Hill is on, so every writer goes through {@link
+// setHillSwitch}: the phone's route (through {@link HillSwitch.set}), `collie hill on|off`, and the
+// takeover's adopt (crew/hill-adopt.ts). It writes the file and, only when the value read before differs
+// from the value written, calls the writer's follower once: the bridge spawns its own `skill sync`
+// (hill/skill-follow.ts), the CLI runs the sync in its process (cli/skill-install.ts). The follower gets
+// nothing from a request, and it is never awaited here. A follower that throws is one warning line; the
+// switch is written and its answer stands. A bridge start writes no switch, so it syncs nothing. The
+// skill reads "no file" as off, as a lead does; a crew member with no file has the off text.
+
+/**
+ * What runs after a real change of the switch: the skill sync of the writer's own kind. It must return
+ * at once (a bridge's spawns the sync and does not wait); a throw is caught and logged by the caller.
+ */
+export type SwitchFollower = (on: boolean) => void;
 
 /** The switch file's name inside the hill folder. */
 export const HILL_SWITCH_FILE = "switch.json";
@@ -62,7 +78,8 @@ export function renderHillSwitch(on: boolean, at: string): string {
 
 /**
  * Write the switch: the hill folder at 0700, the file at 0600 through a temp sibling of its own, so a
- * reader never sees half a file. Throws when the folder or the file cannot be written.
+ * reader never sees half a file. Throws when the folder or the file cannot be written. A writer calls
+ * {@link setHillSwitch}, never this, so the skill follows; tests use it to lay a file down.
  */
 export function writeHillSwitch(stateDir: string, on: boolean, now: number = Date.now()): void {
   const dir = hillDir(stateDir);
@@ -73,6 +90,31 @@ export function writeHillSwitch(stateDir: string, on: boolean, now: number = Dat
   writeFileSync(temp, renderHillSwitch(on, new Date(now).toISOString()), { mode: 0o600 });
   chmodSync(temp, 0o600);
   renameSync(temp, path);
+}
+
+export interface SetHillSwitchOptions {
+  readonly now?: number;
+  /** The skill sync of this writer, or null where nothing follows (a test). */
+  readonly follow: SwitchFollower | null;
+  /** Where a follower's fault goes, as one line. */
+  readonly warn: (line: string) => void;
+}
+
+/**
+ * THE ONE WRITE OF THE SWITCH for every writer: write it ({@link writeHillSwitch}, which throws when it
+ * cannot), then, when the value moved, let the skill follow. True when the value moved. The follower's
+ * fault never reaches the caller: the switch is written either way.
+ */
+export function setHillSwitch(stateDir: string, on: boolean, opts: SetHillSwitchOptions): boolean {
+  const before = readHillSwitch(stateDir).on;
+  writeHillSwitch(stateDir, on, opts.now);
+  if (before === on) return false;
+  try {
+    opts.follow?.(on);
+  } catch (err) {
+    opts.warn(`the WalkyTalky skill did not follow the switch: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return true;
 }
 
 /** Read the switch once, with no cache: what `collie hill on|off` checks before it writes. */
@@ -96,6 +138,8 @@ export class HillSwitch {
 
   constructor(
     private readonly stateDir: string,
+    /** The bridge's skill sync after a real change (hill/skill-follow.ts); null where nothing follows. */
+    private readonly follow: SwitchFollower | null,
     private readonly warn: (line: string) => void = (line) => console.warn(`[hill] ${line}`),
     private readonly now: () => number = Date.now,
   ) {}
@@ -128,10 +172,13 @@ export class HillSwitch {
     return this.current;
   }
 
-  /** Set the switch. True when the file was written; the reading follows the file either way. */
+  /**
+   * Set the switch. True when the file was written; the reading follows the file either way. A real
+   * change starts the skill sync and does not wait for it ({@link setHillSwitch}).
+   */
   set(on: boolean): boolean {
     try {
-      writeHillSwitch(this.stateDir, on, this.now());
+      setHillSwitch(this.stateDir, on, { now: this.now(), follow: this.follow, warn: this.warn });
     } catch (err) {
       this.warn(`could not write ${hillSwitchPath(this.stateDir)}: ${err instanceof Error ? err.message : String(err)}`);
       return false;

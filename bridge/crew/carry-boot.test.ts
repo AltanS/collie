@@ -119,7 +119,7 @@ describe("the boot after the tap adopts both copies (§25)", () => {
   const T0 = 1_762_000_000_000;
   function boot(c: Awaited<ReturnType<typeof deputyWithCopies>>, over: Partial<BootAdoptDeps> = {}) {
     const lines: AuditEntry[] = [];
-    const deps: BootAdoptDeps = { stateDir: c.deputy.stateDir, configDir: c.deputy.configDir, tricks: c.tricks, hill: c.hill, leads: true, self: "laptop", machine: "laptop", now: () => T0, audit: (e) => void lines.push(e), log: () => {}, ...over };
+    const deps: BootAdoptDeps = { stateDir: c.deputy.stateDir, configDir: c.deputy.configDir, tricks: c.tricks, hill: c.hill, leads: true, self: "laptop", machine: "laptop", now: () => T0, audit: (e) => void lines.push(e), log: () => {}, followSkill: null, ...over };
     return { lines, run: () => adoptAtBoot(deps) };
   }
 

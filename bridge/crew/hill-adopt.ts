@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 
 import { HILL_BODY_MAX, type HillDecision } from "../../web/src/lib/hill/wire.ts";
 import type { HillMediaFile } from "../hill/media.ts";
-import { hillSwitchPath, writeHillSwitch } from "../hill/switch.ts";
+import { hillSwitchPath, setHillSwitch, type SwitchFollower } from "../hill/switch.ts";
 import { readHillCrewState, writeHillCrewState } from "../hill/crew-state.ts";
 import { mergeCarriedMap } from "../tricks/hill.ts";
 import type { StandbyHillStore } from "./standby-hill.ts";
@@ -42,6 +42,10 @@ export interface AdoptHillOptions {
   readonly started: ReadonlySet<string>;
   readonly stateDir: string;
   readonly now: () => number;
+  /** The skill sync when the carried switch turns the Hill on here; null where nothing follows. */
+  readonly followSkill: SwitchFollower | null;
+  /** Where a fault of that sync goes, as one line. */
+  readonly log: (line: string) => void;
 }
 
 export interface AdoptHillResult {
@@ -97,7 +101,11 @@ export async function adoptCarriedHill(opts: AdoptHillOptions): Promise<AdoptHil
   // carried value is a plain boolean: a lead with no switch file (unset, off by default) carries off. A
   // carried off writes nothing, because a lead with no file reads off already, and a file would turn the
   // deputy's "follow the lead" (the unset reading of a crew member) into an explicit off.
-  if (index.on && !existsSync(hillSwitchPath(opts.stateDir))) writeHillSwitch(opts.stateDir, true, at);
+  // Through the one writer (hill/switch.ts `setHillSwitch`): no file read off, so this is a real change and
+  // the WalkyTalky skill follows it.
+  if (index.on && !existsSync(hillSwitchPath(opts.stateDir))) {
+    setHillSwitch(opts.stateDir, true, { now: at, follow: opts.followSkill, warn: (line) => opts.log(`[hill] ${line}`) });
+  }
   // The crew state too (1.29.0), with the lead's time and setter, so "Tell all sessions now" is offered
   // again here for a quiet or away the sessions of this machine were never told of. The newer one wins:
   // a file this machine kept from its own days as a lead is stale beside the lead's (C-N2, review 8).
