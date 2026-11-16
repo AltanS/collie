@@ -1747,6 +1747,23 @@ svg[data-mark].mark-steps .ct-tw {
   }
 }
 
+/* THE STOP'S HOLD (components/harness-bar.tsx `ScreenStop`). While a finger holds the belt's Stop, a
+   tinted layer opens from the start edge to the end edge over the time left to the Stop (the hook sets
+   `animation-duration` inline), so the button is a clock: full means stopped. A clip, never a box
+   change (DESIGN.md §2). Linear, and kept under reduced motion, because it is the only thing that says
+   how long to hold. */
+.stop-hold-fill {
+  animation: stop-hold-fill 1750ms linear both;
+}
+@keyframes stop-hold-fill {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
 /* A CHAT BLOCK ON A TOUCH SCREEN (components/stream-block.tsx, lib/block-select.ts). A pinnable block takes no text
    selection and raises no callout at rest, so a phone's browser starts no selection at its own long-press mark and
    cancels no pointer, and the block's 650ms hold opens its actions sheet every time. The sheet's Select text marks one

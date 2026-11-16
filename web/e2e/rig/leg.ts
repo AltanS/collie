@@ -435,12 +435,25 @@ export function answerWords(answer: Answer): string {
  * Tap once and collect the bridge's answers: wait up to `answerMs` for the first answer, then until
  * no new answer came for `quietMs`. A tap that sends nothing (a local toggle) returns no answers.
  */
-export async function tap(recorder: TapRecorder, target: Locator, label: string, opts: { answerMs?: number; quietMs?: number; expectAnswer?: boolean; screenStillMs?: number | null } = {}): Promise<TapLog> {
+export async function tap(recorder: TapRecorder, target: Locator, label: string, opts: AnswerWait = {}): Promise<TapLog> {
   const t0 = Date.now();
   await target.tap();
+  return answered(recorder, t0, label, opts);
+}
+
+/** How long a tap or a hold waits for the bridge's answers. */
+export interface AnswerWait {
+  answerMs?: number;
+  quietMs?: number;
+  expectAnswer?: boolean;
+  screenStillMs?: number | null;
+}
+
+/** The answers the bridge gave since `t0`: up to `answerMs` for the first, then until none came for `quietMs`. */
+async function answered(recorder: TapRecorder, t0: number, label: string, opts: AnswerWait): Promise<TapLog> {
   const answerMs = opts.answerMs ?? (opts.expectAnswer === false ? 800 : 10_000);
   const quietMs = opts.quietMs ?? 900;
-  const end = t0 + answerMs;
+  const end = Date.now() + answerMs;
   while (recorder.since(t0).length === 0 && Date.now() < end) await sleep(100);
   let count = recorder.since(t0).length;
   let quietSince = Date.now();
@@ -514,6 +527,17 @@ export async function hold(page: Page, target: Locator, label: string, ms = 800)
   }
   const row: TapLog = { label, at: new Date(t0).toISOString(), answers: [], worked: true, screenStillMs: null };
   return settled ? row : { ...row, note: `the target still moved after ${String(SETTLE_CAP_MS)} ms; held at its last box` };
+}
+
+/**
+ * Press and hold for `ms`, then collect the bridge's answers as `tap()` does: the belt's Stop, which
+ * posts its abort at the end of a two-second hold (`STOP_HOLD_MS`, web/src/lib/arm.ts).
+ */
+export async function holdFor(page: Page, recorder: TapRecorder, target: Locator, label: string, ms: number, opts: AnswerWait = {}): Promise<TapLog> {
+  const t0 = Date.now();
+  const held = await hold(page, target, label, ms);
+  const row = await answered(recorder, t0, label, opts);
+  return held.note === undefined ? row : { ...row, note: held.note };
 }
 
 export function tapWords(log: TapLog): string {

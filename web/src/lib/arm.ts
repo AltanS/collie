@@ -11,3 +11,13 @@ export const ARM_MS = 4000;
  * disarm. The belt's Stop reads it.
  */
 export const ARM_DWELL_MS = 400;
+
+/**
+ * How long a finger rests on the belt's Stop before the turn is stopped (2026-11-16). The two-tap arm
+ * read as a dead button ("Stop?" did not say "tap me again"), so a touch or a mouse now HOLDS: the
+ * button fills over this long and stops at the end of the fill. Lifting earlier stops nothing.
+ */
+export const STOP_HOLD_MS = 2000;
+
+/** How long the Stop says "Hold" after a tap that was lifted too early. */
+export const STOP_HINT_MS = 2500;

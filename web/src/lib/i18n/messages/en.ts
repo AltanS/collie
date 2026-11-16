@@ -1659,6 +1659,7 @@ export const en = {
   "belt.jobs.exit": "Exit code {code}",
   "belt.stop": "Stop",
   "belt.stopArmed": "Stop?",
+  "belt.stopHold": "Hold",
   "belt.stopAria": "Stop the turn",
   "belt.stopArmedAria": "Tap again to stop the turn",
   "belt.stop.receipt.stopped": "Stopped.",
@@ -3907,6 +3908,7 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.waiting.title",
   "home.trickWaits.line",
   "home.trickWaits.open",
+  "belt.stopHold",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
