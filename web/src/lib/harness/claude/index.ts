@@ -24,6 +24,7 @@ import { detectAbovePromptNotice } from "./above-prompt-notice";
 import { detectAuthBox } from "./auth-box";
 import { detectLoginMethodsRegion } from "./login-methods";
 import { detectFirstRunThemeRegion } from "./first-run-theme";
+import { detectFirstRunContinueRegion } from "./first-run-continue";
 import { detectSignInCard } from "../sign-in-card";
 import { CLAUDE_IDLE } from "./markers";
 import { dialogRowShown } from "../../surface/frame";
@@ -170,6 +171,17 @@ export function claudeBuildBlocks(input: StyledLine[]): Block[] {
     return blocks;
   }
 
+  // The FIRST RUN's "Press Enter to continue…" steps after a sign-in (first-run-continue.ts): the
+  // screen prints one key and no footer, so the generic menu below could not read it. A one-key card.
+  const firstRunContinue = detectFirstRunContinueRegion(lines);
+  if (firstRunContinue) {
+    const before = trimTrailingBlank(lines.slice(0, firstRunContinue.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+    blocks.push({ kind: "menu", menu: firstRunContinue.model, lines: lines.slice(firstRunContinue.startLine) });
+    return blocks;
+  }
+
   // The SIGN-IN METHOD PICKER of `/login` (login-methods.ts): its footer names Esc alone, so the menu
   // grammar below would offer no way to choose. A digit alone chooses, so it lifts as a choice card.
   const loginMethods = detectLoginMethodsRegion(lines);
@@ -280,6 +292,7 @@ const CLAUDE_DIALOG_DETECTORS: readonly DialogDetector[] = [
   { name: "switch-model", detect: onPrepared(detectSwitchModelRegion) },
   { name: "marketplaces", detect: onPrepared(detectMarketplacesRegion) },
   { name: "first-run-theme", detect: onPrepared(detectFirstRunThemeRegion) },
+  { name: "first-run-continue", detect: onPrepared(detectFirstRunContinueRegion) },
   { name: "login-methods", detect: onPrepared(detectLoginMethodsRegion) },
   { name: "sign-in", detect: onPrepared((lines) => detectSignInCard(lines, CLAUDE_IDLE)) },
   { name: "menu", detect: onPrepared(detectMenuRegion) },

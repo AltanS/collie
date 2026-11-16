@@ -257,7 +257,7 @@ import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommand
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, readIsUnstyled, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
-import { fieldShows } from "../../web/src/lib/surface/secret-field.ts";
+import { fieldShows, signInRejections } from "../../web/src/lib/surface/secret-field.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { AboveNotice } from "../../web/src/lib/surface/notice.ts";
 import type { CommandListRows, FooterRow, OtherScreenRow, Profile, ProfileMatch, QueuedRow, SteerWitness } from "../../web/src/lib/surface/profile.ts";
@@ -1322,6 +1322,13 @@ function steerBlocked(snap: Snap | null, why: SendReason): SendReason {
 
 /** Reads in a row with no frame before a queued send counts the box as gone: one may be a torn read. */
 const FRAMELESS_READS = 2;
+/** What the agent said where it did not take a sign-in code, set by S2's read test; null while it said nothing. */
+interface CodeRejection {
+  words: string | null;
+}
+
+/** The gap between the reads of a sign-in code's settle window ({@link Profile} `idle.signInSettleMs`). */
+const CODE_SETTLE_GAP_MS = 500;
 
 /**
  * Whether the Surface claims a modal while the box is found. A read with no box (a torn read, a
@@ -6441,7 +6448,36 @@ export class SendProtocol {
     const s1Frame = state.marks.s1?.frame ?? null;
     const sentText = s1Frame === null ? lines.join("") : boxText(s1Frame);
     let witnessed = false;
+    // A sign-in code (M102 spec 05): the agent checks it with its server before it draws the next
+    // screen, so the field gone is not yet the evidence. The send is proven by a read with no field
+    // that stands as the read before it did, and no new error row of the profile's (`idle.signInErrors`);
+    // a new one ends it refused, with the agent's words. New means more of them than S1 read: an earlier
+    // try's error may still stand in the scrollback.
+    const idle = state.match?.profile.idle;
+    const code = isSecretSend(state) && s0.frame?.secret !== undefined && idle !== undefined;
+    const errorsBefore = code ? signInRejections(state.marks.s1?.texts ?? s0.texts, idle).length : 0;
+    // Set by the read test, so an object: a `let` set in a closure stays narrowed to null after it.
+    const rejected: CodeRejection = { words: null };
+    let fieldGone: string | null = null;
+    const codeTest = (snap: Snap): Verdict => {
+      const said = idle === undefined ? [] : signInRejections(snap.texts, idle);
+      if (said.length > errorsBefore) {
+        rejected.words = said[said.length - 1]!;
+        return "fail";
+      }
+      // The field still up (it may hold the code while the agent checks it). A box with no field, the
+      // agent's own composer back (pi), is the field gone as surely as no box.
+      if (snap.frame?.secret !== undefined) {
+        fieldGone = null;
+        return "wait";
+      }
+      const now = flat(snap.plain);
+      const settled = fieldGone === now;
+      fieldGone = now;
+      return settled ? "pass" : "wait";
+    };
     const test = (snap: Snap): Verdict => {
+      if (code) return codeTest(snap);
       if (!command && !witnessed && (labelFromWitness(state.match) || (!state.queued && enterQueues(state.match)))) witnessed = showsQueued(snap, state.match?.profile.keys.queuedRow, sentText);
       if (s0.frame !== null) {
         // Queued behind a running turn: a dialog that opened as the Enter went out may have taken it.
@@ -6495,7 +6531,20 @@ export class SendProtocol {
       this.stretch(state, BOUNDS.s2.ms);
       result = await this.poll(state, "s2", BOUNDS.s2, test);
     }
+    // A code: the agent's own check may take longer than S2's bound. The send stays open for the
+    // profile's `idle.signInSettleMs`, read about every half second.
+    const settleMs = code ? (idle?.signInSettleMs ?? 0) : 0;
+    if (code && result.verdict === "wait" && settleMs > 0) {
+      this.stretch(state, settleMs);
+      const until = this.now() + settleMs;
+      // One read per poll, so the gap stays even (a poll doubles its gap between its own reads).
+      for (let reads = 0; result.verdict === "wait" && this.now() < until && reads < Math.ceil(settleMs / CODE_SETTLE_GAP_MS); reads++) {
+        const next = await this.poll(state, "s2", { reads: 1, ms: Math.min(CODE_SETTLE_GAP_MS * 2, until - this.now()), firstGapMs: CODE_SETTLE_GAP_MS }, test);
+        result = next.snap === null ? { ...next, snap: result.snap } : next;
+      }
+    }
     state.marks.s2 = result.snap;
+    if (rejected.words !== null) throw new Ended("refused", "code_rejected", { framed: false, detail: rejected.words });
     if (witnessed && result.verdict === "pass") {
       state.witnessed = true;
       state.queued = true;

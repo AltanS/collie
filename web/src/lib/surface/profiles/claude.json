@@ -56,6 +56,10 @@
     "dialogRowsNote": "Claude Code 2.1.325's first-run theme step (an empty config folder, lab 2026-11-15, claude--v2325-first-run-theme-*): `Let's get started.` over `Choose the text style that looks best with your terminal` and an unnumbered list, no footer, no key named, and Esc does nothing. The theme grammar (harness/claude/first-run-theme.ts) lifts it as a pointed list (a tap walks the pointer with Down or Up and sends Enter, measured live 2026-11-16); this row stays as the wider net, so a screen with these words and no list Collie reads still names a dialog, and the composer never types into it. `/theme` in a session draws the same list under a `Theme` title with `Enter to select · Esc to cancel` and no `Let's get started.`.",
     "signInRows": ["^Paste code here if prompted >"],
     "signInRowsNote": "Claude Code 2.1.325 draws its sign-in field after `Paste code here if prompted >`, on /login two columns in and on the first run one (lab 2026-11-15). The two layouts above read the two shapes and draw the card; this row is the wider net: a screen that ends near such a row and shows no ordinary input box keeps no draft and no line of what is sent there, whatever else is drawn around it.",
+    "signInErrors": ["^OAuth error:"],
+    "signInErrorsNote": "Claude Code 2.1.325 answers a code it did not take with `OAuth error: That code wasn't accepted…` where the field stood, then `Press Enter to retry.` (lab 2026-11-15, claude--v2325-login-bad-code--w61.txt). A code send that reads it ends refused (`code_rejected`) with those words.",
+    "signInSettleMs": 15000,
+    "signInSettleMsNote": "After a code is submitted Claude Code checks it with its server before it draws `Login successful` or the error (2026-11-16, Altan's run on the dev lane: a good code ended `unknown`, S2's 3 s were not enough). The screen between the two is not captured yet; this bound is a guess on the safe side, and only delays the receipt.",
     "placeholders": {
       "texts": ["Press up to edit queued messages"],
       "patterns": ["^Try \"[^\"]*\"$"],

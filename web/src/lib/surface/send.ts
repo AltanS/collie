@@ -77,6 +77,10 @@ export const SEND_REASONS = [
   // refused (agent views): a send from a view whose screen, switch or trick moved before the first key,
   // read under the pane lock; nothing was typed, and nothing retries it
   "stale_view",
+  // refused (M102 spec 05): a sign-in code went into the agent's field and was submitted, and the
+  // agent's own error row says it did not take it (the profile's `idle.signInErrors`). The one refusal
+  // after the submit key: the agent refused it, not Collie, and the detail is the agent's words.
+  "code_rejected",
 ] as const;
 export type SendReason = (typeof SEND_REASONS)[number];
 

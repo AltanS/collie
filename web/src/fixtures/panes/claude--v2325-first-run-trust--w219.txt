@@ -1,0 +1,19 @@
+[0m[38;2;255;193;7m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;255;193;7mAccessing workspace:[0m
+
+ [0m[1m/home/user[0m
+
+ Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what's in this folder first.
+
+ Claude Code'll be able to read, edit, and execute files here.
+
+ [0m[1m[38;2;255;193;7m⚠ This folder pre-approves 47 tool permissions in .claude/settings.json:[0m
+   Bash(ls:*), Bash(cat:*), and 45 more
+ [0m[38;2;153;153;153mThese will apply without asking. Only proceed if you trust this configuration.[0m
+
+ [0m[38;2;153;153;153mSecurity guide[0m
+
+ [0m[38;2;177;185;249m❯ No, exit[0m
+   Yes, I trust this folder
+
+ [0m[38;2;153;153;153mEnter to confirm · Esc to cancel[0m

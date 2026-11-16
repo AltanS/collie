@@ -730,6 +730,20 @@ export interface Profile {
      */
     readonly signInRows?: readonly string[];
     /**
+     * Rows that say the agent did not take a sign-in code, as regular expression sources read on the
+     * trimmed text of each row of the screen (secret-field.ts `signInRejections`). After a code is sent
+     * into a sign-in field, a read that shows more of them than the read before the submit key ends
+     * the send as a refusal of the code (`code_rejected`): the field is gone, and so is the code. Optional; with none, a field that closes is the only evidence, as before.
+     */
+    readonly signInErrors?: readonly string[];
+    /**
+     * How long, in ms, a code sent into a sign-in field may take to settle after the submit key: the
+     * agent checks the code with its server before it draws the next screen. The send stays open past
+     * S2 for this long, until a read with no field stands still or an error row shows. Optional; 0 or
+     * none waits S2 only.
+     */
+    readonly signInSettleMs?: number;
+    /**
      * Rows that say a dialog Collie does not read holds the keys, as regular expression sources read on
      * the trimmed text of every row of a screen with no box. For a screen that names no key and has no
      * footer, so no cue reads it as a dialog (Claude Code's first-run theme step, when its grammar does not
@@ -1660,7 +1674,20 @@ export function parseProfile(raw: JsonValue): Profile {
           if (row.test("")) fail(`idle.signInRows[${String(i)}]`, "must not match a blank row");
           return row.source;
         });
-  const withSignIn: Profile["idle"] = signInRows === undefined ? withOverlayRows : { ...withOverlayRows, signInRows };
+  const withSignInRows: Profile["idle"] = signInRows === undefined ? withOverlayRows : { ...withOverlayRows, signInRows };
+  const signInErrors =
+    idleNode.signInErrors === undefined
+      ? undefined
+      : list(idleNode.signInErrors, "idle.signInErrors").map((item, i) => {
+          const row = pattern(item, `idle.signInErrors[${String(i)}]`);
+          if (row.test("")) fail(`idle.signInErrors[${String(i)}]`, "must not match a blank row");
+          return row.source;
+        });
+  const withSignInErrors: Profile["idle"] = signInErrors === undefined ? withSignInRows : { ...withSignInRows, signInErrors };
+  const withSignIn: Profile["idle"] =
+    idleNode.signInSettleMs === undefined
+      ? withSignInErrors
+      : { ...withSignInErrors, signInSettleMs: millis(idleNode.signInSettleMs, "idle.signInSettleMs", 0, 30_000) };
   const dialogRows =
     idleNode.dialogRows === undefined
       ? undefined

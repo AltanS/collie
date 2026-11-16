@@ -97,3 +97,38 @@ export function signInShown(texts: readonly string[], idle: Pick<Profile["idle"]
   }
   return false;
 }
+
+const rejectCache = new WeakMap<readonly string[], readonly RegExp[]>();
+
+/** How many rows an error sentence may wrap onto under the row that matched. */
+const REJECTION_ROWS = 4;
+
+/**
+ * What the screen says where the agent did not take a sign-in code, top to bottom: each row one of the
+ * profile's `idle.signInErrors` matches, joined with the rows its sentence wraps onto (up to a blank
+ * row or a row with no letter, a rule; at most {@link REJECTION_ROWS} rows in all), each trimmed. An
+ * earlier try's error may still stand in the scrollback, so a caller compares the count with a read
+ * from before the code went in. Pure.
+ */
+export function signInRejections(texts: readonly string[], idle: Pick<Profile["idle"], "signInErrors">): string[] {
+  const sources = idle.signInErrors;
+  if (sources === undefined || sources.length === 0) return [];
+  let patterns = rejectCache.get(sources);
+  if (patterns === undefined) {
+    patterns = sources.map((source) => new RegExp(source, "u"));
+    rejectCache.set(sources, patterns);
+  }
+  const found: string[] = [];
+  for (let at = 0; at < texts.length; at++) {
+    const head = texts[at]!.trim();
+    if (head === "" || !patterns.some((pattern) => pattern.test(head))) continue;
+    const words: string[] = [];
+    for (let i = at; i < texts.length && words.length < REJECTION_ROWS; i++) {
+      const text = texts[i]!.trim();
+      if (text === "" || !/\p{L}/u.test(text)) break;
+      words.push(text);
+    }
+    found.push(words.join(" "));
+  }
+  return found;
+}

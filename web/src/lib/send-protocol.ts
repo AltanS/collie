@@ -227,6 +227,7 @@ export type SendNote =
   | "steered"
   | "steerUnsupported"
   | "steerNotAllowed"
+  | "codeRejected"
   | "held"
   | "expired"
   | "cancelled"
@@ -341,6 +342,8 @@ function refusalNote(reason: SendReason | null): SendNote {
       return "badHead";
     case "stale_view":
       return "moved";
+    case "code_rejected":
+      return "codeRejected";
     default:
       return "refused";
   }
