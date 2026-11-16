@@ -77,6 +77,8 @@ export interface CounterRow extends CounterKey {
   effective: number;
   /** Sends that ended `unknown`. */
   unknown_outcome: number;
+  /** `unknown` sends the person marked arrived (M102 spec 01). Counted apart: the outcome stays `unknown` and the mark is no proof. */
+  arrived: number;
   /** Sends that ended `typed_not_submitted`: the text went into the box, Enter did not. */
   typed_not_submitted: number;
   /** Discards that emptied the box. Never counted under `sent`: nothing went to the agent. */
@@ -147,7 +149,7 @@ export function rowKey(key: CounterKey): string {
 }
 
 export function emptyRow(key: CounterKey): CounterRow {
-  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0, held: 0, held_sent: 0, held_expired: 0, held_cancelled: 0, edges: {}, holds: {} };
+  return { harness: key.harness, version: key.version, profileId: key.profileId, status: key.status, free: 0, unknown: {}, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, arrived: 0, typed_not_submitted: 0, discarded: 0, held: 0, held_sent: 0, held_expired: 0, held_cancelled: 0, edges: {}, holds: {} };
 }
 
 export function emptyDay(date: string): CountersDay {
@@ -217,6 +219,7 @@ function parseRow(value: JsonValue | undefined): CounterRow | null {
     sent: count("sent"),
     effective: count("effective"),
     unknown_outcome: count("unknown_outcome"),
+    arrived: count("arrived"),
     typed_not_submitted: count("typed_not_submitted"),
     discarded: count("discarded"),
     held: count("held"),
@@ -268,6 +271,7 @@ function addRow(into: CounterRow, from: CounterRow): void {
   into.sent += from.sent;
   into.effective += from.effective;
   into.unknown_outcome += from.unknown_outcome;
+  into.arrived += from.arrived;
   into.typed_not_submitted += from.typed_not_submitted;
   into.discarded += from.discarded;
   into.held += from.held;
@@ -549,6 +553,13 @@ export class SurfaceLedger {
     if (from === "sent" && row.sent > 0) row.sent--;
     if (from === "unknown" && row.unknown_outcome > 0) row.unknown_outcome--;
     row.effective++;
+    this.touch();
+  }
+
+  /** An `unknown` send the person marked arrived (M102 spec 01). The outcome row stays: the mark is the person's word, not a proof. */
+  arrived(key: CounterKey): void {
+    const row = this.row(key);
+    row.arrived++;
     this.touch();
   }
 

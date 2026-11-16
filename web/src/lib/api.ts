@@ -1650,7 +1650,7 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
           withScope(`/api/pane/${encodeURIComponent(body.pane)}/reply`, scope),
           {
             method: "POST",
-            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck, when: body.when, secret: body.secret }),
+            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck, when: body.when, secret: body.secret, override: body.override }),
           },
           sendRecover(),
         ),
@@ -1660,6 +1660,17 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
   if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
   if (reply.outcome === "sent" || reply.outcome === "effective" || reply.outcome === "steered") stampSend(body.pane);
   return reply;
+}
+
+/**
+ * POST /api/pane/:id/arrived (M102 spec 01): the person's "It arrived" on a send whose receipt ended
+ * `unknown`. The receipt takes `word: "arrived"` beside its outcome. True when the bridge marked it
+ * (200); a refusal (an id of another pane, a receipt that did not end unknown, a second mark) throws
+ * the route's own error. The route crosses the crew link, so a member's receipt is marked on the member.
+ */
+export async function postArrived(paneId: string, requestId: string, scope?: Scope): Promise<boolean> {
+  await req<JsonObject>(withScope(`/api/pane/${encodeURIComponent(paneId)}/arrived`, scope), { method: "POST", body: JSON.stringify({ requestId }) }, sendRecover());
+  return true;
 }
 
 /**

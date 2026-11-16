@@ -50,6 +50,24 @@ describe("sendText", () => {
     ]);
   });
 
+  it("the commit's override rides the body only when true and with a rows hash, never on a sign-in field, and is its own intent (M102 spec 01)", async () => {
+    await sendText({ paneId: "w1:p1", text: "check this", mode: "send", rowsHash: "0abc12", held: null, mint });
+    await sendText({ paneId: "w1:p1", text: "check this", mode: "send", rowsHash: "0abc12", override: true, held: null, mint });
+    await sendText({ paneId: "w1:p1", text: "check this", mode: "send", override: true, held: null, mint });
+    await sendText({ paneId: "w1:p1", text: "check this", mode: "send", rowsHash: "0abc12", override: true, secret: true, held: null, mint });
+    const [plain, over, noHash, secret] = recordedSends();
+    expect(plain).not.toHaveProperty("override");
+    expect(over).toMatchObject({ rowsHash: "0abc12", override: true });
+    expect(noHash).not.toHaveProperty("override");
+    expect(secret).not.toHaveProperty("override");
+    server.use(http.post("/api/send", () => HttpResponse.error()));
+    const lost = await sendText({ paneId: "w1:p1", text: "check this", mode: "send", rowsHash: "0abc12", held: null, mint });
+    if (lost.status !== "noAnswer") throw new Error("the lost answer was expected");
+    server.resetHandlers();
+    await sendText({ paneId: "w1:p1", text: "check this", mode: "send", rowsHash: "0abc12", override: true, held: lost.intent, mint });
+    expect(recordedSends().at(-1)?.id).not.toBe(lost.intent.requestId);
+  });
+
   it("a resend names the old request id and sends an empty text; a plain send carries no resendOf", async () => {
     await sendText({ paneId: "w1:p1", text: "", mode: "send", resendOf: "req00001", held: null, mint });
     await sendText({ paneId: "w1:p1", text: "plain", held: null, mint });

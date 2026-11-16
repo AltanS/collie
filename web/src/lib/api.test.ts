@@ -39,6 +39,7 @@ import {
   startLaunch,
   fetchWalkyWho,
   pinItem,
+  postArrived,
   postWalky,
   sendReply,
   textBeforeLastSend,
@@ -174,6 +175,28 @@ describe("api client", () => {
       ok: false,
       error: "prompt changed",
       code: "prompt_changed",
+    });
+  });
+
+  // The person's "It arrived" (M102 spec 01): a write by pane, so the crew link can carry it.
+  describe("postArrived", () => {
+    it("posts the request id to the pane's arrived route under the scope, and is true on a 200", async () => {
+      const seen: { path: string; search: string; body: JsonValue | undefined }[] = [];
+      server.use(
+        http.post(/\/api\/pane\/[^/]+\/arrived$/, async ({ request }) => {
+          const url = new URL(request.url);
+          // SAFETY: `Response.json()` output IS a JsonValue by construction.
+          seen.push({ path: url.pathname, search: url.search, body: (await request.json()) as JsonValue });
+          return HttpResponse.json({ word: "arrived" });
+        }),
+      );
+      await expect(postArrived("w1:p1", "req-000001", { host: "laptop" })).resolves.toBe(true);
+      expect(seen).toEqual([{ path: "/api/pane/w1%3Ap1/arrived", search: "?host=laptop", body: { requestId: "req-000001" } }]);
+    });
+
+    it("throws on a refusal: a send that did not end unknown, a second mark", async () => {
+      server.use(http.post(/\/api\/pane\/[^/]+\/arrived$/, () => new HttpResponse("this send is already marked", { status: 409 })));
+      await expect(postArrived("w1:p1", "req-000002")).rejects.toThrow();
     });
   });
 

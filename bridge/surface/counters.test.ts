@@ -103,7 +103,7 @@ describe("the day file", () => {
 
     const first = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-16"), "utf8")));
     expect(Object.values(first!.rows)).toEqual([
-      { ...KEY, free: 2, unknown: { "no-match": 1 }, modal: { menu: 1 }, refused: { not_free: 1 }, probed: 1, manual: 1, sent: 1, effective: 1, unknown_outcome: 1, typed_not_submitted: 0, discarded: 0, held: 0, held_sent: 0, held_expired: 0, held_cancelled: 0, edges: {}, holds: {} },
+      { ...KEY, free: 2, unknown: { "no-match": 1 }, modal: { menu: 1 }, refused: { not_free: 1 }, probed: 1, manual: 1, sent: 1, effective: 1, unknown_outcome: 1, arrived: 0, typed_not_submitted: 0, discarded: 0, held: 0, held_sent: 0, held_expired: 0, held_cancelled: 0, edges: {}, holds: {} },
     ]);
     const second = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-17"), "utf8")));
     expect(Object.values(second!.rows)).toHaveLength(1);
@@ -247,7 +247,7 @@ describe("the day file", () => {
     expect(parseDay("text")).toBeNull();
     expect(parseDay({ date: "yesterday" })).toBeNull();
     const day = parseDay({ date: "2026-10-16", rows: { x: { harness: "a", version: "1", profileId: "p", status: "verified", free: "many", unknown: { weird: -3, fine: 2 } }, y: 5 }, unknownFrames: { k: ["abc", 7, "XYZ!"] }, manualAt: { k: [1, "x", 2] } });
-    expect(Object.values(day!.rows)).toEqual([{ harness: "a", version: "1", profileId: "p", status: "verified", free: 0, unknown: { fine: 2 }, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, typed_not_submitted: 0, discarded: 0, held: 0, held_sent: 0, held_expired: 0, held_cancelled: 0, edges: {}, holds: {} }]);
+    expect(Object.values(day!.rows)).toEqual([{ harness: "a", version: "1", profileId: "p", status: "verified", free: 0, unknown: { fine: 2 }, modal: {}, refused: {}, probed: 0, manual: 0, sent: 0, effective: 0, unknown_outcome: 0, arrived: 0, typed_not_submitted: 0, discarded: 0, held: 0, held_sent: 0, held_expired: 0, held_cancelled: 0, edges: {}, holds: {} }]);
     expect(day!.unknownFrames).toEqual({ k: ["abc"] });
     expect(day!.manualAt).toEqual({ k: [1, 2] });
   });
@@ -409,6 +409,24 @@ describe("the examples folder", () => {
   test("maskRow keeps whitespace and box drawing, and hides letters, digits and symbols in every script", () => {
     expect(maskRow("sk-or-v1-abc123! \u256d\u2500\u256e")).toBe("aaxaaxa0xaaa000x \u256d\u2500\u256e");
     expect(maskRow("sk-or-v1-secret  \u2502 \u041f\u0440\u0438\u0432\u0435\u0442 \u65e5\u672c \u273b 12:30  ")).toBe("aaxaaxa0xaaaaaa  \u2502 aaaaaa aa x 00x00");
+  });
+});
+
+describe("the person's word in the counters (M102 spec 01)", () => {
+  test("counts an unknown send the person marked arrived on its own row, apart from the outcome count, and a file without it reads as zero", () => {
+    const l = ledger();
+    l.send(KEY, { outcome: "unknown", reason: "no_evidence", probed: false });
+    l.arrived(KEY);
+    l.arrived(KEY);
+    l.flush();
+    const [row] = l.rows();
+    expect(row?.unknown_outcome).toBe(1);
+    expect(row?.arrived).toBe(2);
+    const day = parseDay(JSON.parse(readFileSync(counterPath(dir(), "2026-10-16"), "utf8")));
+    expect(Object.values(day!.rows)[0]?.arrived).toBe(2);
+    const old = parseDay({ date: "2026-10-15", rows: { "a|1|a|verified": { harness: "a", version: "1", profileId: "a", status: "verified", sent: 3 } }, unknownFrames: {}, manualAt: {} });
+    expect(Object.values(old!.rows)[0]?.arrived).toBe(0);
+    expect(summarize([day!, old!]).reduce((sum, r) => sum + r.arrived, 0)).toBe(2);
   });
 });
 

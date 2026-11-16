@@ -610,6 +610,8 @@ export interface SendLedger {
   example(entry: ExampleEntry): void;
   /** A settled send a prompt edge confirmed (M56 spec 11). Optional, so an older ledger still fits. */
   confirmEffective?(key: CounterKey, from: "sent" | "unknown"): void;
+  /** An `unknown` send the person marked arrived (M102 spec 01). Optional, so an older ledger still fits. */
+  arrived?(key: CounterKey): void;
 }
 
 /** A receipt a prompt edge may still close (M56 spec 11): open from the submit key until the window ends. */
@@ -743,6 +745,12 @@ export interface SendRequest {
    * (walky talky, hooks, the CLI) leaves it out.
    */
   readonly fromPhone?: boolean;
+  /**
+   * The person's commit tap on a screen Collie could not read (M102 spec 01): set only by the phone's
+   * commit tap. The protocol honours it only with {@link fromPhone} and a passed manual gate, and then
+   * the receipt says `word: "override"`. An override is never held by Collie; where the harness queues in a turn it goes in as the manual commit does.
+   */
+  readonly override?: boolean;
   /**
    * A Send on a queued message a Stop gave back to the box (ADR 0122): set by `POST /api/send` alone,
    * for `resendOf` of a returned card, never read off a body. The submit then needs the S0 read, taken
@@ -2704,6 +2712,8 @@ export function locateText(plain: readonly string[], text: string, partial = fal
 
 interface RunState {
   readonly request: SendRequest;
+  /** The person overrode a stop: the phone's commit passed the manual gate (M102 spec 01). Set in `gateManual` only. */
+  overrode: boolean;
   readonly record: SendRecord;
   readonly target: SendTarget;
   readonly match: PaneProfileMatch | null;
@@ -3229,6 +3239,7 @@ export class SendProtocol {
       if (receipt.cap !== undefined) row.cap = receipt.cap;
       if (receipt.queued === true) row.queued = true;
       if (receipt.late !== undefined) row.late = receipt.late;
+      if (receipt.word !== undefined) row.word = receipt.word;
       // A refusal's line and the Surface words are stored to be read later: the list carries them.
       if (receipt.detail !== undefined) row.detail = receipt.detail;
       if (receipt.saw !== undefined) row.saw = receipt.saw;
@@ -3236,6 +3247,27 @@ export class SendProtocol {
       rows.push(row);
     }
     return rows;
+  }
+
+  /**
+   * The person's "It arrived" on a pane's `unknown` send (M102 spec 01): the receipt takes `word:
+   * "arrived"` beside its outcome, and the counters count it apart from the plain `unknown`. The store
+   * decides (requests.ts `markArrived`); a `marked` answer is told to the ledger inside a try, because a
+   * counter never blocks. Returns the store's answer.
+   */
+  markArrived(session: string, paneId: string, requestId: string): "marked" | "not_found" | "not_unknown" | "already" {
+    const marked = this.deps.store.markArrived(requestId, paneId);
+    if (marked !== "marked") return marked;
+    const receipt = this.deps.store.get(requestId)?.receipt;
+    if (receipt === undefined) return marked;
+    try {
+      // The counters' own key (`keyOf`): the profile id names the harness when there is one, `-` where there is none.
+      const harness = receipt.profileId ?? (receipt.harness === "" ? "-" : receipt.harness);
+      this.deps.ledger?.arrived?.({ harness, version: receipt.version ?? "-", profileId: receipt.profileId ?? "-", status: receipt.profileStatus ?? "-" });
+    } catch (err) {
+      console.warn(`[surface] counters failed on ${session}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return marked;
   }
 
   /**
@@ -3452,6 +3484,8 @@ export class SendProtocol {
     if (this.deps.holds === undefined || end.outcome !== "refused") return false;
     // A send from an agent view never queues: the person taps again once the session is free.
     if (state.request.view !== undefined) return false;
+    // An override is never held (M102 spec 01): the hold queue would type it later, on a screen nobody saw.
+    if (state.request.override === true) return false;
     // A steer is never held (M69): it is for the turn that runs now, and a later turn is the wrong one.
     if (state.request.when === "steer") return false;
     // A sign-in code is never held: a held text waits on disk in plain form (holds.ts), and a code is
@@ -4120,6 +4154,7 @@ export class SendProtocol {
       gaps: {},
       keys: [],
       probed: false,
+      overrode: false,
       manual: false,
       blind: false,
       starting: false,
@@ -4194,6 +4229,8 @@ export class SendProtocol {
     // A send that found its own earlier text in the box pressed only the submit key: the receipt says why no text went.
     if (state.finishedOwn === true && receipt.detail === undefined) receipt.detail = FINISHED_OWN;
     if (state.blind) receipt.saw = BLIND_SAW;
+    // The person's word, beside what Collie saw: the outcome stays whatever the run ended as (M102 spec 01).
+    if (state.overrode) receipt.word = "override";
     return receipt;
   }
 
@@ -5324,6 +5361,8 @@ export class SendProtocol {
     }
     // The cap counts sends typed past a screen Collie cannot read; a notice's digit is no such screen.
     if (cause !== NOTICE_KEY) this.gateCap(state, s0);
+    // The person's word (M102 spec 01): the commit passed the rows check and the cap. Nothing else sets it.
+    if (state.request.override === true && state.request.fromPhone === true) state.overrode = true;
   }
 
   /**

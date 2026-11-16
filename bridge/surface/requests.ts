@@ -25,7 +25,7 @@ import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { ASK_ID, ASK_OUTCOMES, ASK_REASONS, type AskReceipt } from "../../web/src/lib/surface/ask.ts";
 import { ASK_CHANNELS } from "../../web/src/lib/surface/surface.ts";
-import { readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SEND_LATES, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
+import { readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SEND_LATES, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, SEND_WORDS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
 import { SENT_MAX_LINE, sentLineOf } from "../secret-line.ts";
 
 /** How long a settled request is kept, so a retry after a long network gap still finds its receipt. */
@@ -218,6 +218,9 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   // `late` is lenient like `detail`: a word this module did not write is dropped, and the receipt stays.
   const late = node.late === undefined ? undefined : pick(node.late, SEND_LATES);
   if (late !== undefined) whole.late = late;
+  // `word` is lenient like `late`: a word this module did not write is dropped, and the receipt stays.
+  const word = node.word === undefined ? undefined : pick(node.word, SEND_WORDS);
+  if (word !== undefined) whole.word = word;
   if (acknowledged !== undefined) whole.acknowledged = acknowledged;
   if (detail !== undefined) whole.detail = detail;
   if (saw !== undefined) whole.saw = saw;
@@ -436,8 +439,8 @@ export class RequestStore {
 
   /**
    * A settled `sent` or `unknown` that a matching prompt edge confirmed (M56 spec 11) becomes
-   * `effective`, its reason dropped. That and {@link markReturned} are the changes a settled record can
-   * take, each once. Returns the outcome it had, or null when the record is not one a prompt edge may close.
+   * `effective`, its reason dropped. That, {@link markReturned} and {@link markArrived} are the changes a
+   * settled record can take, each once. Returns the outcome it had, or null when the record is not one a prompt edge may close.
    */
   markEffective(id: string): "sent" | "unknown" | null {
     const known = this.get(id);
@@ -463,6 +466,24 @@ export class RequestStore {
     if (!waited || receipt.late !== undefined) return false;
     this.write({ ...known, receipt: { ...receipt, late: "returned" } });
     return true;
+  }
+
+  /**
+   * The person's "It arrived" on a settled `unknown` receipt of pane `paneId` (M102 spec 01): the receipt
+   * gets `word: "arrived"` beside its outcome, which stays `unknown`. `not_found` when no such record sits
+   * on that pane (an id of another pane is not told apart from an id nobody sent), `not_unknown` when it
+   * is not settled or did not end `unknown`, `already` on a second mark. A receipt whose word is `override`
+   * may be marked: `arrived` replaces it, since the override was counted when it was made and the newer
+   * word is what the person said last. The mark is never a proof, so nothing else reads it as one.
+   */
+  markArrived(id: string, paneId: string): "marked" | "not_found" | "not_unknown" | "already" {
+    const known = this.get(id);
+    if (known === null || known.paneId !== paneId) return "not_found";
+    const receipt = known.receipt;
+    if (known.phase !== "settled" || receipt === undefined || receipt.outcome !== "unknown") return "not_unknown";
+    if (receipt.word === "arrived") return "already";
+    this.write({ ...known, receipt: { ...receipt, word: "arrived" } });
+    return "marked";
   }
 
   /**
@@ -496,7 +517,7 @@ export class RequestStore {
     return armed;
   }
 
-  /** The request's end: its receipt. A settled record changes once at most after this (`markEffective`, or `markReturned`). */
+  /** The request's end: its receipt. A settled record changes once at most after this (`markEffective`, `markReturned`, or `markArrived`). */
   settle(id: string, receipt: SendReceipt): SendRecord | null {
     const known = this.get(id);
     if (known === null) return null;

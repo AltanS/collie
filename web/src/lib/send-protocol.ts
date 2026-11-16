@@ -16,6 +16,7 @@ import {
   SEND_CAUSES,
   SEND_REASONS,
   SEND_LATES,
+  SEND_WORDS,
   readSendCap,
   readSurfaceWords,
   reservedLead,
@@ -30,6 +31,7 @@ import {
   type SendReceiptRow,
   type SendReceiptsAnswer,
   type SendStep,
+  type SendWord,
   STALE_SCREEN,
 } from "./surface/send";
 import type { ProfileStatus } from "./surface/profile";
@@ -58,6 +60,8 @@ export interface SendReply {
    * tail included, for the view's "Sent to this session". Absent on every other send.
    */
   readonly viewLine?: string;
+  /** The person's word on the receipt (M102 spec 01), when it carries one: beside the outcome, never a proof. */
+  readonly word?: SendWord;
 }
 
 const PROFILE_STATUSES: readonly ProfileStatus[] = ["verified", "provisional", "revoked"];
@@ -136,7 +140,14 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     queued: receipt?.queued === true,
     cause: pick(node.cause, SEND_CAUSES),
     ...viewLineOf(node.view),
+    ...wordOf(receipt?.word),
   };
+}
+
+/** The receipt's `word` as the field to spread: one of {@link SEND_WORDS}, else nothing. */
+function wordOf(value: JsonValue | undefined): { word?: SendWord } {
+  const word = pick(value, SEND_WORDS);
+  return word === null ? {} : { word };
 }
 
 /** The `view.line` of a view send's answer, as the field to spread: one string of 1 to 4096 characters, else nothing. */
@@ -193,6 +204,8 @@ export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswe
     if (node.queued === true) row.queued = true;
     const late = pick(node.late, SEND_LATES);
     if (late !== null) row.late = late;
+    const word = pick(node.word, SEND_WORDS);
+    if (word !== null) row.word = word;
     const detail = asJsonString(node.detail);
     if (detail !== undefined && detail.length > 0) row.detail = detail.slice(0, RECEIPT_DETAIL_MAX);
     const saw = readSurfaceWords(node.saw);
