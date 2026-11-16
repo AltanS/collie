@@ -217,7 +217,8 @@ export const RUN_DYNAMIC_WORDS = "a name the line builds ($, a backtick, a glob 
 
 /** A word as a path inside the trick's folder, or null for an absolute path or one that leaves the folder. */
 function folderRel(word: string): string | null {
-  if (word === "" || word.startsWith("/") || word.startsWith("~") || word.startsWith("-")) return null;
+  // A run line is a POSIX shell line (tricks are gated on Windows): its absolute paths are POSIX ones.
+  if (word === "" || posix.isAbsolute(word) || word.startsWith("~") || word.startsWith("-")) return null;
   const rel = posix.normalize(word);
   return rel === "." || rel.startsWith("../") || rel === ".." ? null : rel;
 }
