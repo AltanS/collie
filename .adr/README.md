@@ -292,12 +292,11 @@ The rule today: [0145](./0145-a-start-names-what-to-run-and-a-retry-lands-on-its
 
 ### Durable agents and the wire
 
-The rule today: A durable program is a mux adapter with no screen (0099). It is a session of the Collie the person already runs, listed in `sources.json` (0104, which wins over 0099 point 10), and the wire has two transports, a private socket or TLS with a bearer token (0103, which wins over 0099 point 4). An ask travels as data and is answered by its id (0100), a control names the turn it saw (0101), and the SDK is the npm package `@colliepwa/durable-sdk` (0105, which wins over 0099 point 5). A host with no process keeps its state in the log (0114).
-
-One live record for this topic is being written.
+The rule today: [0146](./0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md) states it in one place. A durable agent is a session with no screen of the Collie the person already runs, listed in `sources.json`, and Chat is its only view. The wire has two transports, a private socket of the same user or HTTPS with a bearer token, exactly one per agent. An ask is data, answered by its id with a receipt, and a send, a stop or a belt action names the turn the phone saw. The push guard caps pushes, never what is shown. The SDK is the npm package `@colliepwa/durable-sdk` under the dist-tag `experimental`, and a host with no process keeps every fact the phone sees in its log. Where the older records disagree (0099 points 3, 4, 5 and 10 against 0103, 0104 and 0105), 0146 follows the code. People read "durable agent"; the code, the API value `program` and these records say "program".
 
 | # | Decision | Status |
 | --- | --- | --- |
+| [0146](./0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md) | A durable agent is a session with no screen; asks and controls act only by id, with a receipt. | Accepted |
 | [0099](./0099-a-durable-program-is-a-mux-with-no-screen.md) | A durable program is a mux adapter with no screen. | Accepted, amended in scope by 0103, 0104, 0105 |
 | [0100](./0100-an-ask-travels-as-data-and-is-answered-by-id.md) | An ask travels as pane data and is answered by its id, with a receipt. | Accepted |
 | [0101](./0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md) | A send or an abort on a screenless pane names the turn it saw; a stale name gets 409. | Accepted |
