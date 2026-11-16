@@ -114,9 +114,9 @@ What you should see after each step of the guide:
    browser on this PC to see the dashboard.
 
 After step 7, go on with the guide's phone section. There, `collie qr` prints the address as a QR
-code, and `collie pair` prints a code of eight characters, then a line like `single-use · expires
-<time> (10 minutes)`. When the phone is paired, the dashboard shows your panes. Panes that wait for
-you come first.
+code, and `collie pair` prints a code of eight characters, then a line like
+`single-use · expires <time> (10 minutes)`. When the phone is paired, the dashboard shows your
+panes. Panes that wait for you come first.
 
 ## Install
 
