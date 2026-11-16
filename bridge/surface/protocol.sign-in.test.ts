@@ -13,7 +13,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
-import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
+import { RECEIPT_DETAIL_MAX, type SendAnswer } from "../../web/src/lib/surface/send.ts";
+import { CODE_REJECTED_PLAIN } from "../../web/src/lib/surface/secret-field.ts";
 import { HoldStore } from "./holds.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
@@ -459,6 +460,30 @@ describe("sign-in code: the agent's own next screen is the evidence (M102 spec 0
       expect(store.get(answer.id)?.line).toBeUndefined();
     });
   }
+
+  test("sign-in code: an error row that echoes a run of the code is dropped, and the plain sentence stands alone", async () => {
+    const echo = LOGIN_BAD.replace("That code wasn't accepted.", `The code ${CODE.slice(20, 28)} wasn't accepted.`);
+    expect(echo).not.toBe(LOGIN_BAD);
+    const field = new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, echo);
+    const { send, store } = rig(field, "claude", "2.1.325");
+    const answer = await send(CODE, { secret: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "code_rejected", detail: CODE_REJECTED_PLAIN });
+    expect(answer.detail).toBe(CODE_REJECTED_PLAIN);
+    expect(JSON.stringify(answer)).not.toContain(CODE.slice(20, 26));
+    expect(JSON.stringify(store.get(answer.id))).not.toContain(CODE.slice(20, 26));
+    expect(requestFiles()).not.toContain(CODE.slice(20, 26));
+  });
+
+  test("sign-in code: a long error row is cut to a receipt's detail", async () => {
+    const long = LOGIN_BAD.replace("That code wasn't accepted.", `That code wasn't accepted.${" It may be expired.".repeat(30)}`);
+    const field = new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, long);
+    const { send } = rig(field, "claude", "2.1.325");
+    const answer = await send(CODE, { secret: true });
+    expect(answer.receipt?.reason).toBe("code_rejected");
+    expect([...(answer.receipt?.detail ?? "")]).toHaveLength(RECEIPT_DETAIL_MAX);
+    expect([...(answer.detail ?? "")].length).toBeLessThanOrEqual(RECEIPT_DETAIL_MAX);
+    expect(answer.receipt?.detail?.startsWith("OAuth error: That code wasn't accepted. It may be expired.")).toBe(true);
+  });
 
   // pi keeps an earlier try's error in its scrollback (its lab capture shows one over the field), and a
   // new error can push the old one off the top: no count of rows tells a new error from an old one. So

@@ -257,7 +257,7 @@ import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommand
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, readIsUnstyled, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
-import { fieldShows, signInRejections } from "../../web/src/lib/surface/secret-field.ts";
+import { CODE_REJECTED_PLAIN, fieldShows, rejectionDetail, signInRejections } from "../../web/src/lib/surface/secret-field.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { AboveNotice } from "../../web/src/lib/surface/notice.ts";
 import type { CommandListRows, FooterRow, OtherScreenRow, Profile, ProfileMatch, QueuedRow, SteerWitness } from "../../web/src/lib/surface/profile.ts";
@@ -6544,7 +6544,12 @@ export class SendProtocol {
       }
     }
     state.marks.s2 = result.snap;
-    if (rejected.words !== null) throw new Ended("refused", "code_rejected", { framed: false, detail: rejected.words });
+    // The agent's words go into the receipt, the report line and the phone: never when they hold the
+    // code or a run of it, and never longer than a receipt's detail (rejectionDetail).
+    if (rejected.words !== null) {
+      const detail = rejectionDetail(rejected.words, state.request.text, RECEIPT_DETAIL_MAX);
+      throw new Ended("refused", "code_rejected", detail === null ? { framed: false, detail: CODE_REJECTED_PLAIN } : { framed: false, detail });
+    }
     if (witnessed && result.verdict === "pass") {
       state.witnessed = true;
       state.queued = true;

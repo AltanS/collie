@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parseJsonObject, type JsonObject } from "./json";
 import { capSentence, isCommand, offerMode, readHeldCancelAnswer, readSend, readSendReceipts, readSendReply, readSurface, receiptLabelKey, noteKey, receiptSentence, sendNote, surfaceNote, type SendReply } from "./send-protocol";
-import { STALE_SCREEN, type SendReceiptRow } from "./surface/send";
+import { CODE_REJECTED_PLAIN, rejectionDetail } from "./surface/secret-field";
+import { RECEIPT_DETAIL_MAX, STALE_SCREEN, type SendReceiptRow } from "./surface/send";
 import type { Surface } from "./surface/surface";
 
 const RUNNING: Surface = { revision: 3, turn: "running", modal: "none", composer: "empty" };
@@ -496,5 +497,39 @@ describe("a steer (M69)", () => {
     expect(receiptSentence({ ...base, outcome: "refused", reason: "steer_not_allowed" }, say)).toBe("composer.steer.notAllowed");
     const rows = readSendReceipts({ receipts: [{ requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "steered", keys: ["Enter"], gapsMs: {}, harness: "pi", version: "1.3.0" }] });
     expect(rows.receipts[0]?.outcome).toBe("steered");
+  });
+});
+
+describe("a sign-in code the agent did not take (M102 spec 05)", () => {
+  const CODE = "FAKEcodeAbCdEfGhIjKlMnOpQrStUvWxYz0123456789#FAKEstate";
+  const refused = (detail: string): SendReply => {
+    const read = readSendReply({ receipt: { outcome: "refused", reason: "code_rejected", keys: ["Enter"] }, offers: ["keys"], detail });
+    if (read === null) throw new Error("the wire answer was not readable");
+    return read;
+  };
+
+  it("the agent's words show under the phone's sentence", () => {
+    const reading = readSend(refused("OAuth error: That code wasn't accepted."));
+    expect(reading).toMatchObject({ clear: false, note: "codeRejected", detail: "OAuth error: That code wasn't accepted." });
+    expect(noteKey(reading.note)).toBe("composer.protocol.codeRejected");
+  });
+
+  it("the plain sentence the bridge sends where the words held the code stands alone: no second line", () => {
+    expect(readSend(refused(CODE_REJECTED_PLAIN)).detail).toBeNull();
+  });
+
+  it("words that hold the code, or a run of six of its characters, are dropped; five are not", () => {
+    expect(rejectionDetail(`OAuth error: ${CODE} is invalid`, CODE, RECEIPT_DETAIL_MAX)).toBeNull();
+    expect(rejectionDetail(`OAuth error: code ${CODE.slice(10, 16)} expired`, CODE, RECEIPT_DETAIL_MAX)).toBeNull();
+    // A code the screen wrapped is still found: whitespace is left out of both sides.
+    expect(rejectionDetail(`OAuth error: ${CODE.slice(0, 4)} ${CODE.slice(4, 9)}`, CODE, RECEIPT_DETAIL_MAX)).toBeNull();
+    expect(rejectionDetail(`OAuth error: ${CODE.slice(10, 15)}`, CODE, RECEIPT_DETAIL_MAX)).toBe(`OAuth error: ${CODE.slice(10, 15)}`);
+  });
+
+  it("words that do not hold the code are cut to a receipt's detail", () => {
+    const long = `OAuth error: ${"it was not accepted, ".repeat(30)}`;
+    const kept = rejectionDetail(long, CODE, RECEIPT_DETAIL_MAX)!;
+    expect([...kept]).toHaveLength(RECEIPT_DETAIL_MAX);
+    expect(long.startsWith(kept)).toBe(true);
   });
 });

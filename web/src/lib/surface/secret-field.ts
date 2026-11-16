@@ -132,3 +132,29 @@ export function signInRejections(texts: readonly string[], idle: Pick<Profile["i
   }
   return found;
 }
+
+/**
+ * A refused code's detail where the agent's words could not be kept (they held the code): the plain
+ * sentence, which the phone's own sentence already says, so the phone shows its own alone.
+ */
+export const CODE_REJECTED_PLAIN = "The agent did not take the code.";
+
+/** The shortest run of a code's characters that, found in the agent's words, drops them. */
+export const CODE_RUN = 6;
+
+/**
+ * The agent's words about a code it did not take, made safe to keep: null when they hold the code, or
+ * any run of {@link CODE_RUN} or more of its characters in a row (an agent that echoes the code, or a
+ * part of it, in its error); else the words cut to `max` characters. Whitespace is left out of both
+ * sides first, so a code the screen wrapped is still found. With null the plain sentence stands alone.
+ * The words go into the stored receipt, the report line and the phone. Pure.
+ */
+export function rejectionDetail(words: string, code: string, max: number): string | null {
+  const said = [...words.replace(/\s+/gu, "")];
+  const secret = [...code.replace(/\s+/gu, "")];
+  const heard = said.join("");
+  for (let at = 0; at + CODE_RUN <= secret.length; at++) {
+    if (heard.includes(secret.slice(at, at + CODE_RUN).join(""))) return null;
+  }
+  return [...words].slice(0, max).join("");
+}
