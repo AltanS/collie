@@ -337,6 +337,10 @@ describe("the snapshot", () => {
     // On with no decisions file yet: a revision all the same, so the phone shows the Hill in the bar.
     expect(withHill(snapshot, r.hill)).toEqual({ ...snapshot, hillRev: 0 });
     expect(JSON.stringify(withHill(snapshot, undefined))).toBe(JSON.stringify(snapshot));
+    // Off with no decisions file: still no revision (the phone shows no Hill item), only hillOff.
+    r.sw.set(false);
+    expect(withHill(snapshot, r.hill)).toEqual({ ...snapshot, hillOff: true });
+    r.sw.set(true);
     posted(r.hill.post(POSTER, input(1)));
     expect(withHill(snapshot, r.hill)).toEqual({ ...snapshot, hillRev: 1000 });
   });

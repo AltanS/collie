@@ -198,10 +198,22 @@ const RUN_INTERPRETERS: ReadonlySet<string> = new Set([...RUN_SHELLS, "bun", "no
 /** The flags that hand an interpreter code on the line itself. */
 const INLINE_CODE_FLAGS: ReadonlySet<string> = new Set(["-c", "-e", "--eval", "-p", "--print"]);
 
-/** The words of a run line with their quotes taken off: a grep's split, not a shell's. */
+/**
+ * The words of a run line, split on white space AND on shell punctuation (quotes, `;|&<>()$=` and the
+ * backtick), so a path is found wherever it stands: after `env FOO=bar`, inside `sh -c '...'` or
+ * `$(cat x)`, after `;`, `&&` or a pipe. A grep's split, not a shell's.
+ */
 function runWords(run: string): string[] {
-  return [...run.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/gu)].map((m) => m[1] ?? m[2] ?? m[3] ?? "");
+  return run.split(/[\s"';|&<>()$=`]+/u).filter((word) => word !== "");
 }
+
+/** The extensions a named file keeps its own grading for on a shell line; any other is graded as a shell script. */
+const RUN_CODE_EXTENSIONS: ReadonlySet<string> = new Set(["ts", "js", "mjs", "mts", "cjs", "py", "rb", "pl", "php", "lua"]);
+
+/** A shell line that builds a name the scan cannot follow: a variable or a substitution, a backtick, a glob, or `eval`. */
+const RUN_DYNAMIC = /[$`*?[]|(^|[\s;|&(])eval(\s|$)/u;
+/** The words after {@link RUN_UNREAD} for such a line. */
+export const RUN_DYNAMIC_WORDS = "a name the line builds ($, a backtick, a glob or eval)";
 
 /** A word as a path inside the trick's folder, or null for an absolute path or one that leaves the folder. */
 function folderRel(word: string): string | null {
@@ -220,7 +232,12 @@ export interface RunTargets {
   unread: string[];
 }
 
-/** The files of the trick a run line names, and what it hands to an interpreter that is no file of the trick. */
+/**
+ * The files of the trick a run line names, and what it hands to an interpreter that is no file of the
+ * trick. On a shell line every named file is graded as a shell script unless its extension is a code
+ * runtime's ({@link RUN_CODE_EXTENSIONS}): the superset grading, whatever the word's position. An
+ * interpreter counts wherever it stands (after `;`, `&&`, a pipe, `timeout`, `nice`, `busybox`...).
+ */
 export function runTargets(run: string, files: ReadonlySet<string>): RunTargets {
   const out: RunTargets = { named: [], shell: new Set(), unread: [] };
   const script = runtimeScript(run);
@@ -228,24 +245,24 @@ export function runTargets(run: string, files: ReadonlySet<string>): RunTargets 
     out.named.push(posix.normalize(script));
     return out;
   }
-  const words = runWords(run);
   let interpreter: string | null = null;
-  for (const [i, word] of words.entries()) {
+  for (const word of runWords(run)) {
     const name = basename(word);
-    if (interpreter === null && (i === 0 || words[i - 1] === "env" || words[i - 1] === "exec") && RUN_INTERPRETERS.has(name)) {
+    if (RUN_INTERPRETERS.has(name)) {
       if (name !== "env" && name !== "exec") interpreter = name;
       continue;
     }
     if (interpreter !== null && INLINE_CODE_FLAGS.has(word) && !RUN_SHELLS.has(interpreter)) out.unread.push(`${word} (code on the run line)`);
     const rel = folderRel(word);
     if (rel !== null && files.has(rel)) {
-      out.named.push(rel);
-      if (interpreter !== null && RUN_SHELLS.has(interpreter)) out.shell.add(rel);
+      if (!out.named.includes(rel)) out.named.push(rel);
+      if (!RUN_CODE_EXTENSIONS.has(posix.extname(rel).slice(1))) out.shell.add(rel);
       continue;
     }
     // A word that looks like a file, handed to an interpreter, that is not a file of the trick: never read.
-    if (interpreter !== null && !word.startsWith("-") && (word.includes("/") || /\.[A-Za-z0-9]+$/u.test(word))) out.unread.push(word);
+    if (interpreter !== null && !word.startsWith("-") && !word.includes("://") && (word.includes("/") || /\.[A-Za-z0-9]+$/u.test(word))) out.unread.push(word);
   }
+  if (RUN_DYNAMIC.test(run)) out.unread.push(RUN_DYNAMIC_WORDS);
   return out;
 }
 

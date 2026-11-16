@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 
 import { TRICK_CONTRACT_DEFAULT, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
-import { NOTES_FILE, NOTES_VERSION, sampleAgents } from "./agents-notes.ts";
-import { helperNote, notesChangedNote } from "./card-group.ts";
+import { NOTES_FILE, NOTES_VERSION, sampleAgents, shippedNotesTexts } from "./agents-notes.ts";
+import { helperNote, NOTES_DIFF_LINES_FACTOR, notesChangedNote, shippedNotesDiff } from "./card-group.ts";
 import { proposalCard, proposalDiff, type ProposerFacts } from "./proposal-card.ts";
 import { TRICK_HELPER } from "./scan.ts";
 
@@ -57,5 +57,13 @@ describe("the notes init writes", () => {
     expect(text).toContain("+My own notes.");
     expect(text).not.toContain(notesChangedNote());
     expect(text).not.toContain("Collie ships");
+  });
+
+  test("notes far longer than the shipped text show whole: no diff is built", () => {
+    const shipped = sampleAgents("legs", "sh", true);
+    const longest = Math.max(...shippedNotesTexts("legs").map((text) => text.split("\n").length));
+    const long = `${shipped}${"one more line\n".repeat(longest * NOTES_DIFF_LINES_FACTOR)}`;
+    expect(shippedNotesDiff({ rel: NOTES_FILE, bytes: enc(long) }, "legs")).toBeNull();
+    expect(shippedNotesDiff({ rel: NOTES_FILE, bytes: enc(`${shipped}one more line\n`) }, "legs")).not.toBeNull();
   });
 });

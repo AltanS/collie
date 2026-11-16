@@ -115,6 +115,12 @@ function editScript(old: readonly string[], now: readonly string[]): [" " | "-" 
   return out;
 }
 
+/**
+ * Notes with more than this many times the shipped text's lines are no edit of it: they show whole, and
+ * the diff's (n+1) x (m+1) table is never built for them.
+ */
+export const NOTES_DIFF_LINES_FACTOR = 4;
+
 /** Lines of context around a change in {@link shippedNotesDiff}. */
 const NOTES_CONTEXT = 2;
 
@@ -132,10 +138,12 @@ export function shippedNotesDiff(file: Pick<ProposedFile, "rel" | "bytes">, id: 
     return null;
   }
   const now = linesOf(text);
+  const shippedTexts = shippedNotesTexts(id).map(linesOf);
+  if (now.length > NOTES_DIFF_LINES_FACTOR * Math.max(...shippedTexts.map((lines) => lines.length))) return null;
   let best: [" " | "-" | "+", string][] | null = null;
   let bestCost = Number.POSITIVE_INFINITY;
-  for (const shipped of shippedNotesTexts(id)) {
-    const script = editScript(linesOf(shipped), now);
+  for (const shipped of shippedTexts) {
+    const script = editScript(shipped, now);
     const cost = script.filter(([op]) => op !== " ").length;
     if (cost < bestCost) [best, bestCost] = [script, cost];
   }
