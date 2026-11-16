@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { originLine } from "@/lib/tricks/row-words";
 import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, versionCardOpener, warningLines } from "@/components/tricks-settings-card";
 import type { HillDecision } from "@/lib/hill/wire";
+import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import { collieCard } from "@/test/hill-fixtures";
 import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
@@ -584,6 +585,45 @@ describe("a new version waits", () => {
     expect(rowOf("legs").querySelector('[data-line="slot"]')).toHaveTextContent("A new version waits for your yes.");
     expect(rowOf("tracker").querySelector('[data-line="slot"]')).not.toHaveTextContent("A new version waits");
     expect(within(rowOf("legs")).getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
+  });
+
+  // The slot line is a button when the phone holds the version's card. It once carried `truncate` (overflow:
+  // hidden) beside a `::before` that reaches 14px past it: the clip cut the tap reach to the drawn 16px, and the
+  // box could be scrolled by 14px, which moved the glyphs out and left only the dotted underline (lab run,
+  // 2026-11-16). jsdom draws no layout, so this holds the markup that cannot do it; the 44px reach, and the
+  // glyphs staying drawn after a scroll, only a browser shows (`document.elementFromPoint` above and below).
+  it("the slot line as a button: its text is drawn and the button itself clips nothing", async () => {
+    server.use(http.get("/api/hill", () => HttpResponse.json({ v: 1, rev: 1, open: [collieCard("version", "legs", { id: "version-legs" })], closed: [] })));
+    await act(async () => {
+      syncHill(1, "tricks");
+      await __settleHill();
+    });
+    try {
+      renderCard(await storeWith([WAITING, TRACKER]));
+      await findRow("legs");
+      const button = await vi.waitFor(() => {
+        const found = rowOf("legs").querySelector('button[data-line="slot"][data-slot="trick-card-open"]');
+        if (!(found instanceof HTMLElement)) throw new Error("no slot button yet");
+        return found;
+      });
+      // The words are in the DOM as one text node, inside the block that truncates.
+      expect(button).toHaveTextContent("A new version waits for your yes.");
+      const text = button.firstElementChild;
+      expect(button.childNodes).toHaveLength(1);
+      expect(text?.tagName).toBe("SPAN");
+      expect(text?.classList.contains("truncate")).toBe(true);
+      expect(text?.textContent).toBe("A new version waits for your yes.");
+      // No class that clips or hides on the button: it is the box the `::before` reaches out of.
+      const classes = [...button.classList];
+      const clipping = classes.filter((name) => /^(truncate|overflow|text-ellipsis|text-clip|line-clamp|sr-only|hidden|invisible|opacity-0|text-transparent|text-\[0)/u.test(name));
+      expect(clipping).toEqual([]);
+      // The reach that gives the 44px floor, and the stacking above the row's layer, stay on the button.
+      expect(classes).toEqual(expect.arrayContaining(["relative", "z-10", "before:-inset-y-3.5", "before:inset-x-0"]));
+      // The same size and colour as the plain line it replaces.
+      expect(classes).toEqual(expect.arrayContaining(["text-xs", "text-muted-foreground"]));
+    } finally {
+      __resetHill();
+    }
   });
 
   it("readTrick keeps a well-formed pending and drops a malformed one", () => {
