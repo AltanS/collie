@@ -3352,7 +3352,6 @@ export const tr: Dictionary = {
   "accounts.window.none": "Bildirilen bir kullanım sınırı yok.",
   "accounts.seen.live": "Şimdi kullanımda",
   "accounts.seen.ago": "Son görülme: {when}",
-  "accounts.folder.noVariable": "{folder}, değişken yok",
   "accounts.removeNote": "Kaldır yalnızca etiketi unutur. Klasör, bağlantıları ve oturumu olduğu yerde kalır. Hiç hesap kalmazsa uygulama eskisi gibi olur.",
   "accounts.found.title.one": "Kullanımda {count} klasör bulundu",
   "accounts.found.title.other": "Kullanımda {count} klasör bulundu",

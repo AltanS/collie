@@ -3543,7 +3543,6 @@ export const de: Dictionary = {
   "accounts.window.none": "Kein Nutzungslimit gemeldet.",
   "accounts.seen.live": "Gerade in Benutzung",
   "accounts.seen.ago": "Zuletzt gesehen {when}",
-  "accounts.folder.noVariable": "{folder}, keine Variable",
   "accounts.removeNote": "Entfernen vergisst nur den Namen. Der Ordner, seine Verknüpfungen und seine Anmeldung bleiben, wo sie sind. Ist keines mehr übrig, ist die App wie zuvor.",
   "accounts.found.title.one": "{count} Ordner in Benutzung gefunden",
   "accounts.found.title.other": "{count} Ordner in Benutzung gefunden",

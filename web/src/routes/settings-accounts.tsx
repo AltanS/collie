@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router";
 
-import { Bars, Foot } from "@/components/accounts-meter";
+import { Bars } from "@/components/accounts-meter";
 import { AgentIcon } from "@/components/agent-icon";
 import { MiddleTruncate } from "@/components/changes-view";
 import { SettingsPage } from "@/components/settings-page";
@@ -155,23 +155,27 @@ export function SettingsAccountsRoute() {
 }
 
 /**
- * One account in the list: its name, who is signed in on the line under it, its windows and its foot.
- * Exported for the design reference (playground/sections/accounts.tsx), which mounts this row as it ships.
+ * One account in the list, compact (M101 spec 05): line 1 the name, with the last seen or "In use now"
+ * at its right end; line 2 who is signed in; line 3 the windows side by side, two to a line. The email
+ * keeps its own line, because beside two windows it would not fit at 360 px. The folder and the reset
+ * times are on the account's page. Exported for the design reference (playground/sections/accounts.tsx),
+ * which mounts this row as it ships.
  */
 export function AccountListRow({ row, onOpen }: { row: AccountRow; onOpen: () => void }) {
   useLocale();
+  const seen = seenLine(row);
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-full flex-col gap-2 p-3.5 text-left active:bg-muted/60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+      className="flex min-h-11 w-full flex-col gap-1 px-3 py-2.5 text-left active:bg-muted/60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
     >
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate font-medium">{accountName(row)}</span>
-        <IdentityLine identity={row.identity} />
+      <span className="flex w-full min-w-0 items-baseline gap-2">
+        <span className="min-w-0 flex-1 truncate font-medium">{accountName(row)}</span>
+        {seen !== null && <span className="max-w-[55%] shrink-0 truncate text-[11px] leading-4 text-muted-foreground">{seen}</span>}
       </span>
-      <Bars windows={row.windows} />
-      <Foot row={row} />
+      <IdentityLine identity={row.identity} />
+      <Bars windows={row.windows} compact />
     </button>
   );
 }
