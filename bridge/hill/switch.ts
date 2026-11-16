@@ -14,6 +14,9 @@ import { hillDir } from "./store.ts";
 // no Decision pushes, the phone's bar loses the Hill item and `/hill` says the Hill is off. The open
 // Decisions stay in the store untouched; they show again when the Hill is back on, and their expiry
 // still runs. `collie hill status`, `list` and `withdraw` keep working, so an agent can clean up.
+// The switch gates what agents and tricks ASK. A card of Collie's own about a trick (a proposal, a new
+// version, a trick's rights, a carried trick) is an approval: it is posted, read and answered with the
+// Hill on or off, and with the Hill off the phone reads only those cards (M96 spec 14, service.ts).
 //
 // TWO WRITERS, ONE VALUE. The phone writes through the bridge (`POST /api/hill/switch`) and the
 // operator's terminal writes the file itself (`collie hill on|off`), as `collie trick on|off` writes

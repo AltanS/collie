@@ -814,6 +814,13 @@ describe("the Hill's words follow the switch (M96 spec 12)", () => {
     }
   });
 
+  test("spec 14: with the Hill off the Tricks section holds no sentence that needs the Hill", () => {
+    const off = rendered(deps());
+    const tricks = off.slice(off.indexOf("## Tricks"), off.indexOf("<!-- collie-skill"));
+    expect(tricks).toContain("## Tricks");
+    for (const word of ["hill", "Hill", "Experiments"]) expect(tricks).not.toContain(word);
+  });
+
   test("on: the text of before the markers, byte for byte; off is that text less the Hill section and the description's Hill words", () => {
     const on = rendered(deps({ files: HILL_ON }));
     const off = rendered(deps());

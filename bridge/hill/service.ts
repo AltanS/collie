@@ -60,7 +60,15 @@
 // A crew member with no file follows its lead (`refusesHere`). With the Hill off, a post from an agent or a trick is refused (`hill_off`) and
 // an answer from the phone is refused too (`off`), so nothing pushes, nothing is typed and no tap runs.
 // The open decisions stay as they are: nothing withdraws or closes them, and they show again when the
-// Hill is back on. The sweep still closes an expired one, or one whose target ended. Status, list and
+// Hill is back on.
+//
+// ONE EXCEPTION, AND ONLY ONE (M96 spec 14, 2026-11-16): a card of Collie's own about a trick (wire.ts
+// `isTrickCard`: a proposal, a new version, a trick's rights, a carried trick) is an approval, not a
+// question an agent or a trick asks. With the Hill off it is still posted (`postAny`), answered (`answer`)
+// and read (`list`, which then serves ONLY those cards), exactly as with the Hill on. Its sender is built
+// only by code inside the bridge (`postCollie`); no door makes one, so an agent's `collie hill post`, a
+// crew member's forwarded post and a trick's own Decision stay refused. An answer opens only for a
+// decision the store holds as such a card. The sweep still closes an expired one, or one whose target ended. Status, list and
 // withdraw keep working, so an agent can clean up. When the switch is seen to go off, the notification
 // of every open `now` decision is closed once, so the phone does not keep a question it cannot open.
 //
@@ -100,6 +108,7 @@ import {
   HILL_TELL_RECENT_MS,
   hillNode,
   isHillOptionIntent,
+  isTrickCard,
   sortOpenDecisions,
   type HillAnswerRequest,
   type HillCollieRef,
@@ -975,18 +984,44 @@ export class HillService {
     return this.deps.look === undefined ? fn() : this.deps.look(fn);
   }
 
+  /** Whether the store holds `id` as a card of Collie's own about a trick (wire.ts `isTrickCard`). */
+  private isHeldTrickCard(id: string): boolean {
+    const decision = this.deps.store.get(id);
+    return decision !== undefined && isTrickCard(decision.from);
+  }
+
   /** One decision by id, any sender (the tricks runner reads its own decisions' states). */
   decision(id: string): HillDecision | undefined {
     return this.deps.store.get(id);
   }
 
-  /** What `GET /api/hill` serves: every open decision with the names its sessions have now. */
+  /**
+   * What `GET /api/hill` serves: every open decision with the names its sessions have now. With the Hill
+   * off, only Collie's own cards about a trick (spec 14): an agent's or a trick's stored decision stays
+   * hidden until the Hill is on again.
+   */
   list(): ReturnType<HillStore["list"]> {
+    const off = this.refusesHere();
     return this.look(() => {
       const list = this.deps.store.list();
       // The same revision the snapshot carries, so a phone that holds it reads `unchanged`.
-      return { ...list, rev: this.rev(), open: list.open.map((decision) => served(this.named(decision))), closed: list.closed.map(served) };
+      const rev = this.rev();
+      if (off) {
+        const closedCards = this.deps.store.all().filter((decision) => decision.state !== "open" && isTrickCard(decision.from));
+        return { rev, open: list.open.filter((decision) => isTrickCard(decision.from)).map((decision) => served(this.named(decision))), closed: list.closed.filter((decision) => isTrickCard(decision.from)).map(served), closedTotal: closedCards.length };
+      }
+      return { ...list, rev, open: list.open.map((decision) => served(this.named(decision))), closed: list.closed.map(served) };
     });
+  }
+
+  /**
+   * The revision the snapshot carries while the Hill is off (`trickCardsRev`, spec 14), so the phone reads
+   * Collie's own cards about a trick: the Hill's revision while the store holds at least one such card,
+   * open or closed, else undefined (no key, and the snapshot of an install that never had one keeps its bytes).
+   */
+  trickCardsRev(): number | undefined {
+    if (!this.deps.store.all().some((decision) => isTrickCard(decision.from))) return undefined;
+    return this.rev();
   }
 
   /** The session's name for a walky address, or `fallback` when the bridge has none. */
@@ -1148,8 +1183,10 @@ export class HillService {
 
   private postAny(from: AnySender, input: HillPostInput, opts: HillPostOptions): HillPostAnswer {
     // First: with the Hill off nothing is taken, not even a repeat of a post it once took. A member with
-    // no switch file is not refused here: it answers `not_on_lead` below, as it always did.
-    if (this.refusesHere()) return refuse("hill_off", HILL_OFF);
+    // no switch file is not refused here: it answers `not_on_lead` below, as it always did. A card of
+    // Collie's own about a trick is the one sender the Hill off lets through (spec 14); only `postCollie`
+    // makes that sender, and every check below still holds for it.
+    if (this.refusesHere() && !isTrickCard(from)) return refuse("hill_off", HILL_OFF);
     // Collie's own answer types nothing, so only a post whose answer is typed needs WalkyTalky.
     if (from.kind !== "collie" && !this.deps.walkyOn()) return refuse("walky_off", HILL_WALKY_OFF);
     if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) return refuse("not_on_lead", NOT_ON_LEAD);
@@ -1648,8 +1685,9 @@ export class HillService {
    * delivered when the decision is still open, else answered `gone` with the state it has.
    */
   answer(request: HillAnswerRequest, id: string, by: string, deviceId: string | null = null): Promise<HillAnswerOutcome> {
-    // With the Hill off nothing is typed and no tap runs; the decision stays open for when it is back.
-    if (this.refusesHere()) return Promise.resolve({ kind: "off" });
+    // With the Hill off nothing is typed and no tap runs; the decision stays open for when it is back. The
+    // one exception is a card of Collie's own about a trick, as the store holds it (spec 14).
+    if (this.refusesHere() && !this.isHeldTrickCard(id)) return Promise.resolve({ kind: "off" });
     // §25: a deposed lead's Decisions went to the machine that took over, and a peer's Hill is not the
     // crew's; an answer here could be a second one. Refused, nothing typed, nothing closed, nothing stored.
     if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) {

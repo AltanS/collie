@@ -19,6 +19,7 @@ import { CrewFooterLink } from "@/components/crew-footer-link";
 import { CrewTab } from "@/components/crew-tab";
 import { TelemetryNotice } from "@/components/telemetry-notice";
 import { UpdateBanner, arriveAtUpdateLine } from "@/components/update-banner";
+import { TrickCardsLine } from "@/components/trick-cards";
 import { Fab } from "@/components/ui/fab";
 import { useAnySheetOpen } from "@/components/ui/sheet";
 import { DashboardTabBar } from "@/components/dashboard-tab-bar";
@@ -448,6 +449,8 @@ export function HomeRoute() {
             available update / needed restart, then the build stamp (which bundle you're running,
             with a stale-cache nudge). The crew line self-hides on a solo install. */}
         <CrewFooterLink scope={data.scope} className="px-4 pt-3" />
+        {/* With the Hill off, a card of Collie's own about a trick waits here (M96 spec 14), in the update line's box. */}
+        <TrickCardsLine className="px-4 pt-3" />
         <UpdateBanner ref={updateLine} className="px-4 pt-3" />
         {/* The footer below owns the safe area now, so the stamp only keeps its own air. */}
         {/* With the New button drawn, the stamp's air grows so the last row scrolls clear of it:

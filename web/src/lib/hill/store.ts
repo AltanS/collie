@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { fetchHill } from "@/lib/api";
 
-import { sortOpenDecisions, type HillCrewStateView, type HillDecision, type HillList, type HillReceipt } from "./wire";
+import { isTrickCard, sortOpenDecisions, type HillCrewStateView, type HillDecision, type HillList, type HillReceipt } from "./wire";
 
 // THE HILL, HELD ON THE PHONE (M96): the open decisions, the newest closed ones, and the receipts of
 // the answers this page sent, in one small store read with `useSyncExternalStore`.
@@ -45,6 +45,12 @@ import { sortOpenDecisions, type HillCrewStateView, type HillDecision, type Hill
 // `kept`, with the card's title. An answer that went (`ok`) or that the bridge kept as gone drops them.
 // A kept entry whose closed row the bridge no longer serves draws a row of its own under Answered
 // (hill-view.tsx), with "Your answer, not delivered" and Copy, until the page is left or reloaded.
+//
+// ── TWO SCOPES: THE HILL, OR ONLY THE CARDS ABOUT TRICKS (M96 spec 14) ──────────────────────────
+// With the Hill off the snapshot carries no `hillRev`, but `trickCardsRev` while the bridge holds a card
+// of Collie's own about a trick, and the bridge's list then serves only those cards. The root loader hands
+// that number in with the scope `tricks`. A change of scope empties the store and reads afresh, so a list
+// read under one scope never stands for the other (the two numbers can be equal across a switch).
 //
 // ── THE CREW STATE (1.29.0) ──────────────────────────────────────────────────────────────────────
 // The lead's `here` / `quiet` / `away` rides on the list (`crewState`), and a change of it moves the
@@ -90,6 +96,9 @@ const drafts = new Map<string, string>();
 const sending = new Set<string>();
 
 let held: HillHeld = EMPTY;
+/** What the held list stands for: the whole Hill, or only Collie's cards about tricks (the Hill off). */
+export type HillScope = "all" | "tricks";
+let scope: HillScope = "all";
 /** The newest revision a snapshot named, or null when the last one named none. */
 let wanted: number | null = null;
 let reading = false;
@@ -205,8 +214,11 @@ async function readUntilCurrent(): Promise<void> {
  * The root loader's call on every live snapshot, with the snapshot's `hillRev`. Reads the list when
  * the number moved, and empties the store when the snapshot carries none.
  */
-export function syncHill(rev: number | undefined): void {
-  if (rev === undefined) {
+export function syncHill(rev: number | undefined, as: HillScope = "all"): void {
+  // Another scope: what is held was read for the other one, so it goes first, and the number reads afresh.
+  const moved = as !== scope;
+  scope = as;
+  if (rev === undefined || moved) {
     wanted = null;
     generation += 1;
     lists += 1;
@@ -216,7 +228,7 @@ export function syncHill(rev: number | undefined): void {
     // one the route read itself (`noteHillCrewState`). A member's route reads none, so it holds none.
     const holdsList = held.rev !== null || held.open.length > 0 || held.closed.length > 0 || held.receipts.size > 0;
     if (holdsList) publish({ ...EMPTY, ...keepLeftDrafts(new Set()), crewState: held.crewState });
-    return;
+    if (rev === undefined) return;
   }
   wanted = rev;
   if (rev === held.rev || reading) return;
@@ -337,6 +349,37 @@ export function useHillClosedTotal(): number {
   );
 }
 
+/**
+ * The open cards of Collie's own about a trick (wire.ts `isTrickCard`), oldest first: what Settings, Tricks
+ * lists and the Dashboard's line opens, with the Hill on or off (spec 14). The same array until the list changes.
+ */
+export function useTrickCards(): readonly HillDecision[] {
+  return useSyncExternalStore(
+    subscribe,
+    trickCardsOf,
+    () => NO_DECISIONS,
+  );
+}
+
+let trickCardsFrom: readonly HillDecision[] | null = null;
+let trickCards: readonly HillDecision[] = NO_DECISIONS;
+function trickCardsOf(): readonly HillDecision[] {
+  if (trickCardsFrom === held.open) return trickCards;
+  trickCardsFrom = held.open;
+  const cards = held.open.filter((decision) => isTrickCard(decision.from)).toSorted((a, b) => a.at - b.at);
+  trickCards = cards.length === 0 ? NO_DECISIONS : cards;
+  return trickCards;
+}
+
+/** Whether the store holds a list the bridge served (the first read landed), for a page that waits for it. */
+export function useHillHeld(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => held.rev !== null,
+    () => false,
+  );
+}
+
 /** How many decisions are open. */
 export function useHillCount(): number {
   return useSyncExternalStore(
@@ -385,6 +428,7 @@ export function useHillCrewState(): HillCrewStateView | null {
 /** Forget everything. For tests, which share one module between cases. */
 export function __resetHill(): void {
   wanted = null;
+  scope = "all";
   forced = false;
   generation += 1;
   lists += 1;

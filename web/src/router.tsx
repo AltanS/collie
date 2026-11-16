@@ -38,6 +38,7 @@ import { MachineRoute } from "@/routes/machine";
 import { MachinesRoute } from "@/routes/machines";
 import { UpdatesRoute } from "@/routes/updates";
 import { HillRoute } from "@/routes/hill";
+import { TrickCardRoute } from "@/routes/trick-card";
 import { PairApproveRoute } from "@/routes/pair-approve";
 import {
   devicesLoader,
@@ -108,6 +109,9 @@ export const router = createBrowserRouter([
       // The hill (M96): the Decisions agents posted, one level below the Dashboard. No loader: its
       // lists live in lib/hill/store.ts, kept current by the root loader.
       { path: "hill", element: <HillRoute /> },
+      // One card of Collie's own about a trick (M96 spec 14), with the Hill on or off. No loader: the card
+      // lives in lib/hill/store.ts, kept current by the root loader.
+      { path: "trick-card/:decisionId", element: <TrickCardRoute /> },
       // A paired browser answers another device's pairing request here (ADR 0139). Reached only from the
       // QR the new device shows (`?r=<public id>`); nothing in the app links to it. No loader: the page
       // reads the request itself, and a browser that is not paired is told so without a read.

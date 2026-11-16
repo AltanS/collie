@@ -3218,7 +3218,6 @@ export const zhTW: Dictionary = {
   "settings.tricks.warn.honesty": "由程式碼的文字搜尋發現，不是證明。",
   "settings.tricks.hillOff": "Hill 已關閉：不會顯示這個 Trick 的決策。",
   "settings.tricks.pending": "新版本在等待你的同意。",
-  "settings.tricks.pendingHillOff": "新版本在等待。請在「設定」的「實驗功能」中開啟 Hill，才能閱讀。",
   "settings.tricks.rightsMoved": "它的權限已變更。請重新開啟。",
   "settings.tricks.auto.failed": "無法變更 {name}，請再試一次。",
   "settings.tricks.autoAt": "{ago}已自動更新。",

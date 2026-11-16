@@ -3244,7 +3244,6 @@ export const ja: Dictionary = {
   "settings.tricks.warn.honesty": "コードのテキスト検索による結果で、証明ではありません。",
   "settings.tricks.hillOff": "Hill がオフのため、このトリックの判断は表示されません。",
   "settings.tricks.pending": "新しいバージョンがあなたの承認を待っています。",
-  "settings.tricks.pendingHillOff": "新しいバージョンが待っています。読むには、設定の実験機能で Hill をオンにしてください。",
   "settings.tricks.rightsMoved": "権限が変更されました。もう一度オンにしてください。",
   "settings.tricks.auto.failed": "{name} を変更できませんでした。もう一度お試しください。",
   "settings.tricks.autoAt": "{ago}に自動で更新されました。",

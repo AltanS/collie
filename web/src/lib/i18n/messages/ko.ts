@@ -3237,7 +3237,6 @@ export const ko: Dictionary = {
   "settings.tricks.warn.honesty": "코드를 텍스트 검색해서 찾은 것이며 증명은 아닙니다.",
   "settings.tricks.hillOff": "Hill이 꺼져 있습니다. 이 트릭의 결정이 표시되지 않습니다.",
   "settings.tricks.pending": "새 버전이 승인을 기다립니다.",
-  "settings.tricks.pendingHillOff": "새 버전이 대기 중입니다. 읽으려면 설정의 실험 기능에서 Hill을 켜세요.",
   "settings.tricks.rightsMoved": "권한이 바뀌었습니다. 다시 켜세요.",
   "settings.tricks.auto.failed": "{name}을(를) 변경하지 못했습니다. 다시 시도하세요.",
   "settings.tricks.autoAt": "{ago} 자동으로 업데이트됨.",

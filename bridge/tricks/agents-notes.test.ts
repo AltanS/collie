@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 
 import { TRICK_CONTRACT_DEFAULT, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
-import { NOTES_FILE, NOTES_VERSION, sampleAgents, shippedNotesTexts } from "./agents-notes.ts";
+import { NOTES_FILE, NOTES_VERSION, sampleAgents, shippedNotesTexts, shippedNotesVersion } from "./agents-notes.ts";
 import { helperNote, NOTES_DIFF_LINES_FACTOR, notesChangedNote, shippedNotesDiff } from "./card-group.ts";
 import { proposalCard, proposalDiff, type ProposerFacts } from "./proposal-card.ts";
 import { TRICK_HELPER } from "./scan.ts";
@@ -25,8 +25,26 @@ function cardText(manifest: TrickManifest, files: Record<string, string>): strin
 
 describe("the notes init writes", () => {
   test("their text is pinned to NOTES_VERSION: a change to the text bumps the version and this hash", () => {
-    const hash = createHash("sha256").update(sampleAgents("legs", "ts", false)).digest("hex").slice(0, 16);
-    expect({ version: NOTES_VERSION, hash }).toEqual({ version: 1, hash: "0d345a22caaa582f" });
+    const hash = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft)).digest("hex").slice(0, 16);
+    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 2, hash: "0d345a22caaa582f", draft: "1d39cfe8d79174fe" });
+  });
+
+  test("v2 (M96 spec 14): a draft's last step names where the person reads it, and never says the Hill must be on", () => {
+    const text = sampleAgents("legs", "sh", true);
+    expect(text).toContain("They read it on the Hill, or in\n   Settings, Tricks, while the Hill is off.");
+    expect(text).not.toContain("send this draft to the Hill");
+    expect(text).not.toMatch(/switch (the Hill|it) on/iu);
+  });
+
+  test("a draft init wrote before v2 is still named as the notes Collie ships, as v1", () => {
+    const v1 = sampleAgents("legs", "sh", true, 1);
+    expect(v1).toContain("send this draft to the Hill");
+    expect(shippedNotesVersion("legs", v1)).toBe(1);
+    expect(shippedNotesVersion("legs", sampleAgents("legs", "sh", true))).toBe(2);
+    expect(shippedNotesVersion("legs", "# Legs\n")).toBeNull();
+    const text = cardText(SH, { "trick.toml": 'id = "legs"\n', "program.sh": PROGRAM_SH, [NOTES_FILE]: v1 });
+    expect(text).toContain(helperNote({ what: "notes", version: 1 }));
+    expect(text).not.toContain("This folder is a Collie trick.");
   });
 
   test("byte for byte, on one card: named, and no line of them shown", () => {
@@ -38,7 +56,7 @@ describe("the notes init writes", () => {
   test("byte for byte, beside the helper on a group: named on card 1, on no code card", () => {
     const text = cardText(TS, { "trick.toml": 'id = "legs"\n', "program.ts": "console.log(1);\n", "trick.ts": TRICK_HELPER, [NOTES_FILE]: sampleAgents("legs", "ts", false) });
     expect(text).toContain(helperNote({ what: "notes", version: NOTES_VERSION }));
-    expect(text).toContain("Collie's notes v1");
+    expect(text).toContain(`Collie's notes v${String(NOTES_VERSION)}`);
     expect(text).not.toContain("This folder is a Collie trick.");
   });
 

@@ -3084,7 +3084,6 @@ export const pt: Dictionary = {
   "settings.tricks.warn.honesty": "Encontrado por uma busca de texto no código dele, não é uma prova.",
   "settings.tricks.hillOff": "O Hill está desativado: as Decisões deste truque não aparecem.",
   "settings.tricks.pending": "Uma nova versão aguarda o seu sim.",
-  "settings.tricks.pendingHillOff": "Uma nova versão aguarda. Ative o Hill em Configurações, Experimentos, para lê-la.",
   "settings.tricks.rightsMoved": "Os direitos dele mudaram. Ative-o de novo.",
   "settings.tricks.auto.failed": "Não foi possível alterar {name}. Tente novamente.",
   "settings.tricks.autoAt": "Atualizado {ago}, automaticamente.",

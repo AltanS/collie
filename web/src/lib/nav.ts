@@ -337,6 +337,15 @@ export function hillPath(scope?: Scope): string {
 }
 
 /**
+ * One card of Collie's own about a trick (M96 spec 14): a proposal, a new version, a trick's rights. Its own
+ * page, with no Hill around it, so it works with the Hill off. Opened from Settings, Tricks and from the
+ * Dashboard's line; Back steps back to either, else to the Dashboard. Carries the scope like the others.
+ */
+export function trickCardPath(decisionId: string, scope?: Scope): string {
+  return `/trick-card/${encodeURIComponent(decisionId)}${scopeSearch(scope)}`;
+}
+
+/**
  * The Updates page — a CHILD of Settings, not an anchor inside it. Updating is a flow with a lead,
  * N peers, progress and a rollback state, so it gets a page and Settings keeps one row that links
  * here. Carries the scope like the others, so "back" returns to the machine you came from.
@@ -530,6 +539,8 @@ export function ancestorsOf(pathname: string): string[] {
   // from a trick's Session, where the bar stays too (amended 2026-11-10). A sideways move carries `from`,
   // so the Dashboard is its only parent either way.
   if (head === "hill" && seg.length === 1) return ["/"];
+  // A trick's card (M96 spec 14) is opened from Settings, Tricks and from the Dashboard's line.
+  if (head === "trick-card" && seg.length === 2) return ["/", "/settings/tricks"];
   // The approver's page (ADR 0139) is opened from a QR, from outside the app: the Dashboard is its parent.
   if (head === "pair" && seg.length === 2 && id === "approve") return ["/"];
   // A durable program's conversations are opened from a space's sheet (dashboard or space page) and
@@ -776,6 +787,8 @@ export function parentChain(pathname: string, search: string): string[] {
   }
   if (head === "settings" && seg.length === 1) return [home];
   if (head === "hill" && seg.length === 1) return [home];
+  // A trick's card from its notification or a bookmark: the Dashboard behind it.
+  if (head === "trick-card" && seg.length === 2) return [home];
   if (head === "pair" && seg.length === 2 && id === "approve") return [home];
   // The conversations list: behind it the pane it was opened for, else the dashboard. One conversation
   // sits under the dashboard, which is a durable machine's conversation list (M53 spec 12).

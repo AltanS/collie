@@ -94,7 +94,7 @@ function closeReason(id: string, stopped: ReadonlyMap<string, string>, running: 
 export class RightsCards implements TrickRightsPort {
   private readonly hill: RightsCardHill;
   private readonly warn: (line: string) => void;
-  /** Refusals already said, `<id>@<hash>@<code>`, so a Hill that is off is not logged every scan. */
+  /** Refusals already said, `<id>@<hash>@<code>`, so a full Hill is not logged every scan. */
   private readonly said = new Set<string>();
 
   constructor(deps: { hill: RightsCardHill; warn?: (line: string) => void }) {

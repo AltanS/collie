@@ -3084,7 +3084,6 @@ export const tr: Dictionary = {
   "settings.tricks.warn.honesty": "Kodunda metin araması ile bulundu, kanıt değildir.",
   "settings.tricks.hillOff": "Hill kapalı: bu trick'in Kararları gösterilmiyor.",
   "settings.tricks.pending": "Yeni bir sürüm onayınızı bekliyor.",
-  "settings.tricks.pendingHillOff": "Yeni bir sürüm bekliyor. Okumak için Ayarlar, Deneyler bölümünden Hill'i açın.",
   "settings.tricks.rightsMoved": "Yetkileri değişti. Tekrar açın.",
   "settings.tricks.auto.failed": "{name} değiştirilemedi. Tekrar deneyin.",
   "settings.tricks.autoAt": "{ago} otomatik olarak güncellendi.",

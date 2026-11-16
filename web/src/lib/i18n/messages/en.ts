@@ -1358,6 +1358,8 @@ export const en = {
   "nav.prereleaseTitle": "Pre-release build {version}",
 
   // --- home (dashboard herd list) ---
+  "home.trickWaits.line": "A trick waits for your yes.",
+  "home.trickWaits.open": "Read it",
   "home.empty.disconnected": "Disconnected",
   "home.empty.disconnectedAt": "Disconnected, last seen {time}",
   "home.empty.noAgents": "No agents running.",
@@ -3515,8 +3517,8 @@ export const en = {
   "settings.tricks.warn.honesty": "Found by a text search of its code, not a proof.",
   "settings.tricks.hillOff": "The Hill is off: this trick's Decisions are not shown.",
   "settings.tricks.pending": "A new version waits for your yes.",
+  "settings.tricks.waiting.title": "Waiting for your yes",
   // The same row with the Hill off (2026-11-13): the new version's card is a Decision on the Hill.
-  "settings.tricks.pendingHillOff": "A new version waits. Switch the Hill on in Settings, Experiments, to read it.",
   // Fault B: the trick stopped because its code asks for a right the person's yes did not hold.
   "settings.tricks.rightsMoved": "Its rights changed. Switch it on again.",
   // Take changes without asking, and the undo of an automatic change (crew slice 3).
@@ -3884,6 +3886,9 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.cannotRun",
   "settings.tricks.cannotRunBare",
   "settings.tricks.partNotShown",
+  "settings.tricks.waiting.title",
+  "home.trickWaits.line",
+  "home.trickWaits.open",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

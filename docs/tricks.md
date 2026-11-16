@@ -415,7 +415,8 @@ is a speed bump, not a lock. Your user account is the real boundary
 Collie runs the approved copy. When you edit the trick's folder, or `collie trick update` fetches new
 code, the trick keeps running the old version. Its row says "A new version waits for your yes."
 
-A card on the [Hill](hill.md) asks "Use the new version of <name>?". It shows the files that changed
+A card asks "Use the new version of <name>?". It is on the [Hill](hill.md), and in Settings → Tricks
+under **Waiting for your yes**, where the trick's row opens it too, with the Hill on or off. It shows the files that changed
 and any new power the version asks for. You have three options:
 
 - **Use the new version** approves the code on the card, and the trick runs it.
@@ -503,7 +504,8 @@ tries it with `collie trick dev`, and then proposes it to you:
 collie trick propose ~/work/disk-space
 ```
 
-A card appears on your Hill with the whole code on it. Collie never recommends "Switch it on": your
+A card appears with the whole code on it: on your Hill, or in Settings → Tricks under **Waiting for
+your yes** while the Hill is off. Collie never recommends "Switch it on": your
 own reading is the check. Nothing of the trick runs before your yes, and an agent cannot switch a
 trick on itself.
 
@@ -537,8 +539,7 @@ Most problems show in the trick's row in Settings → Tricks, or in `collie tric
 | No Tricks section in Settings | The config folder has no `tricks/` folder yet. `collie trick add` or `collie trick init <id>` makes it |
 | "This trick cannot run. ..." | `trick.toml` has an error, and the rest of the line says which. Run `collie trick check <folder>` and fix each line it prints |
 | "Part of this trick is not shown. ..." | The trick runs, but Collie refused one part of what it printed, for example a status line over its length. The rest of the line says which. Run `collie trick dev <folder>` to see each refusal |
-| "A new version waits for your yes." | The folder moved past the approved copy. Open the card on the Hill, or run `collie trick on <id>` |
-| "A new version waits. Switch the Hill on in Settings, Experiments, to read it." | The same, and the Hill is off, so its card cannot be read. Switch the Hill on in Settings → Experiments, or run `collie hill on` |
+| "A new version waits for your yes." | The folder moved past the approved copy. Tap the line to open its card, or run `collie trick on <id>` |
 | "The approved copy changed on disk, so the trick stopped. ..." | A program edited the approved copy. Read the code, then switch the trick on again |
 | "The approved copy holds a symbolic link, so the trick stopped. ..." | A trick holds regular files only. Replace the link, then switch it on again |
 | "No version of this trick is approved yet. ..." | The switch file has no approved code for the trick. Switch it on again |

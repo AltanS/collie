@@ -28,8 +28,9 @@ import { isRequestId } from "../bridge/worktree-receipts.ts";
 // own pane: it switches nothing on. The folder is checked as `collie trick check` checks it, read the
 // hardened way (regular files only, never through a link, within the caps of `collie trick add`), and
 // sent over the walky socket to this machine's bridge, which keeps it on a lead or a solo Collie and
-// forwards it to the lead on a crew member (bridge/tricks/propose-door.ts). The person sees a card on the
-// Hill; nothing runs before their yes.
+// forwards it to the lead on a crew member (bridge/tricks/propose-door.ts). The person sees a card of
+// Collie's own, on the Hill or, with the Hill off, in Settings, Tricks (M96 spec 14); nothing runs before
+// their yes.
 //
 // Left behind, never sent: dot files and dot folders (`.env`, `.git`), `node_modules/`, `*.log`, the
 // bridge's own `inputs/`, `media/` and `captures/` (a proposal carries code only, security review F3), and
@@ -39,6 +40,12 @@ import { isRequestId } from "../bridge/worktree-receipts.ts";
 export const PROPOSE_UNKNOWN = "No running Collie on this machine takes trick proposals. Update Collie, or start it.";
 /** What it prints when a bridge that knows proposals answered, and none of them drives this pane. */
 export const PROPOSE_NOT_HERE = "No Collie bridge on this machine knows this pane.";
+
+/**
+ * Where the person finds a proposal's card (M96 spec 14): it needs no Hill, so the words never tell anyone
+ * to switch the Hill on.
+ */
+export const PROPOSE_WHERE = "on the Hill, or in Settings, Tricks, while the Hill is off";
 
 /** What the CLI says when the folder's config.toml stayed behind. */
 export const PROPOSE_CONFIG_LEFT = "config.toml stays behind: your person sets the trick up on the machine.";
@@ -76,7 +83,10 @@ function socketPaths(deps: ProposeDeps): string[] {
 
 type Asked = { ok: true; body: JsonObject } | { ok: false; error: string; code: string | null; exit: number };
 
-/** The exit code of a refusal: the Hill off is a state, a lead away is unreachable, the rest refused. */
+/**
+ * The exit code of a refusal: a state, a lead away is unreachable, the rest refused. `hill_off` comes only
+ * from a lead older than spec 14 (a 1.29.0 Edge build), which still refused a proposal with its Hill off.
+ */
 export function proposeExit(code: string | null): number {
   if (code === "lead_unreachable") return EXIT.UNREACHABLE;
   if (code === null || code === "hill_off" || code === "no_tricks" || code === "not_on_lead") return EXIT.STATE;
@@ -215,8 +225,8 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   }
   deps.io.out(`Sent ${String(read.files.length)} files. Left behind: ${String(read.left)} (dot files, node_modules, logs, inputs/, media/, captures/, config.toml).`);
   if (read.config) deps.io.out(PROPOSE_CONFIG_LEFT);
-  if (kind === "version") deps.io.out(`Proposed a new version of ${id}. Your person sees it on the Hill as ${decision ?? "a card"}. Nothing of it is written or runs before their yes.`);
-  else deps.io.out(`Proposed ${id}. Your person sees it on the Hill as ${decision ?? "a card"}. Nothing runs before their yes.`);
+  if (kind === "version") deps.io.out(`Proposed a new version of ${id}. Your person sees it as ${decision ?? "a card"} ${PROPOSE_WHERE}. Nothing of it is written or runs before their yes.`);
+  else deps.io.out(`Proposed ${id}. Your person sees it as ${decision ?? "a card"} ${PROPOSE_WHERE}. Nothing runs before their yes.`);
   if (replaced !== null) deps.io.out(`It replaces your earlier proposal ${replaced}.`);
   if (decision !== null) deps.io.out(`Read the answer with: collie hill status ${decision}`);
   return EXIT.OK;

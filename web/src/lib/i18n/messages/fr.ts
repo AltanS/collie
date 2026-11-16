@@ -3087,7 +3087,6 @@ export const fr: Dictionary = {
   "settings.tricks.warn.honesty": "Trouvé par une recherche textuelle de son code, pas une preuve.",
   "settings.tricks.hillOff": "La Hill est désactivée : les Décisions de ce trick ne sont pas affichées.",
   "settings.tricks.pending": "Une nouvelle version attend votre accord.",
-  "settings.tricks.pendingHillOff": "Une nouvelle version attend. Activez la Hill dans Paramètres, Expérimentations, pour la lire.",
   "settings.tricks.rightsMoved": "Ses droits ont changé. Réactivez-le.",
   "settings.tricks.auto.failed": "Impossible de modifier {name}. Réessayez.",
   "settings.tricks.autoAt": "Mis à jour {ago}, automatiquement.",
