@@ -1,5 +1,8 @@
-// The /resume SESSION PICKER grammar (.adr/0058) — the one dialog on which a tap sends a key the
-// screen never printed.
+// The /resume SESSION PICKER grammar (.adr/0058), the first dialog on which a tap sends a key the
+// screen never printed. It is one of a short, named list: ADR 0151 rule 3 holds all the exceptions (this
+// Enter, the Switch-model confirmation, the plan feedback row, the Antigravity artifact review, an edge
+// arrow on a clamped list, the unread-dialog cancel key, and the clears of a typed field), each scoped
+// to its own dialog.
 //
 // Claude Code 2.1.278 paints `/resume` as a titled modal with a search box, a list of past sessions
 // and a key-hint footer:
@@ -20,11 +23,12 @@
 //          Ctrl+R to rename · Type to search · Esc to cancel
 //
 // The footer NEVER names Enter or the arrows, so under ADR 0009 the generic menu (menu.ts) can only
-// offer Cancel, and no card could ever resume a session. ADR 0058 makes the one exception: this
+// offer Cancel, and no card could ever resume a session. ADR 0058 made this exception: this
 // dialog, recognised by its own title, its own search box and its own footer, is lifted as the
 // pointed list ADR 0055 already walks, and a tap is the arrow walk from the `❯` plus an unprinted
 // `Enter`. The `❯` pointer means "Enter takes this row" in every Claude list; the exception is
-// scoped to this screen and gives no other dialog an unprinted key.
+// scoped to this screen and gives no other dialog an unprinted key. A dialog that needs one more
+// unprinted key is another named exception in ADR 0151 rule 3, with its own evidence.
 //
 // TWO SIGNATURES. `signature` is the region verbatim (pointer and ages included), so the entry guard
 // refuses a tap on a screen that changed, ADR 0058's trade. `coreSignature`, which the verify read of

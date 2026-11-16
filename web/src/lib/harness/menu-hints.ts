@@ -7,8 +7,11 @@
 // adapter's fixture corpus:
 //
 //   * ONLY KEYS THE SCREEN NAMED. A menu is claimed on the strength of the screen naming its own
-//     keys in a `·`-separated "<key> to <verb>" footer. Every emitted action key comes from that
-//     footer; the only keys added are the ARROWS the screen advertised. Nothing is inferred.
+//     keys in a `·`-separated "<key> to <verb>" footer. In the GENERIC menu every emitted action key
+//     comes from that footer; the only keys added are the ARROWS the screen advertised. Nothing is
+//     inferred. A grammar of its own may name other keys, each an exception ADR 0151 rule 3 lists: for
+//     example the Antigravity artifact review builds a `MenuModel` with `Tab, Enter`, which its footer
+//     does not print and which are on the `menuKeyFor` allowed list.
 //   * NO DIGITS, EVER (.adr/0009). Live-probed in Claude's `/model` picker: a digit confirms AND
 //     writes the choice to the user's default for new sessions. A digit is a valid Herdr key, so
 //     nothing downstream would reject one — the ban has to live in `menuKeyFor`.

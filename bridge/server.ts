@@ -827,6 +827,9 @@ export function afterPaneInput(engine: Pick<StateEngine, "noteInput">, res: Resp
  * and `changes`; `device-read` for `files`, which is a read that needs an authorised device (ADR 0083:
  * it exposes every file under the root, which Changes does not); a write for everything that types
  * into or restructures a terminal. `pins` reads for a GET and writes otherwise (M90).
+ *
+ * No audit line is written for a Files or Changes read. The audit log records what reaches a
+ * terminal, and a line per folder tap would bury the lines that matter.
  */
 export function paneGateLevel(action: string | undefined, method?: string): GateLevel {
   if (action === "files") return "device-read";

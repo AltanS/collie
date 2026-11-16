@@ -139,8 +139,8 @@ filter and your folded folders stay as they are.
 
 ## Which folder, and which repos
 
-The list covers the pane's **workspace**, not only the pane's own folder, so every pane in one
-workspace shows the same list. The header names the workspace, its folder and the branch the folder is
+The list covers the pane's **workspace**, not only the pane's own folder, so every pane inside the
+workspace's folder shows the same list. The header names the workspace, its folder and the branch the folder is
 on, when every pane in it agrees on one. Collie picks that folder
 in this order:
 
@@ -149,6 +149,12 @@ in this order:
 | 1 | The workspace's own folder, when the multiplexer keeps one: Herdr's worktree, tmux's session folder |
 | 2 | The deepest folder that holds every pane of the workspace |
 | 3 | The pane's own folder, when the first two would be `/`, your home folder, or above it |
+| Any | The pane's own folder, when the pane sits outside the folder rows 1 and 2 picked |
+
+The last row is a pane that moved out of its workspace's folder, for example a tab that went to `/tmp`
+and started an agent there. It reads its own folder, not another pane's repo. That folder must not be
+`/`, your home folder or above it, or the pane shows no folder. The dashboard's Changes tab, which asks by
+workspace, still reads the workspace folder.
 
 Collie then finds the repo that holds that folder. It also looks for repos in folders below it, even
 repos the parent repo ignores. That is how a workspace repo with its member repos ignored inside it

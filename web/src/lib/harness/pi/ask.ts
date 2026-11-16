@@ -4,7 +4,7 @@
 // Herdr reports stock pi and OmO alike as `agent: "pi"`, and pi's question tools are extensions:
 // pi's own stock examples (`question`, `questionnaire`), OmO's built-in ask, and many more on npm.
 // One grammar per extension cannot keep up, so this module reads what they share. The captures that
-// prove each piece are named where the piece is read; the table of what lifts is in the ADR.
+// prove each piece are named where the piece is read; the table of what lifts is in ASK_NOTES.md.
 //
 // THE SHAPE, bottom up, at the buffer tail. Anything else is a decline (raw mirror plus the Escape
 // card):

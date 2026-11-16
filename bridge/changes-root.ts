@@ -115,6 +115,10 @@ export function workspaceRoot(input: WorkspaceRootInput): string | null {
  * one. Pure string rules, like the rest of this file: two spellings of one folder that differ by a
  * symlink (`/tmp` vs `/private/tmp`) read as outside here, and the server re-checks those against
  * the disk before it discards a root.
+ *
+ * When to revisit: a mux whose reported cwd lags the foreground process (a pane that `cd`s after
+ * launch and is read before the snapshot catches up keeps the root its old folder earns). That is a
+ * snapshot-freshness problem and is fixed there, never by weakening this rule.
  */
 export function rootForPane(root: string | null, cwd: string, host: Host = HOST): string | null {
   if (root === null) return null;

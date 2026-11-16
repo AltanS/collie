@@ -5,8 +5,17 @@
 # addition MUST be additive-optional with absent-means-closed semantics (§7.1); an addition that
 # cannot be expressed that way bumps `X-Crew-Protocol` (CREW_PROTOCOL_VERSION). This script does
 # not judge which of those a diff is — it refuses a wire-shape change that recorded NEITHER
-# decision, so the choice is made by a human at commit time. See
-# .adr/0025-the-wire-guard-forces-a-decision-never-a-bump.md.
+# decision, so the choice is made by a human at commit time. This header is the rule (ADR 0025 is
+# retired into it).
+#
+# Why not the obvious automations. A guard that fails when the protocol number did not change
+# contradicts §7.1, because additive-optional changes are supposed to ship inside a version; it would
+# push people to bump for safety, and a spurious bump is a crew-wide outage. A hash of the wire types
+# would track refactors and not bytes, because the wire is hand-written TypeScript and prose with no
+# machine-readable schema. A CI-only check would raise the question after the author lost the
+# semantics. The guard buys a forced question and not a proof: a wrong doc edit passes, and review
+# owns the answer. Revisit when a generated wire schema exists: the trigger can then be the schema
+# diff, and the file list below and its drift go away.
 #
 # Runs against the STAGED diff. Called standalone and by the pre-commit hook (guard C).
 # Override once with: SKIP_CREW_WIRE_CHECK=1 git commit …

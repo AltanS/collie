@@ -754,7 +754,7 @@ A branch's folder (`bridge/worktree-folder.ts`,
 [ADR 0145](./.adr/0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md)) is a PARENT the phone names and a
 child the bridge names after the branch; `resolveParentTarget` refuses a `..` as sent, a link below
 home, a folder outside home, in a dotdir or in the repo, and a child that exists, and it runs at plan
-and again at create. Don't call Herdr's `worktree.create` with a `path` that did not just pass it. The Changes view
+and again at create. The bridge runs `git worktree add` itself since ADR 0126 and no Herdr `worktree.create` runs, so never give git a `path` that did not just pass it. The Changes view
 (`bridge/changes.ts`, [ADR 0065](./.adr/0065-the-changes-view-reads-git-read-only.md)) is bounded by
 a listed-paths rule: a diff is served only for a repo the bridge's own discovery returned and a path
 git listed there, and an untracked read goes through `containedRealpath` too. Its git runs are

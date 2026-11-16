@@ -3,8 +3,12 @@
 // ── WHY THE LEAD KEEPS IT, AND NOT EACH MEMBER ───────────────────────────────
 // The phone talks to the lead, and the lead already hears every member's last sample on the sweep it
 // runs anyway (CREW_PROTOCOL.md §10.1). Keeping the day there costs no new route on the crew link and
-// no dial the phone can trigger. The price is named in ADR 0084: a member's history has gaps for the
-// minutes the lead was down or the member was unreachable, and nothing back-fills them.
+// no dial the phone can trigger. A member keeps no history of its own: the phone asks the lead for
+// everything, so a day kept on a member would need a forwarded route and a second copy of the same
+// day, and it would still be lost with that member. The price: a member's history has gaps for the
+// minutes the lead was down or the member was unreachable, and nothing back-fills them. History and
+// alert rules do not follow the crown either: a deputy that takes over starts with none, and both
+// files stay on the old lead (ADR 0084, retired into this header and bridge/machines.ts).
 //
 // ── IN MEMORY, SAVED FROM THE TICK ───────────────────────────────────────────
 // `record` and `points` touch memory only. The owner (`bridge/machines.ts`) saves the whole store to

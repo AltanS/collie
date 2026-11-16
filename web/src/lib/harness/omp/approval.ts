@@ -53,6 +53,22 @@
 // is the footer's way out in its own words (`Cancel`), sending `Escape`, which omp also reports to
 // the agent as a denial.
 //
+// THE RACE NEVER TURNS A DENIAL INTO AN APPROVAL (the guarantee of ADR 0078, in full). A gap of
+// milliseconds stays between the bridge's re-read and its send, and a desk arrow can land in it.
+//   * On the clamped list (omp 18.1 to 18.6, two rows) the commit carries the edge arrow first:
+//     `Up, Enter` for the first row, `Down, Enter` for the last. The list clamps, so an extra arrow
+//     from the desk moves nothing the commit does not already move, and the Enter lands on the
+//     tapped row. A Deny tap cannot approve, and an Approve tap cannot become a denial the person
+//     did not ask for. No bare `Enter` is ever sent on an edge row.
+//   * On the wrapping list (omp 18.12) Up on the first row lands on Deny and Down on the last row
+//     lands on Approve, so no walk from the Deny row is safe. Deny is therefore the footer's own
+//     `Escape`, which denies from any row: a Deny tap cannot approve whatever the desk does. The
+//     model does not declare `clampedEnds` there, since `Up, Enter` on the first row would deny. An
+//     Approve tap commits with a bare `Enter` on a verified read, so a desk arrow in the gap can only
+//     move an approval to its neighbouring row, never a denial into an approval.
+//   * If the dialog closes between the guard and the keys, a trailing `Enter` can land on whatever
+//     omp draws next. That window is milliseconds and cannot be closed from the phone.
+//
 // WHAT THE CARD SHOWS, so nobody approves blind. The caption is the title (`Allow tool: bash`, the
 // tool's name). The Approve button's description is the body, row by row, rows joined by ` ↵ ` so a
 // newline in a command is never read as a space; that overstates a soft wrap as a break, which is the
@@ -61,6 +77,10 @@
 // MAX_CONTENT_ROWS rows of content, past which the screen declines to the raw mirror. omp itself
 // shortens every field to 2000 characters (`truncateForPrompt`), and a field it shortened declines
 // below. The card starts at the box's title row, so the box is not also painted in the raw mirror above it.
+// DECLINE RATHER THAN CUT. A first draft cut a write's content to six rows and `... +N`. Counsel
+// rejected it: the signature binds rows the person never read, a payload at the end of a file (a
+// `.bashrc` or `authorized_keys` line) is the classic case, and a `... +N` row in the content would
+// forge the marker. So the card shows every row or declines.
 //
 // FAIL CLOSED (the first shape; the second shape's evidence is in its own header above). Every piece below is required, and any one missing returns null, which leaves the raw
 // mirror and the unread-dialog card's Escape exactly as slice 1 drew them:

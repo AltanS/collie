@@ -639,7 +639,14 @@ export function createPiReducer(): RowReducer {
   const pendingTools = new Map<string, PiPending>();
   // What this reducer met and had no branch for, asked for once per session by the canary.
   const unknown = createUnknownCounter(PI_KNOWN);
-  // The newest plan card, which a later non-`write` `todo` call folds into (ADR 0119).
+  // The newest plan card, which a later non-`write` `todo` call folds into (ADR 0119, retired into this
+  // comment and the header of tool-call.ts). On pi a list's updates fold into the card its `write` drew:
+  // a later `todo` call that is not a `write` draws nothing of its own, and its result rewrites the held
+  // card's tasks and names that turn in `changed` (ADR 0073). A new `write` opens a new card, a `clear`
+  // ends the held one, and a rewind past it releases it. Other harnesses draw one plan card per call,
+  // because their lists have no `write` to say where one list ends and the next begins. A held card can
+  // sit far above the bottom of a long session, and once it has left the live window its updates draw
+  // nothing until the next `write` or a fresh read; revisit if that is reported.
   let heldPlan: PendingTool | undefined;
   // Subagent task id / background job id → the card that started it, so the end notice (or a
   // `subagent_result`) can find it. Kept after the work ends: a result can be asked for later. Bounded
