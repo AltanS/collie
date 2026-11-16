@@ -42,7 +42,16 @@ listen. A pi extension could listen, but two shapes of wire for two programs is 
    only while it polls. Otherwise the screen path runs, unchanged.
 5. **One request id, never twice.** A command handed to a part is taken for good: never withdrawn,
    never handed out again, never sent the screen way after. Before the handoff it may be withdrawn and
-   sent the screen way, once.
+   sent the screen way, once. One exception (2026-11-16): a phone `prompt` whose part answers `failed`
+   with the reason `dropped`, which a part says only where its agent's contract guarantees the
+   refused submit entered nothing (Claude Code's `{ drop }`). Nothing was submitted by data, so it is
+   sent the screen way, once, with the screen's own checks. A WalkyTalky message and a Deliver now
+   keep the rule as written. Every other `failed` carries its reason and the part's own words
+   (`detail`) into the receipt, which still says it may have arrived.
+   A part whose pane carries the hook edges of another live agent process (dropped `not-foreground`)
+   is shadowed: its pane's sends take the screen road until that process ends or a new hello binds.
+   The case is a Claude Code background job, whose agent runs in its own process while the viewer
+   left in the pane keeps the part it bound before and cannot submit for the job.
 6. **Host-local.** Nothing crosses the crew wire. A member chooses the path for its own sessions.
 7. **What goes by data.** A plain phone send (`prompt`, needs `send` and `wake`), a WalkyTalky message
    (`mail`, needs `mail` and `wake`), a permission answer (`answer`, while a live part hold exists for

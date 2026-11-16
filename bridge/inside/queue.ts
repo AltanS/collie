@@ -35,6 +35,8 @@ export interface QueuedCommand {
   endedAt: number | null;
   /** The part's reason for `failed`, or `expired` for a withdrawal by age. */
   reason: string | null;
+  /** The part's own words with a `failed` (an error's class and message), or null. Never a command's text. */
+  detail: string | null;
 }
 
 /** How long a queued command waits for a part before it is withdrawn by age. */
@@ -109,7 +111,7 @@ export class CommandQueue {
     const key = keyOf(address);
     const list = this.pending.get(key) ?? [];
     if (list.length >= QUEUE_PER_PANE_MAX) return { ok: false, reason: "full" };
-    const entry: QueuedCommand = { command, address, queuedAt: this.now(), state: "queued", takenAt: null, endedAt: null, reason: null };
+    const entry: QueuedCommand = { command, address, queuedAt: this.now(), state: "queued", takenAt: null, endedAt: null, reason: null, detail: null };
     this.byId.set(command.id, entry);
     list.push(command.id);
     this.pending.set(key, list);
@@ -168,9 +170,10 @@ export class CommandQueue {
    * The part's word on a taken command: `sent` or `failed`. Only from `taken`, only once, and only from
    * the pane the command was for. False otherwise, and nothing changes.
    */
-  settle(id: string, address: PaneAddress, outcome: "sent" | "failed", reason: string | null = null): boolean {
+  settle(id: string, address: PaneAddress, outcome: "sent" | "failed", reason: string | null = null, detail: string | null = null): boolean {
     const entry = this.byId.get(id);
     if (entry === undefined || entry.state !== "taken" || keyOf(entry.address) !== keyOf(address)) return false;
+    entry.detail = outcome === "failed" ? detail : null;
     this.end(entry, outcome, reason);
     return true;
   }

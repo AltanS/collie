@@ -91,6 +91,7 @@ export async function dataRig(options: { harness: string; version: string; enabl
     queue: new CommandQueue(),
     place: (hello) => placeHello(hello, [target], fakeLiveness(new Map([[process.pid, 7]]))),
     now: options.now ?? Date.now,
+    log: () => {},
   });
   const socket = insideSocketPath(dir);
   const server = new InsideServer({ socketPath: socket, hub, log: () => {} });

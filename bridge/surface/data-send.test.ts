@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 
-import { dataDescribe, dataId, dataRig, type DataRig } from "../inside/data-rig.ts";
+import { DATA_PANE, dataDescribe, dataId, dataRig, type DataRig } from "../inside/data-rig.ts";
 
 const rigs: DataRig[] = [];
 afterEach(() => {
@@ -109,6 +109,71 @@ dataDescribe("never twice", () => {
     expect(answer.receipt?.outcome).toBe("unknown");
     expect(answer.receipt?.reason).toBe("no_evidence");
     expect(r.mux.calls).toEqual([]);
+    // The part's word reaches the receipt, the stored record and the phone's answer, in plain words.
+    expect(answer.receipt?.detail).toContain("reported a failure (submit)");
+    expect(answer.detail).toBe(answer.receipt?.detail);
+    expect(r.store.get(id)?.receipt?.detail).toBe(answer.receipt?.detail);
+    expect(r.protocol.recent("w1:p1", 10).find((row) => row.requestId === id)?.detail).toBe(answer.receipt?.detail);
+  });
+
+  test("taken and failed with the part's own words: the detail names its reason and its words, never the text", async () => {
+    const r = await rig();
+    const part = await r.part();
+    const id = dataId();
+    const served = part.serveOnce({ failReason: "submit", failDetail: "TypeError: the session is not idle" });
+    const answer = await r.send(id, "the secret words of the message");
+    await served;
+    expect(answer.receipt?.outcome).toBe("unknown");
+    expect(answer.receipt?.reason).toBe("no_evidence");
+    expect(answer.receipt?.detail).toContain("(submit: TypeError: the session is not idle)");
+    expect(answer.receipt?.detail).not.toContain("secret words");
+    expect(r.store.get(id)?.path).toBe("data");
+    expect(r.mux.calls).toEqual([]);
+  });
+
+  test("taken with no word: the receipt carries no detail, as before", async () => {
+    const r = await rig({ wordMs: 500 });
+    const part = await r.part();
+    const id = dataId();
+    const served = part.serveOnce({ silent: true });
+    const answer = await r.send(id, "taken, no word");
+    await served;
+    expect(answer.receipt?.outcome).toBe("unknown");
+    expect(answer.receipt?.detail).toBeUndefined();
+  });
+
+  test("taken and dropped (the agent said it entered nothing): the screen road runs it once, the record says screen", async () => {
+    const r = await rig();
+    const part = await r.part();
+    const id = dataId();
+    const served = part.serveOnce({ failReason: "dropped", failDetail: "a settings hook blocked it" });
+    const answer = await r.send(id, "dropped by the agent");
+    expect((await served)?.id).toBe(id);
+    expect(r.hub.stateOf(id)).toBe("failed");
+    expect(r.store.get(id)?.path).toBe("screen");
+    expect(r.protocol.pathOf(id)).toBe("screen");
+    // The screen road ran: it read the pane and settled the send itself.
+    expect(r.mux.calls.filter((call) => call === "readGrid").length).toBeGreaterThan(0);
+    expect(answer.receipt?.requestId).toBe(id);
+    expect(answer.receipt?.outcome).not.toBe("unknown");
+    // Nothing more for the part: one id, one road.
+    expect((await part.next({ waitMs: 1000 })).status).toBe(204);
+  });
+
+  test("a second tap of the same text after an unknown is a new request, on the data road again", async () => {
+    const r = await rig();
+    const part = await r.part();
+    const first = dataId();
+    const servedFirst = part.serveOnce({ failReason: "submit" });
+    const one = await r.send(first, "same text");
+    await servedFirst;
+    expect(one.receipt?.outcome).toBe("unknown");
+    const second = dataId();
+    const servedSecond = part.serveOnce();
+    const two = await r.send(second, "same text");
+    expect((await servedSecond)?.id).toBe(second);
+    expect(two.receipt?.outcome).toBe("sent");
+    expect(r.mux.calls).toEqual([]);
   });
 });
 
@@ -145,5 +210,52 @@ dataDescribe("a turn the bridge does not know (M99 review item 6)", () => {
     expect((await served)?.id).toBe(id);
     expect(answer.receipt?.outcome).toBe("sent");
     expect(r.mux.calls).toEqual([]);
+  });
+});
+
+dataDescribe("a part shadowed by another agent process (the background job, 2026-11-16)", () => {
+  // The rig's part is bound with this test process's pid; another live process of the pane writes the hooks.
+  const OTHER = process.pid + 1;
+
+  test("another process's hook edge on the pane: the send takes the screen road, the part never sees it", async () => {
+    const r = await rig();
+    const part = await r.part();
+    r.hub.noteForeignEdge(DATA_PANE, OTHER, false);
+    expect(r.hub.shadowed(DATA_PANE)).toBe(true);
+    const id = dataId();
+    await r.send(id, "goes by the screen");
+    expect(r.hub.stateOf(id)).toBeNull();
+    expect(r.store.get(id)?.path).toBeUndefined();
+    expect(r.mux.calls.length).toBeGreaterThan(0);
+    expect((await part.next({ waitMs: 1000 })).status).toBe(204);
+  });
+
+  test("an edge of the part's own pid shadows nothing; the other process's end lifts the shadow", async () => {
+    const r = await rig();
+    const part = await r.part();
+    r.hub.noteForeignEdge(DATA_PANE, process.pid, false);
+    expect(r.hub.shadowed(DATA_PANE)).toBe(false);
+    r.hub.noteForeignEdge(DATA_PANE, OTHER, false);
+    r.hub.noteForeignEdge(DATA_PANE, OTHER + 1, true);
+    expect(r.hub.shadowed(DATA_PANE)).toBe(true);
+    r.hub.noteForeignEdge(DATA_PANE, OTHER, true);
+    expect(r.hub.shadowed(DATA_PANE)).toBe(false);
+    const id = dataId();
+    const served = part.serveOnce();
+    const answer = await r.send(id, "by data again");
+    expect((await served)?.id).toBe(id);
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(r.mux.calls).toEqual([]);
+  });
+
+  test("a new hello is a new part with no shadow; a pane with no part is never shadowed", async () => {
+    const r = await rig();
+    r.hub.noteForeignEdge(DATA_PANE, OTHER, false);
+    expect(r.hub.shadowed(DATA_PANE)).toBe(false);
+    await r.part();
+    r.hub.noteForeignEdge(DATA_PANE, OTHER, false);
+    expect(r.hub.shadowed(DATA_PANE)).toBe(true);
+    await r.part();
+    expect(r.hub.shadowed(DATA_PANE)).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, PromptSubmitResult, Register } from 'claude-code'
 
 import {
   actionOf,
@@ -8,6 +8,9 @@ import {
   draftEvent,
   draftStateEvent,
   DRAFT_REFUSAL,
+  DROPPED,
+  failDetail,
+  failedEvent,
   holdsDraft,
   helloBody,
   isTargetFile,
@@ -378,12 +381,15 @@ async function poll($: $, link: Link, loop: number): Promise<void> {
   $.clock.after(answer.status === 429 ? 1000 : 0, () => poll($, link, loop))
 }
 
-/** {@link handle}, where a throw is reported as the command's failure, never lost. */
+/**
+ * {@link handle}, where a throw is reported as the command's failure, never lost: reason `error`, and the
+ * error's class and message as the detail, never the command's text (`failDetail`).
+ */
 async function handleSafely($: $, link: Link, part: string, command: Command): Promise<void> {
   try {
     await handle($, link, part, command)
-  } catch {
-    await post($, link, JSON.stringify({ part, kind: 'failed', cmd: command.id, reason: 'error' }))
+  } catch (cause) {
+    await post($, link, failedEvent(part, command.id, 'error', failDetail(cause, 'text' in command ? command.text : '')))
   }
 }
 
@@ -424,16 +430,22 @@ async function handle($: $, link: Link, part: string, command: Command): Promise
       return
     }
   }
+  // As the person's own words (decision 7). It resolves when the turn starts, not when it ends. Only
+  // the submit is inside the try: a fault after it must never read as a submit that failed.
+  let result: PromptSubmitResult
   try {
-    // As the person's own words (decision 7). It resolves when the turn starts, not when it ends.
-    const result = await $.prompt.submit({ text: action.text, asUser: true })
-    const word = result.drop === undefined
-      ? { part, kind: 'sent', cmd: command.id }
-      : { part, kind: 'failed', cmd: command.id, reason: 'dropped' }
-    await post($, link, JSON.stringify(word))
-  } catch {
-    await post($, link, JSON.stringify({ part, kind: 'failed', cmd: command.id, reason: 'submit' }))
+    result = await $.prompt.submit({ text: action.text, asUser: true })
+  } catch (cause) {
+    // The contract does not say a rejected submit entered nothing: the bridge reads it as "may have arrived".
+    await post($, link, failedEvent(part, command.id, 'submit', failDetail(cause, action.text)))
+    return
   }
+  // A drop is the contract's "the prompt did not enter" (a hook's refusal, a settings hook's block, the
+  // engine's own). Its reason goes along as the detail, checked like an error's.
+  const word = result.drop === undefined
+    ? JSON.stringify({ part, kind: 'sent', cmd: command.id })
+    : failedEvent(part, command.id, DROPPED, failDetail(result.drop, action.text))
+  await post($, link, word)
 }
 
 /** Read the hook target folder and say hello to every bridge not linked yet, or due again. */

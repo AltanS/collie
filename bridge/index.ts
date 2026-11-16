@@ -1828,6 +1828,9 @@ const edgeRouter =
         },
         // A dropped edge counts under its own harness, with no version: no pane named one.
         onDrop: (record) => surfaceLedger.edge({ harness: record?.harness ?? "-", version: "-", profileId: "-", status: "-" }, "dropped"),
+        // Another agent process writes this pane's edges (a background session whose viewer holds the
+        // pane): the pane's part may not be the process that runs the agent, so its sends take the screen.
+        onForeign: (pane, pid, ended) => insideHub?.noteForeignEdge(pane, pid, ended),
       });
 // Hook-held permissions (M56 spec 12): the harness's permission hook connects to this bridge's local
 // socket (`<stateDir>/hold/sock`, 0600 in a 0700 directory) and waits for a tap. Built with the edges

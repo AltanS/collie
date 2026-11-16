@@ -249,6 +249,56 @@ export function draftEvent(part: string, cmd: string, box: { readonly text: stri
 /** The reason a `mail` is refused with when the box holds a draft: nothing was submitted (spec 05). */
 export const DRAFT_REFUSAL = "draft";
 
+/**
+ * The reason of a `failed` whose submit came back with `{ drop }`. The engine's contract for that answer
+ * is "the prompt did not enter" (a hook's refusal, a settings hook's block, or the engine's own), so
+ * the bridge may run the screen road once for it. A rejected submit is `submit`, a fault elsewhere in
+ * the handling is `error`: for those the contract promises nothing, and the bridge says it may have arrived.
+ */
+export const DROPPED = "dropped";
+
+/** The longest `detail` a `failed` carries. */
+export const FAIL_DETAIL_MAX = 160;
+
+/** The window a detail is checked against the text with: no run of this many characters of the text may be in it. */
+const TEXT_WINDOW = 12;
+
+/**
+ * The plain-words detail of a `failed`: an error's class and message, or a drop's reason, in one line,
+ * capped at {@link FAIL_DETAIL_MAX}. Never the command's text: the line is cut where any run of
+ * {@link TEXT_WINDOW} characters of it (all of a shorter text) starts, and says so. Null for nothing to say.
+ */
+export function failDetail(cause: unknown, text: string): string | null {
+  const name = cause instanceof Error ? cause.name : typeof cause === "string" ? "" : "Error";
+  const said = cause instanceof Error ? cause.message : typeof cause === "string" ? cause : "";
+  // Cut first: only the head is ever sent, and the search below must stay small inside the agent.
+  // `\p{Cc}`: the control characters (C0, DEL, C1), each run made one space, then every run of space.
+  const line = (name !== "" && said !== "" ? `${name}: ${said}` : name !== "" ? name : said).slice(0, FAIL_DETAIL_MAX * 2).replace(/\p{Cc}+/gu, " ").replace(/\s+/gu, " ").trim();
+  if (line === "") return null;
+  const at = textAt(line, text);
+  if (at === -1) return line.slice(0, FAIL_DETAIL_MAX);
+  const kept = line.slice(0, at).trim();
+  return `${kept === "" ? "" : `${kept} `}(text not shown)`.slice(0, FAIL_DETAIL_MAX);
+}
+
+/** Where in `line` the text, or any run of {@link TEXT_WINDOW} characters of it, first starts; -1 for nowhere. */
+function textAt(line: string, text: string): number {
+  const body = text.trim();
+  if (body === "") return -1;
+  if (body.length <= TEXT_WINDOW) return line.indexOf(body);
+  let first = -1;
+  for (let at = 0; at + TEXT_WINDOW <= body.length; at += 1) {
+    const found = line.indexOf(body.slice(at, at + TEXT_WINDOW));
+    if (found !== -1 && (first === -1 || found < first)) first = found;
+  }
+  return first;
+}
+
+/** The `failed` event of a command, with its reason and, when there is one, its detail. */
+export function failedEvent(part: string, cmd: string, reason: string, detail: string | null): string {
+  return JSON.stringify(detail === null ? { part, kind: "failed", cmd, reason } : { part, kind: "failed", cmd, reason, detail });
+}
+
 /** Whether a box text is a draft: any text at all. A box of spaces is the person's too. */
 export function holdsDraft(text: string): boolean {
   return text.length > 0;

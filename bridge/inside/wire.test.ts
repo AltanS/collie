@@ -8,6 +8,7 @@ import {
   commandBody,
   COMMAND_TEXT_MAX,
   DRAFT_TEXT_MAX,
+  FAIL_DETAIL_MAX,
   HELLO_MAX,
   NEXT_WAIT_MIN_MS,
   NEXT_WAIT_MS,
@@ -110,9 +111,21 @@ describe("parseEvent", () => {
     expect(ok({ kind: "ask.close", ask: "a1", how: "desk" })).toMatchObject({ ok: true, kind: "ask.close", how: "desk" });
     expect(ok({ kind: "taken", cmd: "req-12345678" })).toMatchObject({ ok: true, kind: "taken", cmd: "req-12345678" });
     expect(ok({ kind: "sent", cmd: "req-12345678" })).toMatchObject({ ok: true, kind: "sent" });
-    expect(ok({ kind: "failed", cmd: "req-12345678", reason: "submit" })).toMatchObject({ ok: true, kind: "failed", reason: "submit" });
+    expect(ok({ kind: "failed", cmd: "req-12345678", reason: "submit" })).toMatchObject({ ok: true, kind: "failed", reason: "submit", detail: null });
     expect(ok({ kind: "draft", cmd: "req-12345678", text: "half a thought", caret: 4 })).toMatchObject({ ok: true, kind: "draft", text: "half a thought", caret: 4 });
     expect(ok({ kind: "bye" })).toMatchObject({ ok: true, kind: "bye" });
+  });
+
+  test("a failed's detail is read leniently: one line, capped, and never the reason the word is refused for", () => {
+    expect(ok({ kind: "failed", cmd: "req-12345678", reason: "dropped", detail: "blocked by a hook" })).toMatchObject({ kind: "failed", reason: "dropped", detail: "blocked by a hook" });
+    expect(ok({ kind: "failed", cmd: "req-12345678", reason: "submit", detail: "TypeError:\n  two\u0000lines\u2028" })).toMatchObject({ detail: "TypeError: two lines" });
+    expect(ok({ kind: "failed", cmd: "req-12345678", reason: "submit", detail: "a\u007fb\u009bc\u001b[31md" })).toMatchObject({ detail: "a b c [31md" });
+    const long = ok({ kind: "failed", cmd: "req-12345678", reason: "submit", detail: "x".repeat(10_000) });
+    expect(long.ok && long.kind === "failed" ? long.detail?.length : -1).toBe(FAIL_DETAIL_MAX);
+    // Not a string, or nothing left: no detail, and the word still counts.
+    expect(ok({ kind: "failed", cmd: "req-12345678", reason: "submit", detail: 42 })).toMatchObject({ kind: "failed", detail: null });
+    expect(ok({ kind: "failed", cmd: "req-12345678", reason: "submit", detail: { a: 1 } })).toMatchObject({ kind: "failed", detail: null });
+    expect(ok({ kind: "failed", cmd: "req-12345678", reason: "submit", detail: " \n " })).toMatchObject({ kind: "failed", detail: null });
   });
 
   test("draft.state carries a boolean only: a text a part sends with it is never kept", () => {

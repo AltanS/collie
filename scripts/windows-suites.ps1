@@ -14,9 +14,9 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 514 in all, each one named, with its reason:
-#              bridge 284: 173 from before 1.29.0 and 111 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
-#                adapters 10, then Accounts 30; see below). Of the 173, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
+#              Today, 525 in all, each one named, with its reason:
+#              bridge 295: 173 from before 1.29.0 and 122 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
+#                adapters 10, then Accounts 30, then 11 more of the data path for a dropped or failed data send and a shadowed part; see below). Of the 173, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
 #                worktree (see "The fake git of a new worktree, bridge" below). 42 are the Hill and the tricks (see
@@ -130,17 +130,17 @@
 #                "updating an added trick to the list's commit" and "a git run killed at its time cap", and its 4 `test.if(posix)`
 #                cases. The fixture repository is reached as `file://` plus a temp path, which is no file URL on Windows; its
 #                programs are `#!/bin/sh` with an executable bit; the time cap kills a POSIX process group.
-#              The data path, bridge (54 + 17). The part (the local socket of bridge/inside/, ADR 0140) is OFF on Windows in 1.29.0
+#              The data path, bridge (63 + 19). The part (the local socket of bridge/inside/, ADR 0140) is OFF on Windows in 1.29.0
 #                (decision 15: Windows keeps the screen path). `InsideServer.start()` answers false there, so `dataRig` cannot start
 #                and no test can dial the socket, as for the hold and walky sockets above. Each of these is `dataTest` or `dataDescribe`
 #                (bridge/inside/data-rig.ts), a skip on win32, and the file's tests that do not use the rig run on Windows:
-#                - 20 in bridge/walky/deliver.test.ts, "WalkyTalky by data (M99 spec 05)"
+#                - 22 in bridge/walky/deliver.test.ts, "WalkyTalky by data (M99 spec 05)"
 #                - 7 in bridge/inside/round.test.ts, every test: a whole round with the fake part
-#                - 11 in bridge/surface/data-send.test.ts, every test
+#                - 18 in bridge/surface/data-send.test.ts, every test
 #                - 3 in bridge/surface/holds.test.ts, "a data send while the part's turn runs"
 #                - 10 in bridge/inside/stale-word.test.ts, every test
 #                - 3 in bridge/inside/linked.test.ts, the two that start the rig and "the field follows the live part"
-#                - 17 in bridge/inside/server.test.ts, every test that starts the server or dials it. One test there runs everywhere
+#                - 19 in bridge/inside/server.test.ts, every test that starts the server or dials it. One test there runs everywhere
 #                  and proves the Windows answer with an injected host (`start()` is false and logs "not built for Windows"; the gate
 #                  says "platform", also in gate.test.ts).
 #              The Herdr and Tuios adapters, bridge (10). The describe "a connection closed before the reply" of
@@ -230,7 +230,7 @@
 #                executable bit and reads it through `file://`, as the add from the list does (bridge 33 above).
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 284,
+  [int]$MaxSkipsBridge = 295,
   [int]$MaxSkipsCli = 195,
   [int]$MaxSkipsScripts = 35
 )

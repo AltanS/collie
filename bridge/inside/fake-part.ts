@@ -90,9 +90,10 @@ export class FakePart {
 
   /**
    * Poll once and act as a well-behaved part: confirm the handoff with `taken`, then report `sent`, or
-   * `failed` with `failReason` when given. A `draft` question is answered with `draftText`.
+   * `failed` with `failReason` when given (and `failDetail`, the part's own words, when given too). A
+   * `draft` question is answered with `draftText`.
    */
-  async serveOnce(options: { waitMs?: number; failReason?: string; draftText?: string; silent?: boolean } = {}): Promise<WireCommand | null> {
+  async serveOnce(options: { waitMs?: number; failReason?: string; failDetail?: string; draftText?: string; silent?: boolean } = {}): Promise<WireCommand | null> {
     const { command } = await this.next({ waitMs: options.waitMs ?? 1000 });
     if (command === null || options.silent === true) return command;
     await this.event("taken", { cmd: command.id });
@@ -101,7 +102,7 @@ export class FakePart {
       await this.event("draft", { cmd: command.id, text, caret: text.length });
       return command;
     }
-    if (options.failReason !== undefined) await this.event("failed", { cmd: command.id, reason: options.failReason });
+    if (options.failReason !== undefined) await this.event("failed", options.failDetail === undefined ? { cmd: command.id, reason: options.failReason } : { cmd: command.id, reason: options.failReason, detail: options.failDetail });
     else await this.event("sent", { cmd: command.id });
     return command;
   }

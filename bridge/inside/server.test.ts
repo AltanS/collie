@@ -30,7 +30,7 @@ const owning =
 
 async function start(stateDir: string, panes: string[] = ["w1:p1"]) {
   const lines: string[] = [];
-  const hub = new InsideHub({ registry: new PartRegistry({ log: (line) => lines.push(line) }), queue: new CommandQueue(), place: owning(panes) });
+  const hub = new InsideHub({ registry: new PartRegistry({ log: (line) => lines.push(line) }), queue: new CommandQueue(), place: owning(panes), log: (line) => lines.push(line) });
   const server = new InsideServer({ socketPath: insideSocketPath(stateDir), hub, log: (line) => lines.push(line) });
   const started = await server.start();
   if (started) servers.push(server);
@@ -252,6 +252,34 @@ dataDescribe("caps", () => {
     expect(log).toContain("cmd=req-secret01 kind=prompt");
     expect(log).not.toContain("hunter2");
     expect(log).not.toContain("placeholder-secret");
+  });
+
+  test("the part's sent and failed are logged with the command id, the reason and its own words, never the text", async () => {
+    const { socket, lines, hub } = await start(scratch());
+    const part = new FakePart(socket, { env: { HERDR_PANE_ID: "w1:p1" } });
+    await part.hello();
+    const address = { session: "main", paneId: "w1:p1" };
+    hub.enqueue(address, { id: "req-logsent1", kind: "prompt", text: "placeholder-hunter2 went" });
+    await part.serveOnce();
+    hub.enqueue(address, { id: "req-logfail1", kind: "prompt", text: "placeholder-hunter3 stayed" });
+    await part.serveOnce({ failReason: "dropped", failDetail: "blocked by a hook\nsecond line" });
+    const log = lines.join("\n");
+    expect(log).toMatch(/\[inside\] sent part=\S{6} cmd=req-logsent1$/mu);
+    expect(log).toMatch(/\[inside\] failed part=\S{6} cmd=req-logfail1 reason=dropped detail="blocked by a hook second line"$/mu);
+    expect(hub.failReasonOf("req-logfail1")).toBe("dropped");
+    expect(hub.failDetailOf("req-logfail1")).toBe("blocked by a hook second line");
+    expect(log).not.toContain("hunter2");
+    expect(log).not.toContain("hunter3");
+  });
+
+  test("a failed word from an older part, with no detail, is logged and kept with none", async () => {
+    const { socket, lines, hub } = await start(scratch());
+    const part = new FakePart(socket, { env: { HERDR_PANE_ID: "w1:p1" } });
+    await part.hello();
+    hub.enqueue({ session: "main", paneId: "w1:p1" }, { id: "req-logfail2", kind: "prompt", text: "hi" });
+    await part.serveOnce({ failReason: "submit" });
+    expect(lines.join("\n")).toMatch(/\[inside\] failed part=\S{6} cmd=req-logfail2 reason=submit$/mu);
+    expect(hub.failDetailOf("req-logfail2")).toBeNull();
   });
 });
 

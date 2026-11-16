@@ -4,7 +4,8 @@ import { describe, expect, test } from "bun:test";
 
 import { MARKER_ENV_NAMES } from "../../bridge/beacon/env-markers.ts";
 import { WORD_FRESH_MS } from "../../bridge/inside/hub.ts";
-import { CAPABILITIES as WIRE_CAPABILITIES, ASK_KINDS as WIRE_ASKS, commandBody, parseEvent, parseHello, WIRE_VERSION as BRIDGE_WIRE } from "../../bridge/inside/wire.ts";
+import { DROPPED_REFUSAL } from "../../bridge/surface/data-send.ts";
+import { CAPABILITIES as WIRE_CAPABILITIES, ASK_KINDS as WIRE_ASKS, commandBody, FAIL_DETAIL_MAX as BRIDGE_DETAIL_MAX, parseEvent, parseHello, WIRE_VERSION as BRIDGE_WIRE } from "../../bridge/inside/wire.ts";
 import {
   actionOf,
   answerResult,
@@ -14,6 +15,10 @@ import {
   draftEvent,
   DRAFT_MAX,
   draftStateEvent,
+  DROPPED,
+  FAIL_DETAIL_MAX,
+  failDetail,
+  failedEvent,
   holdsDraft,
   helloBody,
   isTargetFile,
@@ -184,6 +189,32 @@ describe("the permission answer", () => {
   test("a phone answer decides only while the desk has not; else it is reported failed, reason desk", () => {
     expect(phoneAnswerWord(PART, "ans-00000001", false)).toEqual({ decides: true, event: JSON.stringify({ part: PART, kind: "sent", cmd: "ans-00000001" }) });
     expect(phoneAnswerWord(PART, "ans-00000001", true)).toEqual({ decides: false, event: JSON.stringify({ part: PART, kind: "failed", cmd: "ans-00000001", reason: "desk" }) });
+  });
+
+  test("a failed's detail is one capped line and never holds the command's text", () => {
+    const text = "Reply with pong, please.";
+    expect(failDetail(new TypeError("the session is not idle"), text)).toBe("TypeError: the session is not idle");
+    expect(failDetail("blocked by a settings hook", text)).toBe("blocked by a settings hook");
+    // The text, or any long enough run of it, is cut away, with what came before it kept.
+    expect(failDetail(`blocked by a settings hook: ${text}`, text)).toBe("blocked by a settings hook: (text not shown)");
+    expect(failDetail(new Error(`cannot submit "...with pong, ple..."`), text)).toBe('Error: cannot submit "... (text not shown)');
+    expect(failDetail(new Error("a\n\tb"), text)).toBe("Error: a b");
+    expect(failDetail(new Error("a\u007fb\u009bc\u001b[0m"), text)).toBe("Error: a b c [0m");
+    expect(failDetail(new Error("x".repeat(500)), text)?.length).toBe(FAIL_DETAIL_MAX);
+    // A huge message and a huge text stay quick: the line is cut before the search.
+    const started = performance.now();
+    expect(failDetail(new Error("y".repeat(5_000_000)), "z".repeat(48 * 1024))?.length).toBe(FAIL_DETAIL_MAX);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(failDetail("", text)).toBeNull();
+    expect(failDetail({ not: "an error" }, text)).toBe("Error");
+  });
+
+  test("its failed parses on the bridge, with the detail and without, and the bridge reads the same words", () => {
+    expect(FAIL_DETAIL_MAX).toBe(BRIDGE_DETAIL_MAX);
+    expect(DROPPED).toBe(DROPPED_REFUSAL);
+    expect(parseEvent(failedEvent(PART, "req-00000001", DROPPED, "blocked by a hook"))).toMatchObject({ ok: true, kind: "failed", reason: "dropped", detail: "blocked by a hook" });
+    expect(parseEvent(failedEvent(PART, "req-00000001", "submit", null))).toMatchObject({ ok: true, kind: "failed", reason: "submit", detail: null });
+    expect(JSON.parse(failedEvent(PART, "req-00000001", "submit", null))).not.toHaveProperty("detail");
   });
 
   test("an ask id is a wire id", () => {

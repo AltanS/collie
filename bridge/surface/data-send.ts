@@ -10,6 +10,11 @@
 //  - one exception, for a WalkyTalky `mail` only: `failed` with the reason `draft` is the part's word
 //    that it found a draft in the box and submitted nothing (M99 spec 05, decision of 2026-11-13). The
 //    caller holds the message again; a later try goes under a new command id.
+//  - one exception, for a phone `prompt` only: `failed` with the reason `dropped` is the part's word that
+//    the agent's own submit answered "did not enter" (the Claude Code mod API's `{ drop }`: a hook's
+//    refusal, a settings hook's block, or the engine's own). Nothing was submitted by data, so the
+//    screen road runs the same request once, with its own checks (decision of 2026-11-16). Any other
+//    reason, a thrown submit included, promises nothing: it may have arrived. A `mail` keeps its rule.
 
 import type { CommandState, PaneAddress } from "../inside/queue.ts";
 import type { EnqueueOutcome } from "../inside/hub.ts";
@@ -23,6 +28,13 @@ export const WORD_MS = 15_000;
 /** The reason a part gives with `failed` for a `mail` it did not submit because the box held a draft. */
 export const DRAFT_REFUSAL = "draft";
 
+/**
+ * The reason a part gives with `failed` when the agent answered its submit "did not enter": a phone
+ * `prompt` with it takes the screen road once. A part says it only where its harness's contract
+ * guarantees that answer entered nothing.
+ */
+export const DROPPED_REFUSAL = "dropped";
+
 /** The part side the data road needs: the inside hub, or a test's stand-in. */
 export interface DataDoor {
   partOf(address: PaneAddress): { readonly capabilities: ReadonlySet<Capability> } | null;
@@ -35,8 +47,15 @@ export interface DataDoor {
   draftOf(address: PaneAddress): boolean | null;
   /** The reason of a command's `failed`, or null. */
   failReasonOf(id: string): string | null;
+  /** The part's own words with a command's `failed`, or null. Optional: a stand-in without it says none. */
+  failDetailOf?(id: string): string | null;
   /** Whether the part holds a question open: a dialog stands. */
   askOpen(address: PaneAddress): boolean;
+  /**
+   * Whether another agent process writes this pane's hooks, so the part may not be the one that runs the
+   * agent (`InsideHub.shadowed`): its sends take the screen road. Optional: a stand-in without it says no.
+   */
+  shadowed?(address: PaneAddress): boolean;
   enqueue(address: PaneAddress, command: DataCommand): EnqueueOutcome;
   withdraw(id: string): boolean;
   waitFor(id: string, states: readonly CommandState[], ms: number): Promise<CommandState | null>;
@@ -55,8 +74,10 @@ export type DataResult =
   | { readonly kind: "sent" }
   /** A `mail` the part refused before any submit, because the box held a draft: hold it again. */
   | { readonly kind: "draft" }
-  | { readonly kind: "screen"; readonly why: "refused" | "not-taken" }
-  | { readonly kind: "unconfirmed"; readonly why: "failed" | "no-word" };
+  /** `dropped`: the part took it and the agent answered "did not enter" (a phone `prompt` only). */
+  | { readonly kind: "screen"; readonly why: "refused" | "not-taken" | "dropped"; readonly reason?: string; readonly detail?: string | null }
+  /** `reason` and `detail`: the part's word with its `failed`, when it gave one. */
+  | { readonly kind: "unconfirmed"; readonly why: "failed" | "no-word"; readonly reason?: string | null; readonly detail?: string | null };
 
 export interface DataLimits {
   readonly takeMs: number;
@@ -80,6 +101,10 @@ export async function sendByData(
   if (took === "withdrawn") return { kind: "screen", why: "not-taken" };
   const word = await door.waitFor(id, ["sent", "failed"], limits.wordMs);
   if (word === "sent") return { kind: "sent" };
-  if (word === "failed" && send.kind === "mail" && door.failReasonOf(id) === DRAFT_REFUSAL) return { kind: "draft" };
-  return { kind: "unconfirmed", why: word === "failed" ? "failed" : "no-word" };
+  if (word !== "failed") return { kind: "unconfirmed", why: "no-word" };
+  const reason = door.failReasonOf(id);
+  const detail = door.failDetailOf?.(id) ?? null;
+  if (send.kind === "mail" && reason === DRAFT_REFUSAL) return { kind: "draft" };
+  if (send.kind === "prompt" && reason === DROPPED_REFUSAL) return { kind: "screen", why: "dropped", reason, detail };
+  return { kind: "unconfirmed", why: "failed", reason, detail };
 }

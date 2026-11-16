@@ -130,7 +130,11 @@ export type WireEvent =
     }
   | { readonly ok: true; readonly part: string; readonly kind: "ask.close"; readonly ask: string; readonly how: string | null }
   | { readonly ok: true; readonly part: string; readonly kind: "taken" | "sent"; readonly cmd: string }
-  | { readonly ok: true; readonly part: string; readonly kind: "failed"; readonly cmd: string; readonly reason: string | null }
+  /**
+   * `detail`: the part's own words on why, one line of at most {@link FAIL_DETAIL_MAX} characters (an
+   * error's class and message), never the command's text; a later field, so an older part sends none.
+   */
+  | { readonly ok: true; readonly part: string; readonly kind: "failed"; readonly cmd: string; readonly reason: string | null; readonly detail: string | null }
   | { readonly ok: true; readonly part: string; readonly kind: "draft"; readonly cmd: string; readonly text: string; readonly caret: number | null }
   /** Whether the box holds a draft now. Only the boolean: a `text` field, if a part sent one, is not read. */
   | { readonly ok: true; readonly part: string; readonly kind: "draft.state"; readonly present: boolean; readonly seq: WordSeq }
@@ -267,6 +271,22 @@ export function parseHello(text: string): Hello | WireRefusal {
   });
 }
 
+/** The longest `detail` of a `failed` the bridge keeps. */
+export const FAIL_DETAIL_MAX = 160;
+
+/**
+ * The optional `detail` of a `failed`, read leniently: the word it rides on must never be lost to it. A
+ * string becomes one line, control characters and runs of space made one space, cut at {@link FAIL_DETAIL_MAX}; anything
+ * else, or nothing left, is null.
+ */
+function detailOf(value: JsonValue | undefined): string | null {
+  const text = asJsonString(value);
+  if (text === undefined) return null;
+  // `\p{Cc}`: the control characters (C0, DEL, C1); `\s` takes the line and paragraph separators.
+  const line = text.slice(0, FAIL_DETAIL_MAX * 4).replace(/\p{Cc}+/gu, " ").replace(/\s+/gu, " ").trim();
+  return line === "" ? null : line.slice(0, FAIL_DETAIL_MAX);
+}
+
 /** The optional `seq` of a state word: absent or null is null; present it must be a whole number from 0. */
 function seqOf(row: JsonObject): WordSeq {
   const value = row.seq;
@@ -300,7 +320,7 @@ function eventOf(row: JsonObject, part: string, kind: EventKind): WireEvent {
     case "sent":
       return { ok: true, part, kind, cmd: requiredString(row, "cmd", COMMAND_ID) };
     case "failed":
-      return { ok: true, part, kind, cmd: requiredString(row, "cmd", COMMAND_ID), reason: optionalString(row, "reason", 48, WORD) };
+      return { ok: true, part, kind, cmd: requiredString(row, "cmd", COMMAND_ID), reason: optionalString(row, "reason", 48, WORD), detail: detailOf(row.detail) };
     case "draft": {
       const cmd = requiredString(row, "cmd", COMMAND_ID);
       const draft = row.text === undefined || row.text === null ? "" : asJsonString(row.text);

@@ -129,7 +129,19 @@ describe("never twice after take", () => {
     expect(queue.settle("req-aaaaaaa1", OTHER, "sent")).toBe(false);
     expect(queue.settle("req-aaaaaaa1", PANE, "failed", "submit")).toBe(true);
     expect(queue.settle("req-aaaaaaa1", PANE, "sent")).toBe(false);
-    expect(queue.get("req-aaaaaaa1")).toMatchObject({ state: "failed", reason: "submit" });
+    expect(queue.get("req-aaaaaaa1")).toMatchObject({ state: "failed", reason: "submit", detail: null });
+  });
+
+  test("a failed keeps the part's detail; a sent keeps none", () => {
+    const { queue } = rig();
+    queue.enqueue(PANE, prompt("req-aaaaaaa1"));
+    queue.enqueue(PANE, prompt("req-aaaaaaa2"));
+    queue.take(PANE);
+    queue.take(PANE);
+    expect(queue.settle("req-aaaaaaa1", PANE, "failed", "dropped", "blocked by a hook")).toBe(true);
+    expect(queue.settle("req-aaaaaaa2", PANE, "sent", null, "ignored")).toBe(true);
+    expect(queue.get("req-aaaaaaa1")).toMatchObject({ state: "failed", reason: "dropped", detail: "blocked by a hook" });
+    expect(queue.get("req-aaaaaaa2")).toMatchObject({ state: "sent", detail: null });
   });
 
   test("a taken command with no word stays taken; the age limit never withdraws it", () => {

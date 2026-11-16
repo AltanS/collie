@@ -14,7 +14,7 @@ type Wire = { path: string; body: Record<string, unknown> | null }
 /** Event posts the bridge loses: of this kind (and this count, when given), `times` of them, by a time-out or a status. */
 type Lose = { kind: string; seq?: number; how: 'timeout' | number; times: number }
 
-function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean; forgetAfterTurn?: 410 | 500; box?: string; lose?: Lose; slow?: { ms: number } } = {}) {
+function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?: string[]; askWait?: boolean; askAnswer?: string; refuse?: boolean; hangAsk?: boolean; draftFails?: boolean; forgetAfterTurn?: 410 | 500; box?: string; lose?: Lose; slow?: { ms: number }; submit?: 'drop' | 'throw' } = {}) {
   const clock = mock.clock(on)
   mock.env(on, { HOME: '/h', HERDR_PANE_ID: 'w1:p1', HERDR_SOCKET_PATH: '/run/herdr.sock' })
   const wire: Wire[] = []
@@ -85,6 +85,9 @@ function world(on: Parameters<Parameters<typeof test>[1]>[1], opts: { commands?:
     return answer(204)
   })
   on('prompt.submit', (_, e) => {
+    // A submit the engine refuses: a drop, whose reason may quote the prompt, or a throw whose message does.
+    if (opts.submit === 'drop') return { drop: `blocked by a settings hook: ${e.text}` }
+    if (opts.submit === 'throw') throw new TypeError(`cannot submit "${e.text}" here`)
     submitted.push(e.text)
     return { text: e.text }
   })
@@ -387,6 +390,31 @@ describe('the Collie mod', () => {
     await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
     for (let i = 0; i < 5; i += 1) await clock.settle()
     expect(events(wire).filter((e) => e?.cmd === 'drf-00000002').map((e) => [e?.kind, e?.reason])).toEqual([['taken', undefined], ['failed', 'error']])
+  })
+
+  test('a dropped submit is reported failed with the reason dropped and the drop in plain words, never the text', async ($, on) => {
+    const prompt = JSON.stringify({ wire: 1, id: 'req-00000031', kind: 'prompt', text: 'Reply with pong, please.' })
+    const { clock, wire, submitted } = world(on, { submit: 'drop', commands: [prompt] })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    for (let i = 0; i < 5; i += 1) await clock.settle()
+    expect(submitted).toEqual([])
+    const failed = events(wire).find((e) => e?.cmd === 'req-00000031' && e?.kind === 'failed')
+    expect(failed?.reason).toBe('dropped')
+    expect(typeof failed?.detail).toBe('string')
+    expect(String(failed?.detail)).not.toContain('pong')
+  })
+
+  test('a submit that throws is reported failed with the reason submit and the error class, never the text', async ($, on) => {
+    const prompt = JSON.stringify({ wire: 1, id: 'req-00000032', kind: 'prompt', text: 'Reply with pong, please.' })
+    const { clock, wire } = world(on, { submit: 'throw', commands: [prompt] })
+    await $.session.start({ cwd: '/h/project', surface: 'terminal', isInteractive: true })
+    for (let i = 0; i < 5; i += 1) await clock.settle()
+    const words = events(wire).filter((e) => e?.cmd === 'req-00000032').map((e) => e?.kind)
+    expect(words).toEqual(['taken', 'failed'])
+    const failed = events(wire).find((e) => e?.cmd === 'req-00000032' && e?.kind === 'failed')
+    expect(failed?.reason).toBe('submit')
+    expect(String(failed?.detail)).not.toContain('pong')
+    expect(JSON.stringify(failed)).not.toContain('Reply with')
   })
 
   test('several bridges on one machine: it dials only those that speak its wire, and binds only where the bridge says mine', async ($, on) => {

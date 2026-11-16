@@ -2482,6 +2482,21 @@ dataDescribe("WalkyTalky by data (M99 spec 05)", () => {
     }
   });
 
+  test("a mail the part answers dropped keeps its rule: unknown, never typed on the screen after (only a phone prompt takes the screen)", async () => {
+    const r = await linked();
+    try {
+      const served = r.part.serveOnce({ failReason: "dropped", failDetail: "blocked by a hook" });
+      await r.service.send(send("wt_aaaaaaaaaaa7", `local/${DATA_PANE.paneId}`), operator);
+      await served;
+      await r.service.deliverer.settled();
+      expect(r.service.status("wt_aaaaaaaaaaa7").receipts[0]).toMatchObject({ state: "unknown", reason: "no evidence" });
+      expect(r.data.mux.calls).toEqual([]);
+      expect((await r.part.next({ waitMs: 800 })).status).toBe(204);
+    } finally {
+      r.data.stop();
+    }
+  });
+
   // ── Deliver now (spec 05, decision of 2026-11-13): the person hands one held message over their draft ──
 
   /** The pane as the owner's route names it. */
@@ -2690,6 +2705,21 @@ dataDescribe("WalkyTalky by data (M99 spec 05)", () => {
       expect(await tap).toMatchObject({ result: "may have arrived", receipt: { state: "unknown", reason: "no evidence", overDraft: true } });
       expect((await deliverNow(r, "wt_aaaaaaaaaa66")).result).toBe("repeat");
       await r.part.event("draft.state", { present: false });
+      expect((await r.part.next({ waitMs: 800 })).status).toBe(204);
+      expect(r.data.mux.calls).toEqual([]);
+    } finally {
+      r.data.stop();
+    }
+  });
+
+  test("deliver now that the part answers dropped stays off the screen: unknown, and never sent again", async () => {
+    const r = await linked({ draft: true });
+    try {
+      const sendId = await heldForDraft(r, "wt_aaaaaaaaaa67");
+      const served = r.part.serveOnce({ waitMs: 3000, failReason: "dropped" });
+      const tap = deliverNow(r, "wt_aaaaaaaaaa67");
+      expect((await served)?.id).toBe(sendId);
+      expect(await tap).toMatchObject({ receipt: { state: "unknown", reason: "no evidence", overDraft: true } });
       expect((await r.part.next({ waitMs: 800 })).status).toBe(204);
       expect(r.data.mux.calls).toEqual([]);
     } finally {
