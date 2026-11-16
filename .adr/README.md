@@ -270,12 +270,11 @@ One live record for this topic is being written.
 
 ### Launch, worktrees, files and changes
 
-The rule today: The Changes view reads git read-only against HEAD (0065), and a pane outside its workspace folder reads its own folder (0112). Files reads one path relative to the Changes root, and a path the agent prints is a link only inside that root (0083, 0088, 0090). Collie makes a worktree with git in the bridge and opens it as a space (0126 replaced 0032). The bridge owns the list of startable agents and starts one by id with a request id and a receipt, so a retry never starts a second pane (0091); rows added from a phone live on the machine (0094), the lead's rows are the crew's rows (0127), and a one-off command keeps a history of twelve lines (0095).
-
-One live record for this topic is being written.
+The rule today: [0145](./0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md) states the launch half in one place. A start names a row, an agent id, a shell or a one-off line, and the bridge, never the phone, turns it into what is typed. One request id per intent, with one receipt, so a retry never starts a second pane; a create nobody can confirm stays unknown. Collie makes a worktree with git in the bridge and opens it as a space, in a folder it checks at every use, and a half-done create is only opened again. The lead's launcher rows are the crew's rows. Two records stay live beside it: 0126 (why the multiplexer no longer makes the worktree) and 0131 (the "+" opens the rows, with the roads it turned down). The files half is its own: the Changes view reads git read-only against HEAD (0065), and a pane outside its workspace folder reads its own folder (0112). Files reads one path relative to the Changes root, and a path the agent prints is a link only inside that root (0083, 0088, 0090).
 
 | # | Decision | Status |
 | --- | --- | --- |
+| [0145](./0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md) | A start names what to run, never a line, and a retry lands on its receipt: the launch rule of today. | Accepted |
 | [0065](./0065-the-changes-view-reads-git-read-only.md) | The Changes view reads git read-only against HEAD, hardened and offline. | Accepted, amended in scope by 0112 |
 | [0083](./0083-the-files-view-reads-the-changes-root.md) | Files reads one folder or file relative to the Changes root, contained on real paths. | Accepted, amended in scope by 0086 |
 | [0088](./0088-paths-the-agent-prints-are-links.md) | A printed path is tappable only when it resolves inside the pane's Changes root. | Accepted |
