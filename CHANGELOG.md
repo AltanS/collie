@@ -34,6 +34,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **`collie trick guide` names the status line's limit.** A status text is at most 12 characters, and the guide says so next to the helper's calls, so an agent's message for a missing setting fits.
 - **A trick's code warnings start with one word.** `collie trick check`, `on`, `add` and `propose` print each warning as `warning: <file>:<line> ...`; `propose` printed `warning: warn:`.
 - **A trick's row in Settings says when the bridge refused one of its parts.** A trick that runs but prints a part the bridge cannot draw, such as a status line over its length, now shows the reason on its row in Settings, Tricks, as a refused manifest always did; before, the part was missing with no word why.
 - **The Hill is in the bar as soon as it is on.** With the Hill switched on and no Decision posted yet, the Dashboard's bottom bar now shows the Hill, as the Hill docs say; before, it appeared only with the first Decision.

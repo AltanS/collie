@@ -20,7 +20,8 @@ import { realFiles } from "./sys.ts";
 import { leadStore, member } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { inputsSentence, parseTrickDocument, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT, type TricksReply } from "../web/src/lib/tricks/schema.ts";
-import { TRICKS_WINDOWS_LINE } from "../web/src/lib/tricks/schema.ts";
+import { STATUS_TEXT_MAX, TRICKS_WINDOWS_LINE } from "../web/src/lib/tricks/schema.ts";
+import { trickGuide } from "./trick-guide.ts";
 
 // gated on Windows (b): a program that uses the helper (`./trick.ts`) prints nothing on Windows yet, so
 // Collie gates tricks there (bridge/tricks/service.ts `gated`). Each `helperTest` runs such a program.
@@ -201,6 +202,34 @@ describe("collie trick init", () => {
     expect(drafted.run?.problem).toBeNull();
     expect(drafted.run?.parts).toEqual(["status status", "dashboard dashboard", "session main"]);
     expect(await Bun.file(switchesPath(agent.stateDir)).exists()).toBe(false);
+  });
+});
+
+describe("decision 8 (the first full trick run, 2026-11-16): nothing the bridge refuses", () => {
+  helperTest("the starter run with no config.toml prints nothing the bridge refuses", async () => {
+    const d = await deps();
+    await cmdTrickInit(d, ["hello"]);
+    const dir = join(d.configDir, "tricks", "hello");
+    await rm(join(dir, "config.toml"));
+    const before = d.out.length;
+    expect(await cmdTrickCheck(d, ["--run", "--json", dir])).toBe(EXIT.OK);
+    // SAFETY: `--json` prints exactly one TrickCheckReport, and the fields read below are checked by value.
+    const report = JSON.parse(d.out.slice(before).join("\n")) as TrickCheckReport;
+    expect(report.run?.problem).toBeNull();
+    expect(report.run?.refusals).toEqual([]);
+  });
+
+  test("the guide names the status limit, so a no-config message fits it", () => {
+    expect(trickGuide().join("\n")).toContain(`A status text is ${String(STATUS_TEXT_MAX)} characters at most.`);
+  });
+
+  helperTest("check --run reports a printed status over its limit, and fails", async () => {
+    const d = await deps();
+    await cmdTrickInit(d, ["hello"]);
+    const dir = join(d.configDir, "tricks", "hello");
+    await writeFile(join(dir, "program.ts"), 'import { run } from "./trick.ts";\nrun((t) => t.status({ text: "no folder set", icon: "plug", tone: "warn" }));\n');
+    expect(await cmdTrickCheck(d, ["--run", dir])).toBe(EXIT.FAIL);
+    expect(d.err.join("\n")).toContain('error: output /parts/0/chip/text "text" is 13 characters. At most 12.');
   });
 });
 
