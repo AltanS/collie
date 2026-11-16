@@ -51,6 +51,7 @@ import {
   NO_CHANGE,
   noQueue,
   noteBlockTypes,
+  PENDING_MAX,
   type PendingTool,
   reduction,
   type Reduction,
@@ -403,6 +404,8 @@ type PiPending = PendingTool & {
   questionIds?: ReadonlyMap<string, string>;
   /** Set when the call draws no part of its own: its result lands on this card instead (ADR 0119). */
   foldInto?: PendingTool;
+  /** A `subagent_cancel` call: the `task_id` it names, which its result ends unless it is an error (#784). */
+  cancels?: string;
 };
 
 /** The object under `details[key]`, or `undefined`. */
@@ -607,8 +610,67 @@ const FINAL_WORK_STATUS: ReadonlySet<string> = new Set(["completed", "failed", "
 /** A `job_list` line for a job that has ended: `job-2 · monitor stopped · label · …`, or `exited 1`. */
 const JOB_LIST_LINE = /^(job-[A-Za-z0-9_-]+) · (?:monitor )?(stopped|failed|exited(?: \S+)?) · /;
 
+/**
+ * A `subagent_list_tasks` line for a task that has ended:
+ * `<task> · <agent> · failed · background · … · last: interrupted` (gentle-pi, from the issue #784
+ * report). Only a final status reads; a running line leaves its card as it is.
+ */
+const TASK_LIST_LINE = /^(\S+) · [^·\n]+ · (completed|failed|cancelled|stopped) · /;
+
 /** The statuses an Oh My Pi `task` start writes for a subagent that has not ended yet. */
 const OMP_RUNNING_STATUS: ReadonlySet<string> = new Set(["pending", "running"]);
+
+/**
+ * The two counters Gentle Shell numbers its work by, one per pi runtime: a job is `job-<n>`, and a
+ * subagent task is `<start time, base 36>-<n, base 36>-<random>` (`mwj843xv-7-h1nu`). Both restart at
+ * 1 when a new pi runtime takes the session over (a restart, a crash and a resume; issues #783 and
+ * #784), which pi itself never writes down. So a counter that goes back is the journal's proof of a
+ * new runtime. An id of another shape counts nothing.
+ */
+const WORK_COUNTERS = {
+  job: (id: string): number | undefined => {
+    const n = /^job-(\d{1,9})$/.exec(id)?.[1];
+    return n === undefined ? undefined : Number(n);
+  },
+  task: (id: string): number | undefined => {
+    const n = /^[0-9a-z]{6,}-([0-9a-z]{1,6})-[0-9a-z]{2,}$/.exec(id)?.[1];
+    return n === undefined ? undefined : parseInt(n, 36);
+  },
+} as const;
+
+/** A counter no start has touched yet. */
+function freshTrack(): CounterTrack {
+  return { earlierMax: 0, batchMax: 0 };
+}
+
+/** Where a start row stands in the reducer's own order: its row number and the turn its call went out in. */
+interface RowMark {
+  seq: number;
+  batch: string;
+}
+
+/**
+ * One Gentle Shell counter as the reducer has met it since the last time it went back. Starts are
+ * read per BATCH (the tool calls of one assistant turn): pi writes a batch's results in call order but
+ * runs the calls side by side, so two jobs of one batch may hold their numbers in either order. A
+ * runtime cannot change inside a batch, so only a number at or below the highest of an EARLIER batch
+ * proves one.
+ */
+interface CounterTrack {
+  /** The highest number of the batches before the current one. */
+  earlierMax: number;
+  /** The newest start of those batches. */
+  earlierLast?: RowMark;
+  batch?: string;
+  batchMax: number;
+  batchLast?: RowMark;
+}
+
+/** A task or command card that has not ended. */
+function isOngoing(card: PendingTool): boolean {
+  const call = card.part.call;
+  return (call?.kind === "task" || call?.kind === "execute") && call.ongoing === true;
+}
 
 /** The objects of `details[key]` when it is a list, else none. */
 function detailRows(details: JsonValue | undefined, key: string): JsonObject[] {
@@ -651,6 +713,7 @@ export function createPiReducer(): RowReducer {
   // Subagent task id / background job id → the card that started it, so the end notice (or a
   // `subagent_result`) can find it. Kept after the work ends: a result can be asked for later. Bounded
   // by `rememberPending`; what falls off is the oldest id, whose notice the window has long passed.
+  // A Gentle Shell job is held under `jobKey`, its runtime and its id, never its id alone.
   const workCards = new Map<string, PendingTool>();
   // An Oh My Pi job card → its progress names, the `label` an end row may name it by. Weak, so a card
   // the window and `workCards` both let go of costs nothing here.
@@ -659,6 +722,145 @@ export function createPiReducer(): RowReducer {
   // row is the final one. Its card is ongoing from the call until that result (#711), so these parts
   // are remembered to be released when any result lands.
   const foregroundRuns = new WeakSet<object>();
+  // The number of the row being read, so a card knows where it started (see `endOldRuntime`).
+  let seq = 0;
+  // Every card marked ongoing, with the row that marked it, so a new runtime can end the old one's.
+  // Keyed by part; bounded by `markRunning`.
+  const ongoingCards = new Map<object, { card: PendingTool; at: RowMark }>();
+  // Gentle Shell's two counters (see `WORK_COUNTERS`).
+  const counters = { job: freshTrack(), task: freshTrack() };
+  // How many times the job counter went back. A job's identity is this plus its id (#783): job ids
+  // restart in every runtime, so `job-1` alone would let a new job settle an old card.
+  let jobRuntime = 0;
+  const jobKey = (id: string): string => `job@${jobRuntime}:${id}`;
+  // Background subagents a script started inside one call (pi's `nestedCalls`, #795) that no task id
+  // names yet: their start row records none. Matched to an end row by agent and label.
+  const openNested = new Map<object, { card: PendingTool; agent: string; label: string }>();
+
+  /** Remember an ongoing card and the row that started it. Drops ended cards first when full. */
+  function markRunning(card: PendingTool, batch: string): void {
+    ongoingCards.set(card.part, { card, at: { seq, batch } });
+    if (ongoingCards.size <= PENDING_MAX) return;
+    for (const [part, held] of ongoingCards) if (!isOngoing(held.card)) ongoingCards.delete(part);
+    while (ongoingCards.size > PENDING_MAX) {
+      const oldest = ongoingCards.keys().next().value;
+      if (oldest === undefined) break;
+      ongoingCards.delete(oldest);
+    }
+  }
+
+  /**
+   * Read the number of a Gentle Shell start. When it proves a new runtime, end what the old runtimes
+   * left running (decision of 2026-11-16, issues #783 and #784).
+   */
+  function countStart(kind: keyof typeof WORK_COUNTERS, id: string, batch: string, ts: string, changed: Set<string>): void {
+    const n = WORK_COUNTERS[kind](id);
+    if (n === undefined) return;
+    const t = counters[kind];
+    if (t.batch !== batch) {
+      if (t.batchLast !== undefined) {
+        t.earlierMax = Math.max(t.earlierMax, t.batchMax);
+        t.earlierLast = t.batchLast;
+      }
+      t.batch = batch;
+      t.batchMax = 0;
+      t.batchLast = undefined;
+    }
+    if (t.earlierLast !== undefined && n <= t.earlierMax) {
+      endOldRuntime(t.earlierLast, ts, changed);
+      t.earlierMax = 0;
+      t.earlierLast = undefined;
+      if (kind === "job") jobRuntime += 1;
+    }
+    t.batchMax = Math.max(t.batchMax, n);
+    t.batchLast = { seq, batch };
+  }
+
+  /**
+   * A counter went back: `last` is the newest start of an EARLIER runtime. Every start the counter
+   * met since it last went back is one: a start of the runtime now running would have a lower number
+   * than the one that went back, and would itself have gone back first. Runtimes follow each other,
+   * so every card that started at or before `last` (or in its batch) belongs to a runtime that is
+   * gone, and nothing will ever end it. It ends as `stopped`, the state a lost end already has (a
+   * stale notice): no failure, no exit code, the end time of this row. A card that started after
+   * `last` may belong to the new runtime and keeps running.
+   */
+  function endOldRuntime(last: RowMark, ts: string, changed: Set<string>): void {
+    for (const [part, held] of ongoingCards) {
+      if (!isOngoing(held.card)) {
+        ongoingCards.delete(part);
+        continue;
+      }
+      if (held.at.seq > last.seq && held.at.batch !== last.batch) continue;
+      settle(held.card, { status: "stopped" }, ts, changed);
+      ongoingCards.delete(part);
+    }
+  }
+
+  /** The held card a `gentleAgents` record names: by its task id, else the one open nested run it matches. */
+  function taskCard(info: JsonObject | undefined): PendingTool | undefined {
+    const id = field(info, "taskId");
+    if (id === undefined) return undefined;
+    const held = workCards.get(id);
+    if (held !== undefined) return held;
+    const agent = field(info, "agent");
+    const label = field(info, "label");
+    if (agent === undefined || label === undefined) return undefined;
+    let found: PendingTool | undefined;
+    for (const [part, open] of openNested) {
+      if (!isOngoing(open.card)) {
+        openNested.delete(part);
+        continue;
+      }
+      if (open.agent !== agent || open.label !== label) continue;
+      // Two open runs of one agent and label: either could be this one, so neither is taken.
+      if (found !== undefined) return undefined;
+      found = open.card;
+    }
+    if (found === undefined) return undefined;
+    openNested.delete(found.part);
+    rememberPending(workCards, id, found);
+    return found;
+  }
+
+  /**
+   * The background subagents a call started through a script (pi's `nestedCalls` on its result, #795,
+   * pi docs "Nested calls"). pi keeps each nested call's name, arguments and status, never its result,
+   * so the task id is not there: a `subagent_run` with `mode: "background"` that returned (`ok`) is
+   * ongoing from this row, under the calling card, and ends by the rules every card ends by. A record
+   * whose arguments pi left out (over its size limit) shows no mode and starts nothing.
+   */
+  function startNested(target: PendingTool, nested: JsonValue | undefined, changed: Set<string>): void {
+    const calls = detailRows(nested, "calls");
+    const parts: Extract<TranscriptPart, { kind: "tool" }>[] = [];
+    for (const nestedCall of calls) {
+      const name = field(nestedCall, "name");
+      if (name?.toLowerCase() !== "subagent_run" || field(nestedCall, "status") !== "ok") continue;
+      const args = asRecord(nestedCall.arguments) ?? undefined;
+      if (args === undefined || field(args, "mode") !== "background") continue;
+      const summary = summarizeToolInput(args);
+      const call = classifyToolCall(name, args, summary);
+      if (call?.kind !== "task") continue;
+      call.ongoing = true;
+      const part: Extract<TranscriptPart, { kind: "tool" }> = { kind: "tool", name, summary, call };
+      const id = field(nestedCall, "id");
+      if (id !== undefined) part.id = id;
+      parts.push(part);
+      const card = { part, uuid: target.uuid };
+      markRunning(card, target.uuid);
+      const agent = field(args, "agent");
+      const label = field(args, "label");
+      if (agent !== undefined && label !== undefined) openNested.set(part, { card, agent, label });
+    }
+    if (parts.length === 0) return;
+    target.part.nested = parts;
+    changed.add(target.uuid);
+    while (openNested.size > PENDING_MAX) {
+      const oldest = openNested.keys().next().value;
+      if (oldest === undefined) break;
+      openNested.delete(oldest);
+    }
+  }
 
   /**
    * Oh My Pi's `task` start (OMP 18.6.1, read off a real session on 2026-10-25). The result answers at
@@ -694,6 +896,7 @@ export function createPiReducer(): RowReducer {
       call.jobId = jobId;
     }
     call.ongoing = true;
+    markRunning(target, target.uuid);
     return true;
   }
 
@@ -753,14 +956,19 @@ export function createPiReducer(): RowReducer {
     // `subagent_result` asks about work another card started; it never starts any of its own.
     if (target.part.name.toLowerCase() === "subagent_result") return;
     const id = field(info, agents ? "taskId" : "jobId");
-    if (id !== undefined) rememberPending(workCards, id, target);
+    // Before the card is remembered: a number that went back ends the old runtime's cards first.
+    if (id !== undefined) countStart(agents ? "task" : "job", id, target.uuid, ts, changed);
+    if (id !== undefined) rememberPending(workCards, agents ? id : jobKey(id), target);
     if (call.kind === "execute") {
       if (id !== undefined) call.jobId = id;
       const started = Date.parse(ts);
       if (Number.isFinite(started)) call.startedAt = started;
     }
     const status = field(info, "status");
-    if (status === "queued" || status === "running") call.ongoing = true;
+    if (status === "queued" || status === "running") {
+      call.ongoing = true;
+      markRunning(target, target.uuid);
+    }
     // A foreground run answers once, with its final status. The settle path of a later result skips
     // the card the result belongs to (`other !== target`), so the card settles itself here, which is
     // what marks a failed run failed (#716).
@@ -779,13 +987,18 @@ export function createPiReducer(): RowReducer {
     // or without its result (issue #716; the row shape is a guess, see `staleInfo`).
     if (type === "gentle-agents.stale-notice" || type === "gentle-agents.stale-result") {
       const info = staleInfo(row.details);
-      if (info !== undefined) settle(workCards.get(field(info, "taskId") ?? ""), info, ts, changed);
+      if (info !== undefined) settle(taskCard(info), info, ts, changed);
       return;
     }
-    if (type !== "gentle-agents.result" && type !== "gentle-jobs.notice") return;
-    const agents = type === "gentle-agents.result";
-    const info = detailsOf(row.details, agents ? "gentleAgents" : "gentleJobs");
-    if (info !== undefined) settle(workCards.get(field(info, agents ? "taskId" : "jobId") ?? ""), info, ts, changed);
+    if (type === "gentle-agents.result") {
+      const info = detailsOf(row.details, "gentleAgents");
+      if (info !== undefined) settle(taskCard(info), info, ts, changed);
+      return;
+    }
+    if (type !== "gentle-jobs.notice") return;
+    const info = detailsOf(row.details, "gentleJobs");
+    const id = field(info, "jobId");
+    if (info !== undefined && id !== undefined) settle(workCards.get(jobKey(id)), info, ts, changed);
   }
 
   /**
@@ -803,9 +1016,9 @@ export function createPiReducer(): RowReducer {
   /**
    * End a held card when `info` (a `gentleAgents` / `gentleJobs` record) reports a final status.
    * The end notice is the usual source; a cancelled subagent has none, and only the status a later
-   * `subagent_status` or `subagent_cancel` result reports says it is over (a real session,
-   * 2026-10-15). A status still running or queued leaves the card as it is. An ended command keeps
-   * `ts`, the time of the row that ended it, as `endedAt`.
+   * `subagent_status` result reports (a real session, 2026-10-15) or the `subagent_cancel` call
+   * itself (#784) says it is over. A status still running or queued leaves the card as it is. An
+   * ended command keeps `ts`, the time of the row that ended it, as `endedAt`.
    */
   function settle(card: PendingTool | undefined, info: JsonObject, ts: string, changed: Set<string>): void {
     const status = field(info, "status");
@@ -839,7 +1052,7 @@ export function createPiReducer(): RowReducer {
     const status = field(info, "status");
     const id = field(info, "jobId");
     if (info === undefined || id === undefined || status === undefined || !FINAL_WORK_STATUS.has(status)) return;
-    settleOngoing(workCards.get(id), endInfo(status, info.exitCode), ts, changed);
+    settleOngoing(workCards.get(jobKey(id)), endInfo(status, info.exitCode), ts, changed);
   }
 
   /** `settle`, but only for a card still ongoing, so a later look never moves a real end time. */
@@ -862,7 +1075,21 @@ export function createPiReducer(): RowReducer {
       const [, id = "", word = ""] = m;
       const [status = "", code] = word.split(" ");
       const exitCode = code !== undefined && /^-?\d+$/.test(code) ? Number(code) : undefined;
-      settleOngoing(workCards.get(id), endInfo(status, exitCode), ts, changed);
+      settleOngoing(workCards.get(jobKey(id)), endInfo(status, exitCode), ts, changed);
+    }
+  }
+
+  /**
+   * A `subagent_list_tasks` result, read as text like `job_list`: its details hold nothing (issue
+   * #784). Each task it lists with a final status ends its card, which covers a subagent whose parent
+   * runtime went away (`failed`, `last: interrupted`). The end time is the list's.
+   */
+  function settleTaskList(text: string, ts: string, changed: Set<string>): void {
+    for (const line of text.split("\n")) {
+      const m = TASK_LIST_LINE.exec(line);
+      if (m === null) continue;
+      const [, id = "", status = ""] = m;
+      settleOngoing(workCards.get(id), { status }, ts, changed);
     }
   }
 
@@ -885,6 +1112,7 @@ export function createPiReducer(): RowReducer {
   function forget(uuid: string): void {
     if (heldPlan?.uuid === uuid) heldPlan = undefined;
     for (const [id, card] of workCards) if (card.uuid === uuid) workCards.delete(id);
+    for (const [part, open] of openNested) if (open.card.uuid === uuid) openNested.delete(part);
   }
 
   /** Remember this row, and if it rewound, flip the flags the rewind changed. */
@@ -977,6 +1205,7 @@ export function createPiReducer(): RowReducer {
       // Gentle Shell's `job_stop` (and any gentle result with a final job status) ends the job it names.
       settleGentleJob(m.details, ts, changed);
       if (m.toolName === "job_list" && detailsOf(m.details, "gentleJobs")?.jobId === undefined) settleJobList(resultText, ts, changed);
+      if (m.toolName === "subagent_list_tasks") settleTaskList(resultText, ts, changed);
       const image = extractImage(m.content);
       if (target?.foldInto) {
         // A call that drew no part of its own: its result lands on the card it folds into.
@@ -1005,12 +1234,19 @@ export function createPiReducer(): RowReducer {
         // a failed or interrupted one too. A start result that says the work runs on sets it again.
         if (foregroundRuns.has(target.part) && target.part.call?.kind === "task") delete target.part.call.ongoing;
         if (!isError) startWork(target, m.details, ts, changed);
+        // Subagents a script inside this call started (#795).
+        startNested(target, m.nestedCalls, changed);
         // Both mutations above landed in a turn that went out rows ago. Name it.
         changed.add(target.uuid);
         // A status call about ANOTHER card's task (`subagent_status`, `subagent_cancel`).
         const info = detailsOf(m.details, "gentleAgents");
-        const other = workCards.get(field(info, "taskId") ?? "");
+        const other = taskCard(info);
         if (info !== undefined && other !== undefined && other !== target) settle(other, info, ts, changed);
+        // gentle-pi's `subagent_cancel` answers `Cancelled task <id>.` with empty details and writes no
+        // end row (#784), so the call's own `task_id` names the card. An error (`Error: task <id> is
+        // not running.`) ends nothing.
+        if (target.cancels !== undefined && !isError && !/^\s*error\b/i.test(resultText))
+          settleOngoing(workCards.get(target.cancels), { status: "cancelled" }, ts, changed);
       } else if (resultText.trim() !== "" || image.url !== undefined || image.notes.length > 0) {
         // Orphan result (its call fell outside a tail-read window) — kept unattached so the window
         // never silently drops output.
@@ -1103,6 +1339,7 @@ export function createPiReducer(): RowReducer {
         if (lower === "subagent_run" && part.call?.kind === "task" && input.mode !== "background") {
           part.call.ongoing = true;
           foregroundRuns.add(part);
+          markRunning({ part, uuid }, uuid);
         }
         if (typeof b.id === "string") {
           part.id = b.id;
@@ -1114,6 +1351,8 @@ export function createPiReducer(): RowReducer {
             const ids = questionIdsOf(b.arguments);
             if (ids.size > 0) pending.questionIds = ids;
           }
+          const cancels = lower === "subagent_cancel" ? field(input, "task_id") : undefined;
+          if (cancels !== undefined) pending.cancels = cancels;
           rememberPending(pendingTools, b.id, pending);
         }
         parts.push(part);
@@ -1148,6 +1387,7 @@ export function createPiReducer(): RowReducer {
     // no row shape — skip it exactly as an unparseable line is skipped.
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CHANGE;
     const row: PiRow = parsed;
+    seq += 1;
     // THE HEADER IS NOT A LINK. Its `id` is the SESSION's uuid, and the first message's `parentId` is
     // `null` rather than that id, so feeding it to the chain would make every first row look like a
     // rewind.
@@ -1173,15 +1413,16 @@ export function createPiReducer(): RowReducer {
 const RESUME_FLAGS: ReadonlyMap<string, readonly string[]> = new Map([
   // Oh My Pi: `-r, --resume=<value>`, "by ID prefix, path, or picker if omitted".
   ["omp", ["--resume", "-r"]],
-  // pi: `--resume` only opens a picker and takes no value; `--session <path|id>` names the session.
-  ["pi", ["--session"]],
+  // pi: `--resume` only opens a picker and takes no value; `--session <path|id>` names the session,
+  // and `--session-id <id>` names it too, creating it when this folder has none by that id (#780).
+  ["pi", ["--session", "--session-id"]],
 ]);
 
 const PI_BINARIES: ReadonlyMap<string, string> = new Map([["pi", "pi"], ["omp", "omp"]]);
 
 /**
  * The value of the pane's resume flag (`omp --resume <v>`, `omp -r <v>`, `--resume=<v>`, `pi --session
- * <v>`), or null: no pi or omp process, no such flag, or the flag with no value (the picker; a next
+ * <v>`, `pi --session-id <v>`), or null: no pi or omp process, no such flag, or the flag with no value (the picker; a next
  * word that is itself a flag is no value). The first process that runs the harness answers.
  */
 export function resumeValueOf(processes: readonly ForegroundProcess[] | undefined): string | null {

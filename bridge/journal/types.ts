@@ -65,6 +65,12 @@ export type TranscriptPart =
        * fill this leaves it absent.
        */
       call?: ToolCall;
+      /**
+       * Calls a script inside this call made that draw no card of their own: today the background
+       * subagents pi records in a result's `nestedCalls` (journal/pi.ts, #795). The Agents list
+       * counts the ongoing ones; Chat draws only the call that holds them.
+       */
+      nested?: Extract<TranscriptPart, { kind: "tool" }>[];
       result?: {
         text: string;
         truncated?: boolean;
