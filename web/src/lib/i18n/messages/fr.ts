@@ -3355,6 +3355,7 @@ export const fr: Dictionary = {
   "accounts.window.none": "Aucune limite d'usage signalée.",
   "accounts.seen.live": "En cours d'utilisation",
   "accounts.seen.ago": "Vu {when}",
+  "accounts.folder.noVariable": "{folder}, sans variable",
   "accounts.removeNote": "Supprimer n'oublie que l'étiquette. Le dossier, ses liens et sa connexion restent où ils sont. Sans compte restant, l'application est comme avant.",
   "accounts.found.title.one": "{count} dossier en cours d'utilisation trouvé",
   "accounts.found.title.other": "{count} dossiers en cours d'utilisation trouvés",

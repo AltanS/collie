@@ -3352,6 +3352,7 @@ export const pt: Dictionary = {
   "accounts.window.none": "Nenhum limite de uso informado.",
   "accounts.seen.live": "Em uso agora",
   "accounts.seen.ago": "Visto por último {when}",
+  "accounts.folder.noVariable": "{folder}, sem variável",
   "accounts.removeNote": "Remover esquece só o rótulo. A pasta, os links e o login dela ficam onde estão. Sem nenhuma conta, o app fica como antes.",
   "accounts.found.title.one": "{count} pasta em uso encontrada",
   "accounts.found.title.other": "{count} pastas em uso encontradas",

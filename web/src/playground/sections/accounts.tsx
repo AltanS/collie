@@ -1,5 +1,5 @@
-// Accounts section of the design reference (M101 specs 04 and 05): the compact list row in its states,
-// and who is signed in on an account, as the row's second line and as the details row. Every card mounts the REAL pieces the Settings pages draw
+// Accounts section of the design reference (M101 spec 04): who is signed in on an account, as the list
+// row's second line and as the details row. Every card mounts the REAL pieces the Settings pages draw
 // (`AccountListRow`, `SignedInRow` in routes/settings-accounts.tsx) over fixtures, so the reference shows
 // what ships. Made-up addresses only.
 //
@@ -17,7 +17,7 @@ export const DEF: SectionDef = {
   id: "accounts",
   title: "Accounts",
   intent:
-    "The list row is compact: the name with the last seen or \"In use now\" at the end of its line, the email under it, its middle given up when it does not fit, and the usage windows side by side, two to a line, each with its label, a thin bar and the percent. The folder and the reset times sit on the account's page, with one row for the full address and the plan. An account that is not signed in says so; an agent that cannot tell shows no second line.",
+    "Who is signed in on each account, from the agent's own status command: the email under the account's name in the list, its middle given up when it does not fit, and one row on the account's page with the full address and the plan. An account that is not signed in says so; an agent that cannot tell shows what it showed before.",
 };
 
 const NOW = Date.parse("2026-11-16T09:41:00Z");
@@ -50,20 +50,6 @@ const WORK_ROW = row({
   identity: { signedIn: true, email: "someone.with.a.long.name@engineering.example-company.com", plan: "team" },
 });
 const NEW_ROW = row({ id: "acc-new", label: "Spare", kind: "own", folder: "~/.claude-spare", startLine: "CLAUDE_CONFIG_DIR=~/.claude-spare claude", windows: [], seenAt: null, identity: { signedIn: false } });
-const THREE_ROW = row({
-  id: "acc-team",
-  label: "Team account for the long weekend",
-  kind: "own",
-  folder: "~/.claude-team",
-  startLine: "CLAUDE_CONFIG_DIR=~/.claude-team claude",
-  windows: [
-    { window: "5h", usedPct: 96, resetsAt: NOW + 20 * 60_000 },
-    { window: "7d", usedPct: 61, resetsAt: NOW + 3 * 86_400_000 },
-    { window: "7d:opus", label: "Opus", usedPct: null, resetsAt: null },
-  ],
-  seenAt: NOW - 3 * 3_600_000,
-  identity: { signedIn: true, email: "person@example.com", plan: "team" },
-});
 const CODEX_ROW = row({ id: "codex:default", harness: "codex", folder: "~/.codex", startLine: "codex", windows: [], seenAt: null });
 
 /** A phone-wide column on the page ground. */
@@ -96,20 +82,17 @@ export function AccountsSection() {
         <Card state="accounts-list-identity" label="1 Email under each name">
           <ListOf rows={[DEFAULT_ROW, WORK_ROW, NEW_ROW]} />
         </Card>
-        <Card state="accounts-list-three-windows" label="2 Three windows, one over">
-          <ListOf rows={[THREE_ROW]} />
-        </Card>
-        <Card state="accounts-list-no-status" label="3 An agent that cannot tell">
+        <Card state="accounts-list-no-status" label="2 An agent that cannot tell">
           <ListOf rows={[CODEX_ROW]} />
         </Card>
       </Group>
       <Group title="The account's page">
-        <Card state="accounts-detail-signed-in" label="4 Signed in, with the plan">
+        <Card state="accounts-detail-signed-in" label="3 Signed in, with the plan">
           <Column>
             <SignedInRow identity={WORK_ROW.identity} />
           </Column>
         </Card>
-        <Card state="accounts-detail-signed-out" label="5 Not signed in">
+        <Card state="accounts-detail-signed-out" label="4 Not signed in">
           <Column>
             <SignedInRow identity={NEW_ROW.identity} />
           </Column>

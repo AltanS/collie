@@ -73,8 +73,7 @@ describe("Accounts: the list", () => {
     serveAccounts(body());
     mount("/settings/accounts");
     expect(await screen.findByText("Default")).toBeInTheDocument();
-    // The compact row leaves the folder to the account's page.
-    expect(screen.queryByText(/~\/\.claude/)).toBeNull();
+    expect(screen.getByText("~/.claude, no variable")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument();
     expect(screen.queryByText(/in use$/)).toBeNull();
     // With nothing added, the remove note has nothing to say yet.
@@ -144,7 +143,7 @@ describe("Accounts: the list", () => {
     expect(screen.getByRole("region", { name: "Claude Code" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Codex" })).toBeInTheDocument();
     expect(screen.getByText(/Remove forgets the label only/)).toBeInTheDocument();
-    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(screen.getByText("~/.claude-work")).toBeInTheDocument();
   });
 
   it("draws no windows as one quiet line, one window as one bar, four as four", async () => {
@@ -169,7 +168,7 @@ describe("Accounts: the list", () => {
     expect(within(rows[2]!).getByText("40% used")).not.toHaveClass("text-status-blocked");
   });
 
-  it("draws a window past its reset as 'reset', and the age or 'in use now' at the end of the name line", async () => {
+  it("draws a window past its reset as 'reset', and the age or 'in use now' in the foot", async () => {
     serveAccounts(
       body({
         accounts: [
@@ -180,16 +179,8 @@ describe("Accounts: the list", () => {
     );
     mount("/settings/accounts");
     expect(await screen.findByText("reset")).toBeInTheDocument();
-    const rows = screen.getAllByRole("listitem");
-    expect(within(rows[0]!).getByText("In use now").parentElement).toHaveTextContent(/^DefaultIn use now$/);
-    expect(within(rows[1]!).getByText(/^Last seen .*ago$/).parentElement).toHaveTextContent(/^WorkLast seen .*ago$/);
-  });
-
-  it("an account never seen draws no time on its name line", async () => {
-    serveAccounts(body({ accounts: [workRow({ seenAt: null, live: false })] }));
-    mount("/settings/accounts");
-    const name = await screen.findByText("Work");
-    expect(name.parentElement).toHaveTextContent(/^Work$/);
+    expect(screen.getByText(/^In use now · /)).toBeInTheDocument();
+    expect(screen.getByText(/^Last seen .*ago · ~\/\.claude-work$/)).toBeInTheDocument();
   });
 
   it("a row opens the account's page", async () => {
@@ -211,65 +202,6 @@ describe("Accounts: the list", () => {
     mount("/settings/accounts");
     expect(await screen.findByText("Accounts are not available on this machine.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add" })).toBeNull();
-  });
-});
-
-describe("Accounts: the compact row", () => {
-  const TWO = [W("5h", 42), W("7d", 18)];
-
-  it("is one button at the 44 px floor with the focus ring, its padding and gap compact", async () => {
-    serveAccounts(body({ accounts: [workRow({ windows: TWO, identity: { signedIn: true, email: "person@example.com" } })] }));
-    mount("/settings/accounts");
-    const row = await screen.findByRole("button", { name: /Work/ });
-    expect(row).toHaveClass("min-h-11", "px-3", "py-2.5", "gap-1", "focus-visible:outline-ring");
-    expect(within(row).queryAllByRole("button")).toHaveLength(0);
-    expect(within(row).getByText("person@example.com")).toBeInTheDocument();
-  });
-
-  it("sets two windows side by side, each with its label, bar and percent", async () => {
-    serveAccounts(body({ accounts: [workRow({ windows: TWO, seenAt: Date.now() - 60_000 })] }));
-    mount("/settings/accounts");
-    const row = await screen.findByRole("button", { name: /Work/ });
-    const cells = row.querySelectorAll("[data-slot=account-window]");
-    expect(cells).toHaveLength(2);
-    expect(cells[0]!.parentElement).toHaveClass("grid-cols-2");
-    expect(cells[0]).toHaveTextContent("Session42% used");
-    expect(cells[1]).toHaveTextContent("Week18% used");
-    // No reset time in the list: it is on the account's page.
-    expect(within(row).queryByText(/^Resets /)).toBeNull();
-  });
-
-  it("wraps a third window onto a second line of the same two columns", async () => {
-    serveAccounts(body({ accounts: [workRow({ windows: [...TWO, W("7d:opus", 5, { label: "Opus" })] })] }));
-    mount("/settings/accounts");
-    const row = await screen.findByRole("button", { name: /Work/ });
-    expect(row.querySelectorAll("[data-slot=account-window]")).toHaveLength(3);
-    expect(within(row).getByText("Week · Opus")).toHaveClass("truncate");
-    expect(within(row).getAllByRole("progressbar")).toHaveLength(3);
-  });
-
-  it("an over-limit window says its percent in words beside the hot bar", async () => {
-    serveAccounts(body({ accounts: [workRow({ windows: [W("5h", 96), W("7d", 18)] })] }));
-    mount("/settings/accounts");
-    const row = await screen.findByRole("button", { name: /Work/ });
-    expect(within(row).getByText("96% used")).toHaveClass("text-status-blocked");
-    expect(within(row).getByRole("progressbar", { name: "Session" })).toHaveAttribute("aria-valuenow", "96");
-  });
-
-  it("a not signed in account with no windows reads its name, 'Not signed in' and the quiet line", async () => {
-    serveAccounts(body({ accounts: [workRow({ windows: [], identity: { signedIn: false } })] }));
-    mount("/settings/accounts");
-    const row = await screen.findByRole("button", { name: /Work/ });
-    expect(row).toHaveTextContent(/^WorkNot signed inNo usage limit reported\.$/);
-  });
-
-  it("a long name gives way and keeps the time at the end of its line", async () => {
-    const label = "A very long account name";
-    serveAccounts(body({ accounts: [workRow({ label, live: true })] }));
-    mount("/settings/accounts");
-    const name = await screen.findByText(label);
-    expect(name).toHaveClass("truncate", "min-w-0", "flex-1");
-    expect(within(name.parentElement!).getByText("In use now")).toHaveClass("shrink-0");
   });
 });
 

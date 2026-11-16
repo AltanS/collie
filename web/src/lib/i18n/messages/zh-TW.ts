@@ -3486,6 +3486,7 @@ export const zhTW: Dictionary = {
   "accounts.window.none": "未回報用量上限。",
   "accounts.seen.live": "目前使用中",
   "accounts.seen.ago": "最後出現於 {when}",
+  "accounts.folder.noVariable": "{folder}，無變數",
   "accounts.removeNote": "移除只會忘記標籤。資料夾、其連結與登入都保持原樣。全部移除後，應用程式就和之前一樣。",
   "accounts.found.title.one": "找到 {count} 個使用中的資料夾",
   "accounts.found.title.other": "找到 {count} 個使用中的資料夾",

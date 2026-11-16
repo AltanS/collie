@@ -3492,6 +3492,7 @@ export const zh: Dictionary = {
   "accounts.window.none": "未报告用量限额。",
   "accounts.seen.live": "正在使用",
   "accounts.seen.ago": "最近一次使用：{when}",
+  "accounts.folder.noVariable": "{folder}，无变量",
   "accounts.removeNote": "移除只会忘掉这个标签。文件夹、其中的链接和登录都原样保留。全部移除后，应用恢复原样。",
   "accounts.found.title.one": "发现 {count} 个正在使用的文件夹",
   "accounts.found.title.other": "发现 {count} 个正在使用的文件夹",

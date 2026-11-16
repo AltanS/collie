@@ -3512,6 +3512,7 @@ export const ja: Dictionary = {
   "accounts.window.none": "使用量の上限は報告されていません。",
   "accounts.seen.live": "使用中",
   "accounts.seen.ago": "最終確認 {when}",
+  "accounts.folder.noVariable": "{folder}、変数なし",
   "accounts.removeNote": "削除で消えるのはラベルだけです。フォルダー、そのリンク、サインインはそのまま残ります。1つも残らなければ、アプリは以前の状態に戻ります。",
   "accounts.found.title.one": "使用中のフォルダーが {count} 件見つかりました",
   "accounts.found.title.other": "使用中のフォルダーが {count} 件見つかりました",

@@ -3358,6 +3358,7 @@ export const it: Dictionary = {
   "accounts.window.none": "Nessun limite di utilizzo indicato.",
   "accounts.seen.live": "In uso adesso",
   "accounts.seen.ago": "Visto l'ultima volta {when}",
+  "accounts.folder.noVariable": "{folder}, nessuna variabile",
   "accounts.removeNote": "Rimuovi dimentica solo il nome. La cartella, i suoi collegamenti e il suo accesso restano dove sono. Senza più account, l'app è come prima.",
   "accounts.found.title.one": "Trovata {count} cartella in uso",
   "accounts.found.title.other": "Trovate {count} cartelle in uso",
