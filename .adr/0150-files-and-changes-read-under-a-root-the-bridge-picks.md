@@ -32,9 +32,9 @@ law in `bridge/journal/files.ts` names Changes and Files among the few such plac
    nearest `.git`) and, when nested discovery is on, each folder below with a `.git` entry, to depth
    1 to 4 (default 2); the walk asks no git and follows no symlink. Without the Files right the walk
    up stops at the bound, and the work tree that owns a repo's git folder (through a gitfile or a
-   `commondir`) must lie in it. Git runs on the git folder discovery checked. A diff needs a repo the same discovery
-   returns and a path git listed (in the work tree, or in HEAD for the commit view), else it answers
-   `unknown-repo` or `unknown-path`. An untracked file is read as Files reads one, under the repo.
+   `commondir`) must lie in it. Git runs on the git folder discovery checked. A diff needs a repo the
+   same discovery returns and a path git listed (in the work tree, or in HEAD for the commit view),
+   else `unknown-repo` or `unknown-path`. An untracked file is read as Files reads one, under the repo.
 5. **Git runs hardened and offline.** argv only, a timeout and an output cap. Each run switches off
    every repo-driven program (fsmonitor, hooks, external diff, textconv, filter drivers, pager,
    submodule recursion), names `--git-dir` and `--work-tree`, takes paths literally, drops inherited
