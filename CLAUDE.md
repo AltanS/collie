@@ -17,11 +17,13 @@ decisions [`.adr/`](./.adr/) · adding a harness
 [`.adr/`](./.adr/) holds the decisions whose reasoning would otherwise live only in a PR thread —
 specifically the ones that **close off an option someone will reasonably propose again**. If you're
 about to argue *why not* rather than *how*, check there first; if the answer isn't there and the
-decision is that shape, add one (numbering + format: [`.adr/README.md`](./.adr/README.md)).
+decision is that shape, add one (numbering, format and the topic map: [`.adr/README.md`](./.adr/README.md)).
 
 Rules elsewhere in this file stay short and normative and link to the ADR for the argument. Don't
-restate an ADR's reasoning here, and don't edit a superseded ADR into agreement with the present —
-mark it superseded and write the next one.
+restate an ADR's reasoning here, and never edit an ADR into agreement with the present: write the
+next one, and the superseded ADR becomes a stub (its file and number stay, its body stays in git
+history) that points at the live rule. `bun scripts/check-adr.ts` holds the record rules, and
+`bun run test` runs it.
 
 ## Versioning — MANDATORY
 
