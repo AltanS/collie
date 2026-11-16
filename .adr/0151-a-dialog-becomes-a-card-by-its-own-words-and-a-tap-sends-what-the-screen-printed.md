@@ -23,7 +23,7 @@ ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) sta
 1. **A dialog becomes a card only by its own words.** A grammar names its dialog by its title, body
    or exact footer, and fails closed: a shape no capture shows declines. A family test that makes other
    grammars stand down answers from the dialog it names, never from one line any screen may print. The
-   generic menu runs last. A screen nothing reads is ADR 0142's unread screen.
+   generic menu runs after every dialog grammar. A screen nothing reads is ADR 0142's unread screen.
 2. **Collie sends only keys the screen printed, plus the arrows of a walk, plus the named exceptions.**
    Printed means a footer hint, a key on the dialog's own row (a numbered option, a notice's `1:`), or
    a pointer, which licenses the arrows of its list. A menu card's keys come from a short whitelist
@@ -75,7 +75,7 @@ ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) sta
   through `menuKeyFor` and none is a digit; a notice card's keys are exactly the digits (letters under
   a `letters` head) its key block printed, in order; a walk is arrows of one direction then Enter, at
   most one row on `["Enter"]`; every key is a valid Herdr key (`isValidHerdrKey`). It does not check
-  that any key but a notice's was printed: the whitelist passes exceptions b and d, and the clears,
+  that any key but a notice's was printed: the whitelist passes d, b gets only the key check, the clears,
   the sticky arrow and the declared key are outside `emittableKeys`. Recipes are reviewed per dialog.
 - Rule 3: a. `harness/claude/resume.ts`. b. `harness/claude/switch-model.ts`. c. `submitPromptFeedback`
   (`web/src/lib/prompt-action.ts`, `grammar/PLAN_FEEDBACK_NOTES.md`). d. `harness/agy/artifact.ts`.

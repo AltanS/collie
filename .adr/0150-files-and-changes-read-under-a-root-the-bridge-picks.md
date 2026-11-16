@@ -60,7 +60,7 @@ law in `bridge/journal/files.ts` names Changes and Files among the few such plac
     picture ask `device-read`: the read's access rule plus the device header allowlist. Every level
     needs the pairing token (ADR 0086). A crew member decides by its own allowlist, on its own disk.
 12. **A printed path is a link only inside the root, once it exists.** The phone resolves it against
-    its copy of the root rule and sends only the root-relative path; no route takes an absolute path
+    its copy of the root rule and sends only the root-relative path; no Files route takes an absolute path
     or a `file:` URI. A path stays text until the bridge says something is there.
 
 ## Today in the code

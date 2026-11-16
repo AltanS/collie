@@ -73,9 +73,9 @@ and a regression that reached every machine on one day. Several changed others i
   (`bridge/update.ts`). The phone needs its own confirm for a major (`update.major_confirm_required`).
 - Rule 7: `lineOffer` (`bridge/update-line.ts`) serves `planUpdate` and, through `lineReading`, the
   bridge's monitor. No `update-line.json` reads as Stable. `POST /api/update/line` needs a request id
-  and installs nothing. `planToTag` takes a lower tag only with `--downgrade`, which the bridge passes
-  for a rollback and for `POST /api/update/back`. `afterRollback` and `afterFailedBuild` reject an
-  Edge build; `lastStableKept` keeps the last Stable on Edge; `stampCheckout` stamps an Edge suffix.
+  and installs nothing. `planToTag` takes a lower tag only with `--downgrade`, which the bridge
+  passes for `POST /api/update/back` and a member's step down. `afterRollback`, `afterFailedBuild`
+  reject an Edge build; `lastStableKept` keeps the last Stable on Edge; `stampCheckout` stamps Edge.
   A tag whose `collie-release.json` answers 404 is not offered yet (#503).
 - Rule 8: `bridge/state-shapes.test.ts` (fixtures of 1.22.6) holds `UNREADABLE_BY_LAST_STABLE` empty.
 - Rule 9: `cmdLink` (`cli/link.ts`) replaces only a name Collie published, and `cmdUnlink` removes only

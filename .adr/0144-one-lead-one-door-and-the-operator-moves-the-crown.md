@@ -89,7 +89,7 @@ Records 0011 to 0028 say "pack" and `PACK_PROTOCOL.md`; read them as "crew" and 
   (`bridge/crew/transport.ts`), `cmdCrewDeputy` (`cli/crew-deputy.ts`).
 - Rule 8: `runTakeover`, `probeAnswer` and `commitTakeover` in `bridge/crew/takeover.ts`.
 - Rule 9: `armThresholdMs` and `STANDBY_PORT_ENV` in `bridge/crew/standby.ts`, the listener in
-  `bridge/index.ts`. `standby-devices.json` is never merged into the deputy's own pairing list
+  `bridge/index.ts`. `standby-devices.json` joins the deputy's pairing list only at takeover commit
   (`bridge/crew/standby-devices.ts`). `/standby` is reserved on the front door (`bridge/index.ts`)
   and goes to the network in the service worker (`web/src/lib/sw-routes.ts`).
 - Rule 10: the `accept-encoding: identity` request and the `vary` merge in `bridge/crew/forward.ts`.

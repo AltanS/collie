@@ -1,9 +1,9 @@
-// WHICH FOLDER THE CHANGES VIEW LOOKS AT (ADR 0065, § The root is the workspace; #509).
+// WHICH FOLDER THE CHANGES VIEW LOOKS AT (ADR 0150, rule 2; #509).
 //
 // The operator thinks in workspaces (a herdr workspace, a tmux session, a zellij session), not in
 // the folder one pane happens to sit in. A pane parked in `experiments/session-stream` used to show
 // that subfolder's repo alone, which was a partial and misleading picture of the work. So the root
-// is the WORKSPACE's folder, every pane in a workspace shows the same list, and nested repo
+// is the WORKSPACE's folder, every pane inside that folder shows the same list, and nested repo
 // discovery then runs from that root exactly as it did from a pane's folder.
 //
 // One exception, and it is the whole of #509: a pane whose own folder is OUTSIDE its workspace's
