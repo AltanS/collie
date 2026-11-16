@@ -68,6 +68,7 @@ const NOT_REACHED_BY_WINDOWS: readonly Allowed[] = [
   { file: "cli/install-kind.ts", pattern: "splitOnSlash", count: 2, why: "git remote URLs, always slashes" },
   { file: "cli/update.ts", pattern: "splitOnSlash", count: 2, why: "a literal list of payload names, joined by path.join; and a systemd unit path" },
   { file: "cli/fakes.ts", pattern: "splitOnSlash", count: 2, why: "test-only fake filesystem, keys are POSIX by design" },
+  { file: "bridge/changes.ts", pattern: "splitOnSlash", count: 2, why: "a path git listed in a repo, which git writes with `/` on every host, cut into names before host.path.join (M103)" },
 ];
 
 /**

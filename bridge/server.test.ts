@@ -6517,3 +6517,32 @@ describe("freeSpaceName — a folder-named space never takes a name already in u
     expect(freeSpaceName("app", [{ label: "app-2" }])).toBe("app");
   });
 });
+
+// ── Changes keeps the bounds of Files (ADR 0150, M103) ──────────────────────────────────────────
+// The dispatcher lives inside Bun.serve, so the wiring is pinned by source, as the Files gate is in
+// bridge/api-front-gate.test.ts. The behaviour of each scope is tested in bridge/changes-root.test.ts.
+
+describe("the changes routes read under the caller's own Files right", () => {
+  const code = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+
+  test("changes: both routes build their scope from the caller, never from a fixed level", () => {
+    expect(code).toContain("return workspaceChanges(rt.engine, workspaceId, url, req, changesScope(cfg, caller), cfg.redact);");
+    expect(code).toContain('if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, changesScope(cfg, caller), cfg.redact);');
+    // The two routes are the only callers of the two handlers in the dispatcher.
+    expect([...code.matchAll(/return (paneChanges|workspaceChanges)\(/g)]).toHaveLength(2);
+  });
+
+  test("changes: the scope asks the caller's device-read gate and carries the bridge's private folders", () => {
+    const start = code.indexOf("function changesScope(");
+    expect(start).toBeGreaterThan(0);
+    const body = code.slice(start, code.indexOf("\n}\n", start));
+    expect(body).toContain('wide: caller.gate("device-read") === null');
+    expect(body).toContain("privateFolders: filesPrivateFolders(cfg)");
+  });
+
+  test("changes: a crew member's routes answer through the same closure, so its own gate decides", () => {
+    // The member's `caller.gate` is `crewGate` over the forwarded device (bridge/crew/peer-gate.ts).
+    expect(code).toContain("crewGate(level, cfg, device)");
+    expect([...code.matchAll(/serveSessionRoute\(\s*req/g)]).toHaveLength(2);
+  });
+});

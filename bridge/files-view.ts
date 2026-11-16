@@ -33,37 +33,40 @@
 // and a file listed as a folder cannot be told apart by anything the client sees.
 //
 // ── THE RACE, AND THE CHECK ON THE OPENED FILE ──────────────────────────────────────────────────
-// Between the containment check and the read, a path component can be swapped for a symlink. The
-// final component is opened with O_NOFOLLOW (POSIX) so a swap of the file itself fails the open,
-// O_NONBLOCK so a FIFO swapped in cannot hang the request, and the opened handle must be a regular
-// file. A swap of a folder ABOVE it would still open a file elsewhere, so containment is checked a
-// SECOND time, on the handle, before a byte is read ({@link openedFileAllowed}):
-//   - Linux: the kernel's own name for the open file (`/proc/self/fd/<fd>`) must lie inside the
-//     root's real path and pass the deny rules. That name is the file the handle holds, so no later
-//     swap can change the answer.
-//   - Elsewhere (no `/proc`): the path is resolved and checked again, and its `lstat` must be the
-//     handle's own file (same device and inode). A swap still in place fails the containment; a swap
-//     put back fails the identity.
-// A hard link cannot be told apart by either check: it is the same inode under a name inside the
-// root, so its real path and the kernel's name are both inside. It is served. Making one needs write
-// access inside the root and (with Linux's `protected_hardlinks`) ownership of the target, which is
-// the agent running as the operator's own user, and that agent can already read every file the
-// bridge can. A file with more than one link is not refused either: package managers (pnpm) and
-// tools hard-link ordinary files, and refusing them would refuse the files a root is made of.
+// The open follows no final link and the opened handle is checked again before a byte is read. The
+// code and its reasoning live in bridge/read-guard.ts, which the Changes view shares (ADR 0150).
 //
 // Pure where it can be (the path grammar, the order, the decoding); the disk half takes its file
-// calls through {@link FilesFs}, so a test can stand one in.
+// calls through `FilesFs` (bridge/read-guard.ts), so a test can stand one in.
 
-import { constants, type Dirent } from "node:fs";
-import { lstat, open, opendir, readlink, stat } from "node:fs/promises";
 import { relative, sep } from "node:path";
 
 import { isStateSecretName } from "./acl-policy.ts";
 import { discoverRepos, gitBinary, looksBinary, MAX_FILE_READ_BYTES, runGit } from "./changes.ts";
-import { isAbsoluteFolder, withinBound } from "./changes-root.ts";
-import { HOST, type Host, isInside, splitPath } from "./host.ts";
-import { containedRealpath, realpathOf } from "./journal/files.ts";
+import { HOST, type Host, isInside } from "./host.ts";
+import {
+  checkedTarget,
+  foldingHost,
+  isGitSegment,
+  openedFileAllowed,
+  type ReadRoot,
+  type ReadRootInput,
+  resolveReadRoot,
+} from "./read-guard.ts";
 import type { FileEntry, FileReadAnswer, FilesListing } from "./types.ts";
+
+// The bound itself moved to bridge/read-guard.ts so the Changes view applies the same one (ADR 0150).
+// Re-exported, so a caller that reads the Files view's rules by this module's name keeps working.
+export {
+  deniedFolders,
+  type FilesFs,
+  type FilesStat,
+  foldingHost,
+  isDeniedPath,
+  isGitSegment,
+  NODE_FILES_FS,
+  type OpenedFile,
+} from "./read-guard.ts";
 
 // ── Limits ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -103,11 +106,6 @@ const WINDOWS_BAD_CHARS = /[:*?"<>|]/;
  * name-based deny rules (`isStateSecretName`, `.git`) cannot see through it. Refused on the shape.
  */
 const WINDOWS_SHORT_NAME = /~\d/;
-
-/** A `.git` segment, on every host case-folded: refused for list and read, hidden from listings. */
-export function isGitSegment(name: string): boolean {
-  return name.toLowerCase() === ".git";
-}
 
 /**
  * The segments of a client's relative path, or `null` when its shape is refused. `""` is the root
@@ -170,229 +168,20 @@ export function decodeFileText(bytes: Uint8Array, truncated: boolean): DecodedTe
   return { binary: false, text: new TextDecoder("utf-8").decode(bytes, { stream: truncated }) };
 }
 
-// ── The disk, injectable ────────────────────────────────────────────────────────────────────────
-
-/** The stat fields this module reads. */
-export interface FilesStat {
-  isFile(): boolean;
-  isDirectory(): boolean;
-  isSymbolicLink(): boolean;
-  size: number;
-  /** The file's identity, compared against an open handle's ({@link openedFileAllowed}). */
-  dev?: number;
-  ino?: number;
-}
-
-/**
- * The file an open handle holds, as the check on the opened file reads it. `path` is the kernel's
- * own name for it (Linux, `/proc/self/fd/<fd>`), or null where there is no such name to ask.
- */
-export interface OpenedFile {
-  path: string | null;
-  dev: number;
-  ino: number;
-}
-
-/** The file calls this module makes. {@link NODE_FILES_FS} in production. */
-export interface FilesFs {
-  realpath(path: string): Promise<string>;
-  stat(path: string): Promise<FilesStat>;
-  lstat(path: string): Promise<FilesStat>;
-  /** Up to `limit` names in `dir`, in the order the disk gives them, and whether more were there. */
-  names(dir: string, limit: number, keep: (name: string) => boolean): Promise<{ names: string[]; more: boolean }>;
-  /**
-   * Open `path` without following a final symlink, refuse anything but a regular file, ask
-   * `confirm` about the opened file BEFORE any byte is read, and read at most `max` bytes from its
-   * start. `null` when the open, the type check or `confirm` refused it.
-   */
-  readHead(
-    path: string,
-    max: number,
-    confirm?: (opened: OpenedFile) => Promise<boolean>,
-  ): Promise<{ bytes: Uint8Array; size: number; mtimeMs?: number } | null>;
-  /** The real path containment, `containedRealpath` in production. */
-  contained(candidate: string, root: string, host: Host): Promise<string | null>;
-}
-
-/** O_NOFOLLOW and O_NONBLOCK exist on POSIX only; Windows reads them as 0 (no flag). */
-const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
-
-/**
- * The kernel's name for an open descriptor, on Linux, or null. `/proc/self/fd/<fd>` is a link the
- * kernel answers from the open file itself, so it names the file the handle holds, not whatever a
- * path names now. A file deleted since the open reads as `<path> (deleted)`, which is no path inside
- * any root, so it is refused.
- */
-async function kernelPathOf(fd: number): Promise<string | null> {
-  if (HOST.platform !== "linux") return null;
-  return readlink(`/proc/self/fd/${String(fd)}`).catch(() => null);
-}
-
-export const NODE_FILES_FS: FilesFs = {
-  realpath: (path) => realpathOf(path),
-  stat: (path) => stat(path),
-  lstat: (path) => lstat(path),
-  async names(dir, limit, keep) {
-    const handle = await opendir(dir);
-    const names: string[] = [];
-    let more = false;
-    try {
-      let entry: Dirent | null;
-      while ((entry = await handle.read()) !== null) {
-        if (!keep(entry.name)) continue;
-        if (names.length >= limit) {
-          more = true;
-          break;
-        }
-        names.push(entry.name);
-      }
-    } finally {
-      await handle.close().catch(() => {});
-    }
-    return { names, more };
-  },
-  async readHead(path, max, confirm) {
-    const handle = await open(path, OPEN_FLAGS).catch(() => null);
-    if (handle === null) return null;
-    try {
-      const st = await handle.stat();
-      if (!st.isFile()) return null;
-      if (confirm !== undefined && !(await confirm({ path: await kernelPathOf(handle.fd), dev: st.dev, ino: st.ino }))) {
-        return null;
-      }
-      const want = Math.min(st.size, max);
-      const bytes = new Uint8Array(want);
-      let got = 0;
-      while (got < want) {
-        const { bytesRead } = await handle.read(bytes, got, want - got, got);
-        if (bytesRead === 0) break;
-        got += bytesRead;
-      }
-      // The mtime is the open handle's own, read with the size: the phone keys a held picture on both
-      // (ADR 0090), and a second path lookup could name another file than the one these bytes came from.
-      return { bytes: bytes.subarray(0, got), size: st.size, mtimeMs: st.mtimeMs };
-    } finally {
-      await handle.close().catch(() => {});
-    }
-  },
-  contained: (candidate, root, host) => containedRealpath(candidate, root, host),
-};
-
 // ── The root ────────────────────────────────────────────────────────────────────────────────────
 
-/** Everything a Files read needs besides the request. */
-export interface FilesContext {
-  /** The root off the snapshot (bridge/changes-root.ts, or the bounded pane-cwd fallback). */
-  root: string;
-  /** The operator's home folder, the bound's upper end. */
-  home: string;
-  /** The bridge's state folder and config folder: denied, and hidden from listings. */
-  privateFolders: readonly string[];
-  host?: Host;
-  fs?: FilesFs;
+/**
+ * Everything a Files read needs besides the request. `root` is the root off the snapshot
+ * (bridge/changes-root.ts, or the bounded pane-cwd fallback).
+ */
+export interface FilesContext extends ReadRootInput {
   /** Which listed names git ignores. {@link gitIgnoredNames} in production; a test stands one in. */
   ignoreProbe?: IgnoreProbe;
 }
 
-/** A host that folds case whatever the platform: the deny checks err towards refusing. */
-export function foldingHost(host: Host): Host {
-  return host.caseInsensitive ? host : { ...host, caseInsensitive: true };
-}
-
-/** The pieces one request works with, after the root has been checked. */
-interface Resolved {
-  rootReal: string;
-  /** Each private folder as given and as its real path; whichever spelling a target reaches. */
-  denied: string[];
-  host: Host;
-  fs: FilesFs;
-}
-
-/**
- * The root's real path, when it is a folder and its real path is still narrow enough to read:
- * never `/`, home, or a folder above home, on the real paths of both. `null` reads as `no-folder`.
- */
-async function resolveRoot(ctx: FilesContext): Promise<Resolved | null> {
-  const host = ctx.host ?? HOST;
-  const fs = ctx.fs ?? NODE_FILES_FS;
-  if (!isAbsoluteFolder(ctx.root, host)) return null;
-  const rootReal = await fs.realpath(ctx.root).catch(() => null);
-  if (rootReal === null) return null;
-  const st = await fs.stat(rootReal).catch(() => null);
-  if (st === null || !st.isDirectory()) return null;
-  const homeReal = await fs.realpath(ctx.home).catch(() => ctx.home);
-  if (!withinBound(rootReal, homeReal, host) || !withinBound(rootReal, ctx.home, host)) return null;
-  const denied = await deniedFolders(ctx.privateFolders, fs);
-  return { rootReal, denied, host, fs };
-}
-
-/**
- * Each private folder as given and as its real path, whichever spelling a target reaches. Shared
- * with the New page's folder browser (bridge/folder-browse.ts), which denies the same folders.
- */
-export async function deniedFolders(privateFolders: readonly string[], fs: Pick<FilesFs, "realpath"> = NODE_FILES_FS): Promise<string[]> {
-  const denied: string[] = [];
-  for (const folder of privateFolders) {
-    if (folder.trim() === "") continue;
-    denied.push(folder);
-    const real = await fs.realpath(folder).catch(() => null);
-    if (real !== null && real !== folder) denied.push(real);
-  }
-  return denied;
-}
-
-/**
- * Whether a real path is one this view never shows: a `.git` segment, a state secret's basename, or
- * a private folder's inside (`denied`, from {@link deniedFolders}). Case-folded on every host.
- */
-export function isDeniedPath(real: string, denied: readonly string[], host: Host = HOST): boolean {
-  const parts = splitPath(host, real).parts;
-  if (parts.some(isGitSegment)) return true;
-  const base = parts.at(-1);
-  if (base !== undefined && isStateSecretName(base)) return true;
-  const fold = foldingHost(host);
-  return denied.some((folder) => isInside(fold, real, folder));
-}
-
-function isDeniedReal(real: string, r: Resolved): boolean {
-  return isDeniedPath(real, r.denied, r.host);
-}
-
-/**
- * The real path of `segments` under the root, when it is inside the root and not denied. `null` is
- * `unknown-path`, whatever the cause.
- */
-async function checkedTarget(segments: readonly string[], r: Resolved): Promise<string | null> {
-  const last = segments.at(-1);
-  if (last !== undefined && isStateSecretName(last)) return null;
-  const candidate = segments.length === 0 ? r.rootReal : r.host.path.join(r.rootReal, ...segments);
-  const real = await r.fs.contained(candidate, r.rootReal, r.host);
-  if (real === null) return null;
-  return isDeniedReal(real, r) ? null : real;
-}
-
-/**
- * The check on the OPENED file (see "THE RACE, AND THE CHECK ON THE OPENED FILE" above): whether the
- * file a handle holds is still the one {@link checkedTarget} allowed. `real` is what that check
- * answered for `segments` before the open.
- *
- * With the kernel's name for the handle (Linux), that name must lie inside the root's real path and
- * pass the same deny rules; nothing that happens to the path afterwards changes which file the handle
- * holds. Without one, the path is checked again from the start and must answer `real` once more, and
- * the file there must be the handle's own (device and inode), so a folder swapped and swapped back
- * around the open is caught by the identity, and one still swapped by the containment.
- */
-function openedFileAllowed(segments: readonly string[], r: Resolved, real: string) {
-  return async (opened: OpenedFile): Promise<boolean> => {
-    if (opened.path !== null) {
-      return isInside(r.host, opened.path, r.rootReal) && !isDeniedReal(opened.path, r);
-    }
-    const again = await checkedTarget(segments, r).catch(() => null);
-    if (again !== real) return false;
-    const st = await r.fs.lstat(again).catch(() => null);
-    if (st === null || st.isSymbolicLink() || !st.isFile()) return false;
-    return st.dev !== undefined && st.ino !== undefined && st.dev === opened.dev && st.ino === opened.ino;
-  };
+/** The root's real path, bounded, with the denied folders: {@link resolveReadRoot} over a Files context. */
+function resolveRoot(ctx: FilesContext): Promise<ReadRoot | null> {
+  return resolveReadRoot(ctx);
 }
 
 /** `unknown-path`: the one answer for absent, outside, denied, and the wrong kind. */

@@ -13,12 +13,18 @@ import {
   type RootSnapshot,
   type WorkspaceRootInput,
 } from "./changes-root.ts";
-import { gitEnv } from "./changes.ts";
+import { type ChangesScope, gitEnv } from "./changes.ts";
+import { crewGate } from "./crew/peer-gate.ts";
 import { hostFor, isInside } from "./host.ts";
 import { paneChanges, workspaceChanges } from "./server.ts";
 import type { AgentView, WorkspaceView } from "./types.ts";
 
 const HOME = "/home/dev";
+
+/** The scope a device WITHOUT the Files right reads under. */
+const bounded = (home: string): ChangesScope => ({ home, privateFolders: [], wide: false });
+/** The scope a device WITH the Files right (`device-read`) reads under. */
+const wide = (home: string): ChangesScope => ({ home, privateFolders: [], wide: true });
 
 // The rules as they stood before the Windows work, copied here so the rewrite is proven to answer a
 // POSIX path the way the string version did, not only to pass the cases written after it.
@@ -357,8 +363,8 @@ describe("GET /api/pane/:id/changes and /api/workspace/:id/changes", () => {
   afterAll(() => rmSync(home, { recursive: true, force: true }));
 
   test("a pane in a subfolder shows the whole workspace, and every pane the same list", async () => {
-    const a = await (await paneChanges(engine, "w1:p1", at(), req, home)).json();
-    const b = await (await paneChanges(engine, "w1:p2", at(), req, home)).json();
+    const a = await (await paneChanges(engine, "w1:p1", at(), req, bounded(home))).json();
+    const b = await (await paneChanges(engine, "w1:p2", at(), req, bounded(home))).json();
     expect(a).toMatchObject({ paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "ws", available: true });
     expect(a.repos.map((r: { relPath: string }) => r.relPath).toSorted()).toEqual(["one", "two"]);
     // The list is the same; only the mark of the asking pane's own repo differs.
@@ -368,30 +374,30 @@ describe("GET /api/pane/:id/changes and /api/workspace/:id/changes", () => {
   });
 
   test("the workspace route answers the same list, and its diff form", async () => {
-    const byPane = await (await paneChanges(engine, "w1:p1", at(), req, home)).json();
-    const byWs = await (await workspaceChanges(engine, "w1", at(), req, home)).json();
+    const byPane = await (await paneChanges(engine, "w1:p1", at(), req, bounded(home))).json();
+    const byWs = await (await workspaceChanges(engine, "w1", at(), req, bounded(home))).json();
     const { paneId: _paneId, paneRepo: _paneRepo, ...rest } = byPane;
     expect(byWs).toEqual(rest);
-    const diff = await (await workspaceChanges(engine, "w1", at("?repo=two&path=a.txt"), req, home)).json();
+    const diff = await (await workspaceChanges(engine, "w1", at("?repo=two&path=a.txt"), req, bounded(home))).json();
     expect(diff).toMatchObject({ workspaceId: "w1", workspaceLabel: "ws", available: true, repo: "two" });
     expect(diff.diff).toContain("+two change");
   });
 
   test("both routes answer the commit view with ?view=commit", async () => {
-    const byWs = await (await workspaceChanges(engine, "w1", at("?view=commit&repo=two"), req, home)).json();
+    const byWs = await (await workspaceChanges(engine, "w1", at("?view=commit&repo=two"), req, bounded(home))).json();
     expect(byWs).toMatchObject({ workspaceId: "w1", workspaceLabel: "ws", available: true, repo: "two" });
     expect(byWs.commit.subject).toBe("init");
     expect(byWs.files.map((f: { path: string }) => f.path)).toEqual(["a.txt"]);
-    const byPane = await (await paneChanges(engine, "w1:p1", at("?view=commit&repo=two&path=a.txt"), req, home)).json();
+    const byPane = await (await paneChanges(engine, "w1:p1", at("?view=commit&repo=two&path=a.txt"), req, bounded(home))).json();
     expect(byPane).toMatchObject({ paneId: "w1:p1", available: true, repo: "two", path: "a.txt", hash: byWs.commit.hash });
-    const unlisted = await (await paneChanges(engine, "w1:p1", at("?view=commit&repo=two&path=b.txt"), req, home)).json();
+    const unlisted = await (await paneChanges(engine, "w1:p1", at("?view=commit&repo=two&path=b.txt"), req, bounded(home))).json();
     expect(unlisted).toMatchObject({ available: false, reason: "unknown-path" });
   });
 
   test("the mux folder is preferred over the panes' common folder", async () => {
     const saved = snap;
     snap = { ...snap, workspaces: [space("w1", "ws", join(ws, "two")), space("w2", "home")] };
-    const res = await (await workspaceChanges(engine, "w1", at(), req, home)).json();
+    const res = await (await workspaceChanges(engine, "w1", at(), req, bounded(home))).json();
     snap = saved;
     expect(res.repos.map((r: { relPath: string }) => r.relPath)).toEqual(["."]);
     expect(basename(res.root)).toBe("two");
@@ -413,13 +419,13 @@ describe("GET /api/pane/:id/changes and /api/workspace/:id/changes", () => {
       shellPanes: [],
       workspaces: [space("w1", "ws", ws), space("w2", "home")],
     };
-    const inside = await (await paneChanges(engine, "w1:p1", at(), req, home)).json();
-    const outside = await (await paneChanges(engine, "w1:p3", at(), req, home)).json();
-    const outsideDiff = await (await paneChanges(engine, "w1:p3", at("?repo=one&path=a.txt"), req, home)).json();
-    const other = await (await paneChanges(engine, "w1:p4", at(), req, home)).json();
-    const linked = await (await paneChanges(engine, "w1:p5", at(), req, home)).json();
-    const parked = await (await paneChanges(engine, "w1:p6", at(), req, home)).json();
-    const byWs = await (await workspaceChanges(engine, "w1", at(), req, home)).json();
+    const inside = await (await paneChanges(engine, "w1:p1", at(), req, bounded(home))).json();
+    const outside = await (await paneChanges(engine, "w1:p3", at(), req, bounded(home))).json();
+    const outsideDiff = await (await paneChanges(engine, "w1:p3", at("?repo=one&path=a.txt"), req, bounded(home))).json();
+    const other = await (await paneChanges(engine, "w1:p4", at(), req, bounded(home))).json();
+    const linked = await (await paneChanges(engine, "w1:p5", at(), req, bounded(home))).json();
+    const parked = await (await paneChanges(engine, "w1:p6", at(), req, bounded(home))).json();
+    const byWs = await (await workspaceChanges(engine, "w1", at(), req, bounded(home))).json();
     snap = saved;
     // A pane inside the workspace folder keeps the workspace picture (ADR 0065).
     expect(inside.repos.map((r: { relPath: string }) => r.relPath).toSorted()).toEqual(["one", "two"]);
@@ -442,20 +448,58 @@ describe("GET /api/pane/:id/changes and /api/workspace/:id/changes", () => {
   });
 
   test("at home: the pane route falls back to the pane's folder, the workspace route says no-folder", async () => {
-    const byWs = await (await workspaceChanges(engine, "w2", at(), req, home)).json();
+    const byWs = await (await workspaceChanges(engine, "w2", at(), req, wide(home))).json();
     expect(byWs).toEqual({ workspaceId: "w2", workspaceLabel: "home", available: false, reason: "no-folder" });
     expect(rootOfWorkspace(snap, "w2", home)?.root).toBeNull();
-    const byPane = await (await paneChanges(engine, "w2:p1", at(), req, home)).json();
+    // For a device with the Files right (ADR 0150).
+    const byPane = await (await paneChanges(engine, "w2:p1", at(), req, wide(home))).json();
     expect(byPane).toMatchObject({ paneId: "w2:p1", workspaceId: "w2", available: true });
   });
 
+  test("at home: a device without the Files right gets no-folder, on every form of the pane route", async () => {
+    const noFolder = { paneId: "w2:p1", workspaceId: "w2", workspaceLabel: "home", available: false, reason: "no-folder" };
+    for (const q of ["", "?repo=.&path=a.txt", "?view=commit&repo=.", "?view=commit&repo=.&path=a.txt"]) {
+      const res = await (await paneChanges(engine, "w2:p1", at(q), req, bounded(home))).json();
+      expect({ q, res }).toEqual({ q, res: noFolder });
+    }
+  });
+
+  test("a workspace folder that is a link to home is no-folder, with or without the Files right", async () => {
+    const link = join(home, "projects", "home-link");
+    symlinkSync(home, link, "dir");
+    const saved = snap;
+    snap = { agents: [pane("w3:p1", "w3", link)], shellPanes: [], workspaces: [space("w3", "linked", link)] };
+    const byWs = await (await workspaceChanges(engine, "w3", at(), req, bounded(home))).json();
+    const byPane = await (await paneChanges(engine, "w3:p1", at(), req, bounded(home))).json();
+    const withRight = await (await workspaceChanges(engine, "w3", at(), req, wide(home))).json();
+    snap = saved;
+    expect(byWs).toEqual({ workspaceId: "w3", workspaceLabel: "linked", available: false, reason: "no-folder" });
+    expect(byPane).toMatchObject({ paneId: "w3:p1", available: false, reason: "no-folder" });
+    expect(withRight).toEqual({ workspaceId: "w3", workspaceLabel: "linked", available: false, reason: "no-folder" });
+  });
+
+  test("on a crew member, the member's own device policy decides, as for the Files route", async () => {
+    // The member's caller gate is `crewGate`, over the device the lead forwarded (`X-Crew-Device`).
+    const member = { deviceHeader: "x-device-id", deviceAllowlist: ["phone"] };
+    const scopeFor = (device: string | null): ChangesScope => ({ home, privateFolders: [], wide: crewGate("device-read", member, device).ok });
+    const tablet = await (await paneChanges(engine, "w2:p1", at(), req, scopeFor("tablet"))).json();
+    const unnamed = await (await paneChanges(engine, "w2:p1", at(), req, scopeFor(null))).json();
+    const phone = await (await paneChanges(engine, "w2:p1", at(), req, scopeFor("phone"))).json();
+    expect(tablet).toMatchObject({ available: false, reason: "no-folder" });
+    expect(unnamed).toMatchObject({ available: false, reason: "no-folder" });
+    expect(phone).toMatchObject({ available: true });
+    // A member with no device gate of its own lets every device read, as Files does there.
+    const open = await (await paneChanges(engine, "w2:p1", at(), req, { home, privateFolders: [], wide: crewGate("device-read", { deviceHeader: "", deviceAllowlist: [] }, null).ok })).json();
+    expect(open).toMatchObject({ available: true });
+  });
+
   test("an unknown id is an ordinary answer", async () => {
-    expect(await (await paneChanges(engine, "nope", at(), req, home)).json()).toEqual({
+    expect(await (await paneChanges(engine, "nope", at(), req, bounded(home))).json()).toEqual({
       paneId: "nope",
       available: false,
       reason: "no-pane",
     });
-    expect(await (await workspaceChanges(engine, "nope", at("?repo=.&path=a"), req, home)).json()).toEqual({
+    expect(await (await workspaceChanges(engine, "nope", at("?repo=.&path=a"), req, bounded(home))).json()).toEqual({
       workspaceId: "nope",
       available: false,
       reason: "no-workspace",
@@ -494,13 +538,13 @@ describe("Changes diffs are masked like the mirror", () => {
   afterAll(() => rmSync(home, { recursive: true, force: true }));
 
   test("a working-tree diff hides both values, keeps the names, and keeps every line", async () => {
-    const masked = await (await workspaceChanges(engine, "w1", at("?repo=.&path=settings.env"), req, home, true)).json();
+    const masked = await (await workspaceChanges(engine, "w1", at("?repo=.&path=settings.env"), req, bounded(home), true)).json();
     expect(masked.available).toBe(true);
     expect(masked.diff).not.toContain("placeholder1234");
     expect(masked.diff).not.toContain("placeholder5678");
     expect(masked.diff).toContain("-password=•");
     expect(masked.diff).toContain("+api_key: •");
-    const plain = await (await workspaceChanges(engine, "w1", at("?repo=.&path=settings.env"), req, home, false)).json();
+    const plain = await (await workspaceChanges(engine, "w1", at("?repo=.&path=settings.env"), req, bounded(home), false)).json();
     expect(plain.diff).toContain(OLD);
     expect(plain.diff).toContain(NEW);
     // Same lines, same widths: the mask is a character-for-character replacement.
@@ -508,18 +552,18 @@ describe("Changes diffs are masked like the mirror", () => {
   });
 
   test("the pane route and the commit view are masked the same way", async () => {
-    const byPane = await (await paneChanges(engine, "w1:p1", at("?repo=.&path=settings.env"), req, home, true)).json();
+    const byPane = await (await paneChanges(engine, "w1:p1", at("?repo=.&path=settings.env"), req, bounded(home), true)).json();
     expect(byPane.diff).not.toContain("placeholder5678");
-    const commit = await (await paneChanges(engine, "w1:p1", at("?view=commit&repo=.&path=settings.env"), req, home, true)).json();
+    const commit = await (await paneChanges(engine, "w1:p1", at("?view=commit&repo=.&path=settings.env"), req, bounded(home), true)).json();
     expect(commit.available).toBe(true);
     expect(commit.diff).toContain("+password=•");
     expect(commit.diff).not.toContain("placeholder1234");
-    const plain = await (await paneChanges(engine, "w1:p1", at("?view=commit&repo=.&path=settings.env"), req, home, false)).json();
+    const plain = await (await paneChanges(engine, "w1:p1", at("?view=commit&repo=.&path=settings.env"), req, bounded(home), false)).json();
     expect(plain.diff).toContain(OLD);
   });
 
   test("the mask is on when a caller names no setting", async () => {
-    const byDefault = await (await workspaceChanges(engine, "w1", at("?repo=.&path=settings.env"), req, home)).json();
+    const byDefault = await (await workspaceChanges(engine, "w1", at("?repo=.&path=settings.env"), req, bounded(home))).json();
     expect(byDefault.diff).not.toContain("placeholder5678");
   });
 });

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Changes applies the deny list and the folder bound of Files.** The Changes view never lists or diffs a `.git` folder, Collie's own state and config folders, or a file named like a Collie state secret, and it reads an untracked file through the same checked reader as Files. A workspace folder that is a link to home or above it shows no folder, as in Files. A pane's own folder at home or above it, and a repo found at home or above it, also through a `.git` file, show only to a device with the Files right, decided on a crew member by that member's own device rules. With no `COLLIE_DEVICE_HEADER` set, every paired device has the right.
+
 ## [1.28.4] - 2026-11-14
 
 ### Fixed
