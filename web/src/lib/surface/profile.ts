@@ -732,8 +732,9 @@ export interface Profile {
     /**
      * Rows that say a dialog Collie does not read holds the keys, as regular expression sources read on
      * the trimmed text of every row of a screen with no box. For a screen that names no key and has no
-     * footer, so no cue reads it as a dialog (Claude Code's first-run theme step). The modal reads
-     * `unreadable`: nothing is offered, and the screen is shown as a dialog Collie cannot read. Optional.
+     * footer, so no cue reads it as a dialog (Claude Code's first-run theme step, when its grammar does not
+     * read the list). An ask a grammar read wins over it. Otherwise the modal reads `unreadable`:
+     * nothing is offered, and the screen is shown as a dialog Collie cannot read. Optional.
      */
     readonly dialogRows?: readonly string[];
     /**

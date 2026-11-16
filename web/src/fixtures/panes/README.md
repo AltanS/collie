@@ -4098,9 +4098,9 @@ finished login: the screens after sign-in (security notes, terminal setup, folde
 
 | Fixture | State | Reads as |
 | --- | --- | --- |
-| `claude--v2325-first-run-theme--w61.txt` | `Let's get started.`, `Choose the text style…`, seven unnumbered rows, `❯ ✔ Dark mode`, a diff preview, no footer | modal unreadable, the unread-dialog card: no grammar offers a key (no key printed, ADR 0009), and the profile's `idle.dialogRows` names `Let's get started.` |
-| `claude--v2325-first-run-theme--w40.txt` | The same at 40 columns, no art | the unread-dialog card |
-| `claude--v2325-first-run-theme-moved--w61.txt` | After one `Down`: `❯` on `Light mode`, the preview recoloured | the unread-dialog card |
+| `claude--v2325-first-run-theme--w61.txt` | `Let's get started.`, `Choose the text style…`, seven unnumbered rows, `❯ ✔ Dark mode`, a diff preview, no footer | the first-run theme grammar (claude/first-run-theme.ts): a choice card of the seven rows, a tap walks the `❯` with Down or Up and sends Enter (measured live 2026-11-16: the list clamps at both ends, Enter accepts the pointed row, digits and Esc do nothing); the diff preview is not an option. The profile's `idle.dialogRows` still names `Let's get started.` |
+| `claude--v2325-first-run-theme--w40.txt` | The same at 40 columns, no art | the same choice card |
+| `claude--v2325-first-run-theme-moved--w61.txt` | After one `Down`: `❯` on `Light mode`, the preview recoloured | the same choice card, the walk counted from `Light mode`; its walk pair with the w61 capture |
 | `claude--v2325-first-run-methods--w61.txt` | Under the art, `Select login method:`, three rows, nothing under them | prompt-select, digit keys, no caption (login-methods.ts) |
 | `claude--v2325-first-run-methods--w40.txt` | The same at 40 columns: `Welcome to Claude Code v2.1.325` and no art | prompt-select |
 | `claude--v2325-first-run-methods--w120.txt` | The same at 120 columns | prompt-select |

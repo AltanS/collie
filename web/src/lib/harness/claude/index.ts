@@ -23,6 +23,7 @@ import { detectAutocompleteRegion } from "./autocomplete";
 import { detectAbovePromptNotice } from "./above-prompt-notice";
 import { detectAuthBox } from "./auth-box";
 import { detectLoginMethodsRegion } from "./login-methods";
+import { detectFirstRunThemeRegion } from "./first-run-theme";
 import { detectSignInCard } from "../sign-in-card";
 import { CLAUDE_IDLE } from "./markers";
 import { dialogRowShown } from "../../surface/frame";
@@ -158,6 +159,17 @@ export function claudeBuildBlocks(input: StyledLine[]): Block[] {
   // VERIFIED keystroke recipe for a dialog it recognises, and this one only knows what the screen
   // printed. It must never pre-empt them; it exists to catch what they decline (the `/model` picker),
   // where the alternative is no buttons at all and a composer send typed into the picker.
+  // The FIRST RUN's theme step (first-run-theme.ts): no footer names a key and Esc does nothing there,
+  // so the generic menu below could not read it. A tap walks the pointer and sends Enter (measured).
+  const firstRunTheme = detectFirstRunThemeRegion(lines);
+  if (firstRunTheme) {
+    const before = trimTrailingBlank(lines.slice(0, firstRunTheme.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+    blocks.push({ kind: "prompt-select", prompt: firstRunTheme.model, lines: lines.slice(firstRunTheme.startLine) });
+    return blocks;
+  }
+
   // The SIGN-IN METHOD PICKER of `/login` (login-methods.ts): its footer names Esc alone, so the menu
   // grammar below would offer no way to choose. A digit alone chooses, so it lifts as a choice card.
   const loginMethods = detectLoginMethodsRegion(lines);
@@ -267,6 +279,7 @@ const CLAUDE_DIALOG_DETECTORS: readonly DialogDetector[] = [
   { name: "resume-picker", detect: onPrepared(detectResumePickerRegion) },
   { name: "switch-model", detect: onPrepared(detectSwitchModelRegion) },
   { name: "marketplaces", detect: onPrepared(detectMarketplacesRegion) },
+  { name: "first-run-theme", detect: onPrepared(detectFirstRunThemeRegion) },
   { name: "login-methods", detect: onPrepared(detectLoginMethodsRegion) },
   { name: "sign-in", detect: onPrepared((lines) => detectSignInCard(lines, CLAUDE_IDLE)) },
   { name: "menu", detect: onPrepared(detectMenuRegion) },
@@ -316,7 +329,7 @@ export const claudeAdapter: HarnessAdapter = {
   // unread-dialog.test.ts), and a missed select still shows its `❯ N.` pointer. The shell prompt
   // under a starting or exiting Claude shows none of these.
   // The first-run theme step names no key at all; its own words, named in the profile
-  // (`idle.dialogRows`), say a dialog holds the keys.
+  // (`idle.dialogRows`), say a dialog holds the keys, so the composer never types into it.
   modalOnScreen: (lines) => tailNamesAKey(lines) || dialogRowShown(lines, CLAUDE_IDLE),
   dialogDetectors: CLAUDE_DIALOG_DETECTORS,
   // Long sends never appear in the box as themselves — Claude collapses them into `[Pasted text #N

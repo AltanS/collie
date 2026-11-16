@@ -1041,3 +1041,30 @@ describe("PromptSelectBlock, no action from cached state (M46 spec 11)", () => {
     expect(screen.getByRole("button", { name: /Red/ })).toBeEnabled();
   });
 });
+
+// Claude Code 2.1.325's first-run theme step (harness/claude/first-run-theme.ts), at 40 columns as a
+// phone pane is: seven buttons by their own text, no Esc, and nothing of the diff preview under the list.
+describe("the first-run theme card", () => {
+  it("renders the seven styles as buttons, the pointed one badged, with no Esc and no preview row", () => {
+    const blocks = buildBlocks(splitLines(parseAnsi(fixtureText("claude--v2325-first-run-theme--w40.txt"))), { agent: "claude" });
+    const block = blocks.find((b) => b.kind === "prompt-select");
+    if (block?.kind !== "prompt-select") throw new Error("the theme step did not lift");
+    render(<PromptSelectBlock prompt={block.prompt} lines={block.lines} onAction={vi.fn()} />);
+    const group = screen.getByRole("group", { name: "Choose the text style that looks best with your terminal" });
+    const labels = [
+      "Auto (match terminal)",
+      "Dark mode",
+      "Light mode",
+      "Dark mode (colorblind-friendly)",
+      "Light mode (colorblind-friendly)",
+      "Dark mode (ANSI colors only)",
+      "Light mode (ANSI colors only)",
+    ];
+    for (const label of labels) {
+      expect(within(group).getByRole("button", { name: new RegExp(`^\\S*\\s*${label.replace(/[()]/gu, "\\$&")}$`, "u") })).toBeInTheDocument();
+    }
+    expect(within(screen.getByRole("button", { name: /^\S*\s*Dark mode$/u })).getByText("❯")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Esc/u })).toBeNull();
+    expect(screen.queryByText(/greet|Syntax theme/u)).toBeNull();
+  });
+});

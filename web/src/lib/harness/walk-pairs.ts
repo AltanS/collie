@@ -178,6 +178,8 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   // pi 1.3.0 `/login` (2026-11-15): the method list and the Anthropic method list, each with the pointer moved one row.
   ["pi", "pi--v130-login-methods--w61.txt", "pi--v130-login-methods-moved--w61.txt"],
   ["pi", "pi--v130-login-anthropic-methods--w61.txt", "pi--v130-login-anthropic-methods-moved--w61.txt"],
+  // Claude Code 2.1.325's first-run theme step (claude/first-run-theme.ts): the pointer on Dark mode, then on Light mode.
+  ["claude", "claude--v2325-first-run-theme--w61.txt", "claude--v2325-first-run-theme-moved--w61.txt"],
 ];
 
 /**

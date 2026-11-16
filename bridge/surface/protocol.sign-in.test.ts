@@ -367,41 +367,42 @@ describe("a sign-in code never joins a pane's hold queue", () => {
   });
 });
 
-describe("the first-run theme step reads as a dialog Collie does not read: a send types nothing", () => {
-  // The theme list names no key and takes no text; the rig keeps every typed character in `box`.
+describe("the first-run theme step is a question the phone answers with keys: a send types nothing", () => {
+  // The theme list lifts as a choice card (web/src/lib/harness/claude/first-run-theme.ts) and takes no
+  // text; the rig keeps every typed character in `box`. Like the sign-in method list, the modal holds
+  // an ordinary send and refuses a sign-in code.
   const START = /^Let's get started\.$/u;
   for (const width of [61, 40]) {
     const fixture = `claude--v2325-first-run-theme--w${String(width)}.txt`;
     const startRow = pane(fixture).split("\n").find((row) => START.test(row.replace(SGR, "").trim()))!;
     const themePane = (): SignInPane => new SignInPane({ fixture }, /^ *Let's get started\.$/u, () => startRow, "");
 
-    test(`w${String(width)}: the send is refused at the dialog, and nothing is typed or held`, async () => {
+    test(`w${String(width)}: the Surface reads the seven rows as a question, and a send is held, nothing typed`, async () => {
       const field = themePane();
       const { send, holds, blind } = rig(field, "claude", "2.1.325", true);
       const view = await send("", { mode: "prepare" });
-      expect(view.surface).toMatchObject({ modal: "unreadable" });
+      expect(view.surface).toMatchObject({ modal: { ask: { kind: "question", channel: "keys" } } });
+      expect(view.offers).toEqual(["keys"]);
       const answer = await send("hello");
+      expect(answer.receipt?.outcome).toBe("held");
+      expect(answer.receipt?.keys).toEqual([]);
+      expect(field.box).toBe("");
+      expect(field.keysSeen).toEqual([]);
+      expect(field.submitted).toEqual([]);
+      expect(holds?.waiting("main", "%1")).toHaveLength(1);
+      expect(blind).toEqual([]);
+    });
+
+    test(`w${String(width)}: a sign-in code sent here is refused, never typed and never held`, async () => {
+      const field = themePane();
+      const { send, holds } = rig(field, "claude", "2.1.325", true);
+      const answer = await send(SHORT, { secret: true });
       expect(answer.receipt?.outcome).toBe("refused");
       expect(answer.receipt?.keys).toEqual([]);
       expect(field.box).toBe("");
       expect(field.keysSeen).toEqual([]);
       expect(holds?.waiting("main", "%1")).toHaveLength(0);
-      expect(blind).toEqual([]);
-    });
-
-    // Type here takes the manual path: one probe character goes first, the list draws no box, so the
-    // send ends `probe_failed` and the text is never typed.
-    test(`w${String(width)}: the person's confirm after it (Type here) never types the text`, async () => {
-      const field = themePane();
-      const { send } = rig(field, "claude", "2.1.325", true);
-      const first = await send("hello");
-      const rowsHash = first.receipt?.outcome === "refused" ? first.rowsHash : undefined;
-      const answer = await send("hello", { rowsHash });
-      expect(rowsHash).toBeDefined();
-      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe"] });
-      expect(field.box).not.toContain("hello");
-      expect(field.submitted).toEqual([]);
-      expect(field.keysSeen).toEqual([]);
+      expect(heldFiles()).not.toContain(SHORT);
     });
   }
 });

@@ -258,12 +258,8 @@ const CARD_FIXTURES = {
       // a `Foundry:` row under its options, so the method card declines. The card shows the screen;
       // Esc does nothing on the first run, so its way out is the digit on the Keys tray.
       "claude--v2325-first-run-thirdparty-methods--w61.txt",
-      // README: the first run's theme step (2.1.325), `Let's get started.` over an unnumbered list with
-      // no footer and no key named. The profile's `idle.dialogRows` names the row, so the card shows the
-      // screen; Esc does nothing on the first run, so its way on is Enter on the Keys tray.
-      "claude--v2325-first-run-theme--w40.txt",
-      "claude--v2325-first-run-theme--w61.txt",
-      "claude--v2325-first-run-theme-moved--w61.txt",
+      // The first run's theme step (2.1.325) is not on this list: it lifts as a pointed list
+      // (first-run-theme.ts), so the card does not show on it.
       // README: `/theme` in an onboarded session (2.1.325). The same list under a `Theme` title with
       // `Enter to select · Esc to cancel`; it showed the card before `idle.dialogRows` and still does.
       "claude--v2325-theme-command--w40.txt",

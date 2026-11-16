@@ -284,7 +284,8 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   // No frame, and a row the profile names (`idle.overlayRows`) in the cues' cluster: a full-screen picker.
   else if (frame === null && found === null && idle !== null && cues.strength !== "none" && overlayInRows(rows, cues.cluster, idle)) modal = "unreadable";
   // No box, and a row the profile names as a dialog it does not read (`idle.dialogRows`): a screen that
-  // names no key, so no cue reads it (Claude Code's first-run theme step).
+  // names no key, so no cue reads it (Claude Code's first-run theme step when no grammar read its list;
+  // the theme grammar's ask wins above).
   else if (unreadDialog) modal = "unreadable";
   else if (cues.strength === "weak") modal = "unknown";
   else if (covered) modal = "unreadable";

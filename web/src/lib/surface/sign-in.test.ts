@@ -381,9 +381,9 @@ describe("the first run's sign-in method lists", () => {
     ]);
   });
 
-  it("not the third-party list (no question, a row under it), not the theme step, and `/login` keeps its caption", () => {
+  it("not the third-party list (no question, a row under it), the theme step is its own card, and `/login` keeps its caption", () => {
     expect(card("claude--v2325-first-run-thirdparty-methods--w61.txt")).toBeNull();
-    expect(card("claude--v2325-first-run-theme--w61.txt")).toBeNull();
+    expect(card("claude--v2325-first-run-theme--w61.txt")?.question).toBe("Choose the text style that looks best with your terminal");
     expect(card("claude--v2325-login-methods--w61.txt")?.caption).toBe("Login");
   });
 
@@ -396,10 +396,21 @@ describe("the first run's sign-in method lists", () => {
   });
 });
 
-// The first run's theme step names no key and has no footer. The Claude profile's `idle.dialogRows`
-// names its own words, so it reads as a dialog Collie does not read: the card with the screen, and the
-// Keys tray. `/theme` in a session showed the card before and still does.
-describe("the first run's theme step reads as a dialog Collie does not read", () => {
+// The first run's theme step names no key and has no footer. It lifts as a pointed list
+// (harness/claude/first-run-theme.ts): a tap walks the pointer and sends Enter, measured live, and no
+// unread-dialog card with its Esc (which does nothing there) is shown. The Claude profile's
+// `idle.dialogRows` still names its words, so the composer never types into it. `/theme` in a session
+// showed the unread-dialog card before and still does.
+describe("the first run's theme step is a choice card", () => {
+  const THEMES = [
+    "Auto (match terminal)",
+    "Dark mode",
+    "Light mode",
+    "Dark mode (colorblind-friendly)",
+    "Light mode (colorblind-friendly)",
+    "Dark mode (ANSI colors only)",
+    "Light mode (ANSI colors only)",
+  ];
   const kinds = (name: string) => buildBlocks(screen(name).rows, { agent: "claude" }).map((block) => block.kind);
 
   for (const name of [
@@ -407,11 +418,15 @@ describe("the first run's theme step reads as a dialog Collie does not read", ()
     "claude--v2325-first-run-theme--w61.txt",
     "claude--v2325-first-run-theme-moved--w61.txt",
   ]) {
-    it(`${name}: the modal reads unreadable, and the card shows the screen`, () => {
+    it(`${name}: the modal is read, and the choice card shows with no Esc`, () => {
       const { surface } = screen(name).read;
-      expect(surface).toMatchObject({ turn: "unknown", modal: "unreadable", composer: "unknown" });
+      const options = THEMES.map((label, at) => ({ id: String(at + 1), label }));
+      expect(surface).toMatchObject({ composer: "unknown", modal: { ask: { kind: "question", channel: "keys", options } } });
       expect(surface.reason).toBeUndefined();
-      expect(kinds(name)).toEqual(["unread-dialog"]);
+      expect(kinds(name)).toEqual(["raw", "prompt-select"]);
+      const block = buildBlocks(screen(name).rows, { agent: "claude" }).find((b) => b.kind === "prompt-select");
+      const keys = block?.kind === "prompt-select" ? block.prompt.options.flatMap((option) => option.keys) : [];
+      expect(keys).not.toContain("Escape");
     });
   }
 

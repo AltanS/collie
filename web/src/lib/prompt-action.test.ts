@@ -20,6 +20,7 @@ import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
 import { detectPromptSelect } from "./harness/claude/prompt-select";
 import { detectApproval } from "./harness/omp/approval";
+import { detectFirstRunThemeRegion } from "./harness/claude/first-run-theme";
 import { kiroAdapter } from "./harness/kiro";
 import { ompAdapter } from "./harness/omp";
 import { opencodeAdapter } from "./harness/opencode";
@@ -615,6 +616,65 @@ describe("submitPromptOption — a pointed list is walked, verified, then confir
     });
     expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["2"], undefined, m.signature]]);
     expect(mockFetchPane).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Claude Code 2.1.325's first-run theme step (harness/claude/first-run-theme.ts). Measured live: Down
+// and Up move one row and clamp, Enter accepts the pointed row. A tap walks, proves the pointer, then
+// commits; a tap on a screen whose pointer moved since the render is refused before any key.
+describe("submitPromptOption — the first-run theme step", () => {
+  const PANES = join(import.meta.dirname, "..", "fixtures", "panes");
+  const onDark = readFileSync(join(PANES, "claude--v2325-first-run-theme--w61.txt"), "utf8");
+  const onLight = readFileSync(join(PANES, "claude--v2325-first-run-theme-moved--w61.txt"), "utf8");
+  const themeModel = (screen: string) => {
+    const detected = detectFirstRunThemeRegion(splitLines(parseAnsi(screen)));
+    if (!detected) throw new Error("theme fixture did not detect");
+    return detected.model;
+  };
+
+  it("Light mode tapped from Dark mode: Down bound to the tapped screen, then Enter bound to the fresh read", async () => {
+    const m = themeModel(onDark);
+    const light = m.options[2]!;
+    expect(light.label).toBe("Light mode");
+    expect(light.keys).toEqual(["Down", "Enter"]);
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(onDark)) // entry guard
+      .mockResolvedValue(paneWith(onLight)); // poll: the pointer arrived on Light mode
+    expect(await submitPromptOption({ ...base, prompt: m, option: light })).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Down"], undefined, themeModel(onDark).signature],
+      ["w1:p1", ["Enter"], undefined, themeModel(onLight).signature],
+    ]);
+  });
+
+  it("the pointed row tapped: one bare Enter, bound to the tapped screen", async () => {
+    const m = themeModel(onDark);
+    mockFetchPane.mockResolvedValue(paneWith(onDark));
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[1]! })).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["Enter"], undefined, m.signature]]);
+  });
+
+  it("the first row tapped from Light mode: the walk, then a sticky Up with the Enter (the list clamps)", async () => {
+    const m = themeModel(onLight);
+    expect(m.options[0]!.keys).toEqual(["Up", "Up", "Enter"]);
+    const onAuto = onLight
+      .replace(" \u001b[38;5;105m❯\u001b[39m   \u001b[38;5;105mLight mode", "     Light mode")
+      .replace("     Auto (match terminal)", " ❯   Auto (match terminal)");
+    expect(themeModel(onAuto).options[0]!.keyLabel).toBe("❯");
+    mockFetchPane.mockResolvedValueOnce(paneWith(onLight)).mockResolvedValue(paneWith(onAuto));
+    expect(await submitPromptOption({ ...base, prompt: m, option: m.options[0]! })).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["Up", "Up"], undefined, m.signature],
+      ["w1:p1", ["Up", "Enter"], undefined, themeModel(onAuto).signature],
+    ]);
+  });
+
+  it("a stale tap: the pointer moved at the desk since the render, so nothing is sent", async () => {
+    const m = themeModel(onDark);
+    mockFetchPane.mockResolvedValue(paneWith(onLight));
+    const result = await submitPromptOption({ ...base, prompt: m, option: m.options[2]! });
+    expect(result.status).toBe("changed");
+    expect(mockSendKeys).not.toHaveBeenCalled();
   });
 });
 

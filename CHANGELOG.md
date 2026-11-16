@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The theme step of Claude Code's first run is a choice card.** A new Claude Code login opens with "Choose the text style that looks best with your terminal". The phone showed a card with only Esc, which does nothing there. Now each of the seven styles is a button: a tap moves the terminal's pointer to it and presses Enter.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added
