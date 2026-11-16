@@ -297,6 +297,20 @@ describe("the first run's sign-in field", () => {
     });
   }
 
+  // An account folder the bridge makes (`shared`, links to the default folder's settings) with
+  // `tui: "fullscreen"`: a hint row (`Hold Shift … native copy`, one row or two) stands between the
+  // address and the field. Lab 2026-11-16, M102 spec 09; the address's query masked as `X`.
+  for (const width of [61, 80, 120, 200, 219]) {
+    const name = `claude--v2325-first-run-url-fullscreen--w${width}.txt`;
+    it(`${name}: the hint row over the field leaves the field a free secret field`, () => {
+      const { harness, rows, read } = screen(name);
+      expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty", field: "secret" });
+      expect(read.frame?.secret).toEqual({ mask: { glyph: "*", clear: 6 }, wrap: true });
+      const card = detectSignInCard(rows, idleFor(harness)!);
+      expect(card!.model.title.startsWith("Browser didn't open? Use the")).toBe(true);
+    });
+  }
+
   it("a row under the field that is not its own wrapped text leaves no field", () => {
     const texts = textsOf("claude--v2325-first-run-url-typed--w61.txt");
     const at = texts.findIndex((text) => text.startsWith(" Paste code here"));
