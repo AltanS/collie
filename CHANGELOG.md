@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Docs
+
+- **The decision records have a topic map and a check.** `.adr/README.md` opens with a map by topic and the rules for stubs, size and pointers, and `scripts/check-adr.ts`, run by `bun run test`, fails a record that has no `Status` or `Date`, a pointer without its back pointer, or a record the map does not list.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added
