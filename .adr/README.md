@@ -140,12 +140,11 @@ One live record for this topic is being written.
 
 ### Update, release and packaging
 
-The rule today: `update` advances the checkout Herdr installed and never re-links it (0006); it stays inside the installed major unless the operator passes `--major` (0020); the name on PATH is a symlink to the checkout, never a copy (0021); a packaged install is not ours to update (0035). Each machine follows one release line, Stable or Edge, and switching installs nothing (0110). A crew member follows the lead's release (the addendum of 2026-09-04 to 0016), is held back only by a fault that the update would make worse (0050), and a run's second step is not a new attempt (0062). The phone shows an update as one update mode that ends on Done, Rolled back or Stuck (0064 is newer than 0044 and wins over its toast rule).
-
-One live record for this topic is being written.
+The rule today: 0143 is the live record, and it names the code that holds each rule. The install kind picks the path once; a Herdr-managed checkout advances in place and is never re-linked, and every other install stages a new version beside the live one and flips `current`, with one rollback at most. A routine update stays inside the installed major, and `--major` is the consent to cross one. Each machine is on one release line, Stable or Edge; switching installs nothing, and a machine goes down a version only by a rollback or a switch back to Stable. State files only grow. A crew member takes its lead's release from GitHub by its own decision, and a crew fault blocks the lead only when the update makes it worse. The phone shows a run in one update mode, decided by one reducer. Separate records stay live for the roads they close: a packaged install is not ours to update (0035), urgency rides one changelog line (0046), Windows is a supported host (0075), the math engines are a release asset fetched on a tap (0132).
 
 | # | Decision | Status |
 | --- | --- | --- |
+| [0143](./0143-how-an-install-updates-and-what-a-release-offers-it.md) | How an install updates, and what a release offers it: the rule of today, with the code that holds it. | Accepted |
 | [0006](./0006-update-advances-the-checkout-herdr-installed.md) | `update` advances the checkout Herdr installed and never re-links it. | Accepted |
 | [0020](./0020-a-major-upgrade-is-consented-by-flag.md) | `update` stays inside the installed major; crossing one needs `--major`. | Accepted, amended in scope by 0110 |
 | [0021](./0021-the-path-name-is-a-pointer-never-a-copy.md) | The name on PATH is a symlink to the checkout's binary, never a copy. | Accepted |
