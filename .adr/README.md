@@ -117,12 +117,11 @@ The rule today: Every `/api/*` route except `/api/health` and `/api/pair` needs 
 
 ### Crew and deputy
 
-The rule today: A crew is a group of full Collie instances with one lead. The lead consumes a peer's Collie HTTP API and never its Herdr socket (0011), a peer listens on an unpublished crew listener and publishes no front door (0013), and code reaches a peer over the operator's own SSH, never over the crew link (0015, 0016). Leadership changes only on the operator's word or on a proof the old lead signed, never by election or timer (0026): the operator names one deputy ahead of time (0027), its standby door arms on silence (0028), and a plain promotion is a confirm on the machine being replaced (0014). The group is called a crew and the wire says crew too (0039 is newer than 0038 and wins on machine-read names); records 0011 to 0028 still write "pack" and `PACK_PROTOCOL.md`, which read as crew and `CREW_PROTOCOL.md`.
-
-One live record for this topic is being written.
+The rule today: [0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown.md) states it in one place. A crew is full Collie instances with one lead, and the lead talks to a member's Collie API, never its multiplexer socket. One front door per crew, on the lead; a member publishes nothing and admits only its pinned lead (and the deputy, for the takeover) with the crew secret. Code reaches a member over the operator's own SSH or from the public release, never over the crew link (update rules: 0143). Only the operator moves the crown: a confirm on the old lead (`approve-promote`), or a takeover by the one deputy named ahead, spent through the standby door that arms on silence. The wire says crew too; records 0011 to 0028 still write "pack" and `PACK_PROTOCOL.md`, which read as crew and `CREW_PROTOCOL.md`. 0036 (a multiplexer reports one machine) stays live beside it.
 
 | # | Decision | Status |
 | --- | --- | --- |
+| [0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown.md) | A crew has one lead and one door; code rides the operator's SSH; only the operator moves the crown. | Accepted |
 | [0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) | The lead consumes a peer's Collie HTTP API, never its Herdr socket. | Accepted |
 | [0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) | Every machine runs a collie and the group has a lead (the word "pack" is replaced by 0038). | Superseded in part by 0038 |
 | [0013](./0013-a-peer-listens-without-becoming-a-front-door.md) | A peer opens an unpublished crew listener and publishes no front door. | Accepted, amended in scope by 0028 |
