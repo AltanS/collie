@@ -6950,6 +6950,31 @@
    "version": "2.1.325",
    "state": "draft"
   },
+  "claude--v2325-first-run-url-fullscreen--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "idle"
+  },
+  "claude--v2325-first-run-url-fullscreen--w80.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "idle"
+  },
+  "claude--v2325-first-run-url-fullscreen--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "idle"
+  },
+  "claude--v2325-first-run-url-fullscreen--w200.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "idle"
+  },
+  "claude--v2325-first-run-url-fullscreen--w219.txt": {
+   "harness": "claude",
+   "version": "2.1.325",
+   "state": "idle"
+  },
   "claude--v2325-first-run-console-url--w61.txt": {
    "harness": "claude",
    "version": "2.1.325",
