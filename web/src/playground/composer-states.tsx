@@ -17,6 +17,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { Composer } from "@/components/composer";
+import { SecretField } from "@/components/secret-field";
 import { SubagentSheet } from "@/components/subagent-sheet";
 import { t } from "@/lib/i18n";
 import type { PaneSubagent, PaneTodo } from "@/lib/types";
@@ -25,6 +26,7 @@ import { saveDraft } from "@/lib/drafts";
 import { forgetUnknownSend } from "@/lib/send-again";
 import { clearIntent } from "@/lib/send-intent";
 import type { HeldRow } from "@/lib/surface/send";
+import type { Surface } from "@/lib/surface/surface";
 import type { Scope } from "@/lib/scope";
 import { wayOutCase, type WayOutCase } from "@/test/way-out-states";
 import type { WayOutState } from "@/lib/way-out";
@@ -476,6 +478,84 @@ function SendConfirmCase({ n, state, title, reach, note, kind }: { n: number; st
   );
 }
 
+/** The sign-in field's Surface: the screen asks for a code (M102 spec 06). */
+const SIGN_IN: Surface = { revision: 1, turn: "idle", modal: "none", composer: "empty", field: "secret" };
+/** An invented code: clearly not real. */
+const SAMPLE_CODE = "EXAMPLE-CODE-1234";
+const nothing = () => Promise.resolve(false);
+const stay = () => {};
+
+/** The real composer on a pane whose screen asks for a sign-in code: the framed field stands in the box's place. */
+function SignInPhone() {
+  const paneId = "sign-in:empty";
+  const [router] = useState(() =>
+    createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: (
+            <ChromeBlock>
+              <Composer
+                paneId={paneId}
+                agent="claude"
+                isShell={false}
+                gone={false}
+                readOnly={false}
+                surface={SIGN_IN}
+                text="pane output"
+                terminalDraft={null}
+                rawTerminalDraft={null}
+                prefs={PREFS}
+                display={{ open: false, onToggle: () => {} }}
+                onSent={() => {}}
+              />
+            </ChromeBlock>
+          ),
+        },
+      ],
+      { initialEntries: ["/"] },
+    ),
+  );
+  useEffect(() => {
+    const stamp = () => markLive(paneId);
+    stamp();
+    const timer = setInterval(stamp, RENEW_MS);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <PhoneMock>
+      <RouterProvider router={router} />
+    </PhoneMock>
+  );
+}
+
+/** The field itself with a code in it, shown or masked: the real component, started where a paste leaves it. */
+function SignInTyped({ shown }: { shown: boolean }) {
+  return (
+    <PhoneMock>
+      <ChromeBlock>
+        <div className="px-3 pb-3">
+          <SecretField onSend={nothing} onClose={stay} disabled={false} start={{ value: SAMPLE_CODE, shown }} />
+        </div>
+      </ChromeBlock>
+    </PhoneMock>
+  );
+}
+
+function SignInCase({ n, state, title, reach, children }: { n: number; state: string; title: string; reach: string; children: ReactNode }) {
+  return (
+    <Card state={state} label={`${String(n)}: ${title}`} reach={reach}>
+      <CardControls className="flex items-center gap-3">
+        <NumberBadge n={n} />
+        <p className="text-sm font-semibold text-foreground">
+          {n}: {title}
+        </p>
+      </CardControls>
+      {children}
+    </Card>
+  );
+}
+
 /**
  * The section's groups, as elements for `Section` to take as direct children (a group is a sub-page of
  * its section, and the bar reads them off the children). The section itself is `sections/composer-states.tsx`
@@ -608,6 +688,17 @@ export function wayOutGroups(): ReactNode[] {
         note="The card sends once to a fake bridge that answers unknown, then arms the question and taps again whenever the 3 seconds run out. A tap of your own on the word sends, and the fake bridge answers sent."
         kind="again"
       />
+    </Group>,
+    <Group key="sign-in-field" title="Sign-in field">
+      <SignInCase n={33} state="secret-framed-field" title="Sign-in code, empty" reach="Start a sign-in from the Accounts page. When the agent asks for the code, the box becomes this frame: Paste, Send, and the cross that closes it.">
+        <SignInPhone />
+      </SignInCase>
+      <SignInCase n={34} state="secret-framed-field-shown" title="Code pasted, shown" reach="Tap Paste or paste a code. A code is shown so you can check it; Show and Hide take Paste's place.">
+        <SignInTyped shown />
+      </SignInCase>
+      <SignInCase n={35} state="secret-framed-field-masked" title="Code hidden" reach="Tap Hide: the code is masked. Tap Show to see it again.">
+        <SignInTyped shown={false} />
+      </SignInCase>
     </Group>,
   ];
 }

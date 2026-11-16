@@ -33,6 +33,7 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { SendOfferStrip } from "@/components/send-offer-strip";
 import { HeldCard, drawnHeldRows, type HeldAction } from "@/components/composer-held";
 import { offerMode, type SendNote } from "@/lib/send-protocol";
+import { SecretField } from "@/components/secret-field";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { viewRefusalKey, type ViewRequestNote } from "@/lib/agent-view/reader";
 import { fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
@@ -623,6 +624,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const secretField = surface.field === "secret";
   const secretFieldRef = useRef(secretField);
   secretFieldRef.current = secretField;
+  // THE FRAMED SIGN-IN FIELD (M102 spec 06): while the screen asks for a code, the box gives way to
+  // `SecretField`, which holds its own text, so the normal draft is kept apart. Its cross closes it for
+  // this field and sends nothing; the notice then offers it back. A field that goes away resets it.
+  const [secretClosed, setSecretClosed] = useState(false);
+  useEffect(() => {
+    if (!secretField) setSecretClosed(false);
+  }, [secretField]);
   const unreachableWords =
     missingSend !== null
       ? missingSend.note || translate("composer.placeholder.noMuxSend")
@@ -2108,6 +2116,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const refusalCard = sendRefusal?.toCard === true && onAnswerDialog !== undefined && dialogCard;
   const refusalScreen = sendRefusal?.screen === true && screen !== undefined && !screen.on;
   const refusalKeys = way.keysOpen && drawer !== "keys";
+  // The sign-in field the person closed is one tap away again, from the notice that says it is closed.
+  const refusalSecret = secretField && secretClosed;
+  const secretOpen = secretField && !secretClosed && !direct.active;
   // What the field's placeholder says: the facts first (a pane that is gone, a device that may not
   // write, a box out of reach), then Type mode, then the shell line, then (M69) the Steer hint while a
   // turn runs on a harness that can steer, then the ordinary reply line. The placeholder names no other
@@ -3377,8 +3388,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               refusal={sendRefusal}
               onDismiss={hideRefusal}
               action={
-                refusalCard || refusalScreen || refusalKeys ? (
+                refusalSecret || refusalCard || refusalScreen || refusalKeys ? (
                   <span className="flex flex-wrap justify-end gap-1">
+                    {refusalSecret && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={NOTICE_ACTION}
+                        onClick={() => {
+                          setSecretClosed(false);
+                          setSendRefusal(null);
+                        }}
+                      >
+                        {translate("composer.secret.reopen")}
+                      </Button>
+                    )}
                     {refusalCard && (
                       <Button variant="ghost" size="sm" className={NOTICE_ACTION} onClick={() => onAnswerDialog?.()}>
                         {translate("composer.send.dialogFirst")}
@@ -3492,6 +3516,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             source={{ kind: "commands", commands: commandSuggestions, onPick: selectSuggestion }}
           />
         )}
+        {secretOpen ? (
+          <SecretField
+            disabled={starting || sending || locked}
+            onSend={(code) => send(code, false)}
+            onClose={() => {
+              setSecretClosed(true);
+              setSendRefusal(phoneRefusal(translate("composer.secret.closed")));
+            }}
+          />
+        ) : (
         <div
           data-slot="composer-box"
           data-layout={box ? "box" : undefined}
@@ -4014,6 +4048,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </Button>
           )}
         </div>
+        )}
       </div>
 
       {/* THE VOICE TAKEOVER (design 3.3): over the whole chrome block, in its own box, from the mic's

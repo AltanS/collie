@@ -612,6 +612,15 @@ export const en = {
   "composer.stale.hint": "The screen may be stale. Send probes it first.",
   // The placeholder of a sign-in field (the Surface's `field: "secret"`).
   "composer.secret.hint": "Sign-in code. Not saved as a draft.",
+  "composer.secret.label": "Sign-in code",
+  "composer.secret.placeholder": "Not saved. Sent once.",
+  "composer.secret.paste": "Paste",
+  "composer.secret.show": "Show the code",
+  "composer.secret.hide": "Hide the code",
+  "composer.secret.send": "Send the code",
+  "composer.secret.close": "Close the code field",
+  "composer.secret.closed": "The code field is closed. Nothing was sent.",
+  "composer.secret.reopen": "Open the code field",
   "composer.steer.queuedInstead": "Queued instead: the agent kept it for after the turn.",
   "composer.steer.steered": "Steered: the agent takes it after its current step.",
   "composer.steer.unsupported": "Steer is not available on this pane. Nothing was sent.",
@@ -3879,6 +3888,15 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "composer.secret.label",
+  "composer.secret.placeholder",
+  "composer.secret.paste",
+  "composer.secret.show",
+  "composer.secret.hide",
+  "composer.secret.send",
+  "composer.secret.close",
+  "composer.secret.closed",
+  "composer.secret.reopen",
   "composer.protocol.codeRejected",
   "accounts.identity.signedInAs",
   "accounts.identity.notSignedIn",
