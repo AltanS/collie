@@ -85,7 +85,7 @@ terminal. Six records shaped the lists and the footer, and three titles name tab
   (`lib/pane-order.ts`); `useFrozenRanks` with `rereadOnVisible` on the dashboard only;
   `DashPrefs.paneOrder`; `PaneOrderToggle`, `PaneOrderSelect`, `PaneOrderControl`.
 - Rule 5: `shownGroups` (`lib/dash-view.ts`); `WorkspaceFilter` (`components/dash-selects.tsx`);
-  `machinesHiddenFrom`; `matchPanes` with `PANE_FILTER.order` "place" (`lib/pane-filter.ts`).
+  `machinesHiddenFrom`; `matchPanes` (`lib/pane-filter.ts`), `PANE_FILTER.order` "place" (`AgentList`).
 - Rule 6: `collie:pins:v1`, `MAX_PINS`, `pinMatcher`, `setPinned`, `dropPin` and the file header
   (`lib/pins.ts`); `pinnedRows`; `togglePin` and the Close path (`components/pane-actions-sheet.tsx`).
 - Rules 7 and 9: `dashboardBarShown`, `useDashboardBar`; `DashboardTabBar` (`badge`, `dot`,
@@ -93,8 +93,8 @@ terminal. Six records shaped the lists and the footer, and three titles name tab
   `DASH_VIEWS`, `coerceDashView`.
 - Rule 8: `NeedsYouSwitch`; `switchSlot`, `orderSlot` (`AgentList`); the `needsYouOnly` gates in
   `routes/home.tsx`; `e2e/dashboard-footer.spec.ts`.
-- Rule 10: `CrewTab` under `view === "crew"` (`routes/home.tsx`); `CHANGES_POLL_MS`,
-  `CHANGE_COUNT_CONCURRENCY` (`hooks/use-workspace-change-counts.ts`).
+- Rule 10: `CrewTab` under `view === "crew"` (`routes/home.tsx`); `CHANGES_POLL_MS`
+  (`hooks/use-visible-interval.ts`), `CHANGE_COUNT_CONCURRENCY` (`use-workspace-change-counts.ts`).
 - Rule 11: `isLegacyDashView`, `wasFocusView`, `loadPrefs`. Rule 12: `DashboardRouteBar`.
 
 ## Recorded, not found in the code

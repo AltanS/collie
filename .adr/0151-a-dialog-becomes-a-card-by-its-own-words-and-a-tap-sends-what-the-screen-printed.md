@@ -60,7 +60,7 @@ ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) sta
 9. **Every tap is bound.** The phone sends the dialog's region as `expected_prompt`, and the bridge
    refuses the keys unless that region ends in the last six non-blank rows of its own fresh read. A
    grammar may widen that to twelve when it recognised every row below as its own live chrome
-   (`bindTail`, ADR 0108), cut rows to the columns it read (`bindColumns`), or bind a pointer drawn only
+   (`bindTail`), cut rows to the columns it read (`bindColumns`), or bind a pointer drawn only
    as a style (`styledSignature`, ADR 0080). The bridge counts and compares; it holds no grammar.
 10. **One dock, one card, a way to put it down.** Every card renders in one dock above the belt,
     outside every scroller, capped. A Terminal control shows the rows it replaced, for that dialog

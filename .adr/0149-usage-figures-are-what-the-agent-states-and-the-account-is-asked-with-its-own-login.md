@@ -42,7 +42,7 @@ folders, and #693 gave each folder its own reading. No single record said what h
 7. `COLLIE_ACCOUNT_WINDOWS` (`[bridge] account_windows`) names the sources. The default is `claude`
    and `codex`. `opencode` and `grok` stay off until a real login has proven their shape. An unknown
    id is dropped with a warning, so a typo turns nothing on.
-8. A source is asked only while a pane of its harness, and of that account folder, is open: once at
+8. A source is asked only while a pane of its harness is open (a custom folder: one of its panes): at
    first, after a turn ends (at most once in five minutes), and every five minutes. Failures back
    off, and a reading older than 20 minutes is not drawn.
 9. A pane's windows are its account's reading when there is one. Otherwise each window is the newest

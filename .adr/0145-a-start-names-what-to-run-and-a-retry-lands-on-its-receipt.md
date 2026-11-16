@@ -15,13 +15,13 @@
 
 The New page, the "+" sheet and a pane's "New agent in a worktree" start an agent, a row, a one-off
 line or a shell on any machine of the crew, maybe on a new branch. Eight records shaped this one step
-at a time. The Files and Changes views (0065, 0083, 0088, 0090, 0112) are another topic.
+at a time. The Files and Changes views are another topic (ADR 0150, with 0088 beside it).
 
 ## Decision
 
 1. **The bridge owns what may start.** A start names exactly one kind: `command` (a row, matched
    exactly), `harness` (an id from the bridge's own list), `shell: true`, or `run` (a one-off line).
-   None or two is a 400. The phone sends a line to type only as a `run`. Starters (ADR 0102) and
+   None or two is a 400. The phone sends a line to type only as a `run`. Starters (ADR 0146) and
    accounts (M101) ride the same route and belong to their own topics.
 2. **The agents are the bridge's list.** Each id is a mux contract name with one binary word, looked
    for on the operator's login shell PATH (asked once per process, kept 60 s). An answer with no
@@ -89,8 +89,8 @@ at a time. The Files and Changes views (0065, 0083, 0088, 0090, 0112) are anothe
   when the adapter opens a space and git is found (`bridge/worktree-capability.ts`); the `worktree`
   fact and `withRepoFacts` (`MUX_CONTRACT.md`, "A worktree space"; `bridge/repo-facts-mux.ts`).
 - Rule 9: `resolveParentTarget`, `resolveSetFolderTarget`, `herdrDefaultTarget`
-  (`bridge/worktree-folder.ts`); `gitAcceptsBranch` (`isValidWorktreeBranch`, then
-  `check-ref-format`); `resolveDefaultBranch` (`bridge/worktree-base.ts`).
+  (`bridge/worktree-folder.ts`); `gitAcceptsBranch` (`server.ts`: `isValidWorktreeBranch`,
+  then `check-ref-format`); `resolveDefaultBranch` (`bridge/worktree-base.ts`).
 - Rule 10: `worktreeMatchOf`, the per-folder `inFlight` map and the timeout cleanup
   (`bridge/worktree-add.ts`); `spaceShowing` (`bridge/worktree-reuse.ts`); `worktree.created_not_opened`.
   Budgets: `WORKTREE_ADD_TIMEOUT_MS` 60 s, `WORKTREE_ROUTE_BUDGET_S` 90 s, the phone's

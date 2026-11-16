@@ -56,9 +56,9 @@ device setting, and "no animation at rest" became a drift while the page is visi
    switch says. A hidden page or a covered app pauses every animation, and an endless indicator moves
    in steps. There is no general "Reduce motion" setting.
 10. **The UI face is a device preference with a shipped default, and it dresses chrome only.** The
-    default, Atkinson Hyperlegible Next, wears no class, so a device that never chose runs no script
-    before its first paint. A choice is a root class; no script holds a font stack. Applying a theme
-    with `fonts.ui` sets the device face. Agent and machine text never wears the chosen face.
+    default, Atkinson Hyperlegible Next, wears no class, so a device that never chose gets no class
+    before its first paint. A choice is a root class; no script holds a font stack. A theme with
+    `fonts.ui` sets the device face. Agent and machine text never wears the chosen face.
 11. **An operator's fonts add to the list, never replace it.** A font cannot fire an action, so it
     has nothing to shadow, unlike a command row (ADR 0018). The bridge serves only a declared row's
     bare `.woff2` name inside the config's `fonts` folder, contained on real paths, and every refusal
@@ -72,8 +72,8 @@ device setting, and "no animation at rest" became a drift while the page is visi
 - Rules 1 and 2: `TOP_KEYS`, `THEME_TOKENS`, `OPTIONAL_THEME_TOKENS`, `COLOUR_SOURCE`, `versionOf`,
   `THEME_VERSIONS_READ`, `DECORATION_WORD`, `themeFallbacks`, `MAX_REFUSALS` (25) in
   `web/src/lib/theme/schema.ts`; `SURFACE_TOKENS` (13 words) in `web/src/lib/theme/surface.ts`.
-- Rule 3: `SURFACE_DEFAULTS`, `CHARACTER_MOTIONS`. Rule 4: `applyTheme` (`web/src/lib/theme/store.ts`)
-  sets only `THEME_TOKENS` names; `public/theme-init.js`; `bun scripts/build-themes.ts --check`.
+- Rule 3: `SURFACE_DEFAULTS`, `CHARACTER_MOTIONS` (`schema.ts`). Rule 4: `applyTheme` (`store.ts`)
+  sets only properties built from the validated object; `theme-init.js`; `build-themes.ts --check`.
 - Rule 5: `theme.paste.refusal.link` (`web/src/lib/i18n/messages/en.ts`); `connect-src 'self'`
   (`bridge/server.ts`); `THEME_REGISTRY_URL`, `REGISTRY_CAP_BYTES`, `REGISTRY_MAX_ENTRIES`
   (`bridge/themes/registry.ts`); `readRegistryEntry` (`web/src/lib/theme/registry.ts`); `LIBRARY_MAX`
@@ -117,4 +117,4 @@ device setting, and "no animation at rest" became a drift while the page is visi
 - 0033: the face was the maker's choice; then a device setting (Space Grotesk, Aldrich, Atkinson).
 - 0106: a theme of colour tokens only; version 2 added shape, palette and display face, and no mark.
 - 0136, 0137: a theme names a character and a glyph set; then a device may choose the character.
-- 0138: no animation at rest; then a drift while in use; then a stepped drift at all times, a switch.
+- 0138: no animation at rest; then a drift while in use; then a stepped drift at rest too, a switch.
