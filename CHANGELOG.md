@@ -33,6 +33,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **The Hill is in the bar as soon as it is on.** With the Hill switched on and no Decision posted yet, the Dashboard's bottom bar now shows the Hill, as the Hill docs say; before, it appeared only with the first Decision.
 - **A proposed trick's card names every right it asks for.** A trick whose Decisions answer into a session now says "answers go to a session" on its proposal card, as its new-version card always did, and a test fails when a new right in `trick.toml` has no line on the card.
 - **The code check reads every file a trick's run line names.** A file the check skips as docs, data, a test or a fixture is read as code when the run line names it, or a file it reads imports it. A run line that hands a shell or an interpreter something the check did not read as code (a binary file, a path outside the trick, code on the line itself) gets a warning of its own.
 - **A proposed trick starts clean.** Its yes writes a fresh switch entry and a new state folder, so a leftover entry of a trick folder deleted by hand never lends it "Take changes without asking", an Undo target or old state.

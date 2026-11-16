@@ -778,18 +778,20 @@ export class HillService {
   }
 
   /**
-   * The revision on the snapshot, or undefined while no decisions file exists and the crew state was
-   * never set. It also moves when a session behind an open decision is renamed, so the phone refetches the
+   * The revision on the snapshot, on every snapshot while the Hill is on: with no decisions file yet it is
+   * the crew state's own count (0 until the person sets one), so the phone shows the Hill in the bar as
+   * soon as the Hill is on, before the first Decision (the first full trick run, 2026-11-16, decision 6;
+   * `docs/hill.md`, spec 09: off, "the Hill leaves the bar"). It also moves when a session behind an open decision is renamed, so the phone refetches the
    * list and shows the new name, and when the crew state changes (from the phone, the terminal or the file).
    */
-  rev(): number | undefined {
+  rev(): number {
     const crew = this.deps.crewState?.read() ?? HILL_CREW_STATE_DEFAULT;
     const stamp = `${crew.state}|${String(crew.at)}|${String(crew.told)}`;
     if (this.crewSeen !== null && stamp !== this.crewSeen) this.crewMoved += 1;
     this.crewSeen = stamp;
     const stored = this.deps.store.rev();
-    // A Hill with no decisions file yet still has a list to serve once the person set a crew state.
-    if (stored === undefined) return crew.at === null ? undefined : this.crewMoved;
+    // A Hill with no decisions file yet still has a page: an empty list and the crew state.
+    if (stored === undefined) return this.crewMoved;
     if (this.deps.sessionName !== undefined) {
       const names = this.look(() => JSON.stringify(this.deps.store.list().open.map((decision) => this.named(decision)).map((decision) => [decision.id, decision.from.label, decision.target?.label ?? null])));
       if (this.namesSeen !== null && names !== this.namesSeen) this.namesMoved += 1;
@@ -978,7 +980,7 @@ export class HillService {
     return this.look(() => {
       const list = this.deps.store.list();
       // The same revision the snapshot carries, so a phone that holds it reads `unchanged`.
-      return { ...list, rev: this.rev() ?? list.rev, open: list.open.map((decision) => served(this.named(decision))), closed: list.closed.map(served) };
+      return { ...list, rev: this.rev(), open: list.open.map((decision) => served(this.named(decision))), closed: list.closed.map(served) };
     });
   }
 
