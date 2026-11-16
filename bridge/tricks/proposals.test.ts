@@ -25,6 +25,7 @@ import {
   PROPOSED_BYTES_MAX,
   PROPOSED_DIR,
   PROPOSALS_FILE,
+  proposalTold,
   TrickProposals,
   type Proposer,
 } from "./proposals.ts";
@@ -235,6 +236,18 @@ describe("a proposal for a new trick", () => {
     expect(await readdir(join(l.configDir, TRICKS_DIR, PROPOSED_DIR, "legs")).catch(() => [])).toEqual([]);
     expect(l.sent.at(-1)).toMatchObject({ to: "workshop/%3#abcd" });
     expect(l.sent.at(-1)?.body).toContain("Option: on");
+    // Decision 9: the line after the option says what the yes did.
+    expect(l.sent.at(-1)?.body).toContain(`Option: on (Switch it on)\n${proposalTold("legs", "on", "new")}`);
+    expect(proposalTold("legs", "on", "new")).toBe("legs is installed and on.");
+  });
+
+  test("decision 9: Not now types that the person declined, the proposal is closed and nothing was installed", async () => {
+    const l = await lead();
+    await l.proposals.propose(proposal("legs"), AGENT);
+    const [card] = openCards(l);
+    expect(await tap(l, card!, "later")).toMatchObject({ code: "ok" });
+    expect(l.sent.at(-1)?.body).toEndWith("\nYour person declined. The proposal of legs is closed, and nothing was installed.");
+    expect(await listed(l)).toEqual([]);
   });
 
   test("a stored copy changed on disk after the card refuses the yes and keeps the card open (TOCTOU)", async () => {
@@ -745,7 +758,7 @@ describe("the card belongs to Collie and to the person", () => {
     await l.proposals.propose(proposal("legs"), AGENT);
     const [card] = openCards(l);
     expect(await tap(l, card!, "on")).toMatchObject({ code: "ok" });
-    expect(l.sent).toEqual([{ to: "workshop/%3#abcd", body: `Answer to ${card!.id} "Switch on the trick legs?"\nOption: on (Switch it on)` }]);
+    expect(l.sent).toEqual([{ to: "workshop/%3#abcd", body: `Answer to ${card!.id} "Switch on the trick legs?"\nOption: on (Switch it on)\nlegs is installed and on.` }]);
   });
 
   test("a dismiss types nothing into the proposer's session", async () => {

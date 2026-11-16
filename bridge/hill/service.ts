@@ -193,7 +193,12 @@ export interface HillCollieSender {
 }
 
 /** What the answer to a Collie Decision did: done, or refused in plain words (the card then stays open). */
-export type HillCollieVerdict = { readonly ok: true } | { readonly ok: false; readonly reason: string };
+/**
+ * What Collie's own handler made of an answer. `told`: one plain line of what happened (installed, nothing
+ * installed), typed into the session Collie tells, after the option line (the first full trick run,
+ * 2026-11-16, decision 9). Agent-facing English, never a phone string.
+ */
+export type HillCollieVerdict = { readonly ok: true; readonly told?: string } | { readonly ok: false; readonly reason: string };
 
 /** Every sender a decision can have; the public doors take only {@link HillSender}. */
 type AnySender = HillSender | HillCollieSender;
@@ -1786,14 +1791,13 @@ export class HillService {
    * Act on an answer to a Collie Decision before it closes: null when done, else the plain line the
    * refusal shows. A throw, or no handler, refuses; the card stays open for another tap.
    */
-  private async actForCollie(decision: HillDecision, intent: string): Promise<string | null> {
+  private async actForCollie(decision: HillDecision, intent: string): Promise<HillCollieVerdict> {
     const ref = decision.from.ref;
-    if (ref === undefined || this.deps.onCollieAnswer === undefined) return HILL_NO_ANSWER_HANDLER;
+    if (ref === undefined || this.deps.onCollieAnswer === undefined) return { ok: false, reason: HILL_NO_ANSWER_HANDLER };
     try {
-      const verdict = await this.deps.onCollieAnswer(ref, intent);
-      return verdict.ok ? null : verdict.reason;
+      return await this.deps.onCollieAnswer(ref, intent);
     } catch {
-      return HILL_NO_ANSWER_HANDLER;
+      return { ok: false, reason: HILL_NO_ANSWER_HANDLER };
     }
   }
 
@@ -1860,7 +1864,8 @@ export class HillService {
     // Collie's own card carries Collie's own title and labels (a trick's id, fixed words), so the session
     // it tells gets them as a poster does.
     // The crew state at this moment rides on the typed answer as one last line, while it is not `here`.
-    const body = withCrewLine(answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision) || decision.from.kind === "collie"), this.crewState().state);
+    const message = answerMessage(decision, intent, option?.label ?? null, text, this.answersThePoster(decision) || decision.from.kind === "collie");
+    let body = withCrewLine(message, this.crewState().state);
     if (codePoints(body) > WALKY_BODY_MAX) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "text is too long for one message", "open", null));
 
     // Where the answer goes: `replyTo`, else the poster. A trick with no `replyTo` has nothing to type into.
@@ -1880,8 +1885,11 @@ export class HillService {
     // Collie's own Decision acts here, once, before anything is written: a refusal (the code moved since
     // the card was made) keeps the card open, and a dismiss closes it with no act at all.
     if (decision.from.kind === "collie" && intent !== "dismiss") {
-      const refused = await this.actForCollie(decision, intent);
-      if (refused !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", refused, "open", null));
+      const verdict = await this.actForCollie(decision, intent);
+      if (!verdict.ok) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", verdict.reason, "open", null));
+      // What Collie did rides after the option line, when it still fits one message.
+      const told = verdict.told === undefined ? body : withCrewLine(`${message}\n${verdict.told}`, this.crewState().state);
+      if (codePoints(told) <= WALKY_BODY_MAX) body = told;
     }
     const state: HillState = intent === "dismiss" ? "dismissed" : "answered";
     // Collie's own card with a session to tell (a trick proposal's proposer): typed only while that session

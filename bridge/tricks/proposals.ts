@@ -88,6 +88,12 @@ export const PROPOSAL_NOT_COMPARED = "Collie could not compare this version with
 /** The stored copy moved while its card was made (review 7 R9). */
 export const PROPOSAL_STORE_MOVED = "The stored proposal changed while its card was made, so nothing was proposed. Propose it again.";
 
+/** The line typed into the proposer's session after the option line (decision 9): what the answer did. */
+export function proposalTold(id: string, intent: string, kind: "new" | "version"): string {
+  if (intent === PROPOSAL_LATER.intent) return `Your person declined. The proposal of ${id} is closed, and nothing was installed.`;
+  return kind === "version" ? `The new version of ${id} is installed, and ${id} stays on.` : `${id} is installed and on.`;
+}
+
 /** Every warning kind, for a code search that failed. */
 const ALL_WARNINGS = ["spawn", "network", "write", "model", "import"] as const satisfies readonly (keyof typeof WARN_PLAIN)[];
 
@@ -521,10 +527,10 @@ export class TrickProposals {
       const state = await this.load();
       const entry = state.open.find((row) => row.id === ref.id && row.hash === ref.hash);
       if (intent !== PROPOSAL_ON.intent && intent !== PROPOSAL_LATER.intent) return { ok: false, reason: PROPOSAL_NOT_OPTION };
-      if (entry === undefined) return intent === PROPOSAL_LATER.intent ? { ok: true } : { ok: false, reason: PROPOSAL_GONE };
+      if (entry === undefined) return intent === PROPOSAL_LATER.intent ? { ok: true, told: proposalTold(ref.id, intent, "new") } : { ok: false, reason: PROPOSAL_GONE };
       if (intent === PROPOSAL_LATER.intent) {
         await this.drop(state, entry);
-        return { ok: true };
+        return { ok: true, told: proposalTold(entry.id, intent, entry.kind) };
       }
       const tricks = this.deps.tricks();
       if (tricks === null) return { ok: false, reason: "Tricks are not running on this bridge." };
@@ -536,7 +542,7 @@ export class TrickProposals {
       if (!placed.ok) return { ok: false, reason: placed.message };
       await this.drop(state, entry);
       this.deps.audit?.({ action: "trick.proposal.on", detail: { trick: entry.id, hash: entry.hash.slice(0, 16) } });
-      return { ok: true };
+      return { ok: true, told: proposalTold(entry.id, intent, entry.kind === "version" && entry.base !== null ? "version" : "new") };
     });
   }
 
