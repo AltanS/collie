@@ -26,7 +26,8 @@ import { join, resolve } from "node:path";
 import { BIN } from "../bins";
 import { parseVersion } from "../nightly";
 import { LEG_HARNESSES, type Leg } from "../scenarios";
-import { shortHash, versionDir, type CassetteMeta, type Literal, type Vendor } from "./cassette";
+import { skillHash, SKILL_TEMPLATE } from "./skill-text";
+import { versionDir, type CassetteMeta, type Literal, type Vendor } from "./cassette";
 
 /** The harnesses whose model calls go through the stub. */
 export const STUB_HARNESSES = ["pi", "omp", "claude"] as const;
@@ -92,12 +93,9 @@ export const DATA_CASSETTE_ROOT = resolve(import.meta.dirname, "..", "cassettes-
 export function cassetteRoot(env: Readonly<Record<string, string | undefined>> = process.env): string {
   return rigDataFrom(env.COLLIE_RIG_DATA) ? DATA_CASSETTE_ROOT : CASSETTE_ROOT;
 }
-/** The walky talky skill's template: its text goes into pi's prompt, so it keys the cassettes. */
-export const SKILL_TEMPLATE = join(WORKTREE, "cli", "skills", "walky-talky.md");
-
-export function skillHash(): string {
-  return shortHash(readFileSync(SKILL_TEMPLATE, "utf8"));
-}
+// The walky talky skill text goes into the agent's prompt, so its hash keys the cassettes: the hash of the
+// text the agents read (the default install's, Hill off), computed in one place (skill-text.ts).
+export { SKILL_TEMPLATE, skillHash };
 
 /** The model a harness starts on (harnesses.ts SETUPS reads it from here). Claude: Haiku, the cheap one. */
 export function modelFor(harness: StubHarness, env: Readonly<Record<string, string | undefined>> = process.env): string {

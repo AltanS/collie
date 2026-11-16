@@ -159,7 +159,7 @@ runs on, and only for the cases of its own leg (`scenarioApplies` in `scenarios.
 the request the Crew page's "Message all agents" sheet posts, to prove the fan-out on the solo rig;
 the sheet itself, tapped on the Crew page, is proved on the crew leg (case 12). Cases 8 and 9 use the
 `collie walky` verbs inside the agent: each harness starts with a `collie` first on PATH that runs this
-checkout's CLI (`harnesses.ts`), and with the walky talky skill in its scratch config. Claude's scratch
+checkout's CLI (`harnesses.ts`), and with the walky talky skill in its scratch config (the text a default install gives, Hill off). Claude's scratch
 settings allow `Bash(collie walky:*)`, so the verbs ask no permission.
 
 ## The crew leg
@@ -501,9 +501,16 @@ which Claude puts in front of the next prompt, whichever case sends it.
 **The tier.** The global setup reads each harness's `--version` and picks one tier for the run:
 
 - **replay**: `cassettes/<harness>/<version>/meta.json` lists this leg, with the same model and the same
-  walky talky skill text (`cli/skills/walky-talky.md`, by hash). The stub answers every model call from
+  walky talky skill text (the key is the hash of the rendered text with the Hill switch off, the text
+  the agents read, see below). The stub answers every model call from
   the recordings, with their recorded pacing. It has no path to OpenRouter on this tier. The harness gets
   a dummy key, its start script does not open the key file, pi gets no `auth.json` and omp no `agent.db`.
+- **The skill text and its key.** The rig gives every agent what a default install gives: the product's own
+  render of `cli/skills/walky-talky.md` (`cli/skill-render.ts`, the function `renderWalkySkill` calls) with
+  the Hill switch off, the command `collie` and the version `rig`. `replay/skill-text.ts` holds it:
+  `rigSkillText()` is the text `writeWalkySkill` writes (Claude's skill file, pi's `AGENTS.md` block), and
+  `skillHash()` is the one key, the first 16 hex of its sha256. `tier.ts` and `nightly.ts` both use it. Text
+  that only the Hill part holds moves no key, and a change to the template's other words re-records every case.
 - **live**: there is no recording for this version, model or skill text. The stub passes each call on to
   OpenRouter (pi, omp) or Anthropic (Claude) with the harness's own key or login and records it, so the
   next run replays. Without a key file, pi and omp record nothing and their turn scenarios are "not

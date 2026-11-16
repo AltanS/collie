@@ -35,6 +35,7 @@ import {
 } from "./skill-install.ts";
 import { collieBinary } from "./unit.ts";
 import { hillSwitchPath, renderHillSwitch } from "../bridge/hill/switch.ts";
+import { rigSkillText } from "../web/e2e/rig/replay/skill-text.ts";
 
 // `collie skill install|uninstall|status|print`. Every path is spelled with `join`, as the code under
 // test builds it, and the filesystem and the symlink probe are fakes: nothing here reaches a real
@@ -69,6 +70,14 @@ const text = (d: ReturnType<typeof deps>, path: string): string | undefined => d
 const stateOf = (d: SkillDeps, path: string): string => skillReport(d).find((r) => r.file.path === path)?.state.kind ?? "missing";
 
 describe("the rendered skill", () => {
+  test("the browser-leg rig gives its agents this render with the Hill off, down to the command and the version", () => {
+    const d = deps();
+    const off = rendered(d);
+    expect(off).not.toContain("Decisions (the hill)");
+    // The rig names the command `collie` and the version `rig`; every other byte is the product's (the version appears once, in the stamp).
+    expect(off.replaceAll(collieBinary(ROOT), "collie").replaceAll(`collie ${collieVersion(ROOT)} -->`, "collie rig -->")).toBe(rigSkillText());
+  });
+
   test("fills both placeholders, with the pinned binary path the hooks use", () => {
     const d = deps();
     const out = rendered(d);

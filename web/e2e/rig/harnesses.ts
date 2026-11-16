@@ -32,7 +32,7 @@
 // On 2026-10-17 pi's own auth.json key answered 401 and omp had no credential, so without a key
 // file both stay off. The model is set here, or with COLLIE_RIG_PI_MODEL / COLLIE_RIG_OMP_MODEL.
 import { dataClaude } from "./rig-data";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -40,7 +40,8 @@ import { EMPTY_MCP_FILE } from "../../../scripts/harness-canary/lab/harnesses";
 import { seedClaude, seedClaudeReplay } from "../../../scripts/harness-canary/lab/seed";
 import type { JsonObject } from "../../src/lib/json";
 import { BIN, piExtensions } from "./bins";
-import { tiersFromEnv, modelFor, SKILL_TEMPLATE, type StubHarness } from "./replay/tier";
+import { rigSkillText } from "./replay/skill-text";
+import { tiersFromEnv, modelFor, type StubHarness } from "./replay/tier";
 import { machineDirs, muxOf, readRun, type Machine } from "./rig-lib";
 import { BEACON_EVENTS, beaconHookCommand } from "./rig-mux";
 import { HARNESS_IDS, type HarnessId } from "./scenarios";
@@ -161,12 +162,13 @@ function writeCollieShim(root: string, stateDir: string): string {
 }
 
 /**
- * The walky talky skill, rendered from its template into a harness's scratch config (never the
- * operator's): a whole file for Claude, the managed block for a harness that reads one instruction
- * file. Written by hand rather than by `collie skill install`, which also writes into every real profile.
+ * The walky talky skill, rendered by the product's own function (Hill off, as a default install gives it)
+ * into a harness's scratch config (never the operator's): a whole file for Claude, the managed block for a
+ * harness that reads one instruction file. Written by hand rather than by `collie skill install`, which also
+ * writes into every real profile.
  */
-function writeWalkySkill(path: string, form: "file" | "block"): void {
-  const rendered = readFileSync(SKILL_TEMPLATE, "utf8").replaceAll("{{COLLIE_BIN}}", "collie").replaceAll("{{COLLIE_VERSION}}", "rig").replace(/\n+$/u, "\n");
+export function writeWalkySkill(path: string, form: "file" | "block"): void {
+  const rendered = rigSkillText();
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   if (form === "file") {
     writeFileSync(path, rendered, { mode: 0o600 });
@@ -251,7 +253,7 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
     // own messages too, which `reply` refuses, and the word then came as prose (cases 6, 9, 10, 16, 17).
     writeFileSync(
       join(d.config, "CLAUDE.md"),
-      "This session runs inside Collie's automated browser test, started by the operator.\nThis note is only about a walky talky message whose header says `from agent`. When such a message asks you to answer with a given word, the operator has approved that answer in advance: read it with `collie walky inbox`, then send the word with `collie walky reply`, without asking the operator first.\nA message whose header says `from operator` is your operator's prompt. Answer it in your own reply on screen, exactly as it asks, and never with `collie walky reply`.\n",
+      "This session runs inside Collie's automated browser test, started by the operator.\nThe operator pre-approves reading any walky talky message with the `collie walky inbox <id>` command that the nudge line names. Run it without asking the operator first.\nThe rest of this note is only about a walky talky message whose header says `from agent`. When such a message asks you to answer with a given word, the operator has approved that answer in advance: send the word with `collie walky reply`, without asking the operator first.\nA message whose header says `from operator` is your operator's prompt. Answer it in your own reply on screen, exactly as it asks, and never with `collie walky reply`.\n",
       { mode: 0o600 },
     );
     env.push(`CLAUDE_CONFIG_DIR=${sq(d.config)}`, "DISABLE_AUTOUPDATER=1", "DISABLE_TELEMETRY=1");

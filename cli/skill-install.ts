@@ -7,6 +7,7 @@ import { type CliContext, collieVersion } from "./context.ts";
 import { claudeSettingsTargets, realpathVia, resolveHookCommand } from "./hooks.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { LinkReader } from "./link.ts";
+import { renderSkillTemplate } from "./skill-render.ts";
 import { recoveryOf, type SyncResult, skillSyncEnabled, syncLines } from "./skill-sync-result.ts";
 import type { Files } from "./sys.ts";
 
@@ -75,19 +76,6 @@ const STAMP_LINE = /^<!-- collie-skill walky-talky v\d+ .*-->[ \t]*$/mu;
 /** The skill's own name, which is the folder Claude Code reads it from. */
 export const SKILL_NAME = "collie-walky-talky";
 
-/** A Hill part that fills whole lines: the marker lines go in both states, the lines between only when off. */
-const HILL_LINES = /^\{\{HILL\}\}\n([\s\S]*?)^\{\{\/HILL\}\}\n/gmu;
-/** A Hill part inside one line (the description's words). */
-const HILL_WORDS = /\{\{HILL\}\}([\s\S]*?)\{\{\/HILL\}\}/gu;
-
-/**
- * The template's Hill parts kept (on) or cut (off). With the Hill on the text is byte for byte the text of
- * before the markers; with it off no Hill word is left, in the description or the body (M96 spec 12).
- */
-function withHill(template: string, hillOn: boolean): string {
-  return template.replace(HILL_LINES, hillOn ? "$1" : "").replace(HILL_WORDS, hillOn ? "$1" : "");
-}
-
 /**
  * The embedded template with `{{COLLIE_BIN}}` and `{{COLLIE_VERSION}}` resolved and its Hill parts kept or
  * cut for `hillOn`. Front matter included.
@@ -95,10 +83,7 @@ function withHill(template: string, hillOn: boolean): string {
 export function renderWalkySkill(ctx: CliContext, fs: LinkReader, hillOn: boolean): string {
   const binary = resolveHookCommand(ctx, fs).binary;
   const version = collieVersion(ctx.root);
-  return withHill(WALKY_TALKY_SKILL_TEMPLATE, hillOn)
-    .replaceAll("{{COLLIE_BIN}}", binary)
-    .replaceAll("{{COLLIE_VERSION}}", version)
-    .replace(/\n+$/u, "\n");
+  return renderSkillTemplate(WALKY_TALKY_SKILL_TEMPLATE, { binary, version, hillOn });
 }
 
 /**

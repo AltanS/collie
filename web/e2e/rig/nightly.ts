@@ -44,13 +44,13 @@
 // finish (it could not start, a step broke, or a case was not reached or not applicable, which proves
 // nothing).
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { createHash } from "node:crypto";
 import { accessSync, appendFileSync, closeSync, constants, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonObject, type JsonValue } from "../../src/lib/json";
 import { BIN } from "./bins";
+import { skillHash } from "./replay/skill-text";
 
 // ── the tuple and the ledger ─────────────────────────────────────────────────────────────────────
 
@@ -888,8 +888,7 @@ function recordedHere(): boolean {
     const version = versionOf("claude");
     if (!/^[0-9A-Za-z.+-]+$/u.test(version)) return false;
     const meta = join(HERE_ROOT, "web", "e2e", "rig", "cassettes", "claude", version, "meta.json");
-    const skill = createHash("sha256").update(readFileSync(join(HERE_ROOT, "cli", "skills", "walky-talky.md"), "utf8")).digest("hex").slice(0, 16);
-    return claudeReplays(existsSync(meta) ? readFileSync(meta, "utf8") : undefined, skill);
+    return claudeReplays(existsSync(meta) ? readFileSync(meta, "utf8") : undefined, skillHash());
   } catch {
     return false;
   }
