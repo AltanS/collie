@@ -135,7 +135,7 @@ The rule today: [0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown
 | [0036](./0036-the-map-of-machines-is-collies-a-mux-reports-one-machine.md) | A multiplexer reports one machine; the map of machines is Collie's. | Accepted |
 | [0038](./0038-the-group-is-a-crew-the-wire-keeps-pack.md) | The group is a crew; the wire keeps "pack" (until 0039). | Superseded by 0144 |
 | [0039](./0039-the-machine-says-crew-too.md) | The machine says crew too: protocol version 2, one release of overlap. | Superseded by 0144 |
-| [0084](./0084-machines-report-their-load.md) | Each Collie samples its own load; the lead keeps 24 hours of history and judges alert rules. | Accepted |
+| [0084](./0084-machines-report-their-load.md) | Each Collie samples its own load; the lead keeps 24 hours of history and judges alert rules. | Retired: the rule lives in `bridge/machines.ts`, `bridge/machine-history.ts` and `docs/crew.md` |
 
 ### Update, release and packaging
 
@@ -172,8 +172,8 @@ The rule today: A send goes through the Send Protocol, which reads the screen be
 | [0017](./0017-recognising-a-password-prompt-changes-what-collie-says.md) | Recognising a password prompt changes what Collie says and stores, never what it sends. | Accepted |
 | [0048](./0048-the-input-box-is-found-by-its-own-frame.md) | The Claude input box is found by its own frame, not by a bounded row walk. | Accepted |
 | [0057](./0057-the-composer-is-one-box.md) | The composer is one bordered box, with no prompt-kit dependency and the send key unchanged. | Accepted |
-| [0060](./0060-an-attachment-is-a-chip-not-a-path.md) | An upload is a chip above the field and a marker in the draft; Send swaps in the path. | Accepted |
-| [0061](./0061-the-terminal-draft-notice-floats.md) | The terminal-draft notice floats over the mirror's bottom edge and can be hidden. | Accepted |
+| [0060](./0060-an-attachment-is-a-chip-not-a-path.md) | An upload is a chip above the field and a marker in the draft; Send swaps in the path. | Retired: the rule lives in `web/src/lib/attachments.ts` |
+| [0061](./0061-the-terminal-draft-notice-floats.md) | The terminal-draft notice floats over the mirror's bottom edge and can be hidden. | Superseded by 0151 |
 | [0092](./0092-the-keys-pad-is-a-board-you-arrange.md) | The Keys pad is a board the person arranges; the operator's Presets stay separate. | Accepted |
 | [0107](./0107-sent-keeps-shell-lines-per-machine.md) | Each machine keeps its own record of the shell lines sent; agent prompts are never recorded. | Accepted |
 | [0116](./0116-a-stop-is-a-persons-tap-with-a-receipt.md) | A Stop is a person's tap with a request id and a receipt. | Accepted |
@@ -185,48 +185,48 @@ The rule today: A send goes through the Send Protocol, which reads the screen be
 
 ### Dialogs, cards and screen readers
 
-The rule today: [0151](./0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) states it in one place. A dialog becomes a card only by its own words, and a tap sends only keys the screen printed, plus the arrows of a walk, plus seven named exceptions, each with its file (three unprinted Enters on Claude, the Antigravity artifact review, the sticky edge arrow of a clamped list, the unread card's declared cancel key, and the edit keys that clear a field). A tap on a pointed row is walked, verified by a fresh read, then confirmed (0080, which stays live and wins over the "one batch" wording of 0055, 0058, 0076 and 0078), and an AskUserQuestion answer is typed into its field (0113, live). Every card renders in one dock above the belt and can be put down. A dialog Collie cannot read still gets a way out (0053); 0142 widens that card and changes 0009 in one point, and is not built yet.
+The rule today: [0151](./0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) states it in one place. A dialog becomes a card only by its own words, and a tap sends only keys the screen printed, plus the arrows of a walk, plus seven named exceptions, each with its file (three unprinted Enters on Claude, the Antigravity artifact review, the sticky edge arrow of a clamped list, the unread card's declared cancel key, and the edit keys that clear a field). A tap on a pointed row is walked, verified by a fresh read, then confirmed (0080, which stays live and replaced the "one batch" wording of 0055, 0058, 0076 and 0078, now stubs), and an AskUserQuestion answer is typed into its field (0113, live). Every card renders in one dock above the belt and can be put down. A dialog Collie cannot read still gets a way out (0053); 0142 widens that card and changes 0009 in one point, and is not built yet.
 
 | # | Decision | Status |
 | --- | --- | --- |
 | [0151](./0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) | A dialog becomes a card by its own words; a tap sends what the screen printed, walked and verified. | Accepted |
-| [0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md) | A generic menu sends only keys the screen printed plus advertised arrows, never an inferred digit. | Accepted, amended in scope by 0058, 0142 |
-| [0053](./0053-an-unread-dialog-still-has-a-way-out.md) | An unread dialog still has a way out: its adapter's declared cancel key, as a card. | Accepted, amended in scope by 0076, 0142 |
-| [0054](./0054-a-printed-scale-is-tappable.md) | A printed scale is tappable: every value is a chip and a tap sends the arrow presses. | Accepted |
-| [0055](./0055-a-pointed-list-is-walked-then-confirmed.md) | A pointed list lifts as a prompt-select block; a tap is the arrow walk plus the commit key. | Accepted, amended in scope by 0080 |
-| [0056](./0056-a-card-can-be-put-down.md) | Every lifted card carries a Terminal control that shows the rows it replaced. | Accepted, amended in scope by 0059 |
-| [0058](./0058-the-resume-picker-commits-with-enter.md) | The Claude `/resume` picker has its own grammar and commits with an unprinted Enter. | Accepted, amended in scope by 0080 |
-| [0059](./0059-a-card-docks-above-the-belt.md) | Every lifted card renders in one dock above the Keys belt. | Accepted |
-| [0072](./0072-a-two-pane-box-pans.md) | A frame row with a column junction anchors a table run, so a two-pane box pans. | Accepted, amended in scope by 0076 |
+| [0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md) | A generic menu sends only keys the screen printed plus advertised arrows, never an inferred digit. | Accepted, amended in scope by 0142 |
+| [0053](./0053-an-unread-dialog-still-has-a-way-out.md) | An unread dialog still has a way out: its adapter's declared cancel key, as a card. | Accepted, amended in scope by 0142 |
+| [0054](./0054-a-printed-scale-is-tappable.md) | A printed scale is tappable: every value is a chip and a tap sends the arrow presses. | Superseded by 0151 |
+| [0055](./0055-a-pointed-list-is-walked-then-confirmed.md) | A pointed list lifts as a prompt-select block; a tap is the arrow walk plus the commit key. | Superseded by 0151 |
+| [0056](./0056-a-card-can-be-put-down.md) | Every lifted card carries a Terminal control that shows the rows it replaced. | Superseded by 0151 |
+| [0058](./0058-the-resume-picker-commits-with-enter.md) | The Claude `/resume` picker has its own grammar and commits with an unprinted Enter. | Superseded by 0151 |
+| [0059](./0059-a-card-docks-above-the-belt.md) | Every lifted card renders in one dock above the Keys belt. | Superseded by 0151 |
+| [0072](./0072-a-two-pane-box-pans.md) | A frame row with a column junction anchors a table run, so a two-pane box pans. | Retired: the rule lives in `web/src/lib/table-run.ts` |
 | [0080](./0080-a-pointed-list-is-walked-verified-then-confirmed.md) | A tap on a pointed row is walked, verified by a fresh read, then confirmed. | Accepted |
-| [0108](./0108-a-dialog-over-live-chrome-declares-its-tail.md) | A dialog over live chrome declares how many rows lie below it (`bindTail`). | Accepted |
+| [0108](./0108-a-dialog-over-live-chrome-declares-its-tail.md) | A dialog over live chrome declares how many rows lie below it (`bindTail`). | Superseded by 0151 |
 | [0109](./0109-an-above-prompt-notice-is-not-a-modal.md) | An above-prompt notice whose keys act on a one-character box is not a modal. | Accepted |
 | [0113](./0113-an-askuserquestion-answer-is-typed-into-its-field.md) | An AskUserQuestion answer is typed into its field. | Accepted |
 
 ### Harness specifics and WalkyTalky
 
-The rule today: A beacon, the hint an agent's own hook writes, sets what Collie shows and looks up, never an action (0024). An omp modal gets a card only when omp's own footer way out is on screen, otherwise an Escape card (0076), and 0077, 0078, 0079 and 0133 each lift one more omp dialog; pi questions are read by shape and footer (0098). After every update the new binary runs `collie skill sync` so the WalkyTalky skill follows the build (0111).
+The rule today: A beacon, the hint an agent's own hook writes, sets what Collie shows and looks up, never an action (0024). [0151](./0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) states the dialogs of omp and pi: an omp modal gets a card only when omp's own footer way out is on screen, otherwise an Escape card, the omp Ask, tool approval, model picker and plan review are each lifted as a card, and pi questions are read by shape and footer (0076 to 0079, 0098 and 0133 are stubs for it). After every update the new binary runs `collie skill sync` so the WalkyTalky skill follows the build (0111).
 
 | # | Decision | Status |
 | --- | --- | --- |
 | [0024](./0024-a-beacon-is-a-hint-never-a-control-channel.md) | A beacon sets what Collie shows and looks up, and never causes an action. | Accepted |
-| [0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md) | An omp modal gets a card only when its own footer way out is on screen, else an Escape card. | Accepted, amended in scope by 0077, 0078, 0079, 0080, 0133 |
-| [0077](./0077-the-omp-ask-single-select-is-lifted-and-its-multi-select-is-not.md) | The omp Ask single-select is lifted as a pointed list; its multi-select stays raw. | Accepted, amended in scope by 0078 |
-| [0078](./0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md) | The omp `bash` and `write` approval is lifted as a card; Deny never lands on Approve. | Accepted, amended in scope by 0080 |
-| [0079](./0079-the-omp-model-picker-is-lifted-as-its-visible-window.md) | The omp model picker is lifted as its visible window. | Accepted |
-| [0098](./0098-pi-questions-are-read-by-shape-and-footer.md) | One reader serves every pi-family question screen, by shape and footer. | Accepted |
+| [0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md) | An omp modal gets a card only when its own footer way out is on screen, else an Escape card. | Superseded by 0151 |
+| [0077](./0077-the-omp-ask-single-select-is-lifted-and-its-multi-select-is-not.md) | The omp Ask single-select is lifted as a pointed list; its multi-select stays raw. | Superseded by 0151 |
+| [0078](./0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md) | The omp `bash` and `write` approval is lifted as a card; Deny never lands on Approve. | Superseded by 0151 |
+| [0079](./0079-the-omp-model-picker-is-lifted-as-its-visible-window.md) | The omp model picker is lifted as its visible window. | Superseded by 0151 |
+| [0098](./0098-pi-questions-are-read-by-shape-and-footer.md) | One reader serves every pi-family question screen, by shape and footer. | Superseded by 0151 |
 | [0111](./0111-the-skill-follows-the-update.md) | After every update the new binary runs `collie skill sync`; an uninstall is respected. | Accepted |
-| [0133](./0133-the-omp-plan-review-is-lifted-and-its-tier-is-named-not-moved.md) | The omp plan review is lifted as five option buttons; its tier is named, not moved. | Accepted |
+| [0133](./0133-the-omp-plan-review-is-lifted-and-its-tier-is-named-not-moved.md) | The omp plan review is lifted as five option buttons; its tier is named, not moved. | Superseded by 0151 |
 
 ### Chat and journal
 
-The rule today: Chat is the default view of an agent pane (0082). A live session is a bounded window answered on the existing poll with a cursor, with no WebSocket and no SSE (0073). A plan is a tool-call kind that folds into one card (0119), a background job is a journal fact shown on the belt (0128), and a pinned message is a copy kept by the bridge that owns the pane (0130).
+The rule today: Chat is the default view of an agent pane (0082). A live session is a bounded window answered on the existing poll with a cursor, with no WebSocket and no SSE (0073). A plan is a tool-call kind that folds into one card (0119, retired into `bridge/journal/tool-call.ts` and `bridge/journal/pi.ts`), a background job is a journal fact shown on the belt (0128), and a pinned message is a copy kept by the bridge that owns the pane (0130).
 
 | # | Decision | Status |
 | --- | --- | --- |
 | [0073](./0073-a-live-session-is-a-bounded-window-on-the-existing-poll.md) | A live session is a bounded window on the existing poll, with no WebSocket and no SSE. | Accepted |
 | [0082](./0082-chat-is-the-default-view-of-an-agent-pane.md) | Chat is the default view of an agent pane. | Accepted |
-| [0119](./0119-a-plan-is-a-tool-kind-and-its-updates-fold.md) | A plan is a tool-call kind, and its updates fold into one card. | Accepted |
+| [0119](./0119-a-plan-is-a-tool-kind-and-its-updates-fold.md) | A plan is a tool-call kind, and its updates fold into one card. | Retired: the rule lives in `bridge/journal/tool-call.ts` and `bridge/journal/pi.ts` |
 | [0128](./0128-background-jobs-are-journal-facts.md) | A background job is a journal fact, shown on the belt. | Accepted |
 | [0130](./0130-pinned-messages-are-a-copy-kept-by-the-owning-bridge.md) | A pinned message is a copy kept by the bridge that owns the pane. | Accepted |
 
@@ -273,16 +273,16 @@ The rule today: [0145](./0145-a-start-names-what-to-run-and-a-retry-lands-on-its
 | --- | --- | --- |
 | [0145](./0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md) | A start names what to run, never a line, and a retry lands on its receipt: the launch rule of today. | Accepted |
 | [0150](./0150-files-and-changes-read-under-a-root-the-bridge-picks.md) | Files and Changes read under a root the bridge picks; the client names only a path below it. | Accepted |
-| [0065](./0065-the-changes-view-reads-git-read-only.md) | The Changes view reads git read-only against HEAD, hardened and offline. | Accepted, amended in scope by 0112 |
-| [0083](./0083-the-files-view-reads-the-changes-root.md) | Files reads one folder or file relative to the Changes root, contained on real paths. | Accepted, amended in scope by 0086 |
+| [0065](./0065-the-changes-view-reads-git-read-only.md) | The Changes view reads git read-only against HEAD, hardened and offline. | Superseded by 0150 |
+| [0083](./0083-the-files-view-reads-the-changes-root.md) | Files reads one folder or file relative to the Changes root, contained on real paths. | Superseded by 0150 |
 | [0088](./0088-paths-the-agent-prints-are-links.md) | A printed path is tappable only when it resolves inside the pane's Changes root. | Accepted |
 | [0089](./0089-a-second-agent-on-a-branch.md) | A pane menu starts a second agent on a new branch; a request id and a receipt stop duplicates. | Superseded by 0145 |
-| [0090](./0090-files-shows-images.md) | Files shows raster pictures typed by their own bytes; an SVG is never served. | Accepted |
+| [0090](./0090-files-shows-images.md) | Files shows raster pictures typed by their own bytes; an SVG is never served. | Superseded by 0150 |
 | [0091](./0091-launch-by-id-with-a-request-id.md) | The bridge owns the list of startable agents and starts one by id, with a request id and a receipt. | Superseded by 0145 |
 | [0093](./0093-a-branch-folder-is-named-by-its-parent.md) | A branch's folder is named by its parent, and checked on every use. | Superseded by 0145 |
 | [0094](./0094-launchers-added-from-a-phone.md) | Launchers added from a phone live on the machine, under the operator's switches. | Superseded by 0145 |
 | [0095](./0095-one-off-commands-and-their-history.md) | A one-off command can start from a paired phone and is kept in a history of twelve lines. | Superseded by 0145 |
-| [0112](./0112-a-pane-outside-its-workspace-folder-reads-its-own.md) | A pane outside its workspace folder reads its own folder. | Accepted |
+| [0112](./0112-a-pane-outside-its-workspace-folder-reads-its-own.md) | A pane outside its workspace folder reads its own folder. | Superseded by 0150 |
 | [0126](./0126-collie-makes-a-worktree-with-git-and-opens-it-as-a-space.md) | Collie runs `git worktree add` in the bridge and opens the checkout as a space. | Accepted |
 | [0127](./0127-the-leads-launcher-rows-are-the-crews-rows.md) | The lead's merged launcher rows are the crew's rows. | Superseded by 0145 |
 | [0131](./0131-the-plus-offers-the-launcher-rows.md) | The "+" opens a sheet of the machine's launcher rows. | Accepted |
@@ -333,12 +333,12 @@ The rule today: No record decides tricks or the Hill on its own yet. Trick code 
 
 ### Process, lint and tests
 
-The rule today: oxlint plus the vendored anti-slop rules is the lint gate, with one linter and one config (0019). A staged change to the crew wire must carry a recorded protocol decision (0025). The browser leg replays recorded model streams through a local stub (0125). `scripts/check-adr.ts` holds the rules of this directory.
+The rule today: oxlint plus the vendored anti-slop rules is the lint gate, with one linter and one config (0019). A staged change to the crew wire must carry a recorded protocol decision (0025, retired into `scripts/check-crew-wire.sh`). The browser leg replays recorded model streams through a local stub (0125). `scripts/check-adr.ts` holds the rules of this directory.
 
 | # | Decision | Status |
 | --- | --- | --- |
 | [0019](./0019-oxlint-and-vendored-anti-slop-are-the-lint-gate.md) | oxlint plus the vendored anti-slop rules is the lint gate; one linter, one config. | Accepted |
-| [0025](./0025-the-wire-guard-forces-a-decision-never-a-bump.md) | A staged change to the crew wire must carry a recorded protocol decision. | Accepted |
+| [0025](./0025-the-wire-guard-forces-a-decision-never-a-bump.md) | A staged change to the crew wire must carry a recorded protocol decision. | Retired: the rule lives in `scripts/check-crew-wire.sh` |
 | [0125](./0125-the-browser-leg-replays-recorded-model-streams.md) | The browser leg replays recorded model streams through a local stub. | Accepted |
 
 ### Other: the mirror, the mux port, configuration and translation

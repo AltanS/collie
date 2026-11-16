@@ -3,8 +3,9 @@
 Status: **Accepted** (2026-08-05)
 Date: 2026-08-05
 
-Amended in scope by: [ADR 0058](./0058-the-resume-picker-commits-with-enter.md): a narrow exception,
-Enter is sent unprinted on the Claude /resume picker only. The digit ban stands everywhere else.
+Related: [ADR 0058](./0058-the-resume-picker-commits-with-enter.md), now a stub whose rule [ADR 0151](./0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) states: a
+narrow exception, Enter is sent unprinted on the Claude /resume picker, and rule 3 of 0151 lists every
+such exception. The digit ban stands everywhere else.
 
 Amended in scope by: [ADR 0142](./0142-when-collie-is-not-sure-the-person-decides.md): the card of a screen Collie cannot read may
 offer plain keys the screen did not print, labelled as keys (decided 2026-11-16, not built yet).

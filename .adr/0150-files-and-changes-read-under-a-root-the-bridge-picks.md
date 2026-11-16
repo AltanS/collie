@@ -2,6 +2,7 @@
 
 - **Status:** Accepted (2026-11-16)
 - **Date:** 2026-11-16
+- **Supersedes:** ADR 0065, ADR 0083, ADR 0090, ADR 0112
 - **Trail:** discussion 258 with issues 256 and 257 (a diff view; the roads named next were an editor,
   staging and committing from the phone, and a full diff library), the counsel of 2026-09-23 on ADR
   0065 (declined: refusing `.git` pointer files, a looser `safe.directory`), issue #509 (root every

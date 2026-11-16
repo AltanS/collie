@@ -2,6 +2,8 @@
 
 - **Status:** Accepted (2026-11-16)
 - **Date:** 2026-11-16
+- **Supersedes:** ADR 0054, ADR 0055, ADR 0056, ADR 0058, ADR 0059, ADR 0061, ADR 0076, ADR 0077, ADR 0078, ADR 0079, ADR 0098, ADR 0108, ADR 0133
+- **Retires:** ADR 0072 (rule in `web/src/lib/table-run.ts`)
 - **Trail:** the `/model` digit probe of ADR 0009, the owner's `/effort` slider of 2026-09-21, the
   owner's asks to put a card down and to dock it in one place, the counsel on ADR 0078 (a six-row cut
   of a write), issue #354 (bind the ticking rows), PR 397 and issues 412, 416, 455 (a grammar per pi
@@ -13,8 +15,8 @@
 
 An agent asks the person things on its own screen: a picker, a permission, a question, a scale.
 Collie lifts such a dialog into a card, and a tap types keys into a live terminal. About twenty
-records shaped this one dialog at a time. A screen Collie cannot read, and the hard stops, belong to
-ADR 0142. ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) stay live.
+records shaped this one dialog at a time. An unread screen and the hard stops belong to ADR 0142;
+ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) stay live.
 
 ## Decision
 
@@ -97,8 +99,7 @@ ADR 0142. ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion 
 
 ## Recorded, not found in the code
 
-- ADR 0058 asks a record for each new unprinted key; 3b, 3c and 3d have none, and the header of
-  `claude/resume.ts` still calls `/resume` "the one dialog" with an unprinted key.
+- ADR 0058 asked a record for each new unprinted key; 3b, 3c and 3d have none, so rule 3 is that list.
 - ADR 0053: a ritual re-runs the capture lab per Claude Code version. It is a ritual, not code.
 
 ## Consequences

@@ -2,9 +2,9 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-07
-- **Amends:** [ADR 0083](./0083-the-files-view-reads-the-changes-root.md), whose context named reads
-  as open to every device past the front door. The Files view's `device-read` level stands; the
-  read-side fact does not.
+- **Related:** [ADR 0083](./0083-the-files-view-reads-the-changes-root.md), now a stub whose rule [ADR 0150](./0150-files-and-changes-read-under-a-root-the-bridge-picks.md)
+  states: its context named reads as open to every device past the front door. The Files view's
+  `device-read` level stands; the read-side fact does not.
 - **Related:** [ADR 0028](./0028-the-standby-door-is-a-second-listener.md), now a stub whose rule
   [ADR 0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown.md) states, in its
   reasoning only: the deputy still keeps the lead's registry apart from its own, for a new reason.
