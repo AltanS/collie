@@ -33,6 +33,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A sign-in code is never kept as a draft.** A code typed while the phone's picture of the screen was a moment old could be kept as a draft, because that picture lost the sign-in field. Now the field stays, so the code is never kept.
 - **Russian counts read right in the 1.29 strings.** Counts of 2 to 4 and of 5 or more in the Hill, Tricks, Accounts and held-message lines now use the Russian few and many forms.
 - **The theme step of Claude Code's first run is a choice card.** A new Claude Code login opens with "Choose the text style that looks best with your terminal". The phone showed a card with only Esc, which does nothing there. Now each of the seven styles is a button: a tap moves the terminal's pointer to it and presses Enter.
 - **A phone message to a Claude Code background job arrives.** When a linked Claude Code session runs as a background job, its agent runs in a process of its own while the viewer stays in the pane, and the viewer kept the plugin's binding, so a message sent from the phone ended "may have arrived", never arrived, and stayed in the composer. The bridge now sees the job's hook events on the pane and sends that pane's messages by typing into it, as for a session with no plugin, until the job ends or the plugin binds again. The log says `[inside] shadowed part=… pane=…`.

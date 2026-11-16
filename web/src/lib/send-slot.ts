@@ -48,9 +48,11 @@ export type SendSlot = "gone" | "readOnly" | "unreachable" | "offline" | "answer
 /** The Surface of a pane the bridge has not read yet: nothing is known, and the manual Send is open. */
 export const UNREAD_SURFACE: Surface = { revision: 0, turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-match" };
 
-/** A Surface whose box cannot be reached, for a fact the phone knows before any read (a host refusal, sending off). */
+/** A Surface whose box cannot be reached, for a fact the phone knows before any read (a host refusal, sending off).
+ *  A sign-in field the read named stays named: what is typed for it keeps no draft (fail closed). */
 export function unreachable(surface: Surface): Surface {
-  return { revision: surface.revision, turn: "unknown", modal: "unknown", composer: "unreachable" };
+  const out: Surface = { revision: surface.revision, turn: "unknown", modal: "unknown", composer: "unreachable" };
+  return surface.field === "secret" ? { ...out, field: "secret" } : out;
 }
 
 /** The Send slot of a Surface and the three facts. Pure: one input, one slot. */
