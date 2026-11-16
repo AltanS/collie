@@ -62,6 +62,12 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
   overlayClassName?: string;
   /** Style of the overlay wrapper. The overlay sits beside the scrollport, not in it, so custom properties set on the scrollport (the chat font size tokens) do not reach it unless they are passed here. */
   overlayStyle?: React.CSSProperties;
+  /**
+   * The height in px of what floats over the bottom of the scrollport (the composer's floating cards,
+   * ADR 0061). The list ends that much lower, so its tail can rise above them, and "jump to latest"
+   * sits over them.
+   */
+  clearBottom?: number;
 }
 
 // Scrollable conversation container that auto-follows new messages and shows a "jump to latest"
@@ -69,7 +75,7 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
 // after an action, and reports at-bottom changes so the parent can freeze content while you read.
 const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListProps>(
   function ChatMessageList(
-    { className, children, dep, onAtBottomChange, hasNew, clearBand, overlay, overlayClassName, overlayStyle, style, ...props },
+    { className, children, dep, onAtBottomChange, hasNew, clearBand, overlay, overlayClassName, overlayStyle, clearBottom = 0, style, ...props },
     ref,
   ) {
     useLocale();
@@ -109,6 +115,7 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
           {...props}
         >
           {children}
+          <div aria-hidden data-slot="clear-bottom" style={{ height: clearBottom }} />
         </div>
 
         {overlay !== undefined && overlay !== null && (
@@ -126,6 +133,7 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
             size="icon"
             variant="outline"
             className="absolute bottom-3 left-1/2 z-10 size-9 -translate-x-1/2 rounded-full shadow-md"
+            style={clearBottom > 0 ? { bottom: clearBottom + 12 } : undefined}
             aria-label={t("common.scrollToLatestAria")}
           >
             <Icon name="scroll-to-latest" className="size-4" />
