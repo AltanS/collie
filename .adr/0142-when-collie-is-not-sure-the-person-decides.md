@@ -15,11 +15,11 @@
 
 The Send Protocol checks the screen before and after it types. The check protects the person from
 four things: text in the wrong place (a dialog, a permission prompt), a double send, a lost send that
-looks sent, and text mixed into a draft someone typed at the desk. The check reads a copy of the screen. The person sees the screen itself. When the copy was unclear,
-Collie refused, and many refusals had no next step on the card. That put Collie's own ignorance in
-the person's way. A person looking at "Press Enter to continue" could not press Enter from the
-phone. A code that worked read as a failure. About 30 records shaped this road one case at a time,
-and none states the rule of today. This record is that rule.
+looks sent, and text mixed into a draft someone typed at the desk. The check reads a copy of the
+screen. The person sees the screen itself. When the copy was unclear, Collie refused, and many
+refusals had no next step on the card. That put Collie's own ignorance in the person's way. A person
+looking at "Press Enter to continue" could not press Enter from the phone. A code that worked read as
+a failure. About 30 records shaped this road one case at a time, and none states the rule of today.
 
 ## Decision
 
@@ -33,10 +33,12 @@ and none states the rule of today. This record is that rule.
 4. "Cannot tell if this was sent" shows the screen as it is now and two actions. "It arrived" clears
    the card. "Send again" is a new request, made by the person's tap.
 5. The receipt stays honest, but it is no gate. A send by the person's override is recorded as sent
-   on the person's word, not as verified.
+   on the person's word, not as verified. An override types on the rows the person saw: a screen that
+   moved since the tap is refused, and an override is never held or queued.
 6. Four hard stops stay, because the risk is real. Each card names the reason and the next step.
    a. No message into an open permission prompt or question: text can approve a command.
-   b. No secret into a normal field, the hold queue or any store.
+   b. No secret into a normal field, the hold queue or any store. Where Collie knows the screen asks
+      for a secret, the composer is the secret field, and "Send again" means: enter it again.
    c. Collie never sends again by itself: one request id, one road, never twice automatically.
    d. No WalkyTalky message from another agent over the person's draft.
 7. A stop card without an exit is a bug. The trouble tally counts such cards.
@@ -96,21 +98,19 @@ the `offersFor` table for sends).
 - A person can now send into a screen Collie did not verify. The receipt says so, in its own word, so
   a report and the tally never mistake an override for proof.
 - A person can press Enter on a screen Collie did not read, on a key labelled as a key. A wrong Enter
-  on an unread permission prompt is possible; the live screen above the keys is the guard. The four
-  hard stops cost a tap and a sentence, never a dead end.
+  on an unread permission prompt is possible; the live screen above the keys is the guard. This is
+  no new power: the Keys pad already sends any key to any screen. The four hard stops cost a tap and
+  a sentence, never a dead end.
 - Revisit if an override send causes harm a refusal would have stopped, or if the tally shows the
   plain keys are pressed where a lifted card should exist (then lift that dialog).
 
 ## What we tried before
 
-- 0004, 0048, 0005: the input box is found by its own frame, the statusline bound only strips; a
-  composed key queue never outlives its dock.
+- 0004, 0048, 0005: the box is found by its own frame; a composed key queue never outlives its dock.
 - 0009: a generic menu sends only the keys it names, never digits (changed here by rule 3).
-- 0010: a long send is proven by its paste placeholder, never chunked.
-- 0017: a password prompt changes the words, never what is sent.
+- 0010, 0017: a long send is proven by its paste placeholder; a password prompt changes only words.
 - 0053: an unread dialog gets its adapter's declared cancel key (changed here by rule 3).
-- 0054, 0055, 0058, 0080: printed scales and pointed lists, walked, verified, then confirmed.
-- 0056, 0059, 0061: a card can be put down, docks above the belt, and the draft notice floats.
+- 0054 to 0059, 0061, 0080: scales and pointed lists are walked, verified, confirmed; cards dock.
 - 0076 to 0079, 0098, 0133: the omp and pi dialogs Collie lifts, and the Escape card for the rest.
 - 0108, 0109, 0113: a dialog over live chrome declares its tail; a notice above the box is not a
   modal; an AskUserQuestion answer is typed into its field, cleared only when it holds what was seen.
