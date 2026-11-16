@@ -589,7 +589,14 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
       {/* The fill of a hold: a clock the thumb reads, start to end over the time left to the Stop. */}
       {holding && <span aria-hidden data-slot="belt-stop-fill" style={hold.style} className="stop-hold-fill pointer-events-none absolute inset-0 rounded-[inherit] bg-destructive/25" />}
       {busy ? <Icon name="busy" className={cn(BELT_ICON, "animate-spin")} /> : <Icon name="stop" className={BELT_ICON} />}
-      {translate(word)}
+      {/* The label is as wide as the wider of "Stop" and "Hold": a zero-height copy of the other word (a pseudo
+          element, so it is no text) holds the width, and the belt does not move when the word changes. */}
+      <span
+        data-sizer={translate(word === "belt.stopHold" ? "belt.stop" : "belt.stopHold")}
+        className="inline-block text-center after:invisible after:block after:h-0 after:overflow-hidden after:content-[attr(data-sizer)]"
+      >
+        {translate(word)}
+      </span>
     </Button>
   );
 }
