@@ -861,7 +861,7 @@ weight = "400 700"           # optional
 ```
 
 Custom fonts append to the built-in list rather than replacing it
-([ADR 0033](../.adr/0033-the-app-face-is-a-device-preference.md)), unlike the behavior in
+([ADR 0148](../.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md)), unlike the behavior in
 `commands.toml` and the other configuration files. Because fonts do not trigger actions, there is
 nothing to shadow.
 
@@ -1220,7 +1220,7 @@ Each source reads a different thing.
 
 `collie doctor` shows every source in its `account-windows` row: on or off, the file it reads and the host it asks. [Terminals](multiplexers.md#collie-writes-hooks-into-claudes-own-settings) has the statusLine road.
 
-The context figure needs no setting. For pi, OMP, Codex and OpenCode, Collie reads the tokens of the last turn from the session log. It reads the model's window from Codex's log, or from the harness's own model list on disk (pi's `models-store.json`, OMP's `models.db`, OpenCode's `~/.cache/opencode/models.json`). A model that list does not name gets no context figure; the model name still shows. The tag also shows the session's cost in dollars after the figures when the harness reports one: Claude Code through the wrapped status line, pi, OMP and OpenCode from their logs. Codex has none, so its tag shows no cost.
+The context figure needs no setting. For pi, OMP, Codex and OpenCode, Collie reads the tokens of the last turn from the session log. It reads the model's window from Codex's log, or from the harness's own model list on disk (pi's `models-store.json`, OMP's `models.db`, OpenCode's `~/.cache/opencode/models.json`). A model that list does not name shows the token count (`ctx 222k`) and no percentage, and the Dots view draws nothing for it; the model name still shows. The tag also shows the session's cost in dollars after the figures when the harness reports one: Claude Code through the wrapped status line, pi, OMP and OpenCode from their logs. Codex has none, so its tag shows no cost.
 
 ## Dark mode / light mode
 

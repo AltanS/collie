@@ -1,6 +1,7 @@
 # 0031 — Freshness, focus and shape are contract promises, not adapter folklore
 
 Status: **Accepted** (2026-08-25)
+Date: 2026-08-25
 
 Related: [ADR 0022](./0022-the-mux-seam-is-a-port-collie-owns.md) (the port these three promises are
 added to) · [ADR 0008](./0008-collie-does-not-run-a-terminal-emulator.md) (why an adapter may

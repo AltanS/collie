@@ -10,7 +10,8 @@
 // the adapter). The guard decides one thing per ask: push, or show quietly. It never hides an ask.
 //
 // ── ONE KEY: (host, session, toolCallId) ─────────────────────────────────────
-// A program mints a new ask id after every restart, but the tool call id stays (WIRE.md section 8.4).
+// A program that does not derive its ask id from the tool call mints a new one after every restart,
+// but the tool call id stays (WIRE.md section 8.4; ADR 0146 rule 6).
 // So the guard remembers the tool call, not the ask: a re-asked question is the same key, and it is
 // shown, never pushed again. Since M55 one Collie may run several programs, each its own session, and
 // two of them may use the same tool call id, so the session is part of the key. Each program is

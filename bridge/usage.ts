@@ -4,17 +4,17 @@
 // ── WHERE THE NUMBERS COME FROM ───────────────────────────────────────────────────────────────────
 //
 // Claude Code hands its statusLine command a JSON document on every assistant message: the context
-// window's `used_percentage`, and for a Pro or Max account the 5-hour and 7-day `rate_limits`. Collie
-// holds no model key and reads no credential, so it does not ask the vendor for these. It asks the
-// agent: `collie hooks install claude` wraps the operator's OWN statusLine command (by default since
+// window's `used_percentage`, and for a Pro or Max account its `rate_limits`. Collie holds no model
+// key, so for these numbers it asks the agent and not the vendor: `collie hooks install claude` wraps the operator's OWN statusLine command (by default since
 // 2026-11-13), and the wrapper (`collie beacon statusline`, cli/statusline.ts) writes the numbers to
 // one small file here before it runs the operator's command and passes its output through untouched.
 // Since 2026-10-24 the context number also comes from the session transcript through the beacon hooks
 // (`cli/context-reading.ts`), and since 2026-11-13 always against the window size the wrapped
 // statusLine stated. With no wrap (none on Windows, none where no statusLine is configured, or the
 // operator said `--no-statusline`) nothing states the window, and the session shows its token count.
-// Since 2026-10-24 the 5-hour and 7-day windows come first from the vendor's usage endpoint with the
-// operator's own login (bridge/account-windows.ts, .adr/0118); a wrapped statusLine is the second road.
+// The account windows are a separate road. Since 2026-10-24 they come first from the vendor's usage
+// endpoint, asked with the login the harness keeps on this machine, read for one request and never
+// stored (bridge/account-windows.ts, .adr/0118); a wrapped statusLine is the second road.
 //
 // OTHER HARNESSES WRITE NO FILE, so since 2026-10-25 their context comes from the journal: the cache
 // probe that already reads the session log for the prompt-cache chip also names the tokens the last

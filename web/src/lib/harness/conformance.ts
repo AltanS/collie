@@ -17,11 +17,15 @@
 //      keys (PageUp/Home/End/Delete) are rejected — Herdr answers those with `invalid_key`. A key
 //      plan a model declares as data (`advanceKeys`, a review's `submitKeys`/`cancelKeys`/`backKeys`)
 //      must also be non-empty, since a button bound to an empty plan sends nothing.
-//   4. THE GENERIC MODAL CONTRACT — for any fixture that lifts a `menu` block: every action key came
-//      out of the shared whitelist (menu-hints.ts) and none is a digit (.adr/0009), the model carries
-//      a non-empty signature that MOVES when the region's text does (it is the whole race guard), and
+//   4. THE GENERIC MODAL CONTRACT — for any fixture that lifts a `menu` block: every action key is on
+//      the shared allowed list (`menuKeyFor`, menu-hints.ts) and none is a digit (.adr/0009), a walk is
+//      arrows of one direction and then Enter (item 6's pointer-walk leg), the model carries a
+//      non-empty signature that MOVES when the region's text does (it is the whole race guard), and
 //      the adapter's `composerReady` — if it has one — says false while the modal has the keyboard.
 //      Neutral output must lift no menu at all. An adapter with no menu fixtures registers a todo.
+//      This leg does NOT prove that the screen printed each key: only a notice card's keys are
+//      compared with the key block the screen printed. The named exceptions of ADR 0151 rule 3 are
+//      reviewed per dialog, not by this suite.
 //   5. THE DIALOG-MODEL CONTRACT — for EVERY block kind the adapter up-levels (the generalisation of
 //      4's signature leg): the model's signature and its bound region text are non-empty, the
 //      signature MOVES when a row the dialog was derived from changes, and the kind's comparators

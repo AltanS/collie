@@ -11,9 +11,8 @@ import { targetExistsDetail, worktreeMatchOf } from "./worktree-add.ts";
 
 // ── Where a new branch's folder goes (ADR 0093) ──────────────────────────────────────────────────
 //
-// Herdr 0.9.3 takes `path` on `worktree.create` (`herdr worktree create --path`), so the New sheet can
-// put a branch's folder somewhere other than Herdr's own directory and it still is a Herdr worktree.
-// The phone names a PARENT folder (from Recent and Favourites, or typed), never the folder itself, and
+// The bridge makes the worktree with git (`bridge/worktree-add.ts`, ADR 0126) and opens the folder as a
+// space, so the New sheet can put a branch's folder anywhere this rule allows. The phone names a PARENT folder (from Recent and Favourites, or typed), never the folder itself, and
 // this module names the child after the branch. It is the one place a client-supplied value becomes a
 // folder Collie asks to be CREATED, so the rule is narrow and runs on every use, never cached:
 //
@@ -33,14 +32,15 @@ import { targetExistsDetail, worktreeMatchOf } from "./worktree-add.ts";
 //      opens it (M81). Any other entry git lists there is refused with a sentence naming its state,
 //      the same answer `addWorktree` gives for Herdr's default folder (`worktreeMatchOf`).
 //
-// Git and Herdr are only ever reached with argv (`bridge/mux/herdr/client.ts` sends JSON over the
-// socket), so the path is a value, never part of a shell line. The rule runs again inside the create,
-// immediately before the multiplexer is asked: what the phone was shown is a preview, not a promise.
+// Git is only ever reached with argv (`runGit`, bridge/changes.ts), so the path is a value, never part
+// of a shell line. The rule runs again inside the create, immediately before `git worktree add`: what
+// the phone was shown is a preview, not a promise.
 //
 // ── HERDR'S DEFAULT ──────────────────────────────────────────────────────────────────────────────
-// "Herdr's default" sends NO path, so Herdr decides. The sheet still shows where that will be, from
-// Herdr's own rule, probed on 0.9.3 (spec M48/01): `<dir>/<repo folder name>/<slug>`, where `<dir>` is
-// `[worktrees] directory` in Herdr's `config.toml` (a leading `~` expanded) or `~/.herdr/worktrees`.
+// "Herdr's default" sends NO path, and the bridge chooses the folder itself (`herdrDefaultTarget`). It
+// follows Herdr's own rule, probed on 0.9.3 (spec M48/01), so a checkout made here lands where one made
+// by Herdr did: `<dir>/<repo folder name>/<slug>`, where `<dir>` is `[worktrees] directory` in Herdr's
+// `config.toml` (a leading `~` expanded) or `~/.herdr/worktrees`.
 
 /** The longest parent folder string accepted. Linux's `PATH_MAX`. */
 export const MAX_PARENT_CHARS = 4096;

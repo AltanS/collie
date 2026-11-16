@@ -1,11 +1,12 @@
 # 0053 — An unread dialog still has a way out
 
 - **Status:** Accepted
-- **Amended in scope by:** [ADR 0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md):
-  omp now declares `Escape` and a `modalOnScreen` probe, which closes the gap recorded in the table
-  below. The rules above stand.
+- **Related:** [ADR 0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md), now a
+  stub whose rule [ADR 0151](./0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) states: omp now declares `Escape` and a
+  `modalOnScreen` probe, which closes the gap recorded in the table below. The rules above stand.
+- **Amended in scope by:** [ADR 0142](./0142-when-collie-is-not-sure-the-person-decides.md): the card gains
+  the live screen, plain keys and "Type it anyway" (decided 2026-11-16, not built yet).
 - **Date:** 2026-09-21
-- **Shipped in:** pending (M34, target 1.12.0)
 - **Trail:** `web/src/lib/harness/claude/markers.ts` (`classifyFooter`) ·
   `web/src/lib/harness/claude/menu.ts` (`detectMenuRegion`) ·
   `web/src/lib/harness/claude/effort.ts` · `web/src/lib/harness/index.ts` (the post-pass) ·

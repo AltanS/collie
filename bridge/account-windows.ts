@@ -33,7 +33,8 @@
 // ── WHEN IT ASKS ──────────────────────────────────────────────────────────────────────────────────
 //
 // Only while this bridge has at least one pane of the harness: once when there is no reading yet, once
-// after a turn ends (at most once a minute), and every five minutes. A refusal or a failure backs off
+// after a turn ends (but an ask starts at most once in {@link POKE_EVERY_MS}, five minutes, per harness),
+// and every five minutes. A refusal or a failure backs off
 // ({@link BACKOFF}); a reading older than {@link STALE_AFTER_MS} is not drawn. The endpoint is
 // undocumented and changed its shape once, so the parser takes both shapes, and a body it cannot read
 // costs the reading, never the pane.

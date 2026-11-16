@@ -20,8 +20,9 @@ import type { UpdateRun } from "../update-run.ts";
 // was a second listener or no feature.
 //
 // ── WHAT IT IS, AND WHAT IT IS NOT ───────────────────────────────────────────
-// Three routes, no more. No PWA, no `/api/*`, no SPA fallback, no `/auth` placeholder — **a route
-// that does not exist cannot be mis-gated** (ADR 0013's own words). Collie BINDS it and publishes
+// Four routes, no more: `/standby/health`, `/standby`, `/standby/takeover`, and `/standby/update`
+// (answered ahead of every role, `standbyUpdateAnswer`). No PWA, no `/api/*`, no SPA fallback, no
+// `/auth` placeholder — **a route that does not exist cannot be mis-gated** (ADR 0013's own words). Collie BINDS it and publishes
 // nothing: no `tailscale serve`, never `funnel`, no ownership record (ADR 0001 is untouched — we
 // still manage only what we run and can test). Plain HTTP behind the operator's own failover proxy,
 // which is RFC §14.2's deployment and docs/deployment.md Variant C/E's posture already.

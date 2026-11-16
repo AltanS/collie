@@ -334,7 +334,8 @@ export function followGuards(f: FollowFacts): FollowDecision {
   // version below the one the lead now states, is finishing an attempt the limit already counted.
   // The loop protection holds: each such step needs a strictly higher version than the last one
   // that succeeded, a rolled-back step never qualifies, and there is no downgrade path, so a lead
-  // can walk a member up the published tags at most once each and never round in a circle.
+  // can walk a member up the published tags at most once each and never round in a circle. Every other
+  // recent attempt (another run, a run from a terminal) still waits the full hour.
   // A STEP DOWN skips it once per run: it needs a person's rollback or switch on the lead, and each
   // of those mints a fresh run id, so a lead cannot cycle a member through it.
   const since = attemptAgeMs(f.run, f.now);

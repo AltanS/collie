@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-17
-- **Shipped in:** pending (1.23.0)
 - **Relates to:** [ADR 0095](./0095-one-off-commands-and-their-history.md) (the one-off history, its
   secret test and its file pattern), [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md)
   (the crew link forwards, it does not copy), [ADR 0086](./0086-reads-need-the-pairing-token.md) (reads

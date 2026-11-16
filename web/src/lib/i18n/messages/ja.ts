@@ -1971,7 +1971,7 @@ export const ja: Dictionary = {
   "apiError.session.unknown": "この collie にセッション {session} は存在しません。",
   "apiError.host.unknown": "このクルーに collie {host} は存在しません。",
   "apiError.crew.not_lead": "この collie はクルーを統括していないため、表示可能なクルーがありません。",
-  // --- worktrees (ADR 0032) ---
+  // --- worktrees (ADR 0145) ---
   "apiError.worktree.create_failed": "worktree の作成に失敗しました: {reason}",
   "apiError.worktree.created_not_opened": "ブランチは作成されましたが、起動に失敗しました: {reason}",
   "apiError.worktree.branch_required": "ブランチ名を指定してください。",

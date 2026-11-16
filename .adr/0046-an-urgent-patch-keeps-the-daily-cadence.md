@@ -1,6 +1,7 @@
 # 0046 — An urgent patch keeps the daily cadence
 
 Status: **Accepted** (2026-09-15)
+Date: 2026-09-15
 
 Related: [ADR 0020](./0020-a-major-upgrade-is-consented-by-flag.md) (the crossing the update check never folds in) ·
 [ADR 0035](./0035-a-packaged-install-is-not-ours-to-update.md) (the host that cannot take the tap) ·

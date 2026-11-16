@@ -287,6 +287,19 @@ const SENDS_CHECK_PREFIX = "sends-";
  * Doctor's own error severity is the red: it has already decided which of its findings is
  * actionable. Its warnings ride along as amber, and its `skipped` findings say nothing at all —
  * a check that could not run is not evidence that an update would fail.
+ *
+ * Crew state reaches the lead's own move at FOUR gates, and the ADR 0050 rule changed only the first
+ * two. The two terminal gates still refuse, and this table is the place that says so:
+ *
+ *   gate                                          reads it                before   after
+ *   `doctorCheck`, via doctor's `reach`, `clock`  the card's button       red      amber
+ *   `mergedUpdateVerdict`, an `unknown` row       the tap, POST /api/update  blocks  tolerated when absent
+ *   `skewCheck`, on the CLI member walk           `collie update --check` red      unchanged
+ *   `preflightGate` (`cli/crew-update.ts`)        `collie crew update`    refuses  unchanged
+ *
+ * Known gap: the LOCAL list was not audited under the same rule. `web-dist`'s remedy is `collie build`,
+ * which an update performs, so it is arguably not a precondition either. The end state is an explicit
+ * allowlist of the doctor ids that really are update preconditions, failing safe to amber on a rename.
  */
 export async function doctorCheck(deps: UpdateCheckDeps): Promise<PreflightCheck> {
   let findings: readonly Finding[];
@@ -902,7 +915,17 @@ async function memberChecks(
  */
 export const PROTOCOL_FLOOR_VERSION = "1.8.0";
 
-/** The lead's own version from which the floor is enforced: the release that dropped the overlap. */
+/**
+ * The lead's own version from which the floor is enforced: the release that dropped the overlap.
+ *
+ * A member that does not answer has no floor check, because the check needs its version. A guard for
+ * that was written and deleted: it compared the lead's own version against this constant, and every
+ * binary that contains the guard is newer than it, so it could not fire. It would have come alive at
+ * the next protocol bump and then fired for the whole overlap window, not at the crossing. The edge is
+ * accepted, and the next protocol bump must decide the silent-member case with two facts in hand: the
+ * target version (`upstreamCheck`) and the member's last reported version, which the lead holds in
+ * `CrewRegistry` as a lower bound while the member stays enrolled.
+ */
 const FLOOR_ENFORCED_FROM = "1.9.0";
 
 /** A plain `X.Y.Z` release version, the only shape this check is willing to call old. */

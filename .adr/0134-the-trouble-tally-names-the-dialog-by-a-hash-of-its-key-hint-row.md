@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-08
-- **Shipped in:** 1.27.4
 - **Amends:** [ADR 0129](./0129-an-anonymous-install-count-on-by-default.md), its amendment of
   2026-11-06 (the trouble tally). 0129's Consequences ask a field added after 1.27.0 for its own
   ADR and its own notice: this is that ADR, and the notice is below.

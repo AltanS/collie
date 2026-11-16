@@ -34,6 +34,9 @@ import { parseUpdateRun } from "./update-run.ts";
 // the phone shows that list before "Go back now". The list is empty, and the rule says it stays so.
 //
 // After a Stable release, refresh the fixtures from that release's writers and bump LAST_STABLE.
+//
+// The fixtures cover four files, not every file in the state directory. A change to another file's
+// shape is held only by review until its fixture is added here.
 
 const FIXTURES = join(import.meta.dir, "fixtures", "last-stable");
 const fixture = (name: string): string => readFileSync(join(FIXTURES, name), "utf8");

@@ -139,7 +139,9 @@ The two footers disagree about what Enter does:
 In 18.4.10 a toggle is a walk then `Space`, Enter on an option submits the checked set without
 toggling the pointed row, and both `Space` and `Enter` on `Other` open the answer editor. The
 `toppings / Submit` tab strip leads to a review screen (`omp--select-multi-review.txt`) that prints a
-numbered summary, `1. toppings: Cheese, Olives`, then `❯ Submit`.
+numbered summary, `1. toppings: Cheese, Olives`, then `❯ Submit`. Those numbers are no digit shortcuts
+(ADR 0009's digit trap): a reader that took them for numbered options would send a digit the screen
+never printed.
 
 No shared model carries a walk-then-Space toggle. `MultiSelectModel` knows a digit toggle and a
 digit-jump-then-Enter toggle, and omp ignores digits. Adding a third recipe changes the core macro

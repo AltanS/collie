@@ -9,7 +9,10 @@
 //
 // ADDING A MARK is one row in the table below, one `case` in `loadChunk` (components/brand-mark.tsx,
 // where the compiler names the missing case) and the generated file. The word list, the display name,
-// the animation prefix, Settings, the theme schema and the vite chunk folder follow from those.
+// the animation prefix, Settings, the theme schema and the vite chunk folder follow from those. Every
+// mark keeps the one contract (`components/mark-contract.ts`, ADR 0148 rule 7): a mark that wants its own
+// turn pace gives it up, because the turn table is one table, and a mark that needs a state the contract
+// does not cover gets it by a change of the contract in collie-brand, never by a state of its own.
 //
 // A FAMILY is a set of marks that are one drawing with a different head (the Collie mark and its two
 // coat variants). They share one generated stylesheet byte for byte, so they share one `prefix` and its

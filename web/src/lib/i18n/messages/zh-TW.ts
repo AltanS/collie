@@ -1948,7 +1948,7 @@ export const zhTW: Dictionary = {
   "apiError.session.unknown": "目前 collie 上不存在名為 {session} 的工作階段。",
   "apiError.host.unknown": "目前機組中不存在名為 {host} 的 collie 執行個體。",
   "apiError.crew.not_lead": "目前 collie 不是機組 lead，沒有可顯示的機組。",
-  // --- worktrees (ADR 0032) ---
+  // --- worktrees (ADR 0145) ---
   "apiError.worktree.create_failed": "建立 worktree 失敗：{reason}",
   "apiError.worktree.created_not_opened": "分支建立成功，但無法在其上開啟工作區：{reason}",
   "apiError.worktree.branch_required": "請指定分支名稱。",

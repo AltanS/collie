@@ -2,6 +2,14 @@
 // part the main bundle carries: which language a path is, and the one dynamic import that fetches
 // the rest. Everything else, sugar-high's core, its language modules and the side split, lives in
 // `diff-highlight-engine.ts` and loads only when a diff of a known language opens.
+//
+// WHY sugar-high, AND NO DIFF LIBRARY. The bridge sends git's raw unified text and a small parser
+// reads hunks and line kinds, so no diff library is needed. sugar-high is the lightest highlighter
+// that covers the language list above. The weights considered, gzipped: Prism about 18 KB,
+// highlight.js about 27 KB, Shiki's fine-grained build 54 KB base, `@pierre/diffs` about 180 KB (it
+// brings Shiki), `react-diff-view` about 23 KB. Measured on the build for what shipped: the main
+// chunk grows under 1 KB, and a TypeScript diff fetches 5.6 KB. Revisit if a language the operator
+// reads daily is missing, or a real diff shows a wrong colour that is worse than no colour.
 
 import type { TokenType } from "sugar-high/core";
 

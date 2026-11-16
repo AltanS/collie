@@ -45,6 +45,12 @@ import type { UpdateCrewMember, UpdatePeerLeg, UpdatePeerLegState, UpdateRun } f
 // the members follow their lead down after it (ADR 0110, since 1.23.0), and this phone's own step is
 // done only when it runs the OLDER app, so "at or above the target" cannot end it.
 //
+// ── DEFERRED, NOT DECIDED AGAINST ───────────────────────────────────────────
+// "Started on another device" does not name the device: the run record does not say who started it,
+// and naming it needs the bridge to keep the starting device's pairing label with the run. A
+// notification at Done, Stuck or a member's question, so the phone can be put down, is a feature of
+// its own.
+//
 // ── DISMISSIBILITY IS STILL ONE SENTENCE ────────────────────────────────────
 // The app is locked while a run THIS DEVICE STARTED is in flight and the operator has not taken the
 // way out a stall offers. `dismissible` is the negation of `locked`, taken here and never re-derived.
@@ -982,6 +988,11 @@ function doneSummary(rows: readonly UpdateScreenRow[], version: string, managed:
 }
 
 // ── A RUN THAT MOVES ONLY THE MEMBERS (M32) ──────────────────────────────────────────────────────
+//
+// Still the one reducer: `crewRun` is a second source that `updateScreenView` answers for first when
+// the lead's own run is not in flight. The lock is the same sentence as the lead's (a run this device
+// started is in flight and not escaped), so the takeover, the badge elsewhere and the ways out stay
+// one rule and never become two screens.
 
 function crewOnlyView(input: UpdateScreenInput, crew: UpdateScreenCrewRun): UpdateScreenView {
   const lead = input.leadName;

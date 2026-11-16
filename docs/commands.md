@@ -214,7 +214,7 @@ disk on each invocation.
 > Bun, compiles `bin/collie` if the checkout lacks it, and passes along argv. A freshly linked clone
 > uses this path to build its initial binary. Herdr actions continue to point to this script because
 > Herdr <0.8.0 freezes the action definitions cached at install time
-> ([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md)). Each verb is
+> ([ADR 0143](../.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md)). Each verb is
 > implemented once inside the compiled binary in `cli/`.
 
 

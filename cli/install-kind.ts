@@ -36,6 +36,13 @@ export const gitArgs = gitArgsOf;
  * consumers, one answer: two detections would eventually disagree, and the disagreement would be
  * silent — an install that advances correctly and then re-registers itself as `local`, after which
  * Herdr refuses `plugin install` and the operator has no way back (ADR 0006).
+ *
+ * The reinstall is the floor under self-update: Herdr has no `plugin update`, so `herdr plugin install`
+ * is the one way back, and a self-update must never take it away. The shape this predicate reads
+ * (detached, shallow, no remote-tracking refs) is read off `git_checkout()` in Herdr's
+ * `src/cli/plugin.rs`, an undocumented internal, not a contract. The dependency is soft on purpose:
+ * if Herdr ever clones onto a branch, the predicate answers "not managed" and the update takes the
+ * normal branch path. Re-read that function before changing this predicate.
  */
 export function isManagedCheckout(exec: Exec, root: string): boolean {
   const r = exec.capture("git", gitArgsOf(root, ["symbolic-ref", "-q", "HEAD"]));

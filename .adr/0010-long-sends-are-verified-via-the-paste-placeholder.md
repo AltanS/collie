@@ -1,6 +1,7 @@
 # 0010 — Long sends are verified via the paste placeholder, not by chunking them
 
 Status: **Accepted** (2026-08-06)
+Date: 2026-08-06
 
 ## Context
 

@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-21
-- **Shipped in:** pending release (M33)
 - **Trail:** `bridge/config.ts` (`basePath`, `normaliseBasePath`) · `bridge/server.ts` (`stripMount`,
   `mountIndexHtml`, `serveStatic`) · `web/src/lib/base-path.ts` · `web/vite.config.ts` (`BASE_FOR`,
   `mountReadyShellPlugin`) · `web/src/sw.ts` (`MOUNT`, `under`) · `web/src/lib/sw-routes.ts`

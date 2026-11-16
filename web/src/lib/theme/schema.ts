@@ -255,6 +255,8 @@ export interface ParseThemeOptions {
 export const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 export const NAME_MAX = 40;
 export const AUTHOR_MAX = 60;
+// The character's key is `character`, not `mark`: `mark` was the name of the theme field that M57 removed
+// (spec 09), so a file written for that old design is refused by name, never misread as a character.
 export const TOP_KEYS = ["$schema", "version", "id", "name", "author", "light", "dark", "fonts", "surface", "ansi", "character", "glyphs", "characterMotion"] as const;
 const HALVES = ["light", "dark"] as const;
 
@@ -289,13 +291,13 @@ function charCount(value: string): number {
   return [...value].length;
 }
 
-/** The size cap on a theme file: an import, a link, a paste, a stored theme and `collie theme check`. */
+/** The size cap on a theme file: an import (a file or a paste), a community-list entry, a stored theme and `collie theme check`. */
 export const THEME_MAX_BYTES = 64 * 1024;
 
 /**
- * The refusal for a file over the cap. Its own function because three readers stop before the parser
- * would see the text (a file picked in the card, a link's body, a file on disk), and all three must
- * say what the parser says.
+ * The refusal for a file over the cap. Its own function because two readers stop before the parser
+ * would see the text (a file picked in the card, a file on disk), and both must say what the parser
+ * says.
  */
 export function sizeRefusal(bytes: number, maxBytes: number): Refusal {
   return {

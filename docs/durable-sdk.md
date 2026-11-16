@@ -416,4 +416,4 @@ on the durable agent's home, in Collie's own words. Update the older side.
 
 The package is published under the npm dist-tag experimental until the wire leaves its experimental status. The
 latest tag carries no promise. If the package is ever retired ([the exit](durable-agents.md#the-exit)), it is deprecated
-([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md)).
+([ADR 0146](../.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md)).

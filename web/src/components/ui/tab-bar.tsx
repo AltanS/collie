@@ -10,7 +10,9 @@ export interface TabBarItem<V extends string> {
   label: string;
   icon: ReactNode;
   /** A small red count on the icon's corner. Drawn only when above zero. It means something is
-   *  waiting on the operator, so a caller counts only that (ADR 0066). */
+   *  waiting on the operator, so a caller counts only that (ADR 0066). The Dashboard's counts blocked
+   *  panes only: when it also counted finished panes nobody had opened, "0 blocked, 5 finished" read
+   *  as "5 urgent". Unseen finished work takes the `dot`, which claims nothing is urgent. */
   badge?: number;
   /** A quiet mark in the same corner: something is new, with no claim that it is urgent. Drawn
    *  only when there is no count; the two never show together. It wears the unseen mark's look

@@ -1,8 +1,7 @@
 # 0141: An account is a folder the agent already understands
 
-- **Status:** Proposed. Accepted at the tag that ships it.
+- **Status:** Accepted (2026-11-16)
 - **Date:** 2026-11-15
-- **Shipped in:** pending
 - **Trail:** M101 "Accounts", README decisions 1 to 18 · lab on Claude Code 2.1.325, 2026-11-15 (the
   state file, the settings writer's link handling, `history.jsonl`, the sign-in screen on an empty
   folder) · lab on Codex 0.169.0 and pi 1.3.0, 2026-11-15 (the variable moves the whole state) · lab on

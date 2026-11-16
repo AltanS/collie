@@ -1,6 +1,11 @@
 # 0021 — The name on PATH is a pointer, never a copy
 
 Status: **Accepted** (2026-08-19)
+Addendum (2026-11-16): `scripts/install.sh` runs `collie link` today, so an install path does
+publish the name; [ADR 0143](./0143-how-an-install-updates-and-what-a-release-offers-it.md) rule 9
+states the rule of today. The roads this record closes (a copy, a wrapper, a link as a side effect
+of `build` or `update`) stay closed.
+Date: 2026-08-19
 
 Related: [ADR 0006](./0006-update-advances-the-checkout-herdr-installed.md) — extended, not superseded.
 That ADR settled that **the checkout is the plugin**: `update` advances it in place, and everything

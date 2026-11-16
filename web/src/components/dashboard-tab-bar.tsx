@@ -84,7 +84,9 @@ export function DashboardTabBar({
     // the Settings card, the switcher sheet and the footer line wear.
     ...(crew ? [{ value: "crew" as const, label: t("crew.title"), icon: <Icon name="crew" className="size-5" /> }] : []),
     // The Dashboard tab carries the corner mark the Focus tab wore (ADR 0066 point 7), always:
-    // it is information about the herd, not a nag, so it shows with the switch on or off.
+    // it is information about the herd, not a nag, so it shows with the switch on or off. The icon is
+    // `Rows3`, the one the old Panes tab wore: the list is rows, and a grid icon such as
+    // `LayoutDashboard` would promise tiles.
     {
       value: "dashboard",
       label: t("home.tabs.dashboard"),

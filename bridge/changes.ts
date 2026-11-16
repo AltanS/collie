@@ -1,7 +1,10 @@
 // THE CHANGES VIEW'S BRIDGE HALF — what changed under a workspace's folder since the last commit,
 // read with git and nothing else (ADR 0065). Which folder that is, is bridge/changes-root.ts.
-// Read-only by construction: no verb here stages, commits, checks out or writes, and every git run
-// carries `GIT_OPTIONAL_LOCKS=0`, so not even the index's stat cache is refreshed on disk.
+// Read-only by construction: no verb of the Changes view stages, commits, checks out or writes, and
+// every git run carries `GIT_OPTIONAL_LOCKS=0`, so not even the index's stat cache is refreshed on
+// disk. One exception, named: the runner `runGit` below also serves `git worktree add` (and its
+// cleanup, `worktree remove` and `branch -D`) for bridge/worktree-add.ts (ADR 0126). Those writes
+// are that module's, under the same hardening; nothing in the Changes routes reaches them.
 //
 // ── WHAT THE CLIENT MAY NAME ────────────────────────────────────────────────────────────────────
 // The request carries a pane or workspace id, a depth, a nested flag, and for a diff a `repo` and a
@@ -64,6 +67,18 @@
 // reads more config, and a `-c` on the command line outranks anything it includes), trace2 (git
 // reads it from system and global config only). The operator's own global config is trusted: it is
 // theirs, like their shell.
+//
+// ── WHAT WAS DECLINED, AND WHY (counsel, 2026-09-23) ────────────────────────────────────────────
+//   • Refusing `.git` pointer files. Git worktrees and submodules use them, and Herdr opens
+//     worktrees. A pointer that leads elsewhere only mislabels the list; it grants nothing the agent
+//     in that folder could not already read.
+//   • Closing the race between checking an untracked file and reading it. The only party able to win
+//     it is the agent running as the same user, and that agent can already read any file the bridge
+//     can.
+//   • A looser or tighter `safe.directory`. It stays at git's default: a repo owned by another user
+//     then fails with an error instead of being trusted wholesale.
+// Highlighting, the poll beat and the shared reads are decided where the code is: the web app's
+// `lib/diff-highlight.ts` and `CHANGES_SHARE_MS` below.
 
 import { lstat, readdir, readlink, realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
@@ -1074,7 +1089,10 @@ export async function fileDiff(cwd: string, params: ChangesParams, scope: Change
 // ── The last commit ─────────────────────────────────────────────────────────────────────────────
 // Agents commit their own work, so the uncommitted list goes empty right after the change the
 // operator most wants to see. The commit view reads HEAD, and only HEAD: the client names a repo,
-// never a revision. HEAD is diffed against its first parent, or the empty tree for a root commit.
+// never a revision. Reading any revision the client names was left out on purpose (operator decision,
+// 2026-09-23): HEAD answers "what did the agent just do", and a history browser is a different
+// feature with a larger surface. HEAD is diffed against its first parent, or the empty tree for a
+// root commit.
 // Same runner, same hardening, same listed-paths rule: a file's diff is served only for a path the
 // same read of the same commit listed.
 

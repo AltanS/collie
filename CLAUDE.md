@@ -17,11 +17,13 @@ decisions [`.adr/`](./.adr/) · adding a harness
 [`.adr/`](./.adr/) holds the decisions whose reasoning would otherwise live only in a PR thread —
 specifically the ones that **close off an option someone will reasonably propose again**. If you're
 about to argue *why not* rather than *how*, check there first; if the answer isn't there and the
-decision is that shape, add one (numbering + format: [`.adr/README.md`](./.adr/README.md)).
+decision is that shape, add one (numbering, format and the topic map: [`.adr/README.md`](./.adr/README.md)).
 
 Rules elsewhere in this file stay short and normative and link to the ADR for the argument. Don't
-restate an ADR's reasoning here, and don't edit a superseded ADR into agreement with the present —
-mark it superseded and write the next one.
+restate an ADR's reasoning here, and never edit an ADR into agreement with the present: write the
+next one, and the superseded ADR becomes a stub (its file and number stay, its body stays in git
+history) that points at the live rule. `bun scripts/check-adr.ts` holds the record rules, and
+`bun run test` runs it.
 
 ## Versioning — MANDATORY
 
@@ -314,7 +316,7 @@ page to be skimmed.
   a branch. One predicate (`git symbolic-ref -q HEAD`) picks the strategy, and the same predicate
   stops `update` re-linking a managed checkout — a re-link re-registers the plugin as local and Herdr
   then refuses `herdr plugin install`, the operator's only other way to refresh
-  ([ADR 0006](./.adr/0006-update-advances-the-checkout-herdr-installed.md)).
+  ([ADR 0143](./.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md)).
 - **Frontend changes** (`web/`): rebuild with `bun run build` (root) or `cd web && bun run build`.
   The bridge serves `web/dist` **from disk at request time**, so on the deployment host
   a rebuild is **immediately live — no restart**.
@@ -557,7 +559,7 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   `/pane/:paneId/history`, `/pane/:paneId/zoom` (the zoomed output, a child of the pane route,
   so the pane stays mounted under it), `/pane/:paneId/changes` and `/space/:spaceId/changes` (both matched as
   `changes/*`, so the commit view `…/changes/commit` and a folder or file of the tree `…/changes/files`
-  share the screen's route; the tree's root is `…/changes` itself, ADR 0083). The router
+  share the screen's route; the tree's root is `…/changes` itself, ADR 0150). The router
   instance is module-scoped so it keeps its location.
 - **Back goes up one level.** Navigate through `useNav()` (`web/src/hooks/use-nav.ts`): down is a
   push that records `from`, sideways is a replace, up steps back onto a legitimate parent or
@@ -607,7 +609,7 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   its `[[font]]` rows put extra UI typefaces UNDER the shipped three in the Settings picker, and the
   bridge serves the files read-only from `<config-dir>/fonts` at `GET /api/fonts/<basename>`. Same
   reader, same mtime liveness; the opposite posture, because a font cannot fire an action and so
-  shadows nothing ([ADR 0033](./.adr/0033-the-app-face-is-a-device-preference.md)). Don't dilute
+  shadows nothing ([ADR 0148](./.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md)). Don't dilute
   ADR 0018's replace-law to cover it.
 - **`launchers.toml` is the operator's fifth file, and the only one whose rows CREATE a pane** — its
   rows are the allowlist `POST /api/launch` matches exactly, so the client names a row and never
@@ -616,20 +618,20 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   supply a command line. The New page may also name an agent by id (`harness`), which the bridge
   maps to ONE binary word in `bridge/harness-launch.ts` and reports per machine on `/api/launchers`;
   a launch with a `requestId` replays from `launch-receipts.json` instead of opening a second pane
-  ([ADR 0091](./.adr/0091-launch-by-id-with-a-request-id.md)).
+  ([ADR 0145](./.adr/0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md)).
   In a crew the lead's merged rows are the crew's: a launch of a lead row on a member carries the row
   over the crew link, accepted only when `caller.via === "crew"`, never from a phone-direct body, and
   a member's own row wins the same `command`; adds are answered on the lead and the deputy keeps a
-  read-only copy ([ADR 0127](./.adr/0127-the-leads-launcher-rows-are-the-crews-rows.md)).
+  read-only copy ([ADR 0145](./.adr/0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md)).
   Rows a phone adds live in `<stateDir>/launchers-added.json` under the operator's `[phone]` switches,
   never in `launchers.toml`; they are merged into the allowlist at read time, the operator's row wins
   a duplicate line, a recipe row is rebuilt from `bridge/launcher-recipes.ts` and a free line is
   re-checked at every read. The bridge never writes `launchers.toml`, and a revoke takes the device's
-  rows with it ([ADR 0094](./.adr/0094-launchers-added-from-a-phone.md)).
+  rows with it ([ADR 0145](./.adr/0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md)).
   The one exception to "never a command line" is a one-off `run`: a paired device, the operator's
   `[phone] run` switch and the same character rule, typed as a row is, never on a new branch, and
   recorded in `<stateDir>/commands-recent.json`, never as a row; its audit line keeps the command word
-  and the length, not the line ([ADR 0095](./.adr/0095-one-off-commands-and-their-history.md)).
+  and the length, not the line ([ADR 0145](./.adr/0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md)).
 - **Every user-facing string goes through `t()`/`tn()` from `@/lib/i18n`**, and a component that
   calls them subscribes via `useLocale()` so it re-renders on a locale (or lazy-dictionary) change.
   `messages/en.ts` is the source of truth; all twelve dictionary files change together, enforced by
@@ -647,7 +649,7 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   `web/public/theme-init.js` and stored in `collie:design:v1` (`web/src/lib/design.ts`). CSS owns
   every stack; JavaScript only swaps a class name. What survives the reversal is the other half of
   the rule: **the chosen face never dresses agent-authored text** — `font-mono` and `font-content`
-  are untouched by it ([ADR 0033](./.adr/0033-the-app-face-is-a-device-preference.md)).
+  are untouched by it ([ADR 0148](./.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md)).
 - **The bundled Nerd Font subsets stay lazy and out of the precache** — `unicode-range` per face,
   version in the filename, cached first-use by `sw.ts`. Don't add them to `globPatterns`, don't
   widen a range, don't move subsetting into the build; the reasoning for each sits at the line that
@@ -731,7 +733,7 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   `input-box-frame.test.ts` pin both halves.
 - **The Herdr socket is never dialled across a machine boundary, and no Herdr vocabulary crosses a
   crew link** — the lead consumes a peer's Collie API, never its Herdr socket
-  ([ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md)).
+  ([ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md)).
 - **How soon Collie sees an out-of-band change is DECLARED (`topologyLatency`), never measured**, and
   `refresh()` is on the floor of the port so the phone can ask for a look now
   ([ADR 0031](./.adr/0031-freshness-is-a-declared-promise.md)). Every mutating route refreshes before
@@ -744,28 +746,28 @@ registered in `registry.ts`). Two other things touch the filesystem, and neither
 the rule below: `stt.json` in the state dir when the operator ran `collie stt setup`
 ([ADR 0029](./.adr/0029-speech-to-text-is-a-provider-seam-collie-owns.md)), and the operator's own
 font files under `<config-dir>/fonts`, served read-only through `bridge/operator-fonts.ts`
-([ADR 0033](./.adr/0033-the-app-face-is-a-device-preference.md)).
+([ADR 0148](./.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md)).
 
 **The law is that a CLIENT-SUPPLIED value becomes a path in four places only: the journal, the
 Changes view, the Files view, and a branch's folder** — in the journal it is a pane id, never a path.
 A branch's folder (`bridge/worktree-folder.ts`,
-[ADR 0093](./.adr/0093-a-branch-folder-is-named-by-its-parent.md)) is a PARENT the phone names and a
+[ADR 0145](./.adr/0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md)) is a PARENT the phone names and a
 child the bridge names after the branch; `resolveParentTarget` refuses a `..` as sent, a link below
 home, a folder outside home, in a dotdir or in the repo, and a child that exists, and it runs at plan
-and again at create. Don't call Herdr's `worktree.create` with a `path` that did not just pass it. The Changes view
-(`bridge/changes.ts`, [ADR 0065](./.adr/0065-the-changes-view-reads-git-read-only.md)) is bounded by
+and again at create. The bridge runs `git worktree add` itself since ADR 0126 and no Herdr `worktree.create` runs, so never give git a `path` that did not just pass it. The Changes view
+(`bridge/changes.ts`, [ADR 0150](./.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md)) is bounded by
 a listed-paths rule: a diff is served only for a repo the bridge's own discovery returned and a path
 git listed there, and an untracked read goes through `containedRealpath` too. Its git runs are
 hardened against repo-driven code execution (fsmonitor, external diff, textconv, filter drivers);
 don't drop a `-c` there without reading the module header. The Files view (`bridge/files-view.ts`,
-[ADR 0083](./.adr/0083-the-files-view-reads-the-changes-root.md)) is bounded by the Changes root: the
+[ADR 0150](./.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md)) is bounded by the Changes root: the
 root comes off the snapshot, never the request, and its real path must pass the same bound; the
 client's path is relative, refused on its shape before any disk call, and its real path must sit
 inside the root's through `containedRealpath`; `.git` and the bridge's state and config folders are
 denied on top. The New page's folder browser (`bridge/folder-browse.ts`, #467) is the same place
 with home as the root: folder names only, the same shape check, containment, deny list, refusal and
 gate, and no new rule. It needs an authorised device (`device-read`), and its bytes go out as JSON, never as
-a document, with one exception: `files/image` ([ADR 0090](./.adr/0090-files-shows-images.md)) sends a
+a document, with one exception: `files/image` ([ADR 0150](./.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md)) sends a
 picture's raw bytes, typed by `sniffImageType` from the bytes alone (PNG, JPEG, GIF, WebP, AVIF; no
 SVG), with `no-store` and a `default-src 'none'; sandbox` CSP, through the same `readFile` checks. `GET /api/fonts/<basename>` does not become a fourth such place: the request's name is **looked up** in the rows the operator's own
 `theme.toml` declared and that row's path is taken, so a name nobody declared is refused before any path exists. The containment
@@ -818,7 +820,7 @@ only), fetched on a write device's tap only, never forwarded, refused past 1 MB 
 passes it, and stored under `<stateDir>/themes` (M59 spec 06; the page itself keeps
 `connect-src 'self'`, ADR 0106). A `durable` peer configured with `COLLIE_DURABLE_URL` makes a fifth, to the program's URL the
 operator set, with the bearer token from `COLLIE_DURABLE_TOKEN`, and it is declined by setting
-nothing ([ADR 0103](./.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)). Speech-to-text (`bridge/stt/`, CLI
+nothing ([ADR 0146](./.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md)). Speech-to-text (`bridge/stt/`, CLI
 `cli/stt.ts`) is a registered provider seam, absent until `stt.json` names a provider. Then it may
 hold a provider credential at 0600, open an operator-configured outbound path carrying microphone
 audio, on `codex` spawn a `codex app-server` child, and on `local-cli` spawn the operator's named
@@ -840,7 +842,7 @@ bearer credential the device holds, and is always on, reads included
 ([ADR 0086](./.adr/0086-reads-need-the-pairing-token.md)). Every `/api/*` route except `/api/health`
 and `/api/pair` needs a valid token, and an empty registry answers `403 device not paired`. The
 header gate still covers writes only, with one exception: the Files view asks for both as a
-`device-read` ([ADR 0083](./.adr/0083-the-files-view-reads-the-changes-root.md)). Neither applies to `/crew/v1/*`, which has its own two factors. The reasoning sits in
+`device-read` ([ADR 0150](./.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md)). Neither applies to `/crew/v1/*`, which has its own two factors. The reasoning sits in
 `bridge/pairing.ts`'s header; don't collapse the two gates into one.
 
 **Collie manages exactly one front door: `tailscale serve`** — the CLI (`cli/serve.ts`) publishes it,
@@ -854,23 +856,23 @@ door** — [ADR 0001](./.adr/0001-one-managed-front-door.md).
 — two factors gate it (pinned mutual TLS + crew secret), and a peer publishes no front door
 ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)); the one exception is the
 **deputy's standby door** — bound, never published, armed by silence and spent by the operator's
-pairing credential ([ADR 0027](./.adr/0027-the-deputy-is-named-ahead-of-time.md) ·
-[ADR 0028](./.adr/0028-the-standby-door-is-a-second-listener.md)).
+pairing credential ([ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md)).
 
 **Touching the crew wire surface forces a protocol decision** — a commit staging one of the
 wire-shape files in `bridge/crew/` must also stage `CREW_PROTOCOL.md` (additive-optional, §7.1) or
 bump `CREW_PROTOCOL_VERSION` (not expressible that way). `scripts/check-crew-wire.sh` is guard C of
 the pre-commit hook; a pure refactor takes the `SKIP_CREW_WIRE_CHECK=1` hatch
-([ADR 0025](./.adr/0025-the-wire-guard-forces-a-decision-never-a-bump.md)).
+(the header of the script holds the reasoning).
 
 **Code reaches a peer over the operator's own SSH, never over the crew link** — `crew add` installs
 it and `crew update` levels it, both pushing the lead's own commit as a `git bundle` from a checkout
 lead, while a lead with no commit sends Collie's own installer over the same ssh and the member
 installs the lead's release tag; the link
 carries runtime data and never becomes a distribution channel
-([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md), addendum 2026-09-04: a peer may also
+([ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md), and the update rules
+in [ADR 0143](./.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md): a peer may also
 level ITSELF to the release its lead is running, fetching that public tag from GitHub over anonymous
-HTTPS on its own decision, which adds no code, route or verb to the link; addendum 2026-11-10: trick
+HTTPS on its own decision, which adds no code, route or verb to the link; trick
 code may cross the link only as inert data, held and never run until a person taps on the machine that
 will run it, and a remote command on a member stays refused). How the operator
 reached a member is remembered locally in `crew-ops.json`, which is never a wire field and never merged into the trust

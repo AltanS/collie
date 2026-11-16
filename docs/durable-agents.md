@@ -30,7 +30,7 @@ bun add @colliepwa/durable-sdk@experimental
 
 The package is published under the npm dist-tag `experimental` until the wire leaves its experimental status.
 The `latest` tag carries no promise, so install `@colliepwa/durable-sdk@experimental`. If the package is ever
-retired, it is deprecated ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md)).
+retired, it is deprecated ([ADR 0146](../.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md)).
 
 The SDK's Pi Durable entry is tested with Pi Durable 1.1.0 and 1.2.0. Node 22.19 is the floor of
 Pi Durable 1.2.0.
@@ -426,7 +426,7 @@ collie restart
 `attach` prints `updated edge`. Give the durable agent the new token before you restart Collie, or the
 phone says the durable agent refused the token. A durable agent may accept a second token while a rotation
 runs, so neither side is locked out. The parked Cloudflare example takes `COLLIE_TOKEN` and, while
-it is set, `COLLIE_TOKEN_NEXT` ([ADR 0103](../.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)).
+it is set, `COLLIE_TOKEN_NEXT` ([ADR 0146](../.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md)).
 Set the new token as `COLLIE_TOKEN_NEXT` on the durable agent, re-run `attach` and restart Collie, then
 move the value to `COLLIE_TOKEN` and unset `COLLIE_TOKEN_NEXT`.
 
@@ -585,8 +585,8 @@ Update the older side.
 ## The exit
 
 Collie keeps durable agents as a feature. No outside use and no date is required
-([ADR 0104](../.adr/0104-a-program-is-a-session.md#the-exit)).
+([ADR 0146](../.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md)).
 
 If the feature is ever retired, a `sources.json` entry is ignored with one log line for one release, the socket keeps
 working for your durable agent, and the npm package is deprecated, not deleted
-([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md#the-exit)).
+([ADR 0146](../.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md)).

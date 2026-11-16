@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-07
-- **Shipped in:** pending
 - **Relates to:** [ADR 0083](./0083-the-files-view-reads-the-changes-root.md) (the Files view reads
   one root-relative path under the Changes root; nothing there is retracted).
 - **Trail:** the herdr-web-ui file viewer, read on 2026-10-07 as the model for this feature, which

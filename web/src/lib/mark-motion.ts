@@ -6,10 +6,11 @@ import type { Theme } from "@/lib/theme/schema";
 import { activeTheme, useActiveTheme } from "@/lib/theme/store";
 import { currentTrial, useTrial } from "@/lib/theme/trial";
 
-// WHETHER THE HEADER CHARACTER MOVES AT REST. One rule, in one place, read by every mark the app draws
-// at rest (the header `BrandMark`, the idle lock, the tour) and by the Settings switch, so they cannot
-// disagree. It answers a different question than `lib/mark.ts` (which character) and reads the same
-// three sources in the same order.
+// WHETHER THE HEADER CHARACTER MOVES AT REST. One rule, in one place, read by `BrandMark` (the worn
+// character, through `useMarkMotion`) and by the Settings switch, so they cannot disagree. The boot
+// splash, the idle lock, the agent-start handoff and the tour draw `CollieMark` directly and never
+// call it (components/brand-mark.tsx). It answers a different question than `lib/mark.ts` (which
+// character) and reads the same three sources in the same order.
 //
 //   1. The device's own switch (Settings > Appearance > Character, "Character moves"). Both values are
 //      stored (`DesignPrefs.markMoves`), so from the first touch it wins over every theme. A switch
@@ -36,7 +37,12 @@ import { currentTrial, useTrial } from "@/lib/theme/trial";
 // transform animation on the compositor, but a smooth one asks for a frame at every vsync, 60 a second, for
 // as long as the page is visible. That is what issue 748 is about. So a drifting mark also wears `STEPS_CLASS`,
 // and `index.css` draws its drift in steps, about 12 a second, which asks for a frame only at a step
-// (ADR 0138, amendment 2026-11-13, has the measured table). The switch and the theme key stay the way out.
+// (`e2e/idle-repaint.spec.ts` has the measured table: 600 frames in 10 s smooth, about 127 stepped, 0 with
+// the switch off). The switch and the theme key stay the way out.
+//
+// WHY THERE IS NO GENERAL "REDUCE MOTION" SETTING (issue 748, ADR 0148 rule 9). It would leave the cost
+// on by default for everyone who does not know to look for it. A page nobody is looking at is paused
+// instead (`lib/page-hidden.ts`, `index.css`), and `prefers-reduced-motion` still wins.
 //
 // SERVER SNAPSHOT: STILL. The server and the first client render draw a held mark, as the contract's own
 // snapshot of "in use" does, and the client then moves it, so a hydration never sees two different trees.

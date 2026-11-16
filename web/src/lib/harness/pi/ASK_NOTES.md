@@ -5,6 +5,26 @@ extensions, and npm lists many. So `ask.ts` reads every one of them by shape and
 none (`.adr/0098`). This file holds the evidence for each rule: the captures, the source lines read,
 and the live probes.
 
+## Why one reader, and the structured path not taken (ADR 0098)
+
+The road refused is one grammar per extension. PR 397 brought a `pi` adapter with recipes for one
+question extension and issue 412 brought one for OmO's built-in ask, and the two cannot both be
+registered. The screens differ in what the keys do: on stock pi Enter selects and digits do nothing,
+on OmO a digit answers one question and Enter means "next", and on OmO's multi-select Enter toggles.
+A recipe copied from one screen to another answers the wrong thing. So one reader serves every
+pi-family question screen, names no extension, and takes every key from the footer. A new extension
+gets buttons when its screen has this shape and its footer uses these words; one with other words
+stays raw until its footer is read.
+
+The screen is a fallback, not the goal. A Collie-owned stock pi extension can see every tool call as
+data through pi's `tool_call` event (`toolName`, `input`), but no pi API lets it answer another
+extension's `ctx.ui.custom` dialog, so answers to those stay keys. OmO's built-in ask also publishes
+the open question on an authenticated local control endpoint (`<agentDir>/rpc/tui/*.sock`, a 0600
+secret, `get_state` and `subscribe` to read, `extension_ui_response` to answer, per senpi's
+`docs/rpc.md`). That is a structured path for OmO, read from the source and not yet verified. Taking
+it is a separate decision, because an answer through it is an action from an emitter (ADR 0024).
+Every pi screen without such a path keeps this reader.
+
 ## The screens in the corpus
 
 | Screen | Footer | Plan | Proof |

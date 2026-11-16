@@ -1,15 +1,14 @@
-// ── Where a new worktree starts from (ADR 0089, amended) ──────────────────────────────────────────
+// ── Where a new worktree starts from (ADR 0145, rule 9) ───────────────────────────────────────────
 //
-// Herdr's `worktree.create` cuts the new branch from `base`, or from the HEAD of the folder it was
-// asked from when there is none (`herdr api schema --json`, 0.9.3: `WorktreeCreateParams.base`).
-// That HEAD is whatever the repo's own checkout happens to be on, which is rarely what an operator
+// The bridge's own `git worktree add` (bridge/worktree-add.ts) cuts the new branch from `base`, or
+// from the repo's HEAD when there is none. That HEAD is whatever the repo's own checkout happens to be on, which is rarely what an operator
 // who taps "New agent on a branch" means. The phone now says which of two starting points it wants:
 //
 //   { kind: "default" }          the repo's default branch, resolved HERE, on the bridge
 //   { kind: "ref", ref: "x" }    the named ref (the sheet sends the pane's own branch)
 //
-// and a body with no `base` at all keeps today's behaviour to the byte: no `base` reaches Herdr and
-// no git process runs.
+// and a body with no `base` at all keeps today's behaviour to the byte: no `base` reaches
+// `git worktree add` and no git process runs here.
 //
 // ── THE REF IS A NAME, NEVER A FLAG ──────────────────────────────────────────────────────────────
 // A ref comes off the wire and ends up in a git command line, so it is checked twice: by
@@ -23,7 +22,7 @@
 //   1. `refs/remotes/origin/HEAD`, with `origin/` stripped, when that LOCAL branch exists;
 //   2. a local `main`;
 //   3. a local `master`;
-//   4. nothing: no `base` is sent and Herdr starts from the HEAD it always did.
+//   4. nothing: no `base` is passed and `git worktree add` starts from the repo's HEAD.
 
 import { join } from "node:path";
 

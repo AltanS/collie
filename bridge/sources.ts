@@ -1,8 +1,10 @@
 // THE PROGRAMS ONE COLLIE RUNS BESIDE ITS TERMINAL MUX (M55 spec 01).
 //
 // A durable program used to need a Collie of its own: `COLLIE_MUX=durable` made the whole instance
-// one program, and putting it beside a terminal meant a second Collie and a crew. A source lifts
-// that: each entry of `sources.json` becomes one more session in the session registry
+// one program, and putting it beside a terminal meant a second Collie and a crew. That was the wrong
+// shape: it asked a builder to start a second service, give it a port and a state folder and join it to
+// a crew, only to see one program on a phone that already shows their terminals. Four advisors agreed
+// it is where an outside builder drops off. A source lifts that: each entry of `sources.json` becomes one more session in the session registry
 // (bridge/sessions.ts), built by the same factory, with the durable adapter. The terminal mux stays
 // the primary, exactly as it was.
 //

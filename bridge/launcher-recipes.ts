@@ -150,7 +150,11 @@ export function buildRecipe(harness: string, picked: readonly string[]): BuiltRe
 
 // ── The no-prompts scan ─────────────────────────────────────────────────────────────────────────
 
-/** Flags that skip permission prompts wherever they sit in a line. Each verified first-hand. */
+/**
+ * Flags that skip permission prompts wherever they sit in a line. Each verified first-hand. Codex
+ * `--full-auto` is not scanned: Codex 0.162.0 refuses the flag. A CLI that renames a flag drops the
+ * recipe rows built from it on their next read.
+ */
 const NO_PROMPT_FLAGS: ReadonlySet<string> = new Set([
   // Claude Code
   "--dangerously-skip-permissions",

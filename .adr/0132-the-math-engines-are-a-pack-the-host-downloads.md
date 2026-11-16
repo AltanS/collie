@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-07
-- **Shipped in:** pending
 - **Relates to:** [ADR 0096](./0096-speech-can-stay-on-the-phone.md) (the Whistle model, whose shape this
   copies: nothing downloads by itself, the host copies and verifies, the phone fetches from the host),
   [ADR 0052](./0052-one-build-serves-any-mount.md) (the engines are served under the mount like every

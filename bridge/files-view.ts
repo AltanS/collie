@@ -6,7 +6,10 @@
 // a read, then one `lstat` per path, and nothing opened ({@link existingPaths}).
 //
 // ── THE THIRD PLACE A CLIENT VALUE BECOMES A PATH ───────────────────────────────────────────────
-// The law in bridge/journal/files.ts names three places, and this is the third. Its bound:
+// The law in bridge/journal/files.ts names four places, and this is the third (the journal, Changes,
+// this view, and a branch's folder). Others reuse this bound and add none: the folder browser, with
+// home as the root, and a trick's file input (bridge/tricks/inputs.ts), which reads through
+// {@link listFolder} and {@link readFileBytes} under the pane's Files root. Its bound:
 //
 //   1. The ROOT is never the client's. It is the folder bridge/changes-root.ts picks off the live
 //      snapshot for the pane's workspace (the mux's folder, else the panes' common folder), or the
@@ -27,7 +30,9 @@
 //      the requested segments AND on the real path, and case-folded on every host, so `.GIT`, a
 //      Windows `.git.`, a link into the state folder, or a link named `notes` that leads to a
 //      sibling's `PAIRED-DEVICES.json` all land on the same refusal. A sibling's config `.env` and
-//      every other credential file under the root are NOT covered (ADR 0083).
+//      every other credential file under the root are NOT covered (ADR 0083): `.env` and
+//      `config.toml` are common names for a file the operator owns, and hiding every one would hide
+//      the operator's own. The device gate guards them, and pairing is what closes it.
 //
 // Every refusal is the same answer, `unknown-path`: absent, outside, denied, a folder read as a file
 // and a file listed as a folder cannot be told apart by anything the client sees.

@@ -139,8 +139,8 @@ filter and your folded folders stay as they are.
 
 ## Which folder, and which repos
 
-The list covers the pane's **workspace**, not only the pane's own folder, so every pane in one
-workspace shows the same list. The header names the workspace, its folder and the branch the folder is
+The list covers the pane's **workspace**, not only the pane's own folder, so every pane inside the
+workspace's folder shows the same list. The header names the workspace, its folder and the branch the folder is
 on, when every pane in it agrees on one. Collie picks that folder
 in this order:
 
@@ -149,6 +149,12 @@ in this order:
 | 1 | The workspace's own folder, when the multiplexer keeps one: Herdr's worktree, tmux's session folder |
 | 2 | The deepest folder that holds every pane of the workspace |
 | 3 | The pane's own folder, when the first two would be `/`, your home folder, or above it |
+| Any | The pane's own folder, when the pane sits outside the folder rows 1 and 2 picked |
+
+The last row is a pane that moved out of its workspace's folder, for example a tab that went to `/tmp`
+and started an agent there. It reads its own folder, not another pane's repo. That folder must not be
+`/`, your home folder or above it, or the pane shows no folder. The dashboard's Changes tab, which asks by
+workspace, still reads the workspace folder.
 
 A pane's own folder that is itself `/`, your home folder or above it is read only for a device that
 may use [Files](#who-may-use-it). Any other device sees no folder there. A workspace folder that is a
@@ -362,7 +368,7 @@ open like any other row.
   changes. A pane on zellij older than 0.44 has no Files button. A workspace folder that is a symlink to one of those
   counts as that folder.
 
-The full rules are in [ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md).
+The full rules are in [ADR 0150](../.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md).
 
 ## Read-only and safe
 
@@ -378,7 +384,7 @@ Changes runs git to read, and nothing else.
   and a file named like a Collie state secret. A diff of one is refused like a file git did not list.
 - An untracked file is read as Files reads one. Its real path must stay inside its repo.
 
-The full rules are in [ADR 0065](../.adr/0065-the-changes-view-reads-git-read-only.md).
+The full rules are in [ADR 0150](../.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md).
 
 ## Across a crew
 

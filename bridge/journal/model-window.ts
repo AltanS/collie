@@ -3,12 +3,14 @@
 // into the session log. Each keeps a catalog of the models it can call, with the window per model, in
 // a file of its own. Collie reads that file, and only that file.
 //
-// ── THE RULE: NO WINDOW, NO CONTEXT ───────────────────────────────────────────────────────────────
+// ── THE RULE: NO WINDOW, NO PERCENTAGE ────────────────────────────────────────────────────────────
 //
 // A window comes from the session log (Codex, read by its probe), else from one of the catalogs below
-// when it names the model, else from nowhere: no context dot, and the model label still draws. Collie
-// ships no table of windows, guesses none, spawns no process and asks no network for one. A catalog
-// that is missing, too big, unreadable or silent about the model is "no window".
+// when it names the model, else from nowhere: no percentage, and the model label still draws. Since
+// 2026-11-13 the session then shows its token count (`journalContext` in bridge/usage.ts); only the
+// Dots view draws nothing, because a dot is a fifth of a window. Collie ships no table of windows,
+// guesses none, spawns no process and asks no network for one. A catalog that is missing, too big,
+// unreadable or silent about the model is "no window".
 //
 //   pi        `<agent dir>/models-store.json`  { <provider>: { models: [{ id, contextWindow }] } }
 //   Oh My Pi  `<agent dir>/models.db`          table `model_cache(provider_id, models)`, the row named

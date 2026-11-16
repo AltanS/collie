@@ -1,5 +1,11 @@
 // `POST /api/pane/:id/answer`: A PERSON'S TAP ANSWERS ONE ASK, BY ID, ONCE (ADR 0100).
 //
+// AN ASK IS DATA, NEVER TEXT. A durable program holds the question as data, with an id. Turning it into
+// screen text and reading it back would lose the id and gain a parser that can be wrong, and a pane with
+// no screen has no keys to send. So the answer names the ask by its id. Only a durable pane produces
+// asks, and the screen reader never does, so every ask has exactly one owner. A second producer of asks
+// (a screen reader that also emits ids, for example) needs a new decision about which owner wins.
+//
 // The phone names the ask it saw (`askId`, `revision`), the option the person chose, and a request
 // id it minted for the tap. The route:
 //

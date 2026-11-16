@@ -8,10 +8,12 @@ import { isRequestId } from "./worktree-receipts.ts";
 
 // ── Launcher rows added from a phone, kept on THIS machine only (M48 spec 02, ADR 0094) ─────────
 //
-// `launchers.toml` is the operator's file and the bridge never writes it. A row a person adds from
-// the phone lives here instead, in `<stateDir>/launchers-added.json`: one file per machine, never
-// forwarded, never synced to another crew member. A `?host=` add lands in THAT machine's own file
-// through the ordinary forward, and every bridge checks only its own list.
+// `launchers.toml` is the operator's file and the bridge never writes it: a rewrite would lose the
+// operator's comments, and a stolen token would then edit the operator's own list. A row a person adds
+// from the phone lives here instead, in `<stateDir>/launchers-added.json`, one file per machine. Since
+// ADR 0127 the add routes are answered on the lead whatever `?host=` says, so the lead's file holds the
+// rows for the whole crew and the lead's merged rows are the crew's rows. A member's file keeps only
+// what it held before, listed as that member's own, and every bridge still checks its own list.
 //
 // ── EVERY ROW IS BELIEVED ONLY AFTER IT IS CHECKED AGAIN ────────────────────────────────────────
 // A row read back from disk meets the same rule the add did (bridge/launcher-recipes.ts): the

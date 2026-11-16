@@ -40,7 +40,11 @@ export interface DashPrefs {
    * a choice of one (see {@link coerceDashPrefs}).
    */
   isolatedSpaces: string[];
-  /** Workspaces hidden from the dashboard list (long-press a chip); their chips stay, dimmed. */
+  /**
+   * Workspaces this device hides from the dashboard list. No screen hides one now (the workspace
+   * chip strip and its long press are gone); a stored choice still applies, its row in the workspace
+   * filter's sheet says "hidden", and "Show hidden workspaces" there clears it.
+   */
   hiddenSpaces: string[];
   /**
    * Whether the Changes view also looks for repos INSIDE the pane's folder, not only the repo that
@@ -103,14 +107,16 @@ export interface DashPrefs {
    */
   showCompactions: boolean;
   /**
-   * The order a pane list runs in: `place` (machine, space, tab, position) or `activity` (whatever
-   * happened last, first). PLACE by default, which is the order ADR 0063 gave every surface.
+   * The order a pane list runs in: `place` (machine, space, tab, position), `activity` (whatever
+   * happened last, first) or `cache` (the soonest cache expiry first). PLACE by default, which is
+   * the order ADR 0147 gives every surface.
    *
-   * The operator's own request is the only thing that turns this on, and ADR 0071 holds the reason
-   * the list does not then re-sort itself on a poll: the reading is taken when the list opens and
-   * held while it is on screen. See lib/pane-order.ts, which owns both halves.
+   * The operator's own request is the only thing that turns this on, and ADR 0147 rule 4 holds the
+   * reason the list does not then re-sort itself on a poll: the reading is taken at a few named
+   * moments and held while it is on screen. See lib/pane-order.ts, which owns both halves.
    *
-   * Read by the pane switcher today (components/agent-sidebar.tsx).
+   * Read by the pane switcher (components/agent-sidebar.tsx), by the dashboard (routes/home.tsx), and
+   * written from both and from Settings > Appearance (components/pane-order-control.tsx).
    */
   paneOrder: PaneOrder;
   /**

@@ -18,12 +18,11 @@ This document fixes the protocol between two parties:
   `sources.json`, or the one program of a durable-only peer (`COLLIE_MUX=durable`). It **dials**
   the program, and it maps what it reads onto the mux port (`bridge/mux/types.ts`).
 
-The decisions behind it are in [ADR 0099](../../../.adr/0099-a-durable-program-is-a-mux-with-no-screen.md)
-(the adapter), [ADR 0100](../../../.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md) (asks),
-[ADR 0101](../../../.adr/0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md) (send and abort),
-[ADR 0102](../../../.adr/0102-starters-are-launcher-rows.md) (starters) and
-[ADR 0103](../../../.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)
-(the two transports). This file is the wire
+The decisions behind it are in [ADR 0146](../../../.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md),
+which states the rule in one place. It replaced ADR 0099 (the adapter), 0100 (asks), 0101 (send and
+abort), 0103 (the two transports), 0104 (the session) and 0114 (a host with no process). The rules of
+0102 (starters) live in the header of `bridge/starter-launch.ts`, and those of 0105 (the SDK) in
+`packages/durable-sdk/README.md`. This file is the wire
 only. What the bridge does with the data after the adapter (the pane log, the push guard, the phone
 routes) is not part of it.
 
@@ -106,7 +105,9 @@ the check there.
 ### 1B. TLS with a bearer token
 
 For a program the person deployed themselves, behind TLS, and that Collie dials out to. The program
-has a public URL, so the token is the whole gate.
+has a public URL, so the token is the whole gate. A relay was the road not taken: a bridge program on a
+machine that runs a Collie, between a local socket and the deployed program, would be a second program
+to write, run and secure, and it would hold the same token one hop further away.
 
 | Rule | Value |
 | --- | --- |
@@ -956,6 +957,8 @@ Bytes are UTF-8 bytes. "Cut" means step 3 above. The adapter enforces every cap.
 - `send` and `abort` answer once the program has accepted the act, not when the turn ends.
 - `abort` with `caps.abort` false: 409 `not-supported`. On a pane with nothing running, `abort`
   answers `{ "ok": true }` and does nothing.
+- The turn id is only as good as the program's own idea of a turn. A program with no stable turn
+  boundary cannot be guarded this way, and would need a different rule.
 
 ### 7.5 A stop
 
@@ -1400,6 +1403,10 @@ document. The version number stays 1; the spike's shapes are not supported.
 > its answer from a log on every request), and what it keeps in the log beyond what Pi Durable already keeps. A
 > host with a process of its own does not use it. The core's seams for it are in
 > `packages/durable-sdk/src/core/` (`journal.ts`, `Pane.seedAsk`, `ReceiptStore.claim`).
+
+Two roads were not taken. A server that holds the state is a second thing to deploy, and the wire would
+depend on one process again; the log already is the state. A new wire version is not needed, because
+nothing here changes a shape of version 1.
 
 A host with no process starts nothing, so section 8 has nothing to hang on: there is no start to mint an epoch
 at, and no memory that outlives a request. Every request builds the state it needs from the **World**, the

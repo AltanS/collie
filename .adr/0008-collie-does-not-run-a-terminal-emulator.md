@@ -1,6 +1,7 @@
 # 0008 — Collie does not run a terminal emulator
 
 Status: **Accepted** (2026-08-04)
+Date: 2026-08-04
 
 ## Context
 

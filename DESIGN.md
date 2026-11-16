@@ -48,7 +48,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/copyable-block.tsx` | Any block with a caller-supplied literal to copy. Owns an always-visible, opaque Copy icon over the block's top-right corner and the success or failure status, never the content's formatting. The icon itself confirms the outcome on every screen, including History and Files, which have no status line: a check (`--status-working`) or an X (`--status-blocked`) for 1.5s, then the Copy glyph again, in the same 24px box. Its transparent 44px tap target may extend beyond the block; it reserves no gutter or height and deliberately covers text beneath it. Without a clipboard API it draws the content alone. |
 | `ui/diff-lines.tsx` | A few lines of a diff as one mono block: `+` added, `-` removed, `@@` a hunk head, the rest context, in the Changes view's own tints and sign inks (`DIFF_ROW_TONE`, `DIFF_SIGN_TONE`, a minus drawn as `−`). Long lines never wrap: the block scrolls sideways inside its own frame and the page never overflows. An optional file name sits small over the lines. Owns no words. A trick's and a Decision view's `diff` (2026-11-10). The Changes view and Chat's diff card still carry their own copy of the tints. |
 | `ui/divided-line.tsx` | A quiet line of the thread: centred 11px muted text between two hairlines. Chat's notices, compaction marker and top-of-thread line, and History's day divider and compaction marker. Owns no words. |
-| `ui/fab.tsx` | The floating New button: a 48px-tall "+ New" pill in the outline-button look (page fill, a uniform 1px `--border` edge, foreground ink, `shadow-md`; `dark:bg-card` lifts it off the near-black page; hover and press take `--accent`) with the house 2px corner, that folds to a 48px round "+" once the list scrolls (`collapsed`) and opens out again at the top; width and corner move on one transition that `motion-reduce` turns off. It is `fixed` at the right edge of the content column, portalled to `<body>`, at `z-30` (under the toast's `z-40` and the sheets' `z-50`). The ONE exception to "the sheet is the app's only floating layer", and only on the dashboard's Dashboard tab. It owns the look, the busy spinner swap and the name; the caller owns whether it is drawn and the `bottom-` that clears its footer. The look is also exported alone as `FabButton`, which the Switch pane sheet wears in its title row at `size="compact"` (32px, no shadow, a 44px hit area; not floating). Exception rules below the table. |
+| `ui/fab.tsx` | The floating New button: a 48px-tall "+ New" pill in the outline-button look (page fill, a uniform 1px `--border` edge, foreground ink, `shadow-md`; `dark:bg-card` lifts it off the near-black page; hover and press take `--accent`) with the house 2px corner, that folds to a 48px round "+" once the list scrolls (`collapsed`) and opens out again at the top; width and corner move on one transition that `motion-reduce` turns off. It is `fixed` at the right edge of the content column, portalled to `<body>`, at `z-30` (under the toast's `z-40` and the sheets' `z-50`). The one floating CONTROL, the exception to "the sheet is the app's only floating layer that holds a task", and only on the dashboard's Dashboard tab. It owns the look, the busy spinner swap and the name; the caller owns whether it is drawn and the `bottom-` that clears its footer. The look is also exported alone as `FabButton`, which the Switch pane sheet wears in its title row at `size="compact"` (32px, no shadow, a 44px hit area; not floating). Exception rules below the table. |
 | `ui/focus-image.tsx` | A picture in a frame of a stated ratio and an optional height cap, on the muted ground with a thin border and the house corner (`FocusFrame`), filled by `FocusImage`: `fit` contain or cover, and a focus point in percent with a zoom about it (`focusStyle`), so a crop keeps the named point in view. With `onOpen` the frame is a button named by `label`. A trick's `image`, and a Decision view's placed `image` and `compare` (2026-11-10). |
 | `ui/fold-toggle.tsx` | A quiet tap that opens a part of a card in place, and the part: `MoreToggle` ("More" and "Less" in one `OneOf` slot, the chevron that turns), `NoteToggle` (the note glyph and the caller's words, for an optional text answer; a required one is drawn open, never behind it) and `FoldPanel` (the part, through `Collapse`). A 44px ghost button in muted ink with `aria-expanded`, and `aria-controls` only while the part is drawn. Owns no words. The Decision card's More and Add a note (M96). |
 | `ui/image-card.tsx` | One journal picture, framed, as an anchor to its bytes, with a caption saying where it came from. The mirror's placeholder clusters, and the newest turn's picture right after the mirror. Every element is a `<span>`, so it may sit inside the mirror's `<pre>`. `surface` picks the frame: dark-space inside the mirror, the app's tokens on the page. |
@@ -70,7 +70,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/search-field.tsx` | The search box: a 44px text field with a magnifier inside its left edge, 16px type so iOS does not zoom, every keyboard correction off, `inputMode="search"`. Forwards its ref to the `<input>` so a sheet can focus it on open. Owns the look and the field, not the list under it or the filtering. `trailing` puts a caller's 44px control in the right edge, and the text stops short of it whether it shows or is kept `invisible`, so it never moves the text. The command palette's, the Sent sheet's and the session filter's (`session-filter-field.tsx`, with its clear button there). |
 | `ui/section-label.tsx` | The small word that names a section, as typed under the default `labels: sentence` and in capitals under `caps`. Type only, it renders a `<span>` and owns no structure. |
 | `ui/select.tsx` | A form select: a NATIVE `<select>` in a 44px box with our own chevron (`appearance-none`), a full `--border` edge and the house corner, so a phone draws its own picker and no sheet is needed. `lead` puts an inert glyph before the text; the caller's `className` sizes the box (`flex-1 min-w-0` for the flexible one, `shrink-0` for the compact one). The New page's machine, agent and command selects (`routes/new.tsx`), and the dashboard's order select (`dash-selects.tsx`). The dashboard's workspace filter there draws the same box as a button, because it chooses several workspaces in a sheet of checks (issue #527). The four Settings selects (language, typeface, terminal font, theme) carry the same construction by hand and have not been moved onto it. |
-| `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer, with one exception: the dashboard's floating New button (`ui/fab.tsx`, below). The pane navigation overlay floats too, but takes no touch (below). There is no popover, no dialog, no tooltip. It also exports `useAnySheetOpen`, the count of open sheets that button hides itself on, and `SHEET_BODY_STICKY`, where a block in the body sticks: under the head, across the panel (the switcher's filter field). Its optional `action` slot holds one control at the title row's trailing end, before the close button; the slot adds no height, so a control in it is no taller than the 32px close button. |
+| `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer that holds a task, with one exception for a control: the dashboard's floating New button (`ui/fab.tsx`, below). The pane navigation overlay floats too, but takes no touch (below). The terminal draft notice and the held-send card float too, over the mirror's bottom edge, and hold no space. There is no popover, no dialog, no tooltip. It also exports `useAnySheetOpen`, the count of open sheets that button hides itself on, and `SHEET_BODY_STICKY`, where a block in the body sticks: under the head, across the panel (the switcher's filter field). Its optional `action` slot holds one control at the title row's trailing end, before the close button; the slot adds no height, so a control in it is no taller than the 32px close button. |
 | `ui/spark-line.tsx` | A trend as one small line, scaled to its own numbers, the last point marked, no axes and no grid; the ink is the caller's through `currentColor`, the screen reader hears the caller's `label`. A trick's and a Decision view's `spark` (2026-11-10). The machine card's `machine-spark.tsx` is the other spark, on a fixed 0 to 100% scale. |
 | `ui/strip-host.tsx` | The ribbon band, an overlay hung from the header bar's bottom edge. Renders ONE `StripSlot` at a time, the highest priority, and keeps the two permanent `sr-only` live regions. It reserves no space: a zero-height anchor sits right after the header, and the band floats from it at `z-30` over the top of the route, on the page colour with a `shadow-md`. Domain-blind: a bigger number wins, and it does not know what a connection is. `flow` paints it in flow instead, for a playground stage with no route under it; the app never sets it. |
 | `ui/switch.tsx` | A boolean toggle, `role="switch"`. No Radix. |
@@ -88,8 +88,8 @@ If the thing you need is not in that table, say so in the diff and put it in tha
 
 ### The one exception to "the sheet is the only floating layer": the dashboard's New button
 
-`BottomSheet` is the app's only floating layer, with **exactly one exception: the dashboard's
-floating New button** (`ui/fab.tsx`, mounted by `routes/home.tsx` on the Dashboard tab only, never on Crew or Files). Why: the
+`BottomSheet` is the app's only floating layer that holds a task, with **exactly one exception for a control: the dashboard's
+floating New button** (`ui/fab.tsx`, mounted by `routes/home.tsx` on the Dashboard tab only, never on Crew or Files). Two notices also float, in the one slot over the pane view's mirror at its bottom edge, and hold no space and move nothing: the terminal draft notice and the held-send card (`components/composer-held.tsx`, ADR 0061). Why the button: the
 only create control on the dashboard was a FolderPlus in the Spaces section header, low on a long
 scrolling page and out of reach of the thumb, and a worktree was two taps behind it. One create entry
 under the thumb was the pick (card 1.3, 2026-10-08; it opened a sheet then). Since M48 (1.19.0) it opens
@@ -525,7 +525,7 @@ only ever swaps a class name. The default wears no class at all, so a device tha
 the card runs no JavaScript before its first paint.
 
 This **reverses** the old rule, which said the face was the maker's choice and forbade a
-picker. [ADR 0033](./.adr/0033-the-app-face-is-a-device-preference.md) records why it fell.
+picker. [ADR 0148](./.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md) records why it fell.
 The **TERMINAL font is a separate setting** — the Terminal font card directly below,
 reaching `--font-mono` consumers only. The two are two settings because they are two
 questions, and the cards sit adjacent so that reading one after the other makes the split
@@ -630,7 +630,7 @@ every occupant states its own box, and the strip's height is a number the layout
 around rather than a consequence of what it holds.
 
 **The second one is update mode's docked panel** (`components/update-screen.tsx`,
-[ADR 0064](./.adr/0064-an-update-puts-the-phone-in-update-mode.md)). Its heading is `h-7` and
+[ADR 0143](./.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md)). Its heading is `h-7` and
 truncates, its subtitle is `h-10` and clamps to two lines, each row is `h-13` with a reserved
 second line, the note is `h-[5.25rem]` and the footer two 44px rows, all in rem so a larger text
 size grows each box with its text, and the row list alone gives way, by scrolling, when the panel
@@ -699,7 +699,7 @@ fails loudly.
   regeneration. The host picks a mark through `BrandMark`; the header's spin round drives it
   through the handle. `mark-conformance.test.tsx` runs the contract over the whole registry
   (`lib/mark-ids.ts`), so a mark that fails it cannot ship. The reasoning is in
-  [ADR 0136](./.adr/0136-a-theme-may-name-a-mark-and-every-mark-keeps-one-contract.md).
+  [ADR 0148](./.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md).
 
 ---
 
@@ -874,7 +874,7 @@ refusal is a **contextual notice** in its own chrome, which moved the failure ra
 it. `lib/mutate.ts` is the wrapper that keeps a thrown mutation from being swallowed where a call
 site has no error surface of its own, and `lib/ack-manifest.ts` records which channel every
 mutating export of `lib/api.ts` actually uses. That manifest is paired with a test, on the
-pack-wire guard's philosophy (ADR 0025): it cannot verify an acknowledgement renders, but a
+crew-wire guard's philosophy (`scripts/check-crew-wire.sh`): it cannot verify an acknowledgement renders, but a
 mutation added next month fails the test until its author writes one classified line — and that
 line gets reviewed.
 
@@ -981,16 +981,17 @@ On a phone the edge swipe is history back, so the history stack must be the leve
   The arrow stays at every width.
 
 **A glide is reserved for the one case where a row IS the next screen's header** — one element
-carries its identity forward, not merely its position ([ADR 0069](./.adr/0069-a-row-glides-into-its-header.md),
+carries its identity forward, not merely its position (the rule is in the header of
 `web/src/lib/glide.ts`). Forward is the tap on that row; reverse is the in-app back arrow alone,
 never the swipe. Every other move stays what it was: a sideways move crossfades or slides, and the
 phone's own edge swipe plays the phone's own animation, never one of ours.
 
 ## 13. Themes: a token is the only way a colour reaches a component
 
-From 1.22.0 a person can pick a theme or import one ([ADR 0106](./.adr/0106-a-theme-is-a-closed-file-of-named-tokens.md)).
+From 1.22.0 a person can pick a theme or import one ([ADR 0148](./.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md)).
 A theme is a closed JSON file: a light half and a dark half of named colour tokens, one UI face, and, from
-schema version 2, twelve more tokens that each take a closed word or a gate-checked colour. It changes the
+schema version 2, a `surface` block of thirteen closed words, a display face and a terminal palette of
+gate-checked colours. It changes the
 VALUE of a token. It never changes which token a component uses.
 
 **So every colour a component draws is a token from the list below.** A theme reaches a token and
@@ -1019,8 +1020,9 @@ come from `light-dark()`.
 
 The name "ColliePWA" in the large screen's sidebar draws "PWA" in the three status tokens, always: P `status-done`, W `status-working`, A `status-blocked` (`components/wordmark.tsx`). Unlike the website, the app does not rest in grey. It is not a token of its own, and no application state may ever drive those inks.
 
-**The twelve version 2 tokens.** Each is a closed list. A file names a word, and one table says what the word
-does (`web/src/lib/theme/surface.ts`). The default word of every token is what the stylesheet draws, which is
+**The version 2 tokens.** Each is a closed list. A file names a word, and one table says what the word
+does (`web/src/lib/theme/surface.ts`). Ten words set a style. `zoom`, `tabs` and `composer` set none: the
+app reads the word itself, and `tabs` and `composer` are described above. The default word of every token is what the stylesheet draws, which is
 the look of the Collie theme: `flat`, `bold`, `band` and `sentence` among them. `tabs` and `composer` keep
 `plain` and `field` as the word of a theme that names none, and Collie names `folder` and `box`.
 
@@ -1036,7 +1038,8 @@ the look of the Collie theme: `flat`, `bold`, `band` and `sentence` among them. 
 | `rows` | `rules`, `cards` |
 | `icons` | `default`, `thin`, `heavy` |
 | `labels` | `sentence` (default), `caps` |
-| `fonts.display` | one of the six shipped faces |
+| `zoom` | `screen` (default), `none`: whether the belt's Zoom pill shows in the Screen view (1.26.2) |
+| `fonts.display` | one of the seven shipped faces |
 | `ansi` | all 18 mirror colours (slots 0 to 15, ink, ground) or none, each held to its contrast floor |
 
 A component reads a word through the utility it already uses (`rounded-md`, `shadow-sm`, `p-4`,
@@ -1047,8 +1050,9 @@ cannot reach: a small section label wears `label-caps`, a list that follows `row
 **What a theme never reaches.** Layout, tap sizes and row heights as free values (`roomy` is a word, and it
 never goes below the default), motion, the type scale, any other free value, and the meaning of a status:
 its icon and its word stay as the status components draw them. The type scale stays out while the app
-holds about 130 arbitrary `text-[Npx]` sizes. The Collie dog in the header, the home-screen icon and the splash
-look the same under every theme. The terminal mirror keeps its dark space (§8, ADR 0002) under every
+holds about 130 arbitrary `text-[Npx]` sizes. The home-screen icon and the splash look the same under every
+theme. The header mark is the Collie dog unless a theme names a character (`character`, from schema version 4) or
+the device picks one; a character is a closed word and never a drawing. The terminal mirror keeps its dark space (§8, ADR 0002) under every
 theme. A version 2 theme may name the mirror's palette and ground, authored in dark space, and the light
 half inverts them with the mirror.
 

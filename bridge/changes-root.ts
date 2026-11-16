@@ -1,9 +1,9 @@
-// WHICH FOLDER THE CHANGES VIEW LOOKS AT (ADR 0065, § The root is the workspace; #509).
+// WHICH FOLDER THE CHANGES VIEW LOOKS AT (ADR 0150, rule 2; #509).
 //
 // The operator thinks in workspaces (a herdr workspace, a tmux session, a zellij session), not in
 // the folder one pane happens to sit in. A pane parked in `experiments/session-stream` used to show
 // that subfolder's repo alone, which was a partial and misleading picture of the work. So the root
-// is the WORKSPACE's folder, every pane in a workspace shows the same list, and nested repo
+// is the WORKSPACE's folder, every pane inside that folder shows the same list, and nested repo
 // discovery then runs from that root exactly as it did from a pane's folder.
 //
 // One exception, and it is the whole of #509: a pane whose own folder is OUTSIDE its workspace's
@@ -115,6 +115,10 @@ export function workspaceRoot(input: WorkspaceRootInput): string | null {
  * one. Pure string rules, like the rest of this file: two spellings of one folder that differ by a
  * symlink (`/tmp` vs `/private/tmp`) read as outside here, and the server re-checks those against
  * the disk before it discards a root.
+ *
+ * When to revisit: a mux whose reported cwd lags the foreground process (a pane that `cd`s after
+ * launch and is read before the snapshot catches up keeps the root its old folder earns). That is a
+ * snapshot-freshness problem and is fixed there, never by weakening this rule.
  */
 export function rootForPane(root: string | null, cwd: string, host: Host = HOST): string | null {
   if (root === null) return null;

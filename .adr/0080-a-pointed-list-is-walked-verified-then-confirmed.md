@@ -2,9 +2,12 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-02
-- **Shipped in:** 1.16.0
-- **Amends:** [ADR 0055](./0055-a-pointed-list-is-walked-then-confirmed.md), point 4 only. Points 1 to 3
-  and 5 to 7 stand.
+- **Related:** [ADR 0058](./0058-the-resume-picker-commits-with-enter.md), [ADR
+  0076](./0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md), [ADR
+  0078](./0078-the-omp-tool-approval-is-lifted-and-deny-never-lands-on-approve.md) and [ADR
+  0055](./0055-a-pointed-list-is-walked-then-confirmed.md), now stubs whose rule [ADR 0151](./0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) states: a tap on a
+  pointed row is no longer sent as one batch (0055 point 4 only), and the Deny plan of 0078 that
+  leaned on list clamping is gone.
 - **Trail:** `web/src/lib/prompt-action.ts` (`submitPromptOption`, `walkVerifyCommit`) ·
   `web/src/lib/harness/prompt-model.ts` (`splitWalk`, `sameKeysModuloWalk`, `promptsSameIdentity`) ·
   `web/src/lib/harness/menu-hints.ts` (`pointerWalk`) · `web/src/lib/dialog-guard.ts` ·
