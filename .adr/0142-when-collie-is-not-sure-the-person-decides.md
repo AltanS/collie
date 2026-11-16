@@ -1,0 +1,120 @@
+# 0142: When Collie is not sure, the person decides
+
+- **Status:** Accepted (2026-11-16). Rules 1, 2 and 6 hold in part today; rules 3, 4, 5 and 7 wait for
+  the milestone "No block without an exit" (see "Decided, not built yet").
+- **Date:** 2026-11-16
+- **Trail:** the other road is the old posture: a provable receipt first, a block when Collie is unsure.
+  It was argued in #34 (a blind Enter approved a permission dialog), in the `/model` digit probe of
+  ADR 0009, in #103 (a password prompt) and in #623 (late keys). Field reports of 2026-11-16 argue
+  against it: a first-run theme screen whose card offered only Esc; a sign-in code the agent took but
+  the phone showed as "cannot tell"; a "Login successful. Press Enter to continue…" screen with no card;
+  three phone sends to a linked background session that stuck. Files: `bridge/surface/`,
+  `web/src/lib/surface/send.ts`, `web/src/lib/harness/index.ts`, `web/src/components/composer.tsx`
+
+## Context
+
+The Send Protocol checks the screen before and after it types. The check protects the person from
+four things: text in the wrong place (a dialog, a permission prompt), a double send, a lost send that
+looks sent, and text mixed into a draft someone typed at the desk. The check reads a copy of the
+screen. The person sees the screen itself. When the copy was unclear, Collie refused, and many
+refusals had no next step on the card. That put Collie's own ignorance in the person's way. A person
+looking at "Press Enter to continue" could not press Enter from the phone. A code that worked read as
+a failure. About 30 records shaped this road one case at a time, and none states the rule of today.
+
+## Decision
+
+1. Collie may refuse to act alone. It never refuses the person's informed tap. The person sees the
+   screen; Collie only reads a copy.
+2. No block without an exit. Every stop card says what Collie sees, and the next step is on the card.
+3. A screen Collie cannot read shows the live screen, the plain keys a person needs (Enter, the arrows,
+   Esc) and "Type it anyway". This changes ADR 0009 in one point: the card may offer plain keys the
+   screen did not print. They are labelled as keys, never as answers. Collie still never invents a
+   key to press by itself.
+4. "Cannot tell if this was sent" shows the screen as it is now and two actions. "It arrived" clears
+   the card. "Send again" is a new request, made by the person's tap.
+5. The receipt stays honest, but it is no gate. A send by the person's override is recorded as sent
+   on the person's word, not as verified. An override types on the rows the person saw: a screen that
+   moved since the tap is refused, and an override is never held or queued.
+6. Four hard stops stay, because the risk is real. Each card names the reason and the next step.
+   a. No message into an open permission prompt or question: text can approve a command.
+   b. No secret into a normal field, the hold queue or any store. Where Collie knows the screen asks
+      for a secret, the composer is the secret field, and "Send again" means: enter it again.
+   c. Collie never sends again by itself: one request id, one road, never twice automatically.
+   d. No WalkyTalky message from another agent over the person's draft.
+7. A stop card without an exit is a bug. The trouble tally counts such cards.
+
+## Today in the code
+
+- One request id, one receipt, a closed list of outcomes and reasons: `web/src/lib/surface/send.ts`
+  (`SEND_OUTCOMES`, `SEND_REASONS`). The steps and their bounds: `bridge/surface/protocol.ts`, header.
+- Rule 1, in part. On a screen Collie cannot read, the person's two-tap Send goes ahead: the first tap
+  is refused `unconfirmed` with the hash of the rows, and "Type here" sends on those same rows
+  (`takesManualSend` in `web/src/lib/surface/send.ts`, `gateManual` in `bridge/surface/protocol.ts`).
+  A moved screen is refused `stale_surface`, because the tap was informed by an older screen.
+- Rule 2, in part. `offersFor` in `web/src/lib/surface/send.ts` gives each refusal its offers: Add,
+  Replace or Cancel on a draft, Submit or Discard on typed text, the Keys pad on the rest. A queued card
+  never vanishes without an exit (`bridge/surface/queued.ts`, ADR 0122). A Stop is refused before any
+  key with a named reason (`bridge/surface/stop.ts`, ADR 0116).
+- An unread dialog gets one card: the whole screen and the one cancel key its adapter declared
+  (`withUnreadDialog` in `web/src/lib/harness/index.ts`, `web/src/components/unread-dialog-block.tsx`,
+  ADR 0053). The composer keeps its second-tap override (`web/src/components/composer.tsx`).
+- Rule 4, in part. After `unknown` the draft stays, and a second tap on the same text asks "Send it
+  again?" first (`web/src/lib/send-again.ts`). An expired hold keeps its text for a Resend
+  (`bridge/surface/holds.ts`).
+- Rule 6a. A known dialog or question over the box ends `not_free` before any key, and a box that
+  answers the agent's question takes only the person's own send (`bridge/surface/protocol.ts`,
+  `answersQuestion`).
+- Rule 6b. A sign-in field's text is never held, never kept for a queued card and never written to the
+  shell-line record (`isSecretSend` in `bridge/surface/protocol.ts`). The phone keeps no draft of it
+  (`web/src/components/composer.tsx`, `secretField`). A password prompt changes the words only, never
+  what is sent (`web/src/lib/no-echo.ts`, ADR 0017).
+- Rule 6c. The data road hands a command to a part once and never sends it again
+  (`bridge/surface/data-send.ts`, header). A held send goes again only under its own id
+  (`bridge/surface/holds.ts`).
+- Rule 6d. A WalkyTalky message waits over a draft and types nothing while it is there
+  (`draftHolds` in `bridge/surface/protocol.ts`; `DRAFT_REFUSAL` in `bridge/surface/data-send.ts`).
+- A steer is the person's choice, never the default (`bridge/surface/protocol.ts`, header).
+
+## Decided, not built yet
+
+These wait for the milestone "No block without an exit". Until it lands, the code follows the old
+rule: a provable receipt first, a refusal when Collie is unsure (ADR 0009 and ADR 0053 for dialogs,
+the `offersFor` table for sends).
+
+- Rule 2 in full: `not_free`, `probe_failed` and `unknown` offer only the Keys pad today, and the
+  sentence does not name a next step (`offersFor`, `web/src/lib/i18n/messages/en.ts`).
+- Rule 3: the unread-dialog card offers one declared key, and a screen with no declared key or no
+  modal evidence gets no card. It gains Enter, the arrows, Esc and "Type it anyway".
+- Rule 4: `unknown` gains "It arrived" and "Send again" on its card. The queued card's `unconfirmed`
+  state gains "Send again" beside Discard.
+- Rule 5: a receipt word for "sent on the person's word". The outcome list is closed, so it is a new
+  value in `SEND_OUTCOMES` or a receipt field, and every exhaustive table over it changes.
+- Rule 6b for a normal field: Collie cannot tell a secret typed into a normal box today; only a
+  secret shape leaves no trace in the shell-line record (`bridge/sent.ts`, ADR 0107).
+- Rule 7: the trouble tally counts `dialog` and `send` only (`TROUBLE_KINDS` in `bridge/telemetry.ts`).
+
+## Consequences
+
+- A person can now send into a screen Collie did not verify. The receipt says so, in its own word, so
+  a report and the tally never mistake an override for proof.
+- A person can press Enter on a screen Collie did not read, on a key labelled as a key. A wrong Enter
+  on an unread permission prompt is possible; the live screen above the keys is the guard. This is
+  no new power: the Keys pad already sends any key to any screen. The four hard stops cost a tap and
+  a sentence, never a dead end.
+- Revisit if an override send causes harm a refusal would have stopped, or if the tally shows the
+  plain keys are pressed where a lifted card should exist (then lift that dialog).
+
+## What we tried before
+
+- 0004, 0048, 0005: the box is found by its own frame; a composed key queue never outlives its dock.
+- 0009: a generic menu sends only the keys it names, never digits (changed here by rule 3).
+- 0010, 0017: a long send is proven by its paste placeholder; a password prompt changes only words.
+- 0053: an unread dialog gets its adapter's declared cancel key (changed here by rule 3).
+- 0054 to 0059, 0061, 0080: scales and pointed lists are walked, verified, confirmed; cards dock.
+- 0076 to 0079, 0098, 0133: the omp and pi dialogs Collie lifts, and the Escape card for the rest.
+- 0108, 0109, 0113: a dialog over live chrome declares its tail; a notice above the box is not a
+  modal; an AskUserQuestion answer is typed into its field, cleared only when it holds what was seen.
+- 0116, 0117: a Stop and a steer are a person's tap with a receipt.
+- 0122: a queued send is a card until the journal shows it, with an exit in each state.
+- 0123, 0124: three failed sends offer a prefilled issue; a send's bound starts after its profile.
+- 0140: a part inside the agent takes a send by data, one id, one road, never twice.
