@@ -36,7 +36,7 @@
 import { readFileSync, readlinkSync } from "node:fs";
 
 import { findProfile, loadProfiles, profileForPlatform, type Profile } from "../web/src/lib/surface/profile.ts";
-import { HOST, type Host } from "./host.ts";
+import { HOST, paneSurfacePlatform, WSL_FLAGS, type Host } from "./host.ts";
 import type { ForegroundProcess } from "./journal/types.ts";
 import { FOREGROUND_READ_MS, harnessProcessOf, isInterpreter } from "./launch-window.ts";
 import type { ProgramVersion, VersionCache } from "./surface/binary-version.ts";
@@ -111,6 +111,27 @@ export interface ProcessProbe {
   readonly cmdlineOf: (pid: number) => readonly string[] | null;
   readonly exeOf: (pid: number) => string | null;
   readonly cwdOf: (pid: number) => string | null;
+  /** The named variables of the process's environment (`/proc/<pid>/environ`), or null. Absent: none can be read. */
+  // Only `names` leave the probe: an environment can hold secrets (API keys), so the rest is dropped here.
+  readonly environOf?: (pid: number, names: readonly string[]) => ProcessEnvironment | null;
+}
+
+/** Some of a process's environment variables by name, as `/proc/<pid>/environ` holds them. */
+export type ProcessEnvironment = Readonly<Record<string, string>>;
+
+/**
+ * The `names` among `/proc/<pid>/environ`'s NUL-separated `NAME=value` entries. Every other entry, and
+ * the raw text, stay inside this function: never logged, stored or returned.
+ */
+export function envFromEnviron(raw: string, names: readonly string[]): ProcessEnvironment {
+  const wanted = new Set(names);
+  const pairs = argvFromCmdline(raw).flatMap((entry): Array<[string, string]> => {
+    const at = entry.indexOf("=");
+    if (at <= 0) return [];
+    const name = entry.slice(0, at);
+    return wanted.has(name) ? [[name, entry.slice(at + 1)]] : [];
+  });
+  return Object.fromEntries(pairs);
 }
 
 /** `/proc/<pid>/cmdline` as an argv: NUL-separated, each word ended by a NUL. */
@@ -138,7 +159,15 @@ export function procProbe(host: Host = HOST): ProcessProbe {
       return null;
     }
   };
-  return { cmdlineOf: cmdline, exeOf: (pid) => link(pid, "exe"), cwdOf: (pid) => link(pid, "cwd") };
+  const environ = (pid: number, names: readonly string[]): ProcessEnvironment | null => {
+    if (host.platform !== "linux") return null;
+    try {
+      return envFromEnviron(readFileSync(`/proc/${pid}/environ`, "utf8"), names);
+    } catch {
+      return null;
+    }
+  };
+  return { cmdlineOf: cmdline, exeOf: (pid) => link(pid, "exe"), cwdOf: (pid) => link(pid, "cwd"), environOf: environ };
 }
 
 /** The program a pane runs for a harness, as the version read runs it. */
@@ -169,7 +198,7 @@ export function paneBinaryOf(
   // The pid is Herdr's word. `/proc/<pid>` answers for that process only when its own argv is the one
   // Herdr reported: another pid namespace, a reused pid, or a program that rewrote its title says
   // something else, and then its executable and folder are no evidence.
-  const pid = found.process.pid !== undefined && sameArgv(probe.cmdlineOf(found.process.pid), found.process.argv) ? found.process.pid : undefined;
+  const pid = provenPid(found.process, probe);
   const exe = pid === undefined ? null : usable(probe.exeOf(pid));
   const cwd = (): string | null => (pid === undefined ? null : usable(probe.cwdOf(pid)));
   const [first] = found.process.argv;
@@ -183,6 +212,11 @@ export function paneBinaryOf(
   if (script === null) return null;
   const interpreter = absolute(first, cwd, host) ?? (exe !== null && isInterpreter(exe) ? exe : bare(first, host) ? first : null);
   return interpreter === null ? null : { harness: found.harness, command: [interpreter, script] };
+}
+
+/** The process's pid when `/proc/<pid>/cmdline` is the argv the multiplexer reported, else undefined. */
+function provenPid(process: ForegroundProcess, probe: ProcessProbe): number | undefined {
+  return process.pid !== undefined && sameArgv(probe.cmdlineOf(process.pid), process.argv) ? process.pid : undefined;
 }
 
 function sameArgv(seen: readonly string[] | null, reported: readonly string[]): boolean {
@@ -279,12 +313,23 @@ const LAST_GOOD_MAX = 256;
  */
 export function createPaneProfile(deps: PaneProfileDeps & { readonly paneVersion?: PaneVersion }): (harness: string, paneId?: string, foreground?: ForegroundRead) => Promise<PaneProfileMatch | null> {
   const platform = deps.platform ?? HOST.platform;
+  const probe = deps.probe ?? NO_PROBE;
   const versionOf = deps.paneVersion ?? createPaneVersion(deps);
+  // Under WSL the pane's agent decides its keys by its own environment (paneSurfacePlatform). The read
+  // is the one the version read just made: the send path's foreground read is shared per pane.
+  const platformOf = async (profileId: string, paneId?: string, foreground?: ForegroundRead): Promise<string> => {
+    if (platform !== "wsl" || paneId === undefined || foreground === undefined) return platform;
+    const read = await foreground(paneId);
+    const found = read.ok ? harnessProcessOf(read.value, deps.binaries()) : null;
+    if (found === null || found.harness !== profileId) return platform;
+    const pid = provenPid(found.process, probe);
+    return paneSurfacePlatform(platform, pid === undefined ? null : (probe.environOf?.(pid, WSL_FLAGS) ?? null));
+  };
   return async (harness, paneId, foreground) => {
     const profile = findProfile(loadProfiles(), harness);
     if (profile === undefined) return null;
     const answer = await versionOf(profile, paneId, foreground);
-    const match = profileForPlatform(profile.id, answer.version, platform);
+    const match = profileForPlatform(profile.id, answer.version, await platformOf(profile.id, paneId, foreground));
     const binary = answer.command?.at(-1);
     return match === null || binary === undefined ? match : { ...match, binary };
   };

@@ -36,6 +36,7 @@ need a rule to be read right.
 - `default` is required. The other keys are platform names: `win32`, `darwin` or `linux`.
 - The parser keeps the default in `keys.submit` and `keys.queueKey`, and the rest in `submitByPlatform` and `queueKeyByPlatform`.
 - The bridge resolves them with `forPlatform` from `process.platform`. `profileForPlatform` does both steps.
+- `wsl` is Linux under WSL (`surfacePlatform` in `bridge/host.ts`). For a send, the bridge reads the pane's agent environment where the multiplexer names its process: with neither `WSL_DISTRO_NAME` nor `WSL_INTEROP` the pane gets the `linux` keys (`paneSurfacePlatform`, issue 797).
 
 ## Command list
 

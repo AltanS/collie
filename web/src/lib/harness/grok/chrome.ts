@@ -285,6 +285,10 @@ function draftLineText(line: StyledLine): string {
 // offered the hint back as a terminal draft to take over. Only that shape, in that grey, as the
 // row's last text, so the same words typed by the user (typed-text colour) stay in the draft.
 const ARG_HINT = /^(?:<[^<>]+>|\[[^[\]]+\])(?:\s+(?:<[^<>]+>|\[[^[\]]+\]))*$/;
+// Grok Build 1.0.77 paints the rest of the highlighted command right after a partly typed one in
+// the same grey (`/stat` typed, `usline` painted; harness lab 2026-11-16). Only a run of word
+// characters that starts at the typed text's last character, so a typed word stays in the draft.
+const GHOST_TAIL = /^[A-Za-z0-9_-]+$/;
 
 function withoutArgumentHint(line: StyledLine, text: string): string {
   let offset = 0;
@@ -293,7 +297,7 @@ function withoutArgumentHint(line: StyledLine, text: string): string {
     const body = segment.text.trim();
     if (body !== "" && body !== "│") {
       hint =
-        segment.style.color === "rgb(108,108,108)" && ARG_HINT.test(body)
+        segment.style.color === "rgb(108,108,108)" && (ARG_HINT.test(body) || (GHOST_TAIL.test(body) && segment.text.startsWith(body) && offset > 0 && !/\s/.test(text[offset - 1] ?? " ")))
           ? { at: offset + segment.text.indexOf(body), length: body.length }
           : null;
     }
