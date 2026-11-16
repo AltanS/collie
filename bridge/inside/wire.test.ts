@@ -119,6 +119,7 @@ describe("parseEvent", () => {
   test("a failed's detail is read leniently: one line, capped, and never the reason the word is refused for", () => {
     expect(ok({ kind: "failed", cmd: "req-12345678", reason: "dropped", detail: "blocked by a hook" })).toMatchObject({ kind: "failed", reason: "dropped", detail: "blocked by a hook" });
     expect(ok({ kind: "failed", cmd: "req-12345678", reason: "submit", detail: "TypeError:\n  two\u0000lines\u2028" })).toMatchObject({ detail: "TypeError: two lines" });
+    expect(ok({ kind: "failed", cmd: "req-12345678", reason: "submit", detail: "a\u007fb\u009bc\u001b[31md" })).toMatchObject({ detail: "a b c [31md" });
     const long = ok({ kind: "failed", cmd: "req-12345678", reason: "submit", detail: "x".repeat(10_000) });
     expect(long.ok && long.kind === "failed" ? long.detail?.length : -1).toBe(FAIL_DETAIL_MAX);
     // Not a string, or nothing left: no detail, and the word still counts.

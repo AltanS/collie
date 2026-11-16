@@ -272,8 +272,8 @@ export function failDetail(cause: unknown, text: string): string | null {
   const name = cause instanceof Error ? cause.name : typeof cause === "string" ? "" : "Error";
   const said = cause instanceof Error ? cause.message : typeof cause === "string" ? cause : "";
   // Cut first: only the head is ever sent, and the search below must stay small inside the agent.
-  // eslint-disable-next-line no-control-regex -- the point is to remove them
-  const line = (name !== "" && said !== "" ? `${name}: ${said}` : name !== "" ? name : said).slice(0, FAIL_DETAIL_MAX * 2).replace(/[\u0000-\u001f\u007f]+/gu, " ").replace(/\s+/gu, " ").trim();
+  // `\p{Cc}`: the control characters (C0, DEL, C1), each run made one space, then every run of space.
+  const line = (name !== "" && said !== "" ? `${name}: ${said}` : name !== "" ? name : said).slice(0, FAIL_DETAIL_MAX * 2).replace(/\p{Cc}+/gu, " ").replace(/\s+/gu, " ").trim();
   if (line === "") return null;
   const at = textAt(line, text);
   if (at === -1) return line.slice(0, FAIL_DETAIL_MAX);

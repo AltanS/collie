@@ -199,6 +199,7 @@ describe("the permission answer", () => {
     expect(failDetail(`blocked by a settings hook: ${text}`, text)).toBe("blocked by a settings hook: (text not shown)");
     expect(failDetail(new Error(`cannot submit "...with pong, ple..."`), text)).toBe('Error: cannot submit "... (text not shown)');
     expect(failDetail(new Error("a\n\tb"), text)).toBe("Error: a b");
+    expect(failDetail(new Error("a\u007fb\u009bc\u001b[0m"), text)).toBe("Error: a b c [0m");
     expect(failDetail(new Error("x".repeat(500)), text)?.length).toBe(FAIL_DETAIL_MAX);
     // A huge message and a huge text stay quick: the line is cut before the search.
     const started = performance.now();

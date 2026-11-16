@@ -282,8 +282,8 @@ export const FAIL_DETAIL_MAX = 160;
 function detailOf(value: JsonValue | undefined): string | null {
   const text = asJsonString(value);
   if (text === undefined) return null;
-  // eslint-disable-next-line no-control-regex -- the point is to remove them
-  const line = text.slice(0, FAIL_DETAIL_MAX * 4).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/gu, " ").replace(/\s+/gu, " ").trim();
+  // `\p{Cc}`: the control characters (C0, DEL, C1); `\s` takes the line and paragraph separators.
+  const line = text.slice(0, FAIL_DETAIL_MAX * 4).replace(/\p{Cc}+/gu, " ").replace(/\s+/gu, " ").trim();
   return line === "" ? null : line.slice(0, FAIL_DETAIL_MAX);
 }
 
