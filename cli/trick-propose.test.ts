@@ -240,6 +240,16 @@ function rawAsk(path: string, line: string): Promise<JsonObject | undefined> {
 }
 
 describe("collie trick propose, over the walky socket", () => {
+  socketTest("decision 11: a scan warning prints with one prefix, warning:", async () => {
+    const b = await bridge();
+    const d = deps([walkySocketPath(b.stateDir)]);
+    expect(await cmdTrickPropose(d, [trickFolder({ "program.ts": 'await fetch("https://example.invalid/x");\nconsole.log(JSON.stringify({ v: 1, parts: [] }));\n' })])).toBe(EXIT.OK);
+    const warned = d.io.stderr.filter((line) => line.includes("program.ts:1"));
+    expect(warned).toHaveLength(1);
+    expect(warned[0]).toStartWith("warning: program.ts:1 ");
+    expect(warned[0]).not.toContain("warn: ");
+  });
+
   socketTest("from an agent's pane: the line opens with the op, the session proposes, the answer is printed", async () => {
     const b = await bridge();
     const d = deps([walkySocketPath(b.stateDir)]);

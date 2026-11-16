@@ -777,8 +777,8 @@ describe("collie trick on, off and list", () => {
     expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
     const on = d.out.findIndex((l) => l.startsWith("legs is on."));
     const warns = d.out.slice(0, on);
-    expect(warns.some((l) => l.startsWith("warn: program.sh:2 reaches the network"))).toBe(true);
-    expect(warns.some((l) => l.startsWith("warn: program.sh:3 calls an agent program or a model API"))).toBe(true);
+    expect(warns.some((l) => l.startsWith("warning: program.sh:2 reaches the network"))).toBe(true);
+    expect(warns.some((l) => l.startsWith("warning: program.sh:3 calls an agent program or a model API"))).toBe(true);
     expect(warns.at(-1)).toContain("text search of the code, not a proof");
     expect(JSON.parse(await readFile(switchesPath(d.stateDir), "utf8")).on.legs).toBeDefined();
     // A clean trick prints no warning and no honesty line.

@@ -33,6 +33,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A trick's code warnings start with one word.** `collie trick check`, `on`, `add` and `propose` print each warning as `warning: <file>:<line> ...`; `propose` printed `warning: warn:`.
 - **A trick's row in Settings says when the bridge refused one of its parts.** A trick that runs but prints a part the bridge cannot draw, such as a status line over its length, now shows the reason on its row in Settings, Tricks, as a refused manifest always did; before, the part was missing with no word why.
 - **The Hill is in the bar as soon as it is on.** With the Hill switched on and no Decision posted yet, the Dashboard's bottom bar now shows the Hill, as the Hill docs say; before, it appeared only with the first Decision.
 - **A proposed trick's card names every right it asks for.** A trick whose Decisions answer into a session now says "answers go to a session" on its proposal card, as its new-version card always did, and a test fails when a new right in `trick.toml` has no line on the card.

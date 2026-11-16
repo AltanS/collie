@@ -158,7 +158,7 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   const fields = { requestId: rid, files: wireFiles(read.files) };
   const checked = readProposal(fields);
   if (!checked.ok) return fail(checked.refusal.error, checked.refusal.code, EXIT.FAIL);
-  if (!json) for (const line of warningLines(report.warnings)) deps.io.err(`warning: ${line}`);
+  if (!json) for (const line of warningLines(report.warnings)) deps.io.err(line);
   // The op first: the bridge reads a long line only when it opens with it (parse.ts PROPOSE_LINE_PREFIX).
   const line = `${JSON.stringify({ op: "trick.propose", v: 1, markers: readEnvMarkers(deps.ctx.env), ...fields })}\n`;
   const answer = await ask(deps, line, rid);

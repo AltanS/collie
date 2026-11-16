@@ -442,5 +442,5 @@ export function wireWarnings(warnings: readonly CheckWarning[]): WireTrickWarnin
 
 /** One printed line per warning, as `check` and `on` print them. */
 export function warningLines(warnings: readonly CheckWarning[]): string[] {
-  return warnings.map((w) => `warn: ${w.file}:${w.line} ${WARN_TEXT[w.kind]}: ${w.text}`);
+  return warnings.map((w) => `warning: ${w.file}:${w.line} ${WARN_TEXT[w.kind]}: ${w.text}`);
 }
