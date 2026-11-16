@@ -18,12 +18,11 @@ This document fixes the protocol between two parties:
   `sources.json`, or the one program of a durable-only peer (`COLLIE_MUX=durable`). It **dials**
   the program, and it maps what it reads onto the mux port (`bridge/mux/types.ts`).
 
-The decisions behind it are in [ADR 0099](../../../.adr/0099-a-durable-program-is-a-mux-with-no-screen.md)
-(the adapter), [ADR 0100](../../../.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md) (asks),
-[ADR 0101](../../../.adr/0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md) (send and abort),
-[ADR 0102](../../../.adr/0102-starters-are-launcher-rows.md) (starters) and
-[ADR 0103](../../../.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)
-(the two transports). This file is the wire
+The decisions behind it are in [ADR 0146](../../../.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md),
+which states the rule in one place. It replaced ADR 0099 (the adapter), 0100 (asks), 0101 (send and
+abort), 0103 (the two transports), 0104 (the session) and 0114 (a host with no process). The rules of
+0102 (starters) live in the header of `bridge/starter-launch.ts`, and those of 0105 (the SDK) in
+`packages/durable-sdk/README.md`. This file is the wire
 only. What the bridge does with the data after the adapter (the pane log, the push guard, the phone
 routes) is not part of it.
 

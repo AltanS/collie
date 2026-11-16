@@ -437,7 +437,7 @@ again. Providing a subject argument on an existing configuration updates only th
 and preserves the current keys.
 
 > **Note.** On Herdr versions before 0.8.0, actions remain fixed to the set cached during initial plugin
-> installation ([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md)). The
+> installation ([ADR 0143](../.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md)). The
 > `push-keys` and `push-test` actions will not appear until you run `herdr plugin install`. Run
 > `bash scripts/collie-ctl.sh push-keys` directly instead. The wrapper script passes the command
 > directly to the binary.
@@ -632,7 +632,7 @@ Collie pushes a question once. It remembers each one by machine, durable agent a
 that restarts and asks the same question again shows it on the phone and sends no second push. A
 question is forgotten an hour after it closes. The memory is `durable-asks.json` in the state
 folder. In a crew the lead runs these rules and keeps that file, and the member sends no push for
-its own questions ([ADR 0100](../.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md)).
+its own questions ([ADR 0146](../.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md)).
 
 
 ---

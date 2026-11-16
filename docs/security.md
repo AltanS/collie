@@ -291,7 +291,7 @@ Key security boundaries and risks:
   sends to it directly. The lead already holds the pairing, so this adds no power over what a paired
   phone can do in a shell
   ([Your own launchers](configure.md#launchers-added-from-a-phone),
-  [ADR 0094](../.adr/0094-launchers-added-from-a-phone.md)).
+  [ADR 0145](../.adr/0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md)).
 - **A paired device can run a one-off command.** With the default `[phone] run = true`, a phone may
   type a line it wrote into a fresh shell on a machine. This adds no power, because a paired phone can
   already open a shell and type into it. The line follows the free-line character rule, and the bridge
@@ -303,7 +303,7 @@ Key security boundaries and risks:
   list as it is, because running a line again needs a paired device. Set `run = false` to remove the
   shortcut
   ([One-off commands](configure.md#one-off-commands-and-their-history),
-  [ADR 0095](../.adr/0095-one-off-commands-and-their-history.md)).
+  [ADR 0145](../.adr/0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md)).
 - **Each machine keeps the shell lines you send through Collie.** Sent keeps a line you send to a
   shell pane, and each one-off command, in `sent.jsonl` in the state folder (mode 0600). A paired
   device can read it, as it can read the panes. Some secrets are still kept

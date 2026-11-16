@@ -285,7 +285,7 @@ three versions on a checkout (`current` plus the two newest previous) and two on
 target never removes it.
 
 A **Herdr-managed** checkout is the exception and keeps advancing in place
-([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md), amended 2026-09-03). It
+({D143}). It
 is detached and shallow, and it lives in a directory Herdr owns, so there is no `versions/` layout
 beside it, nothing to hand off, and nothing to flip back to. `--rollback` is refused there; the
 recovery path is a reinstall of a named tag
@@ -427,7 +427,7 @@ bin/collie update --major                                         # Standalone
 ```
 
 This advances one major version to its newest strict release. It does not target prereleases
-([ADR 0020](../.adr/0020-a-major-upgrade-is-consented-by-flag.md)). See also:
+([ADR 0143](../.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md)). See also:
 [Upgrading from 0.x to 1.0](#upgrading-from-0x-to-10).
 
 ### If that fails with *"You are not currently on a branch"*
@@ -535,8 +535,9 @@ a lower version, because a lead that could move a peer backwards at will could m
 skew from a hand rollback is harmless, and the remedy is `collie crew update <member>` on the lead.
 
 Code reaches a peer over your SSH and never over the crew link
-([ADR 0016](../.adr/0016-updates-ride-the-operators-ssh.md), addendum 2026-09-04). When a peer
-levels itself, its code comes from GitHub over anonymous HTTPS and the peer decides for itself. The
+([ADR 0144](../.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md), rule 3). When a peer
+levels itself, its code comes from GitHub over anonymous HTTPS and the peer decides for itself
+([ADR 0143](../.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md)). The
 lead states only the version it is running and which peer may proceed.
 
 ### If the updater itself dies
@@ -710,7 +711,7 @@ itself.
 Stable installs do not receive prereleases. Edge builds are the exception, on the Edge line (see
 [Release lines](#release-lines)). Opting into a prerelease tracks that major's prereleases
 until the final release arrives
-([ADR 0020](../.adr/0020-a-major-upgrade-is-consented-by-flag.md)):
+([ADR 0143](../.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md)):
 
 ```bash
 # Standalone — the install script's opt-in flag takes the newest prerelease
@@ -734,7 +735,7 @@ herdr plugin action invoke restart --plugin herdr.collie
 ## Launcher rows in a crew
 
 The lead's launcher rows are now the crew's rows, and a row you add from the phone goes to the lead
-([Your own launchers](configure.md#your-own-launchers), [ADR 0127](../.adr/0127-the-leads-launcher-rows-are-the-crews-rows.md)).
+([Your own launchers](configure.md#your-own-launchers), [ADR 0145](../.adr/0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md)).
 Nothing needs doing on upgrade day. Update the lead first, and the members follow. A member that
 still runs the older Collie lists the lead's rows, but it refuses to start one. The phone says that
 the command is not one of its launchers, and nothing runs. Its own rows still work. Update that
@@ -850,7 +851,7 @@ Verify with `bin/collie version` or `herdr plugin action invoke version --plugin
 ### What 1.0 changes for you
 
 Herdr action IDs and `scripts/collie-ctl.sh` routes are unchanged
-([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md)).
+([ADR 0143](../.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md)).
 
 CLI verbs are compiled into `<checkout>/bin/collie` ([Commands](commands.md)). Use
 `bin/collie link` to add `collie` to PATH

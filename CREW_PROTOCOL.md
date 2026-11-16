@@ -21,8 +21,8 @@ cited so a reviewer can check the extension is faithful.
 
 **1.8.0 renames every name a machine reads on this link. Nothing else changes.** No route was added
 or dropped, no body shape moved, no timeout moved, and no rule below was rewritten. 1.7.0 renamed
-the word a person reads and kept the machine names ([ADR 0038](./.adr/0038-the-group-is-a-crew-the-wire-keeps-pack.md));
-this version finishes the rename ([ADR 0039](./.adr/0039-the-machine-says-crew-too.md)).
+the word a person reads and kept the machine names ([ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md), which replaced ADR 0038);
+this version finishes the rename ([ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md), which replaced ADR 0039).
 
 | What | Version 1 | Version 2 |
 |---|---|---|
@@ -50,7 +50,7 @@ version, so there is no negotiation and nothing in between two machines.
 **1.8.0 is the oldest build that speaks version 2.** That is where the number first shipped, and it is
 a named constant on the operator's side too: `PROTOCOL_FLOOR_VERSION` in `cli/update-check.ts`, tied to
 `CREW_PROTOCOL_VERSION` by a test so the two move together
-([ADR 0045](./.adr/0045-a-build-below-the-protocol-floor-is-a-red-preflight.md)).
+([ADR 0143](./.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md)).
 
 **A member below the floor lands on §7's exact-match window, and it is told twice.** On the link, its
 answers carry no crew protocol header, so the headerless ladder calls it `unreachable` for the first
@@ -89,8 +89,9 @@ version 2 and only version 2.
 | **warrant** | The short, lead-signed object that names the deputy: crew id, generation, deputy member id, deputy certificate fingerprint, issue and refresh times (§18). A *standing permission*, never a command. |
 
 These are the shipped words. Earlier drafts said *alpha* for *lead* and *bridge* for *collie*; both
-are dead. The vocabulary decision and the rename rules for operator-visible surfaces are
-[ADR 0012](./.adr/0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md).
+are dead. The vocabulary decision is
+[ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md); the rename rules for operator-visible surfaces are in
+[`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ## 2. Shape of the thing
 
@@ -120,8 +121,8 @@ graph TD
 The lead is the only dialler: a peer never calls the lead except at `join`, `leave` and `promote`
 (§8.6), and publishes nothing for the phone to reach ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
 The dotted edges are `collie crew add` / `collie crew update`, which push a git bundle over the
-operator's own ssh ([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md)); the crew link carries
-runtime data and never Collie itself. Since 2026-11-10 (ADR 0016's second addendum) the code of a trick
+operator's own ssh ([ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md)); the crew link carries
+runtime data and never Collie itself. Since 2026-11-10 (ADR 0144, rule 3) the code of a trick
 may cross it **only as inert data**: held, never installed and never run, until a person taps on the
 surface of the machine that will run it. A remote command on a member stays refused.
 
@@ -130,7 +131,7 @@ Three rules generate most of this document:
 1. **The lead consumes a peer's *Collie* HTTP API.** The lead **never dials a peer's Herdr socket**,
    and no Herdr method name ever crosses a crew link. This is the mux-driver seam — a peer fronting
    something other than Herdr is invisible to this protocol. Argument:
-   [ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md).
+   [ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md).
 2. **A peer publishes nothing.** No `tailscale serve`, never `tailscale funnel`, no PWA, no browser
    gates. A peer's crew listener is not a front door.
 3. **Solo pays zero tax.** With zero peers enrolled, every observable byte is what it is today (§11).
@@ -477,7 +478,7 @@ its own operator, when that peer is being used directly.
 **Which bridge sends a push for a peer's pane: the lead.** A peer in a crew mutes its own herd push
 path (`herdPushGate`, `bridge/crew/notify.ts`), and the lead derives every alert for a peer's panes
 from the snapshots it sweeps (`PeerNotifier`), then sends it to the subscriptions it holds. So the
-ask push guard ([ADR 0100](./.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md)) runs where
+ask push guard ([ADR 0146](./.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md)) runs where
 the push is sent: on the lead, over each swept body, keyed on `(member id, toolCallId)`, with its
 memory in the lead's state dir. A peer runs no guard for its own asks while it is in a crew. The
 guard's hourly breaker counts per member, and its one summary push names the member id. A solo
@@ -644,7 +645,7 @@ updated machines, so build skew is the steady state (§7), and this section is t
   preflight (`collie update --check`, which walks the members over the operator's ssh) reds the
   `version` check when a member's build is below the protocol floor, the oldest build that speaks
   this document's `CREW_PROTOCOL_VERSION` (`PROTOCOL_FLOOR_VERSION` in `cli/update-check.ts`,
-  [ADR 0045](./.adr/0045-a-build-below-the-protocol-floor-is-a-red-preflight.md)). That is a
+  [ADR 0143](./.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md)). That is a
   judgement about whether a crew update can finish, made before anything is started, and it changes
   no route, no response and no code path on the link. On the wire the rule above still stands whole:
   a build-version difference refuses nothing.
@@ -1181,7 +1182,7 @@ Stated plainly, because a crew link is remote shell access to a second machine.
       **former lead's** panes, journal and uploads — the reach this section otherwise reserves to a
       compromised *lead*, had from a single compromised *peer*.
 
-  **What closes it (§14, [ADR 0014](./.adr/0014-promote-is-a-confirm-on-the-lead.md)): promotion is a
+  **What closes it (§14, [ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md)): promotion is a
   confirm on the receiver, not a command from the claimant.** The demotion needs the old lead's
   operator. `newLead()` on a leading collie demotes only if a **live handover approval** — minted on
   that machine by `collie crew approve-promote <member>`, ten minutes, single-use — names the
@@ -1487,14 +1488,14 @@ prevents (`web/src/lib/api.ts:201-203`).
   wire shape gains `host: string`, so the phone can address what it renders. Absent on a solo
   snapshot (§11).
 - **A pane may carry `asks`** (additive-optional, §7.1, added 2026-10-12,
-  [ADR 0100](./.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md)): every open ask of a pane
+  [ADR 0146](./.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md)): every open ask of a pane
   whose adapter raises them as data, up to the durable agent's 50 per pane. The lead adds no rule for it:
   the merge keeps a pane whole and only stamps `host`, so a member's asks reach the phone as the
   member listed them, and a lead that predates the field passes it through the same way. The lead's
   push guard keys a peer's asks on `(member id, toolCallId)`, so a re-raised question is shown and
   not pushed again; it caps pushes, never the list (§5, "Which bridge sends a push").
 - **A pane may carry `turnId`** (additive-optional, §7.1, added 2026-10-12,
-  [ADR 0101](./.adr/0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md)): the newest turn
+  [ADR 0146](./.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md)): the newest turn
   of a pane whose adapter takes guarded controls, which the phone sends back with a send or an abort.
   The merge passes it through like `asks`, and a lead that predates it does the same.
 - **A pane may carry `actions`** (additive-optional, §7.1, added 2026-10-13, M53 spec 07): the belt
@@ -1937,7 +1938,7 @@ The path is **phone → lead → owning peer's disk**.
 Transparent failover is a non-goal.**
 
 **Promotion is a confirm on the receiver, not a command from the claimant** (amended 2026-08-11,
-closes F2 — [ADR 0014](./.adr/0014-promote-is-a-confirm-on-the-lead.md)). A signature proves *which
+closes F2 — [ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md)). A signature proves *which
 member is speaking* (§8.6); it cannot prove *that an operator willed it*. So the crown moves in **two
 steps on two machines**, and each step is refused without the one before it:
 
@@ -1956,7 +1957,7 @@ flag, a second signature, a token it was handed earlier) proves control of the m
 gain, which the attacker already has. Warn-only was refused: a wildcard bind warning reports the
 operator's own decision back to them, but an unconsented demotion would report an attacker's decision
 after it had committed, once the front door had moved and the roster was handed over
-([ADR 0014](./.adr/0014-promote-is-a-confirm-on-the-lead.md)).
+([ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md)).
 
 Mints a **pending handover approval** and **restarts the lead** so the running process holds
 it. The approval is persisted in the trust store beside the crew's other state:
@@ -2331,7 +2332,7 @@ record is the reservation and the run that closed it, side by side:
 - **An upload-read route** (§5), if a use case ever needs the lead to serve a peer-stored image.
 - **A non-Herdr peer — EXERCISED on 2026-09-08 for both tmux AND zellij, no longer a reservation.**
   The seam (§2,
-  [ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md)) was walked for the first time
+  [ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md)) was walked for the first time
   in the VM lab: a **tmux** peer, enrolled under a **herdr** lead, with a real ssh reach, its own
   config root and its own trust store. Every feature in this document's peer table was driven on
   that peer through the lead: the merge carried its own tmux ids (`%0`, `$0`, `@0`), a pane read
@@ -2397,7 +2398,7 @@ record is the reservation and the run that closed it, side by side:
 ## 17. Open items this document does not close
 
 - The **final product vocabulary** for operator-visible surfaces (env keys, action ids, CLI verbs).
-  Settled by [ADR 0012](./.adr/0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md);
+  Settled by [ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md);
   `collie` / `lead` / `peer` / `crew` are the words *this* document
   uses and they must stay greppable.
 - ~~**The general policy for a version-skewed crew.**~~ **Closed 2026-08-12 by §7.1** ("Version skew
@@ -2534,7 +2535,7 @@ route, signature or warrant can climb that wall.
 The restart that completes phase 2 therefore rides the operator's own SSH (§18.13), and the crew link
 never carries an instruction to restart. A restart message on the wire would be a remote code path
 behind the same two factors that guard a pane read, and it would turn the link into a control plane
-only to skip an SSH leg Collie already has ([ADR 0027](./.adr/0027-the-deputy-is-named-ahead-of-time.md)).
+only to skip an SSH leg Collie already has ([ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md)).
 
 | Phase | What happens | When it takes effect |
 |---|---|---|
