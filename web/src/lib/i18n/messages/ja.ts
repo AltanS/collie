@@ -1807,7 +1807,6 @@ export const ja: Dictionary = {
   "dialog.menu.rightAria": "右: {verb}（{label}）",
   "dialog.menu.levelAria": "{label}に{verb}",
   "dialog.menu.levelCurrentAria": "{label}、現在",
-  "unreadDialog.caption": "Collie はこの対話を読み取れません", // wordsmith
   "unreadDialog.confirmKey": "もう一度タップして{key}を送信", // wordsmith
   "unreadDialog.confirmDismiss": "もう一度タップして閉じる", // wordsmith
   "unreadDialog.report": "問題を報告",

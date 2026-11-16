@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { createRef, useEffect, useMemo, useState } from "react";
 import type { ComponentProps } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -14,7 +14,7 @@ import { __resetOperatorCommands } from "@/lib/operator-config";
 import { server } from "@/test/setup";
 import { fixtureServers, recordedSends, sendAnswer, sendHandler, type SentRequest } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
-import { Composer } from "./composer";
+import { Composer, type ComposerHandle } from "./composer";
 import { addRow, chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
 import { resetKeyBoard, setKeyBoard } from "@/lib/key-board-store";
 import { type PaneJob, type PaneSubagent, type PinRow, type ServerSummary, type TranscriptEntry } from "@/lib/types";
@@ -6188,5 +6188,95 @@ describe("the next step on a stop card (M102 spec 02)", () => {
     await waitFor(() => expect(posted).toHaveLength(1));
     // The person's draft in the phone's field stays: only the agent's box was emptied.
     expect(screen.getByRole("textbox")).toHaveValue("my long message");
+  });
+});
+
+describe("the unread card (M102 spec 03)", () => {
+  const UNREAD: Surface = { revision: 7, turn: "idle", modal: "unreadable", composer: "empty" };
+
+  /** A composer whose unread identity the test moves on, as a new screen would. */
+  function renderUnread(first: string | null, over: Partial<ComponentProps<typeof Composer>> = {}) {
+    let move: (next: string | null) => void = () => undefined;
+    const handle = createRef<ComposerHandle>();
+    function Harness() {
+      const [identity, setIdentity] = useState<string | null>(first);
+      move = setIdentity;
+      return (
+        <CrewProvider servers={undefined}>
+          <StatusSentinel />
+          <Composer
+            ref={handle}
+            paneId="w1:p1"
+            agent="claude"
+            isShell={false}
+            gone={false}
+            readOnly={false}
+            surface={UNREAD}
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
+            display={{ open: false, onToggle: vi.fn() }}
+            onSent={vi.fn()}
+            unreadIdentity={identity}
+            {...over}
+          />
+        </CrewProvider>
+      );
+    }
+    markLive("w1:p1", Date.now());
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Harness /> }])} />);
+    return { handle, move: (next: string | null) => act(() => move(next)) };
+  }
+
+  it("unread card: the Keys drawer opens once for a new screen, and a drawer the person closed stays closed", async () => {
+    const user = userEvent.setup();
+    const { move } = renderUnread("screen-a");
+    const keys = screen.getByRole("button", { name: "Keys" });
+    await waitFor(() => expect(keys).toHaveAttribute("aria-expanded", "true"));
+    await user.click(keys);
+    expect(keys).toHaveAttribute("aria-expanded", "false");
+    // The same screen read again does not open it a second time.
+    move("screen-a");
+    expect(keys).toHaveAttribute("aria-expanded", "false");
+    // A new screen Collie cannot read opens it again.
+    move("screen-b");
+    await waitFor(() => expect(keys).toHaveAttribute("aria-expanded", "true"));    // The pad's 123 chip stays as the person left it: a digit is never Collie's offer.
+    expect(screen.getByRole("button", { name: "123" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("unread card: a new screen never takes over a drawer the person has open", async () => {
+    const user = userEvent.setup();
+    const { move } = renderUnread(null);
+    await user.click(screen.getByRole("button", { name: "Quick" }));
+    expect(screen.getByRole("button", { name: "Quick" })).toHaveAttribute("aria-expanded", "true");
+    move("screen-a");
+    expect(screen.getByRole("button", { name: "Quick" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("unread card: Type it anyway reads the screen once, then the next send carries its rows hash with override", async () => {
+    server.use(...sendHandler((request) => (request.mode === "prepare" ? sendAnswer(request.id, null, undefined, { rowsHash: "0b0e1f" }) : sendAnswer(request.id, "sent"))));
+    const user = userEvent.setup();
+    const { handle } = renderUnread(null);
+    act(() => handle.current?.typeAnyway());
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    expect(recordedSends()[0]).toMatchObject({ text: "", mode: "prepare" });
+    // Nothing was typed by the read: the field waits for the person's words.
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveAttribute("placeholder", expect.stringMatching(/./u)));
+    await user.type(screen.getByRole("textbox"), "yes, go on");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(recordedSends()[1]).toMatchObject({ text: "yes, go on", rowsHash: "0b0e1f", override: true });
+  });
+
+  it("unread card: a refusal whose step is the screen asks the pane to show the card", async () => {
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "not_free", { offers: ["keys"], surface: { ...UNREAD, modal: "unknown", composer: "unknown" } })));
+    const onScreenUnread = vi.fn();
+    const user = userEvent.setup();
+    renderUnread(null, { surface: FREE, onScreenUnread });
+    await user.type(screen.getByRole("textbox"), "hello");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(onScreenUnread).toHaveBeenCalledTimes(1));
   });
 });

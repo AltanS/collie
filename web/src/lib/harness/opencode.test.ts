@@ -110,8 +110,32 @@ const ownFixtures = allOcFixtures.filter((f) => f.includes("permission") || LIFT
 // opencode 2.2.6 draws its pickers in the same frame (#749 lab, 2026-11-09).
 const PICKERS = ["oc--agents-picker.txt", "oc--command-palette.txt", "oc--v226-command-palette.txt", "oc--v226-models-picker.txt"];
 
+// Open unprinted-key findings (ADR 0151 rule 2, M102 spec 03): the question dialogs with a tab bar step
+// between tabs with Left and Right (measured, opencode/QUESTION_NOTES.md), and the screen prints only
+// `⇆ tab`. No entry of UNPRINTED_KEY_EXCEPTIONS names them; each goes red the day they are printed,
+// named or no longer sent.
+const TAB_ARROWS =
+  "the tab bar's Left and Right are sent where the footer prints only `⇆ tab` (measured, opencode/QUESTION_NOTES.md); not one of a to g";
+const UNPRINTED_KEY_FINDINGS: Readonly<Record<string, string>> = Object.fromEntries(
+  [
+    "oc--question--multi--confirm--empty.txt",
+    "oc--question--multi--confirm.txt",
+    "oc--question--three--review--incomplete.txt",
+    "oc--question--three--review.txt",
+    "oc--question--two--q1-answered.txt",
+    "oc--question--two--q1.txt",
+    "oc--question--two--q2.txt",
+    "oc--question--two--review.txt",
+    "oc--v211-question--multi--review.txt",
+    "oc--v211-question--two--answered.txt",
+    "oc--v211-question--two--review.txt",
+    "oc--v211-question--two.txt",
+  ].map((name) => [name, TAB_ARROWS]),
+);
+
 describeAdapterConformance(opencodeAdapter, {
   ownFixtures,
+  unprintedKeyFindings: UNPRINTED_KEY_FINDINGS,
   foreignFixtures: otherFixtures,
   neutralFixtures: allOcFixtures.filter((f) => !ownFixtures.includes(f)),
 });

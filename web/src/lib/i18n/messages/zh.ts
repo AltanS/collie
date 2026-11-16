@@ -1796,7 +1796,6 @@ export const zh: Dictionary = {
   "dialog.menu.rightAria": "向右：{verb}（{label}）",
   "dialog.menu.levelAria": "{verb}至 {label}",
   "dialog.menu.levelCurrentAria": "{label}，当前",
-  "unreadDialog.caption": "Collie 无法读取此对话框", // wordsmith
   "unreadDialog.confirmKey": "再次点击以发送 {key}", // wordsmith
   "unreadDialog.confirmDismiss": "再次点击以关闭", // wordsmith
   "unreadDialog.report": "报告问题",

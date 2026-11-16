@@ -1829,7 +1829,6 @@ export const es: Dictionary = {
   "dialog.menu.rightAria": "Derecha: {verb} ({label})",
   "dialog.menu.levelAria": "{verb} a {label}",
   "dialog.menu.levelCurrentAria": "{label}, actual",
-  "unreadDialog.caption": "Collie no puede leer este diálogo", // wordsmith
   "unreadDialog.confirmKey": "Pulsa de nuevo para enviar {key}", // wordsmith
   "unreadDialog.confirmDismiss": "Pulsa de nuevo para descartar", // wordsmith
   "unreadDialog.report": "Informar de un problema",

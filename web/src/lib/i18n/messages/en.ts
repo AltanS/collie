@@ -1981,12 +1981,17 @@ export const en = {
   // the level, so the aria name adds what a tap DOES to it.
   "dialog.menu.levelAria": "{verb} to {label}",
   "dialog.menu.levelCurrentAria": "{label}, current",
-  "unreadDialog.caption": "Collie cannot read this dialog",
+  "unreadDialog.caption": "Collie cannot read this screen. You can.",
   // Second-tap wording (#339): the first tap arms the key, the second sends it.
   "unreadDialog.confirmKey": "Tap again to send {key}",
   "unreadDialog.confirmDismiss": "Tap again to dismiss",
   // Report a problem from the card (ADR 0123, amendment 2026-10-28): opens the same sheet as the pane menu.
   "unreadDialog.report": "Report a problem",
+  "unreadDialog.keysAria": "Keys for this screen",
+  "unreadDialog.typeAnyway": "Type it anyway",
+  "unreadDialog.typeAnywayHint": "Your message, typed past this screen\u2026",
+  "unreadDialog.typeAnywayFailed": "Collie could not read the screen again. Send, then tap Type here.",
+  "unreadDialog.secret": "This screen asks for a secret. Use Type to enter it, one key at a time.",
   "dialog.preview.currentAnswerAria": "Current answer",
   "dialog.preview.previewedBelowAria": "Previewed below",
   "dialog.preview.previewLabel": "Preview · {label}",
@@ -3894,6 +3899,12 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "unreadDialog.caption",
+  "unreadDialog.keysAria",
+  "unreadDialog.typeAnyway",
+  "unreadDialog.typeAnywayHint",
+  "unreadDialog.typeAnywayFailed",
+  "unreadDialog.secret",
   "composer.protocol.notFree",
   "composer.protocol.probeFailed",
   "composer.protocol.staleScreen",

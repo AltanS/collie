@@ -1697,7 +1697,6 @@ export const tr: Dictionary = {
   "dialog.menu.rightAria": "Sağ: {verb} ({label})",
   "dialog.menu.levelAria": "{label} hedefine {verb}",
   "dialog.menu.levelCurrentAria": "{label}, geçerli",
-  "unreadDialog.caption": "Collie bu iletişim kutusunu okuyamıyor",
   "unreadDialog.confirmKey": "{key} göndermek için tekrar dokunun",
   "unreadDialog.confirmDismiss": "Kapatmak için tekrar dokunun",
   "unreadDialog.report": "Sorun bildir",

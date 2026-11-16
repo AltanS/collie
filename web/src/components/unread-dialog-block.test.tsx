@@ -8,6 +8,9 @@ import { splitLines } from "@/lib/blocks";
 import { buildBlocks } from "@/lib/harness";
 import { ARM_MS } from "@/lib/arm";
 import { __resetReport, openReport, unreadDialogReport, useReportTarget } from "@/lib/report/store";
+import type { ComponentProps } from "react";
+import { DEFAULT_BOARD, setCell } from "@/lib/key-board";
+import { resetKeyBoard, setKeyBoard } from "@/lib/key-board-store";
 import { CardDock } from "./card-dock";
 import { UnreadDialogBlock } from "./unread-dialog-block";
 
@@ -43,7 +46,7 @@ function renderCard(onAction = vi.fn(), disabled = false) {
 describe("UnreadDialogBlock", () => {
   it("renders the caption and exactly two controls: the declared key and Put away", () => {
     renderCard();
-    expect(screen.getByText("Collie cannot read this dialog")).toBeInTheDocument();
+    expect(screen.getByText("Collie cannot read this screen. You can.")).toBeInTheDocument();
     expect(screen.getAllByRole("button")).toHaveLength(2);
     // The key, named the way the Keys keypad names it — and NEVER a verb: on Muse this key steps
     // back rather than dismisses, so a label promising "cancel" would be a lie on a real harness.
@@ -340,5 +343,66 @@ describe("Report a problem on the card (ADR 0123, amendment 2026-10-28)", () => 
     expect(onReport).toHaveBeenCalledTimes(1);
     rerender(<UnreadDialogBlock cancel={block.cancel} lines={block.lines} onAction={vi.fn()} />);
     expect(screen.queryByRole("button", { name: "Report a problem" })).toBeNull();
+  });
+});
+
+// M102 spec 03, the picked option "Your Keys pad": the person's own pad is the key row. The card draws a
+// cap only for a core key that board lacks, with the pad's face; never a digit, a letter or an answer word.
+describe("unread card: your Keys pad (M102 spec 03)", () => {
+  afterEach(() => resetKeyBoard());
+
+  function mount(over: Partial<ComponentProps<typeof UnreadDialogBlock>> = {}) {
+    const block = cardBlock();
+    const onPadKeys = vi.fn(() => Promise.resolve(true));
+    const onTypeAnyway = vi.fn();
+    render(<UnreadDialogBlock cancel={block.cancel} lines={block.lines} onAction={vi.fn()} onPadKeys={onPadKeys} onTypeAnyway={onTypeAnyway} {...over} />);
+    return { onPadKeys, onTypeAnyway, block };
+  }
+  const caps = () => Array.from(document.querySelectorAll<HTMLButtonElement>('[data-slot="unread-dialog-cap"]'));
+
+  it("unread card: no cap while the person's board holds every core key", () => {
+    mount();
+    expect(caps()).toHaveLength(0);
+  });
+
+  it("unread card: a board without Esc gets one Esc cap, through the Keys pad's road, and nothing else", async () => {
+    setKeyBoard(setCell(DEFAULT_BOARD, 0, null));
+    const { onPadKeys } = mount();
+    expect(caps().map((b) => b.getAttribute("aria-label"))).toEqual(["Esc"]);
+    await userEvent.setup().click(caps()[0]!);
+    expect(onPadKeys).toHaveBeenCalledWith(["Escape"]);
+  });
+
+  it("unread card: a cap is never a digit, a letter or a word that guesses what the key means", () => {
+    let board = DEFAULT_BOARD;
+    for (let cell = 0; cell < board.cells.length; cell++) board = setCell(board, cell, null);
+    setKeyBoard(board);
+    mount();
+    const labels = caps().map((b) => b.getAttribute("aria-label") ?? "");
+    expect(labels.toSorted()).toEqual(["Down", "Enter", "Esc", "Left", "Right", "Up"]);
+    for (const label of labels) {
+      expect(label).not.toMatch(/^[0-9a-z]$/iu);
+      expect(label).not.toMatch(/^(Continue|Yes|No|OK)$/iu);
+    }
+  });
+
+  it("unread card: Type it anyway opens the composer's one send; the declared key keeps its second tap", async () => {
+    const { onTypeAnyway } = mount();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Type it anyway" }));
+    expect(onTypeAnyway).toHaveBeenCalledTimes(1);
+  });
+
+  it("unread card: a screen that asks for a secret has no Type it anyway, and points at Type mode", () => {
+    mount({ secret: true });
+    expect(screen.queryByRole("button", { name: "Type it anyway" })).toBeNull();
+    expect(screen.getByText(/asks for a secret\. Use Type/u)).toBeInTheDocument();
+  });
+
+  it("unread card: opened by a refusal, with no declared key, it still has the screen and Type it anyway", () => {
+    const block = cardBlock();
+    render(<UnreadDialogBlock cancel={null} lines={block.lines} onAction={vi.fn()} onTypeAnyway={vi.fn()} />);
+    expect(screen.getByText("Collie cannot read this screen. You can.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Type it anyway" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Esc" })).toBeNull();
   });
 });

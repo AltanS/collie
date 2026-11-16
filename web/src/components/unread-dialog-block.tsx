@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { ARM_MS } from "@/lib/arm";
+import { CORE_KEYS, missingCore } from "@/lib/key-board";
+import { useKeyBoard } from "@/lib/key-board-store";
+import type { IconKey } from "@/components/icons/keys";
 import { lineText, type StyledLine, type UnreadDialogModel } from "@/lib/blocks";
 import { keyLabel } from "@/lib/key-queue";
 import { OptionGroupCaption, PromptPanel } from "@/components/option-button";
@@ -11,8 +14,11 @@ import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
 export interface UnreadDialogBlockProps {
-  /** The screen no grammar read, and the key its harness DECLARED as the way out (.adr/0053). */
-  cancel: UnreadDialogModel;
+  /**
+   * The screen no grammar read, and the key its harness DECLARED as the way out (.adr/0053). Null for
+   * the card a send refusal opened on a screen Collie cannot read (M102 spec 03): it has no declared key.
+   */
+  cancel: UnreadDialogModel | null;
   /** The whole pane's styled lines — rendered verbatim under the control (see below). */
   lines: StyledLine[];
   /**
@@ -38,13 +44,31 @@ export interface UnreadDialogBlockProps {
   onShown?: () => void;
   /** The pane the card shows, so an instance another pane reuses calls {@link onShown} again. */
   paneId?: string;
+  /**
+   * Sends core keys through the Keys pad's own road, with its receipt (M102 spec 03): the caps the card
+   * draws for a core key the person's board lacks. Absent, the card draws no cap.
+   */
+  onPadKeys?: (keys: string[]) => Promise<boolean>;
+  /** "Type it anyway": opens the composer for one send past this screen (spec 01's override). Absent, no button. */
+  onTypeAnyway?: () => void;
+  /** The screen asks for a secret (a sign-in field, a password prompt): no "Type it anyway", a pointer to Type mode. */
+  secret?: boolean;
 }
+
+/** The pad's own faces for the core keys (nav-tray.tsx): arrows and Enter are glyphs, Esc is its word. */
+const CORE_FACE: ReadonlyMap<string, IconKey> = new Map<string, IconKey>([
+  ["Enter", "key-enter"],
+  ["Up", "key-up"],
+  ["Down", "key-down"],
+  ["Left", "key-left"],
+  ["Right", "key-right"],
+]);
 
 // The UNREAD-DIALOG CARD — one declared key over a screen Collie could not read (.adr/0053).
 //
 // This is the least confident block in the family and it must look it. It claims nothing about the
 // screen: no title lifted, no options, no footer parsed. The caption says what is true ("Collie
-// cannot read this dialog") and the single button says only the KEY, never what the key does — on
+// cannot read this screen. You can.") and the single button says only the KEY, never what the key does — on
 // Muse that key steps back rather than dismisses, so a label promising "cancel" would be a lie on a
 // real harness.
 //
@@ -67,13 +91,22 @@ export interface UnreadDialogBlockProps {
 // the screen's own rows print `esc dismiss`; otherwise it names the key, never a verb.
 const NAMES_A_DISMISS = /\besc\s+dismiss\b/i;
 
-export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onReport, onShown, paneId }: UnreadDialogBlockProps) {
+/** The identity of one unread screen: its declared key and its rows. The arm, the shown signal and the composer's once-per-screen Keys drawer key on it. */
+export function unreadIdentity(cancel: UnreadDialogModel | null, lines: readonly StyledLine[]): string {
+  return `${cancel?.key ?? ""}\n${lines.map(lineText).join("\n")}`;
+}
+
+export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onReport, onShown, paneId, onPadKeys, onTypeAnyway, secret = false }: UnreadDialogBlockProps) {
   useLocale();
   const [sending, setSending] = useState(false);
   const locked = disabled || sending;
+  // The person's own Keys pad is the key row (M102 spec 03, the picked option "Your Keys pad"): the card
+  // draws a cap only for a core key that board lacks, with the pad's face and the key's name. Never a
+  // digit, a letter or a word that guesses what the key means here.
+  const lost = missingCore(useKeyBoard());
   // The arm belongs to ONE dialog: it records the identity it was armed for, so a new dialog (other
   // key, other rows, or another pane reusing this instance) is never armed by the old one's tap.
-  const identity = `${cancel.key}\n${lines.map(lineText).join("\n")}`;
+  const identity = unreadIdentity(cancel, lines);
   const [armedFor, setArmedFor] = useState<string | null>(null);
   const armed = armedFor === identity;
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -98,7 +131,7 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
   }, [disabled]);
 
   async function press() {
-    if (locked) return;
+    if (locked || cancel === null) return;
     if (!armed) {
       setArmedFor(identity);
       clearTimeout(timer.current);
@@ -117,7 +150,8 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
 
   const armedLabel = dismissWording
     ? t("unreadDialog.confirmDismiss")
-    : t("unreadDialog.confirmKey", { key: keyLabel(cancel.key) });
+    : t("unreadDialog.confirmKey", { key: cancel === null ? "" : keyLabel(cancel.key) });
+  const capsShown = onPadKeys !== undefined && lost.length > 0;
 
   return (
     // rawMode (ADR 0056 counsel fix): this card always shows the mirror by default (below), so
@@ -125,20 +159,58 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
     <PromptPanel ariaLabel={caption} raw={lines} rawMode="declutter" wrap={wrap}>
       <OptionGroupCaption>{caption}</OptionGroupCaption>
 
-      <button
-        type="button"
-        disabled={locked}
-        aria-busy={sending}
-        onClick={press}
-        className={cn(
-          "font-content flex min-h-11 w-full items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium text-foreground transition-colors disabled:opacity-60",
-          sending || armed
-            ? "border-primary bg-primary/25"
-            : "border-primary/60 bg-primary/15 active:bg-primary/25",
+      <div role="group" aria-label={t("unreadDialog.keysAria")} className="flex flex-wrap items-center gap-1">
+        {cancel !== null && (
+          <button
+            type="button"
+            disabled={locked}
+            aria-busy={sending}
+            onClick={press}
+            className={cn(
+              "font-content flex min-h-11 min-w-0 flex-auto items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium text-foreground transition-colors disabled:opacity-60",
+              sending || armed
+                ? "border-primary bg-primary/25"
+                : "border-primary/60 bg-primary/15 active:bg-primary/25",
+            )}
+          >
+            {armed ? armedLabel : keyLabel(cancel.key)}
+          </button>
         )}
-      >
-        {armed ? armedLabel : keyLabel(cancel.key)}
-      </button>
+        {/* A cap only for a core key the person's board lacks, so Esc, Enter and the arrows are always
+            one tap away. Its tap goes through the Keys pad's road, with its receipt; nothing retries. */}
+        {capsShown &&
+          lost.map((name) => {
+            const step = CORE_KEYS.find((core) => core.name === name)?.step ?? name;
+            const face = CORE_FACE.get(name);
+            return (
+              <button
+                key={name}
+                type="button"
+                data-slot="unread-dialog-cap"
+                disabled={disabled}
+                aria-label={name}
+                onClick={() => void onPadKeys([step])}
+                className="flex h-11 w-12 shrink-0 items-center justify-center rounded-md border border-border bg-muted/40 font-mono text-xs text-foreground active:bg-muted disabled:opacity-60"
+              >
+                {face === undefined ? keyLabel(step) : <Icon name={face} className="size-4" aria-hidden="true" />}
+              </button>
+            );
+          })}
+        {onTypeAnyway !== undefined && !secret && (
+          <button
+            type="button"
+            data-slot="unread-dialog-type-anyway"
+            disabled={disabled}
+            onClick={onTypeAnyway}
+            className="inline-flex h-11 min-w-0 flex-auto items-center justify-center gap-1.5 rounded-lg border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground disabled:opacity-60"
+          >
+            <Icon name="direct-typing" className="size-4" aria-hidden="true" />
+            <span className="truncate">{t("unreadDialog.typeAnyway")}</span>
+          </button>
+        )}
+      </div>
+      {/* Hard stop 6b: a screen that asks for a secret gets no "Type it anyway"; Type mode is the way. */}
+      {secret && <p className="text-xs text-muted-foreground">{t("unreadDialog.secret")}</p>}
       {/* A live region on the button itself is unreliable; this one announces the armed wording. */}
       <span role="status" className="sr-only">
         {armed ? armedLabel : ""}

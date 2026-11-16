@@ -6,6 +6,7 @@ import { parseAnsi } from "../ansi";
 import { lineText, splitLines, type Block, type StyledLine } from "../blocks";
 import { buildBlocks, withUnreadDialog } from "./index";
 import { museAdapter } from "./muse";
+import { detectNoEchoPrompt } from "../no-echo";
 import { adapterFor } from "./registry";
 import type { HarnessAdapter } from "./types";
 
@@ -545,5 +546,36 @@ describe("the card stays off the shell an agent exits to, and off its first fram
     expect(adapterFor(agent)!.composerReady!(lines)).toBe(false);
     expect(adapterFor(agent)!.modalOnScreen!(lines)).toBe(false);
     expect(cardOf(pass(agent, lines))).toBeNull();
+  });
+});
+
+describe("unread card: where it never shows (M102 spec 03, hard stops 6a and 6b)", () => {
+  // 6a: a permission prompt Collie has read keeps its own card. The unread card is only for a screen
+  // with no reading, so no captured permission prompt may also produce one.
+  // A capture's file name starts with its agent; two lab prefixes name a registered agent another way.
+  const PREFIX = new Map([
+    ["claude-lab", "claude"],
+    ["oc", "opencode"],
+  ]);
+  const agentOf = (name: string): string | undefined => {
+    const head = name.split("--")[0]!;
+    const agent = PREFIX.get(head) ?? head;
+    return AGENTS.find((known) => known === agent);
+  };
+  const PERMISSION = FIXTURES.filter((f) => f.includes("--permission-") && agentOf(f) !== undefined);
+  it("unread card: the captures hold permission prompts to check", () => {
+    expect(PERMISSION.length).toBeGreaterThan(3);
+  });
+  it.each(PERMISSION)("unread card: never over the read permission prompt in %s", (name) => {
+    const blocks = pass(agentOf(name)!, fixtureLines(name));
+    expect(cardOf(blocks)).toBeNull();
+  });
+
+  // 6b: a screen that asks for a secret drops "Type it anyway". The pane view decides it with the
+  // no-echo reader over the same rows the card shows (agent-chat's `unreadSecret`).
+  it("unread card: a password prompt the card shows is read as a secret prompt", () => {
+    const lines = linesOf("$ sudo systemctl restart demo\n[sudo] password for demo-user: ");
+    expect(detectNoEchoPrompt(lines)).not.toBeNull();
+    expect(detectNoEchoPrompt(linesOf("$ ls\nREADME.md\n$ "))).toBeNull();
   });
 });

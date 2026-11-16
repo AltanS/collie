@@ -1702,7 +1702,6 @@ export const it: Dictionary = {
   "dialog.menu.rightAria": "Destra: {verb} ({label})",
   "dialog.menu.levelAria": "{verb} a {label}",
   "dialog.menu.levelCurrentAria": "{label}, corrente",
-  "unreadDialog.caption": "Collie non può leggere questo dialogo",
   "unreadDialog.confirmKey": "Tocca di nuovo per inviare {key}",
   "unreadDialog.confirmDismiss": "Tocca di nuovo per chiudere",
   "unreadDialog.report": "Segnala un problema",

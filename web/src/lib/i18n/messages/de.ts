@@ -1830,7 +1830,6 @@ export const de: Dictionary = {
   "dialog.menu.rightAria": "Rechts: {verb} ({label})",
   "dialog.menu.levelAria": "{verb} zu {label}",
   "dialog.menu.levelCurrentAria": "{label}, aktuell",
-  "unreadDialog.caption": "Collie kann diesen Dialog nicht lesen", // wordsmith
   "unreadDialog.confirmKey": "Erneut tippen, um {key} zu senden", // wordsmith
   "unreadDialog.confirmDismiss": "Erneut tippen, um zu verwerfen", // wordsmith
   "unreadDialog.report": "Problem melden",

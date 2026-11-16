@@ -1805,7 +1805,6 @@ export const ko: Dictionary = {
   "dialog.menu.rightAria": "오른쪽: {verb} ({label})",
   "dialog.menu.levelAria": "{label}에 {verb}",
   "dialog.menu.levelCurrentAria": "{label}, 현재",
-  "unreadDialog.caption": "Collie가 이 대화상자를 읽을 수 없습니다", // wordsmith
   "unreadDialog.confirmKey": "{key}을(를) 보내려면 다시 누르세요", // wordsmith
   "unreadDialog.confirmDismiss": "닫으려면 다시 누르세요", // wordsmith
   "unreadDialog.report": "문제 신고",

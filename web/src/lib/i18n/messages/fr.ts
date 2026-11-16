@@ -1700,7 +1700,6 @@ export const fr: Dictionary = {
   "dialog.menu.rightAria": "Droite : {verb} ({label})",
   "dialog.menu.levelAria": "{verb} vers {label}",
   "dialog.menu.levelCurrentAria": "{label}, actuel",
-  "unreadDialog.caption": "Collie ne peut pas lire ce dialogue",
   "unreadDialog.confirmKey": "Appuyez à nouveau pour envoyer {key}",
   "unreadDialog.confirmDismiss": "Appuyez à nouveau pour fermer",
   "unreadDialog.report": "Signaler un problème",

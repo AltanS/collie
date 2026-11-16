@@ -23,6 +23,9 @@ import { Composer } from "@/components/composer";
 import { readingRefusal, RefusalActions, SendRefusalNotice, stepLabel } from "@/components/send-notice";
 import { readSend, type SendReply } from "@/lib/send-protocol";
 import { SecretField } from "@/components/secret-field";
+import { UnreadDialogBlock } from "@/components/unread-dialog-block";
+import { parseAnsi } from "@/lib/ansi";
+import { splitLines, type UnreadDialogModel } from "@/lib/blocks";
 import { SubagentSheet } from "@/components/subagent-sheet";
 import { t } from "@/lib/i18n";
 import type { PaneSubagent, PaneTodo } from "@/lib/types";
@@ -601,6 +604,23 @@ function StopCardCase({ n, state, title, reach, c }: { n: number; state: string;
   );
 }
 
+/** An invented screen Collie cannot read (M102 spec 03): a picker with no grammar of its own. */
+const UNREAD_LINES = splitLines(parseAnsi("  Pick a colour theme\n\n  > Dusk\n    Dawn\n    Paper\n\n  Arrows move, return picks"));
+const UNREAD_CANCEL: UnreadDialogModel = { key: "Escape", agent: "demo", signature: "demo-picker" };
+
+/** The card itself, the real component: the screen's rows, Esc when the agent declared it, Type it anyway. */
+function UnreadCardPhone({ cancel, secret = false }: { cancel: UnreadDialogModel | null; secret?: boolean }) {
+  return (
+    <PhoneMock>
+      <ChromeBlock>
+        <div className="px-3 pb-3">
+          <UnreadDialogBlock cancel={cancel} lines={UNREAD_LINES} onAction={none} onPadKeys={nothing} onTypeAnyway={none} secret={secret} />
+        </div>
+      </ChromeBlock>
+    </PhoneMock>
+  );
+}
+
 /** The field itself with a code in it, shown or masked: the real component, started where a paste leaves it. */
 function SignInTyped({ shown }: { shown: boolean }) {
   return (
@@ -821,6 +841,17 @@ export function wayOutGroups(): ReactNode[] {
       </SignInCase>
       <SignInCase n={35} state="secret-framed-field-masked" title="Code hidden" reach="Tap Hide: the code is masked. Tap Show to see it again.">
         <SignInTyped shown={false} />
+      </SignInCase>
+    </Group>,
+    <Group key="unread-card" title="Unread card">
+      <SignInCase n={36} state="unread-card" title="Screen Collie cannot read" reach="A screen Collie has no grammar for. The card shows its rows and the agent's own Esc; the Keys pad opens once under it, and Type it anyway arms one send past the card.">
+        <UnreadCardPhone cancel={UNREAD_CANCEL} />
+      </SignInCase>
+      <SignInCase n={37} state="unread-card-fallback" title="Card from a refused send" reach="A send refused on a screen Collie cannot read, from an agent that declared no cancel key. The same card opens from the notice, with the pad and Type it anyway.">
+        <UnreadCardPhone cancel={null} />
+      </SignInCase>
+      <SignInCase n={38} state="unread-card-secret" title="Unread screen asks a secret" reach="The unread screen asks for a password or a code. Type it anyway is gone, and the card says to use Type, one key at a time.">
+        <UnreadCardPhone cancel={UNREAD_CANCEL} secret />
       </SignInCase>
     </Group>,
   ];

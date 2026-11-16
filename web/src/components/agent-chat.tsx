@@ -53,6 +53,8 @@ import { AgentStart } from "@/components/agent-start";
 import { AnsiOutput } from "@/components/ansi-output";
 import { OutputZoom } from "@/components/output-zoom";
 import { CardDock, dockFits, hasDialogCard } from "@/components/card-dock";
+import { unreadIdentity } from "@/components/unread-dialog-block";
+import { detectNoEchoPrompt } from "@/lib/no-echo";
 import { HookHoldCard } from "@/components/hook-hold-card";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
 import { AgentsFooter } from "@/components/agents-footer";
@@ -1038,6 +1040,20 @@ export function AgentChat({
   // the composer reads the Surface only); it still keeps the queued-keys card and the dialog taps
   // from writing an unbound key into a dialog (below).
   const dialogPresent = useMemo(() => blocks.some(blockOwnsKeyboard), [blocks]);
+  // THE UNREAD CARD A REFUSAL OPENS (M102 spec 03): a send refused on a screen Collie cannot read opens
+  // the unread card with no declared key, on the screen as it is, until the screen moves on. Never over a
+  // card a grammar lifted: a read permission prompt or question keeps its own card (hard stop 6a).
+  const [unreadOpenedAt, setUnreadOpenedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (unreadOpenedAt !== null && shown.revision !== unreadOpenedAt) setUnreadOpenedAt(null);
+  }, [shown.revision, unreadOpenedAt]);
+  const screenLines = useMemo(() => splitLines(parseAnsi(display)), [display]);
+  const unreadFallback = unreadOpenedAt !== null && !hasDialogCard(blocks) ? screenLines : null;
+  const unreadOnScreen = blocks.find((b) => b.kind === "unread-dialog");
+  const unreadId =
+    unreadOnScreen?.kind === "unread-dialog" ? unreadIdentity(unreadOnScreen.cancel, unreadOnScreen.lines) : unreadFallback !== null ? unreadIdentity(null, unreadFallback) : null;
+  // Hard stop 6b: a screen that asks for a secret gets no "Type it anyway" on the card.
+  const unreadSecret = useMemo(() => detectNoEchoPrompt(screenLines) !== null, [screenLines]);
   // The docked card fits the dock (a permission card with subject rows, card-dock.tsx): the reading
   // box's floor turns soft for it, below.
   const cardFits = useMemo(() => dockFits(blocks), [blocks]);
@@ -3242,6 +3258,12 @@ export function AgentChat({
               onMultiSelectAnswer={handleMultiSelectAnswer}
               onMenuAction={handleMenuAction}
               onUnreadDialogAction={handleUnreadDialogAction}
+              // The unread card's own ways on (M102 spec 03): a cap for a core key the person's board lacks
+              // goes through the Keys pad's road; "Type it anyway" arms one send past this screen.
+              unreadFallback={unreadFallback}
+              onUnreadPadKeys={(keys) => composerRef.current?.padKeys(keys) ?? Promise.resolve(false)}
+              onUnreadTypeAnyway={() => composerRef.current?.typeAnyway()}
+              unreadSecret={unreadSecret || composerSurface.field === "secret"}
               // Report a problem from the card (ADR 0123, amendment 2026-10-28): this machine's panes only,
               // as in the pane menu, since the report route reads no member's pane yet.
               onUnreadDialogReport={isLead(scope) ? (cancel) => openReport(unreadDialogReport(paneId, scope, cancel)) : undefined}
@@ -3497,7 +3519,9 @@ export function AgentChat({
                   readOnly={readOnly}
                   onAnswerDialog={answerDialog}
                   // The dock draws a dialog card only with a text to draw from (see the CardDock below).
-                  dialogCard={display ? hasDialogCard(blocks) : false}
+                  dialogCard={display ? hasDialogCard(blocks) || unreadFallback !== null : false}
+                  unreadIdentity={display ? unreadId : null}
+                  onScreenUnread={() => setUnreadOpenedAt(shown.revision)}
                   text={text}
                   terminalDraft={terminalDraft}
                   rawTerminalDraft={rawTerminalDraft}

@@ -1769,7 +1769,6 @@ export const ru: Dictionary = {
   "dialog.menu.rightAria": "Вправо: {verb} ({label})",
   "dialog.menu.levelAria": "{verb} в {label}",
   "dialog.menu.levelCurrentAria": "{label}, текущий",
-  "unreadDialog.caption": "Collie не может прочитать этот диалог",
   "unreadDialog.confirmKey": "Нажмите еще раз, чтобы отправить {key}",
   "unreadDialog.confirmDismiss": "Нажмите еще раз, чтобы закрыть",
   "unreadDialog.report": "Сообщить о проблеме",

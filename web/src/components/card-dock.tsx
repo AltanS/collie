@@ -8,6 +8,7 @@ import type {
   MultiSelectModel,
   PreviewSelectModel,
   PromptModel,
+  StyledLine,
   UnreadDialogModel,
   WizardModel,
 } from "@/lib/blocks";
@@ -114,6 +115,17 @@ export interface CardDockProps {
   /** The device's Wrap lines setting, for the unread-dialog card, the one card that mirrors the whole
    *  pane: its mirror wraps or pans as the pane mirror above it does (#372). */
   wrap?: boolean;
+  /**
+   * A send refusal on a screen Collie cannot read opened the unread card with no declared key (M102
+   * spec 03): the pane's rows to show. Only when no lifted card claims the screen; null or absent, none.
+   */
+  unreadFallback?: StyledLine[] | null;
+  /** The Keys pad's road, for the unread card's caps of core keys the person's board lacks. */
+  onUnreadPadKeys?: (keys: string[]) => Promise<boolean>;
+  /** "Type it anyway" on the unread card: the composer's one send past this screen. */
+  onUnreadTypeAnyway?: () => void;
+  /** The screen asks for a secret: the unread card offers no "Type it anyway". */
+  unreadSecret?: boolean;
 }
 
 /** The block kinds that dock a dialog card: each answers a dialog on the pane. The completion popup
@@ -251,6 +263,10 @@ function liftedCard({
   scope,
   stale,
   wrap,
+  unreadFallback,
+  onUnreadPadKeys,
+  onUnreadTypeAnyway,
+  unreadSecret,
 }: CardDockProps): ReactNode {
   const promptBlock = blocks.find((b): b is PromptBlock => b.kind === "prompt-select");
   if (promptBlock) {
@@ -333,6 +349,26 @@ function liftedCard({
         onReport={onUnreadDialogReport === undefined ? undefined : () => onUnreadDialogReport(unreadBlock.cancel)}
         onShown={onUnreadDialogShown === undefined ? undefined : () => onUnreadDialogShown(unreadBlock.cancel)}
         paneId={paneId}
+        onPadKeys={onUnreadPadKeys}
+        onTypeAnyway={onUnreadTypeAnyway}
+        secret={unreadSecret}
+      />
+    );
+  }
+  // The same card, opened by a send refused on a screen Collie cannot read (M102 spec 03): no declared
+  // key, so the person's Keys pad and "Type it anyway" are the way on. Only when no other card claims it.
+  if (unreadFallback !== null && unreadFallback !== undefined && !hasDialogCard(blocks)) {
+    return (
+      <UnreadDialogBlock
+        cancel={null}
+        lines={unreadFallback}
+        disabled={promptDisabled}
+        wrap={wrap}
+        onAction={() => undefined}
+        paneId={paneId}
+        onPadKeys={onUnreadPadKeys}
+        onTypeAnyway={onUnreadTypeAnyway}
+        secret={unreadSecret}
       />
     );
   }
