@@ -694,6 +694,25 @@ not an edge, is counted but never logged. An edge from a pane of another multipl
 machine, for example a Herdr TUI pane seen by a bridge that drives the Herdr core, is counted as
 `foreign-mux` and not logged.
 
+#### Type it anyway
+
+When Collie cannot send your message as it stands, the card offers **Type it anyway**. This works on
+every screen except four: a sign-in field (enter the code again there), a question or permission
+Collie read (answer it on its own card), a screen that changed since you looked, and a screen that
+shows a menu or a yes/no prompt. A screen that changed comes back with the rows as they are now; look
+at them and tap again. On a menu, use the keys to pick an option, because typed text could pick one.
+
+On a screen Collie cannot read, on a box that already holds a draft, or during a turn the agent does
+not queue into, Collie pastes your text into the box in one piece and presses no key at all. The card
+then says your text is in the box, and offers the keys: check the screen, and press Enter there when
+it is right. A message of more than one line goes this way only on Herdr, which pastes it whole;
+elsewhere send it one line at a time. On a screen that takes the manual Send, the second tap sends it
+as before, and on a turn the agent queues into, it goes in as any send does. Collie never holds a
+message you typed this way, and one tap types it at most once.
+
+A held send that waits two minutes or longer is marked as waiting long, so the phone can show the
+screen with a way to send it now or cancel it.
+
 #### Which bridges get the edges
 
 Each bridge that takes hook edges lists itself in `~/.local/state/collie/hook-targets/` at boot.

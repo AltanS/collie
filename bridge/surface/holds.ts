@@ -29,7 +29,7 @@
 import { chmodSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
-import { HELD_CAUSES, REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, WALKY_MESSAGE_ID, type HeldCause, type HeldRow, type HeldState, type SendMode, type SendOutcome, type SendReason } from "../../web/src/lib/surface/send.ts";
+import { HELD_CAUSES, HELD_LONG_MS, REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, WALKY_MESSAGE_ID, type HeldCause, type HeldRow, type HeldState, type SendMode, type SendOutcome, type SendReason } from "../../web/src/lib/surface/send.ts";
 
 /** How long a text stays held before it ends `expired` (decision 4). */
 export const HOLD_MS = 30 * 60 * 1000;
@@ -153,14 +153,18 @@ export function parseHeldEntry(raw: JsonValue | undefined): HeldEntry | null {
   return entry;
 }
 
-/** The phone's row for an entry: what the composer's queued row shows. */
-export function heldRow(entry: HeldEntry): HeldRow {
+/**
+ * The phone's row for an entry: what the composer's queued row shows. `now` marks a row still held
+ * {@link HELD_LONG_MS} or more `heldLong` (M102 spec 12): the wait goes on as before, the row only says so.
+ */
+export function heldRow(entry: HeldEntry, now?: number): HeldRow {
   let row: HeldRow = { requestId: entry.id, mode: entry.mode, text: entry.text, heldAt: entry.heldAt, expiresAt: entry.expiresAt, state: entry.state };
   if (entry.outcome !== undefined) row = { ...row, outcome: entry.outcome };
   if (entry.reason !== undefined) row = { ...row, reason: entry.reason };
   if (entry.cause !== undefined) row = { ...row, cause: entry.cause };
   if (entry.versionUnread === true) row = { ...row, versionUnread: true };
   if (entry.walky !== undefined) row = { ...row, walky: entry.walky };
+  if (now !== undefined && entry.state === "held" && now - entry.heldAt >= HELD_LONG_MS) row = { ...row, heldLong: true };
   return row;
 }
 

@@ -6389,7 +6389,7 @@ export async function replyThroughProtocol(
     auditDetail.probed = receipt.keys.includes("probe");
   }
   context.audit.record({ action: "reply", paneId, session, device: context.device, detail: auditDetail });
-  const shown: SendAnswer = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
+  const shown: SendAnswer = context.redact ? maskedAnswer(answer) : answer;
   const outcome = receipt?.outcome;
   // A held send (M56 spec 15) is taken: Collie sends it when the turn ends.
   if (outcome === undefined || outcome === "sent" || outcome === "effective" || outcome === "steered" || outcome === "discarded" || outcome === "held") return json({ ok: true, send: shown } satisfies ReplyProtocolResponse, context.acceptEncoding);
@@ -9917,7 +9917,7 @@ export async function sendRoute(
         rt.send.dismissReturned(resendOf);
         rt.send.dismissHeld(rt.name, paneId, resendOf);
       }
-      return json(context.redact && stored.surface !== undefined ? { ...stored, surface: maskSurface(stored.surface) } : stored, context.acceptEncoding);
+      return json(context.redact ? maskedAnswer(stored) : stored, context.acceptEncoding);
     }
   }
   const returned = resendOf !== undefined && (asked.mode === "submit" || asked.mode === "discard") ? rt.send.returnedSource(rt.name, paneId, resendOf) : null;
@@ -9964,8 +9964,18 @@ export async function sendRoute(
       rt.engine.pokeNow();
     }
   }
-  const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
+  const out = context.redact ? maskedAnswer(answer) : answer;
   return json(out, context.acceptEncoding);
+}
+
+/**
+ * A send answer as it leaves a bridge that masks secret shapes: its surface masked, and the rows of a
+ * refused override (M102 spec 12) masked row by row. The rows hash stays the hash of the plain rows.
+ */
+export function maskedAnswer(answer: SendAnswer): SendAnswer {
+  const surface = answer.surface === undefined ? {} : { surface: maskSurface(answer.surface) };
+  const rows = answer.rows === undefined ? {} : { rows: answer.rows.map(redactText) };
+  return { ...answer, ...surface, ...rows };
 }
 
 /** A view send's refusal before the Send Protocol: HTTP 409 with the code, so the phone shows it and never retries. */
@@ -10032,7 +10042,7 @@ async function viewSendRoute(
       rt.engine.pokeNow();
     }
   }
-  const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
+  const out = context.redact ? maskedAnswer(answer) : answer;
   // The receipt says how the keys ended: a line that landed but did not end `sent` carries its outcome (review 9 R7).
   const landed = viewLanded(receipt);
   return json({ ...out, view: landed === undefined ? { line: plan.line } : { line: plan.line, outcome: landed } }, context.acceptEncoding);
@@ -10152,7 +10162,7 @@ async function programSendRoute(
     // The program took the text: read the layout again soon, so the phone sees the turn move.
     if (receipt.acknowledged !== undefined && answer.replayed !== true) rt.engine.pokeNow();
   }
-  const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
+  const out = context.redact ? maskedAnswer(answer) : answer;
   return json(out, context.acceptEncoding);
 }
 

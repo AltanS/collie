@@ -238,6 +238,26 @@
 // the turn a submitted draft starts. Its caller names the hold's end (`holdUntil`), so one clock runs for it, and checks the pane
 // once more before it goes (`releaseCheck`). Every other send keeps the refusal and its offers.
 //
+// The person's override (M102 spec 12, ADR 0142 rule 1): a phone send (`fromPhone`) that carries
+// `override` and the rows hash the person saw is never refused for a reading alone. Where S0 reads the
+// screen free, or where the manual Send is open (`takesManualSend`), it runs these steps as before, the
+// probe and the commit included. Anywhere else the reading would have refused (a box not free, a turn
+// that is unknown or does not queue, a draft, a stale, torn or contested read, a pane with no profile
+// whose rows look like an agent's) it takes the override road: no probe, the text written in one piece
+// (a bracketed paste where the multiplexer has one), and NO key at all, Enter included. It ends
+// `typed_not_submitted(override)`; the person presses Enter on the key pad, with the live screen above
+// it. Only five things refuse such a send: the pane is gone (or the write grant, at the route); a sign-in
+// field (the secret path keeps it); a question or permission the reader read (hard stop 6a, its card
+// answers it); a screen that moved since the person looked (`stale_surface`); and the generic menu sign
+// (menu-sign.ts, `menu_open`), which also guards an override on the manual Send. Both refusals carry the
+// rows now and their hash. The rows compare of an override masks digits and spinner glyphs and, over a
+// found box, reads from the box's top edge down ({@link Snap.looseHash}): a clock or a streaming turn
+// above the box is no screen the person must see again. A text of more than one line takes the road only
+// where the multiplexer pastes a whole text (`pasteBlock`), else it is refused `multiline`: a line break
+// could submit it. An override is never held, joins no hold queue, and one id writes at most once. A held
+// row says `heldLong` once it waited HELD_LONG_MS (two minutes). A send Collie makes alone (a held release,
+// a queued send, WalkyTalky, a hook, a steer) never takes this road and is unchanged.
+//
 // Rows live only in the short memory ring below; the receipt and the request file hold hashes.
 // No harness name lives here (no-harness-names.test.ts scans this folder).
 
@@ -253,6 +273,7 @@ import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts
 import { BAD_HEAD, hasViewHead, VIEW_NO_PROFILE } from "../../web/src/lib/agent-view/wire.ts";
 import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
+import { menuSign, type MenuBox, type MenuSign } from "../../web/src/lib/surface/menu-sign.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
@@ -893,6 +914,12 @@ interface Snap {
   readonly hash: string;
   /** A short hash of the bottom window, the rows a person checks before a two-tap send. */
   readonly rowsHash: string;
+  /**
+   * The rows compare of the person's override (M102 spec 12): the bottom window's checked rows with
+   * digits and spinner glyphs as fixed marks ({@link looseRow}), and over a found box only from its top
+   * edge down. Never on the wire: the bridge keeps which {@link rowsHash} it handed out for which of these.
+   */
+  readonly looseHash: string;
 }
 
 function plainOf(row: FrameRow): string {
@@ -939,6 +966,17 @@ function contentEnd(texts: readonly string[]): number {
   while (end > 0 && texts[end - 1]!.trim().length === 0) end--;
   return end;
 }
+
+/** Spinner glyphs a status row turns through: braille cells and the star and arc sets. */
+const SPINNER_GLYPHS = /[\u2800-\u28ff✢✳✶✻✽✺✹✷✸◐◓◑◒◴◵◶◷◰◱◲◳]/gu;
+
+/** A row as the override's rows compare reads it: a spinner that turned, a counter or a clock that ticked reads the same. */
+export function looseRow(row: string): string {
+  return row.replace(SPINNER_GLYPHS, "*").replace(/\d+/gu, "0");
+}
+
+/** The most rows hashes the bridge remembers it handed out, with their loose form. */
+const ISSUED_MAX = 512;
 
 /** A run of rows: `first` included, `end` not. */
 interface RowWindow {
@@ -1915,6 +1953,51 @@ const LATE_KEYS =
 function noticeRefusal(s0: Snap): Ended {
   return new Ended("refused", "unconfirmed", { surface: s0.surface, offers: ["keys"], detail: NOTICE_KEY_HELD_DETAIL, cause: NOTICE_KEY });
 }
+/** The detail of an override refused because the screen moved since the person looked (M102 spec 12). */
+const OVERRIDE_MOVED = "The screen moved since you looked. Check it, then tap again.";
+/** The detail of an override refused by the generic menu sign (M102 spec 12). */
+const MENU_OPEN = "A menu or a yes/no prompt is open on the screen, and typed text could pick an option. Answer it with the keys.";
+/** The detail of an override typed on a screen Collie could not read (M102 spec 12). */
+const OVERRIDE_TYPED = "Your text is in the box. Collie pressed no key on a screen it cannot read: press Enter on the keys when the screen is right.";
+/** The detail of an override of more than one line where the multiplexer cannot paste it whole (M102 spec 12). */
+const OVERRIDE_ONE_LINE = "On a screen Collie cannot read, only one line goes in at a time here: a line break could submit it. Send one line, or type the rest with the keys.";
+
+/**
+ * Whether a request is the person's override (M102 spec 12): the phone's own send or command with the
+ * rows hash the person saw and `override`. A held request, a walky talky message, a view's send, a
+ * steer and a sign-in code never are, whatever they carry.
+ */
+function overrideAsked(request: SendRequest): boolean {
+  if (request.override !== true || request.fromPhone !== true || request.rowsHash === undefined) return false;
+  if (request.mode !== "send" && request.mode !== "command") return false;
+  return request.secret !== true && request.view === undefined && request.when !== "steer" && request.draftHolds !== true;
+}
+
+/** The refusal of an override (`stale_surface`, `menu_open`): nothing typed, the rows now and their hash, the key pad offered. */
+function overrideRefusal(reason: "stale_surface" | "menu_open", snap: Snap, detail: string): Ended {
+  const win = bottomWindow(snap.texts);
+  return new Ended("refused", reason, { surface: snap.surface, framed: snap.frame !== null, rowsHash: snap.rowsHash, rows: snap.texts.slice(win.first, win.end), offers: ["keys"], detail });
+}
+
+/**
+ * The generic menu sign on a read (menu-sign.ts). A box the reader found counts only while the reader
+ * saw no dialog (modal none, or a weak cue): its rows, a notice the profile names over it and the named
+ * footer rows under it are left out. On an unreadable read the whole bottom window is read.
+ */
+function menuSignOf(snap: Snap): MenuSign | null {
+  return menuSign(snap.texts, menuBoxOf(snap));
+}
+
+function menuBoxOf(snap: Snap): MenuBox | null {
+  const { frame, surface } = snap;
+  if (frame === null || (surface.modal !== "none" && surface.modal !== "unknown")) return null;
+  const skip = new Set<number>();
+  for (let i = frame.interior.first; i <= frame.interior.last; i++) skip.add(i);
+  if (snap.notice !== null) for (let i = snap.notice.first; i <= snap.notice.end; i++) skip.add(i);
+  for (const hit of frame.volatile.named) skip.add(hit.row);
+  return { top: frame.top, skip };
+}
+
 /** The detail of a command refused because the turn runs. */
 const COMMAND_IN_TURN = "A command waits until the turn ends.";
 /** The detail of a command the profile never lets wait in a turn (`keys.neverHeld`). */
@@ -2968,6 +3051,8 @@ interface EndNote {
   cause?: SendCause;
   /** An `unknown` whose receipt keeps {@link detail} too (the part's word on a data send). Others keep it on the answer only. */
   keepDetail?: true;
+  /** The rows the hash covers, on a refused override (M102 spec 12); the answer only, never the receipt. */
+  rows?: readonly string[];
 }
 
 /** The most requests {@link SendProtocol} keeps on the screen road after a dropped data try. */
@@ -3021,6 +3106,7 @@ function answerWith(draft: AnswerDraft, note: EndNote): SendAnswer {
   if (note.detail !== undefined) draft.detail = note.detail;
   if (note.cap !== undefined) draft.cap = note.cap;
   if (note.cause !== undefined) draft.cause = note.cause;
+  if (note.rows !== undefined) draft.rows = note.rows;
   return draft;
 }
 
@@ -3094,6 +3180,8 @@ export class SendProtocol {
    * the screen road for the rest of their life, a release from the hold queue included. Gone at settle.
    */
   private readonly droppedByData = new Set<string>();
+  /** Rows hashes this bridge handed out (each read's), with their loose form, newest last (M102 spec 12, {@link rowsSeen}). */
+  private readonly issued = new Map<string, string>();
 
   constructor(private readonly deps: SendDeps) {
     this.now = deps.now ?? (() => Date.now());
@@ -3415,7 +3503,8 @@ export class SendProtocol {
     // A steer never joins (M69): it is for the turn that runs now, and goes in ahead of the held sends,
     // which wait for that turn to end anyway. Nor does a sign-in code (`secret`): a held text waits on
     // disk in plain form, and the code is for the field on screen now, not for a later turn.
-    const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer" && request.secret !== true;
+    // Nor does the person's override (M102 spec 01 and 12): it is for the screen the person sees now.
+    const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer" && request.secret !== true && !overrideAsked(request);
     const match = joins ? ((await this.deps.profile(target.harness, target.paneId)) ?? (await this.heldPlainProfile(request, waiting, target.paneId, generation))) : null;
     if (match !== null && !(request.mode === "command" && runsInTurnEntry(request.text, match) !== null)) {
       const state = this.bareState(request, accepted.record, target, match);
@@ -3576,7 +3665,7 @@ export class SendProtocol {
 
   /** The phone's rows for a pane's held requests, oldest first (the snapshot carries them). */
   heldOf(session: string, paneId: string): HeldRow[] {
-    return this.deps.holds?.list(session, paneId).map(heldRow) ?? [];
+    return this.deps.holds?.list(session, paneId).map((entry) => heldRow(entry, this.now())) ?? [];
   }
 
   /** The hold queue's view of a pane, made on first use. */
@@ -4807,6 +4896,9 @@ export class SendProtocol {
       throw new Ended("refused", "probe_failed", { surface: s0.surface, framed: false, detail: notStartedDetail(match) });
     }
     this.atS0(state, s0);
+    // The person's override on a screen that is not free (M102 spec 12): refused only for a moved screen
+    // or a menu, typed with no key on a reading that would have refused, else on as before.
+    await this.overrideAtS0(state, s0, lines);
     // At most one of Collie's probe characters unaccounted for per pane (2026-10-26): while one an
     // earlier send typed into a starting box has not shown, a request that would type into the box
     // types no probe of its own. Once it shows, the residue rule below takes it out first.
@@ -5026,8 +5118,17 @@ export class SendProtocol {
     }
     // A pane whose last rows look like an agent's (an input box, a dialog, a footer a profile names) is
     // no shell to type into blind: the agent may be starting, or one Collie has no name for here.
+    // The person's override (M102 spec 12) never types where a menu shows, blind or not.
+    if (overrideAsked(state.request) && menuSignOf(snap) !== null) throw overrideRefusal("menu_open", snap, MENU_OPEN);
     if (blindRoadSign(snap.rows, snap.surface) !== null) {
-      throw new Ended("refused", "not_free", { surface: snap.surface, framed: false, offers: ["keys"], detail: BLIND_ROAD_REFUSAL });
+      // The person's override: on the rows they saw, the text with no key.
+      if (overrideAsked(state.request)) {
+        if (!this.rowsSeen(state, snap)) throw overrideRefusal("stale_surface", snap, OVERRIDE_MOVED);
+        await this.typeOverride(state, snap, lines);
+      }
+      const note: EndNote = { surface: snap.surface, framed: false, offers: ["keys"], detail: BLIND_ROAD_REFUSAL };
+      if (state.request.fromPhone === true) note.rowsHash = snap.rowsHash;
+      throw new Ended("refused", "not_free", note);
     }
     this.lap(state, "s0");
     // A write not confirmed in time that showed on the screen (unconfirmedWrite): a blind pane has no
@@ -5344,7 +5445,85 @@ export class SendProtocol {
       else this.gateManual(state, s0, short, SHORT_PANE);
       return;
     }
-    throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
+    // The phone's tap gets the rows hash with it: the person's override binds to it (M102 spec 12).
+    throw new Ended("refused", "not_free", state.request.fromPhone === true ? { surface, rowsHash: s0.rowsHash, detail: "The input box is not free." } : { surface, detail: "The input box is not free." });
+  }
+
+  /**
+   * The person's override at S0 (M102 spec 12, ADR 0142 rule 1), on a screen S0 does not read free. Does
+   * nothing for any other request, on a sign-in field (the secret path keeps it) and on a question or
+   * permission the reader read (hard stop 6a: the refusal of the steps stands, and the card answers it).
+   * Else it refuses a screen that moved since the person looked and a screen that shows the generic menu
+   * sign, both with the rows now; the manual Send and a turn the harness queues into then go on as before,
+   * and every other reading takes the override road ({@link typeOverride}), which ends the run.
+   */
+  private async overrideAtS0(state: RunState, s0: Snap, lines: readonly string[]): Promise<void> {
+    if (!overrideAsked(state.request) || isFree(s0.surface)) return;
+    if (state.secretField === true || askOf(s0.surface.modal) !== null) return;
+    if (!this.rowsSeen(state, s0)) throw overrideRefusal("stale_surface", s0, OVERRIDE_MOVED);
+    if (menuSignOf(s0) !== null) throw overrideRefusal("menu_open", s0, MENU_OPEN);
+    if (!this.reaches(state, s0)) return;
+    await this.typeOverride(state, s0, lines);
+  }
+
+  /**
+   * Whether an override on this reading takes the override road: every reading the steps would refuse.
+   * Not the manual Send, which keeps its probe and commit, and not a running turn over an empty box that
+   * the harness queues into ({@link turnRefusal} lets it through), which goes in as a plain send does.
+   */
+  private reaches(state: RunState, s0: Snap): boolean {
+    const { surface, frame } = s0;
+    if (takesManualSend(surface)) return false;
+    if (surface.turn === "running" && surface.modal === "none" && frame !== null && surface.composer === "empty") return turnRefusal(state, s0, frame) !== null;
+    return true;
+  }
+
+  /**
+   * The override road (M102 spec 12, decision 3): no probe, the text in one piece (the multiplexer's own
+   * whole-text paste, else its bracketed paste, else typed), and no key at all, Enter included. It ends
+   * `typed_not_submitted(override)` with only the key pad offered: the person presses Enter there. A text
+   * of more than one line goes only where the multiplexer pastes it whole: elsewhere a line break could
+   * submit it. A text that would leave one of a notice's keys alone in the box is refused, as today.
+   */
+  private async typeOverride(state: RunState, snap: Snap, lines: readonly string[]): Promise<never> {
+    if (this.answersNotice(state, snap)) throw noticeRefusal(snap);
+    const { mux } = this.deps;
+    if (lines.length > 1 && mux.pasteBlock === undefined) throw new Ended("refused", "multiline", { surface: snap.surface, framed: snap.frame !== null, offers: ["keys"], detail: OVERRIDE_ONE_LINE });
+    this.lap(state, "s0");
+    state.overrode = true;
+    state.phase = "write";
+    this.guard(state);
+    const { paneId } = state.target;
+    const text = lines.join("\n");
+    // Called on the mux, never torn off it: an adapter's method reads its own `this`.
+    const write = mux.pasteBlock !== undefined ? mux.pasteBlock(paneId, text) : mux.pasteText !== undefined ? mux.pasteText(paneId, text) : mux.typeText(paneId, text);
+    const ack = await this.within(state, write);
+    this.deps.gate.noteWrite(paneId);
+    const unconfirmed = writeAck(ack);
+    if (unconfirmed !== null) await this.unconfirmedWrite(state, snap, text, unconfirmed);
+    this.lap(state, "write");
+    throw new Ended("typed_not_submitted", "override", { surface: snap.surface, framed: snap.frame !== null, offers: ["keys"], detail: OVERRIDE_TYPED });
+  }
+
+  /** A rows hash a read handed out, with its loose form ({@link Snap.looseHash}); the oldest goes past {@link ISSUED_MAX}. */
+  private noteIssued(exact: string, loose: string): void {
+    this.issued.delete(exact);
+    this.issued.set(exact, loose);
+    if (this.issued.size <= ISSUED_MAX) return;
+    const oldest = this.issued.keys().next();
+    if (oldest.done !== true) this.issued.delete(oldest.value);
+  }
+
+  /**
+   * Whether `snap` shows the rows the person saw: the hash they tapped with is its rows hash, or, for the
+   * person's override, a hash this bridge handed out for a read whose loose rows are the same. After a
+   * bridge restart nothing is remembered, and the exact hash alone decides.
+   */
+  private rowsSeen(state: RunState, snap: Snap): boolean {
+    const seen = state.request.rowsHash;
+    if (seen === undefined) return false;
+    if (seen === snap.rowsHash) return true;
+    return overrideAsked(state.request) && this.issued.get(seen) === snap.looseHash;
   }
 
   /** The manual Send: the first tap is refused `unconfirmed` with the rows hash, the commit goes ahead
@@ -5356,7 +5535,7 @@ export class SendProtocol {
       if (cause !== undefined) note.cause = cause;
       throw new Ended("refused", "unconfirmed", note);
     }
-    if (state.request.rowsHash !== s0.rowsHash) {
+    if (!this.rowsSeen(state, s0)) {
       throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, detail: "The screen moved since you looked." });
     }
     // The cap counts sends typed past a screen Collie cannot read; a notice's digit is no such screen.
@@ -5779,7 +5958,9 @@ export class SendProtocol {
       hash: shortHash(texts.join("\n")),
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
       rowsHash: shortHash(checked.slice(win.first, win.end).join("\n")),
+      looseHash: shortHash(checked.slice(frame === null ? win.first : Math.max(win.first, Math.min(frame.top, win.end)), win.end).map(looseRow).join("\n")),
     };
+    this.noteIssued(read.rowsHash, read.looseHash);
     const snap = secretView(state.request.text, ghostView(state.ghost, read));
     state.previousRead = state.lastRead;
     state.lastRead = snap;

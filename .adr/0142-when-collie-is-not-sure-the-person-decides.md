@@ -51,10 +51,8 @@ a failure. About 30 records shaped this road one case at a time, and none states
 
 - One request id, one receipt, a closed list of outcomes and reasons: `web/src/lib/surface/send.ts`
   (`SEND_OUTCOMES`, `SEND_REASONS`). The steps and their bounds: `bridge/surface/protocol.ts`, header.
-- Rule 1, in part. On a screen Collie cannot read, the person's two-tap Send goes ahead: the first tap
-  is refused `unconfirmed` with the hash of the rows, and "Type here" sends on those same rows
-  (`takesManualSend` in `web/src/lib/surface/send.ts`, `gateManual` in `bridge/surface/protocol.ts`).
-  A moved screen is refused `stale_surface`, because the tap was informed by an older screen.
+- Rule 1: the two-tap Send on an unread screen (`gateManual`), and the override on every other one
+  (addendum below). A moved screen is refused `stale_surface`: the tap was informed by an older one.
 - Rule 2, in part. `offersFor` in `web/src/lib/surface/send.ts` gives each refusal its offers: Add,
   Replace or Cancel on a draft, Submit or Discard on typed text, the Keys pad on the rest. A queued card
   never vanishes without an exit (`bridge/surface/queued.ts`, ADR 0122). A Stop is refused before any
@@ -68,22 +66,17 @@ a failure. About 30 records shaped this road one case at a time, and none states
 - Rule 6a. A known dialog or question over the box ends `not_free` before any key, and a box that
   answers the agent's question takes only the person's own send (`bridge/surface/protocol.ts`,
   `answersQuestion`).
-- Rule 6b. A sign-in field's text is never held, never kept for a queued card and never written to the
-  shell-line record (`isSecretSend` in `bridge/surface/protocol.ts`). The phone keeps no draft of it
-  (`web/src/components/composer.tsx`, `secretField`). A password prompt changes the words only, never
-  what is sent (`web/src/lib/no-echo.ts`, ADR 0017).
-- Rule 6c. The data road hands a command to a part once and never sends it again
-  (`bridge/surface/data-send.ts`, header). A held send goes again only under its own id
-  (`bridge/surface/holds.ts`).
+- Rule 6b. A sign-in field's text is never held, kept or recorded (`isSecretSend`), and the phone keeps
+  no draft of it (`secretField`). A password prompt changes only words (`no-echo.ts`, ADR 0017).
+- Rule 6c. The data road hands a command to a part once (`data-send.ts`); a held send goes again only
+  under its own id (`holds.ts`); one override id types at most once.
 - Rule 6d. A WalkyTalky message waits over a draft and types nothing while it is there
   (`draftHolds` in `bridge/surface/protocol.ts`; `DRAFT_REFUSAL` in `bridge/surface/data-send.ts`).
 - A steer is the person's choice, never the default (`bridge/surface/protocol.ts`, header).
 
 ## Decided, not built yet
 
-These wait for the milestone "No block without an exit". Until it lands, the code follows the old
-rule: a provable receipt first, a refusal when Collie is unsure (ADR 0009 and ADR 0053 for dialogs,
-the `offersFor` table for sends).
+These wait for the milestone "No block without an exit"; until then the old rule holds.
 
 - Rule 2 in full: `not_free`, `probe_failed` and `unknown` offer only the Keys pad today, and the
   sentence does not name a next step (`offersFor`, `web/src/lib/i18n/messages/en.ts`).
@@ -91,8 +84,6 @@ the `offersFor` table for sends).
   modal evidence gets none. It gains the Keys pad, a missing core key and "Type it anyway".
 - Rule 4: `unknown` gains "It arrived" and "Send again" on its card. The queued card's `unconfirmed`
   state gains "Send again" beside Discard.
-- Rule 5: a receipt word for "sent on the person's word". The outcome list is closed, so it is a new
-  value in `SEND_OUTCOMES` or a receipt field, and every exhaustive table over it changes.
 - Rule 6b for a normal field: Collie cannot tell a secret typed into a normal box today; only a
   secret shape leaves no trace in the shell-line record (`bridge/sent.ts`, ADR 0107).
 - Rule 7: the trouble tally counts `dialog` and `send` only (`TROUBLE_KINDS` in `bridge/telemetry.ts`).
@@ -118,3 +109,11 @@ the `offersFor` table for sends).
   modal; an AskUserQuestion answer is typed into its field, cleared only when it holds what was seen.
 - 0116, 0117, 0140: a Stop and a steer are a person's tap with a receipt; a send by data, never twice.
 - 0122 to 0124: a queued send is a card with an exit in each state; three failed sends offer an issue.
+
+
+## Addendum (2026-11-17): the override reaches every screen, never a menu (M102 spec 12)
+
+An override (`override` plus the rows hash seen) is typed on any reading but five: no pane or grant, a
+sign-in field (6b), a question the reader read (6a), a moved screen (`stale_surface`) and the generic
+menu sign (`menu_open`, `menu-sign.ts`); both refusals carry the rows now. Where the steps would refuse,
+it goes in one piece, no probe, no key: `typed_not_submitted(override)`. Details: `protocol.ts` header.

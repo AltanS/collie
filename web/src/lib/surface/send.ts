@@ -81,6 +81,13 @@ export const SEND_REASONS = [
   // agent's own error row says it did not take it (the profile's `idle.signInErrors`). The one refusal
   // after the submit key: the agent refused it, not Collie, and the detail is the agent's words.
   "code_rejected",
+  // refused (M102 spec 12): the person's override met a menu or a yes/no prompt on the screen (the
+  // generic menu sign, menu-sign.ts): a pasted "1" or "y", or the Enter after it, would pick an option.
+  // Nothing was typed; the answer carries the rows now and their hash, and the key pad is the offer.
+  "menu_open",
+  // typed_not_submitted (M102 spec 12): the person's override on a screen Collie could not read: the
+  // text went in as one piece and Collie pressed no key at all. The person presses Enter on the key pad.
+  "override",
 ] as const;
 export type SendReason = (typeof SEND_REASONS)[number];
 
@@ -429,7 +436,16 @@ export interface HeldRow {
    * field held.
    */
   readonly walky?: string;
+  /**
+   * Set on a row still `held` two minutes or more after it was held (M102 spec 12, decision 6): it still
+   * waits for a free read, and the phone shows the live screen, "Send it now" and Cancel beside it.
+   * Absent on every other row and from a bridge before this field.
+   */
+  readonly heldLong?: true;
 }
+
+/** How long a request is held before its row says {@link HeldRow.heldLong}. */
+export const HELD_LONG_MS = 120_000;
 
 /** What `DELETE /api/send/<id>` answers (M56 spec 15): a held request cancelled, or an ended row dismissed. */
 export interface HeldCancelAnswer {
@@ -469,6 +485,12 @@ export interface SendAnswer {
   /** Which rule decided the answer, when the reason alone does not say it. Optional: an older phone
    *  reads the reason and its own sentence for it. */
   readonly cause?: SendCause;
+  /**
+   * The rows {@link rowsHash} covers, as plain text, on a refused override (M102 spec 12: `menu_open`,
+   * `stale_surface`): the screen now, so the next tap binds to what the person sees. Only on the live
+   * answer; a receipt never keeps a row, so a replay has none.
+   */
+  readonly rows?: readonly string[];
 }
 
 /**
@@ -497,6 +519,8 @@ export const STALE_SCREEN = "The screen shows an input box that does not take ke
  * A command onto a draft (`command`) is offered Replace and Cancel only: Add would send the draft with the command at its end.
  */
 export function offersFor(outcome: SendOutcome, reason: SendReason | undefined, framed: boolean, command = false): SendOffer[] {
+  // An override typed on a screen Collie could not read (M102 spec 12): Collie presses no key there, Enter included.
+  if (outcome === "typed_not_submitted" && reason === "override") return ["keys"];
   if (outcome === "refused" && reason === "draft_present") return framed ? (command ? ["replace", "cancel"] : ["append", "replace", "cancel"]) : ["keys"];
   if (outcome === "refused" && reason === "unconfirmed") return ["commit", "keys"];
   // Every reason: the person reads the screen and decides; with no frame the bridge binds both to the rows hash.
