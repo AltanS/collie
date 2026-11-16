@@ -8776,6 +8776,8 @@ type PickedLaunch = {
 interface LeadRowGate {
   fromLead: boolean;
   home: string;
+  /** The call came over the crew link, from this member's lead: a sign-in start is then refused (M101 spec 06). */
+  viaCrew: boolean;
 }
 
 /**
@@ -8784,7 +8786,7 @@ interface LeadRowGate {
  * an old lead never adds: it forwards a phone's body, `row` and all, unchanged.
  */
 function leadRowGate(req: Request, viaCrew: boolean | undefined, home: string): LeadRowGate {
-  return { fromLead: viaCrew === true && leadRowMarked(req.headers), home };
+  return { fromLead: viaCrew === true && leadRowMarked(req.headers), home, viaCrew: viaCrew === true };
 }
 
 /** What a one-off `run` is checked against: who asks, and the operator's switch (ADR 0095). */
@@ -8827,6 +8829,10 @@ async function pickLaunch(
   const signIn = fields.signIn === true;
   const withAccount = account !== undefined || signIn;
   if (withAccount && (shell || run)) return text("bad body", 400);
+  // A sign-in start is for the machine the phone talks to (M101 spec 06, decision 1): one that came over
+  // the crew link is refused like any other misuse of the field, before anything runs. An account alone
+  // still crosses, and is resolved below against THIS machine's own accounts.
+  if (signIn && leadGate.viaCrew) return text("bad body", 400);
   if (shell) return { kind: "shell", row: undefined };
   if (run) return pickRun(fields.run, runGate);
   if (harness !== "") {
