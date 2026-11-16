@@ -53,6 +53,7 @@ interface Posted {
   mode: string;
   rowsHash?: string;
   when?: string;
+  override?: boolean;
 }
 
 /** One answer the fake bridge gives: a body, or a failure with this HTTP status. */
@@ -182,6 +183,9 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     await user.click(await screen.findByRole("button", { name: "Type here" }));
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends[1]).toMatchObject({ text: "go ahead", mode: "send", rowsHash: "0abc12" });
+    // The commit is the person's tap through the stop, so it says override (M102 spec 01); the first tap and the other offers do not.
+    expect(sends[0]).not.toHaveProperty("override");
+    expect(sends[1]).toMatchObject({ override: true });
   });
 
   it("typed but not submitted offers Submit and Discard, and keeps the draft", async () => {

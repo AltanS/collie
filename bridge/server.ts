@@ -523,10 +523,15 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
  * with a screen: it empties the harness's input box with the profile's clear key as a person's tap, reads
  * back, and answers `{ requestId, outcome: "cleared" | "refused", reason? }` (always 200). See `bridge/surface/clear.ts`.
  *
+ * `arrived` (M102 spec 01) is `POST /api/pane/:id/arrived` with `{ requestId }`: the person's "It arrived" on a
+ * send of the pane whose receipt ended `unknown`. It writes `word: "arrived"` beside the outcome and answers
+ * `{ word: "arrived" }` (200), 404 for an id of another pane or nobody's, 409 for a receipt that did not end
+ * `unknown` or is already marked. A write; the crew link carries it to the member whose store keeps the receipt.
+ *
  * `pins` (M90) is the one segment with a read and writes: a GET lists the pins of the pane's session (a read), a
  * POST `{ itemId }` pins a block and a DELETE `?pin=<id>` drops one (writes). See `bridge/pins/routes.ts`.
  */
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held|arrived))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -2670,6 +2675,18 @@ export function startServer(opts: {
       // answer as `DELETE /api/send/<id>?pane=<id>`, which stays for this collie's own panes.
       if (isHeldCancel(pathname, req.method)) {
         return heldCancelRoute(rt, url.searchParams.get("request") ?? "", paneId, { audit: audit_, device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // The person's "It arrived" on an `unknown` send (M102 spec 01), by the pane the receipt sits on, so the
+      // crew link carries it to the member whose store keeps the receipt.
+      if (action === "arrived" && req.method === "POST") {
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `arrivedRoute` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return arrivedRoute(rt, paneId, body, { audit: audit_, device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, homedir(), cfg.redact);
       if (action === "files" && req.method === "GET")
@@ -6334,7 +6351,9 @@ export async function replyThroughProtocol(
   const { pane: target, ...asked } = request;
   // A request id the caller minted is the phone's, on a crew member's pane (M56 spec 06): a person's
   // send, which may steer (M69). A caller that names no id is not the phone and never steers.
-  const sendRequest: SendRequest = fields.id === undefined ? asked : { ...asked, fromPhone: true };
+  // The same goes for the person's word (M102 spec 01): only the phone's own commit tap carries an override.
+  const { override: _word, ...anonymous } = asked;
+  const sendRequest: SendRequest = fields.id === undefined ? anonymous : { ...asked, fromPhone: true };
   const answer = await send.protocol.handle(sendRequest, { session, paneId: target, harness });
   const receipt = answer.receipt;
   const auditDetail: AuditDetail = { mode: sendRequest.mode, submit: true, textLength: words.length };
@@ -9691,7 +9710,7 @@ export const SEND_MAX_TEXT = 64 * 1024;
 export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; resendOf?: string } & SendRequest) | null {
   const fields = asJsonRecord(body);
   if (fields === null) return null;
-  const { id, pane, text: words, mode, rowsHash, revision, capAck, resendOf, when, secret } = fields;
+  const { id, pane, text: words, mode, rowsHash, revision, capAck, resendOf, when, secret, override } = fields;
   if (typeof id !== "string" || !REQUEST_ID.test(id)) return null;
   if (typeof pane !== "string" || pane.length === 0 || pane.length > 256) return null;
   if (typeof words !== "string" || words.length > SEND_MAX_TEXT) return null;
@@ -9726,6 +9745,15 @@ export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; 
   if (secret !== undefined) {
     if (secret !== true) return null;
     Object.assign(request, { secret: true });
+  }
+  // The person's commit tap on a screen Collie could not read (M102 spec 01): only `true` is a word, and
+  // only on the shape of such a tap, a plain send or command that names the rows hash it saw. Any other
+  // shape is a bad request. Whether the request may carry the word is the protocol's to say (`fromPhone`).
+  if (override !== undefined) {
+    if (override !== true || rowsHash === undefined || resendOf !== undefined) return null;
+    if (when !== undefined && when !== null) return null;
+    if (secret !== undefined || (chosen !== "send" && chosen !== "command")) return null;
+    Object.assign(request, { override: true });
   }
   return request;
 }
@@ -10677,6 +10705,30 @@ export function heldCancelRoute(
   if (answer.reason !== undefined) detail.reason = answer.reason;
   context.audit.record({ action: "send-cancel", paneId: pane, session: rt.name, device: context.device, detail });
   return json(answer satisfies HeldCancelAnswer, context.acceptEncoding, answer.result === "refused" ? 409 : 200);
+}
+
+/**
+ * `POST /api/pane/:id/arrived` once the write gate passed and the session resolved (M102 spec 01): the
+ * person's "It arrived" on a send of this pane whose receipt ended `unknown`. The receipt takes `word:
+ * "arrived"` beside its outcome. `{ word: "arrived" }` (200); a body with no good `requestId` is a 400; an
+ * id of another pane or nobody's is a 404, the two never told apart; a receipt that did not end `unknown`,
+ * or is already marked, is a 409. One audit line per answered request, with the result and never the text.
+ */
+export function arrivedRoute(
+  rt: Pick<SendRouteRuntime, "send" | "name">,
+  paneId: string,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
+  const requestId = asJsonRecord(body)?.requestId;
+  if (typeof requestId !== "string" || !REQUEST_ID.test(requestId)) return text("bad body", 400);
+  const result = rt.send.markArrived(rt.name, paneId, requestId);
+  context.audit.record({ action: "send-arrived", paneId, session: rt.name, device: context.device, detail: { outcome: result } });
+  if (result === "not_found") return text("no such send on this pane", 404);
+  if (result === "not_unknown") return text("this send did not end unknown", 409);
+  if (result === "already") return text("this send is already marked", 409);
+  return json({ word: "arrived" }, context.acceptEncoding);
 }
 
 /** What `/api/ask/<id>` answers with the Send Protocol off: no ask is answerable, a 404 that says why. */

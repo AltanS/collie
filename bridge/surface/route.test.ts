@@ -49,6 +49,22 @@ describe("parseSendRequest", () => {
     }
   });
 
+  test("takes override only as true, and only with a rows hash on a plain send or command (M102 spec 01)", () => {
+    const commit = { ...good, rowsHash: "0abc12" };
+    expect(parseSendRequest({ ...commit, override: true })).toEqual({ ...commit, mode: "send", override: true });
+    expect(parseSendRequest({ ...commit, mode: "command", override: true })).toEqual({ ...commit, mode: "command", override: true });
+    for (const bad of [false, "yes", 1, null, []]) {
+      // SAFETY: each case is plain JSON data, a JsonValue.
+      expect(parseSendRequest({ ...commit, override: bad } as JsonValue)).toBeNull();
+    }
+    // No rows hash, a resend, a steer, a secret, or a staged mode: the shape of no commit tap at all.
+    expect(parseSendRequest({ ...good, override: true })).toBeNull();
+    expect(parseSendRequest({ ...commit, override: true, resendOf: "route-old-0001" })).toBeNull();
+    expect(parseSendRequest({ ...commit, override: true, when: "steer" })).toBeNull();
+    expect(parseSendRequest({ ...commit, override: true, secret: true })).toBeNull();
+    for (const mode of ["append", "replace", "submit", "discard", "prepare"]) expect(parseSendRequest({ ...commit, override: true, mode })).toBeNull();
+  });
+
   test("takes when: steer, refuses any other word, and never takes the caller's word for fromPhone (M69)", () => {
     expect(parseSendRequest({ ...good, when: "steer" })).toEqual({ ...good, mode: "send", when: "steer" });
     expect(parseSendRequest({ ...good, when: null })).toEqual({ ...good, mode: "send" });
@@ -296,6 +312,20 @@ describe("the reply route runs the protocol (M56 spec 06)", () => {
       const prepared = await (await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "", submit: true, mode: "prepare", id: "phone-req-0002" }, context(audit))).json();
       expect(prepared).toMatchObject({ ok: true, send: { offers: [], surface: { turn: "idle", modal: "none", composer: "empty" } } });
       expect((await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "x", submit: true, mode: "shout" }, context(audit))).status).toBe(400);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a reply that names no request id is no phone's tap: an override in its body is dropped, never recorded (M102 spec 01)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt } = runtime(true, dir);
+      const seen = spyHandle(rt);
+      const { audit } = auditLines();
+      await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "from an agent", submit: true, rowsHash: "0abc12", override: true }, context(audit));
+      await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "from the phone", submit: true, id: "phone-req-0009", rowsHash: "0abc12", override: true }, context(audit));
+      expect(seen.map((request) => [request.fromPhone, request.override])).toEqual([[undefined, undefined], [true, true]]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

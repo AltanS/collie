@@ -1859,7 +1859,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // `resend` is a resend of an ended held row: the request carries the old id and an empty text, the
   // bridge takes the row's own text, and `shown` (the row's text, maybe masked) is only for the preview.
   // `shown` is the text the person sees as sent when it is not `t`: a tap's words, whose request carries no text.
-  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }, when?: SendWhen, view?: SendRequestBody["view"], shown?: string): Promise<boolean> {
+  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }, when?: SendWhen, view?: SendRequestBody["view"], shown?: string, override = false): Promise<boolean> {
     if (starting) return false;
     setSending(true);
     setSendRefusal(null);
@@ -1881,7 +1881,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     try {
       // A text for a sign-in field says so (`secret`): the bridge writes no `line` of it, only its hash and length.
       const secret = secretFieldRef.current && resend === undefined && view === undefined;
-      const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: loadIntent(scope, paneId), secret };
+      const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: loadIntent(scope, paneId), secret, override };
       const res = await sendText(view === undefined ? base : { ...base, view });
       if (res.status === "noAnswer") {
         // No answer: the id stays, so the next tap on the same text asks for the same request. Not for a
@@ -2006,7 +2006,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // ahead only while the screen still hashes the same. After the cap's notice the commit is the extra
     // confirm: it carries `capAck` (M56 spec 09).
     const seen = offer === "commit" || offer === "submit" || offer === "discard" ? held.rowsHash : null;
-    void sendThroughProtocol(words, held.isDraft, mode, seen, offer === "commit" && held.capAck);
+    // The commit is the person's tap through a screen Collie could not read: it says so (M102 spec 01).
+    void sendThroughProtocol(words, held.isDraft, mode, seen, offer === "commit" && held.capAck, undefined, undefined, undefined, undefined, offer === "commit");
   }
 
   // Gate the composer's Send through the destructive-input confirm: a matching command arms the

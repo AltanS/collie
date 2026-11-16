@@ -152,6 +152,11 @@ export interface SendRequestBody {
    * and sends it on screen only. Absent on every other send.
    */
   readonly secret?: true | undefined;
+  /**
+   * The person's commit tap on a screen Collie could not read (M102 spec 01): the receipt then says
+   * `word: "override"`. Only with `rowsHash`; the bridge refuses it with any other shape.
+   */
+  readonly override?: true | undefined;
 }
 
 /**
@@ -248,6 +253,13 @@ export interface SendReceipt {
    */
   readonly late?: SendLate;
   /**
+   * The person's word on this send (see {@link SEND_WORDS}): `override` when the commit of a manual
+   * Send typed past a screen Collie could not read, `arrived` when the person marked an `unknown`
+   * send as arrived. The outcome stays what Collie saw. Written only by a request that carries the
+   * person's tap; absent on every other receipt.
+   */
+  readonly word?: SendWord;
+  /**
    * Set on a send a program session took (M56 spec 14): the request id the program acknowledged.
    * The driver passes the request id to the program unchanged, so it equals `requestId`. Absent on
    * every send into a screen.
@@ -276,6 +288,15 @@ export const SEND_LATES = ["returned"] as const;
  */
 export const RETURNED_CARD_DROPPED = "The box no longer holds this message. Collie removed its card and pressed nothing.";
 export type SendLate = (typeof SEND_LATES)[number];
+
+/**
+ * The person's word, beside what Collie saw (M102 spec 01). `override`: the person tapped through a
+ * stop on a screen Collie could not read (the manual Send's commit). `arrived`: the person said an
+ * `unknown` send arrived. The outcome never changes because of it, and a report and the tally never
+ * read it as proof.
+ */
+export const SEND_WORDS = ["override", "arrived"] as const;
+export type SendWord = (typeof SEND_WORDS)[number];
 
 /** The longest {@link SendReceipt.detail} a receipt keeps. */
 export const RECEIPT_DETAIL_MAX = 240;
@@ -346,6 +367,8 @@ export interface SendReceiptRow {
   readonly queued?: true;
   /** Set when a queued send came back to the box and never became a prompt (see {@link SendReceipt.late}). */
   readonly late?: SendLate;
+  /** The person's word on the send, beside the outcome (see {@link SendReceipt.word}). */
+  readonly word?: SendWord;
   /** The line of a refusal or a `typed_not_submitted` (see {@link SendReceipt.detail}). */
   readonly detail?: string;
   /** What the bridge saw at that end, four words (see {@link SendReceipt.saw}). */

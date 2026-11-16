@@ -610,6 +610,8 @@ export interface SendLedger {
   example(entry: ExampleEntry): void;
   /** A settled send a prompt edge confirmed (M56 spec 11). Optional, so an older ledger still fits. */
   confirmEffective?(key: CounterKey, from: "sent" | "unknown"): void;
+  /** An `unknown` send the person marked arrived (M102 spec 01). Optional, so an older ledger still fits. */
+  arrived?(key: CounterKey): void;
 }
 
 /** A receipt a prompt edge may still close (M56 spec 11): open from the submit key until the window ends. */
@@ -743,6 +745,12 @@ export interface SendRequest {
    * (walky talky, hooks, the CLI) leaves it out.
    */
   readonly fromPhone?: boolean;
+  /**
+   * The person's commit tap on a screen Collie could not read (M102 spec 01): set only by the phone's
+   * commit tap. The protocol honours it only with {@link fromPhone} and a passed manual gate, and then
+   * the receipt says `word: "override"`. An override is never held and never queued: it types now or is refused.
+   */
+  readonly override?: boolean;
   /**
    * A Send on a queued message a Stop gave back to the box (ADR 0122): set by `POST /api/send` alone,
    * for `resendOf` of a returned card, never read off a body. The submit then needs the S0 read, taken
@@ -1809,6 +1817,14 @@ function steeringTurn(state: RunState, snap: Snap): Ended | "queue" | null {
   return "queue";
 }
 
+/** The detail of an override that met a turn that runs (M102 spec 01): it is never queued, so nothing was typed. */
+const OVERRIDE_IN_TURN = "The agent is busy, so this was not typed. Send it when the turn ends.";
+
+/** The refusal of an override at a running turn: `turn_running`, nothing typed, and never held ({@link SendProtocol.holdsEnd}). */
+function overrideInTurn(s0: Snap): Ended {
+  return new Ended("refused", "turn_running", { surface: s0.surface, detail: OVERRIDE_IN_TURN });
+}
+
 /** The detail of a send in a turn whose submit key left the text in the box: a dialog may have taken it. */
 const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may have taken it. Check the transcript.";
 
@@ -2697,6 +2713,8 @@ export function locateText(plain: readonly string[], text: string, partial = fal
 
 interface RunState {
   readonly request: SendRequest;
+  /** The person overrode a stop: the phone's commit passed the manual gate (M102 spec 01). Set in `gateManual` only. */
+  overrode: boolean;
   readonly record: SendRecord;
   readonly target: SendTarget;
   readonly match: PaneProfileMatch | null;
@@ -3222,6 +3240,7 @@ export class SendProtocol {
       if (receipt.cap !== undefined) row.cap = receipt.cap;
       if (receipt.queued === true) row.queued = true;
       if (receipt.late !== undefined) row.late = receipt.late;
+      if (receipt.word !== undefined) row.word = receipt.word;
       // A refusal's line and the Surface words are stored to be read later: the list carries them.
       if (receipt.detail !== undefined) row.detail = receipt.detail;
       if (receipt.saw !== undefined) row.saw = receipt.saw;
@@ -3229,6 +3248,27 @@ export class SendProtocol {
       rows.push(row);
     }
     return rows;
+  }
+
+  /**
+   * The person's "It arrived" on a pane's `unknown` send (M102 spec 01): the receipt takes `word:
+   * "arrived"` beside its outcome, and the counters count it apart from the plain `unknown`. The store
+   * decides (requests.ts `markArrived`); a `marked` answer is told to the ledger inside a try, because a
+   * counter never blocks. Returns the store's answer.
+   */
+  markArrived(session: string, paneId: string, requestId: string): "marked" | "not_found" | "not_unknown" | "already" {
+    const marked = this.deps.store.markArrived(requestId, paneId);
+    if (marked !== "marked") return marked;
+    const receipt = this.deps.store.get(requestId)?.receipt;
+    if (receipt === undefined) return marked;
+    try {
+      // The counters' own key (`keyOf`): the profile id names the harness when there is one, `-` where there is none.
+      const harness = receipt.profileId ?? (receipt.harness === "" ? "-" : receipt.harness);
+      this.deps.ledger?.arrived?.({ harness, version: receipt.version ?? "-", profileId: receipt.profileId ?? "-", status: receipt.profileStatus ?? "-" });
+    } catch (err) {
+      console.warn(`[surface] counters failed on ${session}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return marked;
   }
 
   /**
@@ -3445,6 +3485,8 @@ export class SendProtocol {
     if (this.deps.holds === undefined || end.outcome !== "refused") return false;
     // A send from an agent view never queues: the person taps again once the session is free.
     if (state.request.view !== undefined) return false;
+    // An override is never held (M102 spec 01, ADR 0142 rule 5): it types now or is refused.
+    if (state.request.override === true) return false;
     // A steer is never held (M69): it is for the turn that runs now, and a later turn is the wrong one.
     if (state.request.when === "steer") return false;
     // A sign-in code is never held: a held text waits on disk in plain form (holds.ts), and a code is
@@ -4113,6 +4155,7 @@ export class SendProtocol {
       gaps: {},
       keys: [],
       probed: false,
+      overrode: false,
       manual: false,
       blind: false,
       starting: false,
@@ -4187,6 +4230,8 @@ export class SendProtocol {
     // A send that found its own earlier text in the box pressed only the submit key: the receipt says why no text went.
     if (state.finishedOwn === true && receipt.detail === undefined) receipt.detail = FINISHED_OWN;
     if (state.blind) receipt.saw = BLIND_SAW;
+    // The person's word, beside what Collie saw: the outcome stays whatever the run ended as (M102 spec 01).
+    if (state.overrode) receipt.word = "override";
     return receipt;
   }
 
@@ -5317,6 +5362,8 @@ export class SendProtocol {
     }
     // The cap counts sends typed past a screen Collie cannot read; a notice's digit is no such screen.
     if (cause !== NOTICE_KEY) this.gateCap(state, s0);
+    // The person's word (M102 spec 01): the commit passed the rows check and the cap. Nothing else sets it.
+    if (state.request.override === true && state.request.fromPhone === true) state.overrode = true;
   }
 
   /**
@@ -5439,6 +5486,7 @@ export class SendProtocol {
   private gateSteeringTurn(state: RunState, s0: Snap): void {
     const verdict = steeringTurn(state, s0);
     if (verdict instanceof Ended) throw verdict;
+    if (verdict === "queue" && !state.runsInTurn && state.request.override === true) throw overrideInTurn(s0);
     if (verdict === "queue") state.queued = true;
   }
 
@@ -5462,7 +5510,9 @@ export class SendProtocol {
     const frame = s1.surface.turn === "running" && s1.frame !== null ? s0.frame : null;
     const verdict = frame !== null ? (turnRefusal(state, s0, frame, "below") ?? "queue") : state.manual ? steeringTurn(state, s1) : null;
     if (verdict === null) return;
-    if (verdict instanceof Ended) {
+    // An override is never queued (M102 spec 01): a turn that started under it ends as a refusal here does.
+    const overQueue = verdict === "queue" && !state.runsInTurn && state.request.override === true;
+    if (verdict instanceof Ended || overQueue) {
       state.marks.s1 = s1;
       throw new Ended("typed_not_submitted", "changed", sawNote(s1, { framed: s0.frame !== null, rowsHash: s1.rowsHash, detail: TURN_STARTED }));
     }
@@ -5482,6 +5532,8 @@ export class SendProtocol {
   private gateTurn(state: RunState, s0: Snap, frame: Frame): void {
     const refusal = turnRefusal(state, s0, frame);
     if (refusal !== null) throw refusal;
+    // An override is never queued (M102 spec 01): a turn that runs refuses it, like a harness that takes nothing in a turn.
+    if (state.request.override === true && !state.runsInTurn) throw overrideInTurn(s0);
     state.queued = true;
   }
 
@@ -5512,6 +5564,8 @@ export class SendProtocol {
   private aboveMovedInTurn(state: RunState, s0: Snap, snap: Snap): boolean {
     // (The rows above may only scroll and grow from read to read: bandScrolled.)
     if (state.queued || state.manual || !queuesInTurn(state.match)) return false;
+    // An override never takes the queued path (M102 spec 01).
+    if (state.request.override === true) return false;
     const { mode } = state.request;
     // A command meets the same turn rule a command S0 read in a turn meets (turnRefusal, below): it goes
     // in where the harness queues commands or runs that one at once, and never where it would wait.

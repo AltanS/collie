@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The Stop button shows a filled square.** The outline square read as an empty checkbox, so the Belt Stop, a durable agent's Stop and the recording button now share one solid square, in every icon set.
+- **A receipt records the person's word beside what Collie saw.** A send typed past a screen Collie cannot read carries the word override, a send marked "It arrived" carries arrived, and neither changes the outcome. An override is never held or queued: a busy agent refuses it. The new route POST /api/pane/:id/arrived crosses the crew link.
 
 ### Fixed
 

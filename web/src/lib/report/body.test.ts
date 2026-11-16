@@ -70,6 +70,12 @@ describe("reportFields: what a report holds by default", () => {
     expect(fields.screen).toBe("");
   });
 
+  it("a send line carries the person's word as a technical token after queued, and none when there is none (M102 spec 01)", () => {
+    expect(sendLine(row(1, { queued: true, word: "arrived", outcome: "unknown", reason: "no_evidence" }), false)).toContain("saw=idle/none/empty  queued  word=arrived");
+    expect(sendLine(row(1, { word: "override" }), false)).toContain("saw=idle/none/empty  word=override");
+    expect(sendLine(row(1), false)).not.toContain("word=");
+  });
+
   it("puts the setup in one JSON block: version, line, OS, mux, harness, version and profile", () => {
     expect(JSON.parse(reportFields(BASE).setup)).toEqual({
       collie: "1.24.1+abc1234",

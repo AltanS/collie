@@ -12169,3 +12169,215 @@ describe("Claude Code 2.1.323, the agents panel gains a row while the text goes 
     expect(pane.keysSeen).not.toContain("Enter");
   });
 });
+
+// ── the person's word on a receipt (M102 spec 01) ──
+
+describe("the person's word on a receipt (M102 spec 01)", () => {
+  /** A commit the person tapped on a screen Collie could not read, on the frameless profile's two-tap Send. */
+  const commit = async (r: Rig, over: Partial<SendRequest> = {}): Promise<{ first: SendAnswer; answer: SendAnswer }> => {
+    const first = await r.send("hello from the phone");
+    const answer = await r.send("hello from the phone", { rowsHash: first.rowsHash!, ...over });
+    return { first, answer };
+  };
+
+  test("the commit of a manual Send from the phone with override records word override beside the outcome, stored and listed", async () => {
+    const r = rig({ mode: "generic" });
+    const { first, answer } = await commit(r, { override: true, fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", word: "override" });
+    expect(first.receipt?.word).toBeUndefined();
+    expect(r.deps.store.get(answer.receipt!.requestId)?.receipt?.word).toBe("override");
+    expect(r.protocol.recent("%1").find((row) => row.requestId === answer.receipt!.requestId)?.word).toBe("override");
+  });
+
+  test("the word stays on an end that is not sent: a probe the screen failed still says the person overrode", async () => {
+    const bare = new CodexPane();
+    const r = rig({ pane: bare, harness: FRAMELESS });
+    const first = await r.send("hello");
+    bare.afterInput = (p, what) => {
+      if (what === `type:${GENERIC_PROBE}`) p.transcript[5] = "• ready, and more text";
+    };
+    const answer = await r.send("hello", { rowsHash: first.rowsHash!, override: true, fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", word: "override" });
+  });
+
+  test("a commit without override carries no word", async () => {
+    const { answer } = await commit(rig({ mode: "generic" }), { fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.word).toBeUndefined();
+  });
+
+  test("a request that is not the phone's own never carries a word, whatever it says", async () => {
+    const { answer } = await commit(rig({ mode: "generic" }), { override: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.word).toBeUndefined();
+  });
+
+  test("override on the first tap, with no rows hash, is the same refusal as before and carries no word", async () => {
+    const r = rig({ mode: "generic" });
+    const answer = await r.send("hello from the phone", { override: true, fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed" });
+    expect(answer.receipt?.word).toBeUndefined();
+  });
+
+  test("a commit whose rows moved is refused stale_surface and carries no word: the person typed past nothing", async () => {
+    const r = rig({ mode: "generic" });
+    const first = await r.send("hello");
+    r.pane.transcript.push("a new line arrived");
+    const answer = await r.send("hello", { rowsHash: first.rowsHash!, override: true, fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "stale_surface" });
+    expect(answer.receipt?.word).toBeUndefined();
+  });
+
+  test("a plain send on a free screen carries no word even when the request says override: nothing was typed past", async () => {
+    const r = rig();
+    const answer = await r.send("please fix the failing test", { override: true, fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.word).toBeUndefined();
+  });
+
+  test("the word is replayed with the receipt for the same request id", async () => {
+    const r = rig({ mode: "generic" });
+    const first = await r.send("hello from the phone");
+    const request = { id: "person-word-replay-1", rowsHash: first.rowsHash!, override: true, fromPhone: true } as const;
+    const once = await r.send("hello from the phone", request);
+    const twice = await r.send("hello from the phone", request);
+    expect(once.receipt?.word).toBe("override");
+    expect(twice.receipt?.word).toBe("override");
+  });
+
+  test("markArrived marks an unknown receipt on its pane once, and the list and the counters carry the word", async () => {
+    const dayDir = join(dir, "counters");
+    const ledger = new SurfaceLedger(dayDir);
+    const r = rig({ mode: "generic", ledger });
+    const unknown = await settledUnknown(r, "person-word-unknown-1");
+    expect(r.protocol.markArrived("main", "%1", unknown)).toBe("marked");
+    expect(r.deps.store.get(unknown)?.receipt).toMatchObject({ outcome: "unknown", word: "arrived" });
+    expect(r.protocol.recent("%1").find((row) => row.requestId === unknown)).toMatchObject({ outcome: "unknown", word: "arrived" });
+    const arrived = (): number => ledger.rows().reduce((sum, row) => sum + row.arrived, 0);
+    expect(arrived()).toBe(1);
+    expect(r.protocol.markArrived("main", "%1", unknown)).toBe("already");
+    expect(arrived()).toBe(1);
+  });
+
+  test("markArrived refuses another pane's id, an id nobody sent and a receipt that did not end unknown", async () => {
+    const r = rig({ mode: "generic" });
+    const unknown = await settledUnknown(r, "person-word-unknown-2");
+    expect(r.protocol.markArrived("main", "%2", unknown)).toBe("not_found");
+    expect(r.protocol.markArrived("main", "%1", "person-word-nobody-1")).toBe("not_found");
+    const sent = await r.send("a send that goes through");
+    expect(r.protocol.markArrived("main", "%1", sent.receipt!.requestId)).toBe("not_unknown");
+    expect(r.deps.store.get(unknown)?.receipt?.word).toBeUndefined();
+    expect(r.deps.store.get(sent.receipt!.requestId)?.receipt?.word).toBeUndefined();
+  });
+
+  test("a counters ledger that throws never blocks the mark", async () => {
+    const ledger: SendLedger = {
+      send: () => undefined,
+      noteManual: () => undefined,
+      capState: () => ({ count: 0, limit: 5, reached: false }),
+      inbox: () => undefined,
+      example: () => undefined,
+      arrived: () => {
+        throw new Error("disk full");
+      },
+    };
+    const r = rig({ mode: "generic" });
+    const unknown = await settledUnknown(r, "person-word-unknown-3");
+    const guarded = new SendProtocol({ ...r.deps, ledger });
+    expect(guarded.markArrived("main", "%1", unknown)).toBe("marked");
+    expect(r.deps.store.get(unknown)?.receipt?.word).toBe("arrived");
+  });
+
+  /** A send whose submit key went out and whose receipt the screen could not prove: `unknown`, settled on disk. */
+  async function settledUnknown(r: Rig, id: string): Promise<string> {
+    const accepted = r.deps.store.accept({ id, session: "main", paneId: "%1", paneGeneration: "gen-1", surfaceRevision: 0, mode: "send", text: "was it typed" });
+    r.deps.store.settle(id, { ...SendProtocol.crashReceipt(accepted.record), reason: "no_evidence", harness: "claude", version: "2.1.200", profileId: "claude", profileStatus: "verified" });
+    expect(r.deps.store.get(id)?.receipt?.outcome).toBe("unknown");
+    return id;
+  }
+});
+
+describe("an override is never held or queued (M102 spec 01)", () => {
+  const BUSY = "The agent is busy, so this was not typed. Send it when the turn ends.";
+
+  test("override: Claude at a running turn on a free box would queue the send; the override is refused turn_running with nothing typed", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const { pane, send } = rig({ holds });
+    pane.over = [LIVE_ROW];
+    const plain = await send("then give it a title");
+    expect(plain.receipt).toMatchObject({ outcome: "sent", queued: true });
+    const { pane: pane2, send: send2 } = rig({ holds });
+    pane2.over = [LIVE_ROW];
+    const answer = await send2("then give it a title", { override: true, fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [], detail: BUSY });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane2.calls).toEqual([]);
+    expect(holds.list()).toEqual([]);
+  });
+
+  test("override: a refusal the hold queue would take (a running turn on an unread version) is not held", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const control = rig({ version: "no version here", holds });
+    control.pane.over = [LIVE_ROW];
+    expect((await control.send("then give it a title")).receipt).toMatchObject({ outcome: "held" });
+    const { pane, send } = rig({ version: "no version here", holds: new HoldStore(join(dir, "held-two")) });
+    pane.over = [LIVE_ROW];
+    const answer = await send("then give it a title", { override: true, fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running" });
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("override: Codex on a screen with no box and a running row takes the Tab queue for a plain two-tap send; the override commit is refused turn_running", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    const codexNoBox = (): ReturnType<typeof rig> => {
+      const r = rig({ pane: new FakePane("codex"), harness: "codex", version: "0.159.2", holds });
+      r.pane.over = ["• Working (4s • esc to interrupt)"];
+      r.pane.codexStatus = "  something the profile does not know";
+      r.pane.codexHint = "  ? for shortcuts";
+      return r;
+    };
+    const plain = codexNoBox();
+    const firstPlain = await plain.send("then add a short summary");
+    expect((await plain.send("then add a short summary", { rowsHash: firstPlain.rowsHash! })).receipt).toMatchObject({ outcome: "sent" });
+    expect(plain.pane.queued).toEqual(["then add a short summary"]);
+
+    const r = codexNoBox();
+    const first = await r.send("then add a short summary");
+    const answer = await r.send("then add a short summary", { rowsHash: first.rowsHash!, override: true, fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [], detail: BUSY });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    expect(r.pane.queued).toEqual([]);
+    expect(holds.list()).toEqual([]);
+  });
+
+  test("override: a turn that starts while the text is typed leaves it in the box, no Enter, where a plain send would be queued", async () => {
+    const arm = (pane: FakePane): void => {
+      pane.afterInput = (p, what) => {
+        if (what.endsWith("then give it a title")) p.over = [LIVE_ROW];
+      };
+    };
+    const plain = rig();
+    arm(plain.pane);
+    expect((await plain.send("then give it a title")).receipt).toMatchObject({ outcome: "sent" });
+    expect(plain.pane.keysSeen).toContain("Enter");
+
+    const { pane, send } = rig();
+    arm(pane);
+    const answer = await send("then give it a title", { override: true, fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed", detail: "A turn started while the text was typed, so Enter was not pressed. The text is in the box. Submit it when the turn ends." });
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(answer.receipt?.queued).toBeUndefined();
+  });
+
+  test("override: an Add to it into a running turn is refused too, never queued", async () => {
+    const { pane, send } = rig();
+    pane.over = [LIVE_ROW];
+    pane.box = "a draft";
+    const answer = await send("more", { mode: "append", override: true, fromPhone: true });
+    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});

@@ -152,6 +152,8 @@ export function sendLine(row: SendReceiptRow, includeTyped: boolean): string {
   if (gaps.length > 0) parts.push(`gapsMs=${gaps.join(",")}`);
   if (row.saw !== undefined) parts.push(`saw=${row.saw.turn}/${row.saw.modal}/${row.saw.composer}${row.saw.reason === undefined ? "" : `/${row.saw.reason}`}`);
   if (row.queued === true) parts.push("queued");
+  // The person's word beside what Collie saw (M102 spec 01): a technical token, never read as proof.
+  if (row.word !== undefined) parts.push(`word=${row.word}`);
   let line = parts.join("  ");
   if (row.detail !== undefined) line += `\n    detail: ${row.detail}`;
   if (includeTyped && row.line !== undefined) line += `\n    typed: ${row.line}`;

@@ -128,6 +128,10 @@ export const ACK_MANIFEST = {
     channel: "silent",
     why: "Cancel or Dismiss on a held send's queued row (M56 spec 15): the row leaving the composer IS the receipt, so a success says nothing more; a Cancel that came too late, and a failed call, land as a status line.",
   },
+  postArrived: {
+    channel: "silent",
+    why: "The person's \"It arrived\" on a send that ended unknown (M102 spec 01): the row taking the person's word beside its outcome IS the receipt, so a success says nothing more; a refusal lands as a status line. No control calls it yet: M102 spec 04 wires the button and may reclassify this entry.",
+  },
   postAskAnswer: {
     channel: "echo",
     why: "A tap on a dialog card as one Answer to the bridge's ask (M56 spec 08): a sent answer reads as Sent and the mirror shows the dialog moving on; a changed or gone dialog lands as a status line and the card redraws from the next read.",

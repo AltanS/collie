@@ -6,6 +6,8 @@ import { encodeStyledRegion, styledRegionLines } from "../web/src/lib/styled-reg
 import {
   afterPaneInput,
   isHeldCancel,
+  arrivedRoute,
+  SEND_OFF_TEXT,
   isPaneInput,
   isTopologyWrite,
   freeSpaceName,
@@ -102,6 +104,11 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AuditLog, type AuditEntry } from "./audit.ts";
+import { KeyGate } from "./surface/key-gate.ts";
+import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
+import { RequestStore } from "./surface/requests.ts";
+import type { SendReceipt } from "../web/src/lib/surface/send.ts";
+import type { JsonValue } from "../web/src/lib/json.ts";
 import { answerPane, memoryAnswerReceipts, NO_ANSWERS } from "./durable/answer.ts";
 import { withOpenAsks, withTurn } from "./durable/pane-asks.ts";
 import { controlPane, memoryControlReceipts, NO_CONTROLS, NO_RAW_INPUT, rawInputRefusal } from "./durable/control.ts";
@@ -6692,5 +6699,100 @@ describe("freeSpaceName — a folder-named space never takes a name already in u
     expect(freeSpaceName("app", [{ label: "app" }])).toBe("app-2");
     expect(freeSpaceName("app", [{ label: "app" }, { label: "app-2" }])).toBe("app-3");
     expect(freeSpaceName("app", [{ label: "app-2" }])).toBe("app");
+  });
+});
+
+// `POST /api/pane/:id/arrived` (M102 spec 01): the person's "It arrived" on a send Collie could not tell.
+describe("It arrived", () => {
+  const withRuntime = async (run: (kit: { rt: Parameters<typeof arrivedRoute>[0]; send: SendProtocol; store: RequestStore; audit: AuditLog; lines: string[] }) => Promise<void>): Promise<void> => {
+    const dir = await mkdtemp(join(tmpdir(), "collie-arrived-"));
+    try {
+      const store = new RequestStore(join(dir, "sends"), () => 1_000);
+      const pane = { writeKeys: () => Promise.resolve(muxAck()) };
+      const send = new SendProtocol({
+        mux: { readGrid: (paneId: string) => Promise.resolve(muxOk({ paneId, text: "", truncated: false, revision: 1 })), typeText: () => Promise.resolve(muxAck()) },
+        gate: new KeyGate(pane, () => 1_000),
+        store,
+        locks: new SessionLocks(),
+        ring: new RowRing(),
+        profile: () => Promise.resolve(null),
+        generation: () => "gen",
+      });
+      const lines: string[] = [];
+      const rt = { send, name: "main" };
+      await run({ rt, send, store, audit: new AuditLog((line) => void lines.push(line)), lines });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  };
+  /** A settled receipt on pane `paneId`, ended as `outcome`. */
+  const settle = (store: RequestStore, id: string, outcome: SendReceipt["outcome"], paneId = "%1"): void => {
+    const { record } = store.accept({ id, session: "main", paneId, paneGeneration: "gen", surfaceRevision: 0, mode: "send", text: "was it typed" });
+    const { reason: _crash, ...rest } = SendProtocol.crashReceipt(record);
+    store.settle(id, { ...rest, harness: "claude", version: "2.1.200", profileId: "claude", profileStatus: "verified", outcome });
+  };
+  const context = (audit: AuditLog, device: string | null = "phone") => ({ audit, device, acceptEncoding: null });
+
+  test("marks an unknown receipt arrived: a 200 with the word, the stored receipt and the list carry it, one audit line with no text", async () => {
+    await withRuntime(async ({ rt, send, store, audit, lines }) => {
+      settle(store, "arrived-req-0001", "unknown");
+      const res = await arrivedRoute(rt, "%1", { requestId: "arrived-req-0001" }, context(audit));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ word: "arrived" });
+      expect(store.get("arrived-req-0001")?.receipt).toMatchObject({ outcome: "unknown", word: "arrived" });
+      expect(send.recent("%1")[0]).toMatchObject({ requestId: "arrived-req-0001", outcome: "unknown", word: "arrived" });
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain('"action":"send-arrived"');
+      expect(lines[0]).toContain('"outcome":"marked"');
+      expect(lines[0]).not.toContain("was it typed");
+    });
+  });
+
+  test("refuses an id of another pane and an id nobody sent with the same 404", async () => {
+    await withRuntime(async ({ rt, store, audit }) => {
+      settle(store, "arrived-req-0002", "unknown", "%2");
+      const other = await arrivedRoute(rt, "%1", { requestId: "arrived-req-0002" }, context(audit));
+      const nobody = await arrivedRoute(rt, "%1", { requestId: "arrived-req-9999" }, context(audit));
+      expect([other.status, nobody.status]).toEqual([404, 404]);
+      expect(await other.text()).toBe(await nobody.text());
+      expect(store.get("arrived-req-0002")?.receipt?.word).toBeUndefined();
+    });
+  });
+
+  test("refuses a receipt that did not end unknown with a 409", async () => {
+    await withRuntime(async ({ rt, store, audit }) => {
+      settle(store, "arrived-req-0003", "sent");
+      const res = await arrivedRoute(rt, "%1", { requestId: "arrived-req-0003" }, context(audit));
+      expect(res.status).toBe(409);
+      expect(store.get("arrived-req-0003")?.receipt?.word).toBeUndefined();
+    });
+  });
+
+  test("refuses a second mark with a 409", async () => {
+    await withRuntime(async ({ rt, store, audit }) => {
+      settle(store, "arrived-req-0004", "unknown");
+      expect((await arrivedRoute(rt, "%1", { requestId: "arrived-req-0004" }, context(audit))).status).toBe(200);
+      const again = await arrivedRoute(rt, "%1", { requestId: "arrived-req-0004" }, context(audit));
+      expect(again.status).toBe(409);
+      expect(store.get("arrived-req-0004")?.receipt?.word).toBe("arrived");
+    });
+  });
+
+  test("refuses a bad id or a body that is no object with a 400, and answers 404 with the protocol off", async () => {
+    await withRuntime(async ({ rt, audit }) => {
+      for (const body of [{ requestId: "../x" }, { requestId: 5 }, {}, "arrived-req-0005", null, undefined]) {
+        // SAFETY: each case is plain JSON data (or undefined), a JsonValue.
+        expect((await arrivedRoute(rt, "%1", body as JsonValue | undefined, context(audit))).status).toBe(400);
+      }
+      const off = await arrivedRoute({ send: undefined, name: "main" }, "%1", { requestId: "arrived-req-0006" }, context(audit));
+      expect(off.status).toBe(404);
+      expect(await off.text()).toBe(SEND_OFF_TEXT);
+    });
+  });
+
+  test("the route is a write: any method at arrived asks for an authorised device", () => {
+    expect(paneGateLevel("arrived", "POST")).toBe("write");
+    expect(paneGateLevel("arrived", "GET")).toBe("write");
+    expect(isHeldCancel("/api/pane/w1%3Ap1/arrived", "DELETE")).toBe(false);
   });
 });

@@ -85,7 +85,9 @@ const FORWARDABLE: readonly RegExp[] = [
   // (a read), a POST pins a block and a DELETE drops one (writes). Additive-optional the same way.
   // `held` (issue 740): the Cancel or Dismiss on a queued row, a WRITE (`DELETE`) to the member whose hold
   // queue keeps the row. Additive-optional the same way: a member that predates it answers 404.
-  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held))?$/,
+  // `arrived` (M102), the person's "It arrived" on a send Collie cannot tell, a WRITE to the member whose store
+  // keeps the receipt; additive-optional, a member that predates it answers 404.
+  /^pane\/[^/]+(?:\/(?:reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action|pins|held|arrived))?$/,
   // One picture under the Files root, as bytes (ADR 0090): off the disk of the member that owns the
   // pane or the space, like the Files read it sits beside. Mirrors `PANE_FILES_IMAGE_ROUTE` and
   // `WORKSPACE_FILES_IMAGE_ROUTE` in bridge/server.ts one-for-one. Additive-optional (§7.1).
@@ -401,6 +403,8 @@ export function forwardAuditAction(route: string, method?: string): string | nul
   // The member writes `send-cancel` for the Cancel or Dismiss on a queued row (bridge/server.ts
   // `heldCancelRoute`, issue 740), so the lead's line names the same act. Only a DELETE is one.
   if (/^pane\/[^/]+\/held$/.test(route)) return method === undefined || method === "DELETE" ? "send-cancel" : null;
+  // The member writes `send-arrived` for the person's "It arrived" (bridge/server.ts `arrivedRoute`, M102).
+  if (/^pane\/[^/]+\/arrived$/.test(route)) return "send-arrived";
   const action = route.split("/")[2];
   if (isPaneRead(action)) return null; // reads, and a read is audited on neither side
   // close, rename and focus namespace themselves on the peer's own handler; the rest stay bare.
