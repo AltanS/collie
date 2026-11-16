@@ -203,6 +203,15 @@ describe("TricksSettingsCard: the rows", () => {
     expect(slotLine({ ...skipped, refusals: undefined, error: undefined }, NOW).text).toBe("Manifest refused");
   });
 
+  it("decision 5: a part the bridge refused shows its reason on the row in every state, in the words of skipped", () => {
+    const refusals: WireTrickInfo["refusals"] = [{ code: "text", path: "/parts/0/chip/text", reason: "\"text\" is 19 characters. At most 12.", part: "todo" }];
+    for (const state of ["ok", "failing"] as const) {
+      expect(slotLine({ ...LEGS, state, refusals, error: undefined }, NOW)).toEqual({ text: "Manifest refused: \"text\" is 19 characters. At most 12.", trouble: true });
+    }
+    // A note the parser only ignored is no refusal: the row keeps its provenance.
+    expect(slotLine({ ...LEGS, refusals: [{ code: "ignored", path: "/x", reason: "x This Collie ignores it." }] }, NOW).trouble).toBe(false);
+  });
+
   it("keeps every row the same three lines, whatever the state", async () => {
     const failing: WireTrickInfo = { ...LEGS, id: "bad", name: "Bad", state: "failing", error: "exit 2" };
     renderCard(await storeWith([LEGS, TRACKER, failing]));
