@@ -3235,8 +3235,6 @@ export const ja: Dictionary = {
   "settings.tricks.by.proposedAgent": "{host} のエージェントが提案",
   "settings.tricks.by.proposedUnconfirmed": "{host} から提案、セッションは未確認",
   "settings.tricks.withTime": "{what} · {time}",
-  "settings.tricks.refused": "マニフェストを拒否: {reason}",
-  "settings.tricks.refusedBare": "マニフェストを拒否",
   "settings.tricks.warn.label": "コードのテキスト検索で見つかったこと",
   "settings.tricks.warn.spawn": "このトリックは、このマシンで他のプログラムを起動します。",
   "settings.tricks.warn.network": "このトリックはネットワークに接続します。",

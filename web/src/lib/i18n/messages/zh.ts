@@ -3215,8 +3215,6 @@ export const zh: Dictionary = {
   "settings.tricks.by.proposedAgent": "由 {host} 上的代理提议",
   "settings.tricks.by.proposedUnconfirmed": "由 {host} 提议，会话未经确认",
   "settings.tricks.withTime": "{what} · {time}",
-  "settings.tricks.refused": "清单被拒绝：{reason}",
-  "settings.tricks.refusedBare": "清单被拒绝",
   "settings.tricks.warn.label": "对其代码做文本搜索的发现",
   "settings.tricks.warn.spawn": "此 Trick 会在这台主机上启动其他程序。",
   "settings.tricks.warn.network": "此 Trick 会访问网络。",

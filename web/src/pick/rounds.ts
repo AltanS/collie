@@ -6,10 +6,7 @@ import type { PickRoundDef } from "./types";
 
 export type PickRoundLoader = () => Promise<{ default: PickRoundDef }>;
 
-const REGISTRY = {
-  // M97 spec 05: the four look decisions of the session filter. Waits for the operator's pick.
-  "session-filter": () => import("./rounds/session-filter"),
-} satisfies Record<string, PickRoundLoader>;
+const REGISTRY = {} satisfies Record<string, PickRoundLoader>;
 
 /** Every round, by id. */
 export const ROUNDS: ReadonlyMap<string, PickRoundLoader> = new Map(Object.entries(REGISTRY));

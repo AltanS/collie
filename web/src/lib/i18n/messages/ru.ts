@@ -3212,8 +3212,6 @@ export const ru: Dictionary = {
   "settings.tricks.by.proposedAgent": "Предложено агентом на {host}",
   "settings.tricks.by.proposedUnconfirmed": "Предложено с {host}, сессия не подтверждена",
   "settings.tricks.withTime": "{what} · {time}",
-  "settings.tricks.refused": "Манифест отклонен: {reason}",
-  "settings.tricks.refusedBare": "Манифест отклонен",
   "settings.tricks.warn.label": "Что нашел текстовый поиск по коду",
   "settings.tricks.warn.spawn": "Этот трюк запускает другие программы на этой машине.",
   "settings.tricks.warn.network": "Этот трюк обращается к сети.",

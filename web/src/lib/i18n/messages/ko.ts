@@ -3228,8 +3228,6 @@ export const ko: Dictionary = {
   "settings.tricks.by.proposedAgent": "{host}의 에이전트가 제안함",
   "settings.tricks.by.proposedUnconfirmed": "{host}에서 제안됨, 세션 확인되지 않음",
   "settings.tricks.withTime": "{what} · {time}",
-  "settings.tricks.refused": "매니페스트 거부됨: {reason}",
-  "settings.tricks.refusedBare": "매니페스트 거부됨",
   "settings.tricks.warn.label": "코드를 텍스트 검색해서 찾은 내용",
   "settings.tricks.warn.spawn": "이 트릭은 이 머신에서 다른 프로그램을 시작합니다.",
   "settings.tricks.warn.network": "이 트릭은 네트워크에 접속합니다.",

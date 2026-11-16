@@ -284,8 +284,8 @@ export function TrickSettingsSection(): ReactNode {
         <ListCard
           n={4}
           state="trick-settings-refused"
-          label="manifest refused"
-          tricks={[trick("bad", "Bad manifest", { on: false, state: "skipped", places: [], refusals: [{ code: "place", path: "/places/0", reason: 'places[0]: "nowhere" is not a place' }] })]}
+          label="cannot run"
+          tricks={[trick("bad", "Bad manifest", { on: false, state: "skipped", places: [], refusals: [{ code: "place", path: "/places/0", reason: '"nowhere" is not a place this Collie knows.' }] })]}
         />
         <ListCard
           n={5}
