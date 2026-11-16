@@ -143,8 +143,9 @@ export const CODE_REJECTED_PLAIN = "The agent did not take the code.";
 export const CODE_RUN = 6;
 
 /**
- * The agent's words about a code it did not take, made safe to keep: null when they hold the code, or
- * any run of {@link CODE_RUN} or more of its characters in a row (an agent that echoes the code, or a
+ * The agent's words about a code it did not take, made safe to keep: null when they hold the code (a
+ * code shorter than {@link CODE_RUN} is looked for whole), or any run of {@link CODE_RUN} or more of
+ * its characters in a row (an agent that echoes the code, or a
  * part of it, in its error); else the words cut to `max` characters. Whitespace is left out of both
  * sides first, so a code the screen wrapped is still found. With null the plain sentence stands alone.
  * The words go into the stored receipt, the report line and the phone. Pure.
@@ -153,6 +154,8 @@ export function rejectionDetail(words: string, code: string, max: number): strin
   const said = [...words.replace(/\s+/gu, "")];
   const secret = [...code.replace(/\s+/gu, "")];
   const heard = said.join("");
+  // A code shorter than a run is looked for whole; an empty one cannot be echoed.
+  if (secret.length > 0 && secret.length < CODE_RUN && heard.includes(secret.join(""))) return null;
   for (let at = 0; at + CODE_RUN <= secret.length; at++) {
     if (heard.includes(secret.slice(at, at + CODE_RUN).join(""))) return null;
   }

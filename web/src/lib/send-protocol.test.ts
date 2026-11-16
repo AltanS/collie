@@ -526,6 +526,12 @@ describe("a sign-in code the agent did not take (M102 spec 05)", () => {
     expect(rejectionDetail(`OAuth error: ${CODE.slice(10, 15)}`, CODE, RECEIPT_DETAIL_MAX)).toBe(`OAuth error: ${CODE.slice(10, 15)}`);
   });
 
+  it("a code shorter than six characters is looked for whole; an empty code keeps the words", () => {
+    expect(rejectionDetail("OAuth error: code 4F2a is invalid", "4F2a", RECEIPT_DETAIL_MAX)).toBeNull();
+    expect(rejectionDetail("OAuth error: code 4F2 is invalid", "4F2a", RECEIPT_DETAIL_MAX)).toBe("OAuth error: code 4F2 is invalid");
+    expect(rejectionDetail("OAuth error: no code", "", RECEIPT_DETAIL_MAX)).toBe("OAuth error: no code");
+  });
+
   it("words that do not hold the code are cut to a receipt's detail", () => {
     const long = `OAuth error: ${"it was not accepted, ".repeat(30)}`;
     const kept = rejectionDetail(long, CODE, RECEIPT_DETAIL_MAX)!;
