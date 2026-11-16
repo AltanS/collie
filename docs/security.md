@@ -56,7 +56,8 @@ screen Collie could not read). The counts name no pane, no text and no person.
 The device header gates writes and two reads: the [Files view](changes.md#files), which can show
 every file under a workspace's folder, and the New page's
 [Browse](configure.md#favourite-and-recent-folders), which lists folder names under home
-([ADR 0086](../.adr/0086-reads-need-the-pairing-token.md)).
+([ADR 0086](../.adr/0086-reads-need-the-pairing-token.md)). The [Changes view](changes.md#who-may-use-it)
+asks the same right when it reads your home folder or above it.
 
 ```bash
 bin/collie devices list             # what holds a credential, and when each was last seen
