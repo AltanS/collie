@@ -3505,7 +3505,6 @@ export const ko: Dictionary = {
   "accounts.window.none": "보고된 사용량 한도가 없습니다.",
   "accounts.seen.live": "지금 사용 중",
   "accounts.seen.ago": "마지막 확인: {when}",
-  "accounts.folder.noVariable": "{folder}, 변수 없음",
   "accounts.removeNote": "제거하면 이름표만 잊습니다. 폴더, 링크, 로그인은 그대로 남습니다. 계정이 하나도 없으면 앱은 이전과 같습니다.",
   "accounts.found.title.one": "사용 중인 폴더 {count}개 발견",
   "accounts.found.title.other": "사용 중인 폴더 {count}개 발견",

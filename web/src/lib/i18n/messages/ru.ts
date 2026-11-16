@@ -3507,7 +3507,6 @@ export const ru: Dictionary = {
   "accounts.window.none": "Лимит использования не сообщается.",
   "accounts.seen.live": "Используется сейчас",
   "accounts.seen.ago": "Последний раз: {when}",
-  "accounts.folder.noVariable": "{folder}, без переменной",
   "accounts.removeNote": "«Удалить» забывает только метку. Папка, ее ссылки и вход остаются на месте. Если не останется ни одного аккаунта, приложение работает как раньше.",
   "accounts.found.title.one": "Найдена {count} используемая папка",
   "accounts.found.title.other": "Найдено используемых папок: {count}",

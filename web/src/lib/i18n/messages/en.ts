@@ -3813,7 +3813,6 @@ export const en = {
   "accounts.window.none": "No usage limit reported.",
   "accounts.seen.live": "In use now",
   "accounts.seen.ago": "Last seen {when}",
-  "accounts.folder.noVariable": "{folder}, no variable",
   "accounts.removeNote": "Remove forgets the label only. The folder, its links and its login stay where they are. With none left, the app is as before.",
   "accounts.found.title.one": "Found {count} folder in use",
   "accounts.found.title.other": "Found {count} folders in use",

@@ -3539,7 +3539,6 @@ export const es: Dictionary = {
   "accounts.window.none": "No se informa de ningún límite de uso.",
   "accounts.seen.live": "En uso ahora",
   "accounts.seen.ago": "Visto por última vez {when}",
-  "accounts.folder.noVariable": "{folder}, sin variable",
   "accounts.removeNote": "Eliminar solo olvida la etiqueta. La carpeta, sus enlaces y su inicio de sesión se quedan donde están. Sin ninguna cuenta, la aplicación queda como antes.",
   "accounts.found.title.one": "Se encontró {count} carpeta en uso",
   "accounts.found.title.other": "Se encontraron {count} carpetas en uso",
