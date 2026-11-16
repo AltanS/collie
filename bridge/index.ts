@@ -378,6 +378,7 @@ import { TrickProposals } from "./tricks/proposals.ts";
 import { ProposeDoor } from "./tricks/propose-door.ts";
 import { hillDir, HillStore } from "./hill/store.ts";
 import { HillSwitch } from "./hill/switch.ts";
+import { bridgeSkillFollower } from "./hill/skill-follow.ts";
 import { HillCrewStateFile } from "./hill/crew-state.ts";
 import { hillCensus, hillLeftTheCrew, hillRosterIds, hillSessionName, OneLook, walkyPlace, walkySend, type HillCensusMember } from "./hill/walky.ts";
 
@@ -2588,6 +2589,11 @@ const tricksConfigRoot = cfg.tricksDir === undefined ? null : dirname(cfg.tricks
 const hillCopyStore = bootTrust !== null ? new StandbyHillStore(cfg.stateDir) : null;
 await hillCopyStore?.load();
 
+// The WalkyTalky skill follows the Hill's switch (M96 spec 12, hill/skill-follow.ts): a real change, from the
+// phone's route or the takeover's adopt below, spawns this build's own `collie skill sync --json` and does
+// not wait for it. A bridge start writes no switch, so it syncs nothing.
+const hillSkillFollower = bridgeSkillFollower({ stateDir: cfg.stateDir, env: process.env, log: (line) => console.log(line) });
+
 // §25: the person's tap (the takeover commit, or `collie promote` here) left a marker naming the lead it
 // took over from. This boot leads now, so it adopts both copies here, before the Hill and the tricks are
 // built: neither has a list in memory yet that a later write could put back over the merge.
@@ -2604,6 +2610,7 @@ if (tricksCopyStore !== null && hillCopyStore !== null) {
       now: Date.now,
       audit: (entry) => audit.record(entry),
       log: (line) => console.log(line),
+      followSkill: hillSkillFollower,
     });
   } catch (err) {
     console.warn(`[crew] could not adopt the copies the takeover left: ${err instanceof Error ? err.message : String(err)}`);
@@ -2697,8 +2704,9 @@ const hill = new HillService({
   }),
   // The Hill's switch (hill/switch.ts): an experiment, off by default. `<stateDir>/hill/switch.json` exists
   // once the phone or `collie hill on|off` moved it; with no file a crew member follows its lead. Read
-  // behind a stat check, so a switch needs no restart. This is the one production wiring of the switch.
-  hillSwitch: new HillSwitch(cfg.stateDir),
+  // behind a stat check, so a switch needs no restart. This is the one production wiring of the switch; a real
+  // change from the phone lets the skill follow (`hillSkillFollower`).
+  hillSwitch: new HillSwitch(cfg.stateDir, hillSkillFollower),
   // The crew state (hill/crew-state.ts, 1.29.0): `here` by default, `<stateDir>/hill/state.json` once the
   // phone or `collie hill state` set it. Read behind a stat check, so a change needs no restart.
   crewState: new HillCrewStateFile(cfg.stateDir),

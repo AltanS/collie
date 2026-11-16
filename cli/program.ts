@@ -38,6 +38,7 @@ import {
   cmdSkillUninstall,
   cmdSkillVerb,
   type SkillDeps,
+  skillFollowsSwitch,
 } from "./skill-install.ts";
 import { asksForHelp, EXIT, type Io, realIo } from "./io.ts";
 import {
@@ -402,12 +403,12 @@ const HILL_TREE: readonly Subcommand[] = [
   {
     name: "on",
     summary: "switch the Hill on for this Collie (it is off until switched on)",
-    run: (args, s) => cmdHillSwitch(hillDeps(s.io), "on", args),
+    run: (args, s) => cmdHillSwitch({ ...hillDeps(s.io), followSkill: (on) => skillFollowsSwitch(skillDeps(s.io))(on) }, "on", args),
   },
   {
     name: "off",
     summary: "switch the Hill off: agents and tricks cannot post, the open decisions stay",
-    run: (args, s) => cmdHillSwitch(hillDeps(s.io), "off", args),
+    run: (args, s) => cmdHillSwitch({ ...hillDeps(s.io), followSkill: (on) => skillFollowsSwitch(skillDeps(s.io))(on) }, "off", args),
   },
 ];
 

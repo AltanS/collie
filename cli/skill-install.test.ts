@@ -22,16 +22,19 @@ import {
   COVERED_BY,
   legacyState,
   removeBlock,
-  renderWalkySkill,
+  renderedNow,
   SKILL_FORMAT,
   SKILL_TARGETS,
   type SkillDeps,
   skillFiles,
+  skillFollowsSwitch,
+  skillIsStale,
   skillReport,
   skillState,
   uninstalledFile,
 } from "./skill-install.ts";
 import { collieBinary } from "./unit.ts";
+import { hillSwitchPath, renderHillSwitch } from "../bridge/hill/switch.ts";
 
 // `collie skill install|uninstall|status|print`. Every path is spelled with `join`, as the code under
 // test builds it, and the filesystem and the symlink probe are fakes: nothing here reaches a real
@@ -59,7 +62,9 @@ function deps(over: { env?: Environment; files?: Record<string, string> } = {}):
   return { ctx: context(over.env ?? {}), io: capture(), files: fakeFiles(over.files ?? {}), fs: fakeLinkFs() };
 }
 
-const rendered = (d: SkillDeps): string => renderWalkySkill(d.ctx, d.fs);
+const rendered = (d: SkillDeps): string => renderedNow(d);
+/** This instance's Hill switch written on, as a file for {@link deps}. */
+const HILL_ON = { [hillSwitchPath(STATE)]: renderHillSwitch(true, "2026-11-16T09:00:00.000Z") };
 const text = (d: ReturnType<typeof deps>, path: string): string | undefined => d.files.entries.get(path)?.text;
 const stateOf = (d: SkillDeps, path: string): string => skillReport(d).find((r) => r.file.path === path)?.state.kind ?? "missing";
 
@@ -81,7 +86,7 @@ describe("the rendered skill", () => {
   });
 
   test("teaches the hill in a few lines: off by default, what it is for, one example, and where the rules are", () => {
-    const d = deps();
+    const d = deps({ files: HILL_ON });
     const out = rendered(d);
     const bin = collieBinary(ROOT);
     expect(out).toContain("## Decisions (the hill)");
@@ -103,7 +108,7 @@ describe("the rendered skill", () => {
     // The section as an agent reads it, with the binary as the bare word `collie`: the path is the install's.
     const bare = WALKY_TALKY_SKILL_TEMPLATE.replaceAll("{{COLLIE_BIN}}", "collie");
     const start = bare.indexOf("## Decisions (the hill)");
-    const section = bare.slice(start, bare.indexOf("## Tricks"));
+    const section = bare.slice(start, bare.indexOf("{{/HILL}}"));
     expect(start).toBeGreaterThan(0);
     expect(Buffer.byteLength(section)).toBeLessThanOrEqual(480);
   });
@@ -132,7 +137,7 @@ describe("the rendered skill", () => {
   });
 
   test("every harness gets both parts in its own skill file", () => {
-    const d = deps();
+    const d = deps({ files: HILL_ON });
     for (const target of SKILL_TARGETS) expect(cmdSkillInstall(d, [target.harness])).toBe(EXIT.OK);
     for (const path of [CLAUDE_FILE, CODEX_FILE, OPENCODE_FILE, PI_FILE, OMP_FILE, GEMINI_FILE]) {
       const written = text(d, path) ?? "";
@@ -771,6 +776,121 @@ describe("sync", () => {
   });
 });
 
+// ── The Hill's words follow the switch (M96 spec 12) ─────────────────────────
+
+describe("the Hill's words follow the switch (M96 spec 12)", () => {
+  const SWITCH = hillSwitchPath(STATE);
+  const setSwitch = (d: ReturnType<typeof deps>, on: boolean): void => {
+    d.files.entries.set(SWITCH, { text: renderHillSwitch(on, "2026-11-16T09:00:00.000Z") });
+  };
+  /** The front matter's description line. */
+  const description = (out: string): string => out.split("\n").find((line) => line.startsWith("description: ")) ?? "";
+  /** Everything but the Tricks section, which stays in both states and may name the Hill one day. */
+  const outsideTricks = (out: string): string => {
+    const start = out.indexOf("## Tricks");
+    const end = out.indexOf("<!-- collie-skill");
+    return out.slice(0, start) + out.slice(end);
+  };
+
+  test("off (no switch file, a written off, a damaged file): no Hill word outside the Tricks section, and the description ends with tricks", () => {
+    const damaged = deps({ files: { [SWITCH]: "{ not json" } });
+    const written = deps();
+    setSwitch(written, false);
+    for (const d of [deps(), written, damaged]) {
+      const out = rendered(d);
+      for (const word of ["hill", "Hill", "Decisions"]) expect(outsideTricks(out)).not.toContain(word);
+      expect(description(out).endsWith("or when the operator mentions WalkyTalky. Also for tricks.")).toBe(true);
+      expect(out).toContain("## Tricks");
+      expect(out).not.toContain("{{");
+    }
+  });
+
+  test("on: the text of before the markers, byte for byte; off is that text less the Hill section and the description's Hill words", () => {
+    const on = rendered(deps({ files: HILL_ON }));
+    const off = rendered(deps());
+    expect(on).not.toContain("{{");
+    expect(description(on).endsWith("or when the operator mentions WalkyTalky. Also for hill Decisions and tricks.")).toBe(true);
+    const section = on.slice(on.indexOf("## Decisions (the hill)"), on.indexOf("## Tricks"));
+    expect(off).toBe(on.replace(section, "").replace(" Also for hill Decisions and tricks.", " Also for tricks."));
+  });
+
+  test("status follows the switch: a file matching the current value is installed, the other value's text is stale", () => {
+    const d = deps({ files: HILL_ON });
+    expect(cmdSkillInstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(stateOf(d, CLAUDE_FILE)).toBe("installed");
+    expect(skillIsStale(d)).toBe(false);
+    setSwitch(d, false);
+    expect(stateOf(d, CLAUDE_FILE)).toBe("stale");
+    expect(cmdSkillSync(d, [])).toBe(EXIT.OK);
+    expect(stateOf(d, CLAUDE_FILE)).toBe("installed");
+    expect(skillIsStale(d)).toBe(false);
+    expect(text(d, CLAUDE_FILE)).not.toContain("## Decisions (the hill)");
+    const check = { ...d, io: capture() };
+    expect(cmdSkillStatus(check, ["--check"])).toBe(EXIT.OK);
+  });
+
+  test("the follower is the sync's own path: one backup, a symlink refused, an uninstalled target left out, nothing written when nothing moved", () => {
+    const d = deps({
+      files: {
+        ...HILL_ON,
+        [join(HOME, ".claude", "settings.json")]: "{}",
+        [join(HOME, ".gemini", "settings.json")]: "{}",
+        [join(HOME, ".pi", "agent", "settings.json")]: "{}",
+        [PI_FILE]: "mine\n",
+      },
+    });
+    expect(cmdSkillInstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(cmdSkillInstall(d, ["gemini"])).toBe(EXIT.OK);
+    expect(cmdSkillUninstall(d, ["gemini"])).toBe(EXIT.OK);
+    d.fs.entries.set(PI_FILE, { kind: "symlink", target: "/nix/store/z-SKILL.md" });
+    const onText = text(d, CLAUDE_FILE);
+    setSwitch(d, false);
+    d.files.ops.length = 0;
+    const follow = skillFollowsSwitch(d);
+    follow(false);
+    expect(text(d, CLAUDE_FILE)).toBe(rendered(d));
+    expect(text(d, `${CLAUDE_FILE}.collie-backup`)).toBe(onText);
+    expect(text(d, GEMINI_FILE)).toBeUndefined();
+    expect(text(d, PI_FILE)).toBe("mine\n");
+    expect(d.io.stderr).toContain(`refused pi ${PI_FILE}: ${PI_FILE} is a symlink`);
+    expect(d.files.ops.join("\n")).not.toContain(GEMINI_FILE);
+    // The same value again writes nothing.
+    d.files.ops.length = 0;
+    follow(false);
+    expect(d.files.ops).toEqual([]);
+  });
+
+  test("COLLIE_SKILL_SYNC=off: the follower writes nothing and says why", () => {
+    const d = deps({ env: { COLLIE_SKILL_SYNC: "off" }, files: { ...HILL_ON, [join(HOME, ".claude", "settings.json")]: "{}" } });
+    expect(cmdSkillInstall(d, ["claude"])).toBe(EXIT.OK);
+    setSwitch(d, false);
+    d.files.ops.length = 0;
+    skillFollowsSwitch(d)(false);
+    expect(d.files.ops).toEqual([]);
+    expect(d.io.stderr.at(-1)).toContain("COLLIE_SKILL_SYNC is off");
+  });
+
+  test("a sync that cannot write throws, so the switch's writer logs one line", () => {
+    const d = deps({ files: { [join(HOME, ".claude", "settings.json")]: "{}" } });
+    const write = d.files.write.bind(d.files);
+    d.files.write = (p, t, m) => {
+      if (p.startsWith(CLAUDE_FILE)) throw new Error("EIO");
+      write(p, t, m);
+    };
+    expect(() => skillFollowsSwitch(d)(false)).toThrow("a skill file could not be written; run `collie skill sync`");
+    expect(d.io.stderr).toContain(`refused claude ${CLAUDE_FILE}: could not write it: EIO`);
+  });
+
+  test("print shows the text for the switch as it reads now", () => {
+    const on = deps({ files: HILL_ON });
+    expect(cmdSkillPrint(on, ["claude"])).toBe(EXIT.OK);
+    expect(on.io.stdout.join("\n")).toContain("## Decisions (the hill)");
+    const off = deps();
+    expect(cmdSkillPrint(off, ["claude"])).toBe(EXIT.OK);
+    expect(off.io.stdout.join("\n")).not.toContain("hill");
+  });
+});
+
 // ── The golden copy ──────────────────────────────────────────────────────────
 
 describe("the WalkyTalky skill is byte for byte its golden copy", () => {
@@ -781,8 +901,8 @@ describe("the WalkyTalky skill is byte for byte its golden copy", () => {
    */
   const norm = (body: string, version: string): string => body.replaceAll(` collie ${version} -->`, " collie {{VERSION}} -->").replaceAll(collieBinary(ROOT), "/opt/collie/bin/collie");
 
-  test("the rendered text equals cli/testdata/walky-skill-v2.golden.md", () => {
-    const d = deps();
+  test("the rendered text equals cli/testdata/walky-skill-v2.golden.md, with the Hill on", () => {
+    const d = deps({ files: HILL_ON });
     const golden = readFileSync(join(import.meta.dir, "testdata", "walky-skill-v2.golden.md"), "utf8");
     expect(norm(rendered(d), collieVersion(d.ctx.root))).toBe(golden);
   });

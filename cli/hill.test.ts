@@ -114,7 +114,7 @@ async function bridge(withHill = true, extra: Partial<HillServiceDeps> = {}): Pr
     },
     media: new HillMediaStore(join(stateDir, "hill"), deniedFoldersSync([stateDir])),
     // The real switch on this bridge's own state folder, so `collie hill on|off` moves it.
-    hillSwitch: new HillSwitch(stateDir, () => undefined),
+    hillSwitch: new HillSwitch(stateDir, null, () => undefined),
     ...extra,
   });
   const base = { socketPath: walkySocketPath(stateDir), service: walky, targets: () => [target], log: () => undefined };
@@ -417,7 +417,7 @@ describe("the Hill's switch", () => {
     const b = await bridge();
     const sock = [walkySocketPath(b.stateDir)];
     expect(await cmdHillPost(deps(sock), POST)).toBe(EXIT.OK);
-    const own = { ctx: context({}, { stateDir: b.stateDir }), now: () => 1000 };
+    const own = { ctx: context({}, { stateDir: b.stateDir }), now: () => 1000, followSkill: null };
     const off = { ...own, io: capture() };
     expect(cmdHillSwitch(off, "off", [])).toBe(EXIT.OK);
     expect(off.io.stdout).toEqual([HILL_OFF_WORDS]);
@@ -449,7 +449,7 @@ describe("the Hill's switch", () => {
   test("a switch already in place says so and writes nothing; --json prints the value; another argument is a usage error", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "hill-switch-"));
     cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }));
-    const own = { ctx: context({}, { stateDir }), now: () => 1000 };
+    const own = { ctx: context({}, { stateDir }), now: () => 1000, followSkill: null };
     // No file is off (2026-11-13): "on" writes, and only the second "on" finds it in place.
     const first = { ...own, io: capture() };
     expect(cmdHillSwitch(first, "on", [])).toBe(EXIT.OK);
@@ -467,6 +467,25 @@ describe("the Hill's switch", () => {
     const bad = { ...own, io: capture() };
     expect(cmdHillSwitch(bad, "on", ["now"])).toBe(EXIT.USAGE);
     expect(bad.io.stderr[0]).toBe("error: unknown argument `now`");
+  });
+
+  test("the WalkyTalky skill follows a real change only, and a sync fault is one line that does not change the exit (M96 spec 12)", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "hill-switch-"));
+    cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }));
+    const followed: boolean[] = [];
+    const own = { ctx: context({}, { stateDir }), now: () => 1000, followSkill: (on: boolean) => void followed.push(on) };
+    // No file reads off, so a first "off" is no change: it writes the file and syncs nothing.
+    expect(cmdHillSwitch({ ...own, io: capture() }, "off", [])).toBe(EXIT.OK);
+    expect(followed).toEqual([]);
+    expect(cmdHillSwitch({ ...own, io: capture() }, "on", [])).toBe(EXIT.OK);
+    expect(cmdHillSwitch({ ...own, io: capture() }, "on", [])).toBe(EXIT.OK);
+    expect(cmdHillSwitch({ ...own, io: capture() }, "off", ["--json"])).toBe(EXIT.OK);
+    expect(followed).toEqual([true, false]);
+    const broken = { ...own, followSkill: () => { throw new Error("disk full"); }, io: capture() };
+    expect(cmdHillSwitch(broken, "on", ["--json"])).toBe(EXIT.OK);
+    expect(broken.io.stdout).toEqual(['{"on":true}']);
+    expect(broken.io.stderr).toEqual(["hill: the WalkyTalky skill did not follow the switch: disk full"]);
+    expect(readHillSwitch(stateDir)).toEqual({ on: true, problem: null });
   });
 
   test("`hill_off` exits STATE, apart from a post refused for its content (REFUSED)", () => {

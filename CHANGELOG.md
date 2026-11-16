@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The Stop button shows a filled square.** The outline square read as an empty checkbox, so the Belt Stop, a durable agent's Stop and the recording button now share one solid square, in every icon set.
 - **The 1.29 strings are in all eleven other languages.** The Hill, Tricks, Accounts, pairing by phone, the session filter and the other 1.29 settings now read in German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Turkish and both Chinese forms, where they showed English until now.
+- **The WalkyTalky skill names the Hill only while the Hill is on.** With the Hill off, the installed skill has no Hill section and its description no longer mentions Hill Decisions, so an agent's context holds no Hill text. A change of the switch, from the phone, `collie hill on|off` or a takeover, rewrites the installed skill files as `collie skill sync` does, with its guards and the uninstall marker. A running agent keeps the text it loaded; new sessions get the new one. `collie skill status` and `doctor` compare against the text for the current switch.
 
 ### Fixed
 

@@ -656,8 +656,9 @@ collie skill install claude
 `collie skill install all` installs into every harness whose config folder exists. A running agent
 reads its instructions at start, so restart it after an install.
 
-Only `collie update`, `collie skill install` and `collie skill sync` write those files. The bridge
-never writes them, and no bridge start touches them.
+Only `collie update`, `collie skill install`, `collie skill sync` and a change of the Hill's switch
+write those files. No bridge start touches them. The skill holds the Hill's section only while the
+Hill is on ([Switch the Hill on or off](hill.md#switch-the-hill-on-or-off)).
 
 ### Where the skill goes
 

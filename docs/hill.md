@@ -162,8 +162,8 @@ The person opens the card cold, between other things.
 
 ### The rules an agent gets
 
-The skill an agent has installed holds a short Hill section: one example and a pointer to
-`collie hill --help` ([Install the skill](walky-talky.md#install-the-skill)). The rules are in that
+The skill an agent has installed holds a short Hill section while the Hill is on: one example and a
+pointer to `collie hill --help` ([Install the skill](walky-talky.md#install-the-skill)). The rules are in that
 help, in at most 1,500 bytes, so an agent reads them only when it runs it. `collie hill post --help`
 prints the same text.
 
@@ -344,6 +344,10 @@ here. Off: they cannot post, and the Hill leaves the bar." If a question waits, 
 switch asks you to tap again before it switches off. The commands move the same switch, for every
 phone of this Collie, and the bridge reads it with no restart.
 
+The installed WalkyTalky skill names the Hill only while it is on: each change of the switch
+rewrites the skill as `collie skill sync` does. A running agent keeps the text it loaded; its next
+session gets the new one.
+
 A Collie that used the Hill before it became an experiment has the Hill off after the update. Its
 open Decisions stay stored, and their expiry still runs. They show again when you switch the Hill on.
 
@@ -352,6 +356,9 @@ on its own: it sends them to the lead, and the lead's switch decides. If the lea
 the post is refused with: "the Hill is off on the lead of this crew; your person can switch it on in
 Settings, Experiments, on the phone". A member whose own switch says off still refuses on its own
 machine. See [Decisions from any machine](crew.md#decisions-from-any-machine).
+
+On a crew member, the installed skill follows that machine's own switch, not the lead's. To give the
+agents on a member the Hill text, run `collie hill on` on that member.
 
 With the Hill off:
 

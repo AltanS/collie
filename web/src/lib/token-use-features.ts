@@ -4,8 +4,9 @@
 // why, from the code. A trick's label is not here: lib/tricks/token-use.ts reads it from the trick's facts.
 //
 // Left out on purpose, with the reason:
-//   - the WalkyTalky skill (cli/skill-install.ts) and the Hill rules inside it: agents read them, but no
-//     Settings or sheet switch turns them off, only `collie skill uninstall` and `COLLIE_SKILL_SYNC`;
+//   - the WalkyTalky skill (cli/skill-install.ts): agents read it, but no Settings or sheet switch turns it
+//     off, only `collie skill uninstall` and `COLLIE_SKILL_SYNC`. Its Hill section is there only while the
+//     Hill is on (M96 spec 12), which the "hill" entry below already marks;
 //   - "Tell all sessions now" (components/hill-crew-state.tsx): a button, one send per tap, not a switch;
 //   - the harness shortcuts, the quick actions and the palette's commands: the person taps each send;
 //   - `COLLIE_WALKY=off`: a config key, no control on the phone.
