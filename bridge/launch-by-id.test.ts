@@ -690,6 +690,12 @@ describe("POST /api/launch — with an account", () => {
     expect(mux.texts).toEqual([["w1:p1", "CODEX_HOME='/home/op/.codex-work' codex"]]);
     const started: AgentView = { paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "app", workspaceNumber: 1, tabId: "w1:t1", agent: "codex", status: "idle", cwd: "/home/op/src/app", focused: false };
     expect(accounts.paneAccount("default", started)).toEqual({ id: ACCOUNT, label: "Work" });
+    // Over the crew link (M101 spec 06, decision 5): the member types ITS OWN folder for its own id, and a
+    // folder the forwarded body names is never read.
+    const crewMux = new FakeMux();
+    const forwarded = { harness: "codex", account: ACCOUNT, cwd: "/home/op/src/app", path: "/tmp/elsewhere", dir: "/tmp/elsewhere", folder: "/tmp/elsewhere" };
+    expect((await run(crewMux, forwarded, { accounts, viaCrew: true })).status).toBe(200);
+    expect(crewMux.texts).toEqual([["w1:p1", "CODEX_HOME='/home/op/.codex-work' codex"]]);
   });
 
   test("an unknown id, another agent's id, no service, and Windows are refused before anything runs", async () => {
@@ -756,14 +762,6 @@ describe("POST /api/launch — over the crew link, with an account", () => {
     await store.add({ id: ACCOUNT, harness: "codex", label: "Work", kind: "own", dir: "/home/op/.codex-work", addedAt: 1, device: "pixel" });
     return new Accounts({ store, harnesses: { list: () => Promise.resolve([]), launch: harnessLaunch }, home: "/home/op", env: {}, platform: "linux", disk: realLinkDisk });
   }
-
-  accountTest("the member types its own folder for its own id, whatever folder the body names", async () => {
-    const accounts = await memberAccounts();
-    const mux = new FakeMux();
-    const body = { harness: "codex", account: ACCOUNT, cwd: "/home/op/src/app", path: "/tmp/elsewhere", dir: "/tmp/elsewhere", folder: "/tmp/elsewhere" };
-    expect((await run(mux, body, { accounts, viaCrew: true })).status).toBe(200);
-    expect(mux.texts).toEqual([["w1:p1", "CODEX_HOME='/home/op/.codex-work' codex"]]);
-  });
 
   test("an id the member does not hold (the lead's own, or a folder) is refused with the existing sentence, nothing runs", async () => {
     const accounts = await memberAccounts();
