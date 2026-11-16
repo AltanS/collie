@@ -258,6 +258,15 @@
 // row says `heldLong` once it waited HELD_LONG_MS (two minutes). A send Collie makes alone (a held release,
 // a queued send, WalkyTalky, a hook, a steer) never takes this road and is unchanged.
 //
+// The agent's own word (M102 spec 13): a receipt opens for a prompt edge when the submit key goes out
+// (`openSend`), on the data road when the text is handed to the part. An `unknown` that ends with it open,
+// on a harness whose profile maps an edge event to `prompt` (profile data), says until when it waits
+// (`awaitingEventUntil`, the open receipt's window: 30 s, 10 minutes when queued behind a turn). A prompt
+// edge with the same salted text hash inside that window settles it `effective` (`promptEdge`). The hash
+// misses when the agent took a changed text (a folded paste it did not unwrap, an image path, queued
+// messages joined, a command it rewrote, a tab the data road kept and the screen road made a space): a
+// miss costs only the wait. The one wrong match is the same text typed at the desk inside the window.
+//
 // Rows live only in the short memory ring below; the receipt and the request file hold hashes.
 // No harness name lives here (no-harness-names.test.ts scans this folder).
 
@@ -1953,6 +1962,11 @@ const LATE_KEYS =
 function noticeRefusal(s0: Snap): Ended {
   return new Ended("refused", "unconfirmed", { surface: s0.surface, offers: ["keys"], detail: NOTICE_KEY_HELD_DETAIL, cause: NOTICE_KEY });
 }
+/** Whether a profile names a prompt event: an edge the harness writes when it takes a prompt (M102 spec 13). */
+function namesPromptEvent(profile: Profile | null): boolean {
+  return profile !== null && Object.values(profile.edges?.events ?? {}).includes("prompt");
+}
+
 /** The detail of an override refused because the screen moved since the person looked (M102 spec 12). */
 const OVERRIDE_MOVED = "The screen moved since you looked. Check it, then tap again.";
 /** The detail of an override refused by the generic menu sign (M102 spec 12). */
@@ -3328,6 +3342,7 @@ export class SendProtocol {
       if (receipt.queued === true) row.queued = true;
       if (receipt.late !== undefined) row.late = receipt.late;
       if (receipt.word !== undefined) row.word = receipt.word;
+      if (receipt.awaitingEventUntil !== undefined) row.awaitingEventUntil = receipt.awaitingEventUntil;
       // A refusal's line and the Surface words are stored to be read later: the list carries them.
       if (receipt.detail !== undefined) row.detail = receipt.detail;
       if (receipt.saw !== undefined) row.saw = receipt.saw;
@@ -3404,6 +3419,12 @@ export class SendProtocol {
     const promptHash = this.deps.store.hashText(normalizePrompt(sendLines(state.request.text).join("\n")));
     const open: OpenSend = { id: state.record.id, paneId: state.target.paneId, promptHash, at, key: this.keyOf(state), settled: false, effective: false };
     this.openSends.push(state.queued && !state.runsInTurn ? { ...open, queued: true } : open);
+  }
+
+  /** Closes a receipt opened for a text that was not submitted after all (the data road gave it back). */
+  private closeOpen(id: string): void {
+    const at = this.openSends.findIndex((open) => open.id === id);
+    if (at >= 0) this.openSends.splice(at, 1);
   }
 
   /** At settle: a matched `sent` becomes `effective`; a `sent` or `unknown` stays open; any other end closes it. */
@@ -4320,7 +4341,23 @@ export class SendProtocol {
     if (state.blind) receipt.saw = BLIND_SAW;
     // The person's word, beside what Collie saw: the outcome stays whatever the run ended as (M102 spec 01).
     if (state.overrode) receipt.word = "override";
+    // The agent's own word may still settle an `unknown` (M102 spec 13): its window, when one is open.
+    if (outcome === "unknown") {
+      const until = this.awaitingEventUntil(state);
+      if (until !== null) receipt.awaitingEventUntil = until;
+    }
     return receipt;
+  }
+
+  /**
+   * Until when a prompt event may settle this run's `unknown` (M102 spec 13), or null: only when its
+   * text went out with the submit key (the receipt is open, {@link openSend}) and the profile names a
+   * prompt event (profile data, `edges.events`). Which harness has one is never decided here.
+   */
+  private awaitingEventUntil(state: RunState): number | null {
+    if (!namesPromptEvent(state.match?.profile ?? null)) return null;
+    const entry = this.openSends.find((open) => open.id === state.record.id);
+    return entry === undefined ? null : entry.at + receiptWindowMs(entry);
   }
 
   private async prepare(target: SendTarget): Promise<SendAnswer> {
@@ -4464,7 +4501,11 @@ export class SendProtocol {
     this.deps.store.markPath(record.id, "data");
     // A WalkyTalky delivery goes as `mail`: the text is the envelope the screen road would type (spec 05).
     const command = { id: commandId, kind: mail ? ("mail" as const) : ("prompt" as const), text: request.text };
+    // The same hash receipt as the screen road (M102 spec 13): the agent's prompt event settles a data
+    // send that may have arrived. It closes again when nothing was submitted by data.
+    this.openSend(state);
     const result = await sendByData(data.door, address, over ? { ...command, overDraft: true } : command, data.limits);
+    if (result.kind === "screen" || result.kind === "draft") this.closeOpen(record.id);
     // Nothing reached the part: a Deliver now leaves the message where it was, and never takes the screen.
     if (result.kind === "screen" && over) return this.overDraftMiss(state, "not-taken");
     if (result.kind === "screen") {

@@ -99,6 +99,36 @@ dataDescribe("never twice", () => {
     expect(r.hub.withdraw(id)).toBe(false);
   });
 
+  test("taken with no word: the same hash receipt as the screen road, so the agent's prompt event settles it (M102 spec 13)", async () => {
+    const r = await rig({ wordMs: 500 });
+    const part = await r.part();
+    const id = dataId();
+    const served = part.serveOnce({ silent: true });
+    const answer = await r.send(id, "taken, no word");
+    await served;
+    expect(answer.receipt?.outcome).toBe("unknown");
+    expect(answer.receipt?.awaitingEventUntil).toBeGreaterThan(Date.now());
+    expect(r.protocol.promptEdge("w1:p1", r.store.hashText("another text"), Date.now())).toBeNull();
+    expect(r.protocol.promptEdge("w1:p1", r.store.hashText("taken, no word"), Date.now())).toBe(id);
+    expect(r.store.get(id)?.receipt?.outcome).toBe("effective");
+    expect(r.store.get(id)?.receipt?.awaitingEventUntil).toBeUndefined();
+    expect(r.mux.calls).toEqual([]);
+  });
+
+  test("not taken: the receipt the data road opened closes, and the screen road's own is the one an event settles (M102 spec 13)", async () => {
+    const r = await rig({ takeMs: 300 });
+    await r.part();
+    const id = dataId();
+    const answer = await r.send(id, "nobody polls");
+    expect(r.store.get(id)?.path).toBe("screen");
+    // The screen road ran it; whatever it ended as, at most one open receipt answers to the id.
+    const hash = r.store.hashText("nobody polls");
+    const first = r.protocol.promptEdge("w1:p1", hash, Date.now());
+    expect(r.protocol.promptEdge("w1:p1", hash, Date.now())).toBeNull();
+    expect(answer.receipt?.requestId).toBe(id);
+    if (first !== null) expect(first).toBe(id);
+  });
+
   test("taken and failed: may have arrived, no key, nothing sent again", async () => {
     const r = await rig();
     const part = await r.part();

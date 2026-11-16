@@ -221,6 +221,9 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   // `word` is lenient like `late`: a word this module did not write is dropped, and the receipt stays.
   const word = node.word === undefined ? undefined : pick(node.word, SEND_WORDS);
   if (word !== undefined) whole.word = word;
+  // `awaitingEventUntil` is lenient like `late`: a value that is not a time is dropped (M102 spec 13).
+  const awaiting = asJsonNumber(node.awaitingEventUntil);
+  if (awaiting !== undefined && Number.isSafeInteger(awaiting) && awaiting > 0) whole.awaitingEventUntil = awaiting;
   if (acknowledged !== undefined) whole.acknowledged = acknowledged;
   if (detail !== undefined) whole.detail = detail;
   if (saw !== undefined) whole.saw = saw;
@@ -447,7 +450,8 @@ export class RequestStore {
     const receipt = known?.receipt;
     if (known === null || known.phase !== "settled" || receipt === undefined) return null;
     if (receipt.outcome !== "sent" && receipt.outcome !== "unknown") return null;
-    const { reason: _dropped, ...rest } = receipt;
+    // The event settled it (M102 spec 13): the window it waited in is closed.
+    const { reason: _dropped, awaitingEventUntil: _closed, ...rest } = receipt;
     this.write({ ...known, receipt: { ...rest, outcome: "effective" } });
     return receipt.outcome;
   }

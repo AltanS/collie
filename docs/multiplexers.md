@@ -655,7 +655,11 @@ from a subagent is not about the pane, so it never changes what Collie reads the
 
 A send from the phone can show as **Confirmed**. That happens when a prompt edge carries the same
 text soon after the send. The window is 30 seconds, or ten minutes for a send queued behind a turn.
-The edge carries a salted hash of the prompt, never the text itself.
+The edge carries a salted hash of the prompt, never the text itself. A send that ended "cannot tell
+if this was sent" waits in the same window for that edge: when it comes with the same text, the send
+shows as Confirmed. Until then the receipt says how long it waits. A send that goes through the plugin
+waits the same way. When the agent changed the text (a folded paste, an image path, several queued
+messages taken as one), no edge matches, and the send stays "cannot tell" after the window.
 
 Claude Code and Codex take a message or a command during a turn. Collie types it at once, and the
 harness runs it after the turn. A harness that cannot take a send during its turn gets a held send

@@ -70,8 +70,7 @@ a failure. About 30 records shaped this road one case at a time, and none states
   no draft of it (`secretField`). A password prompt changes only words (`no-echo.ts`, ADR 0017).
 - Rule 6c. The data road hands a command to a part once (`data-send.ts`); a held send goes again only
   under its own id (`holds.ts`); one override id types at most once.
-- Rule 6d. A WalkyTalky message waits over a draft and types nothing while it is there
-  (`draftHolds` in `bridge/surface/protocol.ts`; `DRAFT_REFUSAL` in `bridge/surface/data-send.ts`).
+- Rule 6d. A WalkyTalky message waits over a draft and types nothing there (`draftHolds`, `DRAFT_REFUSAL`).
 - A steer is the person's choice, never the default (`bridge/surface/protocol.ts`, header).
 
 ## Decided, not built yet
@@ -117,3 +116,5 @@ An override (`override` plus the rows hash seen) is typed on any reading but fiv
 sign-in field (6b), a question the reader read (6a), a moved screen (`stale_surface`) and the generic
 menu sign (`menu_open`, `menu-sign.ts`); both refusals carry the rows now. Where the steps would refuse,
 it goes in one piece, no probe, no key: `typed_not_submitted(override)`. Details: `protocol.ts` header.
+Spec 13: an `unknown` whose submit went out waits `awaitingEventUntil` for the agent's prompt event, on
+the data road too; a match settles it `effective`, a miss costs only the wait (profile data, `edges`).

@@ -271,6 +271,14 @@ export interface SendReceipt {
    */
   readonly word?: SendWord;
   /**
+   * Set on an `unknown` whose text went out with its submit key, on a harness whose profile names a
+   * prompt event (`edges.events` maps one to `prompt`): until this time, epoch ms, the agent's own
+   * prompt event with the same text hash settles the receipt as `effective` (M102 spec 13). The window
+   * is the open receipt's own (`receiptWindowMs` in edges.ts: 30 s, or 10 minutes for a send queued
+   * behind a turn). Dropped when the event settles it; past the time, the receipt stays `unknown`.
+   */
+  readonly awaitingEventUntil?: number;
+  /**
    * Set on a send a program session took (M56 spec 14): the request id the program acknowledged.
    * The driver passes the request id to the program unchanged, so it equals `requestId`. Absent on
    * every send into a screen.
@@ -380,6 +388,8 @@ export interface SendReceiptRow {
   readonly late?: SendLate;
   /** The person's word on the send, beside the outcome (see {@link SendReceipt.word}). */
   readonly word?: SendWord;
+  /** Until when the agent's prompt event may still settle an `unknown` (see {@link SendReceipt.awaitingEventUntil}). */
+  readonly awaitingEventUntil?: number;
   /** The line of a refusal or a `typed_not_submitted` (see {@link SendReceipt.detail}). */
   readonly detail?: string;
   /** What the bridge saw at that end, four words (see {@link SendReceipt.saw}). */
