@@ -233,38 +233,38 @@ The rule today: Chat is the default view of an agent pane (0082). A live session
 
 ### Layout and navigation
 
-The rule today: [0147](./0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md) states the pane lists and the dashboard's footer: no list is ordered by status, the operator may ask for Activity or Cache order with the clock read once, a pin is a place the operator chose, and the footer reads Crew, Dashboard, Files and the Hill, with Needs you a switch. It wins over 0063, 0066, 0068, 0070, 0071 and 0085. Back goes up one level (0067). On a large screen the pane screen is a sidebar beside a strip of panes, and two fingers move between panes (0120, 0121). "Seen" is one shared bridge-side fact (0003), and the app stays on React Router in library mode (0051).
+The rule today: [0147](./0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md) states the pane lists and the dashboard's footer: no list is ordered by status, the operator may ask for Activity or Cache order with the clock read once, a pin is a place the operator chose, and the footer reads Crew, Dashboard, Files and the Hill, with Needs you a switch. It replaced 0063, 0066, 0068, 0070, 0071 and 0085, now stubs, and retired 0069: the rule of the glide lives in the header of `web/src/lib/glide.ts`. This section holds five topics, and the rest stay apart as they are. Back goes up one level (0067). On a large screen the pane screen is a sidebar beside a strip of panes, and two fingers move between panes (0120, 0121, which wait for one record of their own). "Seen" is one shared bridge-side fact (0003), and the app stays on React Router in library mode (0051).
 
 | # | Decision | Status |
 | --- | --- | --- |
 | [0147](./0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md) | No pane list is ordered by status; Activity and Cache order read the clock once; pins lead; the footer holds Crew, Dashboard, Files and the Hill, and Needs you is a switch. | Accepted |
 | [0003](./0003-one-shared-seen.md) | "Seen" is one shared bridge-side fact, and only reads inside Collie count. | Accepted |
 | [0051](./0051-the-phone-app-runs-react-router-in-library-mode.md) | The phone app stays on React Router in library mode, and Collie owns its Vite build. | Accepted |
-| [0063](./0063-a-pane-keeps-its-place-when-its-state-changes.md) | No pane list is ordered by status; a pane's place is machine, space, tab and position. | Accepted, amended in scope by 0070, 0071 |
-| [0066](./0066-the-dashboard-has-a-footer-panes-needs-you-changes.md) | The dashboard has a footer of tabs, and its filter never sorts (the tab names have changed since). | Accepted, amended in scope by 0068, 0070, 0085 |
+| [0063](./0063-a-pane-keeps-its-place-when-its-state-changes.md) | No pane list is ordered by status; a pane's place is machine, space, tab and position. | Superseded by 0147 |
+| [0066](./0066-the-dashboard-has-a-footer-panes-needs-you-changes.md) | The dashboard has a footer of tabs, and its filter never sorts (the tab names have changed since). | Superseded by 0147 |
 | [0067](./0067-back-goes-up-one-level.md) | Back goes up one level: the history stack is the level tree. | Accepted |
-| [0068](./0068-the-second-tab-is-focus-not-attention.md) | The dashboard's second tab is renamed Focus and wears `CircleDot` (history, see 0085). | Accepted, amended in scope by 0085 |
-| [0069](./0069-a-row-glides-into-its-header.md) | One hand-started view-transition engine drives every glide; the router flag stays off. | Accepted |
-| [0070](./0070-a-pin-is-a-place-the-operator-chose.md) | A pin is a place the operator chose; pinned panes lead each list on this device. | Accepted |
-| [0071](./0071-the-operator-may-ask-for-activity-order.md) | The operator may ask for activity order; the clock is read once per opening. | Accepted |
-| [0085](./0085-the-dashboards-tabs-are-dashboard-crew-and-changes.md) | The footer tabs are Dashboard, Crew and Files (first Changes), Focus is a switch, and the Hill ends the row. | Accepted |
+| [0068](./0068-the-second-tab-is-focus-not-attention.md) | The dashboard's second tab is renamed Focus and wears `CircleDot` (history, see 0085). | Superseded by 0147 |
+| [0069](./0069-a-row-glides-into-its-header.md) | One hand-started view-transition engine drives every glide; the router flag stays off. | Retired: the rule lives in `web/src/lib/glide.ts` |
+| [0070](./0070-a-pin-is-a-place-the-operator-chose.md) | A pin is a place the operator chose; pinned panes lead each list on this device. | Superseded by 0147 |
+| [0071](./0071-the-operator-may-ask-for-activity-order.md) | The operator may ask for activity order; the clock is read once per opening. | Superseded by 0147 |
+| [0085](./0085-the-dashboards-tabs-are-dashboard-crew-and-changes.md) | The footer tabs are Dashboard, Crew and Files (first Changes), Focus is a switch, and the Hill ends the row. | Superseded by 0147 |
 | [0120](./0120-on-a-large-screen-the-pane-screen-is-a-strip.md) | On a large screen the pane screen is a sidebar beside a strip of panes. | Accepted |
 | [0121](./0121-two-fingers-move-between-panes.md) | Pane navigation by gesture is a device setting, and text selection stays on. | Accepted |
 
 ### Themes, fonts, icons and the mark
 
-The rule today: [0148](./0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md) states it in one place. A theme is one closed JSON file of colours and words from closed lists; an unknown key is refused with its name, never dropped, and the default theme applies nothing. A theme arrives by a file, a paste or the community list, and the page fetches nothing. A theme may name a character and a glyph set, never a drawing; the device's own pick of character wins on that device. The resting character drifts in steps while the page is visible, and "Character moves" or a theme's `characterMotion` stops it. The UI face is a device preference (default Atkinson Hyperlegible Next) that dresses chrome only, and an operator's fonts add to the list. The terminal mirror is dark space inverted in light, with Muse and a per-pane override as the exceptions; 0002 stays live for why it is not re-themed with a light palette.
+The rule today: [0148](./0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md) states it in one place. A theme is one closed JSON file of colours and words from closed lists; an unknown key is refused with its name, never dropped, and the default theme applies nothing. A theme arrives by a file, a paste or the community list, and the page fetches nothing. A theme may name a character and a glyph set, never a drawing; the device's own pick of character wins on that device. The resting character drifts in steps while the page is visible, and "Character moves" or a theme's `characterMotion` stops it. The UI face is a device preference (default Atkinson Hyperlegible Next) that dresses chrome only, and an operator's fonts add to the list. The terminal mirror is dark space inverted in light, with Muse and a per-pane override as the exceptions; 0002 stays live for why it is not re-themed with a light palette, and 0047 for how Muse renders natively.
 
 | # | Decision | Status |
 | --- | --- | --- |
 | [0148](./0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md) | A theme names words, never drawings, and the device's own choice wins: the look rule of today. | Accepted |
 | [0002](./0002-invert-the-light-terminal-mirror.md) | The light terminal mirror is inverted by CSS, not re-themed with a light palette. | Accepted, amended in scope by 0047 |
-| [0033](./0033-the-app-face-is-a-device-preference.md) | The app's typeface is a per-device preference, and an operator's fonts add to the list. | Accepted, amended in scope by 0106 |
+| [0033](./0033-the-app-face-is-a-device-preference.md) | The app's typeface is a per-device preference, and an operator's fonts add to the list. | Superseded by 0148 |
 | [0047](./0047-muse-panes-render-natively.md) | Muse panes render natively in light, with no inversion filter. | Accepted |
-| [0106](./0106-a-theme-is-a-closed-file-of-named-tokens.md) | A theme is a closed JSON file of named tokens; unknown keys are refused. | Accepted, amended in scope by 0136 |
-| [0136](./0136-a-theme-may-name-a-mark-and-every-mark-keeps-one-contract.md) | A theme may name a mark from a closed list, and every mark keeps one contract. | Accepted |
-| [0137](./0137-a-theme-may-name-a-glyph-set-from-a-closed-list.md) | A theme may name a glyph set from a closed list, and every icon is named by its meaning. | Accepted |
-| [0138](./0138-an-app-left-alone-draws-no-frame.md) | The mark moves while the page is visible (title and first rules reversed by amendments). | Accepted |
+| [0106](./0106-a-theme-is-a-closed-file-of-named-tokens.md) | A theme is a closed JSON file of named tokens; unknown keys are refused. | Superseded by 0148 |
+| [0136](./0136-a-theme-may-name-a-mark-and-every-mark-keeps-one-contract.md) | A theme may name a mark from a closed list, and every mark keeps one contract. | Superseded by 0148 |
+| [0137](./0137-a-theme-may-name-a-glyph-set-from-a-closed-list.md) | A theme may name a glyph set from a closed list, and every icon is named by its meaning. | Superseded by 0148 |
+| [0138](./0138-an-app-left-alone-draws-no-frame.md) | The mark moves while the page is visible (title and first rules reversed by amendments). | Superseded by 0148 |
 
 ### Launch, worktrees, files and changes
 
@@ -306,16 +306,16 @@ The rule today: [0146](./0146-a-durable-agent-is-a-session-with-no-screen-that-a
 
 ### Usage and accounts
 
-The rule today: 0149 states the usage figures. The context and the cost are the session's and come from what the harness states: Claude's beacon hooks with the window size from the wrapped statusLine (the wrap is the default), the session logs and model catalogs for the other harnesses, and a token count where no window is stated. The account windows are the agent's own list, asked of the vendor with the login the harness keeps on this machine, read for one request and not stored, per account folder. 0115 and 0118 are its history. An account is a label, a harness and a folder the agent already understands, and the person signs in inside the agent (0141, still Proposed). Two cache records stand apart: a cache rule shown on screen carries a dated source (0041), and a notification kind is a bridge-wide switch that defaults off (0042).
+The rule today: 0149 states the usage figures. The context and the cost are the session's and come from what the harness states: Claude's beacon hooks with the window size from the wrapped statusLine (the wrap is the default), the session logs and model catalogs for the other harnesses, and a token count where no window is stated. The account windows are the agent's own list, asked of the vendor with the login the harness keeps on this machine, read for one request and not stored, per account folder. 0115 and 0118 are stubs that point at it. An account is a label, a harness and a folder the agent already understands, and the person signs in inside the agent (0141, which stays live beside 0149 for the roads it closed). This section holds two topics, and the prompt cache and its alerts stay apart as they are: a cache rule shown on screen carries a dated source (0041), and a notification kind is a bridge-wide switch that defaults off (0042).
 
 | # | Decision | Status |
 | --- | --- | --- |
 | [0149](./0149-usage-figures-are-what-the-agent-states-and-the-account-is-asked-with-its-own-login.md) | Usage figures are what the agent states; the account windows are asked with the harness's own login, per account folder. | Accepted |
 | [0041](./0041-cache-rules-are-sourced-claims.md) | Every cache number shown carries a dated source. | Accepted |
 | [0042](./0042-notification-kinds-and-the-cache-watch.md) | A notification kind is a bridge-wide switch that defaults off; a cache watch is per pane. | Accepted |
-| [0115](./0115-usage-numbers-come-from-the-operators-own-statusline.md) | Usage context comes from the operator's own statusLine wrapper and the journal. | Accepted, amended in scope by 0118 |
-| [0118](./0118-account-windows-come-from-the-vendors-usage-endpoint-with-the-operators-own-login.md) | Account windows come from the vendor's usage endpoint with the operator's own login. | Accepted |
-| [0141](./0141-an-account-is-a-folder-the-agent-already-understands.md) | An account is a label, a harness and a folder the agent already understands. | Proposed |
+| [0115](./0115-usage-numbers-come-from-the-operators-own-statusline.md) | Usage context comes from the operator's own statusLine wrapper and the journal. | Superseded by 0149 |
+| [0118](./0118-account-windows-come-from-the-vendors-usage-endpoint-with-the-operators-own-login.md) | Account windows come from the vendor's usage endpoint with the operator's own login. | Superseded by 0149 |
+| [0141](./0141-an-account-is-a-folder-the-agent-already-understands.md) | An account is a label, a harness and a folder the agent already understands. | Accepted |
 
 ### Speech
 
@@ -329,7 +329,7 @@ The rule today: Speech to text is a provider seam Collie owns, off by default an
 
 ### Tricks and the Hill
 
-The rule today: No record decides tricks or the Hill on its own yet. Trick code may cross the crew link as inert data and runs only on a tap on the machine that runs it (0144 rule 3, which took the addendum of 2026-11-10 to 0016), and the footer's Hill item and trick items are in the amendments of 2026-11-10 to 0066 and 0085.
+The rule today: No record decides tricks or the Hill on its own yet. Trick code may cross the crew link as inert data and runs only on a tap on the machine that runs it (0144 rule 3, which took the addendum of 2026-11-10 to 0016), and the footer's Hill item and trick items are in 0147 (rules 7 and 12).
 
 ### Process, lint and tests
 

@@ -2,6 +2,7 @@
 
 - **Status:** Accepted (2026-11-16)
 - **Date:** 2026-11-16
+- **Supersedes:** ADR 0115, ADR 0118
 - **Trail:** the owner's brief of 2026-10-23 (the credential road named and declined), the owner's
   call of 2026-10-24 (the windows must show without a statusLine, and the wrap opt-in), counsel of
   2026-10-24 (an allowlist, the unproven readers off), the owner's calls of 2026-10-25 (the other

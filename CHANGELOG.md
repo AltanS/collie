@@ -26,7 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Docs
 
 - **The decision records have a topic map and a check.** `.adr/README.md` opens with a map by topic and the rules for stubs, size and pointers, and `scripts/check-adr.ts`, run by `bun run test`, fails a record that has no `Status` or `Date`, a pointer without its back pointer, or a record the map does not list.
-- **Four topic records state the update, crew, launch and durable agent rules.** ADR 0143 holds the rule for how an install updates and what a release offers it, ADR 0144 the rule for the crew and the deputy, ADR 0145 the rule for launching and worktrees, and ADR 0146 the rule for durable agents and their wire. The records they replace are stubs that point to them.
+- **Seven topic records state the update, crew, launch, durable agent, layout, look and usage rules.** ADR 0143 holds the rule for how an install updates and what a release offers it, ADR 0144 the rule for the crew and the deputy, ADR 0145 the rule for launching and worktrees, ADR 0146 the rule for durable agents and their wire, ADR 0147 the rule for the pane lists and the dashboard's footer, ADR 0148 the rule for themes, fonts and the mark, and ADR 0149 the rule for the usage figures and the account windows. The records they replace are stubs that point to them.
 
 ## [1.29.0] - 2026-11-12
 

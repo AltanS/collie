@@ -2,6 +2,7 @@
 
 - **Status:** Accepted (2026-11-16)
 - **Date:** 2026-11-16
+- **Supersedes:** ADR 0033, ADR 0106, ADR 0136, ADR 0137, ADR 0138
 - **Trail:** ten persona interviews for M57 (an importer that keeps an unknown key, a default that
   drifts); M57 specs 09 and 13 (a theme `mark` field, removed on quality); M59 spec 04 (import by link,
   declined for paste); the owner's brief of 2026-11-08 (marks for another crowd, a custom icon set, an

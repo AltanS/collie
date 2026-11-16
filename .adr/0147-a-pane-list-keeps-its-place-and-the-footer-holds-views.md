@@ -2,6 +2,8 @@
 
 - **Status:** Accepted (2026-11-16)
 - **Date:** 2026-11-16
+- **Supersedes:** ADR 0063, ADR 0066, ADR 0068, ADR 0070, ADR 0071, ADR 0085
+- **Retires:** ADR 0069 (rule in `web/src/lib/glide.ts`)
 - **Trail:** the old triage sort that led every list with status (commit a039e277, ADR 0063), issue
   270 (a needs-you view as a third state of the workspace strip), the `dashboard-nav` and
   `attention-icon` rounds, issue 286 (a pin as a field in the dashboard prefs), the operator's request
