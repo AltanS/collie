@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
 import type { OperatorCommand } from "@/lib/types";
-import { ARM_DWELL_MS, ARM_MS } from "@/lib/arm";
+import { ARM_DWELL_MS, ARM_MS, STOP_HINT_MS, STOP_HOLD_MS } from "@/lib/arm";
 import { accentFor, DurableBar, HarnessBar, ScreenStop } from "./harness-bar";
 import { DURABLE_BAR, durableBarFor } from "@/lib/harness-bar";
 import type { PaneAction } from "@/lib/types";
@@ -308,6 +308,189 @@ describe("DurableBar, the program's own actions", () => {
   });
 });
 
+// HOLD TO STOP (2026-11-16): a touch or a mouse holds the button for STOP_HOLD_MS. The two-tap arm stays
+// for a click no pointer made (a key, a screen reader); the block below this one covers that path.
+describe("ScreenStop, hold to stop", () => {
+  afterEach(() => vi.useRealTimers());
+
+  const stop = () => screen.getByRole("button", { name: /stop the turn/i });
+  const down = () => fireEvent.pointerDown(stop(), { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
+  const up = () => fireEvent.pointerUp(stop(), { button: 0, clientX: 10, clientY: 10, pointerType: "touch" });
+  /** The click a browser raises after a pointer's press: `detail` counts the click, a key's is 0. */
+  const pointerClick = () => fireEvent.click(stop(), { detail: 1 });
+
+  it("stops once at the end of a full hold, with the finger still down, and the click of the lift adds nothing", async () => {
+    vi.useFakeTimers();
+    const onStop = vi.fn(async () => {});
+    render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+    down();
+    act(() => {
+      vi.advanceTimersByTime(STOP_HOLD_MS - 1);
+    });
+    expect(onStop).not.toHaveBeenCalled();
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(onStop).toHaveBeenCalledTimes(1);
+    up();
+    pointerClick();
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect(stop()).not.toHaveTextContent("Stop?");
+  });
+
+  it("shows the fill while the finger holds, and the word Hold", () => {
+    vi.useFakeTimers();
+    render(<ScreenStop paneId="w1:p1" running onStop={async () => {}} />);
+    expect(document.querySelector("[data-slot='belt-stop-fill']")).toBeNull();
+    down();
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    const fill = document.querySelector<HTMLElement>("[data-slot='belt-stop-fill']")!;
+    expect(fill).not.toBeNull();
+    // The fill runs over exactly the time left to the Stop.
+    expect(fill.style.animationDuration).toBe(`${String(STOP_HOLD_MS - 250)}ms`);
+    expect(stop()).toHaveTextContent("Hold");
+    up();
+    expect(document.querySelector("[data-slot='belt-stop-fill']")).toBeNull();
+  });
+
+  it("a tap lifted too early stops nothing, arms nothing, and says Hold for a moment", () => {
+    vi.useFakeTimers();
+    const onStop = vi.fn(async () => {});
+    render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+    down();
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
+    up();
+    pointerClick();
+    expect(onStop).not.toHaveBeenCalled();
+    expect(stop()).toHaveTextContent("Hold");
+    expect(screen.queryByRole("button", { name: /tap again/i })).toBeNull();
+    // A second quick tap is one more too-short tap: it is never the old second tap.
+    down();
+    up();
+    pointerClick();
+    act(() => {
+      vi.advanceTimersByTime(STOP_HOLD_MS * 2);
+    });
+    expect(onStop).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(STOP_HINT_MS);
+    });
+    expect(stop()).toHaveTextContent("Stop");
+    expect(stop()).not.toHaveTextContent("Hold");
+  });
+
+  it("a hold that moves (the belt scrolls), leaves or is cancelled stops nothing", () => {
+    vi.useFakeTimers();
+    const onStop = vi.fn(async () => {});
+    render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+    down();
+    fireEvent.pointerMove(stop(), { clientX: 60, clientY: 10 });
+    act(() => {
+      vi.advanceTimersByTime(STOP_HOLD_MS);
+    });
+    down();
+    fireEvent.pointerLeave(stop());
+    act(() => {
+      vi.advanceTimersByTime(STOP_HOLD_MS);
+    });
+    down();
+    fireEvent.pointerCancel(stop());
+    act(() => {
+      vi.advanceTimersByTime(STOP_HOLD_MS);
+    });
+    expect(onStop).not.toHaveBeenCalled();
+  });
+
+  it("a phone's long-press menu is kept away and is no shortcut to the Stop", () => {
+    vi.useFakeTimers();
+    const onStop = vi.fn(async () => {});
+    render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+    down();
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    act(() => {
+      stop().dispatchEvent(menu);
+    });
+    expect(menu.defaultPrevented).toBe(true);
+    expect(onStop).not.toHaveBeenCalled();
+  });
+
+  it("takes no hold while the turn is idle, while greyed, or while a Stop is in flight", async () => {
+    vi.useFakeTimers();
+    let finish: () => void = () => {};
+    const onStop = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { rerender } = render(<ScreenStop paneId="w1:p1" running={false} onStop={onStop} />);
+    down();
+    act(() => {
+      vi.advanceTimersByTime(STOP_HOLD_MS);
+    });
+    up();
+    expect(onStop).not.toHaveBeenCalled();
+    expect(stop()).not.toHaveTextContent("Hold");
+    rerender(<ScreenStop paneId="w1:p1" running onStop={onStop} disabled />);
+    down();
+    act(() => {
+      vi.advanceTimersByTime(STOP_HOLD_MS);
+    });
+    expect(onStop).not.toHaveBeenCalled();
+    rerender(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+    down();
+    await act(async () => {
+      vi.advanceTimersByTime(STOP_HOLD_MS);
+    });
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect(stop()).toHaveAttribute("aria-busy", "true");
+    // A second hold while the first Stop is in flight presses nothing.
+    down();
+    await act(async () => {
+      vi.advanceTimersByTime(STOP_HOLD_MS);
+    });
+    expect(onStop).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finish();
+    });
+    expect(stop()).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("the Hold hint ends when the turn ends and when the pane changes", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<ScreenStop paneId="w1:p1" running onStop={async () => {}} />);
+    down();
+    up();
+    expect(stop()).toHaveTextContent("Hold");
+    rerender(<ScreenStop paneId="w1:p1" running={false} onStop={async () => {}} />);
+    expect(stop()).not.toHaveTextContent("Hold");
+    rerender(<ScreenStop paneId="w1:p1" running onStop={async () => {}} />);
+    down();
+    up();
+    expect(stop()).toHaveTextContent("Hold");
+    rerender(<ScreenStop paneId="w1:p2" running onStop={async () => {}} />);
+    expect(stop()).not.toHaveTextContent("Hold");
+  });
+
+  it("keeps every sizing class while it says Hold", () => {
+    vi.useFakeTimers();
+    render(<ScreenStop paneId="w1:p1" running onStop={async () => {}} />);
+    const sizing = (cn: string) => cn.split(/\s+/).filter((c) => /^(h-|min-w-|px-|has-\[>svg\]:px-|gap-|text-\[length)/.test(c));
+    const rest = sizing(stop().className);
+    down();
+    up();
+    expect(sizing(stop().className)).toEqual(rest);
+  });
+});
+
+// A KEY OR A SCREEN READER CANNOT HOLD: a click that no pointer made keeps the two-step arm below.
 describe("ScreenStop (M68 spec 02)", () => {
   afterEach(() => vi.useRealTimers());
 

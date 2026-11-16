@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 
@@ -11,6 +11,8 @@ import { useActionEcho } from "@/hooks/use-action-echo";
 import { useLocale } from "@/hooks/use-locale";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useArm } from "@/hooks/use-arm";
+import { useLongPress } from "@/hooks/use-long-press";
+import { STOP_HINT_MS, STOP_HOLD_MS } from "@/lib/arm";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { barFor, PROGRAM_MARK, durableBarFor, type DurableBarItem, type HarnessBarItem } from "@/lib/harness-bar";
 import { useHarnessBarEnabled } from "@/lib/harness-bar-pref";
@@ -451,12 +453,21 @@ export interface ScreenStopProps {
  * `aria-disabled="true"`. It is not the `disabled` attribute, so it stays in the focus order and a reader still
  * finds it; the tap is refused in `tap` before any arm or request.
  *
- * ARM, THEN STOP. The first tap only arms: the word changes to "Stop?" (never the size) and the arm lapses
- * by itself after ARM_MS. The second tap runs `onStop`, and counts only ARM_DWELL_MS or more after the
- * arm: a tap inside the dwell (a double tap, a thumb that lands twice) is ignored, neither a Stop nor a
- * disarm. An arm ends when the pane changes or the turn leaves running, and the button goes dim. While
- * the Stop is in flight the button shows a spinner, is dimmed and takes no tap, so a third tap cannot press a second Stop. A durable program keeps its own
- * Stop in `DurableBar`; the two never draw together, because a program pane never carries `canStop`.
+ * HOLD TO STOP (2026-11-16). A touch or a mouse holds the button for STOP_HOLD_MS: from a quarter second
+ * after the finger lands the button fills, start to end, and at the end of the fill it runs `onStop`,
+ * with the finger still down. Lifting earlier, a move past a thumb's jitter (a sideways scroll of the belt)
+ * or a cancel stops nothing. A tap that was lifted too early changes the word to "Hold" for STOP_HINT_MS
+ * (never the size), so the button says what it wants. The two-tap arm before it read as a dead button:
+ * "Stop?" did not say "tap me again".
+ *
+ * A KEY OR A SCREEN READER CANNOT HOLD, so a click that no pointer made (Enter, Space, an assistive
+ * double tap) keeps the arm: the first one changes the word to "Stop?" and the arm lapses after ARM_MS,
+ * the second runs `onStop`, and counts only ARM_DWELL_MS or more after the first.
+ *
+ * An arm, a hint and a hold end when the pane changes or the turn leaves running, and the button goes
+ * dim. While the Stop is in flight the button shows a spinner, is dimmed and takes no press, so a second
+ * hold cannot press a second Stop. A durable program keeps its own Stop in `DurableBar`; the two never
+ * draw together, because a program pane never carries `canStop`.
  */
 export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }: ScreenStopProps) {
   useLocale();
@@ -464,23 +475,38 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
   const armed = armedKey === "stop";
   const [busy, setBusy] = useState(false);
   const flying = useRef(false);
+  // "Hold": the word a too-short tap leaves on the button for a moment.
+  const [hinted, setHinted] = useState(false);
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Whether the click that is about to arrive was made by a pointer (a touch, a mouse). The hold
+  // already judged that press, so its click must not arm.
+  const pointerMade = useRef(false);
 
-  // A button that stops being pressable also stops being armed, and so does one on another pane or
-  // over a turn that no longer runs: the arm was for that turn.
+  const unhint = useCallback(() => {
+    clearTimeout(hintTimer.current);
+    setHinted(false);
+  }, []);
+  useEffect(() => () => clearTimeout(hintTimer.current), []);
+
+  // A button that stops being pressable also stops being armed or hinted, and so does one on another
+  // pane or over a turn that no longer runs: the arm was for that turn.
   useEffect(() => {
     if (disabled !== true && running) return;
     disarm();
-  }, [disabled, running, disarm]);
+    unhint();
+  }, [disabled, running, disarm, unhint]);
   useEffect(() => {
     disarm();
-  }, [paneId, disarm]);
+    unhint();
+  }, [paneId, disarm, unhint]);
 
-  async function tap() {
-    // An idle turn has nothing to stop: no arm, no request. The bridge would only answer `turn_idle`.
-    if (disabled === true || !running || flying.current) return;
-    // The first tap arms; a tap inside the dwell is the same touch landing twice (lib/arm.ts).
-    if (arm("stop") !== "fire") return;
+  const pressable = disabled !== true && running && !busy;
+
+  async function run() {
+    if (flying.current) return;
     flying.current = true;
+    disarm();
+    unhint();
     setBusy(true);
     try {
       await onStop();
@@ -490,6 +516,32 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
     }
   }
 
+  // The hold: the timer fires with the finger still down. An idle, greyed or flying button takes none.
+  const hold = useLongPress(pressable ? () => void run() : undefined, {
+    delayMs: STOP_HOLD_MS,
+    // Lifted too early: say what the button wants.
+    onTap: () => {
+      disarm();
+      setHinted(true);
+      clearTimeout(hintTimer.current);
+      hintTimer.current = setTimeout(() => setHinted(false), STOP_HINT_MS);
+    },
+  });
+  const holding = hold["data-holding"] !== undefined;
+
+  function click(detail: number) {
+    const byPointer = pointerMade.current && detail !== 0;
+    pointerMade.current = false;
+    // A pointer's press was a hold or a too-short tap, and the hold judged it already.
+    if (byPointer) return;
+    // An idle turn has nothing to stop: no arm, no request. The bridge would only answer `turn_idle`.
+    if (!pressable || flying.current) return;
+    // A key or a reader: the first one arms; one inside the dwell is the same press landing twice (lib/arm.ts).
+    if (arm("stop") !== "fire") return;
+    void run();
+  }
+
+  const word: MessageKey = armed ? "belt.stopArmed" : hinted || holding ? "belt.stopHold" : "belt.stop";
   return (
     <Button
       type="button"
@@ -500,17 +552,27 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
       aria-disabled={running ? undefined : true}
       disabled={disabled === true || busy}
       aria-label={translate(armed ? "belt.stopArmedAria" : "belt.stopAria")}
-      onClick={() => void tap()}
+      {...hold}
+      onPointerDown={(e) => {
+        pointerMade.current = true;
+        hold.onPointerDown(e);
+      }}
+      // A phone's long-press raises `contextmenu` half a second in. Here it is no shortcut to the Stop
+      // (the hold's own two seconds count), only a menu to keep away.
+      onContextMenu={(e) => e.preventDefault()}
+      onClick={(e) => click(e.detail)}
       className={cn(
-        `${STRIP_ROW_PILL} gap-1.5`,
+        `${STRIP_ROW_PILL} gap-1.5 [-webkit-touch-callout:none]`,
         // The dim look of `disabled:opacity-50`, without the attribute. No press feedback on a button that does nothing.
         !running && "opacity-50 active:scale-100",
-        armed ? "border border-destructive/40 bg-destructive/10 text-destructive" : "text-foreground",
+        armed || hinted || holding ? "border border-destructive/40 bg-destructive/10 text-destructive" : "text-foreground",
         hand === "left" && "[direction:ltr]",
       )}
     >
+      {/* The fill of a hold: a clock the thumb reads, start to end over the time left to the Stop. */}
+      {holding && <span aria-hidden data-slot="belt-stop-fill" style={hold.style} className="stop-hold-fill pointer-events-none absolute inset-0 rounded-[inherit] bg-destructive/25" />}
       {busy ? <Icon name="busy" className={cn(BELT_ICON, "animate-spin")} /> : <Icon name="stop" className={BELT_ICON} />}
-      {translate(armed ? "belt.stopArmed" : "belt.stop")}
+      {translate(word)}
     </Button>
   );
 }

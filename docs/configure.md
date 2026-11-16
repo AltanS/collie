@@ -310,12 +310,15 @@ turn starts or ends. A tap on the dimmed button does nothing and sends nothing. 
 stop key has no button. Stop does not type anything and does not send a message. It presses the
 agent's own stop key, once, and tells you what happened.
 
-A Stop needs two taps. The first tap arms the button: the word changes to **Stop?** and the button
-keeps its size. Tap it again within four seconds to stop the turn. A second tap that lands at once,
-within 0.4 seconds, counts as the same touch and is ignored. If you wait, the arm lapses and nothing
-is pressed. The arm also lapses when you open another pane, and the button goes dim when the turn
-ends. While the second tap is in flight the button takes no more taps, so a quick third tap cannot
-press a second Stop.
+To stop a turn, hold the button for two seconds. While you hold, the button fills from one edge to
+the other, and the turn stops when the fill is complete. If you lift your finger earlier, nothing is
+pressed, and the button says **Hold** for a moment. A sideways scroll of the belt also ends the hold.
+The button keeps its size all the time. The hold ends when you open another pane, and the button goes
+dim when the turn ends. While the Stop is in flight the button takes no more presses, so a second hold
+cannot press a second Stop.
+
+With a keyboard or a screen reader, Stop takes two presses, because neither can hold. The first press
+changes the word to **Stop?**. Press again within four seconds to stop the turn.
 
 Which key stops a turn is the harness's own choice, and the harness profile holds it. Most agents
 stop on Escape, some on Ctrl+C, and some need Escape twice. The profile decides, not this page.
