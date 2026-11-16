@@ -357,6 +357,9 @@ the post is refused with: "the Hill is off on the lead of this crew; your person
 Settings, Experiments, on the phone". A member whose own switch says off still refuses on its own
 machine. See [Decisions from any machine](crew.md#decisions-from-any-machine).
 
+On a crew member, the installed skill follows that machine's own switch, not the lead's. To give the
+agents on a member the Hill text, run `collie hill on` on that member.
+
 With the Hill off:
 
 - Agents and tricks cannot post, and agents cannot propose a trick. Nothing about a Decision is
