@@ -98,8 +98,8 @@ law in `bridge/journal/files.ts` names Changes and Files among the few such plac
 
 ## Recorded, not found in the code
 
-- 0083: "reads were open", and an unpaired device may use Files. False since 0086: `device-read`
-  differs from `read` only when `COLLIE_DEVICE_HEADER` is set. Its "race this accepts" is closed.
+- 0083: reads were open, and with nothing paired any device used Files. Since 0086 every read needs
+  the token; `device-read` adds only `COLLIE_DEVICE_HEADER`. Its "race this accepts" is closed.
 - 0065 rule 3: "every pane in one workspace shows the same list"; only inside the folder (#509).
   Rule 7's syntax inks at 4.5:1 are a look that no check in code holds.
 

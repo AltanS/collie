@@ -874,7 +874,7 @@ refusal is a **contextual notice** in its own chrome, which moved the failure ra
 it. `lib/mutate.ts` is the wrapper that keeps a thrown mutation from being swallowed where a call
 site has no error surface of its own, and `lib/ack-manifest.ts` records which channel every
 mutating export of `lib/api.ts` actually uses. That manifest is paired with a test, on the
-pack-wire guard's philosophy (ADR 0025): it cannot verify an acknowledgement renders, but a
+crew-wire guard's philosophy (`scripts/check-crew-wire.sh`): it cannot verify an acknowledgement renders, but a
 mutation added next month fails the test until its author writes one classified line — and that
 line gets reviewed.
 

@@ -121,7 +121,7 @@ modal to put beside it. `omp` had that problem: one ZWJ emoji in a statusline te
 composer scanner return null on every frame, so `composerReady` would be false forever on a healthy
 pane and the card would paint itself permanently over a live composer. It now declares `cancelKey`
 together with `modalOnScreen`, which reads its own key-hint footer at the buffer tail
-([ADR 0053](./.adr/0053-an-unread-dialog-still-has-a-way-out.md), [ADR 0151](./.adr/0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) rule 3); a
+([ADR 0053](./.adr/0053-an-unread-dialog-still-has-a-way-out.md), [ADR 0151](./.adr/0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) rule 3f, `web/src/lib/harness/omp/modal.ts`); a
 composer prints no such footer, so the false negative can no longer paint the card.
 
 **Optionally declare `modalOnScreen(lines)` too**: positive evidence that one of your harness's

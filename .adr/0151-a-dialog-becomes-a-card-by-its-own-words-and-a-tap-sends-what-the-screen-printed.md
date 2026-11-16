@@ -35,7 +35,8 @@ ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) sta
    c. Claude's plan feedback row commits the typed text with an Enter the footer does not print.
    d. Antigravity's `/artifact` review sends Enter on a row and `Tab, Enter` for Submit.
    e. On a list the grammar declared `clampedEnds`, an edge row commits with one more arrow (rule 6).
-   f. The unread-dialog card offers its adapter's declared cancel key (ADR 0053, changed by 0142).
+   f. The unread-dialog card offers its adapter's declared cancel key, only on the adapter's own
+      modal evidence (omp: its key-hint footer, `omp/modal.ts`; ADR 0053, changed by 0142).
    g. A field Collie types into is cleared with edit keys the screen does not print: AskUserQuestion's
       `ctrl+u ctrl+k` (ADR 0113) and the preview note's `ctrl+k` and Backspace sweep.
 4. **A printed scale is chips.** When the screen prints the whole scale an `←/→` row moves along, each
@@ -116,5 +117,4 @@ ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) sta
 - 0054: chips. 0055: a pointed list in one batch, until 0080. 0058: `/resume`'s unprinted Enter.
 - 0056, 0059, 0061: a card can be put down, docks above the belt; notices float. 0072: a box pans.
 - 0076 to 0079, 0133: omp's modal gate, `/resume`, Ask, tool approval, model picker, plan review.
-- 0098: pi questions by shape and footer. 0108: a dialog over live chrome declares its tail. 0109: a
-  notice above the box is not a modal; its card sends only its printed keys.
+- 0098: pi questions by shape and footer. 0108: a dialog over live chrome declares its tail.
