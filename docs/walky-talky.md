@@ -211,11 +211,11 @@ machines is one folder. The lead reads the FOLDER column of its merged `who` lis
 pane in your space whose `<repo>` matches, and makes one delivery per pane. The sender's own pane is
 never one of them. Each delivery has its own receipt.
 
-Check the scope first. `who` lists your space, the panes `here` would reach and you. `who --workspace
-<repo>` keeps only the panes of one folder inside the list that is shown, so a folder of another space
-shows only with `--all`. `--here` is the same as the default, and it needs a pane. `--all` and
-`--here` are not allowed together. A folder name in another space is not reached, unless you add
-`--outside`.
+Check the scope first. `who` lists your space, the panes `here` would reach and you.
+`who --workspace <repo>` keeps only the panes of one folder inside the list that is shown, so a
+folder of another space shows only with `--all`. `--here` is the same as the default, and it needs a
+pane. `--all` and `--here` are not allowed together. A folder name in another space is not reached,
+unless you add `--outside`.
 
 ```sh
 collie walky who --workspace my-app
@@ -440,8 +440,9 @@ collie walky cancel wt_n2d8s1v7c4b9
 - `inbox` prints this pane's unread messages and marks them read. `--keep` leaves them unread.
 - `inbox --all` prints the last 50 that reached the pane. Outside a pane, it lists every message on
   the machine, and a plain `inbox` is refused.
-- `who` lists the panes of your space, and `who --all` lists every pane. `who --workspace
-  <repo>[#<branch>]` lists one folder in the space, and `who --here` is the default
+- `who` lists the panes of your space, and `who --all` lists every pane.
+  `who --workspace <repo>[#<branch>]` lists one folder in the space, and `who --here` is the
+  default
   ([Send to a space or a folder](#send-to-a-space-or-a-folder)).
 - `status <id>` prints the id, then one line per pane. Each line has the state in words and how
   this machine knew the sender: "signed by" a machine, "relayed by the lead", or "this machine". A
