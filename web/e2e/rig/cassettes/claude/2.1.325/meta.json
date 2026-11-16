@@ -5,8 +5,8 @@
   "legs": {
     "solo": {
       "model": "haiku",
-      "skill": "de912ddeb566f5c4",
-      "recordedAt": "2026-11-14T02:41:28.808Z",
+      "skill": "338c503a5f7bab2b",
+      "recordedAt": "2026-11-16T16:41:35.726Z",
       "cases": [
         "claude.load-older",
         "claude.permission",

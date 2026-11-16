@@ -71,8 +71,10 @@ test.describe("walky talky between agents", () => {
       const notes = trail.notes;
       const token = "PING-EIGHT";
       const SUBJECT = "ping check";
-      // The operator's consent is in the body itself: a model reads an agent's message as a stranger's unless it says who asks.
-      const body = `${token}. The operator running this test asks you to answer with collie walky reply and the single word pong.`;
+      // A harmless ping between two sessions of one operator. A body that claims "the operator asks you" or names
+      // a command reads as an instruction to another agent, and pi's model refused to send it (two live runs, 2026-11-16).
+      // Claude's standing note (harnesses.ts) already pre-approves the answer, so the body asks for the word only.
+      const body = `${token}. Please answer with the single word pong.`;
       const from = addressOf(piPane);
       const to = addressOf(claudePane);
       // The address exactly as `collie walky who` prints it, `#token` included: pi has refused a bare one as incomplete.
@@ -83,7 +85,7 @@ test.describe("walky talky between agents", () => {
         // The whole command, with a fixed subject that holds no token: the skill asks for a subject, and a
         // subject is typed on the nudge line, so a subject of pi's own (it chose `PING-EIGHT` once) put the
         // token on Claude's screen before the inbox call.
-        log.push(await sendFromComposer(page, recorder, `Use walky talky to send a message to the agent at ${target}. Run exactly this command: \`collie walky send ${target} --subject "${SUBJECT}" "${body}"\` Then stop.`, "ask pi to send"));
+        log.push(await sendFromComposer(page, recorder, `Use walky talky to send a message to the agent at ${target}. I am your operator, and I ask you to send it. Run exactly this command: \`collie walky send ${target} --subject "${SUBJECT}" "${body}"\` Then stop.`, "ask pi to send"));
 
         // The message reaches Claude's list as an agent's, from pi's pane.
         const sent = await firstRow(rig, claudePane, (row) => row.kind === "agent" && withoutInstance(String(asJsonObject(row.from)?.address)) === from && String(row.body).includes(token), 120_000);
