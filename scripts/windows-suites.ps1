@@ -14,7 +14,7 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 537 in all, each one named, with its reason:
+#              Today, 542 in all, each one named, with its reason:
 #              bridge 307: 173 from before 1.29.0 and 134 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
 #                adapters 10, then Accounts 42, then 11 more of the data path for a dropped or failed data send and a shadowed part; see below). Of the 173, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
@@ -162,8 +162,9 @@
 #                - 4 in bridge/accounts-store.test.ts, a good row, the duplicate row, the store add and the listener
 #                - 2 in bridge/launch-by-id.test.ts, a launch with an account
 #                - 1 in bridge/worktree-from-folder.test.ts, a worktree with an account
-#              cli 195 in all: 11 are new since 1.29.0: 3 of the hold card and 8 of the harness verbs, below. The other 184: 21 in the next paragraph, then 3 of the statusLine wrapper, 54 of walky talky, 21 of the agent view,
-#                69 of the Hill verbs and the tricks (see "The Hill verbs and the tricks, cli" below), and 16 gated on Windows (b)
+#              cli 200 in all: 16 are new since 1.29.0: 3 of the hold card, 8 of the harness verbs and 5 of the first full trick run (3
+#                of the Hill verbs and the tricks, 2 of the helper's output), below. The other 184: 21 in the next paragraph, then 3 of the statusLine wrapper, 54 of walky talky, 21 of the agent view,
+#                69 of the Hill verbs and the tricks (72 with the 3 above; see "The Hill verbs and the tricks, cli" below), and 16 gated on Windows (b) (18 with the 2 above)
 #                (see "The helper's output, cli" below). Of the 21, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
 #                platform. The other 9:
@@ -192,7 +193,7 @@
 #              Agent view, cli (21). cli/trick-view.test.ts drives the `trick view` verbs against a real bridge socket, as
 #                cli/walky.test.ts does, and Windows cannot bind it. Each of those tests is `socketTest`; the parse
 #                and screen-reading tests beside them run on Windows.
-#              The Hill verbs and the tricks, cli (69).
+#              The Hill verbs and the tricks, cli (72).
 #                28 are cli/hill.test.ts: each `socketTest` drives `collie hill` against a real walky socket, as cli/walky.test.ts
 #                does, and Windows cannot bind it (the verbs say so there). Four of them, "a picture under /tmp, for a bridge
 #                with a private /tmp", also stage from /tmp, which systemd's PrivateTmp hides.
@@ -200,7 +201,9 @@
 #                on Linux only. Its path and pass-through tests run on Windows.
 #                17 are cli/trick-add.test.ts ("collie trick add", "collie trick update", "collie trick remove"): the fixture
 #                cases build symlinks, exec bits and sh hooks. The source and hardening cases run on Windows.
-#                15 are cli/trick-propose.test.ts: 14 `socketTest` (the walky socket) and 1 `posixTest` (a symlink):
+#                18 are cli/trick-propose.test.ts: 17 `socketTest` (the walky socket) and 1 `posixTest` (a symlink). The
+#                first full trick run (2026-11-16) added 3: two run a proposed trick without its config.toml, one reads
+#                the one warning prefix, all three over the socket:
 #                - "refuses a symbolic link, even to a file inside the folder"
 #                2 are cli/trick-kit/trick.test.ts, the helper's POSIX tools. Each name sits on one line, so the pin test can find it:
 #                - "t.sh runs without a shell, never throws, caps its output, stops on time, and hides BUN_BE_BUN from the child" (echo, head, sleep, env, /dev/zero)
@@ -216,10 +219,12 @@
 #                PATH lookup, are `claudeTest`, a skip on win32: link claude, link claude twice, unlink claude, the managed setting,
 #                the interrupted first link, unlink while `claude plugin list` fails, "update: harness sync rewrites an older linked
 #                part" and "touches nothing else".
-#              The helper's output, cli (16): gated on Windows (b). A program that uses the trick helper (`./trick.ts`) prints
+#              The helper's output, cli (18): gated on Windows (b). A program that uses the trick helper (`./trick.ts`) prints
 #                nothing on Windows yet, so Collie gates tricks there (bridge/tricks/service.ts `gated`). Each test that runs
-#                such a program is `helperTest`, a `test.skipIf` on win32: 1 in cli/trick.test.ts ("the folder init writes
-#                passes check --run with no refusal, in both forms"), 9 in cli/trick-kit/trick.test.ts and 6 in
+#                such a program is `helperTest`, a `test.skipIf` on win32: 3 in cli/trick.test.ts ("the folder init writes
+#                passes check --run with no refusal, in both forms", and from the first full trick run "the starter run with
+#                no config.toml prints nothing the bridge refuses" and "check --run reports a printed status over its
+#                limit, and fails"), 9 in cli/trick-kit/trick.test.ts and 6 in
 #                cli/trick-dev.test.ts. Remove them with the fix of the helper's output.
 #              scripts 35: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
 #                install.sh is POSIX sh, and Windows installs with install.ps1, tested beside it.
@@ -233,7 +238,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$Out,
   [int]$MaxSkipsBridge = 307,
-  [int]$MaxSkipsCli = 195,
+  [int]$MaxSkipsCli = 200,
   [int]$MaxSkipsScripts = 35
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }
