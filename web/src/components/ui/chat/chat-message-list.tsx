@@ -19,6 +19,30 @@ import { useLocale } from "@/hooks/use-locale";
  */
 export const TailRoomContext = React.createContext(0);
 
+/**
+ * The air, in px, between the last line and a floating card, the 12px the scrollers' `pb-3` has always
+ * kept above the composer (ADR 0151, rule 10).
+ */
+const CARD_AIR = 12;
+
+/**
+ * THE ONE ROOM A LIST KEEPS CLEAR BELOW ITS LAST LINE, in px: the model tag's (`tagRoom`, from
+ * {@link TailRoomContext}) or the floating cards' (`clearBottom`, the slot's measured height), the LARGER,
+ * never the sum. Both float over the same bottom edge of the same box, and the slot is full width and
+ * above the tag in z-order (agent-chat.tsx), so a card covers the tag's corner instead of stacking on it:
+ * what is on screen is one covered strip as tall as the taller of the two. The cards get {@link CARD_AIR}
+ * on top of their height, the tag's room already has its own air (`MODEL_TAG_ROOM`). With neither,
+ * 0: the list ends as it always did.
+ */
+export function bottomRoom(tagRoom: number, clearBottom: number): number {
+  return Math.max(tagRoom, cardsRoom(clearBottom));
+}
+
+/** What the floating cards alone take from the tail, air included; 0 with no card. */
+function cardsRoom(clearBottom: number): number {
+  return clearBottom > 0 ? clearBottom + CARD_AIR : 0;
+}
+
 /** The `--tail-room` custom property for a scroller, or none while no tag floats over it. */
 export function tailRoomStyle(room: number): React.CSSProperties | undefined {
   // SAFETY: `CSSProperties` has no index signature for custom properties, and React has accepted them on
@@ -64,8 +88,9 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
   overlayStyle?: React.CSSProperties;
   /**
    * The height in px of what floats over the bottom of the scrollport (the composer's floating cards,
-   * ADR 0061). The list ends that much lower, so its tail can rise above them, and "jump to latest"
-   * sits over them.
+   * ADR 0151). It joins the model tag's room in ONE value ({@link bottomRoom}), published as
+   * `--tail-room` like the tag's, so the caller's `pb-[max(0.75rem,var(--tail-room,0px))]` ends the list
+   * above the cards, and "jump to latest" sits over them. A caller that passes it keeps that padding class.
    */
   clearBottom?: number;
 }
@@ -79,11 +104,11 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
     ref,
   ) {
     useLocale();
-    const tailRoom = React.useContext(TailRoomContext);
+    const room = bottomRoom(React.useContext(TailRoomContext), clearBottom);
     const { scrollRef, isAtBottom, scrollToBottom, scrollToChild, onScroll } =
       useAutoScroll<HTMLDivElement>({
         dep,
-        reserve: tailRoom,
+        reserve: room,
         onAtBottomChange,
       });
 
@@ -111,11 +136,10 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
             clearBand !== undefined && bandStyle !== undefined && BAND_INSET_CLASS,
             className,
           )}
-          style={{ ...(clearBand !== undefined ? { ...style, ...bandStyle } : style), ...tailRoomStyle(tailRoom) }}
+          style={{ ...(clearBand !== undefined ? { ...style, ...bandStyle } : style), ...tailRoomStyle(room) }}
           {...props}
         >
           {children}
-          <div aria-hidden data-slot="clear-bottom" style={{ height: clearBottom }} />
         </div>
 
         {overlay !== undefined && overlay !== null && (
@@ -133,7 +157,7 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
             size="icon"
             variant="outline"
             className="absolute bottom-3 left-1/2 z-10 size-9 -translate-x-1/2 rounded-full shadow-md"
-            style={clearBottom > 0 ? { bottom: clearBottom + 12 } : undefined}
+            style={clearBottom > 0 ? { bottom: cardsRoom(clearBottom) } : undefined}
             aria-label={t("common.scrollToLatestAria")}
           >
             <Icon name="scroll-to-latest" className="size-4" />
