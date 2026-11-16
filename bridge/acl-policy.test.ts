@@ -167,6 +167,9 @@ describe("names", () => {
     expect(isCollieEntry("uploads", at({ uploads: folder(["p1_2-mf3x9q-0a1b2c3d.png"]), "uploads/p1_2-mf3x9q-0a1b2c3d.png": file }))).toBe(true);
     expect(isCollieEntry("beacons", at({ beacons: folder(["w1.json"]), "beacons/w1.json": file }))).toBe(true);
     expect(isCollieEntry("acl-backups", at({ "acl-backups": folder(["acl-backup-2026-1.sddl"]), "acl-backups/acl-backup-2026-1.sddl": file }))).toBe(true);
+    // The sign-in folder (`signInFolder`) is Collie's while it is empty, and never with anything in it.
+    expect(isCollieEntry("sign-in", at({ "sign-in": folder([]) }))).toBe(true);
+    expect(isCollieEntry("sign-in", at({ "sign-in": folder(["notes.txt"]), "sign-in/notes.txt": file }))).toBe(false);
     // The Whistle model's folder: exactly the names bridge/stt/whistle-model.ts writes, and their temporaries.
     for (const name of [...WHISTLE_FOLDER_NAMES, whistlePartName(4242, 7), "whistle.json.4242.7.tmp"]) {
       expect(isCollieEntry("whistle", at({ whistle: folder([name]), [`whistle/${name}`]: file }))).toBe(true);

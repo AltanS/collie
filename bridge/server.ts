@@ -60,6 +60,7 @@ import {
   type LookClock,
 } from "./create-confirm.ts";
 import type { LaunchWindow } from "./launch-window.ts";
+import { signInFolder } from "./account-folder.ts";
 import { isStarterBody, launchStarter, memoryStarterReceipts, starterItems, type StarterReceiptSurface } from "./starter-launch.ts";
 import { answerPane, memoryAnswerReceipts, type AnswerReceiptSurface } from "./durable/answer.ts";
 import { controlPane, memoryControlReceipts, rawInputRefusal, type ControlReceiptSurface } from "./durable/control.ts";
@@ -2280,6 +2281,7 @@ export function startServer(opts: {
         recentRuns,
         sent,
         sessionFolder: await sessionFolderOf(rt.name),
+        stateDir: cfg.stateDir,
       });
     }
     // Session-scoped like `/api/launch` beside it, so a `?host=` read is forwarded (§5) and the
@@ -8602,7 +8604,17 @@ export async function launch(
     }
   }
   const row = picked.row;
-  const resolvedCwd = row?.cwd ?? asked ?? besidePane?.cwd ?? deps.sessionFolder ?? homedir();
+  // A sign-in start names no folder of the person's and runs in Collie's own empty one, never home or a
+  // neighbour's (M101). An explicit `cwd`, and a row's pinned folder, still win.
+  const signInDir = fields.signIn === true && deps.stateDir !== undefined ? signInFolder(deps.stateDir) : undefined;
+  if (signInDir !== undefined && row?.cwd === undefined && asked === undefined) {
+    const made = await (deps.fs?.makeDir ?? diskFolderFs.makeDir)(signInDir, 0o700).then(
+      () => true,
+      () => false,
+    );
+    if (!made) return json({ ok: false, ...apiError("launch.folder_missing", { folder: signInDir }) } satisfies CreateResponse, ae, 400);
+  }
+  const resolvedCwd = signInDir !== undefined ? (row?.cwd ?? asked ?? signInDir) : (row?.cwd ?? asked ?? besidePane?.cwd ?? deps.sessionFolder ?? homedir());
 
   // Checked again with no await between it and `track`, so two requests with one id that both got
   // past the check above cannot both start a launch.
@@ -8686,7 +8698,9 @@ export interface LaunchDeps {
   /** This machine's home, for a leading `~` in `cwd`. */
   home?: string;
   /** The disk, for "is that folder there". Absent: the real one. */
-  fs?: Pick<FolderFs, "isDirectory">;
+  fs?: Pick<FolderFs, "isDirectory"> & Partial<Pick<FolderFs, "makeDir">>;
+  /** This instance's state folder: a sign-in start with no folder runs in `sign-in` under it. Absent: as any other start. */
+  stateDir?: string;
   /** The operator's `[phone]` switches; only `run` is read here. Absent: the defaults (run on). */
   switches?: () => Promise<LauncherSwitches>;
   /** Where a one-off run that worked is recorded (ADR 0095). Absent: nothing is recorded. */

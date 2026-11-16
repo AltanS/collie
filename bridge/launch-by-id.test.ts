@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { realLinkDisk } from "./account-links.ts";
+import { signInFolder } from "./account-folder.ts";
 import { Accounts } from "./accounts-routes.ts";
 import { accountTest } from "./accounts-skip.ts";
 import { memoryAccountStore } from "./accounts-store.ts";
@@ -328,6 +329,106 @@ describe("POST /api/launch — by id", () => {
     await run(new FakeMux(), { harness: "codex", cwd: "/home/op/src/app" }, { folders });
     await run(new FakeMux(), { command: "htop", cwd: "/home/op/x" }, { folders });
     expect(recorded).toEqual(["/home/op/src/app"]);
+  });
+});
+
+// A sign-in start (M101) runs in a folder the bridge owns, `sign-in` under its state folder: an agent
+// started only to log in must not ask about, or get trust for, home or a neighbouring pane's folder.
+describe("POST /api/launch — a sign-in start's folder", () => {
+  let state = "";
+  beforeEach(async () => {
+    state = await mkdtemp(join(tmpdir(), "collie-sign-in-"));
+  });
+  afterEach(async () => {
+    await rm(state, { recursive: true, force: true });
+  });
+
+  /** One shell pane the launch can open beside, and a multiplexer that records the tab's folder. */
+  async function beside(body: JsonObject, deps: LaunchDeps) {
+    const tabs: MuxTabRequest[] = [];
+    const mux = new FakeMux();
+    const createTab = (request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>> => {
+      tabs.push(request);
+      return Promise.resolve(muxOk({ paneId: "w1:p2", spaceId: "w1", spaceLabel: "s", tabId: "w1:t2", cwd: request.cwd ?? "/" }));
+    };
+    // SAFETY: `launch` reads only `paneId`, `workspaceId` and `cwd` off the beside pane.
+    const pane = { paneId: "w1:p1", workspaceId: "w1", cwd: "/home/op/pane" } as AgentView;
+    const withPane: Partial<StateEngine> = {
+      pokeNow: () => {},
+      current: () => ({ agents: [], shellPanes: [pane], workspaces: [], tabs: [], bridge: "connected" }),
+    };
+    // SAFETY: as engine() above, with one shell pane to launch beside.
+    const res = await launch(asMux(Object.assign(mux, { createTab })), withPane as StateEngine, post({ paneId: "w1:p1", ...body }),
+      new AuditLog(() => {}), null, "default", () => Promise.resolve([]), clock(), { harnesses: { launch: harnessLaunch }, home: "/home/op", ...deps });
+    return { status: res.status, tabs, mux };
+  }
+
+  test("with no folder named, it opens in <state>/sign-in, which the bridge made private and left empty", async () => {
+    const mux = new FakeMux();
+    const { status, body } = await run(mux, { harness: "claude", signIn: true }, { stateDir: state, fs: undefined, sessionFolder: "/home/op/projects/yt" });
+    expect(status).toBe(200);
+    expect(body?.ok).toBe(true);
+    const folder = join(state, "sign-in");
+    expect(signInFolder(state)).toBe(folder);
+    expect(mux.spaces.map((s) => s.cwd)).toEqual([folder]);
+    expect(mux.texts).toEqual([["w1:p1", "claude"]]);
+    const made = await stat(folder);
+    expect(made.isDirectory()).toBe(true);
+    if (process.platform !== "win32") expect(made.mode & 0o777).toBe(0o700);
+    expect(await readdir(folder)).toEqual([]);
+    // Started again with the folder there: no error, nothing written.
+    expect((await run(new FakeMux(), { harness: "claude", signIn: true }, { stateDir: state, fs: undefined })).status).toBe(200);
+    expect(await readdir(folder)).toEqual([]);
+  });
+
+  test("a folder the body names still wins, and nothing is made", async () => {
+    const mux = new FakeMux();
+    const { status } = await run(mux, { harness: "claude", signIn: true, cwd: "/home/op/src/app" }, { stateDir: state });
+    expect(status).toBe(200);
+    expect(mux.spaces.map((s) => s.cwd)).toEqual(["/home/op/src/app"]);
+    expect(await readdir(state)).toEqual([]);
+  });
+
+  test("beside a pane it does not take the pane's folder", async () => {
+    const out = await beside({ harness: "claude", signIn: true }, { stateDir: state, fs: undefined });
+    expect(out.status).toBe(200);
+    expect(out.tabs.map((t) => t.cwd)).toEqual([join(state, "sign-in")]);
+    // Any other start beside the same pane keeps the pane's folder.
+    const plain = await beside({ harness: "claude" }, { stateDir: state, fs: undefined });
+    expect(plain.tabs.map((t) => t.cwd)).toEqual(["/home/op/pane"]);
+  });
+
+  test("a start that is not a sign-in is as it was: session folder, then home", async () => {
+    const mux = new FakeMux();
+    await run(mux, { harness: "claude" }, { stateDir: state, sessionFolder: "/home/op/projects/yt" });
+    await run(mux, { harness: "claude", signIn: false }, { stateDir: state });
+    expect(mux.spaces.map((s) => s.cwd)).toEqual(["/home/op/projects/yt", homedir()]);
+    expect(await readdir(state)).toEqual([]);
+  });
+
+  test("with no state folder given, a sign-in start is as any other start", async () => {
+    const mux = new FakeMux();
+    await run(mux, { harness: "claude", signIn: true }, { sessionFolder: "/home/op/projects/yt" });
+    expect(mux.spaces.map((s) => s.cwd)).toEqual(["/home/op/projects/yt"]);
+  });
+
+  test("a folder that cannot be made is refused as launch.folder_missing, with nothing launched", async () => {
+    const folder = join(state, "sign-in");
+    await writeFile(folder, "in the way");
+    const mux = new FakeMux();
+    const out = await run(mux, { harness: "claude", signIn: true }, { stateDir: state, fs: undefined, sessionFolder: "/home/op/projects/yt" });
+    expect(out.status).toBe(400);
+    expect(out.body).toMatchObject({ ok: false, code: "launch.folder_missing", detail: { folder } });
+    expect(mux.spaces).toEqual([]);
+    expect(mux.texts).toEqual([]);
+  });
+
+  test("the folder never joins Recent", async () => {
+    const recorded: string[] = [];
+    const folders = { recordRecent: (f: string) => Promise.resolve(void recorded.push(f)) };
+    const { body } = await run(new FakeMux(), { harness: "claude", signIn: true }, { stateDir: state, fs: undefined, folders });
+    expect(body?.ok).toBe(true);
+    expect(recorded).toEqual([]);
   });
 });
 
