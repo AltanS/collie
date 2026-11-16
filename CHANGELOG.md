@@ -37,6 +37,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A sign-in code is never kept as a draft.** A code typed while the phone's picture of the screen was a moment old could be kept as a draft, because that picture lost the sign-in field. Now the field stays, so the code is never kept.
 - **`collie trick guide` names the status line's limit.** A status text is at most 12 characters, and the guide says so next to the helper's calls, so an agent's message for a missing setting fits.
 - **A trick's code warnings start with one word.** `collie trick check`, `on`, `add` and `propose` print each warning as `warning: <file>:<line> ...`; `propose` printed `warning: warn:`.
 - **A trick's row in Settings says when the bridge refused one of its parts.** A trick that runs but prints a part the bridge cannot draw, such as a status line over its length, now shows the reason on its row in Settings, Tricks, as "Part of this trick is not shown" with the reason after it; before, the part was missing with no word why. A trick that cannot run at all says "This trick cannot run" with its reason, where the row said "Manifest refused".

@@ -1,0 +1,50 @@
+[38;5;174mWelcome[39m [38;5;174mto[39m [38;5;174mClaude[39m [38;5;174mCode[39m [38;5;246mv2.1.325[39m
+..........................................................
+
+     *                                       █████▓▓░
+                                 *         ███▓░     ░░
+            ░░░░░░                        ███▓░
+    ░░░   ░░░░░░░░░░                      ███▓░
+   ░░░░░░░░░░░░░░░░░░░    [1m*[0m                ██▓░░      ▓
+                                             ░▓▓███▓▓░
+[38;5;246m *[39m                                 [38;5;246m░░░░[39m
+[38;5;246m [39m                                [38;5;246m░░░░░░░░[39m
+[38;5;246m [39m                              [38;5;246m░░░░░░░░░░░░░░░░[39m
+      [38;5;174m █████████[39m                                        [38;5;246m*[39m
+      [38;5;174m██▄█████▄██[39m                        [1m*[0m
+      [38;5;174m █████████[39m      *
+.......[38;5;174m█[39m [38;5;174m█[39m   [38;5;174m█[39m [38;5;174m█[39m..........................................
+
+ [38;5;246mBrowser[39m [38;5;246mdidn't[39m [38;5;246mopen?[39m [38;5;246mUse[39m [38;5;246mthe[39m [38;5;246murl[39m [38;5;246mbelow[39m [38;5;246mto[39m [38;5;246msign[39m [38;5;246min[39m [38;5;246m(c[39m [38;5;246mto[39m [38;5;246mcopy)[39m
+
+[38;5;246mhttps://claude.com/cai/oauth/authorize?XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+XXXXXXXXXXXXXXXXX[39m
+
+ [38;5;246mHold[39m [38;5;246mShift[39m [38;5;246m(Option[39m [38;5;246min[39m [38;5;246miTerm2,[39m [38;5;246mFn[39m [38;5;246min[39m [38;5;246mTerminal.app)[39m [38;5;246mwhile[39m [38;5;246mselecting[39m [38;5;246mto[39m [38;5;246muse[39m [38;5;246myour[39m [38;5;246mterminal's[39m [38;5;246mnative[39m [38;5;246mcopy[39m
+
+
+ Paste code here if prompted >
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

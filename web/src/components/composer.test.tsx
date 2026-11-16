@@ -833,6 +833,27 @@ describe("Composer: sign-in field", () => {
     expect(screen.queryByText(/Look at the agent's screen/u)).toBeNull();
   });
 
+  // M102 spec 09: the phone's picture may be a moment old (`reason: "stale"`, composer unknown). The
+  // field stays named on such a read, and the secret rules hold there too.
+  it("on a stale read of the field: the sign-in placeholder, no autocorrect, no draft, and a send marked secret", async () => {
+    const user = userEvent.setup();
+    let typed = "";
+    server.use(...replyHandler((text) => (typed = text)));
+    const STALE: Surface = { revision: 3, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale", field: "secret" };
+    renderComposer({ surface: STALE });
+    const box = screen.getByPlaceholderText("Sign-in code. Not saved as a draft.");
+    expect(box).toHaveAttribute("autocorrect", "off");
+
+    await user.type(box, CODE);
+    expect(loadDraft(undefined, "w1:p1")).toBeNull();
+    expect(storedAnywhere(CODE)).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(typed).toBe(CODE));
+    expect(recordedSends()[0]?.secret).toBe(true);
+    expect(storedAnywhere(CODE)).toBe(false);
+  });
+
   it("a plain box still keeps its draft", async () => {
     const user = userEvent.setup();
     renderComposer({ surface: FREE });

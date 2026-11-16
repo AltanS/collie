@@ -4116,6 +4116,7 @@ finished login: the screens after sign-in (security notes, terminal setup, folde
 | `claude--v2325-first-run-url-typed--w40.txt` | The same 21 at 40 columns: `********`, `********`, `STATE` (the last row shows at most its own characters clear) | field secret, draft wrapped |
 | `claude--v2325-first-run-url-pasted--w61.txt` | 99 characters: three rows of 29 `*`, then `******ateEND`, 31 columns in, never cut | field secret, draft wrapped |
 | `claude--v2325-first-run-url-pasted--w120.txt` | 132 characters at 120 columns, two rows | field secret, draft wrapped |
+| `claude--v2325-first-run-url-fullscreen--w{61,80,120,200,219}.txt` | Lab 2026-11-16 (M102 spec 09): a `shared` account folder the bridge made, whose linked settings set `tui: "fullscreen"`, started in a scratch `sign-in` folder. The same screen, plus a hint row `Hold Shift (Option in iTerm2, Fn in Terminal.app) while selecting to use your terminal's native copy` (two rows at 61 and 80 columns) between the address and the field. Every character of the address after `authorize?` is `X` | sign-in card; field secret, empty |
 
 ### After the code: the first run signed in (captured live 2026-11-16, Claude Code 2.1.325, 219 columns)
 

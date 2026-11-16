@@ -63,7 +63,11 @@ describe("perturbed fixtures", () => {
   });
 
   it("perturb: most idle frames survive a blank row and an extra status row", () => {
-    const idle = FIXTURES.filter((name) => labelOf(name).state === "idle" && labelOf(name).harness === "claude");
+    // A sign-in field (`field: "secret"`) is no ordinary box: its bottom is open, so a row under it
+    // that is not its own wrapped text ends it by design (sign-in.test.ts). It is not counted here.
+    const idle = FIXTURES.filter(
+      (name) => labelOf(name).state === "idle" && labelOf(name).harness === "claude" && readScreen(fixtureRows(name), "claude", CLAUDE).surface.field !== "secret",
+    );
     let kept = 0;
     let total = 0;
     for (const name of idle) {

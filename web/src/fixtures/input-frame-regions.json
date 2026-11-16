@@ -2589,6 +2589,71 @@
   }
  },
  {
+  "fixture": "claude--v2325-first-run-url-fullscreen--w120.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 28,
+   "bottom": 28,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-first-run-url-fullscreen--w200.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 26,
+   "bottom": 26,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-first-run-url-fullscreen--w219.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 26,
+   "bottom": 26,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-first-run-url-fullscreen--w61.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 34,
+   "bottom": 34,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2325-first-run-url-fullscreen--w80.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 31,
+   "bottom": 31,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2325-first-run-url-pasted--w120.txt",
   "frame": {
    "top": 15,
