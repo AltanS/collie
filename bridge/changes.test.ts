@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
   capDiff,
   changesParams,
+  type ChangesScope,
   commitFileDiff,
   discoverRepos,
   fileDiff,
@@ -29,7 +30,11 @@ import {
   CHANGES_SHARE_MS,
   syntheticAddedDiff,
 } from "./changes.ts";
+import { type FilesFs, NODE_FILES_FS, type OpenedFile } from "./read-guard.ts";
 import type { ChangeCommit, ChangesList } from "./types.ts";
+
+/** The scope a device WITHOUT the Files right reads under: the bound on, no private folders. */
+const S: ChangesScope = { home: homedir(), privateFolders: [], wide: false };
 
 // Real git, in throwaway folders. The module's whole job is how it drives git, so a fake would
 // test the fake.
@@ -139,7 +144,7 @@ describe("parsers", () => {
     const raw = ["3\t1\ta.txt", "0\t0\t", "old.txt", "new.txt", "-\t-\timg.png", ""].join("\0");
     const m = parseNumstatZ(raw);
     expect(m.get("a.txt")).toEqual({ added: 3, removed: 1, binary: false });
-    expect(m.get("new.txt")).toEqual({ added: 0, removed: 0, binary: false });
+    expect(m.get("new.txt")).toEqual({ added: 0, removed: 0, binary: false, renamedFrom: "old.txt" });
     expect(m.get("img.png")).toEqual({ added: 0, removed: 0, binary: true });
   });
 
@@ -158,8 +163,8 @@ describe("parsers", () => {
 
 describe("list and diff", () => {
   test("a blank folder (zellij) answers no-folder", async () => {
-    expect(await listChanges("", P)).toEqual({ available: false, reason: "no-folder" });
-    expect(await fileDiff("", params(".", "a.txt"))).toMatchObject({ available: false, reason: "no-folder" });
+    expect(await listChanges("", P, S)).toEqual({ available: false, reason: "no-folder" });
+    expect(await fileDiff("", params(".", "a.txt"), S)).toMatchObject({ available: false, reason: "no-folder" });
   });
 
   test("lists modified, added, deleted, renamed and untracked files with counts", async () => {
@@ -170,7 +175,7 @@ describe("list and diff", () => {
     write(join(dir, "new.txt"), "x\ny\n");
     git(dir, "add", "new.txt");
     write(join(dir, "loose.txt"), "1\n2\n3\n");
-    const res = available(await listChanges(dir, P));
+    const res = available(await listChanges(dir, P, S));
     expect(res.repos).toHaveLength(1);
     const [only] = res.repos;
     expect(only!.relPath).toBe(".");
@@ -182,15 +187,15 @@ describe("list and diff", () => {
     expect(byPath["new.txt"]).toMatchObject({ status: "A", added: 2 });
     expect(byPath["loose.txt"]).toMatchObject({ status: "?", added: 3 });
 
-    const diff = await fileDiff(dir, params(".", "a.txt"));
+    const diff = await fileDiff(dir, params(".", "a.txt"), S);
     expect(diff).toMatchObject({ available: true, status: "M", binary: false, truncated: false });
     if (diff.available) expect(diff.diff).toContain("+TWO\n");
 
-    const renamed = await fileDiff(dir, params(".", "c2.txt"));
+    const renamed = await fileDiff(dir, params(".", "c2.txt"), S);
     expect(renamed).toMatchObject({ available: true, status: "R", oldPath: "c.txt" });
     if (renamed.available) expect(renamed.diff).toContain("rename from c.txt");
 
-    const loose = await fileDiff(dir, params(".", "loose.txt"));
+    const loose = await fileDiff(dir, params(".", "loose.txt"), S);
     if (!loose.available) throw new Error("loose unavailable");
     expect(loose.diff).toContain("@@ -0,0 +1,3 @@\n+1\n+2\n+3\n");
   });
@@ -198,22 +203,22 @@ describe("list and diff", () => {
   test("a subfolder of a repo names the repo `..`", async () => {
     const dir = repo(join(base, "up"), { "sub/a.txt": "a\n" });
     write(join(dir, "sub/a.txt"), "b\n");
-    const res = available(await listChanges(join(dir, "sub"), P));
+    const res = available(await listChanges(join(dir, "sub"), P, S));
     expect(res.repos.map((r) => r.relPath)).toEqual([".."]);
     expect(res.repos[0]!.files[0]!.path).toBe("sub/a.txt");
-    expect(await fileDiff(join(dir, "sub"), params("..", "sub/a.txt"))).toMatchObject({ available: true });
+    expect(await fileDiff(join(dir, "sub"), params("..", "sub/a.txt"), S)).toMatchObject({ available: true });
   });
 
   test("refuses an unlisted path, a ../ path and an unknown repo", async () => {
     const dir = repo(join(base, "refuse"), { "a.txt": "a\n", "clean.txt": "clean\n" });
     write(join(dir, "a.txt"), "changed\n");
     write(join(base, "outside.txt"), "secret\n");
-    expect(await fileDiff(dir, params(".", "clean.txt"))).toMatchObject({ reason: "unknown-path" });
-    expect(await fileDiff(dir, params(".", "../outside.txt"))).toMatchObject({ reason: "unknown-path" });
-    expect(await fileDiff(dir, params(".", "/etc/passwd"))).toMatchObject({ reason: "unknown-path" });
-    expect(await fileDiff(dir, params("..", "outside.txt"))).toMatchObject({ reason: "unknown-repo" });
-    expect(await fileDiff(dir, params("nope", "a.txt"))).toMatchObject({ reason: "unknown-repo" });
-    expect(await fileDiff(dir, params(null, "a.txt"))).toMatchObject({ reason: "unknown-repo" });
+    expect(await fileDiff(dir, params(".", "clean.txt"), S)).toMatchObject({ reason: "unknown-path" });
+    expect(await fileDiff(dir, params(".", "../outside.txt"), S)).toMatchObject({ reason: "unknown-path" });
+    expect(await fileDiff(dir, params(".", "/etc/passwd"), S)).toMatchObject({ reason: "unknown-path" });
+    expect(await fileDiff(dir, params("..", "outside.txt"), S)).toMatchObject({ reason: "unknown-repo" });
+    expect(await fileDiff(dir, params("nope", "a.txt"), S)).toMatchObject({ reason: "unknown-repo" });
+    expect(await fileDiff(dir, params(null, "a.txt"), S)).toMatchObject({ reason: "unknown-repo" });
   });
 
   test("an untracked symlink out of the repo is listed but never read", async () => {
@@ -221,12 +226,12 @@ describe("list and diff", () => {
     write(join(base, "link-target.txt"), "secret\nsecret\n");
     symlinkSync(join(base, "link-target.txt"), join(dir, "leak"));
     symlinkSync("a.txt", join(dir, "inside"));
-    const res = available(await listChanges(dir, P));
+    const res = available(await listChanges(dir, P, S));
     const leak = res.repos[0]!.files.find((f) => f.path === "leak");
     expect(leak).toMatchObject({ status: "?", added: 0 });
-    expect(await fileDiff(dir, params(".", "leak"))).toMatchObject({ available: false, reason: "unknown-path" });
+    expect(await fileDiff(dir, params(".", "leak"), S)).toMatchObject({ available: false, reason: "unknown-path" });
     // A link that stays inside shows what git would show: the link's own text, not the file.
-    const inside = await fileDiff(dir, params(".", "inside"));
+    const inside = await fileDiff(dir, params(".", "inside"), S);
     if (!inside.available) throw new Error("inside link refused");
     expect(inside.diff).toContain("+a.txt\n");
   });
@@ -235,12 +240,12 @@ describe("list and diff", () => {
     const dir = repo(join(base, "bin"), { "img.bin": "\0\x01\x02" });
     write(join(dir, "img.bin"), new Uint8Array([0, 1, 2, 3, 4]));
     write(join(dir, "new.bin"), new Uint8Array([9, 0, 9]));
-    const res = available(await listChanges(dir, P));
+    const res = available(await listChanges(dir, P, S));
     const files = Object.fromEntries(res.repos[0]!.files.map((f) => [f.path, f]));
     expect(files["img.bin"]).toMatchObject({ binary: true });
     expect(files["new.bin"]).toMatchObject({ binary: true, status: "?" });
-    expect(await fileDiff(dir, params(".", "img.bin"))).toMatchObject({ binary: true, diff: "" });
-    expect(await fileDiff(dir, params(".", "new.bin"))).toMatchObject({ binary: true, diff: "" });
+    expect(await fileDiff(dir, params(".", "img.bin"), S)).toMatchObject({ binary: true, diff: "" });
+    expect(await fileDiff(dir, params(".", "new.bin"), S)).toMatchObject({ binary: true, diff: "" });
   });
 
   test("a long diff is truncated", async () => {
@@ -248,7 +253,7 @@ describe("list and diff", () => {
     write(join(dir, "a.txt"), Array.from({ length: 6000 }, (_, i) => `line ${i}`).join("\n") + "\n");
     write(join(dir, "big.txt"), Array.from({ length: 6000 }, (_, i) => `line ${i}`).join("\n") + "\n");
     for (const path of ["a.txt", "big.txt"]) {
-      const res = await fileDiff(dir, params(".", path));
+      const res = await fileDiff(dir, params(".", path), S);
       if (!res.available) throw new Error(`${path} unavailable`);
       expect(res.truncated).toBe(true);
       expect(res.diff.split("\n").length - 1).toBeLessThanOrEqual(MAX_DIFF_LINES);
@@ -262,11 +267,11 @@ describe("list and diff", () => {
     write(join(dir, "staged.txt"), "s1\ns2\n");
     git(dir, "add", "staged.txt");
     write(join(dir, "loose.txt"), "l\n");
-    const res = available(await listChanges(dir, P));
+    const res = available(await listChanges(dir, P, S));
     const files = Object.fromEntries(res.repos[0]!.files.map((f) => [f.path, f]));
     expect(files["staged.txt"]).toMatchObject({ status: "A", added: 2 });
     expect(files["loose.txt"]).toMatchObject({ status: "?", added: 1 });
-    const diff = await fileDiff(dir, params(".", "staged.txt"));
+    const diff = await fileDiff(dir, params(".", "staged.txt"), S);
     if (!diff.available) throw new Error("staged unavailable");
     expect(diff.diff).toContain("+s1\n+s2\n");
   });
@@ -275,9 +280,9 @@ describe("list and diff", () => {
     const dir = repo(join(base, "udir"));
     write(join(dir, "fresh/one.txt"), "1\n");
     write(join(dir, "fresh/two.txt"), "2\n");
-    const res = available(await listChanges(dir, P));
+    const res = available(await listChanges(dir, P, S));
     expect(res.repos[0]!.files.map((f) => f.path)).toEqual(["fresh/"]);
-    expect(await fileDiff(dir, params(".", "fresh/"))).toMatchObject({ directory: true, diff: "" });
+    expect(await fileDiff(dir, params(".", "fresh/"), S)).toMatchObject({ directory: true, diff: "" });
   });
 });
 
@@ -287,11 +292,11 @@ describe("discovery", () => {
     const member = repo(join(ws, "member"));
     write(join(member, "a.txt"), "member change\n");
     write(join(ws, "readme.md"), "ws change\n");
-    const res = available(await listChanges(ws, P));
+    const res = available(await listChanges(ws, P, S));
     expect(res.repos.map((r) => r.relPath).toSorted()).toEqual([".", "member"]);
     const parent = res.repos.find((r) => r.relPath === ".")!;
     expect(parent.files.map((f) => f.path)).toEqual(["readme.md"]);
-    const diff = await fileDiff(ws, params("member", "a.txt"));
+    const diff = await fileDiff(ws, params("member", "a.txt"), S);
     expect(diff).toMatchObject({ available: true, repo: "member" });
   });
 
@@ -300,14 +305,14 @@ describe("discovery", () => {
     mkdirSync(projects);
     const one = repo(join(projects, "one"));
     write(join(one, "a.txt"), "x\n");
-    const res = available(await listChanges(projects, P));
+    const res = available(await listChanges(projects, P, S));
     expect(res.repos.map((r) => r.relPath)).toEqual(["one"]);
 
     // Not ignored, not a submodule: the parent's status would say `? inner/`.
     const outer = repo(join(base, "outer"));
     const inner = repo(join(outer, "inner"));
     write(join(inner, "a.txt"), "y\n");
-    const res2 = available(await listChanges(outer, P));
+    const res2 = available(await listChanges(outer, P, S));
     expect(res2.repos.map((r) => r.relPath)).toEqual(["inner"]);
   });
 
@@ -324,13 +329,13 @@ describe("discovery", () => {
     const deep = await discoverRepos(top, 3, true);
     expect(deep.repos.map((r) => r.relPath)).toEqual(["a/b/c"]);
     expect(deep.depthLimited).toBe(false);
-    expect(available(await listChanges(top, { depth: 2, nested: true })).depthLimited).toBe(true);
+    expect(available(await listChanges(top, { depth: 2, nested: true }, S)).depthLimited).toBe(true);
     const ws = repo(join(base, "flat"));
     repo(join(ws, "child"));
     expect((await discoverRepos(ws, 2, false)).repos.map((r) => r.relPath)).toEqual(["."]);
     // The diff route uses the same discovery, so a nested repo is unknown with nested off.
     write(join(ws, "child/a.txt"), "z\n");
-    expect(await fileDiff(ws, params("child", "a.txt", { nested: false }))).toMatchObject({
+    expect(await fileDiff(ws, params("child", "a.txt", { nested: false }), S)).toMatchObject({
       reason: "unknown-repo",
     });
   });
@@ -355,10 +360,10 @@ describe("discovery", () => {
     write(join(child, "a.txt"), "moved\n");
     git(child, "commit", "-q", "-am", "move");
     write(join(child, "a.txt"), "dirty\n");
-    const withChild = available(await listChanges(parent, P));
+    const withChild = available(await listChanges(parent, P, S));
     expect(withChild.repos.map((r) => r.relPath)).toEqual(["child"]);
     // With nested off the child is not discovered, so the parent keeps its gitlink entry.
-    const alone = available(await listChanges(parent, { depth: 2, nested: false }));
+    const alone = available(await listChanges(parent, { depth: 2, nested: false }, S));
     expect(alone.repos[0]!.files.map((f) => f.path)).toEqual(["child"]);
   });
 });
@@ -397,13 +402,13 @@ describe("a hostile repo runs nothing", () => {
     rmSync(markers, { recursive: true });
     mkdirSync(markers);
 
-    const res = available(await listChanges(dir, P));
+    const res = available(await listChanges(dir, P, S));
     const files = res.repos[0]!.files.map((f) => f.path).toSorted();
     expect(files).toEqual(["a.txt", "b.txt"]);
-    const diff = await fileDiff(dir, params(".", "a.txt"));
+    const diff = await fileDiff(dir, params(".", "a.txt"), S);
     if (!diff.available) throw new Error("hostile diff refused");
     expect(diff.diff).toContain("+bbbb\n");
-    await fileDiff(dir, params(".", "b.txt"));
+    await fileDiff(dir, params(".", "b.txt"), S);
     for (const m of ["fsmonitor", "external", "textconv", "command", "clean", "smudge"]) {
       expect(existsSync(join(markers, m)), `${m} ran`).toBe(false);
     }
@@ -460,11 +465,11 @@ describe("a hostile repo runs nothing", () => {
       mkdirSync(markers);
 
       const started = Date.now();
-      const res = available(await listChanges(dir, P));
+      const res = available(await listChanges(dir, P, S));
       // The list still names both files; the counts the missing blobs would give are simply absent.
       expect(res.repos[0]!.files.map((f) => f.path).toSorted()).toEqual(["a.txt", "b.txt"]);
-      await fileDiff(dir, params(".", "a.txt"));
-      await fileDiff(dir, params(".", "b.txt"));
+      await fileDiff(dir, params(".", "a.txt"), S);
+      await fileDiff(dir, params(".", "b.txt"), S);
       expect(Date.now() - started).toBeLessThan(GIT_TIMEOUT_MS);
       expect(existsSync(join(markers, t.name)), `${t.name} ran`).toBe(false);
     }
@@ -477,7 +482,7 @@ describe("a hostile repo runs nothing", () => {
     const dir = repo(join(base, "wt"));
     git(dir, "config", "core.worktree", elsewhere);
     write(join(dir, "a.txt"), "changed\n");
-    const res = available(await listChanges(dir, P));
+    const res = available(await listChanges(dir, P, S));
     expect(res.repos[0]!.files.map((f) => f.path)).toEqual(["a.txt"]);
   });
 });
@@ -519,7 +524,7 @@ describe("the last commit (ADR 0065 rule 9)", () => {
     git(dir, "-c", "user.name=Agent Smith", "commit", "-q", "-m", "Second\n\nbody");
     const hash = git(dir, "rev-parse", "HEAD").trim();
 
-    const res = committed(await readCommit(dir, commitAt(".")));
+    const res = committed(await readCommit(dir, commitAt("."), S));
     expect(res.repo).toBe(".");
     expect(res.name).toBe("commit");
     expect(res.commit).toMatchObject({ hash, shortHash: hash.slice(0, 7), subject: "Second", author: "Agent Smith" });
@@ -532,35 +537,35 @@ describe("the last commit (ADR 0065 rule 9)", () => {
     expect(byPath["new.txt"]).toMatchObject({ status: "A", added: 2 });
     expect(byPath["blob.bin"]).toMatchObject({ status: "A", binary: true });
 
-    const diff = await commitFileDiff(dir, commitAt(".", "a.txt"));
+    const diff = await commitFileDiff(dir, commitAt(".", "a.txt"), S);
     expect(diff).toMatchObject({ available: true, status: "M", binary: false, hash });
     if (diff.available) expect(diff.diff).toContain("+TWO\n");
-    const renamed = await commitFileDiff(dir, commitAt(".", "c2.txt"));
+    const renamed = await commitFileDiff(dir, commitAt(".", "c2.txt"), S);
     expect(renamed).toMatchObject({ available: true, status: "R", oldPath: "c.txt" });
     if (renamed.available) expect(renamed.diff).toContain("rename from c.txt");
-    expect(await commitFileDiff(dir, commitAt(".", "blob.bin"))).toMatchObject({ available: true, binary: true, diff: "" });
+    expect(await commitFileDiff(dir, commitAt(".", "blob.bin"), S)).toMatchObject({ available: true, binary: true, diff: "" });
 
     // A clean repo with a commit is offered in the list; its uncommitted list is empty.
-    const list = available(await listChanges(dir, P));
+    const list = available(await listChanges(dir, P, S));
     expect(list.repos).toEqual([]);
     expect(list.clean).toEqual([{ relPath: ".", name: "commit" }]);
   });
 
   test("a root commit diffs against the empty tree; a repo with no commits has none", async () => {
     const dir = repo(join(base, "rootcommit"), { "a.txt": "1\n2\n" });
-    const res = committed(await readCommit(dir, commitAt(".")));
+    const res = committed(await readCommit(dir, commitAt("."), S));
     expect(res.commit.subject).toBe("init");
     expect(res.files).toEqual([{ path: "a.txt", status: "A", added: 2, removed: 0, binary: false }]);
-    const diff = await commitFileDiff(dir, commitAt(".", "a.txt"));
+    const diff = await commitFileDiff(dir, commitAt(".", "a.txt"), S);
     if (!diff.available) throw new Error("root diff refused");
     expect(diff.diff).toContain("@@ -0,0 +1,2 @@");
 
     const empty = join(base, "nocommit");
     mkdirSync(empty);
     git(empty, "init", "-q");
-    expect(await readCommit(empty, commitAt("."))).toEqual({ available: false, reason: "no-commit" });
+    expect(await readCommit(empty, commitAt("."), S)).toEqual({ available: false, reason: "no-commit" });
     // No commit to show, so the list offers nothing.
-    expect(available(await listChanges(empty, P)).clean).toBeUndefined();
+    expect(available(await listChanges(empty, P, S)).clean).toBeUndefined();
   });
 
   test("refuses a path the commit did not list, a ../ path and an unknown repo", async () => {
@@ -570,13 +575,13 @@ describe("the last commit (ADR 0065 rule 9)", () => {
     write(join(dir, "kept.txt"), "uncommitted\n");
     write(join(base, "outside.txt"), "secret\n");
     // kept.txt is in the tree and changed in the worktree, but not in HEAD's diff.
-    expect(await commitFileDiff(dir, commitAt(".", "kept.txt"))).toMatchObject({ reason: "unknown-path" });
-    expect(await commitFileDiff(dir, commitAt(".", "../outside.txt"))).toMatchObject({ reason: "unknown-path" });
-    expect(await commitFileDiff(dir, commitAt(".", "/etc/passwd"))).toMatchObject({ reason: "unknown-path" });
-    expect(await commitFileDiff(dir, commitAt("..", "outside.txt"))).toMatchObject({ reason: "unknown-repo" });
-    expect(await readCommit(dir, commitAt("nope"))).toMatchObject({ reason: "unknown-repo" });
-    expect(await readCommit(dir, commitAt(null))).toMatchObject({ reason: "unknown-repo" });
-    expect(await commitFileDiff(dir, commitAt(".", "a.txt"))).toMatchObject({ available: true });
+    expect(await commitFileDiff(dir, commitAt(".", "kept.txt"), S)).toMatchObject({ reason: "unknown-path" });
+    expect(await commitFileDiff(dir, commitAt(".", "../outside.txt"), S)).toMatchObject({ reason: "unknown-path" });
+    expect(await commitFileDiff(dir, commitAt(".", "/etc/passwd"), S)).toMatchObject({ reason: "unknown-path" });
+    expect(await commitFileDiff(dir, commitAt("..", "outside.txt"), S)).toMatchObject({ reason: "unknown-repo" });
+    expect(await readCommit(dir, commitAt("nope"), S)).toMatchObject({ reason: "unknown-repo" });
+    expect(await readCommit(dir, commitAt(null), S)).toMatchObject({ reason: "unknown-repo" });
+    expect(await commitFileDiff(dir, commitAt(".", "a.txt"), S)).toMatchObject({ available: true });
   });
 
   test("a hostile repo runs nothing on the commit view", async () => {
@@ -609,12 +614,12 @@ describe("the last commit (ADR 0065 rule 9)", () => {
     rmSync(markers, { recursive: true });
     mkdirSync(markers);
 
-    const res = committed(await readCommit(dir, commitAt(".")));
+    const res = committed(await readCommit(dir, commitAt("."), S));
     expect(res.files.map((f) => f.path)).toEqual(["a.txt"]);
-    const diff = await commitFileDiff(dir, commitAt(".", "a.txt"));
+    const diff = await commitFileDiff(dir, commitAt(".", "a.txt"), S);
     if (!diff.available) throw new Error("hostile commit diff refused");
     expect(diff.diff).toContain("+bbbb\n");
-    await listChanges(dir, P);
+    await listChanges(dir, P, S);
     for (const m of ["fsmonitor", "external", "textconv", "command", "clean", "smudge", "gpg"]) {
       expect(existsSync(join(markers, m)), `${m} ran`).toBe(false);
     }
@@ -655,20 +660,20 @@ describe("shared reads (ADR 0065 rule 8)", () => {
       const root = join(dir, "r");
       // One read alone, to learn how many git runs one list takes.
       const before = gitRuns.spawned;
-      await listChanges(root, P);
+      await listChanges(root, P, S);
       const one = gitRuns.spawned - before;
       expect(one).toBeGreaterThan(0);
       sharedLists.clear();
       const start = gitRuns.spawned;
-      const [a, b] = await Promise.all([sharedListChanges(root, P), sharedListChanges(root, P)]);
+      const [a, b] = await Promise.all([sharedListChanges(root, P, S), sharedListChanges(root, P, S)]);
       expect(gitRuns.spawned - start).toBe(one);
       expect(a).toBe(b);
       // Within the window a third ask is answered without git.
       const again = gitRuns.spawned;
-      await sharedListChanges(root, P);
+      await sharedListChanges(root, P, S);
       expect(gitRuns.spawned).toBe(again);
       // A different depth is a different key.
-      await sharedListChanges(root, { depth: 3, nested: true });
+      await sharedListChanges(root, { depth: 3, nested: true }, S);
       expect(gitRuns.spawned).toBeGreaterThan(again);
     });
 
@@ -677,13 +682,13 @@ describe("shared reads (ADR 0065 rule 8)", () => {
       sharedDiffs.clear();
       const q = { depth: 2, nested: true, repo: ".", path: "a.txt" };
       const start = gitRuns.spawned;
-      const [a, b] = await Promise.all([sharedFileDiff(root, q), sharedFileDiff(root, q)]);
+      const [a, b] = await Promise.all([sharedFileDiff(root, q, S), sharedFileDiff(root, q, S)]);
       const one = gitRuns.spawned - start;
       expect(one).toBeGreaterThan(0);
       expect(a).toBe(b);
       await Bun.sleep(CHANGES_SHARE_MS + 50);
       const later = gitRuns.spawned;
-      const c = await sharedFileDiff(root, q);
+      const c = await sharedFileDiff(root, q, S);
       expect(gitRuns.spawned - later).toBe(one);
       expect(c).not.toBe(a);
     });
@@ -707,5 +712,270 @@ describe("repoOfFolder", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// ── The bounds of Files (ADR 0150, M103) ────────────────────────────────────────────────────────
+// Changes reads under the same checks the Files view applies: its deny list, the real path of its
+// root against the bound, and its checked reader. A caller without the Files right (`wide: false`)
+// is also held inside the bound on the walk up. Real git in throwaway folders; placeholder values only.
+
+describe("Changes keeps the bounds of Files", () => {
+  const commitAt = (repoRel: string | null, path: string | null = null) => ({ ...params(repoRel, path), view: "commit" as const });
+  const paths = (res: ChangesList, rel = ".") => available(res).repos.find((r) => r.relPath === rel)?.files.map((f) => f.path) ?? [];
+
+  describe("the deny list: the bridge's own folders and a state secret's name are never served", () => {
+    let dir: string;
+    let scope: ChangesScope;
+    beforeAll(() => {
+      dir = repo(join(base, "deny"), { "a.txt": "a\n", "crew-trust.json": "{}\n", "keep.txt": "k\n" });
+      // A committed secret name, so the commit view has one to refuse.
+      write(join(dir, "paired-devices.json"), "PLACEHOLDER-PAIRED\n");
+      git(dir, "add", "-A");
+      git(dir, "commit", "-q", "-m", "secret");
+      // Working-tree changes: an untracked secret name, a modified tracked one, an untracked file in a
+      // private folder, a tracked file in a private folder, and an ordinary change beside them.
+      write(join(dir, "PAIRED-DEVICES.json"), "PLACEHOLDER-UPPER\n");
+      write(join(dir, "crew-trust.json"), "PLACEHOLDER-TRUST\n");
+      write(join(dir, "paired-devices.json"), "PLACEHOLDER-PAIRED-2\n");
+      write(join(dir, "state", "push.json"), "PLACEHOLDER-STATE\n");
+      write(join(dir, "keep.txt"), "kept change\n");
+      // The private folder is this bridge's state folder; the Files right does not lift the list.
+      scope = { home: homedir(), privateFolders: [join(dir, "state")], wide: true };
+    });
+
+    test("the list leaves out every name Files would hide, and keeps the rest", async () => {
+      const listed = paths(await listChanges(dir, P, scope));
+      expect(listed).toContain("keep.txt");
+      for (const hidden of ["crew-trust.json", "paired-devices.json", "PAIRED-DEVICES.json", "state/"]) {
+        expect({ hidden, listed: listed.includes(hidden) }).toEqual({ hidden, listed: false });
+      }
+    });
+
+    test("no diff of a denied path is served, untracked or tracked", async () => {
+      for (const path of ["crew-trust.json", "paired-devices.json", "PAIRED-DEVICES.json", "state/", "state/push.json"]) {
+        const diff = await fileDiff(dir, params(".", path), scope);
+        expect({ path, diff }).toEqual({ path, diff: { available: false, reason: "unknown-path" } });
+      }
+      expect(await fileDiff(dir, params(".", "keep.txt"), scope)).toMatchObject({ available: true });
+    });
+
+    test("the commit view leaves the secret's name out and serves no diff of it", async () => {
+      const res = await readCommit(dir, commitAt("."), scope);
+      if (!res.available) throw new Error("commit refused");
+      expect(res.files.map((f) => f.path)).toEqual([]);
+      expect(await commitFileDiff(dir, commitAt(".", "paired-devices.json"), scope)).toEqual({ available: false, reason: "unknown-path" });
+    });
+
+    test("a repo inside a private folder is not discovered", async () => {
+      const inner = repo(join(dir, "state", "inner"));
+      write(join(inner, "a.txt"), "changed\n");
+      const res = available(await listChanges(dir, P, scope));
+      expect(res.repos.map((r) => r.relPath)).not.toContain("state/inner");
+      expect(await fileDiff(dir, params("state/inner", "a.txt"), scope)).toEqual({ available: false, reason: "unknown-repo" });
+      rmSync(inner, { recursive: true, force: true });
+    });
+  });
+
+  describe("the real path of the root is held to the bound", () => {
+    let home: string;
+    let link: string;
+    beforeAll(() => {
+      home = join(base, "real-home");
+      repo(home, { "dotfile.txt": "d\n" });
+      write(join(home, "dotfile.txt"), "PLACEHOLDER-HOME\n");
+      // A folder name that passes the string bound but is home on the disk.
+      link = join(base, "real-link");
+      symlinkSync(home, link, "dir");
+    });
+
+    test("a root that is a link to home is no-folder for a device without the Files right", async () => {
+      const scope: ChangesScope = { home, privateFolders: [], wide: false };
+      const noFolder = { available: false, reason: "no-folder" } as const;
+      expect(await listChanges(link, P, scope)).toEqual(noFolder);
+      expect(await fileDiff(link, params(".", "dotfile.txt"), scope)).toEqual(noFolder);
+      expect(await readCommit(link, commitAt("."), scope)).toEqual(noFolder);
+      expect(await commitFileDiff(link, commitAt(".", "dotfile.txt"), scope)).toEqual(noFolder);
+    });
+
+    test("the Files right alone does not lift it: only the route's one unbounded root does", async () => {
+      const wideOnly: ChangesScope = { home, privateFolders: [], wide: true };
+      expect(await listChanges(link, P, wideOnly)).toEqual({ available: false, reason: "no-folder" });
+      const fallback: ChangesScope = { ...wideOnly, unboundedRoot: true };
+      expect(paths(await listChanges(link, P, fallback))).toEqual(["dotfile.txt"]);
+      expect(await fileDiff(link, params(".", "dotfile.txt"), fallback)).toMatchObject({ available: true });
+    });
+  });
+
+  describe("the walk up stops at the bound", () => {
+    let home: string;
+    let root: string;
+    beforeAll(() => {
+      // A dotfiles repo AT home, and a plain folder under it with no repo of its own.
+      home = repo(join(base, "up-home"), { ".profile": "p\n" });
+      write(join(home, "notes.txt"), "PLACEHOLDER-NOTES\n");
+      root = join(home, "projects", "plain");
+      write(join(root, "readme.txt"), "plain\n");
+    });
+
+    test("a device without the Files right sees no repo of home", async () => {
+      const scope: ChangesScope = { home, privateFolders: [], wide: false };
+      const res = available(await listChanges(root, P, scope));
+      expect(res.repos).toEqual([]);
+      expect(res.clean).toBeUndefined();
+      expect(await fileDiff(root, params("../..", "notes.txt"), scope)).toEqual({ available: false, reason: "unknown-repo" });
+      expect(await readCommit(root, commitAt("../.."), scope)).toEqual({ available: false, reason: "unknown-repo" });
+      expect(await commitFileDiff(root, commitAt("../..", ".profile"), scope)).toEqual({ available: false, reason: "unknown-repo" });
+    });
+
+    test("a device with the Files right sees it as before", async () => {
+      const scope: ChangesScope = { home, privateFolders: [], wide: true };
+      const res = available(await listChanges(root, P, scope));
+      expect(res.repos.map((r) => r.relPath)).toContain("../..");
+      expect(await fileDiff(root, params("../..", "notes.txt"), scope)).toMatchObject({ available: true });
+    });
+
+    test("a repo between the root and home is still found", async () => {
+      const mid = repo(join(home, "work"));
+      write(join(mid, "a.txt"), "changed\n");
+      const deep = join(mid, "sub");
+      mkdirSync(deep, { recursive: true });
+      const scope: ChangesScope = { home, privateFolders: [], wide: false };
+      expect(available(await listChanges(deep, P, scope)).repos.map((r) => r.relPath)).toEqual([".."]);
+    });
+  });
+
+  describe("a gitfile cannot point a bounded folder at a repo out of bound", () => {
+    let home: string;
+    let root: string;
+    beforeAll(() => {
+      // Home's dotfiles repo tracks a file; a bounded folder holds a gitfile naming home's git folder.
+      home = repo(join(base, "gitfile-home"), { "dotfile.txt": "PLACEHOLDER-DOTFILE\n" });
+      root = join(home, "projects", "x");
+      mkdirSync(root, { recursive: true });
+      writeFileSync(join(root, ".git"), `gitdir: ${join(home, ".git")}\n`);
+    });
+
+    test("a device without the Files right sees no such repo and no diff of it", async () => {
+      const scope: ChangesScope = { home, privateFolders: [], wide: false };
+      expect(available(await listChanges(root, P, scope)).repos).toEqual([]);
+      expect(await fileDiff(root, params(".", "dotfile.txt"), scope)).toEqual({ available: false, reason: "unknown-repo" });
+      expect(await commitFileDiff(root, commitAt(".", "dotfile.txt"), scope)).toEqual({ available: false, reason: "unknown-repo" });
+    });
+
+    test("a linked worktree of a bounded repo is still read", async () => {
+      const main = repo(join(home, "projects", "main"));
+      const linked = join(home, "projects", "main-wt");
+      git(main, "worktree", "add", "-q", linked);
+      write(join(linked, "a.txt"), "changed\n");
+      const scope: ChangesScope = { home, privateFolders: [], wide: false };
+      expect(paths(await listChanges(linked, P, scope))).toEqual(["a.txt"]);
+    });
+
+    test("a device with the Files right sees it as before", async () => {
+      const scope: ChangesScope = { home, privateFolders: [], wide: true };
+      expect(available(await listChanges(root, P, scope)).repos.map((r) => r.relPath)).toEqual(["."]);
+    });
+
+    test("a gitfile is read as git reads it: `gitdir: ` at the start, or no repo", async () => {
+      const junk = join(home, "projects", "junk");
+      mkdirSync(junk, { recursive: true });
+      // Git refuses this file; so does discovery, instead of finding the line further down.
+      writeFileSync(join(junk, ".git"), `not a gitfile\ngitdir: ${join(home, ".git")}\n`);
+      const scope: ChangesScope = { home, privateFolders: [], wide: true };
+      expect(available(await listChanges(junk, P, scope)).repos).toEqual([]);
+    });
+
+    test("a worktree's commondir pointing at home's git folder is held to the bound too", async () => {
+      // A worktree git folder under a bounded repo, whose `commondir` names home's git folder.
+      const host = repo(join(home, "projects", "host"));
+      const wtGit = join(host, ".git", "worktrees", "w");
+      mkdirSync(wtGit, { recursive: true });
+      writeFileSync(join(wtGit, "commondir"), `${join(home, ".git")}\n`);
+      writeFileSync(join(wtGit, "HEAD"), "ref: refs/heads/main\n");
+      const wt = join(home, "projects", "w");
+      mkdirSync(wt, { recursive: true });
+      writeFileSync(join(wt, ".git"), `gitdir: ${wtGit}\n`);
+      const scope: ChangesScope = { home, privateFolders: [], wide: false };
+      expect(available(await listChanges(wt, P, scope)).repos).toEqual([]);
+      // CONTROL: git does read home's files through it, so the refusal above is the bound, not git.
+      const wide: ChangesScope = { ...scope, wide: true };
+      expect(available(await listChanges(wt, P, wide)).repos.map((r) => r.relPath)).toEqual(["."]);
+    });
+
+    test("a worktree of a bare `foo.git` repo inside the bound is read", async () => {
+      const bare = join(home, "projects", "bare.git");
+      git(join(home, "projects"), "clone", "-q", "--bare", join(home, "projects", "main"), bare);
+      const wt = join(home, "projects", "bare-wt");
+      git(bare, "worktree", "add", "-q", wt);
+      write(join(wt, "a.txt"), "changed\n");
+      const scope: ChangesScope = { home, privateFolders: [], wide: false };
+      expect(paths(await listChanges(wt, P, scope))).toEqual(["a.txt"]);
+    });
+  });
+
+  describe("a rename pairing never carries a hidden file's counts", () => {
+    test("a file git pairs with a deleted secret shows no counts", async () => {
+      const lines = Array.from({ length: 40 }, (_, i) => `line ${String(i)}`).join("\n");
+      const dir = repo(join(base, "rename-pair"), { "paired-devices.json": `${lines}\n` });
+      write(join(dir, "b.txt"), `${lines}\nmore\n`);
+      git(dir, "add", "b.txt");
+      rmSync(join(dir, "paired-devices.json"));
+      const scope: ChangesScope = { home: homedir(), privateFolders: [], wide: true };
+      const file = available(await listChanges(dir, P, scope)).repos[0]!.files.find((f) => f.path === "b.txt");
+      expect(file).toMatchObject({ status: "A", added: 0, removed: 0 });
+    });
+  });
+
+  describe("an untracked file is read through the checked reader of Files", () => {
+    let dir: string;
+    let outside: string;
+    let race: string;
+    let held: string;
+    beforeAll(() => {
+      // `race/` is tracked, so git lists the untracked file under it by its own name.
+      dir = repo(join(base, "race-repo"), { "race/keep.txt": "k\n" });
+      race = join(dir, "race");
+      held = join(dir, "race-held");
+      write(join(race, "note.txt"), "inside\n");
+      outside = join(base, "race-outside");
+      write(join(outside, "note.txt"), "PLACEHOLDER-OUTSIDE\n");
+      write(join(outside, "keep.txt"), "k\n");
+    });
+
+    /** A disk that swaps the folder above the file for a link out of the repo, between check and open. */
+    function racingFs() {
+      let reads = 0;
+      const fs: FilesFs = {
+        ...NODE_FILES_FS,
+        async readHead(path: string, max: number, confirm?: (o: OpenedFile) => Promise<boolean>) {
+          reads++;
+          renameSync(race, held);
+          symlinkSync(outside, race, "dir");
+          try {
+            return await NODE_FILES_FS.readHead(path, max, confirm);
+          } finally {
+            unlinkSync(race);
+            renameSync(held, race);
+          }
+        },
+      };
+      return { fs, reads: () => reads };
+    }
+
+    test("a folder swapped for a link out, after the check and before the open, is refused", async () => {
+      const { fs, reads } = racingFs();
+      const scope: ChangesScope = { home: homedir(), privateFolders: [], wide: true, fs };
+      expect(paths(await listChanges(dir, P, { ...scope, fs: NODE_FILES_FS }))).toEqual(["race/note.txt"]);
+      const diff = await fileDiff(dir, params(".", "race/note.txt"), scope);
+      expect(reads()).toBe(1);
+      expect(diff).toEqual({ available: false, reason: "unknown-path" });
+    });
+
+    test("with no swap, the same reader serves the file", async () => {
+      const scope: ChangesScope = { home: homedir(), privateFolders: [], wide: true };
+      const diff = await fileDiff(dir, params(".", "race/note.txt"), scope);
+      expect(diff).toMatchObject({ available: true, diff: expect.stringContaining("+inside") });
+    });
   });
 });

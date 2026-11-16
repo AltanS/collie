@@ -150,8 +150,14 @@ in this order:
 | 2 | The deepest folder that holds every pane of the workspace |
 | 3 | The pane's own folder, when the first two would be `/`, your home folder, or above it |
 
-Collie then finds the repo that holds that folder. It also looks for repos in folders below it, even
-repos the parent repo ignores. That is how a workspace repo with its member repos ignored inside it
+A pane's own folder that is itself `/`, your home folder or above it is read only for a device that
+may use [Files](#who-may-use-it). Any other device sees no folder there. A workspace folder that is a
+symlink to one of those counts as that folder and shows no folder.
+
+Collie then finds the repo that holds that folder. A repo it finds at your home folder or above it,
+such as a dotfiles repo, is listed only for a device that may use Files. The same holds for a folder
+whose `.git` file points at such a repo. It also looks for repos in
+folders below it, even repos the parent repo ignores. That is how a workspace repo with its member repos ignored inside it
 still shows every member's changes.
 
 Two per-device settings control that search. Both live in **Settings → Device → Changes**.
@@ -321,7 +327,12 @@ open like any other row.
   `COLLIE_DEVICE_HEADER` set it must also be on `COLLIE_DEVICE_ALLOWLIST`.
 - **Every paired device can use Files.** It can browse the workspace's folder and read any file in
   it, `.env` files included.
-- Changes is open to any paired device, because it shows only what changed.
+- **Changes is open to any paired device, inside a workspace folder.** It lists only what changed,
+  and it leaves out what Files never shows (below).
+- **Two cases need the Files right.** A pane whose own folder is your home folder, above it or `/`,
+  in a workspace with no folder; and a repo found at your home folder or above it. A device without
+  the right sees no folder in the first case and no such repo in the second.
+- With no `COLLIE_DEVICE_HEADER` set, every paired device has the Files right.
 
 ### What it shows, and what it never shows
 
@@ -363,6 +374,9 @@ Changes runs git to read, and nothing else.
 - It never touches the network, not even to fetch a missing file in a partial clone. That file then
   shows with zero counts and an empty diff.
 - A diff is served only for a file git itself listed as changed, in a repo the search found.
+- Changes leaves out what Files never shows: a `.git` folder, Collie's own state and config folders,
+  and a file named like a Collie state secret. A diff of one is refused like a file git did not list.
+- An untracked file is read as Files reads one. Its real path must stay inside its repo.
 
 The full rules are in [ADR 0065](../.adr/0065-the-changes-view-reads-git-read-only.md).
 
@@ -371,7 +385,8 @@ The full rules are in [ADR 0065](../.adr/0065-the-changes-view-reads-git-read-on
 In a [crew](crew.md), a pane or workspace on another machine is read on that machine. The lead
 forwards the request, and that machine's git answers. That machine must run Collie 1.13.0 or later.
 Files reads that machine's own disk, under that machine's own device rules, and needs Collie 1.17.0
-or later there. A member that is older, or one whose git does not answer, sends no ignored marks, so
+or later there. The two Changes cases that need the Files right are decided by that machine's own
+device rules too. A member that is older, or one whose git does not answer, sends no ignored marks, so
 Files hides nothing for it.
 
 ## Limits
