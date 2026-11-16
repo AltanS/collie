@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 537 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 542 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([307, 195, 35]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([307, 200, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -296,14 +296,14 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(addSkips).toBe(17);
     expect(script).toContain("cli/trick-add.test.ts");
     const proposeSkips = readFileSync(join(ROOT, "cli", "trick-propose.test.ts"), "utf8").match(/^ +(?:socketTest|posixTest)\(/gm) ?? [];
-    expect(proposeSkips).toHaveLength(15);
+    expect(proposeSkips).toHaveLength(18);
     expect(script).toContain("refuses a symbolic link, even to a file inside the folder");
     const helperSkips = namesIn("cli/trick-kit/trick.test.ts", /test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g);
     expect(helperSkips).toHaveLength(2);
     for (const name of helperSkips) expect(script).toContain(name);
     // Gated on Windows (b): the tests that run a program using the trick helper, `helperTest` in three files.
     const helperOutputSkips = ["cli/trick.test.ts", "cli/trick-kit/trick.test.ts", "cli/trick-dev.test.ts"].flatMap((file) => readFileSync(join(ROOT, file), "utf8").match(/^ {2}helperTest\(/gm) ?? []);
-    expect(helperOutputSkips).toHaveLength(16);
+    expect(helperOutputSkips).toHaveLength(18);
     expect(script).toContain("gated on Windows (b)");
     // The hold card (cli/hold.test.ts) runs the hook against a real hold socket: 3 tests, `test.skipIf` off Linux.
     const holdCardSkips = (readFileSync(join(ROOT, "cli", "hold.test.ts"), "utf8").match(/^ {2}test\.skipIf\(POSIX_ONLY\)\(/gm) ?? []).length;

@@ -332,10 +332,15 @@ describe("the phone's switch", () => {
 describe("the snapshot", () => {
   const snapshot: SnapshotResponse = { bridge: "connected", agents: [], shellPanes: [], workspaces: [], tabs: [], sessions: [], ts: 5 };
 
-  test("on: the hill's revision as before, and no hillOff key; no hill, no file: the same bytes", () => {
+  test("on: the hill's revision, also before the first Decision (decision 6), and no hillOff key; no hill: the same bytes", () => {
     const r = rig();
-    expect(JSON.stringify(withHill(snapshot, r.hill))).toBe(JSON.stringify(snapshot));
+    // On with no decisions file yet: a revision all the same, so the phone shows the Hill in the bar.
+    expect(withHill(snapshot, r.hill)).toEqual({ ...snapshot, hillRev: 0 });
     expect(JSON.stringify(withHill(snapshot, undefined))).toBe(JSON.stringify(snapshot));
+    // Off with no decisions file: still no revision (the phone shows no Hill item), only hillOff.
+    r.sw.set(false);
+    expect(withHill(snapshot, r.hill)).toEqual({ ...snapshot, hillOff: true });
+    r.sw.set(true);
     posted(r.hill.post(POSTER, input(1)));
     expect(withHill(snapshot, r.hill)).toEqual({ ...snapshot, hillRev: 1000 });
   });

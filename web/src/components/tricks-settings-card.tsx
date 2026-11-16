@@ -135,7 +135,7 @@ export interface SlotLine {
 
 /**
  * The third line: the reason a trick is not well (a trick stopped for its rights in the phone's own words,
- * fault B), else that a new version waits for a yes (`pending`,
+ * fault B; a part the bridge refused, in any state), else that a new version waits for a yes (`pending`,
  * from a bridge since crew slice 2; with the Hill off, the line says to switch the Hill on in Settings,
  * Experiments, to read it), else the one note that the Hill is off for a trick that is on and
  * asks Decisions (`hillOff`, the snapshot's; bridge/tricks/hill.ts: they are not posted, the trick keeps
@@ -146,11 +146,16 @@ export function slotLine(trick: WireTrickInfo, now: number, hillOff = false): Sl
     const reason = trick.refusals?.[0]?.reason ?? trick.error;
     return { text: reason === undefined ? t("settings.tricks.refusedBare") : t("settings.tricks.refused", { reason }), trouble: true };
   }
+  // A part the bridge refused, in every other state (the first full trick run, 2026-11-16, decision 5): the
+  // trick runs, but what it drew is not shown, and the row is the one place that says why. The words of
+  // `skipped`; a note the parser only ignored is not a refusal.
+  const refused = trick.refusals?.find((r) => r.code !== "ignored" && r.code !== "more");
   // Fault B: the bridge's flag, in the phone's words; its `error` is the same line in the bridge's English.
   // Such a trick comes as off (stopped is not on): its switch shows off, and one tap on is the approval.
   if (trick.rightsMoved === true) return { text: t("settings.tricks.rightsMoved"), trouble: true };
   const failing = trick.state === "failing" || trick.state === "stopped";
   if (failing && trick.error !== undefined) return { text: trick.error, trouble: true };
+  if (refused !== undefined) return { text: t("settings.tricks.refused", { reason: refused.reason }), trouble: true };
   // The new version's card is a Decision on the Hill: with the Hill off nobody can read it, so the row says where to switch it on.
   if (trick.on && trick.pending !== undefined) return { text: t(hillOff ? "settings.tricks.pendingHillOff" : "settings.tricks.pending"), trouble: false };
   if (hillOff && trick.on && trick.decides === true) return { text: t("settings.tricks.hillOff"), trouble: false };

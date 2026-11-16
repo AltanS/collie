@@ -296,6 +296,12 @@ export function TrickSettingsSection(): ReactNode {
             trick("none", "No parts", { places: [], provenance: { via: "repo", repo: "someone-with-a-long-name/a-repository-with-a-long-name", sha: "0123456789abcdef" } }),
           ]}
         />
+        <ListCard
+          n={6}
+          state="trick-settings-part-refused"
+          label="on, a part refused"
+          tricks={[trick("todos", "Open todos", { state: "ok", places: ["status"], refusals: [{ code: "text", path: "/parts/0/chip/text", reason: "\"text\" is 19 characters. At most 12.", part: "todo" }] })]}
+        />
       </Group>
       <Group title="Before the switch">
         <ListCard

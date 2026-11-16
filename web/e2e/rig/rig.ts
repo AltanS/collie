@@ -461,6 +461,9 @@ function bridgeEnv(machine: Machine, port: number, socket: string) {
     COLLIE_STATE_DIR: d.state,
     // The anonymous install ping (M86): a lab bridge never pings, even on a build the dev-build rule misses.
     COLLIE_TELEMETRY: "0",
+    // A Hill switch change makes the bridge run `collie skill sync` (bridge/hill/skill-follow.ts). A lab
+    // bridge never rewrites a skill file, not even one under its scratch HOME.
+    COLLIE_SKILL_SYNC: "off",
     HERDR_PLUGIN_CONFIG_DIR: d.config,
     COLLIE_CONFIG: d.homeCfg,
     COLLIE_INSTANCE: machine === "lead" ? "rig" : "rig-member",

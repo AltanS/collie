@@ -215,6 +215,16 @@ export function withApproval(switches: Switches, id: string, approval: Approval)
 }
 
 /**
+ * The same set with `id` approved as a trick new to this machine: a fresh entry, whatever an entry of that
+ * name held (the first full trick run, 2026-11-16, decision 3). No `auto`, no `previous` to undo to: an entry
+ * left behind by a trick folder deleted by hand never lends a proposal its "take changes without asking" or
+ * its Undo target.
+ */
+export function withFreshApproval(switches: Switches, id: string, approval: Approval): Switches {
+  return withEntry(switches, id, { at: approval.at, hash: approval.hash, auto: false, by: approval.by, powers: approval.powers });
+}
+
+/**
  * The same set with `id` switched on (at `at`, approving the code `hash`) or off. The low-level setter a
  * test and an older caller use: `auto` and `previous` are kept, `by` is `cli`, the powers are `powers`, by
  * default not known. An entry with a hash and unknown powers does not run (fault B: service.ts

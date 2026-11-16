@@ -346,7 +346,8 @@ phone of this Collie, and the bridge reads it with no restart.
 
 The installed WalkyTalky skill names the Hill only while it is on: each change of the switch
 rewrites the skill as `collie skill sync` does. A running agent keeps the text it loaded; its next
-session gets the new one.
+session gets the new one. So a session that started while the Hill was off does not know the Hill:
+tell it, or start a new session.
 
 A Collie that used the Hill before it became an experiment has the Hill off after the update. Its
 open Decisions stay stored, and their expiry still runs. They show again when you switch the Hill on.
@@ -432,6 +433,15 @@ every file of its code, as a group of cards.
   code.
 - **Not now** drops the stored copy. So do Dismiss, an expiry, and a newer proposal from the same
   session.
+
+Your answer is typed into the session that proposed the trick, and it starts a turn there. After the
+option, one line says what happened: the trick is installed and on, or you declined, the proposal is
+closed and nothing was installed. A Dismiss types nothing.
+
+The first card names the files Collie ships, byte for byte: the helper `trick.ts` and the
+`AGENTS.md` that `collie trick init` writes. No card shows them. Notes the agent changed show only the
+change. A proposal never carries `config.toml`. When the trick drew nothing without it, the first card
+says the trick may show nothing until you add its settings file on the machine.
 
 Collie never recommends either option. A proposal is code from an agent, and your own reading is the
 whole check. So the yes stays off until every card of the code was on screen.

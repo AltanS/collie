@@ -395,7 +395,8 @@ collie trick remove design-review
 A trick runs only while it is on. Switch it on in Settings → Tricks, or with `collie trick on` in a
 shell. Switching on is your yes to the code as it is now. Collie copies the code to a folder of its
 own and runs that copy. The row, and `collie trick on`, list any warnings from a text search of the
-code first.
+code first. The search reads every file the `run` line names, whatever its name, and warns about code
+the `run` line hands over that it could not read.
 
 Switching off stops the runs and removes the trick's parts from the phone. It withdraws the trick's
 open Decisions too. `remove` works only on a trick that is off.

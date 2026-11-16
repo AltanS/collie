@@ -64,7 +64,16 @@ export interface ProposalRead {
   /** {@link proposalHash} of the files. */
   hash: string;
   bytes: number;
+  /**
+   * The proposing CLI ran the trick without the `config.toml` it leaves behind, and it drew nothing, failed
+   * or printed a part Collie refuses (`settings: true` on the wire, the first full trick run, 2026-11-16,
+   * decision 7). Not part of the hash: it adds one line to the card and changes nothing installed.
+   */
+  settingsLeft?: true;
 }
+
+/** Card 1's line for a trick that needs the settings file it leaves behind ({@link ProposalRead.settingsLeft}). */
+export const PROPOSAL_SETTINGS_LEFT = "This trick has a settings file that does not come along. It may show nothing until you add it on the machine.";
 
 /** Why a proposal is refused: a code for a program, and one plain line. */
 export interface ProposeRefusal {
@@ -351,5 +360,7 @@ export function readProposal(fields: JsonObject | undefined): { ok: true; propos
   const checked = checkProposedFiles(files);
   if (!checked.ok) return checked;
   const sorted = files.toSorted((a, b) => (a.rel === b.rel ? 0 : a.rel < b.rel ? -1 : 1));
-  return { ok: true, proposal: { requestId, files: sorted, manifest: checked.manifest, hash: proposalHash(sorted), bytes: checked.bytes } };
+  const proposal: ProposalRead = { requestId, files: sorted, manifest: checked.manifest, hash: proposalHash(sorted), bytes: checked.bytes };
+  if (fields.settings === true) proposal.settingsLeft = true;
+  return { ok: true, proposal };
 }

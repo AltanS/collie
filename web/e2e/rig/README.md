@@ -629,7 +629,11 @@ for pi and omp, the subscription for Claude.
 - The operator's bridges, from inside a harness. Each harness starts with `COLLIE_STATE_DIR` set to
   the rig's state dir. So a `collie walky` that an agent runs in a rig pane reaches the rig's bridge
   first. Without it, the CLI looks for bridges in the hook target registry under the real home. The
-  rig's bridge is not listed there, because it registers under its own HOME.
+  rig's bridge is not listed there, because it registers under its own HOME. The harness's `collie` shim
+  also sets the machine's own config folder, instance, port, `COLLIE_SKILL_SYNC=off` and the bridge's
+  scratch HOME, so the CLI never reads the operator's `.env` and never goes on to a live bridge after the
+  rig's bridge answers "not here" (the trick-flow lab, 2026-11-16). The rig's bridges run with
+  `COLLIE_SKILL_SYNC=off` too, so a Hill switch never rewrites a skill file.
 - The operator's agent config. Each harness gets a scratch config under
   `~/.cache/collie-lab/browser-leg-state/harness/<id>/`. Only what it needs is copied there at
   0600: Claude's OAuth file without its refresh token (a dummy login when Claude replays), and pi's `auth.json` only when there is no key

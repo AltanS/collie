@@ -276,9 +276,23 @@ collie trick propose ~/work/idle-watch
 It adds nothing to this machine's tricks. `propose` runs the same check as `collie trick check`, then sends the files to the person's Hill as a
 card, "Switch on the trick idle-watch?". It leaves dot files, `node_modules/`, logs, `inputs/`,
 `media/`, `captures/` and `config.toml` behind. It prints the card's id. Read the answer with
-`collie hill status <id>`, or wait for it as a message.
+`collie hill status <id>`, or wait for it as a message. The message says what happened: the trick is
+installed and on, or the person declined and nothing was installed.
+
+A trick must work with no `config.toml`. When the folder has one, `propose` first runs the trick
+once without it, as the bridge runs it after the yes. If the trick then draws nothing, fails or prints
+a part Collie refuses, `propose` prints a warning and still sends it, and the card tells the person
+it may show nothing until they add the settings file. Draw a short message for a missing setting
+instead. A status text is 12 characters at most, so "not set up" fits and "no folder set" does not.
 
 The card shows every file of the code, and recommends nothing: the person's own reading is the check.
+The helper `trick.ts` and the `AGENTS.md` that `init` wrote are named, not shown, while they are
+byte for byte what Collie ships. A changed `AGENTS.md` shows only the change.
+
+The text search reads every file the `run` line names as code, and every file such a file imports by
+a relative path, whatever its name or folder: a test, a fixture or a `.txt` file too. A `run` line
+that hands a shell or an interpreter something the search did not read, such as a binary file, a path
+outside the trick or code on the line itself, gets a warning of its own.
 Nothing runs before their yes. A trick with `rules` or an agent view cannot be proposed: "A trick that
 gives agents instructions cannot be proposed by an agent. Ask your person to add it on the machine."
 The limits are in [A proposal from an agent](tricks-reference.md#a-proposal-from-an-agent).

@@ -14,6 +14,7 @@ import { trickCodeHash } from "./code-hash.ts";
 import { OfficialTricks } from "./official-install.ts";
 import type { OfficialEntry } from "./official.ts";
 import { TRICKS_DIR } from "./paths.ts";
+import { proposalHash } from "./propose-wire.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { TricksService, type TricksServiceDeps } from "./service.ts";
 import { withSwitch, writeSwitches, type Switches } from "./switches.ts";
@@ -157,8 +158,8 @@ describe("windows gate", () => {
     expect(await win.service.proposalTarget("fresh")).toEqual({ kind: "refused", reason: TRICKS_WINDOWS_LINE });
     const files = [{ rel: "trick.toml", bytes: new TextEncoder().encode('id = "fresh"\nname = "F"\nplaces = ["belt"]\n'), executable: false }];
     const origin = { by: "agent" as const, host: HOST, label: "composer", at: "2026-11-12T09:00:00Z" };
-    expect(await win.service.installProposed("fresh", files, origin)).toEqual({ ok: false, message: TRICKS_WINDOWS_LINE });
-    expect(await win.service.installProposedVersion("legs", files, origin, "c".repeat(64))).toEqual({ ok: false, message: TRICKS_WINDOWS_LINE });
+    expect(await win.service.installProposed("fresh", files, origin, proposalHash(files))).toEqual({ ok: false, message: TRICKS_WINDOWS_LINE });
+    expect(await win.service.installProposedVersion("legs", files, origin, "c".repeat(64), proposalHash(files))).toEqual({ ok: false, message: TRICKS_WINDOWS_LINE });
     expect(await readdir(join(win.configDir, TRICKS_DIR))).toEqual(["legs"]);
   });
 

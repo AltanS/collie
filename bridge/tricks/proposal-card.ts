@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 
 import { HILL_SUMMARY_MAX, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
-import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
+import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type MANIFEST_KEYS, type TrickManifest, type View, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
-import { addedDiff, codeGroup, changeCells, filesOnCards, GROUP_WIDE_GAP, groupOrder, helperNote, placesTables, shippedHelpers, sizeWords, type GroupRefusal } from "./card-group.ts";
-import { bytesOf, checked, filesSentence, fitView, listWords, newInputs, newRights, placeWords, rightsHead, versionTitle, WARN_VERBS } from "./version-card.ts";
-import type { ProposedFile } from "./propose-wire.ts";
+import { addedDiff, codeGroup, changeCells, filesOnCards, GROUP_WIDE_GAP, groupOrder, helperNote, notesChangedNote, placesTables, shippedHelpers, shippedNotesDiff, sizeWords, type GroupRefusal, type ShippedFile } from "./card-group.ts";
+import { bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, listWords, newInputs, newRights, placeWords, rightsHead, versionTitle, WARN_VERBS } from "./version-card.ts";
+import { PROPOSAL_SETTINGS_LEFT, type ProposedFile } from "./propose-wire.ts";
 import type { VersionDiff } from "./version-diff.ts";
 
 // THE PROPOSAL CARD (crew slice 8): one Decision of Collie's own on the lead's Hill for each trick an agent
@@ -75,7 +75,39 @@ export interface ProposalCardInput {
   /** Each file's size in bytes, for card 1 of a group. */
   sizes?: ReadonlyMap<string, number>;
   /** The files that are a helper this Collie ships, with its version (card-group.ts `shippedHelpers`): named on card 1, never shown. */
-  helpers?: ReadonlyMap<string, number>;
+  helpers?: ReadonlyMap<string, ShippedFile>;
+  /** The diff shows `AGENTS.md` against the notes Collie ships (card-group.ts `shippedNotesDiff`): card 1 says so. */
+  notesChanged?: boolean;
+  /** The trick needs the settings file it leaves behind (propose-wire.ts `settingsLeft`): card 1 says so. */
+  settingsLeft?: boolean;
+}
+
+/** The line a card 1 carries for a trick that needs the settings file it leaves behind, or none. */
+function settingsLines(settingsLeft: boolean | undefined): ViewNode[] {
+  return settingsLeft === true ? [{ kind: "para", text: PROPOSAL_SETTINGS_LEFT }] : [];
+}
+
+/**
+ * A new trick's diff from its files' bytes (every file added), with its notes shown against the notes
+ * Collie ships when they are those notes changed, and the files Collie ships byte for byte.
+ */
+export interface ProposalDiff {
+  diff: VersionDiff;
+  helpers: Map<string, ShippedFile>;
+  notesChanged: boolean;
+}
+
+export function proposalDiff(id: string, files: readonly Pick<ProposedFile, "rel" | "bytes">[]): ProposalDiff {
+  const diff = addedDiff(files);
+  const helpers = shippedHelpers(files, id);
+  let notesChanged = false;
+  diff.files = diff.files.map((file, at) => {
+    const changed = helpers.has(file.rel) ? null : shippedNotesDiff(files[at]!, id);
+    if (changed === null) return file;
+    notesChanged = true;
+    return changed;
+  });
+  return { diff, helpers, notesChanged };
 }
 
 /** One line of somebody else's words for a sentence: every character a card could misread as `?`, cut. */
@@ -97,9 +129,36 @@ export function proposalTitle(id: string): string {
   return `Switch on the trick ${id}?`;
 }
 
-/** What the trick asks for, as chip words: its environment names and its places. */
-export function proposalRights(manifest: Pick<TrickManifest, "env" | "places">): string[] {
-  return [...(manifest.env ?? []), ...manifest.places.map((place) => placeWords(place))];
+/**
+ * EVERY `trick.toml` KEY, AND WHETHER THE CARD MUST NAME IT (the first full trick run, 2026-11-16,
+ * decision 1). `chip`: a right the card names as a chip ({@link proposalRights}). `reads`: the files it
+ * reads, the card's inputs sentence. `refused`: a proposal never carries it (propose-wire.ts). `text`: not a
+ * right (`powersOf` in approved.ts leaves it out). A new key in `MANIFEST_KEYS` is a compile error until it
+ * is classed here, and proposal-card.test.ts fails when a `chip` or `reads` key has no line on the card.
+ */
+export const PROPOSAL_KEY_RIGHTS = {
+  id: "text",
+  name: "text",
+  run: "text",
+  every: "text",
+  watch: "text",
+  on: "text",
+  mode: "text",
+  contract: "text",
+  icon: "text",
+  description: "text",
+  about: "text",
+  version: "text",
+  places: "chip",
+  env: "chip",
+  decides: "chip",
+  inputs: "reads",
+  rules: "refused",
+} as const satisfies { readonly [K in (typeof MANIFEST_KEYS)[number]]: "chip" | "reads" | "refused" | "text" };
+
+/** What the trick asks for, as chip words: its environment names, its places, and `decides` (its answers go to a session). */
+export function proposalRights(manifest: Pick<TrickManifest, "env" | "places" | "decides">): string[] {
+  return [...(manifest.env ?? []), ...manifest.places.map((place) => placeWords(place)), ...(manifest.decides === "reply" ? [DECIDES_REPLY_CHIP] : [])];
 }
 
 /** The author's words on a card: at most this many paragraphs ... */
@@ -176,9 +235,9 @@ function fitsCard(view: View): View | undefined {
  * Card 1 of a group: who proposes, the facts in full, which card shows which file, then the author's
  * words when they still fit (they never displace a fact). Null when the facts alone do not fit.
  */
-function factsCard(head: readonly ViewNode[], count: number, codeCards: number, tables: readonly ViewNode[], author: readonly ViewNode[], helpers: ReadonlyMap<string, number> = new Map()): View | null {
+function factsCard(head: readonly ViewNode[], count: number, codeCards: number, tables: readonly ViewNode[], author: readonly ViewNode[], helpers: ReadonlyMap<string, ShippedFile> = new Map(), notesChanged = false): View | null {
   // A paragraph, not a note line: it is a sentence, and a line does not wrap.
-  const helperLines = [...helpers.values()].map((version): ViewNode => ({ kind: "para", text: helperNote(version) }));
+  const helperLines = [...[...helpers.values()].map((shipped): ViewNode => ({ kind: "para", text: helperNote(shipped) })), ...(notesChanged ? [{ kind: "para", text: notesChangedNote() } satisfies ViewNode] : [])];
   const facts: View = [...head, { kind: "line", text: filesOnCards(count - helpers.size, codeCards), attrs: { role: "note" } }, ...helperLines, ...tables];
   return (author.length > 0 ? fitsCard([...facts, ...author]) : undefined) ?? fitsCard(facts) ?? null;
 }
@@ -197,24 +256,28 @@ export function proposalCard(input: ProposalCardInput): ProposalCardResult {
   const reads = manifest.inputs ?? [];
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It ${alsoWords}.` : "It asks for no rights.";
-  const head = [...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null)];
+  const head = [...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...settingsLines(input.settingsLeft)];
   const words = authorWords(manifest);
   const author: ViewNode[] = words.length > 0 ? [{ kind: "group", attrs: { label: PROPOSAL_AUTHOR_WORDS }, kids: words }] : [];
-  const shown = fitView(head, input.diff, author);
+  const helpers = input.helpers ?? new Map<string, ShippedFile>();
+  // Collie's own notes, byte for byte, are named and never shown, on one card as on a group (decision 10).
+  const notes = [...helpers].filter(([, shipped]) => shipped.what === "notes");
+  const notesLines = [...notes.map(([, shipped]): ViewNode => ({ kind: "para", text: helperNote(shipped) })), ...(input.notesChanged === true ? [{ kind: "para", text: notesChangedNote() } satisfies ViewNode] : [])];
+  const visible: VersionDiff = { ...input.diff, files: input.diff.files.filter((file) => !notes.some(([rel]) => rel === file.rel)) };
+  const shown = fitView([...head, ...notesLines], visible, author);
   if (!shown.headFits) return TOO_LARGE_FACTS;
   const total = input.diff.files.length;
   const files = total === 1 ? "It has 1 file." : `It has ${String(total)} files.`;
   const who = proposerSentence(input.proposer);
   const base: Omit<HillPostInput, "requestId" | "summary"> = { title: proposalTitle(input.id), options: [{ ...PROPOSAL_ON }, { ...PROPOSAL_LATER }], text: "none", priority: "today", recommends: null };
-  if (total === 0 || (shown.view !== null && shown.shown >= total)) {
+  if (total === 0 || (shown.view !== null && shown.shown >= visible.files.length)) {
     const card = { ...base, summary: summaryOf(who, input.replaces === true, `${files} ${fact}`, `${files} It asks for rights, listed below.`) };
     return { ok: true, card: shown.view === null ? card : { ...card, view: shown.view } };
   }
-  const helpers = input.helpers ?? new Map<string, number>();
   const code = codeGroup(input.diff.files, manifest.run ?? null, "refuse", helpers);
   if (!code.ok) return { ok: false, code: code.code, error: code.error };
   const rows = groupOrder(input.diff.files, manifest.run ?? null).map((file) => ({ rel: file.rel, cells: [sizeWords(input.sizes?.get(file.rel) ?? 0)] }));
-  const first = factsCard([{ kind: "para", text: who }, ...head], total, code.cards.length, placesTables(rows, ["Size"], code.places, helpers), author, helpers);
+  const first = factsCard([{ kind: "para", text: who }, ...head], total, code.cards.length, placesTables(rows, ["Size"], code.places, helpers), author, helpers, input.notesChanged === true);
   if (first === null) return TOO_LARGE_FACTS;
   const tail = ` ${cardsSentence(code.cards.length + 1)}`;
   const summary = summaryOf(who, input.replaces === true, `${files} ${fact}${tail}`, `${files} It asks for rights, listed below.${tail}`);
@@ -233,7 +296,7 @@ export type ProposalCardCount = { ok: true; cards: number } | Extract<ProposalCa
 export function proposalCardCount(input: Pick<ProposalCardInput, "manifest" | "warnings" | "crew"> & { files: readonly Pick<ProposedFile, "rel" | "bytes">[] }): ProposalCardCount {
   const sizes = new Map(input.files.map((file) => [file.rel, file.bytes.byteLength]));
   const proposer: ProposerFacts = { by: "agent", host: "this machine", label: null };
-  const made = proposalCard({ id: input.manifest.id, manifest: input.manifest, proposer, diff: addedDiff(input.files), warnings: input.warnings, crew: input.crew, sizes, helpers: shippedHelpers(input.files) });
+  const made = proposalCard({ id: input.manifest.id, manifest: input.manifest, proposer, warnings: input.warnings, crew: input.crew, sizes, ...proposalDiff(input.manifest.id, input.files) });
   if (!made.ok) return made;
   return { ok: true, cards: made.card.group?.parts.length ?? 1 };
 }
@@ -260,7 +323,9 @@ export interface ProposalVersionCardInput {
   /** As {@link ProposalCardInput.replaces}. */
   replaces?: boolean;
   /** As {@link ProposalCardInput.helpers}: a changed file that is now a helper this Collie ships. */
-  helpers?: ReadonlyMap<string, number>;
+  helpers?: ReadonlyMap<string, ShippedFile>;
+  /** As {@link ProposalCardInput.settingsLeft}. */
+  settingsLeft?: boolean;
 }
 
 /** The card for a proposed new version of a trick a proposal made: the version card, named and never recommended, one card or a group as {@link proposalCard}. */
@@ -270,7 +335,7 @@ export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCa
   const reads = newInputs(input.baseManifest, input.manifest);
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It now also ${alsoWords}.` : "It asks for no new rights.";
-  const head = [...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null)];
+  const head = [...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...settingsLines(input.settingsLeft)];
   const shown = fitView(head, input.diff);
   if (!shown.headFits) return TOO_LARGE_FACTS;
   const total = input.diff.files.length;
@@ -282,7 +347,7 @@ export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCa
     return { ok: true, card: shown.view === null ? card : { ...card, view: shown.view } };
   }
   const changed = new Set(input.diff.files.map((file) => file.rel));
-  const helpers = new Map([...(input.helpers ?? new Map<string, number>())].filter(([rel]) => changed.has(rel)));
+  const helpers = new Map([...(input.helpers ?? new Map<string, ShippedFile>())].filter(([rel]) => changed.has(rel)));
   const code = codeGroup(input.diff.files, input.manifest.run ?? null, "refuse", helpers);
   if (!code.ok) return { ok: false, code: code.code, error: code.error };
   const rows = groupOrder(input.diff.files, input.manifest.run ?? null).map((file) => ({ rel: file.rel, cells: changeCells(file) }));

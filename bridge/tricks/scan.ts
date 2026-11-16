@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { builtinModules } from "node:module";
-import { basename, join } from "node:path";
+import { basename, join, posix } from "node:path";
 
 import { trickHelperSource } from "../../cli/trick-kit/source.ts" with { type: "macro" };
 import { TRICK_WARNINGS_MAX, type TrickManifest, type TrickWarningKind, type WireTrickWarning } from "../../web/src/lib/tricks/schema.ts";
@@ -184,6 +184,103 @@ export function isScannedFile(rel: string): boolean {
   return !rel.split("/").includes("fixtures");
 }
 
+// ── what the run line names (the first full trick run, 2026-11-16, decision 2) ──────────────────────
+// No run target escapes the scan: `run = "fixtures/main.ts"` or `run = "sh payload.txt"` once named a file
+// the skip list above leaves out, and the card said nothing. Every file of the trick a run line names is
+// read as code, whatever its name or folder, and so is every file a read file imports by a relative path.
+// A run line that hands a file to a shell or an interpreter, and that file was not read as code (binary,
+// not in the folder, or code given on the line itself), gets a warning of its own. When in doubt, warn.
+
+/** The shells a run line can hand a file to: the file is then graded as a shell script. */
+const RUN_SHELLS: ReadonlySet<string> = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish", "source", "."]);
+/** The programs a run line can hand a file to as code: shells, script runtimes, and the launchers that start one. */
+const RUN_INTERPRETERS: ReadonlySet<string> = new Set([...RUN_SHELLS, "bun", "node", "deno", "tsx", "python", "python3", "perl", "ruby", "php", "lua", "awk", "env", "exec", "npx", "bunx"]);
+/** The flags that hand an interpreter code on the line itself. */
+const INLINE_CODE_FLAGS: ReadonlySet<string> = new Set(["-c", "-e", "--eval", "-p", "--print"]);
+
+/**
+ * The words of a run line, split on white space AND on shell punctuation (quotes, `;|&<>()$=` and the
+ * backtick), so a path is found wherever it stands: after `env FOO=bar`, inside `sh -c '...'` or
+ * `$(cat x)`, after `;`, `&&` or a pipe. A grep's split, not a shell's.
+ */
+function runWords(run: string): string[] {
+  return run.split(/[\s"';|&<>()$=`]+/u).filter((word) => word !== "");
+}
+
+/** The extensions a named file keeps its own grading for on a shell line; any other is graded as a shell script. */
+const RUN_CODE_EXTENSIONS: ReadonlySet<string> = new Set(["ts", "js", "mjs", "mts", "cjs", "py", "rb", "pl", "php", "lua"]);
+
+/** A shell line that builds a name the scan cannot follow: a variable or a substitution, a backtick, a glob, or `eval`. */
+const RUN_DYNAMIC = /[$`*?[]|(^|[\s;|&(])eval(\s|$)/u;
+/** The words after {@link RUN_UNREAD} for such a line. */
+export const RUN_DYNAMIC_WORDS = "a name the line builds ($, a backtick, a glob or eval)";
+
+/** A word as a path inside the trick's folder, or null for an absolute path or one that leaves the folder. */
+function folderRel(word: string): string | null {
+  // A run line is a POSIX shell line (tricks are gated on Windows): its absolute paths are POSIX ones.
+  if (word === "" || posix.isAbsolute(word) || word.startsWith("~") || word.startsWith("-")) return null;
+  const rel = posix.normalize(word);
+  return rel === "." || rel.startsWith("../") || rel === ".." ? null : rel;
+}
+
+/** What a run line hands to a shell or an interpreter. */
+export interface RunTargets {
+  /** The trick's files the line names, each to be read as code. */
+  named: string[];
+  /** The ones a shell gets, graded as shell scripts. */
+  shell: Set<string>;
+  /** What the line hands to an interpreter that is not one of the trick's files: a path outside it, or code on the line. */
+  unread: string[];
+}
+
+/**
+ * The files of the trick a run line names, and what it hands to an interpreter that is no file of the
+ * trick. On a shell line every named file is graded as a shell script unless its extension is a code
+ * runtime's ({@link RUN_CODE_EXTENSIONS}): the superset grading, whatever the word's position. An
+ * interpreter counts wherever it stands (after `;`, `&&`, a pipe, `timeout`, `nice`, `busybox`...).
+ */
+export function runTargets(run: string, files: ReadonlySet<string>): RunTargets {
+  const out: RunTargets = { named: [], shell: new Set(), unread: [] };
+  const script = runtimeScript(run);
+  if (script !== null) {
+    out.named.push(posix.normalize(script));
+    return out;
+  }
+  let interpreter: string | null = null;
+  for (const word of runWords(run)) {
+    const name = basename(word);
+    if (RUN_INTERPRETERS.has(name)) {
+      if (name !== "env" && name !== "exec") interpreter = name;
+      continue;
+    }
+    if (interpreter !== null && INLINE_CODE_FLAGS.has(word) && !RUN_SHELLS.has(interpreter)) out.unread.push(`${word} (code on the run line)`);
+    const rel = folderRel(word);
+    if (rel !== null && files.has(rel)) {
+      if (!out.named.includes(rel)) out.named.push(rel);
+      if (!RUN_CODE_EXTENSIONS.has(posix.extname(rel).slice(1))) out.shell.add(rel);
+      continue;
+    }
+    // A word that looks like a file, handed to an interpreter, that is not a file of the trick: never read.
+    if (interpreter !== null && !word.startsWith("-") && !word.includes("://") && (word.includes("/") || /\.[A-Za-z0-9]+$/u.test(word))) out.unread.push(word);
+  }
+  if (RUN_DYNAMIC.test(run)) out.unread.push(RUN_DYNAMIC_WORDS);
+  return out;
+}
+
+/** The trick's files a source imports by a relative path (`./lib.ts`, `../x`), with the runtime's extensions tried. */
+function relativeImports(src: { file: string; text: string }, files: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  for (const match of src.text.slice(0, SOURCE_READ_MAX).matchAll(IMPORT_SPECIFIERS)) {
+    const spec = match[1] ?? match[2] ?? "";
+    if (!spec.startsWith("./") && !spec.startsWith("../")) continue;
+    const rel = folderRel(posix.join(posix.dirname(src.file), spec));
+    if (rel === null) continue;
+    const hit = [rel, ...["ts", "js", "mjs", "mts"].map((ext) => `${rel}.${ext}`)].find((candidate) => files.has(candidate));
+    if (hit !== undefined) out.push(hit);
+  }
+  return out;
+}
+
 /** Whether a source file is a shell script: by its name, or by its first line. */
 function isShell(file: string, text: string): boolean {
   if (/\.(?:sh|bash|zsh)$/.test(file)) return true;
@@ -295,14 +392,53 @@ export async function scanTrickFolder(folder: string, manifest: TrickManifest, e
   const out: FolderScan = { sources: [], notScanned: [], warnings: [] };
   if (shipped !== null) out.helper = { version: shipped, current: shipped === HELPER_VERSION, modified: false };
   else if (claimed !== null) out.helper = { version: claimed, current: false, modified: true };
-  out.sources = all.filter((src) => src.file !== MANIFEST_FILE && isScannedFile(src.file) && !(src.file === HELPER_FILE && shipped !== null));
-  out.notScanned = all.filter((src) => src.file !== MANIFEST_FILE && !out.sources.includes(src)).map((src) => src.file);
+  // Every file of the walk, text or not: a run line may name a binary file, which is then not read as code.
+  const files = new Set(entries.filter((entry) => entry.kind === "file").map((entry) => entry.rel));
+  const targets = manifest.run === undefined ? null : runTargets(manifest.run, files);
+  // The files that must be read as code whatever their names (decision 2): the run line's, then what they import.
+  const forced = new Set(targets?.named ?? []);
+  // The shipped helper stays Collie's code also when the program imports it, as every program does.
+  const isShippedHelper = (file: string) => file === HELPER_FILE && shipped !== null;
+  const isCode = (src: { file: string }) => !isShippedHelper(src.file) && (forced.has(src.file) || (src.file !== MANIFEST_FILE && isScannedFile(src.file)));
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const src of all.filter(isCode)) {
+      for (const rel of relativeImports(src, files)) {
+        if (forced.has(rel)) continue;
+        forced.add(rel);
+        grew = true;
+      }
+    }
+  }
+  out.sources = all.filter(isCode).map((src) => (targets?.shell.has(src.file) === true ? Object.assign({ shell: true }, src) : src));
+  out.notScanned = all.filter((src) => src.file !== MANIFEST_FILE && !isCode(src)).map((src) => src.file);
   // A trick that is only an agent view has no run line: its files are graded, and nothing is imported.
   const graded = manifest.run === undefined ? out.sources : [...out.sources, { file: MANIFEST_FILE, text: manifest.run, shell: true }];
   const imports = manifest.run === undefined || runtimeScript(manifest.run) === null ? [] : importWarnings(out.sources);
-  out.warnings = [...checkWarnings(graded, manifest.everyMs !== undefined), ...imports].slice(0, WARNINGS_MAX);
+  out.warnings = [...unreadTargets(manifest.run, targets, all, runLineOf(all)), ...checkWarnings(graded, manifest.everyMs !== undefined), ...imports].slice(0, WARNINGS_MAX);
   return out;
 }
+
+/** The line of `run =` in `trick.toml`, or 1. */
+function runLineOf(all: readonly { file: string; text: string }[]): number {
+  const text = all.find((src) => src.file === MANIFEST_FILE)?.text ?? "";
+  const at = text.split(/\r?\n/u).findIndex((line) => /^\s*run\s*=/u.test(line));
+  return at < 0 ? 1 : at + 1;
+}
+
+/**
+ * One `spawn` warning per thing the run line hands to a shell or an interpreter that the scan did not read
+ * as code: a named file that is binary or unreadable, a path that is no file of the trick, code on the line.
+ */
+function unreadTargets(run: string | undefined, targets: RunTargets | null, read: readonly { file: string }[], line: number): CheckWarning[] {
+  if (run === undefined || targets === null) return [];
+  const readFiles = new Set(read.map((src) => src.file));
+  const unread = [...targets.named.filter((rel) => !readFiles.has(rel)), ...targets.unread];
+  return unread.map((what) => ({ kind: "spawn", file: MANIFEST_FILE, line, text: shortLine(`${RUN_UNREAD} ${what}`) }));
+}
+
+/** The words before what a run line hands over unread, in the warning's text. */
+export const RUN_UNREAD = "the run line hands over code the scan did not read:";
 
 /** The warnings of a trick folder, read fresh, or an empty list when its code cannot be walked (then it is refused anyway). */
 export async function trickWarnings(folder: string, manifest: TrickManifest, fs: TrickFs = diskTrickFs): Promise<CheckWarning[]> {
@@ -324,5 +460,5 @@ export function wireWarnings(warnings: readonly CheckWarning[]): WireTrickWarnin
 
 /** One printed line per warning, as `check` and `on` print them. */
 export function warningLines(warnings: readonly CheckWarning[]): string[] {
-  return warnings.map((w) => `warn: ${w.file}:${w.line} ${WARN_TEXT[w.kind]}: ${w.text}`);
+  return warnings.map((w) => `warning: ${w.file}:${w.line} ${WARN_TEXT[w.kind]}: ${w.text}`);
 }

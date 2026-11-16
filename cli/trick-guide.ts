@@ -119,7 +119,7 @@ export function trickGuide(): string[] {
     "  t.facts        the sessions, the spaces, memberId and the trigger.",
     "  t.config       config.toml, parsed.",
     "  t.tap          the tap that started this run, or null.",
-    "  t.belt, t.status, t.dashboard, t.tabbar   one part in each place.",
+    "  t.belt, t.status, t.dashboard, t.tabbar   one part in each place. A status text is 12 characters at most.",
     "  t.menu         rows in a session's settings. t.menu(rows, { sessions }) and t.belt({ ..., sessions }) bind to sessions.",
     "  t.session      the trick's Page (the place session): a row on the Dashboard and a screen.",
     "  v.row, v.para, v.chip and the rest of v   one builder per view node.",
