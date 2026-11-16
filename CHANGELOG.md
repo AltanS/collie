@@ -53,6 +53,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
+- **The trick docs say what a proposal leaves behind and what its answer says.** The Hill docs say the answer is typed into the proposing session and starts a turn there; the authoring guide says a trick must work with no `config.toml`, which files the text search reads, and how the cards treat the helper and `AGENTS.md`.
 - **The decision records have a topic map and a check.** `.adr/README.md` opens with a map by topic and the rules for stubs, size and pointers, and `scripts/check-adr.ts`, run by `bun run test`, fails a record that has no `Status` or `Date`, a pointer without its back pointer, or a record the map does not list.
 - **Ten topic records state the send, update, crew, launch, durable agent, layout, look, usage, files and dialog rules.** ADR 0142 holds the rule for sends and the screens Collie cannot read, ADR 0143 the rule for how an install updates and what a release offers it, ADR 0144 the rule for the crew and the deputy, ADR 0145 the rule for launching and worktrees, ADR 0146 the rule for durable agents and their wire, ADR 0147 the rule for the pane lists and the dashboard's footer, ADR 0148 the rule for themes, fonts and the mark, ADR 0149 the rule for the usage figures and the account windows, ADR 0150 the rule for Files and Changes, and ADR 0151 the rule for how a dialog becomes a card. The records they replace are stubs that point to them, or are retired into the code header that holds the rule: 72 of the 150 records are stubs now.
 
