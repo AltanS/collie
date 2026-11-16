@@ -5,7 +5,8 @@ import { dirname, join } from "node:path";
 
 import { hostFor, WSL_FLAGS } from "./host.ts";
 import type { ForegroundProcess } from "./journal/types.ts";
-import { argvFromCmdline, createPaneProfile, envFromEnviron, createPaneVersion, PANE_LAST_GOOD_MS, paneBinaryOf, procProbe, sharedForegroundRead, type ForegroundOutcome, type ProcessProbe } from "./pane-binary.ts";
+import { piProcessOf } from "./journal/pi.ts";
+import { argvFromCmdline, createPaneHarness, createPaneProfile, envFromEnviron, createPaneVersion, PANE_LAST_GOOD_MS, paneBinaryOf, paneHarnessOf, procProbe, profileBinaries, sharedForegroundRead, type ForegroundOutcome, type ProcessProbe } from "./pane-binary.ts";
 import { createVersionReader, VersionCache } from "./surface/binary-version.ts";
 import { findTool } from "./tools.ts";
 import { loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
@@ -383,5 +384,99 @@ describe("createPaneVersion — the pane's last answer while its agent is gone f
     await versionOf(omp, "p1", ompRunning);
     expect((await versionOf(omp, "p2", shell)).version).toBe("18.6.1");
     expect((await versionOf(claude, "p1", shell)).command).toBeUndefined();
+  });
+});
+
+// #793: a pane the multiplexer names no agent on (pi started by hand in a shell) was taken for a shell,
+// and a send there took the blind road. The send path now names it by its foreground program, with the
+// profiles' binary table, and the journal asks the same function.
+describe("paneHarnessOf: which harness runs in the pane, by its foreground program (#793)", () => {
+  /** The argv shapes one binary takes in a pane: by name, by path, as an interpreter's script. */
+  const launches = (binary: string): string[][] => [
+    [binary],
+    [`/home/dev/.local/bin/${binary}`, "--continue"],
+    ["node", `/home/dev/.npm-global/bin/${binary}`],
+    ["/usr/bin/node", "--no-warnings", `/home/dev/.nvm/versions/node/v24.0.0/bin/${binary}`],
+    ["bun", `/home/dev/.bun/install/global/node_modules/.bin/${binary}`],
+    ["node", `/home/dev/.cache/npx/0a1b/node_modules/.bin/${binary}`, "--model", "x"],
+  ];
+  let pid = 5_000;
+
+  test("every profile's binary, in every shape, with a proven pid: that harness", () => {
+    expect(profileBinaries()).toEqual(binaries);
+    for (const [binary, harness] of binaries) {
+      for (const argv of launches(binary)) expect([argv, paneHarnessOf([ps(argv, ++pid)], binaries, probe(null))?.harness]).toEqual([argv, harness]);
+    }
+  });
+
+  test("a wrapper and the agent it runs, both in the foreground, name the agent once", () => {
+    const wrapper = ps(["bash", "/home/dev/bin/run-pi.sh"], ++pid);
+    const agent = ps(["node", "/home/dev/.npm-global/bin/pi"], ++pid);
+    expect(paneHarnessOf([wrapper, agent], binaries, probe(null))?.harness).toBe("pi");
+    expect(paneHarnessOf([agent, ps(["pi"], ++pid)], binaries, probe(null))?.harness).toBe("pi");
+  });
+
+  test("a pid whose /proc/<pid>/cmdline is not the reported argv, or a host with no /proc: no name", () => {
+    expect(paneHarnessOf([ps(["pi"], ++pid)], binaries, probe(null, null, ["bash"]))).toBeNull();
+    expect(paneHarnessOf([ps(["pi"], ++pid)], binaries, probe(null, null, null))).toBeNull();
+    // One proven process of the harness is enough; an unproven one beside it adds nothing.
+    const proven = ps(["pi"], ++pid);
+    expect(paneHarnessOf([{ argv: ["node", "/x/pi"], pid: 1 }, proven], binaries, probe(null))?.process).toBe(proven);
+  });
+
+  test("a process the multiplexer reports with no pid counts on its argv alone", () => {
+    expect(paneHarnessOf([ps(["omp"])], binaries, probe(null, null, null))?.harness).toBe("omp");
+  });
+
+  test("two harnesses in the foreground: no name, a wrong profile types the wrong keys", () => {
+    expect(paneHarnessOf([ps(["pi"], ++pid), ps(["omp"], ++pid)], binaries, probe(null))).toBeNull();
+    expect(paneHarnessOf([ps(["claude"], ++pid), ps(["node", "/home/dev/.bun/bin/codex"], ++pid)], binaries, probe(null))).toBeNull();
+  });
+
+  test("a program the table does not name exactly: no name", () => {
+    const unknown = [
+      ["bash"],
+      ["ssh", "dev@box", "pi"],
+      ["docker", "exec", "-it", "box", "pi"],
+      ["distrobox", "enter", "box", "--", "pi"],
+      ["bun", "x", "pi"],
+      ["node", "/home/dev/.local/share/pnpm/global/5/node_modules/pi-agent/dist/cli.js"],
+      ["python3", "pi.py"],
+      ["pi-dev"],
+      ["/home/dev/bin/run-pi.sh"],
+      [],
+    ];
+    for (const argv of unknown) expect([argv, paneHarnessOf([ps(argv, ++pid)], binaries, probe(null))]).toEqual([argv, null]);
+    expect(paneHarnessOf([], binaries, probe(null))).toBeNull();
+  });
+
+  test("createPaneHarness: over the pane's read; a refused read names nothing", async () => {
+    const reads = new Map<string, ForegroundOutcome>([["p1", { ok: true, value: [ps(["pi"], ++pid)] }], ["p2", { ok: false }], ["p3", { ok: true, value: [] }]]);
+    const named = createPaneHarness({ read: (paneId) => Promise.resolve(reads.get(paneId) ?? { ok: false }), binaries: () => binaries, probe: probe(null) });
+    expect(await named("p1")).toBe("pi");
+    expect(await named("p2")).toBeNull();
+    expect(await named("p3")).toBeNull();
+  });
+
+  test("the journal and the send path give the same answer for every case", async () => {
+    const cases: ForegroundProcess[][] = [
+      [ps(["pi"], ++pid)],
+      [ps(["omp", "--resume", "abc"], ++pid)],
+      [ps(["node", "/home/dev/.npm-global/bin/pi", "--session", "/x.jsonl"], ++pid)],
+      [ps(["bun", "/home/dev/.bun/install/global/node_modules/.bin/omp"])],
+      [ps(["bash", "/home/dev/bin/run-pi.sh"], ++pid), ps(["pi"], ++pid)],
+      [ps(["pi"], ++pid), ps(["omp"], ++pid)],
+      [ps(["claude"], ++pid), ps(["pi"], ++pid)],
+      [ps(["claude"], ++pid)],
+      [ps(["bash"], ++pid)],
+      [ps(["ssh", "dev@box"], ++pid)],
+      [],
+    ];
+    for (const processes of cases) {
+      const send = await createPaneHarness({ read: () => Promise.resolve({ ok: true, value: processes }), binaries: profileBinaries, probe: probe(null) })("p1");
+      // The journal reads pi and omp logs only: for any other harness it has no answer, by design.
+      const journal = piProcessOf(processes)?.harness ?? null;
+      expect([processes.map((p) => p.argv.join(" ")), journal]).toEqual([processes.map((p) => p.argv.join(" ")), send === "pi" || send === "omp" ? send : null]);
+    }
   });
 });
