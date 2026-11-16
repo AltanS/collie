@@ -349,3 +349,11 @@ export const PHOSPHOR = {
  * of these names keeps the regular outline under `phosphor-fill`; KEYS.md lists them.
  */
 export const PHOSPHOR_FILL_KEEPS_REGULAR: readonly string[] = ["x", "check", "minus", "circle", "circle-dashed"];
+
+/**
+ * Phosphor names drawn from the FILL file in every weight, because the key means a solid shape: the
+ * regular and duotone `stop` are a ring, and the Stop button shows a filled square (the operator's pick
+ * of 2026-11-16). `Icon` adds `fill-current` for the same keys, which fills lucide's and iconoir's
+ * square. KEYS.md lists the keys.
+ */
+export const PHOSPHOR_SOLID: readonly string[] = ["stop"];

@@ -57,6 +57,35 @@ describe("the Icon contract", () => {
   });
 });
 
+// THE STOP IS A SOLID SQUARE (2026-11-16): the outline read as an empty checkbox. One rule in `Icon`
+// (`fill-current`) fills lucide's and iconoir's square; phosphor draws its fill file in every weight.
+describe("the stop key is solid in every set", () => {
+  it("wears `fill-current` without the caller asking, in lucide and in a loaded set", async () => {
+    const { container } = render(<Icon name="stop" className="size-4" />);
+    expect(svg(container).classList.contains("fill-current")).toBe(true);
+    expect(svg(container).classList.contains("size-4")).toBe(true);
+    for (const set of ["iconoir", "phosphor", "phosphor-fill", "phosphor-duotone"] as const) {
+      const { container: drawn } = render(<Icon name="stop" set={set} />);
+      await waitFor(() => expect(svg(drawn).getAttribute("data-glyphs")).toBe(set));
+      expect(svg(drawn).classList.contains("fill-current"), set).toBe(true);
+    }
+  });
+
+  it("does not fill a key that is meant to be an outline", () => {
+    const { container } = render(<Icon name="close" />);
+    expect(svg(container).classList.contains("fill-current")).toBe(false);
+  });
+
+  it("draws phosphor's solid square in all three weights, never the ring", async () => {
+    await Promise.all([preloadGlyphSet("phosphor"), preloadGlyphSet("phosphor-fill"), preloadGlyphSet("phosphor-duotone")]);
+    const fill = glyphSetData("phosphor-fill")?.glyphs.stop;
+    expect(fill).toBeDefined();
+    expect(glyphSetData("phosphor")?.glyphs.stop).toEqual(fill);
+    expect(glyphSetData("phosphor-duotone")?.glyphs.stop).toEqual(fill);
+    expect(fill).toHaveLength(1);
+  });
+});
+
 describe("a glyph set", () => {
   it("draws lucide until the set arrives, then the set, in the same box", async () => {
     const { container } = render(<Icon name="close" set="phosphor" className="size-5" />);

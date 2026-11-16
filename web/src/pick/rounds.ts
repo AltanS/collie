@@ -9,8 +9,6 @@ export type PickRoundLoader = () => Promise<{ default: PickRoundDef }>;
 const REGISTRY = {
   // M97 spec 05: the four look decisions of the session filter. Waits for the operator's pick.
   "session-filter": () => import("./rounds/session-filter"),
-  // The Belt's Stop pill reads like a checkbox: four other glyphs. Waits for the operator's pick.
-  "stop-icon": () => import("./rounds/stop-icon"),
 } satisfies Record<string, PickRoundLoader>;
 
 /** Every round, by id. */

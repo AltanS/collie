@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The Stop button shows a filled square.** The outline square read as an empty checkbox, so the Belt Stop, a durable agent's Stop and the recording button now share one solid square, in every icon set.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added

@@ -24,6 +24,14 @@ import { LUCIDE } from "./lucide";
 // a set's chunk loads, when it cannot load, and for a key the family has no glyph for. Every set is
 // drawn by lucide-react's own `Icon`, so the 24px default box and the attribute rules never differ.
 
+/**
+ * KEYS THE SET DRAWS SOLID, whichever set it is. `fill-current` fills lucide's rounded square and
+ * iconoir's stroked one; phosphor's regular and duotone weights draw their `stop` from the fill file
+ * (`PHOSPHOR_SOLID` in `sets/phosphor.ts`), because a class cannot fill a ring. So no caller adds the
+ * class, and the Stop of the Belt, of a durable agent and of the recording mic stay the same square.
+ */
+const SOLID_KEYS: ReadonlySet<IconKey> = new Set<IconKey>(["stop"]);
+
 export interface IconProps extends Omit<SVGProps<SVGSVGElement>, "name" | "children" | "ref"> {
   /** What the glyph means. An unknown key does not compile. */
   name: IconKey;
@@ -35,7 +43,8 @@ export interface IconProps extends Omit<SVGProps<SVGSVGElement>, "name" | "child
 export function Icon({ name, set, className, ...rest }: IconProps) {
   const worn = useGlyphSetId();
   const data = useGlyphSetData(set ?? worn);
-  const classes = className === undefined ? "icon" : `icon ${className}`;
+  const base = SOLID_KEYS.has(name) ? "icon fill-current" : "icon";
+  const classes = className === undefined ? base : `${base} ${className}`;
   const node = data?.glyphs[name];
   if (data === null || node === undefined) {
     const Glyph = LUCIDE[name];

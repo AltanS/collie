@@ -203,6 +203,14 @@ describe("DurableBar", () => {
     expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Steer", "Stop"]);
   });
 
+  it("draws the Stop as a filled square, offered or dimmed", () => {
+    const { rerender } = render(<DurableBar items={DURABLE_BAR} state={state()} />);
+    const glyph = () => screen.getByRole("button", { name: "Stop the running turn" }).querySelector("svg[data-icon='stop']")!;
+    expect(glyph().classList.contains("fill-current")).toBe(true);
+    rerender(<DurableBar items={DURABLE_BAR} state={state({ stop: { offered: false } })} />);
+    expect(glyph().classList.contains("fill-current")).toBe(true);
+  });
+
   it("renders nothing for a program that declared neither", () => {
     const { container } = render(<DurableBar items={[]} state={state()} />);
     expect(container).toBeEmptyDOMElement();
@@ -310,6 +318,16 @@ describe("ScreenStop (M68 spec 02)", () => {
     expect(stop()).toHaveAttribute("data-slot", "belt-stop");
     expect(stop()).toHaveTextContent("Stop");
     expect(stop().className).toContain("min-w-11");
+  });
+
+  // The outline square read as an empty checkbox, so the Stop draws a solid one (2026-11-16): live and dimmed alike.
+  it("draws a filled square, live and dimmed", () => {
+    const { rerender } = render(<ScreenStop paneId="w1:p1" running onStop={async () => {}} />);
+    const glyph = () => stop().querySelector("svg[data-icon='stop']")!;
+    expect(glyph().classList.contains("fill-current")).toBe(true);
+    rerender(<ScreenStop paneId="w1:p1" running={false} onStop={async () => {}} />);
+    expect(glyph().classList.contains("fill-current")).toBe(true);
+    expect(stop().className.split(/\s+/)).toContain("opacity-50");
   });
 
   it("is live while the turn runs: full strength, no aria-disabled", () => {

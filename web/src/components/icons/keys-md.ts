@@ -1,6 +1,6 @@
 import { ICON_AREAS, ICON_KEYS, ICON_KEY_LIST } from "./keys";
 import { ICONOIR } from "./sets/iconoir";
-import { PHOSPHOR, PHOSPHOR_FILL_KEEPS_REGULAR } from "./sets/phosphor";
+import { PHOSPHOR, PHOSPHOR_FILL_KEEPS_REGULAR, PHOSPHOR_SOLID } from "./sets/phosphor";
 
 // The text of `KEYS.md`, from the key table and the family maps. `bun scripts/glyph-keys.ts` writes the
 // file and `keys.test.ts` fails when the file on disk is not this text.
@@ -26,6 +26,15 @@ export function keysMarkdown(): string {
       ICON_KEY_LIST.filter((key) => {
         const name = PHOSPHOR[key];
         return name !== null && PHOSPHOR_FILL_KEEPS_REGULAR.includes(name);
+      })
+        .map((key) => `\`${key}\``)
+        .join(", ") +
+      ".",
+    "",
+    "These keys are solid in every set: `Icon` fills the lucide and iconoir glyph, and phosphor draws the fill file in all three weights: " +
+      ICON_KEY_LIST.filter((key) => {
+        const name = PHOSPHOR[key];
+        return name !== null && PHOSPHOR_SOLID.includes(name);
       })
         .map((key) => `\`${key}\``)
         .join(", ") +

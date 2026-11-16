@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { Plugin } from "vite";
 
 import { ICONOIR } from "./src/components/icons/sets/iconoir";
-import { PHOSPHOR, PHOSPHOR_FILL_KEEPS_REGULAR } from "./src/components/icons/sets/phosphor";
+import { PHOSPHOR, PHOSPHOR_FILL_KEEPS_REGULAR, PHOSPHOR_SOLID } from "./src/components/icons/sets/phosphor";
 import type { GlyphNode } from "./src/components/icons/glyph-data";
 import type { GlyphSetId } from "./src/lib/glyph-sets";
 
@@ -40,7 +40,8 @@ const PHOSPHOR_ROOT = { viewBox: "0 0 256 256", fill: "currentColor", stroke: "n
 export const SOURCES = {
   phosphor: {
     map: PHOSPHOR,
-    file: (name) => `@phosphor-icons/core/assets/regular/${name}.svg`,
+    // A name in PHOSPHOR_SOLID is a solid shape in every weight.
+    file: (name) => (PHOSPHOR_SOLID.includes(name) ? `@phosphor-icons/core/assets/fill/${name}-fill.svg` : `@phosphor-icons/core/assets/regular/${name}.svg`),
     viewBox: "0 0 256 256",
     root: PHOSPHOR_ROOT,
   },
@@ -56,7 +57,7 @@ export const SOURCES = {
   },
   "phosphor-duotone": {
     map: PHOSPHOR,
-    file: (name) => `@phosphor-icons/core/assets/duotone/${name}-duotone.svg`,
+    file: (name) => (PHOSPHOR_SOLID.includes(name) ? `@phosphor-icons/core/assets/fill/${name}-fill.svg` : `@phosphor-icons/core/assets/duotone/${name}-duotone.svg`),
     viewBox: "0 0 256 256",
     root: PHOSPHOR_ROOT,
   },
