@@ -345,9 +345,8 @@ switch asks you to tap again before it switches off. The commands move the same 
 phone of this Collie, and the bridge reads it with no restart.
 
 The installed WalkyTalky skill names the Hill only while it is on: each change of the switch
-rewrites the skill as `collie skill sync` does. A running agent keeps the text it loaded; its next
-session gets the new one. So a session that started while the Hill was off does not know the Hill:
-tell it, or start a new session.
+rewrites the skill as `collie skill sync` does. Claude Code and Codex read the new skill text in a
+running session. With another agent, tell the session about the Hill, or start a new session.
 
 A Collie that used the Hill before it became an experiment has the Hill off after the update. Its
 open Decisions stay stored, and their expiry still runs. They show again when you switch the Hill on.
