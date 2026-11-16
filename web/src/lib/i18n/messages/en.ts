@@ -3502,8 +3502,9 @@ export const en = {
   "settings.tricks.by.proposedAgent": "Proposed by an agent on {host}",
   "settings.tricks.by.proposedUnconfirmed": "Proposed from {host}, session not confirmed",
   "settings.tricks.withTime": "{what} · {time}",
-  "settings.tricks.refused": "Manifest refused: {reason}",
-  "settings.tricks.refusedBare": "Manifest refused",
+  "settings.tricks.cannotRun": "This trick cannot run. {reason}",
+  "settings.tricks.cannotRunBare": "This trick cannot run.",
+  "settings.tricks.partNotShown": "Part of this trick is not shown. {reason}",
   // Warnings at the switch (M94 review 15).
   "settings.tricks.warn.label": "What a text search of its code found",
   "settings.tricks.warn.spawn": "This trick starts other programs on this machine.",
@@ -3880,6 +3881,9 @@ export const PENDING_TRANSLATION = [
   "accounts.identity.signedInAs",
   "accounts.identity.notSignedIn",
   "accounts.identity.withPlan",
+  "settings.tricks.cannotRun",
+  "settings.tricks.cannotRunBare",
+  "settings.tricks.partNotShown",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

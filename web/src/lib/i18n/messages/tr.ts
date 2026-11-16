@@ -3075,8 +3075,6 @@ export const tr: Dictionary = {
   "settings.tricks.by.proposedAgent": "{host} üzerindeki bir ajan önerdi",
   "settings.tricks.by.proposedUnconfirmed": "{host} üzerinden önerildi, oturum doğrulanmadı",
   "settings.tricks.withTime": "{what} · {time}",
-  "settings.tricks.refused": "Manifest reddedildi: {reason}",
-  "settings.tricks.refusedBare": "Manifest reddedildi",
   "settings.tricks.warn.label": "Kodunda metin araması neyi buldu",
   "settings.tricks.warn.spawn": "Bu trick bu makinede başka programlar başlatır.",
   "settings.tricks.warn.network": "Bu trick ağa erişir.",

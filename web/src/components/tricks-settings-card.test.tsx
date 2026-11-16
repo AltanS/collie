@@ -188,25 +188,25 @@ describe("TricksSettingsCard: the rows", () => {
     expect(within(rowOf("legs")).queryByText(/Added by agent/)).toBeNull();
   });
 
-  it("says manifest refused with the first reason for a skipped trick", async () => {
+  it("says the trick cannot run, with the first reason, for a skipped trick", async () => {
     const skipped: WireTrickInfo = {
       ...LEGS,
       state: "skipped",
       on: false,
       refusals: [
-        { code: "place", path: "/places/0", reason: 'unknown place "nowhere"' },
+        { code: "place", path: "/places/0", reason: '"nowhere" is not a place this Collie knows.' },
         { code: "missing", path: "/run", reason: "run is missing" },
       ],
     };
     renderCard(await storeWith([skipped]));
-    expect(within(await findRow("legs")).getByText('Manifest refused: unknown place "nowhere"')).toBeInTheDocument();
-    expect(slotLine({ ...skipped, refusals: undefined, error: undefined }, NOW).text).toBe("Manifest refused");
+    expect(within(await findRow("legs")).getByText('This trick cannot run. "nowhere" is not a place this Collie knows.')).toBeInTheDocument();
+    expect(slotLine({ ...skipped, refusals: undefined, error: undefined }, NOW).text).toBe("This trick cannot run.");
   });
 
-  it("decision 5: a part the bridge refused shows its reason on the row in every state, in the words of skipped", () => {
+  it("decision 5: a part the bridge refused shows its reason on the row in every state, in its own words", () => {
     const refusals: WireTrickInfo["refusals"] = [{ code: "text", path: "/parts/0/chip/text", reason: "\"text\" is 19 characters. At most 12.", part: "todo" }];
     for (const state of ["ok", "failing"] as const) {
-      expect(slotLine({ ...LEGS, state, refusals, error: undefined }, NOW)).toEqual({ text: "Manifest refused: \"text\" is 19 characters. At most 12.", trouble: true });
+      expect(slotLine({ ...LEGS, state, refusals, error: undefined }, NOW)).toEqual({ text: "Part of this trick is not shown. \"text\" is 19 characters. At most 12.", trouble: true });
     }
     // A note the parser only ignored is no refusal: the row keeps its provenance.
     expect(slotLine({ ...LEGS, refusals: [{ code: "ignored", path: "/x", reason: "x This Collie ignores it." }] }, NOW).trouble).toBe(false);

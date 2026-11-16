@@ -3209,8 +3209,6 @@ export const zhTW: Dictionary = {
   "settings.tricks.by.proposedAgent": "由 {host} 上的代理提議",
   "settings.tricks.by.proposedUnconfirmed": "由 {host} 提議，工作階段未確認",
   "settings.tricks.withTime": "{what} · {time}",
-  "settings.tricks.refused": "資訊清單被拒絕：{reason}",
-  "settings.tricks.refusedBare": "資訊清單被拒絕",
   "settings.tricks.warn.label": "對其程式碼做文字搜尋的發現",
   "settings.tricks.warn.spawn": "這個 Trick 會在這台機器上啟動其他程式。",
   "settings.tricks.warn.network": "這個 Trick 會連上網路。",

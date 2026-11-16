@@ -535,7 +535,8 @@ Most problems show in the trick's row in Settings → Tricks, or in `collie tric
 | What you see | What it means and what to do |
 | --- | --- |
 | No Tricks section in Settings | The config folder has no `tricks/` folder yet. `collie trick add` or `collie trick init <id>` makes it |
-| "Manifest refused: ..." | `trick.toml` has an error. Run `collie trick check <folder>` and fix each line it prints |
+| "This trick cannot run. ..." | `trick.toml` has an error, and the rest of the line says which. Run `collie trick check <folder>` and fix each line it prints |
+| "Part of this trick is not shown. ..." | The trick runs, but Collie refused one part of what it printed, for example a status line over its length. The rest of the line says which. Run `collie trick dev <folder>` to see each refusal |
 | "A new version waits for your yes." | The folder moved past the approved copy. Open the card on the Hill, or run `collie trick on <id>` |
 | "A new version waits. Switch the Hill on in Settings, Experiments, to read it." | The same, and the Hill is off, so its card cannot be read. Switch the Hill on in Settings → Experiments, or run `collie hill on` |
 | "The approved copy changed on disk, so the trick stopped. ..." | A program edited the approved copy. Read the code, then switch the trick on again |

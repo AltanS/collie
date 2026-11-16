@@ -3081,8 +3081,6 @@ export const it: Dictionary = {
   "settings.tricks.by.proposedAgent": "Proposto da un agente su {host}",
   "settings.tricks.by.proposedUnconfirmed": "Proposto da {host}, sessione non confermata",
   "settings.tricks.withTime": "{what} · {time}",
-  "settings.tricks.refused": "Manifest rifiutato: {reason}",
-  "settings.tricks.refusedBare": "Manifest rifiutato",
   "settings.tricks.warn.label": "Cosa ha trovato una ricerca testuale nel suo codice",
   "settings.tricks.warn.spawn": "Questo trick avvia altri programmi su questa macchina.",
   "settings.tricks.warn.network": "Questo trick accede alla rete.",
