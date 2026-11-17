@@ -4140,20 +4140,7 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [
-  "settings.section.tricks.blurb",
-  "settings.tricks.switch.offLine",
-  "hill.hold.hint",
-  "hill.hold.again",
-  "settings.tricks.about.shows",
-  "settings.tricks.about.shows.belt",
-  "settings.tricks.about.shows.status",
-  "settings.tricks.about.shows.session",
-  "settings.tricks.about.shows.dashboard",
-  "settings.tricks.about.shows.tabbar",
-  "settings.tricks.about.shows.menu",
-  "settings.tricks.about.shows.agentView",
-] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];
