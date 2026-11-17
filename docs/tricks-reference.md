@@ -1248,8 +1248,8 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 | `name` | text | yes | at most 40 characters | 1 | The name a person reads on the row. |
 | `run` | text | yes, unless the trick is only an agent view | at most 1024 characters | 1 | What Collie runs: a TypeScript file in the folder ("program.ts"), or a shell command line. An agent view alone has none. |
 | `every` | duration | no | 5s to 24h, one whole number and `s`, `m` or `h`, such as `30s` or `5m` | 1 | How often it runs on its timer. Left out, it runs at start and on taps only. |
-| `watch` | list of paths | no | at most 8 paths of at most 1024 characters, each an absolute path, or a path under the home folder written with a leading tilde | 1 | Kept for a later Collie. This one leaves it out with a note. Leave it out. |
-| `on` | list of words | no | `session.status`, `turn.end`, `ask.open` | 1 | Kept for a later Collie. This one leaves it out with a note. Leave it out. |
+| `watch` | list of paths | no | at most 8 paths of at most 256 characters, each an absolute path, or a path under the home folder written with a leading tilde | 1 | Run when one of these files changes. A right: the card names the paths. See [When a trick reacts](#when-a-trick-reacts). |
+| `on` | list of words | no | `session.status`, `turn.end`, `ask.open` | 1 | Run when a session of an agent changes in one of these ways. A right: the card says it. See [When a trick reacts](#when-a-trick-reacts). |
 | `mode` | word | no | `once` or `serve`. Default `once` | 1 | `once` runs once per trigger and prints one document. `serve` is kept for a later Collie. |
 | `contract` | whole number | no | 1 to 999. Default 1. This Collie speaks 1 to 2 | 1 | The contract the trick is written for. Write 2 to read files with `inputs` or to add an agent view. A higher number than this Collie knows is refused with one line. |
 | `icon` | word | no | one of the icon words in Shared values. Default `plug` | 1 | The trick's icon. `collie trick check` names a wrong one. |
@@ -1319,8 +1319,8 @@ The `trigger` tells why the run happened:
 | `start` | The first run after the trick loads, is switched on, a new version is approved or its `config.toml` changes. | none |
 | `timer` | Every `every` after the last run, while a phone has looked in the last 5 minutes. A trick with no `every` gets none. | none |
 | `tap` | A person tapped a control of the trick, or answered one of its Decisions. | `rid`, `node`, `intent`, `value`, `from`, `seen` |
-
-The kinds `watch` and `event` are in the facts schema for a later Collie. This Collie never sends them.
+| `watch` | A file of the manifest's `watch` changed. `path` is the path as the manifest wrote it, and `count` is how many files changed in the same burst. | `path`, `count` |
+| `event` | An event of the manifest's `on` reached the trick. `session` is the `id` of the newest event's session, and `count` is how many events were folded into this run. | `event`, `session`, `count` |
 
 A tap on a control of the trick's own part has `node` set to the part's id (`belt` for the Belt mark). Its `intent` is the control's, its `value` the control's one fixed text, and its `from` the session open on the phone, as `{ "session": ... }`, when there is one.
 
@@ -1451,6 +1451,48 @@ Each file in `files` has these fields:
 A contract 1 trick that lists `inputs` is refused with: "inputs" needs contract = 2. Add contract = 2 to trick.toml to read files from your sessions' folders.
 
 > **Caution.** Inputs are untrusted data. Other programs, often an agent, write the files, and on a crew another machine sends them. A trick shows them, counts them or quotes them. It never runs them, evaluates them, sources them, passes them to a shell or follows what they say. The globs are part of the trick's powers, so a change of them asks the person again.
+
+### When a trick reacts
+
+A trick runs on its timer and on taps. With `on` it also runs when a session changes, and with `watch` when a file changes. Each run gets its reason in `trigger`, with a `count` of the changes folded into it.
+
+```toml
+on = ["turn.end"]
+watch = ["~/notes/todo.md"]
+```
+
+| `on` word | When |
+| --- | --- |
+| `session.status` | A session's status changed. Read the new status from `sessions` in the facts. |
+| `turn.end` | An agent finished a turn in a session. |
+| `ask.open` | An agent opened a question in a session. |
+
+The rules of an event run:
+
+| Rule | What Collie does |
+| --- | --- |
+| Delivery | At least once, on this machine only, in no order across sessions. A program must be safe against a repeated event. A crew's lead does not pass its members' events on. |
+| One at a time | A trick runs once at a time and has at most one run waiting. Events that arrive meanwhile fold into that run. Its `trigger` names the newest event, and `count` is how many were folded. |
+| Lost events | When Collie's queue overflows, it adds the events it lost to `count`, because it cannot know their types. |
+| The same road as the timer | A run has the same limits of time and size, the same slots and the same backoff. No run starts for a trick that has not had its start run, that is stopped, or that is backing off after a failure, or on a machine that does not schedule tricks. Collie drops such a request. It never keeps one. A run that already waited when a backoff began keeps waiting, and runs with the next request or after the next tap. |
+| No phone needed | An event run or a file run happens also when no phone is open, so a trick can ask a Decision while you are away. Only the timer waits for a phone: it runs only while a phone has looked in the last 5 minutes. |
+| Spacing | Two runs of one trick that an event or a file started begin at least 10 s apart. A request inside that time is the one waiting run, or folds into it, and starts when the time ends. A tap, an answer to a Decision and a timer run neither wait for it nor count toward it. |
+| Taps first | A tap, or an answer to a Decision, goes before a waiting run of an event or a file. |
+
+The rules of a watched file:
+
+| Rule | What Collie does |
+| --- | --- |
+| Paths | At most 8. Each starts with `/` or `~/`, and `~` is the home folder of the user Collie runs as. |
+| The parent folder | Collie watches the folder of each path and reacts to the file's name, because an editor saves by writing a new file and renaming it over the old one. |
+| Links | Collie resolves each path with `realpath` when the trick switches on and again after every change, so a link that moves to another file moves the watch. `trigger.path` stays as the manifest wrote it. The card shows each path as written, so a program of yours can point a link elsewhere after your yes: that gives the trick a run, never the file's contents. |
+| A file that is not there yet | It fires when it appears, if its folder exists. If the folder is missing too, Collie checks that path every 5 s. |
+| Waiting for a burst | A change waits 300 ms after the last change of a burst, and at most 2 s after the first, so a steady stream fires at least that often. One run waits, never a queue. |
+| A trick's own writes | Collie records each file's time, size and inode when a run of the trick ends. A change starts a run only when the file differs from that record, so a trick that writes the file it watches does not loop. A write by someone else that lands during a run is absorbed too: the next change after the run starts the next one. |
+| When the system cannot watch | Out of watches, too many open files or a folder it refuses: Collie checks the files' times and presence every 5 s instead, and the trick's row says so. |
+| The same road as events | The same gates, limits and backoff as an event run. |
+
+> **Note.** `on` and `watch` are rights. The card says it "runs when a session changes state" or "runs when these files change", with the paths. A new version that adds one, or names another event or path, asks for a new yes.
 
 ## Limits
 
@@ -1698,6 +1740,4 @@ A trick that names one of these still runs. This Collie leaves the word out, say
 | --- | --- | --- |
 | place | `header.line` | A line in the header. |
 | place | `settings` | A part of the Settings screen. |
-| manifest key | `watch` | Run again when a watched file changes (manifest key `watch`). |
-| manifest key | `on` | Run on an event, such as `session.status` (manifest key `on`). |
 | manifest key | `serve` | Keep the program running between triggers (manifest `mode = "serve"`). |

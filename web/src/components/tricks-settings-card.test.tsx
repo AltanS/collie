@@ -215,6 +215,22 @@ describe("TricksSettingsCard: the rows", () => {
     expect(slotLine({ ...LEGS, refusals: [{ code: "ignored", path: "/x", reason: "x This Collie ignores it." }] }, NOW).trouble).toBe(false);
   });
 
+  it("a watch that checks on a clock says so alone, never after the \"part is not shown\" prefix", async () => {
+    const polled: WireTrickInfo = { ...LEGS, watch: ["~/notes/todo.md"], watchPollSeconds: 5 };
+    const line = "Collie could not watch these files for changes, so it checks them every 5 seconds.";
+    expect(slotLine(polled, NOW)).toEqual({ text: line, trouble: false });
+    // Nothing was refused: the row also never shows it as a trouble report, and the line holds no error code.
+    expect(slotLine(polled, NOW).text).not.toContain("Part of this trick");
+    expect(slotLine(polled, NOW).text).not.toMatch(/ENOSPC|EMFILE/u);
+    // A real refusal still shows with its prefix, and it comes first: the row holds one line.
+    const refusals: WireTrickInfo["refusals"] = [{ code: "text", path: "/parts/0/chip/text", reason: "\"text\" is 19 characters. At most 12.", part: "todo" }];
+    expect(slotLine({ ...polled, refusals }, NOW)).toEqual({ text: "Part of this trick is not shown. \"text\" is 19 characters. At most 12.", trouble: true });
+    // A trick that is off has no watch running: the row keeps its provenance.
+    expect(slotLine({ ...polled, on: false, state: "off" }, NOW).text).toBe("Added by agent · 2 h ago");
+    renderCard(await storeWith([polled]));
+    expect(within(await findRow("legs")).getByText(line)).toBeInTheDocument();
+  });
+
   it("keeps every row the same three lines, whatever the state", async () => {
     const failing: WireTrickInfo = { ...LEGS, id: "bad", name: "Bad", state: "failing", error: "exit 2" };
     renderCard(await storeWith([LEGS, TRACKER, failing]));
