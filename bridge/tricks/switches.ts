@@ -296,14 +296,29 @@ async function takeLock(lock: string, now: () => number): Promise<void> {
  * so a look at the disk it makes (is the folder still not there?) holds for the whole write.
  */
 export async function updateSwitches(stateDir: string, change: (switches: Switches) => Switches | Promise<Switches>, now: () => number = Date.now): Promise<Switches> {
-  const path = switchesPath(stateDir);
+  return await withSwitchLock(
+    stateDir,
+    async () => {
+      const next = await change(parseSwitches(await readText(switchesPath(stateDir))).switches);
+      await writeSwitches(stateDir, next);
+      return next;
+    },
+    now,
+  );
+}
+
+/**
+ * Hold the switch file's lock while `work` runs, and release it after, also when `work` throws. For a writer
+ * that changes the trick folders and not the file (`collie trick update` swaps a folder), so a bridge's
+ * approval or an add of the same id, which hold this lock, never see the folder half moved. The lock is
+ * taken over after {@link SWITCH_LOCK_STALE_MS}: keep `work` short.
+ */
+export async function withSwitchLock<T>(stateDir: string, work: () => Promise<T>, now: () => number = Date.now): Promise<T> {
   await mkdir(tricksStateDir(stateDir), { recursive: true, mode: 0o700 });
-  const lock = `${path}.lock`;
+  const lock = `${switchesPath(stateDir)}.lock`;
   await takeLock(lock, now);
   try {
-    const next = await change(parseSwitches(await readText(path)).switches);
-    await writeSwitches(stateDir, next);
-    return next;
+    return await work();
   } finally {
     await unlink(lock).catch(() => {});
   }

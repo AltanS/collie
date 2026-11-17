@@ -557,6 +557,33 @@ describe.if(posix)("collie trick update", () => {
     expect(r.out.at(-1)).toContain("Nothing to update.");
   });
 
+  test("read of 1bf6c747a, point 4: the two renames of the folder swap run inside the switch lock", async () => {
+    const repo = await fixtureRepo([{ "trick.toml": txt(MANIFEST("legs")), "program.sh": PROGRAM }]);
+    const r = await rig();
+    expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.OK);
+    const dir = trickDir(r, "legs");
+    const next = await fixtureRepo([
+      { "trick.toml": txt(MANIFEST("legs")), "program.sh": PROGRAM },
+      { "trick.toml": txt(MANIFEST("legs")), "program.sh": { text: "echo two\n", exec: true } },
+    ]);
+    const record = parseOrigin(await readFile(join(dir, ORIGIN_FILE), "utf8"));
+    await writeFile(join(dir, ORIGIN_FILE), JSON.stringify({ v: 1, ...record, url: next.bare, commit: next.shas[0] }));
+    // Another writer (the bridge approving, an add of this id) holds the lock.
+    const lock = `${switchesPath(r.stateDir)}.lock`;
+    await mkdir(dirname(lock), { recursive: true });
+    await writeFile(lock, "held");
+    const pending = cmdTrickUpdate(r, ["legs"]);
+    await Bun.sleep(600);
+    // The update has fetched and waits: the live folder is not moved while the lock is held.
+    expect(await readFile(join(dir, "program.sh"), "utf8")).toBe(PROGRAM.text);
+    expect((await readdir(dirname(dir))).filter((name) => name.startsWith(".collie-old-"))).toEqual([]);
+    await rm(lock);
+    expect(await pending).toBe(EXIT.OK);
+    expect(await readFile(join(dir, "program.sh"), "utf8")).toBe("echo two\n");
+    expect(await stat(lock).catch(() => null)).toBeNull();
+    await expectNoLeftovers(r);
+  });
+
   test("refuses a folder that add did not make, and a source that now holds another trick", async () => {
     const r = await rig();
     await mkdir(trickDir(r, "hand"), { recursive: true });

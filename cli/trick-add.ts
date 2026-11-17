@@ -28,7 +28,7 @@ import { forgetLeftovers, removeTrickCopies } from "../bridge/tricks/approved.ts
 import { forgetMapRecord } from "../bridge/tricks/hill.ts";
 import { MANIFEST_FILE, switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "../bridge/tricks/paths.ts";
 import { trickWarnings, warningLines, WARNINGS_HONESTY, type CheckWarning } from "../bridge/tricks/scan.ts";
-import { parseSwitches } from "../bridge/tricks/switches.ts";
+import { parseSwitches, withSwitchLock } from "../bridge/tricks/switches.ts";
 import { isTrickId } from "../web/src/lib/tricks/schema.ts";
 import { REPO_INDEX_ABOUT_MAX, REPO_INDEX_BYTES_MAX, REPO_INDEX_NAME_MAX } from "../web/src/lib/tricks/limits.ts";
 import { parseRepoIndex, REPO_INDEX_FILE, shownIndexText } from "../web/src/lib/tricks/repo-index.ts";
@@ -503,7 +503,7 @@ export async function cmdTrickUpdate(deps: TrickAddDeps, args: readonly string[]
           deps.io.out("Nothing was changed (--dry-run).");
           return EXIT.OK;
         }
-        await swapFolder(root, id, dir, staged);
+        await swapFolder(deps.ctx.stateDir, root, id, dir, staged);
         deps.io.out(`Updated ${id} to ${candidate.commit}. config.toml and the trick's state folder are kept.`);
         const on = parseSwitches(deps.files.read(switchesPath(deps.ctx.stateDir))).switches.on.has(id);
         if (codeMoved && on) deps.io.out(`The code changed. ${id} keeps running the version you approved; the new one waits for your yes. Read it, then approve it on the phone or: collie trick on ${id}`);
@@ -523,17 +523,22 @@ export async function cmdTrickUpdate(deps: TrickAddDeps, args: readonly string[]
 /**
  * Put `staged` in the place of `dir`: the old folder is renamed aside, the new one renamed in, the old one
  * removed. Two renames in one folder, so a reader sees the old trick or the new one, never half of each;
- * a failed second rename puts the old folder back.
+ * a failed second rename puts the old folder back. The two renames run inside the switch file's lock: an
+ * add of this id (a "new" card tapped, a terminal add) looks for the folder under the same lock, so it
+ * never meets the moment the folder is missing and wipes a live trick's state folder and copies as a
+ * leftover. The removal of the old folder runs after the unlock.
  */
-async function swapFolder(root: string, id: string, dir: string, staged: string): Promise<void> {
+async function swapFolder(stateDir: string, root: string, id: string, dir: string, staged: string): Promise<void> {
   const aside = sideName(root, "old", id);
-  await rename(dir, aside);
-  try {
-    await rename(staged, dir);
-  } catch (err) {
-    await rename(aside, dir);
-    throw err;
-  }
+  await withSwitchLock(stateDir, async () => {
+    await rename(dir, aside);
+    try {
+      await rename(staged, dir);
+    } catch (err) {
+      await rename(aside, dir);
+      throw err;
+    }
+  });
   await chmod(dir, 0o700).catch(() => {});
   await rm(aside, { recursive: true, force: true });
 }
