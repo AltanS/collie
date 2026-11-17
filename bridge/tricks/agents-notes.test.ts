@@ -26,7 +26,11 @@ function cardText(manifest: TrickManifest, files: Record<string, string>): strin
 describe("the notes init writes", () => {
   test("their text is pinned to NOTES_VERSION: a change to the text bumps the version and this hash", () => {
     const hash = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft)).digest("hex").slice(0, 16);
-    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 4, hash: "7c36b5e6d11f7adb", draft: "dd553c9f6f186664" });
+    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 5, hash: "7c36b5e6d11f7adb", draft: "30d901f38ead50c8" });
+    // v4's bytes stay as shipped (package I), so a draft init wrote at v4 is still named, as v4.
+    const v4 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 4)).digest("hex").slice(0, 16);
+    expect({ hash: v4(false), draft: v4(true) }).toEqual({ hash: "7c36b5e6d11f7adb", draft: "dd553c9f6f186664" });
+    expect(shippedNotesVersion("legs", sampleAgents("legs", "ts", true, 4))).toBe(4);
     // v3's bytes stay as shipped (contract 3, before package I).
     const v3 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 3)).digest("hex").slice(0, 16);
     expect({ hash: v3(false), draft: v3(true) }).toEqual({ hash: "7c36b5e6d11f7adb", draft: "48fa76eaec5a41f4" });
@@ -44,6 +48,12 @@ describe("the notes init writes", () => {
     expect(text).toContain("Its card shows in this session on the\n   phone and in Settings, Tricks (on the Hill too, while it is on).");
     expect(text).not.toContain("send this draft to the Hill");
     expect(text).not.toMatch(/switch (the Hill|it) on/iu);
+  });
+
+  test("v5: a draft's last step says never to run collie tricks on or collie hill on, and v4 does not", () => {
+    const text = sampleAgents("legs", "sh", true);
+    expect(text).toContain("never run\n   `collie tricks on` or `collie hill on`: all three refuse inside an agent's pane.");
+    expect(sampleAgents("legs", "sh", true, 4)).not.toContain("collie hill on");
   });
 
   test("a draft init wrote before v2 is still named as the notes Collie ships, as v1", () => {

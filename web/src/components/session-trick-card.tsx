@@ -2,7 +2,6 @@ import { LiveDecisionCard } from "@/components/hill-view";
 import { useHillAnswerHeld, useHillClosed, useHillOpen } from "@/lib/hill/store";
 import { closeInSession, useSessionLater } from "@/lib/hill/session-later";
 import type { HillDecision } from "@/lib/hill/wire";
-import { bareAddress } from "@/lib/walky";
 
 // A TRICK PROPOSAL IN THE SESSION THAT PROPOSED IT (package I, 2026-11-17). `collie trick propose` in an
 // agent's pane makes a proposal card of Collie's own (bridge/tricks/proposals.ts), tied to that session:
@@ -27,7 +26,8 @@ export const PROPOSAL_DECLINE = "later";
 export function isSessionProposal(decision: HillDecision, self: string): boolean {
   const { from } = decision;
   if (from.kind !== "collie" || from.ref?.type !== "proposal" || decision.replyTo === null) return false;
-  return bareAddress(decision.replyTo) === bareAddress(self);
+  // The FULL address, with the instance token: a new session in the same pane has a new token, so an old card never shows in it (security read of package I, point 3).
+  return decision.replyTo === self;
 }
 
 /** The cards one session shows: open ones not closed here, and closed ones while this phone holds their answer. */
@@ -40,7 +40,7 @@ function SessionTrickCard({ decision }: { decision: HillDecision }) {
   const answer = useHillAnswerHeld(decision.id);
   if (decision.state !== "open" && answer === null) return null;
   return (
-    <div data-slot="session-trick-card" data-card={decision.id} className="max-h-[60dvh] overflow-y-auto px-3 pb-1">
+    <div data-slot="session-trick-card" data-scroll-root data-card={decision.id} className="max-h-[60dvh] overflow-y-auto px-3 pb-1">
       <LiveDecisionCard decision={decision} localDecline={{ intent: PROPOSAL_DECLINE, run: () => closeInSession(decision.id) }} />
     </div>
   );

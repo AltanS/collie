@@ -593,11 +593,11 @@ bit (the mark is kept in `<stateDir>/tricks/proposals.json`). The scanner never 
 nothing there runs or is listed. Collie posts a card on the Hill as its own sender, through a door no
 agent and no crew member reaches (`HillService.postCollie`):
 
-- title `Switch on the trick <id>?`, no recommendation, options "Switch it on" (asks twice: "Yes,
-  switch on") and "Not now", no text box, priority today, and it closes after 3 days;
-- the summary says who proposes ("An agent session (repo#one) on lodge proposes it.", "An agent
-  session on lodge proposes it." or, with no agent pane placed, "Someone on lodge proposes it.
-  Collie could not confirm which session."), "It replaces an earlier proposal from the same session."
+- title `Switch on the trick <id>?`, no recommendation, options "Switch it on" (one tap, no
+  confirm) and "Not now", no text box, priority today, and it closes after 3 days;
+- the summary says who proposes ("A session on lodge proposes it", never the session's name, because the
+  pane is placed by markers the caller sends, or, with no agent pane placed, "Someone on lodge
+  proposes it. Collie could not confirm which session."), "It replaces an earlier proposal from the same session."
   when it does, how many files, and the rights the manifest asks for; the view lists every right,
   every `inputs` glob and every warning of the code search in full (as chips when each fits a chip and
   one bar holds them all, else as paragraphs), then the author's name, description and About under
@@ -684,7 +684,7 @@ copy and the switch file stay as they are. Its card is minted by the proposals m
 `proposal` ref, so there is one answer path: title "Use the new version of <id>?", the proposer named
 first, the changed files against the approved copy fitted as the runner's version card fits them, the
 new rights and new warnings, no "Use it and stop asking", never a recommendation. Options "Use the new
-version" (asks twice: "Yes, use it") and "Keep the old version". On the yes the stored bytes are hashed
+version" (one tap, no confirm) and "Keep the old version". On the yes the stored bytes are hashed
 again, the trick must still be the one the card was made against (the same approved hash, its folder
 unchanged), then only its code files change, in place: old code files the new version lacks are
 removed, and each new one is written to a temp file beside it and renamed. Every file the code hash

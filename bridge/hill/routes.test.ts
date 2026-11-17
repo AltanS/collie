@@ -330,8 +330,8 @@ describe("the routes' gates, pinned by source", () => {
 
   test("the answer sits behind the write gate, as `POST /api/walky` does, before the body is read; the label is the paired device's", () => {
     const body = routeBody('if (pathname === "/api/hill/answer" && req.method === "POST") {');
-    expect(body.indexOf('browserGate("write")')).toBeGreaterThan(-1);
-    expect(body.indexOf('browserGate("write")')).toBeLessThan(body.indexOf("req.json()"));
+    expect(body.indexOf("browserGate(HILL_ANSWER_RIGHT)")).toBeGreaterThan(-1);
+    expect(body.indexOf("browserGate(HILL_ANSWER_RIGHT)")).toBeLessThan(body.indexOf("req.json()"));
     expect(body.indexOf('host.kind === "member"')).toBeLessThan(body.indexOf("req.json()"));
     expect(body).toContain("whois(req).device");
     const walky = routeBody('if (pathname === "/api/walky" && req.method === "POST") {');

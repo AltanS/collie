@@ -290,7 +290,7 @@ import { pinSessionKey } from "./pins/key.ts";
 import { PinKeys } from "./pins/keys.ts";
 import { pinsRoute, type PinsAnswer, type PinsSession } from "./pins/routes.ts";
 import { PinStore } from "./pins/store.ts";
-import { readAnswerRequest } from "./hill/parse.ts";
+import { HILL_ANSWER_RIGHT, readAnswerRequest } from "./hill/parse.ts";
 import { HILL_ID_RE, HILL_MEDIA_ID_RE, isHillCrewState } from "../web/src/lib/hill/wire.ts";
 import { HILL_STATE_ON_LEAD, hillDeviceId, type HillService } from "./hill/service.ts";
 import type { AgentViewService } from "./agent-view/service.ts";
@@ -3675,7 +3675,7 @@ export function startServer(opts: {
         return hillTellRoute(hill, body, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       if (pathname === "/api/hill/answer" && req.method === "POST") {
-        const denied = browserGate("write");
+        const denied = browserGate(HILL_ANSWER_RIGHT);
         if (denied) return denied;
         if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);
         let body: JsonValue | undefined;

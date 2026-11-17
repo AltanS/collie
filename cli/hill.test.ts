@@ -1052,7 +1052,7 @@ describe("a post on a slow crew link", () => {
 
 describe("status of Collie's own card, from the session it tells", () => {
   const COLLIE = { kind: "collie" as const, ref: { type: "proposal" as const, id: "legs", hash: "a".repeat(64) }, label: "Collie" };
-  const CARD = { requestId: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f", title: "Switch on the trick legs?", summary: "An agent session (repo#one) on desk proposes it.", options: [{ intent: "on", label: "Switch it on" }, { intent: "later", label: "Not now" }], text: "none" as const, recommends: null };
+  const CARD = { requestId: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f", title: "Switch on the trick legs?", summary: "A session on desk proposes it.", options: [{ intent: "on", label: "Switch it on" }, { intent: "later", label: "Not now" }], text: "none" as const, recommends: null };
 
   socketTest("the proposing session reads the card before and after the answer; another pane does not", async () => {
     const b = await bridge(true, { onCollieAnswer: async () => ({ ok: true }) });

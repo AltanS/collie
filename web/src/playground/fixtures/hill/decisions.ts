@@ -882,7 +882,7 @@ function legsRows(from: number, to: number): string {
 }
 
 const PROPOSAL_FACTS: View = [
-  { kind: "para", text: "An agent session (crew-08#propose) on workshop proposes it." },
+  { kind: "para", text: "A session on workshop proposes it." },
   { kind: "bar", attrs: { label: "It asks for" }, kids: [{ kind: "chip", text: "the belt" }, { kind: "chip", text: "the Dashboard" }] },
   { kind: "para", text: "This trick reaches the network." },
   { kind: "line", text: "3 files, on cards 2 to 3.", attrs: { role: "note" } },
@@ -930,13 +930,13 @@ const PROPOSAL_CODE_3: View = [
 export function proposalGroup(): HillDecision {
   return decision({
     title: "Switch on the trick legs?",
-    summary: "An agent session (crew-08#propose) on workshop proposes it. It has 3 files. It asks for the belt and the Dashboard, and reaches the network. It shows on 3 cards.",
+    summary: "A session on workshop proposes it. It has 3 files. It asks for the belt and the Dashboard, and reaches the network. It shows on 3 cards.",
     ago: 1,
     from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "legs", hash: "5d".repeat(32) } },
     target: null,
     text: "none",
     options: [
-      { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+      { intent: "on", label: "Switch it on" },
       { intent: "later", label: "Not now" },
     ],
     group: {
@@ -959,7 +959,7 @@ export function proposalGroup(): HillDecision {
 function initProposal(notesChanged: boolean, settingsLeft = false): HillDecision {
   const notesRow: View = ["AGENTS.md", notesChanged ? "11.8 KB" : "11.7 KB", notesChanged ? "2" : "Collie's notes v1"].map((text) => ({ kind: "cell", text }));
   const facts: View = [
-    { kind: "para", text: "An agent session (crew-08#propose) on workshop proposes it." },
+    { kind: "para", text: "A session on workshop proposes it." },
     { kind: "bar", attrs: { label: "It asks for" }, kids: [{ kind: "chip", text: "the status line" }] },
     ...(settingsLeft ? [{ kind: "para", text: "This trick has a settings file that does not come along. It may show nothing until you add it on the machine." } as const] : []),
     { kind: "line", text: notesChanged ? "3 files, on card 2." : "2 files, on card 2.", attrs: { role: "note" } },
@@ -993,13 +993,13 @@ function initProposal(notesChanged: boolean, settingsLeft = false): HillDecision
   ];
   return decision({
     title: "Switch on the trick git-branch?",
-    summary: `An agent session (crew-08#propose) on workshop proposes it. It has 4 files. It asks for the status line. It shows on 2 cards.`,
+    summary: `A session on workshop proposes it. It has 4 files. It asks for the status line. It shows on 2 cards.`,
     ago: 1,
     from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "git-branch", hash: (settingsLeft ? "6f" : notesChanged ? "6e" : "6d").repeat(32) } },
     target: null,
     text: "none",
     options: [
-      { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+      { intent: "on", label: "Switch it on" },
       { intent: "later", label: "Not now" },
     ],
     group: { digest: (settingsLeft ? "c3" : notesChanged ? "c2" : "c1").repeat(32), decline: "later", parts: [{ view: facts, sha256: "21".repeat(32) }, { view: code, sha256: "22".repeat(32) }] },
@@ -1024,13 +1024,13 @@ export const rightsMoved = decision({
 /** 57: a proposed new version on two cards: the facts and new rights, then the diff by file. */
 export const versionGroup = decision({
   title: "Use the new version of legs?",
-  summary: "An agent session (crew-08#propose) on workshop proposes it. 3 files changed. It now also reaches the network. It shows on 2 cards.",
+  summary: "A session on workshop proposes it. 3 files changed. It now also reaches the network. It shows on 2 cards.",
   ago: 2,
   from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "legs", hash: "6e".repeat(32) } },
   target: null,
   text: "none",
   options: [
-    { intent: "on", label: "Use the new version", confirm: "Yes, use it" },
+    { intent: "on", label: "Use the new version" },
     { intent: "later", label: "Keep the old version" },
   ],
   group: {
@@ -1039,7 +1039,7 @@ export const versionGroup = decision({
     parts: [
       {
         view: [
-          { kind: "para", text: "An agent session (crew-08#propose) on workshop proposes it." },
+          { kind: "para", text: "A session on workshop proposes it." },
           { kind: "para", text: "This trick reaches the network." },
           { kind: "line", text: "3 files, on card 2.", attrs: { role: "note" } },
           {

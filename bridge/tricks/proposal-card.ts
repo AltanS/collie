@@ -28,14 +28,14 @@ import type { VersionDiff } from "./version-diff.ts";
 //
 // ── NO RECOMMENDATION ──────────────────────────────────────────────────────────────────────────────
 // DECISION: the card never recommends "Switch it on". A proposal is code from an agent; the person's own
-// reading is the whole check. Options: "Switch it on" (with a confirm tap) and "Not now". No "always":
+// reading is the whole check. Options: "Switch it on" (ONE tap, no confirm: the operator decided 2026-11-17 that a tap activates the trick) and "Not now". No "always":
 // every proposal asks.
 //
 // ── A NEW VERSION ──────────────────────────────────────────────────────────────────────────────────
 // A proposal for a trick a proposal made gets the same card as a version the runner found
 // (version-card.ts): title "Use the new version of <id>?", the changed files against the approved copy,
 // the new rights and the new warnings, how much is shown. It names the proposer first, never
-// recommends, and has no "Use it and stop asking". Options: "Use the new version" (with a confirm tap)
+// recommends, and has no "Use it and stop asking". Options: "Use the new version" (one tap, no confirm)
 // and "Keep the old version". A proposal never carries a config.toml (propose-wire.ts `PROPOSE_NO_CONFIG`).
 
 /** The card's sender name. Display only. */
@@ -43,10 +43,10 @@ export const PROPOSAL_CARD_SENDER = "Collie";
 /** The heading of the author's words in the card's view. */
 export const PROPOSAL_AUTHOR_WORDS = "Its author's words. Collie did not check them.";
 /** The two options. */
-export const PROPOSAL_ON = { intent: "on", label: "Switch it on", confirm: "Yes, switch on" } as const;
+export const PROPOSAL_ON = { intent: "on", label: "Switch it on" } as const;
 export const PROPOSAL_LATER = { intent: "later", label: "Not now" } as const;
 /** The two options of a new version's card: the same intents, the version card's words. */
-export const PROPOSAL_USE = { intent: "on", label: "Use the new version", confirm: "Yes, use it" } as const;
+export const PROPOSAL_USE = { intent: "on", label: "Use the new version" } as const;
 export const PROPOSAL_KEEP = { intent: "later", label: "Keep the old version" } as const;
 
 
@@ -116,12 +116,17 @@ function plain(raw: string, max: number): string {
   return chars.length <= max ? chars.join("") : `${chars.slice(0, max - 1).join("")}…`;
 }
 
-/** "An agent session (repo#one) on lodge proposes it." */
+/**
+ * "A session on lodge proposes it." The session's name is never shown: the pane is placed by markers the
+ * caller sends, so a program could send another session's markers and borrow its name (security read of
+ * package I, 2026-11-17, point 4). The edges' pid check cannot be reused: the walky socket does not carry
+ * the caller's pid, and the CLI is not the agent's own process.
+ */
 export function proposerSentence(proposer: ProposerFacts): string {
   const host = plain(proposer.host, 40);
   // No agent pane placed: the machine is known, the session is not (proposals.ts "WHAT IS CONFIRMED").
   if (proposer.by === "terminal") return `Someone on ${host} proposes it. Collie could not confirm which session.`;
-  return proposer.label === null || proposer.label.trim() === "" ? `An agent session on ${host} proposes it.` : `An agent session (${plain(proposer.label, 40)}) on ${host} proposes it.`;
+  return `A session on ${host} proposes it.`;
 }
 
 /** The card's title. */

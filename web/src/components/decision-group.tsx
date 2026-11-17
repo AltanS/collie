@@ -16,8 +16,8 @@ import type { View } from "@/lib/tricks/schema";
 // has nothing to calm. Which card shows is the caller's state and always starts at card 1.
 //
 // A CARD IS OPENED WHEN ITS END WAS ON SCREEN (review 7 R1). A card of a group never folds (its whole code
-// shows), and it counts as opened only once the mark after its last line has been inside the screen: a
-// card no taller than the screen counts as it draws, a longer one once the person scrolled to its end.
+// shows), and it counts as opened only once the mark after its last line has been inside the screen, however
+// short the card is: a scroll box around it can hide part of it, so there is no height shortcut.
 // Paging past a long card does not open it. `onOpened` gets the card's number, from 1. A single card of
 // Collie's own that carries code is held to the same rule (`DecisionWholeView`, lib/hill/code-card.ts).
 
@@ -30,16 +30,31 @@ export function GroupCount({ count }: { count: number }) {
   );
 }
 
-/** Whether a box's top and bottom both lie inside the window's height. */
-function onScreen(el: Element): boolean {
-  const box = el.getBoundingClientRect();
-  return box.bottom > 0 && box.top < window.innerHeight;
+/** The box a card scrolls inside, or null when only the window scrolls: a box marked `data-scroll-root`, or one that clips its height. */
+export function scrollBoxOf(el: Element): HTMLElement | null {
+  for (let node = el.parentElement; node !== null && node !== document.body; node = node.parentElement) {
+    if (node.hasAttribute("data-scroll-root")) return node;
+    const { overflowY } = getComputedStyle(node);
+    if (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") return node;
+  }
+  return null;
+}
+
+/** Whether the mark lies inside the window and, where it sits in a scroll box, inside that box. */
+function inView(el: Element, box: Element | null): boolean {
+  const mark = el.getBoundingClientRect();
+  if (!(mark.bottom > 0 && mark.top < window.innerHeight)) return false;
+  if (box === null) return true;
+  const frame = box.getBoundingClientRect();
+  return mark.bottom > frame.top && mark.top < frame.bottom;
 }
 
 /**
- * Calls `seen` once the end of the card in `card` has been on screen: as it draws for a card no taller
- * than the window, else when `end` (the mark after its last line) enters the screen. Where there is no
- * IntersectionObserver, every scroll and resize looks again.
+ * Calls `seen` once the mark after the card's last line (`end`) has been on screen. There is no shortcut
+ * for a card that is no taller than the window: a scroll box around the card (the chat's trick card is
+ * boxed at 60dvh) can hide part of a short card, so the mark is always watched, with the scroll box as
+ * the observer's root where there is one (security read of package I, 2026-11-17, point 1). Where there is
+ * no IntersectionObserver, every scroll and resize looks again.
  */
 function useEndSeen(card: RefObject<HTMLElement | null>, end: RefObject<HTMLElement | null>, page: number, seen: (page: number) => void): void {
   const call = useRef(seen);
@@ -47,25 +62,24 @@ function useEndSeen(card: RefObject<HTMLElement | null>, end: RefObject<HTMLElem
     call.current = seen;
   });
   useEffect(() => {
-    const box = card.current;
     const tail = end.current;
-    if (box === null || tail === null) return;
+    if (card.current === null || tail === null) return;
     const done = () => call.current(page);
-    if (box.getBoundingClientRect().height <= window.innerHeight) {
-      done();
-      return;
-    }
+    const box = scrollBoxOf(tail);
     if (globalThis.IntersectionObserver !== undefined) {
-      const observer = new IntersectionObserver((entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        observer.disconnect();
-        done();
-      });
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (!entries.some((entry) => entry.isIntersecting)) return;
+          observer.disconnect();
+          done();
+        },
+        box === null ? undefined : { root: box },
+      );
       observer.observe(tail);
       return () => observer.disconnect();
     }
     const look = () => {
-      if (!onScreen(tail)) return;
+      if (!inView(tail, box)) return;
       window.removeEventListener("scroll", look, true);
       window.removeEventListener("resize", look);
       done();
