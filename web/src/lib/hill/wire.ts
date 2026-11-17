@@ -2,6 +2,7 @@
 // sends back. The bridge and the web app both import this file, so it holds types, constants and
 // small pure helpers only. No I/O, no React, no runtime dependency.
 
+import { isHiddenChar } from "../hidden-chars";
 import type { JsonValue } from "../json";
 import type { View } from "../tricks/schema";
 
@@ -186,6 +187,25 @@ export interface HillCollieRef {
   hash: string;
 }
 
+/** The longest display name a card of Collie's own carries, in characters (an ellipsis counts as one). */
+export const HILL_CARD_NAME_MAX = 40;
+
+/**
+ * A trick's display name for a card of Collie's own (`from.name`): one line of plain text. White space runs
+ * become one space, every control and hidden character (hidden-chars.ts) is taken out, and a name longer than
+ * {@link HILL_CARD_NAME_MAX} ends in an ellipsis. The name comes from a manifest an agent may have written,
+ * so it is only ever drawn as text. Undefined when nothing is left, so a card then falls back to its id. Both
+ * sides run this one function: the bridge before it stores a card, the phone before it draws one.
+ */
+export function cardName(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const chars = [...raw.replace(/\s+/gu, " ")].filter((ch) => !isHiddenChar(ch));
+  const text = chars.join("").trim();
+  if (text === "") return undefined;
+  const cut = [...text];
+  return cut.length <= HILL_CARD_NAME_MAX ? text : `${cut.slice(0, HILL_CARD_NAME_MAX - 1).join("").trimEnd()}…`;
+}
+
 /** A Collie Decision's `ref` from its three read fields, or null when any is missing or malformed. */
 export function hillCollieRef(type: string | undefined, id: string | undefined, hash: string | undefined): HillCollieRef | null {
   const kind = HILL_COLLIE_REF_TYPES.find((candidate) => candidate === type);
@@ -256,6 +276,12 @@ export interface HillDecision {
     trickHost: string | null;
     /** What a Collie Decision is about. Present on kind `collie` only, and required there. */
     ref?: HillCollieRef;
+    /**
+     * Collie's own card about a trick only (proposal, version, rights, carried): the trick's display name from
+     * its approved or proposed manifest, cleaned by {@link cardName}. Optional on the wire: a card from an
+     * older bridge has none and the phone falls back to `ref.id`. Display only, never a key.
+     */
+    name?: string;
   };
   /** A walky address. The card opens that session's Chat. */
   about: string | null;

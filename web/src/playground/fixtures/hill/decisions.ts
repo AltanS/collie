@@ -932,7 +932,7 @@ export function proposalGroup(): HillDecision {
     title: "Switch on the trick legs?",
     summary: "A session on workshop proposes it. It has 3 files. It asks for the belt and the Dashboard, and reaches the network. It shows on 3 cards.",
     ago: 1,
-    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "legs", hash: "5d".repeat(32) } },
+    from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "legs", hash: "5d".repeat(32) }, name: "Browser leg" },
     target: null,
     text: "none",
     options: [
@@ -1015,7 +1015,7 @@ export const rightsMoved = decision({
   title: "Browser leg changed its rights",
   summary: "Collie now reads other rights in this trick than the ones you said yes to, so the trick stopped. Read its rights in Settings → Tricks, and switch it on again if you want it.",
   ago: 1,
-  from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "rights", id: "legs", hash: "7f".repeat(32) } },
+  from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "rights", id: "legs", hash: "7f".repeat(32) }, name: "Browser leg" },
   target: null,
   text: "none",
   options: [{ intent: "ok", label: "OK" }],
@@ -1026,7 +1026,7 @@ export const versionGroup = decision({
   title: "Use the new version of legs?",
   summary: "A session on workshop proposes it. 3 files changed. It now also reaches the network. It shows on 2 cards.",
   ago: 2,
-  from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "legs", hash: "6e".repeat(32) } },
+  from: { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: "legs", hash: "6e".repeat(32) }, name: "Browser leg" },
   target: null,
   text: "none",
   options: [

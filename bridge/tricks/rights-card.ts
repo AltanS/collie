@@ -75,8 +75,9 @@ export function rightsCard(subject: TrickRightsSubject): HillPostInput {
 }
 
 /** The sender of the card about one trick and mismatch. */
-export function rightsSender(id: string, hash: string): HillCollieSender {
-  return { kind: "collie", ref: { type: "rights", id, hash }, label: RIGHTS_CARD_SENDER };
+export function rightsSender(id: string, hash: string, name?: string): HillCollieSender {
+  const base = { kind: "collie" as const, ref: { type: "rights" as const, id, hash }, label: RIGHTS_CARD_SENDER };
+  return name === undefined ? base : { ...base, name };
 }
 
 /** The answer to a card: OK closes it, and nothing else is an option. */
@@ -115,7 +116,7 @@ export class RightsCards implements TrickRightsPort {
       const hash = rightsHash(subject.moved);
       // Any card for this mismatch, open or closed, is the one: never a second.
       if (mine.some((decision) => decision.from.ref?.id === subject.id && decision.from.ref.hash === hash)) continue;
-      const posted = this.hill.postCollie(rightsSender(subject.id, hash), rightsCard(subject));
+      const posted = this.hill.postCollie(rightsSender(subject.id, hash, subject.name), rightsCard(subject));
       if (posted.ok) continue;
       const said = `${subject.id}@${hash}@${posted.code ?? "plain"}`;
       if (this.said.has(said)) continue;

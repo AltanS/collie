@@ -1278,8 +1278,6 @@ export const ru: Dictionary = {
   "nav.home.aria.reconnected": "Главная Collie: переподключено",
   "nav.mux.onPrefix": "вкл",
   "nav.prereleaseTitle": "Предварительная сборка: {version}",
-  "home.trickWaits.line": "Трюк ждет вашего согласия.",
-  "home.trickWaits.open": "Прочитать",
   "home.empty.disconnected": "Отключено",
   "home.empty.disconnectedAt": "Отключено: последний вход {time}",
   "home.empty.noAgents": "Нет запущенных агентов.",

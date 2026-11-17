@@ -1325,8 +1325,6 @@ export const es: Dictionary = {
   "nav.home.aria.reconnected": "Inicio de Collie (reconectado)",
   "nav.mux.onPrefix": "en",
   "nav.prereleaseTitle": "Compilación preliminar: {version}",
-  "home.trickWaits.line": "Un truco espera tu visto bueno.",
-  "home.trickWaits.open": "Léelo",
 
   // --- home (dashboard herd list) ---
   "home.empty.disconnected": "Desconectado",

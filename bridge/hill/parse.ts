@@ -31,6 +31,7 @@ import {
   HILL_GROUP_HASH_RE,
   HILL_GROUP_PARTS,
   type HillGroupAnswer,
+  cardName,
 } from "../../web/src/lib/hill/wire.ts";
 import { isRequestId } from "../worktree-receipts.ts";
 import { isHillPushTag } from "./push.ts";
@@ -294,7 +295,10 @@ function readFrom(value: JsonValue | undefined, opts: ReadDecisionOptions): Hill
   const refRow = asJsonObject(row.ref);
   const ref = hillCollieRef(asJsonString(refRow?.type), asJsonString(refRow?.id), asJsonString(refRow?.hash));
   if (ref === null || address !== null || trickId !== null || trickKey !== null || trickHost !== null) return null;
-  return { kind: "collie", address, trickId, trickKey, memberId, harness, label, host, trickHost, ref };
+  // The display name is optional: a card stored before it existed, or one whose name is not text, has none.
+  const name = cardName(asJsonString(row.name));
+  const base = { kind: "collie" as const, address, trickId, trickKey, memberId, harness, label, host, trickHost, ref };
+  return name === undefined ? base : { ...base, name };
 }
 
 function readTarget(value: JsonValue | undefined): HillDecision["target"] | undefined {

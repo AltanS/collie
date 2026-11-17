@@ -28,6 +28,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A trick's card leaves its page once you answer it.** Dismiss, Switch it on, Use the new version or Not now on a card opened from Settings, Tricks or the Dashboard shows what happened for a moment, then the page closes. Before, the card stayed on the page with its Back, Next and Dismiss buttons until you left the page, though Collie had already closed it.
 - **A card that an older build saved with no end date now expires.** When the bridge starts, each open card with no end date gets one: 30 days after it was posted. A card older than that closes as expired at once and moves to the closed cards. Before, such a card waited for ever.
 
+### Changed
+
+- **The Dashboard names the trick an agent proposes.** With the Hill off, the line about a waiting trick now reads "An agent proposes a trick: Idle Sessions." for one proposal, "An agent proposes a new version of Idle Sessions." for a proposed new version, and "Agents propose 3 tricks." for several, and its button says Review instead of Read it. Any other waiting card (a version Collie found, a trick stopped for its rights) reads "Idle Sessions needs a look." or "2 trick cards need a look.". A long name is cut with an ellipsis on one line. The button still opens the oldest card.
+- **Collie's own trick cards carry the trick's display name.** The bridge adds an optional `name` to the proposal, new-version, rights and carried cards, taken from the manifest and cleaned to one plain line of at most 40 characters. A card from an older bridge has none, and the phone shows the trick's id instead.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added

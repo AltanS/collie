@@ -44,6 +44,16 @@ describe("readHillDecision", () => {
     expect(readHillDecision(wire({ from: { ...from, ref: { ...ref, type: "pane" } }, replyTo: null, target: null }))).toBeNull();
   });
 
+  it("reads the display name of Collie's own card cleaned, and a card from an older bridge without one", () => {
+    const ref = { type: "proposal", id: "legs", hash: "a".repeat(64) };
+    const from = { ...asJsonObject(wire({}).from), kind: "collie", address: null, label: "Collie", ref };
+    expect(readHillDecision(wire({ from: { ...from, name: "Idle\u202E Sessions\u0007" }, replyTo: null, target: null }))?.from.name).toBe("Idle Sessions");
+    expect(readHillDecision(wire({ from: { ...from, name: "x".repeat(80) }, replyTo: null, target: null }))?.from.name).toHaveLength(40);
+    expect(readHillDecision(wire({ from, replyTo: null, target: null }))?.from).not.toHaveProperty("name");
+    expect(readHillDecision(wire({ from: { ...from, name: 7 }, replyTo: null, target: null }))?.from).not.toHaveProperty("name");
+    expect(readHillDecision(wire({ from: { ...from, name: "\u202E" }, replyTo: null, target: null }))?.from).not.toHaveProperty("name");
+  });
+
   it("reads a group of cards whole on Collie's own decision, and drops it when a card does not read or it sits on another sender (crew slice 8)", () => {
     const ref = { type: "proposal", id: "legs", hash: "a".repeat(64) };
     const from = { ...asJsonObject(wire({}).from), kind: "collie", address: null, label: "Collie", ref };

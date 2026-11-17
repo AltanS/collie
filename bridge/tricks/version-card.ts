@@ -689,8 +689,9 @@ export function versionRequestId(id: string, hash: string, seq: number): string 
 }
 
 /** The sender of a card about `id` at `hash`. */
-function senderOf(id: string, hash: string): HillCollieSender {
-  return { kind: "collie", ref: { type: "version", id, hash }, label: VERSION_CARD_SENDER };
+function senderOf(id: string, hash: string, name?: string): HillCollieSender {
+  const base = { kind: "collie" as const, ref: { type: "version" as const, id, hash }, label: VERSION_CARD_SENDER };
+  return name === undefined ? base : { ...base, name };
 }
 
 /** States after which the same version never asks again by itself: the person saw it. */
@@ -766,7 +767,7 @@ export class VersionCards implements TrickVersionsPort {
     const older = mine.find((decision) => decision.state === "open");
     const input: HillPostInput = { ...card, requestId: versionRequestId(subject.id, pending.hash, mine.length) };
     if (older !== undefined) input.supersedes = older.id;
-    const posted = this.deps.hill.postCollie(senderOf(subject.id, pending.hash), input);
+    const posted = this.deps.hill.postCollie(senderOf(subject.id, pending.hash, subject.name), input);
     if (posted.ok) return;
     const said = `${subject.id}@${pending.hash}@${posted.code ?? "plain"}`;
     if (this.said.has(said)) return;
