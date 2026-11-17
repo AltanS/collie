@@ -1067,7 +1067,7 @@ export function AgentChat({
   // from writing an unbound key into a dialog (below).
   const dialogPresent = useMemo(() => blocks.some(blockOwnsKeyboard), [blocks]);
   const screenLines = useMemo(() => splitLines(parseAnsi(display)), [display]);
-  // Hard stop 6b: a screen that asks for a secret gets no "Type it anyway" on the card.
+  // Hard stop 6b: a screen that asks for a secret gets no "Send past this screen" on the card.
   const unreadSecret = useMemo(() => detectNoEchoPrompt(screenLines) !== null, [screenLines]);
   // The docked card fits the dock (a permission card with subject rows, card-dock.tsx): the reading
   // box's floor turns soft for it, below.
@@ -3397,7 +3397,7 @@ export function AgentChat({
               onMenuAction={handleMenuAction}
               onUnreadDialogAction={handleUnreadDialogAction}
               // The unread card's own ways on (M102 spec 03): a cap for a core key the person's board lacks
-              // goes through the Keys pad's road; "Type it anyway" arms one send past this screen.
+              // goes through the Keys pad's road; "Send past this screen" arms one send past this screen.
               unreadFallback={unreadFallback}
               // The exit of an answer that cannot go (M102 spec 10): its line, the live screen, the Keys pad.
               answerExit={

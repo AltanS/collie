@@ -177,7 +177,7 @@ export interface ComposerHandle {
   sendViewTap: (tap: ViewTap) => Promise<ViewSendResult>;
   /** The unread card's caps (M102 spec 03): keys through the Keys pad's own road, with its receipt. */
   padKeys: (keys: string[]) => Promise<boolean>;
-  /** The unread card's "Type it anyway": the Keys drawer goes, the field takes the focus, one send past the screen is armed. */
+  /** The unread card's "Send past this screen": the Keys drawer goes, the field takes the focus, one send past the screen is armed. */
   typeAnyway: () => void;
   /**
    * The "cannot tell" card's "It arrived" (M102 spec 04): marks the unknown send `arrived` on the bridge, then clears the
@@ -247,7 +247,7 @@ interface ComposerProps {
   surface: Surface;
   /**
    * A launch this phone started has not shown its first screen to the bridge yet: the draft stays
-   * editable and on the phone, and nothing sends it. The keys and Type here stay as they are.
+   * editable and on the phone, and nothing sends it. The keys and Send anyway stay as they are.
    */
   starting?: boolean;
   /** Why the box cannot be reached, for the placeholder, when `surface.composer` is `unreachable`. */
@@ -1275,7 +1275,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const idleLocked = useLocked();
   const catchingUp = useCatchingUp();
   const directSuspended = locked || idleLocked || catchingUp;
-  // TYPE IT ANYWAY (M102 spec 03, spec 01's override): the rows hash of the screen the card showed at
+  // SEND PAST THIS SCREEN (M102 spec 03, spec 01's override): the rows hash of the screen the card showed at
   // the tap, read fresh by a `prepare`. The next send from the field carries it with `override`, so the
   // bridge types only while the screen still hashes the same. One send; any answer disarms it.
   const [overrideHash, setOverrideHash] = useState<string | null>(null);
@@ -1284,7 +1284,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   useEffect(() => {
     if (secretField) setOverrideHash(null);
   }, [secretField]);
-  // The send in flight is the one "Type it anyway" armed (not a commit tap's override): only its refusal
+  // The send in flight is the one "Send past this screen" armed (not a commit tap's override): only its refusal
   // re-arms on the rows the bridge read now.
   const typeAnywaySendRef = useRef(false);
   const direct = useDirectTyping({
@@ -2101,7 +2101,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    */
   async function sendSecret(code: string): Promise<boolean> {
     secretSpentRef.current = false;
-    // A code never carries an armed Type it anyway (the M102 review, L): the arm goes with this send.
+    // A code never carries an armed Send past this screen (the M102 review, L): the arm goes with this send.
     setOverrideHash(null);
     const went = await send(code, false, undefined, undefined, true);
     return went || secretSpentRef.current;
@@ -2180,7 +2180,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     tell("sending");
     try {
-      // "Type it anyway" armed one send past the screen the card showed: it carries that screen's rows
+      // "Send past this screen" armed one send past the screen the card showed: it carries that screen's rows
       // hash and the person's word, override, and the armed state goes with this send (M102 spec 03).
       const past = tap === undefined && view === undefined && !fromSecret ? overrideHash : null;
       if (past !== null) setOverrideHash(null);
@@ -2198,7 +2198,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       throw thrown;
     }
   }
-  // "Type it anyway" (M102 spec 03): the Keys drawer goes, the field takes the focus, and a `prepare`
+  // "Send past this screen" (M102 spec 03): the Keys drawer goes, the field takes the focus, and a `prepare`
   // reads the screen fresh for the rows hash the next send carries with `override` (spec 01). Nothing is
   // typed here. A read that brings back no hash says so, and the send stays the ordinary two taps.
   async function typeAnyway(): Promise<void> {
@@ -2351,12 +2351,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const refusal = { ...readingRefusal(reading), atRevision: (reply.surface ?? shownSurface).revision };
       // A screen Collie cannot read: the pane opens its card, with the person's Keys pad and "Type it
       // anyway", instead of a sentence only (M102 spec 03).
-      // A not_free refusal now offers Type here (invariant I4), so its step is the offer; the card of a screen
+      // A not_free refusal now offers Send anyway (invariant I4), so its step is the offer; the card of a screen
       // Collie cannot read opens for it all the same.
       if (reading.step === "screen" || (reading.offers.includes("commit") && (reading.surface === "unknown" || reading.surface === "unreachable" || reading.surface === "unreadable"))) onScreenUnread?.();
       // An override that met a menu, or whose text waits for the person's Enter (M102 spec 12): the Keys
       // pad opens, unless the person has a drawer open. A refused override carries the screen now and
-      // its hash, so "Type it anyway" stays armed on the rows the card shows next.
+      // its hash, so "Send past this screen" stays armed on the rows the card shows next.
       if (reply.reason === "menu_open" || reading.note === "overrideTyped" || reply.textAlreadyTyped === true) {
         if (drawerRef.current === null) requestDrawer("keys");
       }
@@ -4021,8 +4021,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               offers={protocolOffer.offers}
               disabled={starting || sending || locked}
               onOffer={onProtocolOffer}
-              // The ✕ drops the strip and hides the notice over it: a notice that still says "tap Type
-              // here" with no Type here to tap is a sentence about a button that is gone.
+              // The ✕ drops the strip and hides the notice over it: a notice that still says "tap Send
+              // anyway" with no Send anyway to tap is a sentence about a button that is gone.
               onDismiss={() => {
                 setProtocolOffer(null);
                 hideRefusal();
@@ -4033,7 +4033,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         </Collapse>
         {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other
             strips, because that is where the eye already is when a send is refused — and it is a
-            NOTICE beside the unchanged two-tap Send ("Type here"), never a replacement for it. */}
+            NOTICE beside the unchanged two-tap Send ("Send anyway"), never a replacement for it. */}
         <Collapse open={noEcho !== null && !direct.active}>
           {noEcho !== null && !direct.active && (
             <NoEchoNotice

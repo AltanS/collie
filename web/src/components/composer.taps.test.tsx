@@ -611,7 +611,7 @@ describe("composer taps: the notices in Type mode and under the password notice 
   });
 });
 
-describe("composer taps: Type it anyway reads the screen (fix 18)", () => {
+describe("composer taps: Send past this screen reads the screen (fix 18)", () => {
   it("no tap vanishes: the status says Reading the screen while the read runs, and clears after", async () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {

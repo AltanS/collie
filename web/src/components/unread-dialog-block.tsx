@@ -50,9 +50,9 @@ export interface UnreadDialogBlockProps {
    * draws for a core key the person's board lacks. Absent, the card draws no cap.
    */
   onPadKeys?: (keys: string[]) => Promise<boolean>;
-  /** "Type it anyway": opens the composer for one send past this screen (spec 01's override). Absent, no button. */
+  /** "Send past this screen": opens the composer for one send past this screen (spec 01's override). Absent, no button. */
   onTypeAnyway?: () => void;
-  /** The screen asks for a secret (a sign-in field, a password prompt): no "Type it anyway", a pointer to Type mode. */
+  /** The screen asks for a secret (a sign-in field, a password prompt): no "Send past this screen", a pointer to Type mode. */
   secret?: boolean;
   /**
    * The line the card says in place of its own caption: the exit of an answer that cannot go (M102 spec
@@ -259,7 +259,7 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
           </button>
         )}
       </div>
-      {/* Hard stop 6b: a screen that asks for a secret gets no "Type it anyway"; Type mode is the way. */}
+      {/* Hard stop 6b: a screen that asks for a secret gets no "Send past this screen"; Type mode is the way. */}
       {secret && <p className="text-xs text-muted-foreground">{t("unreadDialog.secret")}</p>}
       {/* A live region on the button itself is unreliable; this one announces the armed wording. */}
       <span role="status" className="sr-only">

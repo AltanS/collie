@@ -167,8 +167,8 @@ describe("D: a code that may have gone cannot be sent twice by one tap", () => {
   });
 });
 
-describe("L: an armed Type it anyway never goes out with a code", () => {
-  it("a code sent while Type it anyway is armed carries no rows hash and no override, and the arm is gone after", async () => {
+describe("L: an armed Send past this screen never goes out with a code", () => {
+  it("a code sent while Send past this screen is armed carries no rows hash and no override, and the arm is gone after", async () => {
     const user = userEvent.setup();
     server.use(...sendHandler((request) => (request.mode === "prepare" ? sendAnswer(request.id, null, undefined, { rowsHash: "ab12cd" }) : sendAnswer(request.id, "sent"))));
     const m = mount({ surface: FREE });

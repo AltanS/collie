@@ -578,7 +578,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("a box the read could not reach says so and stays typeable: the bridge reads again, and offers Type here (M102 spec 03, I4)", () => {
+  it("a box the read could not reach says so and stays typeable: the bridge reads again, and offers Send anyway (M102 spec 03, I4)", () => {
     renderComposerWithStatus({ surface: UNREACHABLE });
     expect(screen.getByPlaceholderText("Can't reach the input box")).toBeEnabled();
   });
@@ -6276,7 +6276,7 @@ describe("the unread card (M102 spec 03)", () => {
     expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("unread card: Type it anyway reads the screen once, then the next send carries its rows hash with override", async () => {
+  it("unread card: Send past this screen reads the screen once, then the next send carries its rows hash with override", async () => {
     server.use(...sendHandler((request) => (request.mode === "prepare" ? sendAnswer(request.id, null, undefined, { rowsHash: "0b0e1f" }) : sendAnswer(request.id, "sent"))));
     const user = userEvent.setup();
     const { handle } = renderUnread(null);

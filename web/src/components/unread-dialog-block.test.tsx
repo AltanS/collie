@@ -487,19 +487,19 @@ describe("unread card: your Keys pad (M102 spec 03)", () => {
     expect(onPadKeys).toHaveBeenLastCalledWith(["Down"]);
   });
 
-  it("unread card: Type it anyway opens the composer's one send; the declared key keeps its second tap", async () => {
+  it("unread card: Send past this screen opens the composer's one send; the declared key keeps its second tap", async () => {
     const { onTypeAnyway } = mount();
     await userEvent.setup().click(screen.getByRole("button", { name: "Send past this screen" }));
     expect(onTypeAnyway).toHaveBeenCalledTimes(1);
   });
 
-  it("unread card: a screen that asks for a secret has no Type it anyway, and points at Type mode", () => {
+  it("unread card: a screen that asks for a secret has no Send past this screen, and points at Type mode", () => {
     mount({ secret: true });
     expect(screen.queryByRole("button", { name: "Send past this screen" })).toBeNull();
     expect(screen.getByText(/asks for a secret\. Use Type/u)).toBeInTheDocument();
   });
 
-  it("unread card: opened by a refusal, with no declared key, it still has the screen and Type it anyway", () => {
+  it("unread card: opened by a refusal, with no declared key, it still has the screen and Send past this screen", () => {
     const block = cardBlock();
     render(<UnreadDialogBlock cancel={null} lines={block.lines} onAction={vi.fn()} onTypeAnyway={vi.fn()} />);
     expect(screen.getByText("Collie cannot read this screen. You can.")).toBeInTheDocument();

@@ -1,5 +1,5 @@
 // The generic menu sign (M102 spec 12, decision 4). A profile-free look at the bottom window of a
-// screen for a menu or a yes/no prompt: the one guard on the person's override ("Type it anyway") on
+// screen for a menu or a yes/no prompt: the one guard on the person's override ("Send past this screen") on
 // a screen no reader could read. Where it fires, the override is refused `menu_open`, nothing is typed,
 // and the phone shows the key pad: a pasted "1" or "y", or the Enter the person presses next, would
 // otherwise pick an option the person never chose.

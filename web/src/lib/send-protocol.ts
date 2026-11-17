@@ -549,7 +549,7 @@ function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict 
   // The cap's refusal is an `unconfirmed` one with a count: its own sentence, the same offer.
   if (reply.outcome === "refused" && reply.reason === "unconfirmed" && reply.cap !== null) return { clear: false, note: "capConfirm", offers };
   // A send of one of the digits a notice above the box printed: the sentence says the digit would answer it.
-  // With no commit offered (a running turn, a Replace) it names the card and the turn's end, not Type here.
+  // With no commit offered (a running turn, a Replace) it names the card and the turn's end, not Send anyway.
   if (reply.outcome === "refused" && reply.cause === "notice_key") return { clear: false, note: offers.includes("commit") ? "noticeKey" : "noticeKeyHeld", offers };
   // A box that did not take the probe, and a second read of the same rows (2026-10-25). A line longer
   // than the plain one says a probe character may remain in the live editor: that has its own sentence.
@@ -586,7 +586,7 @@ function surfaceAfter(reply: SendReply, note: SurfaceNote): SurfaceNote | null {
 /**
  * The person's override after a `not_free` refusal (M102 spec 03, invariant I4): when the refusal carries
  * the rows hash and the screen is no sign-in field and no ask Collie has read, the phone offers the
- * commit, Type here, which sends the text with `override` bound to those rows (spec 01). The bridge's
+ * commit, Send anyway, which sends the text with `override` bound to those rows (spec 01). The bridge's
  * own offers stay as they are; this only adds the one the phone may offer by itself.
  *
  * NEVER FOR A SUBMIT (the M102 review, F). A Submit's text is already in the box (a popup at Enter
@@ -627,7 +627,7 @@ export function readSend(reply: SendReply, mode: SendMode = "send"): SendReading
 export function nextStep(reply: SendReply, verdict: Verdict, toCard: boolean, surface: SurfaceNote | null): NextStep | null {
   const { outcome, reason } = reply;
   if (outcome === "discarded" || outcome === "held" || outcome === "expired" || outcome === "cancelled") return null;
-  // The strip's own buttons are the step: Add, Replace, Cancel; Submit, Discard; Type here.
+  // The strip's own buttons are the step: Add, Replace, Cancel; Submit, Discard; Send anyway.
   if (verdict.offers.length > 0) return "offers";
   if (toCard) return "card";
   if (outcome === "typed_not_submitted") return "screen";
