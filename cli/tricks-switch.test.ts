@@ -154,7 +154,8 @@ describe("the trick verbs while tricks are switched off", () => {
     expect(r.out).not.toContain(TRICKS_OFF_LINE);
   });
 
-  test("check --run is a developer's tool: it runs a folder once in the terminal with tricks off", async () => {
+  // The `--sh` sample is a `#!/bin/sh` program, and a shell run line does not run on Windows (bridge/tricks/run.ts).
+  test.skipIf(process.platform === "win32")("check --run is a developer's tool: it runs a folder once in the terminal with tricks off", async () => {
     const r = await rig();
     expect(await cmdTrickInit(r, ["--sh", "plain"])).toBe(EXIT.OK);
     clear(r);
