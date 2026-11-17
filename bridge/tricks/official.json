@@ -7,7 +7,7 @@
       "description": "Your agent answers with one screen you can tap, not a wall of text.",
       "repo": "https://github.com/AltanS/collie-tricks",
       "dir": "morph",
-      "commit": "9473ce07c1ce1a11ca49510671c71badbe2857ac",
+      "commit": "270e38621edba959fd1e0acbc4df8dd3de8cbdcb",
       "hash": "e4b55781355df893481b9c2b27619d07c2d68dcd296615067a2b8e8947922055",
       "extras": "b668b25a9d9a1a068fbc513544d6333f8d98e3e14b79e8887386a837efa7a0d2",
       "rules": "9ee603082182156a4dd0160b7b8eafbf6e83ceba02b8be6cda2f80f6b71d050f",
@@ -16,6 +16,10 @@
         "agent-view"
       ],
       "previous": [
+        {
+          "commit": "9473ce07c1ce1a11ca49510671c71badbe2857ac",
+          "hash": "e4b55781355df893481b9c2b27619d07c2d68dcd296615067a2b8e8947922055"
+        },
         {
           "commit": "0c1e5d82346486815073fedcdb994bc4c2041b55",
           "hash": "e4b55781355df893481b9c2b27619d07c2d68dcd296615067a2b8e8947922055"
@@ -28,8 +32,8 @@
       "description": "Turns an agent's UI notes into Decisions you approve by name.",
       "repo": "https://github.com/AltanS/collie-tricks",
       "dir": "design-review",
-      "commit": "9473ce07c1ce1a11ca49510671c71badbe2857ac",
-      "hash": "eb6c4cb1618db24058f741102679ab9c11109d1574a6658b58830c5a26f3de11",
+      "commit": "270e38621edba959fd1e0acbc4df8dd3de8cbdcb",
+      "hash": "a2016ef35a23e61080c2d2e4e7a4fd2ec2b5ef749c176a200de3a109e5f52275",
       "extras": "b1039966e31072a10ef6a45aeb299d8e94626d4fa244b145ed8281d1c80a6653",
       "rules": null,
       "contract": 1,
@@ -42,6 +46,10 @@
       ],
       "decides": "reply",
       "previous": [
+        {
+          "commit": "9473ce07c1ce1a11ca49510671c71badbe2857ac",
+          "hash": "eb6c4cb1618db24058f741102679ab9c11109d1574a6658b58830c5a26f3de11"
+        },
         {
           "commit": "0c1e5d82346486815073fedcdb994bc4c2041b55",
           "hash": "c75a92358f03323de67c4077128a934dda973f330740f079163f34e678979ff9"
@@ -58,8 +66,8 @@
       "description": "Open pull requests and issues that wait for you.",
       "repo": "https://github.com/AltanS/collie-tricks",
       "dir": "pr-inbox",
-      "commit": "9473ce07c1ce1a11ca49510671c71badbe2857ac",
-      "hash": "264cec3c83fcdafdc3ed495de37be49173697ec97576b139a04c68b14f1cd33e",
+      "commit": "270e38621edba959fd1e0acbc4df8dd3de8cbdcb",
+      "hash": "38818f5c47216d477a21eef6ac6b7dfb18d069f582b3443b305de2c60b9fb9dd",
       "extras": "a4ba4db96bd317b5f4c7223417f9fc8098682460256817b060f05b670967b63d",
       "rules": null,
       "contract": 1,
@@ -72,6 +80,10 @@
       ],
       "decides": "reply",
       "previous": [
+        {
+          "commit": "9473ce07c1ce1a11ca49510671c71badbe2857ac",
+          "hash": "264cec3c83fcdafdc3ed495de37be49173697ec97576b139a04c68b14f1cd33e"
+        },
         {
           "commit": "0c1e5d82346486815073fedcdb994bc4c2041b55",
           "hash": "b8b57135b34a5484c37695121b1e55dd0c2624db6525d2863b01976a3ab62162"
@@ -88,8 +100,8 @@
       "description": "Builds and long commands running in your sessions now.",
       "repo": "https://github.com/AltanS/collie-tricks",
       "dir": "running-builds",
-      "commit": "9473ce07c1ce1a11ca49510671c71badbe2857ac",
-      "hash": "04bcda776a0d9baff8e8982c0661c253138c04ba32f78ee773c1f032127737ac",
+      "commit": "270e38621edba959fd1e0acbc4df8dd3de8cbdcb",
+      "hash": "9a66fe1c1bd80081a1a1885ad43d9a4e4909f26f4473a2c604b30fbc32762da9",
       "extras": "0abbef9a24224b0853c24cf3a1ef80f1c66a2616d6795e08c012857c5466ebe3",
       "rules": null,
       "contract": 1,
@@ -99,6 +111,10 @@
         "status"
       ],
       "previous": [
+        {
+          "commit": "9473ce07c1ce1a11ca49510671c71badbe2857ac",
+          "hash": "04bcda776a0d9baff8e8982c0661c253138c04ba32f78ee773c1f032127737ac"
+        },
         {
           "commit": "0c1e5d82346486815073fedcdb994bc4c2041b55",
           "hash": "04bcda776a0d9baff8e8982c0661c253138c04ba32f78ee773c1f032127737ac"
