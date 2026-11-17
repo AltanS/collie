@@ -120,6 +120,6 @@ describe("a trick proposal while an agent view stands in for the chat", () => {
       vi.useRealTimers();
     }
     await waitFor(() => expect(answers).toHaveLength(1));
-    expect(answers[0]).toMatchObject({ intent: "on", group: { digest: HASH } });
+    expect(answers[0]).toMatchObject({ intent: "on", group: { digest: HASH, opened: [1] } });
   });
 });

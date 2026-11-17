@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { hasResizeObserver } from "@/lib/env";
+import { aHoldIsActive } from "@/lib/hold-flag";
 
 interface UseAutoScrollOptions {
   /** Px distance from the bottom still considered "at bottom". */
@@ -35,7 +36,8 @@ export function useAutoScroll<T extends HTMLElement = HTMLDivElement>(
 
   const pinToBottom = useCallback(() => {
     const el = scrollRef.current;
-    if (!el || !autoScroll.current) return;
+    // A finger holds a yes in this list (lib/hold-flag.ts): the card stays where the finger is.
+    if (!el || !autoScroll.current || aHoldIsActive()) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
   }, []);
 

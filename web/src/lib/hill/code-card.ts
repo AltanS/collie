@@ -1,6 +1,6 @@
 // Relative imports and no layout code: the bridge reads this module too (bridge/hill/service.ts groupRule).
 import type { View, ViewNode } from "../tricks/schema";
-import type { HillDecision } from "./wire";
+import type { HillDecision, HillGroupAnswer } from "./wire";
 
 // A SINGLE CARD OF CODE (review 7 R1, the single card). Collie's own proposal card or new-version card
 // whose code fits one card: its view never folds on the Hill, and its yes is a hold of three seconds
@@ -8,6 +8,18 @@ import type { HillDecision } from "./wire";
 // `{ digest: <the ref's hash> }`, and the bridge refuses a yes without it, as it does for a group (C-A2,
 // review 8). A Decision with no code in its view (an agent's, a trick's, or Collie's own without code)
 // folds as before.
+
+/**
+ * What a yes to Collie's own card of code carries: the digest the phone was given, and the legacy `opened` with every
+ * card number for a bridge of edge.1 to edge.4 (wire.ts {@link HillGroupAnswer}). A group names cards 1 to n, a
+ * single card names card 1. Undefined for a card with no code: it gets no yes.
+ */
+export function trickYesAnswer(decision: HillDecision): HillGroupAnswer | undefined {
+  const group = decision.group;
+  if (group !== undefined) return { digest: group.digest, opened: group.parts.map((_, i) => i + 1) };
+  const single = singleCodeCard(decision);
+  return single === null ? undefined : { digest: single.digest, opened: [1] };
+}
 
 /** The decline of each kind of Collie's own card with code: the option that needs nothing read. */
 const DECLINE = {

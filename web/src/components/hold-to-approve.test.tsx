@@ -3,10 +3,12 @@ import { useState } from "react";
 
 import { HoldToApprove } from "@/components/hold-to-approve";
 import { APPROVE_HOLD_MS, ARM_DWELL_MS, HOLD_BACK_MS } from "@/lib/arm";
+import { aHoldIsActive } from "@/lib/hold-flag";
 
 // THE YES TO A TRICK'S CODE IS A HOLD OF THREE SECONDS (ADR 0156). The control every trick card uses: the hold
 // approves once with the finger still down, every way a hold can end early approves nothing, and a key keeps
-// the belt Stop's two presses.
+// the belt Stop's two presses. A scroll, a layout shift and the window's focus do not end a hold (fix/hold-works):
+// in a live chat they come from the page, not the person.
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -80,7 +82,6 @@ describe("hold to approve", () => {
     ["the pointer leaves the button", () => fireEvent.pointerLeave(button(), { pointerId: 1, pointerType: "touch" })],
     ["pointercancel", () => fireEvent.pointerCancel(button(), { pointerId: 1, pointerType: "touch" })],
     ["a move past a thumb's jitter", () => fireEvent.pointerMove(button(), { pointerId: 1, clientX: 10, clientY: 40, pointerType: "touch" })],
-    ["a scroll of the chat starts", () => fireEvent.scroll(document.body)],
     [
       "the page is hidden",
       () => {
@@ -88,7 +89,6 @@ describe("hold to approve", () => {
         fireEvent(document, new Event("visibilitychange"));
       },
     ],
-    ["the window loses focus", () => fireEvent.blur(window)],
   ];
   for (const [what, act_] of cancels) {
     it(`${what} cancels the hold, and a finger kept down approves nothing`, async () => {
@@ -105,30 +105,69 @@ describe("hold to approve", () => {
     });
   }
 
-  it("the button moving under the finger by more than a few pixels (a layout shift) cancels the hold", async () => {
+  it("a scroll, the window losing focus and the button moving under the finger do not end a hold", async () => {
     const { onApprove } = draw();
     const el = button();
     let top = 100;
     el.getBoundingClientRect = () => ({ top, left: 0, right: 200, bottom: top + 44, width: 200, height: 44, x: 0, y: top, toJSON: () => ({}) });
     down();
-    await wait(1000);
-    top = 102;
-    await wait(200);
-    top = 140;
-    await wait(5000);
-    expect(onApprove).not.toHaveBeenCalled();
+    await wait(500);
+    fireEvent.scroll(document.body);
+    fireEvent.scroll(window);
+    await wait(500);
+    fireEvent.blur(window);
+    top = 160;
+    await wait(500);
+    expect(button().getAttribute("data-phase")).toBe("filling");
+    await wait(APPROVE_HOLD_MS - 1500);
+    expect(onApprove).toHaveBeenCalledTimes(1);
   });
 
-  it("a shift within a few pixels keeps the hold", async () => {
+  it("the button is a hold target, never a pan: touch-action none", () => {
+    draw();
+    expect(button().className).toContain("touch-none");
+  });
+
+  it("a hold ended by the page hiding, whose lift never arrives, leaves the button ready for the next press", async () => {
     const { onApprove } = draw();
-    const el = button();
-    let top = 100;
-    el.getBoundingClientRect = () => ({ top, left: 0, right: 200, bottom: top + 44, width: 200, height: 44, x: 0, y: top, toJSON: () => ({}) });
-    down();
-    await wait(1000);
-    top = 103;
-    await wait(2000);
+    down(1);
+    await wait(1500);
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    fireEvent(document, new Event("visibilitychange"));
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    // No pointerup for finger 1 ever comes. A new press, with another pointer id, holds and approves.
+    down(7);
+    await wait(APPROVE_HOLD_MS);
     expect(onApprove).toHaveBeenCalledTimes(1);
+  });
+
+  it("a finished hold whose lift is lost leaves the button ready too", async () => {
+    const { onApprove } = draw();
+    down(1);
+    await wait(APPROVE_HOLD_MS);
+    expect(onApprove).toHaveBeenCalledTimes(1);
+    down(2);
+    await wait(APPROVE_HOLD_MS);
+    expect(onApprove).toHaveBeenCalledTimes(2);
+  });
+
+  it("the page-wide hold flag is up while a finger holds and down after every end", async () => {
+    const { view } = draw();
+    expect(aHoldIsActive()).toBe(false);
+    down();
+    expect(aHoldIsActive()).toBe(true);
+    up();
+    expect(aHoldIsActive()).toBe(false);
+    down();
+    await wait(APPROVE_HOLD_MS);
+    expect(aHoldIsActive()).toBe(false);
+    fireEvent.pointerUp(button(), { button: 0, pointerId: 1, pointerType: "touch" });
+    down(3);
+    fireEvent.pointerMove(button(), { pointerId: 3, clientX: 10, clientY: 60, pointerType: "touch" });
+    expect(aHoldIsActive()).toBe(false);
+    down(4);
+    view.unmount();
+    expect(aHoldIsActive()).toBe(false);
   });
 
   it("a changed digest cancels the hold", async () => {

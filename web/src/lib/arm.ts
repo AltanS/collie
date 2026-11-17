@@ -37,8 +37,5 @@ export const STOP_HINT_MS = 2500;
  */
 export const APPROVE_HOLD_MS = 3000;
 
-/** How far the yes may move on screen under a finger that holds it, in px, before the hold is cancelled. */
-export const APPROVE_SHIFT_PX = 4;
-
 /** How long a cancelled hold's fill takes to run back to empty. */
 export const HOLD_BACK_MS = 200;

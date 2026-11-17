@@ -2,7 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 
 import { ignoreHeldEnter, useArm } from "@/hooks/use-arm";
 import { HOLD_FEEDBACK_DELAY_MS, MOVE_CANCEL_PX, useLongPress } from "@/hooks/use-long-press";
-import { APPROVE_HOLD_MS, APPROVE_SHIFT_PX, HOLD_BACK_MS } from "@/lib/arm";
+import { APPROVE_HOLD_MS, HOLD_BACK_MS } from "@/lib/arm";
+import { beginHold, endHold } from "@/lib/hold-flag";
 
 // HOLD TO APPROVE (ADR 0156, the operator's decision of 2026-11-17). The yes to a trick's code, switching on a
 // proposed trick or taking a new version, is a hold of APPROVE_HOLD_MS on the button, on every card that asks
@@ -15,11 +16,19 @@ import { APPROVE_HOLD_MS, APPROVE_SHIFT_PX, HOLD_BACK_MS } from "@/lib/arm";
 // began before the button was there, or while it was disabled, is never a hold: a hold starts only with a
 // pointer-down on this button.
 //
-// WHAT ENDS A HOLD WITH NO YES. The finger lifts early; it leaves the button or moves past a thumb's jitter;
-// `pointercancel` (the browser took the touch for a scroll); any scroll on the page; the page hidden or the
-// window losing focus; the button moving on screen under the finger by more than APPROVE_SHIFT_PX (a layout
-// shift); a new `resetKey` (the card's digest changed) or `enabled` turning false; the button leaving the page.
-// A cancelled fill runs back to empty (HOLD_BACK_MS), and the next hold starts from zero.
+// WHAT ENDS A HOLD WITH NO YES. The finger lifts early; it leaves the button or moves past MOVE_CANCEL_PX;
+// `pointercancel`; the page hidden; a new `resetKey` (the card's digest changed) or `enabled` turning false (an
+// answer in flight); the button leaving the page. A cancelled fill runs back to empty (HOLD_BACK_MS), and the next
+// hold starts from zero.
+//
+// WHAT DOES NOT END IT (fix/hold-works, 2026-11-17). A scroll, a layout shift and the window's focus. On Altan's
+// Android phone the hold never finished in a live chat: the chat's scroller pins its tail on every poll that brings
+// a line (hooks/use-auto-scroll.ts), a browser fires `scroll` for that, and a page-wide scroll listener took it as
+// the person's. Those were guards of the look, not of the yes: the bridge binds the yes to the digest, and a new
+// digest still ends a hold. While a hold is under way the chat does not follow its tail (lib/hold-flag.ts), so the
+// card stays under the finger. The button carries `touch-action: none` (hold-to-approve.tsx), so the browser never
+// takes a thumb that drifts a few px for a pan: Chrome on Android starts a pan, and fires `pointercancel`, past its
+// touch slop of about 8 px, well inside MOVE_CANCEL_PX.
 //
 // WHAT DOES NOTHING. A second finger while one holds, and any press while `enabled` is false (an answer in
 // flight, a locked card).
@@ -69,9 +78,6 @@ function fillShare(downAt: number): number {
   return Math.min(1, Math.max(0, share));
 }
 
-/** How often the button's place on screen is looked at while a finger holds it. */
-const SHIFT_LOOK_MS = 50;
-
 /** The hold of three seconds on the yes to a trick's code. See the head of this file. */
 export function useApproveHold({ enabled, resetKey, onApprove }: ApproveHoldOptions): ApproveHold {
   const approve = useRef(onApprove);
@@ -98,15 +104,28 @@ export function useApproveHold({ enabled, resetKey, onApprove }: ApproveHoldOpti
   const backTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const { armed, tap, disarm } = useArm<"yes">();
 
+  // Whether this hook holds the page-wide flag now (lib/hold-flag.ts): set by the finger's down, given back by
+  // every end. Kept here so a down never counts twice and an end never gives back what it did not take.
+  const flagged = useRef(false);
+  const unflag = useCallback(() => {
+    if (!flagged.current) return;
+    flagged.current = false;
+    endHold();
+  }, []);
+
   const unlisten = useCallback(() => {
     detach.current?.();
     detach.current = null;
-  }, []);
+    unflag();
+  }, [unflag]);
 
   // The hold's end: the timer fired with the finger still down.
   const held = useCallback(() => {
     const ok = active.current && stamp.current === epoch.current && live.current;
     active.current = false;
+    // The finger is done with: its lift, if it ever arrives, has nothing left to end (its click is suppressed by
+    // useLongPress), and a lost lift must not leave the button deaf to the next press.
+    finger.current = null;
     unlisten();
     setPressing(false);
     if (ok) approve.current();
@@ -123,6 +142,9 @@ export function useApproveHold({ enabled, resetKey, onApprove }: ApproveHoldOpti
     if (!active.current) return;
     const share = fillShare(downAt.current);
     active.current = false;
+    // The finger is let go too: a lift that never arrives (the page hidden mid-press) must not leave the button
+    // waiting for it, deaf to the next press.
+    finger.current = null;
     holdRef.current.onPointerCancel();
     unlisten();
     setPressing(false);
@@ -135,33 +157,15 @@ export function useApproveHold({ enabled, resetKey, onApprove }: ApproveHoldOpti
     backTimer.current = setTimeout(() => setBack(null), HOLD_BACK_MS);
   }, [unlisten]);
 
-  // The page around the button while a finger holds it: a scroll, the page hidden, the window's focus lost, or the
-  // button moving under the finger ends the hold.
-  const listen = useCallback(
-    (button: HTMLElement) => {
-      unlisten();
-      const start = button.getBoundingClientRect();
-      const onScroll = () => cancel();
-      const onHidden = () => {
-        if (document.visibilityState === "hidden") cancel();
-      };
-      const onBlur = () => cancel();
-      const look = setInterval(() => {
-        const now = button.getBoundingClientRect();
-        if (Math.abs(now.left - start.left) > APPROVE_SHIFT_PX || Math.abs(now.top - start.top) > APPROVE_SHIFT_PX) cancel();
-      }, SHIFT_LOOK_MS);
-      window.addEventListener("scroll", onScroll, true);
-      document.addEventListener("visibilitychange", onHidden);
-      window.addEventListener("blur", onBlur);
-      detach.current = () => {
-        clearInterval(look);
-        window.removeEventListener("scroll", onScroll, true);
-        document.removeEventListener("visibilitychange", onHidden);
-        window.removeEventListener("blur", onBlur);
-      };
-    },
-    [cancel, unlisten],
-  );
+  // The page hidden while a finger holds: the hold ends. Only `hidden` counts; a scroll or a blur does not.
+  const listen = useCallback(() => {
+    unlisten();
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") cancel();
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    detach.current = () => document.removeEventListener("visibilitychange", onHidden);
+  }, [cancel, unlisten]);
 
   // A changed card (another digest), or one that takes no answer now, ends a hold and an arm.
   useEffect(() => {
@@ -174,6 +178,7 @@ export function useApproveHold({ enabled, resetKey, onApprove }: ApproveHoldOpti
   useEffect(
     () => () => {
       active.current = false;
+      finger.current = null;
       unlisten();
       clearTimeout(backTimer.current);
     },
@@ -202,7 +207,9 @@ export function useApproveHold({ enabled, resetKey, onApprove }: ApproveHoldOpti
       setBack(null);
       setPressing(true);
       disarm();
-      listen(event.currentTarget);
+      listen();
+      flagged.current = true;
+      beginHold();
       hold.onPointerDown(event);
     },
     onPointerMove: (event) => {

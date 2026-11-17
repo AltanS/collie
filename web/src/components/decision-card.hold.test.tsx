@@ -54,7 +54,7 @@ describe.each([
     expect(onSend).not.toHaveBeenCalled();
     wait(100);
     expect(onSend).toHaveBeenCalledTimes(1);
-    expect(onSend).toHaveBeenCalledWith(yesIntent, null, { digest: HASH });
+    expect(onSend).toHaveBeenCalledWith(yesIntent, null, { digest: HASH, opened: [1] });
   });
 
   it("a tap is no yes, and a lift before three seconds sends nothing", () => {
@@ -76,7 +76,7 @@ describe.each([
     expect(onSend).not.toHaveBeenCalled();
     wait(500);
     fireEvent.click(yes()!, { detail: 0 });
-    expect(onSend).toHaveBeenCalledWith(yesIntent, null, { digest: HASH });
+    expect(onSend).toHaveBeenCalledWith(yesIntent, null, { digest: HASH, opened: [1] });
   });
 
   it("the decline stays one tap", () => {
@@ -109,7 +109,7 @@ it("a version's second yes, Use it and stop asking, is a hold of its own words",
   expect(yes()!).toHaveTextContent("Later changes are taken without asking.");
   fireEvent.pointerDown(yes()!, { button: 0, pointerId: 1, pointerType: "touch" });
   wait(APPROVE_HOLD_MS);
-  expect(onSend).toHaveBeenCalledWith("always", null, { digest: HASH });
+  expect(onSend).toHaveBeenCalledWith("always", null, { digest: HASH, opened: [1] });
 });
 
 it("a proposal of a new version says Hold to use, not Hold to switch on", () => {
