@@ -720,6 +720,12 @@ export interface SendDeps {
    * the screen road exactly as before.
    */
   readonly data?: DataRoad;
+  /**
+   * Test seam (M102 spec 15): the Surface each read folds goes through this before any step reads it,
+   * so the invariant suites can put ANY Surface on a screen the readers would read otherwise. The bridge
+   * never sets it. Absent: the folded Surface as it is.
+   */
+  readonly surfaceSeam?: ((read: Surface, paneId: string) => Surface) | undefined;
 }
 
 /** What the Send Protocol needs for the data road. */
@@ -5757,7 +5763,8 @@ export class SendProtocol {
       this.deps.asks === undefined
         ? liftAsk(blocks, grid.value.revision)
         : this.deps.asks.publish(paneId, this.deps.generation(paneId) ?? "gone", liftDialog(blocks), askLifetimeOf(state.match));
-    const { surface } = surfaceOfScreen({ seq: 0, source: "screen", at: this.now(), revision: grid.value.revision, rows, ask }, idle);
+    const folded = surfaceOfScreen({ seq: 0, source: "screen", at: this.now(), revision: grid.value.revision, rows, ask }, idle).surface;
+    const surface = this.deps.surfaceSeam === undefined ? folded : this.deps.surfaceSeam(folded, paneId);
     const texts = rows.map((row) => rowText(row).trimEnd());
     const plainRaw = rows.map(plainOf);
     const signs = (idle?.runningRows ?? []).map((source) => new RegExp(source, "u"));
