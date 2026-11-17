@@ -94,7 +94,7 @@ describe("readSend", () => {
 
   // The review's F3: the bridge's English detail is dropped for every `unconfirmed`, so the notice's own
   // sentence travels as a cause the phone translates. An answer without it keeps the generic sentence.
-  it("the phone never arms an override (Type here) for a Submit, whose text is already in the box (the M102 review, F)", () => {
+  it("the phone never arms an override (Send anyway) for a Submit, whose text is already in the box (the M102 review, F)", () => {
     const unreadable: Surface = { revision: 1, turn: "idle", modal: "unreadable", composer: "empty" };
     const notFree = (offers: string[] = ["keys"]): JsonObject => ({ receipt: { outcome: "refused", reason: "not_free" }, offers, rowsHash: "ab12", surface: parseJsonObject(JSON.stringify(unreadable)) ?? {} });
     expect(readSend(readSendReply(notFree())!, "send").offers).toEqual(["commit"]);
@@ -107,7 +107,7 @@ describe("readSend", () => {
     const body: JsonObject = { receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["commit", "keys"], cause: "notice_key", detail: "That message would answer the notice above the box." };
     expect(readSend(readSendReply(body)!)).toMatchObject({ clear: false, note: "noticeKey", offers: ["commit"], detail: null });
     const running: JsonObject = { receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["keys"], cause: "notice_key" };
-    // No commit offered (a running turn, a Replace): the sentence names the card and the turn's end, not Type here.
+    // No commit offered (a running turn, a Replace): the sentence names the card and the turn's end, not Send anyway.
     expect(readSend(readSendReply(running)!)).toMatchObject({ note: "noticeKeyHeld", offers: [], detail: null });
     expect(readSend(reply("refused", "unconfirmed", ["commit", "keys"])).note).toBe("unconfirmed");
   });
@@ -332,7 +332,7 @@ describe("the session page's rows (send drill 3)", () => {
     const plain: SendReceiptRow = { ...base, outcome: "refused", reason: "unconfirmed" };
     const capped: SendReceiptRow = { ...plain, cap: { count: 5, limit: 5, harness: "codex", version: "-" } };
     expect(receiptSentence(plain, say)).toBe("composer.protocol.unconfirmedPast");
-    expect(receiptSentence(capped, say)).toBe(`composer.protocol.capConfirm ${JSON.stringify({ count: "5", harness: "codex", version: "\u0000" })}`);
+    expect(receiptSentence(capped, say)).toBe(`composer.protocol.capConfirmPast ${JSON.stringify({ count: "5", harness: "codex", version: "\u0000" })}`);
     expect(receiptSentence({ ...base, outcome: "sent" }, say)).toBeNull();
   });
 

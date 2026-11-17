@@ -12,6 +12,7 @@
 // AND a try/catch, because Safari private mode throws on setItem rather than reporting quota. A
 // draft is never important enough to break a render or a send.
 
+import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "./json";
 import { normalizeScope, type Scope } from "./scope";
 
 const PREFIX = "collie:draft:";
@@ -357,12 +358,13 @@ export function clearDraft(scope: Scope | undefined, paneId: string): void {
 }
 
 /**
- * Drop every draft, both tiers, every pane on every machine. Only the device wipe calls this
+ * Drop every draft and every Put back list, both tiers, every pane on every machine. Only the device wipe calls this
  * (lib/wipe.ts): a pairing that ended takes the unsent words typed under it along. Every key under
  * the prefix goes, unparseable ones too, because a key the wipe skips is a key nothing cleans later.
  */
 export function clearAllDrafts(): void {
   memory.clear();
+  backMemory.clear();
   const store = storage();
   if (!store) return;
   try {
@@ -377,9 +379,139 @@ export function clearAllDrafts(): void {
   }
 }
 
+// ── PUT BACK, STORED WITH THE DRAFT (the M102 review 3) ──────────────────────────────────────────────
+//
+// A sent text that did not go and found the box holding a draft waits beside the notice with Put back (M104,
+// composer.tsx `giveBack`). It is the person's unsent words exactly as a draft is, so it lives where the draft lives:
+// the same two tiers, the same (host, session, pane) key, the same 48-hour age, the same prune and the same device
+// wipe. Its key sits under {@link PREFIX}, so `pruneDrafts` and `clearAllDrafts` reach it, and its entry parses as a
+// draft entry (an empty `text` and an `at`), so the prune keeps it until it is old. The `~` cannot appear in a session
+// or a pane id, so the key never meets a draft's.
+//
+// An ordered list, oldest first, with no cap: Put back never drops a text. A sign-in code never comes here; the
+// composer's give-back road is never taken by a code (composer-calm.test.tsx pins it).
+
+const PREFIX_BACK = "collie:draft:back~";
+
+/** One text waiting on Put back: what the box held (text and chips), the line it was, and its request id if any. */
+export interface PutBackItem {
+  draft: string;
+  chips: DraftAttachment[];
+  line: string;
+  intent?: { key: string; requestId: string };
+}
+
+/** The memory tier of Put back, as {@link memory} is the drafts': it holds what the disk tier refused. */
+const backMemory = new Map<string, { at: number; items: PutBackItem[] }>();
+
+function backKeyFor(scope: Scope | undefined, paneId: string): string {
+  return keyFor(scope, paneId, PREFIX_BACK);
+}
+
+/** A stored chip, copied field by field, or null when it is not a well-formed one. */
+function parseBackChip(value: JsonValue): DraftAttachment | null {
+  const chip = asJsonObject(value);
+  const n = asJsonNumber(chip?.n);
+  const path = asJsonString(chip?.path);
+  const name = asJsonString(chip?.name);
+  const kind = asJsonString(chip?.kind);
+  if (n === undefined || !isChipNumber(n) || path === undefined || path === "" || name === undefined) return null;
+  if (kind !== "image" && kind !== "file" && kind !== "paste") return null;
+  return { n, path, name, kind };
+}
+
+/** A stored Put back item, copied field by field, or null when it is not one. */
+function parseBackItem(value: JsonValue): PutBackItem | null {
+  const item = asJsonObject(value);
+  const draft = asJsonString(item?.draft);
+  const line = asJsonString(item?.line);
+  if (item === undefined || draft === undefined || line === undefined) return null;
+  const chips = Array.isArray(item.chips) ? item.chips.flatMap((chip) => parseBackChip(chip) ?? []) : [];
+  const out: PutBackItem = { draft, chips, line };
+  const intent = asJsonObject(item.intent);
+  const key = asJsonString(intent?.key);
+  const requestId = asJsonString(intent?.requestId);
+  if (key !== undefined && requestId !== undefined) out.intent = { key, requestId };
+  return out;
+}
+
+function loadBackStored(key: string): { at: number; items: PutBackItem[] } | null {
+  const store = storage();
+  if (!store) return null;
+  try {
+    const raw = store.getItem(key);
+    if (raw === null) return null;
+    const entry = asJsonObject(parseJson(raw));
+    const at = asJsonNumber(entry?.at);
+    const back = entry?.back;
+    if (at === undefined || !Array.isArray(back)) return null;
+    if (Date.now() - at > MAX_AGE_MS) {
+      store.removeItem(key);
+      return null;
+    }
+    return { at, items: back.flatMap((item) => parseBackItem(item) ?? []) };
+  } catch {
+    return null;
+  }
+}
+
+/** A Put back item copied field by field: no caller's object, and no richer chip (a preview URL, an id), is kept. */
+function copyBackItem({ draft, chips, line, intent }: PutBackItem): PutBackItem {
+  const item: PutBackItem = { draft, chips: chips.map(({ n, path, name, kind }) => ({ n, path, name, kind })), line };
+  if (intent !== undefined) item.intent = { key: intent.key, requestId: intent.requestId };
+  return item;
+}
+
+/** The texts waiting on Put back for a pane, oldest first; empty when none. The newer tier wins, as for a draft. */
+export function loadPutBack(scope: Scope | undefined, paneId: string): PutBackItem[] {
+  prunedOnce();
+  const key = backKeyFor(scope, paneId);
+  const cached = backMemory.get(key) ?? null;
+  const stored = loadBackStored(key);
+  const entry = cached === null ? stored : stored === null ? cached : stored.at > cached.at ? stored : cached;
+  // Copies, so a caller that changes its list never changes the memory tier's.
+  return entry === null ? [] : entry.items.map((item) => copyBackItem(item));
+}
+
+/** Store the pane's Put back list, oldest first. An empty list removes it from both tiers. */
+export function savePutBack(scope: Scope | undefined, paneId: string, items: readonly PutBackItem[]): void {
+  prunedOnce();
+  if (items.length === 0) {
+    clearPutBack(scope, paneId);
+    return;
+  }
+  const key = backKeyFor(scope, paneId);
+  const at = Date.now();
+  // Copied field by field, so a caller's richer chip (a preview URL, an id) never reaches storage.
+  const copy = items.map((item) => copyBackItem(item));
+  backMemory.set(key, { at, items: copy });
+  const store = storage();
+  if (!store) return;
+  const size = copy.reduce((n, item) => n + draftCharCount(item.draft, item.chips) + item.line.length, 0);
+  // Too big for the disk tier: cleared rather than left stale, as a draft is; the memory tier holds it.
+  if (size > MAX_CHARS) {
+    clearStored(store, key);
+    return;
+  }
+  try {
+    store.setItem(key, JSON.stringify({ text: "", at, back: copy }));
+  } catch {
+    // Quota / private mode: the memory tier still holds the list.
+  }
+}
+
+/** Drop a pane's Put back list from both tiers. The password-prompt wipe calls this with `clearDraft`. */
+export function clearPutBack(scope: Scope | undefined, paneId: string): void {
+  const key = backKeyFor(scope, paneId);
+  backMemory.delete(key);
+  const store = storage();
+  if (store) clearStored(store, key);
+}
+
 /** Test seam — forgets the once-per-load prune so a case can control when pruning happens, and
  *  empties the memory tier, which `localStorage.clear()` in a test's setup cannot reach. */
 export function __resetDraftPrune(): void {
   pruned = false;
   memory.clear();
+  backMemory.clear();
 }

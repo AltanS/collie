@@ -296,7 +296,7 @@ export interface SendReceipt {
   readonly menuSign?: MenuSign;
   /**
    * Set on a `typed_not_submitted(override)` that found the text in the box already, left there by an
-   * earlier send of it (a Submit refused for a popup, then Type it anyway): nothing was typed a second
+   * earlier send of it (a Submit refused for a popup, then Send anyway): nothing was typed a second
    * time. The person presses Enter on the key pad. Absent otherwise.
    */
   readonly textAlreadyTyped?: true;

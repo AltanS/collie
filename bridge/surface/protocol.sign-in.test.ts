@@ -348,7 +348,7 @@ describe("fail closed: a sign-in prompt no layout reads keeps no line and is nev
     expect(blind).toEqual([]);
   });
 
-  test("the person's confirm after it (Type here) keeps no line either", async () => {
+  test("the person's confirm after it (Send anyway) keeps no line either", async () => {
     const field = firstRunPane({ rows: scrolled }, 61);
     const { send, store, holds, blind } = rig(field, "claude", "2.1.325", true);
     const first = await send(SHORT);
