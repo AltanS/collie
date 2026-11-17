@@ -28,6 +28,19 @@ async function boxOf(page: Page, selector: string): Promise<{ x: number; y: numb
   return box;
 }
 
+// A failed box send lets go of the box at the tap and puts the text back when the refusal comes (M104); the
+// box then regrows over FLIP_MS (200 ms). A box is read only when it holds still: two reads 300 ms apart agree.
+async function settledBox(page: Page, selector: string): Promise<{ x: number; y: number; width: number; height: number }> {
+  let last = await boxOf(page, selector);
+  for (let i = 0; i < 40; i++) {
+    await page.waitForTimeout(300);
+    const next = await boxOf(page, selector);
+    if (JSON.stringify(next) === JSON.stringify(last)) return next;
+    last = next;
+  }
+  throw new Error(`${selector} never held still`);
+}
+
 test("the report card floats over the mirror and moves neither the field nor the mirror", async ({ page }) => {
   let posts = 0;
   await installApiStub(page);
@@ -58,16 +71,16 @@ test("the report card floats over the mirror and moves neither the field nor the
   await sendOnce(1);
   await sendOnce(2);
   await expect(page.locator('[data-slot="report-card"]')).toHaveCount(0);
-  const before = await boxOf(page, FIELD);
-  const scrollerBefore = await boxOf(page, '[data-slot="composer-box"]');
+  const before = await settledBox(page, FIELD);
+  const scrollerBefore = await settledBox(page, '[data-slot="composer-box"]');
   await sendOnce(3);
   const card = page.locator('[data-slot="report-card"]');
   await expect(card).toBeVisible();
   await expect(card).toContainText("Sending failed 3 times.");
 
-  const withCard = await boxOf(page, FIELD);
+  const withCard = await settledBox(page, FIELD);
   expect(withCard).toEqual(before);
-  expect(await boxOf(page, '[data-slot="composer-box"]')).toEqual(scrollerBefore);
+  expect(await settledBox(page, '[data-slot="composer-box"]')).toEqual(scrollerBefore);
   // The card stands above the box, over the mirror's bottom edge.
   const cardBox = await boxOf(page, '[data-slot="report-card"]');
   expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(scrollerBefore.y);
