@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST, type Host } from "../host.ts";
-import { systemTool } from "../icacls.ts";
+import { windowsTreeKill } from "../tree-kill.ts";
+// The Windows tree kill moved to bridge/tree-kill.ts, which the trick runner shares; its names stay here too.
+export { WINDOWS_KILL_TIMEOUT_MS, windowsKillCommands, windowsOrphanScript } from "../tree-kill.ts";
 import { commandLookup, type LocalCliSttSettings } from "./config.ts";
 import { MAX_CONCURRENT_STT } from "./http.ts";
 import {
@@ -312,7 +314,7 @@ function spawnCommand(argv: string[], cwd: string, env: Record<string, string>, 
         // taskkill walks the tree from the live command, so the command is killed after it, not before.
         if (treeKilled) return;
         treeKilled = true;
-        windowsTreeKill(proc.pid, startedAt, env, leader);
+        void windowsTreeKill(proc.pid, { startedAt, env, leader });
         return;
       }
       try {
@@ -323,68 +325,6 @@ function spawnCommand(argv: string[], cwd: string, env: Record<string, string>, 
       leader();
     },
   };
-}
-
-/** How long each of the two Windows kill programs may run before it is itself ended. */
-export const WINDOWS_KILL_TIMEOUT_MS = 15_000;
-
-/** Milliseconds since the epoch as a Windows FILETIME (100 ns ticks since 1601), for PowerShell. */
-const fileTime = (ms: number): string => ((BigInt(Math.floor(ms)) + 11_644_473_600_000n) * 10_000n).toString();
-
-/**
- * The PowerShell pass that ends what the command left behind. One snapshot of the process table,
- * taken before anything is killed; from it, every process whose parent is `pid` and that started
- * between `fromMs` and `toMs` (the call's own window, so a process of a later owner of a reused pid
- * is never taken), then their children, and theirs, each started after its parent. Numbers only are
- * spliced in, so nothing from the operator's settings reaches the script.
- */
-export function windowsOrphanScript(pid: number, fromMs: number, toMs: number): string {
-  return [
-    `$from = [datetime]::FromFileTimeUtc(${fileTime(fromMs)}); $to = [datetime]::FromFileTimeUtc(${fileTime(toMs)})`,
-    "$all = @(Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{ Id = [int]$_.ProcessId; Parent = [int]$_.ParentProcessId; At = $_.CreationDate.ToUniversalTime() } })",
-    `$queue = New-Object System.Collections.Queue; $queue.Enqueue(@(${pid}, $from, $to)); $found = @{}`,
-    "while ($queue.Count -gt 0) { $q = $queue.Dequeue(); foreach ($p in $all) { if ($p.Parent -eq $q[0] -and $p.At -ge $q[1] -and $p.At -le $q[2] -and -not $found.ContainsKey($p.Id)) { $found[$p.Id] = $true; $queue.Enqueue(@($p.Id, $p.At, [datetime]::MaxValue)) } } }",
-    "foreach ($id in $found.Keys) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }",
-  ].join("; ");
-}
-
-/**
- * The two programs that end a Windows command's tree, as argv with absolute paths (never a PATH
- * lookup): `taskkill /T /F` for the live tree, then the orphan pass. `toMs` has a few seconds of
- * slack past now, for a grandchild started in the instant before the kill.
- */
-export function windowsKillCommands(pid: number, startedAt: number, now: number, env: Readonly<Record<string, string | undefined>>): string[][] {
-  return [
-    [systemTool(env, "taskkill.exe"), "/PID", String(pid), "/T", "/F"],
-    [
-      systemTool(env, "WindowsPowerShell", "v1.0", "powershell.exe"),
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      windowsOrphanScript(pid, startedAt - 1_000, now + 5_000),
-    ],
-  ];
-}
-
-/**
- * Run {@link windowsKillCommands} one after the other, in the background, and kill the command
- * itself (`leader`) right after taskkill, as the POSIX path does after its group kill. Never throws,
- * never waits.
- */
-function windowsTreeKill(pid: number, startedAt: number, env: Readonly<Record<string, string | undefined>>, leader: () => void): void {
-  const [taskkill, orphans] = windowsKillCommands(pid, startedAt, Date.now(), env);
-  const run = async (argv: string[] | undefined): Promise<void> => {
-    if (argv === undefined) return;
-    try {
-      const p = Bun.spawn(argv, { stdin: "ignore", stdout: "ignore", stderr: "ignore", timeout: WINDOWS_KILL_TIMEOUT_MS });
-      await p.exited;
-    } catch {
-      /* no taskkill or no PowerShell: the child itself is still killed below */
-    }
-  };
-  void run(taskkill)
-    .then(leader)
-    .then(() => run(orphans));
 }
 
 /**

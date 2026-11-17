@@ -43,7 +43,8 @@ import { bindingAgainst, bindParts, type GenerationOf, type InstanceOf } from ".
 import { approveFolder, copyListing, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { codeHashOfFiles, diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
-import { scrubEnv, type ProgramEnv } from "./env.ts";
+import { envPath, scrubEnv, type ProgramEnv } from "./env.ts";
+import { HOST, hostFor, type Host } from "../host.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import type { TrickInputs } from "./inputs.ts";
 import { readTrickMedia, type TrickMediaFile } from "./media.ts";
@@ -56,7 +57,7 @@ import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
 import { approvedCopyDir, approvedTrickDir, pendingTrickDir, tricksConfigDir, trickStateDir } from "./paths.ts";
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
 import { receiptFrame, TrickReceiptStore, type TrickReceiptRecord, type TrickReceiptSurface } from "./receipts.ts";
-import { outcomeProblem, runProgram, type RunOutcome, type RunSpec } from "./run.ts";
+import { outcomeProblem, runProgram, windowsRunProblem, type RunOutcome, type RunSpec } from "./run.ts";
 import type { RepoFactsPort } from "./repo-facts.ts";
 import { trickWarnings, wireWarnings } from "./scan.ts";
 import { TricksStore, problemLine, type CliTricksExtra } from "./store.ts";
@@ -334,7 +335,7 @@ export type ProposalPlaced = { ok: true; codeHash: string } | { ok: false; messa
 export type SwitchAnswer =
   | { status: 200; body: WireTrickInfo }
   | { status: 400; body: { error: "switch-invalid" } }
-  | { status: 409; body: { error: "moved" | "windows" | "tricks-off"; message: string } }
+  | { status: 409; body: { error: "moved" | "windows" | "windows-shell" | "tricks-off"; message: string } }
   | { status: 404; body: { error: "unknown-host" | "unknown-trick" } };
 
 export interface TricksServiceDeps {
@@ -794,9 +795,15 @@ export class TricksService implements TricksSurface {
     return this.now() - this.watchedAt < WATCH_WINDOW_MS;
   }
 
-  /** The PATH a program gets. */
+  /** The host rules of `deps.platform`: Windows reads environment names without case. */
+  private host(): Host {
+    return this.deps.platform === undefined ? HOST : hostFor(this.deps.platform);
+  }
+
+  /** The PATH a program gets, by the spelling the environment carries (`Path` on Windows). */
   runnerPath(): string {
-    return scrubEnv(this.deps.env).PATH ?? "";
+    const host = this.host();
+    return envPath(scrubEnv(this.deps.env, [], { host }), host) ?? "";
   }
 
   /** How many programs run (or hold a slot) now. For a test. */
@@ -1734,7 +1741,7 @@ export class TricksService implements TricksSurface {
     const outcome = await (this.deps.run ?? runProgram)({
       command,
       cwd: run.dir,
-      env: scrubEnv(this.deps.env, manifest.env ?? []),
+      env: scrubEnv(this.deps.env, manifest.env ?? [], { host: this.host() }),
       stdin: JSON.stringify(facts),
       platform: this.deps.platform,
       ...this.deps.limits,
@@ -2168,6 +2175,9 @@ export class TricksService implements TricksSurface {
     // Another hash, or none while there is code to approve, is refused, and the copy must hash to it.
     const expect = approvesOf(rt);
     if (on && hash !== undefined && expect !== undefined && hash !== expect) return { status: 409, body: { error: "moved", message: SWITCH_MOVED } };
+    // Fault d: on Windows a shell run line is not switched on (behind the gate in `setSwitch` today).
+    const shell = on ? windowsRunProblem((rt.pending?.manifest ?? rt.found.manifest)?.run, this.deps.platform) : null;
+    if (shell !== null) return { status: 409, body: { error: "windows-shell", message: shell } };
     const at = new Date(this.now()).toISOString();
     if (!on) await updateSwitches(this.deps.stateDir, (switches) => withSwitch(switches, id, false, at));
     // On with a version waiting: that snapshot is what the row showed, so it is what is approved. Else the

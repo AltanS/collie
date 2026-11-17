@@ -1407,6 +1407,8 @@ A run that calls neither `t.decide` nor `t.keepDecisions` prints `"decisions": [
 
 A thrown error prints one warning card on the trick's Page and exits 0, when the trick has a Page. The document has no `decisions` key, so the open Decisions stay. A trick with no Page exits 1, so the failure rules apply.
 
+Stop your timers before the end. The run ends a second after its document is written, and a timer that still prints to stdout in that second spoils the document, so the run fails.
+
 `collie trick helper <id>` rewrites `trick.ts` with the newest helper. The helper is part of the trick's code, so a trick that is on keeps running the approved copy, and the new helper waits for a yes.
 
 ### Input globs

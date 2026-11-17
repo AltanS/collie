@@ -3653,6 +3653,7 @@ export const en = {
   "settings.tricks.about.rulesUnshown": "This phone cannot show these agent instructions, so the trick cannot be switched on here. Read them and switch it on on the machine.",
   "settings.tricks.about.rulesAfterAdd": "Read the instructions after you add it. It stays off until you switch it on.",
   "settings.tricks.switchMoved": "The trick changed after you read it. Read it again, then switch it on.",
+  "settings.tricks.switchShellOnWindows": "On Windows a trick runs only a script, such as run = \"program.ts\"; a shell line does not run there.",
   // Official tricks, the ones this release can add (M94). The failure lines are the bridge's own
   // (bridge/tricks/official-install.ts).
   // The About sheet's facts of a trick's repository (2026-11-12): the bridge reads them, the phone never does.
@@ -4137,6 +4138,7 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.switch.waits.other",
   "settings.tricks.switch.offLine",
   "settings.experiments.tricks.caption",
+  "settings.tricks.switchShellOnWindows",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

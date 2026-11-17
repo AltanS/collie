@@ -1,4 +1,4 @@
-import { scrubEnv } from "../bridge/tricks/env.ts";
+import { envPath, scrubEnv } from "../bridge/tricks/env.ts";
 import { tricksConfigDir } from "../bridge/tricks/paths.ts";
 import { ok, warn, type Finding } from "./finding.ts";
 import { trickListRows, type TrickDeps } from "./trick.ts";
@@ -15,7 +15,7 @@ const TROUBLE = new Set(["failing", "stopped", "skipped"]);
 export async function tricksFindings(deps: Pick<TrickDeps, "ctx" | "files" | "fetch">): Promise<Finding[]> {
   const { exists, rows, bridge, path: bridgePath } = await trickListRows(deps);
   if (!exists) return [];
-  const path = bridgePath ?? scrubEnv(deps.ctx.env).PATH ?? "";
+  const path = bridgePath ?? envPath(scrubEnv(deps.ctx.env)) ?? "";
   const pathLine = bridgePath === undefined ? `PATH ${path} (as this shell sees it; the service has its own)` : `PATH ${path}`;
   const on = rows.filter((r) => r.on);
   const each = rows.map((r) => `${r.id} ${r.on ? "on" : "off"}, ${r.state}${r.error === null ? "" : `: ${r.error}`}`);

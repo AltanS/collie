@@ -1,4 +1,4 @@
-// collie trick helper v5
+// collie trick helper v6
 // The helper of a Collie trick: it reads the facts, collects the parts and the Decisions, and prints the
 // one document the bridge reads. `collie trick init` writes it into the trick folder, and
 // `collie trick helper <id>` rewrites it with the newest version. It imports only node: built-ins and
@@ -705,29 +705,79 @@ export class Trick {
   }
 }
 
+/** How long a run may linger after its output is written, before the helper ends it. */
+const END_GRACE_MS = 1000;
+
+/**
+ * How the helper reads the facts and writes its output. The real one reads stdin and writes the
+ * process's own streams; a test passes a slower one to stand in for a Windows pipe.
+ */
+export interface HelperIo {
+  read(): Promise<string>;
+  /** Write `text` to stdout or stderr and call `done` once the pipe took it. */
+  write(to: "stdout" | "stderr", text: string, done: () => void): void;
+}
+
+const PROCESS_IO: HelperIo = {
+  read: () => Bun.stdin.text(),
+  write: (to, text, done) => {
+    (to === "stdout" ? process.stdout : process.stderr).write(text, () => done());
+  },
+};
+
+/** Write `text` through `io` and wait until the pipe took it. */
+function written(io: HelperIo, to: "stdout" | "stderr", text: string): Promise<void> {
+  return new Promise((resolve) => {
+    io.write(to, text, resolve);
+  });
+}
+
+/**
+ * End the run with `code` after its output is written: set the exit code and let the process end on its
+ * own. A timer or a socket the trick left open cannot hold the run: an unref'd timer ends it
+ * {@link END_GRACE_MS} later, when every write has long reached the pipe.
+ */
+function end(code: number): void {
+  process.exitCode = code;
+  setTimeout(() => process.exit(code), END_GRACE_MS).unref();
+}
+
 /**
  * The trick's main: read the facts from stdin, call `handler`, print the document once, exit 0. A thrown
  * error prints one warn card in the trick's session and exits 0 when the trick has a session; with
  * none it exits 1, so the bridge's backoff applies. The stack goes to stderr, the masked message last.
+ *
+ * A ref'd timer holds the process from the first line of the run until its output is written. On
+ * Windows neither the stdin read nor the pipe write keeps Bun's event loop alive, so without it the
+ * process ended at once with exit 0 and printed nothing. The run then ends after the pipe took the
+ * output, never over a write in flight.
  */
-export function run(handler: (t: Trick) => void | Promise<void>): void {
+export function run(handler: (t: Trick) => void | Promise<void>, io: HelperIo = PROCESS_IO): void {
+  const hold = setInterval(() => {}, 1 << 30);
+  const finish = (code: number): void => {
+    clearInterval(hold);
+    end(code);
+  };
   void (async () => {
     let t: Trick | null = null;
     let facts: Facts | null = null;
     try {
-      const text = await Bun.stdin.text();
+      const text = await io.read();
       if (text.trim() === "") throw new Error("no facts on stdin: try it with collie trick dev <folder>");
       // SAFETY: the bridge writes one facts document (schema.ts `TrickFacts`) on stdin.
       facts = JSON.parse(text) as Facts;
       t = new Trick(facts);
       await handler(t);
-      await Bun.write(Bun.stdout, `${JSON.stringify(t.printed())}\n`);
-      process.exit(0);
+      await written(io, "stdout", `${JSON.stringify(t.printed())}\n`);
+      finish(0);
     } catch (err) {
       const message = mask(err instanceof Error ? err.message : String(err)).replace(/[\s\p{Cc}]+/gu, " ").trim() || "the trick failed";
-      process.stderr.write(`${err instanceof Error ? mask(err.stack ?? "") : ""}\nerror: ${message}\n`);
+      await written(io, "stderr", `${err instanceof Error ? mask(err.stack ?? "") : ""}\nerror: ${message}\n`);
       const id = t?.sessionId ?? (facts !== null && declaredPlaces(facts.trick.dir).includes("session") ? "main" : null);
-      if (id === null) process.exit(1);
+      if (id === null) {
+        finish(1);
+        return;
+      }
       const card = v.card([v.para(message.slice(0, 2000))], { tone: "warn" });
       let doc: Document = { v: facts?.contract ?? 1, parts: [{ at: "session", id, subtitle: message.slice(0, 120), tone: "warn", view: [card] }] };
       try {
@@ -735,8 +785,8 @@ export function run(handler: (t: Trick) => void | Promise<void>): void {
       } catch {
         // A hook that fails on the error card too: the card prints as it is (the bridge masks keys anyway).
       }
-      await Bun.write(Bun.stdout, `${JSON.stringify(doc)}\n`);
-      process.exit(0);
+      await written(io, "stdout", `${JSON.stringify(doc)}\n`);
+      finish(0);
     }
   })();
 }

@@ -9,7 +9,7 @@ import { parseWalkyRequest } from "../walky/parse.ts";
 import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { folderBytes, spawnGit, type GitRunner } from "./fetch.ts";
 import { OFFICIAL_FETCH_BYTES_MAX, OFFICIAL_GIT, OFFICIAL_LINES, OfficialTricks, type OfficialTricksDeps } from "./official-install.ts";
-import { DESCRIPTION_MAX } from "../../web/src/lib/tricks/schema.ts";
+import { DESCRIPTION_MAX, TRICKS_WINDOWS_SHELL_LINE } from "../../web/src/lib/tricks/schema.ts";
 import { isListedOrigin, isUnlistedOfficialOrigin, officialStanding, officialStateOf, officialWire, parseOfficialList, pinnedPlaces, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_PREVIOUS_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
 import { canonicalRepoUrl, ORIGIN_FILE, parseOrigin, renderOrigin, renderProposalOrigin, sameRepo } from "./origin.ts";
 import { caseClash } from "./proposal-install.ts";
@@ -1173,6 +1173,37 @@ describe("the list pins the places of each trick (contract 2, the menu place)", 
     await expectNoLeftovers(wrong);
     const right = await rig([{ ...plainPin, decides: "reply" }]);
     expect((await right.official.install("inbox", "add")).status).toBe(200);
+  });
+});
+
+describe("a POSIX trick on the list (fault d of the Windows milestone)", () => {
+  test("posix is true or absent; the list carries it after the places and a Windows bridge adds nothing from it", async () => {
+    const read = parseOfficialList(listOf(entry({ posix: true })));
+    if (!read.ok) throw new Error(read.reason);
+    expect(read.entries[0]?.posix).toBe(true);
+    expect(renderOfficialList(read.entries)).toContain('"posix": true');
+    expect(parseOfficialList(listOf(entry({ posix: false }))).ok).toBe(false);
+    expect(parseOfficialList(listOf(entry({ posix: "yes" }))).ok).toBe(false);
+    const plain = parseOfficialList(listOf(entry()));
+    if (!plain.ok) throw new Error(plain.reason);
+    expect(renderOfficialList(plain.entries)).not.toContain("posix");
+    // The shipped list has no POSIX trick today: every official program is a script.
+    expect(shippedOfficialList()).toMatchObject({ ok: true });
+    const shipped = shippedOfficialList();
+    if (shipped.ok) expect(shipped.entries.filter((e) => e.posix === true).map((e) => e.id)).toEqual([]);
+    // Windows: no fetch, the one sentence. Linux: the add goes on (here to an unreachable source).
+    let fetched = 0;
+    const git: GitRunner = async () => {
+      fetched += 1;
+      return { code: 128, stdout: new Uint8Array(0), stderr: "no", timedOut: false, capped: false };
+    };
+    const pin = { ...fixtureEntry(REPO, C1, H1), posix: true as const };
+    const win = await rig([pin], { platform: "win32", git });
+    expect(await win.official.install("legs", "add")).toEqual({ status: 409, body: { error: "windows-shell", message: TRICKS_WINDOWS_SHELL_LINE } });
+    expect(fetched).toBe(0);
+    const linux = await rig([pin], { platform: "linux", git });
+    expect((await linux.official.install("legs", "add")).status).not.toBe(409);
+    expect(fetched).toBeGreaterThan(0);
   });
 });
 

@@ -21,12 +21,8 @@ import { realFiles } from "./sys.ts";
 import { leadStore, member } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { inputsSentence, parseTrickDocument, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT, type TricksReply } from "../web/src/lib/tricks/schema.ts";
-import { STATUS_TEXT_MAX, TRICKS_OFF_LINE, TRICKS_WINDOWS_LINE } from "../web/src/lib/tricks/schema.ts";
+import { STATUS_TEXT_MAX, TRICKS_OFF_LINE, TRICKS_WINDOWS_LINE, TRICKS_WINDOWS_SHELL_LINE } from "../web/src/lib/tricks/schema.ts";
 import { trickGuide } from "./trick-guide.ts";
-
-// gated on Windows (b): a program that uses the helper (`./trick.ts`) prints nothing on Windows yet, so
-// Collie gates tricks there (bridge/tricks/service.ts `gated`). Each `helperTest` runs such a program.
-const helperTest = test.skipIf(process.platform === "win32");
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -171,7 +167,7 @@ describe("collie trick init", () => {
     expect(sampleProgram("legs").trimEnd().split("\n").length).toBeLessThanOrEqual(30);
   });
 
-  helperTest("the folder init writes passes check --run with no refusal, in both forms", async () => {
+  test("the folder init writes passes check --run with no refusal, in both forms", async () => {
     const d = await deps();
     await cmdTrickInit(d, ["hello"]);
     const dir = join(d.configDir, "tricks", "hello");
@@ -185,12 +181,18 @@ describe("collie trick init", () => {
     expect(report.run?.problem).toBeNull();
     expect(report.run?.refusals).toEqual([]);
     expect(report.run?.parts).toEqual(["status status", "dashboard dashboard", "session main"]);
-    // The shell form runs `./program.sh` as a shell line, which is `cmd.exe` on Windows (bridge/tricks/run.ts).
-    const e = await deps();
-    await cmdTrickInit(e, ["--sh", "plain"]);
-    expect(await cmdTrickCheck(e, ["--run", join(e.configDir, "tricks", "plain")])).toBe(EXIT.OK);
-    expect(e.out.join("\n")).toContain("parts: belt belt");
-    expect(e.out.at(-1)).toBe("ok: no problems.");
+    // The shell form runs `./program.sh` as a shell line, on Linux and macOS only: on Windows init --sh
+    // refuses with the one sentence (fault d), and writes nothing.
+    const e = { ...(await deps()), platform: HOST.platform };
+    if (HOST.platform === "win32") {
+      expect(await cmdTrickInit(e, ["--sh", "plain"])).toBe(EXIT.FAIL);
+      expect(e.err[0]).toBe(`error: ${TRICKS_WINDOWS_SHELL_LINE}`);
+    } else {
+      await cmdTrickInit(e, ["--sh", "plain"]);
+      expect(await cmdTrickCheck(e, ["--run", join(e.configDir, "tricks", "plain")])).toBe(EXIT.OK);
+      expect(e.out.join("\n")).toContain("parts: belt belt");
+      expect(e.out.at(-1)).toBe("ok: no problems.");
+    }
     // A draft made in an agent's pane checks and runs the same, with nothing registered for its id.
     const { d: agent, work } = await inPaneDraft("agent");
     expect(await cmdTrickInit(agent, ["solo"])).toBe(EXIT.OK);
@@ -207,7 +209,7 @@ describe("collie trick init", () => {
 });
 
 describe("decision 8 (the first full trick run, 2026-11-16): nothing the bridge refuses", () => {
-  helperTest("the starter run with no config.toml prints nothing the bridge refuses", async () => {
+  test("the starter run with no config.toml prints nothing the bridge refuses", async () => {
     const d = await deps();
     await cmdTrickInit(d, ["hello"]);
     const dir = join(d.configDir, "tricks", "hello");
@@ -224,7 +226,7 @@ describe("decision 8 (the first full trick run, 2026-11-16): nothing the bridge 
     expect(trickGuide().join("\n")).toContain(`A status text is ${String(STATUS_TEXT_MAX)} characters at most.`);
   });
 
-  helperTest("check --run reports a printed status over its limit, and fails", async () => {
+  test("check --run reports a printed status over its limit, and fails", async () => {
     const d = await deps();
     await cmdTrickInit(d, ["hello"]);
     const dir = join(d.configDir, "tricks", "hello");
@@ -610,7 +612,8 @@ describe("collie trick check", () => {
   });
 
   test("--run runs the program with the env scrub: no COLLIE_ variable, no key", async () => {
-    const dir = await folder('id = "env"\nname = "Env"\nrun = "bun program.ts"\nplaces = ["belt"]\n', {
+    // The script form, which runs on every host (a shell line does not run on Windows, fault d).
+    const dir = await folder('id = "env"\nname = "Env"\nrun = "program.ts"\nplaces = ["belt"]\n', {
       "program.ts": [
         'const leaked = Object.keys(process.env).filter((k) => k.startsWith("COLLIE_") || k.includes("KEY"));',
         "const facts = JSON.parse(await Bun.stdin.text());",
@@ -628,7 +631,7 @@ describe("collie trick check", () => {
   });
 
   test("--run passes the TRICK_ test hooks of the environment; a manifest that lists one is told it is never passed", async () => {
-    const dir = await folder('id = "hook"\nname = "Hook"\nrun = "bun program.ts"\nplaces = ["belt"]\nenv = ["TRICK_FIXTURE"]\n', {
+    const dir = await folder('id = "hook"\nname = "Hook"\nrun = "program.ts"\nplaces = ["belt"]\nenv = ["TRICK_FIXTURE"]\n', {
       "program.ts": 'console.log(JSON.stringify({ v: 1, parts: [{ at: "belt", id: "belt", mark: { label: process.env.TRICK_NOW ?? "none" } }] }));\n',
     });
     const d = await deps();
@@ -759,6 +762,48 @@ describe("windows gate", () => {
     const d = { ...(await deps()), platform: "linux" as const };
     expect(await cmdTrickSwitch(d, ["legs"], true)).not.toBe(EXIT.OK);
     expect(d.err.join("\n")).not.toContain(TRICKS_WINDOWS_LINE);
+  });
+});
+
+describe("a shell run line on Windows (fault d): refused, never ported", () => {
+  /** A trick folder under the tricks folder of `d`, with `run`. */
+  async function folder(d: { configDir: string }, id: string, run: string, program: [string, string]): Promise<string> {
+    const dir = join(d.configDir, "tricks", id);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "trick.toml"), `id = "${id}"\nname = "L"\nrun = "${run}"\nplaces = ["belt"]\n`);
+    await writeFile(join(dir, program[0]), program[1], { mode: 0o755 });
+    return dir;
+  }
+
+  test("collie trick check fails a shell line on Windows with the one sentence; a script passes; Linux keeps the shell line", async () => {
+    const win = { ...(await deps()), platform: "win32" as const };
+    const shell = await folder(win, "legs", "./legs.sh", ["legs.sh", "#!/bin/sh\necho '{}'\n"]);
+    expect(await cmdTrickCheck(win, [shell])).toBe(EXIT.FAIL);
+    expect(win.err).toContain(`error: ${TRICKS_WINDOWS_SHELL_LINE}`);
+    const script = await folder(win, "ts", "program.ts", ["program.ts", 'process.stdout.write("{}");\n']);
+    const report = await checkStatic(script, realFiles, { platform: "win32" });
+    expect(report.problems).toEqual([]);
+    const linux = { ...(await deps()), platform: "linux" as const };
+    const onLinux = await folder(linux, "legs", "./legs.sh", ["legs.sh", "#!/bin/sh\necho '{}'\n"]);
+    expect(await cmdTrickCheck(linux, [onLinux])).toBe(EXIT.OK);
+    expect(linux.err.join("\n")).not.toContain(TRICKS_WINDOWS_SHELL_LINE);
+  });
+
+  test("collie trick init --sh refuses on Windows and writes nothing; the TypeScript form is not refused for it", async () => {
+    const work = await tempDir();
+    const win = { ...(await deps()), platform: "win32" as const, cwd: work };
+    expect(await cmdTrickInit(win, ["--sh", "--dir", work, "legs"])).toBe(EXIT.FAIL);
+    expect(win.err[0]).toBe(`error: ${TRICKS_WINDOWS_SHELL_LINE}`);
+    expect(await readdir(work)).toEqual([]);
+    const linux = { ...(await deps()), platform: "linux" as const, cwd: work };
+    expect(await cmdTrickInit(linux, ["--sh", "--dir", work, "legs"])).toBe(EXIT.OK);
+  });
+
+  test("collie trick on: the Windows gate answers first today, before the shell-line rule", async () => {
+    const win = { ...(await deps()), platform: "win32" as const };
+    await folder(win, "legs", "./legs.sh", ["legs.sh", "#!/bin/sh\n"]);
+    expect(await cmdTrickSwitch(win, ["legs"], true)).toBe(EXIT.FAIL);
+    expect(win.err).toEqual([`error: ${TRICKS_WINDOWS_LINE}`]);
   });
 });
 
