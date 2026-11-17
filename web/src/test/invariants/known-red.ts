@@ -56,19 +56,6 @@ export const KNOWN_RED = {
     where: "bridge/surface/holds.ts:35 (HOLD_MS, 30 minutes), bridge/surface/protocol.ts:3489-3510 (holdsEnd), protocol.ts:3699 (tickHolds marks nothing after two minutes)",
     what: "A person's send held on a screen that is not free waits up to 30 minutes on the reader, and after two minutes nothing on the receipt lets the phone show the screen and Send it now.",
   },
-  // ── I4, the phone: the composer offers the override ──
-  "i4-phone-slot": {
-    invariant: "I4",
-    fixedBy: "M102-03",
-    where: "web/src/lib/send-slot.ts:62-69 (sendSlot), web/src/lib/surface/send.ts:106-111 (takesManualSend)",
-    what: "On a stale, torn or contested read, a box out of reach or a draft-less unknown box, the composer's Send slot is wait or unreachable: the phone offers no override at all.",
-  },
-  "i4-phone-commit": {
-    invariant: "I4",
-    fixedBy: "M102-03",
-    where: "web/src/components/composer.tsx:1948-1949 (the notice draws only the bridge's offers; a not_free refusal offers keys alone), web/src/lib/surface/send.ts:504 (offersFor gives a refusal only keys)",
-    what: "A not_free refusal that carries the rows hash shows no Type it anyway button, so the person cannot send the override from the phone.",
-  },
   // ── I2, a tap ends in a request, a change or words ──
   "i2-hold-guard": {
     invariant: "I2",
