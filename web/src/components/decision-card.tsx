@@ -291,6 +291,28 @@ export function lockedBy(answer: HillAnswerState): boolean {
   return answer.receipt.code !== "rejected" && answer.receipt.code !== "denied";
 }
 
+/**
+ * What an answer did to a trick card's options, which never move (Altan, 2026-11-18: "no new boxes"): `chosen` takes
+ * the check mark (an `ok` receipt, or one that went out with no word back), `notSent` says "Not sent. Hold again" in
+ * its own label (no answer, or refused), with the reason in `problem` for a screen reader. Nothing else changes.
+ */
+export interface TrickAnswerMarks {
+  /** The intent whose option takes the check mark, or null. */
+  chosen: string | null;
+  /** The intent whose yes did not land, or null. */
+  notSent: string | null;
+  /** Why it did not land, in words, for a screen reader and the button's title. */
+  problem: string | undefined;
+}
+
+export function trickAnswerMarks(answer: HillAnswerState): TrickAnswerMarks {
+  if (answer.phase === "failed") return { chosen: null, notSent: answer.intent, problem: t("hill.receipt.failed") };
+  if (answer.phase !== "answered") return { chosen: null, notSent: null, problem: undefined };
+  const { code, reason } = answer.receipt;
+  if (code === "ok" || code === "unknown") return { chosen: answer.intent, notSent: null, problem: undefined };
+  return { chosen: null, notSent: answer.intent, problem: reason ?? t("hill.receipt.failed") };
+}
+
 /** The words the person sent with an answer that did not reach its target, kept with Copy. */
 export function KeptWords({ text }: { text: string }) {
   useLocale();
@@ -504,12 +526,14 @@ export function DecisionCard({
   // The options and the field are the band the status line takes over. A card with neither keeps the
   // status in its own Collapse under everything, as before.
   const hasAnswerBlock = hasOptions || fieldOpen;
-  // A trick's card keeps its options in place after an answer (Altan, 2026-11-17): the chosen one with a check mark,
-  // the others disabled, the status line under them, until the card leaves its page. Nothing swaps, so nothing jumps.
+  // A trick's card keeps its options in place after an answer (Altan, 2026-11-17 and 2026-11-18, "no new boxes"):
+  // the chosen one with a check mark, the others disabled, no status line, until the card leaves its page. A yes that
+  // did not land says so in its own label (trickAnswerMarks). Nothing comes or goes, so nothing jumps.
   const keepsOptions = trickDecline !== null;
-  const chosenIntent = keepsOptions && locked && answer.phase === "answered" ? answer.intent : null;
+  const marks: TrickAnswerMarks = keepsOptions ? trickAnswerMarks(answer) : { chosen: null, notSent: null, problem: undefined };
+  const chosenIntent = marks.chosen;
   const band = keepsOptions || !settled ? "answer" : answer.phase === "sending" ? "sending" : "receipt";
-  const statusBelow = answer.phase !== "idle" && (keepsOptions || !(hasAnswerBlock && locked));
+  const statusBelow = !keepsOptions && answer.phase !== "idle" && !(hasAnswerBlock && locked);
 
   const field = (
     <textarea
@@ -719,6 +743,8 @@ export function DecisionCard({
                               enabled={!optionsBlocked}
                               busy={busy}
                               chosen={chosenIntent === option.intent}
+                              notSent={marks.notSent === option.intent}
+                              problem={marks.problem}
                               resetKey={`${decision.id}:${digest ?? ""}`}
                               onApprove={() => choose(option)}
                               className="min-h-12 items-center px-3"

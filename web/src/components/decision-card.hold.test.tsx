@@ -146,3 +146,24 @@ describe("after an answer, until the card leaves, the options stay", () => {
     expect(after.find((b) => b.dataset.intent === other)).toBeDisabled();
   });
 });
+
+describe("no row, line or box comes or goes after an answer, on the Hill and in Settings", () => {
+  const elements = (root: Element) => [...root.querySelectorAll("*")].filter((el) => el.closest("svg") === null);
+  it.each(["on", "later"])("answer %s", (intent) => {
+    const decision = CARDS.proposal();
+    const view = render(<DecisionCard decision={decision} answer={HILL_IDLE} onSend={vi.fn()} />);
+    const before = elements(view.container);
+    view.rerender(<DecisionCard decision={decision} answer={{ phase: "sending", intent, text: null }} onSend={vi.fn()} />);
+    wait(5000);
+    expect(elements(view.container)).toEqual(before);
+    view.rerender(
+      <DecisionCard
+        decision={decision}
+        answer={{ phase: "answered", intent, text: null, receipt: { rid: "r", code: "ok", reason: null, state: "answered", delivery: "typed", trick: null, at: 0 } }}
+        onSend={vi.fn()}
+      />,
+    );
+    wait(5000);
+    expect(elements(view.container)).toEqual(before);
+  });
+});

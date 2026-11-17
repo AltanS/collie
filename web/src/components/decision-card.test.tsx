@@ -682,20 +682,27 @@ describe("after the tap", () => {
     expect(slot("decision-receipt")).toHaveTextContent(words);
   });
 
-  it("says what Collie did for its own Decision, wears the app's mark, and says nothing of a trick", () => {
+  it("a trick card of Collie's own says what happened on its buttons alone, wears the app's mark, and says nothing of a trick", () => {
     const from: HillDecision["from"] = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "lodge", harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "version", id: "legs", hash: "a".repeat(64) } };
     // With code to show: a version card with none offers no yes (2026-11-17).
     const decision = hillDecision({ from, target: null, view: [{ kind: "diff", text: "+console.log(1);", attrs: { file: "program.ts" } }], options: [{ intent: "use", label: "Use the new version" }, { intent: "keep", label: "Keep the old version" }] });
+    // No receipt line (Altan, 2026-11-18, "no new boxes"): the chosen button takes the check mark.
     const used = renderCard(decision, answered(hillReceipt({ delivery: "none" }), "use"));
-    expect(used.slot("decision-receipt")?.textContent).toBe("Now running the new version.");
+    expect(used.slot("decision-receipt")).toBeNull();
+    expect(used.option("use")?.querySelector('[data-slot="option-chosen-mark"]')).not.toBeNull();
+    expect(used.option("keep")).toBeDisabled();
     expect(used.container.querySelector('[data-slot="decision-collie-mark"]')).not.toBeNull();
     expect(used.container.querySelector('[data-slot="decision-trick-word"]')).toBeNull();
     used.unmount();
     const kept = renderCard(decision, answered(hillReceipt({ delivery: "none" }), "keep"));
-    expect(kept.slot("decision-receipt")?.textContent).toBe("Kept the old version.");
+    expect(kept.slot("decision-receipt")).toBeNull();
+    expect(kept.option("keep")?.querySelector('[data-slot="option-chosen-mark"]')).not.toBeNull();
     kept.unmount();
     const moved = renderCard(decision, answered(hillReceipt({ code: "rejected", state: "open", delivery: null, reason: "The trick changed again. A new card replaces this one." }), "use"));
-    expect(moved.slot("decision-receipt")?.textContent).toBe("Not accepted: The trick changed again. A new card replaces this one.");
+    // A refusal says so in the yes's own label; the reason is its title and a screen-reader line, no new row.
+    expect(moved.slot("decision-receipt")).toBeNull();
+    expect(moved.option("use")).toHaveAttribute("data-not-sent");
+    expect(moved.option("use")).toHaveAttribute("title", "The trick changed again. A new card replaces this one.");
     expect(moved.option("use")).toBeEnabled();
   });
 

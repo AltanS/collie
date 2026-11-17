@@ -1,6 +1,6 @@
 import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { AnswerStatus, lockedBy } from "@/components/decision-card";
+import { lockedBy, trickAnswerMarks } from "@/components/decision-card";
 import { hillMediaSource, viewPictures, type HillMediaSource } from "@/components/hill-media";
 import { HoldToApprove, holdLabel } from "@/components/hold-to-approve";
 import { Icon } from "@/components/icons/icon";
@@ -245,7 +245,8 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
 
   const sendingIntent = answer.phase === "sending" ? answer.intent : null;
   // The option that was the answer, once it landed: it keeps its place with a check mark.
-  const chosenIntent = locked && answer.phase === "answered" ? answer.intent : null;
+  const marks = trickAnswerMarks(answer);
+  const chosenIntent = marks.chosen;
   const tone = approvalTone(decision, answer);
 
   return (
@@ -293,9 +294,11 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
             </div>
           )}
 
-          {/* THE OPTIONS STAY (Altan, 2026-11-17): after an answer no row leaves and nothing takes their place. The
-              chosen one keeps its place in the chosen look with a check mark, every other one is disabled, and
-              the line that says what happened sits under them, so no button moves. */}
+          {/* THE OPTIONS STAY (Altan, 2026-11-17 and 2026-11-18, "no new boxes"): after an answer no row, line or box
+              comes or goes. The chosen option takes a check mark (a spinner while in flight), every other one is
+              disabled, and the card's border turns green or red. A yes that did not land says "Not sent. Hold
+              again" in its own label, sized for those words from the first frame; the reason goes to a screen
+              reader only. */}
           <div className="flex flex-col gap-2">
             {blocked && (
               <p data-slot="chat-approval-unshown" className="font-content text-xs text-muted-foreground">
@@ -315,6 +318,8 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
                     enabled={ready}
                     busy={sendingIntent === option.intent}
                     chosen={chosenIntent === option.intent}
+                    notSent={marks.notSent === option.intent}
+                    problem={marks.problem}
                     resetKey={cardKey(decision)}
                     onApprove={() => approve(option)}
                     className="min-h-11 items-center px-3"
@@ -342,9 +347,6 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
                 />
               )}
             </div>
-            {/* What the answer did, or why it did not land. Under the options, so it moves none of them. No Try again:
-                the hold is the way to send again. */}
-            <AnswerStatus decision={decision} answer={answer} slot="chat-approval-status" />
           </div>
         </div>
       </PromptPanel>

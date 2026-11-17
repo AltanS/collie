@@ -3966,6 +3966,7 @@ export const en = {
   "hill.hold.always": "Hold to use and stop asking",
   "hill.hold.holding": "Keep holding…",
   "hill.hold.armed": "Press again to confirm",
+  "hill.hold.again": "Not sent. Hold again",
   "hill.hold.hint": "Hold to confirm. With a keyboard, press it twice.",
   "hill.chat.unshown": "This phone cannot show all of this card, so the trick cannot be switched on here. Read it and switch it on on the machine.",
   "tricks.compare.before": "Before",
@@ -4142,6 +4143,7 @@ export type Messages = typeof en;
  */
 export const PENDING_TRANSLATION = [
   "hill.hold.hint",
+  "hill.hold.again",
   "settings.tricks.about.shows",
   "settings.tricks.about.shows.belt",
   "settings.tricks.about.shows.status",
