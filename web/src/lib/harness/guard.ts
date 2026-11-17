@@ -1,6 +1,6 @@
 // Model-GENERIC race-guard machinery: the skeleton every dialog tap runs (fresh read → parse →
-// re-derive → unconditional revision check → structural-equality check), parameterised on the model
-// type M, its detector, and its equality function.
+// re-derive → structural-equality check), parameterised on the model type M, its detector, and its
+// equality function.
 //
 // Nothing here knows a harness OR a block kind — it is deliberately one layer below that. The layer
 // that binds the three parameters is lib/dialog-guard.ts: it supplies the detector (the pane's own
@@ -75,8 +75,18 @@ export async function readModel<M>(
 }
 
 /**
- * The shared entry guard: a FRESH pane read, the UNCONDITIONAL revision check, and a full model
- * re-derivation compared (via `equals`) against `tapped` — what the user actually tapped.
+ * The shared entry guard: a FRESH pane read and a full model re-derivation compared (via `equals`)
+ * against `tapped` — what the user actually tapped. It refuses when the dialog the person saw is not
+ * the dialog on the screen now, and for no other reason.
+ *
+ * The pane's `revision` is NOT a reason. It counts changes of the whole screen: Herdr 0.9.x reports a
+ * real one that moves with every repaint, and the tmux, zellij and Herdr core adapters derive one
+ * that moves with every change of the text. A row outside the dialog that ticks (a tool's timer, a
+ * spinner, a clock in a status row) moves it while the dialog stands still, so a revision check
+ * refused every tap on such a pane and sent nothing (field case 2026-11-16: a subagent's Bash
+ * permission on a crew member, Claude Code 2.1.325, Herdr 0.9.5). Nor is an equal revision a fast
+ * path past the comparison: Herdr 0.7.x reported 0 for every read, and a 304 only proves "unchanged
+ * since the last poll", so equal numbers prove nothing about the snapshot the person tapped.
  *
  * Returns a {@link GuardOutcome}: `{ ok: false, result }` when the guard refused (`"changed"`) or
  * the read failed, and `{ ok: true, region }` when it passed, carrying the verified region (via
@@ -93,8 +103,6 @@ export async function entryGuard<M>(
   args: {
     paneId: string;
     requestedLines: number;
-    /** The `revision` the rendered dialog was detected against. */
-    detectedRevision: number;
     /** The session the pane lives in (undefined = primary) — scopes the read. */
     scope?: Scope;
   },
@@ -114,15 +122,10 @@ export async function entryGuard<M>(
     return { ok: false, result: { status: "error", error } };
   }
 
-  // Revision check is UNCONDITIONAL: a 304 only means "unchanged since the last poll", and polls
-  // keep advancing the ETag cache under a frozen mirror — it does NOT vouch for the snapshot the
-  // user actually tapped on. The cached 304 body carries its revision, so this covers both paths.
-  if (fresh.revision !== args.detectedRevision) return { ok: false, result: { status: "changed" } };
-  // EMPIRICAL (Herdr 0.7.x, live-verified 2026-07-05): pane.read's `revision` is a stub upstream —
-  // it is always 0, even for actively-changing panes. The gate above is therefore defense-in-depth
-  // for future Herdr versions, NOT load-bearing. So the model re-derivation below runs on EVERY
-  // path, including 304: the fresh (= latest cached) text is exactly what a tap on a possibly
-  // frozen mirror must be compared against. One parse per tap — taps are rare, correctness isn't.
+  // The re-derivation runs on EVERY path, including 304: the fresh (= latest cached) text is exactly
+  // what a tap on a possibly frozen mirror must be compared against. No revision check comes first
+  // (see the doc above): the kind's comparator decides alone. One parse per tap — taps are rare,
+  // correctness isn't.
   if (!fresh.model || !equals(fresh.model, tapped)) {
     return { ok: false, result: { status: "changed" } };
   }
