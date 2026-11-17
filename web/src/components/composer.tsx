@@ -1474,7 +1474,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // STARTUP_GATE_MS, 2 minutes, then it ends by itself), so the field is off for exactly that time, in the look of a
   // locked one, and its placeholder says "Starting…". Type mode is not held (it sends keys, `sendInert` above lets it
   // through), and a real lock keeps its own words. The draft is not touched: it comes back editable with the box.
-  const startHeld = starting && !locked && !direct.active;
+  // A box the phone cannot read live (a failed read, a reconnect, a stale copy) is not held either: it takes the
+  // ordinary offline rules, where the draft is saved and nothing is sent, and the hold comes back with the read.
+  const startHeld = starting && !locked && !offline && !direct.active;
   const sendHold = useLongPress(canMessage ? () => setSendMenu(true) : undefined);
 
   // ── THE VOICE TAKEOVER (design 3.3) ───────────────────────────────────────────────────────────
@@ -3514,6 +3516,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // pasted FILE becomes an upload. Copying a `.md` in a file manager produces the second; selecting
   // its contents in an editor produces the first, and neither has become the other.
   function onPasteFile(e: ClipboardEvent<HTMLTextAreaElement>) {
+    // Held for a start: a paste, of text or of a file, reaches neither the draft nor an upload.
+    if (startHeld) {
+      e.preventDefault();
+      return;
+    }
     if (locked || direct.active) return;
     const items = e.clipboardData?.items ?? [];
     let refusedFile = false;
@@ -4574,7 +4581,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <ChatInput
             ref={inputRef}
             value={direct.active ? direct.value : input}
-            onChange={direct.active ? direct.onChange : onDraftChange}
+            // The start hold is `readOnly`, not `disabled`: a disabled field drops focus, so the soft keyboard closed
+            // under a person who was typing and never came back. While held, no input reaches the draft: the
+            // browser's own readOnly stops keys, and these guards stop what some browsers let through (paste,
+            // cut, drop, IME composition), so the change handler never writes while held.
+            onChange={direct.active ? direct.onChange : startHeld ? undefined : onDraftChange}
+            onCut={startHeld ? (e) => e.preventDefault() : undefined}
+            onDrop={startHeld ? (e) => e.preventDefault() : undefined}
             onSelect={direct.active ? undefined : rememberCaret}
             onFocus={() => setBoxFocused(true)}
             onBlur={(e) => {
@@ -4587,6 +4600,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               direct.active
                 ? direct.onKeyDown
                 : (e) => {
+                    // Held: Enter, with or without a modifier, changes nothing and sends nothing.
+                    if (startHeld && e.key === "Enter") {
+                      e.preventDefault();
+                      return;
+                    }
                     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault();
                       onSendClick();
@@ -4654,6 +4672,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // size is a setting, so no pixel is named here. The ordinary placeholder is at the
               // field's own size and never needed it.
               (staleWords || steerWords) && "leading-[1.5em] placeholder:text-xs placeholder:leading-[inherit]",
+              // The hold wears the look a disabled field has (`disabled:` in ui/chat/chat-input.tsx), since it is not disabled.
+              startHeld && "cursor-not-allowed opacity-50",
               // Mirrored, the field's right side stands against the box's border, so it takes the
               // inset the left used to take from Attach.
               !box && hand === "left" && "pr-2",
@@ -4681,7 +4701,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             )}
             // Built above, where the two halves and their reasons sit together.
             style={draftStyle}
-            disabled={locked || startHeld}
+            disabled={locked}
+            readOnly={startHeld}
+            aria-disabled={startHeld ? true : undefined}
             rows={1}
           />
           <Button

@@ -2,6 +2,10 @@ import { renderHook } from "@testing-library/react";
 
 import { resetBasePathForTests } from "./base-path";
 import {
+  ANSWERS,
+  PER_MACHINE,
+  type AnswerName,
+  type AnswerValue,
   decodeAnswer,
   encodeAnswer,
   forgetAnswers,
@@ -168,5 +172,149 @@ describe("remembered shape, the hook", () => {
     rerender({ fresh: true });
     rerender({ fresh: undefined });
     expect(result.current).toBe(true);
+  });
+});
+
+const PER_MACHINE_FACT = "home-launch-count";
+
+function keysUnderPrefix(): string[] {
+  return [...Array(localStorage.length).keys()].map((i) => localStorage.key(i) ?? "").filter((k) => k.startsWith(ANSWER_PREFIX));
+}
+
+describe("remembered shape, one machine of a crew", () => {
+  it("names the facts that are per machine, and every one is a real fact", () => {
+    expect([...PER_MACHINE].toSorted()).toEqual(["home-launch-count", "new-profile-pick"]);
+    for (const name of PER_MACHINE) expect(name in ANSWERS).toBe(true);
+  });
+
+  it("does not read a fact written for machine A as machine B's, nor the lead's", () => {
+    writeAnswer(PER_MACHINE_FACT, 4, "alpha");
+    expect(readAnswer(PER_MACHINE_FACT, "alpha")).toBe(4);
+    expect(readAnswer(PER_MACHINE_FACT, "beta")).toBeUndefined();
+    expect(readAnswer(PER_MACHINE_FACT)).toBeUndefined();
+    writeAnswer(PER_MACHINE_FACT, 2);
+    expect(readAnswer(PER_MACHINE_FACT)).toBe(2);
+    expect(readAnswer(PER_MACHINE_FACT, "alpha")).toBe(4);
+  });
+
+  it("keeps an id with odd characters apart from a neighbour", () => {
+    writeAnswer(PER_MACHINE_FACT, 5, "a@b");
+    expect(readAnswer(PER_MACHINE_FACT, "a")).toBeUndefined();
+    expect(readAnswer(PER_MACHINE_FACT, "a@b")).toBe(5);
+  });
+
+  it("reads a key from before the machine was part of it as absent", () => {
+    localStorage.setItem(`${ANSWER_PREFIX}/:${PER_MACHINE_FACT}`, "7");
+    expect(readAnswer(PER_MACHINE_FACT)).toBeUndefined();
+    expect(readAnswer(PER_MACHINE_FACT, "alpha")).toBeUndefined();
+  });
+
+  it("gives a fact of the lead one key whatever machine is named", () => {
+    writeAnswer(FACT, true);
+    expect(keysUnderPrefix()).toHaveLength(1);
+    expect(keysUnderPrefix()[0]).not.toContain("@");
+  });
+
+  it("is removed in full by forgetAnswers and by the unpair wipe, per-machine keys and old keys too", async () => {
+    writeAnswer(PER_MACHINE_FACT, 4, "alpha");
+    writeAnswer(PER_MACHINE_FACT, 3, "beta");
+    writeAnswer(PER_MACHINE_FACT, 2);
+    localStorage.setItem(`${ANSWER_PREFIX}/:${PER_MACHINE_FACT}`, "7");
+    expect(keysUnderPrefix()).toHaveLength(4);
+    forgetAnswers();
+    expect(keysUnderPrefix()).toEqual([]);
+
+    writeAnswer(PER_MACHINE_FACT, 4, "alpha");
+    writeAnswer(PER_MACHINE_FACT, 3, "beta");
+    localStorage.setItem(`${ANSWER_PREFIX}/:${PER_MACHINE_FACT}`, "7");
+    await wipeDevice("unpair");
+    expect(keysUnderPrefix()).toEqual([]);
+  });
+
+  it("the hook paints the new machine's answer on the render after a switch, never the other's", () => {
+    writeAnswer(PER_MACHINE_FACT, 4, "alpha");
+    writeAnswer(PER_MACHINE_FACT, 1, "beta");
+    const { result, rerender } = renderHook(({ machine }: { machine: string }) => useRememberedAnswer(PER_MACHINE_FACT, undefined, machine), {
+      initialProps: { machine: "alpha" },
+    });
+    expect(result.current).toBe(4);
+    rerender({ machine: "beta" });
+    expect(result.current).toBe(1);
+    rerender({ machine: "gamma" });
+    expect(result.current).toBeUndefined();
+  });
+
+  it("the hook writes a fresh answer under the machine it was given", () => {
+    const { rerender } = renderHook(({ fresh }: { fresh: number | undefined }) => useRememberedAnswer(PER_MACHINE_FACT, fresh, "alpha"), {
+      // SAFETY: undefined is the read in flight.
+      initialProps: { fresh: undefined as number | undefined },
+    });
+    rerender({ fresh: 6 });
+    expect(readAnswer(PER_MACHINE_FACT, "alpha")).toBe(6);
+    expect(readAnswer(PER_MACHINE_FACT)).toBeUndefined();
+  });
+});
+
+// Every fact: a remembered "no" paints, then the real read says "yes" and replaces it, so the control shows.
+// A fact added to ANSWERS without a row here fails the typecheck.
+const NO_THEN_YES = {
+  "settings-accounts-row": [false, true],
+  "settings-install-card": [false, true],
+  "mux-paneGrid": ["no", "yes"],
+  "mux-gridScrollback": ["no", "yes"],
+  "mux-agentDetection": ["no", "yes"],
+  "mux-agentSessionRef": ["no", "yes"],
+  "mux-typeText": ["no", "yes"],
+  "mux-sendKeys": ["no", "yes"],
+  "mux-renamePane": ["no", "yes"],
+  "mux-closePane": ["no", "yes"],
+  "mux-setFocus": ["no", "yes"],
+  "mux-createTab": ["no", "yes"],
+  "mux-renameTab": ["no", "yes"],
+  "mux-closeTab": ["no", "yes"],
+  "mux-createSpace": ["no", "yes"],
+  "mux-createWorktree": ["no", "yes"],
+  "mux-pushTopologyEvents": ["no", "yes"],
+  "mux-pushPaneEvents": ["no", "yes"],
+  "mux-steerTurn": ["no", "yes"],
+  "mux-abortTurn": ["no", "yes"],
+  "mux-starters": ["no", "yes"],
+  "mux-renameSpace": ["no", "yes"],
+  "mux-programActions": ["no", "yes"],
+  "mux-programHistory": ["no", "yes"],
+  "mux-reopenConversation": ["no", "yes"],
+  "mux-spaces": ["one", "many"],
+  "stt-offered": [false, true],
+  "home-launch-count": [0, 3],
+  "settings-math-pack": ["absent", "ready"],
+  "belt-operator-bar": [false, true],
+  "new-profile-pick": [false, true],
+} as const satisfies { [N in AnswerName]: readonly [AnswerValue<N>, AnswerValue<N>] };
+
+/** One fact, for the lead's key (a per-machine fact for the machine given): a remembered no paints, the real yes replaces it. */
+function checkNoThenYes<N extends AnswerName>(name: N, no: AnswerValue<N>, yes: AnswerValue<N>): void {
+  writeAnswer(name, no);
+  const { result, rerender } = renderHook(({ fresh }: { fresh: AnswerValue<N> | undefined }) => useRememberedAnswer(name, fresh), {
+    // SAFETY: undefined is the read in flight, which every fact's hook takes.
+    initialProps: { fresh: undefined as AnswerValue<N> | undefined },
+  });
+  expect(result.current).toBe(no);
+  rerender({ fresh: yes });
+  expect(result.current).toBe(yes);
+  expect(readAnswer(name)).toBe(yes);
+}
+
+describe("remembered shape, every fact", () => {
+  // SAFETY: the keys of ANSWERS are its fact names.
+  const names = Object.keys(ANSWERS) as AnswerName[];
+
+  it("has a row in the table for each fact, and no other", () => {
+    expect(Object.keys(NO_THEN_YES).toSorted()).toEqual(names.toSorted());
+  });
+
+  it.each(names)("%s: a remembered no paints first, the real yes replaces it and is kept", (name) => {
+    const [no, yes] = NO_THEN_YES[name];
+    // SAFETY: the table above gives every fact a no and a yes of its own kind, and `name` is one of its keys.
+    checkNoThenYes(name, no as never, yes as never);
   });
 });

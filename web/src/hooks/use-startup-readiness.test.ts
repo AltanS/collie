@@ -88,4 +88,62 @@ describe("the startup gate", () => {
     rerender({ ...input, launch: undefined });
     expect(result.current.starting).toBe(false);
   });
+
+  // WHAT ENDS THE HOLD (the composer holds its box while `starting`). Each way out, one test.
+  it("opens on a first screen that is a prompt: a trust question, a sign-in field, an unreadable dialog", () => {
+    const SIGN_IN: Surface = { revision: 3, turn: "unknown", modal: "none", composer: "empty", field: "secret" };
+    const UNREADABLE: Surface = { revision: 4, turn: "unknown", modal: "unreadable", composer: "unknown" };
+    for (const first of [ASK, SIGN_IN, UNREADABLE]) {
+      const { result, rerender } = hook(input);
+      expect(result.current.starting).toBe(true);
+      rerender({ ...input, agent: "kiro", surface: first });
+      expect(result.current.starting).toBe(false);
+    }
+  });
+
+  it("keeps the hold on a screen the bridge cannot name, as the bridge refuses sends there too, until the bound", () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = hook({ ...input, agent: "kiro", surface: UNREAD_SURFACE });
+      expect(result.current.starting).toBe(true);
+      act(() => vi.advanceTimersByTime(STARTUP_GATE_MS - 1));
+      expect(result.current.starting).toBe(true);
+      act(() => vi.advanceTimersByTime(1));
+      expect(result.current.starting).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("opens at the bound when the read never worked: never live, or lost during the start", () => {
+    vi.useFakeTimers();
+    try {
+      const never = hook({ ...input, live: false });
+      const lost = hook({ ...input, agent: "kiro", surface: UNREAD_SURFACE });
+      lost.rerender({ ...input, agent: "kiro", surface: UNREAD_SURFACE, live: false });
+      expect(never.result.current.starting).toBe(true);
+      expect(lost.result.current.starting).toBe(true);
+      act(() => vi.advanceTimersByTime(STARTUP_GATE_MS));
+      expect(never.result.current.starting).toBe(false);
+      expect(lost.result.current.starting).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a reconnect reads the screen that is there: the first live read of a box opens it", () => {
+    const { result, rerender } = hook({ ...input, agent: "kiro", surface: UNREAD_SURFACE, live: false });
+    rerender({ ...input, agent: "kiro", surface: FREE, live: false });
+    expect(result.current.starting).toBe(true);
+    rerender({ ...input, agent: "kiro", surface: FREE, live: true });
+    expect(result.current.starting).toBe(false);
+  });
+
+  it("an agent that left while the read was down opens it on the first live read", () => {
+    const { result, rerender } = hook({ ...input, agent: "kiro", surface: UNREAD_SURFACE });
+    rerender({ ...input, agent: undefined, surface: undefined, live: false });
+    expect(result.current.starting).toBe(true);
+    rerender({ ...input, agent: undefined, surface: undefined, live: true });
+    expect(result.current.starting).toBe(false);
+  });
 });

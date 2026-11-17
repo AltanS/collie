@@ -14,6 +14,14 @@
 // by the mount (`/` or `/collie/`) the way the on-device store is (lib/store.ts), because one origin
 // can serve more than one Collie and each has its own answers. Missing, broken or blocked storage reads
 // as "no answer" and never throws.
+//
+// A FACT IS ABOUT THE PHONE AND THE LEAD, OR ABOUT ONE MACHINE OF A CREW. The lead's own answers (the
+// Settings rows, the multiplexer block of /api/config, the operator's commands) are one fact each and
+// keep the key above. A fact in `PER_MACHINE` is about the machine a page is addressed to (`?h=<member>`,
+// the machine switcher): a member's launcher rows are not the lead's. Its key carries the machine,
+// `...:<name>@<member id>`, and `@` with nothing after it is the lead. A key from before that (no `@`)
+// reads as absent, and the wipe removes it with the rest. A member id is a registry name the lead gave
+// the machine, it never leaves this device, and the wipe takes it away on unpair.
 
 import { useEffect, useState } from "react";
 
@@ -74,12 +82,26 @@ export const ANSWERS = {
 } as const satisfies Record<string, AnswerKind>;
 
 export type AnswerName = keyof typeof ANSWERS;
+
+/**
+ * The facts that are about ONE MACHINE of a crew, not about the phone and the lead as a whole. Every
+ * other fact has one answer per mount. Decided per fact: the launcher rows and the profile pick come from
+ * the machine a page is addressed to; the Settings rows, the mux block, the speech offer, the operator's
+ * bar rows and the math pack are the lead's own reads, and the install card is this phone's.
+ */
+export const PER_MACHINE = ["home-launch-count", "new-profile-pick"] as const satisfies readonly AnswerName[];
+export type PerMachineName = (typeof PER_MACHINE)[number];
+
+/** The machine argument: a per-machine fact takes it (absent = the lead), any other fact takes none. */
+export type MachineArg<N extends AnswerName> = N extends PerMachineName ? [machine?: string | undefined] : [];
 type ValueOf<K> = K extends "flag" ? boolean : K extends "count" ? number : K extends readonly (infer W)[] ? W : never;
 /** What a fact holds: its kind's value and nothing wider. */
 export type AnswerValue<N extends AnswerName> = ValueOf<(typeof ANSWERS)[N]>;
 
-function keyOf(name: AnswerName): string {
-  return `${ANSWER_PREFIX}${basePath()}:${name}`;
+function keyOf(name: AnswerName, machine: string | undefined): string {
+  const base = `${ANSWER_PREFIX}${basePath()}:${name}`;
+  if (!PER_MACHINE.some((perMachine) => perMachine === name)) return base;
+  return `${base}@${encodeURIComponent(machine?.trim() ?? "")}`;
 }
 
 /** Exported for the test: how a stored string reads back for a kind. */
@@ -101,20 +123,29 @@ export function encodeAnswer(kind: AnswerKind, value: AnswerInput): string | nul
 }
 
 /** The remembered answer, or `undefined` when there is none. Never throws. */
-export function readAnswer<N extends AnswerName>(name: N): AnswerValue<N> | undefined {
+export function readAnswer<N extends AnswerName>(name: N, ...machine: MachineArg<N>): AnswerValue<N> | undefined {
+  return recallAnswer(name, machine[0]);
+}
+
+/** The one reader: the machine is the lead's when absent, and ignored for a fact that is not per machine. */
+function recallAnswer<N extends AnswerName>(name: N, machine: string | undefined): AnswerValue<N> | undefined {
   try {
     // SAFETY: `decode` returns only a value the kind of `name` allows, which is `AnswerValue<N>`.
-    return decodeAnswer(ANSWERS[name], localStorage.getItem(keyOf(name))) as AnswerValue<N> | undefined;
+    return decodeAnswer(ANSWERS[name], localStorage.getItem(keyOf(name, machine))) as AnswerValue<N> | undefined;
   } catch {
     return undefined;
   }
 }
 
 /** Remember an answer. A value the fact's kind does not allow is refused, and so is a blocked storage. Never throws. */
-export function writeAnswer<N extends AnswerName>(name: N, value: AnswerValue<N>): void {
+export function writeAnswer<N extends AnswerName>(name: N, value: AnswerValue<N>, ...machine: MachineArg<N>): void {
+  rememberAnswer(name, value, machine[0]);
+}
+
+function rememberAnswer<N extends AnswerName>(name: N, value: AnswerValue<N>, machine: string | undefined): void {
   try {
     const raw = encodeAnswer(ANSWERS[name], value);
-    if (raw !== null) localStorage.setItem(keyOf(name), raw);
+    if (raw !== null) localStorage.setItem(keyOf(name, machine), raw);
   } catch {
     // Blocked or full storage: the next visit paints without a memory, which is today's behaviour.
   }
@@ -137,14 +168,23 @@ export function forgetAnswers(): void {
 /**
  * The fresh answer when the read has one, else the remembered one, else `undefined`. Pass `undefined`
  * as `fresh` while the read is in flight. The remembered answer is read once, on the first render, and
- * the fresh one is written when it arrives. `name` is a constant of the call site.
+ * the fresh one is written when it arrives. `name` is a constant of the call site. A per-machine fact
+ * names its machine as the third argument (absent = the lead); when that changes, the remembered answer
+ * is read again for the new machine in the same render, so a switch never paints the other one's.
  */
-export function useRememberedAnswer<N extends AnswerName>(name: N, fresh: AnswerValue<N> | undefined): AnswerValue<N> | undefined {
-  const [held, setHeld] = useState(() => readAnswer(name));
+export function useRememberedAnswer<N extends AnswerName>(name: N, fresh: AnswerValue<N> | undefined, ...machineArg: MachineArg<N>): AnswerValue<N> | undefined {
+  const machine = machineArg[0];
+  const recall = () => recallAnswer(name, machine);
+  const [held, setHeld] = useState(recall);
+  const [heldFor, setHeldFor] = useState(machine);
+  if (heldFor !== machine) {
+    setHeldFor(machine);
+    setHeld(recall());
+  }
   useEffect(() => {
     if (fresh === undefined) return;
-    writeAnswer(name, fresh);
+    rememberAnswer(name, fresh, machine);
     setHeld(fresh);
-  }, [name, fresh]);
+  }, [name, fresh, machine]);
   return fresh ?? held;
 }

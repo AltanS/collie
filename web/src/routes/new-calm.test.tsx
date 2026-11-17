@@ -114,7 +114,7 @@ const profileSelect = () => screen.queryByRole("combobox", { name: "Profile" });
 const reserved = () => document.querySelector<HTMLElement>('[data-slot="account-pick-reserved"]');
 const againButton = () => screen.queryByRole("button", { name: /Again:/ });
 
-const PICK_KEY = "collie:shape:/:new-profile-pick";
+const PICK_KEY = "collie:shape:/:new-profile-pick@";
 
 function lastStart(over: Partial<LastStart> = {}): LastStart {
   return { what: { kind: "harness", id: "codex" }, label: "Codex", cwd: "/home/dev/workshop", branch: null, at: Date.now(), ...over };

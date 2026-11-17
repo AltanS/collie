@@ -315,8 +315,14 @@ describe("Steer or queue on the Send button (M69)", () => {
     // The draft is typed before the start. While the launch starts the box is off (Altan, 2026-11-17), so a draft
     // can only be there already; it stays in the box and nothing offers a send.
     await user.type(field(), "wait for startup");
+    field().focus();
     setStarting(true);
-    expect(field()).toBeDisabled();
+    // Held, not disabled: the box keeps its focus (and the soft keyboard), and takes no input.
+    expect(field()).not.toBeDisabled();
+    expect(field()).toHaveAttribute("readonly");
+    expect(field()).toHaveAttribute("aria-disabled", "true");
+    expect(field()).toHaveFocus();
+    await user.keyboard("more{Enter}");
     expect(field()).toHaveAttribute("placeholder", "Starting…");
     fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
     expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("aria-disabled", "true");
