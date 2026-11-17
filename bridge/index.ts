@@ -362,6 +362,8 @@ import {
 } from "./walky/crew.ts";
 import { isResting, type RouteRemote, type SendResult, type WalkyHost, type WalkyPane } from "./walky/deliver.ts";
 import { INSTANCE_TICK_MS, WalkyInstances } from "./walky/instances.ts";
+import { EventBus } from "./events/bus.ts";
+import { attachSessionSource } from "./events/sources.ts";
 import { WalkyLog } from "./walky/log.ts";
 import { PinStore } from "./pins/store.ts";
 import { WalkyOff } from "./walky/off.ts";
@@ -1947,6 +1949,12 @@ const paneVersion = createPaneVersion({ versions: sendVersions, binaries: harnes
 // The probe also reads the pane's agent environment: under WSL it narrows SURFACE_PLATFORM per pane.
 const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnessBinaries, probe: paneProbe, platform: SURFACE_PLATFORM, paneVersion });
 
+// The event bus (M105 spec 03): one per bridge. Every session's state engine feeds it below; the local
+// API and the trick runner are its listeners (later parts). `bridgeId` and `walkyInstances` are declared
+// further down and read only when a transition fires, after the first poll; a transition in the window
+// before they exist is skipped by the source, never published with an invented id.
+const eventBus = new EventBus({ machine: () => bridgeId.id });
+
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const built = endpoint.kind === "program" ? programAdapter(endpoint.source) : terminalAdapter(endpoint.socketPath);
   const target = built.target;
@@ -1958,6 +1966,17 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const engine = new StateEngine(herdr, cfg.pollMs, {
     argvNames: museNames === undefined ? {} : { [ARGV_NAMED_AGENT]: museNames },
     titles: sessionTitles === null ? undefined : (pane) => sessionTitles.forPane(pane),
+  });
+  // Bus events from this session's transitions. The engine stops with its session, and so does this feed.
+  attachSessionSource({
+    engine,
+    muxSession: name,
+    machine: () => bridgeId.id,
+    instanceOf: (session, paneId) => walkyInstances.tokenOf(session, paneId),
+    publish: (input) => {
+      eventBus.publish(input);
+    },
+    onError: (message) => console.warn(`[events] a transition in session "${name}" was not published: ${message}`),
   });
   // The install ping's usage tally (ping v3): which agent and multiplexer pairs ran in this session, and
   // whether a pane of the pair had a part bound (the data link). The ping keeps the pairs and drops the
