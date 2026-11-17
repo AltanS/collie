@@ -49,7 +49,7 @@ A card holds, from top to bottom:
 - the line that says where your answer goes, with Dismiss beside it.
 
 A card of Collie's own that shows code is a group of cards. It opens at "Card 1 of 4", with Back
-and Next, and its options show on the last card. The yes stays off until every card was on screen
+and Next, and its options show on the last card. The yes is a hold of three seconds
 ([A trick an agent proposes](#a-trick-an-agent-proposes)).
 
 When you wrote to a session after its agent asked, the card says "You wrote to this session after it
@@ -431,7 +431,9 @@ how many files it has, and what it asks for. Below come the powers it asks for, 
 text search, the author's words under "Its author's words. Collie did not check them.", and then
 every file of its code, as a group of cards.
 
-- **Switch it on** is one tap, once every card of the code was on screen. Collie reads the stored files again and
+- **Hold to switch on**: keep a finger on it for three seconds. A fill grows across the button, and the
+  yes goes out when it is full. Lift early, move off the button, scroll, or leave the page, and nothing
+  is sent. With a keyboard or a switch device, press it twice. Collie reads the stored files again and
   installs them only when their hash matches the card. The trick is then on, approved as exactly that
   code.
 - **Not now** drops the stored copy. So do Dismiss, an expiry, and a newer proposal from the same
@@ -446,11 +448,12 @@ The first card names the files Collie ships, byte for byte: the helper `trick.ts
 change. A proposal never carries `config.toml`. When the trick drew nothing without it, the first card
 says the trick may show nothing until you add its settings file on the machine.
 
-Collie never recommends either option. A proposal is code from an agent, and your own reading is the
-whole check. So the yes stays off until every card of the code was on screen.
+Collie never recommends either option. A proposal is code from an agent, and your own judgement is the
+whole check. "Read the code" opens every file on the card. Reading it is up to you: the yes does not
+wait for it. A card that cannot show every byte of the code offers no yes.
 
 A trick that a proposal made can get a new version the same way. Its card asks "Use the new version
-of `<id>`?" and replaces the code only on your yes.
+of `<id>`?" and replaces the code only on your yes, a hold of three seconds on "Hold to use".
 
 An agent cannot propose a trick that has rules or an agent view: "A trick that gives agents
 instructions cannot be proposed by an agent. Ask your person to add it on the machine." The limits on
