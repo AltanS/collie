@@ -19,6 +19,7 @@ import { resetPinsForTests } from "@/lib/loaders";
 import { fixtureAgents, FIXTURE_CHAT_GEN, FIXTURE_SEQ_BASE, fixtureTranscript, paneTextWithDraft, recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/msw";
+import { asJsonString, parseJsonObject } from "@/lib/json";
 import type { Surface } from "@/lib/surface/surface";
 import type { AgentView } from "@/lib/types";
 import { AgentChat } from "./agent-chat";
@@ -111,5 +112,49 @@ describe("AgentChat: the queued card's Send again (M102 spec 04)", () => {
     expect(discards).toEqual([]);
     expect(recordedSends()).toHaveLength(0);
     expect(screen.getByRole("button", { name: "Send again" })).toBeEnabled();
+  });
+
+  it("a send that starts while the card is being dropped keeps the card's text: nothing is lost, the words say why (the M102 review 2, G)", async () => {
+    let releaseDiscard: () => void = () => undefined;
+    const discardWaits = new Promise<void>((resolve) => {
+      releaseDiscard = resolve;
+    });
+    const discards = mountWithLostCard(() => HttpResponse.json({ result: "dismissed" }));
+    // The bridge's Discard answers only when the test says so, and the person's own send hangs until then too.
+    let releaseSend: () => void = () => undefined;
+    const sendWaits = new Promise<void>((resolve) => {
+      releaseSend = resolve;
+    });
+    const posted: string[] = [];
+    server.use(
+      http.delete(/\/api\/send\/[^/]+$/, async ({ request }) => {
+        discards.push(decodeURIComponent(new URL(request.url).pathname.split("/").pop() ?? ""));
+        await discardWaits;
+        return HttpResponse.json({ result: "dismissed" });
+      }),
+      http.post("/api/send", async ({ request }) => {
+        const body = parseJsonObject(await request.text());
+        posted.push(asJsonString(body?.text) ?? "");
+        await sendWaits;
+        return HttpResponse.json(sendAnswer(asJsonString(body?.id) ?? "", "sent"));
+      }),
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Send again" }));
+    await waitFor(() => expect(discards).toEqual([LOST_ID]));
+    // While the Discard is on its way, the person sends something else from the box.
+    const box = screen.getByRole("textbox");
+    await user.type(box, "other words");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(posted).toEqual(["other words"]));
+    releaseDiscard();
+    // The composer cannot start the card's send now: it says why, and the card's text waits in the box.
+    expect(await screen.findByText("Another send from this phone is still running. Wait for it to end.")).toBeInTheDocument();
+    await waitFor(() => expect(box).toHaveValue(`other words\n${LOST_TEXT}`));
+    expect(posted).toEqual(["other words"]);
+    // The running send lands: its words leave the box, the card's text stays.
+    releaseSend();
+    await waitFor(() => expect(box).toHaveValue(LOST_TEXT));
+    expect(posted).toEqual(["other words"]);
   });
 });

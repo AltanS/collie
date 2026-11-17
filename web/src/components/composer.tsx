@@ -201,6 +201,12 @@ export interface ComposerHandle {
    * sends nothing, so a caller that would drop something first (the queued card) keeps it.
    */
   lineCanStart: () => boolean;
+  /**
+   * Keep a text the composer could not start (the M102 review 2, G): the queued card's Send again dropped its card, and
+   * then the composer refused. The words go into the box, after whatever the person has typed, so nothing is lost and
+   * nothing sends them by itself.
+   */
+  keepLine: (line: string) => void;
 }
 
 /** A tap in an agent view: the screen's rev and the control path the bridge reads, and the words it names (display only). */
@@ -1549,6 +1555,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const answerAgainRef = useRef<() => void>(() => undefined);
   const sendLineRef = useRef<(line: string) => Promise<boolean>>(() => Promise.resolve(false));
   const lineCanStartRef = useRef<() => boolean>(() => false);
+  const keepLineRef = useRef<(line: string) => void>(() => undefined);
   useImperativeHandle(
     ref,
     () => ({
@@ -1565,6 +1572,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       answerAgain: () => answerAgainRef.current(),
       sendLine: (line) => sendLineRef.current(line),
       lineCanStart: () => lineCanStartRef.current(),
+      keepLine: (line) => keepLineRef.current(line),
     }),
     [startMessage],
   );
@@ -2211,6 +2219,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const refusal = lineRefusal();
     if (refusal !== null) setSendRefusal(refusal);
     return refusal === null;
+  };
+  keepLineRef.current = (line) => {
+    const now = inputValueRef.current;
+    updateInput(now.trim() === "" ? line : `${now}\n${line}`);
   };
   sendViewTapRef.current = async (tap) => {
     const sent = await send(tap.words, false, undefined, tap);

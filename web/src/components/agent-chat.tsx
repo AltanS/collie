@@ -2178,6 +2178,13 @@ export function AgentChat({
           setStatus(describeThrownError(e), "error");
           return false;
         }
+        // The card is gone now. While the Discard was on its way a send may have started, the code field may have
+        // appeared, or the link may have dropped: asked again, a composer that refuses says why, and the card's words
+        // wait in the box, so nothing is lost and nothing sends them by itself (the M102 review 2, G).
+        if (!composer.lineCanStart()) {
+          composer.keepLine(cardText);
+          return false;
+        }
         return composer.sendLine(cardText);
       }
       if (action === "dismiss") {
