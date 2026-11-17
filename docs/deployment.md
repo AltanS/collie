@@ -159,6 +159,9 @@ serve as the access gate.
 - Without a proxy on `/auth/`, Collie answers `404` there. The page now tells an unpaired device
   to run `collie pair` and enter the code in Settings. It never redirects, because the path
   belongs to your proxy.
+- Set `COLLIE_AUTH_RETURN=1` when your front door signs in on every path and has no page of its
+  own at `/auth/`, as a tunnel with built-in sign-in does. Collie then answers `/auth/` with a
+  `303` to the app, so the "Sign in" link of the "Access refused" strip lands back in the app.
 
 ```caddyfile
 collie.example.com {

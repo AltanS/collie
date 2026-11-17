@@ -4917,7 +4917,9 @@ export function startServer(opts: {
       // the bridge refuses a stale session. Collie never routes it. If a request gets this far, no
       // proxy claimed it — say so, instead of letting the SPA fallback answer with the app shell and
       // leave the operator staring at the UI they were trying to escape.
-      if (isReservedAuthPath(pathname)) return reservedAuthPlaceholder(cfg.basePath);
+      if (isReservedAuthPath(pathname)) {
+        return cfg.authReturn ? reservedAuthReturn(cfg.basePath) : reservedAuthPlaceholder(cfg.basePath);
+      }
 
       // ── The math engines (ADR 0132) ──────────────────────────────────────
       // From the store's pack of the running version, else `web/dist/math/` beside a source build,
@@ -11155,7 +11157,8 @@ nothing here and has no sign-in of its own.</p>
 this Collie, pair this device instead: run <code>collie pair</code> on the computer that runs
 Collie, then enter the code in Settings.</p>
 <p>If you are the operator: point this path at your proxy's sign-in flow. See <em>Serving Collie
-behind your own reverse proxy</em> in the README.</p>
+behind your own reverse proxy</em> in the README. If your front door signs in on every path and has
+no page here, set <code>COLLIE_AUTH_RETURN=1</code> and this address sends you back to Collie.</p>
 <p><a href="${base}">Back to Collie</a> · <a href="${base}settings/system">Open Settings</a></p>
 </body>
 </html>
@@ -11166,6 +11169,24 @@ behind your own reverse proxy</em> in the README.</p>
       headers: {
         "content-type": "text/html; charset=utf-8",
         "content-security-policy": CSP,
+        "cache-control": "no-store",
+      },
+    }),
+  );
+}
+
+/**
+ * What `/auth/` answers under `COLLIE_AUTH_RETURN=1`: a `303` to the mount, never cached.
+ *
+ * @param basePath The normalised mount (`/` or `/collie/`, ADR 0052). The only `location` it sends.
+ * @returns A redirect with no body, outside every gate, like the placeholder.
+ */
+export function reservedAuthReturn(basePath: string = "/"): Response {
+  return secure(
+    new Response(null, {
+      status: 303,
+      headers: {
+        location: basePath,
         "cache-control": "no-store",
       },
     }),
