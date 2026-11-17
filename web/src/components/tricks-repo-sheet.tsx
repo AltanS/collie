@@ -11,6 +11,7 @@ import { addRepoTrick, apiErrorFields, listRepoTricks, repoRefusalReason } from 
 import { t } from "@/lib/i18n";
 import { readPhoneSource, shownIndexText, type RepoAddReply, type RepoListEntry, type RepoListReply } from "@/lib/tricks/repo-index";
 import { cn } from "@/lib/utils";
+import { mintRequestId } from "@/lib/worktree-name";
 
 // Settings, Tricks: "Add from a repository" (2026-11-17, package J). One row at the foot of the list opens this
 // sheet. A person pastes the https link of a repository, the bridge reads its `collie-tricks.json` (a list of
@@ -149,7 +150,7 @@ export function RepoAddSheet({ open, onClose, onList, onAdd, initialUrl = "", re
     setRows(new Map());
     rids.current.clear();
     try {
-      const reply = await onList(source.url, crypto.randomUUID());
+      const reply = await onList(source.url, mintRequestId());
       if (mine === reads.current) setList({ kind: "list", reply });
     } catch (thrown) {
       if (mine === reads.current) setList({ kind: "failed", line: repoFailureLine(thrown, "list") });
@@ -158,7 +159,7 @@ export function RepoAddSheet({ open, onClose, onList, onAdd, initialUrl = "", re
 
   async function add(reply: RepoListReply, entry: RepoListEntry): Promise<void> {
     if (rows.get(entry.folder)?.kind === "busy") return;
-    const rid = rids.current.get(entry.folder) ?? crypto.randomUUID();
+    const rid = rids.current.get(entry.folder) ?? mintRequestId();
     rids.current.set(entry.folder, rid);
     setRow(entry.folder, { kind: "busy" });
     try {

@@ -29,6 +29,7 @@ import { useOptionalRootData } from "@/lib/route-data";
 import { setStatus } from "@/lib/status";
 import { isReadOnly } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { mintRequestId } from "@/lib/worktree-name";
 import { useOpenTrickCard } from "@/components/trick-cards";
 import { useTrickCards } from "@/lib/hill/store";
 import type { HillDecision } from "@/lib/hill/wire";
@@ -684,7 +685,7 @@ function TricksList({
     const field = trick.fields?.find((one) => one.key === key);
     const editKey = `${trick.host}/${trick.id}/${key}`;
     const earlier = valueEdits.current.get(editKey);
-    const rid = earlier !== undefined && earlier.value === value ? earlier.rid : crypto.randomUUID();
+    const rid = earlier !== undefined && earlier.value === value ? earlier.rid : mintRequestId();
     valueEdits.current.set(editKey, { value, rid });
     try {
       await onSetValue(trick.host, trick.id, { rid, key, value });
