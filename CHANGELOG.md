@@ -131,6 +131,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The install-count notice no longer opens above a list that has painted.** On a device that has not spent the notice, the Dashboard keeps its list unseen for up to 0.4 seconds while the one read answers, then shows the list and the open notice together. An answer later than that waits for the next load. The notice, its words and its place at the top are unchanged.
 - **The Math card keeps the place of its download row while the page loads.** The device remembers where the host's math pack stood, one word and nothing else, and holds that row's place, unseen, at its real height until the host answers. The cards below no longer slide down when the row arrives. A first visit, and a bridge with no pack, draw as before.
 - **The worktree folder row keeps its height while its answer is read.** While Settings reads a machine's folder, the row holds the path line and the Change button's box, unseen, so the install count and the cards below it no longer slide down when the answer lands.
+- **The Voice page draws its cards once, when they are all known.** Settings, Voice waits for up to 0.4 seconds for the config, the host's speech option and this phone's copy, then draws every card together, so the hands-free card no longer enters the middle of the page. Past that wait the page draws what it has, as before.
 
 ### Docs
 

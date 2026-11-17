@@ -36,6 +36,7 @@ import {
   type StepView,
 } from "@/components/voice-parts";
 import { VoiceEmpty } from "@/components/voice-empty";
+import { useBoundedHold } from "@/hooks/use-bounded-hold";
 import { useStoredModel } from "@/hooks/use-stored-model";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
@@ -2050,6 +2051,7 @@ export function SpeechControl({ page = "hub" }: { page?: VoiceView }) {
   const copyAbort = useRef<AbortController | null>(null);
   const [host, setHost] = useState<SttHostStatus | null>(null);
   const [hostRead, setHostRead] = useState(false);
+  const waiting = useBoundedHold(page === "hub" && !(configRead && hostRead && local !== undefined));
   const [checking, setChecking] = useState(false);
   const [switching, setSwitching] = useState<SttHostChoice | null>(null);
   const [providerError, setProviderError] = useState<string | null>(null);
@@ -2325,6 +2327,12 @@ export function SpeechControl({ page = "hub" }: { page?: VoiceView }) {
   };
 
   if (page === "hub") {
+    // CALM LOAD. The hub's cards come from three reads that end at different times: the config (the
+    // host's speech option, Whistle, the microphone), the host's own option, and this phone's copy.
+    // Drawn as each one lands, the hands-free card entered between the "in use" card and the Change
+    // fold, and the card's words changed under the reader. So the hub waits for all three, for at most
+    // `CALM_HOLD_MS`, and draws once. Past the bound it draws what it has, as it did.
+    if (waiting) return null;
     // The index always offers Voice, so a page with nothing to show says why, once the host has
     // answered both reads and this phone has looked for its own copy.
     if (!voiceHubShown(props)) return configRead && hostRead && local === null ? <VoiceEmpty /> : null;
