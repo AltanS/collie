@@ -8,6 +8,7 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
+import { recordRefusal, withRefusal, type RefusalReason } from "./refusal.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
 import {
   changesParams,
@@ -208,7 +209,7 @@ import {
   maskTodoList,
 } from "./answer-mask.ts";
 import { maskForwardedAnswer } from "./crew/mask.ts";
-import { forwardError, type LeadMerge } from "./crew/forward.ts";
+import { forwardAuditDetail, forwardError, type LeadMerge } from "./crew/forward.ts";
 import { CWD_PARAM, folderAnswers, leadRowCarry, leadRowMarked, leadRowsRead, ROW_FIELD, rowFromLead, type LeadWrite } from "./crew/launcher-rows.ts";
 import { withCopyRows, type LauncherCopySeam } from "./crew/standby-launchers.ts";
 import { redactAnsi } from "./redact.ts";
@@ -1828,7 +1829,7 @@ export function startServer(opts: {
         try {
           const res = await lead.forward(req, url, resolved, {
             device: null,
-            audit: (entry) => audit.record({ action: entry.action, host: entry.host, device: null, detail: { forwarded: entry.outcome } }),
+            audit: (entry) => audit.record({ action: entry.action, host: entry.host, device: null, detail: forwardAuditDetail(entry) }),
           });
           await res.body?.cancel();
         } catch (err) {
@@ -3224,7 +3225,7 @@ export function startServer(opts: {
                     action: entry.action,
                     host: entry.host,
                     device: whois(req).device,
-                    detail: { forwarded: entry.outcome },
+                    detail: forwardAuditDetail(entry),
                   };
                   if (entry.paneId !== undefined) row.paneId = entry.paneId;
                   if (entry.session !== undefined) row.session = entry.session;
@@ -9901,14 +9902,16 @@ export async function sendRoute(
     return await viewSendRoute(rt, body, { ...context, view: context.view, field: viewField });
   }
   if (rt.driver !== undefined) return programSendRoute(rt, rt.driver, body, context);
-  if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
+  // A refusal before the Send Protocol leaves one record and names its code (M102 spec 14, I3).
+  const refuse = (res: Response, reason: RefusalReason, paneId?: string): Response => routeRefusal(res, { action: "send", reason, paneId: paneId ?? bodyPaneOf(body), session: rt.name, ...context });
+  if (rt.send === undefined) return refuse(text(SEND_OFF_TEXT, 404), "send_off");
   const request = parseSendRequest(body);
-  if (request === null) return text("bad send request", 400);
+  if (request === null) return refuse(text("bad send request", 400), "bad_body");
   const refusal = rawInputRefusal(rt.herdr);
-  if (refusal !== null) return json(refusal.body, context.acceptEncoding, refusal.status);
+  if (refusal !== null) return refuse(json(refusal.body, context.acceptEncoding, refusal.status), "no_raw_input", request.pane);
   // An agent pane's string picks its profile; a bare shell, or an agent with no profile, has none and is typed and Entered blind.
   const harness = replySendOf(rt).harnessOf(request.pane);
-  if (harness === null) return text("no such terminal pane", 404);
+  if (harness === null) return refuse(text("no such terminal pane", 404), "no_pane", request.pane);
   const { pane: paneId, resendOf, ...asked } = request;
   // `POST /api/send` is the phone's route: a person's send, the one caller that may steer (M69).
   let sendRequest: SendRequest = { ...asked, fromPhone: true };
@@ -9934,7 +9937,7 @@ export async function sendRoute(
   } else if (resendOf !== undefined) {
     // The stored text, unmasked: never the row the phone shows, which the redact setting may mask.
     const source = rt.send.resendSource(rt.name, paneId, resendOf);
-    if (source === null) return text("no such ended held send on this pane", 404);
+    if (source === null) return refuse(text("no such ended held send on this pane", 404), "no_held_send", paneId);
     // A Resend goes on the queued path, as the held send it repeats: never a steer (M69), so `when`
     // goes with `fromPhone`.
     const { when: _steer, ...plain } = asked;
@@ -10839,13 +10842,15 @@ export async function askRoute(
   context: AskRouteContext,
 ): Promise<Response> {
   if (rt.driver !== undefined) return programAskRoute(rt, rt.driver, askId, body, context);
-  if (rt.asks === undefined) return text(ASK_OFF_TEXT, 404);
+  // A refusal before the ask book leaves one record and names its code (M102 spec 14, I3).
+  const refuse = (res: Response, reason: RefusalReason, paneId?: string): Response => routeRefusal(res, { action: "ask", reason, paneId: paneId ?? bodyPaneOf(body), session: rt.name, ...context });
+  if (rt.asks === undefined) return refuse(text(ASK_OFF_TEXT, 404), "send_off");
   const parsed = parseAnswerBody(askId, body);
-  if (parsed === null) return text("bad ask answer", 400);
+  if (parsed === null) return refuse(text("bad ask answer", 400), "bad_body");
   const refusal = rawInputRefusal(rt.herdr);
-  if (refusal !== null) return json(refusal.body, context.acceptEncoding, refusal.status);
+  if (refusal !== null) return refuse(json(refusal.body, context.acceptEncoding, refusal.status), "no_raw_input", parsed.pane);
   const harness = replySendOf(rt).harnessOf(parsed.pane);
-  if (harness === null) return text("no such terminal pane", 404);
+  if (harness === null) return refuse(text("no such terminal pane", 404), "no_pane", parsed.pane);
   const { pane: paneId, ...answer } = parsed;
   const reply = await rt.asks.handle(answer, { session: rt.name, paneId, harness });
   const receipt = reply.receipt;
@@ -10876,10 +10881,11 @@ async function programAskRoute(
   body: JsonValue | undefined,
   context: AskRouteContext,
 ): Promise<Response> {
+  const refuse = (res: Response, reason: RefusalReason, paneId?: string): Response => routeRefusal(res, { action: "ask", reason, paneId: paneId ?? bodyPaneOf(body), session: rt.name, ...context });
   const parsed = parseAnswerBody(askId, body);
-  if (parsed === null) return text("bad ask answer", 400);
+  if (parsed === null) return refuse(text("bad ask answer", 400), "bad_body");
   const harness = replySendOf(rt).harnessOf(parsed.pane);
-  if (harness === null) return text("no such conversation", 404);
+  if (harness === null) return refuse(text("no such conversation", 404), "no_pane", parsed.pane);
   const { pane: paneId, ...answer } = parsed;
   const reply = await driver.answer(answer, { session: rt.name, paneId, harness });
   const receipt = reply.receipt;
@@ -10898,6 +10904,27 @@ async function programAskRoute(
 
 function text(body: string, status: number): Response {
   return secure(new Response(body, { status }));
+}
+
+/**
+ * The pane a send or ask body names, for the record of a refusal before the body parsed: a short id
+ * string, never any other field of the body. Undefined when there is none.
+ */
+function bodyPaneOf(body: JsonValue | undefined): string | undefined {
+  const pane = asJsonRecord(body)?.pane;
+  return typeof pane === "string" && pane !== "" && pane.length <= 256 ? pane : undefined;
+}
+
+/**
+ * A send or ask refusal before its protocol ran (M102 spec 14, I3): one audit line with the code and
+ * no text, and the same code on the answer for the phone (`x-collie-reason`, `x-collie-by: bridge`).
+ */
+function routeRefusal(
+  res: Response,
+  at: { readonly action: "send" | "ask"; readonly reason: RefusalReason; readonly paneId: string | undefined; readonly session: string; readonly audit: AuditLog; readonly device: string | null },
+): Response {
+  recordRefusal(at.audit, { action: at.action, by: "bridge", outcome: "refused", reason: at.reason, paneId: at.paneId, session: at.session, device: at.device });
+  return withRefusal(res, "bridge", at.reason);
 }
 
 /**

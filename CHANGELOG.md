@@ -76,6 +76,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A check keeps placeholders out of the docs' plain text.** `scripts/check-docs-placeholders.ts`, run by `bun run test`, fails a placeholder such as `<repo>` written outside a code span in `README.md` or a docs page, because every Markdown renderer reads it as an HTML tag and drops it. Twenty-three such placeholders in the Crew, Durable SDK, Hill, Tricks and Troubleshooting pages are now code spans.
 - **The trick docs say what a proposal leaves behind and what its answer says.** The Hill docs say the answer is typed into the proposing session and starts a turn there; the authoring guide says a trick must work with no `config.toml`, which files the text search reads, and how the cards treat the helper and `AGENTS.md`.
+- **A refused tap leaves a record with its reason.** When the bridge refuses a send or an answer before it runs, when the lead refuses or loses a write to a crew member, and when a permission hook reaches a bridge but holds nothing, the bridge now writes one audit line with who refused, the outcome, a reason code and the pane, and never the text. The phone gets the same code with the answer. A crew write that timed out now says so, apart from a link that broke, and a refusal for a member's version names the Collie version that member runs.
 
 ## [1.29.0] - 2026-11-12
 

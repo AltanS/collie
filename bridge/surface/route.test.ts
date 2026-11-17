@@ -7,7 +7,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuditLog } from "../audit.ts";
-import type { JsonValue } from "../../web/src/lib/json.ts";
+import { isRefusalReason, REFUSAL_REASONS } from "../refusal.ts";
+import { parseJsonObject, type JsonValue } from "../../web/src/lib/json.ts";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
 import { ASK_OFF_TEXT, askRoute, heldCancelRoute, parseSendRequest, REPLY_OFF_TEXT, replySendOf, replyThroughProtocol, SEND_MAX_TEXT, SEND_OFF_TEXT, sendReceiptsRoute, sendRoute, type AskRouteRuntime, type SendRouteRuntime } from "../server.ts";
 import { readFileSync } from "node:fs";
@@ -211,7 +212,8 @@ describe("sendRoute", () => {
       expect(res.status).toBe(404);
       expect(await res.text()).toBe(SEND_OFF_TEXT);
       expect(pane.written).toEqual([]);
-      expect(lines).toEqual([]);
+      // Nothing is read; the refusal leaves its one record with the code (M102 spec 14).
+      expect(lines.map((line) => JSON.parse(line).detail)).toEqual([{ by: "bridge", outcome: "refused", reason: "send_off" }]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -274,6 +276,50 @@ describe("sendRoute", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// M102 spec 14 (I3): a 400 or a 404 of the send and ask routes stored nothing, so a refused tap left no
+// trace. Each now leaves one audit line with the code, the pane when the body names one, and no text.
+describe("a refusal before the protocol leaves one record with its code", () => {
+  const detailOf = (line: string) => parseJsonObject(line) ?? {};
+
+  test("the send route: a bad body, an unknown pane, a screenless pane and a Resend of nothing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt } = runtime(true, dir);
+      const { audit, lines } = auditLines();
+      const context = { audit, device: "phone", redact: false, acceptEncoding: null };
+      const cases: [SendRouteRuntime, JsonValue, number, string, string | undefined][] = [
+        [rt, { id: "x", pane: "%1", text: "a secret word" }, 400, "bad_body", "%1"],
+        [rt, { id: "route-rec-0001", pane: "%9", text: "a secret word" }, 404, "no_pane", "%9"],
+        [{ ...rt, herdr: { controlTurn: () => Promise.reject(new Error("never called")) } }, { id: "route-rec-0002", pane: "%1", text: "a secret word" }, 409, "no_raw_input", "%1"],
+        [rt, { id: "route-rec-0003", pane: "%1", text: "", resendOf: "route-rec-9999" }, 404, "no_held_send", "%1"],
+        [{ ...rt, send: undefined }, { id: "route-rec-0004", pane: "%1", text: "a secret word" }, 404, "send_off", "%1"],
+      ];
+      for (const [runtimeOf, body, status, reason, paneId] of cases) {
+        const before = lines.length;
+        const res = await sendRoute(runtimeOf, body, context);
+        expect(res.status).toBe(status);
+        expect(res.headers.get("x-collie-reason")).toBe(reason);
+        expect(res.headers.get("x-collie-by")).toBe("bridge");
+        expect(lines.length - before).toBe(1);
+        const line = detailOf(lines.at(-1)!);
+        expect(line).toMatchObject({ action: "send", session: "main", device: "phone", detail: { by: "bridge", outcome: "refused", reason } });
+        expect(line.paneId).toBe(paneId!);
+        expect(lines.at(-1)).not.toContain("secret");
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("every code a record writes is in the one exported list", () => {
+    for (const reason of ["bad_body", "no_pane", "no_raw_input", "no_held_send", "send_off", "member_unreachable", "link_timeout", "foreign-mux", "no_markers"]) {
+      expect(isRefusalReason(reason)).toBe(true);
+    }
+    expect(isRefusalReason("anything at all")).toBe(false);
+    expect(new Set(REFUSAL_REASONS).size).toBe(REFUSAL_REASONS.length);
   });
 });
 
@@ -699,7 +745,9 @@ describe("askRoute", () => {
       const res = await askRoute(off, "ask-0123456789abcd", { pane: "%1", hash: "00", optionId: "1", origin: "person_tap" }, { audit, device: null, redact: false, acceptEncoding: null });
       expect(res.status).toBe(404);
       expect(await res.text()).toBe(ASK_OFF_TEXT);
-      expect(lines).toEqual([]);
+      // One record of the refusal, with its code and no text (M102 spec 14).
+      expect(lines.map((line) => JSON.parse(line).detail)).toEqual([{ by: "bridge", outcome: "refused", reason: "send_off" }]);
+      expect(res.headers.get("x-collie-reason")).toBe("send_off");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -719,15 +767,16 @@ describe("askRoute", () => {
       const body = await res.json();
       expect(body.receipt).toMatchObject({ askId: ask.id, outcome: "sent", keys: ["1"] });
       expect(keys).toEqual(["1"]);
-      expect(lines).toHaveLength(1);
-      expect(lines[0]).toContain('"action":"ask"');
-      expect(lines[0]).toContain('"optionId":"1"');
-      expect(lines[0]).not.toContain("mkfifo");
+      // The 400 and the 404 above each left one record (M102 spec 14); then the answer's own line.
+      expect(lines).toHaveLength(3);
+      expect(lines[2]).toContain('"action":"ask"');
+      expect(lines[2]).toContain('"optionId":"1"');
+      expect(lines[2]).not.toContain("mkfifo");
       // The same answer again is the stored receipt: audited as a replay, and no key leaves.
       const again = await askRoute(rt, ask.id, { pane: "%1", hash: ask.hash, optionId: "1", origin: "person_tap" }, context);
       expect((await again.json()).replayed).toBe(true);
       expect(keys).toEqual(["1"]);
-      expect(lines[1]).toContain('"replayed":true');
+      expect(lines[3]).toContain('"replayed":true');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
