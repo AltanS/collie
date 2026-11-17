@@ -137,7 +137,7 @@ export const fixtureSnapshot: SnapshotResponse = {
 
 /** Lead + one reachable peer + one that is up but speaking another protocol version. */
 export const fixtureServers: ServerSummary[] = [
-  { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 1_000 },
+  { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 1_000 },
   { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 990 },
   {
     id: "attic",
@@ -156,8 +156,8 @@ export const fixtureServers: ServerSummary[] = [
  * single cross-host list.
  */
 export const fixtureCrewAgents: AgentView[] = [
-  { ...fixtureAgents[0]!, host: "bluefin" },
-  { ...fixtureAgents[1]!, host: "bluefin" },
+  { ...fixtureAgents[0]!, host: "lodge" },
+  { ...fixtureAgents[1]!, host: "lodge" },
   {
     paneId: "w1:p1",
     workspaceId: "w1",
@@ -178,14 +178,14 @@ export const fixtureCrewShellPanes: AgentView[] = fixtureShellPanes.map((p) => {
   // a fresh object literal plus a spread, and it says plainly that `host` is the ONLY difference
   // from the solo fixture.
   const packed = structuredClone(p);
-  packed.host = "bluefin";
+  packed.host = "lodge";
   return packed;
 });
 
 /** Both machines run a session called "default" — which is why the switchers stay separate. */
 export const fixtureCrewSessions: SessionSummary[] = [
-  { ...fixtureSessions[0]!, host: "bluefin" },
-  { ...fixtureSessions[1]!, host: "bluefin" },
+  { ...fixtureSessions[0]!, host: "lodge" },
+  { ...fixtureSessions[1]!, host: "lodge" },
   { name: "default", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 1, host: "workshop" },
 ];
 
@@ -196,7 +196,7 @@ export const fixtureCrewSessions: SessionSummary[] = [
  * machine's counts; `(host, workspaceId)` is what keeps them apart.
  */
 export const fixtureCrewWorkspaces: WorkspaceView[] = [
-  ...fixtureWorkspaces.map((w) => Object.assign({}, w, { host: "bluefin" })),
+  ...fixtureWorkspaces.map((w) => Object.assign({}, w, { host: "lodge" })),
   {
     workspaceId: "w1",
     number: 1,
@@ -210,7 +210,7 @@ export const fixtureCrewWorkspaces: WorkspaceView[] = [
 ];
 
 export const fixtureCrewTabs: TabView[] = [
-  ...fixtureTabs.map((t) => Object.assign({}, t, { host: "bluefin" })),
+  ...fixtureTabs.map((t) => Object.assign({}, t, { host: "lodge" })),
   { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "1", focused: false, paneCount: 1, host: "workshop" },
 ];
 
@@ -241,12 +241,12 @@ export const fixtureCrewSnapshot: SnapshotResponse = {
  */
 export const fixtureCrewStatus: CrewStatusResponse = {
   crew: { id: "pk1", name: "home", secretGeneration: 3, rotatedAt: 100_000 },
-  self: { id: "bluefin", name: "bluefin", version: "0.30.0" },
+  self: { id: "lodge", name: "lodge", version: "0.30.0" },
   deputy: { id: "workshop", warrantGeneration: 2 },
   members: [
     {
-      id: "bluefin",
-      name: "bluefin",
+      id: "lodge",
+      name: "lodge",
       isLead: true,
       health: "reachable",
       lastSeenAt: 1_000,
@@ -694,14 +694,14 @@ export const fixtureWalkyAgent: WalkyRow = {
   v: 1,
   id: "wt_k3f9x2m8q1a0",
   kind: "agent",
-  from: { memberId: "bluefin", address: "bluefin/w6:p3", harness: "claude", label: "collie-workspace#fix-465" },
-  to: "bluefin/w1:p1",
+  from: { memberId: "lodge", address: "lodge/w6:p3", harness: "claude", label: "collie-workspace#fix-465" },
+  to: "lodge/w1:p1",
   replyTo: null,
   at: Date.parse("2026-10-17T09:30:00Z"),
   body: "Tests are green on fix-465. You can merge.",
-  signer: "bluefin",
+  signer: "lodge",
   signature: "c2ln",
-  receipt: { id: "wt_k3f9x2m8q1a0", state: "delivered", verified: "origin", at: Date.parse("2026-10-17T09:30:02Z"), by: "bluefin", target: "bluefin/w1:p1" },
+  receipt: { id: "wt_k3f9x2m8q1a0", state: "delivered", verified: "origin", at: Date.parse("2026-10-17T09:30:02Z"), by: "lodge", target: "lodge/w1:p1" },
 };
 
 /** An operator message from a paired phone, a reply to the agent's, written locally. */
@@ -709,32 +709,32 @@ export const fixtureWalkyOperator: WalkyRow = {
   v: 1,
   id: "wt_p0q9r8s7t6u5",
   kind: "operator",
-  from: { memberId: "bluefin", address: null, harness: null, label: "phone-altan" },
-  to: "bluefin/w1:p1",
+  from: { memberId: "lodge", address: null, harness: null, label: "phone-dev" },
+  to: "lodge/w1:p1",
   replyTo: "wt_k3f9x2m8q1a0",
   at: Date.parse("2026-10-17T09:31:00Z"),
   body: "Stop and report what you changed.",
   signer: null,
   signature: null,
-  receipt: { id: "wt_p0q9r8s7t6u5", state: "inbox-only", reason: "dialog open", verified: "local", at: Date.parse("2026-10-17T09:31:01Z"), by: "solo", target: "bluefin/w1:p1" },
+  receipt: { id: "wt_p0q9r8s7t6u5", state: "inbox-only", reason: "dialog open", verified: "local", at: Date.parse("2026-10-17T09:31:01Z"), by: "solo", target: "lodge/w1:p1" },
 };
 
 /** The address of the pane the walky fixtures belong to: the target of the two rows above, the sender of the one below. */
-export const fixtureWalkySelf = "bluefin/w1:p1";
+export const fixtureWalkySelf = "lodge/w1:p1";
 
 /** A message THIS pane sent to another agent pane (the list holds sent rows too), with its receipt. */
 export const fixtureWalkySent: WalkyRow = {
   v: 1,
   id: "wt_s3ntaaaa0001",
   kind: "agent",
-  from: { memberId: "bluefin", address: "bluefin/w1:p1", harness: "claude", label: "collie-workspace#this-pane" },
-  to: "bluefin/w6:p3#k3f9",
+  from: { memberId: "lodge", address: "lodge/w1:p1", harness: "claude", label: "collie-workspace#this-pane" },
+  to: "lodge/w6:p3#k3f9",
   replyTo: null,
   at: Date.parse("2026-10-17T09:32:00Z"),
   body: "Merged. Thanks.",
-  signer: "bluefin",
+  signer: "lodge",
   signature: "c2ln",
-  receipt: { id: "wt_s3ntaaaa0001", state: "delivered", verified: "local", at: Date.parse("2026-10-17T09:32:02Z"), by: "bluefin", target: "bluefin/w6:p3" },
+  receipt: { id: "wt_s3ntaaaa0001", state: "delivered", verified: "local", at: Date.parse("2026-10-17T09:32:02Z"), by: "lodge", target: "lodge/w6:p3" },
 };
 
 let walkyRows: WalkyRow[] = [];
@@ -1145,7 +1145,7 @@ export const handlers = [
     if (body?.wake === true) posted.wake = true;
     walkyPosts.push(posted);
     if (posted.to === "all") {
-      return HttpResponse.json({ receipts: ["bluefin/w1:p1", "minibuch/w2:p1"].map((to) => walkyReceipt(posted.id, to)) });
+      return HttpResponse.json({ receipts: ["lodge/w1:p1", "workshop/w2:p1"].map((to) => walkyReceipt(posted.id, to)) });
     }
     if (posted.to.endsWith("/all")) {
       return HttpResponse.json({ receipts: [walkyReceipt(posted.id, `${posted.to.slice(0, -4)}/w1:p1`)] });

@@ -11,8 +11,8 @@ import { useNoPromptsGuard, type GuardedStart } from "./use-no-prompts-guard";
 // rules themselves; each caller's own test shows it calls the guard.
 
 const roster: ServerSummary[] = [
-  { id: "lead", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
-  { id: "mini", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
+  { id: "lead", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
+  { id: "mini", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
 ];
 
 const LINE = "claude --dangerously-skip-permissions";
@@ -60,7 +60,7 @@ describe("useNoPromptsGuard", () => {
     expect(s.go).not.toHaveBeenCalled();
     expect(within(sheet).getByTestId("no-prompts-command")).toHaveTextContent(LINE);
     expect(within(sheet).getByText("~/src/app")).toBeInTheDocument();
-    expect(within(sheet).getByText("bluefin")).toBeInTheDocument();
+    expect(within(sheet).getByText("lodge")).toBeInTheDocument();
     expect(within(sheet).getByText("This one will not ask before it acts.")).toBeInTheDocument();
   });
 
@@ -94,7 +94,7 @@ describe("useNoPromptsGuard", () => {
     const s = start({ machine: "mini" });
     act(() => ask(s));
     const sheet = await screen.findByRole("dialog");
-    expect(within(sheet).getByText("minibuch")).toBeInTheDocument();
+    expect(within(sheet).getByText("workshop")).toBeInTheDocument();
     expect(s.go).not.toHaveBeenCalled();
   });
 

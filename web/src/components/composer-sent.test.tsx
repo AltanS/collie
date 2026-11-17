@@ -19,7 +19,7 @@ import { Composer } from "./composer";
 // Sent in the composer of a shell pane (M61 spec 02): the belt's button and the suggestion strip above
 // the box. A line only ever lands in the box; Send is a tap of its own and runs the ordinary Send Protocol.
 
-const CWD = "/home/altan/projects/collie";
+const CWD = "/home/dev/projects/collie";
 
 beforeAll(() => {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
@@ -53,7 +53,7 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
   return props;
 }
 
-const answer = (entries: SentEntry[]): SentAnswer => ({ entries, more: false, off: false, machines: [{ host: "bluefin", label: "bluefin", ok: true }] });
+const answer = (entries: SentEntry[]): SentAnswer => ({ entries, more: false, off: false, machines: [{ host: "lodge", label: "lodge", ok: true }] });
 
 /** The fake bridge's Sent: lines for this folder, and the machine's lines (which repeat the folder's). */
 function serveSent(folder: string[], machine: string[]) {

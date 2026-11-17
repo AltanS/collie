@@ -57,7 +57,7 @@ const PROBE_DEFAULTS = {
   dirty: "",
   dirtyfiles: "",
   version: "",
-  address: "100.64.0.9",
+  address: "100.64.10.9",
   port: "free",
 } satisfies Record<string, string>;
 
@@ -212,7 +212,7 @@ function harness(opts: {
       throw new Error("the rich path must answer inside the app, never through Bun's prompt()");
     },
     gitBundle: () => Promise.resolve("QkFTRTY0LWJ1bmRsZQ=="),
-    reload: () => Promise.resolve(leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] })),
+    reload: () => Promise.resolve(leadStore({ peers: [member({ memberId: "nas", address: "100.64.10.9:8787" })] })),
   };
 
   return {
@@ -264,7 +264,7 @@ describe("crew add, drawn", () => {
       // The title, the probe's facts as pairs, and all four legs with their details.
       expect(frame).toContain("crew add nas.example");
       expect(frame).toContain("/usr/local/bin/herdr");
-      expect(frame).toContain("100.64.0.9:8787 (what this lead will dial)");
+      expect(frame).toContain("100.64.10.9:8787 (what this lead will dial)");
       for (const leg of ["probe", "install", "configure", "enroll"]) expect(frame).toContain(leg);
       expect(frame).toContain(`1.2.3 at ${REMOTE_CHECKOUT}`);
       expect(frame).toContain("written to /home/pat/.config/herdr/plugins/config/herdr.collie/.env");
@@ -281,7 +281,7 @@ describe("crew add, drawn", () => {
       for (const line of serveChatter(8788)) expect(frame).not.toContain(line);
       // The verdict is the last thing on screen, and it names the multiplexer leg 3 decided (M84/03).
       expect(
-        frame.trimEnd().endsWith('"nas" is a member of "the herd" and answered at 100.64.0.9:8787, and runs on herdr'),
+        frame.trimEnd().endsWith('"nas" is a member of "the herd" and answered at 100.64.10.9:8787, and runs on herdr'),
       ).toBe(true);
       // A spinner never survives the run.
       expect(frame).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);

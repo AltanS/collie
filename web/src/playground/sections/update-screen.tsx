@@ -47,7 +47,7 @@ const FROM = "1.11.1";
 const TO = "1.12.0";
 
 const CREW: UpdateCrewMember[] = [
-  { name: "minibuch", version: FROM, verdict: "green", reasons: [], asOf: NOW - 5_000 },
+  { name: "workshop", version: FROM, verdict: "green", reasons: [], asOf: NOW - 5_000 },
   { name: "cellar", version: FROM, verdict: "green", reasons: [], asOf: NOW - 5_000 },
 ];
 
@@ -58,8 +58,8 @@ const CLAIM: UpdateClaim = {
   peersOnly: false,
   bundleAtStart: "bundle-a",
   skipped: [],
-  lead: "bluefin",
-  members: ["minibuch", "cellar"],
+  lead: "lodge",
+  members: ["workshop", "cellar"],
   lastPhase: null,
 };
 
@@ -88,7 +88,7 @@ function leg(name: string, state: UpdatePeerLeg["state"], over: Partial<UpdatePe
 const BASE: UpdateScreenInput = {
   run: undefined,
   crew: CREW,
-  leadName: "bluefin",
+  leadName: "lodge",
   stage: "idle",
   progress: null,
   installingSince: null,
@@ -109,7 +109,7 @@ interface StepState {
   readonly opened?: boolean;
 }
 
-const WAITING = [leg("minibuch", "waiting"), leg("cellar", "waiting")];
+const WAITING = [leg("workshop", "waiting"), leg("cellar", "waiting")];
 
 /** Every state, in the order an update passes through them, then the other ends and devices. */
 const STATES: readonly StepState[] = [
@@ -120,14 +120,14 @@ const STATES: readonly StepState[] = [
   { label: "Verifying", input: { run: run("verifying", { peers: WAITING }) } },
   {
     label: "Members, one updating",
-    input: { run: run("done", { peers: [leg("minibuch", "updating"), leg("cellar", "waiting")] }) },
+    input: { run: run("done", { peers: [leg("workshop", "updating"), leg("cellar", "waiting")] }) },
   },
   {
     label: "Members, one unreachable",
     input: {
       run: run("done", {
         peers: [
-          leg("minibuch", "updating"),
+          leg("workshop", "updating"),
           leg("cellar", "waiting", { updatedAt: NOW - PEER_UNREACHABLE_MS * 2 }),
         ],
       }),
@@ -138,7 +138,7 @@ const STATES: readonly StepState[] = [
     input: {
       run: run("done", {
         peers: [
-          leg("minibuch", "done", { version: TO }),
+          leg("workshop", "done", { version: TO }),
           leg("cellar", "waiting", { reason: "rate-limited, retries by 08:14" }),
         ],
       }),
@@ -148,7 +148,7 @@ const STATES: readonly StepState[] = [
     label: "Phone downloading",
     input: {
       run: run("done", {
-        peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "waiting", { updatedAt: NOW - 90_000 })],
+        peers: [leg("workshop", "done", { version: TO }), leg("cellar", "waiting", { updatedAt: NOW - 90_000 })],
       }),
       claim: { ...CLAIM, skipped: ["cellar"] },
       stage: "installing",
@@ -159,7 +159,7 @@ const STATES: readonly StepState[] = [
   {
     label: "Phone switching",
     input: {
-      run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW - 30_000 }),
+      run: run("done", { peers: [leg("workshop", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW - 30_000 }),
       stage: "installing",
       installingSince: NOW - 30_000,
       progress: { done: 214, total: 214, at: NOW - 500 },
@@ -168,7 +168,7 @@ const STATES: readonly StepState[] = [
   {
     label: "Phone download hung",
     input: {
-      run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW - 200_000 }),
+      run: run("done", { peers: [leg("workshop", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW - 200_000 }),
       stage: "installing",
       installingSince: NOW - DOWNLOAD_HUNG_MS - 60_000,
       progress: { done: 40, total: 214, at: NOW - DOWNLOAD_HUNG_MS - 5_000 },
@@ -177,7 +177,7 @@ const STATES: readonly StepState[] = [
   {
     label: "Done",
     input: {
-      run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW - 60_000 }),
+      run: run("done", { peers: [leg("workshop", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW - 60_000 }),
       bundle: { id: "bundle-b", version: TO },
     },
   },
@@ -185,7 +185,7 @@ const STATES: readonly StepState[] = [
     label: "Done, one skipped",
     input: {
       run: run("done", {
-        peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "waiting", { updatedAt: NOW - 90_000 })],
+        peers: [leg("workshop", "done", { version: TO }), leg("cellar", "waiting", { updatedAt: NOW - 90_000 })],
       }),
       claim: { ...CLAIM, skipped: ["cellar"] },
       bundle: { id: "bundle-b", version: TO },
@@ -237,13 +237,13 @@ const STATES: readonly StepState[] = [
     opened: true,
   },
   {
-    label: "Try minibuch again",
+    label: "Try workshop again",
     input: {
-      ask: { kind: "retry", version: TO, major: false, peersOnly: true, current: TO, names: ["minibuch"] },
+      ask: { kind: "retry", version: TO, major: false, peersOnly: true, current: TO, names: ["workshop"] },
       claim: null,
       startedHere: false,
       crew: [
-        { name: "minibuch", version: FROM, verdict: "green", reasons: [], asOf: NOW - 5_000 },
+        { name: "workshop", version: FROM, verdict: "green", reasons: [], asOf: NOW - 5_000 },
         { name: "cellar", version: TO, verdict: "green", reasons: [], asOf: NOW - 5_000 },
       ],
     },
@@ -253,7 +253,7 @@ const STATES: readonly StepState[] = [
     input: {
       claim: { ...CLAIM, peersOnly: true, target: TO },
       crewRun: {
-        legs: [leg("minibuch", "updating"), leg("cellar", "done", { version: TO })],
+        legs: [leg("workshop", "updating"), leg("cellar", "done", { version: TO })],
         settledAt: null,
         to: TO,
         current: TO,
@@ -290,9 +290,9 @@ function screenOf(step: StepState): UpdateScreenState {
 /** A still app behind the veil. Playground chrome, not app chrome: the veil is the point. */
 function FakeApp(): ReactNode {
   const panes = [
-    ["fix loop", "bluefin · claude · working"],
-    ["translating docs", "bluefin · claude · working"],
-    ["tolvik work", "minibuch · codex · idle"],
+    ["fix loop", "lodge · claude · working"],
+    ["translating docs", "lodge · claude · working"],
+    ["tolvik work", "workshop · codex · idle"],
     ["PR work", "cellar · claude · done"],
   ] as const;
   return (

@@ -4,9 +4,9 @@ import { bareAddress, inScope, isSelf, labelOf, labelScope, paneAddress, parseAd
 
 describe("an address", () => {
   test("names one pane, one machine's panes, or every pane", () => {
-    expect(parseAddress("bluefin/w6:p3")).toEqual({ kind: "pane", memberId: "bluefin", paneId: "w6:p3", instance: null });
+    expect(parseAddress("lodge/w6:p3")).toEqual({ kind: "pane", memberId: "lodge", paneId: "w6:p3", instance: null });
     expect(parseAddress("local/%7")).toEqual({ kind: "pane", memberId: "local", paneId: "%7", instance: null });
-    expect(parseAddress("minibuch/all")).toEqual({ kind: "member-all", memberId: "minibuch" });
+    expect(parseAddress("workshop/all")).toEqual({ kind: "member-all", memberId: "workshop" });
     expect(parseAddress("all")).toEqual({ kind: "all" });
   });
 
@@ -15,7 +15,7 @@ describe("an address", () => {
   });
 
   test("may name one pane instance after a `#`: four characters of [a-z0-9]", () => {
-    expect(parseAddress("bluefin/w6:p3#k3f9")).toEqual({ kind: "pane", memberId: "bluefin", paneId: "w6:p3", instance: "k3f9" });
+    expect(parseAddress("lodge/w6:p3#k3f9")).toEqual({ kind: "pane", memberId: "lodge", paneId: "w6:p3", instance: "k3f9" });
     expect(parseAddress("local/terminal_1#0a0a")).toEqual({ kind: "pane", memberId: "local", paneId: "terminal_1", instance: "0a0a" });
     for (const bad of ["local/w1#", "local/w1#K3F9", "local/w1#k3f", "local/w1#k3f9x", "local/w1#k3f9#k3f9", "local/#k3f9", "local/all#k3f9", "all#k3f9", "local/..#k3f9"]) {
       expect(parseAddress(bad)).toBeNull();

@@ -194,7 +194,7 @@ describe("the lead's check of a member's message", () => {
 
 describe("the one shape check both crew hops share", () => {
   const good = signed("wt_aaaaaaaaaaa1", "laptop", "desk/w1:p1");
-  const operator = signed("wt_aaaaaaaaaaa2", "laptop", "desk/w1:p1", { kind: "operator", from: { memberId: "laptop", address: null, harness: null, label: "phone-altan" } });
+  const operator = signed("wt_aaaaaaaaaaa2", "laptop", "desk/w1:p1", { kind: "operator", from: { memberId: "laptop", address: null, harness: null, label: "phone-dev" } });
 
   /** Every signed string field, set to `value`, one at a time. */
   function eachField(base: WalkyMessage, value: string): Array<[string, WalkyMessage]> {
@@ -1617,22 +1617,22 @@ describe("a workspace scope across a crew of two members (M75 spec 02)", () => {
   });
 
   test("`here` from a herdr-core member's flat pane, through that member's socket and the crew hop, reaches the lead's pane in the same folder (2026-10-30)", async () => {
-    // The live shape: member `bluefin-hc` (a hyphen), its pane the flat `t1`, placed by HC_TERMINAL_* markers.
+    // The live shape: member `lodge-hc` (a hyphen), its pane the flat `t1`, placed by HC_TERMINAL_* markers.
     const hcPanes = [pane("t1", { label: "collie-workspace#main" })];
     const deskPanes = [pane("w1:p1", { label: "collie-workspace#main" }), pane("w1:p2", { label: "elsewhere#main", space: ELSEWHERE })];
-    const lead = service("desk", deskPanes, undefined, { remoteTargets: () => listed("bluefin-hc", hcPanes), knownMembers: () => ["desk", "bluefin-hc"] });
+    const lead = service("desk", deskPanes, undefined, { remoteTargets: () => listed("lodge-hc", hcPanes), knownMembers: () => ["desk", "lodge-hc"] });
     const leadCrew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const hops: string[] = [];
-    const hc = service("bluefin-hc", hcPanes, undefined, {
+    const hc = service("lodge-hc", hcPanes, undefined, {
       outcomesOnLead: true,
-      knownMembers: () => ["bluefin-hc", "desk"],
+      knownMembers: () => ["lodge-hc", "desk"],
       routeRemote: memberRouteRemote({
-        self: "bluefin-hc",
+        self: "lodge-hc",
         post: async (payload) => {
           // SAFETY: the member posts the JSON it built itself.
           const body = JSON.parse(payload) as JsonValue;
           hops.push(JSON.stringify(body));
-          const answer = await leadCrew.fromMember(body, member({ memberId: "bluefin-hc" }));
+          const answer = await leadCrew.fromMember(body, member({ memberId: "lodge-hc" }));
           return { kind: "answer", status: answer.status, body: wire(answer.body) };
         },
         now: () => AT,
@@ -1650,9 +1650,9 @@ describe("a workspace scope across a crew of two members (M75 spec 02)", () => {
     if (!read.ok) throw new Error(read.reason);
     const answer = await answerRequest(hc.service, read.request, [place]);
     expect(answer).toMatchObject({ ok: true, receipts: [{ target: "desk/w1:p1", state: "accepted", by: "desk" }] });
-    // The member handed `here` over whole, signed by `bluefin-hc`, with the label the lead resolves it from.
+    // The member handed `here` over whole, signed by `lodge-hc`, with the label the lead resolves it from.
     expect(hops).toHaveLength(1);
-    expect(JSON.parse(hops[0]!)).toMatchObject({ to: "here", from: { memberId: "bluefin-hc", address: "bluefin-hc/t1#aaaa", label: "collie-workspace#main" }, signer: "bluefin-hc" });
+    expect(JSON.parse(hops[0]!)).toMatchObject({ to: "here", from: { memberId: "lodge-hc", address: "lodge-hc/t1#aaaa", label: "collie-workspace#main" }, signer: "lodge-hc" });
     await lead.service.deliverer.settled();
     await hc.service.deliverer.settled();
     expect(lead.host.sends).toEqual(["w1:p1"]);

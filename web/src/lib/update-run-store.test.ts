@@ -34,8 +34,8 @@ const status = (over: Partial<UpdateInfo> = {}): UpdateInfo => ({
   ...over,
 });
 
-const OLD_FAILED: UpdatePeerLeg[] = [{ name: "minibuch", state: "rolled-back", reason: "gate", updatedAt: NOW - 86_400_000 }];
-const NEW_MOVING: UpdatePeerLeg[] = [{ name: "minibuch", state: "waiting", version: "1.9.0", updatedAt: NOW - 1_000 }];
+const OLD_FAILED: UpdatePeerLeg[] = [{ name: "workshop", state: "rolled-back", reason: "gate", updatedAt: NOW - 86_400_000 }];
+const NEW_MOVING: UpdatePeerLeg[] = [{ name: "workshop", state: "waiting", version: "1.9.0", updatedAt: NOW - 1_000 }];
 
 beforeEach(() => {
   vi.useFakeTimers({ now: NOW, toFake: ["Date", "setTimeout", "clearTimeout"] });
@@ -119,7 +119,7 @@ describe("two readings of one status", () => {
     noteSnapshotCrew(status({ peers: NEW_MOVING, peersTo: "1.9.1" }));
     expect(getUpdateRunSnapshot().crewRun).toBe(first);
 
-    const arrived: UpdatePeerLeg[] = [{ name: "minibuch", state: "done", version: "1.9.1", updatedAt: NOW }];
+    const arrived: UpdatePeerLeg[] = [{ name: "workshop", state: "done", version: "1.9.1", updatedAt: NOW }];
     vi.advanceTimersByTime(1_500);
     noteSnapshotCrew(status({ peers: arrived, settledAt: NOW, peersTo: "1.9.1" }));
     expect(getUpdateRunSnapshot().crewRun).toMatchObject({ legs: arrived, settledAt: NOW });
@@ -202,6 +202,6 @@ describe("the poll follows the whole update subject, not just the lead's own run
   });
 
   it("stops when every leg is terminal, even with no settle stamp from an older bridge", async () => {
-    expect(await drive([{ name: "minibuch", state: "done", version: "1.9.1", updatedAt: NOW - 1 }])).toBe(0);
+    expect(await drive([{ name: "workshop", state: "done", version: "1.9.1", updatedAt: NOW - 1 }])).toBe(0);
   });
 });

@@ -31,7 +31,7 @@ function renderScreen(props: Partial<TourSheetProps> = {}) {
       open
       onClose={onClose}
       mux="Herdr"
-      host="bluefin"
+      host="lodge"
       panes={4}
       needsYou={1}
       machines={0}
@@ -84,9 +84,9 @@ describe("TourSheet — the claim", () => {
   });
 
   it("names this install's multiplexer and machine", () => {
-    renderScreen({ mux: "tmux", host: "minibuch" });
+    renderScreen({ mux: "tmux", host: "workshop" });
     expect(
-      screen.getByText(t("tour.lead", { mux: "tmux", host: "minibuch" })),
+      screen.getByText(t("tour.lead", { mux: "tmux", host: "workshop" })),
     ).toBeInTheDocument();
   });
 

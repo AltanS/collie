@@ -712,12 +712,12 @@ describe("StateEngine — session name enrichment", () => {
   }
 
   test("the journal's names win: the person's name is sessionName and the agent's title is agentTitle", async () => {
-    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { person: "migrate bluefin", agent: "Bluefin migration" }, "w1:p2": { agent: "Colour prompt" } });
+    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { person: "migrate lodge", agent: "Lodge migration" }, "w1:p2": { agent: "Colour prompt" } });
     herdr.panes = [pane("w1:p1", "w1", "idle", "claude"), pane("w1:p2", "w1", "idle", "opencode")];
     herdr.texts.set("w1:p1", named("screen-name"));
     await poll();
-    expect(agent("w1:p1").sessionName).toBe("migrate bluefin");
-    expect(agent("w1:p1").agentTitle).toBe("Bluefin migration");
+    expect(agent("w1:p1").sessionName).toBe("migrate lodge");
+    expect(agent("w1:p1").agentTitle).toBe("Lodge migration");
     expect(agent("w1:p2").agentTitle).toBe("Colour prompt");
     expect("sessionName" in agent("w1:p2")).toBe(false);
     // A pane the journal named spends no screen read on a name.
@@ -725,12 +725,12 @@ describe("StateEngine — session name enrichment", () => {
   });
 
   test("the screen read stays the fallback while the journal names no person, and the agent's title still rides", async () => {
-    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { agent: "Bluefin migration" } });
+    const { herdr, poll, agent } = makeTitledEngine({ "w1:p1": { agent: "Lodge migration" } });
     herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
     herdr.texts.set("w1:p1", named("screen-name"));
     await poll();
     expect(agent("w1:p1").sessionName).toBe("screen-name");
-    expect(agent("w1:p1").agentTitle).toBe("Bluefin migration");
+    expect(agent("w1:p1").agentTitle).toBe("Lodge migration");
   });
 
   test("threads a claude pane's /rename session name onto the view — claude-only", async () => {

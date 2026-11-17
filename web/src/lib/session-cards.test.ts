@@ -19,8 +19,8 @@ function session(name: string, over: Partial<SessionSummary> = {}): SessionSumma
 const program = (name: string, over: Partial<SessionSummary> = {}) => session(name, { kind: "program", state: "ready", ...over });
 
 const CREW: ServerSummary[] = [
-  { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
-  { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
+  { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
+  { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
 ];
 
 describe("programCounts", () => {
@@ -37,10 +37,10 @@ describe("programCounts", () => {
 describe("programSessions", () => {
   it("keeps every program session on every machine, in order, and no terminal session", () => {
     const list = [
-      session("default", { kind: "terminal", host: "bluefin" }),
-      program("desk", { host: "bluefin" }),
-      session("work", { host: "minibuch" }),
-      program("support", { host: "minibuch" }),
+      session("default", { kind: "terminal", host: "lodge" }),
+      program("desk", { host: "lodge" }),
+      session("work", { host: "workshop" }),
+      program("support", { host: "workshop" }),
     ];
     expect(programSessions(list).map((s) => s.name)).toEqual(["desk", "support"]);
   });
@@ -68,8 +68,8 @@ describe("programScope", () => {
   });
 
   it("opens the lead's own program with no host, and a member's on the member", () => {
-    expect(programScope(program("desk", { host: "bluefin" }), CREW)).toEqual({ host: undefined, session: "desk" });
-    expect(programScope(program("support", { host: "minibuch" }), CREW)).toEqual({ host: "minibuch", session: "support" });
+    expect(programScope(program("desk", { host: "lodge" }), CREW)).toEqual({ host: undefined, session: "desk" });
+    expect(programScope(program("support", { host: "workshop" }), CREW)).toEqual({ host: "workshop", session: "support" });
   });
 });
 

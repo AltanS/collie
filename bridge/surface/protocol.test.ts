@@ -993,14 +993,14 @@ describe("a pane with no profile is typed and Entered blind (a bare shell, 2026-
 
   test("a shell at a sudo password prompt refuses the send before any key, offers the key pad, and is never held", async () => {
     const holds = new HoldStore(join(dir, "held"));
-    const pane = shellScreen("[sudo] password for altan: ");
+    const pane = shellScreen("[sudo] password for dev: ");
     const { send } = rig({ pane, harness: "", holds });
     const answer = await send("claude-danger");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", profileId: null, keys: [] });
     expect(answer.offers).toEqual(["keys"]);
     expect(answer.detail).toBe("A password prompt is waiting on the last row. Collie does not type into it from the text box. Use Type to answer it.");
     // The receipt never keeps the prompt's row: it names a user.
-    expect(JSON.stringify(answer.receipt)).not.toContain("altan");
+    expect(JSON.stringify(answer.receipt)).not.toContain("dev");
     expect(pane.calls).toEqual([]);
     expect(pane.keysSeen).toEqual([]);
     expect(holds.list()).toEqual([]);
@@ -3013,7 +3013,7 @@ describe("the probe", () => {
     expect(probeReads).toBeLessThanOrEqual(BOUNDS.probe.reads + LATE_PROBE.reads);
   });
 
-  // A herdr-core crew member on minibuch (2026-10-30): keys ["probe", "Backspace"], `probe_failed`,
+  // A herdr-core crew member on workshop (2026-10-30): keys ["probe", "Backspace"], `probe_failed`,
   // "Collie could not confirm the box was clean". One write there opens a socket, attaches and paints
   // the screen, so the two writes ate the probe's read bound and the Backspace half never read.
   describe("on a multiplexer whose writes are slow (herdr-core, 2026-10-30)", () => {
@@ -3054,7 +3054,7 @@ describe("the probe", () => {
 
     test("a Backspace held three seconds behind the raw probe write (herdr-core 0.1.14, measured 2026-10-30) still reads", async () => {
       // On a private hc session `terminal.keys` answered about 3030 ms after a `typeRaw`, whatever the gap
-      // between them; a raw write took 1 ms. Before the fix this was the minibuch receipt word for word.
+      // between them; a raw write took 1 ms. Before the fix this was the workshop receipt word for word.
       const r = rig({ version: "2.1.999" });
       r.pane.beforeWrite = (_p, what) => {
         if (what.startsWith("keys:")) r.clock.now += 3000;

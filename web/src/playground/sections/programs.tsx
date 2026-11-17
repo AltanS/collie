@@ -147,12 +147,12 @@ const PROGRAMS_UNREACHABLE: SessionSummary[] = [
 
 /** Card 4: a crew of two machines, each running a program. */
 const CREW: ServerSummary[] = [
-  { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: TS },
-  { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS },
+  { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: TS },
+  { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS },
 ];
 const PROGRAMS_CREW: SessionSummary[] = [
-  programSession("desk", { host: "bluefin", agents: 3, working: 1 }),
-  programSession("support", { host: "minibuch", agents: 2, blocked: 1 }),
+  programSession("desk", { host: "lodge", agents: 3, working: 1 }),
+  programSession("support", { host: "workshop", agents: 2, blocked: 1 }),
 ];
 
 /**
@@ -168,7 +168,7 @@ function Dashboard({ programs, servers }: { programs: SessionSummary[]; servers?
       <SpaceOverview
         workspaces={[TERMINAL_SPACE]}
         agents={[]}
-        host={servers === undefined ? undefined : "bluefin"}
+        host={servers === undefined ? undefined : "lodge"}
         onOpen={() => {}}
         onNewSpace={() => {}}
         open

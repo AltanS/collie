@@ -11,7 +11,7 @@ import type { PaneCache, ServerSummary } from "@/lib/types";
 // dashboard row's name line (`agent-card.tsx`) and the pane header's workspace line
 // (`agent-chat.tsx`). `PaneMeta` had two layouts until 2026-09-14 — a column of two fixed corners
 // for the dashboard, a single inline row for the header — and the column read as an extra row on a
-// phone (Altan's phone feedback), so it is gone; every caller now gets the one row below. The claims
+// phone (Dev's phone feedback), so it is gone; every caller now gets the one row below. The claims
 // worth a test are the ones the copy kept breaking: the row keeps its height when both chips
 // self-hide, the pair is always the same pair, and the reading is a control only where the surface
 // offers the rule behind it.

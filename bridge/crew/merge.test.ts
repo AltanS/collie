@@ -111,11 +111,11 @@ describe("a member's pin count (M90)", () => {
 
 describe("leadLabel — the lead's servers[].name is a machine label, not the crew's name", () => {
   test("a bare short hostname passes through unchanged", () => {
-    expect(leadLabel("minibuch", "desk")).toBe("minibuch");
+    expect(leadLabel("workshop", "desk")).toBe("workshop");
   });
 
   test("an FQDN is truncated to its first label", () => {
-    expect(leadLabel("minibuch.tailnetxyz.ts.net", "desk")).toBe("minibuch");
+    expect(leadLabel("workshop.tailnetxyz.ts.net", "desk")).toBe("workshop");
   });
 
   test("an empty hostname() falls back to the member id", () => {
@@ -238,15 +238,15 @@ describe("mergeSnapshot — reachable / unreachable / incompatible, never confla
 
   test("each row carries the host name: the lead's own, and a member's banked one (M77 spec 01)", () => {
     const merged = mergeSnapshot(localBody(), {
-      self: { ...SELF, host: "bluefin" },
+      self: { ...SELF, host: "lodge" },
       peers: [
-        contribution({ state: state({ memberId: "laptop", host: "minibuch" }) }),
+        contribution({ state: state({ memberId: "laptop", host: "workshop" }) }),
         contribution({ state: state({ memberId: "old-box" }) }),
       ],
       now: NOW,
     });
-    expect(merged.servers!.find((s) => s.id === "desk")!.host).toBe("bluefin");
-    expect(merged.servers!.find((s) => s.id === "laptop")!.host).toBe("minibuch");
+    expect(merged.servers!.find((s) => s.id === "desk")!.host).toBe("lodge");
+    expect(merged.servers!.find((s) => s.id === "laptop")!.host).toBe("workshop");
     // A member that never said, and a lead whose OS gives no name, carry no `host` key at all.
     expect("host" in merged.servers!.find((s) => s.id === "old-box")!).toBe(false);
     expect("host" in mergeSnapshot(localBody(), { self: SELF, peers: [], now: NOW }).servers![0]!).toBe(false);

@@ -482,7 +482,7 @@ describe("the address", () => {
 });
 
 describe("the operator's override (COLLIE_THEME_REGISTRY_URL)", () => {
-  const STAGED = "http://bluefin:8834/themes/registry.json";
+  const STAGED = "http://lodge:8834/themes/registry.json";
 
   test("unset, empty or blank takes the default address with no warning", () => {
     expect(resolveRegistryAddress(undefined)).toEqual({ url: THEME_REGISTRY_URL });
@@ -502,9 +502,9 @@ describe("the operator's override (COLLIE_THEME_REGISTRY_URL)", () => {
       "http://127.9.8.7/r.json",
       "http://localhost:8834/r.json",
       "http://[::1]:8834/r.json",
-      "http://100.64.0.8:8834/r.json",
+      "http://100.64.10.8:8834/r.json",
       "http://100.127.255.254/r.json",
-      "http://bluefin.tail1234.ts.net/r.json",
+      "http://lodge.tail1234.ts.net/r.json",
       STAGED,
     ]) {
       expect(resolveRegistryAddress(url)).toEqual({ url });
@@ -518,14 +518,14 @@ describe("the operator's override (COLLIE_THEME_REGISTRY_URL)", () => {
       "http://100.128.0.1/r.json",
       "http://192.168.1.10/r.json",
       "http://10.0.0.1/r.json",
-      "http://bluefin./r.json",
+      "http://lodge./r.json",
       "http://evil.ts.net.example.com/r.json",
       "http://[fd7a:115c:a1e0::1]/r.json",
-      "ftp://bluefin/r.json",
+      "ftp://lodge/r.json",
       "file:///etc/passwd",
       "https://user:secret@staging.example.com/r.json",
       "not a url",
-      "bluefin:8834/themes/registry.json",
+      "lodge:8834/themes/registry.json",
     ]) {
       const resolved = resolveRegistryAddress(raw);
       expect(resolved.url).toBe(THEME_REGISTRY_URL);
@@ -560,7 +560,7 @@ describe("the operator's override (COLLIE_THEME_REGISTRY_URL)", () => {
       url === STAGED ? new Response(null, { status: 302, headers: { location: "/themes/registry-2.json" } }) : json(doc([entry()])),
     );
     expect((await store({ fetch: onSite.fetch, url: STAGED }).store.refresh()).outcome).toBe("fetched");
-    expect(onSite.calls.map((call) => call.url)).toEqual([STAGED, "http://bluefin:8834/themes/registry-2.json"]);
+    expect(onSite.calls.map((call) => call.url)).toEqual([STAGED, "http://lodge:8834/themes/registry-2.json"]);
     const toSite = fakeFetch(() => new Response(null, { status: 302, headers: { location: THEME_REGISTRY_URL } }));
     expect((await store({ fetch: toSite.fetch, url: STAGED }).store.refresh()).outcome).toBe("fetch-failed");
     expect(toSite.calls).toHaveLength(1);
@@ -598,7 +598,7 @@ describe("the operator's override (COLLIE_THEME_REGISTRY_URL)", () => {
     expect(back.calls).toHaveLength(1);
 
     // Another override is another address.
-    const other = store({ fetch: fakeFetch(() => json(doc([]))).fetch, dir, now: () => clock, url: "http://minibuch:8834/themes/registry.json" }).store;
+    const other = store({ fetch: fakeFetch(() => json(doc([]))).fetch, dir, now: () => clock, url: "http://workshop:8834/themes/registry.json" }).store;
     expect((await other.status()).themes).toEqual([]);
   });
 

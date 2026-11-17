@@ -30,7 +30,7 @@ afterAll(async () => {
 
 const TS = 1_789_000_000_000;
 const local = { ref: "id:abc" };
-const peer = { host: "minibuch", session: "next", ref: "pane:%1" };
+const peer = { host: "workshop", session: "next", ref: "pane:%1" };
 
 describe("watchKeyOf / watchIdOf", () => {
   test("the key carries all three parts, and two panes never collide", () => {
@@ -91,7 +91,7 @@ describe("CacheWatchStore", () => {
     const reloaded = new CacheWatchStore({ stateDir }, () => TS);
     await reloaded.load();
     expect(reloaded.current()).toEqual([
-      { host: "minibuch", session: "next", ref: "pane:%1", label: "collie · next", lastSeenAt: TS },
+      { host: "workshop", session: "next", ref: "pane:%1", label: "collie · next", lastSeenAt: TS },
     ]);
     expect(reloaded.has(watchKeyOf(peer))).toBe(true);
   });
@@ -142,7 +142,7 @@ describe("CacheWatchStore", () => {
     const rows = store.list((entry) => (entry.ref === "id:abc" ? "w1:p1" : undefined));
     expect(rows).toEqual([
       { id: watchIdOf(watchKeyOf(local)), label: "here", paneId: "w1:p1" },
-      { id: watchIdOf(watchKeyOf(peer)), label: "there", host: "minibuch", session: "next" },
+      { id: watchIdOf(watchKeyOf(peer)), label: "there", host: "workshop", session: "next" },
     ]);
   });
 

@@ -12,19 +12,19 @@ export const SENT_NOW = NOW;
 export function entry(over: Partial<SentEntry> & Pick<SentEntry, "line">): SentEntry {
   return {
     id: over.id ?? over.line.replace(/\W+/g, "").slice(0, 16).padEnd(16, "0"),
-    cwd: "/home/altan/projects/collie",
+    cwd: "/home/dev/projects/collie",
     at: NOW - 5 * MIN,
     kind: "shell",
     count: 1,
-    host: "bluefin",
+    host: "lodge",
     ...over,
   };
 }
 
-export const SOLO_MACHINES: SentMachine[] = [{ host: "bluefin", label: "bluefin", ok: true }];
+export const SOLO_MACHINES: SentMachine[] = [{ host: "lodge", label: "lodge", ok: true }];
 
 export const CREW_MACHINES: SentMachine[] = [
-  { host: "bluefin", label: "bluefin", ok: true },
+  { host: "lodge", label: "lodge", ok: true },
   { host: "workshop", label: "workshop", ok: true },
 ];
 

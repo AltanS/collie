@@ -113,34 +113,34 @@ describe("useNewTabOrSheet", () => {
   it("makes the plain tab when no pane of the workspace is in hand", async () => {
     serve({ "": [CLAUDE, SHELL] });
     const { calls, tap } = mount();
-    act(() => tap({ workspaceId: "w1", label: "webapp", at: { host: "minibuch" } }));
-    await waitFor(() => expect(calls.newTab).toEqual([["w1", { host: "minibuch" }]]));
+    act(() => tap({ workspaceId: "w1", label: "webapp", at: { host: "workshop" } }));
+    await waitFor(() => expect(calls.newTab).toEqual([["w1", { host: "workshop" }]]));
     expect(dialog("New tab in webapp")).toBeNull();
   });
 
   it("reads the tapped heading's own machine, and lists none of the ambient machine's rows meanwhile", async () => {
-    const world = serve({ "": [CLAUDE, SHELL], minibuch: [CODEX_OFF, { ...CLAUDE, label: "Claude on minibuch" }, SHELL] });
+    const world = serve({ "": [CLAUDE, SHELL], workshop: [CODEX_OFF, { ...CLAUDE, label: "Claude on workshop" }, SHELL] });
     const { tap } = mount();
     await waitFor(() => expect(world.reads).toEqual([""]));
     world.hold();
-    act(() => tap({ workspaceId: "w1", label: "notes", at: { host: "minibuch" }, beside: BESIDE }));
+    act(() => tap({ workspaceId: "w1", label: "notes", at: { host: "workshop" }, beside: BESIDE }));
     const sheet = within(await screen.findByRole("dialog", { name: "New tab in notes" }));
     expect(sheet.getByText("Reading the agents on this machine…")).toBeInTheDocument();
     expect(sheet.queryByRole("button", { name: /Claude Code/ })).toBeNull();
     world.release();
-    expect(await sheet.findByRole("button", { name: /Claude on minibuch/ })).toBeEnabled();
-    expect(world.reads).toEqual(["", "minibuch"]);
+    expect(await sheet.findByRole("button", { name: /Claude on workshop/ })).toBeEnabled();
+    expect(world.reads).toEqual(["", "workshop"]);
   });
 
   it("steps aside for the shell when the answer that comes in offers nothing", async () => {
-    const world = serve({ minibuch: [CODEX_OFF, SHELL] });
+    const world = serve({ workshop: [CODEX_OFF, SHELL] });
     const { calls, tap } = mount();
     await waitFor(() => expect(world.reads).toEqual([""]));
     world.hold();
-    act(() => tap({ workspaceId: "w4", label: "notes", at: { host: "minibuch" }, beside: BESIDE }));
+    act(() => tap({ workspaceId: "w4", label: "notes", at: { host: "workshop" }, beside: BESIDE }));
     expect(await screen.findByRole("dialog", { name: "New tab in notes" })).toBeInTheDocument();
     world.release();
-    await waitFor(() => expect(calls.newTab).toEqual([["w4", { host: "minibuch" }]]));
+    await waitFor(() => expect(calls.newTab).toEqual([["w4", { host: "workshop" }]]));
     await waitFor(() => expect(dialog("New tab in notes")).toBeNull());
   });
 

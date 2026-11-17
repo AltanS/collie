@@ -330,7 +330,7 @@ describe("a two-anchored peer resolves its caller by SIGNATURE, never by the TLS
 
 describe("the device header carries any pairing label (#324)", () => {
   test("a printable-ASCII name travels as itself, so an older peer's allowlist still matches", () => {
-    for (const name of ["phone-7", "Altan's phone", "tablet 2 (work)"]) {
+    for (const name of ["phone-7", "Dev's phone", "tablet 2 (work)"]) {
       expect(encodeDeviceHeader(name)).toBe(name);
       expect(decodeDeviceHeader(encodeDeviceHeader(name))).toBe(name);
     }

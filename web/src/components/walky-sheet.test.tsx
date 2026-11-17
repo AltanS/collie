@@ -39,7 +39,7 @@ describe("WalkySheet", () => {
     expect(inside.getByText("agent")).toBeInTheDocument();
     expect(inside.getByText("collie-workspace#fix-465")).toBeInTheDocument();
     expect(inside.getByText("typed into the pane")).toBeInTheDocument();
-    expect(inside.getByText(/signed by bluefin/)).toBeInTheDocument();
+    expect(inside.getByText(/signed by lodge/)).toBeInTheDocument();
     // The other row was not typed, and says why.
     expect(screen.getByText("waiting in the inbox, not typed: dialog open")).toBeInTheDocument();
   });
@@ -59,8 +59,8 @@ describe("WalkySheet", () => {
     const user = userEvent.setup();
     const row: WalkyRow = {
       ...fixtureWalkyAgent,
-      from: { ...fixtureWalkyAgent.from, address: "bluefin/w6:p3#k3f9" },
-      to: "bluefin/w1:p1#zz99",
+      from: { ...fixtureWalkyAgent.from, address: "lodge/w6:p3#k3f9" },
+      to: "lodge/w1:p1#zz99",
     };
     const props = sheet([row]);
     expect(screen.getByText("Tests are green on fix-465. You can merge.")).toBeInTheDocument();
@@ -68,7 +68,7 @@ describe("WalkySheet", () => {
     await user.click(screen.getByRole("button", { name: /^Reply/ }));
     // Reply hands the row as it stands: its sender's address keeps the token.
     expect(props.onReply).toHaveBeenCalledExactlyOnceWith(row);
-    expect(vi.mocked(props.onReply).mock.calls[0]?.[0].from.address).toBe("bluefin/w6:p3#k3f9");
+    expect(vi.mocked(props.onReply).mock.calls[0]?.[0].from.address).toBe("lodge/w6:p3#k3f9");
   });
 
   it("offers Reply on the agent message only, and hands the row to the caller", async () => {
@@ -226,7 +226,7 @@ describe("WalkySheet with rows in both directions", () => {
     if (row === undefined) throw new Error("no rows");
     const inside = within(row);
     // No live pane is known here, so the target shows as the address, as it always did.
-    expect(inside.getByText("Sent to bluefin/w6:p3")).toBeInTheDocument();
+    expect(inside.getByText("Sent to lodge/w6:p3")).toBeInTheDocument();
     expect(inside.getByText("typed into the pane")).toBeInTheDocument();
     expect(inside.getByText("Merged. Thanks.")).toBeInTheDocument();
     expect(inside.queryByText("agent")).toBeNull();
@@ -241,7 +241,7 @@ describe("WalkySheet with rows in both directions", () => {
     const received = rowsOf().filter((r) => r.getAttribute("data-direction") === "received");
     expect(received).toHaveLength(2);
     expect(received[1] && within(received[1]).getByText("collie-workspace#fix-465")).toBeInTheDocument();
-    expect(received[1] && within(received[1]).getByText(/signed by bluefin/)).toBeInTheDocument();
+    expect(received[1] && within(received[1]).getByText(/signed by lodge/)).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^Reply/ })).toHaveLength(1);
   });
 
@@ -283,7 +283,7 @@ describe("a held message's two ways out (M62 spec 03)", () => {
 
   it("offers Cancel on the operator's held message and Drop on an agent's, nothing on a sent or settled row", () => {
     sheet([operatorHeld, agentHeld, sentHeld, { ...fixtureWalkySent, id: "wt_s3ntaaaa0002" }], { self: fixtureWalkySelf, onCancel: vi.fn(), onDrop: vi.fn() });
-    expect(screen.getByRole("button", { name: "Cancel the message to bluefin/w1:p1" })).toHaveTextContent("Cancel");
+    expect(screen.getByRole("button", { name: "Cancel the message to lodge/w1:p1" })).toHaveTextContent("Cancel");
     expect(screen.getByRole("button", { name: "Drop the message from collie-workspace#fix-465" })).toHaveTextContent("Drop");
     expect(screen.getAllByRole("button", { name: /^(Cancel|Drop) the message/ })).toHaveLength(2);
     // The two received rows read in the owner's words; the row this pane sent keeps "that session".
@@ -324,10 +324,10 @@ function livePane(over: Partial<AgentView> = {}): AgentView {
     tabId: "w6:t1",
     agent: "claude",
     status: "idle",
-    cwd: "/home/altan/collie",
+    cwd: "/home/dev/collie",
     focused: false,
     kind: "agent",
-    host: "bluefin",
+    host: "lodge",
     ...over,
   };
 }
@@ -336,7 +336,7 @@ function namedSheet(panes: AgentView[], rows: readonly WalkyRow[]) {
   const open = vi.fn();
   render(
     <WalkyLogProvider rows={rows}>
-      <WalkyPanesProvider value={{ live: { panes, lead: "bluefin" }, open }}>
+      <WalkyPanesProvider value={{ live: { panes, lead: "lodge" }, open }}>
         <WalkySheet open onClose={vi.fn()} onReply={vi.fn()} canReply self={fixtureWalkySelf} />
       </WalkyPanesProvider>
     </WalkyLogProvider>,
@@ -361,10 +361,10 @@ describe("WalkySheet names sessions", () => {
   });
 
   it("resolves a sent row from the message's `to` with its token: a replaced pane is not named by its newcomer", () => {
-    // fixtureWalkySent.to is `bluefin/w6:p3#k3f9`, its receipt target the bare `bluefin/w6:p3`.
+    // fixtureWalkySent.to is `lodge/w6:p3#k3f9`, its receipt target the bare `lodge/w6:p3`.
     namedSheet([livePane({ paneLabel: "newcomer", instance: "n3w1" })], [fixtureWalkySent]);
     expect(screen.queryByText("Sent to newcomer")).toBeNull();
-    expect(screen.getByText("Sent to bluefin/w6:p3")).toBeInTheDocument();
+    expect(screen.getByText("Sent to lodge/w6:p3")).toBeInTheDocument();
     cleanup();
     namedSheet([livePane({ paneLabel: "plumbing", instance: "k3f9" })], [fixtureWalkySent]);
     expect(screen.getByText("Sent to plumbing")).toBeInTheDocument();
@@ -372,7 +372,7 @@ describe("WalkySheet names sessions", () => {
 
   it("draws a live session in the body as a chip that opens its pane, and leaves a claim as text", async () => {
     const user = userEvent.setup();
-    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Look at bluefin/w6:p3#k3f9, not at ghost/w1:p1." };
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Look at lodge/w6:p3#k3f9, not at ghost/w1:p1." };
     const panes = [livePane({ paneLabel: "plumbing", instance: "k3f9" })];
     const open = namedSheet(panes, [row]);
     const body = document.querySelector<HTMLElement>('[data-slot="walky-sheet-body"]');
@@ -385,10 +385,10 @@ describe("WalkySheet names sessions", () => {
   });
 
   it("keeps an address without its token as written, adds the name after it, and draws no button", () => {
-    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Look at w6:p3 and bluefin/w6:p3." };
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Look at w6:p3 and lodge/w6:p3." };
     namedSheet([livePane({ paneLabel: "plumbing", instance: "k3f9" })], [row]);
     const body = document.querySelector('[data-slot="walky-sheet-body"]');
-    expect(body).toHaveTextContent("Look at w6:p3 (plumbing) and bluefin/w6:p3 (plumbing).");
+    expect(body).toHaveTextContent("Look at w6:p3 (plumbing) and lodge/w6:p3 (plumbing).");
     expect(body?.querySelector("button")).toBeNull();
   });
 

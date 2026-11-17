@@ -270,7 +270,7 @@ describe("preflight — the doctor check", () => {
         {
           check: "member-reach",
           status: "error",
-          detail: "1 of 1 did not answer: minibuch at minibuch:8788 — unreachable",
+          detail: "1 of 1 did not answer: workshop at workshop:8788 — unreachable",
           remedy: "collie restart on that machine",
           scope: "crew",
         },
@@ -295,14 +295,14 @@ describe("preflight — the doctor check", () => {
         {
           check: "member-reach",
           status: "error",
-          detail: "1 of 1 did not answer: minibuch at minibuch:8788 — hello: timed out after 5000ms",
+          detail: "1 of 1 did not answer: workshop at workshop:8788 — hello: timed out after 5000ms",
           remedy: "collie restart on that machine",
           scope: "crew",
         },
       ],
     });
     const check = byId(await preflight(h.deps), "doctor");
-    expect(check.reason).not.toContain("minibuch");
+    expect(check.reason).not.toContain("workshop");
     expect(check.reason).not.toContain("8788");
     expect(check.reason).not.toContain("timed out");
   });
@@ -313,7 +313,7 @@ describe("preflight — the doctor check", () => {
     const h = harness({
       installed: "1.11.1",
       findings: [
-        { check: "member-reach", status: "error", detail: "minibuch did not answer", remedy: "…", scope: "crew" },
+        { check: "member-reach", status: "error", detail: "workshop did not answer", remedy: "…", scope: "crew" },
         { check: "secret-generation", status: "error", detail: "behind generation 4", remedy: "…", scope: "crew" },
       ],
     });
@@ -328,7 +328,7 @@ describe("preflight — the doctor check", () => {
     const h = harness({
       findings: [
         { check: "web-dist", status: "error", detail: "missing", remedy: "collie build" },
-        { check: "member-reach", status: "error", detail: "minibuch did not answer", remedy: "…", scope: "crew" },
+        { check: "member-reach", status: "error", detail: "workshop did not answer", remedy: "…", scope: "crew" },
       ],
     });
     const report = await preflight(h.deps);

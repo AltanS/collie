@@ -38,7 +38,7 @@ function context(lines: string[]) {
     audit: new AuditLog((line) => {
       lines.push(line);
     }),
-    device: "phone-altan",
+    device: "phone-dev",
     acceptEncoding: null,
   };
 }
@@ -50,7 +50,7 @@ describe("POST /api/walky", () => {
     const res = await walkyPostRoute(walky, { id: "wt_aaaaaaaaaaa1", to: "local/w1:p1", body: "Stop and report." }, context(audit));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ receipt: { id: "wt_aaaaaaaaaaa1", target: "local/w1:p1", state: "accepted" } });
-    expect(walky.status("wt_aaaaaaaaaaa1").message).toMatchObject({ kind: "operator", from: { label: "phone-altan", address: null } });
+    expect(walky.status("wt_aaaaaaaaaaa1").message).toMatchObject({ kind: "operator", from: { label: "phone-dev", address: null } });
     expect(audit.join("")).toContain("walky.send");
     expect(audit.join("")).not.toContain("Stop and report");
   });
@@ -398,7 +398,7 @@ describe("POST /api/walky/off, the phone's switch (M89 spec 04)", () => {
     expect(await res.json()).toEqual({ off: true });
     expect(off.all()).toMatchObject([{ session: "main", paneId: "w1:p1", token: "aaaa", by: "operator" }]);
     expect(audit).toHaveLength(1);
-    expect(JSON.parse(audit[0]!)).toMatchObject({ action: "walky.off", device: "phone-altan", session: "main", paneId: "w1:p1", detail: { off: true } });
+    expect(JSON.parse(audit[0]!)).toMatchObject({ action: "walky.off", device: "phone-dev", session: "main", paneId: "w1:p1", detail: { off: true } });
     // A retry sets the same value: the same answer, the same one row.
     expect(await walkyOffRoute(walky, "main", { pane: "w1:p1", off: true }, context([])).json()).toEqual({ off: true });
     expect(off.all()).toHaveLength(1);

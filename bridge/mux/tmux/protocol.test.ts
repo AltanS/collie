@@ -151,7 +151,7 @@ describe("parseListing", () => {
   const listing = [
     ["S", "$0", "2", "1787171890", "/home/dev/collie", "collie"].join(SEP),
     ["W", "@0", "$0", "0", "1", "2", "0", "agents"].join(SEP),
-    ["P", "%0", "@0", "$0", "0", "1", "1", "24", "30", "bluefin", "/home/dev", "claude", "a title"].join(SEP),
+    ["P", "%0", "@0", "$0", "0", "1", "1", "24", "30", "lodge", "/home/dev", "claude", "a title"].join(SEP),
   ].join("\n");
 
   test("the three tagged sections parse into three lists", () => {

@@ -94,7 +94,7 @@ test("a block shows its ⋯ on a tap, and is pinned from it, listed in the sheet
   await expect(page.getByRole("img", { name: en["pins.mark"] })).toHaveCount(0);
 });
 
-// THE TAP THAT SHOWS THE ⋯ ENDS THERE (2026-11-06, Altan's phone). The reading area turns a tap on plain text into Tap
+// THE TAP THAT SHOWS THE ⋯ ENDS THERE (2026-11-06, Dev's phone). The reading area turns a tap on plain text into Tap
 // to type, and a chat block is plain text to it, so the tap that showed the chip also raised the keyboard. On a touch
 // screen: the tap shows the chip, the composer keeps no focus and the viewport does not move. A tap on the thread's
 // own ground, outside every block, still focuses the composer, which is what shows this check can see a focus at all.

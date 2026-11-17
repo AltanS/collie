@@ -110,7 +110,7 @@ describe("HeaderStatus — error opens the detail sheet instead of dismissing on
         <span>webapp › main</span>
       </HeaderStatus>,
     );
-    act(() => setStatus("connection refused: dial tcp 100.64.0.5:22: no route to host", "error"));
+    act(() => setStatus("connection refused: dial tcp 192.0.2.5:22: no route to host", "error"));
 
     const detailButton = screen.getByRole("button", { name: "Show the whole message" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -120,7 +120,7 @@ describe("HeaderStatus — error opens the detail sheet instead of dismissing on
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(
       within(screen.getByRole("dialog")).getByText(
-        "connection refused: dial tcp 100.64.0.5:22: no route to host",
+        "connection refused: dial tcp 192.0.2.5:22: no route to host",
       ),
     ).toBeInTheDocument();
   });

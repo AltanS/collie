@@ -34,7 +34,7 @@ describe("member ids", () => {
   });
 
   test("a label slugs, and a label with nothing usable in it slugs to null rather than to a guess", () => {
-    expect(slugifyMemberId("Altan's Laptop")).toBe("altan-s-laptop");
+    expect(slugifyMemberId("Dev's Laptop")).toBe("dev-s-laptop");
     expect(slugifyMemberId("  NAS  ")).toBe("nas");
     expect(slugifyMemberId("!!!")).toBeNull();
     expect(slugifyMemberId("")).toBeNull();
@@ -49,7 +49,7 @@ describe("member ids", () => {
   });
 
   test("every minted id satisfies the grammar it will travel on a URL as", () => {
-    for (const label of [null, "laptop", "Altan's Laptop", "!!!", "A".repeat(80)]) {
+    for (const label of [null, "laptop", "Dev's Laptop", "!!!", "A".repeat(80)]) {
       expect(isMemberId(mintMemberId(label, new Set(["laptop"])))).toBe(true);
     }
   });

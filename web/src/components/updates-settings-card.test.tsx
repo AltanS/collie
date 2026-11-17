@@ -109,7 +109,7 @@ describe("updates row status line", () => {
 
   it("counts a peer behind off the check's census", async () => {
     const crew: UpdateCrewMember[] = [
-      { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1 },
+      { name: "workshop", version: "1.2.0", verdict: "green", reasons: [], asOf: 1 },
     ];
     server.use(
       http.get("/api/update/check", () => HttpResponse.json({ ...info(), preflight: null, crew })),

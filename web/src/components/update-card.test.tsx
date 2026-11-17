@@ -662,13 +662,13 @@ describe("rolled back card — the machine is named, the log is there, and there
 
 const CREW: UpdateCrewMember[] = [
   { name: "attic", version: "1.3.0", verdict: "red", reasons: ["working tree has tracked changes: bridge/server.ts"], asOf: 1_700_000_000_000 },
-  { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+  { name: "workshop", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
   { name: "shed", version: null, verdict: "unknown", reasons: [], asOf: 1_700_000_000_000 },
 ];
 
 const LEAD_ROSTER: HomeData["servers"] = [
   { id: "desk", name: "desk", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 1 },
-  { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 1 },
+  { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 1 },
 ];
 
 describe("peer rows in the card", () => {
@@ -683,7 +683,7 @@ describe("peer rows in the card", () => {
     // the button, which is the whole reason the rows live in this card.
     expect(names[0]).toContain("attic");
     expect(names[1]).toContain("shed");
-    expect(names[2]).toContain("minibuch");
+    expect(names[2]).toContain("workshop");
     expect(names).toHaveLength(3);
   });
 
@@ -701,14 +701,14 @@ describe("peer rows in the card", () => {
   it("peer row asOf dates every line, so an old green and a fresh green differ", async () => {
     vi.setSystemTime(1_700_000_000_000 + 6 * 60 * 60 * 1000);
     const mixed: UpdateCrewMember[] = [
-      { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+      { name: "workshop", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
       { name: "shed", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 + 6 * 60 * 60 * 1000 - 4000 },
     ];
     serveCheck(info(), GREEN, mixed);
     renderCard(info(), LEAD_ROSTER);
     const list = await screen.findByRole("list", { name: "Crew members" });
     const rows = within(list).getAllByRole("listitem");
-    expect(rows.find((li) => li.textContent?.includes("minibuch"))?.textContent).toContain("checked 6h");
+    expect(rows.find((li) => li.textContent?.includes("workshop"))?.textContent).toContain("checked 6h");
     expect(rows.find((li) => li.textContent?.includes("shed"))?.textContent).toContain("checked now");
   });
 
@@ -748,7 +748,7 @@ describe("single action button", () => {
   it("says 'Retry crew update' once the lead is current and a peer is behind", async () => {
     const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
     const behind: UpdateCrewMember[] = [
-      { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+      { name: "workshop", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(current, GREEN, behind);
     renderCard(current, LEAD_ROSTER);
@@ -760,14 +760,14 @@ describe("single action button", () => {
 
 describe("a lead on a development build (2026-11-09)", () => {
   const crew: UpdateCrewMember[] = [
-    { name: "minibuch", version: "1.27.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+    { name: "workshop", version: "1.27.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
   ];
 
   it("offers no crew run: it can hand nobody a turn", async () => {
     const current = info({ current: "1.28.0", latest: "1.28.0", releaseAvailable: false, newerVersions: [], build: "1.28.0-dev+047ee5bbd0" });
     serveCheck(current, GREEN, crew);
     renderCard(current, LEAD_ROSTER);
-    expect(await screen.findByText("minibuch")).toBeInTheDocument();
+    expect(await screen.findByText("workshop")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: RETRY })).not.toBeInTheDocument();
   });
 
@@ -800,7 +800,7 @@ describe("retry crew update", () => {
     const user = userEvent.setup();
     const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
     const behind: UpdateCrewMember[] = [
-      { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+      { name: "workshop", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(current, GREEN, behind);
     let sent: StartBody | undefined;
@@ -813,8 +813,8 @@ describe("retry crew update", () => {
     renderCard(current, LEAD_ROSTER);
 
     // A retry for one member names it, on the button and on the screen it opens.
-    await user.click(await screen.findByRole("button", { name: "Try minibuch again" }));
-    expect(screen.getByRole("dialog", { name: "Try minibuch again" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Try workshop again" }));
+    expect(screen.getByRole("dialog", { name: "Try workshop again" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Start update" }));
 
     await waitFor(() => expect(sent).toBeDefined());
@@ -981,7 +981,7 @@ describe("UpdateCard — an install a package manager owns", () => {
     const user = userEvent.setup();
     const update = info({ installKind: "packaged" });
     const behind: UpdateCrewMember[] = [
-      { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+      { name: "workshop", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(update, PACKAGED, behind);
     let sent: StartBody | undefined;
@@ -1005,7 +1005,7 @@ describe("UpdateCard — an install a package manager owns", () => {
     await user.click(button);
     // Not "This machine is already current": it is not, and the start may not say it is. It names
     // the version the lead runs, which is what the members are levelled to.
-    const panel = screen.getByRole("dialog", { name: "Try minibuch again" });
+    const panel = screen.getByRole("dialog", { name: "Try workshop again" });
     expect(screen.queryByText(/already current/i)).not.toBeInTheDocument();
     expect(within(panel).getByText(/already runs 1\.3\.0/)).toBeInTheDocument();
 
@@ -1021,7 +1021,7 @@ describe("UpdateCard — an install a package manager owns", () => {
   it("names the command and no button at all when no peer needs levelling", async () => {
     const update = info({ installKind: "packaged" });
     const level: UpdateCrewMember[] = [
-      { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+      { name: "workshop", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(update, PACKAGED, level);
     renderCard(update, LEAD_ROSTER);
@@ -1042,7 +1042,7 @@ describe("UpdateCard — an install a package manager owns", () => {
   it("an ordinary lead's own red reason shows under retry-crew too, not only a packaged lead's", async () => {
     const update = info({ installKind: "detached-checkout", releaseAvailable: false });
     const behind: UpdateCrewMember[] = [
-      { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+      { name: "workshop", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(update, RED, behind);
     renderCard(update, LEAD_ROSTER);
@@ -1058,7 +1058,7 @@ describe("UpdateCard — an install a package manager owns", () => {
   it("control: an ordinary lead with a peer behind still takes the release itself", async () => {
     const update = info({ installKind: "detached-checkout" });
     const behind: UpdateCrewMember[] = [
-      { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+      { name: "workshop", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(update, GREEN_SIX, behind);
     renderCard(update, LEAD_ROSTER);
@@ -1152,7 +1152,7 @@ describe("the action button never moves", () => {
 
   it("the action row precedes the peer list and the preflight list", async () => {
     const one: UpdateCrewMember[] = [
-      { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+      { name: "workshop", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(info(), GREEN_SIX, one);
     renderCard(info(), LEAD_ROSTER);
@@ -1190,7 +1190,7 @@ describe("the action button never moves", () => {
 
   it("the row carries the deciding fact beside the button, so the detail can live below it", async () => {
     const one: UpdateCrewMember[] = [
-      { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+      { name: "workshop", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(info(), GREEN_WITH_ONE_AMBER, one);
     renderCard(info(), LEAD_ROSTER);
@@ -1205,8 +1205,8 @@ describe("the action button never moves", () => {
 // asking. The refetch keyed on THIS machine's run record, and a peers-only run never writes one.
 
 describe("a peers-only run is still a run", () => {
-  const MOVING: UpdateInfo["peers"] = [{ name: "minibuch", state: "updating", version: "1.3.0" }];
-  const DONE: UpdateInfo["peers"] = [{ name: "minibuch", state: "done", version: "1.4.0" }];
+  const MOVING: UpdateInfo["peers"] = [{ name: "workshop", state: "updating", version: "1.3.0" }];
+  const DONE: UpdateInfo["peers"] = [{ name: "workshop", state: "done", version: "1.4.0" }];
 
   /** Like `renderCard`, but the loader re-reads a box the test can change, and can be revalidated. */
   function renderLive(box: { value: UpdateInfo | undefined }, servers: HomeData["servers"] = []) {
@@ -1235,7 +1235,7 @@ describe("a peers-only run is still a run", () => {
     const box = { value: info({ peers: MOVING }) };
     renderLive(box, LEAD_ROSTER);
     const list = await screen.findByRole("list", { name: "Crew members" });
-    expect(within(list).getByText("minibuch")).toBeInTheDocument();
+    expect(within(list).getByText("workshop")).toBeInTheDocument();
   });
 
   it("keeps re-reading while a peer leg moves, and stops once the run has settled", async () => {
@@ -1273,7 +1273,7 @@ describe("the card reads the same clock the band does", () => {
   const stamp = (ago: number) => Date.now() - ago;
 
   it("a moving peer row counts up, it does not report a check", async () => {
-    const value = info({ peers: [{ name: "minibuch", state: "restarting", updatedAt: stamp(3 * 60_000) }] });
+    const value = info({ peers: [{ name: "workshop", state: "restarting", updatedAt: stamp(3 * 60_000) }] });
     serveCheck(value, GREEN, []);
     renderCard(value, LEAD_ROSTER);
     const list = await screen.findByRole("list", { name: "Crew members" });
@@ -1282,14 +1282,14 @@ describe("the card reads the same clock the band does", () => {
   });
 
   it("past the patience window it says waiting is the whole job — the band has no room for it", async () => {
-    const value = info({ peers: [{ name: "minibuch", state: "restarting", updatedAt: stamp(4 * 60_000) }] });
+    const value = info({ peers: [{ name: "workshop", state: "restarting", updatedAt: stamp(4 * 60_000) }] });
     serveCheck(value, GREEN, []);
     renderCard(value, LEAD_ROSTER);
     expect(await screen.findByText("No action needed, this finishes on its own.")).toBeInTheDocument();
   });
 
   it("says nothing of the sort before the window", async () => {
-    const value = info({ peers: [{ name: "minibuch", state: "restarting", updatedAt: stamp(30_000) }] });
+    const value = info({ peers: [{ name: "workshop", state: "restarting", updatedAt: stamp(30_000) }] });
     serveCheck(value, GREEN, []);
     renderCard(value, LEAD_ROSTER);
     await screen.findByRole("list", { name: "Crew members" });
@@ -1300,12 +1300,12 @@ describe("the card reads the same clock the band does", () => {
     // An operator who arrived from the band must find what the band said. A page that rephrased it
     // would read as a second, different fact about the same machine.
     const value = info({
-      peers: [{ name: "minibuch", state: "rolled-back", reason: "health gate timed out" }],
+      peers: [{ name: "workshop", state: "rolled-back", reason: "health gate timed out" }],
     });
     serveCheck(value, GREEN, []);
     renderCard(value, LEAD_ROSTER);
     expect(
-      await screen.findByText("Could not update minibuch: health gate timed out."),
+      await screen.findByText("Could not update workshop: health gate timed out."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry now" })).toBeInTheDocument();
   });
@@ -1322,35 +1322,35 @@ describe("the card reads the same clock the band does", () => {
     // The live status: the previous run with no legs on it, and THIS run's legs at the top level.
     const live = info({
       run: previous,
-      peers: [{ name: "minibuch", state: "restarting", updatedAt: stamp(2_000) }],
+      peers: [{ name: "workshop", state: "restarting", updatedAt: stamp(2_000) }],
     });
     // The card's own earlier fetch: the same previous run, still carrying its failed legs.
     const held = info({
-      run: { ...previous, peers: [{ name: "minibuch", state: "rolled-back", reason: "health gate timed out", updatedAt: stamp(60_000) }] },
+      run: { ...previous, peers: [{ name: "workshop", state: "rolled-back", reason: "health gate timed out", updatedAt: stamp(60_000) }] },
     });
     serveCheck(held, GREEN, []);
     renderCard(live, LEAD_ROSTER);
     await screen.findByText("Details");
     const list = screen.getByRole("list", { name: "Crew members" });
     expect(within(list).getByText(/restarting/)).toBeInTheDocument();
-    expect(screen.queryByText("Could not update minibuch: health gate timed out.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Could not update workshop: health gate timed out.")).not.toBeInTheDocument();
   });
 
   it("Retry now opens the peers-only confirm and dials nothing from the browser", async () => {
     const user = userEvent.setup();
     const value = info({
-      peers: [{ name: "minibuch", state: "rolled-back", reason: "health gate timed out" }],
+      peers: [{ name: "workshop", state: "rolled-back", reason: "health gate timed out" }],
     });
     serveCheck(value, GREEN, []);
     renderCard(value, LEAD_ROSTER);
     await user.click(await screen.findByRole("button", { name: "Retry now" }));
     // The SAME start the crew-wide retry opens, naming the member. It begins a run, and spec 01's
     // urgency rule is what marks the member due — this browser clears no backoff and reaches no machine.
-    expect(screen.getByRole("dialog", { name: "Try minibuch again" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Try workshop again" })).toBeInTheDocument();
   });
 
   it("a settled run leaves no moving row and no patience line, at the same input", async () => {
-    const legs: UpdateInfo["peers"] = [{ name: "minibuch", state: "done", version: "1.4.0" }];
+    const legs: UpdateInfo["peers"] = [{ name: "workshop", state: "done", version: "1.4.0" }];
     const value = info({ peers: legs, settledAt: Date.now() - 1_000 });
     serveCheck(value, GREEN, []);
     renderCard(value, LEAD_ROSTER);

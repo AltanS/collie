@@ -40,11 +40,11 @@ describe("selfDnsName", () => {
 
 describe("selfHosts", () => {
   const STATUS = JSON.stringify({
-    Self: { DNSName: "desk.tail1234.ts.net.", TailscaleIPs: ["100.64.0.1", "fd7a::1"] },
+    Self: { DNSName: "desk.tail1234.ts.net.", TailscaleIPs: ["100.64.10.1", "fd7a::1"] },
   });
 
   test("names the MagicDNS name first, then every Tailscale IP, v6 bracketed", () => {
-    expect(selfHosts(STATUS)).toEqual(["desk.tail1234.ts.net", "100.64.0.1", "[fd7a::1]"]);
+    expect(selfHosts(STATUS)).toEqual(["desk.tail1234.ts.net", "100.64.10.1", "[fd7a::1]"]);
   });
 
   test("a node with no addresses still contributes its name", () => {
@@ -54,7 +54,7 @@ describe("selfHosts", () => {
   test("nothing readable is no hosts, never a bad one", () => {
     expect(selfHosts("")).toEqual([]);
     expect(selfHosts("{}")).toEqual([]);
-    expect(selfHosts(JSON.stringify({ Self: { TailscaleIPs: "100.64.0.1" } }))).toEqual([]);
+    expect(selfHosts(JSON.stringify({ Self: { TailscaleIPs: "100.64.10.1" } }))).toEqual([]);
   });
 
   test("a malformed address list costs the addresses and never the name", () => {

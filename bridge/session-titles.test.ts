@@ -23,7 +23,7 @@ function fakeAdapter(agent: string) {
   const calls = { stat: 0, probe: 0 };
   const state: FakeState = {
     stat: { size: 10, mtimeMs: 100 },
-    reading: { person: "migrate bluefin", agent: "Bluefin migration" },
+    reading: { person: "migrate lodge", agent: "Lodge migration" },
     throws: false,
   };
   const adapter: JournalAdapter = {
@@ -72,7 +72,7 @@ function clock(start = NOW) {
 
 describe("mergeTitles", () => {
   test("a read replaces, cleaned; a null clears; a missing field keeps the last name", () => {
-    expect(mergeTitles({}, { person: "  🚀 migrate  bluefin ", agent: "Auto" })).toEqual({ person: "🚀 migrate bluefin", agent: "Auto" });
+    expect(mergeTitles({}, { person: "  🚀 migrate  lodge ", agent: "Auto" })).toEqual({ person: "🚀 migrate lodge", agent: "Auto" });
     expect(mergeTitles({ person: "old", agent: "Auto" }, { person: null })).toEqual({ agent: "Auto" });
     expect(mergeTitles({ person: "old", agent: "Auto" }, {})).toEqual({ person: "old", agent: "Auto" });
     // A name the normalizer reads as nothing (zero-width characters only) is no evidence, so the last one stands.
@@ -85,8 +85,8 @@ describe("SessionTitleTracker", () => {
     const { adapter } = fakeAdapter("claude");
     const tracker = new SessionTitleTracker({ claude: adapter }, () => NOW);
     await tracker.refresh([pane("claude", "s1")]);
-    expect(tracker.get("s1")).toEqual({ person: "migrate bluefin", agent: "Bluefin migration" });
-    expect(tracker.forPane(pane("claude", "s1"))).toEqual({ person: "migrate bluefin", agent: "Bluefin migration" });
+    expect(tracker.get("s1")).toEqual({ person: "migrate lodge", agent: "Lodge migration" });
+    expect(tracker.forPane(pane("claude", "s1"))).toEqual({ person: "migrate lodge", agent: "Lodge migration" });
     expect(tracker.forPane(pane("claude", undefined))).toBeUndefined();
   });
 
@@ -94,7 +94,7 @@ describe("SessionTitleTracker", () => {
     const { adapter } = fakeAdapter("pi");
     const tracker = new SessionTitleTracker({ pi: adapter }, () => NOW);
     await tracker.refresh([pane("omp", "s1")]);
-    expect(tracker.get("s1")?.agent).toBe("Bluefin migration");
+    expect(tracker.get("s1")?.agent).toBe("Lodge migration");
   });
 
   test("under the floor nothing is read; past it an unchanged stat reads nothing either", async () => {
@@ -119,7 +119,7 @@ describe("SessionTitleTracker", () => {
     c.advance(1);
     await tracker.refresh([pane("claude", "s1")]);
     expect(calls.probe).toBe(2);
-    expect(tracker.get("s1")).toEqual({ person: "migrate bluefin", agent: "Bluefin migration" });
+    expect(tracker.get("s1")).toEqual({ person: "migrate lodge", agent: "Lodge migration" });
   });
 
   test("a probe that throws keeps the names and is tried again on the next look", async () => {
@@ -131,7 +131,7 @@ describe("SessionTitleTracker", () => {
     state.throws = true;
     c.advance(1);
     await tracker.refresh([pane("claude", "s1")]);
-    expect(tracker.get("s1")?.person).toBe("migrate bluefin");
+    expect(tracker.get("s1")?.person).toBe("migrate lodge");
     state.throws = false;
     state.reading = { person: "renamed" };
     c.advance(1);
@@ -171,15 +171,15 @@ describe("SessionTitleTracker", () => {
     const first = fakeAdapter("claude");
     const before = new SessionTitleTracker({ claude: first.adapter }, () => NOW, { store });
     await before.refresh([pane("claude", "s1")]);
-    expect(saved.at(-1)?.get("s1")?.titles).toEqual({ person: "migrate bluefin", agent: "Bluefin migration" });
+    expect(saved.at(-1)?.get("s1")?.titles).toEqual({ person: "migrate lodge", agent: "Lodge migration" });
 
     // The bridge restarts. The tail now holds only the agent's newer title row, no `/rename` row.
     const second = fakeAdapter("claude");
-    second.state.reading = { agent: "Bluefin migration, part two" };
+    second.state.reading = { agent: "Lodge migration, part two" };
     const after = new SessionTitleTracker({ claude: second.adapter }, () => NOW, { store: { ...store, load: async () => saved.at(-1)! } });
     await after.restore();
     await after.refresh([pane("claude", "s1")]);
-    expect(after.get("s1")).toEqual({ person: "migrate bluefin", agent: "Bluefin migration, part two" });
+    expect(after.get("s1")).toEqual({ person: "migrate lodge", agent: "Lodge migration, part two" });
   });
 
   test("an unchanged read writes nothing back", async () => {

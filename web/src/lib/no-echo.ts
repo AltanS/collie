@@ -37,7 +37,7 @@ import { isBlank, lineText, type StyledLine } from "./blocks";
  *
  * Each pattern is the literal text a real tool prints:
  *   sudo(8)          `[sudo] password for altan:`  and the plain `Password:` of the non-Linux prompt
- *   ssh(1)           `altan@host's password:`
+ *   ssh(1)           `dev@host's password:`
  *   ssh-add / gpg    `Enter passphrase for /home/altan/.ssh/id_ed25519:`, `Enter passphrase:`
  *   sudo -k / retry  `Password (again):`, `Verify password:`
  * A trailing space is optional and a trailing `:` is not — some tools print `Password?` or nothing at

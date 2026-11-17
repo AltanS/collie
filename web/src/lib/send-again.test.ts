@@ -55,7 +55,7 @@ describe("send it again", () => {
     rememberUnknownSend(undefined, "w1:p1", "go", T0);
     expect(asksSendAgain(undefined, "w1:p2", "go", T0 + 10)).toBe(false);
     expect(asksSendAgain({ session: "demo" }, "w1:p1", "go", T0 + 10)).toBe(false);
-    expect(asksSendAgain({ host: "minibuch" }, "w1:p1", "go", T0 + 10)).toBe(false);
+    expect(asksSendAgain({ host: "workshop" }, "w1:p1", "go", T0 + 10)).toBe(false);
   });
 
   it("a clock that moved back does not ask", () => {
@@ -87,20 +87,20 @@ describe("send it again", () => {
 
   it("removes the keys an earlier build left in sessionStorage when the module loads, and leaves other keys", async () => {
     sessionStorage.setItem("collie:send-again:default:w1:p1", '{"print":"4:abc","at":1}');
-    sessionStorage.setItem("collie:send-again:minibuch@default:w2:p1", "x");
+    sessionStorage.setItem("collie:send-again:workshop@default:w2:p1", "x");
     sessionStorage.setItem("collie:send-intent:default:w1:p1", "keep");
     vi.resetModules();
     await import("./send-again"); // loading the module runs the cleanup
     expect(sessionStorage.getItem("collie:send-again:default:w1:p1")).toBeNull();
-    expect(sessionStorage.getItem("collie:send-again:minibuch@default:w2:p1")).toBeNull();
+    expect(sessionStorage.getItem("collie:send-again:workshop@default:w2:p1")).toBeNull();
     expect(sessionStorage.getItem("collie:send-intent:default:w1:p1")).toBe("keep");
   });
 
   it("the wipe drops every pane", () => {
     rememberUnknownSend(undefined, "w1:p1", "go", T0);
-    rememberUnknownSend({ host: "minibuch" }, "w2:p1", "go", T0);
+    rememberUnknownSend({ host: "workshop" }, "w2:p1", "go", T0);
     forgetAllUnknownSends();
     expect(asksSendAgain(undefined, "w1:p1", "go", T0 + 10)).toBe(false);
-    expect(asksSendAgain({ host: "minibuch" }, "w2:p1", "go", T0 + 10)).toBe(false);
+    expect(asksSendAgain({ host: "workshop" }, "w2:p1", "go", T0 + 10)).toBe(false);
   });
 });

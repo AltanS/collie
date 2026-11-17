@@ -4,7 +4,7 @@
 //
 // ISOLATION, IN ONE PLACE.
 //   - Everything lives under STATE_ROOT, on disk (`~/.cache/collie-lab/browser-leg-state`). Not /tmp:
-//     bluefin's /tmp is tmpfs, and an out-of-memory crash wiped a /tmp lab on 2026-10-12.
+//     lodge's /tmp is tmpfs, and an out-of-memory crash wiped a /tmp lab on 2026-10-12.
 //   - Herdr: its own server under its own XDG_CONFIG_HOME. Every herdr call below goes through
 //     `herdrEnv()`, which drops every inherited HERDR_* name (the operator's agent session sets
 //     HERDR_SOCKET_PATH and HERDR_PANE_ID) and points XDG_CONFIG_HOME at the rig's home. The operator's

@@ -211,11 +211,11 @@ describe("update ribbon states — the row on screen", () => {
 
   it("(d) names a peer that rolled back, with its reason and a pointer to the page", async () => {
     const peers: UpdatePeerLeg[] = [
-      { name: "minibuch", state: "rolled-back", reason: "health gate timed out" },
+      { name: "workshop", state: "rolled-back", reason: "health gate timed out" },
     ];
     await renderBand(info({ run: run("done", { peers }) }));
     expect(
-      screen.getByText("Could not update minibuch: health gate timed out. See Updates."),
+      screen.getByText("Could not update workshop: health gate timed out. See Updates."),
     ).toBeInTheDocument();
     // No retry on the band: the retry is the Updates page's single action.
     expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
@@ -238,13 +238,13 @@ describe("a run in progress is not this band's row", () => {
   });
 
   it("draws no row for a peer that is still moving", async () => {
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "restarting" }];
+    const peers: UpdatePeerLeg[] = [{ name: "workshop", state: "restarting" }];
     const { container } = await renderBand(info({ releaseAvailable: false, run: run("done", { peers }) }));
     expect(band(container)).toBeNull();
   });
 
   it("draws no row for a peer whose package manager owns it", async () => {
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
+    const peers: UpdatePeerLeg[] = [{ name: "workshop", state: "package-managed" }];
     const { container } = await renderBand(info({ releaseAvailable: false, run: run("done", { peers }) }));
     expect(band(container)).toBeNull();
   });
@@ -317,12 +317,12 @@ describe("a peer failure navigates too, and truncates instead of clipping", () =
   it("tapping anywhere on the row opens the Updates page, not just a small button", async () => {
     const user = userEvent.setup();
     const peers: UpdatePeerLeg[] = [
-      { name: "minibuch", state: "unreachable", reason: "no change for 20 minutes" },
+      { name: "workshop", state: "unreachable", reason: "no change for 20 minutes" },
     ];
     await renderBand(info({ run: run("done", { peers }) }));
     await user.click(
       screen.getByRole("button", {
-        name: "Could not update minibuch: no change for 20 minutes. See Updates.",
+        name: "Could not update workshop: no change for 20 minutes. See Updates.",
       }),
     );
     expect(await screen.findByText("the updates page")).toBeInTheDocument();
@@ -333,10 +333,10 @@ describe("a peer failure navigates too, and truncates instead of clipping", () =
     // and truncation is paint-only, so the text node (and the name `aria-labelledby` reads off it)
     // is always the whole sentence regardless of how narrow the phone is.
     const peers: UpdatePeerLeg[] = [
-      { name: "minibuch", state: "unreachable", reason: "no change for 20 minutes" },
+      { name: "workshop", state: "unreachable", reason: "no change for 20 minutes" },
     ];
     await renderBand(info({ run: run("done", { peers }) }));
-    const full = "Could not update minibuch: no change for 20 minutes. See Updates.";
+    const full = "Could not update workshop: no change for 20 minutes. See Updates.";
     expect(screen.getByRole("button", { name: full })).toBeInTheDocument();
     expect(screen.getByText(full)).toHaveClass("truncate");
   });
@@ -344,7 +344,7 @@ describe("a peer failure navigates too, and truncates instead of clipping", () =
   it("the ✕ still closes it, independently of the row's own tap target", async () => {
     const user = userEvent.setup();
     const peers: UpdatePeerLeg[] = [
-      { name: "minibuch", state: "unreachable", reason: "no change for 20 minutes" },
+      { name: "workshop", state: "unreachable", reason: "no change for 20 minutes" },
     ];
     await renderBand(info({ run: run("done", { peers }) }));
     await user.click(screen.getByRole("button", { name: "Hide this notice" }));
@@ -356,7 +356,7 @@ describe("a peer failure navigates too, and truncates instead of clipping", () =
   // `ribbonView` never read the crew close. Seen on the release lane on 2026-10-13.
   it("the ✕ puts the row down on the tap, and it stays down on the next read", async () => {
     const user = userEvent.setup();
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "unreachable", reason: "minibuch was not reached" }];
+    const peers: UpdatePeerLeg[] = [{ name: "workshop", state: "unreachable", reason: "workshop was not reached" }];
     const failed = info({ releaseAvailable: false, run: run("done", { peers, settledAt: Date.now() - 60_000 }) });
     const { container } = await renderBand(failed);
     await user.click(screen.getByRole("button", { name: "Hide this notice" }));
@@ -365,7 +365,7 @@ describe("a peer failure navigates too, and truncates instead of clipping", () =
   });
 
   it("another screen reading the recorded close draws no row", async () => {
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "unreachable", reason: "minibuch was not reached" }];
+    const peers: UpdatePeerLeg[] = [{ name: "workshop", state: "unreachable", reason: "workshop was not reached" }];
     const { container } = await renderBand(
       info({ releaseAvailable: false, dismissedCrewVersion: "1.5.0", run: run("done", { peers }) }),
     );
@@ -450,11 +450,11 @@ describe("while the app is being applied, the band says nothing about updates (2
   it("posts no failed peer either", async () => {
     pwaStage.current = "installing";
     const peers: UpdatePeerLeg[] = [
-      { name: "minibuch", state: "rolled-back", reason: "health gate timed out" },
+      { name: "workshop", state: "rolled-back", reason: "health gate timed out" },
     ];
     const { container } = await renderBand(info({ run: run("done", { peers }) }));
     expect(band(container)).toBeNull();
-    expect(screen.queryByText(/Could not update minibuch/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Could not update workshop/)).not.toBeInTheDocument();
   });
 
   it("still posts the offer with a worker in control and nothing downloading", async () => {
@@ -561,7 +561,7 @@ describe("a packaged host on the band", () => {
 
 describe("one height in every state, and the band's own", () => {
   it("wears the shared strip floor and adds no height or padding of its own", async () => {
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "restarting" }];
+    const peers: UpdatePeerLeg[] = [{ name: "workshop", state: "restarting" }];
     const cases: (UpdateInfo | undefined)[] = [
       info(), // (a)
       info({ run: run("preflight") }), // (b)
@@ -570,7 +570,7 @@ describe("one height in every state, and the band's own", () => {
       info({ run: run("done", { peers }) }), // (d)
       info({
         run: run("done", {
-          peers: [{ name: "minibuch", state: "rolled-back", reason: "health gate timed out" }],
+          peers: [{ name: "workshop", state: "rolled-back", reason: "health gate timed out" }],
         }),
       }),
     ];

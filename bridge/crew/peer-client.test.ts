@@ -1251,7 +1251,7 @@ describe("a dial that fails in TLS reports the code's cause through the client",
 // Observed 2026-09-13 on the dev crew. The member was a 1.9.0 build whose state directory still
 // held the 1.7.0 `pack-*.json` names, so it found no trust store, resolved `solo`, and opened a
 // PLAIN HTTP listener (`peerListenerTls` needs an enrolled lead certificate). The lead still had
-// the member enrolled, so it dialled `https://minibuch…:8789/crew/v1/hello` with a real pin.
+// the member enrolled, so it dialled `https://workshop…:8789/crew/v1/hello` with a real pin.
 // `collie doctor` then printed "hello: the TLS certificate was not accepted" and sent the operator
 // to a pin that was never consulted.
 describe("hello against a solo member — the reason must be about TLS being absent, not refused", () => {
@@ -1561,7 +1561,7 @@ describe("parsePeerStatus, the sweep's mux and panes siblings (M76 spec 04)", ()
 
 describe("parsePeerStatus, the host sibling (M77 spec 01)", () => {
   test("a carried host name is read trimmed, beside mux and panes", () => {
-    expect(parsePeerStatus({ mux: "herdr", panes: 4, host: " minibuch " })).toEqual({ mux: "herdr", panes: 4, host: "minibuch" });
+    expect(parsePeerStatus({ mux: "herdr", panes: 4, host: " workshop " })).toEqual({ mux: "herdr", panes: 4, host: "workshop" });
   });
 
   test("absent, blank or malformed means the answer SAID NOTHING about the host", () => {

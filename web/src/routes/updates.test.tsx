@@ -46,12 +46,12 @@ const CREW: UpdateCrewMember[] = [
     reasons: ["working tree has tracked changes: bridge/server.ts"],
     asOf: 1_700_000_000_000,
   },
-  { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+  { name: "workshop", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
 ];
 
 const LEAD_ROSTER: HomeData["servers"] = [
   { id: "desk", name: "desk", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 1 },
-  { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 1 },
+  { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 1 },
 ];
 
 function homeData(update: UpdateInfo | undefined, servers: HomeData["servers"]): HomeData {
@@ -154,7 +154,7 @@ describe("updates page", () => {
 
   it("says a packaged peer waits for its package manager, and counts it behind nothing", async () => {
     const crew: UpdateCrewMember[] = [
-      { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000, installKind: "packaged" },
+      { name: "workshop", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000, installKind: "packaged" },
     ];
     // This lead is already on the newest release, so the only thing that could give it an action is
     // a peer counted behind. The packaged one is not counted, so the page has nothing to offer.

@@ -625,7 +625,7 @@ export function probeDefaults() {
     dirty: "",
     dirtyfiles: "",
     version: "",
-    address: "100.64.0.9",
+    address: "100.64.10.9",
     port: "free",
   } satisfies Record<ProbeField, string>;
 }

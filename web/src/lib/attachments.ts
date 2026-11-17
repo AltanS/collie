@@ -139,7 +139,7 @@ export function markerFor(attachment: Pick<MarkedAttachment, "n" | "kind">): str
  * The number the next chip takes: `next`, or one past the highest marker number already in `text`
  * when that is higher. A marker can stand in the text with no chip behind it (text copied from
  * another pane, or typed), and a new chip that reused its number would make it a twin: Send swaps
- * every copy of a chip's marker for its path, so the photo went in twice (minibuch, 2026-10-14).
+ * every copy of a chip's marker for its path, so the photo went in twice (workshop, 2026-10-14).
  */
 export function nextMarkerNumber(text: string, next: number): number {
   let highest = 0;

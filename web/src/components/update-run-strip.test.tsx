@@ -36,7 +36,7 @@ const run = (state: UpdateRunState, over: Partial<UpdateRun> = {}): UpdateRun =>
 const BASE: UpdateScreenInput = {
   run: undefined,
   crew: [],
-  leadName: "bluefin",
+  leadName: "lodge",
   stage: "idle",
   progress: null,
   installingSince: null,
@@ -101,17 +101,17 @@ describe("when the band carries a run at all", () => {
 describe("the one line it says", () => {
   it("on a device that did not start the run: started elsewhere, and the step", () => {
     mount({ startedHere: false, run: run("restarting") });
-    expect(strip()).toHaveTextContent("Update running, started on another device. bluefin is restarting.");
+    expect(strip()).toHaveTextContent("Update running, started on another device. lodge is restarting.");
   });
 
   it("keeps saying so while the members are still moving after the lead's own done", () => {
-    mount({ startedHere: false, run: run("done", { peers: [{ name: "minibuch", state: "updating", version: "1.8.2", updatedAt: NOW }] }) });
+    mount({ startedHere: false, run: run("done", { peers: [{ name: "workshop", state: "updating", version: "1.8.2", updatedAt: NOW }] }) });
     expect(strip()).toHaveTextContent("Updating the other machines");
   });
 
   it("on the device that took the way out: no 'another device'", () => {
     mount({ startedHere: true, released: true, run: run("staging") });
-    expect(strip()).toHaveTextContent("Update running. Building 1.9.0 on bluefin.");
+    expect(strip()).toHaveTextContent("Update running. Building 1.9.0 on lodge.");
   });
 });
 

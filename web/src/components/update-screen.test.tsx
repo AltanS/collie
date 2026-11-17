@@ -44,16 +44,16 @@ const leg = (name: string, state: UpdatePeerLeg["state"], over: Partial<UpdatePe
 });
 
 const CREW: UpdateCrewMember[] = [
-  { name: "minibuch", version: FROM, verdict: "green", reasons: [], asOf: NOW },
+  { name: "workshop", version: FROM, verdict: "green", reasons: [], asOf: NOW },
   { name: "cellar", version: FROM, verdict: "green", reasons: [], asOf: NOW },
 ];
 
-const CLAIM: UpdateClaim = { startedAt: NOW - 250_000, runId: "run-1", target: TO, peersOnly: false, bundleAtStart: "a", skipped: [], lead: "bluefin", members: ["minibuch", "cellar"], lastPhase: null };
+const CLAIM: UpdateClaim = { startedAt: NOW - 250_000, runId: "run-1", target: TO, peersOnly: false, bundleAtStart: "a", skipped: [], lead: "lodge", members: ["workshop", "cellar"], lastPhase: null };
 
 const BASE: UpdateScreenInput = {
   run: undefined,
   crew: CREW,
-  leadName: "bluefin",
+  leadName: "lodge",
   stage: "idle",
   progress: null,
   installingSince: null,
@@ -118,7 +118,7 @@ describe("the panel is a named modal dialog", () => {
     const { container } = mount({ run: run("staging") });
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(dialog).toHaveAccessibleName(`Building ${TO} on bluefin`);
+    expect(dialog).toHaveAccessibleName(`Building ${TO} on lodge`);
     await vi.waitFor(() => expect(slot(container, "update-panel")).toHaveFocus());
   });
 
@@ -147,8 +147,8 @@ describe("every slot is there in every state, at its fixed height", () => {
   const states: [string, Partial<UpdateScreenInput>][] = [
     ["ready", { ask: ASK, claim: null, startedHere: false }],
     ["check", { run: run("preflight") }],
-    ["members, one unreachable", { run: run("done", { peers: [leg("minibuch", "updating"), leg("cellar", "waiting", { updatedAt: NOW - 90_000 })] }) }],
-    ["phone downloading", { run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW }), stage: "installing", installingSince: NOW - 1_000, progress: { done: 5, total: 20, at: NOW } }],
+    ["members, one unreachable", { run: run("done", { peers: [leg("workshop", "updating"), leg("cellar", "waiting", { updatedAt: NOW - 90_000 })] }) }],
+    ["phone downloading", { run: run("done", { peers: [leg("workshop", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW }), stage: "installing", installingSince: NOW - 1_000, progress: { done: 5, total: 20, at: NOW } }],
     ["done", { run: run("done", { settledAt: NOW }), bundle: { id: "b", version: TO } }],
     ["stuck", { run: run("stuck", { recovery: "collie update --rollback" }) }],
     ["failed", { run: run("idle", { reason: "the new version did not start here (exit 1): Killed: 9" }) }],
@@ -171,24 +171,24 @@ describe("every slot is there in every state, at its fixed height", () => {
 
 describe("the rows", () => {
   it("names each machine, its words and its versions, and puts the phone last", () => {
-    mount({ run: run("staging", { peers: [leg("minibuch", "waiting"), leg("cellar", "waiting")] }) });
+    mount({ run: run("staging", { peers: [leg("workshop", "waiting"), leg("cellar", "waiting")] }) });
     const items = within(screen.getByRole("list", { name: "Machines" })).getAllByRole("listitem");
     expect(items.map((item) => item.textContent)).toEqual([
-      `bluefin · building ${TO}${FROM} → ${TO}`,
-      `minibuch · waits for bluefin${FROM} → ${TO}`,
-      `cellar · waits for bluefin${FROM} → ${TO}`,
+      `lodge · building ${TO}${FROM} → ${TO}`,
+      `workshop · waits for lodge${FROM} → ${TO}`,
+      `cellar · waits for lodge${FROM} → ${TO}`,
       `This phone · waits its turn${FROM} → ${TO}`,
     ]);
   });
 
   it("animates only the active row", () => {
-    const { container } = mount({ run: run("done", { peers: [leg("minibuch", "updating"), leg("cellar", "waiting")] }) });
+    const { container } = mount({ run: run("done", { peers: [leg("workshop", "updating"), leg("cellar", "waiting")] }) });
     expect(container.querySelectorAll(".motion-safe\\:animate-spin")).toHaveLength(1);
   });
 
   it("draws this phone's download as a bar in the row's reserved slot", () => {
     mount({
-      run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW }),
+      run: run("done", { peers: [leg("workshop", "done", { version: TO }), leg("cellar", "done", { version: TO })], settledAt: NOW }),
       stage: "installing",
       installingSince: NOW - 1_000,
       progress: { done: 5, total: 20, at: NOW },
@@ -219,7 +219,7 @@ describe("the controls each state offers", () => {
   });
 
   it("a member that needs you: Skip it, or keep trying", async () => {
-    const { spies } = mount({ run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "waiting", { updatedAt: NOW - 90_000 })] }) });
+    const { spies } = mount({ run: run("done", { peers: [leg("workshop", "done", { version: TO }), leg("cellar", "waiting", { updatedAt: NOW - 90_000 })] }) });
     await userEvent.click(screen.getByRole("button", { name: "Skip cellar" }));
     expect(spies.skip).toHaveBeenCalledWith("cellar");
     await userEvent.click(screen.getByRole("button", { name: "Keep trying" }));
@@ -235,7 +235,7 @@ describe("the controls each state offers", () => {
 
   it("Done: Back to the app, and Try <name> again for a member left behind", async () => {
     const { spies } = mount({
-      run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "rolled-back", { reason: "gate" })], settledAt: NOW }),
+      run: run("done", { peers: [leg("workshop", "done", { version: TO }), leg("cellar", "rolled-back", { reason: "gate" })], settledAt: NOW }),
       bundle: { id: "b", version: TO },
     });
     await userEvent.click(screen.getByRole("button", { name: "Try cellar again" }));
@@ -253,10 +253,10 @@ describe("the controls each state offers", () => {
 
   it("Done with a member left behind: the retry and a short What changed share the row (1.21.1)", async () => {
     const { spies } = mount({
-      run: run("done", { peers: [leg("minibuch", "unreachable", { reason: "not reached" })], settledAt: NOW }),
+      run: run("done", { peers: [leg("workshop", "unreachable", { reason: "not reached" })], settledAt: NOW }),
       bundle: { id: "b", version: TO },
     });
-    expect(screen.getByRole("button", { name: "Try minibuch again" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try workshop again" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "What changed" }));
     expect(spies.openUpdates).toHaveBeenCalledOnce();
   });
@@ -271,7 +271,7 @@ describe("the controls each state offers", () => {
 
   it("Failed (#283): the reason, Back to the app, Try again and Show log", async () => {
     const { spies } = mount({ run: run("idle", { reason: "the new version did not start here (exit 1): Killed: 9" }) });
-    expect(screen.getByRole("heading", { name: "The update failed on bluefin" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "The update failed on lodge" })).toBeInTheDocument();
     expect(screen.getByText("the new version did not start here (exit 1): Killed: 9")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Back to the app" }));
     expect(spies.back).toHaveBeenCalledOnce();

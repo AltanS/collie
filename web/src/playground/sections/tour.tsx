@@ -87,7 +87,7 @@ export function TourSection() {
         >
           <SheetStage
             mux={MUX}
-            host="bluefin"
+            host="lodge"
             panes={0}
             needsYou={0}
             machines={0}
@@ -103,7 +103,7 @@ export function TourSection() {
         >
           <SheetStage
             mux={MUX}
-            host="bluefin"
+            host="lodge"
             panes={4}
             needsYou={1}
             machines={0}
@@ -119,7 +119,7 @@ export function TourSection() {
         >
           <SheetStage
             mux={MUX}
-            host="bluefin"
+            host="lodge"
             panes={4}
             needsYou={1}
             machines={0}
@@ -136,7 +136,7 @@ export function TourSection() {
         >
           <SheetStage
             mux={MUX}
-            host="bluefin"
+            host="lodge"
             panes={9}
             needsYou={2}
             machines={3}
@@ -154,7 +154,7 @@ export function TourSection() {
         >
           <SheetStage
             mux={MUX}
-            host="bluefin"
+            host="lodge"
             panes={4}
             needsYou={0}
             machines={0}
@@ -170,7 +170,7 @@ export function TourSection() {
         >
           <SheetStage
             mux={MUX}
-            host="bluefin"
+            host="lodge"
             panes={0}
             needsYou={0}
             machines={0}

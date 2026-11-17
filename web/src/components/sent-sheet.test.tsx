@@ -12,7 +12,7 @@ import { SentSheet } from "./sent-sheet";
 // The Sent sheet against the contract fixtures (M61 spec 02): each state it draws, what each tap
 // puts on the wire, and that a tap on a row only hands the line back.
 
-const CWD = "/home/altan/projects/collie";
+const CWD = "/home/dev/projects/collie";
 
 interface Seen {
   url: URL;
@@ -66,7 +66,7 @@ describe("Sent sheet: rows", () => {
     const bun = screen.getByRole("button", { name: /^bun test/ });
     expect(bun).toHaveTextContent("~");
     expect(within(bun).queryByText(/×/)).toBeNull();
-    expect(git).not.toHaveTextContent("bluefin");
+    expect(git).not.toHaveTextContent("lodge");
   });
 
   it("asks this folder first, with the pane's folder and a page of fifty", async () => {

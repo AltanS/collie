@@ -519,7 +519,7 @@ describe("_supervise, the loop", () => {
 
     test("asks the front door on loopback by default, and on the address the bridge bound", () => {
       expect(livenessUrl(base)).toBe("http://127.0.0.1:8787/api/health");
-      expect(livenessUrl({ ...base, host: "100.64.0.8" })).toBe("http://100.64.0.8:8787/api/health");
+      expect(livenessUrl({ ...base, host: "100.64.10.8" })).toBe("http://100.64.10.8:8787/api/health");
     });
 
     test("dials loopback for a wildcard bind, which is not an address", () => {

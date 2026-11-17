@@ -18,7 +18,7 @@ describe("send intent store", () => {
   it("keys by session and host, so the same pane id on two machines never shares an id", () => {
     saveIntent(undefined, "w1:p1", INTENT, "hello");
     expect(loadIntent({ session: "demo" }, "w1:p1")).toBeNull();
-    expect(loadIntent({ host: "minibuch" }, "w1:p1")).toBeNull();
+    expect(loadIntent({ host: "workshop" }, "w1:p1")).toBeNull();
   });
 
   it("an answer clears it from both tiers", () => {

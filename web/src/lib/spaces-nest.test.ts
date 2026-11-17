@@ -92,9 +92,9 @@ describe("isolateSpaces (issue #338)", () => {
   });
 
   it("matches on the machine too, so a same-named space elsewhere is not taken", () => {
-    const peer = space("w1", { host: "minibuch" });
-    expect(isolateSpaces([peer, unrelated], [key("w1", "bluefin")])).toEqual([peer, unrelated]);
-    expect(isolateSpaces([peer, unrelated], [key("w1", "minibuch")])).toEqual([peer]);
+    const peer = space("w1", { host: "workshop" });
+    expect(isolateSpaces([peer, unrelated], [key("w1", "lodge")])).toEqual([peer, unrelated]);
+    expect(isolateSpaces([peer, unrelated], [key("w1", "workshop")])).toEqual([peer]);
   });
 
   it("treats a stale key as no filter", () => {

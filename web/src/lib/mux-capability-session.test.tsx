@@ -116,9 +116,9 @@ describe("useMuxCapability: capabilities per session card", () => {
 
   it("a lead spelled by its member id finds the lead's cards", async () => {
     serve();
-    const servers = [{ id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok" as const, lastSeenAt: 1 }];
-    noteSessionCards([{ ...PRIMARY, host: "bluefin" }, { ...DESK, host: "bluefin" }], servers);
-    expect(paneGridOf({ host: "bluefin", session: "desk" })).toBe(false);
+    const servers = [{ id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok" as const, lastSeenAt: 1 }];
+    noteSessionCards([{ ...PRIMARY, host: "lodge" }, { ...DESK, host: "lodge" }], servers);
+    expect(paneGridOf({ host: "lodge", session: "desk" })).toBe(false);
   });
 });
 
