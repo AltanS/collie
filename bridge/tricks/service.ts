@@ -60,6 +60,8 @@ import type { RepoFactsPort } from "./repo-facts.ts";
 import { trickWarnings, wireWarnings } from "./scan.ts";
 import { TricksStore, problemLine, type CliTricksExtra } from "./store.ts";
 import { createSwitchReader, MIGRATED, updateSwitches, withApproval, withEntry, withFreshApproval, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
+import { fieldsWire, SeenWrites, TrickValues, withValues } from "./values.ts";
+import { fieldValueFromText, fieldValueProblem, isRequestId, isTrickId, type FieldProblem, type FieldRefusal, type FieldValue, type TrickField } from "../../web/src/lib/tricks/schema.ts";
 import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX } from "../../web/src/lib/tricks/limits.ts";
 import { menuMessageLine } from "../../web/src/lib/tricks/menu-message.ts";
 
@@ -240,7 +242,45 @@ export interface TricksSurface {
    * (media.ts), or null for every miss. Only a trick of this bridge that is switched on.
    */
   media(host: string, id: string, rel: string): Promise<TrickMediaFile | null>;
+  /**
+   * `POST /api/tricks/<host>/<id>/value` (contract 3): one field's value, with the request id the phone
+   * minted; null clears it back to the default. See {@link TricksService.setValue}.
+   */
+  setValue?(host: string, id: string, request: ValueRequest): Promise<ValueAnswer>;
 }
+
+/** One value write: the request id, the field's key, the value (null clears it). */
+export interface ValueRequest {
+  rid: string;
+  key: string;
+  value: FieldValue | null;
+}
+
+/** The receipt of a value write that took: the request id, the key, whether the value moved, the row now. */
+export interface ValueReceipt {
+  rid: string;
+  code: "ok";
+  key: string;
+  changed: boolean;
+  info: WireTrickInfo;
+}
+
+/** Why a value write was refused, as a code the phone and the CLI branch on: a field rule, or no such field. */
+export type ValueRefusalCode = FieldRefusal | "unknown-field";
+
+/** The value route's answer: the receipt, or why not in plain words that name the next step. */
+export type ValueAnswer =
+  | { status: 200; body: ValueReceipt }
+  | { status: 400; body: { error: "value-invalid" } }
+  | { status: 400; body: { error: "value-refused"; rid: string; code: ValueRefusalCode; message: string } }
+  | { status: 404; body: { error: "unknown-host" | "unknown-trick" } }
+  | { status: 409; body: { error: "request-id-reused"; rid: string } }
+  | { status: 409; body: { error: "windows" | "not-here" | "write-failed"; message: string } };
+
+/** The words of a value write on a bridge that runs no tricks: the values live where the tricks run, on the lead. */
+export const VALUES_ON_LEAD = "Tricks run on the lead of this crew, and their settings live there. Set the value on the lead, or on the phone.";
+/** The words of a value write the disk refused. */
+export const VALUES_WRITE_FAILED = "The value could not be saved on this machine. Try again; if it fails again, look at the bridge's log.";
 
 /** What the runner needs of the trick's decisions on the hill (hill.ts `TrickHill`). */
 export interface TricksHillPort {
@@ -651,6 +691,10 @@ export class TricksService implements TricksSurface {
   private warningRead: Promise<void> | null = null;
   /** When the unreferenced copies were last pruned. */
   private prunedAt = -Infinity;
+  /** The values a person keeps for each trick (contract 3, values.ts). */
+  private readonly values: TrickValues;
+  /** The request ids of value writes already taken, with their receipts: the same id twice writes once. */
+  private readonly valueWrites = new SeenWrites<ValueAnswer>();
 
   constructor(deps: TricksServiceDeps) {
     this.deps = deps;
@@ -660,6 +704,7 @@ export class TricksService implements TricksSurface {
     this.scanner = createTrickScanner(tricksConfigDir(deps.configDir), { warn: this.warn });
     this.readSwitches = createSwitchReader(deps.stateDir, this.warn);
     this.receiptFile = deps.receipts ?? new TrickReceiptStore(deps.stateDir, this.warn);
+    this.values = new TrickValues(deps.stateDir);
   }
 
   // ── The Windows gate ────────────────────────────────────────────────────────────────────────
@@ -1428,6 +1473,8 @@ export class TricksService implements TricksSurface {
     if (info.on && rt.entry?.by === "auto" && rt.entry.previous !== undefined) info.autoAt = rt.entry.at;
     const taken = this.warningsOf.get(id);
     if (this.wantsWarnings(rt) && taken !== undefined && taken.codeHash === rt.found.codeHash && taken.warnings.length > 0) info.warnings = taken.warnings;
+    // Contract 3: the fields of what runs, the values set, and "Needs setup" (values.ts).
+    Object.assign(info, fieldsWire(m, this.values.read(id)));
     this.store.setInfo(info);
   }
 
@@ -1617,7 +1664,8 @@ export class TricksService implements TricksSurface {
         return inputs === undefined ? session : { ...session, inputs };
       });
     }
-    const facts = buildFacts({ memberId: host, ...world }, { id, dir: run.dir, state }, trigger, manifest.contract);
+    // Contract 3: the person's values ride in the facts, and nowhere else (values.ts `withValues`).
+    const facts = withValues(buildFacts({ memberId: host, ...world }, { id, dir: run.dir, state }, trigger, manifest.contract), manifest, this.values.read(id));
     const outcome = await (this.deps.run ?? runProgram)({
       command,
       cwd: run.dir,
@@ -2063,5 +2111,77 @@ export class TricksService implements TricksSurface {
     const info = this.store.reply(this.store.rev).tricks.find((trick) => trick.id === id);
     if (info === undefined) return { status: 404, body: { error: "unknown-trick" } };
     return { status: 200, body: info };
+  }
+
+  // ── The values a person keeps (contract 3, values.ts) ─────────────────────────────────────────────
+  // One write route (`POST /api/tricks/<host>/<id>/value`, write right) and the terminal's `trick.set` on the
+  // walky socket. Both run here, in the lane switch writes take. A write carries a request id: the same id
+  // with the same payload is answered with the first receipt and writes nothing; with another payload it is
+  // refused. A value that breaks its field's rule is refused with the rule's code and a sentence that names
+  // the next step. One audit line per write that took: the trick and the field, NEVER the value. A changed
+  // value does not ask again: it restarts the trick once, as a config.toml edit does. The fields are those
+  // of what runs (the approved copy while on, else the folder), so a field of a version that waits for a
+  // yes cannot be set before that yes.
+
+  async setValue(host: string, id: string, request: ValueRequest, by: "phone" | "terminal" = "phone"): Promise<ValueAnswer> {
+    return await this.writeValue(host, id, request.rid, request.key, ["value", request.value], () => ({ ok: true, value: request.value }), by);
+  }
+
+  /**
+   * `collie trick set <id> <key> <value>` through the walky socket: the value as typed, read as its field
+   * takes it (schema.ts `fieldValueFromText`), or null to clear it. The socket refused an agent's pane before.
+   */
+  async setValueText(id: string, rid: string, key: string, text: string | null): Promise<ValueAnswer> {
+    return await this.writeValue(this.deps.memberId, id, rid, key, ["text", text], (field) => (text === null ? { ok: true, value: null } : fieldValueFromText(field, text)), "terminal");
+  }
+
+  private async writeValue(host: string, id: string, rid: string, key: string, payload: readonly [string, FieldValue | null], read: (field: TrickField) => { ok: true; value: FieldValue | null } | { ok: false; problem: FieldProblem }, by: "phone" | "terminal"): Promise<ValueAnswer> {
+    if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
+    if (this.gated()) return { status: 409, body: { error: "windows", message: TRICKS_WINDOWS_LINE } };
+    // In a crew the values live on the lead, where the tricks run: a member keeps none.
+    if ((this.deps.runsOn?.() ?? null) !== null) return { status: 409, body: { error: "not-here", message: VALUES_ON_LEAD } };
+    if (!isRequestId(rid) || !isTrickId(id) || !isTrickId(key)) return { status: 400, body: { error: "value-invalid" } };
+    // JSON tells text "1", the number 1, true and null apart.
+    const digest = payloadDigest([id, key, payload[0], JSON.stringify(payload[1])]);
+    const turn = this.lane(async (): Promise<ValueAnswer> => {
+      const seen = this.valueWrites.get(rid);
+      if (seen !== undefined) return seen.digest === digest ? seen.answer : { status: 409, body: { error: "request-id-reused", rid } };
+      await this.refresh(true);
+      const rt = this.runtimes.get(id);
+      if (rt === undefined) return { status: 404, body: { error: "unknown-trick" } };
+      const field = this.shownOf(rt).manifest?.fields?.find((one) => one.key === key);
+      if (field === undefined) return { status: 400, body: { error: "value-refused", rid, code: "unknown-field", message: `This trick has no setting "${key}". Read its About sheet for the settings it has.` } };
+      const typed = read(field);
+      if (!typed.ok) return { status: 400, body: { error: "value-refused", rid, code: typed.problem.code, message: typed.problem.reason } };
+      const asked = typed.value;
+      const problem = asked === null ? undefined : fieldValueProblem(field, asked);
+      if (problem !== undefined) return { status: 400, body: { error: "value-refused", rid, code: problem.code, message: problem.reason } };
+      // An empty text is no value: it clears the field back to its default, as null does.
+      const value = asked === "" && field.kind === "text" ? null : asked;
+      const stored = this.values.read(id);
+      const next = { ...stored.values };
+      if (value === null) delete next[key];
+      else next[key] = value;
+      const changed = stored.unread || JSON.stringify(stored.values[key] ?? null) !== JSON.stringify(next[key] ?? null);
+      if (changed) {
+        try {
+          this.values.write(id, next);
+        } catch (err) {
+          // The disk's reason names a path, never the value.
+          this.warn(`${id}: a setting could not be saved: ${err instanceof Error ? err.message : String(err)}`);
+          return { status: 409, body: { error: "write-failed", message: VALUES_WRITE_FAILED } };
+        }
+        this.deps.audit?.({ action: "trick.value", detail: { trick: id, field: key, by } });
+        // A changed value asks nothing again: it runs the trick once more, as a config.toml edit does.
+        if (rt.on) this.restart(rt);
+      }
+      this.publish(id);
+      const info = this.store.reply(this.store.rev).tricks.find((trick) => trick.id === id);
+      if (info === undefined) return { status: 404, body: { error: "unknown-trick" } };
+      const answer: ValueAnswer = { status: 200, body: { rid, code: "ok", key, changed, info } };
+      this.valueWrites.remember(rid, digest, answer);
+      return answer;
+    });
+    return await turn;
   }
 }

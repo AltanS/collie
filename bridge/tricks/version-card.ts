@@ -229,6 +229,8 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   // the words a person reads, then the inputs and the warnings.
   const lines = [...(viewNew ? [AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS] : []), ...(newRules ? [RULES_WORDS] : [])];
   const facts = [...rightsHead("New rights", newRules ? [...rights, RULES_CHIP] : rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null), ...maskedNotes(diff.files), ...lines.map((text): ViewNode => ({ kind: "para", text }))];
+  // Contract 3: a new or changed field is named, so the yes covers what the trick will ask the person for.
+  facts.push(...asksForChange(base, next));
   // The code the card shows beside the rules: every changed file but the rules file, which shows whole on its own.
   const code = rules === null ? diff : { ...diff, files: diff.files.filter((file) => file.rel !== rules.rel) };
   const rulesNodes = rules === null ? [] : rulesView(rules);
@@ -409,6 +411,22 @@ export interface VersionViewShown {
 /** The view, and how many changed files it shows whole: a row in the table and its whole hunk. */
 export function versionViewShown(rights: readonly string[], warnings: readonly (keyof typeof WARN_PLAIN)[], diff: VersionDiff, reads: string | null = null): VersionViewShown {
   return fitView(rightsHead("New rights", rights, warnings, reads), diff);
+}
+
+/** The words a card names a trick's fields with (contract 3): "Asks you for: Repository, Branch." */
+export function asksForSentence(fields: NonNullable<TrickManifest["fields"]>): string {
+  return `Asks you for: ${fields.map((field) => field.label).join(", ")}.`;
+}
+
+/** The line "Asks you for: <labels>" of a trick with `[[field]]`, as paragraphs, or none. The proposal card's line. */
+export function asksForLines(manifest: Pick<TrickManifest, "fields"> | undefined): ViewNode[] {
+  const fields = manifest?.fields ?? [];
+  return fields.length === 0 ? [] : factParas(asksForSentence(fields)).map((text): ViewNode => ({ kind: "para", text }));
+}
+
+/** The version card's line: the new version's fields, when they are new or changed against the approved copy's. */
+export function asksForChange(base: Pick<TrickManifest, "fields"> | undefined, next: Pick<TrickManifest, "fields"> | undefined): ViewNode[] {
+  return JSON.stringify(base?.fields ?? []) === JSON.stringify(next?.fields ?? []) ? [] : asksForLines(next);
 }
 
 /**

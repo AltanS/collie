@@ -29,7 +29,7 @@ import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, N
 import { pairingRefused } from "./wipe";
 import { mintRequestId } from "./worktree-name";
 import type { AccountRow, AccountsBody, AddAccountAsk } from "./accounts";
-import type { OfficialState, OfficialTricksReply, TrickTapReply, TricksReply, TapBody, WireTrickInfo } from "./tricks/schema";
+import type { FieldValue, OfficialState, OfficialTricksReply, TrickTapReply, TricksReply, TapBody, WireTrickInfo } from "./tricks/schema";
 import { readTapReplyTolerant, readTricksReplyTolerant } from "./tricks/read";
 import { readOfficialAddReply, readOfficialTricksReply, readTrick } from "./tricks/wire";
 import { fileVersionOf } from "./file-image-cache";
@@ -3539,6 +3539,21 @@ export async function setTrickAuto(host: string, trick: string, on: boolean): Pr
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({ on }) });
   const info = readTrick(raw);
   if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  return info;
+}
+
+/**
+ * Set one of a trick's settings (contract 3): `POST /api/tricks/<host>/<id>/value` with `{ rid, key, value }`,
+ * null to clear it back to its default. `rid` is minted once per change, so a retry of the same change
+ * writes once. Answers the trick as the list now shows it. A refusal throws with its status and its `code`
+ * (a field rule: `kind`, `text`, `option`, `range`, `whole`; or `unknown-field`, `not-here`), which the
+ * Settings group says in its own words. A body of another shape throws.
+ */
+export async function setTrickValue(host: string, trick: string, body: { rid: string; key: string; value: FieldValue | null }): Promise<WireTrickInfo> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/value`;
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(body) });
+  const info = readTrick(asJsonObject(raw)?.info);
+  if (info === undefined) throw new Error(`${path} answered with a body that is not a value receipt`);
   return info;
 }
 

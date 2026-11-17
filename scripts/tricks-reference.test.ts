@@ -272,7 +272,7 @@ describe("the page names everything the code has", () => {
 });
 
 describe("the commands match the CLI's own usage", () => {
-  const TRICK_SOURCES = ["cli/trick.ts", "cli/trick-dev.ts", "cli/trick-add.ts", "cli/trick-propose.ts", "cli/trick-guide.ts"];
+  const TRICK_SOURCES = ["cli/trick.ts", "cli/trick-dev.ts", "cli/trick-add.ts", "cli/trick-propose.ts", "cli/trick-guide.ts", "cli/trick-set.ts"];
   const trickSource = TRICK_SOURCES.map(read).join("\n");
 
   /** The `--flag` words of every usage line of `collie trick <verb>` in the CLI's source. */

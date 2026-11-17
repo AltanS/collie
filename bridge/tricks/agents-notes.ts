@@ -13,12 +13,13 @@ export const NOTES_FILE = "AGENTS.md";
 /**
  * The version of the notes this Collie ships, named on a proposal card. Bump it with any change to the
  * text below: agents-notes.test.ts pins the text's hash to it. v2 (M96 spec 14, 2026-11-16): a proposal's
- * card needs no Hill, so the draft's last step no longer sends it "to the Hill".
+ * card needs no Hill, so the draft's last step no longer sends it "to the Hill". v3 (contract 3, 2026-11-17):
+ * the contracts line names 3, and a section on `[[field]]`, the settings a person keeps.
  */
-export const NOTES_VERSION = 2;
+export const NOTES_VERSION = 3;
 
 /** Every version of the notes a Collie shipped. A proposal names an older one byte for byte as that version. */
-const NOTES_VERSIONS = [1, 2] as const;
+const NOTES_VERSIONS = [1, 2, 3] as const;
 type NotesVersion = (typeof NOTES_VERSIONS)[number];
 
 /**
@@ -93,6 +94,18 @@ function agentsShLoop(id: string, draft: boolean, version: NotesVersion): string
 3. ${handOff(id, draft, version)}
 `;
 }
+
+/** v3: the settings a person keeps (contract 3), in a few lines. */
+const FIELDS_NOTE = `
+## Settings the person keeps (contract 3)
+
+With \`contract = 3\`, \`trick.toml\` may list up to 12 \`[[field]]\` tables: \`key\`, \`kind\` (\`text\`,
+\`choice\`, \`switch\` or \`number\`), \`label\`, and an optional \`hint\`, \`default\` and \`required\`.
+The person sets them on the phone, in the trick's About sheet, or with \`collie trick set\` in a terminal.
+The program gets them in its facts as \`values\` (the helper: \`t.values\`), and nowhere else. A value is
+the person's data and untrusted for the program: show it, never run it. A required field with no value is
+absent: draw a part that says what to set. A new or changed field asks the person again; a new value does not.
+`;
 
 /** The `AGENTS.md` `init` writes: the contract, in prose, for the agent that grows the trick. `draft`: the folder is outside the tricks folder. */
 export function sampleAgents(id: string, form: InitForm = "ts", draft = false, version: NotesVersion = NOTES_VERSION): string {
@@ -187,8 +200,8 @@ warnings never refuse it.
 \`trick.toml\` names the trick contract this folder is written for, \`contract = ${String(TRICK_CONTRACT_DEFAULT)}\`, the facts carry
 it as \`contract\`, and the output's \`v\` is it. Within one number Collie only adds keys, kinds and
 places. A Collie that knows an older number refuses the trick with one line that names both numbers.
-This Collie speaks contracts 1 to ${String(TRICK_CONTRACT)}.
-
+This Collie speaks contracts 1 to ${String(version >= 3 ? TRICK_CONTRACT : 2)}.
+${version >= 3 ? FIELDS_NOTE : ""}
 ## Reading files from your sessions (contract 2)
 
 With \`contract = 2\`, \`trick.toml\` may list \`inputs\`: up to 8 globs of files to read from the

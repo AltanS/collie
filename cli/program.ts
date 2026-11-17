@@ -58,6 +58,7 @@ import { cmdTrickDev } from "./trick-dev.ts";
 import { cmdTrickGuide } from "./trick-guide.ts";
 import { cmdTrickPropose } from "./trick-propose.ts";
 import { cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate } from "./trick-add.ts";
+import { cmdTrickSet } from "./trick-set.ts";
 import { cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, TRICK_SUBCOMMANDS, type TrickDeps } from "./trick.ts";
 import { cmdMuxProbe } from "./mux-probe.ts";
 import {
@@ -1103,6 +1104,11 @@ export const COMMANDS: readonly Command[] = [
         name: "auto",
         summary: "take a trick's new versions without asking while its powers do not change and it does nothing new: <id> on|off",
         run: async (args, s) => await cmdTrickAuto(trickVerbDeps(s.io), args),
+      },
+      {
+        name: "set",
+        summary: "set one of a trick's settings, its [[field]]: <id> <key> <value> (--clear for the default; refused inside an agent's pane)",
+        run: async (args, s) => await cmdTrickSet({ ...walkyDeps(s.io), paneKind: () => askPaneKind(walkyDeps(s.io)) }, args),
       },
       {
         name: "check",

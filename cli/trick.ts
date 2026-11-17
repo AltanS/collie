@@ -89,6 +89,8 @@ import { SKILL_BYTES_MAX } from "../web/src/lib/tricks/limits.ts";
 //                     not a wall: see cmdTrickSwitch)
 //   auto <id> on|off  "take changes without asking": a new version whose powers did not move and
 //                     that does nothing new (no new warning kind) is approved on its own; else it waits
+//   set <id> <key> <value>  one of a trick's settings (`[[field]]`, contract 3), through the running bridge
+//                     (cli/trick-set.ts); `--clear` for the default. Refused in an agent's pane
 //   check <folder>    the static check: the manifest, its places, the command lines and the warnings of
 //                     every source file in the folder (a grep, not a proof). `--run` also runs the
 //                     program once against fixture facts, with the bridge's environment rule, and
@@ -108,7 +110,7 @@ import { SKILL_BYTES_MAX } from "../web/src/lib/tricks/limits.ts";
 // `check` exits 0 (clean, or only "later" notes), 1 (a refusal or a failed run) or 2 (usage: no
 // folder, or not a folder), like `config check`. `--json` prints one report document instead.
 
-export const TRICK_SUBCOMMANDS = ["list", "add", "update", "remove", "on", "off", "auto", "check", "dev", "init", "helper", "skill", "guide", "propose", "view"] as const;
+export const TRICK_SUBCOMMANDS = ["list", "add", "update", "remove", "on", "off", "auto", "set", "check", "dev", "init", "helper", "skill", "guide", "propose", "view"] as const;
 
 export interface TrickDeps {
   ctx: Pick<CliContext, "configDir" | "stateDir" | "env" | "port">;

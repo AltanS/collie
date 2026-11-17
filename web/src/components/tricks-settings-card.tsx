@@ -12,13 +12,14 @@ import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-abo
 import { TokenUseChip } from "@/components/token-use-label";
 import { useArm } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
-import { addOfficialTrick, apiErrorFields, fetchOfficialTricks, setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
+import { addOfficialTrick, apiErrorFields, fetchOfficialTricks, setTrickAuto, setTrickValue, switchTrick, undoTrick } from "@/lib/api";
+import { fieldProblemWords } from "@/components/trick-settings-group";
 import { t } from "@/lib/i18n";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import { useBridgeNow } from "@/lib/tricks/clock";
 import { trickListRows, type TrickOrigin } from "@/lib/tricks/list-order";
 import { placesLine, readsLine, runsOnLine, warningLines, type WarningLine } from "@/lib/tricks/row-words";
-import type { OfficialState, OfficialTricksReply, TricksRunsOn, WireOfficialTrick, WireTrickInfo } from "@/lib/tricks/schema";
+import type { FieldValue, OfficialState, OfficialTricksReply, TricksRunsOn, WireOfficialTrick, WireTrickInfo } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, type TricksStore } from "@/lib/tricks/store";
 import { trickTimeText } from "@/lib/tricks/time";
 import { trickTokenUse } from "@/lib/tricks/token-use";
@@ -164,6 +165,10 @@ export function slotLine(trick: WireTrickInfo, now: number, hillOff = false, ver
   const failing = trick.state === "failing" || trick.state === "stopped";
   if (failing && trick.error !== undefined) return { text: trick.error, trouble: true };
   if (refused !== undefined) return { text: t("settings.tricks.partNotShown", { reason: refused.reason }), trouble: true };
+  // Contract 3: a required setting is empty, or the saved ones do not read. The row opens the About sheet,
+  // where the Settings group is. The trick still runs and draws its own setup part.
+  if (trick.valuesUnread === true) return { text: t("settings.tricks.valuesUnread"), trouble: true };
+  if (trick.needsSetup === true) return { text: t("settings.tricks.needsSetup"), trouble: false };
   // The new version's card is Collie's own: it needs no Hill (spec 14), and the row opens it.
   if (trick.on && (trick.pending !== undefined || versionWaits)) return { text: t("settings.tricks.pending"), trouble: false, waits: true };
   if (hillOff && trick.on && trick.decides === true) return { text: t("settings.tricks.hillOff"), trouble: false };
@@ -181,6 +186,8 @@ export interface TricksSettingsCardProps {
   onAuto?: (host: string, id: string, on: boolean) => Promise<WireTrickInfo>;
   /** The undo call. The real route by default. */
   onUndo?: (host: string, id: string) => Promise<WireTrickInfo>;
+  /** The settings write (contract 3). The real route by default. */
+  onSetValue?: (host: string, id: string, body: { rid: string; key: string; value: FieldValue | null }) => Promise<WireTrickInfo>;
   /** Pin the clock (epoch ms on the bridge's clock), for a test or a playground card. */
   now?: number;
   /** Draw the switches as one that may not write, for the playground. Default: the device's own say. */
@@ -550,6 +557,7 @@ function TricksList({
   onSwitch = switchTrick,
   onAuto = setTrickAuto,
   onUndo = undoTrick,
+  onSetValue = setTrickValue,
   onOfficialList = fetchOfficialTricks,
   onOfficialAdd = addOfficialTrick,
   now,
@@ -639,6 +647,25 @@ function TricksList({
       setStatus(t("settings.tricks.auto.failed", { name: trick.name }), "error");
     } finally {
       flying.current.delete(key);
+    }
+  }
+
+  // A trick's setting (contract 3): one request id per change, so a retry of this change writes once. The
+  // receipt is the row the list will show; the group holds the value until the list agrees. A refusal is
+  // said under the field in the phone's words, never the bridge's English.
+  async function saveValue(trick: WireTrickInfo, key: string, value: FieldValue | null): Promise<string | null> {
+    const field = trick.fields?.find((one) => one.key === key);
+    try {
+      await onSetValue(trick.host, trick.id, { rid: crypto.randomUUID(), key, value });
+      return null;
+    } catch (err) {
+      // A field rule rides in `code`; a refusal of the route itself (`not-here`) in `error`.
+      const fields = apiErrorFields(err);
+      const code = fields?.code ?? fields?.error;
+      if (code === "unknown-field" || field === undefined) return t("settings.tricks.fields.refused.gone");
+      if (code === "not-here") return t("settings.tricks.fields.onLead");
+      if (code === "kind" || code === "text" || code === "option" || code === "range" || code === "whole") return fieldProblemWords(field, { code });
+      return t("settings.tricks.fields.failed", { label: field.label });
     }
   }
 
@@ -810,6 +837,7 @@ function TricksList({
             auto={heldAuto.get(trickKey(aboutTrick)) ?? aboutTrick.auto === true}
             canWrite={canWrite}
             onAuto={(on) => void flipAuto(aboutTrick, on)}
+            onValue={async (key, value) => await saveValue(aboutTrick, key, value)}
           />
         </TrickBoundary>
       )}
