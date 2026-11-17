@@ -45,6 +45,13 @@ export interface HoldToApproveProps {
    * the spinner used, and takes no press. The card's other options are drawn disabled by the caller.
    */
   chosen?: boolean;
+  /**
+   * This option's yes did not land (no answer, or refused): the label says "Not sent. Hold again" in its own slot,
+   * which is sized for those words from the first frame, so saying it moves nothing. `problem` is the reason in
+   * words, read to a screen reader and kept as the button's title; it takes no room on the card.
+   */
+  notSent?: boolean;
+  problem?: string;
   /** The card's code as the button approves it (its digest): a new key ends a hold. */
   resetKey: string;
   onApprove: () => void;
@@ -54,13 +61,13 @@ export interface HoldToApproveProps {
 }
 
 /** The yes to a trick's code: a hold of 1.5 seconds, or two presses of a key. */
-export function HoldToApprove({ label, description, keyLabel, enabled, busy = false, chosen = false, resetKey, onApprove, className, ...data }: HoldToApproveProps) {
+export function HoldToApprove({ label, description, keyLabel, enabled, busy = false, chosen = false, notSent = false, problem, resetKey, onApprove, className, ...data }: HoldToApproveProps) {
   useLocale();
   const hintId = useId();
   const pressable = enabled && !busy && !chosen;
   const { phase, fillStyle, back, props } = useApproveHold({ enabled: pressable, resetKey, onApprove });
   const tone: OptionTone = busy || chosen ? "busy" : phase === "armed" ? "armed" : "default";
-  const word = phase === "armed" ? "armed" : phase === "filling" ? "holding" : "rest";
+  const word = phase === "armed" ? "armed" : phase === "filling" ? "holding" : notSent ? "again" : "rest";
   // Where a cancelled fill stood: the clip's right inset the run back starts from (index.css `hold-fill-back`).
   const backStyle: CSSProperties & { "--hold-from"?: string } = back === null ? {} : { "--hold-from": `${String(Math.round((1 - back) * 100))}%` };
   return (
@@ -72,6 +79,8 @@ export function HoldToApprove({ label, description, keyLabel, enabled, busy = fa
         aria-describedby={hintId}
         data-phase={phase}
         data-chosen={chosen ? "" : undefined}
+        data-not-sent={notSent ? "" : undefined}
+        title={notSent ? problem : undefined}
         {...data}
         {...props}
         className={cn(optionSurface(tone), "relative touch-none select-none overflow-hidden [-webkit-touch-callout:none]", className)}
@@ -100,6 +109,7 @@ export function HoldToApprove({ label, description, keyLabel, enabled, busy = fa
                 { key: "rest", node: label },
                 { key: "holding", node: t("hill.hold.holding") },
                 { key: "armed", node: t("hill.hold.armed") },
+                { key: "again", node: t("hill.hold.again") },
               ]}
             />
           </span>
@@ -115,6 +125,10 @@ export function HoldToApprove({ label, description, keyLabel, enabled, busy = fa
       </button>
       <span id={hintId} className="sr-only">
         {t("hill.hold.hint")}
+      </span>
+      {/* The reason a yes did not land, for a screen reader: always in the page, out of the layout. */}
+      <span className="sr-only" role="status" data-slot="hold-problem">
+        {notSent ? (problem ?? t("hill.hold.again")) : ""}
       </span>
     </>
   );

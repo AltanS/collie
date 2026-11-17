@@ -315,10 +315,15 @@ describe("a trick proposal in its session's chat view", () => {
     const { rerender } = render(draw(HILL_IDLE));
     await hold(yes());
     expect(onSend).toHaveBeenCalledTimes(1);
+    const children = [...card()!.querySelectorAll("*")];
     rerender(draw(failed));
-    expect(card()).toHaveTextContent("Not sent.");
+    const button = chat().querySelector<HTMLButtonElement>('[data-slot="chat-approval-option"][data-intent="on"]')!;
+    // Said in the yes's own label, no new row: the same elements, in the same order.
+    expect(button).toHaveAttribute("data-not-sent");
+    expect(button).toHaveAccessibleName("Not sent. Hold again");
     expect(chat().querySelector('[data-slot="decision-retry"]')).toBeNull();
-    await hold(yes());
+    expect([...card()!.querySelectorAll("*")]).toEqual(children);
+    await hold(button);
     expect(onSend).toHaveBeenCalledTimes(2);
     expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: HASH, opened: [1] });
   });

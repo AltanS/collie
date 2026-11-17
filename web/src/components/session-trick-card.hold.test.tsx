@@ -211,3 +211,41 @@ describe.each(["chat", "agent-view"] as const)("after an answer the options stay
     expect(after.find((b) => b.dataset.intent === "later")).toBeDisabled();
   });
 });
+
+// NO NEW BOXES (Altan, 2026-11-18: "there is an ok row appearing, instead the selection should change, no new boxes").
+// After an answer, whatever it is, the card holds the same elements in the same order as before it. The one thing that
+// may come into the page is the mark in an option's own 16px slot (the spinner, the check), an icon in a slot that was
+// there all along, so the list below leaves icons out.
+const elements = (root: Element) => [...root.querySelectorAll("*")].filter((el) => el.closest("svg") === null);
+
+describe.each(["chat", "agent-view"] as const)("no row, line or box comes or goes after an answer, in the %s", (host) => {
+  const refused: HillAnswerState = {
+    phase: "answered",
+    intent: "on",
+    text: null,
+    receipt: { rid: "r", code: "rejected", reason: "These cards changed since this phone showed them.", state: "open", delivery: null, trick: null, at: 0 },
+  };
+  it.each<[string, HillAnswerState[]]>([
+    ["switched on", [{ phase: "sending", intent: "on", text: null }, ok("on")]],
+    ["declined", [{ phase: "sending", intent: "later", text: null }, ok("later")]],
+    ["no answer came back", [{ phase: "sending", intent: "on", text: null }, { phase: "failed", intent: "on", text: null }]],
+    ["refused", [{ phase: "sending", intent: "on", text: null }, refused]],
+  ])("%s", (_, steps) => {
+    const card = (a: HillAnswerState) => <ChatApprovalCard decision={decision} answer={a} onSend={vi.fn()} onLater={vi.fn()} />;
+    const wrap = (a: HillAnswerState) =>
+      host === "chat" ? (
+        card(a)
+      ) : (
+        <AgentViewScreen name="Morph" session="lodge/%3#abcd" view={undefined} working={false} entries={[]} canAct onTap={vi.fn()} onLink={vi.fn()} now={Date.parse("2026-11-17T10:00:00.000Z")} settleMs={0} tail={card(a)} />
+      );
+    const view = render(wrap(HILL_IDLE));
+    const root = () => view.container.querySelector('[data-slot="chat-approval"]')!;
+    const before = elements(root());
+    for (const step of steps) {
+      view.rerender(wrap(step));
+      act(() => vi.advanceTimersByTime(5000));
+      expect(elements(root())).toEqual(before);
+    }
+    expect(root().querySelector('[data-slot="chat-approval-status"]')).toBeNull();
+  });
+});
