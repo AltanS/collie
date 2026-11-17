@@ -444,7 +444,7 @@ describe("live journal roots", () => {
     await mkdir(join(work, "projects", "-x"), { recursive: true });
     await writeFile(join(work, "projects", "-x", `${sid}.jsonl`), "");
     const registry = buildJournalRegistry(
-      { agy: [], claude: [join(home, ".claude", "projects")], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [], "dsh-tui": [] },
+      { agy: [], claude: [join(home, ".claude", "projects")], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [], "dsh-tui": [], mcode: [] },
       {},
       (agent) => ownJournalRoots(store, agent),
     );

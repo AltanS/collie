@@ -1,0 +1,26 @@
+
+                                                      ███╗   ███╗██╗███╗   ██╗██╗███╗   ███╗ █████╗ ██╗  ██╗     ██████╗ ██████╗ ██████╗ ███████╗
+                                                      ████╗ ████║██║████╗  ██║██║████╗ ████║██╔══██╗╚██╗██╔╝    ██╔════╝██╔═══██╗██╔══██╗██╔════╝
+                                                      ██╔████╔██║██║██╔██╗ ██║██║██╔████╔██║███████║ ╚███╔╝     ██║     ██║   ██║██║  ██║█████╗
+                                                      ██║╚██╔╝██║██║██║╚██╗██║██║██║╚██╔╝██║██╔══██║ ██╔██╗     ██║     ██║   ██║██║  ██║██╔══╝
+                                                      ██║ ╚═╝ ██║██║██║ ╚████║██║██║ ╚═╝ ██║██║  ██║██╔╝ ██╗    ╚██████╗╚██████╔╝██████╔╝███████╗
+                                                      ╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
+
+  ╭─ v0.7.7 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ● Ready ─╮
+  │ Tips for getting started                                                                                                                                                                         │
+  │ › Use /context to check the current Session context budget.                                                                                                                                      │
+  │ › Use @ for files; Ctrl+V for images.                                                                                                                                                            │
+  │ › Use /feedback to preview a redacted report before upload.                                                                                                                                      │
+  ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ What's new · /changelog for history                                                                                                                                                              │
+  │ › When a model request fails because the device is offline, the TUI shows that it is waiting for the network and retries automatically within the waiting limit. Offline waits do not consume t… │
+  │ › Fixed /sessions omitting sessions from the current workspace when Windows paths used different slash directions or letter casing.                                                              │
+  │ › PTC supports reusable scripts: the agent can save a program with saveruncodescript, run it with runcode({ path, args }), or import it into another program with import(). This is off by defa… │
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+    Start · @ file or Plugin · / autocomplete
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ›  Ask Mcode to do anything
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  ~/project │ Auto │ ✦ stub-model · Thinking On │ Context 100K

@@ -169,6 +169,19 @@
         "how": "capture",
         "evidence": "bridge/journal/fixtures/dsh/: a dsh-tui 0.17.0 session (DeepSeek Harness format v4) captured on Linux on 2026-10-27 — slash commands, a shell call, a rejected escalation, a background job, /compact and a Unicode turn — read with 0 unrecognised rows or content kinds. The same day the adapter read a live 1,847-row session (248 turns, 262 of 262 tool calls joined to a result) and found it by its session lock from inside a systemd user service. No canary runs dsh-tui."
       }
+    },
+    "mcode": {
+      "version": "0.7.6",
+      "verified": "2026-11-07",
+      "how": "unverified",
+      "adapter": false,
+      "evidence": "No block grammar: a MiniMax Code pane keeps the raw mirror, and its name is the program's own: herdr-core names a terminal from the OSC 7501 report it receives, and MiniMax Code reports `app=mcode` (MiniMax-AI/minimax-code docs/tui-capabilities.md). Checked 2026-11-15 on herdr-core 0.1.21 with MiniMax Code 0.7.7: `hc ls` answered {\"agent\":\"mcode\",\"status\":\"blocked\"} for a terminal started as `mc`, so the name comes from the program, not the terminal. The herdr 0.9.x line has no mcode detection at all (herdrdev/herdr discussion 2884: such panes read `agent_status: unknown` on 0.9.5), so this name reaches Collie through herdr-core. The entry is filed for the journal reader beside it; 0.7.6 is the version the row inventory was read off, and the data folder was re-read on 0.7.7.",
+      "journal": {
+        "version": "0.7.6",
+        "verified": "2026-11-07",
+        "how": "unverified",
+        "evidence": "bridge/journal/mcode.ts was verified against on-disk ~/.minimax/v2 sessions on 2026-11-07 (messages.jsonl rows, manifest.json, runtime-state.sqlite); scripts/journal-probe.ts read a real session end to end (44 turns, 50 tool results). The data folder of a fresh 0.7.7 install was re-read on 2026-11-15 for the layout and the environment variable (`MINIMAX_DATA_DIR/v2`, no MINIMAX_HOME), and the index is read through readSqlite because mcode keeps it in WAL mode."
+      }
     }
   }
 }
