@@ -65,8 +65,8 @@ describe("the diff of two copies", () => {
   test("a file whose executable bit alone moved is listed +x, counted, and its code part says so in one line (review 7, 2026-11-17)", async () => {
     const base = await folder({ "trick.toml": MANIFEST, "legs.sh": "echo 1\n", "keep.sh": "echo 2\n" });
     const same = { "trick.toml": MANIFEST, "legs.sh": "echo 1\n", "keep.sh": "echo 2\n" };
-    // A stored proposal is 0600: the bits it marked are passed in. This half runs on every platform.
-    const diff = await versionDiff({ base, next: await folder(same), nextExec: new Set(["legs.sh"]) });
+    // A stored proposal is 0600: the bits it marked are passed in. This half runs on every platform, as Linux through the platform seam.
+    const diff = await versionDiff({ base, next: await folder(same), nextExec: new Set(["legs.sh"]), platform: "linux" });
     expect(diff).toEqual({ files: [{ rel: "legs.sh", change: "changed", plus: 0, minus: 0, hunk: ["legs.sh: mode +x, it can now run as a program"], mode: "+x" }], counted: true });
     const view = JSON.stringify(versionView([], [], diff));
     expect(view).toContain('"text":"changed +x"');

@@ -306,6 +306,40 @@ async function readHolder(path: string, now: () => number): Promise<Holder> {
   return now() - held.mtimeMs > SWITCH_LOCK_BLANK_MS ? { kind: "dead", text } : { kind: "live" };
 }
 
+/**
+ * The file calls the lock makes that Windows can refuse for a moment (a test swaps them). Windows refuses a rename
+ * over, a link onto or an unlink of a file another handle has open, for example a waiter reading the lock, with
+ * EPERM, EACCES or EBUSY: {@link busyError}.
+ */
+export interface LockFs {
+  link(from: string, to: string): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
+  unlink(path: string): Promise<void>;
+}
+
+const DISK_LOCK_FS: LockFs = { link, rename, unlink };
+
+/** How long a lock step waits after Windows said "not now". */
+const BUSY_STEP_MS = 20;
+
+/** An error that means "another handle has the file open, try again", not "this cannot work". */
+function busyError<T>(err: T): boolean {
+  return err instanceof Error && "code" in err && (err.code === "EPERM" || err.code === "EACCES" || err.code === "EBUSY");
+}
+
+/** Remove a path, trying again while Windows says "not now", within {@link SWITCH_LOCK_WAIT_MS}. Never throws. */
+async function discard(fs: LockFs, path: string): Promise<void> {
+  for (let tries = 0; tries < SWITCH_LOCK_WAIT_MS / BUSY_STEP_MS; tries += 1) {
+    try {
+      await fs.unlink(path);
+      return;
+    } catch (err) {
+      if (!busyError(err)) return;
+    }
+    await Bun.sleep(BUSY_STEP_MS);
+  }
+}
+
 /** A file of this process's lock text under a unique name in the same folder, ready to be linked or renamed onto a lock path. */
 async function prepared(path: string, nonce: string): Promise<string> {
   const tmp = `${path}.${String(process.pid)}.${randomBytes(6).toString("hex")}.tmp`;
@@ -317,48 +351,55 @@ async function prepared(path: string, nonce: string): Promise<string> {
 /**
  * Create `path` holding this process's lock text, only when nothing stands there. The text is written first
  * under a name of its own and then linked onto the path: a link never replaces a file, and a waiter never sees
- * the lock half written. Answers whether this call made it.
+ * the lock half written. Answers `made`, `exists`, or `busy` when Windows refused the link for a moment.
  */
-async function createExclusive(path: string, nonce: string): Promise<boolean> {
+async function createExclusive(fs: LockFs, path: string, nonce: string): Promise<"made" | "exists" | "busy"> {
   const staged = await prepared(path, nonce);
   try {
-    await link(staged, path);
-    return true;
+    await fs.link(staged, path);
+    return "made";
   } catch (err) {
-    if (err instanceof Error && "code" in err && err.code === "EEXIST") return false;
+    if (err instanceof Error && "code" in err && err.code === "EEXIST") return "exists";
+    if (busyError(err)) return "busy";
     throw err;
   } finally {
-    await unlink(staged).catch(() => {});
+    await discard(fs, staged);
   }
 }
 
 /** Remove `path` only while it still carries `nonce`: a file that is not this holder's is left alone. */
-async function removeIfOwn(path: string, nonce: string): Promise<void> {
+async function removeIfOwn(fs: LockFs, path: string, nonce: string): Promise<void> {
   const text = await readText(path);
   if (text === null || !text.split("\n").includes(nonce)) return;
-  await unlink(path).catch(() => {});
+  await discard(fs, path);
 }
 
 /**
  * Take the lock file. Answers the holder's nonce: the lock file carries it, and {@link releaseLock} removes the
- * lock only while it still does. Throws after {@link SWITCH_LOCK_WAIT_MS}.
+ * lock only while it still does. Throws after {@link SWITCH_LOCK_WAIT_MS}, never before: a step Windows refused
+ * for a moment is tried again within the same wait.
  *
  * A LIVE HOLDER IS NEVER TAKEN OVER (counsel A1, third pass). The work inside the lock is renames and one small
  * write, so a holder is quick or dead; there is no age rule for a lock with a pid. A lock whose pid is alive, or an
  * empty or pid-less one younger than {@link SWITCH_LOCK_BLANK_MS}, is waited for. A dead one goes through one door,
  * {@link replaceDead}.
  */
-async function takeLock(lock: string, now: () => number): Promise<string> {
+async function takeLock(lock: string, now: () => number, fs: LockFs): Promise<string> {
   const until = now() + SWITCH_LOCK_WAIT_MS;
   const nonce = randomBytes(16).toString("hex");
-  // Bounded by the wait: a pass that does not take the lock sleeps 20 ms, except right after the lock went.
+  // Bounded by the wait: every pass that does not take the lock sleeps at least 1 ms, so the passes outlast it.
   for (let pass = 0; pass < SWITCH_LOCK_WAIT_MS; pass += 1) {
-    if (await createExclusive(lock, nonce)) return nonce;
-    const held = await readHolder(lock, now);
-    if (held.kind === "none") continue;
-    if (held.kind === "dead" && (await replaceDead({ path: lock, seen: held.text, nonce, depth: 0, now }))) return nonce;
+    const made = await createExclusive(fs, lock, nonce);
+    if (made === "made") return nonce;
+    let gone = false;
+    if (made === "exists") {
+      const held = await readHolder(lock, now);
+      gone = held.kind === "none";
+      if (held.kind === "dead" && (await replaceDead({ path: lock, seen: held.text, nonce, depth: 0, now, fs }))) return nonce;
+    }
     if (now() >= until) break;
-    await Bun.sleep(20);
+    // Right after the lock went, try again at once; otherwise a short step.
+    await Bun.sleep(gone ? 1 : BUSY_STEP_MS);
   }
   throw new Error(`switches.json is locked by another writer (${lock})`);
 }
@@ -366,45 +407,47 @@ async function takeLock(lock: string, now: () => number): Promise<string> {
 /**
  * The one door to a dead holder's file: `<path>.takeover`, created exclusive. Only its holder may replace `path`.
  * It reads `path` again, and only while it is the same file (`seen`, the nonce with it) and still dead (its pid
- * gone, or empty and still older than {@link SWITCH_LOCK_BLANK_MS}), renames its own prepared file OVER it: an atomic replace, so the lock path is never missing and no
- * other waiter can create a lock in between. At depth 0 the replacement is this waiter's lock (answers true);
- * at depth 1 `path` is a dead waiter's door and is only removed.
+ * gone, or empty and still older than {@link SWITCH_LOCK_BLANK_MS}), renames its own prepared file OVER it: an
+ * atomic replace, so the lock path is never missing and no other waiter can create a lock in between. At depth 0
+ * the replacement is this waiter's lock (answers true); at depth 1 `path` is a dead waiter's door and is only removed.
+ * A rename Windows refuses for a moment answers false: the door is released and the caller tries again.
  *
  * A door whose own pid is dead is cleared the same way, through the door's door (depth 1). A dead depth 1 door is
  * removed after it read dead: two waiters can race only there, after two holders died at the wrong moment.
  */
-async function replaceDead(opts: { path: string; seen: string; nonce: string; depth: number; now: () => number }): Promise<boolean> {
+async function replaceDead(opts: { path: string; seen: string; nonce: string; depth: number; now: () => number; fs: LockFs }): Promise<boolean> {
   const door = `${opts.path}.takeover`;
-  if (!(await createExclusive(door, opts.nonce))) {
+  if ((await createExclusive(opts.fs, door, opts.nonce)) !== "made") {
     const blocking = await readHolder(door, opts.now);
     if (blocking.kind !== "dead") return false;
-    if (opts.depth > 0) await unlink(door).catch(() => {});
-    else await replaceDead({ path: door, seen: blocking.text, nonce: opts.nonce, depth: 1, now: opts.now });
+    if (opts.depth > 0) await opts.fs.unlink(door).catch(() => {});
+    else await replaceDead({ ...opts, path: door, seen: blocking.text, depth: 1 });
     return false;
   }
   try {
     const again = await readHolder(opts.path, opts.now);
     if (again.kind !== "dead" || again.text !== opts.seen) return false;
     if (opts.depth > 0) {
-      await unlink(opts.path).catch(() => {});
+      await opts.fs.unlink(opts.path).catch(() => {});
       return false;
     }
     const mine = await prepared(opts.path, opts.nonce);
     try {
-      await rename(mine, opts.path);
+      await opts.fs.rename(mine, opts.path);
     } catch (err) {
-      await unlink(mine).catch(() => {});
+      await discard(opts.fs, mine);
+      if (busyError(err)) return false;
       throw err;
     }
     return true;
   } finally {
-    await removeIfOwn(door, opts.nonce);
+    await removeIfOwn(opts.fs, door, opts.nonce);
   }
 }
 
 /** Remove the lock file only while it still carries this holder's nonce: a lock replaced after this holder died is another writer's. */
-async function releaseLock(lock: string, nonce: string): Promise<void> {
-  await removeIfOwn(lock, nonce);
+async function releaseLock(fs: LockFs, lock: string, nonce: string): Promise<void> {
+  await removeIfOwn(fs, lock, nonce);
 }
 
 /**
@@ -428,16 +471,17 @@ export async function updateSwitches(stateDir: string, change: (switches: Switch
  * Hold the switch file's lock while `work` runs, and release it after, also when `work` throws. For a writer
  * that changes the trick folders and not the file (`collie trick update` swaps a folder), so a bridge's
  * approval or an add of the same id, which hold this lock, never see the folder half moved. A live holder is
- * never taken over, and a waiter gives up after {@link SWITCH_LOCK_WAIT_MS}: keep `work` short.
+ * never taken over, and a waiter gives up after {@link SWITCH_LOCK_WAIT_MS}: keep `work` short. `fs` is for a
+ * test that plays Windows refusing a step.
  */
-export async function withSwitchLock<T>(stateDir: string, work: () => Promise<T>, now: () => number = Date.now): Promise<T> {
+export async function withSwitchLock<T>(stateDir: string, work: () => Promise<T>, now: () => number = Date.now, fs: LockFs = DISK_LOCK_FS): Promise<T> {
   await mkdir(tricksStateDir(stateDir), { recursive: true, mode: 0o700 });
   const lock = `${switchesPath(stateDir)}.lock`;
-  const nonce = await takeLock(lock, now);
+  const nonce = await takeLock(lock, now, fs);
   try {
     return await work();
   } finally {
-    await releaseLock(lock, nonce);
+    await releaseLock(fs, lock, nonce);
   }
 }
 

@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, readdir, rename, rm, stat, symlink, unlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,7 +14,7 @@ import { buildFacts, crewFactsWorld, factsWorldOf } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
 import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksCodeRoute, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
-import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_BLANK_MS, updateSwitches, withApproval, withEntry, withSwitch, withSwitchLock, writeSwitches } from "./switches.ts";
+import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_BLANK_MS, SWITCH_LOCK_WAIT_MS, type LockFs, updateSwitches, withApproval, withEntry, withSwitch, withSwitchLock, writeSwitches } from "./switches.ts";
 
 const HASH = "a".repeat(64);
 const HASH2 = "b".repeat(64);
@@ -284,6 +284,51 @@ describe("the switch file", () => {
     }
   });
 
+  test("Windows: a rename over the lock refused twice with EPERM is tried again; the waiter gets the lock and leaves nothing", async () => {
+    const stateDir = await tempDir();
+    await mkdir(join(stateDir, "tricks"), { recursive: true });
+    const lock = `${switchesPath(stateDir)}.lock`;
+    await writeFile(lock, `${String(await deadPid())}\ndead-holder\n`);
+    const fs = refusing({ rename: 2 });
+    let entered = false;
+    await withSwitchLock(
+      stateDir,
+      async () => {
+        entered = true;
+        expect(readFileSync(lock, "utf8").startsWith(`${String(process.pid)}\n`)).toBe(true);
+      },
+      Date.now,
+      fs,
+    );
+    expect(entered).toBe(true);
+    expect(fs.refused.rename).toBe(2);
+    expect(await leftovers(stateDir)).toEqual([]);
+  });
+
+  test("Windows: a link onto the lock and its release refused with EBUSY and EACCES are tried again", async () => {
+    const stateDir = await tempDir();
+    const fs = refusing({ link: 2, unlinkLock: 1 });
+    await withSwitchLock(stateDir, async () => {}, Date.now, fs);
+    expect(fs.refused.link).toBe(2);
+    expect(fs.refused.unlinkLock).toBe(1);
+    expect(await leftovers(stateDir)).toEqual([]);
+  });
+
+  test("Windows: a rename that keeps being refused ends in the existing error at the limit, never before, and leaves nothing of the waiter's", async () => {
+    const stateDir = await tempDir();
+    await mkdir(join(stateDir, "tricks"), { recursive: true });
+    const lock = `${switchesPath(stateDir)}.lock`;
+    const dead = `${String(await deadPid())}\ndead-holder\n`;
+    await writeFile(lock, dead);
+    const fs = refusing({ rename: Number.POSITIVE_INFINITY });
+    const started = Date.now();
+    await expect(withSwitchLock(stateDir, async () => "never", Date.now, fs)).rejects.toThrow("locked by another writer");
+    expect(Date.now() - started).toBeGreaterThanOrEqual(SWITCH_LOCK_WAIT_MS);
+    expect(fs.refused.rename).toBeGreaterThan(10);
+    expect(readFileSync(lock, "utf8")).toBe(dead);
+    expect(await leftovers(stateDir)).toEqual(["switches.json.lock"]);
+  }, 20_000);
+
   test("counsel A1, blank locks: an old empty door is cleared, a fresh empty door is waited for", async () => {
     const dead = await deadPid();
     const stateDir = await tempDir();
@@ -312,6 +357,37 @@ describe("the switch file", () => {
     expect(await leftovers(stateDir)).toEqual([]);
   });
 });
+
+/** A lock file system that refuses the first `n` calls of a kind as Windows does when another handle has the file open. */
+function refusing(limits: { rename?: number; link?: number; unlinkLock?: number }) {
+  const refused = { rename: 0, link: 0, unlinkLock: 0 };
+  const no = (code: string): Error => Object.assign(new Error(`${code}: operation not permitted`), { code });
+  const fs: LockFs & { refused: typeof refused } = {
+    refused,
+    rename: async (from, to) => {
+      if (refused.rename < (limits.rename ?? 0)) {
+        refused.rename += 1;
+        throw no("EPERM");
+      }
+      await rename(from, to);
+    },
+    link: async (from, to) => {
+      if (refused.link < (limits.link ?? 0)) {
+        refused.link += 1;
+        throw no("EBUSY");
+      }
+      await link(from, to);
+    },
+    unlink: async (path) => {
+      if (path.endsWith(".lock") && refused.unlinkLock < (limits.unlinkLock ?? 0)) {
+        refused.unlinkLock += 1;
+        throw no("EACCES");
+      }
+      await unlink(path);
+    },
+  };
+  return fs;
+}
 
 /** The pid of a process that ran and was reaped: no process has it now (a reuse in the test's few ms is not expected). */
 async function deadPid(): Promise<number> {
