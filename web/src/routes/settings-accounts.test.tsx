@@ -210,6 +210,32 @@ describe("Accounts: the list", () => {
     expect(screen.getByText(/^Last seen .*ago · ~\/\.claude-work$/)).toBeInTheDocument();
   });
 
+  it("a row says how many sessions run in place of 'In use now': 1, 2, and live with none counted", async () => {
+    serveAccounts(
+      body({
+        accounts: [
+          defaultRow({ live: true, running: 1 }),
+          workRow({ live: true, running: 2 }),
+          workRow({ id: "acc-spare", label: "Spare", folder: "~/.claude-spare", live: true, running: 0 }),
+          workRow({ id: "acc-idle", label: "Idle", folder: "~/.claude-idle", live: true }),
+        ],
+      }),
+    );
+    mount("/settings/accounts");
+    expect(await screen.findByText(/^1 session · /)).toBeInTheDocument();
+    expect(screen.getByText(/^2 sessions · ~\/\.claude-work$/)).toBeInTheDocument();
+    // Only a sign-in session runs: the old words, whether the count is 0 or absent.
+    expect(screen.getByText(/^In use now · ~\/\.claude-spare$/)).toBeInTheDocument();
+    expect(screen.getByText(/^In use now · ~\/\.claude-idle$/)).toBeInTheDocument();
+    expect(screen.queryByText(/^1 session · .*In use now/)).toBeNull();
+  });
+
+  it("a row with no session and no live pane keeps the age of the reading", async () => {
+    serveAccounts(body({ accounts: [workRow({ seenAt: Date.now() - 2 * 3600_000, running: 0 })] }));
+    mount("/settings/accounts");
+    expect(await screen.findByText(/^Last seen .*ago · ~\/\.claude-work$/)).toBeInTheDocument();
+  });
+
   it("a row opens the account's page", async () => {
     serveAccounts(body({ accounts: [defaultRow(), workRow()] }));
     const router = mount("/settings/accounts");

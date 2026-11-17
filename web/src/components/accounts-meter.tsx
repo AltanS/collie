@@ -1,6 +1,6 @@
 import { Progress } from "@/components/ui/progress";
 import { useLocale } from "@/hooks/use-locale";
-import { isHot, seenLine, windowDetail, windowFigure, windowName, type AccountRow, type AccountWindow } from "@/lib/accounts";
+import { isHot, listSeenLine, seenLine, windowDetail, windowFigure, windowName, type AccountRow, type AccountWindow } from "@/lib/accounts";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -70,10 +70,10 @@ export function PickCaption({ row }: { row: AccountRow }) {
   );
 }
 
-/** The last seen and the folder, in one mono line. */
+/** The session count or the last seen, and the folder, in one mono line. */
 export function Foot({ row }: { row: AccountRow }) {
   useLocale();
-  const seen = seenLine(row);
+  const seen = listSeenLine(row);
   const folder = row.kind === "default" ? t("accounts.folder.noVariable", { folder: row.folder }) : row.folder;
   const bits = [seen, folder].filter((x): x is string => x !== null);
   return <p className="truncate font-mono text-[11px] leading-4 text-muted-foreground">{bits.join(" · ")}</p>;

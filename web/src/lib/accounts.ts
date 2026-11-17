@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { apiErrorStatus, fetchAccounts } from "@/lib/api";
 import { savedAtLabel, timeAgo } from "@/lib/format";
-import { t } from "@/lib/i18n";
+import { t, tn } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
 
 // ACCOUNTS (M101): a second login for an agent, kept as a folder the agent already understands. The
@@ -260,6 +260,16 @@ export function seenLine(row: AccountRow, now: number = Date.now()): string | nu
   if (row.live) return t("accounts.seen.live");
   if (row.seenAt === null) return null;
   return t("accounts.seen.ago", { when: timeAgo(row.seenAt, now) });
+}
+
+/**
+ * The list row's first foot word: how many sessions run in the profile ("2 sessions"), else
+ * {@link seenLine}. A profile that is live with no counted session (only a sign-in session runs) keeps
+ * "In use now", as one the bridge does not count for.
+ */
+export function listSeenLine(row: AccountRow, now: number = Date.now()): string | null {
+  if (row.running !== undefined && row.running > 0) return tn("accounts.sessions", row.running);
+  return seenLine(row, now);
 }
 
 // ── Add ───────────────────────────────────────────────────────────────────────────────────────────

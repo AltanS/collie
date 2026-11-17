@@ -15,6 +15,7 @@ import {
   newFolderFor,
   planWords,
   rememberStartError,
+  listSeenLine,
   seenLine,
   signedInText,
   slugOf,
@@ -66,6 +67,20 @@ describe("accounts: the windows are the harness's own", () => {
     expect(seenLine(workRow({ live: true, seenAt: NOW }), NOW)).toBe("In use now");
     expect(seenLine(workRow({ seenAt: NOW - 5 * 60_000 }), NOW)).toMatch(/^Last seen 5.*m.* ago$/);
     expect(seenLine(workRow(), NOW)).toBeNull();
+  });
+});
+
+describe("listSeenLine", () => {
+  it("counts the sessions that run, one and many, ahead of 'In use now'", () => {
+    expect(listSeenLine(workRow({ live: true, running: 1 }), NOW)).toBe("1 session");
+    expect(listSeenLine(workRow({ live: true, running: 2 }), NOW)).toBe("2 sessions");
+  });
+
+  it("keeps 'In use now' while only a sign-in session runs, and the age of the reading otherwise", () => {
+    expect(listSeenLine(workRow({ live: true, running: 0 }), NOW)).toBe("In use now");
+    expect(listSeenLine(workRow({ live: true }), NOW)).toBe("In use now");
+    expect(listSeenLine(workRow({ seenAt: NOW - 5 * 60_000 }), NOW)).toMatch(/^Last seen 5.*m.* ago$/);
+    expect(listSeenLine(workRow(), NOW)).toBeNull();
   });
 });
 

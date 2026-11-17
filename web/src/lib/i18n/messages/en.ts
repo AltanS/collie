@@ -3915,6 +3915,8 @@ export const en = {
   "accounts.window.none": "No usage limit reported.",
   "accounts.seen.live": "In use now",
   "accounts.seen.ago": "Last seen {when}",
+  "accounts.sessions.one": "{count} session",
+  "accounts.sessions.other": "{count} sessions",
   "accounts.folder.noVariable": "{folder}, no variable",
   "accounts.removeNote": "Remove forgets the label only. The folder, its links and its login stay where they are. With none left, the app is as before.",
   "accounts.found.title.one": "Found {count} folder in use",
@@ -4156,6 +4158,8 @@ export const PENDING_TRANSLATION = [
   "accounts.changeLogin.what",
   "accounts.changeLogin.othersKeep",
   "accounts.changeLogin.outside",
+  "accounts.sessions.one",
+  "accounts.sessions.other",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

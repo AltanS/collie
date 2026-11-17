@@ -148,6 +148,9 @@ export function AccountsSection() {
         <Card state="accounts-list-identity" label="1 Email under each name">
           <ListOf rows={[DEFAULT_ROW, WORK_ROW, NEW_ROW]} />
         </Card>
+        <Card state="accounts-list-sessions" label="1b Session count">
+          <ListOf rows={[{ ...DEFAULT_ROW, running: 1 }, { ...WORK_ROW, live: true, running: 3 }, { ...NEW_ROW, live: true, running: 0 }]} />
+        </Card>
         <Card state="accounts-list-no-status" label="2 An agent that cannot tell">
           <ListOf rows={[CODEX_ROW]} />
         </Card>

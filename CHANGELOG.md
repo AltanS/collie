@@ -63,6 +63,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The Profiles page explains a profile in one line.** The page opens with "A profile is signed in on its own." and a More that opens an example, Work beside Default, and says you pick the profile when you start a session and the session stays in it. More starts closed on every visit.
 - **Change login says what changes before you tap.** The page opens with "This profile gets another login.", then "Its sessions follow." for an agent whose sessions follow, or the existing line for new sessions only, and "Your other profiles keep their login." when the agent has more than one profile.
 - **Change login lists the sessions it reaches.** Under the count, each session that runs in the profile shows its name and its space, and a tap opens it. For an agent whose sessions follow, a line adds that sessions outside Collie that use the profile follow too. With no session running, no list and no line show.
+- **The Profiles list shows how many sessions run.** A profile row says "1 session" or "3 sessions" where it said "In use now". A profile where only a sign-in session runs keeps "In use now".
 
 ### Fixed
 
