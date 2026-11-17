@@ -26,7 +26,7 @@ import { DESIGN_KEY, STILL_MARK } from "../fixtures/still-mark";
 import { BIN } from "./bins";
 import { SETUPS, harnessDirs, prepareHarness, type HarnessId } from "./harnesses";
 import type { ScenarioId } from "./scenarios";
-import { MEMBER_ID, P, STATE_ROOT, memGuard, readRun, readToken, sleep, startInPane, type Machine } from "./rig-lib";
+import { MEMBER_ID, P, STATE_ROOT, memGuard, readRun, readSecondToken, readToken, sleep, startInPane, type Machine } from "./rig-lib";
 import { STUB_HARNESSES, tiersFromEnv } from "./replay/tier";
 
 export { expect };
@@ -171,12 +171,30 @@ export class Rig {
   /** The lead's member id on a crew rig; undefined on the solo rig. */
   readonly leadId: string | undefined;
 
-  constructor() {
+  /**
+   * The rig's bridge: the lead's, or with `which` = "second" the SECOND bridge of a rig started with
+   * `rig.ts up --second-bridge` (the chaos leg's case C3), which throws when this rig has none. The second
+   * bridge sees the same Herdr and the same panes, with its own state and its own paired device.
+   */
+  constructor(which: "lead" | "second" = "lead") {
     const run = readRun();
     if (run?.ready !== true) throw new Error("the rig is not up: the global setup starts it (bun e2e/rig/rig.ts up)");
-    this.base = `http://127.0.0.1:${run.port}`;
-    this.token = readToken();
-    this.leadId = run.leadId;
+    if (which === "lead") {
+      this.base = `http://127.0.0.1:${run.port}`;
+      this.token = readToken();
+      this.leadId = run.leadId;
+      return;
+    }
+    const token = readSecondToken();
+    if (run.second === undefined || token === null) throw new Error("this rig has no second bridge: start it with `bun e2e/rig/rig.ts up --second-bridge`");
+    this.base = `http://127.0.0.1:${run.second.port}`;
+    this.token = token;
+    this.leadId = undefined;
+  }
+
+  /** The rig's second bridge as a client, or null when the rig runs without one. */
+  static second(): Rig | null {
+    return readRun()?.second === undefined || readSecondToken() === null ? null : new Rig("second");
   }
 
   /** The device token the rig paired, for the phone's localStorage. */
