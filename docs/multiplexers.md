@@ -269,6 +269,13 @@ What works:
   extension into `~/.omp/agent/extensions/` (see `omp-extension/README.md`), and copy it again after
   each Collie upgrade. Check the label with `hc get <terminal> --json`, field `labels`. A wrong label
   can only point at one of your own sessions in that same folder.
+- Two pi panes in one folder, each with its own Chat, with no extension. pi draws the token totals of
+  its session in the footer (`↑26k ↓827 R171k CH86.8% 10.3%/272k`), and those are the sums of the usage
+  rows in its log. Collie reads the pane's screen and takes the log whose totals are exactly the
+  footer's. It needs at least two of the four counts on the footer row, shown whole (a narrow pane
+  that cuts the row names nothing), and exactly one log in the folder with those totals; otherwise
+  the Chat stays empty and says why. A pane that has just started, or just run `/new`, has no totals
+  yet, and its Chat appears with the first reply. `pi --session <id>` still names the log outright.
 
 What looks different on the core:
 

@@ -26,6 +26,7 @@ import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { asRecord, asText, FileSum, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
+import { type PiFooterLog, PiFooterTotals, parsePiFooter, pickByFooter } from "./pi-footer.ts";
 import { harnessProcessOf } from "../launch-window.ts";
 import { newestOf, probeHeadLine, rowOf, stringField } from "./name-probe.ts";
 import type { NameReading } from "../session-title.ts";
@@ -1221,6 +1222,9 @@ export function resumeValueOf(processes: readonly ForegroundProcess[] | undefine
 export class PiTranscriptSource implements TranscriptSource {
   private readonly pathCache = new Map<string, string>();
 
+  /** The token totals of the logs a pane's footer is compared with (#508), kept up to date by appended bytes only. */
+  private readonly footerTotals = new PiFooterTotals();
+
   private readonly rootsNow: () => string[];
 
   /** The roots now: fixed, or the live list an added account joins (M101). */
@@ -1275,8 +1279,11 @@ export class PiTranscriptSource implements TranscriptSource {
    * age, so the start-time floor below does not apply to it.
    *
    * With a pi or omp neighbour in the same folder (`hints.shared`) and a command line that names no
-   * session, the answer is no session, because the newest log could be the neighbour's (#508). The
-   * answer is an `id` ref, so it goes through the same `resolve` and containment as a reported one.
+   * session, the newest log could be the neighbour's (#508), so the folder walk is not used. The
+   * pane's own footer is read instead ({@link PiTranscriptSource.footerSession}): when exactly one log
+   * of the folder has the token totals the footer shows, it is the pane's; otherwise the answer is no
+   * session. The answer is an `id` ref, so it goes through the same `resolve` and containment as a
+   * reported one.
    */
   async discoverSession(cwd: string, hints?: DiscoverHints): Promise<AgentSessionRef | null> {
     if (!isAbsolute(cwd)) return null;
@@ -1285,7 +1292,31 @@ export class PiTranscriptSource implements TranscriptSource {
     if (labelled !== null) return labelled;
     const named = await this.namedSession(discovery, hints?.processes);
     if (named !== null) return named;
-    if (hints?.shared === true) return null;
+    if (hints?.shared === true) return this.footerSession(discovery, hints);
+    const candidates = await this.candidateLogs(discovery);
+    const harnessStartMs = candidates.length === 0 ? null : await this.harnessStart(hints);
+    const eligible: typeof candidates = [];
+    for (const candidate of candidates) {
+      if (eligible.length >= MAX_DISCOVER_READS) break;
+      if (harnessStartMs !== null && (await predatesHarness(candidate, harnessStartMs))) continue;
+      eligible.push(candidate);
+    }
+    for (const candidate of eligible) {
+      const contained = await containedRealpath(candidate.path, candidate.root);
+      if (contained === null) continue;
+      if (!(await sessionCwdMatches(await sessionCwdOf(contained), discovery))) continue;
+      this.pathCache.set(candidate.id, contained);
+      return { kind: "id", value: candidate.id };
+    }
+    return null;
+  }
+
+  /**
+   * The logs filed under the folders this cwd maps to, newest first (by mtime), at most
+   * {@link MAX_DISCOVER_CANDIDATES} of them stat'd. A name alone proves nothing: the caller still checks the
+   * session row's cwd.
+   */
+  private async candidateLogs(discovery: PiDiscoveryContext): Promise<{ id: string; path: string; root: string; mtimeMs: number }[]> {
     const candidates: { id: string; path: string; root: string; mtimeMs: number }[] = [];
     for (const root of discovery.roots) {
       if (root.realPath === null) continue;
@@ -1310,21 +1341,39 @@ export class PiTranscriptSource implements TranscriptSource {
       }
     }
     candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    const harnessStartMs = candidates.length === 0 ? null : await this.harnessStart(hints);
-    const eligible: typeof candidates = [];
-    for (const candidate of candidates) {
-      if (eligible.length >= MAX_DISCOVER_READS) break;
-      if (harnessStartMs !== null && (await predatesHarness(candidate, harnessStartMs))) continue;
-      eligible.push(candidate);
+    return candidates;
+  }
+
+  /**
+   * The log whose token totals are the ones the pane's footer shows (#508), for a pane in a folder
+   * that another pi or omp pane shares, or null. Only for such a pane: it is the one case where the
+   * folder cannot say which log is the pane's. Which logs may be the pane's is decided as in the folder
+   * walk (filed for this cwd, inside a root, the session row's cwd matching), up to {@link MAX_FOOTER_LOGS}
+   * of the newest; the rule that picks one is {@link pickByFooter}. No screen, no footer on it, no or
+   * several matching logs: null, the answer this case gave before. Never throws.
+   */
+  private async footerSession(discovery: PiDiscoveryContext, hints: DiscoverHints): Promise<AgentSessionRef | null> {
+    if (hints.screen === undefined) return null;
+    let screen: string | null;
+    try {
+      screen = await hints.screen();
+    } catch {
+      return null;
     }
-    for (const candidate of eligible) {
+    const footer = screen === null ? null : parsePiFooter(screen);
+    if (footer === null) return null;
+    const logs: PiFooterLog[] = [];
+    for (const candidate of await this.candidateLogs(discovery)) {
+      if (logs.length >= MAX_FOOTER_LOGS) break;
       const contained = await containedRealpath(candidate.path, candidate.root);
       if (contained === null) continue;
       if (!(await sessionCwdMatches(await sessionCwdOf(contained), discovery))) continue;
-      this.pathCache.set(candidate.id, contained);
-      return { kind: "id", value: candidate.id };
+      logs.push({ id: candidate.id, path: contained });
     }
-    return null;
+    const found = await pickByFooter(footer, logs, this.footerTotals);
+    if (found === null) return null;
+    this.pathCache.set(found.id, found.path);
+    return { kind: "id", value: found.id };
   }
 
   /**
@@ -1622,6 +1671,12 @@ const MAX_DISCOVER_CANDIDATES = 500;
 
 /** Most session logs a discovery head-reads, newest first; past this the answer is "no session". */
 const MAX_DISCOVER_READS = 20;
+
+/**
+ * Most session logs a footer match totals up (#508), newest first. A pane that runs an older session
+ * than this many newer ones in its folder gets no match, which is "no session", as before.
+ */
+const MAX_FOOTER_LOGS = 12;
 
 /** How much of a log's head holds its session row (Oh My Pi puts a 256-byte title row first). */
 const SESSION_ROW_BYTES = 16 * 1024;
