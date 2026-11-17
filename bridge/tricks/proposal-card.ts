@@ -5,8 +5,9 @@ import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type MANIFEST_KEYS, typ
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import { addedDiff, codeGroup, changeCells, filesOnCards, GROUP_WIDE_GAP, groupOrder, helperNote, notesChangedNote, placesTables, shippedHelpers, shippedNotesDiff, sizeWords, type GroupRefusal, type ShippedFile } from "./card-group.ts";
-import { ACCESS_CHIPS, accessLine, asksForChange, asksForLines, bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, listWords, newInputs, newRights, ON_CHIP, placeWords, raisedAccess, rightsHead, runsAsYou, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
+import { ACCESS_CHIPS, accessLine, asksForChange, asksForLines, bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, listWords, newInputs, newRights, ON_CHIP, placeWords, raisedAccess, rightsHead, rulesView, runsAsYou, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
 import { PROPOSAL_SETTINGS_LEFT, type ProposedFile } from "./propose-wire.ts";
+import { rulesChange } from "./rules-diff.ts";
 import { canRunLine, type VersionDiff } from "./version-diff.ts";
 
 // THE PROPOSAL CARD (crew slice 8): one Decision of Collie's own on the lead's Hill for each trick an agent
@@ -359,6 +360,11 @@ export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCa
   const head = [...runsAsYou(input.manifest), ...accessLine(raisedAccess(input.baseManifest, input.manifest)), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...settingsLines(input.settingsLeft)];
   // Contract 3: a new or changed field is named, as on the runner's own version card.
   head.push(...asksForChange(input.baseManifest, input.manifest));
+  // Contract 2: a proposed version never GIVES agents instructions (proposals.ts refuses that first), but it may
+  // take them away: the approved rules' change shows whole, as on the runner's own version card, so a yes never
+  // removes an agent's instructions unseen (counsel on Edge build 5, A13).
+  const rules = rulesChange(input.baseManifest, input.manifest);
+  if (rules !== null) head.push(...rulesView(rules));
   const shown = fitView(head, input.diff);
   if (!shown.headFits) return TOO_LARGE_FACTS;
   const total = input.diff.files.length;
