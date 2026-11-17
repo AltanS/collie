@@ -133,6 +133,18 @@ const STATUS_KEY = {
 } as const;
 
 /** What a cleared reading tells the status line; a steer the harness queued says so (M69). */
+/**
+ * The sentence the notice says, where the answer's own note is not the whole story: a returned draft,
+ * an override typed after words already in the agent's box (`draftSeen`), and an override the screen
+ * moved under, which comes back armed on the screen now (M102 spec 12).
+ */
+function refusalSentence(sentence: string, facts: { returnedDraft: boolean; note: SendNote; draftSeen: boolean; overrideMoved: boolean }): string {
+  if (facts.returnedDraft && facts.note === "draft") return translate("composer.protocol.draftIsReturned");
+  if (facts.note === "overrideTyped" && facts.draftSeen) return translate("composer.protocol.overrideTypedDraft");
+  if (facts.overrideMoved) return translate("composer.protocol.overrideMoved");
+  return sentence;
+}
+
 function verifiedNote(note: SendNote, when: SendWhen | undefined): keyof typeof STATUS_KEY {
   if (note === "steered" || note === "held") return note;
   if (note === "queued") return when === "steer" ? "queuedInstead" : "queued";
@@ -2034,7 +2046,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
       if (override && typeAnywaySendRef.current && reply.outcome === "refused" && reply.cap === null && reply.rowsHash !== null) setOverrideHash(reply.rowsHash);
       setSendRefusal(
-        returnedDraft && reading.note === "draft" ? { ...refusal, sentence: translate("composer.protocol.draftIsReturned") } : refusal,
+        { ...refusal, sentence: refusalSentence(refusal.sentence, { returnedDraft, note: reading.note, draftSeen: reply.draftSeen === true, overrideMoved: override && reply.outcome === "refused" && (reply.reason === "stale_surface" || reply.reason === "stale_view") && reply.rowsHash !== null }) },
         reply.surface ?? shownSurface,
         offered,
       );
