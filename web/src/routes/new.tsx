@@ -237,6 +237,7 @@ function NewPage({ search }: { search: string }) {
   const pickMemory = useRememberedAnswer(
     "new-profile-pick",
     frontMachine && accountsRead && agentPick === null && kind === "agent" && !offer.startersOnly && what?.kind === "harness" ? accountsShown : undefined,
+    target.host,
   );
   const accountsReserved = frontMachine && !accountsLoaded && pickMemory === true && couldCarryProfiles;
   // In a space, the folder starts as the space's own pane's: the bridge would take it when none is named.

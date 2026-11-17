@@ -281,7 +281,7 @@ it.each([
 // CALM LOAD (row 2): the rows are read after the first paint, so the header is drawn from the remembered
 // count and the body eases in under it. The neighbours (the header, its count, its place) do not move.
 describe("LaunchStrip, first frame", () => {
-  const COUNT_KEY = "collie:shape:/:home-launch-count";
+  const COUNT_KEY = "collie:shape:/:home-launch-count@";
   const loaded = (launchers: Launcher[]): LaunchersState => ({ launchers, home: "/home/op", harnesses: null, items: null, adding: null, loadedFor: "\u0000" });
   const land = (state: LaunchersState) =>
     act(() => {

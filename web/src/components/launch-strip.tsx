@@ -48,7 +48,7 @@ interface LaunchStripProps {
 export function LaunchStrip({ open, onOpenChange, scope }: LaunchStripProps) {
   const { launchers, home, loadedFor } = useLaunchers(scope);
   const front = scope?.host === undefined && scope?.session === undefined;
-  const rememberedCount = useRememberedAnswer("home-launch-count", front && loadedFor !== null ? Math.min(launchers.length, ANSWER_MAX_COUNT) : undefined);
+  const rememberedCount = useRememberedAnswer("home-launch-count", front && loadedFor !== null ? Math.min(launchers.length, ANSWER_MAX_COUNT) : undefined, scope?.host);
   const count = launchers.length > 0 || loadedFor !== null || !front ? launchers.length : (rememberedCount ?? 0);
   const { launch, launching } = useSpaceActions();
   // A row that skips permission prompts is confirmed once per device before it starts (ADR 0094).
