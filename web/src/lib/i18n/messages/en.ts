@@ -847,6 +847,7 @@ export const en = {
   "chat.status.askUnknown": "No proof the answer went; the screen shows what happened",
   "chat.status.askDesk": "The desk answered first. Collie did not use your tap.",
   "chat.status.askMoved": "The hold ended before your tap. The card now answers the dialog on the screen.",
+  "app.apiSkew": "This page comes from another Collie version than this machine. It reloads when nothing unsent is open.",
   "chat.hold.title": "Permission: {tool}",
   "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.",
   "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.",
@@ -3954,6 +3955,7 @@ export const PENDING_TRANSLATION = [
   "home.trickWaits.open",
   "belt.stopHold",
   "chat.status.askMoved",
+  "app.apiSkew",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

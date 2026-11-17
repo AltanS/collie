@@ -2499,6 +2499,8 @@ export interface FolderBrowseResponse {
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
+  /** The bridge's API number (M102 spec 14, lib/api-version.ts). Absent from an older bridge. */
+  apiVersion?: number;
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
   /**

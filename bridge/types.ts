@@ -2426,6 +2426,12 @@ export interface NotificationsClearResponse {
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
+  /**
+   * The bridge's API number (M102 spec 14 decision 4, `web/src/lib/api-version.ts`): the phone compares
+   * it with its bundle's and says so when they differ. Absent from an older bridge, and from a
+   * hand-built body that does not pass it.
+   */
+  apiVersion?: number;
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
   /**

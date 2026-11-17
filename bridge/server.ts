@@ -9,6 +9,7 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../web/
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import { recordRefusal, withRefusal, type RefusalReason } from "./refusal.ts";
+import { API_VERSION } from "../web/src/lib/api-version.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
 import {
   changesParams,
@@ -1162,6 +1163,8 @@ export function bridgeConfigBody(opts: {
    * member's own switch is not in the capability block the lead holds.
    */
   redact?: boolean;
+  /** The API number (M102 spec 14). Optional for the reason `upload` is; the real handler passes it. */
+  apiVersion?: number;
 }): BridgeConfig {
   const mode = modeForWire(opts.mode);
   const mine = opts.operatorCommands ?? [];
@@ -1197,6 +1200,8 @@ export function bridgeConfigBody(opts: {
   // Appended last and omit-when-absent: no key is an older bridge, or a member's scoped answer, and
   // the phone shows "unknown" for both rather than guessing "on".
   if (opts.redact !== undefined) wire.redact = opts.redact;
+  // Appended last and omit-when-absent: no key is an older bridge, which the phone reads as no word at all.
+  if (opts.apiVersion !== undefined) wire.apiVersion = opts.apiVersion;
   return wire;
 }
 
@@ -3843,6 +3848,7 @@ export function startServer(opts: {
             push: push.enabled,
             vapidPublicKey: push.publicKey,
             build: await buildId(),
+            apiVersion: API_VERSION,
             mode: crew.mode,
             operatorCommands: mine,
             operatorKeys: myKeys,
