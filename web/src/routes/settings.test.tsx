@@ -282,8 +282,8 @@ function listTitles(): string[] {
   return [...(group?.querySelectorAll("button") ?? [])].map((b) => b.querySelector(".font-medium")?.textContent ?? "");
 }
 
-/** The settled list's row count without the two optional rows: what the stand-in must hold. */
-const SETTLED_ROWS_WITHOUT_OPTIONAL = 9;
+/** The settled list's row count without the optional Accounts row (Tricks is always there): what the stand-in must hold. */
+const SETTLED_ROWS_WITHOUT_OPTIONAL = 10;
 
 function homeData(over: Partial<HomeData>): HomeData {
   return {
@@ -327,7 +327,6 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
 
   it("a device that remembers both rows paints them on the first frame, and the reads change nothing", async () => {
     writeAnswer("settings-accounts-row", true);
-    writeAnswer("settings-tricks-row", true);
     const accounts = gate();
     server.use(
       http.get("/api/accounts", async () => {
@@ -343,7 +342,7 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
     // Profiles right after Harnesses, Tricks right before Experiments, from the first frame.
     expect(first.indexOf("Profiles")).toBe(first.indexOf("Harness configurations") + 1);
     expect(first.indexOf("Tricks")).toBe(first.indexOf("Experiments") - 1);
-    expect(first).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL + 2);
+    expect(first).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL + 1);
 
     await act(async () => {
       accounts.open();
@@ -352,9 +351,8 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
     expect(listTitles()).toEqual(first);
   });
 
-  it("a device that remembers neither row paints the list without them, and a 404 changes nothing", async () => {
+  it("a device that remembers no Accounts row paints the list without it and with Tricks, and a 404 changes nothing", async () => {
     writeAnswer("settings-accounts-row", false);
-    writeAnswer("settings-tricks-row", false);
     const accounts = gate();
     server.use(
       http.get("/api/accounts", async () => {
@@ -367,7 +365,8 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
 
     const first = listTitles();
     expect(first).not.toContain("Profiles");
-    expect(first).not.toContain("Tricks");
+    // Tricks is always there (2026-11-17), with no tricks reply and no remembered answer.
+    expect(first.indexOf("Tricks")).toBe(first.indexOf("Experiments") - 1);
     expect(first).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
 
     await act(async () => {
@@ -380,7 +379,6 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
 
   it("a row the device did not remember goes into its place when it arrives, and is remembered", async () => {
     writeAnswer("settings-accounts-row", false);
-    writeAnswer("settings-tricks-row", false);
     server.use(http.get("/api/accounts", () => HttpResponse.json(body())));
     renderIndex({ tricks: false });
     const row = await screen.findByRole("button", { name: /Profiles/ });
@@ -447,12 +445,11 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
     const titles = listTitles();
     expect(titles).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
     expect(titles).not.toContain("Profiles");
-    expect(titles).not.toContain("Tricks");
+    expect(titles).toContain("Tricks");
   });
 
   it("the Updates caption changes its words on its own line and moves no row", async () => {
     writeAnswer("settings-accounts-row", false);
-    writeAnswer("settings-tricks-row", false);
     serveAccountsStatus(404);
     const check = gate();
     server.use(

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { TRICKS_OFF_LINE, TRICKS_WINDOWS_LINE } from "../../web/src/lib/tricks/schema.ts";
-import { tricksFeatureRoute } from "../server.ts";
+import { tricksFeatureRoute, TRICKS_SWITCH_LOCAL_TEXT } from "../server.ts";
 import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { parseTricksFeature, readTricksFeature, TRICKS_FEATURE_FILE, TricksFeatureSwitch, tricksFeaturePath, writeTricksFeature } from "./feature-switch.ts";
@@ -362,6 +362,10 @@ describe("the route", () => {
     expect(TRICKS_ROUTE_RIGHTS.feature).toBe("write");
     const route = src.slice(src.indexOf("if (pathname === TRICKS_FEATURE_ROUTE"));
     expect(route.slice(0, 300)).toContain('guard(req, cfg, req.method === "GET" ? TRICKS_ROUTE_RIGHTS.reply : TRICKS_ROUTE_RIGHTS.feature, pairingGate)');
+    // `?h=<member>` is refused with 400, as on the Hill's switch: the switch is this machine's only.
+    expect(route.slice(0, 600)).toContain('if (host.kind === "member") return text(TRICKS_SWITCH_LOCAL_TEXT, 400);');
+    expect(hill.slice(0, 400)).toContain('if (host.kind === "member") return text(HILL_LOCAL_TEXT, 400);');
+    expect(TRICKS_SWITCH_LOCAL_TEXT).toContain("this machine");
     const snapshot = src.slice(src.indexOf("const localSnapshot = ("), src.indexOf("const watchedPaneIds = ()"));
     const cut = snapshot.indexOf("if (forCrew) return body;");
     const carried = snapshot.indexOf("if (opts.tricks !== undefined && !opts.tricks.switchedOn()) body.tricksOff = true;");
