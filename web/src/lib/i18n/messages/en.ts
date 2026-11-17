@@ -3654,7 +3654,6 @@ export const en = {
   "settings.tricks.about.open": "About {name}",
   "settings.tricks.about.none": "This trick has no description.",
   "settings.tricks.about.does": "What it does",
-  "settings.tricks.about.draws": "Draws in: {places}.",
   "settings.tricks.about.env": "Asks for the environment names {names}.",
   // `on` and `watch` are rights (M105 step one): the same words as the proposal card's chips (bridge/tricks/version-card.ts).
   "settings.tricks.about.on": "Runs when a session changes state.",
@@ -3691,6 +3690,14 @@ export const en = {
   // An agent view and its rules (contract 2). The rights lines are schema.ts's own words
   // (AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS, RULES_WORDS), held there by a test.
   "settings.tricks.place.agentView": "agent view",
+  "settings.tricks.about.shows": "It shows in: {places}.",
+  "settings.tricks.about.shows.belt": "the end of the Belt in each session",
+  "settings.tricks.about.shows.status": "the usage row of each session",
+  "settings.tricks.about.shows.session": "a page of its own (a row under Tricks on the Dashboard)",
+  "settings.tricks.about.shows.dashboard": "a tile in the strip at the top of the Dashboard",
+  "settings.tricks.about.shows.tabbar": "an item in the bottom bar of the Dashboard",
+  "settings.tricks.about.shows.menu": "rows in each session's settings",
+  "settings.tricks.about.shows.agentView": "a view of a session, beside Terminal and Chat",
   "settings.tricks.about.agentView": "Adds a view of a session that the session's own agent draws. You switch it on per session.",
   "settings.tricks.about.agentViewTap": "A tap in that view sends a message in your name to that session only.",
   // The `menu` place's rights lines: schema.ts's own words (MENU_WORDS, MENU_TAP_WORDS), held there by a test.
@@ -4133,7 +4140,17 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = ["hill.hold.hint"] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [
+  "hill.hold.hint",
+  "settings.tricks.about.shows",
+  "settings.tricks.about.shows.belt",
+  "settings.tricks.about.shows.status",
+  "settings.tricks.about.shows.session",
+  "settings.tricks.about.shows.dashboard",
+  "settings.tricks.about.shows.tabbar",
+  "settings.tricks.about.shows.menu",
+  "settings.tricks.about.shows.agentView",
+] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];

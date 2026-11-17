@@ -14,6 +14,9 @@ const badgeVariants = cva(
         outline: "text-foreground",
         // Settled: the done token, on a ground of itself. An agent view's "Answered".
         ok: "border-transparent bg-status-done/15 text-status-done",
+        // A VALUE in a fact or a setting of a trick's detail pages: the foreground at medium weight on `muted`
+        // with a uniform hairline, so it stands apart from the muted label and the plain sentence around it.
+        value: "border-border bg-muted text-foreground",
       },
     },
     defaultVariants: { variant: "default" },
@@ -30,4 +33,4 @@ function Badge({
   );
 }
 
-export { Badge };
+export { Badge, badgeVariants };

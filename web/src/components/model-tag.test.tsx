@@ -451,8 +451,11 @@ describe("ModelTag trick status items", () => {
     expect(container.querySelector("[data-status-item='a']")?.hasAttribute("inert")).toBe(false);
   });
 
-  it("hides every item before it lets the model name shrink, and hides none with room to spare", () => {
+  it("keeps every item and lets the model name give way first, and hides none with room to spare", () => {
     stubLayout();
+    // A 100px box: 70% is 70, less 8, 62. "Opus 5.5" is 40; one 60px item would need 40 + 4 + 60 = 104, but the
+    // name stands down to its floor (24): 24 + 4 + 60 = 88 is still over, so the item hides. The name is not the
+    // thing that moved: it stays whole, and no item is hidden to make room for a name.
     const narrow = render(
       <div data-w="100">
         <ModelTag model="claude-opus-5-5" trailing={items} />
@@ -466,6 +469,71 @@ describe("ModelTag trick status items", () => {
       </div>,
     );
     expect(hidden(wide.container)).toEqual([]);
+  });
+
+  describe("the operator's full Claude row (a Crew CPU chip of 70px)", () => {
+    const usage = { context: 19, limits: [{ window: "5h" as const, used: 12 }, { window: "7d" as const, used: 3 }], cost: 0.11 };
+    const crew: StatusItem[] = [{ id: "crew-cpu", trick: "crew-cpu", face: <span data-w="70">Crew CPU</span> }];
+    const label = (container: HTMLElement) => container.querySelector("[data-slot='usage-label']");
+    const effortHidden = (container: HTMLElement) => container.querySelector("[data-slot='usage-effort']")?.hasAttribute("data-hidden");
+
+    // The row in 5px-a-character layout: the name and effort 40 + 45 = 85, the figures 30 + 25 + 20 + 25 with
+    // three gaps of 4 = 112, the chip 70. All of it is 85 + 4 + 112 + 4 + 70 = 275, over the room of a 360px
+    // phone (floor(252) - 8 = 244) and of a 390px one (floor(273) - 8 = 265). Without the effort it is 230.
+    it.each([360, 390])("at %ipx the chip stays and the effort leaves the name first", (width) => {
+      stubLayout();
+      const { container } = render(
+        <div data-w={String(width)}>
+          <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={crew} />
+        </div>,
+      );
+      expect(hidden(container)).toEqual([]);
+      expect(effortHidden(container)).toBe(true);
+      expect(container.querySelector("[data-status-item='crew-cpu']")?.hasAttribute("inert")).toBe(false);
+      // The figures are all still there, and the screen reader still hears the whole effort.
+      expect(container.querySelectorAll("[data-gauge]")).toHaveLength(3);
+      expect(container.querySelector("[data-slot='usage-cost']")?.textContent).toBe("$0.11");
+      expect(container.querySelector(".sr-only")?.textContent).toContain("Model Opus 5.5 · medium");
+      expect(label(container)?.className).toContain("truncate");
+    });
+
+    it("keeps the whole name with the effort when the row has room for all of it", () => {
+      stubLayout();
+      const { container } = render(
+        <div data-w="480">
+          <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={crew} />
+        </div>,
+      );
+      expect(hidden(container)).toEqual([]);
+      expect(effortHidden(container)).toBe(false);
+    });
+
+    it("keeps the chip while the name is cut, and hides the last chips only when they alone fill the row", () => {
+      stubLayout();
+      // 300px: room 202. Figures 112 + the name's floor 24 + gaps 8 leave 58: the 70px chip cannot stay.
+      const small = render(
+        <div data-w="300">
+          <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={crew} />
+        </div>,
+      );
+      expect(hidden(small.container)).toEqual(["crew-cpu"]);
+      // Two chips of 60 on 480px (room 328): name floor 24 + 4 + 112 + 4 + 60 + 4 + 60 = 268 fits both, and the
+      // name takes the short form (40 fits in what is left, the full 85 does not).
+      const two = render(
+        <div data-w="480">
+          <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={items.slice(0, 2)} />
+        </div>,
+      );
+      expect(hidden(two.container)).toEqual([]);
+      expect(effortHidden(two.container)).toBe(true);
+      // Three of them do not fit: the last one gives way, the first two stay.
+      const three = render(
+        <div data-w="480">
+          <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={items} />
+        </div>,
+      );
+      expect(hidden(three.container)).toEqual(["c"]);
+    });
   });
 });
 

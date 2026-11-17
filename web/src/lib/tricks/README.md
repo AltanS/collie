@@ -1079,8 +1079,9 @@ A `status` part is `{ at: "status", id, chip: { text, icon?, tone?, at?, clock? 
 the tree's chip attributes and no others, in the usage row after Collie's own items, in manifest
 order. `text` is 1 to 12 characters. There is no `state` and no `intent`: the chip is not a control,
 and a tap opens the trick's session when it has one. One per trick. When the line is wider than its
-room the trick items hide first, the newest (the last) before the older, and Collie's own items never
-move (`status.ts`, measured by `ModelTag`). Past `fresh` the chip loses its tone and its tap says its age.
+room the model name gives way first (the effort leaves it, then an ellipsis), the figures stay, and
+the trick items hide only when they alone are more than fit, the newest (the last) before the older
+(`status.ts`, measured by `ModelTag`). Past `fresh` the chip loses its tone and its tap says its age.
 
 A `dashboard` part and a `tabbar` part are `{ at, id, item: { label, icon?, badge?, tone? } }`: one
 item, an icon over a short name. `label` is 1 to 16 characters and truncates on the glass. `badge` is

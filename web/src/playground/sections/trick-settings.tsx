@@ -540,6 +540,24 @@ export function TrickSettingsSection(): ReactNode {
           ]}
         />
         <SheetBox n={66} state="trick-settings-about-keeps-running" label="a trick that runs on a file change: the last row says it keeps running with no phone open" trick={{ ...GATES, run: "bun run gates.ts", watch: ["~/notes/todo.md"] }} />
+        <SheetBox
+          n={67}
+          state="trick-settings-about-values"
+          label="the values stand on chips: the timer, the run line, where it shows, a file path and a version in the facts, and the settings the person set (labels stay muted)"
+          values
+          trick={{
+            ...FIELDS_TRICK,
+            needsSetup: undefined,
+            values: { repo: "lodge/workshop", branch: "edge", notify: true, rows: 20 },
+            places: ["belt", "status", "dashboard"],
+            version: "1.2.0",
+            run: "bun run ~/projects/collie-workspace/tricks/release-gates/check-all-branches.ts --repo lodge/workshop --json",
+            everyMs: 300_000,
+            watch: ["~/projects/collie-workspace/collie/CHANGELOG.md"],
+            env: ["GH_TOKEN"],
+            inputs: { globs: ["RELEASE.md"], crew: false },
+          }}
+        />
         <SheetBox n={13} state="trick-settings-about-full" label="description, two paragraphs, inputs, one warning, origin" trick={GATES} />
         <SheetBox
           n={14}

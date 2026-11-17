@@ -168,7 +168,7 @@ function FieldControl({ id, hintId, field, shown, disabled, onSave }: FieldContr
       // A field with no value yet (no default, nothing set) shows "Not set" until one is picked.
       const unset = now === undefined;
       return (
-        <Select id={id} className="w-1/2 max-w-56 shrink-0" value={unset ? "" : now} disabled={disabled} aria-describedby={hintId} onChange={(event) => onSave(event.currentTarget.value === "" ? null : event.currentTarget.value)}>
+        <Select id={id} valueChip className="w-1/2 max-w-56 shrink-0" value={unset ? "" : now} disabled={disabled} aria-describedby={hintId} onChange={(event) => onSave(event.currentTarget.value === "" ? null : event.currentTarget.value)}>
           {(unset || field.required !== true) && <option value="">{t("settings.tricks.fields.notSet")}</option>}
           {field.options.map((option) => (
             <option key={option} value={option}>
@@ -238,7 +238,7 @@ function BoxControl({ id, hintId, field, shown, disabled, onSave }: FieldControl
         onFocus={() => setTyping(true)}
         onChange={(event) => setDraft(event.currentTarget.value)}
         onBlur={commit}
-        className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+        className="h-11 w-full rounded-lg border border-border bg-muted px-3 text-base font-medium text-foreground placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
       />
     </form>
   );

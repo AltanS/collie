@@ -3364,7 +3364,6 @@ export const ko: Dictionary = {
   "settings.tricks.about.open": "{name} 정보",
   "settings.tricks.about.none": "이 트릭에는 설명이 없습니다.",
   "settings.tricks.about.does": "하는 일",
-  "settings.tricks.about.draws": "그리는 위치: {places}.",
   "settings.tricks.about.env": "환경 변수 이름 {names}을(를) 요청합니다.",
   "settings.tricks.about.on": "세션의 상태가 바뀔 때 실행됩니다.",
   "settings.tricks.about.keepsRunning": "열려 있는 휴대폰이 없어도 계속 실행됩니다.",

@@ -5,7 +5,7 @@ import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type MANIFEST_KEYS, typ
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import { addedDiff, codeGroup, changeCells, filesOnCards, GROUP_WIDE_GAP, groupOrder, helperNote, notesChangedNote, placesTables, shippedHelpers, shippedNotesDiff, sizeWords, type GroupRefusal, type ShippedFile } from "./card-group.ts";
-import { ACCESS_CHIPS, accessLine, asksForChange, asksForLines, bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, keepsRunning, listWords, newInputs, newRights, ON_CHIP, placeWords, raisedAccess, rightsHead, rulesView, runsAsYou, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
+import { ACCESS_CHIPS, accessLine, asksForChange, asksForLines, bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, keepsRunning, listWords, newInputs, newRights, ON_CHIP, placeWords, raisedAccess, rightsHead, rulesView, runsAsYou, showsIn, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
 import { PROPOSAL_SETTINGS_LEFT, type ProposedFile } from "./propose-wire.ts";
 import { rulesChange } from "./rules-diff.ts";
 import { canRunLine, type VersionDiff } from "./version-diff.ts";
@@ -293,7 +293,7 @@ export function proposalCard(input: ProposalCardInput): ProposalCardResult {
   const reads = manifest.inputs ?? [];
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It ${alsoWords}.` : "It asks for no rights.";
-  const head = [...runsAsYou(manifest), ...accessLine(manifest.access), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...keepsRunning(manifest), ...canRunLines(input.executable), ...settingsLines(input.settingsLeft)];
+  const head = [...runsAsYou(manifest), ...accessLine(manifest.access), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...showsIn(manifest), ...keepsRunning(manifest), ...canRunLines(input.executable), ...settingsLines(input.settingsLeft)];
   // Contract 3: what the trick will ask the person for, its fields by label.
   head.push(...asksForLines(manifest));
   const words = authorWords(manifest);
@@ -378,7 +378,7 @@ export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCa
   const reads = newInputs(input.baseManifest, input.manifest);
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It now also ${alsoWords}.` : "It asks for no new rights.";
-  const head = [...runsAsYou(input.manifest), ...accessLine(raisedAccess(input.baseManifest, input.manifest)), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...keepsRunning(input.manifest), ...settingsLines(input.settingsLeft)];
+  const head = [...runsAsYou(input.manifest), ...accessLine(raisedAccess(input.baseManifest, input.manifest)), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...showsIn(input.manifest), ...keepsRunning(input.manifest), ...settingsLines(input.settingsLeft)];
   // Contract 3: a new or changed field is named, as on the runner's own version card.
   head.push(...asksForChange(input.baseManifest, input.manifest));
   // Contract 2: a proposed version never GIVES agents instructions (proposals.ts refuses that first), but it may

@@ -3351,7 +3351,6 @@ export const zh: Dictionary = {
   "settings.tricks.about.open": "关于 {name}",
   "settings.tricks.about.none": "此 Trick 没有说明。",
   "settings.tricks.about.does": "它的作用",
-  "settings.tricks.about.draws": "绘制位置：{places}。",
   "settings.tricks.about.env": "请求读取环境变量名 {names}。",
   "settings.tricks.about.on": "会话状态变化时运行。",
   "settings.tricks.about.keepsRunning": "即使没有打开任何手机，它也会继续运行。",

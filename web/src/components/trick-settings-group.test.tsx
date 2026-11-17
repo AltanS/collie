@@ -156,3 +156,18 @@ describe("in the About sheet and on the row", () => {
     expect(within(section).getByText("Not for secrets. Every paired phone can see these.")).toBeInTheDocument();
   });
 });
+
+describe("TrickSettingsGroup values", () => {
+  it("draws a setting's value in the foreground at medium weight on a muted ground, the label staying muted-free plain text", () => {
+    const { section } = group({ values: { repo: "lodge/workshop", branch: "edge", rows: 20 } });
+    for (const control of [section.querySelector('input[name="value"]'), section.querySelector("select")]) {
+      const classes = (control?.className ?? "").split(/\s+/);
+      expect(classes).toEqual(expect.arrayContaining(["bg-muted", "font-medium", "text-foreground", "border", "border-border"]));
+      expect(classes).not.toContain("bg-background");
+    }
+    expect(within(section).getByLabelText(/Repository/)).toHaveValue("lodge/workshop");
+    expect(within(section).getByLabelText("Branch")).toHaveValue("edge");
+    // The hint stays a plain muted sentence.
+    expect(section.querySelector("p.text-muted-foreground")?.className).not.toContain("bg-muted");
+  });
+});

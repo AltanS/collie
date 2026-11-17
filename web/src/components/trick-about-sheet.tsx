@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from "react";
 
 import { Icon } from "@/components/icons/icon";
+import { badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProseText } from "@/components/ui/diff-lines";
 import { FoldPanel, MoreToggle } from "@/components/ui/fold-toggle";
@@ -12,14 +13,17 @@ import { Switch } from "@/components/ui/switch";
 import { tokenUseWhy, useTokenUseShown } from "@/components/token-use-label";
 import { TrickCodeFolds, type TrickCodeReader } from "@/components/trick-code-folds";
 import { TrickSettingsGroup } from "@/components/trick-settings-group";
+import { valueSentence } from "@/components/trick-value";
 import { useLocale } from "@/hooks/use-locale";
 import { dateOnly, wholeNumber } from "@/lib/format";
 import { isWebLink, linkHost } from "@/lib/hill/reader";
 import { t, tn } from "@/lib/i18n";
-import { timerLine } from "@/lib/tricks/code-words";
+import { spanWords } from "@/lib/tricks/code-words";
+import { WATCH_WINDOW_MS } from "@/lib/tricks/limits";
 import { HostWords } from "@/lib/tricks/render";
-import { originLine, placesLine, readsLine, runsOnLine, warningLines } from "@/lib/tricks/row-words";
+import { originLine, runsOnLine, showsInPlaces, warningLines } from "@/lib/tricks/row-words";
 import { isSourceUrl, runsWithNoPhone, type FieldValue, type TricksRunsOn, type WireOfficialTrick, type WireRepoFacts, type WireTrickInfo, type WireTrickRules } from "@/lib/tricks/schema";
+import { cn } from "@/lib/utils";
 import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 
 // A trick's About sheet: what a person reads before they switch a trick on. Opened by a tap on the trick's
@@ -31,7 +35,7 @@ import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 //      an `about` nor a `description`, one muted line saying so. With an `about` or a `description`, a small muted line under it says the author wrote the
 //      text and Collie did not check it; the rows below are the bridge's own facts. Plain text: no markdown, no HTML and no link is drawn, so React draws it as text and a
 //      line break inside a paragraph is kept as one;
-//   3. "What it does": ONLY facts the bridge already sends for the row. Where it draws, what it reads from
+//   3. "What it does": ONLY facts the bridge already sends for the row. Where it shows, in plain words (`showsInPlaces`), what it reads from
 //      the agent sessions, the environment names it asks for, and the warnings of the text search of its
 //      code (the same words the card shows before the switch). A row is left out when its fact is absent,
 //      and the whole group when every row is;
@@ -129,7 +133,7 @@ function repoLinkRow(url: string | undefined, facts: WireRepoFacts | undefined, 
 /** The version row, when the manifest names one. */
 function versionRow(version: string | undefined): FactRow | null {
   if (version === undefined) return null;
-  return { key: "version", node: <span data-line="version">{t("settings.tricks.about.version", { version })}</span> };
+  return { key: "version", node: <span data-line="version">{valueSentence("settings.tricks.about.version", { version })}</span> };
 }
 
 /** The rows that are drawn: a row that is null has nothing true to say. */
@@ -153,6 +157,17 @@ function tokenRows(subject: TrickTokenFacts): FactRow[] {
   return [{ key: "tokens", node: <span data-line="tokens">{tokenUseWhy(reason)}</span> }];
 }
 
+/** The timer in plain words, its two spans as values. A trick with no `every` has the one plain line. */
+function timerWords(everyMs: number | undefined): ReactNode {
+  if (everyMs === undefined) return t("settings.tricks.about.noTimer");
+  return valueSentence("settings.tricks.about.timer", { every: spanWords(everyMs), window: spanWords(WATCH_WINDOW_MS) });
+}
+
+/** What a contract 2 trick reads, in one sentence (row-words.ts `readsLine`), its globs as one value. */
+function readsWords(inputs: NonNullable<WireTrickInfo["inputs"]>): ReactNode {
+  return valueSentence(inputs.crew ? "settings.tricks.reads.crew" : "settings.tricks.reads.solo", { globs: inputs.globs.join(", ") });
+}
+
 /** How the program starts and when: the run line, whole and wrapped, and the timer in plain words. A trick with no program has neither. */
 function runRows(trick: Pick<WireTrickInfo, "run" | "everyMs">): FactRow[] {
   if (trick.run === undefined) return [];
@@ -162,13 +177,13 @@ function runRows(trick: Pick<WireTrickInfo, "run" | "everyMs">): FactRow[] {
       node: (
         <span className="block">
           <span className="block">{t("settings.tricks.about.run")}</span>
-          <code data-line="run" className="mt-1 block font-mono text-xs break-all whitespace-pre-wrap">
+          <code data-line="run" data-slot="trick-value" className={cn(badgeVariants({ variant: "value" }), "mt-1 flex h-auto w-full justify-start overflow-visible px-1.5 py-1 text-left font-mono text-xs leading-snug font-medium break-all whitespace-pre-wrap")}>
             {trick.run}
           </code>
         </span>
       ),
     },
-    { key: "timer", node: <span data-line="timer">{timerLine(trick.everyMs)}</span> },
+    { key: "timer", node: <span data-line="timer">{timerWords(trick.everyMs)}</span> },
   ];
 }
 
@@ -183,7 +198,9 @@ function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
   const rows: FactRow[] = tokens ? tokenRows(trick) : [];
   const places = Array.isArray(trick.places) ? trick.places : [];
   const view = trick.agentView === true;
-  if (places.length > 0 || view) rows.push({ key: "draws", node: t("settings.tricks.about.draws", { places: placesLine(places, view) }) });
+  // Where it shows, in words a person can find on the phone (2026-11-17), the same line as the approval cards'.
+  const shows = showsInPlaces(places, view);
+  if (shows !== null) rows.push({ key: "shows", node: <span data-line="shows">{valueSentence("settings.tricks.about.shows", { places: shows })}</span> });
   if (view) {
     rows.push({ key: "agent-view", node: t("settings.tricks.about.agentView") });
     rows.push({ key: "agent-view-tap", node: t("settings.tricks.about.agentViewTap") });
@@ -192,11 +209,11 @@ function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
   if (places.includes("menu")) rows.push(...menuRows());
   if (trick.rules !== undefined) rows.push({ key: "rules", node: t("settings.tricks.about.rules") });
   rows.push(...runRows(trick));
-  if (trick.inputs !== undefined) rows.push({ key: "reads", node: readsLine(trick.inputs) });
-  if (trick.env !== undefined && trick.env.length > 0) rows.push({ key: "env", node: t("settings.tricks.about.env", { names: trick.env.join(", ") }) });
+  if (trick.inputs !== undefined) rows.push({ key: "reads", node: readsWords(trick.inputs) });
+  if (trick.env !== undefined && trick.env.length > 0) rows.push({ key: "env", node: valueSentence("settings.tricks.about.env", { names: trick.env.join(", ") }) });
   // `on` and `watch` are rights (M105 step one): the same two lines as the proposal card's chips.
   if (trick.events !== undefined && trick.events.length > 0) rows.push({ key: "on", node: t("settings.tricks.about.on") });
-  if (trick.watch !== undefined && trick.watch.length > 0) rows.push({ key: "watch", node: t("settings.tricks.about.watch", { paths: trick.watch.join(", ") }) });
+  if (trick.watch !== undefined && trick.watch.length > 0) rows.push({ key: "watch", node: valueSentence("settings.tricks.about.watch", { paths: trick.watch.join(", ") }) });
   // `access` (M105 spec 04): the one line of the level the trick declares. `none` has no line, and a level this
   // phone does not know has one fixed line (review 3, item 4). The card's honest line stands just before it (spec
   // 05, decision 10): the level says what the trick reads through Collie, and the trick runs as you all the same.
