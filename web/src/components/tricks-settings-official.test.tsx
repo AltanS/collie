@@ -141,7 +141,7 @@ describe("Official tricks: one list", () => {
     renderCard(store);
     await vi.waitFor(() => expect(document.querySelector('[data-official="morph"]')).not.toBeNull());
     expect(order()).toEqual(["add:morph", "add:design-review", "community:legs"]);
-    expect(officialRow("design-review").querySelector('[data-line="places"]')).toHaveTextContent("belt, session");
+    expect(officialRow("design-review").querySelector('[data-line="places"]')).toHaveTextContent("belt, page");
     expect(officialRow("morph").querySelector('[data-line="places"]')).not.toBeNull();
   });
 

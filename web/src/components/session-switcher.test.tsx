@@ -62,18 +62,18 @@ const location = (router: ReturnType<typeof renderSwitcher>) =>
 describe("SessionSwitcher — trigger visibility", () => {
   it("renders nothing on a single reachable primary session (backward compatible)", () => {
     renderSwitcher([primary], undefined);
-    expect(screen.queryByRole("button", { name: /switch session/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /switch space/i })).not.toBeInTheDocument();
   });
 
   it("shows the trigger when there is more than one reachable session", () => {
     renderSwitcher([primary, demo], undefined);
-    expect(screen.getByRole("button", { name: /switch session/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /switch space/i })).toBeInTheDocument();
   });
 
   it("shows the trigger when the current session is non-primary, even with one reachable", () => {
     // Only the named session is reachable, but you're on it — you must be able to get back to primary.
     renderSwitcher([{ ...primary, reachable: false }, demo], "collie-demo");
-    expect(screen.getByRole("button", { name: /switch session/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /switch space/i })).toBeInTheDocument();
   });
 });
 
@@ -81,7 +81,7 @@ describe("SessionSwitcher — sheet + selection", () => {
   it("lists every session, marking the primary and the unreachable one", async () => {
     const user = userEvent.setup();
     renderSwitcher([primary, demo, downSession], undefined);
-    await user.click(screen.getByRole("button", { name: /switch session/i }));
+    await user.click(screen.getByRole("button", { name: /switch space/i }));
 
     const sheet = within(screen.getByRole("dialog"));
     expect(sheet.getByRole("button", { name: /default/ })).toBeInTheDocument();
@@ -93,7 +93,7 @@ describe("SessionSwitcher — sheet + selection", () => {
   it("navigates to a named session with ?s= on select", async () => {
     const user = userEvent.setup();
     const router = renderSwitcher([primary, demo], undefined);
-    await user.click(screen.getByRole("button", { name: /switch session/i }));
+    await user.click(screen.getByRole("button", { name: /switch space/i }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /collie-demo/ }));
 
     await waitFor(() => expect(location(router)).toBe("/?s=collie-demo"));
@@ -102,14 +102,14 @@ describe("SessionSwitcher — sheet + selection", () => {
   it("navigates back to the primary (no ?s=) when selecting it from a named session", async () => {
     const user = userEvent.setup();
     const router = renderSwitcher([primary, demo], "collie-demo", "/?s=collie-demo");
-    await user.click(screen.getByRole("button", { name: /switch session/i }));
+    await user.click(screen.getByRole("button", { name: /switch space/i }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /default/ }));
 
     await waitFor(() => expect(location(router)).toBe("/"));
   });
 });
 
-// ── "All sessions" ───────────────────────────────────────────────────────────
+// ── "All spaces" ───────────────────────────────────────────────────────────
 //
 // The one row here that does not pick a session. It asks for all of them at once, which is a
 // different QUESTION from the rows below it rather than a different answer to theirs — hence its
@@ -121,11 +121,11 @@ describe("SessionSwitcher — the widened view", () => {
 
   it("leads the sheet, and is not one of the sessions", async () => {
     renderSwitcher([primary, demo], undefined);
-    await open(/switch session/i);
+    await open(/switch space/i);
     const rows = within(screen.getByRole("list")).getAllByRole("button");
-    expect(rows[0]).toHaveTextContent("All sessions");
+    expect(rows[0]).toHaveTextContent("All spaces");
     // Putting it among the rows would make it look like a session called that.
-    expect(rows.slice(1).map((r) => r.textContent)).not.toContain("All sessions");
+    expect(rows.slice(1).map((r) => r.textContent)).not.toContain("All spaces");
   });
 
   it("navigates with `?all=1` and DROPS `?s=`", async () => {
@@ -133,25 +133,25 @@ describe("SessionSwitcher — the widened view", () => {
     // list and every write with no row of its own go on using. Carrying `?s=` too would name a
     // session the list no longer restricts itself to: the same url would contradict itself.
     const router = renderSwitcher([primary, demo], "collie-demo", "/?s=collie-demo");
-    await open(/switch session/i);
-    await userEvent.click(screen.getByRole("button", { name: /all sessions/i }));
+    await open(/switch space/i);
+    await userEvent.click(screen.getByRole("button", { name: /all spaces/i }));
     expect(location(router)).toBe("/?all=1");
   });
 
   it("keeps the host it was on", async () => {
     // Widening is a statement about one machine. It may never also move you to another.
     const router = renderSwitcher([primary, demo], undefined, "/?h=attic", false, "attic");
-    await open(/switch session/i);
-    await userEvent.click(screen.getByRole("button", { name: /all sessions/i }));
+    await open(/switch space/i);
+    await userEvent.click(screen.getByRole("button", { name: /all spaces/i }));
     expect(location(router)).toBe("/?h=attic&all=1");
   });
 
   it("says it is widened on the trigger, and marks no session as current", async () => {
     renderSwitcher([primary, demo], undefined, "/?all=1", true);
-    expect(screen.getByRole("button", { name: /showing every session/i })).toHaveTextContent(
-      "All sessions",
+    expect(screen.getByRole("button", { name: /showing every space/i })).toHaveTextContent(
+      "All spaces",
     );
-    await open(/showing every session/i);
+    await open(/showing every space/i);
     const rows = within(screen.getByRole("list")).getAllByRole("button");
     expect(rows[0]).toHaveAttribute("aria-current", "true");
     // No session row claims to be the one you are on — you are on all of them.
@@ -160,7 +160,7 @@ describe("SessionSwitcher — the widened view", () => {
 
   it("still offers a way back to a single session", async () => {
     const router = renderSwitcher([primary, demo], undefined, "/?all=1", true);
-    await open(/showing every session/i);
+    await open(/showing every space/i);
     await userEvent.click(screen.getByRole("button", { name: /collie-demo/i }));
     expect(location(router)).toBe("/?s=collie-demo");
   });
@@ -169,7 +169,7 @@ describe("SessionSwitcher — the widened view", () => {
   // reports one session would hide the only control that can un-widen it.
   it("shows the trigger while widened even with a single session", () => {
     renderSwitcher([primary], undefined, "/?all=1", true);
-    expect(screen.getByRole("button", { name: /showing every session/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /showing every space/i })).toBeInTheDocument();
   });
 });
 
@@ -183,7 +183,7 @@ describe("SessionSwitcher — operator labels", () => {
   it("prints the label in place of the name, keeps the name beneath it, and still selects by name", async () => {
     const user = userEvent.setup();
     const router = renderSwitcher([primary, labelled], undefined);
-    await user.click(screen.getByRole("button", { name: /switch session/i }));
+    await user.click(screen.getByRole("button", { name: /switch space/i }));
 
     const row = within(screen.getByRole("dialog")).getByRole("button", { name: /УТ ОП/ });
     expect(row).toHaveTextContent("collie-demo");
@@ -193,14 +193,14 @@ describe("SessionSwitcher — operator labels", () => {
 
   it("names the current session by its label on the trigger", () => {
     renderSwitcher([primary, labelled], "collie-demo", "/?s=collie-demo");
-    const trigger = screen.getByRole("button", { name: "Session: УТ ОП. Switch session" });
+    const trigger = screen.getByRole("button", { name: "Space: УТ ОП. Switch space" });
     expect(trigger).toHaveTextContent("УТ ОП");
   });
 
   it("a row without a label shows its name once, as before", async () => {
     const user = userEvent.setup();
     renderSwitcher([primary, labelled], undefined);
-    await user.click(screen.getByRole("button", { name: /switch session/i }));
+    await user.click(screen.getByRole("button", { name: /switch space/i }));
     const row = within(screen.getByRole("dialog")).getByRole("button", { name: /default/ });
     expect(within(row).getAllByText("default")).toHaveLength(1);
   });
@@ -208,7 +208,7 @@ describe("SessionSwitcher — operator labels", () => {
   it("an empty label falls back to the name", async () => {
     const user = userEvent.setup();
     renderSwitcher([primary, { ...demo, label: "" }], undefined);
-    await user.click(screen.getByRole("button", { name: /switch session/i }));
+    await user.click(screen.getByRole("button", { name: /switch space/i }));
     const row = within(screen.getByRole("dialog")).getByRole("button", { name: /collie-demo/ });
     expect(within(row).getAllByText("collie-demo")).toHaveLength(1);
   });

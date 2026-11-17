@@ -35,7 +35,7 @@ interface Def {
 }
 
 const TARGETS: Def[] = [
-  { id: "session-pill", find: (p) => p.getByRole("button", { name: /^Session: / }), vertical: true },
+  { id: "session-pill", find: (p) => p.getByRole("button", { name: /^Space: / }), vertical: true },
   { id: "summary-line", find: (p) => p.getByRole("button", { name: /needs you .* working/ }).first(), vertical: true },
   { id: "spaces-heading", find: (p) => p.getByRole("button", { name: /^Spaces/ }).first(), vertical: true },
   { id: "new-space", find: (p) => p.getByRole("button", { name: "New space" }), vertical: true },
