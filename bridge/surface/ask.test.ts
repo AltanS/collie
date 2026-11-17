@@ -939,6 +939,23 @@ describe("changed, replaced and repeated asks are refused with no key", () => {
     expect(pane.keysSeen).toEqual(["s", "Down", "Enter"]);
   });
 
+  // A plan approval paints its plan ABOVE the rule that tops the question, so the rows under that rule
+  // (the question, the options, the plan file's path) are the same for a revised plan in the same
+  // file. The ask then binds the lookback that holds the plan, and the old tap answers nothing.
+  test("a revised plan under the same question and options is refused ask_changed, nothing sent", async () => {
+    const before = fx("claude-lab--plan-approval--w82.txt");
+    const revised = before.replace("the heading and prior three lines untouched.", "the heading and prior three lines rewritten.");
+    expect(revised).not.toBe(before);
+    const { pane, poll, answer } = rig(before);
+    const ask = poll()!;
+    expect(ask.options.map((o) => o.label)).toContain("Yes, manually approve edits");
+    pane.screen = revised;
+    const reply = await answer(ask, idOf(ask, "Yes, manually approve edits"));
+    expect(reply.receipt).toMatchObject({ outcome: "refused", reason: "ask_changed", keys: [] });
+    expect(reply.ask!.id).not.toBe(ask.id);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
   test("a picker id minted before the confirmation came up is refused ask_changed on the confirmation screen", async () => {
     const { pane, poll, answer } = rig(PICKER);
     const picker = poll()!;

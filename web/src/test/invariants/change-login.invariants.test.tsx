@@ -22,7 +22,6 @@ import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
 
 import { commonAnswers, json, type Answer } from "./bridge-answers";
-import { knownRed, redTitle } from "./known-red";
 import { replayHint, rngOf, runSeeds, sample } from "./seed";
 
 const ME: AccountIdentity = { signedIn: true, email: "me@example.com", plan: "max" };
@@ -188,8 +187,7 @@ describe("M102-15, the Change login page under every bridge answer", () => {
     }, 60_000);
   }
 
-  const crash = knownRed("i2-change-login-crash");
-  it.fails(`I2: a list answer with no accounts field after Finish leaves the page standing ${redTitle(crash.id)}`, async () => {
+  it("I2: a list answer with no accounts field after Finish leaves the page standing", async () => {
     const close = CLOSE_ANSWERS[0];
     if (close === undefined) throw new Error("no close answer");
     expect(await finishCase(close, { kind: "status", status: 200, body: json({ surprise: true, version: 99 }), label: "200 unknown fields only" })).toBeNull();

@@ -28,10 +28,11 @@ import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
 import { collieBinary } from "./unit.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
-import { asJsonObject } from "../web/src/lib/json.ts";
+import { asJsonObject, parseJsonObject } from "../web/src/lib/json.ts";
 import { HOLD_CONNECT_MS, HOLD_GRACE_MS } from "../web/src/lib/surface/hold.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
+import { parseHoldSkip, type HoldSkipReason } from "../web/src/lib/surface/hold.ts";
 import { cmdBeaconHold, holdRequestOf, holdSocketPath, holdSocketPaths, type HoldDeps, type HoldSocket } from "./hold.ts";
 import { parseLstart, type StartTimeCommand } from "../bridge/beacon/liveness.ts";
 import { HOLD_MARKER_PREFIX, holdCommandIn, settingsHold } from "./hold-entry.ts";
@@ -1084,6 +1085,40 @@ describe("hold: the hook script is inert on every error", () => {
     });
     expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
     expect(d.printed).toEqual([]);
+  });
+});
+
+describe("hold: a request it cannot hold leaves a record on each bridge (M102 spec 14)", () => {
+  const SOCK = "/state/hold/sock";
+  const OTHER = "/other/hold/sock";
+  const cases: [string, Parameters<typeof holdDeps>[0], HoldSkipReason][] = [
+    ["outside a multiplexer", { env: {} }, "no_markers"],
+    ["no /proc entry for the agent", { proc: null }, "no_pid_start"],
+    ["a tool name that is not plain text", { stdin: permissionPayload({ tool_name: "Bash\u001b[2J" }) }, "bad_tool"],
+  ];
+  for (const [name, over, reason] of cases) {
+    test(`${name}: one skip line per bridge, with the reason and no text, and nothing printed`, async () => {
+      const one = new FakeHoldSocket();
+      const two = new FakeHoldSocket();
+      const d = holdDeps({ ...over, sockets: { [SOCK]: one, [OTHER]: two } });
+      expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+      expect(d.printed).toEqual([]);
+      for (const socket of [one, two]) {
+        expect(socket.sent).toHaveLength(1);
+        expect(parseHoldSkip(socket.sent[0]!.trimEnd())).toBe(reason);
+        // The line names the harness and the reason: no tool, no input, no folder.
+        expect(Object.keys(parseJsonObject(socket.sent[0]!) ?? {}).toSorted()).toEqual(["harness", "skip", "v"]);
+        expect(socket.closed).toBe(true);
+      }
+    });
+  }
+
+  test("another hook event sends nothing at all", async () => {
+    const socket = new FakeHoldSocket();
+    const d = holdDeps({ stdin: permissionPayload({ hook_event_name: "PreToolUse" }), sockets: { [SOCK]: socket } });
+    expect(await cmdBeaconHold(d)).toBe(EXIT.OK);
+    expect(d.connects).toEqual([]);
+    expect(socket.sent).toEqual([]);
   });
 });
 

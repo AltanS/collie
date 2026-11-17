@@ -504,6 +504,40 @@ describe("ScreenStop, hold to stop", () => {
     expect(onStop).toHaveBeenCalledTimes(1);
   });
 
+  it("a hold on a pane that changes under the finger clears the fill and the word at the change, and sends no Stop", async () => {
+    vi.useFakeTimers();
+    const onStop = vi.fn(async () => {});
+    const { rerender } = render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+    down();
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(document.querySelector("[data-slot='belt-stop-fill']")).not.toBeNull();
+    expect(stop()).toHaveTextContent("Hold");
+    // The new pane runs a turn too: the old press is not for it.
+    rerender(<ScreenStop paneId="w1:p2" running onStop={onStop} />);
+    expect(document.querySelector("[data-slot='belt-stop-fill']")).toBeNull();
+    expect(stop()).toHaveTextContent("Stop");
+    expect(stop()).not.toHaveTextContent("Hold");
+    expect(stop()).not.toHaveAttribute("data-holding");
+    await act(async () => {
+      vi.advanceTimersByTime(STOP_HOLD_MS);
+    });
+    expect(document.querySelector("[data-slot='belt-stop-fill']")).toBeNull();
+    expect(onStop).not.toHaveBeenCalled();
+    up();
+    // A fresh hold on the new pane fills and stops again.
+    down();
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(document.querySelector("[data-slot='belt-stop-fill']")).not.toBeNull();
+    await act(async () => {
+      vi.advanceTimersByTime(STOP_HOLD_MS);
+    });
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps every sizing class while it says Hold", () => {
     vi.useFakeTimers();
     render(<ScreenStop paneId="w1:p1" running onStop={async () => {}} />);

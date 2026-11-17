@@ -17,12 +17,13 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import type { Answer, AskReply } from "../../web/src/lib/surface/ask.ts";
 import { emptyFoldState, readFold, stepFold, surfaceOfScreen, type FoldContext } from "../../web/src/lib/surface/fold.ts";
-import { HOLD_WIRE_VERSION, holdHash, holdInputHash, type HoldDecision, type HoldRequest } from "../../web/src/lib/surface/hold.ts";
+import { HOLD_WIRE_VERSION, holdHash, holdInputHash, holdSkipLine, type HoldDecision, type HoldRequest } from "../../web/src/lib/surface/hold.ts";
 import { liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { loadProfiles, profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
 import { isFree, type Ask, type Surface } from "../../web/src/lib/surface/surface.ts";
 import { AskAnswerer, AskBook } from "./ask.ts";
-import { CLOSE_GRACE_MS, CLOSE_SETTLE_MS, counterWordOf, HoldBook, HoldServer, SENT_SHIELD_MS, takeHold, type EdgeInfo, type HoldConn, type HoldOutcome, type HoldTarget } from "./hold.ts";
+import { CLOSE_GRACE_MS, CLOSE_SETTLE_MS, counterWordOf, HoldBook, HoldServer, SENT_SHIELD_MS, takeHold, type EdgeInfo, type HoldConn, type HoldOutcome, type HoldRecord, type HoldTarget } from "./hold.ts";
+import { holdAuditEntry } from "../refusal.ts";
 import { KeyGate, type GateResult, type KeyToken } from "./key-gate.ts";
 import { RowRing, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -1055,6 +1056,45 @@ describe("the hold socket", () => {
     const own = holdRequest({ markers: [{ namespace: "herdr-core", scope: "/run/core.sock", pane: "w9:p9" }] });
     expect(await roundTrip(path, `${JSON.stringify(own)}\n`)).toBe("");
     expect(logs).toEqual([`[surface] surface.hold.dropped reason=no-pane pid=4242`]);
+    server.stop();
+  });
+
+  // M102 spec 14 (I3): a foreign multiplexer's request left nothing, and the journal line of a drop is
+  // rate limited per pid, so a second request of the same agent left nothing either. Each request now
+  // leaves exactly one record: placed, or dropped with its reason, and never the input.
+  test.skipIf(POSIX_ONLY)("every request the socket receives leaves exactly one record, a foreign multiplexer's and a skip line's too", async () => {
+    const path = join(dir, "state", "hold", "sock");
+    const records: HoldRecord[] = [];
+    const core: HoldTarget = {
+      session: "main",
+      matcher: { namespace: "herdr-core", notesWithoutHooks: { agentDetection: "", agentSessionRef: "" }, scope: () => Promise.resolve("/run/core.sock"), matches: (pane, marker) => marker.pane === "w1:p1" && pane.paneId === PANE },
+      paneIds: () => [PANE],
+      deliver: () => undefined,
+      hold: (_pane, _request, conn) => conn.release(),
+    };
+    const server = new HoldServer({ socketPath: path, liveness: { startTimeOf: () => Promise.resolve(1234) }, targets: () => [core], log: () => undefined, record: (r) => records.push(r) });
+    await server.start();
+    // Another multiplexer's pane (herdr markers on a herdr-core bridge).
+    await roundTrip(path, `${JSON.stringify(holdRequest())}\n`);
+    // A same-namespace miss, twice from one pid: one journal line, two records.
+    const miss = holdRequest({ markers: [{ namespace: "herdr-core", scope: "/run/core.sock", pane: "w9:p9" }] });
+    await roundTrip(path, `${JSON.stringify(miss)}\n`);
+    await roundTrip(path, `${JSON.stringify(miss)}\n`);
+    // Placed on the pane.
+    await roundTrip(path, `${JSON.stringify(holdRequest({ markers: [{ namespace: "herdr-core", scope: "/run/core.sock", pane: "w1:p1" }] }))}\n`);
+    // The hook could not hold it: a skip line.
+    await roundTrip(path, holdSkipLine("claude", "no_markers"));
+    expect(records).toEqual([
+      { outcome: "dropped", reason: "foreign-mux" },
+      { outcome: "dropped", reason: "no-pane" },
+      { outcome: "dropped", reason: "no-pane" },
+      { outcome: "placed", session: "main", paneId: PANE },
+      { outcome: "dropped", reason: "no_markers" },
+    ]);
+    // The audit line of each: who, the outcome, the code, the pane; no tool and no input.
+    expect(holdAuditEntry(records[4]!)).toEqual({ action: "hold", detail: { by: "hook", outcome: "dropped", reason: "no_markers" } });
+    expect(holdAuditEntry(records[3]!)).toEqual({ action: "hold", paneId: PANE, session: "main", detail: { by: "bridge", outcome: "placed" } });
+    expect(JSON.stringify(records.map(holdAuditEntry))).not.toContain("mkfifo");
     server.stop();
   });
 

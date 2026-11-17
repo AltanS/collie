@@ -334,6 +334,17 @@ So an agent on a member can hand you a trick with `collie trick propose <folder>
 lead and wait there, unused, as a card on the Hill. Nothing runs until you tap "Switch it on" on that
 card. `collie trick guide` tells an agent how to write a trick.
 
+A tap on a dialog card of a member's pane goes to that member's own ask route, as it does on the
+lead's own panes: the lead carries `POST /api/ask/<id>` to the member, and the member checks your
+device, the card and the screen, sends the keys, and writes the answer in its own audit log. A member
+from before this change keeps the older way, where the card presses keys on the pane, and the card
+says that the machine runs an older Collie. Update the member to give its cards the same checks.
+
+When a machine refuses a tap, it writes one line about it in its audit log with a reason code and the
+pane, and never the text: the member for its own refusal, the lead for a member it holds unreachable
+or one that did not answer in time. A refusal because of a member's version names the Collie version
+that member runs.
+
 ![The deputy's standby door opens only when the lead goes quiet.](images/crew/crew-deputy-standby.svg)
 
 A deputy is one peer the lead named ahead of time. It binds a standby door with four routes, and

@@ -9,12 +9,14 @@ import {
   HOLD_CONNECT_MS,
   HOLD_GRACE_MS,
   HOLD_WIRE_VERSION,
+  holdSkipLine,
   parseHoldReply,
   shownInputOf,
   isCwd,
   type HoldDecision,
   type HoldProfile,
   type HoldRequest,
+  type HoldSkipReason,
 } from "../web/src/lib/surface/hold.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import { BEACON_HARNESS, edgeStateDirs, privateDir, readEnvMarkers, readPidStartTime, type EdgeTargetDeps, type PidProbeDeps } from "./beacon.ts";
@@ -33,7 +35,9 @@ import type { Files } from "./sys.ts";
 // Rules, each absolute:
 //  - It prints nothing and exits 0 on every error: no socket, a slow socket, bad JSON, a closed
 //    connection, a bridge that dies. Printing nothing is "no decision", so the dialog takes over.
-//  - It holds only for the profile's hold event. Every other event exits at once.
+//  - It holds only for the profile's hold event. Every other event exits at once. A hold-event
+//    request it cannot hold (no multiplexer markers, no start time, a bad tool name) sends each
+//    bridge one skip line with the reason and no text, and holds nothing (M102 spec 14).
 //  - Each socket gets 200 ms to accept. The hold ends at the profile's limit plus a short grace,
 //    below the hook timeout the install writes.
 //  - It never decides alone. The decision is only ever what a bridge sends for a person's tap.
@@ -132,6 +136,20 @@ export function holdRequestOf(deps: HoldDeps, payload: JsonObject, hold: HoldPro
   return shown.cut ? { ...withCwd, cut: true } : withCwd;
 }
 
+/**
+ * Why a permission request of the hold event holds nothing, or null when {@link holdRequestOf} may build
+ * one. The same checks in the same order: the tool name, the multiplexer markers, the agent's start
+ * time. Each one used to end the hook in silence, with no trace on any bridge (M102 spec 14).
+ */
+export function holdSkipOf(deps: HoldDeps, payload: JsonObject, hold: HoldProfile): HoldSkipReason | null {
+  if (payload.hook_event_name !== hold.event) return null;
+  const tool = asJsonString(payload.tool_name);
+  if (tool === undefined || !/^[\x20-\x7e]{1,128}$/u.test(tool)) return "bad_tool";
+  if (readEnvMarkers(deps.ctx.env).length === 0) return "no_markers";
+  if (readPidStartTime(deps, deps.agentPid) === null) return "no_pid_start";
+  return null;
+}
+
 /** Connect to every socket at once, each with its own limit. The ones that answered, in order. */
 async function connectAll(deps: HoldDeps, paths: readonly string[]): Promise<HoldSocket[]> {
   const sockets = await Promise.all(paths.map((path) => deps.connect(path, HOLD_CONNECT_MS).catch(() => null)));
@@ -176,16 +194,22 @@ export async function cmdBeaconHold(deps: HoldDeps): Promise<number> {
   try {
     const hold = loadProfiles().get(BEACON_HARNESS)?.hold;
     if (hold === undefined) return EXIT.OK;
-    // The environment gate first, as the emitter does: outside a multiplexer nothing is read.
-    if (readEnvMarkers(deps.ctx.env).length === 0) return EXIT.OK;
     const payload = parseJsonObject(await deps.readStdin());
     if (payload === undefined) return EXIT.OK;
-    const request = holdRequestOf(deps, payload, hold);
-    if (request === null) return EXIT.OK;
+    // A permission request that holds nothing still reaches every bridge as one skip line, with the
+    // reason and no text, so each writes one record of it (M102 spec 14). The dialog takes over as before.
+    const skip = holdSkipOf(deps, payload, hold);
+    const request = skip === null ? holdRequestOf(deps, payload, hold) : null;
+    if (skip === null && request === null) return EXIT.OK;
     const paths = [...new Set(deps.sockets?.() ?? holdSocketPaths(deps))].filter((path) => holdSocketSafe(deps, path));
     if (paths.length === 0) return EXIT.OK;
     sockets = await connectAll(deps, paths);
     if (sockets.length === 0) return EXIT.OK;
+    if (skip !== null) {
+      for (const socket of sockets) socket.send(holdSkipLine(BEACON_HARNESS, skip));
+      return EXIT.OK;
+    }
+    if (request === null) return EXIT.OK;
     const line = `${JSON.stringify(request)}\n`;
     for (const socket of sockets) socket.send(line);
     // A screen-only tool: the bridges take the line as an edge. Nothing is held.
