@@ -56,6 +56,15 @@ describe("rootLoader", () => {
     expect(data.agents).toHaveLength(2);
   });
 
+  it("says whether the bridge runs tricks, so a page can tell none from not yet", async () => {
+    const { rootLoader } = await import("./loaders");
+    expect((await rootLoader()).tricks).toBe(false);
+    server.use(http.get("/api/snapshot", () => HttpResponse.json({ ...fixtureSnapshot, tricksRev: 4 })));
+    vi.resetModules();
+    const again = await import("./loaders");
+    expect((await again.rootLoader()).tricks).toBe(true);
+  });
+
   it.each([401, 403] as const)("marks a %i response as an auth error", async (status) => {
     rejectSnapshot(status);
     const { rootLoader } = await import("./loaders");
