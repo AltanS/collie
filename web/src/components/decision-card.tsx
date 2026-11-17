@@ -302,8 +302,11 @@ export function KeptWords({ text }: { text: string }) {
   );
 }
 
-/** What happened after the tap, in the card's own chrome. Null while nothing has been sent. */
-export function AnswerStatus({ decision, answer, onRetry, slot }: { decision: HillDecision; answer: HillAnswerState; onRetry: () => void; slot: string }) {
+/**
+ * What happened after the tap, in the card's own chrome. Null while nothing has been sent. Without `onRetry`
+ * a request that got no answer says "Not sent." with no Try again (the chat's trick card, whose yes is the retry).
+ */
+export function AnswerStatus({ decision, answer, onRetry, slot }: { decision: HillDecision; answer: HillAnswerState; onRetry?: () => void; slot: string }) {
   if (answer.phase === "idle") return null;
   return (
     <div data-slot={slot}>
@@ -312,7 +315,7 @@ export function AnswerStatus({ decision, answer, onRetry, slot }: { decision: Hi
   );
 }
 
-function AnswerNotice({ decision, answer, onRetry }: { decision: HillDecision; answer: Exclude<HillAnswerState, { phase: "idle" }>; onRetry: () => void }) {
+function AnswerNotice({ decision, answer, onRetry }: { decision: HillDecision; answer: Exclude<HillAnswerState, { phase: "idle" }>; onRetry?: () => void }) {
   if (answer.phase === "sending") {
     return (
       <Notice variant="box" tone="neutral" announce="status" icon={<Icon name="busy" className="animate-spin" />}>
@@ -328,10 +331,12 @@ function AnswerNotice({ decision, answer, onRetry }: { decision: HillDecision; a
         announce="alert"
         icon={<Icon name="error" />}
         action={
-          <Button type="button" variant="outline" size="sm" data-slot="decision-retry" className="h-8" onClick={onRetry}>
-            <Icon name="retry" aria-hidden />
-            {t("hill.retry")}
-          </Button>
+          onRetry === undefined ? undefined : (
+            <Button type="button" variant="outline" size="sm" data-slot="decision-retry" className="h-8" onClick={onRetry}>
+              <Icon name="retry" aria-hidden />
+              {t("hill.retry")}
+            </Button>
+          )
         }
       >
         {t("hill.receipt.failed")}

@@ -76,11 +76,17 @@ interface Watch {
 
 beforeEach(() => {
   stubAllSeen();
+  // Boxes on screen: the scroller the card flows in fills the phone, every other box sits well inside it, above
+  // its tail room. A mark the observer reports is looked at again against these (inView).
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return this.hasAttribute("data-scroll-root") ? new DOMRect(0, 0, 390, 700) : new DOMRect(0, 100, 360, 20);
+  });
   __resetHill();
   forgetSessionLater();
 });
 afterEach(() => {
   __resetHill();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -157,5 +163,40 @@ describe("a trick proposal while an agent view stands in for the chat", () => {
     await userEvent.click(yes());
     await waitFor(() => expect(answers).toHaveLength(1));
     expect(answers[0]).toMatchObject({ intent: "on", group: { digest: HASH, opened: [1] } });
+  });
+
+  it("a mark under a floating card that came later does not count in the view either; above the tail room it does", async () => {
+    const seen: { callback: Seen; target: Element | null }[] = [];
+    class FakeObserver {
+      private readonly at: { callback: Seen; target: Element | null };
+      constructor(callback: Seen) {
+        this.at = { callback, target: null };
+        seen.push(this.at);
+      }
+      observe(target: Element): void {
+        this.at.target = target;
+      }
+      disconnect(): void {
+        this.at.target = null;
+      }
+      unobserve(): void {}
+    }
+    vi.stubGlobal("IntersectionObserver", FakeObserver);
+    await holds([proposalCard()]);
+    drawView(SELF);
+    await screen.findByText("Switch on the trick legs?");
+    const yes = () => within(viewEl()).getByRole("button", { name: /Switch it on/u });
+    await userEvent.click(viewEl().querySelector<HTMLButtonElement>('[data-slot="chat-approval-code-toggle"]')!);
+    await waitFor(() => expect(viewEl().querySelector('[data-slot="chat-approval-section"] [data-slot="chat-approval-end"]')).not.toBeNull());
+    scroller().style.setProperty("--tail-room", "650px");
+    act(() => {
+      for (const one of seen.filter((o) => o.target !== null)) one.callback([{ isIntersecting: true }]);
+    });
+    expect(yes()).toBeDisabled();
+    scroller().style.setProperty("--tail-room", "0px");
+    act(() => {
+      scroller().dispatchEvent(new Event("scroll"));
+    });
+    await waitFor(() => expect(yes()).toBeEnabled());
   });
 });

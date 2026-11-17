@@ -566,6 +566,7 @@ export function SessionStream({
   pins,
   clearBottom,
   tail,
+  hasNew = false,
 }: {
   /** The held window plus its one control, from `useChatWindow`. */
   feed: ChatFeed;
@@ -650,6 +651,8 @@ export function SessionStream({
    * proposed (components/session-trick-card.tsx), so it reads like a message and never takes a band of its own.
    */
   tail?: ReactNode;
+  /** Something waits below for the person (a trick proposal at the tail): the jump-to-latest arrow wears its dot. */
+  hasNew?: boolean;
 }) {
   // The subscription every `t()` caller owes, plus the counter the memo below needs.
   const { revision } = useLocale();
@@ -1002,6 +1005,7 @@ export function SessionStream({
       // older turns is an ordinary act in this body and a rare one in that one.
       className={look.gutter === "16" ? "px-4 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]" : "px-3 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]"}
       clearBottom={clearBottom}
+      hasNew={hasNew}
       holdRoom={linger?.px ?? 0}
       style={textTokens(fontSize)}
       // The pin sits beside the scrollport, so it takes the gutter and the chat font size from here. Only the
