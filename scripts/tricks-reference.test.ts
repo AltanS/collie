@@ -8,6 +8,7 @@ import { HILL_SUMMARY_SOFT_MAX, HILL_SUMMARY_SOFT_SENTENCES, HILL_TITLE_SOFT_MAX
 import * as helper from "../cli/trick-kit/trick.ts";
 import { TRICK_SUBCOMMANDS } from "../cli/trick.ts";
 import { VIEW_SUBCOMMANDS, viewUsageLines } from "../cli/trick-view.ts";
+import { TRICKS_SUBCOMMANDS } from "../cli/tricks-switch.ts";
 import { REASK_AFTER_MS } from "../bridge/tricks/hill.ts";
 import { WATCH_WINDOW_MS } from "../bridge/tricks/service.ts";
 import { TRICKS_CREW_FIRST_VERSION } from "../bridge/hill/crew.ts";
@@ -265,6 +266,7 @@ describe("the page names everything the code has", () => {
 
   test("every verb of collie trick, collie trick view and collie hill", () => {
     expect(COMMANDS.filter((entry) => entry.group === "trick").map((entry) => entry.verb)).toEqual([...TRICK_SUBCOMMANDS]);
+    expect(COMMANDS.filter((entry) => entry.group === "tricks").map((entry) => entry.verb)).toEqual([...TRICKS_SUBCOMMANDS]);
     expect(COMMANDS.filter((entry) => entry.group === "trick view").map((entry) => entry.verb)).toEqual([...VIEW_SUBCOMMANDS]);
     expect(COMMANDS.filter((entry) => entry.group === "hill").map((entry) => entry.verb)).toEqual([...HILL_SUBCOMMANDS]);
     for (const entry of COMMANDS) expect(PAGE, `${entry.group} ${entry.verb}`).toContain(`\`collie ${entry.usage.replaceAll("|", "\\|")}\``);
