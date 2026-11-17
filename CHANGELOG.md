@@ -68,6 +68,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **The switch for tricks as a whole answers only for its own machine.** A request that names a crew member gets a 400, as the Hill's switch does, instead of reading as if it moved the member's switch.
 - **`collie tricks on` and `collie hill on` refuse in a pane where an agent works.** Switching tricks or the Hill on is the person's choice, so both answer as `collie trick on` does there, and name where the person switches it: Settings, Tricks, or Settings, Experiments. `off` still works anywhere.
 - **A tap on a plan approval answers only the plan you saw.** When Claude Code shows a revised plan under the same question and options, the phone takes it as a new question and asks for a new tap.
 - **More dialogs take the tap while something else on the screen moves.** Claude Code's questions, with or without a preview, and agy's permissions and questions no longer refuse a tap because a timer, a spinner or a clock ticks above them. A Claude Code permission that counts down to answering itself no longer refuses the tap when the clock moves, and the tap still answers only the request you saw.
