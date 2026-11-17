@@ -3618,7 +3618,6 @@ export const zhTW: Dictionary = {
   "hill.hold.always": "按住以使用並不再詢問",
   "hill.hold.holding": "請繼續按住…",
   "hill.hold.armed": "再按一次以確認",
-  "hill.hold.hint": "按住 3 秒。使用鍵盤時請按兩次。",
   "hill.chat.unshown": "這支手機無法顯示這張卡片的全部內容，因此無法在這裡開啟該 Trick。請閱讀後在機器上開啟。",
   "tricks.compare.before": "之前",
   "tricks.compare.after": "之後",

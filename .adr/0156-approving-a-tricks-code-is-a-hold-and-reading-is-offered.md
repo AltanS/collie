@@ -27,10 +27,11 @@ of is that the yes is meant and that it approves the code the card showed.
 
 ## Decision
 
-1. **The yes to a trick's code is a hold of three seconds, everywhere.** Switching on a proposed trick and
+1. **The yes to a trick's code is a hold of 1.5 seconds, everywhere.** Switching on a proposed trick and
    taking a proposed or changed version, on the chat's card, the agent view's card, the Hill and Settings,
    Tricks, through one control (`HoldToApprove`). A fill grows across the button; at `APPROVE_HOLD_MS`
-   (3000) the yes goes out once, with the finger still down.
+   (1500 since the operator's word of 2026-11-17, first 3000; the fill starts at the press) the yes goes out once,
+   with the finger still down.
 2. **A hold ends with no yes** when the finger lifts early, leaves the button or moves past a thumb's
    jitter, on `pointercancel`, when the page is hidden, when the card's digest changes, when an answer goes
    in flight, and when the card leaves. A scroll, a layout shift and the window's focus do not end it: in a
@@ -58,7 +59,7 @@ of is that the yes is meant and that it approves the code the card showed.
 
 ## Consequences
 
-- The yes is slower than a tap by three seconds and faster than a forced read of a long trick.
+- The yes is slower than a tap by 1.5 seconds and faster than a forced read of a long trick.
 - A yes that got no answer offers no Try again: the hold is the way to send it again.
 - What the phone records about reading is gone: the per-tab opened marks (`collie:hill-group-opened:v1:`)
   and the still wait. A question of whether a person read the code is not answered by the phone, and no

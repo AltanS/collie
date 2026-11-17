@@ -195,14 +195,14 @@ describe("a trick proposal in its session's chat view", () => {
     expect(asked).toEqual([toggle()]);
   });
 
-  it("Hold to switch on is ready at the draw with the fold never opened; a tap is no yes; a hold of three seconds sends once with the hash", async () => {
+  it("Hold to switch on is ready at the draw with the fold never opened; a tap is no yes; a hold sends once with the hash", async () => {
     const answers = recordAnswers();
     await holds([proposalCard()]);
     renderChat(SELF);
     await screen.findByText("Switch on the trick legs?", { selector: "[data-testid=chat] *" });
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
     expect(yes()).toBeEnabled();
-    expect(yes()).toHaveAccessibleDescription("Hold for 3 seconds. With a keyboard, press it twice.");
+    expect(yes()).toHaveAccessibleDescription("Hold to confirm. With a keyboard, press it twice.");
     expect(card()).not.toHaveTextContent("read it to its end");
     // A tap, by a finger, is no yes.
     await userEvent.click(yes());

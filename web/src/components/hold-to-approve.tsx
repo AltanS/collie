@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 
 // THE YES TO A TRICK'S CODE (ADR 0156): one button for every card that asks it, the chat's approval card, the
 // agent view's, the Hill's and Settings, Tricks, for a proposed trick and for a new version. It is an option
-// row (option-button.tsx `optionSurface`, the key badge, the detail line), and a hold of three seconds
+// row (option-button.tsx `optionSurface`, the key badge, the detail line), and a hold of 1.5 seconds
 // approves (hooks/use-approve-hold.ts). Its words change with the hold, "Hold to switch on", "Keep holding…",
 // and for a key "Press again to confirm", all three in one slot sized by the widest, so nothing moves
 // (DESIGN.md §2). The fill is the belt Stop's (index.css `hold-fill-layer`), in the primary ink: this is a
@@ -40,6 +40,11 @@ export interface HoldToApproveProps {
   enabled: boolean;
   /** This option's answer is in flight: the spinner, and no press. */
   busy?: boolean;
+  /**
+   * This option was the answer: it stays in place, in the chosen look (never dimmed), with a check mark in the slot
+   * the spinner used, and takes no press. The card's other options are drawn disabled by the caller.
+   */
+  chosen?: boolean;
   /** The card's code as the button approves it (its digest): a new key ends a hold. */
   resetKey: string;
   onApprove: () => void;
@@ -48,13 +53,13 @@ export interface HoldToApproveProps {
   "data-intent"?: string;
 }
 
-/** The yes to a trick's code: a hold of three seconds, or two presses of a key. */
-export function HoldToApprove({ label, description, keyLabel, enabled, busy = false, resetKey, onApprove, className, ...data }: HoldToApproveProps) {
+/** The yes to a trick's code: a hold of 1.5 seconds, or two presses of a key. */
+export function HoldToApprove({ label, description, keyLabel, enabled, busy = false, chosen = false, resetKey, onApprove, className, ...data }: HoldToApproveProps) {
   useLocale();
   const hintId = useId();
-  const pressable = enabled && !busy;
+  const pressable = enabled && !busy && !chosen;
   const { phase, fillStyle, back, props } = useApproveHold({ enabled: pressable, resetKey, onApprove });
-  const tone: OptionTone = busy ? "busy" : phase === "armed" ? "armed" : "default";
+  const tone: OptionTone = busy || chosen ? "busy" : phase === "armed" ? "armed" : "default";
   const word = phase === "armed" ? "armed" : phase === "filling" ? "holding" : "rest";
   // Where a cancelled fill stood: the clip's right inset the run back starts from (index.css `hold-fill-back`).
   const backStyle: CSSProperties & { "--hold-from"?: string } = back === null ? {} : { "--hold-from": `${String(Math.round((1 - back) * 100))}%` };
@@ -66,6 +71,7 @@ export function HoldToApprove({ label, description, keyLabel, enabled, busy = fa
         aria-busy={busy}
         aria-describedby={hintId}
         data-phase={phase}
+        data-chosen={chosen ? "" : undefined}
         {...data}
         {...props}
         className={cn(optionSurface(tone), "relative touch-none select-none overflow-hidden [-webkit-touch-callout:none]", className)}
@@ -100,7 +106,11 @@ export function HoldToApprove({ label, description, keyLabel, enabled, busy = fa
           {description ? <span className="font-content block break-words text-xs leading-snug text-muted-foreground">{description}</span> : null}
         </span>
         <span aria-hidden className="relative flex size-4 shrink-0 items-center justify-center">
-          {busy && <Icon name="busy" className="size-3.5 animate-spin text-muted-foreground" />}
+          {busy ? (
+            <Icon name="busy" className="size-3.5 animate-spin text-muted-foreground" />
+          ) : chosen ? (
+            <Icon name="done" data-slot="option-chosen-mark" className="size-4 text-primary" />
+          ) : null}
         </span>
       </button>
       <span id={hintId} className="sr-only">

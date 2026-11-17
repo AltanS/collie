@@ -3637,7 +3637,6 @@ export const ko: Dictionary = {
   "hill.hold.always": "길게 눌러 사용하고 다시 묻지 않기",
   "hill.hold.holding": "계속 누르세요…",
   "hill.hold.armed": "다시 눌러 확인",
-  "hill.hold.hint": "3초간 길게 누르세요. 키보드는 두 번 누르세요.",
   "hill.chat.unshown": "이 휴대폰은 이 카드를 전부 표시할 수 없어서 여기서는 트릭을 켤 수 없습니다. 머신에서 읽고 켜세요.",
   "tricks.compare.before": "이전",
   "tricks.compare.after": "이후",

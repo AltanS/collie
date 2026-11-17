@@ -3487,7 +3487,6 @@ export const fr: Dictionary = {
   "hill.hold.always": "Maintenez pour utiliser sans redemander",
   "hill.hold.holding": "Continuez à maintenir…",
   "hill.hold.armed": "Appuyez à nouveau pour confirmer",
-  "hill.hold.hint": "Maintenez pendant 3 secondes. Au clavier, appuyez deux fois.",
   "hill.chat.unshown": "Ce téléphone ne peut pas afficher toute cette carte, le trick ne peut donc pas être activé ici. Lisez-le et activez-le sur la machine.",
   "tricks.compare.before": "Avant",
   "tricks.compare.after": "Après",

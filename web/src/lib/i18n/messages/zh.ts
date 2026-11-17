@@ -3624,7 +3624,6 @@ export const zh: Dictionary = {
   "hill.hold.always": "按住以使用且不再询问",
   "hill.hold.holding": "请继续按住…",
   "hill.hold.armed": "再按一次以确认",
-  "hill.hold.hint": "按住 3 秒。使用键盘时请按两次。",
   "hill.chat.unshown": "这部手机无法显示此卡片的全部内容，因此无法在这里开启该 Trick。请阅读后在主机上开启。",
   "tricks.compare.before": "之前",
   "tricks.compare.after": "之后",

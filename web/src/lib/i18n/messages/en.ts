@@ -3959,7 +3959,7 @@ export const en = {
   "hill.hold.always": "Hold to use and stop asking",
   "hill.hold.holding": "Keep holding…",
   "hill.hold.armed": "Press again to confirm",
-  "hill.hold.hint": "Hold for 3 seconds. With a keyboard, press it twice.",
+  "hill.hold.hint": "Hold to confirm. With a keyboard, press it twice.",
   "hill.chat.unshown": "This phone cannot show all of this card, so the trick cannot be switched on here. Read it and switch it on on the machine.",
   "tricks.compare.before": "Before",
   "tricks.compare.after": "After",
@@ -4133,7 +4133,7 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = ["hill.hold.hint"] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];
