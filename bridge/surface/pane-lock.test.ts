@@ -180,6 +180,42 @@ describe("a stale lock is taken over", () => {
   });
 });
 
+describe("a hold past its until (2026-11-17, second review)", () => {
+  test("another bridge took the file over: this process's next join is refused, and its release leaves their file", () => {
+    const one = bridge(101);
+    const two = bridge(202);
+    expect(one.take("w1:p1", "send-a", clock + 1_000)).toBe(true);
+    clock += 1_000 + STALE_MARGIN_MS + 1;
+    expect(two.take("w1:p1", "send-b", clock + 10_000)).toBe(true);
+    // A person's key, or a new send, in the first bridge while its old hold is still counted.
+    expect(one.take("w1:p1", "press", clock + 10_000)).toBe(false);
+    one.release("w1:p1", "send-a");
+    expect(JSON.parse(readFileSync(join(dir, lockFiles()[0]!), "utf8")).pid).toBe(202);
+    expect(one.take("w1:p1", "press", clock + 10_000)).toBe(false);
+    two.release("w1:p1", "send-b");
+    expect(one.take("w1:p1", "press", clock + 10_000)).toBe(true);
+  });
+
+  test("the file still holds this process's bytes: the join goes ahead and the span grows", () => {
+    const one = bridge(101);
+    expect(one.take("w1:p1", "send-a", clock + 1_000)).toBe(true);
+    clock += 2_000;
+    expect(one.take("w1:p1", "press", clock + 10_000)).toBe(true);
+    expect(JSON.parse(readFileSync(join(dir, lockFiles()[0]!), "utf8")).until).toBe(clock + 10_000);
+    expect(bridge(202).take("w1:p1", "b", clock + 10_000)).toBe(false);
+  });
+
+  test("the file is gone (taken over and released): the join takes it again, and another bridge is refused", () => {
+    const one = bridge(101);
+    expect(one.take("w1:p1", "send-a", clock + 1_000)).toBe(true);
+    clock += 2_000;
+    rmSync(join(dir, lockFiles()[0]!));
+    expect(one.take("w1:p1", "press", clock + 10_000)).toBe(true);
+    expect(lockFiles()).toHaveLength(1);
+    expect(bridge(202).take("w1:p1", "b", clock + 10_000)).toBe(false);
+  });
+});
+
 describe("the folder", () => {
   test("XDG_RUNTIME_DIR first, then /run/user/<uid>, then the state home; never /tmp", () => {
     expect(paneLockDir({ XDG_RUNTIME_DIR: "/run/user/1000" }, 1000, () => false, "/home/a")).toBe("/run/user/1000/collie/pane-locks");
@@ -197,12 +233,26 @@ describe("the folder", () => {
     expect(lines).toHaveLength(1);
   });
 
-  test("a folder gone after the start never fails a take: the pane counts as free here, logged once", () => {
+  test("a folder gone after the start is made again on the next take: the lock holds across bridges again (2026-11-17)", () => {
     const lines: string[] = [];
     const sub = join(dir, "sub");
-    const one = openPaneLock({ dir: sub, scope: "s", pid: 101, now: () => clock, alive: () => true, startOf: () => null, log: (line) => lines.push(line) });
-    expect(one).not.toBeNull();
+    const options = { dir: sub, scope: "s", now: () => clock, alive: () => true, startOf: () => null } as const;
+    const one = openPaneLock({ ...options, pid: 101, log: (line) => lines.push(line) });
+    const two = openPaneLock({ ...options, pid: 202 });
     rmSync(sub, { recursive: true, force: true });
+    expect(one!.take("w1:p1", "a", clock + 1_000)).toBe(true);
+    expect(readdirSync(sub).filter((name) => name.endsWith(".lock"))).toHaveLength(1);
+    expect(two!.take("w1:p1", "b", clock + 1_000)).toBe(false);
+    expect(lines.filter((line) => line.includes("made it again"))).toHaveLength(1);
+  });
+
+  test("a folder that cannot be made again never fails a take: one try per take, the pane free here, logged once", () => {
+    const lines: string[] = [];
+    const parent = join(dir, "parent");
+    const sub = join(parent, "locks");
+    const one = openPaneLock({ dir: sub, scope: "s", pid: 101, now: () => clock, alive: () => true, startOf: () => null, log: (line) => lines.push(line) });
+    rmSync(parent, { recursive: true, force: true });
+    writeFileSync(parent, "a file where the folder was\n");
     expect(one!.take("w1:p1", "a", clock + 1_000)).toBe(true);
     expect(one!.take("w1:p2", "b", clock + 1_000)).toBe(true);
     one!.release("w1:p1", "a");

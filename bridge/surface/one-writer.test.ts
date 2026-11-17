@@ -55,6 +55,31 @@ describe("the key gate shares the pane lock", () => {
     expect(keys).toEqual(["Enter", "Enter"]);
   });
 
+  test("a send of this bridge past its until, the file taken over by another: a press is refused busy, Stop waits then goes bypassed (2026-11-17)", async () => {
+    let clock = 1_000_000;
+    const now = (): number => clock;
+    const shared = (pid: number): PaneLockFiles => {
+      living.add(pid);
+      return new PaneLockFiles({ dir, scope: "tmux\u0000", pid, now, alive: (p) => living.has(p), startOf: (p) => `s${String(p)}` });
+    };
+    const mine = shared(101);
+    const locks = new SessionLocks(mine);
+    expect(locks.acquire("main\u0000%1", "req-a", clock + 1_000, clock)).toBe(true);
+    clock += 1_000 + 5_001;
+    const other = shared(202);
+    expect(other.take("%1", "their-send", clock + 30_000)).toBe(true);
+    const { keys, writer } = keyLog();
+    const gate = new KeyGate(writer, now, () => Promise.resolve());
+    gate.share(mine);
+    expect(isPaneBusy(await gate.press("%1", ["Enter"], "person_tap"))).toBe(true);
+    expect(keys).toEqual([]);
+    // A new send of this bridge on the pane is refused too.
+    expect(locks.acquire("main\u0000%1", "req-b", clock + 10_000, clock)).toBe(false);
+    const stop = await gate.pressAlways("%1", ["Escape"]);
+    expect(stop.bypassed).toBe(true);
+    expect(keys).toEqual(["Escape"]);
+  });
+
   test("a press inside this bridge's own send goes, as a person's key always could; the send keeps its lock", async () => {
     const mine = lockOf(101);
     const locks = new SessionLocks(mine);
@@ -119,6 +144,14 @@ describe("the write-ahead mark", () => {
       ["req-0000001", "interrupted"],
       ["req-0000002", "crash"],
     ]);
+  });
+
+  test("a request whose submit mark is on disk keeps crash after a restart: Enter may have gone out (2026-11-17)", () => {
+    const s = store();
+    s.accept(input);
+    s.markStarted(input.id);
+    s.markSubmitSent(input.id);
+    expect(s.recover(SendProtocol.crashReceipt)[0]?.receipt?.reason).toBe("crash");
   });
 
   test("the mark is written once, never on a settled record, and a held request's release clears it", () => {
