@@ -37,12 +37,6 @@ export const KNOWN_RED = {
     where: "bridge/surface/protocol.ts:1770-1803 (turnRefusal), protocol.ts:5528 (gateTurn), reached from gateSend at 5326",
     what: "A person's override on a real running screen (omp, Claude with the top cut) is refused turn_running: nothing typed, though spec 12 types an override on any reading and an override is never held.",
   },
-  "i4-tap-tick-unframed": {
-    invariant: "I4",
-    fixedBy: "NONE",
-    where: "web/src/lib/harness/prompt-model.ts:306-309 (sameDialogRows: with no bindRegion it compares the lookback signature), web/src/lib/harness/guard.ts entryGuard (refuses `changed`)",
-    what: "A tap on a dialog with no frame of its own (a Claude ask, the first-run menu, agy and muse asks) is refused `changed` while a row above it ticks: the person cannot answer until the timer stops.",
-  },
   "i4-bridge-draft-no-box": {
     invariant: "I4",
     fixedBy: "M102-12",

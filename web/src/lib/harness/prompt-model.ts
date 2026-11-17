@@ -302,10 +302,60 @@ export function promptsEqual(a: PromptModel, b: PromptModel): boolean {
  * included, as before: with no edge, or with a rule right above the question, a subject above the rule
  * would fall outside `askRegion`, and a successor with another command would compare equal. A pair
  * where only one side carries `bindRegion` is two readings of the screen, never the same dialog.
+ *
+ * Those rows are compared with their RUNNING rows held still ({@link tickSteadySignature}): a spinner
+ * row or a running tool row above an unframed dialog ticks while the dialog waits, and the person
+ * could not answer until it stopped. Every other row, the command or file a subject names included,
+ * still compares byte for byte. The rows from the question down are compared exactly as well, by
+ * `promptsSameIdentity` (`coreSignature`, the labels), the option plans and the feedback state, so the
+ * hold reaches only the rows above the question.
  */
 function sameDialogRows(a: PromptModel, b: PromptModel): boolean {
   if (a.bindRegion !== undefined && b.bindRegion !== undefined) return a.askRegion === b.askRegion;
-  return a.bindRegion === b.bindRegion && a.askRegion === b.askRegion && a.signature === b.signature;
+  return a.bindRegion === b.bindRegion && sameUnframedRows(a.askRegion, b.askRegion) && sameUnframedRows(a.signature, b.signature);
+}
+
+/** Two optional runs of rows of an unframed dialog: equal as they are, or equal with their running
+ *  rows held still. Absent equals only absent, and `null` (no edge) only `null`. */
+function sameUnframedRows(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (a === b) return true;
+  if (a === null || a === undefined || b === null || b === undefined) return false;
+  return tickSteadySignature(a) === tickSteadySignature(b);
+}
+
+/**
+ * A spinner glyph at a row's lead, followed by a word: a braille spinner frame (U+2801 to U+28FF), or
+ * one of the star frames a turn's spinner cycles through (`· ✢ ✳ ✶ ✻ ✽ *`). Not the `❯` pointer, not
+ * a tool row's `⏺`, not a list dash: those are not ticks.
+ */
+const SPINNER_LEAD = /^(\s*)[\u2801-\u28ff·✢✳✶✻✽*](?=\s+\p{L})/u;
+/** A bracket group right after an ellipsis: where a running row keeps its timer and its counters
+ *  (`Running… (4m 12s · timeout 10m)`, `Wibbling… (4s · ↓ 304 tokens)`). */
+const RUNNING_BRACKET = /(…|\.\.\.)(\s*)\(([^()]*)\)/gu;
+
+/**
+ * One row as the unframed comparison sees it, with what a running row redraws on its own held still.
+ * Two shapes, both harness-neutral:
+ *
+ *   - a SPINNER row, a spinner glyph at its lead then a word ("✻ Churned for 4s · done 12:15 AM",
+ *     "⠋ working 3s"): the glyph reads as `*` and every digit run as `0`;
+ *   - a RUNNING row, a bracket group right after an ellipsis ("⎿  Running… (4m 12s · timeout 10m)"):
+ *     the digit runs inside that group read as `0`, and nothing else on the row moves.
+ *
+ * Every other row is returned as it is, so a command, a file or a question that differs in a single
+ * character, a digit included ("kill 1234" against "kill 5678"), still differs. A row that changes
+ * its words, or gains or loses a spinner lead, still differs too. The bridge's own unframed compares
+ * hold the same kinds of row still (bridge/surface/protocol.ts `steadyRow`); this module imports
+ * nothing at runtime, so the rule is spelled here.
+ */
+function tickSteadyRow(row: string): string {
+  if (SPINNER_LEAD.test(row)) return row.replace(SPINNER_LEAD, "$1*").replace(/\d+/gu, "0");
+  return row.replace(RUNNING_BRACKET, (_all, ellipsis: string, gap: string, inner: string) => `${ellipsis}${gap}(${inner.replace(/\d+/gu, "0")})`);
+}
+
+/** A signature with each of its rows read by {@link tickSteadyRow}. Same row count, same order. */
+function tickSteadySignature(signature: string): string {
+  return signature.split("\n").map(tickSteadyRow).join("\n");
 }
 
 /**
