@@ -3967,6 +3967,7 @@ export const en = {
   "accounts.changeLogin.what": "This profile gets another login.",
   "accounts.changeLogin.reach": "Its sessions follow.",
   "accounts.changeLogin.othersKeep": "Your other profiles keep their login.",
+  "accounts.changeLogin.outside": "Sessions outside Collie that use this profile follow too.",
   "accounts.changeLogin.newOnly": "Sessions you start from now on use the new login.",
   "accounts.changeLogin.running.one": "{count} session of this profile is running now.",
   "accounts.changeLogin.running.other": "{count} sessions of this profile are running now.",
@@ -4154,6 +4155,7 @@ export const PENDING_TRANSLATION = [
   "accounts.intro.lessToggle",
   "accounts.changeLogin.what",
   "accounts.changeLogin.othersKeep",
+  "accounts.changeLogin.outside",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

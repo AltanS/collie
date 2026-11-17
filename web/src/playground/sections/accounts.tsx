@@ -71,8 +71,12 @@ const CLAUDE: AccountHarness = {
   signInHosts: ["claude.com", "platform.claude.com"],
 };
 const CODEX: AccountHarness = { id: "codex", label: "Codex", select: "CODEX_HOME", kinds: ["own"], newFolder: "~/.codex-{slug}", binary: "codex" };
+const SESSIONS = [
+  { paneId: "w1:p1", name: "Fix the build", space: "lodge" },
+  { paneId: "w2:p1", name: "Write the docs", space: "workshop" },
+];
 const CODEX_SIGNED_IN = { ...CODEX_ROW, identity: { signedIn: true, email: "someone@example.com" }, running: 1 };
-const RUNNING_ROW = { ...DEFAULT_ROW, windows: [{ window: "5h", usedPct: 100, resetsAt: NOW + 3_600_000 }], running: 3 };
+const RUNNING_ROW = { ...DEFAULT_ROW, windows: [{ window: "5h", usedPct: 100, resetsAt: NOW + 3_600_000 }], running: 2 };
 
 /** The sign-in card's model as the reader builds it from `/login` (made-up address, masked values). */
 const SIGN_IN_CARD = (address: string): BoxTextModel => ({
@@ -161,9 +165,9 @@ export function AccountsSection() {
         </Card>
       </Group>
       <Group title="Change login">
-        <Card state="accounts-change-login-before" label="5 Before, sessions follow">
+        <Card state="accounts-change-login-before" label="5 Before, two sessions listed">
           <Screen foot>
-            <ChangeLoginBeforeView row={RUNNING_ROW} harness={CLAUDE} agentLabel="Claude Code" others />
+            <ChangeLoginBeforeView row={RUNNING_ROW} harness={CLAUDE} agentLabel="Claude Code" others sessions={SESSIONS} />
           </Screen>
         </Card>
         <Card state="accounts-change-login-before-idle" label="6 Before, no session runs">
