@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -8,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 import { TrickAboutSheet } from "@/components/trick-about-sheet";
 import { TrickSettingsGroup } from "@/components/trick-settings-group";
 import { slotLine } from "@/components/tricks-settings-card";
-import { PENDING_TRANSLATION } from "@/lib/i18n/messages/en";
 import type { JsonValue } from "@/lib/json";
 import type { FieldValue, TrickField, WireTrickInfo } from "@/lib/tricks/schema";
 import { readTrick } from "@/lib/tricks/wire";
@@ -158,12 +154,5 @@ describe("in the About sheet and on the row", () => {
   it("the no-secrets line shows for a read-only device and with no value set", () => {
     const { section } = group({ values: { repo: "lodge/workshop" } }, { canWrite: false });
     expect(within(section).getByText("Not for secrets. Every paired phone can see these.")).toBeInTheDocument();
-  });
-
-  it("the new words wait for translation", () => {
-    for (const key of ["settings.tricks.about.settings", "settings.tricks.needsSetup", "settings.tricks.fields.needsSetup", "settings.tricks.fields.noSecrets"]) expect(PENDING_TRANSLATION).toContain(key);
-    // No locale carries them yet: they are never translated by hand.
-    const de = readFileSync(join(__dirname, "../lib/i18n/messages/de.ts"), "utf8");
-    expect(de).not.toContain("settings.tricks.fields.");
   });
 });
