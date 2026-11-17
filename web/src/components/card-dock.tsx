@@ -139,6 +139,21 @@ export interface CardDockProps {
    * Null or absent, none.
    */
   cannotTell?: CannotTellCardProps | null;
+  /**
+   * The exit of an answer that cannot go (M102 spec 10): the line that says what happened, the live
+   * screen and the person's Keys pad, in spec 03's card. While it is set it stands in for the dialog
+   * card it is about; its cross brings that card back. Null or absent, none.
+   */
+  answerExit?: AnswerExitCard | null;
+}
+
+/** What the dock needs to draw an answer's exit. AgentChat sets it only while the same dialog is on screen. */
+export interface AnswerExitCard {
+  /** The one line: what happened to the answer. */
+  readonly caption: string;
+  /** The live screen. */
+  readonly lines: StyledLine[];
+  readonly onClose: () => void;
 }
 
 /** The block kinds that dock a dialog card: each answers a dialog on the pane. The completion popup
@@ -283,7 +298,27 @@ function liftedCard({
   unreadSecret,
   cannotTell,
   signInHosts,
+  answerExit,
 }: CardDockProps): ReactNode {
+  // The exit of an answer that cannot go (M102 spec 10) stands in for the card whose answer did not go:
+  // the person reads the live screen and presses keys on their own pad. No "Type it anyway": the screen
+  // holds a question, and a message never goes into one (ADR 0142, hard stop 6a). No declared key: the
+  // pad holds Esc, and the card draws a cap for a core key the person's board lacks.
+  if (answerExit !== null && answerExit !== undefined) {
+    return (
+      <UnreadDialogBlock
+        cancel={null}
+        lines={answerExit.lines}
+        caption={answerExit.caption}
+        onClose={answerExit.onClose}
+        disabled={promptDisabled}
+        wrap={wrap}
+        onAction={() => undefined}
+        paneId={paneId}
+        onPadKeys={onUnreadPadKeys}
+      />
+    );
+  }
   const promptBlock = blocks.find((b): b is PromptBlock => b.kind === "prompt-select");
   if (promptBlock) {
     return (
@@ -445,7 +480,8 @@ export function CardDock(props: CardDockProps) {
   const [dock, setDock] = useState<HTMLDivElement | null>(null);
   // The caller's ref still reaches the dock's box; ours watches it for the floor.
   useImperativeHandle(props.ref, () => dock!, [dock]);
-  const fits = dockFits(props.blocks);
+  // The exit stands in for the card, and it scrolls as the unread card does: it never fits.
+  const fits = (props.answerExit === null || props.answerExit === undefined) && dockFits(props.blocks);
   const size = useFitSize(dock, fits);
   const card = liftedCard(props);
   if (card === null) return null;

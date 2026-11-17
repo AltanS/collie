@@ -27,7 +27,6 @@ import { splitLines } from "../../lib/blocks";
 import { dialogDetector } from "../../lib/dialog-guard";
 import { DIALOG_CONTRACT } from "../../lib/harness/dialog-contract";
 import { submitPromptOption } from "../../lib/prompt-action";
-import { knownRed, redTitle } from "./known-red";
 import { replayHint, rngOf, runSeeds, sample, type Rng } from "./seed";
 
 const mockFetchPane = vi.mocked(fetchPane);
@@ -134,9 +133,8 @@ function directOption(prompt: Prompt) {
   return prompt.options.find((o) => o.keys.length === 1 && !WALK_KEYS.has(o.keys[0] ?? ""));
 }
 
-async function tap(dialog: Dialog, freshText: string, revision: number) {
+async function tap(dialog: Dialog, freshText: string, revision: number, option = directOption(dialog.prompt)) {
   mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: freshText, truncated: false, revision });
-  const option = directOption(dialog.prompt);
   if (option === undefined) throw new Error("no direct option");
   return submitPromptOption({ paneId: "w1:p1", requestedLines: 200, detectedRevision: DETECTED, agent: dialog.harness, prompt: dialog.prompt, option });
 }
@@ -165,10 +163,10 @@ async function tickRun(seed: number): Promise<{ readonly framed: string[]; reado
 }
 
 /** One tap on a clean mock. */
-async function tapFresh(dialog: Dialog, freshText: string, revision: number) {
+async function tapFresh(dialog: Dialog, freshText: string, revision: number, option = directOption(dialog.prompt)) {
   vi.clearAllMocks();
   mockSendKeys.mockResolvedValue({ ok: true });
-  return tap(dialog, freshText, revision);
+  return tap(dialog, freshText, revision, option);
 }
 
 beforeEach(() => {
@@ -210,21 +208,28 @@ describe("M102-15, the guarded key tap on real dialogs", () => {
     });
   }
 
-  // A dialog with no frame of its own (an ask, a first-run menu, agy, muse) compares its whole
-  // lookback signature on purpose, so a tick above it refuses the tap. Named case: always red today.
-  const red = knownRed("i4-tap-tick-unframed");
-  it.fails(`I4: a ticking row above an unframed dialog does not refuse the tap ${redTitle(red.id)}`, async () => {
+  // A dialog with no frame of its own (an ask, a first-run menu, agy, muse) compares its lookback
+  // signature, so a successor with another subject above the question is refused; a row up there
+  // that only ticks is held still and does not refuse the tap.
+  it(`I4: a ticking row above an unframed dialog does not refuse the tap`, async () => {
     const all: string[] = [];
     for (const seed of SEEDS) all.push(...(await tickRun(seed)).unframed);
-    console.info(`[invariants.key-tap] i4-tap-tick-unframed: ${String(all.length)} refused taps; first: ${all[0] ?? "-"}`);
-    const named = DIALOGS.find((d) => d.name === "claude--v2323-rc-off-ask-single--w100.txt");
-    if (named === undefined) throw new Error("the named capture is gone");
+    console.info(`[invariants.key-tap] unframed tick: ${String(all.length)} refused taps; first: ${all[0] ?? "-"}`);
+    // The named capture: a Claude ask, whose options commit as a digit and Enter in one guarded write
+    // (so it is not in DIALOGS, which keeps one-key plans only).
+    const name = "claude--v2323-rc-off-ask-single--w100.txt";
+    const text = readFileSync(join(PANES, name), "utf8");
+    const seen = dialogDetector("prompt-select", "claude")(lines(text));
+    if (seen === null) throw new Error("the named capture does not lift");
+    const top = regionTop(text, seen);
     const tick = TICKS[3];
     if (tick === undefined) throw new Error("no tick");
-    const shownText = insertRow(named.text, named.top, tick[0]);
-    const shown = dialogDetector("prompt-select", named.harness)(lines(shownText));
+    const shownText = insertRow(text, top, tick[0]);
+    const shown = dialogDetector("prompt-select", "claude")(lines(shownText));
     if (shown === null) throw new Error("the named dialog does not lift");
-    const result = await tapFresh({ ...named, text: shownText, prompt: shown }, insertRow(named.text, named.top, tick[1]), DETECTED + 2);
-    expect({ status: result.status, all }).toEqual({ status: "sent", all: [] });
+    // Since staging d7af75e5c this ask binds its question's own rows (`bindRegion`), so the tick sits outside
+    // the compare either way; the seeded run above still covers the dialogs that have no frame.
+    const result = await tapFresh({ name, harness: "claude", text: shownText, prompt: shown, top }, insertRow(text, top, tick[1]), DETECTED + 2, shown.options[0]);
+    expect({ status: result.status, writes: mockSendKeys.mock.calls.length, all }).toEqual({ status: "sent", writes: 1, all: [] });
   });
 });

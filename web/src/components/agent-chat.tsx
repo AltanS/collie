@@ -68,6 +68,7 @@ import { waitingQuestionNote } from "@/lib/question-waiting";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { paneSurface } from "@/lib/send-slot";
 import { answerAsk, cardHashOf, type AskTapResult } from "@/lib/dialog-ask";
+import { askExitKey, cardExitKey, dialogExitKey, EXIT_SENTENCE, exitOfAsk, exitOfGuard, holdExitKey, type AnswerExitWhy } from "@/lib/answer-exit";
 import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
 import { askOptionFor } from "@/lib/ask-reply";
 import { cancelHeldSend, cancelWalky, deliverWalky, dropWalky, isApiErrorStatus, refreshNow, setWalkyOff } from "@/lib/api";
@@ -1104,6 +1105,35 @@ export function AgentChat({
   const surfaceAsk = agent?.surface === undefined ? null : askOf(agent.surface.modal);
   const paneAsk =
     askReplaced !== null && askReplaced.pane === paneId && (surfaceAsk === null || surfaceAsk.id === askReplaced.refused) ? askReplaced.ask : surfaceAsk;
+  // THE EXIT OF AN ANSWER THAT CANNOT GO (M102 spec 10, lib/answer-exit.ts). A tap on an ask card that
+  // is refused, cannot be planned or gets no word in time opens one exit: a line, the live screen and
+  // the person's Keys pad, in place of the card it is about. It belongs to ONE dialog: it shows only
+  // while that dialog's key is on screen, and it is dropped for good the moment it is not, so it never
+  // shows on the next dialog. `n` counts the exits raised, so each opens the Keys drawer once.
+  const [answerExit, setAnswerExit] = useState<{ readonly pane: string; readonly key: string; readonly why: AnswerExitWhy; readonly n: number } | null>(null);
+  const exitCount = useRef(0);
+  const composerAsk = askOf(composerSurface.modal);
+  const exitKeysNow = useMemo(() => {
+    const keys = new Set<string>();
+    const card = cardExitKey(blocks);
+    if (card !== null) keys.add(card);
+    if (agent?.hold?.state === "held") keys.add(holdExitKey(agent.hold.askId));
+    // A dialog the Surface carries and the phone draws no card for (the composer's `answer` slot).
+    if (composerAsk !== null && !hasDialogCard(blocks)) keys.add(askExitKey(composerAsk));
+    return keys;
+  }, [blocks, agent?.hold, composerAsk]);
+  const exitShown = answerExit !== null && answerExit.pane === paneId && exitKeysNow.has(answerExit.key) ? answerExit : null;
+  useEffect(() => {
+    if (answerExit !== null && exitShown === null) setAnswerExit(null);
+  }, [answerExit, exitShown]);
+  const raiseExit = useCallback(
+    (key: string | null, why: AnswerExitWhy | null) => {
+      if (key === null || why === null) return;
+      exitCount.current += 1;
+      setAnswerExit({ pane: paneId, key, why, n: exitCount.current });
+    },
+    [paneId],
+  );
   // Where a tap and a text go, by the session kind and the crew link (lib/send-path.ts, M56 spec 14).
   const sendPlace = { program: gridless, crew: !isLead(scope), sendProtocol: agent?.sendProtocol === true, askRoute: agent?.askRoute === true };
   // A crew member too old to take a card's tap by id: its cards keep the key route, and the dock says why (M102 spec 14).
@@ -1569,8 +1599,11 @@ export function AgentChat({
 
   // What an ask answer's reply does on the phone (M56 spec 08). Nothing here is a next step a person
   // must take in the header: a changed dialog is drawn as its new card, a gone one is read again.
+  // A dead end (refused, unknown, error) also opens the exit, keyed on `exitKey`: the dialog card the tap
+  // came from, or the hold's ask (M102 spec 10). The status line stays beside it.
   const settleAskTap = useCallback(
-    async (refusedId: string, result: AskTapResult): Promise<boolean> => {
+    async (refusedId: string, result: AskTapResult, exitKey: string | null): Promise<boolean> => {
+      raiseExit(exitKey, exitOfAsk(result));
       switch (result.status) {
         case "sent":
           setStatus(t("chat.status.sent"), "success");
@@ -1618,26 +1651,29 @@ export function AgentChat({
           return false;
       }
     },
-    [showAfterSend, revalidator, scope, paneId],
+    [showAfterSend, revalidator, scope, paneId, raiseExit],
   );
 
   // Tap an option on the hook card (M56 spec 12): one Answer to the hook-held ask, never a key.
+  // Resolves false when the answer met a dead end and the exit opened, so the card says so too.
   const handleHoldAnswer = useCallback(
-    async (index: number) => {
+    async (index: number): Promise<boolean | undefined> => {
       const refusal = refuseWrite();
       if (refusal) {
         setStatus(refusal, "error");
-        return;
+        return undefined;
       }
       // The note carries the hold ask's id, hash and labels: the card answers it even while the
       // Surface carries the keys ask of another dialog on the screen.
       const note = agent?.hold;
-      if (note === undefined || note.state !== "held") return;
+      if (note === undefined || note.state !== "held") return undefined;
       const label = note.options[index];
-      if (label === undefined) return;
+      if (label === undefined) return undefined;
       const ask = holdAskOfNote(note);
       const tap = { card: "prompt-select", index, label } as const;
-      await settleAskTap(ask.id, await answerAsk({ paneId, scope, ask, tap, via: "hold-card" }));
+      const result = await answerAsk({ paneId, scope, ask, tap, via: "hold-card" });
+      await settleAskTap(ask.id, result, holdExitKey(note.askId));
+      return exitOfAsk(result) === null;
     },
     [refuseWrite, agent?.hold, paneId, scope, settleAskTap],
   );
@@ -1668,7 +1704,7 @@ export function AgentChat({
           return false;
         }
         const tap = { card: "prompt-select", index: prompt.options.indexOf(action.option), label: action.option.label } as const;
-        if (askOptionFor(paneAsk, tap) !== null) return settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap }));
+        if (askOptionFor(paneAsk, tap) !== null) return settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap }), dialogExitKey("prompt-select", prompt));
         // A hook-held ask (M56 spec 12) never falls back to keys: a key would answer the held dialog
         // behind the hook's back. The card and the ask disagree, so nothing is sent.
         if (paneAsk.channel === "hook") {
@@ -1693,6 +1729,10 @@ export function AgentChat({
         action.kind === "option"
           ? await submitPromptOption({ ...base, option: action.option })
           : await submitPromptFeedback({ ...base, text: action.text });
+      // An option the guard or the bridge refused, or that got no word, opens the exit (M102 spec 10). A
+      // typed feedback text keeps today's ending: the card holds the person's draft, and the exit would
+      // stand in for that card.
+      if (action.kind === "option") raiseExit(dialogExitKey("prompt-select", prompt), exitOfGuard(result.status));
       if (result.status === "sent") {
         const sentStatus =
           action.kind === "option"
@@ -1714,7 +1754,7 @@ export function AgentChat({
       // what someone just thumb-typed. Option taps ignore it.
       return result.status === "sent";
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold, noticeUntilRefreshed],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold, noticeUntilRefreshed, raiseExit],
   );
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
@@ -1739,6 +1779,7 @@ export function AgentChat({
         wizard,
         keys,
       });
+      raiseExit(dialogExitKey("wizard", wizard), exitOfGuard(result.status));
       if (result.status === "sent") {
         setStatus(t("chat.status.sent"), "success");
         await showAfterSend();
@@ -1748,7 +1789,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, showAfterSend, noticeUntilRefreshed],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, showAfterSend, noticeUntilRefreshed, raiseExit],
   );
 
   // Send an answer typed on the phone into a wizard step's field (ADR 0113): the shared recipe
@@ -1812,6 +1853,8 @@ export function AgentChat({
           : action.kind === "note"
             ? await submitPreviewNote({ ...base, text: action.text })
             : await submitPreviewKeys({ ...base, keys: action.keys });
+      // A note is typed text the card holds; it keeps today's ending, as plan feedback does.
+      if (action.kind !== "note") raiseExit(dialogExitKey("preview-select", preview), exitOfGuard(result.status));
       if (result.status === "sent") {
         setStatus(
           action.kind === "note"
@@ -1829,7 +1872,7 @@ export function AgentChat({
         revalidator.revalidate();
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, noticeUntilRefreshed],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, noticeUntilRefreshed, raiseExit],
   );
 
   // Tap a multi-select control (toggle a checkbox, Submit, the "Chat about this" escape, or the
@@ -1853,6 +1896,7 @@ export function AgentChat({
         multi,
         intent: action,
       });
+      raiseExit(dialogExitKey("multi-select", multi), exitOfGuard(result.status));
       if (result.status === "sent") {
         setStatus(t("chat.status.sent"), "success");
         await showAfterSend();
@@ -1862,7 +1906,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, showAfterSend, noticeUntilRefreshed],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, showAfterSend, noticeUntilRefreshed, raiseExit],
   );
 
   // An answer typed into a multi-select question's own field (ADR 0113): the `type` intent, under the
@@ -1928,7 +1972,7 @@ export function AgentChat({
           // newer (or, under a frozen mirror, older) than the ask: the answer carries the card's own
           // hash and goes out only under an ask with it (lib/dialog-ask.ts).
           const seen = cardHashOf(blocks, menu);
-          await settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap, seen }));
+          await settleAskTap(paneAsk.id, await answerAsk({ paneId, scope, ask: paneAsk, tap, seen }), dialogExitKey("menu", menu));
           return;
         }
         // A hook-held ask never falls back to keys (M56 spec 12), as for a prompt card above.
@@ -1949,6 +1993,7 @@ export function AgentChat({
         keys: action.keys,
         nav: action.nav,
       });
+      raiseExit(dialogExitKey("menu", menu), exitOfGuard(result.status));
       if (result.status === "sent") {
         setStatus(t("chat.status.sent"), "success");
         await showAfterSend();
@@ -1958,7 +2003,7 @@ export function AgentChat({
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold, blocks, noticeUntilRefreshed],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold, blocks, noticeUntilRefreshed, raiseExit],
   );
 
   // The unread-dialog card's one control (.adr/0053). Same guard as every other dialog tap — the
@@ -2995,8 +3040,9 @@ export function AgentChat({
               // first box to shrink (weight 1000, the dock 1). The dock gives up its spare subject
               // rows before this box goes under the share, and this box goes under it rather than
               // push the card's buttons out of the dock: a short phone shows the whole question and
-              // every button, and less chat, while the card is up.
-              cardFits
+              // every button, and less chat, while the card is up. An answer's exit stands in for the card
+              // and never fits (M102 spec 10).
+              cardFits && exitShown === null
                 ? composing
                   ? "min-h-0 flex-[1_1000_20dvh]"
                   : "min-h-0 flex-[1_1000_30dvh]"
@@ -3311,6 +3357,8 @@ export function AgentChat({
               disabled={readOnly || gone || !holdsAnswered}
               disabledReason={t(gone ? "chat.hold.gone" : readOnly ? "chat.hold.readOnly" : "chat.hold.oldBridge")}
               onAnswer={handleHoldAnswer}
+              // An answer that threw opens the same exit as a refused one (M102 spec 10).
+              onExit={() => raiseExit(holdExitKey(agent.hold?.askId ?? ""), "error")}
             />
           )}
           {display && olderMemberCards && hasDialogCard(blocks) && (
@@ -3335,6 +3383,10 @@ export function AgentChat({
               // The unread card's own ways on (M102 spec 03): a cap for a core key the person's board lacks
               // goes through the Keys pad's road; "Type it anyway" arms one send past this screen.
               unreadFallback={unreadFallback}
+              // The exit of an answer that cannot go (M102 spec 10): its line, the live screen, the Keys pad.
+              answerExit={
+                exitShown === null ? null : { caption: t(EXIT_SENTENCE[exitShown.why]), lines: screenLines, onClose: () => setAnswerExit(null) }
+              }
               onUnreadPadKeys={(keys) => composerRef.current?.padKeys(keys) ?? Promise.resolve(false)}
               onUnreadTypeAnyway={() => composerRef.current?.typeAnyway()}
               unreadSecret={unreadSecret || composerSurface.field === "secret"}
@@ -3611,13 +3663,16 @@ export function AgentChat({
                   readOnly={readOnly}
                   onAnswerDialog={answerDialog}
                   // The dock draws a dialog card only with a text to draw from (see the CardDock below).
-                  dialogCard={display ? hasDialogCard(blocks) || unreadFallback !== null : false}
-                  unreadIdentity={display ? unreadId : null}
+                  dialogCard={display ? hasDialogCard(blocks) || unreadFallback !== null || exitShown !== null : false}
+                  // An exit's Keys drawer opens once per exit raised, as the unread card's does once per screen.
+                  unreadIdentity={display ? (exitShown !== null ? `exit:${exitShown.n}` : unreadId) : null}
                   onScreenUnread={() => setUnreadOpenedAt(shown.revision)}
+                  // The `answer` slot with no card for its dialog (M102 spec 10, diagnosis B): the exit opens.
+                  onAnswerUnseen={() => raiseExit(composerAsk === null ? null : askExitKey(composerAsk), "unseen")}
                   onCannotTell={setCannotTell}
                   onCannotTellRing={() => setCannotTellRing((n) => n + 1)}
                   // The card shows where no dialog card lifts and the unread card does not stand (see the CardDock above).
-                  cannotTellInView={display ? !hasDialogCard(blocks) && unreadFallback === null : false}
+                  cannotTellInView={display ? !hasDialogCard(blocks) && unreadFallback === null && exitShown === null : false}
                   text={text}
                   terminalDraft={terminalDraft}
                   rawTerminalDraft={rawTerminalDraft}
