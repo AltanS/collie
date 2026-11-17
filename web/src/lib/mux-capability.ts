@@ -19,7 +19,17 @@ import type { MuxCapability, MuxConfig, MuxTopologyLatency, SessionSummary } fro
 // answer arrives already true for whichever multiplexer is underneath, so no component learns a
 // name. scripts/check-mux-names.sh keeps it that way.
 //
-// ── The default is CAPABLE, and that direction is deliberate ────────────────────────────────────
+// ── The seed is "last known, else capable; a real read replaces it" ────────────────────────────
+//
+// The first frame draws from the LAST KNOWN answer of this machine, remembered on the device after
+// each successful read (lib/remembered-mux.ts, seeded into the store at module load), so a control
+// stands where it stood last time and nothing swaps in when the read lands (DESIGN.md §2). The read
+// that follows REPLACES the seed in full, never merges into it, so a remembered "not capable" never
+// hides a control once the bridge says capable. Only the front machine's own answer is remembered: a
+// crew member's block and a session's block answer with the front machine's until their own read.
+//
+// With nothing remembered (a first visit, a wiped device) the answer is CAPABLE, and that direction
+// is deliberate.
 //
 // The bridge's own declaration fails CLOSED (bridge/mux/capabilities.ts: a capability nobody
 // answered for is absent), because there the risk is promising behaviour no adapter implements.
@@ -27,7 +37,7 @@ import type { MuxCapability, MuxConfig, MuxTopologyLatency, SessionSummary } fro
 // a bridge mid-upgrade, would hide controls that work perfectly. An operator whose Rename button
 // vanished for the length of a page cache has no way to tell that from a bug. So: no `mux` block,
 // or a block that does not mention the capability, reads as PRESENT. A capability is absent only
-// when a bridge said `false` about it.
+// when a bridge said `false` about it, now or on the last read this device saw.
 //
 // The cost of that choice is bounded and visible: a control that should have been hidden is offered
 // once, the call answers `unsupported`, and the operator sees a refusal instead of an explanation.

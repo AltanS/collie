@@ -27,11 +27,42 @@ export const ANSWER_MAX_COUNT = 99;
 
 export type AnswerKind = "flag" | "count" | readonly [string, ...string[]];
 
+/** What a bridge said about one multiplexer capability: yes, no, or nothing (lib/remembered-mux.ts). */
+const MUX_SAID = ["yes", "no", "unsaid"] as const;
+
 /** The facts. A kind is `"flag"` (a boolean), `"count"` (0 to 99) or a fixed list of short words. */
 export const ANSWERS = {
   "settings-accounts-row": "flag",
   "settings-tricks-row": "flag",
   "settings-install-card": "flag",
+  // Package mux-config (lib/remembered-mux.ts): what the front machine's /api/config said last time.
+  // One word per declared capability, `unsaid` when the bridge did not mention it, so a capability a
+  // bridge stopped declaring is forgotten and not kept as a stale yes or no.
+  "mux-paneGrid": MUX_SAID,
+  "mux-gridScrollback": MUX_SAID,
+  "mux-agentDetection": MUX_SAID,
+  "mux-agentSessionRef": MUX_SAID,
+  "mux-typeText": MUX_SAID,
+  "mux-sendKeys": MUX_SAID,
+  "mux-renamePane": MUX_SAID,
+  "mux-closePane": MUX_SAID,
+  "mux-setFocus": MUX_SAID,
+  "mux-createTab": MUX_SAID,
+  "mux-renameTab": MUX_SAID,
+  "mux-closeTab": MUX_SAID,
+  "mux-createSpace": MUX_SAID,
+  "mux-createWorktree": MUX_SAID,
+  "mux-pushTopologyEvents": MUX_SAID,
+  "mux-pushPaneEvents": MUX_SAID,
+  "mux-steerTurn": MUX_SAID,
+  "mux-abortTurn": MUX_SAID,
+  "mux-starters": MUX_SAID,
+  "mux-renameSpace": MUX_SAID,
+  "mux-programActions": MUX_SAID,
+  "mux-programHistory": MUX_SAID,
+  "mux-reopenConversation": MUX_SAID,
+  "mux-spaces": ["one", "many"],
+  "stt-offered": "flag",
 } as const satisfies Record<string, AnswerKind>;
 
 export type AnswerName = keyof typeof ANSWERS;
