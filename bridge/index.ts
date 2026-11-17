@@ -232,7 +232,7 @@ import { currentWarrant, discardForeignWarrant, refreshWarrant, type WarrantPush
 import { CLEAR_BURST_MS, Push } from "./push.ts";
 import { currentNotesReader } from "./release-notes.ts";
 import { pluginRoot } from "./root.ts";
-import { agentPaneFilesRoot, buildId, filesPrivateFolders, startServer } from "./server.ts";
+import { agentPaneFilesRoot, buildId, filesPrivateFolders, paneReadHint, recentRead, startServer } from "./server.ts";
 import {
   DEFAULT_SESSION_NAME,
   herdTagFor,
@@ -375,6 +375,7 @@ import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
 import { ApiSocket, apiSocketPath } from "./api/socket.ts";
 import { buildTable, LOCAL_TIER_RIGHTS } from "./api/operations.ts";
+import { buildReads } from "./api/reads.ts";
 import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
@@ -4123,13 +4124,35 @@ const repoFacts =
       });
 // The local API (M105 spec 03): a read-only Unix socket at `<stateDir>/api/sock`, open only while at
 // least one trick is switched on (TricksService tells the count). No tricks folder, no socket ever.
-// The five reads beyond `hello` and `events` are wired in a later part; until then they are not offered.
+// The five reads beyond `hello` and `events` (bridge/api/reads.ts) see the bridge through getters only.
 const localApi =
   cfg.tricksDir === undefined
     ? undefined
     : new ApiSocket({
         socketPath: apiSocketPath(cfg.stateDir),
-        table: buildTable({ version: () => collieVersion(rootDir), bus: eventBus }),
+        table: buildTable({
+          version: () => collieVersion(rootDir),
+          bus: eventBus,
+          reads: buildReads({
+            machine: () => bridgeId.id,
+            panes: () => registry.all().flatMap((rt) => rt.engine.current().agents.map((pane) => ({ muxSession: rt.name, pane }))),
+            // Peek, never mint: a pane with no token is left out of `sessions`.
+            instanceOf: (muxSession, paneId) => walkyInstances.peek(muxSession, paneId),
+            bus: eventBus,
+            paneAccount: (muxSession, pane) => accounts.paneAccount(muxSession, pane),
+            accountsBody: () => accounts.body(),
+            draftState: (muxSession, paneId) => insideHub?.draftOf({ session: muxSession, paneId }) ?? null,
+            // The phone's own read of a pane (server.ts `readPane`): same request shape, same hint.
+            readScreen: async (muxSession, paneId, lines) => {
+              const rt = registry.all().find((candidate) => candidate.name === muxSession);
+              if (rt === undefined) return { ok: false };
+              const grid = await rt.herdr.readGrid(paneId, recentRead(lines, paneReadHint(rt.engine, paneId)));
+              return grid.ok ? { ok: true, text: grid.value.text, truncated: grid.value.truncated } : { ok: false };
+            },
+            hillOpen: () => hill.list().open,
+            defaultLines: cfg.readLines,
+          }),
+        }),
         granted: LOCAL_TIER_RIGHTS,
         platform: HOST.platform,
       });

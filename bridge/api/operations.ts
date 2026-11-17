@@ -25,6 +25,7 @@ import type { EventBus } from "../events/bus.ts";
 import { SESSION_ID_MAX } from "../events/session-id.ts";
 import type { JsonObject } from "../json.ts";
 import { asJsonNumber, asJsonString } from "../../web/src/lib/json.ts";
+import { MAX_READ_LINES } from "../read-limits.ts";
 import { wireEvent } from "./event-wire.ts";
 import { CURSOR_MAX, WAIT_MAX_SECONDS, WAITS_PER_CONNECTION, WAITS_TOTAL } from "./limits.ts";
 
@@ -137,6 +138,12 @@ export interface SessionArgs {
   readonly session: string;
 }
 
+/** `read`: one session, and how many lines of its screen (absent: the bridge's own default, `COLLIE_READ_LINES`). */
+export interface ReadArgs {
+  readonly session: string;
+  readonly lines: number | undefined;
+}
+
 export interface EventsArgs {
   /** The cursor to resume after; absent: start at now. */
   readonly after: string | undefined;
@@ -149,7 +156,7 @@ export interface ArgsOf {
   hello: NoArgs;
   sessions: NoArgs;
   brief: SessionArgs;
-  read: SessionArgs;
+  read: ReadArgs;
   accounts: NoArgs;
   "hill.list": NoArgs;
   events: EventsArgs;
@@ -170,6 +177,18 @@ function parseSession(input: JsonObject): Parsed<SessionArgs> {
   if (session === undefined || session === "") return { ok: false, reason: "args.session must be a session id from sessions" };
   if (session.length > SESSION_ID_MAX) return { ok: false, reason: "args.session is too long to be a session id" };
   return { ok: true, args: { session } };
+}
+
+function parseRead(input: JsonObject): Parsed<ReadArgs> {
+  if (!onlyKeys(input, ["session", "lines"])) return { ok: false, reason: "an argument this operation does not take" };
+  const parsed = parseSession({ session: input.session });
+  if (!parsed.ok) return parsed;
+  if (input.lines === undefined) return { ok: true, args: { session: parsed.args.session, lines: undefined } };
+  const lines = asJsonNumber(input.lines);
+  if (lines === undefined || !Number.isInteger(lines) || lines < 1 || lines > MAX_READ_LINES) {
+    return { ok: false, reason: `args.lines must be a whole number from 1 to ${String(MAX_READ_LINES)}` };
+  }
+  return { ok: true, args: { session: parsed.args.session, lines } };
 }
 
 function parseEvents(input: JsonObject): Parsed<EventsArgs> {
@@ -201,7 +220,7 @@ export const DECLARED: Declarations = {
   hello: { name: "hello", kind: "read", right: "look", waits: false, summary: "The API version, the Collie version and the operations offered.", parse: parseNone },
   sessions: { name: "sessions", kind: "read", right: "look", waits: false, summary: "The agent sessions of this machine.", parse: parseNone },
   brief: { name: "brief", kind: "read", right: "look", waits: false, summary: "The state of one session, with no text.", parse: parseSession },
-  read: { name: "read", kind: "read", right: "look", waits: false, summary: "The screen of one session, secrets masked, capped.", parse: parseSession },
+  read: { name: "read", kind: "read", right: "look", waits: false, summary: "The screen of one session, secrets masked, capped.", parse: parseRead },
   accounts: { name: "accounts", kind: "read", right: "look", waits: false, summary: "The agent accounts of this machine.", parse: parseNone },
   "hill.list": { name: "hill.list", kind: "read", right: "look", waits: false, summary: "The open decisions on the Hill, with no body.", parse: parseNone },
   events: { name: "events", kind: "read", right: "look", waits: true, summary: "The events after a cursor, waiting up to 25 seconds for one.", parse: parseEvents },

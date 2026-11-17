@@ -186,6 +186,7 @@ import { JournalSubagents } from "./subagents-journal.ts";
 import { JournalTodos } from "./todos.ts";
 import { JournalJobs } from "./jobs-journal.ts";
 import { parseDurableLog } from "./journal/durable.ts";
+import { MAX_READ_LINES } from "./read-limits.ts";
 import { redactText } from "./redact.ts";
 import { maskSurface, surfaceRouteBody, type SurfaceShadow } from "./surface/shadow.ts";
 import type { SurfaceTotals } from "./surface/counters.ts";
@@ -379,8 +380,6 @@ const REQUEST_BODY_HEADROOM = 2 * 1024 * 1024; // 2 MB, well clear of uploads.ts
 export function requestBodyCap(cfg: Config): number {
   return Math.max(cfg.maxUploadBytes, MAX_STT_AUDIO_BYTES) + REQUEST_BODY_HEADROOM;
 }
-// Upper bound on the pane-read `lines` param — don't trust the client (or Herdr) to cap it.
-const MAX_READ_LINES = 10_000;
 // A bound region is whatever a dialog card covers, and a full-screen picker covers the whole pane:
 // about rows times columns, so 8192 refused a pane wider than ~134 columns at 59 rows. 32 KiB takes
 // a 220-column pane. A phone newer than this bridge gets the old 400 on such a pane and no key is sent.
@@ -5124,7 +5123,7 @@ export function paneReadHint(
  * and the purpose when it is `older`. A request without `purpose` is a `poll` (mux/types.ts
  * `MuxGridRequest.purpose`), so the mirror's refresh and the bridge's own checks leave it out.
  */
-function recentRead(lines: number, hint: MuxReadHint | undefined, purpose: MuxReadPurpose = "poll"): MuxGridRequest {
+export function recentRead(lines: number, hint: MuxReadHint | undefined, purpose: MuxReadPurpose = "poll"): MuxGridRequest {
   const base = { scope: "recent", lines, styling: "preserve" } as const;
   const hinted: MuxGridRequest = hint === undefined ? base : { ...base, hint };
   return purpose === "older" ? { ...hinted, purpose } : hinted;
