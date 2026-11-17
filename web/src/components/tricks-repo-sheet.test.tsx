@@ -112,6 +112,21 @@ describe("RepoAddRow", () => {
     expect(screen.getByRole("button", { name: "Add Build Bell" })).toBeTruthy();
   });
 
+  it("reads the list and adds a trick on a plain-HTTP page, where crypto.randomUUID does not exist", async () => {
+    vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
+    try {
+      const onList = listing(THREE);
+      const onAdd = vi.fn<RepoAddCall>().mockResolvedValue(ADDED);
+      const user = await openAndRead(onList, onAdd);
+      await user.click(await screen.findByRole("button", { name: "Add Idle Watch" }));
+      await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
+      expect(onList.mock.calls[0]?.[1]).toMatch(RID);
+      expect(onAdd.mock.calls[0]?.[0].rid).toMatch(RID);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("mints a new request id for each trick", async () => {
     const onAdd = vi.fn<RepoAddCall>().mockResolvedValue(ADDED);
     const user = await openAndRead(listing(THREE), onAdd);

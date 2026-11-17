@@ -11,7 +11,7 @@ import { HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_OFF, HillService, type Hil
 import { HillStore } from "../hill/store.ts";
 import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { ORIGIN_FILE } from "./origin.ts";
-import { TRICKS_DIR } from "./paths.ts";
+import { approvedCopyDir, approvedTrickDir, TRICKS_DIR } from "./paths.ts";
 import { PROPOSAL_AUTHOR_WORDS } from "./proposal-card.ts";
 import {
   PROPOSAL_CHANGED,
@@ -307,6 +307,26 @@ describe("a proposal for a new trick", () => {
     expect(await l.service.installProposedVersion("legs", p.files, origin, "c".repeat(64), "0".repeat(64))).toEqual({ ok: false, message: PROPOSAL_CHANGED });
     // The card's own hash installs.
     expect(await l.service.installProposed("legs", p.files, origin, p.hash)).toMatchObject({ ok: true });
+  });
+
+  test("review J note: a copy a removed trick left under .collie-approved is cleared when a new trick of that id is installed", async () => {
+    const l = await lead();
+    const p = proposal("legs");
+    const origin = { by: "agent" as const, host: "workshop", label: "repo#one", at: "2026-11-16T09:00:00Z" };
+    const first = await l.service.installProposed("legs", p.files, origin, p.hash);
+    if (!first.ok) throw new Error(first.message);
+    const copy = approvedCopyDir(l.configDir, "legs", first.codeHash);
+    await mkdir(join(copy, "inputs"), { recursive: true });
+    await writeFile(join(copy, "inputs", "stale.txt"), "left by the old trick");
+    // The folder is removed by hand and the entry goes: the old copy stays on disk.
+    await rm(join(l.configDir, TRICKS_DIR, "legs"), { recursive: true, force: true });
+    await writeSwitches(l.stateDir, { on: new Map(), version: SWITCHES_VERSION });
+    expect((await stat(join(copy, "inputs", "stale.txt"))).isFile()).toBe(true);
+    // The same code installed again: equal code hashes the same, and no old file may ride along.
+    const again = await l.service.installProposed("legs", p.files, origin, p.hash);
+    expect(again).toMatchObject({ ok: true, codeHash: first.codeHash });
+    expect(await stat(join(copy, "inputs", "stale.txt")).catch(() => null)).toBeNull();
+    expect((await readdir(approvedTrickDir(l.configDir, "legs")).catch(() => [])).filter((n) => !n.startsWith("."))).toEqual([first.codeHash.slice(0, 16)]);
   });
 
   test("a folder of that name that appeared since the card is never written over", async () => {

@@ -23,7 +23,7 @@ import {
   type GitRunOptions,
 } from "../bridge/tricks/fetch.ts";
 import { ORIGIN_FILE, readOrigin, renderOrigin, sameRepo, type TrickOrigin } from "../bridge/tricks/origin.ts";
-import { removeTrickCopies } from "../bridge/tricks/approved.ts";
+import { forgetLeftovers, removeTrickCopies } from "../bridge/tricks/approved.ts";
 import { MANIFEST_FILE, switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "../bridge/tricks/paths.ts";
 import { trickWarnings, warningLines, WARNINGS_HONESTY, type CheckWarning } from "../bridge/tricks/scan.ts";
 import { parseSwitches } from "../bridge/tricks/switches.ts";
@@ -268,9 +268,10 @@ export async function cmdTrickAdd(deps: TrickAddDeps, args: readonly string[]): 
     deps.io.err(ADD_USAGE);
     return EXIT.USAGE;
   }
+  // Tricks off means no fetch at all, also here: the check comes before any git run (review J, point 4).
+  if (refuseWhileTricksOff(deps)) return EXIT.FAIL;
   // A repository with no folder named: its index is read and printed, and nothing is added (see addOrList).
   if (source.subdir === null) return await addOrList(deps, source);
-  if (refuseWhileTricksOff(deps)) return EXIT.FAIL;
   try {
     return await withCandidate(deps, source, async (candidate) => await installCandidate(deps, source, candidate));
   } catch (err) {
@@ -287,6 +288,8 @@ async function installCandidate(deps: TrickAddDeps, source: TrickSource, candida
     return refuse(deps, `a trick ${candidate.id} is already in ${root}. To fetch it again: collie trick update ${candidate.id}`);
   }
   await mkdir(root, { recursive: true, mode: 0o700 });
+  // Added means switched off, as on the phone: what an earlier trick of this id left (a switch entry, approved copies) goes first.
+  await forgetLeftovers({ stateDir: deps.ctx.stateDir, configDir: deps.ctx.configDir, id: candidate.id, at: new Date(deps.now()).toISOString() });
   const staged = sideName(root, "add", candidate.id);
   try {
     await writeCandidate(staged, candidate, originOf(source, candidate.commit, deps.now()));
@@ -305,10 +308,11 @@ async function installCandidate(deps: TrickAddDeps, source: TrickSource, candida
 /**
  * `collie trick add <url>` with no `//<folder>` (package J): one fetch, then
  *   * the repository holds `collie-tricks.json` at its top: its list is printed (folder, name, about, the
- *     commit read) and NOTHING is added, with tricks on or off;
+ *     commit read) and NOTHING is added;
  *   * no index, but a `trick.toml` at its top: that one trick is added, as before the index existed;
  *   * neither: it says the repository has no index, and names the `//<folder>` form.
  * The terminal keeps its wider reach: any https host, the operator's own git config (fetch.ts header).
+ * With tricks switched off none of it runs: the caller refuses before the fetch.
  */
 async function addOrList(deps: TrickAddDeps, source: TrickSource): Promise<number> {
   const fetchDir = await fetchFolder(deps);
@@ -319,7 +323,6 @@ async function addOrList(deps: TrickAddDeps, source: TrickSource): Promise<numbe
     if (!fetched.tree.some((e) => e.path === MANIFEST_FILE)) {
       return refuse(deps, `${sourceWords(source)} has no ${REPO_INDEX_FILE} and no ${MANIFEST_FILE} at its top. Name the trick's folder: collie trick add ${source.url}//<folder>`);
     }
-    if (refuseWhileTricksOff(deps)) return EXIT.FAIL;
     return await installCandidate(deps, source, await readCandidate(fetched, null));
   } catch (err) {
     if (err instanceof FetchRefused) return refuse(deps, `${err.message.replace(/\.$/u, "")}. Nothing was added.`);

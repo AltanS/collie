@@ -1125,4 +1125,26 @@ describe("TricksSettingsCard: one request id per settings edit (review G, point 
     expect(rids).toHaveLength(3);
     expect(rids[2]).not.toBe(rids[0]);
   });
+
+  it("writes a value on a plain-HTTP page, where crypto.randomUUID does not exist", async () => {
+    vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
+    try {
+      const user = userEvent.setup();
+      const rids: string[] = [];
+      const onSetValue = vi.fn(async (_host: string, _id: string, body: { rid: string; key: string; value: string | number | boolean | null }) => {
+        rids.push(body.rid);
+        return WITH_FIELDS;
+      });
+      const store = await storeWith([WITH_FIELDS]);
+      const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={NO_OFFICIAL} onSetValue={onSetValue} /> }], { initialEntries: ["/"] });
+      render(<RouterProvider router={router} />);
+      await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
+      await user.type(within(screen.getByRole("dialog", { name: "Browser leg" })).getByLabelText(/Repository/), "lodge/workshop");
+      await user.tab();
+      expect(rids).toHaveLength(1);
+      expect(rids[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

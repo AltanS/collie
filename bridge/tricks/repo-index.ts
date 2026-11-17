@@ -7,12 +7,12 @@ import { REPO_INDEX_BYTES_MAX, REPO_INDEX_TIMEOUT_MS } from "../../web/src/lib/t
 import { parseRepoIndex, readPhoneSource, REPO_INDEX_FILE, type PhoneSource, type RepoAddReply, type RepoIndex, type RepoListReply } from "../../web/src/lib/tricks/repo-index.ts";
 import { isTrickId, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import { isRequestId, payloadDigest } from "../worktree-receipts.ts";
+import { forgetLeftovers } from "./approved.ts";
 import { fetchSource, FetchRefused, FetchSlot, readCandidate, type Candidate, type Fetched, type GitRunner } from "./fetch.ts";
-import { officialFetchOptions } from "./official-install.ts";
+import { fetchHome, officialFetchOptions } from "./official-install.ts";
 import { renderOrigin } from "./origin.ts";
 import { tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { writeNewTrick } from "./proposal-install.ts";
-import { updateSwitches, withSwitch } from "./switches.ts";
 import { SeenWrites } from "./values.ts";
 
 // A REPOSITORY'S INDEX ON THE PHONE (2026-11-17, package J): Settings, Tricks, "Add from a repository".
@@ -228,6 +228,16 @@ async function readIndex(fetched: Fetched): Promise<RepoIndex> {
   return read.index;
 }
 
+/**
+ * The link git is given: the pasted one, with `.git` added when its path has none. Redirects are off in the
+ * fetch, and gitlab.com answers a link without the suffix with a redirect, so the bare link fails there.
+ * github.com, gitlab.com and codeberg.org all accept the suffix. The link the phone shows stays as pasted:
+ * only this one goes to git.
+ */
+export function gitLinkOf(source: PhoneSource): string {
+  return source.url.endsWith(".git") ? source.url : `${source.url}.git`;
+}
+
 export class RepoIndexTricks implements RepoIndexSurface {
   private readonly slot: FetchSlot;
   private readonly lists = new OnceById<{ status: 200; body: RepoListReply }>();
@@ -283,7 +293,7 @@ export class RepoIndexTricks implements RepoIndexSurface {
       fetchDir = await mkdtemp(join(root, REPO_FETCH_PREFIX));
       let fetched: Fetched;
       try {
-        fetched = await fetchSource({ url: source.url, ref: null }, fetchDir, officialFetchOptions(this.deps, deadline));
+        fetched = await fetchSource({ url: gitLinkOf(source), ref: null }, fetchDir, officialFetchOptions(this.deps, deadline, await fetchHome(fetchDir)));
       } catch (err) {
         if (!(err instanceof FetchRefused)) throw err;
         this.deps.warn?.(`a repository fetch from ${source.host}/${source.repo} was refused (${err.step}): ${err.message}`);
@@ -352,7 +362,7 @@ export class RepoIndexTricks implements RepoIndexSurface {
       const written = await lane(async () => {
         const at = new Date((this.deps.now ?? Date.now)()).toISOString();
         // Added means switched off: a switch entry a removed folder left behind for this id goes first.
-        await updateSwitches(this.deps.stateDir, (now) => (now.on.has(folder) ? withSwitch(now, folder, false, at) : now));
+        await forgetLeftovers({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, id: folder, at });
         // No `official` in the origin record: a repository's index never makes a trick official.
         return await writeNewTrick(root, folder, candidate.files, renderOrigin({ url: source.url, ref: null, commit, subdir: folder, at }));
       });

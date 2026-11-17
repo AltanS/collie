@@ -399,7 +399,7 @@ The phone reads only from `github.com`, `gitlab.com` and `codeberg.org`, over ht
 or password in the link. For any other host, add the trick at the terminal with
 `collie trick add <url>`, which also uses your own git settings. The phone's fetch reads none of your
 git settings, follows no redirect, and runs one at a time. The row is disabled while tricks are
-switched off. The limits are in the [reference](tricks-reference.md#a-repositorys-index-collie-tricksjson).
+switched off, and `collie trick add <url>` fetches nothing then, with or without a folder. The limits are in the [reference](tricks-reference.md#a-repositorys-index-collie-tricksjson).
 
 `add` copies the trick into `tricks/` in Collie's config folder. That folder is `~/.config/collie` on
 a binary install, and Herdr's plugin config folder on a Herdr-managed install

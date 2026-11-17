@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { HOST } from "../host.ts";
 import { rulesTextProblems, TRICKS_WINDOWS_SHELL_LINE, type OfficialState, type OfficialTricksReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { forgetLeftovers } from "./approved.ts";
 import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { fetchSource, FetchRefused, FetchSlot, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
 import { officialStanding, officialStateOf, officialWire, pinnedPlaces, shippedOfficialList, type OfficialEntry, type OfficialStanding } from "./official.ts";
@@ -11,7 +12,6 @@ import type { RepoFactsPort } from "./repo-facts.ts";
 import { renderOrigin } from "./origin.ts";
 import { tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { replaceCode, writeNewTrick, type ProposalWrite } from "./proposal-install.ts";
-import { updateSwitches, withSwitch } from "./switches.ts";
 
 // ADDING A TRICK FROM THE FROM COLLIE LIST (M94). The only network use of the feature, and only on the
 // person's tap: `POST /api/tricks/official/<id>/add` (or `/update`), write-gated like the trick switch
@@ -181,13 +181,28 @@ export async function candidateHash(candidate: Candidate, dir: string): Promise<
   return hashed.hash;
 }
 
-/** The fetch options of an official fetch: the hardening, {@link OFFICIAL_GIT}, no global config, the deadline. */
-export function officialFetchOptions(deps: Pick<OfficialTricksDeps, "env" | "git" | "allowFile" | "now" | "maxBytes">, deadline: number): FetchOptions {
+/**
+ * An empty folder for one fetch to call its home: `home` inside the fetch's temp folder, so it goes with it.
+ * git reads `~/.netrc` through curl, and a login the operator keeps for one of the three hosts would go to
+ * that host on a phone fetch or an official add; with HOME and CURL_HOME here there is nothing to read.
+ */
+export async function fetchHome(fetchDir: string): Promise<string> {
+  const home = join(fetchDir, "home");
+  await mkdir(home, { recursive: true, mode: 0o700 });
+  return home;
+}
+
+/**
+ * The fetch options of an official fetch: the hardening, {@link OFFICIAL_GIT}, no global config, the deadline,
+ * and `home` (from {@link fetchHome}) as the home of every git run, so no `~/.netrc`, no XDG config and no
+ * user config is read.
+ */
+export function officialFetchOptions(deps: Pick<OfficialTricksDeps, "env" | "git" | "allowFile" | "now" | "maxBytes">, deadline: number, home: string): FetchOptions {
   const opts: FetchOptions = {
     env: deps.env,
     allowFile: deps.allowFile === true,
     extraConfig: OFFICIAL_GIT,
-    extraEnv: { GIT_CONFIG_GLOBAL: devNull },
+    extraEnv: { GIT_CONFIG_GLOBAL: devNull, HOME: home, CURL_HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: home },
     deadline,
     maxBytes: deps.maxBytes ?? OFFICIAL_FETCH_BYTES_MAX,
   };
@@ -285,7 +300,7 @@ export class OfficialTricks implements OfficialTricksSurface {
   private async fetch(entry: OfficialEntry, fetchDir: string, mode: "add" | "update", deadline: number): Promise<Candidate> {
     let candidate: Candidate;
     try {
-      candidate = await fetchOfficial(entry, fetchDir, officialFetchOptions(this.deps, deadline));
+      candidate = await fetchOfficial(entry, fetchDir, officialFetchOptions(this.deps, deadline, await fetchHome(fetchDir)));
     } catch (err) {
       if (!(err instanceof FetchRefused)) throw err;
       this.deps.warn?.(`${entry.id}: the official fetch was refused (${err.step}): ${err.message}`);
@@ -338,7 +353,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     let written: ProposalWrite;
     if (mode === "add") {
       // Added means switched off: a switch entry a removed folder left behind for this id goes first.
-      await updateSwitches(this.deps.stateDir, (now) => (now.on.has(entry.id) ? withSwitch(now, entry.id, false, at) : now));
+      await forgetLeftovers({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, id: entry.id, at });
       written = await writeNewTrick(root, entry.id, candidate.files, originText, { expect: entry.hash });
     } else {
       // Only code moves (the proposal version write's rule): the new version's config.toml, pictures and
