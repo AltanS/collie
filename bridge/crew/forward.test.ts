@@ -1943,7 +1943,7 @@ describe("accounts across the link: only the list crosses (M101 spec 06)", () =>
     // Decision 7. The web's own calls, read from its source, so a new scoped call cannot land without a route here.
     const api = readFileSync(join(import.meta.dir, "..", "..", "web", "src", "lib", "api.ts"), "utf8");
     const calls = api
-      .split(/\nexport function /u)
+      .split(/\nexport (?:async )?function /u)
       .slice(1)
       .filter((fn) => fn.includes('"/api/accounts'))
       .map((fn) => ({
