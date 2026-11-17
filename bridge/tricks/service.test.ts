@@ -2830,9 +2830,9 @@ describe("review J, read of 1bf6c747a, point 3: the service forgets an id that a
     // Another scan with no new id forgets none either.
     await r.service.refresh(true);
     expect(seen).toEqual([]);
-    // `collie trick add` at the terminal: a new folder, and a switch entry for it, appear between two scans.
+    // `collie trick add` at the terminal: a new folder appears between two scans, off, with no switch entry
+    // (`forgetLeftovers` cleared the old one).
     await makeTrick(r.configDir, "fresh", MANIFEST.replace('id = "legs"', 'id = "fresh"').replace("./legs.sh", "./fresh.sh"), { "fresh.sh": "#!/bin/sh\n" });
-    await switchOn(r.stateDir, "legs", "fresh");
     await r.service.refresh(true);
     // Before the trick had a runtime or a run.
     expect(seen).toEqual([{ id: "fresh", runs: 0 }]);
@@ -2860,6 +2860,28 @@ describe("review J, read of 1bf6c747a, point 3: the service forgets an id that a
     expect(calls).toBe(1);
     expect(r.warnings.some((w) => w.includes("views offline"))).toBe(true);
     expect((await r.service.reply(undefined)).tricks.map((t) => t.id)).toEqual(["legs"]);
+  });
+
+  test("a folder that vanishes and reappears while its switch entry holds an approved hash keeps its views and keys; no entry, or one with no hash, is forgotten", async () => {
+    const seen: string[] = [];
+    const r = await rig([exited(belt("x"))], { forgetTrick: (id) => void seen.push(id) });
+    const bare = MANIFEST.replace('id = "legs"', 'id = "bare"').replace("./legs.sh", "./bare.sh");
+    const open = MANIFEST.replace('id = "legs"', 'id = "open"').replace("./legs.sh", "./open.sh");
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await makeTrick(r.configDir, "bare", bare, { "bare.sh": "#!/bin/sh\n" });
+    await makeTrick(r.configDir, "open", open, { "open.sh": "#!/bin/sh\n" });
+    // `legs` is approved (an entry with its code hash); `open` is on but approves nothing yet; `bare` has none.
+    await switchOn(r.stateDir, "legs");
+    await updateSwitches(r.stateDir, (now) => withSwitch(now, "open", true, "2026-11-08T09:00:00Z", null));
+    await r.service.refresh(true);
+    expect(seen).toEqual([]);
+    // The swap window of `collie trick update`: the folders are gone for one scan, the entries stay.
+    for (const id of ["legs", "bare", "open"]) await rm(join(r.configDir, TRICKS_DIR, id), { recursive: true });
+    await r.service.refresh(true);
+    expect(seen).toEqual([]);
+    for (const id of ["legs", "bare", "open"]) await makeTrick(r.configDir, id, MANIFEST.replace('id = "legs"', `id = "${id}"`).replace("./legs.sh", `./${id}.sh`), { [`${id}.sh`]: "#!/bin/sh\n" });
+    await r.service.refresh(true);
+    expect(seen.toSorted()).toEqual(["bare", "open"]);
   });
 
   test("a bridge with no tricks folder at its first look: the folder's first trick is not an arrival at the first good scan", async () => {
