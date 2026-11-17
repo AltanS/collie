@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { HOST } from "../host.ts";
 import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { memoryHillReceipts } from "../hill/receipts.ts";
-import { HILL_CODE_READ_FIRST, HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_OFF, HillService, type HillPlace } from "../hill/service.ts";
+import { HILL_CODE_NONE, HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_OFF, HillService, type HillPlace } from "../hill/service.ts";
 import { HillStore } from "../hill/store.ts";
 import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { ORIGIN_FILE } from "./origin.ts";
@@ -157,11 +157,11 @@ async function lead(opts: { self?: { memberId: string; machine: string }; hillOf
 const proposalCards = (l: Lead): HillDecision[] => l.hill.collieDecisions("proposal");
 const openCards = (l: Lead): HillDecision[] => proposalCards(l).filter((d) => d.state === "open");
 
-/** A tap from a phone that showed the card's code to its end: a single card of code names its hash and card 1 (C-A2). */
+/** A yes from the phone: a single card of code names its hash (C-A2), and since ADR 0156 nothing else. */
 async function tap(l: Lead, decision: HillDecision, intent: string): Promise<HillReceipt> {
   const request = { rid: nextRid(), node: `hill/${decision.id}`, intent, value: { text: null } };
   const one = singleCodeCard(decision);
-  const outcome = await l.hill.answer(one === null ? request : { ...request, group: { digest: one.digest, opened: [1] } }, decision.id, "Pixel 9");
+  const outcome = await l.hill.answer(one === null ? request : { ...request, group: { digest: one.digest } }, decision.id, "Pixel 9");
   if (outcome.kind !== "receipt") throw new Error(outcome.kind);
   return outcome.receipt;
 }
@@ -276,10 +276,10 @@ describe("a proposal for a new trick", () => {
     const { view: _code, ...bare } = card!;
     expect(l.store.put(bare)).toBe(true);
     expect(singleCodeCard(l.store.get(card!.id)!)).toBeNull();
-    // A yes with the old card's digest and card 1 opened, and a yes with nothing, are both refused.
-    expect(await tap(l, card!, "on")).toMatchObject({ code: "rejected", reason: HILL_CODE_READ_FIRST, state: "open" });
+    // A yes with the old card's digest, and a yes with nothing, are both refused.
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "rejected", reason: HILL_CODE_NONE, state: "open" });
     const plain = await l.hill.answer({ rid: nextRid(), node: `hill/${card!.id}`, intent: "on", value: { text: null } }, card!.id, "Pixel 9");
-    expect(plain.kind === "receipt" && plain.receipt).toMatchObject({ code: "rejected", reason: HILL_CODE_READ_FIRST, state: "open" });
+    expect(plain.kind === "receipt" && plain.receipt).toMatchObject({ code: "rejected", reason: HILL_CODE_NONE, state: "open" });
     expect(l.store.get(card!.id)?.state).toBe("open");
     expect(await listed(l)).toEqual([]);
     expect(await stat(join(l.configDir, TRICKS_DIR, "legs")).catch(() => null)).toBeNull();
@@ -1048,7 +1048,7 @@ describe("nothing outside the store moves before the yes (review S5)", () => {
 describe("a proposal whose code does not fit one card", () => {
   const program = Array.from({ length: 200 }, (_, i) => `console.log("line ${String(i).padStart(4, "0")} of the program");`).join("\n") + "\n";
 
-  async function answerGroup(l: Lead, decision: HillDecision, intent: string, group?: { digest: string; opened: number[] }): Promise<HillReceipt> {
+  async function answerGroup(l: Lead, decision: HillDecision, intent: string, group?: { digest: string; opened?: number[] }): Promise<HillReceipt> {
     const request = { rid: nextRid(), node: `hill/${decision.id}`, intent, value: { text: null } };
     const outcome = await l.hill.answer(group === undefined ? request : { ...request, group }, decision.id, "Pixel 9");
     if (outcome.kind !== "receipt") throw new Error(outcome.kind);
@@ -1076,20 +1076,17 @@ describe("a proposal whose code does not fit one card", () => {
     expect(l.store.get(card!.id)?.group?.digest).toBe(group.digest);
   });
 
-  test("the yes needs the digest the phone was given and every card opened; the decline needs neither", async () => {
+  test("the yes needs the digest the phone was given, not which cards it opened (ADR 0156); the decline needs neither", async () => {
     const l = await lead();
     await l.proposals.propose(proposal("legs", program), AGENT);
     const [card] = openCards(l);
     const group = card!.group!;
-    const n = group.parts.length;
-    const all = Array.from({ length: n }, (_, i) => i + 1);
     expect(await answerGroup(l, card!, "on")).toMatchObject({ code: "rejected", reason: HILL_GROUP_OLD_APP, state: "open" });
-    expect(await answerGroup(l, card!, "on", { digest: "0".repeat(64), opened: all })).toMatchObject({ code: "rejected", reason: HILL_GROUP_CHANGED, state: "open" });
-    expect(await answerGroup(l, card!, "on", { digest: group.digest, opened: all.slice(0, -1) })).toMatchObject({ code: "rejected", reason: `Open all ${String(n)} cards first.`, state: "open" });
+    expect(await answerGroup(l, card!, "on", { digest: "0".repeat(64) })).toMatchObject({ code: "rejected", reason: HILL_GROUP_CHANGED, state: "open" });
     expect(await listed(l)).toEqual([]);
-    expect(await answerGroup(l, card!, "on", { digest: group.digest, opened: all })).toMatchObject({ code: "ok", state: "answered" });
+    expect(await answerGroup(l, card!, "on", { digest: group.digest })).toMatchObject({ code: "ok", state: "answered" });
     expect(await listed(l)).toEqual(["legs"]);
-    // Not now needs no card opened.
+    // Not now needs no digest.
     await l.proposals.propose(proposal("more", program), AGENT);
     const [other] = openCards(l);
     expect(await answerGroup(l, other!, "later")).toMatchObject({ code: "ok", state: "answered" });
@@ -1253,6 +1250,21 @@ describe("package I: the card in the session that proposed it, switched on with 
     expect(HILL_GROUP_CHANGED.split(". ").length).toBeLessThanOrEqual(2);
     expect(await listed(l)).toEqual([]);
     const yes = await l.hill.answer({ ...request, rid: nextRid(), group: { digest: p.hash, opened: [1] } }, card!.id, "Pixel 9");
+    expect(yes.kind === "receipt" && yes.receipt).toMatchObject({ code: "ok", state: "answered" });
+    expect((await l.service.reply(undefined)).tricks.find((t) => t.id === "legs")).toMatchObject({ on: true });
+  });
+
+  test("ADR 0156: a yes with the right hash and no opened card switches the trick on; a wrong hash is still refused", async () => {
+    const l = await lead({ hillOff: true });
+    const p = proposal("legs");
+    await l.proposals.propose(p, AGENT);
+    const [card] = openCards(l);
+    const request = { rid: nextRid(), node: `hill/${card!.id}`, intent: "on", value: { text: null } };
+    // The phone since ADR 0156 sends the digest alone: the yes is a hold of three seconds, reading is offered.
+    const wrong = await l.hill.answer({ ...request, group: { digest: "1".repeat(64) } }, card!.id, "Pixel 9");
+    expect(wrong.kind === "receipt" && wrong.receipt).toMatchObject({ code: "rejected", reason: HILL_GROUP_CHANGED, state: "open" });
+    expect(await listed(l)).toEqual([]);
+    const yes = await l.hill.answer({ ...request, rid: nextRid(), group: { digest: p.hash } }, card!.id, "Pixel 9");
     expect(yes.kind === "receipt" && yes.receipt).toMatchObject({ code: "ok", state: "answered" });
     expect((await l.service.reply(undefined)).tricks.find((t) => t.id === "legs")).toMatchObject({ on: true });
   });

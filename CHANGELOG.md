@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The bridge takes a yes to a trick's code without asking which cards were opened.** A yes to a proposed trick or a new version still needs the digest of the code the card showed, a request id and a paired phone with the write level, and the bridge still hashes the stored bytes again before it installs. It no longer refuses a yes because the phone did not report the code's end as seen; an older phone bundle still sends that list, and the bridge reads it and ignores it. A yes to a trick card that holds no code is refused with "This card shows no code, so it cannot be approved here."
+
 ## [1.29.0] - 2026-11-12
 
 ### Added
