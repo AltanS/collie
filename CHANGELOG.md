@@ -87,6 +87,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **The yes of a card waits a whole second again when you come back to the page.** The one-second wait before a card's yes can be tapped now starts over when the page returns from the background or the window takes focus, so a card drawn behind a locked screen is not tappable at the first touch.
 - **Two writers can no longer both hold the switch lock.** A stale lock is now taken over by renaming it aside and checking the file that moved, and the lock file carries a nonce that its release must match, so a slow writer never removes the lock another writer took over.
 - **A consent verb refuses when it cannot prove the pane a shell.** `collie trick on`, `collie trick auto <id> on`, `collie tricks on`, `collie hill on`, `collie hill clear --spoken` and `collie hill state quiet|away` run in a pane with multiplexer markers only when the bridge says the pane is a shell. A failed check, a bridge that does not answer and an unknown pane refuse with the same person-only sentence; a terminal with no markers is not asked.
 - **A new trick never inherits what an earlier trick of the same name left.** An add (official list, repository, terminal or an agent's proposal) now removes the approved and pending copies and any switch entry a removed folder left behind, so an old auto flag, an old approval or the old copy's settings and writable folders cannot carry to the new code. The code that runs was already only the approved bytes.
