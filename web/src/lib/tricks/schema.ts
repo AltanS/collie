@@ -4603,7 +4603,7 @@ export const FIELD_KEYS = {
 export const FIELDS_NEED_CONTRACT = `"field" needs contract = ${String(FIELDS_CONTRACT)}. Add contract = ${String(FIELDS_CONTRACT)} to trick.toml to keep settings for the trick.`;
 
 /**
- * Why a value breaks its field's rule, as a code the phone and the CLI branch on. `kind`: the wrong type of
+ * Why a value breaks its field's rule, as a code the phone branches on. `kind`: the wrong type of
  * value; `text`: a text over its cap, or with a line break or a control character; `option`: not one of a
  * choice's options; `range`: a number outside `min` to `max`; `whole`: a number that is not whole.
  */
@@ -4618,7 +4618,7 @@ export interface FieldProblem {
 
 /**
  * Why `value` breaks `field`'s rule, or undefined when it keeps it. The one check the manifest (a `default`),
- * the bridge's write route, the CLI and the phone all run. A text value is one line of at most
+ * the bridge's write route and the phone both run (only the phone writes a value). A text value is one line of at most
  * `FIELD_TEXT_MAX` characters with no control or invisible character; it may be empty only when the field is
  * not required. The sentences never repeat the value: a refusal may be written to a log.
  */

@@ -193,7 +193,6 @@ export type WalkyAnswer =
   // A trick proposal (crew slice 8).
   | { readonly ok: true; readonly kind: "proposal" | "version"; readonly id: string; readonly hash: string; readonly decision: string | null; readonly replaced: string | null }
   | { readonly ok: false; readonly error: string; readonly code: ProposeRefusalCode; readonly propose: true }
-
   // Agent views.
   | { readonly ok: false; readonly error: string; readonly trickView: true; readonly code?: ViewRefusalCode; readonly refusals?: readonly Refusal[] }
   | { readonly ok: true; readonly trickView: TrickViewSession; readonly help?: readonly string[] };

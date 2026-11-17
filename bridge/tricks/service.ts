@@ -292,7 +292,7 @@ export interface ValueReceipt {
   info: WireTrickInfo;
 }
 
-/** Why a value write was refused, as a code the phone and the CLI branch on: a field rule, or no such field. */
+/** Why a value write was refused, as a code the phone branches on: a field rule, or no such field. */
 export type ValueRefusalCode = FieldRefusal | "unknown-field";
 
 /** The value route's answer: the receipt, or why not in plain words that name the next step. */

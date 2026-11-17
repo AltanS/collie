@@ -593,6 +593,8 @@ function TricksList({
   // follows a new version of the row, and closes by itself when the trick leaves the list.
   const [aboutKey, setAboutKey] = useState<string | null>(null);
   const flying = useRef(new Set<string>());
+  // The request id of each setting edit that has not taken yet, by `host/trick/field` (see `saveValue`).
+  const valueEdits = useRef(new Map<string, { value: FieldValue | null; rid: string }>());
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   const official = useOfficialList(onOfficialList, tricks);
   // The official adds and updates in flight or held until the lists agree, by trick id.
@@ -660,13 +662,20 @@ function TricksList({
     }
   }
 
-  // A trick's setting (contract 3): one request id per change, so a retry of this change writes once. The
-  // receipt is the row the list will show; the group holds the value until the list agrees. A refusal is
-  // said under the field in the phone's words, never the bridge's English.
+  // A trick's setting (contract 3): one request id per edit, so a retry of the same edit (the same trick,
+  // field and value, after a failure) reuses it and the bridge writes once. A new edit, or the same value
+  // again after the write took, gets a new id. The receipt is the row the list will show; the group holds
+  // the value until the list agrees. A refusal is said under the field in the phone's words, never the
+  // bridge's English.
   async function saveValue(trick: WireTrickInfo, key: string, value: FieldValue | null): Promise<string | null> {
     const field = trick.fields?.find((one) => one.key === key);
+    const editKey = `${trick.host}/${trick.id}/${key}`;
+    const earlier = valueEdits.current.get(editKey);
+    const rid = earlier !== undefined && earlier.value === value ? earlier.rid : crypto.randomUUID();
+    valueEdits.current.set(editKey, { value, rid });
     try {
-      await onSetValue(trick.host, trick.id, { rid: crypto.randomUUID(), key, value });
+      await onSetValue(trick.host, trick.id, { rid, key, value });
+      valueEdits.current.delete(editKey);
       return null;
     } catch (err) {
       // A field rule rides in `code`; a refusal of the route itself (`not-here`) in `error`.
