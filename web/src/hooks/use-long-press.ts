@@ -36,6 +36,12 @@ interface LongPressOptions {
    */
   showHold?: boolean | "touch";
   /**
+   * When the hold's look starts, in ms after `pointerdown`. Default {@link HOLD_FEEDBACK_DELAY_MS}, so a plain tap
+   * never flashes it. 0 shows it at the press: a control that is only ever held (the yes to a trick's code) shows
+   * its whole hold as progress.
+   */
+  feedbackDelayMs?: number;
+  /**
    * Runs on the `pointerup` that ends a TAP: a primary press that did not become a hold, did not move past
    * `tapMoveTolerance` and was not cancelled. The movement is judged by the same gate the hold's is, so a scroll that
    * starts on the element is neither a hold nor a tap. The handler gets the `pointerup` and judges its target itself.
@@ -83,6 +89,7 @@ export function useLongPress(
     moveTolerance = MOVE_CANCEL_PX,
     onReleaseAfterLongPress,
     showHold = true,
+    feedbackDelayMs = HOLD_FEEDBACK_DELAY_MS,
     onTap,
     tapMoveTolerance = TAP_MOVE_PX,
   }: LongPressOptions = {},
@@ -150,10 +157,13 @@ export function useLongPress(
       timer.current = setTimeout(fire, delayMs);
       if (feedback.current !== null) clearTimeout(feedback.current);
       const show = showHold === "touch" ? e.pointerType === "touch" || e.pointerType === "pen" : showHold;
-      feedback.current =
-        show && delayMs > HOLD_FEEDBACK_DELAY_MS ? setTimeout(() => setHolding(true), HOLD_FEEDBACK_DELAY_MS) : null;
+      feedback.current = null;
+      if (show && delayMs > feedbackDelayMs) {
+        if (feedbackDelayMs <= 0) setHolding(true);
+        else feedback.current = setTimeout(() => setHolding(true), feedbackDelayMs);
+      }
     },
-    [onLongPress, delayMs, fire, showHold, onTap],
+    [onLongPress, delayMs, fire, showHold, onTap, feedbackDelayMs],
   );
 
   // THE ONE MOVEMENT GATE. A press that wanders past a bound is a scroll or a drag: past the hold's bound it is no
@@ -228,7 +238,7 @@ export function useLongPress(
     // Present (as `""`) only while held, so a resting element carries neither attribute nor style.
     "data-holding": holding ? "" : undefined,
     // The fill runs over the time LEFT to the hold's mark, so it reaches "pressed" as the hold fires.
-    style: holding ? { animationDuration: `${delayMs - HOLD_FEEDBACK_DELAY_MS}ms` } : undefined,
+    style: holding ? { animationDuration: `${delayMs - feedbackDelayMs}ms` } : undefined,
   };
 }
 

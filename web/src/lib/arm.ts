@@ -35,7 +35,7 @@ export const STOP_HINT_MS = 2500;
  * reading the code is offered, not required. One value for every card that asks it
  * (components/hold-to-approve.tsx).
  */
-export const APPROVE_HOLD_MS = 3000;
+export const APPROVE_HOLD_MS = 1500;
 
 /** How long a cancelled hold's fill takes to run back to empty. */
 export const HOLD_BACK_MS = 200;

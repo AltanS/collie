@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 
 import { ignoreHeldEnter, useArm } from "@/hooks/use-arm";
-import { HOLD_FEEDBACK_DELAY_MS, MOVE_CANCEL_PX, useLongPress } from "@/hooks/use-long-press";
+import { MOVE_CANCEL_PX, useLongPress } from "@/hooks/use-long-press";
 import { APPROVE_HOLD_MS, HOLD_BACK_MS } from "@/lib/arm";
 import { beginHold, endHold } from "@/lib/hold-flag";
 
@@ -11,8 +11,8 @@ import { beginHold, endHold } from "@/lib/hold-flag";
 // to end: the same `useLongPress` timer, move bound, haptic tick and `data-holding` look, the same fill
 // (index.css `hold-fill-layer`), and the same answer for a key, two presses through `useArm`.
 //
-// WHAT A HOLD IS. The finger goes down on the rendered, enabled button and stays. From HOLD_FEEDBACK_DELAY_MS
-// a fill grows across it; at APPROVE_HOLD_MS the yes goes out ONCE, with the finger still down. A press that
+// WHAT A HOLD IS. The finger goes down on the rendered, enabled button and stays. From the press a fill grows
+// across it; at APPROVE_HOLD_MS the yes goes out ONCE, with the finger still down. A press that
 // began before the button was there, or while it was disabled, is never a hold: a hold starts only with a
 // pointer-down on this button.
 //
@@ -72,13 +72,13 @@ export interface ApproveHoldOptions {
   onApprove: () => void;
 }
 
-/** The fill's share of the hold that has passed, 0 to 1: it grows from HOLD_FEEDBACK_DELAY_MS to APPROVE_HOLD_MS. */
+/** The fill's share of the hold that has passed, 0 to 1: it grows from the press to APPROVE_HOLD_MS. */
 function fillShare(downAt: number): number {
-  const share = (Date.now() - downAt - HOLD_FEEDBACK_DELAY_MS) / (APPROVE_HOLD_MS - HOLD_FEEDBACK_DELAY_MS);
+  const share = (Date.now() - downAt) / APPROVE_HOLD_MS;
   return Math.min(1, Math.max(0, share));
 }
 
-/** The hold of three seconds on the yes to a trick's code. See the head of this file. */
+/** The hold of 1.5 seconds on the yes to a trick's code. See the head of this file. */
 export function useApproveHold({ enabled, resetKey, onApprove }: ApproveHoldOptions): ApproveHold {
   const approve = useRef(onApprove);
   const live = useRef(enabled);
@@ -131,7 +131,8 @@ export function useApproveHold({ enabled, resetKey, onApprove }: ApproveHoldOpti
     if (ok) approve.current();
   }, [unlisten]);
 
-  const hold = useLongPress(enabled ? held : undefined, { delayMs: APPROVE_HOLD_MS });
+  // The fill starts at the press (no feedback delay): the whole hold is progress the person sees.
+  const hold = useLongPress(enabled ? held : undefined, { delayMs: APPROVE_HOLD_MS, feedbackDelayMs: 0 });
   const holdRef = useRef(hold);
   useLayoutEffect(() => {
     holdRef.current = hold;

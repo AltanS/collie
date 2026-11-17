@@ -11,7 +11,7 @@ import { groupDecision, hillDecision, hillReceipt, trickDecision } from "@/test/
 import { versionRules } from "@/playground/fixtures/hill/decisions";
 import { DecisionCard } from "./decision-card";
 
-// The yes to a trick's code is a hold of three seconds (ADR 0156): hold-to-approve.test.tsx tests the control,
+// The yes to a trick's code is a hold of 1.5 seconds (ADR 0156): hold-to-approve.test.tsx tests the control,
 // decision-card.hold.test.tsx the trick cards; here a case that needs the yes holds it with `holdYes`.
 afterEach(() => vi.unstubAllGlobals());
 

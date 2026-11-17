@@ -46,7 +46,7 @@ import { cn } from "@/lib/utils";
 // was dropped. See {@link approvalTone}.
 //
 // ── THE GUARDS (ADR 0156, the operator's decision of 2026-11-17) ─────────────────────────────────────
-//   * The yes is a HOLD of three seconds (components/hold-to-approve.tsx): the finger stays down while a
+//   * The yes is a HOLD of 1.5 seconds (components/hold-to-approve.tsx): the finger stays down while a
 //     fill grows across the button, and the yes goes out once at the end. A lift, a move off the button,
 //     the page hidden, or a changed card ends the hold with no yes; the chat's own scroll does not, and the
 //     chat does not follow its tail while a finger holds (lib/hold-flag.ts). A key
@@ -244,6 +244,8 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
   }
 
   const sendingIntent = answer.phase === "sending" ? answer.intent : null;
+  // The option that was the answer, once it landed: it keeps its place with a check mark.
+  const chosenIntent = locked && answer.phase === "answered" ? answer.intent : null;
   const tone = approvalTone(decision, answer);
 
   return (
@@ -291,49 +293,59 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
             </div>
           )}
 
-          {locked ? (
-            <AnswerStatus decision={decision} answer={answer} slot="chat-approval-status" />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {blocked && (
-                <p data-slot="chat-approval-unshown" className="font-content text-xs text-muted-foreground">
-                  {t("hill.chat.unshown")}
-                </p>
-              )}
-              <div data-slot="chat-approval-options" className="flex flex-col gap-1.5">
-                {!blocked &&
-                  yesOptions.map((option, i) => (
-                    <HoldToApprove
-                      key={`${String(i)}:${option.intent}`}
-                      data-slot="chat-approval-option"
-                      data-intent={option.intent}
-                      keyLabel={i + 1}
-                      label={holdLabel(decision, option)}
-                      description={option.detail}
-                      enabled={ready}
-                      busy={sendingIntent === option.intent}
-                      resetKey={cardKey(decision)}
-                      onApprove={() => approve(option)}
-                      className="min-h-11 items-center px-3"
-                    />
-                  ))}
-                {declineOption !== undefined && (
-                  <OptionButton
+          {/* THE OPTIONS STAY (Altan, 2026-11-17): after an answer no row leaves and nothing takes their place. The
+              chosen one keeps its place in the chosen look with a check mark, every other one is disabled, and
+              the line that says what happened sits under them, so no button moves. */}
+          <div className="flex flex-col gap-2">
+            {blocked && (
+              <p data-slot="chat-approval-unshown" className="font-content text-xs text-muted-foreground">
+                {t("hill.chat.unshown")}
+              </p>
+            )}
+            <div data-slot="chat-approval-options" className="flex flex-col gap-1.5">
+              {!blocked &&
+                yesOptions.map((option, i) => (
+                  <HoldToApprove
+                    key={`${String(i)}:${option.intent}`}
                     data-slot="chat-approval-option"
-                    data-intent={declineOption.intent}
-                    keyLabel={blocked ? 1 : yesOptions.length + 1}
-                    label={declineOption.label}
-                    onClick={() => {
-                      if (!locked) onLater();
-                    }}
+                    data-intent={option.intent}
+                    keyLabel={i + 1}
+                    label={holdLabel(decision, option)}
+                    description={option.detail}
+                    enabled={ready}
+                    busy={sendingIntent === option.intent}
+                    chosen={chosenIntent === option.intent}
+                    resetKey={cardKey(decision)}
+                    onApprove={() => approve(option)}
                     className="min-h-11 items-center px-3"
                   />
-                )}
-                {/* A yes that got no answer, or a refusal, says so here. No Try again: the hold is the way to send again. */}
-                <AnswerStatus decision={decision} answer={answer} slot="chat-approval-status" />
-              </div>
+                ))}
+              {declineOption !== undefined && (
+                <OptionButton
+                  data-slot="chat-approval-option"
+                  data-intent={declineOption.intent}
+                  data-chosen={chosenIntent === declineOption.intent ? "" : undefined}
+                  tone={chosenIntent === declineOption.intent ? "busy" : "default"}
+                  keyLabel={blocked ? 1 : yesOptions.length + 1}
+                  label={declineOption.label}
+                  disabled={locked}
+                  onClick={() => {
+                    if (!locked) onLater();
+                  }}
+                  className="min-h-11 items-center px-3"
+                  trailing={
+                    // One 16px slot, as on the yes, so the mark arriving moves no label.
+                    <span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
+                      {chosenIntent === declineOption.intent && <Icon name="done" data-slot="option-chosen-mark" className="size-4 text-primary" />}
+                    </span>
+                  }
+                />
+              )}
             </div>
-          )}
+            {/* What the answer did, or why it did not land. Under the options, so it moves none of them. No Try again:
+                the hold is the way to send again. */}
+            <AnswerStatus decision={decision} answer={answer} slot="chat-approval-status" />
+          </div>
         </div>
       </PromptPanel>
     </div>

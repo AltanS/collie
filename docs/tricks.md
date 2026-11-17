@@ -343,7 +343,7 @@ every yes for you, and it tells you plainly what it found in the code.
 - **Your tap decides** Add, and the switch: a trick is off until you switch it on. It also decides
   each new version, each Decision and each view.
 - **Your job** is to judge the code: read it, or ask a session to read it for you. The yes does not
-  wait for that. It is a hold of three seconds, so that it is never a stray tap.
+  wait for that. It is a hold of 1.5 seconds, so that it is never a stray tap.
 
 ### Official and community tricks
 
@@ -569,7 +569,7 @@ collie trick propose ~/work/disk-space
 
 A card appears with the whole code on it: on your Hill, or in Settings → Tricks under **Waiting for
 your yes** while the Hill is off. Collie never recommends "Switch it on": your
-own judgement is the check. The yes is a hold of three seconds. Nothing of the trick runs before your yes. Collie offers an agent no way to
+own judgement is the check. The yes is a hold of 1.5 seconds. Nothing of the trick runs before your yes. Collie offers an agent no way to
 switch a trick on. A program that runs as you can still do it.
 
 An agent can propose a program trick. It cannot propose a trick that carries a view or rules: an

@@ -3671,7 +3671,6 @@ export const es: Dictionary = {
   "hill.hold.always": "Mantén para usar y no volver a preguntar",
   "hill.hold.holding": "Sigue manteniendo…",
   "hill.hold.armed": "Pulsa de nuevo para confirmar",
-  "hill.hold.hint": "Mantén 3 segundos. Con teclado, púlsalo dos veces.",
   "hill.chat.unshown": "Este teléfono no puede mostrar toda esta tarjeta, así que el truco no se puede activar aquí. Léela y actívalo en la máquina.",
   "tricks.compare.before": "Antes",
   "tricks.compare.after": "Después",

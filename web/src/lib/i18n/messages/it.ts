@@ -3490,7 +3490,6 @@ export const it: Dictionary = {
   "hill.hold.always": "Tieni premuto per usare e non chiedere più",
   "hill.hold.holding": "Continua a tenere premuto…",
   "hill.hold.armed": "Premi di nuovo per confermare",
-  "hill.hold.hint": "Tieni premuto per 3 secondi. Con la tastiera, premilo due volte.",
   "hill.chat.unshown": "Questo telefono non può mostrare tutta questa scheda, quindi il trick non si può attivare qui. Leggilo e attivalo sulla macchina.",
   "tricks.compare.before": "Prima",
   "tricks.compare.after": "Dopo",

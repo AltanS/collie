@@ -3675,7 +3675,6 @@ export const de: Dictionary = {
   "hill.hold.always": "Zum Verwenden halten, nie mehr fragen",
   "hill.hold.holding": "Weiter halten…",
   "hill.hold.armed": "Zum Bestätigen noch einmal drücken",
-  "hill.hold.hint": "3 Sekunden halten. Mit der Tastatur zweimal drücken.",
   "hill.chat.unshown": "Dieses Telefon kann diese Karte nicht ganz anzeigen, daher lässt sich der Trick hier nicht einschalten. Lies ihn und schalte ihn auf dem Rechner ein.",
   "tricks.compare.before": "Vorher",
   "tricks.compare.after": "Nachher",

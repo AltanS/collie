@@ -3,7 +3,7 @@ import type { View, ViewNode } from "../tricks/schema";
 import type { HillDecision, HillGroupAnswer } from "./wire";
 
 // A SINGLE CARD OF CODE (review 7 R1, the single card). Collie's own proposal card or new-version card
-// whose code fits one card: its view never folds on the Hill, and its yes is a hold of three seconds
+// whose code fits one card: its view never folds on the Hill, and its yes is a hold of 1.5 seconds
 // (components/hold-to-approve.tsx, ADR 0156). Its decline is a plain tap. The yes carries
 // `{ digest: <the ref's hash> }`, and the bridge refuses a yes without it, as it does for a group (C-A2,
 // review 8). A Decision with no code in its view (an agent's, a trick's, or Collie's own without code)
@@ -61,7 +61,7 @@ export function singleCodeCard(decision: HillDecision): SingleCodeCard | null {
 
 /**
  * The decline of a trick card of Collie's own (a new trick or a new version, with code or without), or null
- * for any other card. Its other options are the yes, a hold of three seconds (ADR 0156).
+ * for any other card. Its other options are the yes, a hold of 1.5 seconds (ADR 0156).
  */
 export function trickCardDecline(decision: HillDecision): string | null {
   const { from } = decision;

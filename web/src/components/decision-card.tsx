@@ -93,7 +93,9 @@ import { cn } from "@/lib/utils";
 // way to the one status line in the same band (`HeightSwap`), its height easing between the two, and
 // "Sending…" gives way to the receipt the same way. The list then lets the card leave
 // (ui/presence.tsx). A card that takes answers again (a refusal, `denied`, a request that got no answer)
-// gets its options back the same way, with the notice under them. A refusal, and the bridge's `denied` (this device may not
+// gets its options back the same way, with the notice under them. A trick's card (a proposal, a version) never swaps:
+// its options stay where they are, the chosen one with a check mark and the others disabled, the status under them,
+// until the card leaves its page (Altan, 2026-11-17). A refusal, and the bridge's `denied` (this device may not
 // answer), keep the card open and take a new answer. A gone target keeps the person's words on screen
 // with Copy, so nothing they wrote is lost. A request that got no answer says "Not sent." with Try
 // again, which sends the same attempt with the same request id (`useHillAnswer`). The card owns no
@@ -108,7 +110,7 @@ import { cn } from "@/lib/utils";
 //
 // THE YES TO A TRICK'S CODE IS A HOLD (ADR 0156, the operator's decision of 2026-11-17). On a trick's card,
 // a proposal or a version, every option but the decline is `HoldToApprove` (components/hold-to-approve.tsx):
-// three seconds with the finger down, or two presses of a key. Reading is offered, not required: no card
+// 1.5 seconds with the finger down, or two presses of a key. Reading is offered, not required: no card
 // needs to be opened or read to its end first. The decline and Dismiss stay as they are.
 
 /** The bridge's clock, ticked once a second by the page's one shared clock (lib/cache-clock.ts). */
@@ -417,7 +419,7 @@ export function DecisionCard({
   const single = singleCodeCard(decision);
   const cardCount = group?.parts.length ?? 0;
   const lastCard = group === undefined || page >= cardCount - 1;
-  // A trick's card (a proposal or a version): its yes is a hold of three seconds (ADR 0156).
+  // A trick's card (a proposal or a version): its yes is a hold of 1.5 seconds (ADR 0156).
   const trickDecline = trickCardDecline(decision);
   // A trick card with no code to show (no group, no code in its view) cannot show what a yes would approve: it
   // offers the decline only, with the line that says why (the lead's decision, 2026-11-17).
@@ -502,8 +504,12 @@ export function DecisionCard({
   // The options and the field are the band the status line takes over. A card with neither keeps the
   // status in its own Collapse under everything, as before.
   const hasAnswerBlock = hasOptions || fieldOpen;
-  const band = !settled ? "answer" : answer.phase === "sending" ? "sending" : "receipt";
-  const statusBelow = answer.phase !== "idle" && !(hasAnswerBlock && locked);
+  // A trick's card keeps its options in place after an answer (Altan, 2026-11-17): the chosen one with a check mark,
+  // the others disabled, the status line under them, until the card leaves its page. Nothing swaps, so nothing jumps.
+  const keepsOptions = trickDecline !== null;
+  const chosenIntent = keepsOptions && locked && answer.phase === "answered" ? answer.intent : null;
+  const band = keepsOptions || !settled ? "answer" : answer.phase === "sending" ? "sending" : "receipt";
+  const statusBelow = answer.phase !== "idle" && (keepsOptions || !(hasAnswerBlock && locked));
 
   const field = (
     <textarea
@@ -700,7 +706,7 @@ export function DecisionCard({
                         const isArmed = armed === `option:${option.intent}`;
                         const busy = sendingIntent === option.intent;
                         const isRecommended = recommended?.intent === option.intent;
-                        // The yes to a trick's code: a hold of three seconds, or two presses of a key (ADR 0156).
+                        // The yes to a trick's code: a hold of 1.5 seconds, or two presses of a key (ADR 0156).
                         if (trickDecline !== null && option.intent !== trickDecline) {
                           return (
                             <HoldToApprove
@@ -712,6 +718,7 @@ export function DecisionCard({
                               description={option.detail}
                               enabled={!optionsBlocked}
                               busy={busy}
+                              chosen={chosenIntent === option.intent}
                               resetKey={`${decision.id}:${digest ?? ""}`}
                               onApprove={() => choose(option)}
                               className="min-h-12 items-center px-3"
@@ -723,7 +730,7 @@ export function DecisionCard({
                             key={`${i}:${option.intent}`}
                             data-slot="decision-option"
                             data-intent={option.intent}
-                            tone={busy ? "busy" : isArmed ? "armed" : "default"}
+                            tone={busy || chosenIntent === option.intent ? "busy" : isArmed ? "armed" : "default"}
                             // The terminal menu's own numbers. Display only: no key sends one.
                             keyLabel={i + 1}
                             label={
@@ -754,6 +761,8 @@ export function DecisionCard({
                               <span aria-hidden className="flex size-4 shrink-0 items-center justify-center text-status-working">
                                 {busy ? (
                                   <Icon name="busy" className="size-3.5 animate-spin text-muted-foreground" />
+                                ) : chosenIntent === option.intent ? (
+                                  <Icon name="done" data-slot="option-chosen-mark" className="size-4 text-primary" />
                                 ) : isRecommended ? (
                                   <Icon name="recommended" data-slot="decision-recommended-mark" className="size-3.5" />
                                 ) : null}

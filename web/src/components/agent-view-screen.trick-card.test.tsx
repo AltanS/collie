@@ -15,7 +15,7 @@ import { server } from "@/test/setup";
 // (session-trick-card.hold.test.tsx).
 
 // A TRICK PROPOSAL WHILE AN AGENT VIEW STANDS IN FOR THE CHAT (2026-11-17): the same card, last in the view's own
-// scroll, with the same yes: a hold of three seconds (ADR 0156). A card never needs a trip to Settings.
+// scroll, with the same yes: a hold of 1.5 seconds (ADR 0156). A card never needs a trip to Settings.
 
 const SELF = "lodge/%3#abcd";
 const HASH = "a".repeat(64);
@@ -96,7 +96,7 @@ describe("a trick proposal while an agent view stands in for the chat", () => {
     expect(viewEl().querySelector('[data-slot="chat-approval"]')).toBeNull();
   });
 
-  it("the yes is a hold: ready with the fold never opened, and three seconds send once with the hash", async () => {
+  it("the yes is a hold: ready with the fold never opened, and 1.5 seconds send once with the hash", async () => {
     const answers: unknown[] = [];
     server.use(
       http.post("/api/hill/answer", async ({ request }) => {

@@ -3484,7 +3484,6 @@ export const tr: Dictionary = {
   "hill.hold.always": "Kullanmak için basılı tutun, bir daha sormayın",
   "hill.hold.holding": "Basılı tutmaya devam edin…",
   "hill.hold.armed": "Onaylamak için tekrar basın",
-  "hill.hold.hint": "3 saniye basılı tutun. Klavyede iki kez basın.",
   "hill.chat.unshown": "Bu telefon bu kartın tamamını gösteremiyor, bu yüzden trick burada açılamaz. Okuyun ve makinede açın.",
   "tricks.compare.before": "Önce",
   "tricks.compare.after": "Sonra",

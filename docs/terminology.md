@@ -451,7 +451,7 @@ is not a [question card](#question-card-ask): that card is a durable agent's own
 
 The card of a trick that an agent wrote for you. It is titled "Switch on the trick `<id>`?", and it
 shows what the trick asks for, the warnings of the text search, and every file of its code. Nothing
-runs before your yes. The yes is a hold of three seconds, or two presses of a key. Reading the code is
+runs before your yes. The yes is a hold of 1.5 seconds, or two presses of a key. Reading the code is
 up to you ([A trick an agent proposes](hill.md#a-trick-an-agent-proposes)).
 
 ## Version card

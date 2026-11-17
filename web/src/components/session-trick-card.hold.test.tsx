@@ -8,7 +8,7 @@ import { APPROVE_HOLD_MS } from "@/lib/arm";
 import type { HillDecision, HillGroupAnswer } from "@/lib/hill/wire";
 import { collieCard } from "@/test/hill-fixtures";
 
-// THE CHAT CARD'S YES IS A HOLD OF THREE SECONDS (ADR 0156), in the chat's own scroll and in an agent view's own
+// THE CHAT CARD'S YES IS A HOLD OF 1.5 SECONDS (ADR 0156), in the chat's own scroll and in an agent view's own
 // scroll, where the card stands while the view stands in for the chat. The fold is never opened in these cases:
 // reading is offered, not required. A scroll of the box the card flows in does not end a hold (fix/hold-works); the
 // decline stays one tap.
@@ -58,7 +58,7 @@ const up = (el: HTMLElement) => {
 };
 
 describe.each(["chat", "agent-view"] as const)("the card's yes, in the %s's scroll", (host) => {
-  it("is ready at the draw with the fold never opened, and a hold of three seconds sends once with the hash", () => {
+  it("is ready at the draw with the fold never opened, and a hold of 1.5 seconds sends once with the hash", () => {
     const { onSend, yes, toggle } = draw(host);
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
     expect(yes()).toBeEnabled();
@@ -74,12 +74,12 @@ describe.each(["chat", "agent-view"] as const)("the card's yes, in the %s's scro
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("a lift at 2.9 seconds sends nothing; a tap sends nothing", () => {
+  it("a lift just short of the hold sends nothing; a tap sends nothing", () => {
     const { onSend, yes } = draw(host);
     down(yes()!);
     up(yes()!);
     down(yes()!);
-    wait(2900);
+    wait(APPROVE_HOLD_MS - 100);
     up(yes()!);
     wait(5000);
     expect(onSend).not.toHaveBeenCalled();
@@ -88,9 +88,9 @@ describe.each(["chat", "agent-view"] as const)("the card's yes, in the %s's scro
   it("a scroll of the box the card flows in, while the finger holds, does not end the hold (the chat's own follow scrolls it)", () => {
     const { onSend, yes, box } = draw(host);
     down(yes()!);
-    wait(1500);
+    wait(APPROVE_HOLD_MS / 2);
     fireEvent.scroll(box);
-    wait(1500);
+    wait(APPROVE_HOLD_MS / 2);
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
@@ -153,4 +153,61 @@ describe.each(["chat", "agent-view"] as const)("the card's colour says where it 
       expect(panel.className).not.toMatch(/border-l-|status-working|\bbg-card\b|\bborder-border\b/u);
     });
   }
+});
+
+// THE OPTIONS STAY AFTER AN ANSWER (Altan, 2026-11-17: "the yes option disappears causing a layout switch, it should
+// stay but receive a checkmark"). The same buttons, in the same places, the chosen one with a check mark and the chosen
+// look, the other disabled, and the status under them. jsdom has no layout, so "the same place" is held as the same
+// nodes in the same order with nothing inserted before or between them, plus equal rects where the engine gives any.
+describe.each(["chat", "agent-view"] as const)("after an answer the options stay, in the %s", (host) => {
+  function drawWith(answer: HillAnswerState) {
+    const card = (a: HillAnswerState) => <ChatApprovalCard decision={decision} answer={a} onSend={vi.fn()} onLater={vi.fn()} />;
+    const wrap = (a: HillAnswerState) =>
+      host === "chat" ? (
+        card(a)
+      ) : (
+        <AgentViewScreen name="Morph" session="lodge/%3#abcd" view={undefined} working={false} entries={[]} canAct onTap={vi.fn()} onLink={vi.fn()} now={Date.parse("2026-11-17T10:00:00.000Z")} settleMs={0} tail={card(a)} />
+      );
+    const view = render(wrap(answer));
+    const options = () => [...view.container.querySelectorAll<HTMLButtonElement>('[data-slot="chat-approval-option"]')];
+    return { view, options, redraw: (a: HillAnswerState) => view.rerender(wrap(a)) };
+  }
+
+  it.each([
+    ["switched on", "on", "later"],
+    ["declined", "later", "on"],
+  ])("%s: the chosen option keeps its place with a check mark, the other is disabled, no row moves", (_, chosen, other) => {
+    const { options, redraw } = drawWith(HILL_IDLE);
+    const before = options();
+    const rects = before.map((b) => JSON.stringify(b.getBoundingClientRect()));
+    redraw({ phase: "sending", intent: chosen, text: null });
+    redraw(ok(chosen));
+    const after = options();
+    expect(after).toHaveLength(before.length);
+    after.forEach((button, i) => expect(button).toBe(before[i]));
+    expect(after.map((b) => JSON.stringify(b.getBoundingClientRect()))).toEqual(rects);
+    const pick = after.find((b) => b.dataset.intent === chosen)!;
+    const rest = after.find((b) => b.dataset.intent === other)!;
+    expect(pick.querySelector('[data-slot="option-chosen-mark"]')).not.toBeNull();
+    expect(pick).toHaveAttribute("data-chosen");
+    // The chosen look: the primary accent, never dimmed.
+    expect(pick.className).toContain("border-primary");
+    expect(pick.className).not.toContain("disabled:opacity");
+    expect(rest).toBeDisabled();
+    expect(rest.querySelector('[data-slot="option-chosen-mark"]')).toBeNull();
+    expect(rest.className).toContain("disabled:opacity-60");
+    // The status sits after the options, never before or between them.
+    const status = document.querySelector('[data-slot="chat-approval-status"]');
+    const list = document.querySelector('[data-slot="chat-approval-options"]')!;
+    if (status !== null) expect(list.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("a yes in flight: the spinner on the chosen option, the other disabled, no row moves", () => {
+    const { options, redraw } = drawWith(HILL_IDLE);
+    const before = options();
+    redraw({ phase: "sending", intent: "on", text: null });
+    const after = options();
+    after.forEach((button, i) => expect(button).toBe(before[i]));
+    expect(after.find((b) => b.dataset.intent === "later")).toBeDisabled();
+  });
 });

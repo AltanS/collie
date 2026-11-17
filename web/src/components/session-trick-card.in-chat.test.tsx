@@ -100,10 +100,10 @@ describe("the hold in a live chat", () => {
     const { onSend, poll, yes } = draw();
     down(yes());
     for (let i = 1; i <= 5; i++) {
-      await wait(500);
+      await wait(200);
       poll(0, 0);
     }
-    await wait(APPROVE_HOLD_MS - 2500);
+    await wait(APPROVE_HOLD_MS - 1000);
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
@@ -112,13 +112,13 @@ describe("the hold in a live chat", () => {
     down(yes());
     const before = layout.moves.length;
     for (let rev = 1; rev <= 5; rev++) {
-      await wait(500);
+      await wait(200);
       poll(1, rev);
       expect(yes().getAttribute("data-phase")).not.toBe("rest");
     }
     // While the finger holds, the list did not jump the card away to follow the tail.
     expect(layout.moves.length).toBe(before);
-    await wait(APPROVE_HOLD_MS - 2500);
+    await wait(APPROVE_HOLD_MS - 1000);
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(onSend.mock.calls[0]?.[0]).toBe("on");
   });

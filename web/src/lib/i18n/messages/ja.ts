@@ -3644,7 +3644,6 @@ export const ja: Dictionary = {
   "hill.hold.always": "長押しで使い、今後は確認しない",
   "hill.hold.holding": "そのまま押し続けてください…",
   "hill.hold.armed": "もう一度押して確定",
-  "hill.hold.hint": "3 秒間長押しします。キーボードでは 2 回押します。",
   "hill.chat.unshown": "このスマートフォンではこのカードのすべてを表示できないため、ここでトリックをオンにできません。マシンで読んで、オンにしてください。",
   "tricks.compare.before": "変更前",
   "tricks.compare.after": "変更後",

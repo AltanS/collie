@@ -17,7 +17,7 @@ import type { View } from "@/lib/tricks/schema";
 //
 // A card of a group never folds: its whole code shows. A single card of Collie's own that carries code never
 // folds either (`DecisionWholeView`, lib/hill/code-card.ts). Since ADR 0156 no card has to be opened or read
-// to its end before the yes, which is a hold of three seconds (components/hold-to-approve.tsx).
+// to its end before the yes, which is a hold of 1.5 seconds (components/hold-to-approve.tsx).
 
 /** The quiet chip on a group's Decision: "4 cards". */
 export function GroupCount({ count }: { count: number }) {
