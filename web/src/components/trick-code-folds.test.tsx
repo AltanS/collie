@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TrickAboutSheet } from "@/components/trick-about-sheet";
 import { CodeFailure, type TrickCodeReader } from "@/components/trick-code-folds";
 import { readCodeFile, readCodeIndex, type WireCodeFile, type WireCodeIndex } from "@/lib/tricks/code-wire";
-import { spanWords, timerLine } from "@/lib/tricks/code-words";
+import { markWord, spanWords, timerLine } from "@/lib/tricks/code-words";
 import { WATCH_WINDOW_MS } from "@/lib/tricks/limits";
-import type { WireTrickInfo } from "@/lib/tricks/schema";
+import { TRICK_WARNING_KINDS, type WireTrickInfo } from "@/lib/tricks/schema";
 import { readTrick } from "@/lib/tricks/wire";
 
 // "Read the code" in a trick's About sheet: one fold for each file, one tap to open, the code wrapped and never
@@ -206,6 +206,14 @@ describe("the folds", () => {
     await screen.findByRole("list", { name: "Read the code" });
     rerender(<TrickAboutSheet trick={{ ...TRICK, on: false, state: "off" }} open onClose={vi.fn()} readCode={r.reader} />);
     await waitFor(() => expect(r.index).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("the word of a mark", () => {
+  it("has a phone word for every warning kind the bridge can send, the API kind included", () => {
+    for (const kind of TRICK_WARNING_KINDS) expect(markWord(kind)).not.toBe(kind);
+    expect(markWord("api")).toBe("API");
+    expect(markWord("unheard-of")).toBe("unheard-of");
   });
 });
 

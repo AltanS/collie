@@ -162,6 +162,12 @@ describe("the marks of the text search", () => {
     expect(body.marksLeft).toBe(0);
   });
 
+  test("a line that reaches Collie's local API past its helper carries the api kind", async () => {
+    const r = await rig({ "legs.sh": "#!/bin/sh\necho start\ncollie api GET /api/health\n" });
+    const body = file(await r.service.code(HOST, "legs", "legs.sh"));
+    expect(body.marks).toEqual([{ line: 3, kinds: ["api"] }]);
+  });
+
   test("a flag past the part shown is counted, not drawn on a line that is not there", async () => {
     const filler = "echo filler line of the program\n".repeat(Math.ceil((CODE_VIEW_BYTES_MAX * 2) / 32));
     const r = await rig({ "legs.sh": `#!/bin/sh\n${filler}curl https://example.test/late\n` });

@@ -3730,6 +3730,7 @@ export const en = {
   "settings.tricks.about.code.mark.write": "Writes",
   "settings.tricks.about.code.mark.model": "Model",
   "settings.tricks.about.code.mark.import": "Imports",
+  "settings.tricks.about.code.mark.api": "API",
   // The label after a trick's name in the one list of Settings, Tricks: where it comes from.
   "settings.tricks.origin.official": "Official",
   "settings.tricks.origin.community": "Community",
@@ -4231,6 +4232,7 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.about.code.mark.write",
   "settings.tricks.about.code.mark.model",
   "settings.tricks.about.code.mark.import",
+  "settings.tricks.about.code.mark.api",
   "settings.tricks.switch.about",
   "settings.tricks.switch.contract",
   "settings.tricks.switch.failed",
