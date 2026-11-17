@@ -755,6 +755,8 @@ export class TricksService implements TricksSurface {
   private warningRead: Promise<void> | null = null;
   /** The start's sweep of `.gone-*` leftovers (`boot`); a test waits on it. */
   swept: Promise<void> = Promise.resolve();
+  /** Whether a good scan ran already: the first one only learns which trick ids the service holds. */
+  private scannedOnce = false;
   /** When the unreferenced copies were last pruned. */
   private prunedAt = -Infinity;
   /** The switch for tricks as a whole (feature-switch.ts). */
@@ -1042,6 +1044,7 @@ export class TricksService implements TricksSurface {
           switches = await this.readSwitches();
         }
         const scan = await this.scanner.scan(new Set(switches.on.keys()));
+        await this.forgetArrivals(scan);
         // Read after the switch file, so a scan never folds in a switch older than the one it read.
         this.suspended = this.switchedOff();
         this.apply(scan, switches);
@@ -1070,6 +1073,31 @@ export class TricksService implements TricksSurface {
     const need = this.scansStarted + 1;
     // At most: join the scan in flight, then run one of our own.
     for (let i = 0; i < 3 && this.scanDone < need; i += 1) await this.refresh(true);
+  }
+
+  /**
+   * A scan other than the first one that sees a trick id this service did not hold before: a trick added at
+   * the terminal under the id of an earlier one (`collie trick add` cannot reach this process's memory). It
+   * runs the same `forgetTrick` hook an add through the bridge runs (the agent views and the Hill keys of
+   * that id), BEFORE {@link apply} lets the trick run, so a session's view of the old trick never carries
+   * the new one's rules and an old card never answers to the new program. The first good scan only records
+   * the ids it holds; a kept scan (it ran over, or the folder could not be listed) changes nothing. A hook
+   * that throws is logged and the trick still runs: the files are the new trick's, and the next arrival
+   * tries again.
+   */
+  private async forgetArrivals(scan: TricksScan): Promise<void> {
+    if (scan.kept !== undefined) return;
+    const first = !this.scannedOnce;
+    this.scannedOnce = true;
+    if (first || this.deps.forgetTrick === undefined) return;
+    for (const found of scan.tricks) {
+      if (this.runtimes.has(found.id)) continue;
+      try {
+        await this.deps.forgetTrick(found.id);
+      } catch (err) {
+        this.warn(`the views and Hill keys of a new trick "${found.id}" could not be forgotten: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
   }
 
   /** Fold a scan and the switches into the runtimes and the list. */
