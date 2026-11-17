@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, open, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, open, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
@@ -45,7 +45,7 @@ import { tricksStateDir, switchesPath } from "./paths.ts";
 // as "everything off" with one warning per change: the safe direction for a switch that runs code.
 //
 // ONE WRITER AT A TIME. The CLI and the bridge both write the file, each through {@link updateSwitches}:
-// take the lock file (exclusive create, stale after {@link SWITCH_LOCK_STALE_MS}), read the file again,
+// take the lock file (exclusive create, a nonce inside, stale after {@link SWITCH_LOCK_STALE_MS}), read the file again,
 // apply the one change, write a temp file and rename it over. Two writers never lose each other's change.
 
 /** The layout this Collie writes (approved copies): `"layout": 3` in a file that says `"v": 2`. */
@@ -266,28 +266,70 @@ async function readText(path: string): Promise<string | null> {
   }
 }
 
-/** Take the lock file, taking over a stale one. Throws after {@link SWITCH_LOCK_WAIT_MS}. */
-async function takeLock(lock: string, now: () => number): Promise<void> {
+/** The lock file's text: the writer's pid for a human reading it, then the nonce that only this holder knows. */
+function lockText(nonce: string): string {
+  return `${String(process.pid)}\n${nonce}\n`;
+}
+
+/**
+ * Take the lock file, taking over a stale one. Answers the holder's nonce: the lock file carries it, and
+ * {@link releaseLock} removes the lock only while it still does. Throws after {@link SWITCH_LOCK_WAIT_MS}.
+ *
+ * A takeover renames the stale file to a name of its own, and looks at the file it got. Two waiters that
+ * both judged the lock stale cannot both unlink it: one unlink could remove the lock the other had just
+ * created (stat, then unlink, is not atomic). A rename moves whatever stands at the path, so the waiter
+ * checks the moved file again: stale, it is thrown away; fresh, it was a live holder's lock and is put back
+ * with a link, which never overwrites a lock someone created in the meantime.
+ */
+async function takeLock(lock: string, now: () => number): Promise<string> {
   const until = now() + SWITCH_LOCK_WAIT_MS;
+  const nonce = randomBytes(16).toString("hex");
   // Bounded by the wait: each pass either takes the lock, removes a stale one, or sleeps 20 ms.
   for (let pass = 0; pass < SWITCH_LOCK_WAIT_MS; pass += 1) {
     try {
       const handle = await open(lock, "wx", 0o600);
-      await handle.writeFile(`${String(process.pid)}\n`);
+      await handle.writeFile(lockText(nonce));
       await handle.close();
-      return;
+      return nonce;
     } catch (err) {
       if (!(err instanceof Error && "code" in err && err.code === "EEXIST")) throw err;
     }
     const held = await stat(lock).catch(() => null);
     if (held !== null && now() - held.mtimeMs > SWITCH_LOCK_STALE_MS) {
-      await unlink(lock).catch(() => {});
+      await takeOver(lock, nonce, now);
       continue;
     }
     if (now() >= until) break;
     await Bun.sleep(20);
   }
   throw new Error(`switches.json is locked by another writer (${lock})`);
+}
+
+/** Move a lock that looked stale out of the way, under a name only this waiter uses, and check what was moved. */
+async function takeOver(lock: string, nonce: string, now: () => number): Promise<void> {
+  const aside = `${lock}.stale-${nonce}`;
+  try {
+    await rename(lock, aside);
+  } catch {
+    // Another waiter moved it first, or its holder released it: take the next pass.
+    return;
+  }
+  const moved = await stat(aside).catch(() => null);
+  if (moved === null) return;
+  if (now() - moved.mtimeMs > SWITCH_LOCK_STALE_MS) {
+    await unlink(aside).catch(() => {});
+    return;
+  }
+  // A live holder's lock that a faster waiter had just made: put it back, never over a newer one.
+  await link(aside, lock).catch(() => {});
+  await unlink(aside).catch(() => {});
+}
+
+/** Remove the lock file only while it still carries this holder's nonce: a lock taken over meanwhile is another writer's. */
+async function releaseLock(lock: string, nonce: string): Promise<void> {
+  const text = await readText(lock);
+  if (text === null || !text.split("\n").includes(nonce)) return;
+  await unlink(lock).catch(() => {});
 }
 
 /**
@@ -316,11 +358,11 @@ export async function updateSwitches(stateDir: string, change: (switches: Switch
 export async function withSwitchLock<T>(stateDir: string, work: () => Promise<T>, now: () => number = Date.now): Promise<T> {
   await mkdir(tricksStateDir(stateDir), { recursive: true, mode: 0o700 });
   const lock = `${switchesPath(stateDir)}.lock`;
-  await takeLock(lock, now);
+  const nonce = await takeLock(lock, now);
   try {
     return await work();
   } finally {
-    await unlink(lock).catch(() => {});
+    await releaseLock(lock, nonce);
   }
 }
 

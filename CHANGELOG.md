@@ -87,6 +87,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Two writers can no longer both hold the switch lock.** A stale lock is now taken over by renaming it aside and checking the file that moved, and the lock file carries a nonce that its release must match, so a slow writer never removes the lock another writer took over.
 - **A new trick never inherits what an earlier trick of the same name left.** An add (official list, repository, terminal or an agent's proposal) now removes the approved and pending copies and any switch entry a removed folder left behind, so an old auto flag, an old approval or the old copy's settings and writable folders cannot carry to the new code. The code that runs was already only the approved bytes.
 - **A new trick also starts with none of the old one's saved state.** The same add removes the state folder the earlier trick of that name left (the values a person set and the files its program saved), its agent views and its keys on the Hill, in one place for all four ways of adding. The terminal add looks for the folder again while it holds the switch file's lock.
 - **Adding a trick under an old id never holds the switch lock for a slow delete.** The add renames the old state folder and copies aside while it holds the lock, and removes them after it, so a trick that filled its state folder cannot make another writer take the lock over; the bridge's start removes what a crash left.

@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,7 +14,7 @@ import { buildFacts, crewFactsWorld, factsWorldOf } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
 import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksCodeRoute, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
-import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_STALE_MS, updateSwitches, withApproval, withEntry, withSwitch, writeSwitches } from "./switches.ts";
+import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_STALE_MS, updateSwitches, withApproval, withEntry, withSwitch, withSwitchLock, writeSwitches } from "./switches.ts";
 
 const HASH = "a".repeat(64);
 const HASH2 = "b".repeat(64);
@@ -110,6 +110,84 @@ describe("the switch file", () => {
     await utimes(lock, old, old);
     await updateSwitches(stateDir, (now) => withSwitch(now, "legs", true, "t", HASH));
     expect(parseSwitches(readFileSync(switchesPath(stateDir), "utf8")).switches.on.has("legs")).toBe(true);
+  });
+
+  test("counsel A1: waiters that all find a stale lock take it one at a time", async () => {
+    // Repeated, because the old take-over (stat, then unlink) lost the race only on some interleavings.
+    for (let round = 0; round < 5; round += 1) {
+      const stateDir = await tempDir();
+      await mkdir(join(stateDir, "tricks"), { recursive: true });
+      const lock = `${switchesPath(stateDir)}.lock`;
+      await writeFile(lock, "999999\nlong-dead-nonce\n");
+      const old = new Date(Date.now() - SWITCH_LOCK_STALE_MS - 1000);
+      await utimes(lock, old, old);
+      let inside = 0;
+      let most = 0;
+      let done = 0;
+      await Promise.all(
+        Array.from({ length: 8 }, () =>
+          withSwitchLock(stateDir, async () => {
+            inside += 1;
+            most = Math.max(most, inside);
+            await Bun.sleep(10);
+            inside -= 1;
+            done += 1;
+          }),
+        ),
+      );
+      expect(done).toBe(8);
+      expect(most).toBe(1);
+      expect(existsSync(lock)).toBe(false);
+      // No renamed-aside stale lock is left behind.
+      expect((await readdir(join(stateDir, "tricks"))).filter((name) => name.includes(".stale-"))).toEqual([]);
+    }
+  });
+
+  test("counsel A1: the lock file carries the holder's nonce beside its pid", async () => {
+    const stateDir = await tempDir();
+    const lock = `${switchesPath(stateDir)}.lock`;
+    let text = "";
+    await withSwitchLock(stateDir, async () => {
+      text = readFileSync(lock, "utf8");
+    });
+    const [pid, nonce, rest] = text.split("\n");
+    expect(pid).toBe(String(process.pid));
+    expect(nonce).toMatch(/^[0-9a-f]{32}$/u);
+    expect(rest).toBe("");
+  });
+
+  test("counsel A1: a release with a foreign nonce leaves the lock alone", async () => {
+    const stateDir = await tempDir();
+    const lock = `${switchesPath(stateDir)}.lock`;
+    await withSwitchLock(stateDir, async () => {
+      // The lock was taken over while this writer was slow: another holder's file stands at the path.
+      await writeFile(lock, "4242\nforeign-nonce\n");
+    });
+    expect(readFileSync(lock, "utf8")).toBe("4242\nforeign-nonce\n");
+  });
+
+  test("counsel A1: a release removes its own lock, also when the work throws", async () => {
+    const stateDir = await tempDir();
+    const lock = `${switchesPath(stateDir)}.lock`;
+    await expect(
+      withSwitchLock(stateDir, async () => {
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  test("counsel A1: a fresh lock that is not stale is waited for, not taken", async () => {
+    const stateDir = await tempDir();
+    await mkdir(join(stateDir, "tricks"), { recursive: true });
+    const lock = `${switchesPath(stateDir)}.lock`;
+    await writeFile(lock, "4242\nlive-nonce\n");
+    // A fake clock: the first reading puts the end of the wait far in the past, so the wait ends at once;
+    // every later reading is the real time, so the lock (real mtime, just written) is not stale.
+    let reads = 0;
+    const clock = () => (reads++ === 0 ? Date.now() - 100_000 : Date.now());
+    await expect(withSwitchLock(stateDir, async () => "never", clock)).rejects.toThrow("locked by another writer");
+    expect(readFileSync(lock, "utf8")).toBe("4242\nlive-nonce\n");
   });
 });
 
