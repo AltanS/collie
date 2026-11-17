@@ -112,6 +112,7 @@ describe("the env scrub", () => {
     expect(outcome.stdout).not.toContain(KEY.slice(4));
     // Windows spells it `Path`, and a name there is one in any case.
     expect(outcome.stdout.toUpperCase()).toContain("PATH=");
+    // The SystemRoot line is a VM-only proof: the lead's Windows VM run is its proof.
     if (process.platform === "win32") expect(outcome.stdout.toUpperCase()).toContain("SYSTEMROOT=");
   });
 });
@@ -242,6 +243,7 @@ describe("one run", () => {
     const cwd = await tempDir();
     const pidFile = join(cwd, "grandchild.pid");
     // program -> middle (alive, sleeping) -> grandchild. POSIX kills the group; Windows walks the tree.
+    // A VM-only proof for Windows: on Linux the group kill answers; the lead's Windows VM run is its proof there.
     const middle = `const g = Bun.spawn([process.execPath, "-e", "await Bun.sleep(30000)"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }); require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(g.pid)); await Bun.sleep(30000);`;
     const program = [`Bun.spawn([process.execPath, "-e", ${JSON.stringify(middle)}], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });`, "await Bun.sleep(30000);", ""].join("\n");
     const outcome = await script(cwd, program, { stdin: "", timeoutMs: 3000 });
@@ -255,6 +257,7 @@ describe("one run", () => {
     const cwd = await tempDir();
     const marker = join(cwd, "planted-ran");
     // A bare `taskkill` would find these first in the run's cwd on Windows. The real kill must not.
+    // A VM-only proof: Linux never runs taskkill, so this passes there by itself. The lead's Windows VM run is its proof.
     await writeFile(join(cwd, "taskkill.cmd"), `@echo off\r\necho ran> "${marker}"\r\n`);
     await writeFile(join(cwd, "taskkill.bat"), `@echo off\r\necho ran> "${marker}"\r\n`);
     const outcome = await script(cwd, "await Bun.sleep(30000);\n", { stdin: "", timeoutMs: 1500 });
