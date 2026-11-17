@@ -69,11 +69,11 @@ The agent that runs in a pane: Claude Code, Codex, pi, OmO, or a durable agent
 
 ## Profile
 
-A named folder that holds one login of an agent, so you can keep a second login beside the first.
-You pick it when you start a session, in **Settings → Profiles**. With none added, nothing changes.
-Profiles belong to one machine: a crew member's profiles are its own. Collie does not switch
-logins, because the agent keeps the login in the folder of the profile
-([Profiles](configure.md#profiles)). Edge builds of 1.29 called it an account.
+A profile is signed in on its own, for example Work with your work subscription beside Default with
+your personal one. You pick the profile when you start a session, and the session stays in it. Add
+one in **Settings → Profiles**; with none added, nothing changes. Profiles belong to one machine: a
+crew member's profiles are its own. **Change login** gives a profile another login, and its sessions
+follow ([Profiles](configure.md#profiles)). Edge builds of 1.29 called it an account.
 
 ## Default profile
 
