@@ -16,6 +16,7 @@
 import { useEffect, useState } from "react";
 
 import { ActionsRow } from "@/components/actions-row";
+import { AgentIcon } from "@/components/agent-icon";
 import { HarnessBarControl } from "@/components/harness-bar-control";
 import { HarnessPrefsControl } from "@/components/harness-prefs-control";
 import { DURABLE_BAR } from "@/lib/harness-bar";
@@ -31,6 +32,17 @@ export const DEF: SectionDef = {
   intent:
     "The one row above the keyboard, drawn as a BELT: one full-bleed band with a hairline above and below, no rounded ends, and a quiet ground of its own. Collie's own controls — Keys, Type, Quick, Agent, Display — stand directly on that ground; the running harness's own commands stand in a section of the same band, square-cornered, full height, tinted with the harness's colour and opening with its mark. Every pill is an icon and a word, in both parts. It scrolls sideways rather than wrapping, and nothing is ever dropped from it. Tapping a harness button really runs it; here that means a stub that says yes, so the checkmark is the real echo.",
 };
+
+/** The mark of a harness at the belt's size, at a size that shows its shape, and at a dashboard tile's size. */
+function Mark({ agent }: { agent: string }) {
+  return (
+    <div className="flex items-end gap-4">
+      <AgentIcon agent={agent} className="size-5" />
+      <AgentIcon agent={agent} className="size-9 rounded-lg" />
+      <AgentIcon agent={agent} className="size-16 rounded-2xl" />
+    </div>
+  );
+}
 
 function Roomy({ agent }: { agent: string | null }) {
   const general = useRoomyActions();
@@ -129,6 +141,16 @@ export function ActionsRowSection() {
         </Card>
 
         <Card
+          state="roomy-mcode"
+          label="74: MiniMax Code belt"
+          reach="open a pane running MiniMax Code (mcode), an experimental harness."
+          note="MiniMax Code's own section: its purple M mark, then Plan, Compact, History and Resume (lib/harness-bar.ts, MCODE). Each button sends the harness's own slash command: /plan, /compact, /history and /sessions. Collie's five controls stand bare on the belt as on every pane."
+          span={2}
+        >
+          <Roomy agent="mcode" />
+        </Card>
+
+        <Card
           state="roomy-no-harness"
           label="a bare shell: the controls alone"
           reach="open a shell pane, or one running grok, opencode or antigravity."
@@ -136,6 +158,17 @@ export function ActionsRowSection() {
           span={2}
         >
           <Roomy agent={null} />
+        </Card>
+      </Group>
+
+      <Group title="The mark of a harness">
+        <Card
+          state="mark-mcode"
+          label="75: MiniMax Code mark"
+          reach="the belt of an mcode pane, the dashboard row of one, and the agent field of Add your own."
+          note="The purple M tile, drawn by AgentIcon at the belt's 20 px, at 36 px and at 64 px, which is the size that shows the shape."
+        >
+          <Mark agent="mcode" />
         </Card>
       </Group>
 

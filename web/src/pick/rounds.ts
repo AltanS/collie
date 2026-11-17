@@ -6,10 +6,7 @@ import type { PickRoundDef } from "./types";
 
 export type PickRoundLoader = () => Promise<{ default: PickRoundDef }>;
 
-const REGISTRY = {
-  // PR 735: what an `mcode` pane shows, for the owner to see. Waits for the owner; deleted before merge.
-  "minimax-look": () => import("./rounds/minimax-look"),
-} satisfies Record<string, PickRoundLoader>;
+const REGISTRY = {} satisfies Record<string, PickRoundLoader>;
 
 /** Every round, by id. */
 export const ROUNDS: ReadonlyMap<string, PickRoundLoader> = new Map(Object.entries(REGISTRY));

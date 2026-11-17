@@ -53,7 +53,7 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/composer-states").then((m) => ({ default: m.ComposerStatesSection })),
   },
   {
-    def: { id: "actions-row", group: "Pane", title: "Actions row", keywords: ["belt", "ActionsRow", "keys", "harness", "HarnessBarControl", "HarnessPrefsControl", "keyboard"] },
+    def: { id: "actions-row", group: "Pane", title: "Actions row", keywords: ["belt", "ActionsRow", "keys", "harness", "bar", "HarnessBarControl", "HarnessPrefsControl", "keyboard", "MiniMax", "mcode", "AgentIcon", "mark", "plan", "compact", "history", "resume"] },
     load: () => import("./sections/actions-row").then((m) => ({ default: m.ActionsRowSection })),
   },
   {
@@ -163,6 +163,10 @@ export const ENTRIES: readonly SectionEntry[] = [
   {
     def: { id: "primitives", group: "Brand and look", title: "Primitives", keywords: ["ui", "MatchText", "match", "find", "mark"] },
     load: () => import("./sections/primitives").then((m) => ({ default: m.PrimitivesSection })),
+  },
+  {
+    def: { id: "add-your-own", group: "Pane", title: "Add your own", keywords: ["new", "add", "launcher", "RecipeForm", "recipe", "chips", "options", "harness", "MiniMax", "mcode", "start", "/new/add"] },
+    load: () => import("./sections/add-your-own").then((m) => ({ default: m.AddYourOwnSection })),
   },
   {
     def: { id: "report", group: "Pane", title: "Report a problem", keywords: ["report", "issue", "ReportCard", "ReportSheetView", "failed", "sends"] },
