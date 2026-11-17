@@ -809,6 +809,18 @@ export class AgentViewService {
     return bytes === null ? null : { bytes, mime: media.mime };
   }
 
+  /**
+   * A new trick was added under this id: forget what an earlier trick of that name left. Its views go, with
+   * the rules proofs and the served marks kept beside them, and the pictures no held screen names any more.
+   */
+  forgetTrick(trick: string): void {
+    this.deps.store.dropTrick(trick);
+    const prefix = `${trick}\u0000`;
+    for (const key of this.proofs.keys()) if (key.startsWith(prefix)) this.proofs.delete(key);
+    for (const key of this.derived.keys()) if (key.startsWith(prefix)) this.derived.delete(key);
+    this.deps.media?.prune(heldSets(this.deps.store.all()));
+  }
+
   /** Remove every picture set no held screen names: at boot, as the hill prunes its media. */
   pruneMedia(): void {
     this.deps.media?.prune(heldSets(this.deps.store.all()));

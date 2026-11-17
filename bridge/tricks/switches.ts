@@ -292,15 +292,16 @@ async function takeLock(lock: string, now: () => number): Promise<void> {
 
 /**
  * Change the switch file by one change, safely against the other writer: lock, read again, apply,
- * write, unlock. Answers the switches as written.
+ * write, unlock. Answers the switches as written. `change` may be async: the lock is held until it is done,
+ * so a look at the disk it makes (is the folder still not there?) holds for the whole write.
  */
-export async function updateSwitches(stateDir: string, change: (switches: Switches) => Switches, now: () => number = Date.now): Promise<Switches> {
+export async function updateSwitches(stateDir: string, change: (switches: Switches) => Switches | Promise<Switches>, now: () => number = Date.now): Promise<Switches> {
   const path = switchesPath(stateDir);
   await mkdir(tricksStateDir(stateDir), { recursive: true, mode: 0o700 });
   const lock = `${path}.lock`;
   await takeLock(lock, now);
   try {
-    const next = change(parseSwitches(await readText(path)).switches);
+    const next = await change(parseSwitches(await readText(path)).switches);
     await writeSwitches(stateDir, next);
     return next;
   } finally {

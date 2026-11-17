@@ -279,6 +279,32 @@ export function mergeCarriedMap(stateDir: string, carried: JsonObject, ids: Read
   return merged;
 }
 
+/**
+ * The map's keys of one trick removed off the disk, for a process that holds no {@link TrickHill} (`collie trick
+ * add`). A bridge that is running keeps its own copy in memory and forgets through {@link TrickHill.forget}.
+ * Never throws.
+ */
+export function forgetMapRecord(stateDir: string, id: string): void {
+  const dir = hillDir(stateDir);
+  const path = join(dir, TRICKS_MAP_FILE);
+  try {
+    if (!existsSync(path)) return;
+    const current = readMap(readFileSync(path, "utf8"));
+    const held = current.get(id);
+    if (held === undefined) return;
+    // The generation moves up and the keys go, as {@link TrickHill.forget} leaves it.
+    current.set(id, { gen: held.gen + 1, keys: {} });
+    const tricks: Record<string, TrickHillRecord> = {};
+    for (const [key, record] of current) tricks[key] = record;
+    const temp = `${path}.tmp`;
+    writeFileSync(temp, `${JSON.stringify({ v: 1, tricks })}\n`, { mode: 0o600 });
+    chmodSync(temp, 0o600);
+    renameSync(temp, path);
+  } catch {
+    // The file stays as it was: the bridge's own forget (or the next boot's prune) is the second chance.
+  }
+}
+
 /** The map as read off disk; an entry that does not read is dropped. */
 function readMap(raw: string): Map<string, TrickHillRecord> {
   const out = new Map<string, TrickHillRecord>();
@@ -515,6 +541,19 @@ export class TrickHill {
     if (!changed) return;
     // The generation moves, so the same content posts again as a new decision when the trick is back.
     this.map.set(trick.id, { gen: record.gen + 1, keys });
+    this.save();
+  }
+
+  /**
+   * A new trick was added under this id: its open decisions are withdrawn, then the map forgets every key of
+   * it (answered and dismissed ones too, which {@link off} keeps), so nothing an earlier trick's author posted
+   * decides what the new trick's decisions show. The generation only moves up: a request id is made from it,
+   * and the same content posted again under the old generation would meet the old decision's request id.
+   */
+  forget(trick: Pick<TrickHillTrick, "id" | "name" | "memberId">): void {
+    if (!this.map.has(trick.id)) return;
+    this.off(trick);
+    this.map.set(trick.id, { gen: (this.map.get(trick.id)?.gen ?? 0) + 1, keys: {} });
     this.save();
   }
 

@@ -1,13 +1,13 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 
-import { approveFolder, copyListing, fileCounts, LATER_POWER_KEYS, migrateSwitches, neutralPower, powersHash, powersOf, promoteCopy, pruneCopies, removeTrickCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
+import { approveFolder, copyListing, fileCounts, forgetLeftovers, LATER_POWER_KEYS, migrateSwitches, neutralPower, powersHash, powersOf, promoteCopy, pruneCopies, removeTrickCopies, snapshotTrick, syncConfig, verifyCopy } from "./approved.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson } from "../../web/src/lib/json.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { createTrickScanner } from "./discover.ts";
-import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, TRICKS_DIR } from "./paths.ts";
+import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, TRICKS_DIR, trickStateDir } from "./paths.ts";
 import { parseSwitches, updateSwitches, withEntry, withSwitch, type Switches } from "./switches.ts";
 
 const dirs: string[] = [];
@@ -433,6 +433,89 @@ describe("pruning", () => {
     expect(await Bun.file(join(approvedTrickDir(configDir, "legs"), "x")).exists()).toBe(false);
     expect(await readdir(join(configDir, TRICKS_DIR, APPROVED_DIR))).toEqual([]);
     expect(await readdir(join(configDir, TRICKS_DIR, PENDING_DIR))).toEqual([]);
+  });
+});
+
+/** What an earlier trick of `legs` left in its state folder: the person's values and a file its program saved. */
+async function leaveState(stateDir: string): Promise<string> {
+  const state = trickStateDir(stateDir, "legs");
+  await mkdir(join(state, ".collie"), { recursive: true });
+  await writeFile(join(state, ".collie", "values.json"), '{"v":1,"values":{"rows":9}}\n');
+  await writeFile(join(state, "saved.json"), '{"old":true}\n');
+  return state;
+}
+
+const gone = async (path: string): Promise<boolean> => (await lstat(path).catch(() => null)) === null;
+
+describe("forgetLeftovers (review J, last read)", () => {
+  const AT = "2026-11-17T09:00:00.000Z";
+
+  test("a removed trick's state folder, copies and switch entry go, then `forget` runs once", async () => {
+    const { configDir, stateDir, dir } = await setup();
+    const hash = await hashOf(dir);
+    await snapshotTrick({ src: dir, parent: approvedTrickDir(configDir, "legs") });
+    await snapshotTrick({ src: dir, parent: pendingTrickDir(configDir, "legs") });
+    const state = await leaveState(stateDir);
+    await updateSwitches(stateDir, (now) => withSwitch(now, "legs", true, AT, hash));
+    await rm(dir, { recursive: true, force: true });
+    const seen: string[] = [];
+    await forgetLeftovers({ stateDir, configDir, id: "legs", at: AT, forget: (id) => void seen.push(id) });
+    expect(await gone(state)).toBe(true);
+    expect(await gone(approvedTrickDir(configDir, "legs"))).toBe(true);
+    expect(await gone(pendingTrickDir(configDir, "legs"))).toBe(true);
+    expect(parseSwitches(await readFile(switchesPath(stateDir), "utf8")).switches.on.has("legs")).toBe(false);
+    expect(seen).toEqual(["legs"]);
+  });
+
+  test("a folder of that name is a trick that exists: nothing is removed and `forget` does not run", async () => {
+    const { configDir, stateDir } = await setup();
+    const state = await leaveState(stateDir);
+    const seen: string[] = [];
+    await forgetLeftovers({ stateDir, configDir, id: "legs", at: AT, forget: (id) => void seen.push(id) });
+    expect((await stat(join(state, ".collie", "values.json"))).isFile()).toBe(true);
+    expect(seen).toEqual([]);
+  });
+
+  test("point 3: a folder that appears while the add waits for the switch lock is seen, and nothing is removed", async () => {
+    const { configDir, stateDir, dir } = await setup();
+    const state = await leaveState(stateDir);
+    await rm(dir, { recursive: true, force: true });
+    // Another writer (the bridge approving a trick of this id) holds the lock; the first look found no folder.
+    const lock = `${switchesPath(stateDir)}.lock`;
+    await mkdir(join(stateDir, TRICKS_DIR), { recursive: true });
+    await writeFile(lock, "held");
+    const seen: string[] = [];
+    const pending = forgetLeftovers({ stateDir, configDir, id: "legs", at: AT, forget: (id) => void seen.push(id) });
+    await Bun.sleep(60);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "trick.toml"), MANIFEST);
+    await rm(lock);
+    await pending;
+    expect((await stat(join(state, ".collie", "values.json"))).isFile()).toBe(true);
+    expect((await stat(join(dir, "trick.toml"))).isFile()).toBe(true);
+    expect(seen).toEqual([]);
+  });
+
+  test.if(process.platform !== "win32")("point 4: a symbolic link at the state folder or a copy path is removed, never followed", async () => {
+    const { configDir, stateDir, dir } = await setup();
+    const outside = await tempDir();
+    await writeFile(join(outside, "keep.txt"), "outside\n");
+    await mkdir(join(outside, "sub"));
+    await writeFile(join(outside, "sub", "deep.txt"), "deeper\n");
+    await rm(dir, { recursive: true, force: true });
+    const state = trickStateDir(stateDir, "legs");
+    await mkdir(join(stateDir, TRICKS_DIR), { recursive: true });
+    await symlink(outside, state);
+    await mkdir(join(configDir, TRICKS_DIR, APPROVED_DIR), { recursive: true });
+    await symlink(outside, approvedTrickDir(configDir, "legs"));
+    await mkdir(join(configDir, TRICKS_DIR, PENDING_DIR), { recursive: true });
+    await symlink(outside, pendingTrickDir(configDir, "legs"));
+    await forgetLeftovers({ stateDir, configDir, id: "legs", at: AT });
+    expect(await gone(state)).toBe(true);
+    expect(await gone(approvedTrickDir(configDir, "legs"))).toBe(true);
+    expect(await gone(pendingTrickDir(configDir, "legs"))).toBe(true);
+    expect(await readFile(join(outside, "keep.txt"), "utf8")).toBe("outside\n");
+    expect(await readFile(join(outside, "sub", "deep.txt"), "utf8")).toBe("deeper\n");
   });
 });
 

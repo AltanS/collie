@@ -126,6 +126,8 @@ export interface RepoIndexDeps {
   slot?: FetchSlot;
   /** The line while tricks as a whole are switched off (service.ts `offLine`), or null while they are on. */
   offLine?: () => string | null;
+  /** An add forgets what an earlier trick of that id left beside its files: its agent views and Hill keys (approved.ts `forgetLeftovers`). Absent: none held. */
+  forgetTrick?: (id: string) => void | Promise<void>;
   /** The Windows gate's line (service.ts `gateLine`), or null where tricks run. */
   gate?: () => string | null;
   /** Non-null when this bridge runs no tricks (a crew member): nothing is fetched. */
@@ -362,7 +364,7 @@ export class RepoIndexTricks implements RepoIndexSurface {
       const written = await lane(async () => {
         const at = new Date((this.deps.now ?? Date.now)()).toISOString();
         // Added means switched off: a switch entry a removed folder left behind for this id goes first.
-        await forgetLeftovers({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, id: folder, at });
+        await forgetLeftovers({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, id: folder, at, forget: this.deps.forgetTrick });
         // No `official` in the origin record: a repository's index never makes a trick official.
         return await writeNewTrick(root, folder, candidate.files, renderOrigin({ url: source.url, ref: null, commit, subdir: folder, at }));
       });

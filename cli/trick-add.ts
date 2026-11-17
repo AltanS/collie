@@ -23,7 +23,9 @@ import {
   type GitRunOptions,
 } from "../bridge/tricks/fetch.ts";
 import { ORIGIN_FILE, readOrigin, renderOrigin, sameRepo, type TrickOrigin } from "../bridge/tricks/origin.ts";
+import { AgentViewStore, trickViewsDir } from "../bridge/agent-view/store.ts";
 import { forgetLeftovers, removeTrickCopies } from "../bridge/tricks/approved.ts";
+import { forgetMapRecord } from "../bridge/tricks/hill.ts";
 import { MANIFEST_FILE, switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "../bridge/tricks/paths.ts";
 import { trickWarnings, warningLines, WARNINGS_HONESTY, type CheckWarning } from "../bridge/tricks/scan.ts";
 import { parseSwitches } from "../bridge/tricks/switches.ts";
@@ -289,7 +291,13 @@ async function installCandidate(deps: TrickAddDeps, source: TrickSource, candida
   }
   await mkdir(root, { recursive: true, mode: 0o700 });
   // Added means switched off, as on the phone: what an earlier trick of this id left (a switch entry, approved copies) goes first.
-  await forgetLeftovers({ stateDir: deps.ctx.stateDir, configDir: deps.ctx.configDir, id: candidate.id, at: new Date(deps.now()).toISOString() });
+  // The views and Hill keys go off the disk too; a running bridge keeps its own copy in memory (a restart reads the disk).
+  const { stateDir } = deps.ctx;
+  const forget = (id: string): void => {
+    new AgentViewStore(trickViewsDir(stateDir), deps.now, () => {}).dropTrick(id);
+    forgetMapRecord(stateDir, id);
+  };
+  await forgetLeftovers({ stateDir, configDir: deps.ctx.configDir, id: candidate.id, at: new Date(deps.now()).toISOString(), forget });
   const staged = sideName(root, "add", candidate.id);
   try {
     await writeCandidate(staged, candidate, originOf(source, candidate.commit, deps.now()));

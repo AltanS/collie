@@ -244,6 +244,18 @@ export class AgentViewStore {
   }
 
   /**
+   * Remove every view of one trick, files and all (a new trick added under an earlier trick's id starts with
+   * none). Answers how many went; a view whose file cannot be removed stays, and the next call tries it again.
+   */
+  dropTrick(trick: string): number {
+    let gone = 0;
+    for (const held of this.all()) {
+      if (held.trick === trick && this.drop(held.trick, held.session)) gone += 1;
+    }
+    return gone;
+  }
+
+  /**
    * Move one view's revision without a write: something the phone reads beside the entry changed (its
    * rules proof, its gate, a stale mark, a question on screen), so a `since` read must serve it again.
    */
