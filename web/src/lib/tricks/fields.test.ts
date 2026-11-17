@@ -62,7 +62,7 @@ describe("[[field]] in trick.toml", () => {
   });
 
   it("refuses a key not spelled as a trick id, and one key twice", () => {
-    for (const key of ["Repo", "-repo", "re po", "a".repeat(33), ""]) expect(parse({ ...text, key }).manifest, key).toBeUndefined();
+    for (const key of ["Repo", "-repo", "re po", "a".repeat(33), "", "__proto__"]) expect(parse({ ...text, key }).manifest, key).toBeUndefined();
     expect(codes(text, { ...text, label: "Again" })).toEqual([["duplicate", "/field/1/key"]]);
   });
 
@@ -91,6 +91,8 @@ describe("[[field]] in trick.toml", () => {
     expect(parse({ ...text, default: "x".repeat(FIELD_TEXT_MAX + 1) }).manifest).toBeUndefined();
     expect(parse({ ...text, default: "one\ntwo" }).manifest).toBeUndefined();
     expect(parse({ ...text, default: "bell\u0007" }).manifest).toBeUndefined();
+    // Review G point 4: the line and paragraph separators end a line too.
+    for (const separator of ["\u2028", "\u2029"]) expect(parse({ ...text, default: `one${separator}two` }).manifest, separator).toBeUndefined();
     expect(parse({ ...text, default: 3 }).manifest).toBeUndefined();
   });
 
@@ -131,6 +133,7 @@ describe("a value against its field", () => {
     const secret = "lodge-workshop-value";
     expect(fieldValueProblem(repo, `${secret}\n`)?.code).toBe("text");
     expect(fieldValueProblem(repo, "x".repeat(FIELD_TEXT_MAX + 1))?.code).toBe("text");
+    for (const separator of ["\u2028", "\u2029"]) expect(fieldValueProblem(repo, `lodge${separator}workshop`)?.code, separator).toBe("text");
     expect(fieldValueProblem(repo, 3)?.code).toBe("kind");
     expect(fieldValueProblem(branch, "stable")?.code).toBe("option");
     expect(fieldValueProblem(notify, "true")?.code).toBe("kind");

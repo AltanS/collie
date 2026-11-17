@@ -2261,6 +2261,15 @@ function hasInvisible(text: string): boolean {
   return false;
 }
 
+/**
+ * U+2028 (line separator) and U+2029 (paragraph separator): they end a line in a browser and in JSON-era
+ * tools, but are neither a control character nor invisible. A one-line text value refuses them
+ * (security read of package G, point 4).
+ */
+function hasLineSeparator(text: string): boolean {
+  return text.includes("\u2028") || text.includes("\u2029");
+}
+
 function isOneOf<T extends string>(list: readonly T[], value: string): value is T {
   return list.some((item) => item === value);
 }
@@ -4633,7 +4642,7 @@ export function fieldValueProblem(field: TrickField, value: FieldValue): FieldPr
       const text = asJsonString(value);
       if (text === undefined) return { code: "kind", reason: `"${field.label}" is text. Send one line of text.` };
       if (codePoints(text) > FIELD_TEXT_MAX) return { code: "text", reason: `"${field.label}" takes at most ${String(FIELD_TEXT_MAX)} characters. Make it shorter.` };
-      if (hasControl(text, false, false) || hasInvisible(text)) return { code: "text", reason: `"${field.label}" is one line with no control or invisible character. Remove the line break or the character.` };
+      if (hasControl(text, false, false) || hasInvisible(text) || hasLineSeparator(text)) return { code: "text", reason: `"${field.label}" is one line with no control or invisible character. Remove the line break or the character.` };
       return undefined;
     }
   }
