@@ -281,7 +281,7 @@ function useSettled(locked: boolean): boolean {
 }
 
 /** True when the card takes no more answers: one is in flight, or the bridge took or closed it. */
-function lockedBy(answer: HillAnswerState): boolean {
+export function lockedBy(answer: HillAnswerState): boolean {
   if (answer.phase === "sending") return true;
   if (answer.phase !== "answered") return false;
   // A refusal is an answer that changed nothing: the card stays open for another one. The bridge's
@@ -303,7 +303,7 @@ export function KeptWords({ text }: { text: string }) {
 }
 
 /** What happened after the tap, in the card's own chrome. Null while nothing has been sent. */
-function AnswerStatus({ decision, answer, onRetry, slot }: { decision: HillDecision; answer: HillAnswerState; onRetry: () => void; slot: string }) {
+export function AnswerStatus({ decision, answer, onRetry, slot }: { decision: HillDecision; answer: HillAnswerState; onRetry: () => void; slot: string }) {
   if (answer.phase === "idle") return null;
   return (
     <div data-slot={slot}>

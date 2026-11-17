@@ -189,7 +189,7 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/trick-settings").then((m) => ({ default: m.TrickSettingsSection })),
   },
   {
-    def: { id: "hill", group: "Tricks and Hill", title: "Hill", keywords: ["hill", "decision", "DecisionCard", "HillView", "HillHeader", "DashboardTabBar", "answer", "images"] },
+    def: { id: "hill", group: "Tricks and Hill", title: "Hill", keywords: ["hill", "decision", "DecisionCard", "HillView", "HillHeader", "DashboardTabBar", "answer", "images", "ChatApprovalCard", "proposal", "chat-approval"] },
     load: () => import("./sections/hill").then((m) => ({ default: m.HillSection })),
   },
   {

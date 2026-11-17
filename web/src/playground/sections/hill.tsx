@@ -5,7 +5,7 @@
 // The cards wear the machine tints of a two-machine crew (lodge and workshop), as `LiveDecisionCard`
 // would hand them on one.
 //
-// Cards are numbered 1 to 64.
+// Cards are numbered 1 to 73.
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -16,6 +16,7 @@ import { DashboardTabBar } from "@/components/dashboard-tab-bar";
 import { HillCrewStateBar } from "@/components/hill-crew-state";
 import { HillHeader, HillOff, HillView } from "@/components/hill-view";
 import { HillSwitchCard } from "@/components/hill-switch-card";
+import { ChatApprovalCard } from "@/components/session-trick-card";
 import { TrickDashboardStrip } from "@/components/trick-place-items";
 import { HILL_IDLE, type HillAnswerState } from "@/hooks/use-hill-answer";
 import type { HillCrewState, HillDecision, HillReceipt } from "@/lib/hill/wire";
@@ -65,6 +66,8 @@ import {
   proposalNotesChanged,
   rightsMoved,
   versionGroup,
+  chatProposal,
+  chatVersion,
   versionPlain,
   versionRights,
   versionRules,
@@ -95,6 +98,7 @@ const GROUP_MIDDLE = proposalGroup();
 const GROUP_UNOPENED = proposalGroup();
 const GROUP_OPENED = proposalGroup();
 const GROUP_LISTED = proposalGroup();
+const GROUP_CHAT = proposalGroup();
 
 /** The trick icon per trick id, as the tricks list would say it. */
 const TRICK_ICON: ReadonlyMap<string, string> = new Map([["look", "eye"]]);
@@ -163,6 +167,25 @@ function PagedCard({ decision, to }: { decision: HillDecision; to: number }) {
     <div ref={root}>
       <OneCard decision={decision} />
     </div>
+  );
+}
+
+/**
+ * A trick proposal as the session's chat draws it (session-trick-card.tsx): last in a phone-high thread that
+ * scrolls as one, never a box of its own. `open` taps "Read the code" once mounted, as a person does.
+ */
+function ChatCard({ decision, open = false }: { decision: HillDecision; open?: boolean }) {
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open) root.current?.querySelector<HTMLButtonElement>('[data-slot="chat-approval-code-toggle"]')?.click();
+  }, [open]);
+  return (
+    <Phone height={640}>
+      <div ref={root} className="h-full overflow-y-auto px-3 py-4">
+        <p className="font-content mb-3 text-sm text-foreground">I wrote the trick and proposed it. Read it and switch it on when it looks right.</p>
+        <ChatApprovalCard decision={decision} answer={HILL_IDLE} onSend={noSend} onLater={noSend} mediaSource={playgroundMedia} />
+      </div>
+    </Phone>
   );
 }
 
@@ -981,6 +1004,21 @@ export function HillSection() {
         <Card state="hill-rights-moved" label="66: a trick stopped because its rights changed">
           <CardHead n={66} title="A trick changed its rights: Collie's card, OK alone" />
           <OneCard decision={rightsMoved} />
+        </Card>
+      </Group>
+
+      <Group title="In the session's chat">
+        <Card state="hill-chat-proposal" label="71: a proposal in its session's chat">
+          <CardHead n={71} title="A trick a session proposed, in that chat: one card, the code in a fold" />
+          <ChatCard decision={chatProposal} />
+        </Card>
+        <Card state="hill-chat-version" label="72: a proposed new version in its session's chat">
+          <CardHead n={72} title="A new version in the chat: what changed, Use the new version" />
+          <ChatCard decision={chatVersion} />
+        </Card>
+        <Card state="hill-chat-group" label="73: a proposal on 3 cards in the chat, the code open">
+          <CardHead n={73} title="A proposal on 3 cards in the chat: one card, its code cards stacked in the open fold" />
+          <ChatCard decision={GROUP_CHAT} open />
         </Card>
       </Group>
 

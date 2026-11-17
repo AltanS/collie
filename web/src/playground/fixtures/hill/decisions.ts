@@ -1116,3 +1116,60 @@ export const linkBody = decision({
     { intent: "later", label: "Later" },
   ],
 });
+
+/** Collie's own sender on a trick a session proposed: the proposal's ref, the trick and the code's hash. */
+function proposedBy(trickId: string, hash: string): HillDecision["from"] {
+  return { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "proposal", id: trickId, hash } };
+}
+
+/** 71: a trick a session proposed, on one card, as the chat draws it: the facts open, the code in the fold. */
+export const chatProposal = decision({
+  title: "Switch on the trick git-branch?",
+  summary: "A session on workshop proposes it. It has 2 files. It asks for the status line and GITHUB_TOKEN, and reaches the network.",
+  ago: 1,
+  from: proposedBy("git-branch", "7a".repeat(32)),
+  target: null,
+  text: "none",
+  options: [
+    { intent: "on", label: "Switch it on" },
+    { intent: "later", label: "Not now" },
+  ],
+  view: [
+    { kind: "para", text: "It runs as you: it can read and change any file you can, and use your logins." },
+    { kind: "bar", attrs: { label: "It asks for" }, kids: [{ kind: "chip", text: "GITHUB_TOKEN" }, { kind: "chip", text: "the status line" }] },
+    { kind: "line", text: "It reaches the network.", attrs: { role: "note" } },
+    { kind: "para", text: "Asks you for: Repository" },
+    { kind: "diff", attrs: { file: "trick.toml" }, text: ["@@ -0,0 +1,6 @@", '+id = "git-branch"', '+name = "Git branch"', '+run = "program.ts"', '+places = ["status"]', '+env = ["GITHUB_TOKEN"]', "+contract = 3"].join("\n") },
+    { kind: "diff", attrs: { file: "program.ts" }, text: ["@@ -0,0 +1,6 @@", '+import { run } from "./trick.ts";', "+run(async (t) => {", '+  const res = await fetch(`https://api.github.com/repos/${t.field("repo")}/branches`, { headers: { authorization: `token ${t.env.GITHUB_TOKEN}` } });', "+  const branches = await res.json();", '+  t.status({ text: `${String(branches.length)} branches`, icon: "plug" });', "+});"].join("\n") },
+  ],
+});
+
+/** 72: a new version a session proposed, as the chat draws it: what changed, the new rights, the changed code in the fold. */
+export const chatVersion = decision({
+  title: "Use the new version of git-branch?",
+  summary: "A session on workshop proposes it. 1 file changed. It now also asks for the Dashboard.",
+  ago: 1,
+  from: proposedBy("git-branch", "7b".repeat(32)),
+  target: null,
+  text: "none",
+  options: [
+    { intent: "on", label: "Use the new version" },
+    { intent: "later", label: "Keep the old version" },
+  ],
+  view: [
+    { kind: "para", text: "It runs as you: it can read and change any file you can, and use your logins." },
+    { kind: "bar", attrs: { label: "New rights" }, kids: [{ kind: "chip", text: "the Dashboard" }] },
+    {
+      kind: "table",
+      kids: [
+        { kind: "col", text: "File" },
+        { kind: "col", text: "Change" },
+        { kind: "col", text: "Lines" },
+        { kind: "cell", text: "trick.toml" },
+        { kind: "cell", text: "changed" },
+        { kind: "cell", text: "+1 −1" },
+      ],
+    },
+    { kind: "diff", attrs: { file: "trick.toml" }, text: ["@@ -4,1 +4,1 @@", '-places = ["status"]', '+places = ["status", "dashboard"]'].join("\n") },
+  ],
+});
