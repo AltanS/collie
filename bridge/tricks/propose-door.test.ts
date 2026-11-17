@@ -181,14 +181,20 @@ describe("the card", () => {
     expect(card.recommends).toBeNull();
     expect(card.options).toEqual([{ ...PROPOSAL_ON }, { ...PROPOSAL_LATER }]);
     expect(card.text).toBe("none");
-    expect(card.summary.startsWith("An agent session (repo#one) on laptop proposes it. It has 2 files.")).toBe(true);
+    expect(card.summary.startsWith("A session on laptop proposes it. It has 2 files.")).toBe(true);
     expect(JSON.stringify(card.view)).toContain(PROPOSAL_AUTHOR_WORDS);
   });
 
+  test("the session's name is never in the sentence: the pane is placed by markers the caller sends", () => {
+    const sentence = proposerSentence({ by: "agent", host: "laptop", label: "payments#main" });
+    expect(sentence).toBe("A session on laptop proposes it.");
+    expect(sentence).not.toContain("payments");
+  });
+
   test("a label with a control character or a direction mark cannot reshape the sentence", () => {
-    expect(proposerSentence({ by: "agent", host: "lap‮top", label: "a\nb" })).toBe("An agent session (a b) on lap?top proposes it.");
+    expect(proposerSentence({ by: "agent", host: "lap‮top", label: "a\nb" })).toBe("A session on lap?top proposes it.");
     expect(proposerSentence({ by: "terminal", host: "laptop", label: null })).toBe("Someone on laptop proposes it. Collie could not confirm which session.");
-    expect(proposerSentence({ by: "agent", host: "laptop", label: null })).toBe("An agent session on laptop proposes it.");
+    expect(proposerSentence({ by: "agent", host: "laptop", label: null })).toBe("A session on laptop proposes it.");
   });
 
   // Review F1: the facts the person decides on are never dropped for the author's words or for code.

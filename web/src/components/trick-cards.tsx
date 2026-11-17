@@ -58,8 +58,8 @@ export function TrickCardsWaitingList({ cards, onOpen }: { cards: readonly HillD
 }
 
 /**
- * The first sentence of a card's summary: who proposed it, as the bridge's card says it ("An agent session
- * (repo#one) on lodge proposes it."). The whole summary when it has no sentence end.
+ * The first sentence of a card's summary: who proposed it, as the bridge's card says it ("A session on lodge
+ * proposes it."). The whole summary when it has no sentence end.
  */
 export function firstSentence(summary: string): string {
   const end = summary.search(/[.?!](\s|$)/u);

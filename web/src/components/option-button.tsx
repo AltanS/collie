@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { Icon } from "@/components/icons/icon";
 
 import type { StyledLine } from "@/lib/blocks";
@@ -245,7 +245,7 @@ export function OptionButton({
   description?: ReactNode;
   trailing?: ReactNode;
   disabled?: boolean;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   /** Layout the caller adds to the surface: a tap floor, a centred label. Never a colour; the tone owns those. */
   className?: string;
   /** Names the button for a screen reader when its words say less than its state (an armed confirm). */

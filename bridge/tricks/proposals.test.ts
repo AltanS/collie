@@ -202,7 +202,7 @@ describe("a proposal for a new trick", () => {
     const [card] = openCards(l);
     expect(card?.from).toMatchObject({ kind: "collie", label: "Collie", ref: { type: "proposal", id: "legs", hash: p.hash } });
     expect(card?.title).toBe("Switch on the trick legs?");
-    expect(card?.summary).toStartWith("An agent session (repo#one) on workshop proposes it. It has");
+    expect(card?.summary).toStartWith("A session on workshop proposes it. It has");
     expect(card?.options.map((o) => [o.intent, o.label])).toEqual([
       ["on", "Switch it on"],
       ["later", "Not now"],
@@ -427,7 +427,7 @@ describe("one open proposal per trick id", () => {
     // S2: the new card says it replaces an earlier one; the first did not.
     const [old, now] = proposalCards(l);
     expect(old?.summary).not.toContain("It replaces");
-    expect(now?.summary).toStartWith("An agent session (repo#one) on workshop proposes it. It replaces an earlier proposal from the same session.");
+    expect(now?.summary).toStartWith("A session on workshop proposes it. It replaces an earlier proposal from the same session.");
     expect(now?.view?.[0]).toEqual({ kind: "para", text: "This trick runs as you on this machine. It can do there what you can do." });
     expect(now?.view?.[1]).toEqual({ kind: "para", text: "It replaces an earlier proposal from the same session." });
     const again = await l.proposals.propose(proposal("legs", "2\n"), AGENT);
@@ -672,7 +672,7 @@ describe("a trick id that exists", () => {
     expect(await snapshot(l)).toEqual(before);
     const [card] = openCards(l);
     expect(card?.title).toBe("Use the new version of legs?");
-    expect(card?.summary).toStartWith("An agent session (repo#one) on workshop proposes it.");
+    expect(card?.summary).toStartWith("A session on workshop proposes it.");
     expect(card?.recommends).toBeNull();
     expect(card?.options.map((o) => [o.intent, o.label])).toEqual([
       ["on", "Use the new version"],
@@ -822,7 +822,7 @@ describe("the card belongs to Collie and to the person", () => {
     const l = await lead();
     await l.proposals.propose(proposal("legs"), { ...AGENT, label: "ｃｏｌｌｉｅ" });
     const [card] = openCards(l);
-    expect(card?.summary).toStartWith("An agent session on workshop proposes it.");
+    expect(card?.summary).toStartWith("A session on workshop proposes it.");
   });
 
   test("a terminal's proposal names no session", async () => {
@@ -951,9 +951,9 @@ describe("a proposal whose code does not fit one card", () => {
     expect(card!.view).toBeUndefined();
     expect(group.parts.length).toBeGreaterThanOrEqual(3);
     expect(group.decline).toBe("later");
-    expect(card!.summary).toBe(`An agent session (repo#one) on workshop proposes it. It has 2 files. It asks for the belt. It shows on ${String(group.parts.length)} cards.`);
+    expect(card!.summary).toBe(`A session on workshop proposes it. It has 2 files. It asks for the belt. It shows on ${String(group.parts.length)} cards.`);
     const first = JSON.stringify(group.parts[0]!.view);
-    expect(first).toContain("An agent session (repo#one) on workshop proposes it.");
+    expect(first).toContain("A session on workshop proposes it.");
     expect(first).toContain(`2 files, on cards 2 to ${String(group.parts.length)}.`);
     expect(group.parts[0]!.view.some((node) => node.kind === "diff")).toBe(false);
     // Every line of the program is on cards 2 to n, in order.

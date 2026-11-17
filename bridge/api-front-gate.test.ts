@@ -24,6 +24,7 @@ import {
   type PairingGate,
   requestDevice,
 } from "./server.ts";
+import { HILL_ANSWER_RIGHT } from "./hill/parse.ts";
 import { TRICKS_ROUTE_RIGHTS } from "./tricks/routes.ts";
 import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH } from "./types.ts";
 
@@ -721,6 +722,36 @@ describe("isSameHostPeer: loopback, or this host's own addresses on a concrete b
 });
 
 // ── A trick's setting: the value route is a write (security read of package G, point 7) ─────
+
+describe("the Hill answer route is gated at the write level (a trick proposal's yes switches the trick on)", () => {
+  const path = "/api/hill/answer";
+  const headers = { host: "collie.ts.net", origin: "https://collie.ts.net", "x-device-id": "tablet", "content-type": "application/json" };
+
+  test("the level is write, and server.ts asks the guard for exactly that level on the POST route", () => {
+    expect(HILL_ANSWER_RIGHT).toBe("write");
+    const at = SERVER_CODE.indexOf('pathname === "/api/hill/answer"');
+    expect(at).toBeGreaterThan(0);
+    expect(SERVER_CODE.slice(at, at + 200)).toContain('req.method === "POST"');
+    expect(SERVER_CODE.slice(at, at + 300)).toContain("browserGate(HILL_ANSWER_RIGHT)");
+  });
+
+  test("a read-only device is refused by the guard with 403, and the same device may still read the list; a writer passes", () => {
+    const c = config({ deviceHeader: "x-device-id", deviceAllowlist: ["phone"], allowAnyHost: true });
+    const post = new Request(`http://collie.ts.net${path}`, { method: "POST", headers });
+    expect(guard(post, c, HILL_ANSWER_RIGHT)!.status).toBe(403);
+    expect(guard(new Request("http://collie.ts.net/api/hill", { headers }), c, "read")).toBeNull();
+    const writer = new Request(`http://collie.ts.net${path}`, { method: "POST", headers: { ...headers, "x-device-id": "phone" } });
+    expect(guard(writer, c, HILL_ANSWER_RIGHT)).toBeNull();
+  });
+
+  test("the local credential, which an agent beside the bridge can hold, is refused at the answer route", async () => {
+    const { store } = await storeWith(true);
+    const secret = mintLocalSecret();
+    const gate = browserPairingGate(store, localCredentialOf(secret), () => "127.0.0.1", "127.0.0.1", () => new Set(["100.64.10.2"]));
+    const denied = guard(request("POST", path, { authorization: `Bearer ${secret}`, origin: "http://127.0.0.1:8787", "content-type": "application/json" }), config(), HILL_ANSWER_RIGHT, gate);
+    expect(denied?.status).toBe(403);
+  });
+});
 
 describe("the trick value route is gated at the write level", () => {
   const path = "/api/tricks/lodge/legs/value";

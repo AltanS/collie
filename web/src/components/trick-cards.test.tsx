@@ -59,7 +59,7 @@ describe("Waiting for your yes, in Settings, Tricks", () => {
     render(<TrickCardsWaitingList cards={[card]} onOpen={(d) => opened.push(d.id)} />);
     expect(screen.getByRole("heading", { name: "Waiting for your yes" })).toBeInTheDocument();
     const row = screen.getByRole("button", { name: /Switch on the trick legs\?/u });
-    expect(row).toHaveTextContent("An agent session (repo#one) on lodge proposes it.");
+    expect(row).toHaveTextContent("A session on lodge proposes it.");
     expect(row).not.toHaveTextContent("It reaches the network.");
     expect(row.className).toContain("min-h-11");
     await userEvent.click(row);

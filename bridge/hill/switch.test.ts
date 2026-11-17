@@ -368,7 +368,7 @@ describe("the snapshot", () => {
 describe("with the Hill off, a card of Collie's own about a trick", () => {
   const HASH = "a".repeat(64);
   const collie = (type: HillCollieRef["type"], id = "legs"): HillCollieSender => ({ kind: "collie", ref: { type, id, hash: HASH }, label: "Collie" });
-  const card = (n: number): HillPostInput => ({ requestId: uuid(n), title: "Switch on the trick legs?", summary: "An agent session (repo#one) on desk proposes it.", options: [{ intent: "on", label: "Switch it on" }, { intent: "later", label: "Not now" }], text: "none" });
+  const card = (n: number): HillPostInput => ({ requestId: uuid(n), title: "Switch on the trick legs?", summary: "A session on desk proposes it.", options: [{ intent: "on", label: "Switch it on" }, { intent: "later", label: "Not now" }], text: "none" });
   const snapshot: SnapshotResponse = { bridge: "connected", agents: [], shellPanes: [], workspaces: [], tabs: [], sessions: [], ts: 5 };
 
   test("every kind of Collie's own card is a trick card, and neither an agent nor a trick is one", () => {

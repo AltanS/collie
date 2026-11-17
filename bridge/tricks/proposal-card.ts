@@ -116,12 +116,17 @@ function plain(raw: string, max: number): string {
   return chars.length <= max ? chars.join("") : `${chars.slice(0, max - 1).join("")}…`;
 }
 
-/** "An agent session (repo#one) on lodge proposes it." */
+/**
+ * "A session on lodge proposes it." The session's name is never shown: the pane is placed by markers the
+ * caller sends, so a program could send another session's markers and borrow its name (security read of
+ * package I, 2026-11-17, point 4). The edges' pid check cannot be reused: the walky socket does not carry
+ * the caller's pid, and the CLI is not the agent's own process.
+ */
 export function proposerSentence(proposer: ProposerFacts): string {
   const host = plain(proposer.host, 40);
   // No agent pane placed: the machine is known, the session is not (proposals.ts "WHAT IS CONFIRMED").
   if (proposer.by === "terminal") return `Someone on ${host} proposes it. Collie could not confirm which session.`;
-  return proposer.label === null || proposer.label.trim() === "" ? `An agent session on ${host} proposes it.` : `An agent session (${plain(proposer.label, 40)}) on ${host} proposes it.`;
+  return `A session on ${host} proposes it.`;
 }
 
 /** The card's title. */

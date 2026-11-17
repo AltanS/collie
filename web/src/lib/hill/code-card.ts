@@ -46,3 +46,15 @@ export function singleCodeCard(decision: HillDecision): SingleCodeCard | null {
   if (!viewHasCode(decision.view)) return null;
   return { decline: DECLINE[from.ref.type], key: `one:${from.ref.hash}`, digest: from.ref.hash };
 }
+
+/**
+ * The decline of a trick card of Collie's own (a new trick or a new version, with code or without), or null
+ * for any other card. Its other options are the yes, which waits for the card to stand still
+ * (hooks/use-still.ts) as well as for the end of the code.
+ */
+export function trickCardDecline(decision: HillDecision): string | null {
+  const { from } = decision;
+  if (from.kind !== "collie" || from.ref === undefined) return null;
+  if (from.ref.type !== "proposal" && from.ref.type !== "version") return null;
+  return decision.group?.decline ?? DECLINE[from.ref.type];
+}

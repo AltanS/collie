@@ -5,13 +5,18 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 
 import { isSessionProposal, SessionTrickCards } from "@/components/session-trick-card";
 import { TrickCardsWaiting } from "@/components/trick-cards";
+import { postHillAnswer } from "@/lib/api";
 import { forgetSessionLater } from "@/lib/hill/session-later";
 import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import type { HillDecision } from "@/lib/hill/wire";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { withHeaderHost } from "@/test/header-host";
 import { collieCard, hillDecision } from "@/test/hill-fixtures";
+import { stubAllSeen } from "@/test/seen-end";
 import { server } from "@/test/setup";
+
+// The card standing still for a second is tested in decision-card.still.test.tsx; here every card has.
+vi.mock("@/hooks/use-still", () => ({ STILL_MS: 1000, STILL_TICK_MS: 100, useStill: (el: HTMLElement | null) => el !== null }));
 
 // PACKAGE I: a trick proposal shows in the chat view of the session that proposed it, as the card the Hill
 // draws, and "Not now" there closes it in that session only (Settings, Tricks keeps it).
@@ -22,7 +27,7 @@ const SELF = "lodge/%3#abcd";
 function proposalCard(over: Partial<HillDecision> = {}): HillDecision {
   return collieCard("proposal", "legs", {
     replyTo: SELF,
-    summary: "An agent session (repo#one) on lodge proposes it. It reaches the network. It runs a program.",
+    summary: "A session on lodge proposes it. It reaches the network. It runs a program.",
     view: [{ kind: "code", kids: [{ kind: "line", text: 'console.log("legs")' }] }],
     ...over,
   });
@@ -67,10 +72,16 @@ function renderChat(self: string) {
 }
 
 beforeEach(() => {
+  stubAllSeen();
   __resetHill();
   forgetSessionLater();
 });
-afterEach(() => __resetHill());
+afterEach(() => {
+  __resetHill();
+  vi.unstubAllGlobals();
+});
+
+const slotOf = (id: string) => document.querySelector<HTMLElement>(`[data-slot="session-trick-card"][data-card="${id}"]`);
 
 describe("a trick proposal in its session's chat view", () => {
   it("draws the Hill's card in the session that proposed it: the rights and warnings, the code, Switch it on and Not now, no Dismiss", async () => {
@@ -94,11 +105,11 @@ describe("a trick proposal in its session's chat view", () => {
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(20_000);
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 390, window.innerHeight * 3));
     type Seen = (entries: readonly { isIntersecting: boolean }[]) => void;
-    const seen: { callback: Seen; target: Element | null }[] = [];
+    const seen: { callback: Seen; target: Element | null; root: Element | null }[] = [];
     class FakeObserver {
-      private readonly at: { callback: Seen; target: Element | null };
-      constructor(callback: Seen) {
-        this.at = { callback, target: null };
+      private readonly at: { callback: Seen; target: Element | null; root: Element | null };
+      constructor(callback: Seen, options?: { root?: Element | null }) {
+        this.at = { callback, target: null, root: options?.root ?? null };
         seen.push(this.at);
       }
       observe(target: Element): void {
@@ -129,6 +140,10 @@ describe("a trick proposal in its session's chat view", () => {
     expect(on).toBeDisabled();
     await userEvent.click(on);
     expect(answers).toEqual([]);
+    // The end mark is watched with the card's scroll box (60dvh) as the observer's root.
+    const watching = seen.filter((o) => o.target !== null);
+    expect(watching).toHaveLength(1);
+    expect(watching[0]!.root).toBe(slotOf(card.id));
     // The end of the code comes on screen: now one tap answers, with no second confirming tap.
     act(() => {
       for (const one of seen.filter((o) => o.target !== null)) one.callback([{ isIntersecting: true }]);
@@ -146,8 +161,17 @@ describe("a trick proposal in its session's chat view", () => {
     expect(screen.getByTestId("chat")).toBeEmptyDOMElement();
     expect(isSessionProposal(hillDecision({ replyTo: SELF }), SELF)).toBe(false);
     expect(isSessionProposal(collieCard("version", "legs", { replyTo: SELF }), SELF)).toBe(false);
-    // The instance token does not matter: the pane is the same.
-    expect(isSessionProposal(proposalCard(), "lodge/%3")).toBe(true);
+  });
+
+  it("compares the FULL address: a new session in the same pane, with another instance token, never shows an old card (security read, point 3)", async () => {
+    expect(isSessionProposal(proposalCard(), SELF)).toBe(true);
+    expect(isSessionProposal(proposalCard(), "lodge/%3#ffff")).toBe(false);
+    // The pane address alone, with no token, is not the session either.
+    expect(isSessionProposal(proposalCard(), "lodge/%3")).toBe(false);
+    await holds([proposalCard()]);
+    renderChat("lodge/%3#ffff");
+    expect(await screen.findByText("Switch on the trick legs?", { selector: "[data-testid=settings] *" })).toBeInTheDocument();
+    expect(screen.getByTestId("chat")).toBeEmptyDOMElement();
   });
 
   it("Not now closes the card in the session, sends nothing, and Settings, Tricks keeps it waiting for a yes", async () => {
@@ -166,5 +190,19 @@ describe("a trick proposal in its session's chat view", () => {
     expect(answers).toEqual([]);
     expect(screen.getByRole("heading", { name: "Waiting for your yes" })).toBeInTheDocument();
     expect(screen.getByTestId("settings")).toHaveTextContent("Switch on the trick legs?");
+  });
+
+  it("a crew member's pane: the member's own snapshot carries no hill, so the chat shows no card, and a refused yes would say why (security read, point 6)", async () => {
+    await holds([proposalCard()]);
+    renderChat(SELF);
+    await screen.findByText("Switch on the trick legs?", { selector: "[data-testid=chat] *" });
+    // The chat of a member's pane reads that member's snapshot: no `hillRev`, so the store is emptied.
+    act(() => syncHill(undefined, "tricks"));
+    await waitFor(() => expect(screen.getByTestId("chat")).toBeEmptyDOMElement());
+    // A yes that still reached a member-scoped answer route is refused with the bridge's sentence, never silently.
+    server.use(http.post("/api/hill/answer", () => new HttpResponse("the hill reads this machine only for now; ask the machine itself", { status: 400 })));
+    const receipt = await postHillAnswer({ rid: "7c2a7a3e-6a42-4f5e-9d2b-3a0a6e7a1b11", node: "hill/dc_test0000001", intent: "on", value: { text: null } });
+    expect(receipt.code).toBe("rejected");
+    expect(receipt.reason).toBe("the hill reads this machine only for now; ask the machine itself");
   });
 });

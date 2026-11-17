@@ -595,9 +595,9 @@ agent and no crew member reaches (`HillService.postCollie`):
 
 - title `Switch on the trick <id>?`, no recommendation, options "Switch it on" (one tap, no
   confirm) and "Not now", no text box, priority today, and it closes after 3 days;
-- the summary says who proposes ("An agent session (repo#one) on lodge proposes it.", "An agent
-  session on lodge proposes it." or, with no agent pane placed, "Someone on lodge proposes it.
-  Collie could not confirm which session."), "It replaces an earlier proposal from the same session."
+- the summary says who proposes ("A session on lodge proposes it", never the session's name, because the
+  pane is placed by markers the caller sends, or, with no agent pane placed, "Someone on lodge
+  proposes it. Collie could not confirm which session."), "It replaces an earlier proposal from the same session."
   when it does, how many files, and the rights the manifest asks for; the view lists every right,
   every `inputs` glob and every warning of the code search in full (as chips when each fits a chip and
   one bar holds them all, else as paragraphs), then the author's name, description and About under
