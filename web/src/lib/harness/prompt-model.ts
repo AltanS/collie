@@ -218,6 +218,17 @@ export interface PromptModel {
    */
   bindRegion?: string;
   /**
+   * The dialog's own rows as ORDERED LITERAL PARTS, when a row the dialog redraws by itself sits inside
+   * them (Claude's self-answer countdown): the rows from the edge down to that row, then the rows after
+   * it to the footer, which is {@link bindRegion}. The phone sends the list as `expected_prompt` and the
+   * bridge checks every part on its fresh read, in order, the last ending where a single region would,
+   * with only the left-out rows between them (bridge/prompt-binding.ts `verifyPromptParts`). So the
+   * subject is checked at the moment of the key, and only the moving clock is not. An older bridge
+   * refuses a list as a malformed `expected_prompt`, so it never types on a binding it cannot check.
+   * Absent when no such row is in the dialog: the single region is the whole binding.
+   */
+  bindParts?: string[];
+  /**
    * The canonical styled lines of the SAME rows as {@link signature} (`canonicalStyledLines`,
    * lib/styled-region.ts), as the wire value `encodeStyledRegion` builds: a `v1` format line, then
    * the lines, joined with "\n". Set ONLY by a grammar whose pointer, or any other state

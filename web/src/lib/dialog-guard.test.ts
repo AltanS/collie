@@ -18,7 +18,7 @@ import { dialogDetector, sendBoundKeys, sendGuardedKeys } from "./dialog-guard";
 import { buildBlocks } from "./harness";
 import { DIALOG_CONTRACT, dialogModelOf, type DialogKind, type DialogModels } from "./harness/dialog-contract";
 import { submitPromptOption } from "./prompt-action";
-import { verifyPromptBinding } from "../../../bridge/prompt-binding.ts";
+import { verifyPromptBinding, verifyPromptParts } from "../../../bridge/prompt-binding.ts";
 import { liftDialog, readerBlocks } from "./surface/lift";
 
 const mockFetchPane = vi.mocked(fetchPane);
@@ -454,10 +454,13 @@ describe("ticking rows, plan approvals and the countdown, on the phone and in th
       mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: fresh, truncated: false, revision: 11 });
       expect(await tap(prompt)).toEqual({ status: "sent" });
       expect(mockSendKeys).toHaveBeenCalledTimes(1);
-      const region = mockSendKeys.mock.calls[0]![3];
+      const sent = mockSendKeys.mock.calls[0]![3];
+      // One string, not the list form: agy's dialog holds no row that redraws by itself.
+      expect(Array.isArray(sent)).toBe(false);
+      const region = String(sent);
       expect(region).toMatch(/^Command\n─+\n/u);
       expect(region).not.toContain("Running");
-      expect(verifyPromptBinding(fresh, region!).ok).toBe(true);
+      expect(verifyPromptBinding(fresh, region).ok).toBe(true);
       expect(lift(fresh, "agy").hash).toBe(lift(shown, "agy").hash);
     });
 
@@ -507,17 +510,34 @@ describe("ticking rows, plan approvals and the countdown, on the phone and in th
     }
     const tapped = (text: string) => dialogDetector("prompt-select", "claude")(lines(text))!;
 
-    it("the clock moving between the tap and the reads refuses nothing, and the bridge finds the bound rows at any clock", async () => {
+    it("the clock moving between the tap and the reads refuses nothing, and the bridge finds both parts at any clock", async () => {
       const prompt = tapped(countdown("1:20"));
-      expect(prompt.bindRegion).toBeDefined();
-      expect(prompt.bindRegion).not.toContain("automatically deny");
-      expect(prompt.bindRegion).toContain("Do you want to proceed?");
+      expect(prompt.bindParts).toHaveLength(2);
+      const [head, rest] = prompt.bindParts!;
+      expect(head).toContain("level.py;");
+      expect(rest).toBe(prompt.bindRegion);
+      expect(rest).toContain("Do you want to proceed?");
+      for (const part of prompt.bindParts!) expect(part).not.toContain("automatically deny");
       mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: countdown("1:19"), truncated: false, revision: 9 });
       const res = await submitPromptOption({ paneId: "w1:p1", requestedLines: 200, detectedRevision: 8, agent: "claude", prompt, option: prompt.options[0]! });
       expect(res).toEqual({ status: "sent" });
-      const region = mockSendKeys.mock.calls[0]![3]!;
-      // The bridge re-reads a moment later: the clock has moved again, and the rows still bind.
-      for (const clock of ["0:59", "0:05", "about 45 seconds"]) expect(verifyPromptBinding(countdown(clock), region).ok).toBe(true);
+      const parts = mockSendKeys.mock.calls[0]![3];
+      if (!Array.isArray(parts)) throw new Error("a dialog with a clock binds a list");
+      expect(parts).toEqual(prompt.bindParts);
+      // The bridge re-reads a moment later: the clock has moved again, and both parts still bind.
+      for (const clock of ["0:59", "0:05", "about 45 seconds"]) expect(verifyPromptParts(countdown(clock), parts).ok).toBe(true);
+      // Another command under the same countdown, question and options: the first part is not there.
+      expect(verifyPromptParts(countdown("1:20").replace("level.py;", "level.sh;"), parts)).toEqual({ ok: false, reason: "not_found" });
+    });
+
+    it("a bridge that does not know the list refuses it, and the tap is a shown error with nothing retried", async () => {
+      const prompt = tapped(countdown("1:20"));
+      mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: countdown("1:19"), truncated: false, revision: 9 });
+      // Every bridge from 1.0.0 to 1.29.0-edge.3 answers a non-string `expected_prompt` with this 400.
+      mockSendKeys.mockRejectedValueOnce(new Error("400 bad expected_prompt"));
+      const res = await submitPromptOption({ paneId: "w1:p1", requestedLines: 200, detectedRevision: 8, agent: "claude", prompt, option: prompt.options[0]! });
+      expect(res.status).toBe("error");
+      expect(mockSendKeys).toHaveBeenCalledTimes(1);
     });
 
     it("another command under the same countdown is still refused on the phone", async () => {

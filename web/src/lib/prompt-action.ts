@@ -148,7 +148,7 @@ async function walkVerifyCommit(
 
   const guarded = await guardDialog(target(args));
   if (!guarded.ok) return withWhy(guarded.result, "entry");
-  const walked = await sendBoundKeys(args, plan.walk, guarded.region, guarded.styled, guarded.columns, guarded.tail);
+  const walked = await sendBoundKeys(args, plan.walk, guarded.region, guarded.styled, guarded.columns, guarded.tail, guarded.parts);
   if (walked.status !== "sent") return withWhy(walked, "bridge");
 
   const landed = (m: PromptModel) => {
@@ -223,7 +223,7 @@ export async function submitPromptFeedback(
 
   // Bind this write to the guarded region. It moves focus, so the steps after it must re-derive
   // rather than reuse this binding.
-  const focus = await sendBoundKeys(args, [row.key], guarded.region, guarded.styled, guarded.columns, guarded.tail);
+  const focus = await sendBoundKeys(args, [row.key], guarded.region, guarded.styled, guarded.columns, guarded.tail, guarded.parts);
   if (focus.status !== "sent") return focus;
 
   // The field must be FOCUSED, and STILL EMPTY, before anything is typed. Focus alone is not enough:

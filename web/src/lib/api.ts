@@ -1324,7 +1324,9 @@ export function sendKeys(
   paneId: string,
   keys: string[],
   scope?: Scope,
-  expectedPrompt?: string,
+  // A list is the region as ordered literal parts (`DialogComparators.parts`); an older bridge refuses
+  // it as a malformed `expected_prompt` and types nothing.
+  expectedPrompt?: string | readonly string[],
   expectedStyled?: string,
   expectedColumns?: ColumnRange,
   expectedTailLines?: number,
