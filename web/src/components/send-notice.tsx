@@ -259,6 +259,9 @@ export function refusalKey(refusal: SendRefusal, surface: Surface | null): strin
  *  adds the ✕ that hides the notice. */
 export function SendRefusalNotice({ refusal, action, onDismiss }: { refusal: SendRefusal; action?: ReactNode; onDismiss?: () => void }) {
   const icon = refusal.tone === "caution" ? <Icon name="warning" /> : <Icon name="ok" />;
+  // A screen reader hears the notice when it appears (M102, the chaos run): a refusal answers the person's
+  // own tap, so a caution interrupts; a neutral receipt (Stopped, Cleared, Discarded) waits its turn.
+  const announce = refusal.tone === "caution" ? "alert" : "status";
   const words = (
     <>
       <span data-slot="composer-refusal">{refusal.sentence}</span>
@@ -271,7 +274,7 @@ export function SendRefusalNotice({ refusal, action, onDismiss }: { refusal: Sen
   );
   if (onDismiss === undefined) {
     return (
-      <Notice tone={refusal.tone} variant="box" className="mb-2" icon={icon} action={action}>
+      <Notice tone={refusal.tone} variant="box" className="mb-2" icon={icon} action={action} announce={announce}>
         {words}
       </Notice>
     );
@@ -284,6 +287,7 @@ export function SendRefusalNotice({ refusal, action, onDismiss }: { refusal: Sen
       icon={icon}
       action={action}
       onDismiss={onDismiss}
+      announce={announce}
       dismissLabel={translate("composer.protocol.dismissNotice")}
     >
       {words}

@@ -1,6 +1,7 @@
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { stopNotice } from "@/components/send-notice";
+import { SendRefusalNotice, stopNotice } from "@/components/send-notice";
 import { t } from "@/lib/i18n";
 
 describe("stopNotice", () => {
@@ -44,5 +45,20 @@ describe("stopNotice", () => {
     expect(unknown.sentence).toBe(t("belt.stop.receipt.unknown"));
     expect(unknown.sentence).toMatch(/may have gone in/u);
     expect(unknown.tone).toBe("caution");
+  });
+});
+
+describe("SendRefusalNotice, the screen reader", () => {
+  const refusal = { sentence: "Collie could not send this.", detail: null, toCard: false, screen: false, tone: "caution" as const };
+
+  it("a caution refusal is an alert, so a screen reader hears it when it appears (chaos run)", () => {
+    render(<SendRefusalNotice refusal={refusal} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Collie could not send this.");
+  });
+
+  it("a neutral receipt is a status, with the dismiss cross too", () => {
+    render(<SendRefusalNotice refusal={{ ...refusal, sentence: "Stopped.", tone: "neutral" }} onDismiss={() => undefined} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Stopped.");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
