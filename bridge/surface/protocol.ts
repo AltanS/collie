@@ -2008,6 +2008,8 @@ const OVERRIDE_MOVED = "The screen moved since you looked. Check it, then tap ag
 const MENU_OPEN = "A menu or a yes/no prompt is open on the screen, and typed text could pick an option. Answer it with the keys.";
 /** The detail of an override typed on a screen Collie could not read (M102 spec 12). */
 const OVERRIDE_TYPED = "Your text is in the box. Collie pressed no key on a screen it cannot read: press Enter on the keys when the screen is right.";
+/** The detail of an override that found its own text in the box already: nothing typed again. */
+const OVERRIDE_ALREADY_TYPED = "The box already held this text, typed by an earlier send, so nothing was typed again. Press Enter on the keys to send it.";
 /** The detail of an override of more than one line where the multiplexer cannot paste it whole (M102 spec 12). */
 const OVERRIDE_ONE_LINE = "On a screen Collie cannot read, only one line goes in at a time here: a line break could submit it. Send one line, or type the rest with the keys.";
 
@@ -2956,6 +2958,8 @@ interface RunState {
   secretField?: boolean;
   /** The override road typed after a draft in the box (M102 spec 12): the receipt carries `draftSeen`. */
   draftSeen?: boolean;
+  /** The override found its own text in the box already and typed nothing: the receipt carries `textAlreadyTyped`. */
+  textAlreadyTyped?: boolean;
   /**
    * A release met a box that is still starting: its probe never showed, or an earlier probe character
    * is still pending there (the header). It goes back to its place, the try does not count, and the
@@ -3388,6 +3392,7 @@ export class SendProtocol {
       if (receipt.awaitingEventUntil !== undefined) row.awaitingEventUntil = receipt.awaitingEventUntil;
       if (receipt.draftSeen === true) row.draftSeen = true;
       if (receipt.menuSign !== undefined) row.menuSign = receipt.menuSign;
+      if (receipt.textAlreadyTyped === true) row.textAlreadyTyped = true;
       // A refusal's line and the Surface words are stored to be read later: the list carries them.
       if (receipt.detail !== undefined) row.detail = receipt.detail;
       if (receipt.saw !== undefined) row.saw = receipt.saw;
@@ -4398,6 +4403,7 @@ export class SendProtocol {
     // The person's word, beside what Collie saw: the outcome stays whatever the run ended as (M102 spec 01).
     if (state.overrode) receipt.word = "override";
     if (state.draftSeen === true) receipt.draftSeen = true;
+    if (state.textAlreadyTyped === true) receipt.textAlreadyTyped = true;
     if (outcome === "refused" && note?.menuSign !== undefined) receipt.menuSign = note.menuSign;
     // The agent's own word may still settle an `unknown` (M102 spec 13): its window, when one is open.
     if (outcome === "unknown") {
@@ -4815,12 +4821,23 @@ export class SendProtocol {
    * was never remembered, and text edited there no longer matches, so both refuse `draft_present`.
    */
   private finishesOwnText(state: RunState, s0: Snap, lines: readonly string[]): boolean {
+    if (s0.otherScreen !== null || s0.notice !== null || s0.popup !== null || s0.surface.modal !== "none") return false;
+    return this.ownTextInBox(state, s0, lines);
+  }
+
+  /**
+   * Whether the box S0 read holds exactly the text an earlier send of this request's text typed and left
+   * there ({@link finishesOwnText} without its no-popup, no-notice, no-modal rule): the person's override
+   * reads it so it never types the same text a second time after it (a Submit refused for a popup, then
+   * Type it anyway with a new id).
+   */
+  private ownTextInBox(state: RunState, s0: Snap, lines: readonly string[]): boolean {
     const { request } = state;
     if (request.mode !== "send" && request.mode !== "command") return false;
     if (!ownTextKind(state)) return false;
     const { frame, surface } = s0;
-    if (frame === null || frame.scrolled === true || s0.otherScreen !== null || s0.notice !== null || s0.popup !== null) return false;
-    if (surface.modal !== "none" || surface.composer !== "draft" || mayHoldPlaceholder(state.match, s0)) return false;
+    if (frame === null || frame.scrolled === true) return false;
+    if (surface.composer !== "draft" || mayHoldPlaceholder(state.match, s0)) return false;
     // In memory since this bridge started; after a restart, the request files (leftInStore).
     const left = this.leftTyped.get(state.lockKey) ?? this.leftInStore(state);
     if (left === null || left.generation !== state.generation || left.text !== lines.join("\n")) return false;
@@ -5645,6 +5662,14 @@ export class SendProtocol {
    * submit it. A text that would leave one of a notice's keys alone in the box is refused, as today.
    */
   private async typeOverride(state: RunState, snap: Snap, lines: readonly string[]): Promise<never> {
+    // The text is in the box already, left there by an earlier send of it: nothing is typed again, and the
+    // person presses Enter on the key pad as after any override (the receipt says `textAlreadyTyped`).
+    if (this.ownTextInBox(state, snap, lines)) {
+      this.lap(state, "s0");
+      state.overrode = true;
+      state.textAlreadyTyped = true;
+      throw new Ended("typed_not_submitted", "override", { surface: snap.surface, framed: snap.frame !== null, offers: ["keys"], detail: OVERRIDE_ALREADY_TYPED });
+    }
     if (this.answersNotice(state, snap)) throw noticeRefusal(snap);
     const { mux } = this.deps;
     if (lines.length > 1 && mux.pasteBlock === undefined) throw new Ended("refused", "multiline", { surface: snap.surface, framed: snap.frame !== null, offers: ["keys"], detail: OVERRIDE_ONE_LINE });

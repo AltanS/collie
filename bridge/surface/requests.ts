@@ -229,6 +229,7 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   // `menuSign` is lenient like `late`: a kind this module did not write, or a row that is no index, drops it.
   const menu = menuSignOf(node.menuSign);
   if (menu !== undefined) whole.menuSign = menu;
+  if (node.textAlreadyTyped === true) whole.textAlreadyTyped = true;
   if (acknowledged !== undefined) whole.acknowledged = acknowledged;
   if (detail !== undefined) whole.detail = detail;
   if (saw !== undefined) whole.saw = saw;
