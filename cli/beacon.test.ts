@@ -190,13 +190,6 @@ describe("on macOS, the probe is ps lstart", () => {
     expect(d.files.read(file)).toBeNull();
   });
 
-  test("Windows has no probe: nothing is written and nothing is run", async () => {
-    const ps = fakePs();
-    const d = deps({ env: CORE, proc: null, pidProbe: { platform: "win32", run: ps.run } });
-    expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
-    expect(d.files.entries.size).toBe(0);
-    expect(ps.calls).toEqual([]);
-  });
 
   test("Linux never runs ps: a pid with no stat file has no start time", async () => {
     const ps = fakePs();
@@ -204,6 +197,64 @@ describe("on macOS, the probe is ps lstart", () => {
     expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
     expect(beacons(d.files).size).toBe(0);
     expect(ps.calls).toEqual([]);
+  });
+});
+
+// Windows has neither `/proc` nor `ps` (issue 798): the start time is kernel32's creation time, read in
+// process. The read is injected here, so the Windows branch runs on Linux.
+describe("on Windows, the probe is the native creation time (#798)", () => {
+  const CORE: Environment = { HC_TERMINAL_ID: "t1d5", HC_TERMINAL_SOCKET: "\\\\.\\pipe\\herdr-core-pat-default.sock" };
+  /** Microseconds since the Unix epoch, the unit `bridge/win32-process.ts` answers in. */
+  const CREATED = 1_794_847_739_081_296;
+
+  function fakeNative(answers: Record<number, number | null> = { [AGENT_PID]: CREATED }) {
+    const asked: number[] = [];
+    const native = (pid: number): number | null => {
+      asked.push(pid);
+      return answers[pid] ?? null;
+    };
+    return { asked, native };
+  }
+
+  test("a herdr-core Claude pane gets its edge and its beacon, carrying the creation time", async () => {
+    const win = fakeNative();
+    const runs: number[] = [];
+    // The fake disk holds a stat file for the agent (START_TIME), as a planted `C:\proc` would. Windows never reads it.
+    const d = deps({ env: CORE, pidProbe: { platform: "win32", native: win.native, run: (_c, pid) => (runs.push(pid), null) } });
+    expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+    const [text, ...more] = [...beacons(d.files).values()];
+    expect(more).toEqual([]);
+    const record = parseBeacon(text ?? "");
+    expect(record?.session).toEqual({ kind: "id", value: SESSION });
+    expect(record?.pid).toBe(AGENT_PID);
+    expect(record?.pidStartTime).toBe(CREATED);
+    expect(record?.markers).toEqual([{ namespace: HERDR_CORE_NAMESPACE, scope: "\\\\.\\pipe\\herdr-core-pat-default.sock", pane: "t1d5" }]);
+    const edges = [...d.files.entries].filter(([path]) => path.startsWith(`${STATE}/edges/`) && EDGE_FILE.test(path.slice(`${STATE}/edges/`.length)));
+    expect(edges.map(([, entry]) => parseEdge(entry.text)?.pidStartTime)).toEqual([CREATED]);
+    expect(win.asked.every((pid) => pid === AGENT_PID)).toBe(true);
+    expect(runs).toEqual([]);
+  });
+
+  test("an agent the native read cannot see (gone, ended, denied) writes nothing, and exits 0", async () => {
+    const d = deps({ env: CORE, proc: null, pidProbe: { platform: "win32", native: fakeNative({ [AGENT_PID]: null }).native } });
+    expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+    expect(d.files.entries.size).toBe(0);
+  });
+
+  test("a registered bridge is a live target while the native read returns its stored start, and dead once it differs", () => {
+    const REGISTRY = `${HOME}/.local/state/collie/hook-targets`;
+    const BRIDGE = 5001;
+    const d = deps({ env: CORE, proc: null, pidProbe: { platform: "win32", native: fakeNative({ [BRIDGE]: CREATED }).native } });
+    const file = `${REGISTRY}/${hookTargetFileName("/srv/a")}`;
+    const register = (start: number) =>
+      d.files.write(file, JSON.stringify({ schemaVersion: 1, stateDir: "/srv/a", pid: BRIDGE, pidStartTime: start, bootedAt: 1 }), 0o600);
+    d.files.mkdirp(REGISTRY, 0o700);
+    register(CREATED);
+    expect(liveHookTargets(d).map((t) => t.stateDir)).toEqual(["/srv/a"]);
+    // The same pid, started one microsecond later: another process, so the target is dead.
+    register(CREATED - 1);
+    expect(liveHookTargets(d)).toEqual([]);
+    expect(d.files.read(file)).toBeNull();
   });
 });
 
@@ -1081,8 +1132,17 @@ describe("agentPidOf: the first non-shell ancestor (#689)", () => {
     expect(agentPidOf(100, table({ 100: { comm: "dash", ppid: 50 } }))).toBe(50);
   });
 
+  test("Windows: Git's bash launcher and the bash it starts are both climbed, to claude (#798)", () => {
+    const read = table({ 300: { comm: "bash", ppid: 200 }, 200: { comm: "bash", ppid: 100 }, 100: { comm: "claude", ppid: 40 } });
+    expect(agentPidOf(300, read)).toBe(100);
+  });
+
+  test("Windows: a parent the reader could not vouch for (ppid 0) ends the climb at the shell", () => {
+    expect(agentPidOf(300, table({ 300: { comm: "bash", ppid: 0 } }))).toBe(300);
+  });
+
   test("every shell name in the set is climbed, and a name that merely contains one is not", () => {
-    for (const comm of ["sh", "dash", "bash", "zsh", "ksh", "ash", "busybox"]) {
+    for (const comm of ["sh", "dash", "bash", "zsh", "ksh", "ash", "busybox", "cmd", "powershell", "pwsh"]) {
       expect(agentPidOf(100, table({ 100: { comm, ppid: 50 }, 50: { comm: "claude", ppid: 10 } }))).toBe(50);
     }
     expect(agentPidOf(100, table({ 100: { comm: "bash-wrapper", ppid: 50 } }))).toBe(100);
