@@ -449,6 +449,11 @@ interface ComposerProps {
   /** A send was refused on a screen Collie cannot read: the pane opens the unread card (M102 spec 03). */
   onScreenUnread?: (() => void) | undefined;
   /**
+   * A send met the `answer` slot while no card shows its dialog (M102 spec 10, the sign-in code case): the
+   * pane opens the exit, the live screen and the person's Keys pad. Absent, the slot only says to answer first.
+   */
+  onAnswerUnseen?: (() => void) | undefined;
+  /**
    * The send that ended `unknown` asks the pane for its card (M102 spec 04): called with the card's facts while that
    * send stands unsettled, and with null when it is settled, answered or superseded. Absent, there is no card: the
    * notice and the second-tap question are all that speak, as before.
@@ -647,7 +652,7 @@ function lockWordsFor(slot: SendSlot, unreachableWords: string): string | null {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest, unreadIdentity = null, onScreenUnread, onCannotTell, onCannotTellRing, cannotTellInView },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest, unreadIdentity = null, onScreenUnread, onAnswerUnseen, onCannotTell, onCannotTellRing, cannotTellInView },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1993,6 +1998,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   /** The "Answer the dialog" word and the notice's card button: a tap that found no card says so. */
   function answerDialog(): void {
     if (onAnswerDialog !== undefined && onAnswerDialog() !== false) return;
+    // No card shows the dialog at all (the sign-in code case, M102 spec 10): the pane opens the exit, the
+    // live screen and the person's Keys pad, rather than send the person to look for a card.
+    if (!dialogCard && onAnswerUnseen !== undefined) {
+      onAnswerUnseen();
+      setSendRefusal(phoneRefusal(translate("answerExit.unseen")));
+      return;
+    }
     setSendRefusal({ ...phoneRefusal(translate("composer.tap.noCard")), screen: true });
   }
   async function send(value: string, isDraft: boolean, when?: SendWhen, tap?: ViewTap): Promise<boolean> {
@@ -2032,7 +2044,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // A typed text would be refused by the bridge anyway; the phone does not ask (spec 10). A send that
     // comes from elsewhere (a quick reply, a harness command) is told so at the Send slot.
     if (slot === "answer") {
-      const refusal = phoneRefusal(translate("composer.status.dialogWaiting"), true);
+      // With no card for that dialog, "Answer it first" has nowhere to go: the pane opens the exit, the
+      // screen and the Keys pad, and the words say so (M102 spec 10, diagnosis B). Nothing is typed.
+      const unseen = !dialogCard && onAnswerUnseen !== undefined;
+      const refusal = unseen ? phoneRefusal(translate("answerExit.unseen")) : phoneRefusal(translate("composer.status.dialogWaiting"), true);
+      if (unseen) onAnswerUnseen();
       setSendRefusal(refusal);
       tell("failed", refusal.sentence);
       return false;

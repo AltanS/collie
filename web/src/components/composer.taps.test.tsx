@@ -234,6 +234,41 @@ describe("composer taps: Answer the dialog with no card to go to (fix 3)", () =>
   });
 });
 
+describe("composer taps: the answer slot with no card for its dialog opens the exit (M102 spec 10)", () => {
+  const UNSEEN = "A dialog is waiting that no card shows. Use your keys or Type.";
+
+  it("no tap vanishes: Answer the dialog with no card asks the pane for the exit, and says so", async () => {
+    const user = userEvent.setup();
+    const onAnswerUnseen = vi.fn();
+    mount({ surface: ASK, onAnswerDialog: () => false, dialogCard: false, onAnswerUnseen });
+    await user.type(field(), "123456");
+    await expectTapAnswers(() => user.click(screen.getByRole("button", { name: "Answer the dialog" })));
+    expect(onAnswerUnseen).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(UNSEEN)).toBeInTheDocument();
+    expect(screen.queryByText(/card is not on screen/i)).toBeNull();
+    expect(recordedSends()).toEqual([]);
+  });
+
+  it("no tap vanishes: a quick reply into the answer slot with no card asks for the exit and types nothing", async () => {
+    const user = userEvent.setup();
+    const onAnswerUnseen = vi.fn();
+    mount({ surface: ASK, onAnswerDialog: () => false, dialogCard: false, onAnswerUnseen });
+    await expectTapAnswers(() => user.click(screen.getByRole("button", { name: "Compact" })));
+    expect(onAnswerUnseen).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(UNSEEN)).toBeInTheDocument();
+    expect(recordedSends()).toEqual([]);
+  });
+
+  it("a card on screen keeps today's words, and no exit is asked for", async () => {
+    const user = userEvent.setup();
+    const onAnswerUnseen = vi.fn();
+    mount({ surface: ASK, onAnswerDialog: () => false, dialogCard: true, onAnswerUnseen });
+    await user.click(screen.getByRole("button", { name: "Compact" }));
+    expect(await screen.findByText(/dialog is waiting\. Answer it first/i)).toBeInTheDocument();
+    expect(onAnswerUnseen).not.toHaveBeenCalled();
+  });
+});
+
 describe("composer taps: the round Send button that cannot act (fix 4)", () => {
   it("no tap vanishes: offline, a tap says Reconnect to send", async () => {
     const user = userEvent.setup();

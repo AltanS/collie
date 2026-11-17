@@ -10,6 +10,7 @@ import { lineText, type StyledLine, type UnreadDialogModel } from "@/lib/blocks"
 import { keyLabel } from "@/lib/key-queue";
 import { OptionGroupCaption, PromptPanel } from "@/components/option-button";
 import { RawMirror } from "@/components/raw-mirror";
+import { DismissButton } from "@/components/terminal-draft-preview";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
@@ -53,6 +54,13 @@ export interface UnreadDialogBlockProps {
   onTypeAnyway?: () => void;
   /** The screen asks for a secret (a sign-in field, a password prompt): no "Type it anyway", a pointer to Type mode. */
   secret?: boolean;
+  /**
+   * The line the card says in place of its own caption: the exit of an answer that cannot go (M102 spec
+   * 10) names what happened to the answer. Absent, the card says it cannot read the screen.
+   */
+  caption?: string;
+  /** Closes the card (the exit's cross). Absent, no cross: the screen moving on closes it. */
+  onClose?: () => void;
 }
 
 /** The pad's own faces for the core keys (nav-tray.tsx): arrows and Enter are glyphs, Esc is its word. */
@@ -96,7 +104,7 @@ export function unreadIdentity(cancel: UnreadDialogModel | null, lines: readonly
   return `${cancel?.key ?? ""}\n${lines.map(lineText).join("\n")}`;
 }
 
-export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onReport, onShown, paneId, onPadKeys, onTypeAnyway, secret = false }: UnreadDialogBlockProps) {
+export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onReport, onShown, paneId, onPadKeys, onTypeAnyway, secret = false, caption: said, onClose }: UnreadDialogBlockProps) {
   useLocale();
   const [sending, setSending] = useState(false);
   const locked = disabled || sending;
@@ -115,7 +123,7 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
   const [enterArmedFor, setEnterArmedFor] = useState<string | null>(null);
   const enterArmed = enterArmedFor === identity;
   const enterTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const caption = t("unreadDialog.caption");
+  const caption = said ?? t("unreadDialog.caption");
   const dismissWording = lines.some((l) => NAMES_A_DISMISS.test(lineText(l)));
 
   useEffect(
@@ -185,7 +193,14 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
     // rawMode (ADR 0056 counsel fix): this card always shows the mirror by default (below), so
     // its control only puts the button away — never a swap from nothing.
     <PromptPanel ariaLabel={caption} raw={lines} rawMode="declutter" wrap={wrap}>
-      <OptionGroupCaption>{caption}</OptionGroupCaption>
+      {onClose === undefined ? (
+        <OptionGroupCaption>{caption}</OptionGroupCaption>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <OptionGroupCaption>{caption}</OptionGroupCaption>
+          <DismissButton onDismiss={onClose} label={t("answerExit.closeAria")} />
+        </div>
+      )}
 
       <div role="group" aria-label={t("unreadDialog.keysAria")} className="flex flex-wrap items-center gap-1">
         {cancel !== null && (

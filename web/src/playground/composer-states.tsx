@@ -623,6 +623,20 @@ function UnreadCardPhone({ cancel, secret = false }: { cancel: UnreadDialogModel
   );
 }
 
+/** An invented permission screen whose answer did not go (M102 spec 10): no real command, path or name. */
+const EXIT_LINES = splitLines(parseAnsi("  Run this command?\n\n    ls sample-dir\n\n  > 1. Yes\n    2. No\n\n  Esc to cancel"));
+
+/** The exit of an answer that cannot go, the real card in the dock's place: its line, the live screen, the cross. */
+function AnswerExitPhone({ caption }: { caption: string }) {
+  return (
+    <PhoneMock>
+      <div className="border-t border-border bg-background px-3 pt-2 pb-2">
+        <UnreadDialogBlock cancel={null} lines={EXIT_LINES} caption={caption} onClose={none} onAction={none} onPadKeys={nothing} />
+      </div>
+    </PhoneMock>
+  );
+}
+
 /** An invented screen after a send Collie cannot tell about (M102 spec 04): the agent's own words, nothing of anyone's. */
 const CANNOT_TELL_LINES = splitLines(
   parseAnsi("  I found three notes in the sample list.\n  The first is about the weekly plan.\n\n  What should I do with them?\n\n  > run the sample check, tell me what fails\n\n  Working on it. One moment."),
@@ -921,6 +935,15 @@ export function wayOutGroups(): ReactNode[] {
         reach="Type it anyway on a screen Collie cannot read. The text is in the agent's box, no Enter was pressed, and the person presses Enter on the Keys pad."
         c={{ outcome: "typed_not_submitted", reason: "override", surface: { ...STOP_FREE, modal: "unknown", composer: "unknown" } }}
       />
+      <SignInCase n={47} state="answer-exit-no-plan" title="Answer with no plan" reach="Tap an answer on a permission card that Collie cannot carry out from here. The card gives way to this exit: one line, the live screen, and the Keys pad under it. The cross brings the card back.">
+        <AnswerExitPhone caption={t("answerExit.noPlan")} />
+      </SignInCase>
+      <SignInCase n={48} state="answer-exit-no-reply" title="Answer with no reply" reach="Tap an answer and let the bridge give no word in time. The same exit says so; the person checks the screen and presses keys on the pad.">
+        <AnswerExitPhone caption={t("answerExit.error")} />
+      </SignInCase>
+      <SignInCase n={49} state="answer-exit-no-card" title="Dialog with no card" reach="Send while the agent asks something the phone draws no card for, such as a sign-in code. The exit opens with the screen and the Keys pad; Type is the way to enter text.">
+        <AnswerExitPhone caption={t("answerExit.unseen")} />
+      </SignInCase>
     </Group>,
     <Group key="cannot-tell" title="Cannot tell">
       <SignInCase n={42} state="cannot-tell-short" title="A short message" reach="A send ended unknown: Collie typed the text and could not see it land. The card shows the screen as it is. It arrived clears the draft with Undo clear; Send again sends it as a new message.">

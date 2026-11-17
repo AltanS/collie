@@ -2023,6 +2023,14 @@ export const en = {
   "unreadDialog.typeAnywayHint": "Your message, typed past this screen\u2026",
   "unreadDialog.typeAnywayFailed": "Collie could not read the screen again. Send, then tap Type here.",
   "unreadDialog.secret": "This screen asks for a secret. Use Type to enter it, one key at a time.",
+  // The exit of an answer that cannot go (M102 spec 10): one line, the live screen, the person's Keys pad.
+  "answerExit.noPlan": "Collie cannot give this answer from here. Nothing was sent. Use your keys.",
+  "answerExit.refused": "Collie did not send this answer. Use the screen and your keys.",
+  "answerExit.unknown": "No proof this answer went. Check the screen, then use your keys.",
+  "answerExit.error": "This answer got no reply. Check the screen, then use your keys.",
+  "answerExit.changed": "The dialog changed since you looked. Nothing was sent. Use your keys.",
+  "answerExit.unseen": "A dialog is waiting that no card shows. Use your keys or Type.",
+  "answerExit.closeAria": "Close and show the card again",
   "dialog.preview.currentAnswerAria": "Current answer",
   "dialog.preview.previewedBelowAria": "Previewed below",
   "dialog.preview.previewLabel": "Preview · {label}",
@@ -4048,6 +4056,13 @@ export const PENDING_TRANSLATION = [
   "home.trickWaits.line",
   "home.trickWaits.open",
   "belt.stopHold",
+  "answerExit.noPlan",
+  "answerExit.refused",
+  "answerExit.unknown",
+  "answerExit.error",
+  "answerExit.changed",
+  "answerExit.unseen",
+  "answerExit.closeAria",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
