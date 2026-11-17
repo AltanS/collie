@@ -11,6 +11,7 @@ import { parseSwitches } from "../bridge/tricks/switches.ts";
 import { EXIT, type Io } from "./io.ts";
 import { realFiles } from "./sys.ts";
 import { hostFor } from "../bridge/host.ts";
+import { TRICKS_OFF_LINE } from "../web/src/lib/tricks/schema.ts";
 import { ADD_LIMITS, cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate, GIT_HARDENING, gitRunEnv, manifestBlurb, OFFICIAL_TRICKS_REPO, parseTrickSource, sourceRefProblem, spawnGit, type GitRunner, type TrickAddDeps } from "./trick-add.ts";
 import { cmdTrickList, cmdTrickSwitch } from "./trick.ts";
 
@@ -555,7 +556,7 @@ describe.if(posix)("collie trick add <url> with no folder: the repository's inde
     ],
   });
 
-  test("prints folder, name, about and the commit, and adds nothing, with tricks on or off", async () => {
+  test("prints folder, name, about and the commit, and adds nothing", async () => {
     // The index wins over a trick.toml at the top: a repository with an index is a list.
     const repo = await fixtureRepo([{ "collie-tricks.json": txt(INDEX), "trick.toml": txt(MANIFEST("top")), "idle-watch/trick.toml": txt(MANIFEST("idle-watch")), "idle-watch/program.sh": PROGRAM }]);
     const r = await rig();
@@ -569,11 +570,29 @@ describe.if(posix)("collie trick add <url> with no folder: the repository's inde
     expect(r.out.at(-1)).toBe(`Nothing was added. Add one with: collie trick add ${repo.bare}//<folder>. It is copied into your tricks folder, off.`);
     expect(await readdir(join(r.configDir, "tricks")).catch(() => [])).toEqual([]);
     await expectNoLeftovers(r);
-    // With tricks off the list still reads, and still adds nothing.
-    writeTricksFeature(r.stateDir, false);
+    // With a ref the next line names it.
     expect(await cmdTrickAdd(r, [`${repo.bare}#main`])).toBe(EXIT.OK);
     expect(r.out.at(-1)).toContain("//<folder>#main.");
+  });
+
+  test("tricks off: no fetch at all, for a bare link, a folder link and a ref, and nothing is left behind", async () => {
+    const repo = await fixtureRepo([{ "collie-tricks.json": txt(INDEX), "trick.toml": txt(MANIFEST("top")), "idle-watch/trick.toml": txt(MANIFEST("idle-watch")), "idle-watch/program.sh": PROGRAM }]);
+    const r = await rig();
+    writeTricksFeature(r.stateDir, false);
+    for (const link of [repo.bare, `${repo.bare}#main`, `${repo.bare}//idle-watch`, `${repo.bare}//idle-watch#main`]) {
+      r.err.length = 0;
+      expect({ link, code: await cmdTrickAdd(r, [link]) }).toEqual({ link, code: EXIT.FAIL });
+      expect(r.err).toEqual([`error: ${TRICKS_OFF_LINE}`]);
+    }
+    // Not one git run, not one line of the list, no tricks folder.
+    expect(r.gitArgs).toEqual([]);
+    expect(r.out).toEqual([]);
     expect(await readdir(join(r.configDir, "tricks")).catch(() => [])).toEqual([]);
+    await expectNoLeftovers(r);
+    // Switched on again, the same link reads.
+    writeTricksFeature(r.stateDir, true);
+    expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.OK);
+    expect(r.gitArgs.length).toBeGreaterThan(0);
   });
 
   test("a repository with no index and no trick at its top says so and names the folder form", async () => {
