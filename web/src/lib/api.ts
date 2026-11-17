@@ -33,6 +33,7 @@ import type { FieldValue, OfficialState, OfficialTricksReply, TrickTapReply, Tri
 import { readTapReplyTolerant, readTricksReplyTolerant } from "./tricks/read";
 import { readCodeFile, readCodeIndex, type WireCodeFile, type WireCodeIndex } from "./tricks/code-wire";
 import { readOfficialAddReply, readOfficialTricksReply, readTrick } from "./tricks/wire";
+import { readRepoAddReply, readRepoListReply, type RepoAddReply, type RepoListReply } from "./tricks/repo-index";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { closePaneNotifications } from "./pane-notifications";
@@ -3561,6 +3562,49 @@ export async function addOfficialTrick(id: string, mode: "add" | "update"): Prom
   const reply = readOfficialAddReply(raw);
   if (reply === undefined) throw new Error(`${path} answered with a body that is not { id, state }`);
   return reply;
+}
+
+/**
+ * Read a repository's trick list (`POST /api/tricks/repo/list`, 2026-11-17): the bridge fetches the pasted
+ * https link, reads the repository's `collie-tricks.json` and answers the commit it read and one entry per
+ * trick, with whether a trick of that id is here already. `rid` is minted once per tap. A refusal throws
+ * with its status and `error` (`repo-invalid`, `host`, `no-index`, `index-refused`, `unreachable`, ...); a
+ * body of another shape throws too. Every text of the reply is the repository's own, cleaned by the reader.
+ */
+export async function listRepoTricks(url: string, rid: string): Promise<RepoListReply> {
+  const path = "/api/tricks/repo/list";
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({ rid, url }), timeoutMs: OFFICIAL_ADD_TIMEOUT_MS });
+  const reply = readRepoListReply(raw);
+  if (reply === undefined) throw new Error(`${path} answered with a body that is not a repository list`);
+  return reply;
+}
+
+/**
+ * Add one trick of a repository's list (`POST /api/tricks/repo/add`): `commit` is the one the list showed,
+ * so a repository that moved since is refused (`moved`). The trick lands OFF; its own switch asks. `rid` is
+ * minted once per tap and kept for a retry of the same tap. A refusal throws with its status and `error`
+ * (`taken`, `not-listed`, `refused`, `busy`, ...); a body of another shape throws too.
+ */
+export async function addRepoTrick(body: { rid: string; url: string; folder: string; commit: string }): Promise<RepoAddReply> {
+  const path = "/api/tricks/repo/add";
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(body), timeoutMs: OFFICIAL_ADD_TIMEOUT_MS });
+  const reply = readRepoAddReply(raw);
+  if (reply === undefined) throw new Error(`${path} answered with a body that is not { rid, code, id, hash }`);
+  return reply;
+}
+
+/**
+ * The words a refused repository call carried in its `message` (`index-refused` and `refused` name the
+ * repository's own reason there), or undefined when the throw is not a refusal with one. The caller shows
+ * it as plain text, cleaned and cut, never as markup.
+ */
+export function repoRefusalReason<TThrown>(thrown: TThrown): string | undefined {
+  if (!(thrown instanceof ApiError)) return undefined;
+  const arrow = thrown.message.indexOf(" → ");
+  if (arrow < 0) return undefined;
+  const afterStatus = thrown.message.indexOf(" ", arrow + 3);
+  if (afterStatus < 0) return undefined;
+  return asJsonString(parseJsonObject(thrown.message.slice(afterStatus + 1))?.message);
 }
 
 /**

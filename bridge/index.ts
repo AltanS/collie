@@ -337,6 +337,8 @@ import { answerInputsRequest, INPUT_ANSWER_BODY_MAX_BYTES, readPaneInputs, Trick
 import { isOwnId, resolveBridgeId } from "./bridge-id.ts";
 import { carriedMapRecords, scopeKeyAddress, TrickHill } from "./tricks/hill.ts";
 import { OfficialTricks } from "./tricks/official-install.ts";
+import { FetchSlot } from "./tricks/fetch.ts";
+import { RepoIndexTricks } from "./tricks/repo-index.ts";
 import { RepoFacts } from "./tricks/repo-facts.ts";
 import type { TricksRunsOn } from "../web/src/lib/tricks/schema.ts";
 import { TricksService } from "./tricks/service.ts";
@@ -4304,10 +4306,13 @@ void tricks?.boot();
 
 // The official list (bridge/tricks/official-install.ts): what this release can add with a tap, and the
 // add itself, in the runner's lane. Nothing is fetched until the person taps Add.
+// One fetch at a time on this bridge, from the official list or from a repository's index.
+const trickFetchSlot = new FetchSlot();
 const officialTricks =
   tricks === undefined || cfg.tricksDir === undefined
     ? undefined
     : new OfficialTricks({
+        slot: trickFetchSlot,
         configDir: dirname(cfg.tricksDir),
         stateDir: cfg.stateDir,
         env: process.env,
@@ -4320,8 +4325,25 @@ const officialTricks =
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
         repoFacts,
       });
+// A repository's index (bridge/tricks/repo-index.ts): Settings, Tricks, "Add from a repository". Nothing is
+// fetched until the person taps; github.com, gitlab.com and codeberg.org only; the fetch slot is shared.
+const repoTricks =
+  tricks === undefined || cfg.tricksDir === undefined
+    ? undefined
+    : new RepoIndexTricks({
+        configDir: dirname(cfg.tricksDir),
+        stateDir: cfg.stateDir,
+        env: process.env,
+        slot: trickFetchSlot,
+        runsOn: tricksRunsOn,
+        gate: () => tricks.gateLine(),
+        offLine: () => tricks.offLine(),
+        lane: (work) => tricks.officialLane(work),
+        audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
+      });
 // A fetch a stopped bridge left behind under <stateDir>/tricks/ goes now, before anyone can tap Add.
 void officialTricks?.sweep();
+void repoTricks?.sweep();
 
 const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer({
   cfg,
@@ -4396,6 +4418,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   machines: machineWatch,
   tricks,
   officialTricks,
+  repoTricks,
   crew,
   pairing,
   launcherCopy: launcherCopySeam,

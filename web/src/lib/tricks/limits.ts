@@ -96,6 +96,21 @@ export const FIELD_NUMBER_ABS_MAX = 999_999_999;
 /** The request ids of value writes one bridge remembers, so the same id twice writes once. The oldest goes first. */
 export const VALUE_WRITES_SEEN_MAX = 256;
 
+// ── A repository's index, `collie-tricks.json` (repo-index.ts, bridge/tricks/repo-index.ts) ──
+
+/** The index's contract this Collie reads. A higher one is refused with one sentence. */
+export const REPO_INDEX_CONTRACT = 1;
+/** The most bytes of the index file. A larger file is refused, never cut. */
+export const REPO_INDEX_BYTES_MAX = 32 * 1024;
+/** The most tricks one index lists. */
+export const REPO_INDEX_TRICKS_MAX = 50;
+/** The longest `name` of an entry, in characters. */
+export const REPO_INDEX_NAME_MAX = 40;
+/** The longest `about` of an entry, in characters: one line. */
+export const REPO_INDEX_ABOUT_MAX = 160;
+/** The whole read of an index or an add from it, fetch included, from the tap. */
+export const REPO_INDEX_TIMEOUT_MS = 120_000;
+
 // ── Proposals (bridge/tricks/propose-wire.ts, proposals.ts, card-group.ts) ───────────────────
 
 /** Every cap of a proposal that the person-facing words name. The file and byte caps are `collie trick add`'s. */

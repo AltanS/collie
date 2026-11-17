@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { HOST } from "../host.ts";
 import { rulesTextProblems, TRICKS_WINDOWS_SHELL_LINE, type OfficialState, type OfficialTricksReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
-import { fetchSource, FetchRefused, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
+import { fetchSource, FetchRefused, FetchSlot, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
 import { officialStanding, officialStateOf, officialWire, pinnedPlaces, shippedOfficialList, type OfficialEntry, type OfficialStanding } from "./official.ts";
 import type { RepoFactsPort } from "./repo-facts.ts";
 import { renderOrigin } from "./origin.ts";
@@ -50,7 +50,7 @@ import { updateSwitches, withSwitch } from "./switches.ts";
 // new version path takes it (a pending copy and the card on the Hill, or `auto` when the person chose it).
 // There is no second consent path.
 //
-// One add or update at a time: a second one while one runs answers `busy`. Every git run ends by the
+// One fetch at a time per bridge (fetch.ts `FetchSlot`, shared with a repository's index): a second one while one runs answers `busy`. Every git run ends by the
 // deadline {@link OFFICIAL_ADD_TIMEOUT_MS} after the tap. The temp folder and any stage go on every path.
 // The write itself runs in the tricks runner's serial lane (service.ts `officialLane`), so no switch write
 // or version change runs beside it.
@@ -130,6 +130,8 @@ export interface OfficialTricksDeps {
   repoFacts?: RepoFactsPort;
   warn?: (line: string) => void;
   now?: () => number;
+  /** The bridge's one fetch slot, shared with a repository's index (repo-index.ts). Absent: a slot of its own. */
+  slot?: FetchSlot;
   /** TEST SEAM: the git runner, a `file://` source, a shorter deadline, a lower byte cap. The bridge never sets them. */
   git?: GitRunner;
   allowFile?: boolean;
@@ -195,10 +197,12 @@ export function officialFetchOptions(deps: Pick<OfficialTricksDeps, "env" | "git
 }
 
 export class OfficialTricks implements OfficialTricksSurface {
-  private busy = false;
   private warned = false;
+  private readonly slot: FetchSlot;
 
-  constructor(private readonly deps: OfficialTricksDeps) {}
+  constructor(private readonly deps: OfficialTricksDeps) {
+    this.slot = deps.slot ?? new FetchSlot();
+  }
 
   /** The list, or none with the reason said once when the list this binary carries was refused. */
   private entries(): readonly OfficialEntry[] {
@@ -216,7 +220,7 @@ export class OfficialTricks implements OfficialTricksSurface {
    * that start with {@link OFFICIAL_FETCH_PREFIX}; `rm` removes a link itself, never what it points at.
    */
   async sweep(): Promise<number> {
-    if (this.busy) return 0;
+    if (this.slot.busy) return 0;
     const root = tricksStateDir(this.deps.stateDir);
     const names = await readdir(root).catch(() => []);
     const stale = names.filter((name) => name.startsWith(OFFICIAL_FETCH_PREFIX));
@@ -252,8 +256,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     if (entry === undefined) return { status: 404, body: { error: "unknown-official" } };
     // Fault d: a POSIX trick (a shell run line) never runs on Windows, so its add fetches nothing there.
     if (entry.posix === true && (this.deps.platform ?? HOST.platform) === "win32") return { status: 409, body: { error: "windows-shell", message: TRICKS_WINDOWS_SHELL_LINE } };
-    if (this.busy) return { status: 409, body: { error: "busy", message: OFFICIAL_LINES.busy } };
-    this.busy = true;
+    if (!this.slot.take()) return { status: 409, body: { error: "busy", message: OFFICIAL_LINES.busy } };
     let fetchDir: string | null = null;
     try {
       const wrong = stateRefusal(await officialStanding(this.deps.configDir, entry), mode);
@@ -274,7 +277,7 @@ export class OfficialTricks implements OfficialTricksSurface {
       return { status: 500, body: { error: "failed", message: `The trick could not be ${mode === "add" ? "added" : "updated"}. Nothing was changed.` } };
     } finally {
       if (fetchDir !== null) await rm(fetchDir, { recursive: true, force: true }).catch(() => {});
-      this.busy = false;
+      this.slot.free();
     }
   }
 
