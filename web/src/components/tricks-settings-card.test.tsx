@@ -1069,7 +1069,7 @@ describe("tricks switched off as a whole", () => {
     await findRow("legs");
     const lines = document.querySelectorAll('[data-line="tricks-off"]');
     expect(lines).toHaveLength(1);
-    expect(lines[0]?.textContent).toBe("Tricks are switched off on this machine; switch them on at the top of this page.");
+    expect(lines[0]?.textContent).toBe("Tricks are switched off on this machine; switch them on in Settings, Experiments.");
     expect(screen.getByTestId("tricks-settings").firstElementChild).toBe(lines[0]);
     expect(screen.getByRole("switch", { name: "Browser leg" })).toBeDisabled();
     expect(screen.getByRole("switch", { name: "Tracker" })).toBeDisabled();

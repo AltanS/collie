@@ -110,7 +110,7 @@ export const ACK_MANIFEST = {
   },
   setTricksSwitch: {
     channel: "inline",
-    why: "The switch for tricks as a whole, at the top of Settings, Tricks: the switch itself is the receipt, it holds the new place while the call runs and the snapshot's `tricksOff` then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
+    why: "The switch for tricks as a whole, a card in Settings, Experiments: the switch itself is the receipt, it holds the new place while the call runs and the snapshot's `tricksOff` then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
   },
   setHillCrewState: {
     channel: "inline",

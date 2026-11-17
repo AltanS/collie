@@ -1,5 +1,5 @@
 import { Icon } from "@/components/icons/icon";
-import { useLoaderData } from "react-router";
+import { Navigate, useLoaderData } from "react-router";
 
 import { AppearanceIntro } from "@/components/appearance-intro";
 import { CharacterPicker } from "@/components/character-picker";
@@ -43,13 +43,10 @@ import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { TelemetrySettingsCard, TelemetrySettingsRow } from "@/components/telemetry-settings-card";
 import { MathControl } from "@/components/math-control";
-import { SettingsNavRow } from "@/components/settings-nav-row";
-import { Card } from "@/components/ui/card";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
 import { TricksSwitchControl } from "@/components/tricks-switch-card";
 import { TrickCardsWaiting } from "@/components/trick-cards";
 import { ZenControl } from "@/components/zen-control";
-import { useNav } from "@/hooks/use-nav";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
 import { EMPTY_DEVICES, type DevicesData } from "@/lib/loaders";
 import { settingsSectionPath } from "@/lib/nav";
@@ -256,7 +253,7 @@ export function SettingsAlertsRoute() {
  * or disappears — it is a standing property of the page, not a state the page enters. `announce`
  * stays `"none"` for the same reason: a notice that never changes must not claim a live region.
  */
-function ExperimentsContract() {
+export function ExperimentsContract() {
   useLocale();
   return (
     <Notice variant="box" tone="caution" icon={<Icon name="experiments" className="size-4" />}>
@@ -279,40 +276,40 @@ function ExperimentsContract() {
  * The section renders even when `lib/experiments.ts` is empty, because the route stays; the
  * SETTINGS INDEX is what hides the row (routes/settings.tsx). A bookmark then lands on a page
  * carrying its contract and nothing else, which is the honest answer to "where did it go".
- * Today it holds the Hill's one switch and a row for Tricks, whose own switch lives at the top of
- * Settings, Tricks.
+ * Today it holds the Hill's one switch and the one switch for Tricks as a whole.
  */
 export function SettingsExperimentsRoute() {
-  const nav = useNav();
-  const scope = useScope();
   return (
     <SettingsPage title="settings.section.experiments.title">
       <ExperimentsContract />
       {/* The Hill (bridge/hill/switch.ts): an experiment, off by default, and this is its one switch. Drawn from
           the snapshot, so it never waits on a reading of its own. Bridge-wide, like the notification switches. */}
       <HillSwitchControl />
-      {/* Tricks as a whole are an experiment too (bridge/tricks/feature-switch.ts), but their switch is the first
-          thing on Settings, Tricks: this row only opens that page, so the switch lives in one place. */}
-      <Card className="gap-0 py-0" data-slot="tricks-experiment-row">
-        <SettingsNavRow icon="mods" title={t("settings.section.tricks.title")} caption={t("settings.experiments.tricks.caption")} onOpen={() => nav.down(settingsSectionPath("tricks", scope))} />
-      </Card>
+      {/* Tricks as a whole are an experiment too (bridge/tricks/feature-switch.ts), and this is their one switch,
+          like the Hill's. While it is on, Settings shows a Tricks row for the list; off, the row is gone. */}
+      <TricksSwitchControl />
     </SettingsPage>
   );
 }
 
 /**
- * Settings → Tricks (M94 slice 04): one card, one switch per trick. Its own section rather than a card
+ * Settings → Tricks (M94 slice 04): the list, one switch per trick. Its own section rather than a card
  * on System, because the rows are per TRICK, a list that grows with every folder the operator makes
- * (the same reason Harnesses is a page of its own). The index offers the row only while the phone
- * holds a tricks reply; the route is reachable by URL either way, and the card then draws nothing.
+ * (the same reason Harnesses is a page of its own).
+ *
+ * The switch for tricks as a whole is NOT here: it is the Tricks card in Settings, Experiments (2026-11-18), and
+ * the index offers this page's row only while that switch is on. A deep link or a bookmark to this page while
+ * the switch is off REDIRECTS (replace, so Back does not return to a page that only redirects) to Settings,
+ * Experiments, where the switch is. The value is the snapshot's `tricksOff`, so the answer is there from the
+ * first frame and the list never flashes.
  */
 export function SettingsTricksRoute() {
+  const root = useOptionalRootData();
+  const scope = useScope();
+  if (root?.tricksOff === true) return <Navigate to={settingsSectionPath("experiments", scope)} replace />;
   return (
     <SettingsPage title="settings.section.tricks.title">
-      {/* The switch for tricks as a whole is the first thing on the page. It reads the snapshot, not the tricks
-          reply, so it always renders, off included. */}
-      <TricksSwitchControl />
-      {/* Then the cards of Collie's own that wait for a yes (M96 spec 14): with the Hill off, the one list of them. */}
+      {/* The cards of Collie's own that wait for a yes (M96 spec 14): with the Hill off, the one list of them. */}
       <TrickCardsWaiting />
       <TricksSettingsCard />
     </SettingsPage>

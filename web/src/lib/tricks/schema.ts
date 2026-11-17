@@ -1877,7 +1877,7 @@ export interface TricksReply {
 
 /**
  * What a Windows machine says of tricks: no trick runs there, nothing is added or switched on, and no
- * agent view opens. The CLI prints it, the bridge answers it, and Settings, Tricks shows it (the phone's
+ * agent view opens. The CLI prints it, the bridge answers it, and Settings, Experiments shows it (the phone's
  * copy is `settings.tricks.windows`, the same words). It lives here, not in limits.ts, which holds numbers only. The Windows review of 1.29 lists why: the env scrub,
  * the helper's output, the timeout kill and the shell line are not ready there yet.
  */
@@ -1888,7 +1888,7 @@ export const TRICKS_WINDOWS_LINE = "Tricks do not run on a Windows machine yet."
  * (bridge/tricks/feature-switch.ts): one sentence, and where a person switches them on. The phone says it in
  * its own words (`settings.tricks.switch.offLine`).
  */
-export const TRICKS_OFF_LINE = "Tricks are switched off on this machine; switch them on at the top of Settings, Tricks, or run `collie tricks on`.";
+export const TRICKS_OFF_LINE = "Tricks are switched off on this machine; switch them on in Settings, Experiments, or run `collie tricks on`.";
 
 /**
  * What a Windows machine says of a shell `run` line (fault d of the Windows milestone): Windows runs the

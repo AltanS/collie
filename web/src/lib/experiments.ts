@@ -18,9 +18,9 @@
 /**
  * Every experiment the section holds today, newest last. Empty from the day Chat graduated (ADR 0082) to
  * 2026-11-13, when the Hill became an experiment: off by default, one switch here
- * (`components/hill-switch-card.tsx`). Tricks as a whole joined it on 2026-11-17: off by default too, but
- * its switch lives at the top of Settings, Tricks (`components/tricks-switch-card.tsx`); the row here only
- * opens that page.
+ * (`components/hill-switch-card.tsx`). Tricks as a whole joined it on 2026-11-17: off by default too. Its
+ * switch began at the top of Settings, Tricks and moved here on 2026-11-18 (`components/tricks-switch-card.tsx`);
+ * the Settings index shows the Tricks row only while it is on.
  */
 export const EXPERIMENTS = ["hill", "tricks"] as const;
 

@@ -282,7 +282,7 @@ function listTitles(): string[] {
   return [...(group?.querySelectorAll("button") ?? [])].map((b) => b.querySelector(".font-medium")?.textContent ?? "");
 }
 
-/** The settled list's row count without the optional Accounts row (Tricks is always there): what the stand-in must hold. */
+/** The settled list's row count without the optional Accounts row, with the Tricks row (it shows while tricks are on): what the stand-in must hold. */
 const SETTLED_ROWS_WITHOUT_OPTIONAL = 10;
 
 function homeData(over: Partial<HomeData>): HomeData {
@@ -321,6 +321,31 @@ function renderIndex(over: Partial<HomeData>) {
   );
   render(<RouterProvider router={router} />);
 }
+
+// THE TRICKS ROW FOLLOWS THE SWITCH (2026-11-18). The switch for tricks as a whole is the Tricks card in Settings,
+// Experiments; this row is the way into the list it switched on, so it shows only while the switch is on.
+describe("SettingsRoute — the Tricks row follows the switch for tricks", () => {
+  it("has no Tricks row while tricks are off, and the list is one row shorter from the first frame", async () => {
+    writeAnswer("settings-accounts-row", false);
+    serveAccountsStatus(404);
+    renderIndex({ tricksOff: true });
+    await screen.findByRole("button", { name: /Appearance/ });
+    const titles = listTitles();
+    expect(titles).not.toContain("Tricks");
+    expect(titles).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL - 1);
+    expect(titles).toContain("Experiments");
+  });
+
+  it("has the Tricks row, right before Experiments, while tricks are on", async () => {
+    writeAnswer("settings-accounts-row", false);
+    serveAccountsStatus(404);
+    renderIndex({ tricksOff: false });
+    await screen.findByRole("button", { name: /Appearance/ });
+    const titles = listTitles();
+    expect(titles.indexOf("Tricks")).toBe(titles.indexOf("Experiments") - 1);
+    expect(titles).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
+  });
+});
 
 describe("SettingsRoute — the list does not move while the page loads", () => {
   afterEach(() => vi.useRealTimers());
@@ -365,7 +390,7 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
 
     const first = listTitles();
     expect(first).not.toContain("Profiles");
-    // Tricks is always there (2026-11-17), with no tricks reply and no remembered answer.
+    // Tricks shows while the switch is on (the snapshot says so from the first frame), with no tricks reply and no remembered answer.
     expect(first.indexOf("Tricks")).toBe(first.indexOf("Experiments") - 1);
     expect(first).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
 

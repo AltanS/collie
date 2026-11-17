@@ -148,7 +148,7 @@ describe("RepoAddRow", () => {
   it("disables the row while tricks are off; the sentence is the card's, not the row's", async () => {
     render(<RepoAddRow tricksOff />);
     expect(screen.getByRole("button", { name: "Add from a repository" })).toHaveProperty("disabled", true);
-    expect(screen.queryByText("Tricks are switched off on this machine; switch them on at the top of this page.")).toBeNull();
+    expect(screen.queryByText("Tricks are switched off on this machine; switch them on in Settings, Experiments.")).toBeNull();
   });
 
   it("disables the row for a device that may only read", () => {
