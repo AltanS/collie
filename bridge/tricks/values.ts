@@ -85,7 +85,7 @@ export function collieFolderProblem(dir: string): string | null {
     return null;
   }
   if (!st.isDirectory()) return `${dir} is not a real folder`;
-  const uid = process.platform === "win32" ? undefined : process.getuid();
+  const uid = process.getuid?.();
   if (uid !== undefined && st.uid !== uid) return `${dir} belongs to another user`;
   return null;
 }
