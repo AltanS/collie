@@ -118,10 +118,23 @@ export type PaneKind = "agent" | "shell" | "unknown";
 /**
  * Ask the local bridges whether this pane runs an agent (crew slice 3). Outside a pane, with no bridge
  * answering, or with only bridges that do not know the op, the answer is `unknown`: the caller decides
- * what that means. `collie trick on` treats it as a shell, a speed bump and not a wall.
+ * what that means. The person-only verbs refuse on it (`paneNotProvenShell`); `collie trick init` does not.
  */
 export async function askPaneKind(deps: WalkyDeps): Promise<PaneKind> {
   return (await askPanePlace(deps)).kind;
+}
+
+/**
+ * Whether a verb that is a person's choice (`collie trick on`, `collie tricks on`, `collie hill on`, and the
+ * other person-only verbs) must refuse here. It fails closed: a process with pane markers runs in a
+ * multiplexer pane, and it passes only when the bridge proves the pane a shell. `agent`, `unknown` (no
+ * bridge answers, or an older one) and a check that throws all refuse. A process with no pane markers is a
+ * person's own terminal and never refuses; so does one that gives no `paneKind` to ask (a unit's deps, not
+ * the program, which always gives it).
+ */
+export async function paneNotProvenShell(env: Parameters<typeof readEnvMarkers>[0], paneKind: (() => Promise<PaneKind>) | undefined): Promise<boolean> {
+  if (readEnvMarkers(env).length === 0 || paneKind === undefined) return false;
+  return (await paneKind().catch(() => "unknown" as const)) !== "shell";
 }
 
 /**

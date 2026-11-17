@@ -461,7 +461,8 @@ five minutes after its last request. A trick that calls a paid service every 30 
 while the phone is in your pocket.
 
 An agent does not approve its own trick. `collie trick on`, `collie trick auto <id> on` and `collie tricks on` refuse in a
-pane where an agent works, and say so. Run them in a shell pane or in a terminal of your own. The check
+pane where an agent works, and say so. They refuse too in a pane that Collie cannot confirm is a shell,
+for example when no bridge answers. Run them in a shell pane or in a terminal of your own. The check
 is a speed bump, not a lock. Your user account is the real boundary
 ([An agent does not pair a device](security.md#an-agent-does-not-pair-a-device)).
 

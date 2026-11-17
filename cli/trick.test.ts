@@ -1179,11 +1179,18 @@ describe("approving from inside an agent's pane, auto, and a version waiting", (
     // A shell pane in the multiplexer is a person's terminal: the yes goes through.
     expect(await cmdTrickSwitch(inPane("shell"), ["legs"], true)).toBe(EXIT.OK);
     await writeFile(join(d.configDir, "tricks", "legs", "program.sh"), "#!/bin/sh\necho again\n");
-    // No bridge answers, or it does not know the pane: a speed bump, not a wall, so allowed.
-    expect(await cmdTrickSwitch(inPane("unknown"), ["legs"], true)).toBe(EXIT.OK);
+    // Counsel A2, fail closed: markers present and the bridge does not prove a shell (no bridge answers, or it
+    // does not know the pane, or the check throws) refuses with the same sentence and changes nothing.
     await writeFile(join(d.configDir, "tricks", "legs", "program.sh"), "#!/bin/sh\necho thrice\n");
+    const waiting = await readFile(switchesPath(d.stateDir), "utf8");
+    d.err.length = 0;
+    expect(await cmdTrickSwitch(inPane("unknown"), ["legs"], true)).toBe(EXIT.REFUSED);
+    expect(d.err).toEqual(agentPaneRefusal("legs"));
     const broken: typeof d = { ...inPane("agent"), paneKind: async () => Promise.reject(new Error("socket gone")) };
-    expect(await cmdTrickSwitch(broken, ["legs"], true)).toBe(EXIT.OK);
+    d.err.length = 0;
+    expect(await cmdTrickSwitch(broken, ["legs"], true)).toBe(EXIT.REFUSED);
+    expect(d.err).toEqual(agentPaneRefusal("legs"));
+    expect(await readFile(switchesPath(d.stateDir), "utf8")).toBe(waiting);
     expect(asked).toEqual(["agent", "shell", "unknown"]);
     // Outside any pane the bridge is not asked at all. A pane marker without its scope variable is no marker (cli/beacon.ts).
     const half: typeof d = { ...inPane("agent"), ctx: { ...d.ctx, env: { ...d.ctx.env, HERDR_PANE_ID: "w1:p2" } } };
@@ -1211,6 +1218,8 @@ describe("approving from inside an agent's pane, auto, and a version waiting", (
     expect(JSON.parse(await readFile(switchesPath(d.stateDir), "utf8")).on.legs.auto).toBe(true);
     const inPane: typeof d = { ...d, ctx: { ...d.ctx, env: { ...d.ctx.env, ...PANE } }, paneKind: async () => "agent" };
     expect(await cmdTrickAuto(inPane, ["legs", "on"])).toBe(EXIT.REFUSED);
+    expect(await cmdTrickAuto({ ...inPane, paneKind: async () => Promise.reject(new Error("socket gone")) }, ["legs", "on"])).toBe(EXIT.REFUSED);
+    expect(await cmdTrickAuto({ ...inPane, paneKind: async () => "unknown" }, ["legs", "on"])).toBe(EXIT.REFUSED);
     expect(await cmdTrickAuto({ ...inPane, paneKind: async () => "shell" }, ["legs", "on"])).toBe(EXIT.OK);
     expect(await cmdTrickAuto(inPane, ["legs", "off"])).toBe(EXIT.OK);
     expect(JSON.parse(await readFile(switchesPath(d.stateDir), "utf8")).on.legs.auto).toBe(false);
