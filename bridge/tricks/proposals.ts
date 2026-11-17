@@ -388,7 +388,8 @@ export class TrickProposals {
     if (same !== undefined && proposer.address === null) return refused("open_elsewhere", `A proposal of ${id} from this machine already waits for your person's answer. Collie cannot confirm which session sent it, so it is not replaced.`);
     if (same !== undefined && this.deps.hill.isAnswering(same.decision)) return refused("answering", "Your person is answering your last proposal of this trick right now. Try again in a moment.");
     const target = await tricks.proposalTarget(id);
-    if (target.kind === "refused") return refused("exists", target.reason);
+    // Tricks switched off as a whole on the lead answer the wire's `no_tricks`, with the sentence that says where to switch them on.
+    if (target.kind === "refused") return refused(target.code ?? "exists", target.reason);
     const others = live.filter((row) => row !== same);
     const self = proposer.by === "agent" ? "This session" : "This terminal";
     if (others.filter((row) => row.sender === sender).length >= PROPOSALS_SENDER_OPEN_MAX) return refused("too_many_open", `${self} has ${String(PROPOSALS_SENDER_OPEN_MAX)} proposals waiting. Wait for your person's answers.`);

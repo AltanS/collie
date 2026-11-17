@@ -39,6 +39,11 @@ const KEYS = [
   "COLLIE_GROK_ROOT",
   "COLLIE_HERMES_ROOT",
   "COLLIE_OPENCLAW_ROOT",
+  "COLLIE_MUSE_ROOT",
+  "COLLIE_DSH_ROOT",
+  "DSH_HOME",
+  "COLLIE_MCODE_ROOT",
+  "MINIMAX_DATA_DIR",
   // Each harness's own home var participates in journal-root resolution, so the suite must own them
   // too — otherwise a developer with CODEX_HOME set gets different results than CI.
   "CODEX_HOME",
@@ -108,6 +113,7 @@ describe("loadConfig", () => {
     expect(cfg.journalRoots.hermes).toEqual([join(homedir(), ".hermes")]);
     expect(cfg.journalRoots.kiro).toEqual([join(homedir(), ".kiro", "sessions")]);
     expect(cfg.journalRoots.openclaw).toEqual([join(homedir(), ".openclaw")]);
+    expect(cfg.journalRoots.mcode).toEqual([join(homedir(), ".minimax", "v2", "sessions")]);
     expect(cfg.journalRoots.agy).toEqual([join(homedir(), ".gemini", "antigravity-cli")]);
     expect(cfg.submitKeys).toEqual(["Enter"]);
     expect(cfg.trustedUser).toBe("");
@@ -287,6 +293,23 @@ describe("loadConfig", () => {
     process.env.COLLIE_KIRO_ROOT = " /srv/work/sessions, ,/srv/personal/sessions ";
     // Then: an explicit list preserves order and replaces the agent default.
     expect(loadConfig().journalRoots.kiro).toEqual(["/srv/work/sessions", "/srv/personal/sessions"]);
+  });
+
+  test("MiniMax Code follows MINIMAX_DATA_DIR, and a blank one is not a relative root", () => {
+    // Given: the program's own data dir is relocated.
+    process.env.MINIMAX_DATA_DIR = "/srv/mcode";
+    // When: Collie resolves the journal roots.
+    expect(loadConfig().journalRoots.mcode).toEqual([join("/srv/mcode", "v2", "sessions")]);
+    // Then: a blank or spaces-only value counts as unset, as mcode counts it, and the default is a
+    // real path rather than v2/sessions relative to the bridge's own folder.
+    for (const blank of ["", "   "]) {
+      process.env.MINIMAX_DATA_DIR = blank;
+      expect(loadConfig().journalRoots.mcode).toEqual([join(homedir(), ".minimax", "v2", "sessions")]);
+    }
+    // And the Collie override still wins over both.
+    process.env.MINIMAX_DATA_DIR = "/srv/mcode";
+    process.env.COLLIE_MCODE_ROOT = "/elsewhere/sessions";
+    expect(loadConfig().journalRoots.mcode).toEqual(["/elsewhere/sessions"]);
   });
 
   test("Kiro blank roots fall back to its home, as Kiro does with a blank KIRO_HOME", () => {

@@ -2,7 +2,8 @@ import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { devNull } from "node:os";
 import { join } from "node:path";
 
-import { rulesTextProblems, type OfficialState, type OfficialTricksReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { HOST } from "../host.ts";
+import { rulesTextProblems, TRICKS_WINDOWS_SHELL_LINE, type OfficialState, type OfficialTricksReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { fetchSource, FetchRefused, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
 import { officialStanding, officialStateOf, officialWire, pinnedPlaces, shippedOfficialList, type OfficialEntry, type OfficialStanding } from "./official.ts";
@@ -90,7 +91,7 @@ export type OfficialAnswer =
   | { status: 200; body: { id: string; state: OfficialState } }
   | { status: 400; body: { error: "official-invalid" } }
   | { status: 404; body: { error: "unknown-official" } }
-  | { status: 409; body: { error: "runs-on" | "windows" | "busy" | "taken" | "added" | "no-update" | "not-added" | "blocked" | "changed"; message: string } }
+  | { status: 409; body: { error: "runs-on" | "windows" | "windows-shell" | "tricks-off" | "busy" | "taken" | "added" | "no-update" | "not-added" | "blocked" | "changed"; message: string } }
   | { status: 422; body: { error: "mismatch" | "too-large"; message: string } }
   | { status: 502; body: { error: "unreachable"; message: string } }
   | { status: 500; body: { error: "failed"; message: string } };
@@ -114,6 +115,13 @@ export interface OfficialTricksDeps {
   runsOn?: () => TricksRunsOn | null;
   /** The Windows gate's line (service.ts `gateLine`), or null where tricks run: then the list is empty and nothing is fetched. */
   gate?: () => string | null;
+  /**
+   * The line while tricks as a whole are switched off (service.ts `offLine`), or null while they are on: then
+   * the list stays readable and an add or an update is refused before anything is fetched.
+   */
+  offLine?: () => string | null;
+  /** The platform: on Windows an entry marked `posix` (a shell run line) is not added. Default `HOST.platform` (bridge/host.ts). */
+  platform?: NodeJS.Platform;
   /** Run a write in the tricks runner's serial lane and wait for its next scan (service.ts `officialLane`). Absent: run it as it is. */
   lane?: <T>(work: () => Promise<T>) => Promise<T>;
   /** One audit line per add and update. */
@@ -236,10 +244,14 @@ export class OfficialTricks implements OfficialTricksSurface {
   async install(id: string, mode: "add" | "update"): Promise<OfficialAnswer> {
     const gate = this.deps.gate?.() ?? null;
     if (gate !== null) return { status: 409, body: { error: "windows", message: gate } };
+    const off = this.deps.offLine?.() ?? null;
+    if (off !== null) return { status: 409, body: { error: "tricks-off", message: off } };
     const runsOn = this.deps.runsOn?.() ?? null;
     if (runsOn !== null) return { status: 409, body: { error: "runs-on", message: "This machine runs no tricks: the lead of its crew does." } };
     const entry = this.entries().find((e) => e.id === id);
     if (entry === undefined) return { status: 404, body: { error: "unknown-official" } };
+    // Fault d: a POSIX trick (a shell run line) never runs on Windows, so its add fetches nothing there.
+    if (entry.posix === true && (this.deps.platform ?? HOST.platform) === "win32") return { status: 409, body: { error: "windows-shell", message: TRICKS_WINDOWS_SHELL_LINE } };
     if (this.busy) return { status: 409, body: { error: "busy", message: OFFICIAL_LINES.busy } };
     this.busy = true;
     let fetchDir: string | null = null;

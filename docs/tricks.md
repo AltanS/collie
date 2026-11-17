@@ -2,6 +2,10 @@
 
 A trick adds its own parts to ColliePWA on your phone: a count, a question, or a whole screen.
 
+Tricks are experimental. They may change, lose settings, or be withdrawn in a patch release. They are
+off until you switch them on at the top of Settings → Tricks, or with `collie tricks on`. See
+[Switch tricks on or off](#switch-tricks-on-or-off).
+
 Collie is a web app for your phone. It lets you watch and answer the AI coding agents that run in the
 terminals of your computer. A trick extends Collie. It is a folder on your computer: a small program,
 or rules for an agent, or both. What it shows on the phone is drawn by Collie, in Collie's own look.
@@ -384,6 +388,29 @@ you approve. The size caps are in the [reference](tricks-reference.md#files-of-a
 
 Every verb of `collie trick` is in the [reference](tricks-reference.md#collie-trick).
 
+### Switch tricks on or off
+
+```sh
+collie tricks on
+collie tricks off
+collie tricks status
+```
+
+Tricks as a whole have one switch for each machine, and it is off until you switch it on. On the phone
+it is the first card in Settings → Tricks. Settings → Experiments lists Tricks too, and its row opens
+that page. The switch holds for the machine, on every phone at once. A trick's program runs as you on
+this machine.
+
+While tricks are off, no trick runs and none draws a part, in any place. No agent view opens, and no
+trick asks on the Hill. A Decision that a trick asked before stays open but hidden, and it is back
+when tricks are on again. `collie trick add`, `collie trick update` and `collie trick propose` answer
+that tricks are off and where to switch them on. The list of tricks stays, so you can read each one
+before you switch.
+
+Each trick keeps its own switch. Tricks on does not switch on any trick, and tricks off does not
+switch any trick off: a trick that was on runs again once tricks are on. On a Windows machine the
+switch stays off ([Collie on Windows](windows.md)).
+
 ### Switch a trick on, off, or remove it
 
 ```sh
@@ -517,7 +544,9 @@ trick by hand, or from a repository.
 
 ## Tricks in a crew
 
-A crew's lead runs the tricks. A member runs none.
+A crew's lead runs the tricks. A member runs none. Each machine has its own switch for tricks as a
+whole, and the lead's switch decides what runs. A member whose own switch is off reads no files for the
+lead's tricks; a member that never moved its switch follows the lead.
 
 A member's Settings says "Tricks run on the lead of this crew. This machine runs none." Add a trick on
 the lead's machine.
@@ -536,7 +565,7 @@ Most problems show in the trick's row in Settings → Tricks, or in `collie tric
 
 | What you see | What it means and what to do |
 | --- | --- |
-| No Tricks section in Settings | The config folder has no `tricks/` folder yet. `collie trick add` or `collie trick init <id>` makes it |
+| "Tricks are switched off on this machine; ..." | Tricks as a whole are off. Switch them on at the top of Settings → Tricks, or run `collie tricks on` |
 | "This trick cannot run. ..." | `trick.toml` has an error, and the rest of the line says which. Run `collie trick check <folder>` and fix each line it prints |
 | "Part of this trick is not shown. ..." | The trick runs, but Collie refused one part of what it printed, for example a status line over its length. The rest of the line says which. Run `collie trick dev <folder>` to see each refusal |
 | "A new version waits for your yes." | The folder moved past the approved copy. Tap the line to open its card, or run `collie trick on <id>` |

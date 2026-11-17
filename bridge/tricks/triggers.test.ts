@@ -359,6 +359,8 @@ async function rig(outcomes: Scripted[] | null, extra: Partial<TricksServiceDeps
     active: () => set.active,
     bus,
     watchOptions: FAST,
+    // Tricks as a whole switched on (feature-switch.ts); the test of the big switch passes its own.
+    feature: { on: () => true },
     ...extra,
   };
   if (outcomes !== null) {
@@ -843,6 +845,36 @@ describe("switch-off and stop end it all", () => {
     release();
     await tick(60);
     expect(r.specs.length).toBe(2);
+    r.service.stop();
+  });
+
+  test("tricks switched off as a whole: the subscription and the watch close, an event or a file change runs nothing, and on opens them again", async () => {
+    const dir = await tempDir();
+    const file = join(dir, "todo.md");
+    await writeFile(file, "a");
+    const counted = countingFactory();
+    const feature = { value: true, on(): boolean { return this.value; } };
+    const r = await onRig([OK], ON_MANIFEST().replace("on = ", `watch = [${JSON.stringify(file)}]\non = `), { watchOptions: { ...FAST, factory: counted.factory }, feature });
+    expect(r.bus.listeners().subscriptions).toBe(1);
+    expect(counted.opened).toEqual([dir]);
+    feature.value = false;
+    await r.service.refresh(true);
+    expect(r.bus.listeners().subscriptions).toBe(0);
+    expect(counted.closed).toEqual([dir]);
+    expect(r.service.reactionCounts()).toEqual({ subscribed: false, watchers: 0, handles: 0, timers: 0, waiting: 0 });
+    r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
+    await writeFile(file, "ab");
+    await tick(300);
+    expect(kinds(r)).toEqual(["start"]);
+    // On again: the trick's own switch was kept, so it reacts again.
+    feature.value = true;
+    await tickAt(r, T0 + 60_000);
+    await tick(50);
+    expect(r.bus.listeners().subscriptions).toBe(1);
+    expect(kinds(r)).toEqual(["start", "start"]);
+    r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
+    await tick(80);
+    expect(kinds(r).at(-1)).toBe("event");
     r.service.stop();
   });
 

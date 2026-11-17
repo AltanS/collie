@@ -1818,6 +1818,12 @@ export interface TricksReply {
    * `TRICKS_WINDOWS_LINE`). The list, the parts and the keys are empty then. Absent everywhere else.
    */
   gate?: TricksGate;
+  /**
+   * Set while tricks as a whole are switched off on this bridge (bridge/tricks/feature-switch.ts, off by
+   * default). The list stays readable (name, kind, About): each row's `on` is that trick's own switch, which
+   * the big switch never changes, and its `state` is `off`. No parts and no keys ride along. Absent while on.
+   */
+  off?: true;
 }
 
 // ── The Windows gate (bridge/tricks/service.ts `gated`) ──────────────────────────────────────
@@ -1829,6 +1835,22 @@ export interface TricksReply {
  * the helper's output, the timeout kill and the shell line are not ready there yet.
  */
 export const TRICKS_WINDOWS_LINE = "Tricks do not run on a Windows machine yet.";
+
+/**
+ * What a bridge, the CLI and the official add say while tricks as a whole are switched off on the machine
+ * (bridge/tricks/feature-switch.ts): one sentence, and where a person switches them on. The phone says it in
+ * its own words (`settings.tricks.switch.offLine`).
+ */
+export const TRICKS_OFF_LINE = "Tricks are switched off on this machine; switch them on at the top of Settings, Tricks, or run `collie tricks on`.";
+
+/**
+ * What a Windows machine says of a shell `run` line (fault d of the Windows milestone): Windows runs the
+ * script form only (`run = "program.ts"`), never a line for a shell, because `cmd.exe` is not `sh` and a
+ * quoted line could run something other than the author wrote. `collie trick check`, `collie trick on`,
+ * `collie trick init --sh`, a switch on from the phone (the phone's copy is
+ * `settings.tricks.switchShellOnWindows`), the official add and the runner itself refuse with it.
+ */
+export const TRICKS_WINDOWS_SHELL_LINE = 'On Windows a trick runs only a script, such as run = "program.ts"; a shell line does not run there.';
 
 /** Whether tricks are gated on a machine of this platform (`process.platform`, injected as a fact). */
 export function tricksGated(platform: string | undefined): boolean {

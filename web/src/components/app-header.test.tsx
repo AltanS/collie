@@ -6,6 +6,7 @@ import type { ComponentProps, ReactElement } from "react";
 
 import { server } from "@/test/setup";
 import { collieMark, markIsLive, markPaper, markState } from "@/test/collie-mark";
+import { __resetAuthedUrls } from "@/lib/authed-url";
 import { __resetOperatorCommands, loadOperatorCommands } from "@/lib/operator-config";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "./app-header";
@@ -392,6 +393,74 @@ describe("the header — the stacked identity", () => {
     );
     await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
     expect(container.querySelector('img[src*="logo"]')).toBeNull();
+  });
+
+  // THE MARK'S PLACE (calm load). The name and the mark's path arrive in one /api/config answer, and the
+  // mark's bytes need a second read that ends after the first paint. Until it lands the header holds a
+  // box of the picture's exact size, gap and alignment, so the word beside it never moves. jsdom has no
+  // layout, so the cases read the DOM: what stands before the box, what stands after it, and its size
+  // classes, then the same three facts on the image that replaces it.
+  describe("holds the mark's place while its bytes are read", () => {
+    const BOX = ["mr-1", "inline-block", "size-[1.15em]", "align-[-0.2em]"];
+    const config = (logo: boolean) => {
+      const base = { name: "reference", capabilities: {}, unsupportedKeys: [], notes: {} };
+      const mux = logo ? { ...base, logoUrl: "/api/mux/logo.svg" } : base;
+      return http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "", mux }));
+    };
+    /** What sits on each side of the element in the "on <mux>" line, as text. */
+    const neighbours = (el: Element | null) => [el?.previousSibling?.textContent, el?.nextSibling?.textContent];
+
+    beforeEach(() => __resetAuthedUrls());
+
+    it("draws an empty box of the final size where the image will stand, then swaps the image in without moving the word", async () => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      server.use(
+        config(true),
+        http.get("/api/mux/logo.svg", async () => {
+          await gate;
+          return new HttpResponse("<svg/>", { headers: { "content-type": "image/svg+xml" } });
+        }),
+      );
+      const { container } = renderHeader(<Header bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />);
+      await waitFor(() => expect(screen.getByText(/^on /)).toBeInTheDocument());
+
+      // First paint with the name: the box is there, the picture is not.
+      const hold = container.querySelector('[data-slot="mux-logo-hold"]');
+      expect(hold).not.toBeNull();
+      expect(container.querySelector("img[src^='blob:']")).toBeNull();
+      for (const cls of BOX) expect(hold?.classList.contains(cls)).toBe(true);
+      expect(hold?.getAttribute("aria-hidden")).toBe("true");
+      const before = neighbours(hold);
+      expect(before).toEqual([" ", "reference"]);
+      expect(screen.getByText("on reference")).toBeInTheDocument();
+
+      release();
+      await waitFor(() => expect(container.querySelector("img[src^='blob:']")).not.toBeNull());
+      const logo = container.querySelector("img[src^='blob:']");
+      // The image carries the box's own classes and stands between the same two words.
+      for (const cls of BOX) expect(logo?.classList.contains(cls)).toBe(true);
+      expect(neighbours(logo)).toEqual(before);
+      expect(container.querySelector('[data-slot="mux-logo-hold"]')).toBeNull();
+    });
+
+    it("lets the box go once, when the read fails", async () => {
+      server.use(config(true), http.get("/api/mux/logo.svg", () => new HttpResponse(null, { status: 404 })));
+      const { container } = renderHeader(<Header bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />);
+      await waitFor(() => expect(screen.getByText(/^on /)).toBeInTheDocument());
+      await waitFor(() => expect(container.querySelector('[data-slot="mux-logo-hold"]')).toBeNull());
+      expect(container.querySelector("img[src^='blob:']")).toBeNull();
+      expect(screen.getByText("on reference")).toBeInTheDocument();
+    });
+
+    it("draws no box when the bridge named no mark", async () => {
+      server.use(config(false));
+      const { container } = renderHeader(<Header bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />);
+      await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
+      expect(container.querySelector('[data-slot="mux-logo-hold"]')).toBeNull();
+    });
   });
 
   // THE SHAPE. The two runs used to share one line, so the brand's ~55px came out of the

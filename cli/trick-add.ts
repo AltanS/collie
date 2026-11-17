@@ -27,7 +27,7 @@ import { switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "..
 import { trickWarnings, warningLines, WARNINGS_HONESTY, type CheckWarning } from "../bridge/tricks/scan.ts";
 import { parseSwitches } from "../bridge/tricks/switches.ts";
 import { isTrickId } from "../web/src/lib/tricks/schema.ts";
-import { checkStatic, leadsCrewOnDisk, refuseTricksOnWindows, type TrickDeps } from "./trick.ts";
+import { checkStatic, leadsCrewOnDisk, refuseTricksOnWindows, refuseWhileTricksOff, type TrickDeps } from "./trick.ts";
 import { EXIT } from "./io.ts";
 
 // `collie trick add`, `update` and `remove` (M94 review 15): a trick from a git repository, copied into
@@ -254,6 +254,8 @@ export async function cmdTrickAdd(deps: TrickAddDeps, args: readonly string[]): 
   }
   const raw = words[0];
   if (raw === undefined) return await listOfficial(deps);
+  // The list reads with tricks off; bringing code in waits for the switch.
+  if (refuseWhileTricksOff(deps)) return EXIT.FAIL;
   const source = parseTrickSource(raw, deps.seam);
   if ("error" in source) {
     deps.io.err(`error: ${source.error}`);
@@ -384,6 +386,8 @@ export async function cmdTrickUpdate(deps: TrickAddDeps, args: readonly string[]
     deps.io.err(UPDATE_USAGE);
     return EXIT.USAGE;
   }
+  // A dry run reads; an update brings code in, which waits for the switch for tricks as a whole.
+  if (!dry && refuseWhileTricksOff(deps)) return EXIT.FAIL;
   if (askedRef !== undefined) {
     const bad = refProblem(askedRef);
     if (bad !== null) return refuse(deps, bad);

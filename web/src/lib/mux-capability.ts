@@ -19,7 +19,17 @@ import type { MuxCapability, MuxConfig, MuxTopologyLatency, SessionSummary } fro
 // answer arrives already true for whichever multiplexer is underneath, so no component learns a
 // name. scripts/check-mux-names.sh keeps it that way.
 //
-// ── The default is CAPABLE, and that direction is deliberate ────────────────────────────────────
+// ── The seed is "last known, else capable; a real read replaces it" ────────────────────────────
+//
+// The first frame draws from the LAST KNOWN answer of this machine, remembered on the device after
+// each successful read (lib/remembered-mux.ts, seeded into the store at module load), so a control
+// stands where it stood last time and nothing swaps in when the read lands (DESIGN.md §2). The read
+// that follows REPLACES the seed in full, never merges into it, so a remembered "not capable" never
+// hides a control once the bridge says capable. Only the front machine's own answer is remembered: a
+// crew member's block and a session's block answer with the front machine's until their own read.
+//
+// With nothing remembered (a first visit, a wiped device) the answer is CAPABLE, and that direction
+// is deliberate.
 //
 // The bridge's own declaration fails CLOSED (bridge/mux/capabilities.ts: a capability nobody
 // answered for is absent), because there the risk is promising behaviour no adapter implements.
@@ -27,7 +37,7 @@ import type { MuxCapability, MuxConfig, MuxTopologyLatency, SessionSummary } fro
 // a bridge mid-upgrade, would hide controls that work perfectly. An operator whose Rename button
 // vanished for the length of a page cache has no way to tell that from a bug. So: no `mux` block,
 // or a block that does not mention the capability, reads as PRESENT. A capability is absent only
-// when a bridge said `false` about it.
+// when a bridge said `false` about it, now or on the last read this device saw.
 //
 // The cost of that choice is bounded and visible: a control that should have been hidden is offered
 // once, the call answers `unsupported`, and the operator sees a refusal instead of an explanation.
@@ -329,11 +339,34 @@ export function useMuxName(): string {
  * "this is what that multiplexer looks like", which would be false.
  */
 export function useMuxLogoUrl(): string {
+  return useMuxLogo().url;
+}
+
+/** {@link useMuxLogo}'s answer: the URL once it is here, and whether it is known to come but not here yet. */
+export interface MuxLogo {
+  /** The object URL to print into a `src`, or `""` while there is none. */
+  url: string;
+  /**
+   * The bridge published a mark and its bytes are still being read. The header holds a box of the
+   * mark's final size for as long as this is true, so the word beside it never moves when the image
+   * lands (DESIGN.md §2). False when no mark was published and when the read failed: the box goes then.
+   */
+  held: boolean;
+}
+
+/**
+ * {@link useMuxLogoUrl} with the one fact it hides: a mark that is on its way. The name and the mark's
+ * path come in the same `/api/config` answer, and the bytes need a second read, so for a moment the
+ * header knows there IS a mark and has no picture to draw. No remembered answer is needed for that
+ * moment: the line holds nothing before the config lands, because the name is not there either.
+ */
+export function useMuxLogo(): MuxLogo {
   // The bridge publishes a root-absolute path. Reads need the pairing token (ADR 0086) and an
   // `<img src>` cannot send it, so the bytes are fetched with it and drawn from an object URL
   // (lib/authed-url.ts); the fetch applies the mount (ADR 0052). Empty until they are here.
   const path = useMuxConfig()?.logoUrl ?? "";
-  return useAuthedUrl(path === "" ? null : path).url ?? "";
+  const { url, failed } = useAuthedUrl(path === "" ? null : path);
+  return { url: url ?? "", held: path !== "" && url === null && !failed };
 }
 
 /**

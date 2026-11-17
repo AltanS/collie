@@ -441,7 +441,7 @@ describe("the history section", () => {
     const none = await run({ files: {} });
     expect(none.get("journal-roots")?.status).toBe("warn");
     // pi has three default roots; every other harness has one.
-    expect(none.get("journal-roots")?.detail).toContain("none of the 13 journal roots is there");
+    expect(none.get("journal-roots")?.detail).toContain("none of the 14 journal roots is there");
 
     // `list` answers `[]` for a directory this user cannot read AND for an empty one; the finding
     // says both, because the seam cannot tell them apart and a doctor may not guess.

@@ -100,6 +100,11 @@ import type { HillDecision } from "@/lib/hill/wire";
 // trick needs no Hill (M96 spec 14): a row whose new version waits opens that card from its slot line, and the
 // cards about new tricks are a group of their own above this card (components/trick-cards.tsx).
 //
+// TRICKS SWITCHED OFF AS A WHOLE (2026-11-17, components/tricks-switch-card.tsx). The list stays readable and each
+// row's switch shows that trick's OWN position, which the big switch never moves. Every control that writes is
+// disabled (the switches, Add, Update, Undo and the About sheet's auto switch), one line at the top of the card
+// says why, and the About sheet still opens. The bridge answers 409 `tricks-off` to those writes anyway.
+//
 // NO PROSE but the one muted line at the foot. What a trick may do is the docs' to say.
 
 // The words of a row live in lib/tricks/row-words.ts, shared with the About sheet; they stay importable from here.
@@ -193,6 +198,8 @@ export interface TricksSettingsCardProps {
   readOnly?: boolean;
   /** Draw the rows as with the Hill switched off, for the playground. Default: the snapshot's `hillOff`. */
   hillOff?: boolean;
+  /** Draw the list as with tricks switched off, for the playground. Default: the snapshot's `tricksOff`, or the reply's `off`. */
+  tricksOff?: boolean;
   /** The official list read. The real route by default. */
   onOfficialList?: (signal?: AbortSignal) => Promise<OfficialTricksReply>;
   /** The add or update from that list. The real route by default. */
@@ -206,7 +213,7 @@ export function TricksSettingsCard(props: TricksSettingsCardProps) {
   if (state.rev === null) return null;
   // A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): one line and the Hill, no rows, no list read.
   if (state.gate === "windows") return <TricksGatedCard />;
-  return <TricksList {...props} tricks={state.tricks} runsOn={state.runsOn} />;
+  return <TricksList {...props} tricks={state.tricks} runsOn={state.runsOn} replyOff={state.off === true} />;
 }
 
 /** The card of a gated bridge: the one line. */
@@ -422,6 +429,8 @@ export function officialFailureLine<TThrown>(thrown: TThrown, mode: "add" | "upd
   if (code === "unreachable") return t(add ? "settings.tricks.official.unreachable" : "settings.tricks.official.updateUnreachable");
   // A repository that sent more than a listed commit can be is the same class of refusal as a mismatch.
   if (code === "mismatch" || code === "too-large") return t(add ? "settings.tricks.official.mismatch" : "settings.tricks.official.updateMismatch");
+  // A POSIX trick (a shell run line) on a Windows machine (fault d): the same words as the switch's refusal.
+  if (code === "windows-shell") return t("settings.tricks.switchShellOnWindows");
   if (code === "busy") return t("settings.tricks.official.busy");
   if (code === "taken") return t("settings.tricks.official.taken");
   // The new code needs a name the person's own files hold in the trick's folder: nothing was changed.
@@ -561,7 +570,9 @@ function TricksList({
   now,
   readOnly,
   hillOff,
-}: TricksSettingsCardProps & { tricks: readonly WireTrickInfo[]; runsOn?: TricksRunsOn }) {
+  tricksOff,
+  replyOff = false,
+}: TricksSettingsCardProps & { tricks: readonly WireTrickInfo[]; runsOn?: TricksRunsOn; replyOff?: boolean }) {
   useLocale();
   const clock = useBridgeNow(now);
   const root = useOptionalRootData();
@@ -570,7 +581,11 @@ function TricksList({
   const cards = useTrickCards();
   const openCard = useOpenTrickCard();
   const { refused } = usePairing();
-  const canWrite = readOnly === undefined ? !isReadOnly(root?.device) && !refused : !readOnly;
+  const mayWrite = readOnly === undefined ? !isReadOnly(root?.device) && !refused : !readOnly;
+  // Tricks switched off as a whole (the snapshot's `tricksOff`, or the reply's `off`): the rows stay readable
+  // and the About sheet opens, but every control that writes is disabled, because the bridge would refuse it.
+  const off = tricksOff ?? (root?.tricksOff === true || replyOff);
+  const canWrite = mayWrite && !off;
   // The position a flipped switch holds until the list agrees, and the switches with a post in flight
   // (a second tap on one of those does nothing; the switch itself stays drawn the same).
   const [held, setHeld] = useState<ReadonlyMap<string, boolean>>(new Map());
@@ -691,8 +706,10 @@ function TricksList({
     } catch (thrown) {
       hold(key, null);
       // The trick changed after the person read it (review 8 V-N1): read it again, nothing was approved.
-      const moved = apiErrorFields(thrown)?.error === "moved";
-      setStatus(moved ? t("settings.tricks.switchMoved") : t("settings.tricks.switchFailed", { name: trick.name }), "error");
+      const code = apiErrorFields(thrown)?.error;
+      // A Windows machine refuses a shell run line (fault d); the bridge's message is `TRICKS_WINDOWS_SHELL_LINE`.
+      const line = code === "moved" ? t("settings.tricks.switchMoved") : code === "windows-shell" ? t("settings.tricks.switchShellOnWindows") : t("settings.tricks.switchFailed", { name: trick.name });
+      setStatus(line, "error");
     } finally {
       flying.current.delete(key);
     }
@@ -749,6 +766,12 @@ function TricksList({
   return (
     <>
       <Card className="gap-0 py-0" data-testid="tricks-settings">
+        {/* Said once, here, for every disabled control below. */}
+        {off && (
+          <p data-line="tricks-off" className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
+            {t("settings.tricks.switch.offLine")}
+          </p>
+        )}
         {/* A crew member, a deputy or a deposed lead schedules no trick: the lead does (bridge/index.ts). */}
         {runsOn !== undefined && (
           <p data-line="runs-on" className="border-b border-border px-4 py-3 text-sm text-muted-foreground">

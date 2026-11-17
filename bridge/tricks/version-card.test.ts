@@ -541,6 +541,7 @@ async function life(): Promise<Life> {
   });
   cards = new VersionCards({ hill, tricks: () => service, diff: (base, next) => versionDiff({ base, next, git: "/fake/git", run: wholeFileDiff }) });
   service = new TricksService({
+    feature: { on: () => true },
     configDir,
     stateDir,
     memberId: "lodge",

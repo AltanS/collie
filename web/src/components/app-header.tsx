@@ -18,7 +18,7 @@ import { useNav } from "@/hooks/use-nav";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/hooks/use-locale";
-import { useMuxLogoUrl, useMuxName } from "@/lib/mux-capability";
+import { useMuxLogo, useMuxName } from "@/lib/mux-capability";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
@@ -233,8 +233,9 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
   // built on, which is what a support question needs.
   const mux = useMuxName();
   // The mark that goes with that name, served by the bridge from the ADAPTER's own bytes. Empty
-  // whenever no logo was published, and empty renders nothing — see useMuxLogoUrl.
-  const muxLogo = useMuxLogoUrl();
+  // whenever no logo was published, and empty renders nothing — see useMuxLogo. While the bytes are
+  // still being read, `held` keeps the mark's box in place so the word does not move.
+  const { url: muxLogo, held: muxLogoHeld } = useMuxLogo();
 
   const [center, setCenter] = useState<HTMLElement | null>(null);
   const [right, setRight] = useState<HTMLElement | null>(null);
@@ -517,6 +518,18 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
                           <img
                             src={muxLogo}
                             alt=""
+                            className="mr-1 inline-block size-[1.15em] align-[-0.2em]"
+                          />
+                        )}
+                        {/* The mark is known to come (the config named it) and its bytes are still being
+                            read, a second request that ends after the first paint. This empty box has
+                            the image's exact size, gap and alignment, so when the picture lands the
+                            word beside it stays where it was (DESIGN.md §2). When the read fails, or
+                            the bridge named no mark, the box is not drawn: one shift, once. */}
+                        {muxLogo === "" && muxLogoHeld && (
+                          <span
+                            aria-hidden="true"
+                            data-slot="mux-logo-hold"
                             className="mr-1 inline-block size-[1.15em] align-[-0.2em]"
                           />
                         )}
