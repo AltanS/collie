@@ -334,8 +334,9 @@ function sha256(text: string): string {
  * The older helpers this Collie shipped, by the SHA-256 of their text: v1 (1.29.0-edge, M94 review 4) and
  * v2 (the facts' `v`, `t.hillAnswer` beside `t.tap`; M94 review 11 made it v3), and v3 (contract 1 only; v4
  * reads contract 2's `inputs` and prints the facts' own contract as `v`), and v4 (v5 adds `t.menu` and a
- * belt mark's `sessions`), and v5 (v6 speaks contract 3 and reads its `values` as `t.values`). A trick folder
- * keeps the copy it was approved with: an older one stays Collie's code, so a new Collie asks for no yes.
+ * belt mark's `sessions`), and v5 (v6 ends a run after the pipe took the output, not with `process.exit`
+ * over a write in flight, which Windows lost; it speaks contract 3 and reads its `values` as `t.values`). A trick
+ * folder keeps the copy it was approved with: an older one stays Collie's code, so a new Collie asks for no yes.
  */
 const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
   ["534f992f9aa2a4a6e53945c1b46e7b407ab9528b3839970e6552d83b23ed13bb", 1],

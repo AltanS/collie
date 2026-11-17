@@ -11,7 +11,8 @@
 //
 // It takes the extras hash too (code-hash.ts `officialExtrasHash`, config.toml and media/), the sha256 of the
 // rules file a contract 2 trick names (`rules`, null for none), the places its manifest lists (`places`,
-// official.ts `pinnedPlaces`), the manifest's `decides` when it has one, and stops on
+// official.ts `pinnedPlaces`), the manifest's `decides` when it has one, `posix: true` when its `run` is a
+// shell line (no Windows run, bridge/tricks/run.ts `windowsRunProblem`), and stops on
 // any other file an add would install outside the code hash. Then it writes the list back with that commit and those hashes, and with each manifest's `name` and
 // `contract`. An entry's `description` is the manifest's when it has one, else the list's own line stays.
 // The entries, their ids, repositories and folders are the list's: the script adds and removes none.
@@ -41,6 +42,7 @@ import { join, resolve } from "node:path";
 import { gitRunEnv, spawnGit } from "../bridge/tricks/fetch.ts";
 import { officialExtrasHash } from "../bridge/tricks/code-hash.ts";
 import { candidateHash, candidateRules, fetchOfficial, OFFICIAL_FETCH_BYTES_MAX } from "../bridge/tricks/official-install.ts";
+import { windowsRunProblem } from "../bridge/tricks/run.ts";
 import { OFFICIAL_PREVIOUS_MAX, parseOfficialList, pinnedPlaces, renderOfficialList, type OfficialEntry, type OfficialVersion } from "../bridge/tricks/official.ts";
 import { parseJson } from "../web/src/lib/json.ts";
 
@@ -75,10 +77,12 @@ async function refreshed(entry: OfficialEntry, opts: OfficialRunOptions): Promis
     const rules = candidateRules(candidate);
     if (!rules.ok) throw new Error(rules.reason);
     const description = candidate.manifest.description ?? entry.description;
-    const { decides: _was, ...rest } = entry;
+    const { decides: _was, posix: _wasPosix, ...rest } = entry;
     const next: OfficialEntry = { ...rest, name: candidate.manifest.name, description, commit: opts.commit, hash, extras: extras.hash, rules: rules.sha256, contract: candidate.manifest.contract, places: pinnedPlaces(candidate.manifest), previous: rolled(entry, opts.commit) };
     // Whether its Decisions answer into a session, as its manifest says: the phone's token label before Add.
     if (candidate.manifest.decides !== undefined) next.decides = candidate.manifest.decides;
+    // A shell run line runs on Linux and macOS only: the list says so, and a Windows bridge refuses the add.
+    if (windowsRunProblem(candidate.manifest.run, "win32") !== null) next.posix = true;
     return next;
   } finally {
     await rm(tmp, { recursive: true, force: true });
@@ -93,7 +97,7 @@ export function rolled(entry: Pick<OfficialEntry, "commit" | "hash" | "previous"
 
 /** The differences of two entries of one id, one line each. */
 function differences(was: OfficialEntry, now: OfficialEntry): string[] {
-  const keys = ["name", "description", "commit", "hash", "extras", "rules", "contract", "decides"] as const;
+  const keys = ["name", "description", "commit", "hash", "extras", "rules", "contract", "decides", "posix"] as const;
   const lines = keys.filter((key) => was[key] !== now[key]).map((key) => `${was.id}: ${key} is ${JSON.stringify(was[key])}, the checkout says ${JSON.stringify(now[key])}`);
   if (JSON.stringify(was.places) !== JSON.stringify(now.places)) lines.push(`${was.id}: places are ${JSON.stringify(was.places)}, the checkout says ${JSON.stringify(now.places)}`);
   if (JSON.stringify(was.previous) !== JSON.stringify(now.previous)) lines.push(`${was.id}: previous would be ${String(now.previous.length)} versions, newest ${now.previous[0]?.commit.slice(0, 12) ?? "none"}`);

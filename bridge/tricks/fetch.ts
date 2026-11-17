@@ -1,12 +1,13 @@
 import { lstat, mkdir, readdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
-import { HOST } from "../host.ts";
+import { HOST, type Host } from "../host.ts";
 import { redactText } from "../redact.ts";
 import type { JsonValue } from "../json.ts";
 import { asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { isTrickId, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { MANIFEST_BYTES_MAX, readManifestText } from "./discover.ts";
+import { envPath } from "./env.ts";
 import { MANIFEST_FILE } from "./paths.ts";
 
 // THE HARDENED GIT FETCH OF A TRICK (M94 review 15), shared by `collie trick add` and `update`
@@ -160,7 +161,8 @@ function killRun(proc: { pid: number; kill: (signal?: number) => void }): void {
 
 /** The real runner: `git` from the PATH the run gets, argv only, killed (with its group) at the timeout. */
 export const spawnGit: GitRunner = async (args, opts) => {
-  const git = Bun.which("git", { PATH: opts.env.PATH ?? "" });
+  // `Path` on a Windows copy (fault a): read by the spelling the copy carries.
+  const git = Bun.which("git", { PATH: envPath(opts.env) ?? "" });
   if (git === null) return { code: 127, stdout: new Uint8Array(0), stderr: "git is not on PATH", timedOut: false, capped: false };
   // stdin is always a pipe: written and closed at once when the run has input, closed empty when not.
   const proc = Bun.spawn([git, ...args], { cwd: opts.cwd, env: opts.env, stdin: "pipe", stdout: "pipe", stderr: "pipe", detached: GROUP });
@@ -212,11 +214,11 @@ export async function folderBytes(dir: string, cap: number, entries = 100_000): 
   return total;
 }
 
-/** The environment of a git run: the caller's, minus every `GIT_*`, plus ours. */
-export function gitRunEnv(base: Record<string, string | undefined>, allowFile: boolean) {
+/** The environment of a git run: the caller's, minus every `GIT_*` (in any case on Windows, where `git_dir` is `GIT_DIR`), plus ours. */
+export function gitRunEnv(base: Record<string, string | undefined>, allowFile: boolean, host: Host = HOST) {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(base)) {
-    if (value === undefined || key.startsWith("GIT_")) continue;
+    if (value === undefined || (host.caseInsensitive ? key.toUpperCase() : key).startsWith("GIT_")) continue;
     env[key] = value;
   }
   env.GIT_TERMINAL_PROMPT = "0";

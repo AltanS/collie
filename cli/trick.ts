@@ -29,7 +29,7 @@ import {
 import { createTrickScanner, readManifestFile, readSmallFile, type FoundTrick } from "../bridge/tricks/discover.ts";
 import { isBaseEnvName, neverReason, scrubEnv } from "../bridge/tricks/env.ts";
 import { MANIFEST_FILE, tricksConfigDir, switchesPath } from "../bridge/tricks/paths.ts";
-import { outcomeProblem, runProgram, runtimeScript, type RunOutcome } from "../bridge/tricks/run.ts";
+import { outcomeProblem, runProgram, runtimeScript, windowsRunProblem, type RunOutcome } from "../bridge/tricks/run.ts";
 import { isChanged } from "../bridge/tricks/service.ts";
 import { parseSwitches, updateSwitches, withEntry, withSwitch } from "../bridge/tricks/switches.ts";
 import type { CrewFetch } from "../bridge/crew/peer-client.ts";
@@ -59,6 +59,7 @@ import {
   type TricksRunsOn,
   type Refusal,
   TRICKS_WINDOWS_LINE,
+  TRICKS_WINDOWS_SHELL_LINE,
   tricksGated,
 } from "../web/src/lib/tricks/schema.ts";
 import { readEnvMarkers } from "./beacon.ts";
@@ -480,6 +481,13 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
     deps.io.err(`error: ${id} stays off until its manifest is fixed. Check it: collie trick check ${dir}`);
     return EXIT.FAIL;
   }
+  // Fault d: on Windows a shell run line stays off, with the one sentence (behind the gate above today).
+  const shell = windowsRunProblem(read.manifest.run, deps.platform);
+  if (shell !== null) {
+    deps.io.err(`error: ${shell}`);
+    deps.io.err(`error: ${id} stays off.`);
+    return EXIT.FAIL;
+  }
   const code = await trickCodeHash(dir);
   if (!code.ok) {
     deps.io.err(`error: ${code.reason}`);
@@ -673,7 +681,7 @@ export function leadsCrewOnDisk(deps: { ctx: Pick<CliContext, "stateDir">; files
 }
 
 /** The static half of `check`. Reads only. `crew` says the machine leads a crew, for the `reads` sentence. */
-export async function checkStatic(folder: string, files: Pick<Files, "read" | "entryType">, opts: { crew?: boolean } = {}): Promise<TrickCheckReport> {
+export async function checkStatic(folder: string, files: Pick<Files, "read" | "entryType">, opts: { crew?: boolean; platform?: NodeJS.Platform } = {}): Promise<TrickCheckReport> {
   const id = basename(folder);
   const read = await readManifestFile(diskTrickFs, folder, id);
   const report: TrickCheckReport = { folder, id, refusals: read.refusals, problems: [], files: [], runs: [], warnings: [], notScanned: [], env: [] };
@@ -682,6 +690,9 @@ export async function checkStatic(folder: string, files: Pick<Files, "read" | "e
   report.env = envNames(read.manifest);
   const globs = read.manifest.inputs ?? [];
   if (globs.length > 0) report.reads = inputsSentence(globs, opts.crew === true);
+  // Fault d: on Windows only the script form runs. A shell line is a problem, so the check fails.
+  const shell = windowsRunProblem(read.manifest.run, opts.platform);
+  if (shell !== null) report.problems.push(shell);
   // A trick that is only an agent view has no run line, so no program file to read.
   const runText = read.manifest.run ?? "";
   const named = programFiles(runText, folder, files);
@@ -931,7 +942,7 @@ export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): P
     return EXIT.USAGE;
   }
   const crew = leadsCrewOnDisk(deps);
-  const report = await checkStatic(folder, deps.files, { crew });
+  const report = await checkStatic(folder, deps.files, { crew, platform: deps.platform });
   if (run && report.manifest !== undefined && report.problems.length === 0) await checkRun(report, deps.ctx.env);
   await countCards(report, crew);
   if (json) deps.io.out(JSON.stringify(report, null, 2));
@@ -1074,6 +1085,12 @@ export async function cmdTrickInit(deps: TrickDeps, args: readonly string[]): Pr
     return EXIT.USAGE;
   }
   const { form, id } = parsed;
+  // Fault d: the shell sample cannot run on Windows, so init does not write it there.
+  if (form === "sh" && deps.platform === "win32") {
+    deps.io.err(`error: ${TRICKS_WINDOWS_SHELL_LINE}`);
+    deps.io.err(`Make the TypeScript form instead: collie trick init ${id}`);
+    return EXIT.FAIL;
+  }
   const root = tricksConfigDir(deps.ctx.configDir);
   const draft = parsed.dir !== null || (await inAgentPane(deps));
   const cwd = deps.cwd ?? process.cwd();

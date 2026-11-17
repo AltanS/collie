@@ -10,10 +10,6 @@ import { TRICK_HELPER } from "../../bridge/tricks/scan.ts";
 import { sampleConfig, sampleManifest, sampleProgram } from "../trick.ts";
 import { age, clip, CONTRACT, firstSentence, iso, mapText, minute, now, Trick, v, type Facts, type Node } from "./trick.ts";
 
-// gated on Windows (b): a program that uses the helper (`./trick.ts`) prints nothing on Windows yet, so
-// Collie gates tricks there (bridge/tricks/service.ts `gated`). Each `helperTest` runs such a program.
-const helperTest = test.skipIf(process.platform === "win32");
-
 // The helper (cli/trick-kit/trick.ts) is copied into a trick folder as text, so nothing in the schema's
 // own tests sees it. These tests hold it to the schema: every builder's node and every place's part
 // parses with the real parser, and the helper's run behaves as its comments say when a real Bun runs a
@@ -176,7 +172,7 @@ describe("the builders cannot drift from the schema", () => {
     expect(v.stat(7, "min")).toEqual({ kind: "number", text: "7", attrs: { label: "min" } });
   });
 
-  helperTest("the sample program prints a document the parser takes whole, and it is about 25 lines", async () => {
+  test("the sample program prints a document the parser takes whole, and it is about 25 lines", async () => {
     const { dir, state } = await trickFolder(sampleProgram("kit"), ["status", "dashboard", "session"]);
     await writeFile(join(dir, "config.toml"), sampleConfig("kit"));
     await writeFile(join(dir, "trick.toml"), sampleManifest("kit"));
@@ -190,7 +186,7 @@ describe("the builders cannot drift from the schema", () => {
 });
 
 describe("run, the places and the Decisions", () => {
-  helperTest("every place method prints a part the parser takes; decisions default to [] and keepDecisions leaves the key out", async () => {
+  test("every place method prints a part the parser takes; decisions default to [] and keepDecisions leaves the key out", async () => {
     const program = `import { run, v } from "./trick.ts";
 run((t) => {
   t.status({ text: "3 red", icon: "flask", tone: "danger" });
@@ -217,7 +213,7 @@ run((t) => {
     expect(JSON.parse(tapped.stdout)).not.toHaveProperty("decisions");
   });
 
-  helperTest("decide adds a Decision the parser takes; a tap from any place reads as the one t.tap", async () => {
+  test("decide adds a Decision the parser takes; a tap from any place reads as the one t.tap", async () => {
     const program = `import { run } from "./trick.ts";
 run((t) => {
   t.decide({ key: "case-24", title: "Rerun case 24?", summary: "It failed twice.", options: [{ intent: "rerun", label: "Rerun" }, { intent: "skip", label: "Skip", confirm: "Skip it" }], recommends: { intent: "rerun", why: "It passed yesterday." }, priority: "now" });
@@ -242,7 +238,7 @@ run((t) => {
     expect(partTap).toEqual({ rid: "0b9e8d7c-1111-4222-8333-444455556667", node: "main", intent: "rerun", value: "fast", decision: null, text: null, from: "lodge:w6X:3", seen: null });
   });
 
-  helperTest("a thrown error: one warn card in the session and exit 0 when the trick has a session; exit 1 without one", async () => {
+  test("a thrown error: one warn card in the session and exit 0 when the trick has a session; exit 1 without one", async () => {
     const boom = `import { run } from "./trick.ts";\nrun(() => { throw new Error("the gh call failed"); });\n`;
     const withSession = await trickFolder(boom, ["session"]);
     const ran = await runProgram(withSession.dir, factsFor(withSession.dir, withSession.state));
@@ -259,7 +255,7 @@ run((t) => {
     expect(failed.stderr.trimEnd().split("\n").at(-1)).toBe("error: the gh call failed");
   });
 
-  helperTest("the error card goes to the session id the run named", async () => {
+  test("the error card goes to the session id the run named", async () => {
     const program = `import { run, v } from "./trick.ts";\nrun((t) => { t.session({ id: "legs", view: [v.para("x")] }); throw new Error("late"); });\n`;
     const { dir, state } = await trickFolder(program, ["belt"]);
     const ran = await runProgram(dir, factsFor(dir, state));
@@ -267,7 +263,7 @@ run((t) => {
     expect(JSON.parse(ran.stdout).parts[0].id).toBe("legs");
   });
 
-  helperTest("config.toml is t.config; a broken one is the run's error", async () => {
+  test("config.toml is t.config; a broken one is the run's error", async () => {
     const program = `import { run } from "./trick.ts";\nrun((t) => { t.status({ text: String(t.config.repo ?? "none") }); });\n`;
     const { dir, state } = await trickFolder(program, ["status"]);
     expect(JSON.parse((await runProgram(dir, factsFor(dir, state))).stdout).parts[0].chip.text).toBe("none");
@@ -279,7 +275,7 @@ run((t) => {
 });
 
 describe("state, sh and the sessions", () => {
-  helperTest("t.state keeps JSON files in the state folder, written whole; a bad name is the run's error", async () => {
+  test("t.state keeps JSON files in the state folder, written whole; a bad name is the run's error", async () => {
     const program = `import { run } from "./trick.ts";
 run((t) => {
   const n = t.state.get("count", 0) + 1;
@@ -319,7 +315,7 @@ run(async (t) => {
     expect(JSON.parse(subtitle)).toEqual(["$HOME a b\n", true, false, -1, 256 * 1024, false, false]);
   });
 
-  helperTest("sessionAt compares real paths; sessionNamed finds by name", async () => {
+  test("sessionAt compares real paths; sessionNamed finds by name", async () => {
     const root = await tempDir();
     const real = join(root, "repo");
     await mkdir(real);
@@ -519,7 +515,7 @@ describe("helper v2: tools, show and onPrint", () => {
     ]);
   });
 
-  helperTest("t.onPrint changes the whole document before it prints, the error card too", async () => {
+  test("t.onPrint changes the whole document before it prints, the error card too", async () => {
     const key = "sk-or-v1-0000000000fakefakefake0000000000";
     const program = `import { mapText, mask, run, v } from "./trick.ts";
 run((t) => {
@@ -631,5 +627,63 @@ describe("helper v6: the settings a person keeps (contract 3)", () => {
     expect(new Trick({ ...base, values: { repo: "lodge/workshop", rows: 10, notify: true } }).values).toEqual({ repo: "lodge/workshop", rows: 10, notify: true });
     expect(new Trick(base).values).toEqual({});
     expect(CONTRACT).toBe(3);
+  });
+});
+
+describe("helper v6: a run ends after the pipe took its output (Windows fault b)", () => {
+  // On Windows a pipe write can still be in flight when `process.exit` ends the process, and the bridge then
+  // read an empty stdout. The rule is the same on every platform, so these run on Linux and in the VM alike.
+
+  test("run() never calls process.exit before its output is written: it waits for the write, then sets exitCode", () => {
+    const main = TRICK_HELPER.slice(TRICK_HELPER.indexOf("export function run("));
+    expect(main).not.toContain("process.exit(");
+    expect(main).not.toContain("Bun.write(Bun.stdout");
+    expect(main.match(/await written\(io, "stdout", /g)).toHaveLength(2);
+    // The only process.exit left is the late one, an unref'd timer after the exit code is set.
+    const exits = [...TRICK_HELPER.matchAll(/process\.exit\(/g)];
+    expect(exits).toHaveLength(1);
+    expect(TRICK_HELPER).toContain("process.exitCode = code;\n  setTimeout(() => process.exit(code), END_GRACE_MS).unref();");
+  });
+
+  test("a run holds the process until its output is written, even when neither the read nor the write keeps the loop alive (Windows, the VM run of 4f94aee63)", async () => {
+    // On Windows Bun's stdin read and pipe write hold no ref on the event loop: v5 and the first v6 ended
+    // at once with exit 0 and no output. The injected io stands in for that: its read and its write call
+    // back from unref'd timers, so nothing but the helper's own hold keeps the process alive.
+    const slowIo = (facts: TrickFacts): string =>
+      [
+        `const FACTS = ${JSON.stringify(JSON.stringify(facts))};`,
+        "const slow = {",
+        "  read: () => new Promise((done) => { setTimeout(() => done(FACTS), 150).unref(); }),",
+        '  write: (to, text, done) => { setTimeout(() => { (to === "stdout" ? process.stdout : process.stderr).write(text, () => done()); }, 150).unref(); },',
+        "};",
+      ].join("\n");
+    const ok = await trickFolder("", ["session"]);
+    await writeFile(join(ok.dir, "program.ts"), `import { run, v } from "./trick.ts";\n${slowIo(factsFor(ok.dir, ok.state))}\nrun((t) => { t.session({ id: "held", view: [v.para("x")] }); }, slow);\n`);
+    const ran = await runProgram(ok.dir, factsFor(ok.dir, ok.state));
+    expect(ran.code).toBe(0);
+    expect(JSON.parse(ran.stdout).parts[0].id).toBe("held");
+    // The error path: exit 1 and the stderr line, not an early exit 0.
+    const boom = await trickFolder("", ["belt"]);
+    await writeFile(join(boom.dir, "program.ts"), `import { run } from "./trick.ts";\n${slowIo(factsFor(boom.dir, boom.state))}\nrun(() => { throw new Error("no gh on PATH"); }, slow);\n`);
+    const failed = await runProgram(boom.dir, factsFor(boom.dir, boom.state));
+    expect(failed.code).toBe(1);
+    expect(failed.stderr.trimEnd().split("\n").at(-1)).toBe("error: no gh on PATH");
+  });
+
+  test("a big document arrives whole, and a timer the trick left open does not hold the run", async () => {
+    const program = `import { run, v } from "./trick.ts";\nrun((t) => { setInterval(() => {}, 60_000); t.session({ id: "big", view: [v.para("x".repeat(60_000))] }); });\n`;
+    const { dir, state } = await trickFolder(program, ["session"]);
+    const started = Date.now();
+    const ran = await runProgram(dir, factsFor(dir, state));
+    expect(ran.code).toBe(0);
+    expect(JSON.parse(ran.stdout).parts[0].id).toBe("big");
+    expect(Date.now() - started).toBeLessThan(8000);
+  });
+
+  test("the v5 helper is still Collie's own code to the scan, so a trick folder that keeps it asks for no yes", async () => {
+    const { shippedHelperVersion } = await import("../../bridge/tricks/scan.ts");
+    const v5 = await Bun.$`git show v1.29.0-edge.3:cli/trick-kit/trick.ts`.quiet().nothrow();
+    if (v5.exitCode !== 0) return;
+    expect(shippedHelperVersion(v5.stdout.toString())).toBe(5);
   });
 });
