@@ -7,7 +7,8 @@
 //
 // What comes back is one of a closed set the handlers render: sent; changed (the dialog on the
 // screen is another one, and the reply carries its ask under a new id, which the next tap uses);
-// gone (the dialog left the screen); mismatch (the highlight did not reach the choice, nothing was
+// gone (the dialog left the screen); moved (a held request was let go, and the dialog on the screen
+// is the new card, whose ask the reply carries); mismatch (the highlight did not reach the choice, nothing was
 // confirmed); unknown; refused for another reason; or an error with no answer.
 //
 // THE CARD AND THE ASK ARE TWO READS. The card is drawn from the mirror text (the pane poll); the ask
@@ -35,6 +36,12 @@ export type AskTapResult =
   /** The dialog is not the one tapped. `ask` is the bridge's ask for the screen now, or null; `card` means the phone's card and the bridge's ask already disagreed, so nothing was posted. */
   | { readonly status: "changed"; readonly ask: Ask | null; readonly why: AskReason | "card" }
   | { readonly status: "gone" }
+  /**
+   * The id the tap named ended, and the dialog on the screen is a new card under a new id (M102 spec 14):
+   * a hook hold Collie let go at its limit, or one whose hook stopped. `ask` is that new card's ask, so the
+   * phone replaces the old card in one step; nothing was sent, and the next tap answers the screen.
+   */
+  | { readonly status: "moved"; readonly ask: Ask }
   /** A hook-held ask (M56 spec 12): the desk, another hook or another Collie answered first. */
   | { readonly status: "desk"; readonly detail: string | null }
   | { readonly status: "mismatch"; readonly ask: Ask | null }
@@ -115,7 +122,8 @@ export async function answerAsk(args: AskTapArgs): Promise<AskTapResult> {
       case "ask_answered":
         return { status: "changed", ask: reply.ask, why: reply.reason };
       case "ask_gone":
-        return { status: "gone" };
+        // A hold let go with its dialog still up hands back the screen's ask: the card moves to it.
+        return reply.ask === null ? { status: "gone" } : { status: "moved", ask: reply.ask };
       case "ask_desk":
         return { status: "desk", detail: reply.detail };
       case "ask_mismatch":

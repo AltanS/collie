@@ -15,7 +15,8 @@ import {
   forwardToPeer,
   MemberPaneReads,
   REPLY_OLD_MEMBER_TEXT,
-  SEND_OLD_MEMBER_DETAIL,
+  MEMBER_VERSION_HEADER,
+  sendOldMemberDetail,
   crewRouteFor,
   proxiedResponse,
   textAnswerOf,
@@ -130,6 +131,7 @@ interface ForwardFailure {
   error: string;
   host?: string;
   lastSeenAt?: number | null;
+  memberVersion?: string;
 }
 
 /** Read a refusal body as the envelope forward.ts guarantees for it. */
@@ -807,8 +809,12 @@ describe("a text reply to a member that sent no Surface reader version (an older
         error: REPLY_OLD_MEMBER_TEXT,
         code: "reply.send_failed",
         detail: { reason: REPLY_OLD_MEMBER_TEXT },
-        send: { receipt: { outcome: "refused" }, offers: ["keys"], detail: SEND_OLD_MEMBER_DETAIL },
+        // The member's version, in the body and the sentence the phone shows (M102 spec 14 decision 4).
+        memberVersion: REACHABLE.version,
+        send: { receipt: { outcome: "refused" }, offers: ["keys"], detail: sendOldMemberDetail(REACHABLE.version) },
       });
+      expect(res.headers.get(MEMBER_VERSION_HEADER)).toBe(REACHABLE.version);
+      expect(res.headers.get("x-collie-reason")).toBe("member_old");
       expect(calls).toHaveLength(0);
     }
   });
@@ -823,9 +829,9 @@ describe("a text reply to a member that sent no Surface reader version (an older
     // What the phone makes of it: a refusal, nothing typed, and the bridge's own sentence under it.
     const reply = readSendReply(body.send);
     expect(reply).not.toBeNull();
-    expect(readSend(reply!)).toMatchObject({ clear: false, note: "refused", detail: SEND_OLD_MEMBER_DETAIL });
+    expect(readSend(reply!)).toMatchObject({ clear: false, note: "refused", detail: "This machine runs Collie 1.0.0-alpha.12, which cannot take a send from the phone yet. Update it from the Crew page." });
     // The lead says why no forward followed the tap: one `reply` line naming the member.
-    expect(audit).toEqual([{ action: "reply", host: "laptop", paneId: "w1:p1", session: "main", outcome: "old_member" }]);
+    expect(audit).toEqual([{ action: "reply", host: "laptop", paneId: "w1:p1", session: "main", outcome: "old_member", reason: "member_old", by: "lead" }]);
     expect(calls).toHaveLength(0);
   });
 
@@ -919,8 +925,8 @@ describe("a write to a member that is not reachable (§10.3)", () => {
   // must say so in the lead's own audit, as the refusal of an old member's text does.
   test("the lead writes its own audit line for a write it refuses before the dial, the hold card's answer included", async () => {
     const cases: [PeerState, string, string, Record<string, string>][] = [
-      [DEAD, "/api/ask/ask-0123456789abcd?host=laptop&session=main", `{"pane":"w1:p1","hash":"0abc12","optionId":"1","origin":"person_tap","via":"hold-card"}`, { action: "ask", outcome: "refused" }],
-      [SKEWED, "/api/pane/w1:p1/keys?host=laptop&session=main", `{"keys":["1"]}`, { action: "keys", outcome: "incompatible" }],
+      [DEAD, "/api/ask/ask-0123456789abcd?host=laptop&session=main", `{"pane":"w1:p1","hash":"0abc12","optionId":"1","origin":"person_tap","via":"hold-card"}`, { action: "ask", outcome: "refused", reason: "member_unreachable", by: "lead" }],
+      [SKEWED, "/api/pane/w1:p1/keys?host=laptop&session=main", `{"keys":["1"]}`, { action: "keys", outcome: "incompatible", reason: "member_incompatible", by: "lead" }],
     ];
     for (const [state, path, body, want] of cases) {
       const { transport, calls } = transportOf(() => ok(new Response("{}")));
@@ -930,7 +936,79 @@ describe("a write to a member that is not reachable (§10.3)", () => {
       expect(res.status).toBe(503);
       expect(calls).toHaveLength(0);
       expect(audit).toEqual([{ ...want, host: "laptop", paneId: "w1:p1", session: "main" }]);
+      // The phone gets the same reason, and that the lead refused (M102 spec 14).
+      expect(res.headers.get("x-collie-reason")).toBe(want.reason!);
+      expect(res.headers.get("x-collie-by")).toBe("lead");
     }
+  });
+
+  // M102 spec 14: a dial that failed said `unknown` and nothing more. The record now names what the lead
+  // learned, a time-out apart from a broken link, and the phone gets the same code.
+  test("a write whose dial failed records one reason code: a time-out, a lost link, a dial that never left", async () => {
+    const cases: [PeerOutcome<Response>, string, string][] = [
+      [{ ok: false, state: "unreachable", reason: "timed out after 6400ms", timedOut: true, receivedAt: 2 }, "unknown", "link_timeout"],
+      [{ ok: false, state: "unreachable", reason: "socket hang up", receivedAt: 2 }, "unknown", "link_lost"],
+      [{ ok: false, state: "unreachable", reason: "no crew secret", attempted: false, receivedAt: 2 }, "refused", "link_refused"],
+    ];
+    for (const [failure, outcome, reason] of cases) {
+      const { transport } = transportOf(() => failure);
+      const audit: unknown[] = [];
+      const [req, url] = post("/api/ask/ask-0123456789abcd?host=laptop&session=main", `{"pane":"w1:p1","hash":"0abc12","optionId":"1","origin":"person_tap"}`);
+      const res = await forward(req, url, { transport, audit: (entry) => audit.push(entry) });
+      expect(audit).toEqual([{ action: "ask", host: "laptop", paneId: "w1:p1", session: "main", outcome, reason, by: "lead" }]);
+      expect(res.headers.get("x-collie-reason")).toBe(reason);
+      expect(res.headers.get("x-collie-by")).toBe("lead");
+    }
+  });
+
+  test("a member's own refusal code reaches the phone as the member's, and the lead's line names it", async () => {
+    const refused = new Response(`{"receipt":{"outcome":"refused"}}`, { status: 404, headers: { "content-type": "application/json", "x-collie-reason": "no_pane", "x-collie-by": "bridge" } });
+    const { transport } = transportOf(() => ok(refused));
+    const audit: unknown[] = [];
+    const [req, url] = post("/api/ask/ask-0123456789abcd?host=laptop&session=main", `{"pane":"w1:p9","hash":"0abc12","optionId":"1","origin":"person_tap"}`);
+    const res = await forward(req, url, { transport, audit: (entry) => audit.push(entry) });
+    expect(res.status).toBe(404);
+    expect(res.headers.get("x-collie-reason")).toBe("no_pane");
+    expect(res.headers.get("x-collie-by")).toBe("member");
+    // A refused write names the version the member runs.
+    expect(res.headers.get(MEMBER_VERSION_HEADER)).toBe(REACHABLE.version);
+    expect(audit).toEqual([{ action: "ask", host: "laptop", paneId: "w1:p9", session: "main", outcome: "http 404", reason: "no_pane", by: "member" }]);
+  });
+
+  // The keys route's `expected_prompt` may be a list of literal parts (stage/1116, bridge/prompt-binding.ts).
+  // The forward reads no part of it: the body reaches the member byte for byte, and the member's own
+  // refusal code still comes back as the member's.
+  test("a keys write with the list form of expected_prompt streams on whole, and a member refusal keeps its code", async () => {
+    const body = `{"keys":["1"],"expected_prompt":["Do you want to proceed?","1. Yes"]}`;
+    const refused = new Response(`{"ok":false}`, { status: 409, headers: { "content-type": "application/json", "x-collie-reason": "no_raw_input" } });
+    const { transport, calls } = transportOf(() => ok(refused));
+    const audit: unknown[] = [];
+    const [req, url] = post("/api/pane/w1:p1/keys?host=laptop", body);
+    const res = await forward(req, url, { transport, surfaceVersion: null, audit: (entry) => audit.push(entry) });
+    expect(await new Response(calls[0]?.init.body).text()).toBe(body);
+    expect(res.headers.get("x-collie-reason")).toBe("no_raw_input");
+    expect(res.headers.get("x-collie-by")).toBe("member");
+    expect(audit).toEqual([{ action: "keys", host: "laptop", paneId: "w1:p1", outcome: "http 409", reason: "no_raw_input", by: "member" }]);
+  });
+
+  test("a member header that names no known code is not passed on, and is not recorded", async () => {
+    const odd = new Response("nope", { status: 400, headers: { "x-collie-reason": "anything at all" } });
+    const { transport } = transportOf(() => ok(odd));
+    const audit: unknown[] = [];
+    const [req, url] = post("/api/pane/w1:p1/keys?host=laptop", `{"keys":["1"]}`);
+    const res = await forward(req, url, { transport, audit: (entry) => audit.push(entry) });
+    expect(res.headers.get("x-collie-reason")).toBeNull();
+    expect(audit).toEqual([{ action: "keys", host: "laptop", paneId: "w1:p1", outcome: "http 400" }]);
+  });
+
+  test("an incompatible member's refusal names the version it runs, when it reported one", async () => {
+    const { transport } = transportOf(() => ok(new Response("{}")));
+    const [req, url] = post("/api/pane/w1:p1/keys?host=laptop", `{"keys":["Enter"]}`);
+    const res = await forward(req, url, { transport, state: { ...SKEWED, version: "1.27.3" } });
+    const body = await failureBody(res);
+    expect(body.memberVersion).toBe("1.27.3");
+    expect(String(body.error)).toContain("Collie 1.27.3");
+    expect(res.headers.get(MEMBER_VERSION_HEADER)).toBe("1.27.3");
   });
 
   test("a read refused for no reason writes no audit line, and a star refused before the dial writes none either", async () => {

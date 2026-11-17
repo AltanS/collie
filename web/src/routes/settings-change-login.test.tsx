@@ -186,6 +186,22 @@ describe("Change login: the start and the end", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w1%3Ap3"));
   });
 
+  it("a list answer with no accounts field after Finish says the agent did not say, and the page stands", async () => {
+    rememberFlow({ account: "acc-work", paneId: "w9:p1", before: ME, from: null });
+    let closed = false;
+    server.use(
+      http.get("/api/accounts", () => HttpResponse.json(closed ? { version: 99 } : body({ harnesses: [CLAUDE], accounts: [defaultRow(), workRow({ identity: ME })] }))),
+      http.post("/api/pane/:paneId/close", () => {
+        closed = true;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"]);
+    await userEvent.click(await screen.findByRole("button", { name: "Finish" }));
+    expect(await screen.findByText(/did not say who is signed in now/, undefined, { timeout: 10_000 })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Back to the/ })).toBeInTheDocument();
+  }, 20_000);
+
   it("a close that fails says the sign-in session may still be open", async () => {
     rememberFlow({ account: "acc-work", paneId: "w9:p1", before: ME, from: null });
     server.use(

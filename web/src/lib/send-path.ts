@@ -11,10 +11,12 @@
 // `sendProtocol`, else the program's answer route for a program and the guarded key route for a
 // terminal pane.
 //
-// The hook hold card (M56 spec 12) is the one tap that takes the ask route on a crew member too: a
-// held permission has no dialog on the screen, so there is nothing for the key route to press. The
-// lead carries `POST /api/ask/<id>?host=` to the member, whose own ask book answers it. A crew
-// member's screen cards keep the guarded key route.
+// The hook hold card (M56 spec 12) takes the ask route on a crew member too: a held permission has no
+// dialog on the screen, so there is nothing for the key route to press. The lead carries
+// `POST /api/ask/<id>?host=` to the member, whose own ask book answers it. A crew member's screen
+// cards take the same route when the member marks the pane `askRoute` (M102 spec 14): the member then
+// checks and records the tap as it does for its own phone. An older member, with no mark, keeps the
+// guarded key route, and the card says so.
 //
 // Pure: no DOM, no fetch.
 
@@ -26,6 +28,8 @@ export interface PanePlace {
   readonly crew: boolean;
   /** The bridge marks the pane for the Send Protocol (the snapshot's `sendProtocol`). */
   readonly sendProtocol: boolean;
+  /** The bridge answers a screen card's tap by id, also over a crew link (the snapshot's `askRoute`). */
+  readonly askRoute?: boolean;
 }
 
 /** `api-send` is `POST /api/send`; `pane-reply` is the pane's reply route on a crew member; `pane-send` is the program's own send route. */
@@ -43,7 +47,17 @@ export function textRouteFor(place: PanePlace, steer = false): TextRoute {
 /** The route a tap on a card takes. */
 export function answerRouteFor(place: PanePlace): AnswerRoute {
   if (!place.crew && place.sendProtocol) return "api-ask";
+  // A crew member's terminal pane, when the member marks it: the member's own ask route (M102 spec 14).
+  if (place.crew && !place.program && place.sendProtocol && place.askRoute === true) return "api-ask";
   return place.program ? "pane-answer" : "keys";
+}
+
+/**
+ * Whether a crew member's screen cards keep the guarded key route only because the member runs an
+ * older Collie: the pane takes the Send Protocol but carries no `askRoute` mark. The card says so.
+ */
+export function cardsOnOlderMember(place: PanePlace): boolean {
+  return place.crew && !place.program && place.sendProtocol && place.askRoute !== true;
 }
 
 /** The route a tap on the hook hold card takes: the ask route wherever the pane's bridge marks it, a crew member's too. */

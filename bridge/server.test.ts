@@ -99,6 +99,7 @@ import {
   PAIR_WINDOW_MS,
 } from "./pair-limit.ts";
 import { readFileSync } from "node:fs";
+import { API_VERSION } from "../web/src/lib/api-version.ts";
 import { mkdir, mkdtemp, realpath, rm, symlink, truncate, utimes, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -3183,6 +3184,19 @@ describe("bridgeConfigBody — /api/config reports the crew mode", () => {
   test("push disabled still round-trips its key untouched", () => {
     const body = bridgeConfigBody({ push: false, vapidPublicKey: "", build: "unknown", mode: "solo" });
     expect(body).toEqual({ push: false, vapidPublicKey: "", build: "unknown" });
+  });
+});
+
+// M102 spec 14 decision 4: the API number, appended last, so the phone can tell its bundle from the bridge.
+describe("bridgeConfigBody — the API number", () => {
+  const base = { push: true, vapidPublicKey: "BKey", build: "abc123", mode: "solo" } as const;
+
+  test("rides last when passed, the handler's own number, and is absent otherwise", () => {
+    const body = bridgeConfigBody({ ...base, redact: false, apiVersion: API_VERSION });
+    expect(body.apiVersion).toBe(API_VERSION);
+    expect(Object.keys(body).at(-1)).toBe("apiVersion");
+    expect("apiVersion" in bridgeConfigBody(base)).toBe(false);
+    expect(readFileSync(join(import.meta.dir, "server.ts"), "utf8")).toContain("apiVersion: API_VERSION,");
   });
 });
 

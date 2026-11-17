@@ -8,6 +8,8 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
+import { recordRefusal, withRefusal, type RefusalReason } from "./refusal.ts";
+import { API_VERSION } from "../web/src/lib/api-version.ts";
 import { isLoopbackBindHost, type Config } from "./config.ts";
 import {
   changesParams,
@@ -211,7 +213,7 @@ import {
   maskTodoList,
 } from "./answer-mask.ts";
 import { maskForwardedAnswer } from "./crew/mask.ts";
-import { forwardError, type LeadMerge } from "./crew/forward.ts";
+import { forwardAuditDetail, forwardError, type LeadMerge } from "./crew/forward.ts";
 import { CWD_PARAM, folderAnswers, leadRowCarry, leadRowMarked, leadRowsRead, ROW_FIELD, rowFromLead, type LeadWrite } from "./crew/launcher-rows.ts";
 import { withCopyRows, type LauncherCopySeam } from "./crew/standby-launchers.ts";
 import { redactAnsi } from "./redact.ts";
@@ -1164,6 +1166,8 @@ export function bridgeConfigBody(opts: {
    * member's own switch is not in the capability block the lead holds.
    */
   redact?: boolean;
+  /** The API number (M102 spec 14). Optional for the reason `upload` is; the real handler passes it. */
+  apiVersion?: number;
 }): BridgeConfig {
   const mode = modeForWire(opts.mode);
   const mine = opts.operatorCommands ?? [];
@@ -1199,6 +1203,8 @@ export function bridgeConfigBody(opts: {
   // Appended last and omit-when-absent: no key is an older bridge, or a member's scoped answer, and
   // the phone shows "unknown" for both rather than guessing "on".
   if (opts.redact !== undefined) wire.redact = opts.redact;
+  // Appended last and omit-when-absent: no key is an older bridge, which the phone reads as no word at all.
+  if (opts.apiVersion !== undefined) wire.apiVersion = opts.apiVersion;
   return wire;
 }
 
@@ -1831,7 +1837,7 @@ export function startServer(opts: {
         try {
           const res = await lead.forward(req, url, resolved, {
             device: null,
-            audit: (entry) => audit.record({ action: entry.action, host: entry.host, device: null, detail: { forwarded: entry.outcome } }),
+            audit: (entry) => audit.record({ action: entry.action, host: entry.host, device: null, detail: forwardAuditDetail(entry) }),
           });
           await res.body?.cancel();
         } catch (err) {
@@ -2026,7 +2032,10 @@ export function startServer(opts: {
       const held = from.send?.heldOf(from.name, wire.paneId) ?? [];
       const shown = cfg.redact ? held.map((row) => ({ ...row, text: redactText(row.text) })) : held;
       // M69: a pane the phone may steer says so (paneCanSteer).
-      const marked: PaneWire = paneCanSteer(from, wire.paneId) ? { ...withHold, sendProtocol: true as const, canSteer: true as const } : { ...withHold, sendProtocol: true as const };
+      const steered: PaneWire = paneCanSteer(from, wire.paneId) ? { ...withHold, sendProtocol: true as const, canSteer: true as const } : { ...withHold, sendProtocol: true as const };
+      // M102 spec 14: a terminal pane whose ask book answers a screen card's tap by id says so, so a lead
+      // sends this member's card taps by the ask route, with this bridge's checks and record, not raw keys.
+      const marked: PaneWire = paneTakesAskRoute(from) ? { ...steered, askRoute: true as const } : steered;
       return held.length === 0 ? marked : { ...marked, held: shown };
     };
     // M99 spec 15: a linked pane says so. Only a `true` rides; an unlinked pane and every older body carry no key.
@@ -3227,7 +3236,7 @@ export function startServer(opts: {
                     action: entry.action,
                     host: entry.host,
                     device: whois(req).device,
-                    detail: { forwarded: entry.outcome },
+                    detail: forwardAuditDetail(entry),
                   };
                   if (entry.paneId !== undefined) row.paneId = entry.paneId;
                   if (entry.session !== undefined) row.session = entry.session;
@@ -3842,6 +3851,7 @@ export function startServer(opts: {
             push: push.enabled,
             vapidPublicKey: push.publicKey,
             build: await buildId(),
+            apiVersion: API_VERSION,
             mode: crew.mode,
             operatorCommands: mine,
             operatorKeys: myKeys,
@@ -9865,6 +9875,15 @@ export function paneCanSteer(from: { readonly send?: unknown; readonly driver?: 
   return from.driver === undefined && from.send !== undefined && from.surface?.canSteer(paneId) === true;
 }
 
+/**
+ * Whether a pane of this session carries `askRoute` (M102 spec 14): a terminal session whose ask book
+ * answers a screen card's tap by id, through `POST /api/ask/<id>`, also when a lead forwards it. A
+ * program session answers through its driver and keeps its own route on a crew; it carries no mark.
+ */
+export function paneTakesAskRoute(from: { readonly driver?: unknown; readonly asks?: unknown }): boolean {
+  return from.driver === undefined && from.asks !== undefined;
+}
+
 /** What `sendRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
 export interface SendRouteRuntime {
   readonly send?: SendProtocol;
@@ -9934,14 +9953,16 @@ export async function sendRoute(
     return await viewSendRoute(rt, body, { ...context, view: context.view, field: viewField });
   }
   if (rt.driver !== undefined) return programSendRoute(rt, rt.driver, body, context);
-  if (rt.send === undefined) return text(SEND_OFF_TEXT, 404);
+  // A refusal before the Send Protocol leaves one record and names its code (M102 spec 14, I3).
+  const refuse = (res: Response, reason: RefusalReason, paneId?: string): Response => routeRefusal(res, { action: "send", reason, paneId: paneId ?? bodyPaneOf(body), session: rt.name, ...context });
+  if (rt.send === undefined) return refuse(text(SEND_OFF_TEXT, 404), "send_off");
   const request = parseSendRequest(body);
-  if (request === null) return text("bad send request", 400);
+  if (request === null) return refuse(text("bad send request", 400), "bad_body");
   const refusal = rawInputRefusal(rt.herdr);
-  if (refusal !== null) return json(refusal.body, context.acceptEncoding, refusal.status);
+  if (refusal !== null) return refuse(json(refusal.body, context.acceptEncoding, refusal.status), "no_raw_input", request.pane);
   // An agent pane's string picks its profile; a bare shell, or an agent with no profile, has none and is typed and Entered blind.
   const harness = replySendOf(rt).harnessOf(request.pane);
-  if (harness === null) return text("no such terminal pane", 404);
+  if (harness === null) return refuse(text("no such terminal pane", 404), "no_pane", request.pane);
   const { pane: paneId, resendOf, ...asked } = request;
   // `POST /api/send` is the phone's route: a person's send, the one caller that may steer (M69).
   let sendRequest: SendRequest = { ...asked, fromPhone: true };
@@ -9967,7 +9988,7 @@ export async function sendRoute(
   } else if (resendOf !== undefined) {
     // The stored text, unmasked: never the row the phone shows, which the redact setting may mask.
     const source = rt.send.resendSource(rt.name, paneId, resendOf);
-    if (source === null) return text("no such ended held send on this pane", 404);
+    if (source === null) return refuse(text("no such ended held send on this pane", 404), "no_held_send", paneId);
     // A Resend goes on the queued path, as the held send it repeats: never a steer (M69), so `when`
     // goes with `fromPhone`.
     const { when: _steer, ...plain } = asked;
@@ -10882,13 +10903,15 @@ export async function askRoute(
   context: AskRouteContext,
 ): Promise<Response> {
   if (rt.driver !== undefined) return programAskRoute(rt, rt.driver, askId, body, context);
-  if (rt.asks === undefined) return text(ASK_OFF_TEXT, 404);
+  // A refusal before the ask book leaves one record and names its code (M102 spec 14, I3).
+  const refuse = (res: Response, reason: RefusalReason, paneId?: string): Response => routeRefusal(res, { action: "ask", reason, paneId: paneId ?? bodyPaneOf(body), session: rt.name, ...context });
+  if (rt.asks === undefined) return refuse(text(ASK_OFF_TEXT, 404), "send_off");
   const parsed = parseAnswerBody(askId, body);
-  if (parsed === null) return text("bad ask answer", 400);
+  if (parsed === null) return refuse(text("bad ask answer", 400), "bad_body");
   const refusal = rawInputRefusal(rt.herdr);
-  if (refusal !== null) return json(refusal.body, context.acceptEncoding, refusal.status);
+  if (refusal !== null) return refuse(json(refusal.body, context.acceptEncoding, refusal.status), "no_raw_input", parsed.pane);
   const harness = replySendOf(rt).harnessOf(parsed.pane);
-  if (harness === null) return text("no such terminal pane", 404);
+  if (harness === null) return refuse(text("no such terminal pane", 404), "no_pane", parsed.pane);
   const { pane: paneId, ...answer } = parsed;
   const reply = await rt.asks.handle(answer, { session: rt.name, paneId, harness });
   const receipt = reply.receipt;
@@ -10919,10 +10942,11 @@ async function programAskRoute(
   body: JsonValue | undefined,
   context: AskRouteContext,
 ): Promise<Response> {
+  const refuse = (res: Response, reason: RefusalReason, paneId?: string): Response => routeRefusal(res, { action: "ask", reason, paneId: paneId ?? bodyPaneOf(body), session: rt.name, ...context });
   const parsed = parseAnswerBody(askId, body);
-  if (parsed === null) return text("bad ask answer", 400);
+  if (parsed === null) return refuse(text("bad ask answer", 400), "bad_body");
   const harness = replySendOf(rt).harnessOf(parsed.pane);
-  if (harness === null) return text("no such conversation", 404);
+  if (harness === null) return refuse(text("no such conversation", 404), "no_pane", parsed.pane);
   const { pane: paneId, ...answer } = parsed;
   const reply = await driver.answer(answer, { session: rt.name, paneId, harness });
   const receipt = reply.receipt;
@@ -10941,6 +10965,27 @@ async function programAskRoute(
 
 function text(body: string, status: number): Response {
   return secure(new Response(body, { status }));
+}
+
+/**
+ * The pane a send or ask body names, for the record of a refusal before the body parsed: a short id
+ * string, never any other field of the body. Undefined when there is none.
+ */
+function bodyPaneOf(body: JsonValue | undefined): string | undefined {
+  const pane = asJsonRecord(body)?.pane;
+  return typeof pane === "string" && pane !== "" && pane.length <= 256 ? pane : undefined;
+}
+
+/**
+ * A send or ask refusal before its protocol ran (M102 spec 14, I3): one audit line with the code and
+ * no text, and the same code on the answer for the phone (`x-collie-reason`, `x-collie-by: bridge`).
+ */
+function routeRefusal(
+  res: Response,
+  at: { readonly action: "send" | "ask"; readonly reason: RefusalReason; readonly paneId: string | undefined; readonly session: string; readonly audit: AuditLog; readonly device: string | null },
+): Response {
+  recordRefusal(at.audit, { action: at.action, by: "bridge", outcome: "refused", reason: at.reason, paneId: at.paneId, session: at.session, device: at.device });
+  return withRefusal(res, "bridge", at.reason);
 }
 
 /**

@@ -1,3 +1,4 @@
+import { noteServerApiVersion } from "./api-skew";
 import { useEffect, useSyncExternalStore } from "react";
 
 import { fetchConfig } from "@/lib/api";
@@ -99,6 +100,8 @@ export function loadOperatorCommands(): Promise<void> {
     try {
       const cfg = await fetchConfig();
       if (startedIn !== generation) return;
+      // The bridge's API number against this bundle's: words once when they differ (M102 spec 14).
+      noteServerApiVersion(cfg.apiVersion);
       current = cfg.operatorCommands ?? [];
       currentKeys = cfg.operatorKeys ?? [];
       currentReplies = cfg.operatorQuickReplies ?? [];

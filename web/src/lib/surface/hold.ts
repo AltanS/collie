@@ -410,6 +410,31 @@ export function isElsewhereLine(line: string): boolean {
 }
 
 /**
+ * Why the hook holds nothing for a permission request it was handed (M102 spec 14): the agent's
+ * environment names no multiplexer, the agent's start time cannot be read, or the tool name is not one
+ * the wire carries. The hook then sends one skip line, so each bridge writes one record of the request.
+ */
+export const HOLD_SKIP_REASONS = ["no_markers", "no_pid_start", "bad_tool"] as const;
+export type HoldSkipReason = (typeof HOLD_SKIP_REASONS)[number];
+
+/**
+ * The skip line: the wire version, the harness and the reason, nothing else. No tool, no input, no
+ * folder: the bridge only counts that a request came and why nothing was held. A bridge older than the
+ * line drops it as unparsed, as before.
+ */
+export function holdSkipLine(harness: string, reason: HoldSkipReason): string {
+  return `${JSON.stringify({ v: HOLD_WIRE_VERSION, harness, skip: reason })}\n`;
+}
+
+/** The reason a skip line names, or null when the line is no skip line. */
+export function parseHoldSkip(line: string): HoldSkipReason | null {
+  if (line.length > HOLD_LINE_MAX) return null;
+  const node = parseJsonObject(line);
+  if (node === undefined || asJsonNumber(node.v) !== HOLD_WIRE_VERSION) return null;
+  return HOLD_SKIP_REASONS.find((reason) => reason === node.skip) ?? null;
+}
+
+/**
  * What the phone shows about a pane's hold, beside the ask on the Surface:
  *  - `held`: the hook waits for a tap.
  *  - `sent`: the tap went to the hook. The card says Sent until a tool edge or the screen moves on.
