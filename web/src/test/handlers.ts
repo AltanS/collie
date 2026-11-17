@@ -584,6 +584,8 @@ export interface SentRequest {
   capAck?: boolean;
   /** A resend of an ended held row (M56 spec 15): the old request id; the text is empty. */
   resendOf?: string;
+  /** A send into a sign-in field: the bridge keeps no line of it. */
+  secret?: boolean;
   host?: string;
 }
 let sends: SentRequest[] = [];
@@ -633,6 +635,7 @@ function sentRequest(body: JsonObject | undefined, pane: string, host: string | 
   };
   if (rowsHash !== undefined) request.rowsHash = rowsHash;
   if (body?.capAck === true) request.capAck = true;
+  if (body?.secret === true) request.secret = true;
   const resendOf = asJsonString(body?.resendOf);
   if (resendOf !== undefined) request.resendOf = resendOf;
   if (host !== null) request.host = host;

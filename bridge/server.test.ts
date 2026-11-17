@@ -3734,12 +3734,13 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // read that checks a typed line before it runs (ADR 0095, amendment), and a durable program's
     // conversation list and the items or reopen of one (M53 spec 11), and Sent's read and its two
     // writes, served by one function with one resolve for the read and one for the writes (ADR 0107),
-    // and the New page's folder browser (#467), and a session's walky talky off switch (M89 spec 04), and the two routes of this machine's "Worktree folder" setting (ADR 0093, note of 2026-11-13), and an
+    // and the New page's folder browser (#467), and a session's walky talky off switch (M89 spec 04), and the two routes of this machine's "Worktree folder" setting (ADR 0093, note of 2026-11-13), and
+    // this machine's accounts, one resolve for the read and one for the two writes (M101), and an
     // answer to an ask by id, the hook hold card's tap on a member's pane (M56 spec 12)) reach their runtime through the caller's resolver and
     // nothing else. One of them, the launcher rows, hands the resolver the lead's merge (ADR 0127), and
     // two, the launch and the branch create, hand it the lead's row carry (ADR 0127 point 3).
     const carry = String.raw`undefined, leadRowCarry\(allowedLaunchers, homedir\(\)\)`;
-    expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\((?:leadRows|${carry})?\);`, "g"))]).toHaveLength(31);
+    expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\((?:leadRows|${carry})?\);`, "g"))]).toHaveLength(33);
     expect([...src.matchAll(/await caller\.resolve\(leadRows\);/g)]).toHaveLength(1);
     expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\(${carry}\);`, "g"))]).toHaveLength(2);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
@@ -6692,5 +6693,34 @@ describe("freeSpaceName — a folder-named space never takes a name already in u
     expect(freeSpaceName("app", [{ label: "app" }])).toBe("app-2");
     expect(freeSpaceName("app", [{ label: "app" }, { label: "app-2" }])).toBe("app-3");
     expect(freeSpaceName("app", [{ label: "app-2" }])).toBe("app");
+  });
+});
+
+// ── Changes keeps the bounds of Files (ADR 0150, M103) ──────────────────────────────────────────
+// The dispatcher lives inside Bun.serve, so the wiring is pinned by source, as the Files gate is in
+// bridge/api-front-gate.test.ts. The behaviour of each scope is tested in bridge/changes-root.test.ts.
+
+describe("the changes routes read under the caller's own Files right", () => {
+  const code = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+
+  test("changes: both routes build their scope from the caller, never from a fixed level", () => {
+    expect(code).toContain("return workspaceChanges(rt.engine, workspaceId, url, req, changesScope(cfg, caller), cfg.redact);");
+    expect(code).toContain('if (action === "changes" && req.method === "GET") return paneChanges(rt.engine, paneId, url, req, changesScope(cfg, caller), cfg.redact);');
+    // The two routes are the only callers of the two handlers in the dispatcher.
+    expect([...code.matchAll(/return (paneChanges|workspaceChanges)\(/g)]).toHaveLength(2);
+  });
+
+  test("changes: the scope asks the caller's device-read gate and carries the bridge's private folders", () => {
+    const start = code.indexOf("function changesScope(");
+    expect(start).toBeGreaterThan(0);
+    const body = code.slice(start, code.indexOf("\n}\n", start));
+    expect(body).toContain('wide: caller.gate("device-read") === null');
+    expect(body).toContain("privateFolders: filesPrivateFolders(cfg)");
+  });
+
+  test("changes: a crew member's routes answer through the same closure, so its own gate decides", () => {
+    // The member's `caller.gate` is `crewGate` over the forwarded device (bridge/crew/peer-gate.ts).
+    expect(code).toContain("crewGate(level, cfg, device)");
+    expect([...code.matchAll(/serveSessionRoute\(\s*req/g)]).toHaveLength(2);
   });
 });

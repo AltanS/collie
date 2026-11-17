@@ -133,6 +133,8 @@ import { detectAskSelectRegion } from "./ask";
 import { detectResumePickerRegion } from "./resume";
 import { detectSwitchPickerRegion } from "./switch";
 import { detectPlanReviewRegion } from "./plan-review";
+import { requireProfile } from "../../surface/profile";
+import { detectSignInCard } from "../sign-in-card";
 
 /**
  * omp's block pipeline: the `/resume` session picker (resume.ts, .adr/0076), the `ask` tool's
@@ -164,7 +166,11 @@ const OMP_DIALOG_DETECTORS: readonly DialogDetector[] = [
   { name: "approval", detect: detectApprovalRegion },
   { name: "switch-picker", detect: detectSwitchPickerRegion },
   { name: "plan-review", detect: detectPlanReviewRegion },
+  { name: "sign-in", detect: (lines) => detectSignInCard(lines, OMP_IDLE) },
 ];
+
+/** omp's profile, whose sign-in layout (`idle.frameAlternates`, `secret`) finds the `/login` field. */
+const OMP_IDLE = requireProfile("omp").idle;
 
 export function ompBuildBlocks(lines: StyledLine[]): Block[] {
   // The five lifted screens never share a tail: each is anchored on its own bottom border and footer.
@@ -179,6 +185,15 @@ export function ompBuildBlocks(lines: StyledLine[]): Block[] {
     const blocks: Block[] = [];
     if (before.length > 0) blocks.push({ kind: "raw", lines: decorateOmpDisplay(before) });
     blocks.push({ kind: "prompt-select", prompt: lifted.model, lines: lines.slice(lifted.startLine) });
+    return blocks;
+  }
+  // The `/login` box over its sign-in field (sign-in-card.ts): the address as one link; the field is the composer's.
+  const signIn = detectSignInCard(lines, OMP_IDLE);
+  if (signIn !== null) {
+    const before = trimTrailingBlank(lines.slice(0, signIn.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: decorateOmpDisplay(before) });
+    blocks.push({ kind: "box-text", boxText: signIn.model, lines: lines.slice(signIn.startLine) });
     return blocks;
   }
   return [{ kind: "raw", lines: decorateOmpDisplay(stripChrome(lines)) }];

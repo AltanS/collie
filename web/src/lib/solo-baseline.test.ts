@@ -199,6 +199,8 @@ const AGENT_VIEW_KEYS = {
   workspaceNamed: true,
   // Not a crew dimension: the title the agent gave its session, from its journal (2026-11-13). Present only when the harness wrote one, so a solo golden body carries no such key.
   agentTitle: true,
+  // The added account the session runs under (M101). Present only for an ADDED account, so a solo golden body carries no such key.
+  account: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -302,6 +304,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
     // the golden object above pins — and this list is the tripwire against a quiet third.
     expect(AGENT_VIEW_KEYS.session).toBe(true);
     expect(Object.keys(AGENT_VIEW_KEYS).toSorted()).toEqual([
+      "account",
       "actions",
       "agent",
       "agentTitle",

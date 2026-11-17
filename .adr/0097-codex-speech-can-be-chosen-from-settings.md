@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-11
-- **Shipped in:** pending (1.20.0, with the voice takeover and ADR 0096)
 - **Amends in scope:** [ADR 0029](./0029-speech-to-text-is-a-provider-seam-collie-owns.md) and
   [ADR 0096](./0096-speech-can-stay-on-the-phone.md). 0029 made setup a CLI act; 0096 named one
   exception, Whistle. This record names a second, narrower one: a write device may switch the host

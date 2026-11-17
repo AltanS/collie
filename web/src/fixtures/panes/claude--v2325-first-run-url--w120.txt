@@ -1,0 +1,40 @@
+[38;5;174mWelcome[39m [38;5;174mto[39m [38;5;174mClaude[39m [38;5;174mCode[39m [38;5;246mv2.1.325[39m
+..........................................................
+
+     *                                       █████▓▓░
+                                 *         ███▓░     ░░
+            ░░░░░░                        ███▓░
+    ░░░   ░░░░░░░░░░                      ███▓░
+   ░░░░░░░░░░░░░░░░░░░    [1m*[0m                ██▓░░      ▓
+                                             ░▓▓███▓▓░
+[38;5;246m *[39m                                 [38;5;246m░░░░[39m
+[38;5;246m [39m                                [38;5;246m░░░░░░░░[39m
+[38;5;246m [39m                              [38;5;246m░░░░░░░░░░░░░░░░[39m
+      [38;5;174m █████████[39m                                        [38;5;246m*[39m
+      [38;5;174m██▄█████▄██[39m                        [1m*[0m
+      [38;5;174m █████████[39m      *
+.......[38;5;174m█[39m [38;5;174m█[39m   [38;5;174m█[39m [38;5;174m█[39m..........................................
+
+ [38;5;246mBrowser didn't open? Use the url below to sign in (c to copy)[39m
+
+[38;5;246mhttps://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redir
+ect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&scope=org%3Acreate_api_key+user%3Aprofile+user%3Ainf
+erence+user%3Asessions%3Aclaude_code+user%3Amcp_servers+user%3Afile_upload+user%3Aplugins+user%3Aprivacy_consents%3Awrit
+e&code_challenge=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX&code_challenge_method=S256&state=XXXXXXXXXXXXXXXXXXXXXXXXXX
+XXXXXXXXXXXXXXXXX[39m
+
+
+ Paste code here if prompted >
+
+
+
+
+
+
+
+
+
+
+
+
+

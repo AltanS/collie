@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-11
-- **Shipped in:** pending
 - **Trail:** Altan, 2026-11-11, on a desktop browser that showed "Access refused. This is not a
   connection problem.": "would it be possible to show a qr code here that i scan with my phone to give
   the desktop app access somehow?" · ADR 0086 (reads need the pairing token) · `bridge/pair-request.ts`

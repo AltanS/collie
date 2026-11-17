@@ -22,6 +22,40 @@
       "maxDraftRows": 100,
       "maxTailRows": 60
     },
+    "frameAlternates": [
+      {
+        "walk": "interior",
+        "top": { "pattern": "^─+$", "minCells": 8, "column": 0 },
+        "prompt": { "pattern": "^  Paste code here if prompted > ?(?<draft>.*)$", "column": 2 },
+        "bottom": { "pattern": "^", "column": 0, "maxColumn": 3, "open": true },
+        "trailer": { "row": "^  Esc to cancel$", "hint": true },
+        "continuationIndent": 0,
+        "maxDraftRows": 40,
+        "maxTailRows": 0,
+        "answers": true,
+        "newlineSubmits": true,
+        "secret": { "mask": { "glyph": "*", "clear": 6, "cut": "…" } },
+        "note": "The sign-in field of /login (Claude Code 2.1.325, lab 2026-11-15, claude--v2325-login-*.txt): under the rule, `Login`, the sign-in address wrapped at the pane's edge, then `Paste code here if prompted >` and `Esc to cancel`. The field shows each character as `*` but the last six (`***************ESTATE`), and a text longer than the row as `*` cut with `…`, with no space after `>`."
+      },
+      {
+        "walk": "interior",
+        "top": { "pattern": "^(?:Welcome to Claude Code v\\S+|\\.{3,}█.*\\.{3,})$", "column": 0 },
+        "prompt": { "pattern": "^ Paste code here if prompted > ?(?<draft>.*)$", "column": 1 },
+        "bottom": { "pattern": "^", "column": 0, "maxColumn": 31, "open": true },
+        "continuation": "^ {31}(?<text>\\S+)$",
+        "continuationIndent": 31,
+        "maxDraftRows": 40,
+        "maxTailRows": 0,
+        "answers": true,
+        "newlineSubmits": true,
+        "secret": { "mask": { "glyph": "*", "clear": 6 }, "wrap": true },
+        "note": "The sign-in field of Claude Code's FIRST RUN, an empty config folder (2.1.325, lab 2026-11-15, claude--v2325-first-run-*.txt): no rule, no `Login` title and no `Esc to cancel` (Esc does nothing there). Under the welcome art's dotted last row (or, below about 50 columns, the `Welcome to Claude Code v…` row, the art is not drawn), the sign-in address from column 0, then ` Paste code here if prompted >` from column 1. The same mask as /login, but a text longer than the row wraps under the label, 31 columns in, and is never cut; only the last row shows clear characters (`wrap`): 21 characters at 40 columns draw `********`, `********`, `STATE`."
+      }
+    ],
+    "dialogRows": ["^Let's get started\\.$"],
+    "dialogRowsNote": "Claude Code 2.1.325's first-run theme step (an empty config folder, lab 2026-11-15, claude--v2325-first-run-theme-*): `Let's get started.` over `Choose the text style that looks best with your terminal` and an unnumbered list, no footer, no key named, and Esc does nothing. It reads as a dialog Collie does not read, so the screen is shown and Enter is the person's own, on the Keys tray. `/theme` in a session draws the same list under a `Theme` title with `Enter to select · Esc to cancel` and no `Let's get started.`.",
+    "signInRows": ["^Paste code here if prompted >"],
+    "signInRowsNote": "Claude Code 2.1.325 draws its sign-in field after `Paste code here if prompted >`, on /login two columns in and on the first run one (lab 2026-11-15). The two layouts above read the two shapes and draw the card; this row is the wider net: a screen that ends near such a row and shows no ordinary input box keeps no draft and no line of what is sent there, whatever else is drawn around it.",
     "placeholders": {
       "texts": ["Press up to edit queued messages"],
       "patterns": ["^Try \"[^\"]*\"$"],

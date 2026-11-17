@@ -734,7 +734,7 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   }
   if (wrappedLines > 0) {
     deps.io.out(`  statusLine → \`${binary} beacon statusline\`: your own command still runs and prints exactly as before.`);
-    deps.io.out("  The wrapper passes on the context window's size and the 5h and 7d limits, so the phone shows the context in percent.");
+    deps.io.out("  The wrapper passes on the context window's size and the usage limits the agent reports, so the phone shows the context in percent.");
     deps.io.out(`  To undo it: \`collie hooks install claude ${NO_STATUSLINE_FLAG}\`.`);
   } else if (!wrapsStatusLine()) {
     deps.io.out("  statusLine not wrapped on Windows, so the phone shows the context as a token count.");
@@ -846,8 +846,9 @@ export function hooksAreBehind(deps: HooksDeps): boolean {
 /**
  * WHAT is behind: the hooks themselves (a missing registration or a stale marker), or only the
  * statusLine wrap, which counts only when the statusLine IS wrapped and names another binary. An
- * unwrapped statusLine is never behind: the wrap is opt-in. The hooks win when both are, because their
- * install re-points a wrapped statusLine as well.
+ * unwrapped statusLine is never behind: where the install did not wrap it (`--no-statusline`, or no
+ * statusLine is configured) there is nothing to re-point. The wrap is the default since 2026-11-13.
+ * The hooks win when both are, because their install re-points a wrapped statusLine as well.
  */
 export function behindReason(deps: HooksDeps): "hooks" | "statusline" | null {
   const states = claudeSettingsTargets(deps.ctx).map((target) => targetState(deps, target));

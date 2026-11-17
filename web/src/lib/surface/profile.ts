@@ -496,6 +496,57 @@ export interface FrameLayout {
    * an answer and a stray message. Optional.
    */
   readonly newlineSubmits?: true;
+  /**
+   * This shape of the box is a sign-in field: the agent asks for the code or the redirect address a
+   * login page shows, or for a key (Claude Code's `Paste code here if prompted >`, pi's `paste the
+   * authorization code / redirect URL here:`). What is typed there is a secret. The frame carries it
+   * ({@link Frame.secret}), the Surface names it (`field: "secret"`), the phone keeps no draft of it,
+   * and the bridge keeps no line of it. Only the prompt row and the rows under it are the draft: the
+   * rows above it are the agent's own words. Needs `answers` and `newlineSubmits`. Optional.
+   */
+  readonly secret?: SecretField;
+  /**
+   * In `idle.frameAlternates` only: this layout is tried before the main one. For a screen the main
+   * layout also reads as a box (pi draws its login panel between the rules of its editor), where the
+   * narrower shape must win. Optional.
+   */
+  readonly precedes?: true;
+}
+
+/** How a sign-in field is drawn ({@link FrameLayout.secret}). */
+export interface SecretField {
+  /**
+   * A regular expression source the row right over the prompt row must match: the field's own label,
+   * when the label stands above the field and not on its row. Optional.
+   */
+  readonly lead?: string;
+  /** How the field draws what is typed, when it hides it. Optional: without it the field shows the text. */
+  readonly mask?: SecretMask;
+  /**
+   * The field is one row that scrolls: a text longer than the row shows only its end (pi 1.3.0). The
+   * Send Protocol then takes the end of the text it typed, at least 16 characters of it, as the text.
+   * Optional.
+   */
+  readonly tail?: true;
+  /**
+   * The field wraps a text longer than the row under its label and never cuts it (Claude Code 2.1.325's
+   * first-run field). Its rows join with no space, and only the last row shows clear characters: at
+   * most `mask.clear`, fewer when the last row holds fewer. The Send Protocol then checks the joined
+   * rows by their length and that clear tail. Optional.
+   */
+  readonly wrap?: true;
+}
+
+/**
+ * A field that hides what is typed: each character as `glyph`, the last `clear` characters as typed
+ * (Claude Code 2.1.325: `***************ESTATE`). With `cut`, a text too long for the row ends in that
+ * glyph and shows no clear characters at all. The Send Protocol checks the shape against the text it
+ * typed: the length and the clear tail, or, on a cut row, that the row is full of the mask glyph.
+ */
+export interface SecretMask {
+  readonly glyph: string;
+  readonly clear: number;
+  readonly cut?: string;
 }
 
 /**
@@ -670,6 +721,21 @@ export interface Profile {
      * a match in the rows the modal cues read does the same when those rows hold any cue. Optional.
      */
     readonly overlayRows?: readonly string[];
+    /**
+     * Rows that say a sign-in field is on screen, as regular expression sources read on the trimmed
+     * text of each of the screen's last rows (secret-field.ts `signInShown`). The field's own layout
+     * (`idle.frame.secret`) reads the field and draws the card; these rows are the wider net for a
+     * shape no layout reads yet. Where one matches and no other box was found, the Surface still
+     * names the field (`field: "secret"`): the phone keeps no draft and the bridge no line. Optional.
+     */
+    readonly signInRows?: readonly string[];
+    /**
+     * Rows that say a dialog Collie does not read holds the keys, as regular expression sources read on
+     * the trimmed text of every row of a screen with no box. For a screen that names no key and has no
+     * footer, so no cue reads it as a dialog (Claude Code's first-run theme step). The modal reads
+     * `unreadable`: nothing is offered, and the screen is shown as a dialog Collie cannot read. Optional.
+     */
+    readonly dialogRows?: readonly string[];
     /**
      * True for a harness that draws its dialogs where the box stands, between the same two rules. The
      * frame walk then finds a box on a dialog screen, so the modal cues read the whole screen, the
@@ -1424,7 +1490,32 @@ function parseTrailer(value: JsonValue): FrameTrailer {
 }
 
 /** The fields of a box that answers a question, as {@link parseAnswerBox} gathers them. */
-type AnswerBoxFields = { answers?: true; submit?: readonly string[]; newlineSubmits?: true };
+type AnswerBoxFields = { answers?: true; submit?: readonly string[]; newlineSubmits?: true; secret?: SecretField; precedes?: true };
+
+/** `idle.frame.secret`: a sign-in field ({@link FrameLayout.secret}). */
+/** {@link SecretField} while {@link parseSecret} builds it. */
+type SecretFields = { lead?: string; mask?: SecretMask; tail?: true; wrap?: true };
+
+function parseSecret(value: JsonValue, frameNode: JsonObject): SecretField {
+  const node = object(value, "idle.frame.secret");
+  if (frameNode.answers !== true || frameNode.newlineSubmits !== true) fail("idle.frame.secret", "needs answers and newlineSubmits");
+  const secret: SecretFields = {};
+  if (node.lead !== undefined) secret.lead = pattern(node.lead, "idle.frame.secret.lead").source;
+  if (node.tail !== undefined && node.tail !== true) fail("idle.frame.secret.tail", "must be true when named");
+  if (node.tail === true) secret.tail = true;
+  if (node.wrap !== undefined && node.wrap !== true) fail("idle.frame.secret.wrap", "must be true when named");
+  if (node.wrap === true) secret.wrap = true;
+  if (node.mask !== undefined) {
+    const mask = object(node.mask, "idle.frame.secret.mask");
+    const glyph = text(field(mask, "glyph", "idle.frame.secret.mask"), "idle.frame.secret.mask.glyph");
+    if ([...glyph].length !== 1) fail("idle.frame.secret.mask.glyph", "must be one character");
+    const clear = whole(field(mask, "clear", "idle.frame.secret.mask"), "idle.frame.secret.mask.clear", 0);
+    const cut = mask.cut === undefined ? undefined : text(mask.cut, "idle.frame.secret.mask.cut");
+    if (cut !== undefined && [...cut].length !== 1) fail("idle.frame.secret.mask.cut", "must be one character");
+    secret.mask = cut === undefined ? { glyph, clear } : { glyph, clear, cut };
+  }
+  return secret;
+}
 
 /** `idle.frame.answers`, `submit` and `newlineSubmits`: what a box that answers a question takes ({@link FrameLayout.answers}). */
 function parseAnswerBox(frameNode: JsonObject): AnswerBoxFields {
@@ -1437,6 +1528,9 @@ function parseAnswerBox(frameNode: JsonObject): AnswerBoxFields {
   if (frameNode.answers === true) box.answers = true;
   if (submit !== undefined) box.submit = submit;
   if (frameNode.newlineSubmits === true) box.newlineSubmits = true;
+  if (frameNode.secret !== undefined) box.secret = parseSecret(frameNode.secret, frameNode);
+  if (frameNode.precedes !== undefined && frameNode.precedes !== true) fail("idle.frame.precedes", "must be true when named");
+  if (frameNode.precedes === true) box.precedes = true;
   return box;
 }
 
@@ -1474,7 +1568,7 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
   const scrolled = frameNode.scroll === undefined ? withHints : { ...withHints, scroll: parseScroll(frameNode.scroll, maxDraftRows) };
   const base = { ...scrolled, ...parseAnswerBox(frameNode) };
   if (walk === "edges") {
-    for (const key of ["rows", "trailer", "continuation", "ownPrompt", "maxWidgetRows"] as const) {
+    for (const key of ["rows", "trailer", "continuation", "ownPrompt", "maxWidgetRows", "secret"] as const) {
       if (frameNode[key] !== undefined) fail(`idle.frame.${key}`, "belongs to the interior walk");
     }
     const edgeBottom = anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true);
@@ -1531,6 +1625,7 @@ export function parseProfile(raw: JsonValue): Profile {
   const volatileNode = object(field(idleNode, "volatile", "idle"), "idle.volatile");
   const aboveNode = object(field(volatileNode, "above", "idle.volatile"), "idle.volatile.above");
   const belowNode = object(field(volatileNode, "below", "idle.volatile"), "idle.volatile.below");
+  if (frameNode.precedes !== undefined) fail("idle.frame.precedes", "belongs to idle.frameAlternates");
   const idle: Profile["idle"] = {
     frame: parseFrame(frameNode),
     placeholders: parsePlaceholders(placeholderNode),
@@ -1555,7 +1650,25 @@ export function parseProfile(raw: JsonValue): Profile {
     idleNode.overlayRows === undefined
       ? undefined
       : list(idleNode.overlayRows, "idle.overlayRows").map((item, i) => pattern(item, `idle.overlayRows[${String(i)}]`).source);
-  const withOverlay0: Profile["idle"] = overlayRows === undefined ? withRunning : { ...withRunning, overlayRows };
+  const withOverlayRows: Profile["idle"] = overlayRows === undefined ? withRunning : { ...withRunning, overlayRows };
+  const signInRows =
+    idleNode.signInRows === undefined
+      ? undefined
+      : list(idleNode.signInRows, "idle.signInRows").map((item, i) => {
+          const row = pattern(item, `idle.signInRows[${String(i)}]`);
+          if (row.test("")) fail(`idle.signInRows[${String(i)}]`, "must not match a blank row");
+          return row.source;
+        });
+  const withSignIn: Profile["idle"] = signInRows === undefined ? withOverlayRows : { ...withOverlayRows, signInRows };
+  const dialogRows =
+    idleNode.dialogRows === undefined
+      ? undefined
+      : list(idleNode.dialogRows, "idle.dialogRows").map((item, i) => {
+          const row = pattern(item, `idle.dialogRows[${String(i)}]`);
+          if (row.test("")) fail(`idle.dialogRows[${String(i)}]`, "must not match a blank row");
+          return row.source;
+        });
+  const withOverlay0: Profile["idle"] = dialogRows === undefined ? withSignIn : { ...withSignIn, dialogRows };
   const withOverlay: Profile["idle"] =
     idleNode.frameAlternates === undefined
       ? withOverlay0

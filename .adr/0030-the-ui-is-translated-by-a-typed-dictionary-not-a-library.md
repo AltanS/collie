@@ -1,6 +1,7 @@
 # 0030 — The UI is translated by a typed dictionary, not an i18n library
 
 Status: **Accepted** (2026-08-24)
+Date: 2026-08-24
 
 Amended in scope by: [ADR 0074](./0074-a-push-title-is-a-code-the-phone-translates.md): a push
 notification's title is now translated, through a code the bridge sends beside its English and a

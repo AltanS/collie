@@ -31,8 +31,8 @@
 // journal — bridge/operator-fonts.ts serves an operator's own font files under it. That does not
 // widen anything, because the rule was never "only the journal touches the disk". The rule is:
 //
-//   A CLIENT-SUPPLIED VALUE BECOMES A PATH IN THREE PLACES ONLY: THE JOURNAL, THE CHANGES VIEW,
-//   AND THE FILES VIEW.
+//   A CLIENT-SUPPLIED VALUE BECOMES A PATH IN FOUR PLACES ONLY: THE JOURNAL, THE CHANGES VIEW,
+//   THE FILES VIEW AND A BRANCH'S FOLDER.
 //
 // In the journal it is a pane id, never a path. The Changes view (bridge/changes.ts, ADR 0065) is
 // the second place, and it is bounded by a LISTED-PATHS rule: the client names a repo and a file,
@@ -40,7 +40,7 @@
 // the pane's folder returned, and the file one git itself listed as changed there; anything else is
 // refused before a path exists. The one file it reads off disk itself (an untracked one) goes
 // through `containedRealpath` against the repo's real path as well. The font surface does not become
-// a third such place: `GET /api/fonts/<basename>` LOOKS the request's name UP in the rows the
+// another such place: `GET /api/fonts/<basename>` LOOKS the request's name UP in the rows the
 // operator's own `theme.toml` declared and takes THAT row's path, so a name nobody declared is
 // refused before any path exists. Containment then runs anyway, as an independent second check on
 // the real paths.
@@ -54,7 +54,16 @@
 // (bridge/folder-browse.ts, #467) is this same place pointed at home: the client's text is resolved
 // under home, refused on the same shape, contained on real paths through this function, denied the
 // same folders, and answered with folder names only (ADR 0083's header names it). A new reader may
-// reuse this function; it may not become a fourth place without an ADR that says why and names its bound.
+// reuse this function; it may not become a fifth place without an ADR that says why and names its bound.
+//
+// A branch's folder (bridge/worktree-folder.ts, ADR 0145) is the FOURTH place: the phone names a
+// PARENT folder, and the bridge names the child after the branch. Its bound is that module's own
+// rule, run at plan and again at create (absolute, no `..` as sent, a real directory under home, no
+// link below home, no dotdir, not inside the repo, and a child that does not exist yet).
+//
+// Not places, because they reuse a bound that is already here: a trick's file input
+// (bridge/tricks/inputs.ts) reads through the Files view's own reader under the pane's Files root,
+// and the folder browser above is the Files bound pointed at home.
 
 import { realpath as realpathNativeCb } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
@@ -131,6 +140,20 @@ export async function containedRealpath(
 export function rootList(roots: string | readonly string[]): string[] {
   const list = typeof roots === "string" ? [roots] : [...roots];
   return list.map((r) => r.trim()).filter((r) => r !== "");
+}
+
+/**
+ * An adapter's roots: fixed, or read again at each use. The live form is how an added account's own
+ * folder joins the search with no restart (M101, ADR 0141): the registry hands the adapter a function
+ * over the configured roots plus the accounts' roots, and every lookup asks it.
+ */
+export type RootSource = string | readonly string[] | (() => readonly string[]);
+
+/** The roots of `source` now, normalised as {@link rootList} does. */
+export function rootReader(source: RootSource): () => string[] {
+  if (typeof source === "function") return () => rootList(source());
+  const fixed = rootList(source);
+  return () => fixed;
 }
 
 /**

@@ -63,8 +63,8 @@ export interface NewTabSheetProps {
 
 const SHELL_KEY = "shell";
 
-// `shell`: the outcome of "Just a shell" is unknown. That row is the plain create, which carries no request id,
-// so its notice promises no safe retry.
+// `shell`: the outcome of "Just a shell" is unknown. That row is the plain create. `createTab` sends a request id
+// now (M100), but this sheet keeps no id for it, so a second tap mints a new one and its notice promises no safe retry.
 type SheetNotice = { kind: "refused"; message: string } | { kind: "unknown"; shell: boolean };
 
 export function NewTabSheet({ open, onClose, label, beside, scope, launchers, start }: NewTabSheetProps) {

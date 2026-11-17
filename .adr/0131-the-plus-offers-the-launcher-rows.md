@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-06
-- **Shipped in:** pending
 - **Relates to:** [ADR 0091](./0091-launch-by-id-with-a-request-id.md) (the start by id and its request
   id, which the sheet reuses), [ADR 0094](./0094-launchers-added-from-a-phone.md) (the rows, their
   availability and the no-prompts confirm), [ADR 0102](./0102-starters-are-launcher-rows.md) (a

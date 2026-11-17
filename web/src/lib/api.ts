@@ -27,6 +27,7 @@ import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
 import { mintRequestId } from "./worktree-name";
+import type { AccountRow, AccountsBody, AddAccountAsk } from "./accounts";
 import type { OfficialState, OfficialTricksReply, TrickTapReply, TricksReply, TapBody, WireTrickInfo } from "./tricks/schema";
 import { readTapReplyTolerant, readTricksReplyTolerant } from "./tricks/read";
 import { readOfficialAddReply, readOfficialTricksReply, readTrick } from "./tricks/wire";
@@ -1649,7 +1650,7 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
           withScope(`/api/pane/${encodeURIComponent(body.pane)}/reply`, scope),
           {
             method: "POST",
-            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck, when: body.when }),
+            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck, when: body.when, secret: body.secret }),
           },
           sendRecover(),
         ),
@@ -2200,6 +2201,10 @@ export interface StartLaunchBody {
   cwd?: string;
   /** The pane whose space this opens a new tab in (the route's own `paneId` field). Absent: a new space. */
   paneId?: string;
+  /** An added account's id (M101). Sent only with `harness`; absent for Default and for every other start. */
+  account?: string;
+  /** Type the agent's sign-in line instead of the plain start. Only with `harness`. */
+  signIn?: true;
   requestId: string;
 }
 
@@ -2211,7 +2216,7 @@ export interface StartLaunchBody {
  */
 export function startLaunch(
   what: BranchableWhat,
-  opts: { cwd?: string; requestId: string; besidePaneId?: string },
+  opts: { cwd?: string; requestId: string; besidePaneId?: string; account?: string; signIn?: boolean },
   scope?: Scope,
 ): Promise<CreateResponse> {
   const body: StartLaunchBody = { requestId: opts.requestId };
@@ -2222,6 +2227,9 @@ export function startLaunch(
   // A starter has no folder: the bridge ignores one, so none is sent.
   if (opts.cwd !== undefined && what.kind !== "starter") body.cwd = opts.cwd;
   if (opts.besidePaneId !== undefined && what.kind !== "starter") body.paneId = opts.besidePaneId;
+  // An account and a sign-in belong to an agent started by id; nothing else carries them.
+  if (what.kind === "harness" && opts.account !== undefined) body.account = opts.account;
+  if (what.kind === "harness" && opts.signIn === true) body.signIn = true;
   return req<CreateResponse>(withScope("/api/launch", scope), { method: "POST", body: JSON.stringify(body) });
 }
 
@@ -2379,6 +2387,8 @@ interface WorktreeAtBody {
   /** An agent row (an operator's with a harness, or one a phone added): the allowlisted line. */
   command?: string;
   shell?: true;
+  /** An added account's id (M101). Sent only with `harness`. */
+  account?: string;
 }
 
 /**
@@ -2393,12 +2403,15 @@ export function createWorktreeAt(
     folder: WorktreeFolderChoice;
     requestId: string;
     what: BranchableWhat;
+    account?: string;
   },
   scope?: Scope,
 ): Promise<WorktreeCreateResponse> {
   const body: WorktreeAtBody = { cwd: ask.cwd, branch: ask.branch, base: ask.base, folder: ask.folder, requestId: ask.requestId };
-  if (ask.what.kind === "harness") body.harness = ask.what.id;
-  else if (ask.what.kind === "row") body.command = ask.what.command;
+  if (ask.what.kind === "harness") {
+    body.harness = ask.what.id;
+    if (ask.account !== undefined) body.account = ask.account;
+  } else if (ask.what.kind === "row") body.command = ask.what.command;
   else body.shell = true;
   return req<WorktreeCreateResponse>(withScope("/api/worktree", scope), {
     method: "POST",
@@ -2428,6 +2441,38 @@ export function outcomeUnknown<TThrown>(thrown: TThrown): boolean {
  */
 export function fetchLaunchers(scope?: Scope): Promise<LaunchersResponse> {
   return req<LaunchersResponse>(withScope("/api/launchers", scope));
+}
+
+// ── Accounts (M101) ──────────────────────────────────────────────────────────────────────────────
+//
+// A second login for an agent, kept as a folder. The list lives on the machine that holds the folders.
+
+/**
+ * GET /api/accounts — THIS scope's own machine's accounts, forwarded on `?host=` (the New page reads
+ * the chosen machine's). A 404 (`accounts.unavailable`) means the machine offers none: the app hides
+ * the feature (lib/accounts.ts).
+ */
+export function fetchAccounts(scope?: Scope): Promise<AccountsBody> {
+  return req<AccountsBody>(withScope("/api/accounts", scope));
+}
+
+/**
+ * POST /api/accounts — add one account on the machine the lead answers for. `requestId` is minted per
+ * add (`mintRequestId`). The write gate checks the device; a refusal carries an `accounts.*` code.
+ */
+export function addAccount(ask: AddAccountAsk, requestId: string): Promise<{ account: AccountRow }> {
+  return req<{ account: AccountRow }>("/api/accounts", {
+    method: "POST",
+    body: JSON.stringify({ ...ask, requestId }),
+  });
+}
+
+/** POST /api/accounts/remove — forget one added account's label. The folder, its links and its login stay. */
+export function removeAccount(id: string, requestId: string): Promise<{ ok: true }> {
+  return req<{ ok: true }>("/api/accounts/remove", {
+    method: "POST",
+    body: JSON.stringify({ requestId, id }),
+  });
 }
 
 // ── Rows a phone adds for the crew (ADR 0094, amended by ADR 0127 point 4) ───────────────────────

@@ -233,6 +233,13 @@ export interface AgentView {
    */
   usage?: PaneUsage;
   /**
+   * The added account this session runs under (M101), present only for an ADDED account. Mirrors
+   * `PaneWire.account` in bridge/types.ts. **Absent, never a placeholder**: the Default account, a
+   * pane of no account-capable agent, and an older bridge all send no key, and every one of those
+   * renders what it rendered before the field existed.
+   */
+  account?: { id: string; label: string };
+  /**
    * What the checkout holding this pane's folder is on. Mirrors `PaneWire.gitHead` in bridge/types.ts.
    *
    * **Absent, never a placeholder**: a folder in no checkout, a reading the bridge has not taken yet,
@@ -2849,16 +2856,21 @@ export type PaneProgress =
 
 
 
-/** A subscription window, by the label the phone draws for it. Mirrors `UsageWindow` in bridge/usage.ts. */
-export type UsageWindow = "5h" | "7d";
-
-/** One subscription window's reading. Mirrors `UsageLimit` in bridge/usage.ts. */
+/**
+ * One subscription window's reading. Mirrors `UsageLimit` in bridge/usage.ts. `window` is the
+ * harness's own key as an open string: `5h` and `7d` keep their meaning, `7d:<scope>` is a weekly
+ * window scoped to a model (its `label` names it), a length such as `30d` is a window of another
+ * length, and `spend` is a gateway spend limit. A key this build does not know is drawn by its label,
+ * else by the key itself.
+ */
 export interface UsageLimit {
-  window: UsageWindow;
+  window: string;
   /** Percent of the window used, 0 to 100. */
   used: number;
   /** When the window resets, epoch ms. */
   resetsAt?: number;
+  /** The harness's own name for a scoped window (`Opus`). Absent when it has none. */
+  label?: string;
 }
 
 /** A pane's usage numbers. Mirrors `PaneUsage` in bridge/usage.ts; every part absent when unreported. */

@@ -70,9 +70,12 @@
 // anything else is `unknown(no_evidence)`. A steer is never held and never joins a pane's held sends.
 //
 // A turn the screen does not mark: Claude Code 2.1.301 draws no spinner while the answer streams, so
-// S0 reads idle. On a harness that queues, a send that is not a command may see the rows above the
+// S0 reads idle. On a harness that queues, a send may see the rows above the
 // box move while Collie types, if the frame stays, the rows under the box keep their count, the cue
-// inside the frame stays and the Surface claims no modal (aboveMovedInTurn). The rows above may only
+// inside the frame stays and the Surface claims no modal (aboveMovedInTurn). A command may too, at its
+// probe, where the turn rule would let it into a running turn (the harness queues commands, or runs
+// that one at once): an agent that prints its released queue after a menu answer reads idle for some
+// seconds, and a command sent then was refused `probe_failed` (2026-11-15). The rows above may only
 // scroll and grow: each read shares two rows in order with the read before it (aboveScrolled), so a
 // screen that replaced the conversation fails. From there it takes the queued path; the receipt says
 // `queued` only on S0's running read or a witness (in S2, or one late read where a turn may run). A
@@ -254,6 +257,7 @@ import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommand
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, readIsUnstyled, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
+import { fieldShows } from "../../web/src/lib/surface/secret-field.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { AboveNotice } from "../../web/src/lib/surface/notice.ts";
 import type { CommandListRows, FooterRow, OtherScreenRow, Profile, ProfileMatch, QueuedRow, SteerWitness } from "../../web/src/lib/surface/profile.ts";
@@ -754,6 +758,12 @@ export interface SendRequest {
    * as the person's own words and is never held either.
    */
   readonly view?: { readonly head: boolean; readonly check: () => string | null };
+  /**
+   * The text is for a sign-in field (`idle.frame.secret`): the phone saw one and says so. The record
+   * keeps no line of it, and it takes the screen road only. A send that meets such a field without it
+   * loses its line at S0.
+   */
+  readonly secret?: boolean;
 }
 
 export { BAD_HEAD, VIEW_NO_PROFILE };
@@ -1275,6 +1285,28 @@ function ghostView(ghost: string | null, snap: Snap): Snap {
 }
 
 /**
+ * A read as the run knows a sign-in field (`idle.frame.secret`): a field that hides or scrolls what is
+ * typed shows the run's own text only in its drawn form (a mask, the end of a long text). Where the
+ * field shows exactly that form ({@link fieldShows}), the box reads as holding the text, so every
+ * compare after it checks the one text it typed. Every other read is as it was read.
+ */
+function secretView(typed: string, snap: Snap): Snap {
+  const { frame } = snap;
+  const secret = frame?.secret;
+  if (frame === null || secret === undefined || frame.placeholder) return snap;
+  const shown = frame.interior.text;
+  const line = typed.trim();
+  if (shown === line || !fieldShows(shown, line, secret)) return snap;
+  return { ...snap, frame: { ...frame, interior: { ...frame.interior, text: line } } };
+}
+
+/** The read's rows for the memory ring: a sign-in field's rows are left out, since they may show the secret. */
+function ringRows(texts: readonly string[], frame: Frame | null): readonly string[] {
+  if (frame?.secret === undefined) return texts;
+  return texts.map((row, i) => (i >= frame.interior.prompt && i <= frame.interior.last ? "" : row));
+}
+
+/**
  * Why a steer's last read before the key refused the press (M69, counsel on the Edge 5 candidate): a
  * dialog (an ask, or one Collie cannot read) is `dialog_open`, because the steer key would answer it;
  * no read, no box, or a modal the Surface cannot tell is `unreadable`, because the key would land blind.
@@ -1680,6 +1712,11 @@ function commitKeys(state: RunState): readonly string[] {
  * Whether the box answers a question the agent asked: a frame whose layout says so (`idle.frame.answers`),
  * or the profile's `idle.answerPrompt` on the frame's prompt row.
  */
+/** Whether a send's text is a sign-in code: the phone named it (`secret`), or S0 read a sign-in field. */
+function isSecretSend(state: RunState): boolean {
+  return state.request.secret === true || state.secretField === true;
+}
+
 function answersQuestion(match: ProfileMatch | null, snap: Snap): boolean {
   if (snap.frame?.answers === true) return true;
   const source = match?.profile.idle.answerPrompt;
@@ -2763,6 +2800,8 @@ interface RunState {
   neverHold?: boolean;
   /** A release met a box that answers the agent's question (`idle.answerPrompt`): it waits, and the try does not count. */
   answerWait?: boolean;
+  /** S0 read a sign-in field (`idle.frame.secret`): the text is a secret, named by the phone or not. */
+  secretField?: boolean;
   /**
    * A release met a box that is still starting: its probe never showed, or an earlier probe character
    * is still pending there (the header). It goes back to its place, the try does not count, and the
@@ -3293,6 +3332,7 @@ export class SendProtocol {
       surfaceRevision: request.revision ?? 0,
       mode: request.mode,
       text: request.text,
+      secret: request.secret === true,
     });
     if (accepted.kind === "id_reused") {
       // The stored request is someone else's; this refusal is not stored under its id.
@@ -3315,8 +3355,9 @@ export class SendProtocol {
     if (request.view !== undefined && waiting.length > 0) return this.settle(this.bareState(request, accepted.record, target, null), new Ended("refused", "busy", { detail: VIEW_BEHIND_HELD }));
     const draftOnly = request.draftHolds !== true && waiting.every((entry) => entry.draftHolds === true && entry.cause === "draft_present");
     // A steer never joins (M69): it is for the turn that runs now, and goes in ahead of the held sends,
-    // which wait for that turn to end anyway.
-    const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer";
+    // which wait for that turn to end anyway. Nor does a sign-in code (`secret`): a held text waits on
+    // disk in plain form, and the code is for the field on screen now, not for a later turn.
+    const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer" && request.secret !== true;
     const match = joins ? ((await this.deps.profile(target.harness, target.paneId)) ?? (await this.heldPlainProfile(request, waiting, target.paneId, generation))) : null;
     if (match !== null && !(request.mode === "command" && runsInTurnEntry(request.text, match) !== null)) {
       const state = this.bareState(request, accepted.record, target, match);
@@ -3387,6 +3428,9 @@ export class SendProtocol {
     if (state.request.view !== undefined) return false;
     // A steer is never held (M69): it is for the turn that runs now, and a later turn is the wrong one.
     if (state.request.when === "steer") return false;
+    // A sign-in code is never held: a held text waits on disk in plain form (holds.ts), and a code is
+    // good for one try. The person sends it again once the field is free.
+    if (isSecretSend(state)) return false;
     const clean = cleanProbe(state, end);
     // A draft proven live by its probe (2026-10-25) left the box as it was: it holds like an unprobed one did.
     if (state.keys.length > 0 && !clean && !(end.reason === "draft_present" && (probeOnly(state) || state.placeholderProbe !== null))) return false;
@@ -4223,7 +4267,7 @@ export class SendProtocol {
     const pick = pickSendPath({
       enabled: data.enabled(),
       part: data.door.partOf(address),
-      request: { mode: request.mode, text: request.text, when: request.when, fromView: request.view !== undefined, mail: request.draftHolds === true },
+      request: { mode: request.mode, text: request.text, when: request.when, fromView: request.view !== undefined, mail: request.draftHolds === true, secret: request.secret === true },
     });
     if (pick.path === "screen") return over ? this.overDraftMiss(state, "not-linked") : null;
     const mail = request.draftHolds === true;
@@ -4402,6 +4446,8 @@ export class SendProtocol {
   /** Tell {@link SendDeps.blindSent} a blind send went out. Never throws, and never changes the answer. */
   private noteBlindSent(state: RunState): void {
     try {
+      // A sign-in code never reaches the shell-line record (sent.ts).
+      if (isSecretSend(state)) return;
       this.deps.blindSent?.({ session: state.target.session, paneId: state.target.paneId, text: state.request.text });
     } catch (err) {
       console.warn(`[send] the blind-send note failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -4420,7 +4466,8 @@ export class SendProtocol {
     // A steer is kept too, with no card of its own: a Stop may give it back together with the queue. So is a
     // send that started a turn: a Stop early in it gives the prompt back to the box (queued.ts, SUBMITTED).
     const submitted = (receipt.outcome === "sent" || receipt.outcome === "effective") && receipt.queued !== true;
-    if ((receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered" || submitted) {
+    // A sign-in code is not kept for a queued or returned card: the field is not a turn's input box.
+    if (!isSecretSend(state) && ((receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered" || submitted)) {
       this.queuedSends.add({
         id: state.record.id,
         session: state.target.session,
@@ -4953,6 +5000,12 @@ export class SendProtocol {
         throw new Ended("refused", "not_free", { surface: s0.surface, detail: ANSWER_BOX_COMMAND });
       }
     }
+    // A sign-in field the phone did not name: the text is a secret all the same, so its record keeps no line.
+    // So is a screen that names one (`field: "secret"`) where no layout read the field (fail closed).
+    if (s0.frame?.secret !== undefined || s0.surface.field === "secret") {
+      state.secretField = true;
+      if (state.request.secret !== true) this.deps.store.forgetLine(state.record.id);
+    }
     // A box whose line break submits it takes one line: a second line would go out as a second message.
     if (s0.frame?.newlineSubmits === true && sendLines(state.request.text).length > 1) {
       throw new Ended("refused", "multiline", { surface: s0.surface, detail: NEWLINE_SUBMITS });
@@ -5408,7 +5461,10 @@ export class SendProtocol {
   /**
    * The amended rule of S1 (ARCHITECTURE.md, Send Protocol, 2026-10-16): on a harness that takes a
    * message in a turn (its Enter queues, or its profile names a queue key, which commitKeys then
-   * presses), a send that is not a command may see the rows ABOVE the box move while Collie types. All
+   * presses), a send may see the rows ABOVE the box move while Collie types. Since 2026-11-15 a command
+   * may too, at its probe, when the turn rule lets that command into a turn (the harness queues
+   * commands, `keys.commandWhileRunning`, or runs it at once); a command the turn rule refuses still
+   * fails the compare. Only the probe asks this for a command; its S1 then reads it on the turn path. All
    * else must hold: the frame is there, the rows under the box keep their count, the cue read inside
    * the frame is the same, and the Surface claims no modal. When the rows above moved under these
    * terms, the send takes the queued path from there and this returns true. Movement under the box, a
@@ -5417,9 +5473,11 @@ export class SendProtocol {
    */
   private aboveMovedInTurn(state: RunState, s0: Snap, snap: Snap): boolean {
     // (The rows above may only scroll and grow from read to read: bandScrolled.)
-    if (state.queued || state.manual || state.command || !queuesInTurn(state.match)) return false;
+    if (state.queued || state.manual || !queuesInTurn(state.match)) return false;
     const { mode } = state.request;
-    if (mode !== "send" && mode !== "append" && mode !== "replace") return false;
+    // A command meets the same turn rule a command S0 read in a turn meets (turnRefusal, below): it goes
+    // in where the harness queues commands or runs that one at once, and never where it would wait.
+    if (mode !== "send" && mode !== "append" && mode !== "replace" && mode !== "command") return false;
     if (s0.frame === null || snap.frame === null || aboveUnchanged(s0, snap)) return false;
     if (snap.cueStrength !== s0.cueStrength || framedCueGrew(s0, snap) || rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame) || modalAtBox(snap)) return false;
     if (!this.bandScrolled(state, snap)) return false;
@@ -5580,7 +5638,7 @@ export class SendProtocol {
     const chrome = chromeRows(frame, idle?.volatile.below.footerRows);
     const checked = (ticks && frame !== null ? plain.map((row, i) => (i < frame.top ? tickMarked(row) : row)) : plain).map((row, i) => (chrome.has(i) ? "" : row));
     const win = bottomWindow(texts);
-    this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
+    this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: ringRows(texts, frame) });
     const framed = readCuesFor(rows, frame, idle);
     // The frameless reads never see a row the profile names as a footer row (the frame found it), nor
     // the typed command's own list over or under the box (ownCommandList): Enter there picks that command.
@@ -5638,7 +5696,7 @@ export class SendProtocol {
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
       rowsHash: shortHash(checked.slice(win.first, win.end).join("\n")),
     };
-    const snap = ghostView(state.ghost, read);
+    const snap = secretView(state.request.text, ghostView(state.ghost, read));
     state.previousRead = state.lastRead;
     state.lastRead = snap;
     return snap;

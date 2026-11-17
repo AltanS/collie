@@ -1,16 +1,19 @@
-// The dashboard's three views, one per footer tab (ADR 0085): Dashboard (every pane, grouped by
-// workspace), Crew (the machines, drawn only when a crew is configured) and Changes (each workspace's
-// uncommitted changes). Each tab names what its list holds. The old Focus tab (ADR 0066, 0068) is now
-// a switch in the summary line, `DashPrefs.needsYouOnly`, and filters the Dashboard list.
+// The dashboard's three views, one per footer tab (ADR 0147 rule 7): Dashboard (every pane, grouped by
+// workspace), Crew (the machines, drawn only when a crew is configured) and Changes, which the footer
+// calls Files (each workspace's uncommitted changes; drawn only on a machine with a screen). Each tab
+// names what its list holds. The old Focus tab (ADR 0066, 0068) is now a switch in the summary line,
+// `DashPrefs.needsYouOnly`, and filters the Dashboard list.
 //
-// The needs-you filter is a FILTER, never a sort (issue 270, ADR 0063): it removes rows and moves
-// nothing.
+// The needs-you filter is a FILTER, never a sort (issue 270, ADR 0147 rule 5): it removes rows and
+// moves nothing.
 //
-// Pinned panes lead all of them under the summary line (ADR 0070), in place order, and leave their
-// workspace group on the Dashboard so each pane is listed once.
+// Pinned panes lead the Dashboard and Files lists under the summary line, and the pane switcher
+// (ADR 0147 rule 6), in place order, and leave their workspace group so each pane is listed once. The
+// Crew tab lists machines and has no Pinned group.
 //
-// A hidden machine (lib/hidden-machines.ts, issue #288) leaves the lists too, and its workspace chips
-// give way to one stand-in chip in the strip (`stripEntries`).
+// A hidden machine (lib/hidden-machines.ts, issue #288) leaves the lists too, and its workspaces give
+// way to one stand-in entry (`stripEntries`), which the workspace filter's sheet draws as a "Show
+// <machine>'s panes" row.
 import { hostKey } from "./hosts";
 import type { JsonValue } from "./json";
 import type { WorkspaceGroup } from "./pane-groups";

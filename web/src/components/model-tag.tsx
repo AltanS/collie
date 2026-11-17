@@ -3,12 +3,13 @@ import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from "
 import type { StatusItem } from "@/components/trick-status-item";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLocale } from "@/hooks/use-locale";
+import { knownWindowName } from "@/lib/accounts";
 import { t, type MessageKey } from "@/lib/i18n";
 import { hasResizeObserver } from "@/lib/env";
 import { effortLabel, modelLabel } from "@/lib/model-label";
 import { formatTokens } from "@/lib/token-count";
 import { visibleStatusCount } from "@/lib/tricks/status";
-import type { PaneUsage } from "@/lib/types";
+import type { PaneUsage, UsageLimit } from "@/lib/types";
 import type { UsageRow } from "@/lib/usage-row";
 import { cn } from "@/lib/utils";
 
@@ -141,11 +142,23 @@ function useStatusFit(key: string, gap: number, count: number, tagRef: RefObject
   return Math.min(shown, count);
 }
 
-/** The short label and the spoken sentence of each window the phone draws. Unknown windows are skipped. */
+/** The short label and the spoken sentence of the two windows this build words itself. */
 const WINDOW_KEYS = new Map<string, { short: MessageKey; spoken: MessageKey }>([
   ["5h", { short: "chat.usage.window.5h", spoken: "chat.usage.window.5h.aria" }],
   ["7d", { short: "chat.usage.window.7d", spoken: "chat.usage.window.7d.aria" }],
 ]);
+
+/** The key prefix of a weekly window scoped to a model: `7d:opus`. Mirrors `scopedWindowKey` in bridge/usage.ts. */
+const SCOPED_PREFIX = "7d:";
+
+/**
+ * Windows drawn in the row, after the context. A fourth would take the model name's room on a 360px
+ * phone, so the rest are counted (`+1`) and the screen reader still hears every one.
+ */
+const WINDOWS_DRAWN = 3;
+
+/** The longest harness label drawn beside a window, in characters; a longer one ends in an ellipsis. */
+const LABEL_DRAWN_MAX = 10;
 
 /**
  * A session cost as the tag writes it: `<$0.01` below a cent, two decimals up to $100 (`$0.11`), whole
@@ -166,6 +179,8 @@ function costOf(usage: PaneUsage | undefined): number | null {
 
 interface Gauge {
   id: string;
+  /** True for a subscription window, false for the context. */
+  window: boolean;
   short: string;
   spoken: string;
   used: number;
@@ -201,17 +216,40 @@ export function isHot(used: number): boolean {
   return wholePercent(used) >= USAGE_HOT_AT;
 }
 
-/** The gauges to draw, in order: the context, then each window this build knows. */
+/** A harness label cut to what the row draws. */
+function drawnLabel(label: string): string {
+  return label.length > LABEL_DRAWN_MAX ? `${label.slice(0, LABEL_DRAWN_MAX - 1)}\u2026` : label;
+}
+
+/**
+ * The gauge of one window the harness reported. `5h` and `7d` keep their own words; a `7d:<scope>`
+ * window is the `7d` text and its label (`7d Opus`); any other window shows its label, else its key.
+ * Every window is drawn, none is skipped for being unknown (an older phone skipped them).
+ */
+function windowGauge(limit: UsageLimit): Gauge {
+  const percent = wholePercent(limit.used);
+  const keys = WINDOW_KEYS.get(limit.window);
+  if (keys !== undefined) return { id: limit.window, window: true, short: t(keys.short), spoken: t(keys.spoken, { percent }), used: limit.used };
+  if (limit.window.startsWith(SCOPED_PREFIX)) {
+    const label = limit.label ?? limit.window.slice(SCOPED_PREFIX.length);
+    const week = WINDOW_KEYS.get("7d");
+    const short = week === undefined ? "7d" : t(week.short);
+    return { id: limit.window, window: true, short: `${short} ${drawnLabel(label)}`, spoken: t("chat.usage.window.7d.scoped.aria", { label, percent }), used: limit.used };
+  }
+  const label = limit.label ?? knownWindowName(limit.window) ?? limit.window;
+  return { id: limit.window, window: true, short: drawnLabel(label), spoken: t("chat.usage.window.other.aria", { label, percent }), used: limit.used };
+}
+
+/** The gauges, in order: the context, then every window the harness reported. */
 function gaugesOf(usage: PaneUsage | undefined): Gauge[] {
   if (usage === undefined) return [];
   const gauges: Gauge[] = [];
   if (isReading(usage.context)) {
-    gauges.push({ id: "context", short: t("chat.usage.context"), spoken: t("chat.usage.context.aria", { percent: wholePercent(usage.context) }), used: usage.context });
+    gauges.push({ id: "context", window: false, short: t("chat.usage.context"), spoken: t("chat.usage.context.aria", { percent: wholePercent(usage.context) }), used: usage.context });
   }
   for (const limit of usage.limits ?? []) {
-    const keys = WINDOW_KEYS.get(limit.window);
-    if (keys === undefined || !isReading(limit.used)) continue;
-    gauges.push({ id: limit.window, short: t(keys.short), spoken: t(keys.spoken, { percent: wholePercent(limit.used) }), used: limit.used });
+    if (!isReading(limit.used) || limit.window === "") continue;
+    gauges.push(windowGauge(limit));
   }
   return gauges;
 }
@@ -308,7 +346,11 @@ export function ModelTag({
   const items = trailing ?? [];
   const shown = useStatusFit(items.map((item) => item.id).join(" "), ITEM_GAPS[usageRow].px, items.length, tagRef, ownRef, itemsRef);
   const name = modelLabel(model);
-  const gauges = gaugesOf(usage);
+  const heard = gaugesOf(usage);
+  // The row draws the context and the first few windows; the rest are counted, and every one is still spoken.
+  const windows = heard.filter((g) => g.window);
+  const gauges = [...heard.filter((g) => !g.window), ...windows.slice(0, WINDOWS_DRAWN)];
+  const more = windows.length - WINDOWS_DRAWN;
   const tokens = tokensOf(usage);
   // A dot is a fifth of a window: with no window there is no dot to draw, so Dots leaves the count out.
   const drawnTokens = usageRow === "percent" ? tokens : null;
@@ -319,7 +361,7 @@ export function ModelTag({
   // neither then. The same model at `high` and at `low` is a different trade-off in time and cost.
   const level = name === null ? null : effortLabel(effort);
   const label = name === null ? null : level === null ? name : `${name} · ${level}`;
-  const spoken = [label === null ? null : t("chat.model.aria", { name: label }), tokens?.spoken ?? null, ...gauges.map((g) => g.spoken),
+  const spoken = [label === null ? null : t("chat.model.aria", { name: label }), tokens?.spoken ?? null, ...heard.map((g) => g.spoken),
     cost === null ? null : t("chat.usage.cost.aria", { amount: formatCost(cost) }),
   ].filter(
     (part): part is string => part !== null,
@@ -346,6 +388,11 @@ export function ModelTag({
                 <Meter used={g.used} mode={usageRow} />
               </span>
             ))}
+            {more > 0 && (
+              <span data-slot="usage-more" aria-hidden className="shrink-0 tabular-nums">
+                +{more}
+              </span>
+            )}
             {cost !== null && (
               <span data-slot="usage-cost" className="shrink-0 tabular-nums">
                 {formatCost(cost)}

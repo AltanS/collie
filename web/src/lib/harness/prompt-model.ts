@@ -233,6 +233,13 @@ export interface PromptModel {
    * with `tailLinesFor`, which adds one row of headroom. Absent means the default window, which every
    * other grammar binds; an older bridge ignores the field, keeps six rows and refuses the tap.
    *
+   * Three roads were refused (ADR 0108). Binding the rows down to the tail, clocks and all: the region
+   * changes every second and no tap ever lands. Raising the bridge's default window for everyone: the
+   * other harnesses' dialogs sit at the tail, so it buys them nothing and widens how far up a stale
+   * match may sit and still be accepted. Teaching the bridge to blank the clocks: the bridge holds no
+   * pane grammar, and a Hermes rule in it would be the first. Revisit if a second harness needs a window
+   * past 12 rows, or if Herdr grows a conditional write that checks the screen on its side.
+   *
    * Not part of identity: it counts chrome outside the dialog, which a status row that wraps may
    * move by one without the dialog changing at all.
    */

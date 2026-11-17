@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-05
-- **Shipped in:** pending
 - **Relates to:** [ADR 0071](./0071-the-operator-may-ask-for-activity-order.md), whose shape (one
   standing per-device value, no per-pane override) the pane view follows. Nothing there is retracted.
 - **Trail:** the 1.15.0 changelog line for Chat ("Terminal stays the default; the default flips in

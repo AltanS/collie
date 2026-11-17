@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-24
-- **Shipped in:** 1.24.0
 - **Trail:** M70 spec 03 · the playground's "Large screens" cards 5 and 6 and the "Pane navigation"
   card (`web/src/playground/sections/wide-layout*.ts(x)` on the prototype branch `feat/wide-layout`) ·
   `web/src/lib/pane-nav-gesture.ts` · `web/src/hooks/use-pane-nav-gesture.ts` ·

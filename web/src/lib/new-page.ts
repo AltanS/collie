@@ -579,6 +579,8 @@ export interface LastStart {
   /** Whether it started on a new branch, and in which folder kind. */
   branch: { folder: WorktreeFolderChoice } | null;
   at: number;
+  /** An added account's id (M101), when the start used one. Absent for Default and for every start before accounts. */
+  account?: string;
 }
 
 /** The stored file: one last start per machine key. */
@@ -632,7 +634,8 @@ function parseStart(raw: JsonValue | undefined): LastStart | null {
     if (folder === null) return null;
     branch = { folder };
   }
-  return { what, label, cwd, branch, at };
+  const account = asJsonString(o.account);
+  return account === undefined || account === "" ? { what, label, cwd, branch, at } : { what, label, cwd, branch, at, account };
 }
 
 function readFile(storage: Pick<Storage, "getItem"> | undefined): AgainFile {
@@ -757,8 +760,11 @@ export function startFingerprint(parts: {
   what: StartWhat;
   cwd: string;
   branch: { name: string; base: string; folder: WorktreeFolderChoice } | null;
+  /** An added account's id (M101). The fingerprint of a start without one is what it always was. */
+  account?: string | undefined;
 }): string {
-  return JSON.stringify([parts.machine, whatKey(parts.what), parts.cwd, parts.branch]);
+  const base = [parts.machine, whatKey(parts.what), parts.cwd, parts.branch];
+  return JSON.stringify(parts.account === undefined ? base : [...base, parts.account]);
 }
 
 // ── Which machine ───────────────────────────────────────────────────────────────────────────────

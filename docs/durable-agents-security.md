@@ -117,7 +117,7 @@ that holds it must be mode `0600`. Collie never prints the token. `collie durabl
 The token does not expire. To rotate it, give the durable agent the new token before you restart Collie,
 or the phone says the durable agent refused it. A durable agent may accept a second token while a rotation runs:
 the parked Cloudflare example takes `COLLIE_TOKEN` and, while it is set, `COLLIE_TOKEN_NEXT`
-([ADR 0103](../.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md)). The
+([ADR 0146](../.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md)). The
 steps are in [Tokens](durable-agents.md#tokens).
 
 This is an outbound call that Collie makes to the URL you configured, and it is declined by

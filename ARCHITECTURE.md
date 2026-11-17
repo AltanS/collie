@@ -77,12 +77,12 @@ exactly, and pays no tax for the feature ([`CREW_PROTOCOL.md` §11](./CREW_PROTO
 
 - **The lead consumes a peer's *Collie* HTTP API.** It never dials a peer's multiplexer across a
   machine boundary, and no Herdr (or tmux, or zellij) verb ever crosses the link — that is the
-  mux-driver seam ([ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md)). What crosses
+  mux-driver seam ([ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md)). What crosses
   is Collie's own domain model: snapshots, pane grids, replies, history, uploads. What never crosses:
   software. `collie crew add` / `crew update` push a git bundle over the **operator's own ssh**
-  ([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md)), so the link is never a distribution
+  ([ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md)), so the link is never a distribution
   channel. A peer may also level itself to the release its lead is running, taking that public tag
-  from GitHub over anonymous HTTPS on its own decision (ADR 0016's addendum,
+  from GitHub over anonymous HTTPS on its own decision (ADR 0143,
   [`CREW_PROTOCOL.md` §20](./CREW_PROTOCOL.md)); still no code, route or verb on the link.
 - **Two independent factors gate `/crew/v1/*`,** before any handler runs: **pinned mutual TLS** and
   the **crew secret** ([`CREW_PROTOCOL.md` §8](./CREW_PROTOCOL.md#8-trust-enrollment-factors-rotation)).
@@ -93,13 +93,13 @@ exactly, and pays no tax for the feature ([`CREW_PROTOCOL.md` §11](./CREW_PROTO
   healthy and the lead signs a **warrant** saying so; a higher generation supersedes it everywhere it
   lands, and revocation is generation *N+1* naming nobody. Nothing infers a dead lead from silence —
   the operator is the quorum ([ADR 0026](./.adr/0026-the-operator-is-the-quorum.md) ·
-  [ADR 0027](./.adr/0027-the-deputy-is-named-ahead-of-time.md) ·
+  [ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md) ·
   [`CREW_PROTOCOL.md` §18](./CREW_PROTOCOL.md#18-the-deputy-and-the-warrant-added-2026-08-20)).
 - **The standby door is a second listener that arms on silence and is spent by the operator.** It
   binds `COLLIE_STANDBY_PORT` (absent ⇒ no door), serves three routes and `404`s everything else, and
   arms only while a verified warrant names this machine, the lead has been silent past a threshold,
   and a synced pairing registry is non-empty. Arming grants nothing: the takeover is confirmed with
-  the phone's own pairing credential ([ADR 0028](./.adr/0028-the-standby-door-is-a-second-listener.md) ·
+  the phone's own pairing credential ([ADR 0144](./.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md) ·
   [`CREW_PROTOCOL.md` §18.15](./CREW_PROTOCOL.md#18-the-deputy-and-the-warrant-added-2026-08-20)).
 
 ## 3. Deployment model — **systemd user service, not a plugin pane**
@@ -122,7 +122,7 @@ watching the TUI. A long-lived network daemon must be supervised independently.
   clone: it `git init`s, `git fetch --depth 1 origin HEAD`s and `git checkout --detach FETCH_HEAD`s
   into `~/.config/herdr/plugins/github/<hashed-id>`, so a turnkey install is **detached and shallow**
   with no remote-tracking refs, while a linked clone sits on a branch. The `update` action carries
-  both ([ADR 0006](./.adr/0006-update-advances-the-checkout-herdr-installed.md)) because Herdr has no
+  both ([ADR 0143](./.adr/0143-how-an-install-updates-and-what-a-release-offers-it.md)) because Herdr has no
   `plugin update` of its own — its refresh is a reinstall, which replaces the checkout but does not
   restart the service.
 - **Endpoint discovery is per driver.** A non-Herdr-launched daemon won't get `$HERDR_SOCKET_PATH`
@@ -181,7 +181,7 @@ Product details that shaped the loop:
 - **Opinionated triage, without moving anything.** The home screen leads with one summary line that
   counts what **needs you** and jumps to it; every pane stays where it sits, in the multiplexer's own
   order, and urgency is a mark on the row, never a position
-  ([ADR 0063](./.adr/0063-a-pane-keeps-its-place-when-its-state-changes.md)). Simultaneous blocks
+  ([ADR 0147](./.adr/0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md)). Simultaneous blocks
   batch into one summary notification, not three races. The split rests on the `agentDetection` capability: a driver that cannot tell an agent from a
   shell says so, and the screen is panes rather than a triage it would have to invent.
 - **Close the trust loop.** A "Sent" state on the `POST`'s HTTP response, then the visible
@@ -359,7 +359,7 @@ graph TD
   (`bridge/operator-launchers.ts`), share the reader but NOT `/api/config`: a launcher row creates
   its own pane rather than addressing an existing one, so it carries no scope, and its rows ride
   their own session-scoped `GET /api/launchers` instead. The lead's merged rows are the crew's
-  ([ADR 0127](./.adr/0127-the-leads-launcher-rows-are-the-crews-rows.md)): the lead offers them for
+  ([ADR 0145](./.adr/0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md)): the lead offers them for
   every host and each row is checked on the host that runs it (`not_found`, `no_folder`). A launch
   of a lead row on a member carries the row over the crew link (`row`), which a member accepts only
   from its lead; adds are answered on the lead; the deputy keeps a read-only copy

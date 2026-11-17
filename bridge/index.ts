@@ -244,7 +244,12 @@ import { SubagentTracker } from "./subagents.ts";
 import { TodoTracker } from "./todos.ts";
 import { WaitingWords } from "./waiting-words.ts";
 import { diskUsageFiles, usageDir, UsageTracker } from "./usage.ts";
+import { UsageSeen, usageSeenIo } from "./usage-seen.ts";
 import { AccountWindows, defaultAccountSources, diskCredentialSeams, isTurnEnd } from "./account-windows.ts";
+import { realLinkDisk } from "./account-links.ts";
+import { Accounts, ownJournalRoots, seenReading } from "./accounts-routes.ts";
+import { AccountStore, accountsFileIo } from "./accounts-store.ts";
+import { createHarnessProbe } from "./harness-launch.ts";
 import {
   bridgeStampSync,
   compareSemver,
@@ -900,8 +905,23 @@ await activity.load();
 // once, and handed to both the tracker and the server, so the probe and the history route share the
 // adapters' memoised path caches. Null when `COLLIE_TRANSCRIPT` is off: no journal means no probe, and
 // every pane then reads exactly as it did before this feature existed.
+// The accounts added on this machine (M101, bridge/accounts-store.ts). Read once here so the journal
+// roots below know the own folders from the first poll; nothing is written until the first add.
+const accountStore = new AccountStore(accountsFileIo(cfg.stateDir));
+await accountStore.list();
+// The journal roots grow with the added `own` accounts, with no restart (README decision 17): each
+// lookup asks the store's memory, and a hand edit of the file is seen at most ten seconds later.
+let accountRootsLookedAt = 0;
+const accountJournalRoots = (agent: string): readonly string[] => {
+  const now = Date.now();
+  if (now - accountRootsLookedAt > 10_000) {
+    accountRootsLookedAt = now;
+    void accountStore.list().catch(() => undefined);
+  }
+  return ownJournalRoots(accountStore, agent);
+};
 const journals = cfg.transcript
-  ? buildJournalRegistry({ ...cfg.journalRoots, durable: [durableLogDir(cfg.stateDir)] }, cfg.modelCatalogs)
+  ? buildJournalRegistry({ ...cfg.journalRoots, durable: [durableLogDir(cfg.stateDir)] }, cfg.modelCatalogs, accountJournalRoots)
   : null;
 // The name the operator gave a Muse session, for the engines' pane naming (journal/muse.ts).
 // It reads the same logs the journal does, so it lives and dies with the same switch: with
@@ -940,7 +960,38 @@ const accountWindows = new AccountWindows({
 // wrapper and the beacon write, joined with the account windows above. The pane's session id is the
 // key. A harness whose hooks write no file takes its context from the cache probe's reading of its
 // journal (.adr/0115, amended 2026-10-25); with transcripts off there is none.
-const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now, accountWindows, paneCache ?? undefined);
+// The last reading of each account's windows (bridge/usage-seen.ts), kept for an account with no live session.
+const usageSeen = new UsageSeen(usageSeenIo(cfg.stateDir));
+// A pane started with an added account counts under that account's folder until its agent reports
+// one (or always, for an agent that never does), so its windows and last reading are the account's.
+// `accounts` is built below; the seam is first called on a poll, after it exists.
+const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now, accountWindows, paneCache ?? undefined, usageSeen, (pane, scope) =>
+  accounts.folderOf(scope, pane),
+);
+
+// The agents the New sheet starts, probed on this machine (ADR 0091), shared by the server and the
+// accounts below so both read one found list.
+const harnessProbe = createHarnessProbe();
+// Accounts (M101, ADR 0141): the list in Settings, the start line, and a pane's tag. Each row's windows
+// are the live or last-seen reading the usage tracker recorded for that harness and folder (usage-seen.ts).
+const accounts = new Accounts({
+  store: accountStore,
+  harnesses: harnessProbe,
+  home: homedir(),
+  env: process.env,
+  platform: HOST.platform,
+  disk: realLinkDisk,
+  reading: seenReading(usageSeen, Date.now),
+  reported: usage,
+  panes: () => registry.ordered().flatMap((rt) => rt.engine.current().agents.map((pane) => ({ session: rt.name, pane }))),
+  readText: (path) => {
+    try {
+      return readFileSync(path, "utf8");
+    } catch {
+      return null;
+    }
+  },
+});
 
 // Which branch each pane's folder is on (bridge/git-head.ts). One for the whole bridge: every
 // session's poll feeds it its folders, and the server reads it from memory at serialise time.
@@ -1958,7 +2009,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   }
   engine.onUpdate((s) => void usage.refresh(s.agents, name).catch(() => {}));
   // The account windows ride the same poll (first reading, then every five minutes while a pane of the
-  // harness is here) and a turn's end (at most once a minute per harness). Neither waits on the ask.
+  // harness is here) and a turn's end (an ask starts at most once in five minutes per harness).
+  // Neither waits on the ask.
   engine.onUpdate((s) => accountWindows.observe(s.agents, name));
   engine.onTransition((agent, from, to) => {
     if (isTurnEnd(from, to)) accountWindows.poke(agent.agent);
@@ -1979,7 +2031,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
     session: isPrimary ? undefined : name,
   });
   // With `push_words` on, what each blocked pane waits on, read from its journal on the poll, so its push
-  // can say it (waiting-words.ts, ADR 0141). Off, or with transcripts off, the push stays generic.
+  // can say it (waiting-words.ts, ADR 0152). Off, or with transcripts off, the push stays generic.
   const waiting = cfg.pushWords && journals !== null ? new WaitingWords(journals) : null;
   if (waiting !== null) engine.onUpdate((s) => void waiting.refresh(s.agents));
   const notifications = new NotificationCoordinator(
@@ -4190,6 +4242,8 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   controlReceipts,
   worktreeChoices,
   worktreeFolderSetting,
+  harnesses: harnessProbe,
+  accounts,
   addedLaunchers,
   recentRuns,
   sent: sentStore,

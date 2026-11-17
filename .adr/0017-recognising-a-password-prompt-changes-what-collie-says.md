@@ -1,6 +1,7 @@
 # 0017 — Recognising a password prompt changes what Collie says, never what it sends
 
 Status: **Accepted** (2026-08-16)
+Date: 2026-08-16
 
 ## Context
 

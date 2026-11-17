@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-06
-- **Shipped in:** pending
 - **Relates to:** [ADR 0070](./0070-a-pin-is-a-place-the-operator-chose.md) (pinned panes are a device's
   places; pinned messages are a different thing and share no store),
   [ADR 0073](./0073-a-live-session-is-a-bounded-window-on-the-existing-poll.md) (the live window a pin

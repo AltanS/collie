@@ -1,4 +1,4 @@
-// The account's 5-hour and 7-day windows, asked of the vendor with the operator's OWN harness login
+// The account's usage windows (5-hour, 7-day, and any other the vendor reports), asked of the vendor with the operator's OWN harness login
 // (.adr/0118). The dots beside the model tag draw them (bridge/usage.ts joins them onto each pane).
 //
 // Four harnesses have a source, one table ({@link defaultAccountSources}), one lifecycle, one off
@@ -33,7 +33,8 @@
 // ── WHEN IT ASKS ──────────────────────────────────────────────────────────────────────────────────
 //
 // Only while this bridge has at least one pane of the harness: once when there is no reading yet, once
-// after a turn ends (at most once a minute), and every five minutes. A refusal or a failure backs off
+// after a turn ends (but an ask starts at most once in {@link POKE_EVERY_MS}, five minutes, per harness),
+// and every five minutes. A refusal or a failure backs off
 // ({@link BACKOFF}); a reading older than {@link STALE_AFTER_MS} is not drawn. The endpoint is
 // undocumented and changed its shape once, so the parser takes both shapes, and a body it cannot read
 // costs the reading, never the pane.
@@ -55,7 +56,7 @@ import {
 import { HOST } from "./host.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { AgentStatus, AgentView } from "./types.ts";
-import { asPercent, USAGE_WINDOWS, type UsageLimit, type UsageWindow } from "./usage.ts";
+import { asPercent, cleanWindowText, makeLimit, orderedLimits, scopedWindowKey, WINDOW_5H, WINDOW_7D, type UsageLimit } from "./usage.ts";
 
 /** The one host the token is ever sent to. */
 export const CLAUDE_USAGE_HOST = "api.anthropic.com";
@@ -140,23 +141,13 @@ const BEARER_TOKEN = /^[\x21-\x7e]{1,4095}$/;
 // ── The answer ──────────────────────────────────────────────────────────────────────────────────
 
 /**
- * A window the phone does not draw: a model-scoped weekly window (Claude's `weekly_scoped`), or a
- * window that is not 5 hours or 7 days (a monthly OpenCode Go or Grok period, an odd Codex window).
- * Parsed and kept for a later build; the phone draws two gauges today, so these never reach
- * {@link AccountWindows.limits}.
+ * What one good answer said: the windows the vendor reported, in {@link orderedLimits} order. Since
+ * 2026-11-15 these are all of them, not a fixed pair: a model-scoped weekly window is `7d:<scope>` with the
+ * vendor's label, and a window of another length (a monthly OpenCode Go or Grok period, an odd Codex
+ * window) keeps a length key (`30d`) instead of being dropped. Empty for an account without windows.
  */
-export interface ScopedWindow {
-  /** The model's display name or the window's length (`30d`), trimmed and stripped of control characters. */
-  label: string;
-  used: number;
-  resetsAt?: number;
-}
-
-/** What one good answer said. */
 export interface AccountReading {
-  /** The 5-hour and 7-day windows, in {@link USAGE_WINDOWS} order. Empty for an account without them. */
   limits: UsageLimit[];
-  scoped: ScopedWindow[];
 }
 
 function asResetMs(value: JsonValue | undefined): number | undefined {
@@ -166,18 +157,13 @@ function asResetMs(value: JsonValue | undefined): number | undefined {
   return Number.isFinite(ms) && ms > 0 ? ms : undefined;
 }
 
-function limitOf(window: UsageWindow, used: number | undefined, resetsAt: number | undefined): UsageLimit | undefined {
-  if (used === undefined) return undefined;
-  return resetsAt === undefined ? { window, used } : { window, used, resetsAt };
+function limitOf(window: string, used: number | undefined, resetsAt: number | undefined, label?: string): UsageLimit | undefined {
+  return used === undefined ? undefined : makeLimit(window, used, resetsAt, label);
 }
 
 function cleanLabel(value: JsonValue | undefined): string | undefined {
   const text = asJsonString(value);
-  if (text === undefined) return undefined;
-  // SAFETY: the class is control characters on purpose; a label from the wire must not carry them.
-  // eslint-disable-next-line no-control-regex
-  const clean = text.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 64);
-  return clean === "" ? undefined : clean;
+  return text === undefined ? undefined : cleanWindowText(text);
 }
 
 /**
@@ -194,37 +180,34 @@ export function parseAccountUsage(text: string): AccountReading | null {
   const rows = Array.isArray(root.limits) ? root.limits : undefined;
   if (rows === undefined && !("five_hour" in root) && !("seven_day" in root)) return null;
 
-  const found = new Map<UsageWindow, UsageLimit>();
-  const scoped: ScopedWindow[] = [];
+  const found = new Map<string, UsageLimit>();
   for (const row of (rows ?? []).map(asJsonObject)) {
     if (row === undefined) continue;
     const kind = asJsonString(row.kind);
     const used = asPercent(row.percent);
     const resetsAt = asResetMs(row.resets_at);
     if (kind === "session" || kind === "weekly_all") {
-      const window: UsageWindow = kind === "session" ? "5h" : "7d";
+      const window = kind === "session" ? WINDOW_5H : WINDOW_7D;
       const limit = limitOf(window, used, resetsAt);
       if (limit !== undefined && !found.has(window)) found.set(window, limit);
     } else if (kind === "weekly_scoped" && used !== undefined) {
+      // A scoped weekly window is its own window, `7d:<model>`, named by the vendor's label.
       const label = cleanLabel(asJsonObject(asJsonObject(row.scope)?.model)?.display_name);
-      if (label !== undefined) scoped.push(resetsAt === undefined ? { label, used } : { label, used, resetsAt });
+      const window = label === undefined ? `${WINDOW_7D}:scoped` : scopedWindowKey(label);
+      const limit = limitOf(window, used, resetsAt, label);
+      if (limit !== undefined && !found.has(window)) found.set(window, limit);
     }
   }
-  const flat = {
-    "5h": asJsonObject(root.five_hour),
-    "7d": asJsonObject(root.seven_day),
-  } satisfies Record<UsageWindow, JsonObject | undefined>;
-  for (const window of USAGE_WINDOWS) {
+  const flat = [
+    [WINDOW_5H, asJsonObject(root.five_hour)],
+    [WINDOW_7D, asJsonObject(root.seven_day)],
+  ] as const;
+  for (const [window, entry] of flat) {
     if (found.has(window)) continue;
-    const entry = flat[window];
     const limit = limitOf(window, asPercent(entry?.utilization), asResetMs(entry?.resets_at));
     if (limit !== undefined) found.set(window, limit);
   }
-  const limits = USAGE_WINDOWS.flatMap((window) => {
-    const limit = found.get(window);
-    return limit === undefined ? [] : [limit];
-  });
-  return { limits, scoped: scoped.slice(0, 8) };
+  return { limits: orderedLimits([...found.values()]) };
 }
 
 /** An epoch in seconds or milliseconds (a value above 1e12 is milliseconds), as epoch ms. */
@@ -234,20 +217,9 @@ function asEpochAnyMs(value: JsonValue | undefined): number | undefined {
   return n > 1e12 ? n : n * 1000;
 }
 
-function scopedOf(label: string, used: number, resetsAt: number | undefined): ScopedWindow {
-  return resetsAt === undefined ? { label, used } : { label, used, resetsAt };
-}
-
 /** An account whose answer names no window to draw. */
 function emptyReading(): AccountReading {
-  return { limits: [], scoped: [] };
-}
-
-function inUsageOrder(found: Map<UsageWindow, UsageLimit>): UsageLimit[] {
-  return USAGE_WINDOWS.flatMap((window) => {
-    const limit = found.get(window);
-    return limit === undefined ? [] : [limit];
-  });
+  return { limits: [] };
 }
 
 /** A window's length as a short label: `5h`, `30d`, `90m`. */
@@ -260,31 +232,24 @@ function minutesLabel(minutes: number): string {
 /**
  * The windows in Codex's `rate_limits` object (a `token_count` event of a rollout file): `primary` and
  * `secondary`, each `{ used_percent, window_minutes, resets_at }` on a ChatGPT login, `null` on an API
- * key. 300 minutes is the 5-hour window and 10080 the 7-day one; any other length is kept as scoped.
- * Null when the object holds no window at all. Shape from third-party readers (CodexBar), unverified
- * live on 2026-10-24.
+ * key. 300 minutes is the 5-hour window and 10080 the 7-day one; any other length keeps a length key
+ * (`1h`, `30d`). Null when the object holds no window at all. Shape from third-party readers (CodexBar),
+ * unverified live on 2026-10-24.
  */
 export function parseCodexRateLimits(value: JsonValue | undefined): AccountReading | null {
   const root = asJsonObject(value);
   if (root === undefined) return null;
-  const found = new Map<UsageWindow, UsageLimit>();
-  const scoped: ScopedWindow[] = [];
+  const found = new Map<string, UsageLimit>();
   for (const entry of [asJsonObject(root.primary), asJsonObject(root.secondary)]) {
     if (entry === undefined) continue;
     const used = asPercent(entry.used_percent);
     const minutes = asJsonNumber(entry.window_minutes);
     if (used === undefined || minutes === undefined || !Number.isFinite(minutes) || minutes <= 0) continue;
-    const resetsAt = asEpochAnyMs(entry.resets_at);
-    const window: UsageWindow | undefined = minutes === 300 ? "5h" : minutes === 10_080 ? "7d" : undefined;
-    if (window === undefined) {
-      scoped.push(scopedOf(minutesLabel(minutes), used, resetsAt));
-      continue;
-    }
-    const limit = limitOf(window, used, resetsAt);
+    const window = minutes === 300 ? WINDOW_5H : minutes === 10_080 ? WINDOW_7D : minutesLabel(minutes);
+    const limit = limitOf(window, used, asEpochAnyMs(entry.resets_at));
     if (limit !== undefined && !found.has(window)) found.set(window, limit);
   }
-  const limits = inUsageOrder(found);
-  return limits.length === 0 && scoped.length === 0 ? null : { limits, scoped: scoped.slice(0, 8) };
+  return found.size === 0 ? null : { limits: orderedLimits([...found.values()]) };
 }
 
 /**
@@ -310,7 +275,7 @@ export function codexReadingFromTail(text: string): AccountReading | null {
 /**
  * OpenCode Go's usage answer: `rolling`, `weekly` and `monthly`, each `{ status, percent, resetsAt }`
  * with `resetsAt` ISO 8601. Rolling is the 5-hour window and weekly the 7-day one; the monthly window
- * (anchored on the subscription's anniversary) is kept as scoped, labelled `30d`. Every field is
+ * (anchored on the subscription's anniversary) keeps the length key `30d`. Every field is
  * optional. A body with none of the three names is unreadable. Shape from third-party readers
  * (oh-my-pi), unverified live on 2026-10-24.
  */
@@ -319,26 +284,30 @@ export function parseOpencodeGoUsage(text: string): AccountReading | null {
   const root = parseJsonObject(text);
   if (root === undefined) return null;
   if (!("rolling" in root) && !("weekly" in root) && !("monthly" in root)) return null;
-  const found = new Map<UsageWindow, UsageLimit>();
   const read = (value: JsonValue | undefined): { used: number; resetsAt: number | undefined } | undefined => {
     const entry = asJsonObject(value);
     const used = asPercent(entry?.percent);
     return used === undefined ? undefined : { used, resetsAt: asResetMs(entry?.resetsAt) };
   };
-  const rolling = read(root.rolling);
-  if (rolling !== undefined) found.set("5h", limitOf("5h", rolling.used, rolling.resetsAt) ?? { window: "5h", used: rolling.used });
-  const weekly = read(root.weekly);
-  if (weekly !== undefined) found.set("7d", limitOf("7d", weekly.used, weekly.resetsAt) ?? { window: "7d", used: weekly.used });
-  const monthly = read(root.monthly);
-  return { limits: inUsageOrder(found), scoped: monthly === undefined ? [] : [scopedOf("30d", monthly.used, monthly.resetsAt)] };
+  const limits = (
+    [
+      [WINDOW_5H, read(root.rolling)],
+      [WINDOW_7D, read(root.weekly)],
+      [MONTHLY_WINDOW, read(root.monthly)],
+    ] as const
+  ).flatMap(([window, reading]) => (reading === undefined ? [] : [makeLimit(window, reading.used, reading.resetsAt)]));
+  return { limits: orderedLimits(limits) };
 }
+
+/** The key of a window about a month long: OpenCode Go's monthly period, a Grok billing cycle. */
+const MONTHLY_WINDOW = "30d";
 
 const GROK_WEEK_MAX_MS = 8 * 86_400_000;
 
 /**
  * Grok's CLI-proxy credits answer: `creditUsagePercent` and `currentPeriod: { start, end }` (ISO),
  * at the top or under `config`. The period is a billing cycle: a span of 8 days or less is the 7-day
- * window, a longer one is kept as scoped (`30d`), an unknown span is kept as scoped (`credits`). When
+ * window, a longer one keeps the length key `30d`, an unknown span the key `credits`. When
  * the percent is missing but `onDemandUsed.val` and `onDemandCap.val` are there, their ratio stands
  * in. A body with none of these names is unreadable; one with a period and no percent is an account
  * without windows. Shape from a third-party reader (CodexBar), unverified live on 2026-10-24.
@@ -360,8 +329,8 @@ export function parseGrokBilling(text: string): AccountReading | null {
   const start = asResetMs(period?.start);
   const end = asResetMs(period?.end);
   const span = start !== undefined && end !== undefined && end > start ? end - start : undefined;
-  if (span !== undefined && span <= GROK_WEEK_MAX_MS) return { limits: [limitOf("7d", used, end) ?? { window: "7d", used }], scoped: [] };
-  return { limits: [], scoped: [scopedOf(span === undefined ? "credits" : "30d", used, end)] };
+  const window = span === undefined ? "credits" : span <= GROK_WEEK_MAX_MS ? WINDOW_7D : MONTHLY_WINDOW;
+  return { limits: [limitOf(window, used, end) ?? { window, used }] };
 }
 
 // ── The login ───────────────────────────────────────────────────────────────────────────────────
@@ -632,6 +601,10 @@ export interface HttpAccountSource {
 export interface LocalAccountSource {
   readonly kind: "local";
   readonly harness: string;
+  /** The resolved folder this source reads, as {@link HttpAccountSource.configDir}. */
+  readonly configDir?: string;
+  /** Optional factory for an account whose folder is not the one this source reads, as {@link HttpAccountSource.forConfigDir}. */
+  readonly forConfigDir?: (configDir: string) => AccountSource;
   read(): Promise<{ readonly ok: true; readonly reading: AccountReading } | { readonly ok: false; readonly reason: string }>;
 }
 
@@ -685,13 +658,18 @@ export function codexSessionsDir(env: Readonly<Record<string, string | undefined
  * carries `rate_limits`; the newest one in the newest files is the account's windows as of the last
  * model response. An API-key login writes `null` there, so there is nothing to show.
  */
-export function codexAccountSource(seams: CredentialSeams): AccountSource {
+export function codexAccountSource(seams: CredentialSeams, codexHome?: string): AccountSource {
+  // An account folder is `CODEX_HOME` for that account: the sessions folder is derived from it exactly
+  // as it is from the bridge's own environment.
+  const env = codexHome === undefined ? seams.env : { ...seams.env, CODEX_HOME: codexHome };
   return {
     kind: "local",
     harness: "codex",
+    configDir: join(envDir(env, "CODEX_HOME", join(seams.home, ".codex")), "."),
+    forConfigDir: (dir) => codexAccountSource(seams, dir),
     read: async () => {
       const now = seams.now();
-      const root = codexSessionsDir(seams.env, seams.home);
+      const root = codexSessionsDir(env, seams.home);
       const files: Array<{ path: string; mtimeMs: number }> = [];
       for (const day of codexDayFolders(now)) {
         for (const entry of await seams.list(join(root, day))) {
@@ -727,12 +705,17 @@ export function opencodeAccountSource(seams: CredentialSeams): AccountSource {
 }
 
 /** Grok: the login `grok login` keeps, one GET to the CLI proxy. */
-export function grokAccountSource(seams: CredentialSeams): AccountSource {
+export function grokAccountSource(seams: CredentialSeams, grokHome?: string): AccountSource {
+  // An account folder is `GROK_HOME` for that account: `auth.json` is derived from it exactly as it is
+  // from the bridge's own environment.
+  const own = grokHome === undefined ? seams : { ...seams, env: { ...seams.env, GROK_HOME: grokHome } };
   return {
     kind: "http",
     harness: "grok",
     url: GROK_USAGE_URL,
-    login: () => readGrokLogin(seams),
+    configDir: join(envDir(own.env, "GROK_HOME", join(seams.home, ".grok")), "."),
+    forConfigDir: (dir) => grokAccountSource(seams, dir),
+    login: () => readGrokLogin(own),
     headers: (token) => ({ Authorization: `Bearer ${token}`, "x-xai-token-auth": "xai-grok-cli", Accept: "application/json" }),
     parse: parseGrokBilling,
   };
@@ -886,7 +869,8 @@ export class AccountWindows {
         if (key !== undefined && key !== harness) active.add(key);
       }
     }
-    this.customScopes.set(scope, active);
+    // Keyed by harness too: the callers of two harnesses name their folders in the same mux session.
+    this.customScopes.set(`${harness}\u0000${scope}`, active);
   }
 
   /** A turn of `harness` ended: ask, unless an ask started in the last {@link POKE_EVERY_MS}. */
@@ -904,13 +888,13 @@ export class AccountWindows {
 
   private customFactory(harness: string): ((configDir: string) => AccountSource) | undefined {
     const base = this.sources.get(harness);
-    return base?.kind === "http" ? base.forConfigDir : undefined;
+    return base?.forConfigDir;
   }
 
   private resolveKey(harness: string, configDir: string, factory: (dir: string) => AccountSource): string | undefined {
     const normalized = join(configDir, ".");
     const base = this.sources.get(harness);
-    if (base?.kind === "http" && base.configDir !== undefined && base.configDir === normalized) return harness;
+    if (base?.configDir !== undefined && base.configDir === normalized) return harness;
     return this.ensureCustomKey(harness, normalized, configDir, factory);
   }
 
@@ -944,7 +928,7 @@ export class AccountWindows {
     return key;
   }
 
-  /** The harness's 5-hour and 7-day windows now, or undefined when there is no fresh reading. */
+  /** The harness's windows now (all the vendor reports), or undefined when there is no fresh reading. */
   limits(harness: string, configDir?: string): UsageLimit[] | undefined {
     if (!this.opts.enabled) return undefined;
     let key: string | undefined = harness;
@@ -959,11 +943,6 @@ export class AccountWindows {
     const now = this.opts.now();
     const limits = reading.limits.filter((limit) => limit.resetsAt === undefined || limit.resetsAt > now);
     return limits.length > 0 ? limits : undefined;
-  }
-
-  /** The model-scoped weekly windows, kept for a later build. Not drawn. */
-  scoped(harness: string): ScopedWindow[] | undefined {
-    return this.fresh(harness)?.scoped;
   }
 
   /** Every ask in flight, settled. For the tests and for a clean stop. */

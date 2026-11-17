@@ -1,6 +1,7 @@
 # 0024 — A beacon is a hint, never a control channel
 
 Status: **Accepted** (2026-08-20)
+Date: 2026-08-20
 
 ## Context
 

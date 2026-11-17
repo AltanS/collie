@@ -12,7 +12,12 @@ import { acquireHarness, type Opener, openWorldReader, type SessionReader, Stora
 import type { Harness } from "@earendil-works/pi-durable";
 import { type JournalRecord, parseJournal } from "../core/journal.ts";
 
-/** The versions this entry was tested on (the M66 spike, 2026-10-21). {@link WorldPort.checkVersions} holds an install to them. */
+/**
+ * The versions this entry was tested on (the M66 spike, 2026-10-21). {@link WorldPort.checkVersions} holds an install to them.
+ * `durable-harness` is a beta. If a later version moves its API and this entry is not ported within one minor release of
+ * Collie, the entry moves to `experiments/`. If the smoke run on a real Vercel preview fails, the docs keep saying
+ * self-hosted, name the cause, and the Vercel steps leave the page.
+ */
 export const TESTED = {
   /** Exact: a beta moves its API between releases. */
   durableHarness: "0.0.1-beta.6",

@@ -1,0 +1,40 @@
+                  [38;5;99m▒▒[39m  [38;5;69m██[39m       [1m           █[0m
+                      [38;5;74m██[39m       [38;5;243mv18.6.1[39m
+
+    [3m[38;5;180mTip: [38;5;248mTurn on `/advisor` to attach a second model that[0m
+        [3m[38;5;248mreviews every turn and quietly injects advice[0m
+
+ [38;5;215mWarning: No models available. Use /login or set an API key
+[39m [38;5;215menvironment variable. Then use /model to select a model.[39m
+
+[38;5;215m─────────────────────────────────────────────────────────────
+[39m [1m[38;5;215mUpdate Available[0m
+ [38;5;248mNew version 18.20.2 is available. Run: [38;5;39momp update[39m
+[38;5;215m─────────────────────────────────────────────────────────────
+
+[39m [38;5;243mLogging in to anthropic…[39m
+
+[38;5;236m╭─[1m[38;5;39m Login to Anthropic (Claude Pro/Max) [0m[38;5;236m─────────────────────╮
+│[39m                                                           [38;5;236m│
+│[39m [38;5;39mhttps://claude.ai/oauth/authorize?client_id=9d1c250a-e61b[39m [38;5;236m│
+│[39m [38;5;39m-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=h[39m [38;5;236m│
+│[39m [38;5;39mttp%3A%2F%2Flocalhost%3A54545%2Fcallback&scope=org%3Acrea[39m [38;5;236m│
+│[39m [38;5;39mte_api_key+user%3Aprofile+user%3Ainference+user%3Asession[39m [38;5;236m│
+│[39m [38;5;39ms%3Aclaude_code+user%3Amcp_servers+user%3Afile_upload&cod[39m [38;5;236m│
+│[39m [38;5;39me_challenge=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX&c[39m [38;5;236m│
+│[39m [38;5;39mode_challenge_method=S256&state=XXXXXXXXXXXXXXXXXXXXXXXXX[39m [38;5;236m│
+│[39m [38;5;39mXXXXXXX&code=true[39m                                         [38;5;236m│
+│[39m [38;5;243mCtrl+click to open[39m                                        [38;5;236m│
+│[39m [38;5;243mLocal shortcut (this machine only):                       [38;5;236m│
+│[39m [38;5;243mhttp://localhost:54545/launch[39m                             [38;5;236m│
+│[39m                                                           [38;5;236m│
+│[39m [38;5;215mComplete login in your browser. If the browser cannot     [38;5;236m│
+│[39m [38;5;215mreach this machine, paste the final redirect URL or       [38;5;236m│
+│[39m [38;5;215mauthorization code when prompted.[39m                         [38;5;236m│
+│[39m [38;5;243mWaiting for browser authentication...[39m                     [38;5;236m│
+│[39m                                                           [38;5;236m│
+│[39m [38;5;243mPaste the authorization code (or full redirect URL), then [38;5;236m│
+│[39m [38;5;243mpress ⏎:[39m                                                  [38;5;236m│
+│[39m > [7m [0m                                                       [38;5;236m│
+│[39m [38;5;243m(⎋ to cancel)[39m                                             [38;5;236m│
+╰───────────────────────────────────────────────────────────╯

@@ -1,9 +1,11 @@
 # 0026 — The operator is the quorum
 
 Status: **Accepted** (2026-08-20)
+Date: 2026-08-20
 
-Generalises: [ADR 0014](./0014-promote-is-a-confirm-on-the-lead.md) — promotion-is-a-confirm becomes
-the no-deputy instance of a broader rule. 0014 is not superseded and its gate is unchanged.
+Related: [ADR 0014](./0014-promote-is-a-confirm-on-the-lead.md), now a stub whose rule
+[ADR 0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown.md) states: promotion-is-a-confirm is
+the no-deputy instance of this broader rule, and its gate is unchanged.
 Related: [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) ·
 [ADR 0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) · contract:
 [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18 (the deputy, the warrant, the deposed state, the standby

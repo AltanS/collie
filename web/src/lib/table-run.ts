@@ -79,7 +79,15 @@ const BOX_FRAME_ROW = new RegExp(`^[${BOX_DRAWING_RULE_GLYPH_CLASS}\\s]+$`);
 // Measured before the change, not guessed: across all 355 committed captures a tee anchor claims
 // exactly two more screens, omp's splash and omp's `/model` picker, and both are real two-pane boxes
 // whose right half a phone cannot otherwise see. The corpus gate at the foot of table-run.test.ts
-// lists every claim, so a third screen cannot arrive unnoticed.
+// lists every claim, so a third screen cannot arrive unnoticed. (The `/model` picker has since moved
+// into the unread-dialog card, whose mirror pans the whole pane as one, so no run claims it now.)
+//
+// This is a RENDER decision and nothing else. `tableRuns` is called in one place, ansi-output.tsx, and
+// only while Wrap is on. No grammar, no detector and no send guard reads it, and panning emits no key.
+// A two-pane box inside a run is one scroller, so its panes pan together: a box is one object. A
+// headerless box table draws no junction, so nothing anchors and it still wraps, the cheap failure.
+// Revisit if a claimed screen turns out worse panned than clipped, or if a harness draws a two-pane
+// box whose panes must scroll independently.
 //
 // Three things keep it honest, and they are what the old rule leaned on a glyph to do. The anchor row
 // must be a PURE frame row, so a sentence with a tee in it is not one. Every one of the anchor's

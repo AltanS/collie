@@ -1,6 +1,7 @@
 # 0003 — "Seen" is one shared fact, and Collie only trusts what happened in Collie
 
 Status: **Accepted** (2026-07-28)
+Date: 2026-07-28
 
 ## Context
 

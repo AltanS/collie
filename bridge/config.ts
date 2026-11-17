@@ -258,7 +258,7 @@ export interface Config {
   notifyDelayMs: number;
   /**
    * Whether a push for a blocked pane says what it waits on, in the agent's own words from its journal
-   * (`waiting-words.ts`, ADR 0141): the question it asked, or the command it wants to run. Off by
+   * (`waiting-words.ts`, ADR 0152): the question it asked, or the command it wants to run. Off by
    * default, because those words can carry a path, a command or a secret onto a lock screen.
    */
   pushWords: boolean;

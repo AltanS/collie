@@ -1,6 +1,7 @@
 # 0019 — oxlint + vendored anti-slop is the lint gate; one linter; TypeScript 7
 
 Status: **Accepted** (2026-08-18)
+Date: 2026-08-18
 
 ## Context
 

@@ -1,0 +1,40 @@
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [38;5;246mv2.1.325[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mOpus[39m [38;5;246m5.5[39m [38;5;246m·[39m [38;5;246mAPI[39m [38;5;246mUsage[39m [38;5;246mBilling[39m
+[38;5;174m ▝▝[39m   [38;5;174m▝▝[39m   [38;5;246m~/.cache/collie-lab/login-paste-lab/work[39m
+
+
+[38;5;246m[48;5;237m❯ [38;5;231m/login[39m
+
+[38;5;153m[49m─────────────────────────────────────────────────────────────
+[39m  [1m[38;5;153mLogin[0m
+
+  [38;5;211mOAuth error: That code wasn't accepted. It may be [39m
+  [38;5;211mincomplete, expired, already used, or from an earlier [39m
+  [38;5;211msign-in attempt. Sign in again to get a new code.[39m
+
+
+  [38;5;153mPress [1mEnter[0m[38;5;153m to retry. [39m
+
+  [3m[38;5;246mEsc to cancel[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

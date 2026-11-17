@@ -17,7 +17,7 @@ import { displayWidth, widePieces } from "../text-width";
 import { anyListRow, edgeRunListRow, insideList, listedBottom, openListUnder } from "./command-list";
 import { popupUnder } from "./popup";
 import { readAboveNotice } from "./notice";
-import type { FrameAnchor, Profile } from "./profile";
+import type { FrameAnchor, Profile, SecretMask } from "./profile";
 
 /** The profile block this module reads. */
 export type IdleProfile = Profile["idle"];
@@ -110,6 +110,11 @@ export interface Frame {
   readonly submit?: readonly string[];
   /** The layout's `newlineSubmits`: a line break typed here submits the box. */
   readonly newlineSubmits?: true;
+  /**
+   * The layout's `secret`: this box is a sign-in field, and what is typed there is a secret
+   * (profile.ts {@link FrameLayout.secret}). `mask` says how the field hides it, when it does.
+   */
+  readonly secret?: { readonly mask?: SecretMask; readonly tail?: true; readonly wrap?: true };
 }
 
 /** A row under the bottom edge that a named footer row of the profile matches. */
@@ -158,6 +163,8 @@ interface Compiled {
   readonly placeholderFg: ReadonlySet<string> | null;
   /** The placeholder's shapes (`idle.placeholders.patterns` and the layout's own); empty when neither names one. */
   readonly placeholderPatterns: readonly RegExp[];
+  /** The sign-in field's label row (`idle.frame.secret.lead`), or null. */
+  readonly secretLead: RegExp | null;
 }
 
 const compiledByIdle = new WeakMap<IdleProfile, Compiled>();
@@ -197,6 +204,7 @@ function compile(idle: IdleProfile): Compiled {
     placeholderFg: idle.placeholders.fg === undefined ? null : new Set(idle.placeholders.fg),
     // The profile's shapes hold for every layout; a layout's own (`idle.frame.placeholderPatterns`) for it alone.
     placeholderPatterns: [...(idle.placeholders.patterns ?? []), ...(idle.frame.placeholderPatterns ?? [])].map((source) => new RegExp(source, "u")),
+    secretLead: idle.frame.secret?.lead === undefined ? null : new RegExp(idle.frame.secret.lead, "u"),
   };
   compiledByIdle.set(idle, compiled);
   return compiled;
@@ -902,12 +910,20 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
     }
   }
   if (prompt < 0 || promptMatch === null) return null;
+  // A sign-in field (`secret`): its label, when it stands over the field, is the row right over the
+  // prompt row, and only the prompt row and the rows under it hold what was typed. The rows above
+  // are the agent's own words (a login address, the steps), never the draft.
+  const secret = idle.frame.secret;
+  if (secret?.lead !== undefined && (prompt - 1 <= top || c.secretLead === null || !c.secretLead.test(texts[prompt - 1]!.trimEnd()))) return null;
 
   const hole = promptMatch.groups?.draft;
   const holeStart = promptMatch.indices?.groups?.draft?.[0] ?? texts[prompt]!.length;
   const pieces: DraftPiece[] = [];
-  for (let j = top + 1; j <= last; j++) {
+  for (let j = secret === undefined ? top + 1 : prompt; j <= last; j++) {
     const piece = j === prompt ? trimmedPiece(j, texts[j]!, holeStart, keptBorder(texts[j]!, promptMatch) ?? holeStart + (hole ?? "").length) : interiorPiece(j, texts[j]!, c.interior.continuation);
+    // A sign-in field that wraps (`secret.wrap`) holds only its own rows under the prompt row: any
+    // other row there is not this screen, and no box is the safe read.
+    if (piece === null && j > prompt && secret?.wrap === true && !isBlank(texts[j]!)) return null;
     if (piece !== null) pieces.push(piece);
   }
   const text = draftText(rows, texts, pieces, c.hint);
@@ -940,6 +956,26 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   const hinted = hint === null ? frame : { ...frame, hint };
   // The layout's own prompt glyph (`ownPrompt`): only on a box whose every row the profile's `rows` named.
   return idle.frame.ownPrompt === true && c.interior.rows !== null ? { ...hinted, ownPrompt: { row: prompt, end: holeStart } } : hinted;
+}
+
+const compiledDialogRows = new WeakMap<IdleProfile, readonly RegExp[]>();
+
+/**
+ * Whether a row of the screen matches one of the profile's `idle.dialogRows`: a dialog Collie does not
+ * read holds the keys. The caller asks only of a screen with no box. False for a profile with none.
+ */
+export function dialogRowShown(rows: readonly FrameRow[], idle: IdleProfile): boolean {
+  const sources = idle.dialogRows;
+  if (sources === undefined || sources.length === 0) return false;
+  let patterns = compiledDialogRows.get(idle);
+  if (patterns === undefined) {
+    patterns = sources.map((source) => new RegExp(source, "u"));
+    compiledDialogRows.set(idle, patterns);
+  }
+  return rows.some((row) => {
+    const text = rowText(row).trim();
+    return text.length > 0 && patterns.some((pattern) => pattern.test(text));
+  });
 }
 
 const compiledOverlays = new WeakMap<IdleProfile, readonly RegExp[]>();
@@ -994,10 +1030,17 @@ export function overlayInRows(rows: readonly FrameRow[], indices: readonly numbe
  * blank top edge sits straight over the prompt row, and two blank rows in a row end the box.
  */
 export function findInputFrame(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
+  const alternates = idle.frameAlternates === undefined ? [] : alternatesOf(idle);
+  // A layout that `precedes` the main one is the narrower shape of a screen the main one also reads.
+  for (const alternate of alternates) {
+    if (alternate.frame.precedes !== true) continue;
+    const hit = findLayout(rows, alternate);
+    if (hit !== null) return answerBox(atScroll(rows, hit, alternate), alternate);
+  }
   const found = findLayout(rows, idle);
   if (found !== null) return answerBox(atScroll(rows, found, idle), idle);
-  if (idle.frameAlternates === undefined) return null;
-  for (const alternate of alternatesOf(idle)) {
+  for (const alternate of alternates) {
+    if (alternate.frame.precedes === true) continue;
     const hit = findLayout(rows, alternate);
     if (hit !== null) return answerBox(atScroll(rows, hit, alternate), alternate);
   }
@@ -1007,14 +1050,18 @@ export function findInputFrame(rows: readonly FrameRow[], idle: IdleProfile): Fr
 /** A {@link Frame} while {@link answerBox} adds its layout's answer fields. */
 type FrameDraft = { -readonly [K in keyof Frame]: Frame[K] };
 
-/** The frame with what its layout says a box that answers a question takes (`answers`, `submit`, `newlineSubmits`). */
+/** The frame with what its layout says a box that answers a question takes (`answers`, `submit`, `newlineSubmits`, `secret`). */
 function answerBox(frame: Frame, idle: IdleProfile): Frame {
-  const { answers, submit, newlineSubmits } = idle.frame;
-  if (answers === undefined && submit === undefined && newlineSubmits === undefined) return frame;
+  const { answers, submit, newlineSubmits, secret } = idle.frame;
+  if (answers === undefined && submit === undefined && newlineSubmits === undefined && secret === undefined) return frame;
   const boxed: FrameDraft = { ...frame };
   if (answers === true) boxed.answers = answers;
   if (submit !== undefined) boxed.submit = submit;
   if (newlineSubmits === true) boxed.newlineSubmits = newlineSubmits;
+  if (secret !== undefined) {
+    const { lead: _lead, ...drawn } = secret;
+    boxed.secret = drawn;
+  }
   return boxed;
 }
 

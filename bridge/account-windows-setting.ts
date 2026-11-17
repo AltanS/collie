@@ -1,7 +1,7 @@
 // ── COLLIE_ACCOUNT_WINDOWS, READ ONCE ────────────────────────────────────────────────────────────
 //
 // `COLLIE_ACCOUNT_WINDOWS` / `[bridge] account_windows` (ADR 0118) names which harnesses Collie may
-// ask for their 5-hour and 7-day windows. A leaf module on purpose: the bridge config, the config
+// ask for their account windows (the agent's own list, ADR 0149). A leaf module on purpose: the bridge config, the config
 // file reader and the doctor all read the setting, and none of them should pull the service in.
 
 /** Every harness with an account-windows source, in the order the doctor lists them. */

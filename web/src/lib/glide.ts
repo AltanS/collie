@@ -76,7 +76,7 @@ export interface GlidePair {
  * `changes`: a dashboard Changes tab row (workspace-changes-list.tsx) and the list screen of
  * `/space/:id/changes` (routes/changes.tsx), keyed by `spaceChangesPath`.
  *
- * `pane`: a pane row (agent-card.tsx), on the dashboard's Panes and Focus lists and in a space's
+ * `pane`: a pane row (agent-card.tsx), on the dashboard's list and in a space's
  * list, and the pane screen's header identity (agent-chat.tsx), keyed by `panePath`. The status dot,
  * the agent's tile and the name fly; a space row draws its status as a word at the row's end, so it
  * has no dot to send, and the header's dot fades in on its own. The machine chip stays: the row's
@@ -351,7 +351,10 @@ export function glideBack(id: GlidePairId, key: string, go: () => void): void {
  * so a destination whose loader awaits a network read would hold the old screen frozen for the
  * read's whole length. Waiting BEFORE the transition starts keeps the screen live instead. 120 ms is
  * the most a tap may cost on top of what it cost before the glide existed; a read not in by then
- * opens the plain way, with the slide, and the loader waits for the same read it would have.
+ * opens the plain way, with the slide, and the loader waits for the same read it would have. A local
+ * pane's read answers in about 1 ms; a crew member's pane crosses the link and measured 66 to 530 ms,
+ * so a member's pane is the common case that takes the slide. That is the trade, not a bug: the
+ * alternative is a frozen screen for as long as the member takes to answer.
  */
 export const READY_WAIT_MS = 120;
 

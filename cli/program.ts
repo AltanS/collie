@@ -1115,7 +1115,7 @@ export const COMMANDS: readonly Command[] = [
       },
       {
         name: "init",
-        summary: "make a new trick folder with a TypeScript program and the helper: <id> (--sh for a shell provider)",
+        summary: "make a new trick folder with a TypeScript program and the helper: <id> (--sh for a shell provider; --dir <folder> or an agent's pane makes a draft outside the tricks folder)",
         run: async (args, s) => await cmdTrickInit(trickVerbDeps(s.io), args),
       },
       {

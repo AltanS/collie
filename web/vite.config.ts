@@ -346,9 +346,10 @@ export default defineConfig({
         // If these are ever re-copied, take the `collie-tile-dark-*` files, not the light ones.
         //
         // A dev build (channel !== "release") swaps this pair for the `-dev` tiles instead
-        // (vite-icons.ts's manifestFor) — same dark polarity, same safe-zone padding, orange
-        // paint, so a dev install is unmistakable next to a release install on the same home
-        // screen without breaking either fact above.
+        // (vite-icons.ts's manifestFor): the same mark and safe-zone padding on an orange ground,
+        // so a dev install is unmistakable next to a release install on the same home screen.
+        // The dark-tile argument above is about the release set; a dev splash shows an orange
+        // tile on the dark `background_color`, which is the point of the channel.
         // vite-icons.ts spells the tile srcs root-absolute; the manifest is relative (above).
         icons: channelManifest.icons.map((icon) => ({
           src: `./${icon.src.replace(/^\/+/, "")}`,

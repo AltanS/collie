@@ -11,6 +11,14 @@ collie trick check ~/.config/collie/tricks/my-trick
 `init` makes the folder, `dev` runs the program once and prints what ColliePWA would draw, and `check`
 checks the manifest and searches the code. None of them writes to a phone or posts to the Hill.
 
+In an agent's pane, `init` makes the folder in the agent's own work folder instead, as a draft:
+
+```sh
+collie trick init my-trick
+collie trick dev ./my-trick
+collie trick propose ./my-trick
+```
+
 This page is for a person or an agent who writes a trick. [Tricks](tricks.md) explains how tricks
 work. Every place, part, manifest key, limit and command is in the
 [Tricks reference](tricks-reference.md), and this page does not repeat them.
@@ -27,6 +35,12 @@ A trick lives in `tricks/<id>/` in Collie's config folder, `~/.config/collie` on
   edit it freely.
 - `AGENTS.md` is the contract for an agent that grows the trick. `init` writes it.
 - `media/` holds pictures the trick shows: PNG, JPEG or WebP.
+
+A trick that an agent writes is a draft until the person says yes. In an agent's pane, `init` makes
+`./<id>/` in the current folder, outside `tricks/`. `--dir <folder>` makes `<folder>/<id>/` for anyone.
+`init` refuses a folder that holds files, and a folder inside `tricks/`. Nothing is added to this
+machine's tricks before the person's yes. A folder made in `tricks/` counts as added on this machine,
+and `propose` refuses it.
 
 Collie does not run a trick from this folder. When the person switches it on, Collie copies the code
 into a folder of its own and runs that copy. So a program never writes into its own folder. It keeps
@@ -258,7 +272,8 @@ An agent that wrote a program trick hands it to the person. It never switches it
 collie trick propose ~/work/idle-watch
 ```
 
-`propose` runs the same check as `collie trick check`, then sends the files to the person's Hill as a
+`propose` takes the draft from the agent's own work folder, such as the `./<id>/` that `init` made.
+It adds nothing to this machine's tricks. `propose` runs the same check as `collie trick check`, then sends the files to the person's Hill as a
 card, "Switch on the trick idle-watch?". It leaves dot files, `node_modules/`, logs, `inputs/`,
 `media/`, `captures/` and `config.toml` behind. It prints the card's id. Read the answer with
 `collie hill status <id>`, or wait for it as a message.

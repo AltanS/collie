@@ -56,6 +56,25 @@ function claimedByADialog(lines: StyledLine[]): boolean {
   );
 }
 
+/** Claude Code 2.1.325's sign-in field, `/login` and the first run, empty, typed and pasted (fixtures README). */
+const SIGN_IN = [
+  "claude--v2325-login-console-url--w61.txt",
+  "claude--v2325-login-console-url-pasted--w61.txt",
+  "claude--v2325-login-url--w61.txt",
+  "claude--v2325-login-url-typed--w120.txt",
+  "claude--v2325-login-url-typed--w61.txt",
+  // The first run (an empty config folder): the same field with no rule, no title and no footer,
+  // a long text wrapped under its label (profiles/claude.json, `secret.wrap`).
+  "claude--v2325-first-run-console-url--w61.txt",
+  "claude--v2325-first-run-url--w120.txt",
+  "claude--v2325-first-run-url--w40.txt",
+  "claude--v2325-first-run-url--w61.txt",
+  "claude--v2325-first-run-url-pasted--w120.txt",
+  "claude--v2325-first-run-url-pasted--w61.txt",
+  "claude--v2325-first-run-url-typed--w40.txt",
+  "claude--v2325-first-run-url-typed--w61.txt",
+];
+
 describe("parity with the old walk on the real corpus", () => {
   // Measured against the walk this replaced, on every Claude capture: the same 17 screens have a box,
   // the rest are refused. The one addition is the hand-built clipped-popup screen, the bug itself.
@@ -212,6 +231,9 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2323-rc-on-slash-list--w100.txt",
     "claude--working-esc-to-interrupt.txt",
     "claude--working.txt",
+    // Claude Code 2.1.325 `/login` (2026-11-15): the sign-in field is a box of its own layout
+    // (profiles/claude.json, `secret`), from the panel's rule to the end of the screen.
+    ...SIGN_IN,
   ]);
 
   it.each(CLAUDE_FIXTURES)("%s", (name) => {
@@ -463,7 +485,7 @@ describe("invariant: rows appended below a box never change the box or its draft
     "claude--v2323-rc-on-slash-list--w100.txt": true,
   } satisfies Record<string, true>;
 
-  it.each(BOX_FIXTURES.filter((name) => !Object.hasOwn(POINTER_TAILS, name)))("%s", (name) => {
+  it.each(BOX_FIXTURES.filter((name) => !Object.hasOwn(POINTER_TAILS, name) && !SIGN_IN.includes(name)))("%s", (name) => {
     const base = textRows(load(name));
     const draft = extractInputDraft(fromTexts(base));
     for (const n of [1, 3, 8, 9, 20]) {
@@ -471,6 +493,15 @@ describe("invariant: rows appended below a box never change the box or its draft
       expect(hasInputBox(lines), `${n} rows`).toBe(true);
       expect(extractInputDraft(lines), `${n} rows`).toBe(draft);
     }
+  });
+
+  // The other class, also by design: the sign-in field runs to the end of the screen, since Claude draws
+  // nothing under its `Esc to cancel` (`/login`) or its field (the first run). A row under it is not that
+  // screen, and no box is the safe read.
+  it.each(SIGN_IN)("%s: a row under the sign-in field leaves no box", (name) => {
+    const base = textRows(load(name));
+    expect(hasInputBox(fromTexts(base))).toBe(true);
+    for (const n of [1, 3, 8]) expect(hasInputBox(fromTexts([...base, ...neutral(n)])), `${n} rows`).toBe(false);
   });
 
   it("the pointed-footer tail holds inside the footer bound, and refuses past it", () => {

@@ -206,10 +206,4 @@ The decisions behind it are records in the repository:
 
 | record | what it decides |
 | --- | --- |
-| [ADR 0099](../.adr/0099-a-durable-program-is-a-mux-with-no-screen.md) | A durable agent is a multiplexer with no screen |
-| [ADR 0100](../.adr/0100-an-ask-travels-as-data-and-is-answered-by-id.md) | An ask travels as data and is answered by id |
-| [ADR 0101](../.adr/0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md) | Send and stop name the turn the phone saw |
-| [ADR 0102](../.adr/0102-starters-are-launcher-rows.md) | Starters are rows on the New page |
-| [ADR 0103](../.adr/0103-the-wire-has-two-transports-a-private-socket-or-tls-with-a-token.md) | The two transports |
-| [ADR 0104](../.adr/0104-a-program-is-a-session.md) | A durable agent is a session, and the exit |
-| [ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md) | The SDK is an npm package |
+| [ADR 0146](../.adr/0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md) | A durable agent is a session with no screen, and it acts only by id. It replaced ADR 0099 (a multiplexer with no screen), 0100 (an ask travels as data and is answered by id), 0101 (send and stop name the turn the phone saw), 0103 (the two transports), 0104 (a session, and the exit) and 0114 (a host with no process). ADR 0102 (starters are rows on the New page) and ADR 0105 (the SDK is an npm package) are retired into code and package headers. |

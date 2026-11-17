@@ -650,6 +650,121 @@ every add, rename and removal.
 > once before it first starts that row, and shows the command, the folder and the machine. Set
 > `adds = false` on the lead to turn off every phone-added row.
 
+### Accounts
+
+Keep a second login of one agent beside the first, and pick it when you start a session. Open
+**Settings**, then **Accounts**. With no account added, nothing else changes.
+
+Each agent has a **Default** account: its normal folder, started with nothing set. Add an account in
+one of two kinds:
+
+- **Shared** (Claude Code only): Collie makes a new folder, `~/.claude-<name>`, and links the default
+  folder's setup and history into it. Your sessions, `/resume`, skills, commands, plugins, hooks,
+  `settings.json`, `CLAUDE.md` and the prompt history stay one set. Only the login and the agent's
+  per-account state are the account's own.
+  The shared account also reads the Default folder's `settings.json`. A key helper, an environment block
+  or a forced organisation in that file applies to the shared account too. Use an own folder when the
+  two logins must not share settings or history.
+- **Own**: a folder you already use, taken as it is. Collie writes nothing into it. A folder that does
+  not exist yet is made empty.
+
+| Agent | What picks the folder | Kinds |
+| --- | --- | --- |
+| Claude Code | `CLAUDE_CONFIG_DIR` | Shared, Own |
+| Codex | `CODEX_HOME` | Own |
+| pi | `PI_CODING_AGENT_DIR` | Own |
+| Grok | `GROK_HOME` | Own |
+
+To sign in, start a session with the new account. The agent shows its own sign-in in the pane:
+Claude Code asks for a theme and then the login method, Codex offers a browser sign-in or a device
+code, pi says to run `/login`, and Grok shows a code to approve in a browser. The first start of a new
+Claude Code account asks for a text style before the sign-in. Open Keys and press Enter to keep the one
+it suggests. Some sign-ins need a browser on that machine. Claude Code and Grok also try to open that
+page in a browser on the machine that runs the bridge.
+
+The New page lets you pick the account for an agent and for a row you built from its options. A row
+you wrote by hand starts as you wrote it. A Claude Code session started from a desktop terminal with
+the account's line (shown on the account's page) gets the account's tag too, once its hooks report
+the folder.
+
+A shared Claude Code account keeps three things per account, because Claude Code keeps them in the
+account's own `.claude.json`: project trust, MCP servers added with `claude mcp add`, and the theme.
+A link Collie could not make, because the account folder already holds that name, is listed on the
+account's page. Collie never replaces it.
+
+The history of an own folder is found with no restart and no `.env` line. An own Claude Code folder
+may have no Collie hooks yet; its page says so and shows the line that installs them.
+
+**Remove** forgets the account's name only. The folder, its links and its login stay.
+
+> **Note.** Accounts are per machine. A crew member's accounts are its own, and the New page reads
+> the accounts of the machine you start on. Windows offers no accounts yet.
+>
+> On tmux and zellij, the first start of a new Claude Code account shows the terminal view, not the
+> sign-in card, until the agent has signed in. Type the code with the keys there. The phone treats that
+> text as an ordinary message.
+
+### Use several accounts of one agent
+
+Two Claude subscriptions, a work and a personal Codex, a second set of pi providers: give each
+account its own launcher row. Each row starts the agent with a different folder for its login and
+settings. Collie does not switch accounts. The agent keeps the login in the folder you name.
+
+```toml
+[[launchers]]
+command = "CLAUDE_CONFIG_DIR=~/.claude-work claude"
+label = "Claude Code, work"
+harness = "claude"
+
+[[launchers]]
+command = "CODEX_HOME=~/.codex-work codex"
+label = "Codex, work"
+harness = "codex"
+
+[[launchers]]
+command = "PI_CODING_AGENT_DIR=~/.pi-work pi"
+label = "pi, work"
+harness = "pi"
+
+[[launchers]]
+command = "omp --profile work"
+label = "omp, work"
+harness = "omp"
+```
+
+Collie types the `command` into a fresh shell, so a leading `VAR=value` sets the variable for that
+one program, as it does in bash, zsh and fish. The `harness` key lists the row under **Agent** with
+that agent's mark. Your plain **Claude Code** entry keeps the default account, so a personal login
+needs no row.
+
+| Agent | What separates the accounts | Sign in, once per folder |
+| --- | --- | --- |
+| Claude Code | `CLAUDE_CONFIG_DIR=<folder>`, the way Anthropic documents several accounts | `/login` in the pane |
+| Codex | `CODEX_HOME=<folder>` | `codex login` in a shell with `CODEX_HOME` set |
+| pi | `PI_CODING_AGENT_DIR=<folder>`, which moves settings, sessions and login | `/login` in the pane |
+| omp | `--profile <name>`, or `OMP_PROFILE=<name>` | `/login` in the pane, or `omp login` |
+
+To sign in, start the row once and run the sign-in in its pane. Each folder asks one time. After
+that, the row starts signed in. The sign-in is the agent's own flow, and some need a browser on that
+machine.
+
+A running session keeps its account. To use the other account, start a new session from the other
+row.
+
+Three more things need to know the folder, because the bridge reads its own environment and not a pane's:
+
+- **Chat history.** Collie finds a session's log under the default folder. For another folder, add
+  its logs to the bridge's `.env`, with absolute paths, then restart that Collie instance. For
+  Claude Code the setting is `COLLIE_TRANSCRIPT_ROOT=/home/you/.claude/projects,/home/you/.claude-work/projects`.
+  Codex takes `COLLIE_CODEX_ROOT` (`/home/you/.codex-work/sessions`). pi and omp take `COLLIE_PI_ROOT`
+  with the `sessions` folder of each home. Each setting replaces the default list, so name the
+  default folder too.
+- **Claude Code hooks.** Run `CLAUDE_CONFIG_DIR=/home/you/.claude-work collie hooks install claude`
+  once per folder ([Terminals](multiplexers.md#collie-writes-hooks-into-claudes-own-settings)).
+- **The 5-hour and 7-day windows** of a Claude Code pane read that pane's own login, once the hooks
+  in its folder report the folder. Collie only reads the file, and it sends the login nowhere but
+  Anthropic ([Usage windows](#usage-windows)).
+
 ### Reaching a durable agent (experimental)
 
 Each durable agent a Collie runs beside its terminal is one entry in `sources.json`, written by
@@ -741,7 +856,7 @@ weight = "400 700"           # optional
 ```
 
 Custom fonts append to the built-in list rather than replacing it
-([ADR 0033](../.adr/0033-the-app-face-is-a-device-preference.md)), unlike the behavior in
+([ADR 0148](../.adr/0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md)), unlike the behavior in
 `commands.toml` and the other configuration files. Because fonts do not trigger actions, there is
 nothing to shadow.
 
@@ -1062,7 +1177,7 @@ logged. A folder that is not on disk at launch time falls back to home.
 
 ## Usage windows
 
-The figures beside the model show your 5-hour and 7-day limits for Claude and Codex, with no setup. They read as a percentage of what is used (`7d 83%`) unless you choose dots in Settings, Appearance, Usage row.
+The figures beside the model show the limits the agent reports for Claude and Codex, usually the 5-hour and 7-day ones, with no setup. A plan that reports one limit shows one. A weekly limit for one model shows as `7d` and the model name (`7d Opus 30%`), and a row with more than three limits shows the first three and a count (`+1`). They read as a percentage of what is used (`7d 83%`) unless you choose dots in Settings, Appearance, Usage row.
 
 ```bash
 # turn every source off
@@ -1100,7 +1215,7 @@ Each source reads a different thing.
 
 `collie doctor` shows every source in its `account-windows` row: on or off, the file it reads and the host it asks. [Terminals](multiplexers.md#collie-writes-hooks-into-claudes-own-settings) has the statusLine road.
 
-The context figure needs no setting. For pi, OMP, Codex and OpenCode, Collie reads the tokens of the last turn from the session log. It reads the model's window from Codex's log, or from the harness's own model list on disk (pi's `models-store.json`, OMP's `models.db`, OpenCode's `~/.cache/opencode/models.json`). A model that list does not name gets no context figure; the model name still shows. The tag also shows the session's cost in dollars after the figures when the harness reports one: Claude Code through the wrapped status line, pi, OMP and OpenCode from their logs. Codex has none, so its tag shows no cost.
+The context figure needs no setting. For pi, OMP, Codex and OpenCode, Collie reads the tokens of the last turn from the session log. It reads the model's window from Codex's log, or from the harness's own model list on disk (pi's `models-store.json`, OMP's `models.db`, OpenCode's `~/.cache/opencode/models.json`). A model that list does not name shows the token count (`ctx 222k`) and no percentage, and the Dots view draws nothing for it; the model name still shows. The tag also shows the session's cost in dollars after the figures when the harness reports one: Claude Code through the wrapped status line, pi, OMP and OpenCode from their logs. Codex has none, so its tag shows no cost.
 
 ## Dark mode / light mode
 

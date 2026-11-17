@@ -108,9 +108,10 @@ const RELEASE_MANIFEST: ChannelManifest = {
   ],
 };
 
-// Same dark polarity as the release tiles (vite.config.ts's long comment above `icons` explains
-// why the tile must stay dark) — only the paint and the name change, so an operator who installs
-// both a release and a dev build still recognises the app family at a glance.
+// The dev tiles turn the release tile round: an orange ground and the mark in the release tile's
+// dark paper colour (the collie-brand ship script bakes them). The mark, the frame and the name's
+// stem are the release set's, so an operator who installs both a release and a dev build still
+// recognises the app family, and tells the two apart by the whole tile.
 const DEV_MANIFEST: ChannelManifest = {
   name: "Collie (dev)",
   short_name: "Collie dev",

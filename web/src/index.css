@@ -1209,10 +1209,10 @@
  *
  * THE `var()` FALLBACK IS THE OFFLINE STORY, and it is not decoration. A device set to an operator
  * face that cannot be resolved — first paint before /api/config answers, offline, or the operator
- * deleted the row — has no `--font-operator-family`, so the stack starts at "Space Grotesk": the
- * DEFAULT SHIPPED FACE, never a bare `sans-serif`. Aldrich is named a second time after the
- * var() so that a resolved-but-unfetchable face lands there too rather than on the metric twin,
- * which is Arial wearing Aldrich's measurements and not the same thing at all.
+ * deleted the row, has no `--font-operator-family`, so the stack starts at "Atkinson Hyperlegible
+ * Next": the DEFAULT SHIPPED FACE, never a bare `sans-serif`. Atkinson is named a second time after
+ * the var() so that a resolved-but-unfetchable face lands there too rather than on the metric twin,
+ * which is Arial wearing Atkinson's measurements and not the same thing at all.
  *
  * The preference is NOT cleared when this happens. A phone that is briefly offline must not
  * silently forget a choice it will be able to honour again in a minute. */

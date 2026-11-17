@@ -1,10 +1,9 @@
-# 0141 — A push may say what the agent waits on, when the operator turns it on
+# 0152: A push may say what the agent waits on, when the operator turns it on
 
-- **Status:** Proposed
+- **Status:** Proposed. Accepted at the tag that ships it.
 - **Date:** 2026-11-14
-- **Shipped in:** pending
-- **Amends:** nothing. It widens to a terminal pane, behind a setting that is off by default, what
-  [ADR 0100](./0100-an-ask-travels-as-data-and-is-answered-by-id.md) already allows a durable
+- **Builds on:** [ADR 0146](./0146-a-durable-agent-is-a-session-with-no-screen-that-acts-by-id.md), rule 8. It widens to a
+  terminal pane, behind a setting that is off by default, what that rule already allows a durable
   program: its own words in front of the generic push, 60 and 120 characters, cleaned again.
 - **Trail:** `bridge/waiting-words.ts` · `bridge/notifications.ts` (`said`, `wordsFor`) ·
   `bridge/index.ts` · `bridge/config-schema.ts` (`push_words`) · `docs/voice-and-push.md` ·
@@ -21,7 +20,7 @@ The words exist. A Claude Code permission dialog is about a tool call the agent 
 log before it stopped, with Claude's own one-line description of a command, and an AskUserQuestion
 call holds its question and options. The journal (`bridge/journal/`) already parses both into a
 `ToolCall`, and the push path already knows how to carry a program's own words: a durable ask may set
-a title and a line, which follow the pane's push name (ADR 0100).
+a title and a line, which follow the pane's push name (ADR 0146).
 
 They are kept off the push by rule, for the reason written at `single` in `notifications.ts`: a call's
 words are the agent's, so they can hold a path, a command line or a secret, and a push shows on a

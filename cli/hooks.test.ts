@@ -1308,6 +1308,8 @@ describe("the statusLine wrap (.adr/0115, the default since 2026-11-13)", () => 
     expect(line?.command).toBe(wrapCommand(OWN, MINE));
     const out = d.io.stdout.join("\n");
     expect(out).toContain("your own command still runs and prints exactly as before");
+    expect(out).toContain("the context window's size and the usage limits the agent reports");
+    expect(out).not.toContain("5h and 7d");
     expect(out).toContain("To undo it: `collie hooks install claude --no-statusline`.");
     expect(d.io.stderr).toEqual([]);
   });

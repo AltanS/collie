@@ -147,6 +147,11 @@ export interface SendRequestBody {
    * turn a steer goes as a plain send and its receipt says `sent`.
    */
   readonly when?: SendWhen | undefined;
+  /**
+   * The text goes into a sign-in field (the Surface's `field: "secret"`): the bridge keeps no line of it
+   * and sends it on screen only. Absent on every other send.
+   */
+  readonly secret?: true | undefined;
 }
 
 /**

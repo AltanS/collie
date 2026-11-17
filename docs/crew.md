@@ -27,7 +27,7 @@ other machine is a member, and the deputy is the one member allowed to take over
 `collie pack` still works too, for every verb in this table. It is an alias of `collie crew` with
 the same arguments and exit codes. `collie docs pack` prints this page, and the web app's `/pack`
 address redirects to `/crew`. All three go away in 2.0.0
-([ADR 0038](../.adr/0038-the-group-is-a-crew-the-wire-keeps-pack.md)).
+([ADR 0144](../.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md)).
 
 The `deputy`, `approve-promote`, and `promote` commands manage failover. For setup and recovery
 instructions, see
@@ -336,7 +336,7 @@ card. `collie trick guide` tells an agent how to write a trick.
 
 ![The deputy's standby door opens only when the lead goes quiet.](images/crew/crew-deputy-standby.svg)
 
-A deputy is one peer the lead named ahead of time. It binds a standby door with three routes, and
+A deputy is one peer the lead named ahead of time. It binds a standby door with four routes, and
 that door is never published. The lead's silence arms it, and your own pairing credential spends it,
 so the phone can reach the deputy while the lead is gone.
 
@@ -828,7 +828,7 @@ it says the same thing there: update the lead first, the members follow.
 
 1.8.0 renames the names a machine reads. The wire paths, the two environment keys, the three state
 files and the journal prefix all say crew now
-([ADR 0039](../.adr/0039-the-machine-says-crew-too.md)). The link behaves exactly as before, and
+([ADR 0144](../.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md)). The link behaves exactly as before, and
 nothing you scripted has to move on the same day.
 
 **1.8.0 carried a 1.7.0 member for one release, and 1.9.0 does not.** A 1.8.0 lead also answered the

@@ -60,7 +60,8 @@ import {
   head,
   loadTail,
   readSinceFile,
-  rootList,
+  rootReader,
+  type RootSource,
   statFile,
   tailBytes,
 } from "./files.ts";
@@ -1141,10 +1142,15 @@ export class ClaudeTranscriptSource implements TranscriptSource {
    */
   private readonly handOvers = new Map<string, { size: number; mtimeMs: number; next: string | null }>();
 
-  private readonly roots: string[];
+  private readonly rootsNow: () => string[];
 
-  constructor(roots: string | readonly string[]) {
-    this.roots = rootList(roots);
+  /** The roots now: fixed, or the live list an added account joins (M101). */
+  private get roots(): string[] {
+    return this.rootsNow();
+  }
+
+  constructor(roots: RootSource) {
+    this.rootsNow = rootReader(roots);
   }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
@@ -1406,7 +1412,7 @@ export class ClaudeTranscriptSource implements TranscriptSource {
  * `roots` is one projects directory or several (one per `CLAUDE_CONFIG_DIR` profile), searched in
  * order.
  */
-export function claudeJournal(roots: string | readonly string[]): JournalAdapter {
+export function claudeJournal(roots: RootSource): JournalAdapter {
   const source = new ClaudeTranscriptSource(roots);
   return {
     agent: "claude",

@@ -1,0 +1,40 @@
+[38;5;174mWelcome[39m [38;5;174mto[39m [38;5;174mClaude[39m [38;5;174mCode[39m [38;5;246mv2.1.325[39m
+..........................................................
+
+     *                                       █████▓▓░
+                                 *         ███▓░     ░░
+            ░░░░░░                        ███▓░
+    ░░░   ░░░░░░░░░░                      ███▓░
+   ░░░░░░░░░░░░░░░░░░░    [1m*[0m                ██▓░░      ▓
+                                             ░▓▓███▓▓░
+[38;5;246m *[39m                                 [38;5;246m░░░░[39m
+[38;5;246m [39m                                [38;5;246m░░░░░░░░[39m
+[38;5;246m [39m                              [38;5;246m░░░░░░░░░░░░░░░░[39m
+      [38;5;174m █████████[39m                                        [38;5;246m*[39m
+      [38;5;174m██▄█████▄██[39m                        [1m*[0m
+      [38;5;174m █████████[39m      *
+.......[38;5;174m█[39m [38;5;174m█[39m   [38;5;174m█[39m [38;5;174m█[39m..........................................
+
+ [1mClaude Code can be used with your Claude subscription or billed based on API usage through your Console account.[0m
+
+ Select login method:
+
+ [38;5;153m❯[39m [38;5;246m1. [38;5;153mClaude account with subscription · [38;5;246mIndividual, Team, or Enterprise[39m
+   [38;5;246m2. [39mAnthropic Console account · [38;5;246mAPI usage billing[39m
+   [38;5;246m3. [39m3rd-party platform · [38;5;246mBedrock, Microsoft Foundry, Google Vertex AI[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

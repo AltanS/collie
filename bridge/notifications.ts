@@ -201,7 +201,7 @@ interface Alert {
   askText?: AskPushText;
   /**
    * What a blocked pane waits on, in the agent's own words, read from its journal when the alert fires
-   * (`waiting-words.ts`, `push_words`, ADR 0141), cleaned. Never with `ask`, and only for `blocked`.
+   * (`waiting-words.ts`, `push_words`, ADR 0152), cleaned. Never with `ask`, and only for `blocked`.
    */
   said?: AskPushText;
   /** What a push calls this pane — {@link pushName}, the operator's label and never the title. */
@@ -242,7 +242,7 @@ export class NotificationCoordinator<H = unknown> {
     // Whether each alert is its own notification, read live like `isNotifiable`. Absent: the summary.
     private readonly individual: () => boolean = () => false,
     // What a blocked pane waits on, in the agent's own words (`waiting-words.ts`), asked when its alert
-    // fires. Absent unless the operator turned `push_words` on (ADR 0141): the push stays generic.
+    // fires. Absent unless the operator turned `push_words` on (ADR 0152): the push stays generic.
     private readonly wordsFor?: (paneId: string) => AskPushText | undefined,
   ) {
     this.individualShown = individual();
@@ -467,7 +467,7 @@ export class NotificationCoordinator<H = unknown> {
     // push name, so the push still says where it comes from, and carries no code: those words are not
     // Collie's to translate. Its line replaces the place as the body. Either part alone is used alone.
     //
-    // With `push_words` on (ADR 0141), a blocked pane that is no ask says what it waits on the same way:
+    // With `push_words` on (ADR 0152), a blocked pane that is no ask says what it waits on the same way:
     // the agent's words after the pane's push name, its line as the body.
     const title: Pick<HerdSummary, "title" | "titleCode" | "titleDetail"> =
       a.ask !== true

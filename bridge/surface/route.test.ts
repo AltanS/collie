@@ -41,6 +41,14 @@ describe("parseSendRequest", () => {
     }
   });
 
+  test("takes secret only as true: a send into a sign-in field (M56, /login)", () => {
+    expect(parseSendRequest({ ...good, secret: true })).toEqual({ ...good, mode: "send", secret: true });
+    for (const bad of [false, "yes", 1, null]) {
+      // SAFETY: each case is plain JSON data, a JsonValue.
+      expect(parseSendRequest({ ...good, secret: bad } as JsonValue)).toBeNull();
+    }
+  });
+
   test("takes when: steer, refuses any other word, and never takes the caller's word for fromPhone (M69)", () => {
     expect(parseSendRequest({ ...good, when: "steer" })).toEqual({ ...good, mode: "send", when: "steer" });
     expect(parseSendRequest({ ...good, when: null })).toEqual({ ...good, mode: "send" });

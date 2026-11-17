@@ -1,4 +1,4 @@
-// ── WHAT A BLOCKED PANE WAITS ON, IN THE AGENT'S OWN WORDS (opt-in: `push_words`, ADR 0141) ──────
+// ── WHAT A BLOCKED PANE WAITS ON, IN THE AGENT'S OWN WORDS (opt-in: `push_words`, ADR 0152) ──────
 //
 // A push for a pane that needs you says "<agent> needs you" and where the pane sits, by rule: the
 // words of the call it stopped on are the agent's, and can carry a path, a command or a secret onto a
@@ -6,7 +6,7 @@
 // `push_words` on, the operator has chosen to see them anyway, so a push can say what the agent needs
 // ("api: Run the database migrations", and the command as its line) instead of only that it needs you.
 //
-// The words are the ones a durable program may choose for its own ask (ADR 0100): a title of 60
+// The words are the ones a durable program may choose for its own ask (ADR 0146): a title of 60
 // characters and a line of 120, one line each, cleaned here and again by the coordinator, and masked
 // with the rest of the push under COLLIE_REDACT. They are the agent's own and nothing of Collie's, so
 // there is nothing to translate: a question's text and its options, a command's description and the

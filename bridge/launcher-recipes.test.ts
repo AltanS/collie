@@ -152,6 +152,12 @@ describe("scanNoPrompts", () => {
     ["make --auto", false],
     ["pi -a never", false],
     ["FOO=1 claude '--dangerously-skip-permissions'", true],
+    // An account's start line (M101): the leading assignments are not the command word.
+    ["CODEX_HOME='/home/op/.codex-work' codex -a never", true],
+    ["CODEX_HOME='/home/op/my codex' codex -a never", true],
+    ["A=1 B=\"x y\" opencode --auto", true],
+    ["CLAUDE_CONFIG_DIR='/home/op/.claude-work' claude", false],
+    ["CODEX_HOME=/x make -a", false],
     ["claude-danger", false],
     ["htop", false],
   ];

@@ -2,7 +2,9 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-11
-- **Shipped in:** pending (1.20.0, with the voice takeover)
+- **Amended in scope by:** [ADR 0097](./0097-codex-speech-can-be-chosen-from-settings.md): a second
+  exception to the setup-is-a-CLI-act rule, switching the host between Whistle, Codex and Off from
+  Settings.
 - **Amends in scope:** [ADR 0029](./0029-speech-to-text-is-a-provider-seam-collie-owns.md), whose
   *What would justify revisiting* names this case: "an on-device transcription path good enough on
   a phone". The provider seam, the lead-only rule and the hands-free rule all stand. Two things

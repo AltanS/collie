@@ -40,7 +40,8 @@ import {
   loadTail,
   readSinceFile,
   realpathOf,
-  rootList,
+  rootReader,
+  type RootSource,
   statFile,
 } from "./files.ts";
 import {
@@ -638,7 +639,14 @@ export function createPiReducer(): RowReducer {
   const pendingTools = new Map<string, PiPending>();
   // What this reducer met and had no branch for, asked for once per session by the canary.
   const unknown = createUnknownCounter(PI_KNOWN);
-  // The newest plan card, which a later non-`write` `todo` call folds into (ADR 0119).
+  // The newest plan card, which a later non-`write` `todo` call folds into (ADR 0119, retired into this
+  // comment and the header of tool-call.ts). On pi a list's updates fold into the card its `write` drew:
+  // a later `todo` call that is not a `write` draws nothing of its own, and its result rewrites the held
+  // card's tasks and names that turn in `changed` (ADR 0073). A new `write` opens a new card, a `clear`
+  // ends the held one, and a rewind past it releases it. Other harnesses draw one plan card per call,
+  // because their lists have no `write` to say where one list ends and the next begins. A held card can
+  // sit far above the bottom of a long session, and once it has left the live window its updates draw
+  // nothing until the next `write` or a fresh read; revisit if that is reported.
   let heldPlan: PendingTool | undefined;
   // Subagent task id / background job id → the card that started it, so the end notice (or a
   // `subagent_result`) can find it. Kept after the work ends: a result can be asked for later. Bounded
@@ -1213,7 +1221,12 @@ export function resumeValueOf(processes: readonly ForegroundProcess[] | undefine
 export class PiTranscriptSource implements TranscriptSource {
   private readonly pathCache = new Map<string, string>();
 
-  private readonly roots: string[];
+  private readonly rootsNow: () => string[];
+
+  /** The roots now: fixed, or the live list an added account joins (M101). */
+  private get roots(): string[] {
+    return this.rootsNow();
+  }
 
   private readonly places: PiPlaces;
 
@@ -1226,11 +1239,11 @@ export class PiTranscriptSource implements TranscriptSource {
    * answers when a process started (default: the real one); tests inject a fake so nothing forks.
    */
   constructor(
-    roots: string | readonly string[],
+    roots: RootSource,
     places: PiPlaces = { home: homedir(), tmp: tmpdir() },
     options: PiSourceOptions = {},
   ) {
-    this.roots = rootList(roots);
+    this.rootsNow = rootReader(roots);
     this.places = places;
     this.processStart = options.processStartMs ?? processStartMs;
   }
@@ -1539,7 +1552,7 @@ export function piNamesOf(head: JsonObject | null, lines: readonly string[]): Na
 }
 
 /** pi's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
-export function piJournal(roots: string | readonly string[]): JournalAdapter {
+export function piJournal(roots: RootSource): JournalAdapter {
   const source = new PiTranscriptSource(roots);
   const catalog = new WindowCatalog();
   const costs = new FileSum('"cost"', piRowCost);
@@ -1742,7 +1755,9 @@ async function sessionCwdOf(path: string): Promise<string | null> {
 // the next request carries less, and no turn has measured it yet, so the probe names no context then.
 // The log names no window (a `model_change` row names the model only), so the window comes from the
 // catalog in the agent dir ({@link piAgentDirOf}, bridge/journal/model-window.ts), and a model it does
-// not name has no context dot.
+// not name shows its token count and no percentage. A KNOWN LIMIT: pi's session is a tree, so after a
+// jump to another branch the newest turn row in the file may belong to the branch left behind, and the
+// figure is that branch's until the next turn.
 
 /**
  * The agent dir a session log belongs to: the parent of the nearest `sessions` folder above it. A

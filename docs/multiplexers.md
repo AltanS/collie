@@ -494,12 +494,12 @@ Behavior details for Claude configuration changes:
   token count itself, `ctx 222k`, never a guessed percent; with the Usage row on Dots there is no
   context dot then. `collie update` does not change your settings; `collie doctor` says in its
   `statusline-claude` row when a statusLine could be wrapped and is not.
-- **The 5-hour and 7-day windows show on their own.** They need no hook and no statusLine. While a
+- **The limits the agent reports show on their own.** Usually that is the 5-hour and 7-day windows, and a weekly window for one model when the plan has it. They need no hook and no statusLine. While a
   Claude pane is open, the bridge reads your Claude login on this machine
   (`~/.claude/.credentials.json`, or `$CLAUDE_CONFIG_DIR/.credentials.json`; the Keychain on a Mac
   with no file) and asks `api.anthropic.com/api/oauth/usage`, the same call Claude Code's `/usage`
-  makes. It asks when the pane appears, after a turn ends (at most once a minute) and every five
-  minutes. It stores nothing of the login, never refreshes it and sends it nowhere else. It skips a
+  makes. It asks when the pane appears, after a turn ends and every five minutes, and never more
+  than once in five minutes per agent. It stores nothing of the login, never refreshes it and sends it nowhere else. It skips a
   login file that others may read (anything looser than `0600`) and a login that has expired, and
   Claude Code refreshes that one at its next call. An API-key, Bedrock or Vertex session has no
   windows to show. Codex panes get theirs the same way, on the same schedule, from its own session
@@ -507,7 +507,7 @@ Behavior details for Claude configuration changes:
   `COLLIE_ACCOUNT_WINDOWS=all` or a list (see [Usage windows](configure.md#usage-windows)).
   `COLLIE_ACCOUNT_WINDOWS=0` (or `[bridge] account_windows = false`) turns all of it off, and
   `collie doctor` says which in its `account-windows` row.
-- **The wrap is also the second road for the windows.** The 5-hour and 7-day windows come from
+- **The wrap is also the second road for the windows.** The limits the agent reports come from
   what Claude Code hands the wrapper too. Take that road instead of the login read with
   `COLLIE_ACCOUNT_WINDOWS=0`.
 - **To change a wrapped statusLine, unwrap it first.** Run `collie hooks uninstall claude`, edit

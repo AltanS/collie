@@ -289,7 +289,7 @@ export function readNewAt(search: string): NewAt {
  * paths need nothing here — the two ladders below already read every `/settings/<x>` as a child of
  * the index.
  */
-export type SettingsSection = "appearance" | "harnesses" | "device" | "voice" | "alerts" | "system" | "tricks" | "experiments";
+export type SettingsSection = "appearance" | "harnesses" | "accounts" | "device" | "voice" | "alerts" | "system" | "tricks" | "experiments";
 
 /** One Settings section — a CHILD of the index, carrying the scope like every other path helper. */
 export function settingsSectionPath(section: SettingsSection, scope?: Scope): string {
@@ -305,6 +305,19 @@ export type VoicePage = "host" | "model";
  */
 export function voicePagePath(page: VoicePage, scope?: Scope): string {
   return `/settings/voice/${page}${scopeSearch(scope)}`;
+}
+
+/**
+ * The two kinds of page below Settings → Accounts (M101): the Add form, and one account's page.
+ * Both are CHILDREN of the list (Back lands on it, not on the index). Carry the scope like the others.
+ */
+export function accountsAddPath(scope?: Scope): string {
+  return `/settings/accounts/add${scopeSearch(scope)}`;
+}
+
+/** One account's page. The id is the bridge's opaque one (`claude:default` for a Default row), so it is encoded. */
+export function accountPath(id: string, scope?: Scope): string {
+  return `/settings/accounts/${encodeURIComponent(id)}${scopeSearch(scope)}`;
 }
 
 /**
@@ -476,7 +489,7 @@ const ANY_TRICK = "/trick/*";
  *   L1 `/space/:id`, `/settings`, `/crew`, `/hill`, `/new` (from the dashboard, a space or a pane)
  *   L1 `/trick/:id`, a trick session (M94 slice 03)
  *   L2 `/pane/:id`, `/new/add` (below the New page), `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
- *   L3 `/settings/voice/host`, `/settings/voice/model`, `/settings/system/install-count`, `/settings/appearance/character`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
+ *   L3 `/settings/accounts/add`, `/settings/accounts/:id`, `/settings/voice/host`, `/settings/voice/model`, `/settings/system/install-count`, `/settings/appearance/character`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/space/:id/changes/commit`, `/space/:id/changes/files` (a folder or a file of the tree, with
  *      `?dir=` or `?path=`)
  *   L4 `/pane/:id/changes/commit` (the commit's file view adds `&path=`), `/pane/:id/changes/files`
@@ -545,6 +558,10 @@ export function ancestorsOf(pathname: string): string[] {
   // The Character page sits one level below Appearance.
   if (head === "settings" && seg.length === 3 && id === "appearance" && leaf === "character") {
     return ["/settings/appearance", "/settings", "/"];
+  }
+  // The Add form and one account's page sit one level below Accounts.
+  if (head === "settings" && seg.length === 3 && id === "accounts") {
+    return ["/settings/accounts", "/settings", "/"];
   }
   if (head === "crew" && seg.length === 1) return ["/settings/system", "/settings", "/"];
   // Machines is opened from the Settings index and from the crew card in System, so both are
@@ -794,6 +811,9 @@ export function parentChain(pathname: string, search: string): string[] {
   }
   if (head === "settings" && seg.length === 3 && id === "appearance" && leaf === "character") {
     return [home, `/settings${q}`, `/settings/appearance${q}`];
+  }
+  if (head === "settings" && seg.length === 3 && id === "accounts") {
+    return [home, `/settings${q}`, `/settings/accounts${q}`];
   }
   if (head === "crew" && seg.length === 1) return [home, `/settings${q}`, `/settings/system${q}`];
   if (head === "machines" && seg.length === 1) return [home, `/settings${q}`];

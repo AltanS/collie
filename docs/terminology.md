@@ -66,7 +66,8 @@ The agent that runs in a pane: Claude Code, Codex, pi, OmO, or a durable agent
 
 The lead plus its members. It gives you one phone URL for many machines
 ([Crews](crew.md#two-machines-one-crew)). One machine needs no crew to show a terminal and a
-durable agent together.
+durable agent together. The word is crew and not pack: pack needs a dog-pack picture before it means
+anything and sounds like "package", while a crew has a lead by nature.
 
 ## Lead
 

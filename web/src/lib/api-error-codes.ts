@@ -175,6 +175,19 @@ export const API_ERROR_CODES = [
   // The anonymous install count, POST /api/telemetry
   "telemetry.setting_invalid",
   "telemetry.request_id_required",
+
+  // Accounts, GET /api/accounts, POST /api/accounts[/remove], an account on a launch (M101)
+  "accounts.unavailable",
+  "accounts.label_taken",
+  "accounts.bad_label",
+  "accounts.bad_folder",
+  "accounts.folder_taken",
+  "accounts.kind_unsupported",
+  "accounts.limit",
+  "accounts.link_failed",
+  "accounts.default",
+  "accounts.unknown",
+  "accounts.store_unreadable",
 ] as const;
 
 /** Every code the bridge can send. Derived from the list, so there is exactly one place to edit. */

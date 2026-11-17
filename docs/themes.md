@@ -398,7 +398,7 @@ version 2 file: it is Daylight with a shorter list of colours and the full palet
 }
 ```
 
-- `version` is 1, 2, 3 or 4. See [Versions](#versions). Any other number is refused.
+- `version` is 1, 2, 3, 4 or 5. See [Versions](#versions). Any other number is refused.
 - `id` is 1 to 32 characters: lower-case letters, digits and hyphens, starting with a letter or a digit.
 - `name` is 1 to 40 characters, and `author` is up to 60. Neither may hold a control character.
 - `light` and `dark` are objects of tokens. Give one half or both. A half you leave out, and any token you

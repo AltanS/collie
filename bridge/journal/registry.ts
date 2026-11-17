@@ -15,6 +15,7 @@ import { claudeJournal } from "./claude.ts";
 import { codexJournal } from "./codex.ts";
 import { dshJournal } from "./dsh.ts";
 import { durableJournal } from "./durable.ts";
+import type { RootSource } from "./files.ts";
 import { grokJournal } from "./grok.ts";
 import { hermesJournal } from "./hermes.ts";
 import { kiroJournal } from "./kiro.ts";
@@ -83,14 +84,22 @@ export interface ModelCatalogs {
  * The map is built FROM each adapter's own `agent` field (not a hand-written literal), so a key can
  * never drift from the adapter it points at — the same guarantee the frontend registry gives.
  */
-export function buildJournalRegistry(roots: JournalRoots, catalogs: ModelCatalogs = {}): Record<string, JournalAdapter> {
+export function buildJournalRegistry(
+  roots: JournalRoots,
+  catalogs: ModelCatalogs = {},
+  extra?: (agent: string) => readonly string[],
+): Record<string, JournalAdapter> {
+  // The roots an added account brings (M101, ADR 0141), asked at each lookup, after the configured
+  // ones: a configured root keeps its place and its meaning, and no extra root is listed twice.
+  const live = (agent: string, configured: readonly string[]): RootSource =>
+    extra === undefined ? configured : () => [...new Set([...configured, ...extra(agent)])];
   const adapters: JournalAdapter[] = [
     agyJournal(roots.agy),
-    claudeJournal(roots.claude),
-    codexJournal(roots.codex),
-    piJournal(roots.pi),
+    claudeJournal(live("claude", roots.claude)),
+    codexJournal(live("codex", roots.codex)),
+    piJournal(live("pi", roots.pi)),
     opencodeJournal(roots.opencode, catalogs.opencode),
-    grokJournal(roots.grok),
+    grokJournal(live("grok", roots.grok)),
     hermesJournal(roots.hermes),
     kiroJournal(roots.kiro),
     museJournal(roots.muse),

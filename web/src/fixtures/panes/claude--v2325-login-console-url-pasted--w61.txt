@@ -1,0 +1,40 @@
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [38;5;246mv2.1.325[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mOpus[39m [38;5;246m5.5[39m [38;5;246m·[39m [38;5;246mAPI[39m [38;5;246mUsage[39m [38;5;246mBilling[39m
+[38;5;174m ▝▝[39m   [38;5;174m▝▝[39m   [38;5;246m~/.cache/collie-lab/login-paste-lab/work[39m
+
+
+[38;5;246m[48;5;237m❯ [38;5;231m/login[39m
+
+[38;5;153m[49m─────────────────────────────────────────────────────────────
+[39m  [1m[38;5;153mLogin[0m
+
+  [38;5;246mBrowser didn't open? Use the url below to sign (c to [39m
+  [38;5;246min [39m                                            [38;5;246mcopy)[39m
+
+[38;5;246mhttps://platform.claude.com/oauth/authorize?code=true&client_
+id=41077d10-94b8-4194-be48-d251e9eb21b4&response_type=code&re
+direct_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2
+Fcallback&scope=user%3Aprofile+user%3Ainference&code_challeng
+e=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX&code_challenge_
+method=S256&state=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+
+[39m  Paste code here if prompted >***************************…
+
+
+  [3m[38;5;246mEsc[0m [3m[38;5;246mto[0m [3m[38;5;246mcancel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

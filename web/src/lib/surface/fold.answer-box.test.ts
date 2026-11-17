@@ -76,7 +76,12 @@ describe("omp's answer editor is a box that answers the agent's question (#704)"
     const answered = new Set(BOXES.map(([name]) => name));
     const others = FIXTURES.filter((name) => labelOf(name).harness === "omp" && !answered.has(name));
     expect(others.length).toBeGreaterThan(200);
-    expect(others.filter((name) => findInputFrame(fixtureRows(name), omp)?.answers === true)).toEqual([]);
+    // The `/login` sign-in field answers too (`secret`, sign-in.test.ts): a box of its own kind.
+    const framed = others.filter((name) => {
+      const frame = findInputFrame(fixtureRows(name), omp);
+      return frame?.answers === true && frame.secret === undefined;
+    });
+    expect(framed).toEqual([]);
   });
 });
 

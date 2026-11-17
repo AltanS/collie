@@ -40,7 +40,7 @@ import { findLinks } from "../../links";
 import { readCuesFor } from "../../surface/cues";
 import { findInputFrame } from "../../surface/frame";
 import type { BoxTextModel, BoxTextRun } from "../box-text-model";
-import { joinBrokenUrls } from "./box-url-join";
+import { joinBrokenUrls } from "../box-url-join";
 import { inputBoxTail } from "./chrome";
 import { CLAUDE_IDLE, isBlank } from "./markers";
 

@@ -18,6 +18,9 @@ import { forwardError, type LeadMerge } from "./forward.ts";
 // lead's home is asked as `~/...`, so the member reads it under ITS home: `/var/home/op/src` on the
 // lead is `/home/op/src` on a member whose home is `/home/op`. A member that predates 0127 answers no
 // `folders`, and the lead's rows then read as available, as the harness check alone says.
+//
+// Not built: a per-row `hosts` filter, a member switch to decline the lead's rows, and an "adopt to the
+// lead" action that moves a member's old row into the lead's list.
 
 /** The query key of one folder question on the forwarded read. */
 export const CWD_PARAM = "cwd";

@@ -416,6 +416,9 @@ const PANE_WIRE_KEYS = {
   // time from the statusLine wrapper's file, and this harness builds its body with no reader, so no
   // golden byte moved.
   usage: true,
+  // Not a crew dimension: the added account the pane runs under (M101). Present only for an added
+  // account, and this harness builds its body with no accounts service, so no golden byte moved.
+  account: true,
   // Not a crew dimension: a trick session's part key (M94 slice 03). Present only on a pane of
   // `kind: "trick"`, and this harness has no tricks folder, so no golden byte moved.
   view: true,
@@ -562,6 +565,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
   // bodies below prove; this list is the tripwire that a THIRD such field cannot be added quietly.
   test("PaneWire carries the two address dimensions and nothing else", () => {
     expect(Object.keys(PANE_WIRE_KEYS).toSorted()).toEqual([
+      "account",
       "actions",
       "agent",
       "agentTitle",
@@ -896,6 +900,11 @@ describe("solo zero-tax — routes", () => {
       // included, and then answers 404 instead of the SPA's app shell. Not a route of its own, and it
       // registers nothing on the crew link.
       "/api/*",
+      // Accounts (M101, ADR 0141): this machine's accounts, a read and two writes, each through the
+      // caller's gate and resolver. A bridge built with no service answers the read 404. Session-scoped,
+      // so a `?host=` call reaches the member whose folders they are.
+      "/api/accounts",
+      "/api/accounts/remove",
       // The prompt-cache rule catalog (M28/02). A process-scoped READ, gated exactly as `/api/config`
       // is, and the only route this feature adds. Not forwarded across the crew link.
       "/api/cache-rules",
@@ -1355,6 +1364,9 @@ describe("solo zero-tax — config", () => {
 
 /** Every `<stateDir>/…` path any bridge module names. `uploads` is a directory, the rest are files. */
 const STATE_DIR_ENTRIES = [
+  // The accounts a person added on this machine (M101, ADR 0141). Written by use and by nothing else:
+  // absent until the first add from Settings succeeds.
+  "accounts.json",
   // Windows only (M43 spec 04): the access lists Collie saved before it changed one, so the change can
   // be undone with `icacls /restore`. Absent until the bridge actually repaired a loose folder or file;
   // never on Linux or macOS, and never on a Windows install whose folders were private already.
@@ -1498,6 +1510,10 @@ const STATE_DIR_ENTRIES = [
   // The usage readings, `usage/` (ADR 0115): one small file per Claude session, written by the
   // statusLine wrapper, read and pruned by the bridge. Absent until a wrapped statusLine runs.
   "usage",
+  // The last reading of each account's usage windows (bridge/usage-seen.ts, M101 spec 02): one 0600 file,
+  // written at most once a minute per key and only when a figure changed. Written by use and by nothing
+  // else: absent until the first reading of a window is held, and a bridge that is only started never has it.
+  "usage-seen.json",
   // The Whistle model's folder, `whistle/` (ADR 0096): the model, its manifest and a download's
   // part file. Absent until a write device taps "Download to host" or the operator runs
   // `collie stt whistle`; nothing else creates it.

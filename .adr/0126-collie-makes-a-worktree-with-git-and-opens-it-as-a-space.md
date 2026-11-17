@@ -2,7 +2,9 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-02
-- **Shipped in:** pending
+- **Related:** [ADR 0093](./0093-a-branch-folder-is-named-by-its-parent.md), now a stub whose rule
+  [ADR 0145](./0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md) states: this record
+  changed its point 9 only (the worktree routes are forwarded to the addressed host).
 - **Supersedes:** [ADR 0032](./0032-a-worktree-is-opened-by-the-multiplexer-not-by-git.md) (a
   worktree is opened by the multiplexer, not by Git).
 - **Relates to:** [ADR 0089](./0089-a-second-agent-on-a-branch.md) (receipts, base, the 60 s

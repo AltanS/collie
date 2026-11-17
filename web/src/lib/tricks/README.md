@@ -227,7 +227,10 @@ shape changes moves to the next number. `AGENT_VIEW_CONTRACT` in `contract.ts` h
 `run = "program.ts"`, `program.ts` (about 25 lines: a status chip, a Dashboard tile, a session with a
 row per session, and a Decision commented out), `trick.ts` (the helper), `config.toml` (settings the
 program reads) and `AGENTS.md` (the contract for an agent that grows the trick). `collie trick init
---sh <id>` writes the shell sample instead (`program.sh`, one belt mark).
+--sh <id>` writes the shell sample instead (`program.sh`, one belt mark). In an agent's pane (the
+`inAgentPane` check of `trick on`), or with `--dir <folder>`, the folder is a draft: `init` makes
+`./<id>/` (or `<folder>/<id>/`) and not the tricks folder, because a folder there is "added on this
+machine" and `propose` refuses it. It refuses a draft folder that holds files and one inside the tricks folder.
 
 ```ts
 import { run, v } from "./trick.ts";

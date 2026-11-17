@@ -109,8 +109,9 @@ export function readSurface(value: JsonValue | undefined): Surface | null {
   }
   const reason = pick(node.reason, REASONS);
   const read: Surface = reason === null ? { revision, turn, modal, composer } : { revision, turn, modal, composer, reason };
-  // `staleFrame` (2026-10-25): only `true` is a word; anything else is dropped.
-  return node.staleFrame === true ? { ...read, staleFrame: true } : read;
+  // `staleFrame` (2026-10-25): only `true` is a word; anything else is dropped. So is `field`: only `secret`.
+  const marked = node.staleFrame === true ? { ...read, staleFrame: true as const } : read;
+  return node.field === "secret" ? { ...marked, field: "secret" } : marked;
 }
 
 /** The bridge's answer, field by field; null when it is not one (a proxy page, an old bridge). */

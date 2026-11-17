@@ -14,6 +14,11 @@ import { detectPiQuestion, piModalOnScreen, piQuestionBanner, type PiQuestion } 
 import { composerDraft, composerPrompt, composerStatusLines, locateComposer } from "./composer";
 import { piView, type PiView } from "./panel";
 import { detectPiTrust } from "./trust";
+import { requireProfile } from "../../surface/profile";
+import { detectSignInCard } from "../sign-in-card";
+
+/** pi's profile, whose sign-in layout (`idle.frameAlternates`, `secret`) finds the `/login` field. */
+const PI_IDLE = requireProfile("pi").idle;
 
 export function piBuildBlocks(lines: StyledLine[]): Block[] {
   const view = piView(lines);
@@ -35,6 +40,15 @@ export function piBuildBlocks(lines: StyledLine[]): Block[] {
     const before = trimTrailingBlank(lines.slice(0, trust.startLine));
     const blocks: Block[] = before.length > 0 ? [{ kind: "raw", lines: before }] : [];
     blocks.push({ kind: "prompt-select", prompt: trust.model, lines: lines.slice(trust.startLine) });
+    return blocks;
+  }
+  // The `/login` panel over its sign-in field (sign-in-card.ts): pi draws it between the editor's rules.
+  // The card holds the address as one link; the field is the composer's.
+  const signIn = view.column === null ? detectSignInCard(lines, PI_IDLE) : null;
+  if (signIn !== null) {
+    const before = trimTrailingBlank(lines.slice(0, signIn.startLine));
+    const blocks: Block[] = before.length > 0 ? [{ kind: "raw", lines: before }] : [];
+    blocks.push({ kind: "box-text", boxText: signIn.model, lines: lines.slice(signIn.startLine) });
     return blocks;
   }
   // The editor comes off the mirror only when it is the editor: a modal can fill the same rules with
@@ -67,6 +81,7 @@ function trustOn(view: PiView, lines: StyledLine[]): ReturnType<typeof detectPiT
 const PI_DIALOG_DETECTORS: readonly DialogDetector[] = [
   { name: "question", detect: (lines) => boundQuestion(piView(lines)) },
   { name: "trust", detect: (lines) => trustOn(piView(lines), lines) },
+  { name: "sign-in", detect: (lines) => (piView(lines).column === null ? detectSignInCard(lines, PI_IDLE) : null) },
 ];
 
 /** The editor is on screen and no pi modal is: the only screen a reply may be typed into. A question's

@@ -51,7 +51,10 @@
 // prompt title: the plan body above it stays in the raw mirror, because the plan is what the person
 // decides on. When the slider is up, its selected tier and that tier's model go into the question
 // (`continue with: default · Claude Haiku 5.5`): the approve rows run with it, and the card has no way to
-// move the slider (the footer's `←/→ model`), so it says which tier a tap uses.
+// move the slider (the footer's `←/→ model`), so it says which tier a tap uses. A tier button is refused
+// for now: it would be a second walk on a second axis (`←/→`), with its own wrap and its own verify step,
+// for a choice the person already made when they set the roles. A tier moved at the desk changes the
+// signature, so a stale tap is refused.
 //
 // FAIL CLOSED. Every piece below is required, and any one missing returns null, which leaves the raw
 // mirror and the unread-dialog card's Escape (omp/modal.ts):

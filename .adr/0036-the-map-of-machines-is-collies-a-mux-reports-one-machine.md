@@ -1,6 +1,7 @@
 # 0036 — The map of machines is Collie's, a mux reports one machine
 
 Status: **Accepted** (2026-09-08)
+Date: 2026-09-08
 
 Contract: [`MUX_CONTRACT.md`](../MUX_CONTRACT.md) · [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) ·
 Related: [ADR 0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) (which kept federation above

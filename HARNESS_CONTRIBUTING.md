@@ -121,7 +121,7 @@ modal to put beside it. `omp` had that problem: one ZWJ emoji in a statusline te
 composer scanner return null on every frame, so `composerReady` would be false forever on a healthy
 pane and the card would paint itself permanently over a live composer. It now declares `cancelKey`
 together with `modalOnScreen`, which reads its own key-hint footer at the buffer tail
-([ADR 0076](./.adr/0076-the-omp-resume-picker-is-lifted-and-every-omp-modal-has-a-way-out.md)); a
+([ADR 0053](./.adr/0053-an-unread-dialog-still-has-a-way-out.md), [ADR 0151](./.adr/0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) rule 3f, `web/src/lib/harness/omp/modal.ts`); a
 composer prints no such footer, so the false negative can no longer paint the card.
 
 **Optionally declare `modalOnScreen(lines)` too**: positive evidence that one of your harness's
@@ -181,7 +181,7 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
    in a single tap. Set it only where the screen really printed the scale: a row that shows the
    current value alone (Claude's `/model` picker) leaves it undefined and keeps the plain arrows.
    The scale is part of menu identity, so it must be stable across polls
-   ([ADR 0054](./.adr/0054-a-printed-scale-is-tappable.md)). **A narrow pane wraps that scale**, so
+   ([ADR 0151](./.adr/0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) rule 4). **A narrow pane wraps that scale**, so
    read the footer as the rows the terminal wrapped it onto (`readKeyHintFooter` in
    `web/src/lib/harness/menu-hints.ts`, which joins them) and rebuild each value from its head and
    the fragment printed under it, in the same column; merge only when every fragment lines up, and
@@ -248,7 +248,7 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
    `conformance.test.ts`, so a new gap is a reviewed decision and a second capture is the fix.
    Claude's folder-trust prompt is the reference case since 2.1.278 — it prints no digit, so none may
    be synthesised, and ADR 0009 holds here exactly as it does above
-   ([ADR 0055](./.adr/0055-a-pointed-list-is-walked-then-confirmed.md)). Two things are load-bearing.
+   ([ADR 0151](./.adr/0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) rule 5). Two things are load-bearing.
    The arrow COUNT is a claim about where the pointer was, so the kind's committing comparator must
    see the pointer row, or a highlight moved by a second device sends the wrong number of arrows.
    And the row a bare commit key would take is the DEFAULT, which on the trust prompt quits the
@@ -289,7 +289,7 @@ under every panel), never stretch the region down over rows that tick: every tap
 "changed". Bind the dialog alone, account for every row below it in the grammar, and declare the
 window with `bindTail` from `tailLinesFor` in `web/src/lib/tail-lines.ts`. The phone sends it as
 `expected_tail_lines`, which the bridge accepts from 6 to 12 rows
-([ADR 0108](./.adr/0108-a-dialog-over-live-chrome-declares-its-tail.md)). The conformance suite
+([ADR 0151](./.adr/0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) rule 9). The conformance suite
 checks both that the declared window binds and that the default one would not.
 
 ## Session names: `nameProbe`

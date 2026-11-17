@@ -3,7 +3,6 @@ import { describe, expect, it } from "bun:test";
 import { basename, join } from "node:path";
 
 import type { JsonObject, JsonValue } from "./json.ts";
-import { USAGE_WINDOWS } from "./usage.ts";
 
 import {
   accountWindowsDoctorLine,
@@ -104,8 +103,8 @@ describe("parseAccountUsage", () => {
       limits: [
         { window: "5h", used: 12.5, resetsAt: Date.parse(RESET_5H) },
         { window: "7d", used: 100, resetsAt: Date.parse(RESET_7D) },
+        { window: "7d:opus", used: 30, resetsAt: Date.parse(RESET_7D), label: "Opus" },
       ],
-      scoped: [{ label: "Opus", used: 30, resetsAt: Date.parse(RESET_7D) }],
     });
   });
 
@@ -115,7 +114,6 @@ describe("parseAccountUsage", () => {
         { window: "5h", used: 41, resetsAt: Date.parse(RESET_5H) },
         { window: "7d", used: 0 },
       ],
-      scoped: [],
     });
   });
 
@@ -132,8 +130,31 @@ describe("parseAccountUsage", () => {
   });
 
   it("reads null windows as an account without windows", () => {
-    expect(parseAccountUsage(flatBody(null, null))).toEqual({ limits: [], scoped: [] });
-    expect(parseAccountUsage(JSON.stringify({ limits: [], five_hour: null }))).toEqual({ limits: [], scoped: [] });
+    expect(parseAccountUsage(flatBody(null, null))).toEqual({ limits: [] });
+    expect(parseAccountUsage(JSON.stringify({ limits: [], five_hour: null }))).toEqual({ limits: [] });
+  });
+
+  it("reads a plan that reports only seven_day as one window", () => {
+    expect(parseAccountUsage(JSON.stringify({ five_hour: null, seven_day: { utilization: 44, resets_at: RESET_7D } }))?.limits).toEqual([
+      { window: "7d", used: 44, resetsAt: Date.parse(RESET_7D) },
+    ]);
+  });
+
+  it("keeps every scoped weekly row as 7d:<scope> with its label, ordered after 5h and 7d by label", () => {
+    const scoped = (name: string, percent: number): JsonObject => ({ kind: "weekly_scoped", percent, resets_at: RESET_7D, scope: { model: { display_name: name } } });
+    const body = JSON.stringify({ limits: [scoped("Sonnet 4.6", 5), scoped("Opus", 30), { kind: "weekly_all", percent: 9, resets_at: RESET_7D }, { kind: "session", percent: 2, resets_at: RESET_5H }] });
+    expect(parseAccountUsage(body)?.limits.map((l) => [l.window, l.label ?? null, l.used])).toEqual([
+      ["5h", null, 2],
+      ["7d", null, 9],
+      ["7d:opus", "Opus", 30],
+      ["7d:sonnet-4.6", "Sonnet 4.6", 5],
+    ]);
+  });
+
+  it("keeps a scoped row with no label under 7d:scoped, and caps a reading at eight windows", () => {
+    const rows = Array.from({ length: 12 }, (_, i) => ({ kind: "weekly_scoped", percent: i, resets_at: RESET_7D, scope: { model: { display_name: `Model ${String(i).padStart(2, "0")}` } } }));
+    expect(parseAccountUsage(JSON.stringify({ limits: [...rows, { kind: "weekly_scoped", percent: 1 }] }))?.limits).toHaveLength(8);
+    expect(parseAccountUsage(JSON.stringify({ limits: [{ kind: "weekly_scoped", percent: 1 }] }))?.limits).toEqual([{ window: "7d:scoped", used: 1 }]);
   });
 
   it("refuses a body that is not either shape", () => {
@@ -370,8 +391,8 @@ describe("AccountWindows", () => {
     expect(windows.limits("claude")).toEqual([
       { window: "5h", used: 12.5, resetsAt: Date.parse(RESET_5H) },
       { window: "7d", used: 100, resetsAt: Date.parse(RESET_7D) },
+      { window: "7d:opus", used: 30, resetsAt: Date.parse(RESET_7D), label: "Opus" },
     ]);
-    expect(windows.scoped("claude")).toEqual([{ label: "Opus", used: 30, resetsAt: Date.parse(RESET_7D) }]);
     expect(lines.join("\n")).not.toContain(TOKEN);
   });
 
@@ -425,7 +446,7 @@ describe("AccountWindows", () => {
     expect(fake.calls.length).toBe(1);
     fake.release();
     await windows.settled();
-    expect(windows.limits("claude")?.length).toBe(2);
+    expect(windows.limits("claude")?.length).toBe(3);
   });
 
   it("one mux session's poll does not forget another session's pane", async () => {
@@ -461,7 +482,7 @@ describe("AccountWindows", () => {
     windows.observe([pane("claude")], "main");
     await windows.settled();
     expect(fake.calls.length).toBe(3);
-    expect(windows.limits("claude")?.length).toBe(2);
+    expect(windows.limits("claude")?.length).toBe(3);
     expect(lines).toEqual(["[usage] account windows, claude: HTTP 401, reading dropped, asking again in 15 min"]);
   });
 
@@ -484,7 +505,7 @@ describe("AccountWindows", () => {
     fake.answers.push({ status: 429 });
     windows.observe([pane("claude")], "main");
     await windows.settled();
-    expect(windows.limits("claude")?.length).toBe(2);
+    expect(windows.limits("claude")?.length).toBe(3);
     clock.now += ASK_EVERY_MS;
     windows.observe([pane("claude")], "main");
     windows.poke("claude");
@@ -570,7 +591,7 @@ describe("AccountWindows", () => {
     fake.answers.push("throw");
     windows.observe([pane("claude")], "main");
     await windows.settled();
-    expect(windows.limits("claude")?.length).toBe(2);
+    expect(windows.limits("claude")?.length).toBe(3);
     // The 2 minute back-off ends before the five-minute ask cadence does, so the cadence decides.
     clock.now += BACKOFF.network;
     windows.poke("claude");
@@ -595,7 +616,7 @@ describe("AccountWindows", () => {
     fake.answers.push({ status: 200, body: "<html>maintenance</html>" });
     windows.observe([pane("claude")], "main");
     await windows.settled();
-    expect(windows.limits("claude")?.length).toBe(2);
+    expect(windows.limits("claude")?.length).toBe(3);
     clock.now += BACKOFF.unreadable - 1;
     windows.poke("claude");
     await windows.settled();
@@ -607,7 +628,7 @@ describe("AccountWindows", () => {
     windows.observe([pane("claude")], "main");
     await windows.settled();
     clock.now += STALE_AFTER_MS;
-    expect(windows.limits("claude")?.length).toBe(2);
+    expect(windows.limits("claude")?.length).toBe(3);
     clock.now += 1;
     expect(windows.limits("claude")).toBeUndefined();
   });
@@ -897,7 +918,6 @@ describe("Codex rate_limits", () => {
         { window: "5h", used: 41.5, resetsAt: RESET_SEC * 1000 },
         { window: "7d", used: 7, resetsAt: RESET_WEEK_SEC * 1000 },
       ],
-      scoped: [],
     });
   });
 
@@ -905,16 +925,20 @@ describe("Codex rate_limits", () => {
     expect(parseCodexRateLimits(chatgptLimits(1000))?.limits.map((l) => l.resetsAt)).toEqual([RESET_SEC * 1000, RESET_WEEK_SEC * 1000]);
   });
 
-  it("keeps a window of another length as scoped and not drawn", () => {
+  it("keeps a window of another length under a length key, and draws it", () => {
     const reading = parseCodexRateLimits({ primary: { used_percent: 10, window_minutes: 60, resets_at: RESET_SEC }, secondary: { used_percent: 20, window_minutes: 43_200 } });
-    expect(reading).toEqual({ limits: [], scoped: [{ label: "1h", used: 10, resetsAt: RESET_SEC * 1000 }, { label: "30d", used: 20 }] });
+    expect(reading).toEqual({ limits: [{ window: "1h", used: 10, resetsAt: RESET_SEC * 1000 }, { window: "30d", used: 20 }] });
+  });
+
+  it("orders 5h and 7d first, then the other lengths by key", () => {
+    const reading = parseCodexRateLimits({ primary: { used_percent: 10, window_minutes: 43_200 }, secondary: { used_percent: 20, window_minutes: 300 } });
+    expect(reading?.limits.map((l) => l.window)).toEqual(["5h", "30d"]);
   });
 
   it("takes every field as optional: a window without minutes or percent is skipped", () => {
     expect(parseCodexRateLimits({ primary: { used_percent: 10 }, secondary: { window_minutes: 10_080 } })).toBeNull();
     expect(parseCodexRateLimits({ secondary: { used_percent: 3, window_minutes: 10_080 } })).toEqual({
       limits: [{ window: "7d", used: 3 }],
-      scoped: [],
     });
   });
 
@@ -997,7 +1021,6 @@ describe("the Codex source", () => {
           { window: "5h", used: 41.5, resetsAt: RESET_SEC * 1000 },
           { window: "7d", used: 7, resetsAt: RESET_WEEK_SEC * 1000 },
         ],
-        scoped: [],
       },
     });
     expect(m.tails).toEqual([`${join(dayDir(today), "rollout-b.jsonl")}:262144`]);
@@ -1120,20 +1143,20 @@ describe("OpenCode Go", () => {
       ...over,
     });
 
-  it("maps rolling to 5h, weekly to 7d and keeps monthly as 30d, not drawn", () => {
+  it("maps rolling to 5h, weekly to 7d and monthly to the length key 30d", () => {
     expect(parseOpencodeGoUsage(body())).toEqual({
       limits: [
         { window: "5h", used: 23, resetsAt: Date.parse(RESET_5H) },
         { window: "7d", used: 61, resetsAt: Date.parse(RESET_7D) },
+        { window: "30d", used: 100, resetsAt: Date.parse("2027-02-01T00:00:00.000Z") },
       ],
-      scoped: [{ label: "30d", used: 100, resetsAt: Date.parse("2027-02-01T00:00:00.000Z") }],
     });
   });
 
   it("copes with a missing weekly window, a missing reset and a missing status", () => {
     const reading = parseOpencodeGoUsage(JSON.stringify({ rolling: { percent: 5 }, monthly: null }));
-    expect(reading).toEqual({ limits: [{ window: "5h", used: 5 }], scoped: [] });
-    expect(parseOpencodeGoUsage(body({ weekly: undefined }))?.limits.map((l) => l.window)).toEqual(["5h"]);
+    expect(reading).toEqual({ limits: [{ window: "5h", used: 5 }] });
+    expect(parseOpencodeGoUsage(body({ weekly: undefined }))?.limits.map((l) => l.window)).toEqual(["5h", "30d"]);
   });
 
   it("refuses a body with none of the three names and a body that is not an object", () => {
@@ -1202,8 +1225,7 @@ describe("OpenCode Go", () => {
     await windows.settled();
     expect(fake.calls[0]?.url).toBe("https://opencode.ai/zen/go/v1/usage");
     expect(fake.calls[0]?.headers["User-Agent"]).toBe("collie/1.24.0");
-    expect(windows.limits("opencode")?.map((l) => l.window)).toEqual(["5h", "7d"]);
-    expect(windows.scoped("opencode")?.map((w) => w.label)).toEqual(["30d"]);
+    expect(windows.limits("opencode")?.map((l) => l.window)).toEqual(["5h", "7d", "30d"]);
   });
 });
 
@@ -1219,31 +1241,30 @@ describe("Grok", () => {
   const monthly = { creditUsagePercent: 12, currentPeriod: { start: "2027-01-01T00:00:00.000Z", end: "2027-02-01T00:00:00.000Z" } };
 
   it("maps a weekly period to 7d", () => {
-    expect(parseGrokBilling(JSON.stringify(weekly))).toEqual({ limits: [{ window: "7d", used: 37, resetsAt: Date.parse("2027-01-20T00:00:00.000Z") }], scoped: [] });
+    expect(parseGrokBilling(JSON.stringify(weekly))).toEqual({ limits: [{ window: "7d", used: 37, resetsAt: Date.parse("2027-01-20T00:00:00.000Z") }] });
     expect(parseGrokBilling(JSON.stringify({ config: weekly }))?.limits.length).toBe(1);
   });
 
-  it("keeps a monthly period as 30d, not drawn", () => {
-    expect(parseGrokBilling(JSON.stringify(monthly))).toEqual({ limits: [], scoped: [{ label: "30d", used: 12, resetsAt: Date.parse("2027-02-01T00:00:00.000Z") }] });
+  it("keeps a monthly period under the length key 30d", () => {
+    expect(parseGrokBilling(JSON.stringify(monthly))).toEqual({ limits: [{ window: "30d", used: 12, resetsAt: Date.parse("2027-02-01T00:00:00.000Z") }] });
   });
 
-  it("draws an eight-day period and not a nine-day one", () => {
+  it("reads an eight-day period as 7d and a nine-day one as 30d", () => {
     const span = (days: number): string =>
       JSON.stringify({ creditUsagePercent: 5, currentPeriod: { start: "2027-01-01T00:00:00.000Z", end: new Date(Date.parse("2027-01-01T00:00:00.000Z") + days * 86_400_000).toISOString() } });
-    expect(parseGrokBilling(span(8))?.limits.length).toBe(1);
-    expect(parseGrokBilling(span(9))?.limits.length).toBe(0);
+    expect(parseGrokBilling(span(8))?.limits.map((l) => l.window)).toEqual(["7d"]);
+    expect(parseGrokBilling(span(9))?.limits.map((l) => l.window)).toEqual(["30d"]);
   });
 
-  it("keeps a period of unknown length as scoped, and takes the on-demand ratio when the percent is absent", () => {
+  it("keeps a period of unknown length under the key credits, and takes the on-demand ratio when the percent is absent", () => {
     expect(parseGrokBilling(JSON.stringify({ creditUsagePercent: 50, currentPeriod: { end: "2027-01-20T00:00:00.000Z" } }))).toEqual({
-      limits: [],
-      scoped: [{ label: "credits", used: 50, resetsAt: Date.parse("2027-01-20T00:00:00.000Z") }],
+      limits: [{ window: "credits", used: 50, resetsAt: Date.parse("2027-01-20T00:00:00.000Z") }],
     });
-    expect(parseGrokBilling(JSON.stringify({ config: { onDemandUsed: { val: 25 }, onDemandCap: { val: 100 } } }))?.scoped[0]?.used).toBe(25);
+    expect(parseGrokBilling(JSON.stringify({ config: { onDemandUsed: { val: 25 }, onDemandCap: { val: 100 } } }))?.limits[0]?.used).toBe(25);
   });
 
   it("reads a period without a percent as an account without windows, and strange bodies as unreadable", () => {
-    expect(parseGrokBilling(JSON.stringify({ currentPeriod: weekly.currentPeriod }))).toEqual({ limits: [], scoped: [] });
+    expect(parseGrokBilling(JSON.stringify({ currentPeriod: weekly.currentPeriod }))).toEqual({ limits: [] });
     expect(parseGrokBilling("<html>")).toBeNull();
     expect(parseGrokBilling(JSON.stringify({ error: "nope" }))).toBeNull();
   });
@@ -1319,10 +1340,9 @@ describe("Grok", () => {
 });
 
 describe("the source table", () => {
-  it("has one source per harness id, claude, codex, opencode and grok, and the phone's windows stay 5h and 7d", () => {
+  it("has one source per harness id, claude, codex, opencode and grok", () => {
     const sources = defaultAccountSources(fileSeams({}), ACCOUNT_WINDOW_HARNESSES);
     expect(sources.map((source) => `${source.harness}:${source.kind}`)).toEqual(["claude:http", "codex:local", "opencode:http", "grok:http"]);
-    expect([...USAGE_WINDOWS]).toEqual(["5h", "7d"]);
   });
 
   it("a bad body costs the reading and never the pane, for each harness", async () => {
@@ -1547,7 +1567,7 @@ describe("no failure path of the service leaks a login", () => {
       } catch (err) {
         returned.push(`settled rejected: ${err instanceof Error ? `${err.message}\n${String(err.stack)}` : String(err)}`);
       }
-      for (const id of ACCOUNT_WINDOW_HARNESSES) returned.push(JSON.stringify([windows.limits(id), windows.scoped(id)]));
+      for (const id of ACCOUNT_WINDOW_HARNESSES) returned.push(JSON.stringify(windows.limits(id)));
       // The login reads, whose refusal reasons are the other text the service makes.
       for (const read of [readClaudeLogin, readOpencodeGoKey, readGrokLogin]) {
         try {
@@ -1609,5 +1629,148 @@ describe("limitedWait", () => {
 
   it("treats a header it cannot read as absent", () => {
     for (const junk of ["", "soon", "-5", "1.5e3"]) expect(limitedWait(junk, 0, NOW)).toBe(15 * MIN);
+  });
+});
+
+// ── One account per folder for Codex and Grok (M101 spec 02) ───────────────────────────────────
+
+describe("per-folder accounts for the sources with a folder factory", () => {
+  const MIN = 60_000;
+  const clock = { now: NOW };
+  const today = new Date(NOW);
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  const dayOf = (root: string): string => join(root, String(today.getFullYear()), pad(today.getMonth() + 1), pad(today.getDate()));
+  const rollout = (used: number): string =>
+    tokenCount({ primary: { used_percent: used, window_minutes: 300, resets_at: RESET_SEC }, secondary: null });
+
+  /** A machine whose Codex homes hold one fresh rollout file each; `reads` counts the folder listings per sessions root. */
+  function codexMachine(homes: Record<string, number>, env: Record<string, string> = {}) {
+    const reads: string[] = [];
+    const roots = new Map(Object.entries(homes).map(([home, used]) => [dayOf(join(home, "sessions")), { home, used }]));
+    const seams: CredentialSeams = {
+      env,
+      home: HOME,
+      platform: "linux",
+      stat: async () => null,
+      read: async () => null,
+      keychain: async () => null,
+      list: async (path) => {
+        reads.push(path);
+        return roots.has(path) ? [{ name: "rollout-x.jsonl", file: true, mtimeMs: NOW - MIN }] : [];
+      },
+      tail: async (path) => {
+        for (const [day, entry] of roots) if (path.startsWith(day)) return rollout(entry.used);
+        return null;
+      },
+      now: () => clock.now,
+    };
+    return { seams, reads };
+  }
+
+  const codexService = (seams: CredentialSeams) =>
+    new AccountWindows({ enabled: true, sources: [codexAccountSource(seams)], fetch: vendor().fetch, now: () => clock.now, userAgent: "collie/1.29.0" });
+
+  const DEFAULT_HOME = join(HOME, ".codex");
+  const WORK = "/accounts/codex-work";
+  const SIDE = "/accounts/codex-side";
+
+  it("gives two Codex folders two readings, and the default folder the base source's", async () => {
+    clock.now = NOW;
+    const { seams } = codexMachine({ [DEFAULT_HOME]: 11, [WORK]: 22, [SIDE]: 33 });
+    const windows = codexService(seams);
+    windows.observe([pane("codex")], "main");
+    windows.observeConfigDirs("codex", new Set([WORK, SIDE]), "main");
+    expect(windows.limits("codex", WORK)).toBeUndefined();
+    await windows.settled();
+    expect(windows.limits("codex")?.[0]?.used).toBe(11);
+    expect(windows.limits("codex", WORK)?.[0]?.used).toBe(22);
+    expect(windows.limits("codex", SIDE)?.[0]?.used).toBe(33);
+    // The default folder spelled out is the base source, not a new slot.
+    expect(windows.limits("codex", `${DEFAULT_HOME}/`)?.[0]?.used).toBe(11);
+  });
+
+  it("resolves the folder CODEX_HOME names in the bridge's own environment to the base source", async () => {
+    clock.now = NOW;
+    const { seams, reads } = codexMachine({ [WORK]: 44 }, { CODEX_HOME: WORK });
+    const windows = codexService(seams);
+    windows.observe([pane("codex")], "main");
+    await windows.settled();
+    expect(windows.limits("codex", WORK)?.[0]?.used).toBe(44);
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.every((path) => path.startsWith(join(WORK, "sessions")))).toBe(true);
+  });
+
+  it("stops polling a folder once it has no live pane, and keeps polling the open ones", async () => {
+    clock.now = NOW;
+    const { seams, reads } = codexMachine({ [DEFAULT_HOME]: 11, [WORK]: 22, [SIDE]: 33 });
+    const windows = codexService(seams);
+    windows.observe([pane("codex")], "main");
+    windows.observeConfigDirs("codex", new Set([WORK, SIDE]), "main");
+    windows.limits("codex", WORK);
+    windows.limits("codex", SIDE);
+    await windows.settled();
+    windows.observeConfigDirs("codex", new Set([WORK]), "main");
+    const before = reads.length;
+    clock.now += 5 * MIN;
+    windows.poke("codex");
+    await windows.settled();
+    const polled = new Set(reads.slice(before));
+    expect(polled.has(dayOf(join(WORK, "sessions")))).toBe(true);
+    expect(polled.has(dayOf(join(DEFAULT_HOME, "sessions")))).toBe(true);
+    expect(polled.has(dayOf(join(SIDE, "sessions")))).toBe(false);
+  });
+
+  it("shares the cap of 16 folder slots across harnesses", async () => {
+    clock.now = NOW;
+    const homes = Object.fromEntries(Array.from({ length: MAX_CUSTOM_CONFIG_DIRS + 2 }, (_v, i) => [`/accounts/c${String(i)}`, i]));
+    const { seams } = codexMachine(homes);
+    const windows = codexService(seams);
+    windows.observe([pane("codex")], "main");
+    const open = new Set(Object.keys(homes).slice(0, MAX_CUSTOM_CONFIG_DIRS));
+    windows.observeConfigDirs("codex", open, "main");
+    for (const dir of open) windows.limits("codex", dir);
+    await windows.settled();
+    // All 16 slots hold a live folder, so a 17th is refused rather than evicting one.
+    expect(windows.limits("codex", "/accounts/c16")).toBeUndefined();
+    expect(windows.limits("codex", "/accounts/c0")?.[0]?.used).toBe(0);
+  });
+
+  it("reads each Grok folder's own auth.json, and never another folder's token", async () => {
+    clock.now = NOW;
+    const tokens = { [join(HOME, ".grok", "auth.json")]: "placeholder-grok-default", [join("/accounts/grok-b", "auth.json")]: "placeholder-grok-b" };
+    const files = Object.fromEntries(
+      Object.entries(tokens).map(([path, key]) => [path, { mode: 0o600, text: grokStore({ "https://auth.x.ai::c": { key } }) }]),
+    );
+    const calls: Call[] = [];
+    const grokFetch: AccountFetch = async (url, init) => {
+      calls.push({ url, headers: init.headers });
+      const used = init.headers.Authorization === "Bearer placeholder-grok-b" ? 70 : 20;
+      return { status: 200, text: async () => JSON.stringify({ creditUsagePercent: used, currentPeriod: { start: "2027-01-13T00:00:00.000Z", end: "2027-01-20T00:00:00.000Z" } }) };
+    };
+    const windows = new AccountWindows({ enabled: true, sources: [grokAccountSource(fileSeams(files))], fetch: grokFetch, now: () => clock.now, userAgent: "collie/1.29.0" });
+    windows.observe([pane("grok")], "main");
+    windows.observeConfigDirs("grok", new Set(["/accounts/grok-b"]), "main");
+    windows.limits("grok", "/accounts/grok-b");
+    await windows.settled();
+    expect(windows.limits("grok")?.[0]?.used).toBe(20);
+    expect(windows.limits("grok", "/accounts/grok-b")?.[0]?.used).toBe(70);
+    expect(calls.map((c) => c.headers.Authorization).toSorted()).toEqual(["Bearer placeholder-grok-b", "Bearer placeholder-grok-default"]);
+  });
+
+  it("two harnesses naming folders in one mux session do not close each other's slots", async () => {
+    clock.now = NOW;
+    const { seams, reads } = codexMachine({ [DEFAULT_HOME]: 11, [WORK]: 22 });
+    const claude = claudeAccountSource(seams);
+    const windows = new AccountWindows({ enabled: true, sources: [codexAccountSource(seams), claude], fetch: vendor().fetch, now: () => clock.now, userAgent: "collie/1.29.0" });
+    windows.observe([pane("codex")], "main");
+    windows.observeConfigDirs("codex", new Set([WORK]), "main");
+    windows.limits("codex", WORK);
+    await windows.settled();
+    windows.observeConfigDirs("claude", new Set(), "main");
+    const before = reads.length;
+    clock.now += 5 * MIN;
+    windows.poke("codex");
+    await windows.settled();
+    expect(new Set(reads.slice(before)).has(dayOf(join(WORK, "sessions")))).toBe(true);
   });
 });

@@ -6,6 +6,11 @@
 // become tabs, and each conversation becomes a pane. There is no pty and no terminal, so every verb
 // that needs a screen, a key press or a new shell answers the contract's `unsupported`.
 //
+// TWO ROADS WERE TURNED DOWN: faking a terminal (a pty and a text grammar for a program that already
+// holds its state as data, which ADR 0008 closed off for the same reason) and a new crew role (its own
+// protocol, its own merge and a version bump for every old lead). If the port ever cannot hold a pane
+// with no screen without a change to every other adapter, this decision is wrong and the work stops.
+//
 // WHAT IS HERE: the hello and ready and epoch rules (WIRE.md sections 2 and 8), the snapshot with
 // its ETag and 304 (section 7.1), the 250 ms floor between two snapshot reads, the mapping, and the
 // events reader that fills the bridge's pane log (`syncEvents()`, events.ts, bridge/durable/log.ts).

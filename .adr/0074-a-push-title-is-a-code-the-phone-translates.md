@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-27
-- **Shipped in:** pending
 - **Amends:** [ADR 0030](./0030-the-ui-is-translated-by-a-typed-dictionary-not-a-library.md), in
   scope. Its Consequences left push notifications untranslated "as a follow-up, not solved here",
   and its *What would justify revisiting* named the road this record declines: a per-device locale

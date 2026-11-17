@@ -9,9 +9,11 @@ import type { AgentView } from "@/lib/types";
 //
 // A reading is taken:
 //   - on mount;
-//   - when `order` changes (the operator tapped another segment);
-//   - when {@link FrozenRanks.reread} is called (the operator tapped the segment already selected,
-//     which is the "look again" gesture);
+//   - when `order` changes (the operator tapped another segment of the switcher's toggle, or chose
+//     another order in the dashboard's select);
+//   - when {@link FrozenRanks.reread} is called: the switcher's toggle calls it on every tap, so a tap
+//     on the segment already selected is the "look again" gesture. The dashboard's select reports a
+//     change and never a tap on the value it already shows, so it has no such gesture;
 //   - when the document becomes visible again, if the caller asked (`rereadOnVisible`): a dashboard
 //     left in a background tab is stale by hours, and coming back to it IS opening it again. The
 //     switcher is a sheet that unmounts on close, so it has no use for this and does not ask;

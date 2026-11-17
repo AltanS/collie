@@ -339,7 +339,7 @@ describe("an ask's push words (durable/ask-push.ts)", () => {
   });
 });
 
-describe("what a blocked pane waits on, in the agent's words (push_words, ADR 0141)", () => {
+describe("what a blocked pane waits on, in the agent's words (push_words, ADR 0152)", () => {
   function setupWords(words: Record<string, { title?: string; line?: string }>) {
     const clock = new FakeClock();
     const sink = new RecordingSink();

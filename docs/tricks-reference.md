@@ -1567,7 +1567,7 @@ Every verb of `collie trick`.
 | `auto` | `collie trick auto <id> on\|off` | Takes new versions without asking while the powers do not change. A trick with rules never takes one. |
 | `check` | `collie trick check [--run] [--json] <folder>` | Checks a trick folder: its manifest, places and command lines. |
 | `dev` | `collie trick dev <folder\|id> [--tap <intent> [--text <words>] [--node <node>] [--rid <uuid>]] [--facts <file.json>] [--state <dir>] [--inputs <dir>] [--json] [--watch]` | Runs a trick once with fixture facts and prints what the phone would get. It never talks to the bridge. |
-| `init` | `collie trick init [--sh] <id>` | Makes a new trick folder with a program and the helper. |
+| `init` | `collie trick init [--sh] [--dir <folder>] <id>` | Makes a new trick folder with a program and the helper. In an agent's pane the folder is a draft in the working folder, outside the tricks folder. |
 | `helper` | `collie trick helper <id\|folder>` | Rewrites a trick's `trick.ts` with the helper this Collie carries. |
 | `skill` | `collie trick skill [<id>]` | Prints what a trick that is on asks of an agent. With no id, prints how to write a trick. |
 | `guide` | `collie trick guide [--json]` | Prints how to write a trick and hand it to the person, as plain text for an agent. |
@@ -1592,6 +1592,7 @@ Every verb of `collie trick`.
 | `dev` | `--json` | Print one JSON document instead of text. |
 | `dev` | `--watch` | Run again when a file in the folder changes. |
 | `init` | `--sh` | Write a shell program instead of a TypeScript one. |
+| `init` | `--dir` | Make `<folder>/<id>` as a draft, outside the tricks folder, instead of the tricks folder. |
 | `guide` | `--json` | Print one JSON document instead of text. |
 | `propose` | `--request-id` | The proposal's request id, a UUID. The same sender, id and files get the same answer. |
 | `propose` | `--json` | Print one JSON document instead of text. |

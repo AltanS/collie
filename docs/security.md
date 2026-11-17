@@ -56,7 +56,8 @@ screen Collie could not read). The counts name no pane, no text and no person.
 The device header gates writes and two reads: the [Files view](changes.md#files), which can show
 every file under a workspace's folder, and the New page's
 [Browse](configure.md#favourite-and-recent-folders), which lists folder names under home
-([ADR 0086](../.adr/0086-reads-need-the-pairing-token.md)).
+([ADR 0086](../.adr/0086-reads-need-the-pairing-token.md)). The [Changes view](changes.md#who-may-use-it)
+asks the same right when it reads your home folder or above it.
 
 ```bash
 bin/collie devices list             # what holds a credential, and when each was last seen
@@ -270,7 +271,7 @@ Key security boundaries and risks:
 - **The Files view reads files off your disk.** It shows any file under a workspace's folder, except
   a `.git` folder, Collie's own state and config folders, and files named like a Collie state
   secret. So it asks for an authorised device, like a write
-  ([ADR 0083](../.adr/0083-the-files-view-reads-the-changes-root.md)).
+  ([ADR 0150](../.adr/0150-files-and-changes-read-under-a-root-the-bridge-picks.md)).
 - **The New page's Browse lists folder names under your home.** Names only, with the Files view's
   limits: no dot-folders unless typed, no `.git`, no Collie state or config folder, no link out of
   home, at most 200 rows. It needs an authorised device too
@@ -291,7 +292,7 @@ Key security boundaries and risks:
   sends to it directly. The lead already holds the pairing, so this adds no power over what a paired
   phone can do in a shell
   ([Your own launchers](configure.md#launchers-added-from-a-phone),
-  [ADR 0094](../.adr/0094-launchers-added-from-a-phone.md)).
+  [ADR 0145](../.adr/0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md)).
 - **A paired device can run a one-off command.** With the default `[phone] run = true`, a phone may
   type a line it wrote into a fresh shell on a machine. This adds no power, because a paired phone can
   already open a shell and type into it. The line follows the free-line character rule, and the bridge
@@ -303,7 +304,7 @@ Key security boundaries and risks:
   list as it is, because running a line again needs a paired device. Set `run = false` to remove the
   shortcut
   ([One-off commands](configure.md#one-off-commands-and-their-history),
-  [ADR 0095](../.adr/0095-one-off-commands-and-their-history.md)).
+  [ADR 0145](../.adr/0145-a-start-names-what-to-run-and-a-retry-lands-on-its-receipt.md)).
 - **Each machine keeps the shell lines you send through Collie.** Sent keeps a line you send to a
   shell pane, and each one-off command, in `sent.jsonl` in the state folder (mode 0600). A paired
   device can read it, as it can read the panes. Some secrets are still kept

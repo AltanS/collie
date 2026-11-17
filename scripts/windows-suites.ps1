@@ -14,9 +14,9 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 484 in all, each one named, with its reason:
-#              bridge 254: 173 from before 1.29.0 and 81 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
-#                adapters 10; see below). Of the 173, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
+#              Today, 514 in all, each one named, with its reason:
+#              bridge 284: 173 from before 1.29.0 and 111 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
+#                adapters 10, then Accounts 30; see below). Of the 173, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
 #                worktree (see "The fake git of a new worktree, bridge" below). 42 are the Hill and the tricks (see
@@ -147,6 +147,19 @@
 #                bridge/mux/herdr/client.test.ts and of bridge/mux/tuios/client.test.ts (5 tests each, M100 spec 03) is `describe.skipIf`
 #                on win32: its stand-in daemon is a `net` server listening on a Unix socket path in a temp folder, which the
 #                Windows client does not dial (it dials a named pipe).
+#              Accounts, bridge (30). Accounts (M101) are OFF on Windows by decision: the route answers 404 there and the app hides
+#                the page. The feature rests on POSIX folder forms (`~/x`, a leading `/`), symlinks and the 0700 mode, and these tests
+#                are written in those forms, so on a Windows path module they fail by their own fixtures. Each is `accountTest`
+#                (bridge/accounts-skip.ts), a skip on win32; the tests of the same files that pass on Windows still run, and the
+#                Windows answer (404, no offer, a refused add) is proven on every system with an injected platform:
+#                - 2 in bridge/account-adapters.test.ts, the default folder and the journal root
+#                - 6 in bridge/account-folder.test.ts, parseFolderPath (2) and checkFolder (4)
+#                - 2 in bridge/account-links.test.ts, planLinks on a fresh default and on a file link
+#                - 13 in bridge/accounts-routes.test.ts, the found folders, the windows of a row, the adds, the remove, the start
+#                  line, a pane's account, the server glue and the live journal roots
+#                - 4 in bridge/accounts-store.test.ts, a good row, the duplicate row, the store add and the listener
+#                - 2 in bridge/launch-by-id.test.ts, a launch with an account
+#                - 1 in bridge/worktree-from-folder.test.ts, a worktree with an account
 #              cli 195 in all: 11 are new since 1.29.0: 3 of the hold card and 8 of the harness verbs, below. The other 184: 21 in the next paragraph, then 3 of the statusLine wrapper, 54 of walky talky, 21 of the agent view,
 #                69 of the Hill verbs and the tricks (see "The Hill verbs and the tricks, cli" below), and 16 gated on Windows (b)
 #                (see "The helper's output, cli" below). Of the 21, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
@@ -217,7 +230,7 @@
 #                executable bit and reads it through `file://`, as the add from the list does (bridge 33 above).
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 254,
+  [int]$MaxSkipsBridge = 284,
   [int]$MaxSkipsCli = 195,
   [int]$MaxSkipsScripts = 35
 )

@@ -189,6 +189,39 @@ describe("usageFromStatusLine", () => {
     expect(none?.window).toBeUndefined();
   });
 
+  test("a plan that reports only seven_day yields one window", () => {
+    const one = usageFromStatusLine(payload({ rate_limits: { seven_day: { used_percentage: 12, resets_at: 1_800_500_000 } } }), NOW);
+    expect(one?.record.limits).toEqual([{ window: "7d", used: 12, resetsAt: 1_800_500_000_000 }]);
+  });
+
+  test("reads every rate_limits key that has a used_percentage: the gateway spend limit is spend, an unknown key keeps its own", () => {
+    const limits = usageFromStatusLine(
+      payload({
+        rate_limits: {
+          spend_limit: { used_percentage: 61, resets_at: 1_800_900_000, used_usd: 6.1, limit_usd: 10, period: "month" },
+          seven_day_opus: { used_percentage: 9 },
+          seven_day: { used_percentage: 41.2 },
+          five_hour: { used_percentage: 23.5 },
+          no_number: { resets_at: 5 },
+          "bad key\u0007": { used_percentage: 1 },
+          note: "text",
+        },
+      }),
+      NOW,
+    )?.record.limits;
+    expect(limits).toEqual([
+      { window: "5h", used: 23.5 },
+      { window: "7d", used: 41.2 },
+      { window: "seven_day_opus", used: 9 },
+      { window: "spend", used: 61, resetsAt: 1_800_900_000_000 },
+    ]);
+  });
+
+  test("holds at most eight windows", () => {
+    const rate_limits: JsonObject = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`w${String(i)}`, { used_percentage: i }]));
+    expect(usageFromStatusLine(payload({ rate_limits }), NOW)?.record.limits).toHaveLength(8);
+  });
+
   test("an API-key session has no windows; a null early percentage is no number", () => {
     const api = usageFromStatusLine(payload({ rate_limits: null }), NOW);
     expect(api?.record.limits).toBeUndefined();

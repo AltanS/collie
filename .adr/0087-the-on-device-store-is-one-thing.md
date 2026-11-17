@@ -2,7 +2,6 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-07
-- **Shipped in:** 1.18.0
 - **Relates to:** [ADR 0017](./0017-recognising-a-password-prompt-changes-what-collie-says.md) (a
   password prompt drops that pane's records; nothing in it is retracted),
   [ADR 0052](./0052-one-build-serves-any-mount.md) (the mount is the instance a record belongs to),

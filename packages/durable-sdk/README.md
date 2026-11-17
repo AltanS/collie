@@ -18,7 +18,8 @@ bun add @colliepwa/durable-sdk@experimental
 ```
 
 It needs Node 22.19 or later, or Bun 1.4 or later, on Linux. Node 22.19 is the floor of Pi Durable 1.2.0. It has no
-runtime dependency. On macOS, Node runs it, and Bun runs it with `callerCheck: "off"`, because the descendant check
+runtime dependency. The Pi packages that `./pi` imports are optional peers and not dependencies, because Pi Durable
+keeps its state in module-level maps, and a second copy of it would break it. On macOS, Node runs it, and Bun runs it with `callerCheck: "off"`, because the descendant check
 needs Linux.
 
 ## A first durable agent

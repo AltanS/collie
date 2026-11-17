@@ -122,6 +122,11 @@ const LIFTS_397 = new Map<string, Expect>([
   // editor, its pointer on each of two choices (issue 660).
   ["pi--v140-gentle-float-dialog--w100.txt", "walk"],
   ["pi--v140-gentle-float-dialog-moved--w100.txt", "walk"],
+  // pi 1.3.0 `/login` (2026-11-15): the method list and the Anthropic method list, each with its pointer moved.
+  ["pi--v130-login-methods--w61.txt", "walk"],
+  ["pi--v130-login-methods-moved--w61.txt", "walk"],
+  ["pi--v130-login-anthropic-methods--w61.txt", "walk"],
+  ["pi--v130-login-anthropic-methods-moved--w61.txt", "walk"],
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
@@ -177,7 +182,8 @@ function expected(name: string): Expect {
 
 /** What the adapter lifts, through the side-panel crop (index.ts), as the phone reads it. */
 function actual(lines: StyledLine[]): Expect {
-  const block = piAdapter.buildBlocks(lines).find((b) => b.kind !== "raw");
+  // The `/login` sign-in card is a `box-text`: it prints no key, so the screen reads as its editor does.
+  const block = piAdapter.buildBlocks(lines).find((b) => b.kind !== "raw" && b.kind !== "box-text");
   if (block === undefined) return "raw";
   if (block.kind === "wizard") return "review";
   if (block.kind !== "prompt-select") throw new Error(`unexpected ${block.kind}`);

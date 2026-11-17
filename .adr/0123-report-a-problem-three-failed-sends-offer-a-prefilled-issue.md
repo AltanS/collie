@@ -2,7 +2,10 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-25
-- **Shipped in:** 1.24.1
+- **Related:** [ADR 0034](./0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md), now a stub
+  whose rule [ADR 0129](./0129-an-anonymous-install-count-on-by-default.md) holds: a person may send a
+  report as a prefilled GitHub issue that they open and submit themselves. Collie makes no call and
+  collects nothing there, so nothing about collection changes.
 - **Trail:** `web/src/lib/report/trouble.ts` (the rule) · `web/src/lib/report/store.ts` ·
   `web/src/lib/report/body.ts` (the issue text and the link) · `web/src/components/report-card.tsx` ·
   `web/src/components/report-sheet.tsx` · `web/src/components/report-control.tsx` ·

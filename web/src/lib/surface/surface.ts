@@ -61,6 +61,12 @@ export interface Surface {
    * on the reads that show the same box rows as the proven one, and gone at the first read that differs.
    */
   readonly staleFrame?: true;
+  /**
+   * The input box is a sign-in field (`idle.frame.secret`): the agent asks for the code or the redirect
+   * address a login page shows, or for a key. The phone keeps no draft of what is typed there and
+   * names the field; the send is still checked on screen. Absent on every other box.
+   */
+  readonly field?: "secret";
 }
 
 /**

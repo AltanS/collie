@@ -1,0 +1,40 @@
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [38;5;246mv2.1.325[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mOpus[39m [38;5;246m5.5[39m [38;5;246m·[39m [38;5;246mAPI[39m [38;5;246mUsage[39m [38;5;246mBilling[39m
+[38;5;174m ▝▝[39m   [38;5;174m▝▝[39m   [38;5;246m~/.cache/collie-lab/login-paste-lab/work[39m
+
+
+[38;5;246m[48;5;237m❯ [38;5;231m/login[39m
+
+[38;5;153m[49m─────────────────────────────────────────────────────────────
+[39m  [1m[38;5;153mLogin[0m
+
+  [1mAnthropic Console account[0m
+
+  How do you want to sign in?
+
+  [38;5;153m❯[39m [38;5;246m1. [38;5;153mSign in with your Console account [38;5;246m(recommended)[39m
+    [38;5;246m2. [39mCreate an API key [38;5;246m(legacy)[39m · [38;5;246madds a key to your [39m
+       [38;5;246mConsole workspace[39m
+    [38;5;246m3. [39mGo back
+
+  [3m[38;5;246mEsc to cancel[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

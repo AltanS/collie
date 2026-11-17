@@ -647,8 +647,7 @@ pair a device to any other instance
 ## The standby door — a crew's failover path
 
 For [crew](../CREW_PROTOCOL.md) deployments. Configures a pre-authorized deputy to take over if the
-lead becomes unreachable ([ADR 0027](../.adr/0027-the-deputy-is-named-ahead-of-time.md),
-[ADR 0028](../.adr/0028-the-standby-door-is-a-second-listener.md),
+lead becomes unreachable ([ADR 0144](../.adr/0144-one-lead-one-door-and-the-operator-moves-the-crown.md),
 [`CREW_PROTOCOL.md` §18](../CREW_PROTOCOL.md)).
 
 Deputy and lead settings:

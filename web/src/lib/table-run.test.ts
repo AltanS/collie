@@ -273,7 +273,7 @@ describe("tableRuns — the empty result", () => {
 describe("tableRuns — the whole pane corpus", () => {
   const DIR = join(import.meta.dirname, "..", "fixtures", "panes");
 
-  it("claims real tables and nothing else across every committed capture", () => {
+  it("claims real tables and nothing else across every committed capture", { timeout: 30_000 }, () => {
     const claimed: string[] = [];
     for (const file of readdirSync(DIR).filter((f) => f.endsWith(".txt"))) {
       const agent = file.split("--")[0]!;

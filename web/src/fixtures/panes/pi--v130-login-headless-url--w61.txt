@@ -1,0 +1,40 @@
+
+ [38;5;3mWarning: No models available. Use /login to log into a
+[39m [38;5;3mprovider via OAuth or API key. See:
+[39m [38;5;3m
+[39m [38;5;3m/home/demo/user/.config/nvm/versions/node/v24.22.1/lib/node
+[39m [38;5;3m_modules/@earendil-works/pi-coding-agent/docs/providers.md
+[39m [38;5;3m
+[39m [38;5;3m/home/demo/user/.config/nvm/versions/node/v24.22.1/lib/node
+[39m [38;5;3m_modules/@earendil-works/pi-coding-agent/docs/models.md[39m
+
+[38;5;3m─────────────────────────────────────────────────────────────
+[39m [1m[38;5;3mUpdate Available[0m
+ [2mNew version 1.5.2 is available. Run [0m[38;5;5mpi update[39m
+ [2mChangelog: [0m[38;5;5mhttps://pi.dev/changelog[39m
+[38;5;3m─────────────────────────────────────────────────────────────
+
+[39m [38;5;1mError: Failed to login to Anthropic: OAuth state mismatch[39m
+
+[38;5;4m─────────────────────────────────────────────────────────────
+[39m [1m[38;5;5mLogin to Anthropic[0m
+
+ [38;5;5mhttps://claude.ai/oauth/authorize?code=true&client_id=9d1c2
+[39m [38;5;5m50a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect
+[39m [38;5;5m_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcal
+[39m [38;5;5mlback&scope=org%3Acreate_api_key+user%3Aprofile+user%3Ainfe
+[39m [38;5;5mrence+user%3Asessions%3Aclaude_code+user%3Amcp_servers+user
+[39m [38;5;5m%3Afile_upload&code_challenge=XXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+[39m [38;5;5mXXXXXXXXXXXXXX&code_challenge_method=S256&state=XXXXXXXXXXX
+[39m [38;5;5mXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX[39m
+ [2mCtrl+click to open[0m [2m•[0m [2mctrl+x to copy[0m
+
+ [38;5;3mComplete login in your browser, then copy the code
+[39m [38;5;3mAnthropic shows and paste it here.[39m
+
+ [2mPaste the code Anthropic shows after you sign in:[0m
+> [7m [0m
+ ([2mescape/ctrl+c to cancel[0m)
+[38;5;4m─────────────────────────────────────────────────────────────
+[2m[39m~/.cache/collie-lab/login-paste-lab/work (master)[0m
+[2m0.0%/0 (auto)                                         unknown
