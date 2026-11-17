@@ -975,6 +975,22 @@ describe("a write to a member that is not reachable (§10.3)", () => {
     expect(audit).toEqual([{ action: "ask", host: "laptop", paneId: "w1:p9", session: "main", outcome: "http 404", reason: "no_pane", by: "member" }]);
   });
 
+  // The keys route's `expected_prompt` may be a list of literal parts (stage/1116, bridge/prompt-binding.ts).
+  // The forward reads no part of it: the body reaches the member byte for byte, and the member's own
+  // refusal code still comes back as the member's.
+  test("a keys write with the list form of expected_prompt streams on whole, and a member refusal keeps its code", async () => {
+    const body = `{"keys":["1"],"expected_prompt":["Do you want to proceed?","1. Yes"]}`;
+    const refused = new Response(`{"ok":false}`, { status: 409, headers: { "content-type": "application/json", "x-collie-reason": "no_raw_input" } });
+    const { transport, calls } = transportOf(() => ok(refused));
+    const audit: unknown[] = [];
+    const [req, url] = post("/api/pane/w1:p1/keys?host=laptop", body);
+    const res = await forward(req, url, { transport, surfaceVersion: null, audit: (entry) => audit.push(entry) });
+    expect(await new Response(calls[0]?.init.body).text()).toBe(body);
+    expect(res.headers.get("x-collie-reason")).toBe("no_raw_input");
+    expect(res.headers.get("x-collie-by")).toBe("member");
+    expect(audit).toEqual([{ action: "keys", host: "laptop", paneId: "w1:p1", outcome: "http 409", reason: "no_raw_input", by: "member" }]);
+  });
+
   test("a member header that names no known code is not passed on, and is not recorded", async () => {
     const odd = new Response("nope", { status: 400, headers: { "x-collie-reason": "anything at all" } });
     const { transport } = transportOf(() => ok(odd));
