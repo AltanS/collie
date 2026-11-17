@@ -686,18 +686,14 @@ export const HILL_NO_ANSWER_HANDLER = "Collie cannot act on this answer here.";
 /** The reason a withdraw is refused while that Collie Decision's answer runs. */
 export const HILL_ANSWER_RUNNING = "the decision is being answered";
 
-/** The refusal of a yes to a group whose cards the phone did not all open (a DISPLAY check, never proof). */
-export function hillGroupOpenAll(count: number): string {
-  return `Open all ${String(count)} cards first.`;
-}
 /** The refusal of a yes to a group from a phone that was given other cards: they changed since. */
-export const HILL_GROUP_CHANGED = "These cards changed since this phone showed them. Open them again from card 1.";
-/** The refusal of a yes to a group from an app that does not send which cards it showed. */
-export const HILL_GROUP_OLD_APP = "This app does not show a group of cards yet. Reload Collie on this phone, then open every card and answer again.";
-/** The refusal of a yes to a single card of code from an app that does not say it showed the code (C-A2). */
-export const HILL_CODE_OLD_APP = "This app does not show this card's code yet. Reload Collie on this phone, read the code to its end, and answer again.";
-/** The refusal of a yes to a single card of code whose end was not on screen (C-A2). */
-export const HILL_CODE_READ_FIRST = "Read the code to its end first.";
+export const HILL_GROUP_CHANGED = "These cards changed since this phone showed them. Look at them again and answer again.";
+/** The refusal of a yes to a group from an app that does not send the digest it was shown. */
+export const HILL_GROUP_OLD_APP = "This app does not show a group of cards yet. Reload Collie on this phone and answer again.";
+/** The refusal of a yes to a single card of code from an app that does not send the digest it was shown (C-A2). */
+export const HILL_CODE_OLD_APP = "This app does not show this card's code yet. Reload Collie on this phone and answer again.";
+/** The refusal of a yes to a trick card that holds no code: it cannot show what the yes would approve. */
+export const HILL_CODE_NONE = "This card shows no code, so it cannot be approved here.";
 
 function refuse(code: HillRefusalCode | null, error: string): HillPostAnswer {
   return { ok: false, code, error };
@@ -1840,21 +1836,24 @@ export class HillService {
     return { kind: "receipt", receipt };
   }
 
-  /** Why a yes to a group of cards is refused, or null. */
+  /**
+   * Why a yes to a group of cards is refused, or null. The yes names the digest this phone was given, so it
+   * approves exactly the cards it showed. Which cards the phone opened is no longer asked (ADR 0156, the
+   * operator's decision of 2026-11-17: the yes is a hold of three seconds, reading is offered and not
+   * required). An older phone still sends `opened`; it is read and ignored.
+   */
   private groupRule(decision: HillDecision, request: HillAnswerRequest): string | null {
     const group = decision.group;
     if (group === undefined) return this.singleCodeRule(decision, request);
     if (request.intent === "dismiss" || request.intent === group.decline) return null;
     const asked = request.group;
     if (asked === undefined) return HILL_GROUP_OLD_APP;
-    if (asked.digest !== group.digest) return HILL_GROUP_CHANGED;
-    const opened = new Set(asked.opened);
-    return group.parts.every((_, i) => opened.has(i + 1)) ? null : hillGroupOpenAll(group.parts.length);
+    return asked.digest === group.digest ? null : HILL_GROUP_CHANGED;
   }
 
   /**
    * Why a yes to a single card of code is refused, or null (C-A2, review 8): the group's rule for one card.
-   * The answer names the ref's hash as its digest and card 1 as opened; the decline and a dismiss need neither.
+   * The answer names the ref's hash as its digest; the decline and a dismiss need none.
    */
   private singleCodeRule(decision: HillDecision, request: HillAnswerRequest): string | null {
     const single = singleCodeCard(decision);
@@ -1863,13 +1862,12 @@ export class HillService {
     // nothing installs or switches on from a card that showed no code. The decline and a dismiss still go.
     if (single === null) {
       const decline = trickCardDecline(decision);
-      return decline === null || request.intent === "dismiss" || request.intent === decline ? null : HILL_CODE_READ_FIRST;
+      return decline === null || request.intent === "dismiss" || request.intent === decline ? null : HILL_CODE_NONE;
     }
     if (request.intent === "dismiss" || request.intent === single.decline) return null;
     const asked = request.group;
     if (asked === undefined) return HILL_CODE_OLD_APP;
-    if (asked.digest !== single.digest) return HILL_GROUP_CHANGED;
-    return asked.opened.includes(1) ? null : HILL_CODE_READ_FIRST;
+    return asked.digest === single.digest ? null : HILL_GROUP_CHANGED;
   }
 
   /** Run one claim; while it runs, a Collie Decision it answers cannot be withdrawn or superseded. */
@@ -1947,9 +1945,9 @@ export class HillService {
     // The intent is typed into the session; only a word the post rules let through ever is (a stored file is not re-checked on load).
     if (option !== undefined && !isHillOptionIntent(option.intent)) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
     if (option === undefined && intent !== "answer" && intent !== "dismiss") return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", "not an option of this decision", "open", null));
-    // A group's yes needs the digest this phone was given and every card opened on it (a DISPLAY check:
-    // the phone's claim of what it showed, never proof of what the person read). Its decline and a dismiss
-    // need neither. Nothing is kept for these refusals, so the same tap may go again once the cards are open.
+    // A yes to a trick's code needs the digest this phone was given (the code it showed), so a yes never
+    // approves other code than the card showed. Its decline and a dismiss need none. Nothing is kept for
+    // these refusals, so the same answer may go again from a phone that shows the card as it is now.
     const groupRule = this.groupRule(decision, request);
     if (groupRule !== null) return this.final(request, id, by, digest, receiptOf(rid, now, "rejected", groupRule, "open", null), false);
     const cleaned = cleanText(request.value.text ?? "", HILL_ANSWER_TEXT_MAX);

@@ -652,11 +652,13 @@ keeps one card, as before. Otherwise the card is one Decision with a `group` of 
   and the cards' hashes in order. Only `postCollie` makes a group: a post that carries `group` or
   `parts` from an agent, a trick, the walky socket or a crew member is refused, and the decisions file
   drops a group whose hashes do not match;
-- the yes needs the group's digest and every card opened on the phone. A yes without them is a
-  rejected receipt that keeps the card open: "Open all N cards first.", "These cards changed since this
-  phone showed them. Open them again from card 1.", or, from an app before groups, "This app does not
-  show a group of cards yet. Reload Collie on this phone, then open every card and answer again." "Not
-  now" and a dismiss need neither. At the install the stored bytes are hashed again, as before.
+- the yes needs the group's digest, the one the phone was given. Which cards the phone opened is not
+  asked since ADR 0156 (the yes is a hold of three seconds; an older phone still sends `opened`, and the
+  bridge ignores it). A yes without the digest, or with another, is a rejected receipt that keeps the card
+  open: "These cards changed since this phone showed them. Look at them again and answer again.", or,
+  from an app before groups, "This app does not show a group of cards yet. Reload Collie on this phone
+  and answer again." "Not now" and a dismiss need neither. At the install the stored bytes are hashed
+  again, as before.
 
 The runner's own version card (above) groups its diff by the same rule, with masked lines shown masked,
 a note on that card, and no recommendation. Past 8 cards, for a file that is not text, or with more

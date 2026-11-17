@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { ACCESS_LINES, MANIFEST_KEYS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
+import { PROPOSAL_USE_LABEL } from "../../web/src/lib/hill/code-card.ts";
 import { addedDiff } from "./card-group.ts";
 import { PROPOSAL_KEY_RIGHTS, PROPOSAL_ON, PROPOSAL_TOO_LARGE, PROPOSAL_USE, proposalCard, proposalVersionCard, runsOnSentence, type ProposerFacts } from "./proposal-card.ts";
 import { asksForSentence, DECIDES_REPLY_CHIP, KEEPS_RUNNING, keepsRunning, RUNS_AS_YOU, runsAsYou } from "./version-card.ts";
@@ -148,8 +149,13 @@ describe("access on the proposal cards", () => {
   });
 });
 
-describe("one tap switches the trick on", () => {
-  test("the Switch it on and Use the new version options carry no confirm, so the phone sends at once", () => {
+describe("the yes carries no confirm of its own: the phone's hold is the guard (ADR 0156)", () => {
+  test("a new version's yes keeps the label the phone tells it apart by", () => {
+    expect(PROPOSAL_USE.label).toBe(PROPOSAL_USE_LABEL);
+    expect(PROPOSAL_ON.label).not.toBe(PROPOSAL_USE_LABEL);
+  });
+
+  test("the Switch it on and Use the new version options carry no confirm, so the phone's hold alone asks", () => {
     expect("confirm" in PROPOSAL_ON).toBe(false);
     expect("confirm" in PROPOSAL_USE).toBe(false);
     const options = cardOf(BARE).options ?? [];

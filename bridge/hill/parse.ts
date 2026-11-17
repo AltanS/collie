@@ -195,13 +195,19 @@ export function readPostFields(row: JsonObject): HillPostRead {
 /** The refusal of a post that carries a group of cards: only Collie's own Decision has one. */
 export const HILL_GROUP_NOT_YOURS = "a group of cards is Collie's own; post one card with a view";
 
-/** An answer's group fields: the digest and the opened cards, 1 to {@link HILL_GROUP_PARTS}.max, each once. */
+/**
+ * An answer's group fields: the digest, and from an older phone bundle the cards it opened, 1 to
+ * {@link HILL_GROUP_PARTS}.max, each once. `opened` is read so an older bundle's answer stays well formed, and
+ * then ignored (ADR 0156): the bridge no longer asks which cards a phone opened.
+ */
 function readGroupAnswer(value: JsonValue | undefined): HillGroupAnswer | null | undefined {
   if (value === undefined || value === null) return null;
   const row = asJsonObject(value);
   const digest = asJsonString(row?.digest);
+  if (digest === undefined || !HILL_GROUP_HASH_RE.test(digest)) return undefined;
   const opened = row?.opened;
-  if (digest === undefined || !HILL_GROUP_HASH_RE.test(digest) || !Array.isArray(opened) || opened.length > HILL_GROUP_PARTS.max) return undefined;
+  if (opened === undefined) return { digest };
+  if (!Array.isArray(opened) || opened.length > HILL_GROUP_PARTS.max) return undefined;
   const cards: number[] = [];
   for (const entry of opened) {
     const n = asJsonNumber(entry);

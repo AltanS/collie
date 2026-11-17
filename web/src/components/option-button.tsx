@@ -103,6 +103,7 @@ export function PromptPanel({
   rawMode = "reveal",
   wrap,
   fit = false,
+  className,
   children,
 }: {
   ariaLabel: string;
@@ -123,6 +124,9 @@ export function PromptPanel({
    *  panel would shrink under its own rows. Off in the Terminal view, which scrolls the dock as
    *  before. */
   fit?: boolean;
+  /** A surface of the card's own over the panel's (the chat's trick approval card, ADR 0156): a tinted
+   *  background and a uniform border. Colour only; the panel keeps its shape. */
+  className?: string;
   children: ReactNode;
 }) {
   useLocale();
@@ -159,6 +163,7 @@ export function PromptPanel({
       className={cn(
         "my-1.5 flex flex-col gap-1.5 rounded-xl border border-border bg-card p-1.5 shadow-sm",
         fit && !showRaw && "min-h-0",
+        className,
       )}
     >
       {raw !== undefined && !showRaw && (

@@ -342,7 +342,8 @@ every yes for you, and it tells you plainly what it found in the code.
   and 64 KiB, runs only the code you said yes to, and searches the code for six risky things.
 - **Your tap decides** Add, and the switch: a trick is off until you switch it on. It also decides
   each new version, each Decision and each view.
-- **Your job** is to read the code, or to ask a session to read it for you.
+- **Your job** is to judge the code: read it, or ask a session to read it for you. The yes does not
+  wait for that. It is a hold of three seconds, so that it is never a stray tap.
 
 ### Official and community tricks
 
@@ -475,8 +476,9 @@ A card asks "Use the new version of `<name>`?". It is on the [Hill](hill.md), an
 under **Waiting for your yes**, where the trick's row opens it too, with the Hill on or off. It shows the files that changed
 and any new power the version asks for. You have three options:
 
-- **Use the new version** approves the code on the card, and the trick runs it.
-- **Use it and stop asking** does the same, and switches on "Take changes without asking". It is
+- **Hold to use** approves the code on the card, and the trick runs it. Keep a finger on it for three
+  seconds; with a keyboard, press it twice.
+- **Hold to use and stop asking** does the same, and switches on "Take changes without asking". It is
   offered only when the version asks for no new power.
 - **Keep the old version** declines it. Collie does not offer that version again.
 
@@ -567,7 +569,7 @@ collie trick propose ~/work/disk-space
 
 A card appears with the whole code on it: on your Hill, or in Settings → Tricks under **Waiting for
 your yes** while the Hill is off. Collie never recommends "Switch it on": your
-own reading is the check. Nothing of the trick runs before your yes. Collie offers an agent no way to
+own judgement is the check. The yes is a hold of three seconds. Nothing of the trick runs before your yes. Collie offers an agent no way to
 switch a trick on. A program that runs as you can still do it.
 
 An agent can propose a program trick. It cannot propose a trick that carries a view or rules: an

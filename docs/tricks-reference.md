@@ -1647,6 +1647,7 @@ Tricks do not run on a Windows machine yet. [Collie on Windows](windows.md) says
 | --- | --- |
 | Cards | card 1 holds the facts and at most 7 cards hold the code, 6 KB each |
 | Code shown in all | 42 KB, at most 64 files |
+| The yes | a hold of 3 seconds on the phone, or two presses of a key. The answer carries the hash of the cards, and the bridge hashes the stored files again before it installs. No card has to be opened or read first |
 
 ## Commands
 

@@ -170,11 +170,15 @@ export interface HillGroup {
   parts: HillGroupPart[];
 }
 
-/** What a phone sends with an answer to a group: the digest it was given and the cards it opened (1-based). */
+/**
+ * What a phone sends with a yes to Collie's own card of code (a group, or a single card): the digest it was
+ * given, so the yes approves exactly the code it showed. Since ADR 0156 the phone sends no `opened`; a phone
+ * bundle from before still sends the cards it marked opened, and the bridge reads them and ignores them.
+ */
 export interface HillGroupAnswer {
   digest: string;
-  /** A DISPLAY check, never proof: the cards this phone showed. */
-  opened: number[];
+  /** From an older phone bundle only: the cards it marked opened (1-based). Read and ignored. */
+  opened?: number[];
 }
 
 /**

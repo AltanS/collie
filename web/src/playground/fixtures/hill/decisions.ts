@@ -926,7 +926,7 @@ const PROPOSAL_CODE_3: View = [
   { kind: "diff", attrs: { file: "lib/legs.ts" }, text: ["@@ -0,0 +1,4 @@", "+export function red(legs) {", "+  return legs.filter((leg) => leg.state === \"red\");", "+}", "+"].join("\n") },
 ];
 
-/** 52 to 56: a proposal of three files on three cards. Each call is its own Decision, so each case keeps its own opened cards. */
+/** 52 to 56: a proposal of three files on three cards. Each call is its own Decision, so each case keeps its own page. */
 export function proposalGroup(): HillDecision {
   return decision({
     title: "Switch on the trick legs?",

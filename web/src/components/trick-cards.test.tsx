@@ -1,10 +1,10 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider, type InitialEntry } from "react-router";
 
 import { firstSentence, TrickCardsLine, TrickCardsLineView, TrickCardsWaiting, TrickCardsWaitingList, trickLineOf } from "@/components/trick-cards";
-import { ARM_DWELL_MS } from "@/lib/arm";
+import { APPROVE_HOLD_MS, ARM_DWELL_MS } from "@/lib/arm";
 import { __resetHill, __settleHill, noteHillAnswer, syncHill } from "@/lib/hill/store";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { TrickCardRoute } from "@/routes/trick-card";
@@ -243,6 +243,35 @@ describe("the card's page", () => {
       await __settleHill();
     });
     await vi.waitFor(() => expect(router.state.location.pathname).not.toBe(`/trick-card/${card.id}`));
+  });
+
+  it("Settings' card takes the yes as a hold of three seconds with nothing read first, and sends the hash (ADR 0156)", async () => {
+    const answers: unknown[] = [];
+    server.use(
+      http.post("/api/hill/answer", async ({ request }) => {
+        answers.push(await request.json());
+        return HttpResponse.json({});
+      }),
+    );
+    const card = collieCard("proposal", "legs", { view: [{ kind: "diff", attrs: { file: "program.ts" }, text: '@@ -0,0 +1,1 @@\n+console.log("legs")' }] });
+    await holds([card]);
+    renderApp(["/", "/settings/tricks", { pathname: `/trick-card/${card.id}`, state: { from: "/settings/tricks" } }], { hillOff: true, trickCards: true });
+    const yes = await screen.findByRole("button", { name: "Hold to switch on" });
+    expect(yes).toBeEnabled();
+    // A tap is no yes.
+    await userEvent.click(yes);
+    expect(answers).toEqual([]);
+    vi.useFakeTimers();
+    try {
+      fireEvent.pointerDown(yes, { button: 0, pointerId: 1, pointerType: "touch" });
+      await act(async () => {
+        vi.advanceTimersByTime(APPROVE_HOLD_MS);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await waitFor(() => expect(answers).toHaveLength(1));
+    expect(answers[0]).toMatchObject({ intent: "on", group: { digest: "a".repeat(64) } });
   });
 
   it("shows no agent's card by its id", async () => {

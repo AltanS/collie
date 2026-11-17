@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
@@ -7,21 +7,21 @@ import { ChatApprovalCard, isSessionProposal, SessionTrickCards, useSessionPropo
 import { TrickCardsWaiting } from "@/components/trick-cards";
 import { HILL_IDLE, type HillAnswerState } from "@/hooks/use-hill-answer";
 import { postHillAnswer } from "@/lib/api";
+import { APPROVE_HOLD_MS } from "@/lib/arm";
 import { closeInSession, forgetSessionLater } from "@/lib/hill/session-later";
 import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import type { HillDecision } from "@/lib/hill/wire";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { withHeaderHost } from "@/test/header-host";
 import { collieCard, hillDecision } from "@/test/hill-fixtures";
-import { stubAllSeen } from "@/test/seen-end";
 import { server } from "@/test/setup";
 
-// The card standing still for a second is tested in session-trick-card.still.test.tsx; here every card has.
-vi.mock("@/hooks/use-still", () => ({ STILL_MS: 1000, STILL_TICK_MS: 100, useStill: (el: HTMLElement | null) => el !== null }));
+// Every way a hold ends early is tested on the control itself (hold-to-approve.test.tsx); here the card.
 
 // PACKAGE I: a trick proposal shows in the chat view of the session that proposed it, as ONE card in the chat's
 // own look and the chat's own scroll (2026-11-17): the facts open, the code in a fold, no Hill first line, no
-// Back and Next. "Not now" there closes it in that session only (Settings, Tricks keeps it).
+// Back and Next. "Not now" there closes it in that session only (Settings, Tricks keeps it). Its yes is a hold of
+// three seconds, and reading the code is offered, not required (ADR 0156).
 
 const SELF = "lodge/%3#abcd";
 const HASH = "a".repeat(64);
@@ -115,39 +115,18 @@ function renderChat(self: string) {
   render(<RouterProvider router={router} />);
 }
 
-type Seen = (entries: readonly { isIntersecting: boolean }[]) => void;
-interface Watch {
-  callback: Seen;
-  target: Element | null;
-  root: Element | null;
-}
-
-/** An IntersectionObserver the test drives: every mark watched, and when it comes on screen. */
-function stubWatch(): Watch[] {
-  const seen: Watch[] = [];
-  class FakeObserver {
-    private readonly at: Watch;
-    constructor(callback: Seen, options?: { root?: Element | null }) {
-      this.at = { callback, target: null, root: options?.root ?? null };
-      seen.push(this.at);
-    }
-    observe(target: Element): void {
-      this.at.target = target;
-    }
-    disconnect(): void {
-      this.at.target = null;
-    }
-    unobserve(): void {}
+/** A finger down on `button` for three seconds, then lifted: the hold that approves. */
+async function hold(button: HTMLElement) {
+  vi.useFakeTimers();
+  try {
+    fireEvent.pointerDown(button, { button: 0, pointerId: 1, pointerType: "touch" });
+    await act(async () => {
+      vi.advanceTimersByTime(APPROVE_HOLD_MS);
+    });
+    fireEvent.pointerUp(button, { button: 0, pointerId: 1, pointerType: "touch" });
+  } finally {
+    vi.useRealTimers();
   }
-  vi.stubGlobal("IntersectionObserver", FakeObserver);
-  return seen;
-}
-
-/** Every mark watched now comes on screen. */
-function showEveryEnd(seen: Watch[]) {
-  act(() => {
-    for (const one of seen.filter((o) => o.target !== null)) one.callback([{ isIntersecting: true }]);
-  });
 }
 
 function recordAnswers(): unknown[] {
@@ -162,12 +141,6 @@ function recordAnswers(): unknown[] {
 }
 
 beforeEach(() => {
-  stubAllSeen();
-  // Boxes on screen: the scroller the card flows in fills the phone, every other box sits well inside it, above
-  // its tail room. A mark the observer reports is looked at again against these (inView).
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    return this.dataset.testid === "chat" ? new DOMRect(0, 0, 390, 700) : new DOMRect(0, 100, 360, 20);
-  });
   __resetHill();
   forgetSessionLater();
 });
@@ -180,12 +153,7 @@ afterEach(() => {
 const chat = () => screen.getByTestId("chat");
 const card = () => chat().querySelector<HTMLElement>('[data-slot="chat-approval"]');
 const toggle = () => chat().querySelector<HTMLButtonElement>('[data-slot="chat-approval-code-toggle"]')!;
-const yes = (name: RegExp = /Switch it on/u) => within(chat()).getByRole("button", { name });
-/** The fold opens, then settles (its marks are drawn only once it stopped moving). */
-async function openCode() {
-  await userEvent.click(toggle());
-  await waitFor(() => expect(chat().querySelector('[data-slot="chat-approval-section"] [data-slot="chat-approval-end"]')).not.toBeNull());
-}
+const yes = (name: RegExp = /Hold to switch on/u) => within(chat()).getByRole("button", { name });
 
 describe("a trick proposal in its session's chat view", () => {
   it("draws ONE card in the chat's look: title, summary, the honest line, rights, warnings and fields, no Hill first line, no Back and Next, no Dismiss", async () => {
@@ -227,58 +195,52 @@ describe("a trick proposal in its session's chat view", () => {
     expect(asked).toEqual([toggle()]);
   });
 
-  it("Switch it on stays off until the fold was OPENED and its end seen; a closed fold never counts, also for a short trick; then ONE tap sends once with the hash", async () => {
-    const seen = stubWatch();
+  it("Hold to switch on is ready at the draw with the fold never opened; a tap is no yes; a hold of three seconds sends once with the hash", async () => {
     const answers = recordAnswers();
     await holds([proposalCard()]);
     renderChat(SELF);
     await screen.findByText("Switch on the trick legs?", { selector: "[data-testid=chat] *" });
-    expect(yes()).toBeDisabled();
-    expect(card()).toHaveTextContent("Open the code and read it to its end first.");
-    // Every mark the card watches says it is on screen: with the fold closed there is no mark of the code at all.
-    showEveryEnd(seen);
-    expect(yes()).toBeDisabled();
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    expect(yes()).toBeEnabled();
+    expect(yes()).toHaveAccessibleDescription("Hold for 3 seconds. With a keyboard, press it twice.");
+    expect(card()).not.toHaveTextContent("read it to its end");
+    // A tap, by a finger, is no yes.
     await userEvent.click(yes());
     expect(answers).toEqual([]);
-    // Opened, the end mark is watched in the chat's own scroller, not in a box of the card.
-    await openCode();
-    expect(yes()).toBeDisabled();
-    expect(card()).toHaveTextContent("Scroll to the end of the code first.");
-    const watching = seen.filter((o) => o.target !== null);
-    expect(watching).toHaveLength(1);
-    expect(watching[0]!.root).toBe(chat());
-    showEveryEnd(seen);
-    expect(yes()).toBeEnabled();
-    await userEvent.click(yes());
+    await hold(yes());
     await waitFor(() => expect(answers).toHaveLength(1));
-    expect(answers[0]).toMatchObject({ intent: "on", group: { digest: HASH, opened: [1] } });
+    expect(answers[0]).toMatchObject({ intent: "on", group: { digest: HASH } });
+    expect(answers[0]).toEqual(expect.objectContaining({ group: { digest: HASH } }));
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("closing the fold again keeps the yes on", async () => {
+  it("opening and closing the fold leaves the yes as it was", async () => {
     await holds([proposalCard()]);
     renderChat(SELF);
     await screen.findByText("Switch on the trick legs?", { selector: "[data-testid=chat] *" });
-    await openCode();
-    await waitFor(() => expect(yes()).toBeEnabled());
+    await userEvent.click(toggle());
+    expect(yes()).toBeEnabled();
     await userEvent.click(toggle());
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
     expect(yes()).toBeEnabled();
   });
 
-  it("a changed card (other code, a new hash) takes the yes off and closes the fold", async () => {
+  it("a changed card (other code, a new hash) is a new card: the fold closes and the next yes carries the new hash", async () => {
+    const answers = recordAnswers();
     await holds([proposalCard()]);
     renderChat(SELF);
     await screen.findByText("Switch on the trick legs?", { selector: "[data-testid=chat] *" });
-    await openCode();
-    await waitFor(() => expect(yes()).toBeEnabled());
+    await userEvent.click(toggle());
     const changed = proposalCard();
     if (changed.from.ref !== undefined) changed.from = { ...changed.from, ref: { ...changed.from.ref, hash: "b".repeat(64) } };
     await holds([changed], 2);
-    await waitFor(() => expect(yes()).toBeDisabled());
-    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-expanded", "false"));
+    await hold(yes());
+    await waitFor(() => expect(answers).toHaveLength(1));
+    expect(answers[0]).toMatchObject({ intent: "on", group: { digest: "b".repeat(64) } });
   });
 
-  it("a group of cards is one card: the facts open, the code cards stacked in the fold, the yes after every end, with the digest and every card", async () => {
+  it("a group of cards is one card: the facts open, the code cards stacked in the fold, the yes a hold with the group's digest", async () => {
     const answers = recordAnswers();
     await holds([groupCard()]);
     renderChat(SELF);
@@ -286,29 +248,27 @@ describe("a trick proposal in its session's chat view", () => {
     expect(chat().querySelectorAll('[data-slot="chat-approval"]')).toHaveLength(1);
     expect(card()).toHaveTextContent("2 files, on cards 2 to 3.");
     expect(chat().querySelector('[data-slot="decision-group-nav"]')).toBeNull();
-    expect(yes()).toBeDisabled();
-    await openCode();
+    expect(yes()).toBeEnabled();
+    await userEvent.click(toggle());
     const sections = [...chat().querySelectorAll('[data-slot="chat-approval-section"]')];
     expect(sections.map((s) => s.getAttribute("data-card"))).toEqual(["2", "3"]);
     expect(sections[0]).toHaveTextContent("Card 2");
     expect(sections[0]).toHaveTextContent('console.log("two")');
     expect(sections[1]).toHaveTextContent('console.log("three")');
-    await waitFor(() => expect(yes()).toBeEnabled());
-    await userEvent.click(yes());
+    await hold(yes());
     await waitFor(() => expect(answers).toHaveLength(1));
-    expect(answers[0]).toMatchObject({ intent: "on", group: { digest: "d".repeat(64), opened: [1, 2, 3] } });
+    expect(answers[0]).toMatchObject({ intent: "on", group: { digest: "d".repeat(64) } });
   });
 
-  it("a new version shows what changed and the new rights, and Use the new version", async () => {
+  it("a new version shows what changed and the new rights, and Hold to use", async () => {
     await holds([versionCard()]);
     renderChat(SELF);
     await screen.findByText("Use the new version of legs?", { selector: "[data-testid=chat] *" });
     expect(card()).toHaveTextContent("It now also asks for GITHUB_TOKEN.");
     expect(chat().querySelector('[data-slot="chat-approval-facts"]')).toHaveTextContent("GITHUB_TOKEN");
-    expect(yes(/Use the new version/u)).toBeDisabled();
-    await openCode();
+    expect(yes(/Hold to use/u)).toBeEnabled();
+    await userEvent.click(toggle());
     expect(card()).toHaveTextContent('console.log("new")');
-    await waitFor(() => expect(yes(/Use the new version/u)).toBeEnabled());
     expect(within(chat()).getByRole("button", { name: /Keep the old version/u })).toBeEnabled();
   });
 
@@ -324,28 +284,10 @@ describe("a trick proposal in its session's chat view", () => {
       </div>,
     );
     expect(card()).toHaveTextContent("This phone cannot show all of this card, so the trick cannot be switched on here.");
-    expect(screen.queryByRole("button", { name: /Switch it on/u })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Hold to switch on/u })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /Not now/u }));
     expect(onLater).toHaveBeenCalledTimes(1);
     expect(onSend).not.toHaveBeenCalled();
-  });
-
-  it("a mark the observer reports while it lies under a floating card does not count; on screen above it, it does (the tail room as it is now)", async () => {
-    const seen = stubWatch();
-    await holds([proposalCard()]);
-    renderChat(SELF);
-    await screen.findByText("Switch on the trick legs?", { selector: "[data-testid=chat] *" });
-    await openCode();
-    // A floating composer card came after the observer was made: it now covers all but the top 50 px.
-    chat().style.setProperty("--tail-room", "650px");
-    showEveryEnd(seen);
-    expect(yes()).toBeDisabled();
-    // The card goes; the next scroll looks again, and the mark is above the tail room.
-    chat().style.setProperty("--tail-room", "0px");
-    act(() => {
-      chat().dispatchEvent(new Event("scroll"));
-    });
-    await waitFor(() => expect(yes()).toBeEnabled());
   });
 
   it("a proposal whose card holds no code offers no yes", async () => {
@@ -357,39 +299,28 @@ describe("a trick proposal in its session's chat view", () => {
       </div>,
     );
     expect(card()).toHaveTextContent("This phone cannot show all of this card, so the trick cannot be switched on here.");
-    expect(within(chat()).queryByRole("button", { name: /Switch it on/u })).toBeNull();
+    expect(within(chat()).queryByRole("button", { name: /Hold to switch on/u })).toBeNull();
     expect(chat().querySelector('[data-slot="chat-approval-code-toggle"]')).toBeNull();
   });
 
-  it("Try again: only on the card the answer was sent from, and only when that card is ready; a changed card offers none", async () => {
+  it("a yes that got no answer offers no Try again: the hold sends it again, with the hash", async () => {
     const onSend = vi.fn();
     const decision = proposalCard();
     const failed: HillAnswerState = { phase: "failed", intent: "on", text: null };
-    const draw = (d: HillDecision, answer: HillAnswerState) => (
+    const draw = (answer: HillAnswerState) => (
       <div data-testid="chat" style={{ overflowY: "auto" }}>
-        <ChatApprovalCard decision={d} answer={answer} onSend={onSend} onLater={vi.fn()} />
+        <ChatApprovalCard decision={decision} answer={answer} onSend={onSend} onLater={vi.fn()} />
       </div>
     );
-    // A card drawn with an answer that was not sent from it (another tab, an earlier copy): no Try again.
-    const { rerender } = render(draw(decision, failed));
-    expect(chat().querySelector('[data-slot="decision-retry"]')).toBeNull();
-    rerender(draw(decision, HILL_IDLE));
-    await openCode();
-    await waitFor(() => expect(yes()).toBeEnabled());
-    await userEvent.click(yes());
+    const { rerender } = render(draw(HILL_IDLE));
+    await hold(yes());
     expect(onSend).toHaveBeenCalledTimes(1);
-    // Not sent: this card, ready, offers Try again, and it sends the same answer with the hash.
-    rerender(draw(decision, failed));
-    const retry = await waitFor(() => within(chat()).getByRole("button", { name: /Try again/u }));
-    await userEvent.click(retry);
-    expect(onSend).toHaveBeenCalledTimes(2);
-    expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: HASH, opened: [1] });
-    // The card changes under it (other code): a new card, with no Try again and the yes off.
-    const changed = proposalCard();
-    if (changed.from.ref !== undefined) changed.from = { ...changed.from, ref: { ...changed.from.ref, hash: "c".repeat(64) } };
-    rerender(draw(changed, failed));
+    rerender(draw(failed));
+    expect(card()).toHaveTextContent("Not sent.");
     expect(chat().querySelector('[data-slot="decision-retry"]')).toBeNull();
-    expect(yes()).toBeDisabled();
+    await hold(yes());
+    expect(onSend).toHaveBeenCalledTimes(2);
+    expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: HASH });
   });
 
   it("a waiting proposal sets the jump-to-latest dot of its own session only, and Not now clears it", async () => {
