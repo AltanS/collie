@@ -8,7 +8,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { useTricksSwitch } from "@/hooks/use-tricks-switch";
 import { useHillTrickCount } from "@/lib/hill/store";
 import { t, tn } from "@/lib/i18n";
-import { tricksStore, useTricksState } from "@/lib/tricks/store";
+import { tricksStore, useTricksState, type TricksState } from "@/lib/tricks/store";
 import { cn } from "@/lib/utils";
 
 // Settings → Tricks, first on the page: one card, one switch for tricks AS A WHOLE (bridge/tricks/feature-switch.ts).
@@ -26,6 +26,11 @@ import { cn } from "@/lib/utils";
 // on screen, because switching off empties the list the phone holds and a card that shrank then would pull the
 // page up under the thumb.
 //
+// "THESE START AGAIN" (2026-11-17): while the switch is OFF and tricks exist whose own switch is on, one muted line
+// under the contract line names them, so the person knows what a tap on the big switch brings back. At most five
+// names, then "and N more". Nothing when the switch is on, when no trick's own switch is on, or when this bridge
+// runs no trick (Windows, a crew member). The line is outside the armed slot: it is plain text of the card.
+//
 // WINDOWS: a Windows bridge runs no trick (the tricks reply says `gate: "windows"`), so the card says so with the
 // one existing line and the switch cannot move.
 
@@ -36,8 +41,9 @@ const noteClass = (extra: string): string => cn("rounded-md border border-destru
 export function TricksSwitchControl() {
   const sw = useTricksSwitch();
   const waiting = useHillTrickCount();
-  const windows = useTricksState(tricksStore).gate === "windows";
-  return <TricksSwitchCard on={sw.on} disabled={sw.busy || !sw.canWrite} waiting={waiting} windows={windows} onToggle={(next) => void sw.set(next)} />;
+  const state = useTricksState(tricksStore);
+  const windows = state.gate === "windows";
+  return <TricksSwitchCard on={sw.on} disabled={sw.busy || !sw.canWrite} waiting={waiting} windows={windows} startAgain={startAgainNames(state)} onToggle={(next) => void sw.set(next)} />;
 }
 
 export interface TricksSwitchCardProps {
@@ -47,16 +53,41 @@ export interface TricksSwitchCardProps {
   /** How many Decisions a trick posted are open, from the list the phone holds. Any of them arms the switch. Default none. */
   waiting?: number;
   /** A Windows bridge: the card says tricks do not run there yet and the switch cannot move. Default false. */
-  windows?: boolean;
+  windows?: boolean;  /** The names of the tricks whose own switch is on. While the big switch is off the card says these start again. Default none. */
+  startAgain?: readonly string[];
 }
 
+/**
+ * The names of the tricks whose own switch is on, in the list's order. A member runs none (its list is the lead's,
+ * and a tap on its big switch brings nothing back on this machine), so it names none.
+ */
+export function startAgainNames(state: Pick<TricksState, "tricks" | "runsOn">): string[] {
+  return state.runsOn === undefined ? state.tricks.filter((trick) => trick.on).map((trick) => trick.name) : [];
+}
+
+/** The default of {@link TricksSwitchCardProps.startAgain}: one stable list. */
+const NO_NAMES: readonly string[] = [];
+
+/** The most names "These start again" lists before "and N more". */
+export const START_AGAIN_NAMES_MAX = 5;
+
+/** "These start again: a, b, c, d, e and 2 more." Null when nothing starts again. */
+export function startAgainLine(names: readonly string[]): string | null {
+  if (names.length === 0) return null;
+  const shown = names.slice(0, START_AGAIN_NAMES_MAX).join(", ");
+  const rest = names.length - START_AGAIN_NAMES_MAX;
+  return t("settings.tricks.switch.starts", { names: rest > 0 ? tn("settings.tricks.switch.andMore", rest, { names: shown }) : shown });
+}
+
+
 /** The card itself, every value handed in, so the playground draws the real markup in each state. */
-export function TricksSwitchCard({ on, disabled, onToggle, waiting = 0, windows = false }: TricksSwitchCardProps) {
+export function TricksSwitchCard({ on, disabled, onToggle, waiting = 0, windows = false, startAgain = NO_NAMES }: TricksSwitchCardProps) {
   useLocale();
   const { armed, tap, disarm } = useArm<"off">();
   // A position the switch reached by itself leaves no arm behind.
   useEffect(() => disarm(), [on, disarm]);
   const asks = armed === "off";
+  const starts = on || windows ? null : startAgainLine(startAgain);
   // The slot of the armed note: reserved once a question waits, and kept while the card is drawn.
   const [reserved, setReserved] = useState(on && waiting > 0);
   useEffect(() => {
@@ -91,6 +122,11 @@ export function TricksSwitchCard({ on, disabled, onToggle, waiting = 0, windows 
             <p data-line="contract" className="text-sm text-muted-foreground">
               {t("settings.tricks.switch.contract")}
             </p>
+            {starts !== null && (
+              <p data-line="starts" className="text-sm break-words text-muted-foreground">
+                {starts}
+              </p>
+            )}
             {windows && (
               <p data-line="windows" className="text-sm text-muted-foreground">
                 {t("settings.tricks.windows")}

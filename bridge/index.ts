@@ -2867,6 +2867,7 @@ trickProposals =
         hill,
         tricks: () => tricks ?? null,
         crew: () => crew.mode === "lead",
+        self: { memberId: bridgeId.id, machine: hostname() },
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
       });
 // At start: the proposals whose card closed while the bridge was down, and copies nothing names, go.

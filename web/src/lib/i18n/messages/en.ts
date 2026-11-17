@@ -3651,6 +3651,7 @@ export const en = {
   "settings.tricks.about.env": "Asks for the environment names {names}.",
   // `on` and `watch` are rights (M105 step one): the same words as the proposal card's chips (bridge/tricks/version-card.ts).
   "settings.tricks.about.on": "Runs when a session changes state.",
+  "settings.tricks.about.keepsRunning": "It keeps running with no phone open.",
   "settings.tricks.about.watch": "Runs when these files change: {paths}.",
   "settings.tricks.about.runsAsYou": "This trick runs as you on this machine. It can do there what you can do.",
   "settings.tricks.about.access.see": "It reads your machines, sessions, usage and the Hill.",
@@ -3693,6 +3694,7 @@ export const en = {
   "settings.tricks.about.rulesClose": "Hide the instructions",
   "settings.tricks.about.rulesUnshown": "This phone cannot show these agent instructions, so the trick cannot be switched on here. Read them and switch it on on the machine.",
   "settings.tricks.about.rulesAfterAdd": "Read the instructions after you add it. It stays off until you switch it on.",
+  "settings.tricks.switchNotWhole": "Collie cannot show all of its code as it is, so it stays off.",
   "settings.tricks.switchMoved": "The trick changed after you read it. Read it again, then switch it on.",
   "settings.tricks.switchShellOnWindows": "On Windows a trick runs only a script, such as run = \"program.ts\"; a shell line does not run there.",
   // Official tricks, the ones this release can add (M94). The failure lines are the bridge's own
@@ -3898,6 +3900,9 @@ export const en = {
   "settings.tricks.switch.failed": "Could not switch tricks. Try again.",
   "settings.tricks.switch.waits.one": "{count} question from a trick waits on the Hill. You cannot answer it while tricks are off.",
   "settings.tricks.switch.waits.other": "{count} questions from tricks wait on the Hill. You cannot answer them while tricks are off.",
+  "settings.tricks.switch.starts": "These start again: {names}.",
+  "settings.tricks.switch.andMore.one": "{names} and {count} more",
+  "settings.tricks.switch.andMore.other": "{names} and {count} more",
   "settings.tricks.switch.offLine": "Tricks are switched off on this machine; switch them on at the top of this page.",
   "settings.experiments.tricks.caption": "Switched on and off at the top of Settings, Tricks.",
   "hill.state.answered": "Answered",
@@ -4118,7 +4123,15 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = ["apiError.api.no_run_token", "settings.tricks.about.runsAsYou"] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [
+  "settings.tricks.switch.starts",
+  "settings.tricks.switch.andMore.one",
+  "settings.tricks.switch.andMore.other",
+  "settings.tricks.about.keepsRunning",
+  "settings.tricks.switchNotWhole",
+  "apiError.api.no_run_token",
+  "settings.tricks.about.runsAsYou",
+] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];

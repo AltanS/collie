@@ -60,6 +60,8 @@ export interface ChangedFile {
   gap?: true;
   /** The file became executable (`+x`) or stopped being so (`-x`), its bytes changed or not (review 7). */
   mode?: "+x" | "-x";
+  /** Set when the file is text larger than {@link DIFF_FILE_BYTES_MAX}: it gets no hunk, and a proposal with it is refused as too large (A5). */
+  big?: true;
 }
 
 export interface VersionDiff {
@@ -135,6 +137,14 @@ export function noLineChange(rel: string, what: "+x" | "-x" | "added" | "removed
     default:
       return what satisfies never;
   }
+}
+
+/**
+ * The line a new trick's card carries for a file the proposal marks executable (A5), in the words of the mode
+ * line above: a new trick has no old mode to change from, so it says what the file can do.
+ */
+export function canRunLine(rel: string): string {
+  return `${rel}: mode +x, it can run as a program`;
 }
 
 /** `+x` or `-x` when a file in both folders changed its executable bit. */
@@ -257,10 +267,11 @@ export function readPatch(patch: string): PatchRead {
   return { plus, minus, hunk };
 }
 
-/** Whether a path names a text file small enough to count. */
-async function countable(fs: TrickFs, path: string): Promise<boolean> {
+/** Whether a path names a text file small enough to count, a text file too large to count, or anything else. */
+async function countable(fs: TrickFs, path: string): Promise<"text" | "big" | "other"> {
   const bytes = await fs.read(path, DIFF_FILE_BYTES_MAX + 1);
-  return bytes !== null && bytes.byteLength <= DIFF_FILE_BYTES_MAX && !looksBinary(bytes);
+  if (bytes === null || looksBinary(bytes)) return "other";
+  return bytes.byteLength <= DIFF_FILE_BYTES_MAX ? "text" : "big";
 }
 
 /**
@@ -301,8 +312,13 @@ export async function versionDiff(opts: VersionDiffOptions): Promise<VersionDiff
     const left = file.change === "added" || opts.base === null ? "/dev/null" : join(opts.base, file.rel);
     const right = file.change === "removed" ? "/dev/null" : join(opts.next, file.rel);
     // A symlink or a binary is listed, not counted: git would print a link target or "Binary files differ".
-    const isText = (left === "/dev/null" || (await countable(fs, left))) && (right === "/dev/null" || (await countable(fs, right)));
-    if (!isText) continue;
+    const kinds = new Set([left === "/dev/null" ? "text" : await countable(fs, left), right === "/dev/null" ? "text" : await countable(fs, right)]);
+    if (kinds.has("other")) continue;
+    // Text too large to count: no hunk, and a card says it is too large, not that it is no text (A5).
+    if (kinds.has("big")) {
+      file.big = true;
+      continue;
+    }
     const answer = await run(diffArgv(git, left, right)).catch((): DiffRun => ({ code: null, stdout: "", timedOut: false }));
     // `--no-index` exits 1 when the files differ, 0 when they are the same, and anything else on an error.
     if (answer.timedOut || (answer.code !== 0 && answer.code !== 1)) continue;

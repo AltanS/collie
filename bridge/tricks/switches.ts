@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmod, link, mkdir, open, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
@@ -45,7 +45,7 @@ import { tricksStateDir, switchesPath } from "./paths.ts";
 // as "everything off" with one warning per change: the safe direction for a switch that runs code.
 //
 // ONE WRITER AT A TIME. The CLI and the bridge both write the file, each through {@link updateSwitches}:
-// take the lock file (exclusive create, a nonce inside, stale after {@link SWITCH_LOCK_STALE_MS}), read the file again,
+// take the lock file (exclusive create, pid and nonce inside, taken over only when that pid is dead), read the file again,
 // apply the one change, write a temp file and rename it over. Two writers never lose each other's change.
 
 /** The layout this Collie writes (approved copies): `"layout": 3` in a file that says `"v": 2`. */
@@ -95,10 +95,14 @@ export interface Switches {
 
 const EMPTY: Switches = { on: new Map(), version: 0 };
 
-/** A lock file older than this is a writer that died: it is taken over. */
-export const SWITCH_LOCK_STALE_MS = 5000;
 /** How long a writer waits for the lock before it gives up. */
 export const SWITCH_LOCK_WAIT_MS = 6000;
+/**
+ * A lock or door file that is empty or holds no pid, older than this, is read as dead. This code never shows a half
+ * written file (it links a whole one onto the path), but an older build created the file and wrote it after, and a
+ * crash between the two left an empty lock that nothing else would ever clear.
+ */
+export const SWITCH_LOCK_BLANK_MS = 30_000;
 
 /** The switch file read: the switches, and why it read as all off when it did. */
 export interface ParsedSwitches {
@@ -266,70 +270,141 @@ async function readText(path: string): Promise<string | null> {
   }
 }
 
-/** The lock file's text: the writer's pid for a human reading it, then the nonce that only this holder knows. */
+/** The text of a lock or door file this process makes: its pid, which a waiter checks for life, then a nonce only it knows. */
 function lockText(nonce: string): string {
   return `${String(process.pid)}\n${nonce}\n`;
 }
 
+/** What stands at a lock or door path: nothing, a file whose holder is alive (or that cannot be read as one), or a dead holder's file. */
+type Holder = { kind: "none" } | { kind: "live" } | { kind: "dead"; text: string };
+
 /**
- * Take the lock file, taking over a stale one. Answers the holder's nonce: the lock file carries it, and
- * {@link releaseLock} removes the lock only while it still does. Throws after {@link SWITCH_LOCK_WAIT_MS}.
+ * Whether the process `pid` runs. A signal 0 sends nothing and checks only: ESRCH is the one answer that means
+ * dead. EPERM (another user's process) and any other error count as alive, the safe side: a live holder is never
+ * taken over, at worst a waiter gives up after {@link SWITCH_LOCK_WAIT_MS}.
+ */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return !(err instanceof Error && "code" in err && err.code === "ESRCH");
+  }
+}
+
+/**
+ * Read a lock or door file. A pid that runs is alive, one that does not is dead. A file that is empty or holds no
+ * pid is somebody else's being written: alive while it is younger than {@link SWITCH_LOCK_BLANK_MS}, dead after.
+ */
+async function readHolder(path: string, now: () => number): Promise<Holder> {
+  const text = await readText(path);
+  if (text === null) return { kind: "none" };
+  const pid = /^([1-9]\d{0,9})\n/u.exec(text)?.[1];
+  if (pid !== undefined) return pidAlive(Number(pid)) ? { kind: "live" } : { kind: "dead", text };
+  const held = await stat(path).catch(() => null);
+  if (held === null) return { kind: "none" };
+  return now() - held.mtimeMs > SWITCH_LOCK_BLANK_MS ? { kind: "dead", text } : { kind: "live" };
+}
+
+/** A file of this process's lock text under a unique name in the same folder, ready to be linked or renamed onto a lock path. */
+async function prepared(path: string, nonce: string): Promise<string> {
+  const tmp = `${path}.${String(process.pid)}.${randomBytes(6).toString("hex")}.tmp`;
+  // Beside its target, in the same folder, so it inherits the folder's list.
+  await writeFile(tmp, lockText(nonce), { mode: 0o600, flag: "wx" });
+  return tmp;
+}
+
+/**
+ * Create `path` holding this process's lock text, only when nothing stands there. The text is written first
+ * under a name of its own and then linked onto the path: a link never replaces a file, and a waiter never sees
+ * the lock half written. Answers whether this call made it.
+ */
+async function createExclusive(path: string, nonce: string): Promise<boolean> {
+  const staged = await prepared(path, nonce);
+  try {
+    await link(staged, path);
+    return true;
+  } catch (err) {
+    if (err instanceof Error && "code" in err && err.code === "EEXIST") return false;
+    throw err;
+  } finally {
+    await unlink(staged).catch(() => {});
+  }
+}
+
+/** Remove `path` only while it still carries `nonce`: a file that is not this holder's is left alone. */
+async function removeIfOwn(path: string, nonce: string): Promise<void> {
+  const text = await readText(path);
+  if (text === null || !text.split("\n").includes(nonce)) return;
+  await unlink(path).catch(() => {});
+}
+
+/**
+ * Take the lock file. Answers the holder's nonce: the lock file carries it, and {@link releaseLock} removes the
+ * lock only while it still does. Throws after {@link SWITCH_LOCK_WAIT_MS}.
  *
- * A takeover renames the stale file to a name of its own, and looks at the file it got. Two waiters that
- * both judged the lock stale cannot both unlink it: one unlink could remove the lock the other had just
- * created (stat, then unlink, is not atomic). A rename moves whatever stands at the path, so the waiter
- * checks the moved file again: stale, it is thrown away; fresh, it was a live holder's lock and is put back
- * with a link, which never overwrites a lock someone created in the meantime.
+ * A LIVE HOLDER IS NEVER TAKEN OVER (counsel A1, third pass). The work inside the lock is renames and one small
+ * write, so a holder is quick or dead; there is no age rule for a lock with a pid. A lock whose pid is alive, or an
+ * empty or pid-less one younger than {@link SWITCH_LOCK_BLANK_MS}, is waited for. A dead one goes through one door,
+ * {@link replaceDead}.
  */
 async function takeLock(lock: string, now: () => number): Promise<string> {
   const until = now() + SWITCH_LOCK_WAIT_MS;
   const nonce = randomBytes(16).toString("hex");
-  // Bounded by the wait: each pass either takes the lock, removes a stale one, or sleeps 20 ms.
+  // Bounded by the wait: a pass that does not take the lock sleeps 20 ms, except right after the lock went.
   for (let pass = 0; pass < SWITCH_LOCK_WAIT_MS; pass += 1) {
-    try {
-      const handle = await open(lock, "wx", 0o600);
-      await handle.writeFile(lockText(nonce));
-      await handle.close();
-      return nonce;
-    } catch (err) {
-      if (!(err instanceof Error && "code" in err && err.code === "EEXIST")) throw err;
-    }
-    const held = await stat(lock).catch(() => null);
-    if (held !== null && now() - held.mtimeMs > SWITCH_LOCK_STALE_MS) {
-      await takeOver(lock, nonce, now);
-      continue;
-    }
+    if (await createExclusive(lock, nonce)) return nonce;
+    const held = await readHolder(lock, now);
+    if (held.kind === "none") continue;
+    if (held.kind === "dead" && (await replaceDead({ path: lock, seen: held.text, nonce, depth: 0, now }))) return nonce;
     if (now() >= until) break;
     await Bun.sleep(20);
   }
   throw new Error(`switches.json is locked by another writer (${lock})`);
 }
 
-/** Move a lock that looked stale out of the way, under a name only this waiter uses, and check what was moved. */
-async function takeOver(lock: string, nonce: string, now: () => number): Promise<void> {
-  const aside = `${lock}.stale-${nonce}`;
+/**
+ * The one door to a dead holder's file: `<path>.takeover`, created exclusive. Only its holder may replace `path`.
+ * It reads `path` again, and only while it is the same file (`seen`, the nonce with it) and still dead (its pid
+ * gone, or empty and still older than {@link SWITCH_LOCK_BLANK_MS}), renames its own prepared file OVER it: an atomic replace, so the lock path is never missing and no
+ * other waiter can create a lock in between. At depth 0 the replacement is this waiter's lock (answers true);
+ * at depth 1 `path` is a dead waiter's door and is only removed.
+ *
+ * A door whose own pid is dead is cleared the same way, through the door's door (depth 1). A dead depth 1 door is
+ * removed after it read dead: two waiters can race only there, after two holders died at the wrong moment.
+ */
+async function replaceDead(opts: { path: string; seen: string; nonce: string; depth: number; now: () => number }): Promise<boolean> {
+  const door = `${opts.path}.takeover`;
+  if (!(await createExclusive(door, opts.nonce))) {
+    const blocking = await readHolder(door, opts.now);
+    if (blocking.kind !== "dead") return false;
+    if (opts.depth > 0) await unlink(door).catch(() => {});
+    else await replaceDead({ path: door, seen: blocking.text, nonce: opts.nonce, depth: 1, now: opts.now });
+    return false;
+  }
   try {
-    await rename(lock, aside);
-  } catch {
-    // Another waiter moved it first, or its holder released it: take the next pass.
-    return;
+    const again = await readHolder(opts.path, opts.now);
+    if (again.kind !== "dead" || again.text !== opts.seen) return false;
+    if (opts.depth > 0) {
+      await unlink(opts.path).catch(() => {});
+      return false;
+    }
+    const mine = await prepared(opts.path, opts.nonce);
+    try {
+      await rename(mine, opts.path);
+    } catch (err) {
+      await unlink(mine).catch(() => {});
+      throw err;
+    }
+    return true;
+  } finally {
+    await removeIfOwn(door, opts.nonce);
   }
-  const moved = await stat(aside).catch(() => null);
-  if (moved === null) return;
-  if (now() - moved.mtimeMs > SWITCH_LOCK_STALE_MS) {
-    await unlink(aside).catch(() => {});
-    return;
-  }
-  // A live holder's lock that a faster waiter had just made: put it back, never over a newer one.
-  await link(aside, lock).catch(() => {});
-  await unlink(aside).catch(() => {});
 }
 
-/** Remove the lock file only while it still carries this holder's nonce: a lock taken over meanwhile is another writer's. */
+/** Remove the lock file only while it still carries this holder's nonce: a lock replaced after this holder died is another writer's. */
 async function releaseLock(lock: string, nonce: string): Promise<void> {
-  const text = await readText(lock);
-  if (text === null || !text.split("\n").includes(nonce)) return;
-  await unlink(lock).catch(() => {});
+  await removeIfOwn(lock, nonce);
 }
 
 /**
@@ -352,8 +427,8 @@ export async function updateSwitches(stateDir: string, change: (switches: Switch
 /**
  * Hold the switch file's lock while `work` runs, and release it after, also when `work` throws. For a writer
  * that changes the trick folders and not the file (`collie trick update` swaps a folder), so a bridge's
- * approval or an add of the same id, which hold this lock, never see the folder half moved. The lock is
- * taken over after {@link SWITCH_LOCK_STALE_MS}: keep `work` short.
+ * approval or an add of the same id, which hold this lock, never see the folder half moved. A live holder is
+ * never taken over, and a waiter gives up after {@link SWITCH_LOCK_WAIT_MS}: keep `work` short.
  */
 export async function withSwitchLock<T>(stateDir: string, work: () => Promise<T>, now: () => number = Date.now): Promise<T> {
   await mkdir(tricksStateDir(stateDir), { recursive: true, mode: 0o700 });

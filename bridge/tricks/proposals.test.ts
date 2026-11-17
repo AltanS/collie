@@ -34,11 +34,11 @@ import {
 import { ProposeDoor } from "./propose-door.ts";
 import { GROUP_CODE_BYTES, GROUP_MASKED, GROUP_NOT_TEXT, GROUP_TOO_LARGE, helperCell, helperNote } from "./card-group.ts";
 import { HELPER_VERSION, TRICK_HELPER } from "./scan.ts";
-import { PROPOSAL_SETTINGS_LEFT, readProposal, wireFiles, type ProposalRead, type ProposedFile } from "./propose-wire.ts";
+import { PROPOSAL_SETTINGS_LEFT, PROPOSE_HAS_RULES, readProposal, wireFiles, type ProposalRead, type ProposedFile } from "./propose-wire.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
 import { SWITCHES_VERSION, withEntry, withSwitch, writeSwitches } from "./switches.ts";
 import { VersionCards } from "./version-card.ts";
-import { powersOfDir } from "./approved.ts";
+import { approveFolder, powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import type { VersionDiff } from "./version-diff.ts";
 import { singleCodeCard } from "../../web/src/lib/hill/code-card.ts";
@@ -95,7 +95,7 @@ interface Lead {
   live: Set<string>;
 }
 
-async function lead(opts: { hillOff?: boolean; diff?: (base: string | null, next: string) => Promise<VersionDiff>; forgetTrick?: (id: string) => void } = {}): Promise<Lead> {
+async function lead(opts: { self?: { memberId: string; machine: string }; hillOff?: boolean; diff?: (base: string | null, next: string) => Promise<VersionDiff>; forgetTrick?: (id: string) => void } = {}): Promise<Lead> {
   const root = await tempDir();
   const configDir = join(root, "config");
   const stateDir = join(root, "state");
@@ -147,6 +147,7 @@ async function lead(opts: { hillOff?: boolean; diff?: (base: string | null, next
   // The real diff: a failed one refuses a new version's card (review 7 R9), so the rig no longer fakes one.
   const deps: ConstructorParameters<typeof TrickProposals>[0] = { configDir, stateDir, hill, tricks: () => service, now: () => clock.t, warn: () => undefined };
   if (opts.diff !== undefined) deps.diff = opts.diff;
+  if (opts.self !== undefined) deps.self = opts.self;
   proposals = new TrickProposals(deps);
   await proposals.start();
   return { root, configDir, stateDir, clock, hill, store, service, cards, proposals, sent, live };
@@ -1115,6 +1116,99 @@ describe("a trick that gives agents instructions (contract 2)", () => {
   });
 });
 
+// A13 (counsel on Edge build 5): a proposed VERSION of an installed trick is held to the same rule as a new trick. An agent
+// cannot give agents instructions, by adding rules or by changing them, and a version that TAKES them away shows the
+// change on its card, so a yes never removes an agent's instructions unseen.
+describe("a proposed version and the rules of an agent view (contract 2)", () => {
+  const RULES_OLD = "Draw one screen.\nKeep it short.\n";
+  const RULES_MANIFEST = manifest("morph", 'rules = "rules.md"\n').replace('places = ["belt"]', 'places = ["belt", "agent-view"]').replace("contract = 1", "contract = 2");
+  const LABEL = "The agent instructions, every line:";
+
+  async function settle(l: Lead): Promise<void> {
+    l.clock.t += 1000;
+    await l.service.refresh(true);
+    l.clock.t += PENDING_SETTLE_MS;
+    await l.service.refresh(true);
+    await l.cards.settled();
+  }
+
+  /** A trick a proposal made and the person switched on: the approved copy has NO rules. */
+  async function proposedOn(l: Lead, id: string): Promise<string> {
+    await l.proposals.propose(proposal(id, "old\n"), TERMINAL);
+    const card = openCards(l).find((d) => d.from.kind === "collie" && d.from.ref?.id === id);
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "ok" });
+    return join(l.configDir, TRICKS_DIR, id);
+  }
+
+  /** The same trick after an agent with a shell wrote rules into its folder and the person said yes to that version: the approved copy HAS rules. */
+  async function withRules(l: Lead, id: string): Promise<void> {
+    const dir = await proposedOn(l, id);
+    await writeFile(join(dir, "trick.toml"), RULES_MANIFEST);
+    await writeFile(join(dir, "rules.md"), RULES_OLD);
+    // The person's yes to that version, as the switch writes it: the folder as it is now is copied and approved.
+    const approved = await approveFolder({ stateDir: l.stateDir, configDir: l.configDir, id, by: "phone", at: "2026-11-17T09:00:00Z" });
+    expect(approved.ok).toBe(true);
+    await l.service.refresh(true);
+    await settle(l);
+    expect((await l.service.reply(undefined)).tricks.find((t) => t.id === id)?.on).toBe(true);
+  }
+
+  /** The proposal as a caller that skipped the wire would send it: the manifest names rules, so it is an agent view. */
+  const withRulesNamed = (read: ProposalRead): ProposalRead => ({ ...read, manifest: { ...read.manifest, agentView: true as const, rules: "rules.md" } });
+
+  test("the wire refuses a version that names rules, with the code and the sentence of a new trick", () => {
+    const files: ProposedFile[] = [
+      { rel: "trick.toml", bytes: enc(RULES_MANIFEST), executable: false },
+      { rel: "program.ts", bytes: enc("new\n"), executable: true },
+      { rel: "rules.md", bytes: enc(RULES_OLD), executable: false },
+    ];
+    const read = readProposal({ requestId: nextRid(), files: wireFiles(files) });
+    expect(read).toEqual({ ok: false, refusal: { code: "has_rules", error: PROPOSE_HAS_RULES } });
+  });
+
+  test("a version that ADDS rules is refused like a new trick's: same code, same sentence, no card", async () => {
+    const l = await lead();
+    await proposedOn(l, "morph");
+    const answer = await l.proposals.propose(withRulesNamed(proposal("morph", "new\n")), AGENT);
+    expect(answer).toEqual({ ok: false, code: "has_rules", error: PROPOSE_HAS_RULES });
+    expect(openCards(l)).toEqual([]);
+  });
+
+  test("a version that CHANGES rules is refused the same way", async () => {
+    const l = await lead();
+    await withRules(l, "morph");
+    const answer = await l.proposals.propose(withRulesNamed(proposal("morph", "new\n")), AGENT);
+    expect(answer).toEqual({ ok: false, code: "has_rules", error: PROPOSE_HAS_RULES });
+    expect(openCards(l)).toEqual([]);
+  });
+
+  test("a version that REMOVES rules shows the rules line and every line they held, and the card still waits for the yes", async () => {
+    const l = await lead();
+    await withRules(l, "morph");
+    const answer = await l.proposals.propose(proposal("morph", "new\n"), AGENT);
+    expect(answer).toMatchObject({ ok: true, kind: "version", id: "morph" });
+    const [card] = openCards(l);
+    expect(card?.title).toStartWith("Use the new version of ");
+    expect(card?.options.map((o) => o.intent)).toEqual(["on", "later"]);
+    // The label and the whole removed text, as diff rows, on the card or on a card of its group.
+    const views = card?.group === undefined ? [card?.view ?? []] : card.group.parts.map((part) => part.view);
+    const text = JSON.stringify(views);
+    expect(text).toContain(LABEL);
+    expect(text).toContain("-Draw one screen.");
+    expect(text).toContain("-Keep it short.");
+  });
+
+  test("no rules on either side: the card carries no rules line", async () => {
+    const l = await lead();
+    await proposedOn(l, "plain");
+    expect(await l.proposals.propose(proposal("plain", "new\n"), AGENT)).toMatchObject({ ok: true, kind: "version" });
+    const [card] = openCards(l);
+    const views = card?.group === undefined ? [card?.view ?? []] : card.group.parts.map((part) => part.view);
+    expect(JSON.stringify(views)).not.toContain(LABEL);
+    expect(JSON.stringify(views)).not.toContain("agent instructions");
+  });
+});
+
 describe("package I: the card in the session that proposed it, switched on with one answer", () => {
   test("propose in a session ties the card to that pane and says where it is: the session, and the Hill only while it is on", async () => {
     const on = await lead();
@@ -1177,5 +1271,33 @@ describe("package I: the card in the session that proposed it, switched on with 
       expect(op.kind).toBe("read");
       expect(["see", "read"]).toContain(op.right);
     }
+  });
+});
+
+describe("where a proposal will run", () => {
+  const SELF = { memberId: "lodge", machine: "lodge" };
+
+  test("from another machine of the crew: the card says it will run on this one, under the proposer", async () => {
+    const l = await lead({ self: SELF });
+    expect(await l.proposals.propose(proposal("legs"), AGENT)).toMatchObject({ ok: true });
+    expect(openCards(l)[0]?.summary).toStartWith("A session on workshop proposes it. It will run on lodge. ");
+  });
+
+  test("a terminal on a crew member says it too", async () => {
+    const l = await lead({ self: SELF });
+    expect(await l.proposals.propose(proposal("legs"), { ...TERMINAL, memberId: "workshop", host: "workshop" })).toMatchObject({ ok: true });
+    expect(openCards(l)[0]?.summary).toStartWith("Someone on workshop proposes it. Collie could not confirm which session. It will run on lodge. ");
+  });
+
+  test("from this machine: no such line", async () => {
+    const l = await lead({ self: SELF });
+    expect(await l.proposals.propose(proposal("legs"), TERMINAL)).toMatchObject({ ok: true });
+    expect(openCards(l)[0]?.summary).not.toContain("It will run on");
+  });
+
+  test("a lead that does not know itself says nothing", async () => {
+    const l = await lead();
+    expect(await l.proposals.propose(proposal("legs"), AGENT)).toMatchObject({ ok: true });
+    expect(openCards(l)[0]?.summary).not.toContain("It will run on");
   });
 });

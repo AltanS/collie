@@ -14,7 +14,7 @@ import { buildFacts, crewFactsWorld, factsWorldOf } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
 import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksCodeRoute, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
-import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_STALE_MS, updateSwitches, withApproval, withEntry, withSwitch, withSwitchLock, writeSwitches } from "./switches.ts";
+import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_BLANK_MS, updateSwitches, withApproval, withEntry, withSwitch, withSwitchLock, writeSwitches } from "./switches.ts";
 
 const HASH = "a".repeat(64);
 const HASH2 = "b".repeat(64);
@@ -101,46 +101,96 @@ describe("the switch file", () => {
     expect(existsSync(`${switchesPath(stateDir)}.lock`)).toBe(false);
   });
 
-  test("a lock left by a writer that died is taken over after 5 s", async () => {
+  test("a lock left by a writer that died is taken over at once", async () => {
     const stateDir = await tempDir();
     await mkdir(join(stateDir, "tricks"), { recursive: true });
     const lock = `${switchesPath(stateDir)}.lock`;
-    await writeFile(lock, "999999\n");
-    const old = new Date(Date.now() - SWITCH_LOCK_STALE_MS - 1000);
-    await utimes(lock, old, old);
+    // The pid line alone, as an older build wrote it, and no age: a dead pid is the whole rule.
+    await writeFile(lock, `${String(await deadPid())}\n`);
     await updateSwitches(stateDir, (now) => withSwitch(now, "legs", true, "t", HASH));
     expect(parseSwitches(readFileSync(switchesPath(stateDir), "utf8")).switches.on.has("legs")).toBe(true);
+    expect(await leftovers(stateDir)).toEqual(["switches.json"]);
   });
 
   test("counsel A1: waiters that all find a stale lock take it one at a time", async () => {
-    // Repeated, because the old take-over (stat, then unlink) lost the race only on some interleavings.
+    // Repeated, because the old take-overs (stat then unlink, then rename aside) lost the race only on some interleavings.
+    const dead = await deadPid();
     for (let round = 0; round < 5; round += 1) {
       const stateDir = await tempDir();
       await mkdir(join(stateDir, "tricks"), { recursive: true });
       const lock = `${switchesPath(stateDir)}.lock`;
-      await writeFile(lock, "999999\nlong-dead-nonce\n");
-      const old = new Date(Date.now() - SWITCH_LOCK_STALE_MS - 1000);
-      await utimes(lock, old, old);
-      let inside = 0;
-      let most = 0;
-      let done = 0;
-      await Promise.all(
-        Array.from({ length: 8 }, () =>
-          withSwitchLock(stateDir, async () => {
-            inside += 1;
-            most = Math.max(most, inside);
-            await Bun.sleep(10);
-            inside -= 1;
-            done += 1;
-          }),
-        ),
-      );
+      await writeFile(lock, `${String(dead)}\nlong-dead-nonce\n`);
+      const { most, done } = await race(stateDir, 8);
       expect(done).toBe(8);
       expect(most).toBe(1);
       expect(existsSync(lock)).toBe(false);
-      // No renamed-aside stale lock is left behind.
-      expect((await readdir(join(stateDir, "tricks"))).filter((name) => name.includes(".stale-"))).toEqual([]);
+      // No door, prepared lock or temp file is left behind.
+      expect(await leftovers(stateDir)).toEqual([]);
     }
+  });
+
+  test("counsel A1, third pass: a live holder that sleeps 7 s is never taken over; its waiters give up with the error", async () => {
+    const stateDir = await tempDir();
+    const lock = `${switchesPath(stateDir)}.lock`;
+    const child = await holder(stateDir, 7000);
+    const text = readFileSync(lock, "utf8");
+    expect(text.startsWith(`${String(child.pid)}\n`)).toBe(true);
+    let entered = 0;
+    const results = await Promise.allSettled(
+      Array.from({ length: 4 }, () =>
+        withSwitchLock(stateDir, async () => {
+          entered += 1;
+        }),
+      ),
+    );
+    expect(entered).toBe(0);
+    for (const result of results) {
+      expect(result.status).toBe("rejected");
+      if (result.status === "rejected") expect(String(result.reason)).toContain("locked by another writer");
+    }
+    // The holder's own file stood the whole time, and its own release removes it.
+    expect(readFileSync(lock, "utf8")).toBe(text);
+    expect(await child.exited).toBe(0);
+    expect(existsSync(lock)).toBe(false);
+  }, 20_000);
+
+  test("counsel A1, third pass: a holder killed inside the lock is taken over by one waiter at a time", async () => {
+    const stateDir = await tempDir();
+    const lock = `${switchesPath(stateDir)}.lock`;
+    const child = await holder(stateDir, 60_000);
+    child.kill("SIGKILL");
+    await child.exited;
+    expect(readFileSync(lock, "utf8").startsWith(`${String(child.pid)}\n`)).toBe(true);
+    const { most, done } = await race(stateDir, 6);
+    expect(done).toBe(6);
+    expect(most).toBe(1);
+    expect(await leftovers(stateDir)).toEqual([]);
+  }, 20_000);
+
+  test("counsel A1, third pass: a door left by a dead waiter is cleared; a live waiter's door is waited for", async () => {
+    const dead = await deadPid();
+    const stateDir = await tempDir();
+    await mkdir(join(stateDir, "tricks"), { recursive: true });
+    const lock = `${switchesPath(stateDir)}.lock`;
+    await writeFile(lock, `${String(dead)}\ndead-holder\n`);
+    await writeFile(`${lock}.takeover`, `${String(dead)}\ndead-waiter\n`);
+    await withSwitchLock(stateDir, async () => {});
+    expect(await leftovers(stateDir)).toEqual([]);
+
+    await writeFile(lock, `${String(dead)}\ndead-holder\n`);
+    // A live waiter (this process, another nonce) holds the door: nobody else replaces the lock meanwhile.
+    await writeFile(`${lock}.takeover`, `${String(process.pid)}\nlive-waiter\n`);
+    let entered = false;
+    const pending = withSwitchLock(stateDir, async () => {
+      entered = true;
+    });
+    await Bun.sleep(200);
+    expect(entered).toBe(false);
+    expect(readFileSync(lock, "utf8")).toBe(`${String(dead)}\ndead-holder\n`);
+    await rm(`${lock}.takeover`);
+    await pending;
+    expect(entered).toBe(true);
+    expect(await leftovers(stateDir)).toEqual([]);
   });
 
   test("counsel A1: the lock file carries the holder's nonce beside its pid", async () => {
@@ -177,19 +227,138 @@ describe("the switch file", () => {
     expect(existsSync(lock)).toBe(false);
   });
 
-  test("counsel A1: a fresh lock that is not stale is waited for, not taken", async () => {
+  test("counsel A1: a live lock is waited for, not taken, and so is one that does not read as a lock", async () => {
     const stateDir = await tempDir();
     await mkdir(join(stateDir, "tricks"), { recursive: true });
     const lock = `${switchesPath(stateDir)}.lock`;
-    await writeFile(lock, "4242\nlive-nonce\n");
-    // A fake clock: the first reading puts the end of the wait far in the past, so the wait ends at once;
-    // every later reading is the real time, so the lock (real mtime, just written) is not stale.
-    let reads = 0;
-    const clock = () => (reads++ === 0 ? Date.now() - 100_000 : Date.now());
-    await expect(withSwitchLock(stateDir, async () => "never", clock)).rejects.toThrow("locked by another writer");
-    expect(readFileSync(lock, "utf8")).toBe("4242\nlive-nonce\n");
+    // This process's pid with another nonce: a holder that is alive. Then an empty file and one with no pid.
+    for (const text of [`${String(process.pid)}\nlive-nonce\n`, "", "held"]) {
+      await writeFile(lock, text);
+      // A fake clock: the first reading puts the end of the wait far in the past, so the wait ends at once.
+      let reads = 0;
+      const clock = () => (reads++ === 0 ? Date.now() - 100_000 : Date.now());
+      await expect(withSwitchLock(stateDir, async () => "never", clock)).rejects.toThrow("locked by another writer");
+      expect(readFileSync(lock, "utf8")).toBe(text);
+    }
+  });
+
+  test("counsel A1, blank locks: a fresh empty or pid-less lock makes every waiter fail and is left alone", async () => {
+    const stateDir = await tempDir();
+    await mkdir(join(stateDir, "tricks"), { recursive: true });
+    const lock = `${switchesPath(stateDir)}.lock`;
+    for (const text of ["", "held"]) {
+      await writeFile(lock, text);
+      let entered = 0;
+      const results = await Promise.allSettled(
+        Array.from({ length: 4 }, () => {
+          // Each waiter's wait ends at once (first reading far in the past); the lock's age reads real time.
+          let reads = 0;
+          const clock = () => (reads++ === 0 ? Date.now() - 100_000 : Date.now());
+          return withSwitchLock(
+            stateDir,
+            async () => {
+              entered += 1;
+            },
+            clock,
+          );
+        }),
+      );
+      expect(entered).toBe(0);
+      expect(results.every((result) => result.status === "rejected" && String(result.reason).includes("locked by another writer"))).toBe(true);
+      expect(readFileSync(lock, "utf8")).toBe(text);
+    }
+  });
+
+  test("counsel A1, blank locks: an empty or pid-less lock older than 30 s is taken over by one waiter at a time", async () => {
+    const old = new Date(Date.now() - SWITCH_LOCK_BLANK_MS - 5000);
+    for (const text of ["", "held"]) {
+      const stateDir = await tempDir();
+      await mkdir(join(stateDir, "tricks"), { recursive: true });
+      const lock = `${switchesPath(stateDir)}.lock`;
+      await writeFile(lock, text);
+      await utimes(lock, old, old);
+      const { most, done } = await race(stateDir, 6);
+      expect(done).toBe(6);
+      expect(most).toBe(1);
+      expect(await leftovers(stateDir)).toEqual([]);
+    }
+  });
+
+  test("counsel A1, blank locks: an old empty door is cleared, a fresh empty door is waited for", async () => {
+    const dead = await deadPid();
+    const stateDir = await tempDir();
+    await mkdir(join(stateDir, "tricks"), { recursive: true });
+    const lock = `${switchesPath(stateDir)}.lock`;
+    const door = `${lock}.takeover`;
+    await writeFile(lock, `${String(dead)}\ndead-holder\n`);
+    await writeFile(door, "");
+    const old = new Date(Date.now() - SWITCH_LOCK_BLANK_MS - 5000);
+    await utimes(door, old, old);
+    await withSwitchLock(stateDir, async () => {});
+    expect(await leftovers(stateDir)).toEqual([]);
+
+    await writeFile(lock, `${String(dead)}\ndead-holder\n`);
+    await writeFile(door, "");
+    let entered = false;
+    const pending = withSwitchLock(stateDir, async () => {
+      entered = true;
+    });
+    await Bun.sleep(200);
+    expect(entered).toBe(false);
+    expect(readFileSync(lock, "utf8")).toBe(`${String(dead)}\ndead-holder\n`);
+    await rm(door);
+    await pending;
+    expect(entered).toBe(true);
+    expect(await leftovers(stateDir)).toEqual([]);
   });
 });
+
+/** The pid of a process that ran and was reaped: no process has it now (a reuse in the test's few ms is not expected). */
+async function deadPid(): Promise<number> {
+  const child = Bun.spawn([process.execPath, "-e", ""], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+  await child.exited;
+  return child.pid;
+}
+
+/** The files left in `<stateDir>/tricks`, sorted. */
+async function leftovers(stateDir: string): Promise<string[]> {
+  return (await readdir(join(stateDir, "tricks"))).toSorted();
+}
+
+/** `n` writers at once on the switch lock, each inside for 10 ms: how many were ever inside together, and how many finished. */
+async function race(stateDir: string, n: number): Promise<{ most: number; done: number }> {
+  let inside = 0;
+  let most = 0;
+  let done = 0;
+  await Promise.all(
+    Array.from({ length: n }, () =>
+      withSwitchLock(stateDir, async () => {
+        inside += 1;
+        most = Math.max(most, inside);
+        await Bun.sleep(10);
+        inside -= 1;
+        done += 1;
+      }),
+    ),
+  );
+  return { most, done };
+}
+
+/** A child process that takes the switch lock and holds it for `ms`; answered once it holds it. */
+async function holder(stateDir: string, ms: number): Promise<Bun.Subprocess<"ignore", "pipe", "inherit">> {
+  const code = `import { withSwitchLock } from ${JSON.stringify(join(import.meta.dir, "switches.ts"))};
+await withSwitchLock(${JSON.stringify(stateDir)}, async () => { console.log("held"); await Bun.sleep(${String(ms)}); });`;
+  const child = Bun.spawn([process.execPath, "-e", code], { stdin: "ignore", stdout: "pipe", stderr: "inherit" });
+  const reader = child.stdout.getReader();
+  let seen = "";
+  while (!seen.includes("held")) {
+    const { value, done } = await reader.read();
+    if (done) throw new Error(`the holder exited before it held the lock: ${seen}`);
+    seen += new TextDecoder().decode(value);
+  }
+  reader.releaseLock();
+  return child;
+}
 
 /** A trick folder under `root` with a manifest and files (nested paths allowed). */
 async function trickDir(root: string, id: string, files: Record<string, string> = {}): Promise<string> {

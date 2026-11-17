@@ -518,6 +518,14 @@ export type ReactingTrigger = (typeof REACTING_TRIGGERS)[number];
 export type ManifestTrigger = LaterTrigger | ReactingTrigger;
 /** What every real reader of a manifest enables: the two that react. `serve` stays later. */
 export const MANIFEST_TRIGGERS: readonly ManifestTrigger[] = ["on", "watch"];
+/**
+ * Whether a trick's program starts with no phone open: it has a program and an event (`on`) or a watched
+ * path (`watch`). A plain timer (`every`) does not count: timers run only while a phone has looked in the
+ * last five minutes (bridge/tricks/service.ts, WATCH_WINDOW_MS). One test for the cards and the About sheet.
+ */
+export function runsWithNoPhone(trick: { run?: string | undefined; on?: readonly unknown[] | undefined; watch?: readonly unknown[] | undefined }): boolean {
+  return trick.run !== undefined && ((trick.on?.length ?? 0) > 0 || (trick.watch?.length ?? 0) > 0);
+}
 
 /** The session statuses the facts carry (`AgentStatus` in bridge/types.ts). */
 export const SESSION_STATUSES = ["idle", "working", "blocked", "done", "unknown"] as const;

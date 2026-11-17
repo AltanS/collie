@@ -10,12 +10,13 @@ import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { OFFICIAL_REPOS, shippedOfficialList } from "../bridge/tricks/official.ts";
 import { ORIGIN_FILE, renderOrigin } from "../bridge/tricks/origin.ts";
 import { approvedCopyDir, switchesPath } from "../bridge/tricks/paths.ts";
+import { approveFolder } from "../bridge/tricks/approved.ts";
 import { HILL_WRITING } from "./hill-rules.ts";
 import { cmdTrickAdd, OFFICIAL_TRICKS_REPO } from "./trick-add.ts";
 import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
 import { GROUP_CAPACITY_WORDS, GROUP_TOO_LARGE } from "../bridge/tricks/card-group.ts";
-import { TAP_SHOWS_NOTHING, agentPaneRefusal, checkStatic, runAgainstFixture, cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, sampleProgram, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
+import { TAP_SHOWS_NOTHING, agentPaneRefusal, checkStatic, runAgainstFixture, cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, sampleProgram, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, SWITCHED_ON_NOT_WHOLE, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
 import { checkWarnings, HELPER_VERSION, helperVersion, isBareImport, isScannedFile, looksBinary, runsLines, shippedHelperVersion, TRICK_HELPER } from "../bridge/tricks/scan.ts";
 import { realFiles } from "./sys.ts";
 import { leadStore, member } from "../bridge/crew/fixtures.ts";
@@ -864,6 +865,63 @@ describe("collie trick on, off and list", () => {
     expect(clean.out[0]).toStartWith("quiet is on.");
   });
 
+  // A5, then the lead's change (2026-11-18): the phone's switch refuses code it cannot show whole (service.test.ts, 409
+  // not-whole); a person at this machine may switch it on, in a plain terminal or a proven shell pane, and the verb says
+  // so in one line. An agent's pane is refused as ever.
+  describe("code the phone cannot show whole (A5)", () => {
+    const PANE = { HERDR_PANE_ID: "w1:p2", HERDR_SOCKET_PATH: "/run/user/1000/herdr.sock" };
+    const NOT_WHOLE_LINE = "The phone cannot show all of this trick's code. You switched it on at this machine.";
+
+    async function keyed(): Promise<Awaited<ReturnType<typeof deps>>> {
+      const d = await deps();
+      await cmdTrickInit(d, ["--sh", "legs"]);
+      await writeFile(join(d.configDir, "tricks", "legs", "program.sh"), `#!/bin/sh\nKEY="${KEY}"\n`);
+      d.out.length = 0;
+      return d;
+    }
+    const inPane = (d: Awaited<ReturnType<typeof deps>>, kind: "agent" | "shell" | "unknown"): Awaited<ReturnType<typeof deps>> => ({ ...d, ctx: { ...d.ctx, env: { ...d.ctx.env, ...PANE } }, paneKind: async () => kind });
+
+    test("a plain terminal switches it on, prints the one line, and approves the code as it is", async () => {
+      const d = await keyed();
+      expect(SWITCHED_ON_NOT_WHOLE).toBe(NOT_WHOLE_LINE);
+      expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
+      expect(d.err).toEqual([]);
+      expect(d.out.filter((line) => line === NOT_WHOLE_LINE)).toHaveLength(1);
+      expect(d.out.findIndex((line) => line === NOT_WHOLE_LINE)).toBeGreaterThan(d.out.findIndex((line) => line.startsWith("legs is on.")));
+      expect(JSON.parse(await readFile(switchesPath(d.stateDir), "utf8")).on.legs.hash).toMatch(/^[0-9a-f]{64}$/u);
+    });
+
+    test("a pane the bridge proves a shell does the same", async () => {
+      const d = await keyed();
+      expect(await cmdTrickSwitch(inPane(d, "shell"), ["legs"], true)).toBe(EXIT.OK);
+      expect(d.out.filter((line) => line === NOT_WHOLE_LINE)).toHaveLength(1);
+      expect(JSON.parse(await readFile(switchesPath(d.stateDir), "utf8")).on.legs).toBeDefined();
+    });
+
+    test("an agent's pane, and a pane that cannot be proven a shell, are refused as today: no line, no switch", async () => {
+      const d = await keyed();
+      for (const kind of ["agent", "unknown"] as const) {
+        d.err.length = 0;
+        expect(await cmdTrickSwitch(inPane(d, kind), ["legs"], true)).toBe(EXIT.REFUSED);
+        expect(d.err).toEqual(agentPaneRefusal("legs"));
+      }
+      expect(await cmdTrickSwitch({ ...inPane(d, "agent"), paneKind: async () => Promise.reject(new Error("socket gone")) }, ["legs"], true)).toBe(EXIT.REFUSED);
+      expect(d.out).not.toContain(NOT_WHOLE_LINE);
+      expect(await readFile(switchesPath(d.stateDir), "utf8").catch(() => null)).toBeNull();
+    });
+
+    test("code the phone shows whole prints no such line", async () => {
+      const clean = await deps();
+      await cmdTrickInit(clean, ["quiet"]);
+      clean.out.length = 0;
+      expect(await cmdTrickSwitch(clean, ["quiet"], true)).toBe(EXIT.OK);
+      expect(clean.out).not.toContain(NOT_WHOLE_LINE);
+      // The helper `init` writes for a TypeScript trick is larger than the phone shows of one file; it is
+      // Collie's own, byte for byte, so a fresh trick shows whole and switches on with no line.
+      expect((await stat(join(clean.configDir, "tricks", "quiet", "trick.ts"))).size).toBeGreaterThan(32 * 1024);
+    });
+  });
+
   test("list shows the bridge's state, last run and error when it answers", async () => {
     const d = await deps({
       rev: 5,
@@ -969,11 +1027,14 @@ describe("collie trick skill", () => {
   const TEXT = "# legs\n\nKeep the file notes.md up to date.\n";
 
   /** A trick folder `legs` with a SKILL.md, switched on. */
-  async function onTrick(skill: string | null = TEXT): Promise<Awaited<ReturnType<typeof deps>>> {
+  async function onTrick(skill: string | null = TEXT, approve: "verb" | "copy" = "verb"): Promise<Awaited<ReturnType<typeof deps>>> {
     const d = await deps();
     await cmdTrickInit(d, ["legs"]);
     if (skill !== null) await writeFile(join(d.configDir, "tricks", "legs", "SKILL.md"), skill);
-    expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
+    // A SKILL.md the phone cannot show as it is (a key, over 32 KiB) is refused by `trick on` (A5): such a
+    // case approves the copy itself, as an approval from before that rule left it.
+    if (approve === "copy") expect((await approveFolder({ stateDir: d.ctx.stateDir, configDir: d.ctx.configDir, id: "legs", by: "cli", at: "2026-11-17T10:00:00.000Z" })).ok).toBe(true);
+    else expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
     // Tricks as a whole are on: a trick teaches an agent only then (bridge/tricks/feature-switch.ts).
     writeTricksFeature(d.stateDir, true);
     d.out.length = 0;
@@ -1082,7 +1143,7 @@ describe("collie trick skill", () => {
     expect(link.out).toEqual([]);
     expect(link.err[0]).toBe("legs has no SKILL.md");
 
-    const big = await onTrick("x".repeat(SKILL_BYTES_MAX + 1));
+    const big = await onTrick("x".repeat(SKILL_BYTES_MAX + 1), "copy");
     expect(await cmdTrickSkill(big, ["legs"])).toBe(EXIT.FAIL);
     expect(big.err).toEqual(["legs has a SKILL.md larger than 32 KiB, so it is not read"]);
     expect(big.out).toEqual([]);
@@ -1093,7 +1154,7 @@ describe("collie trick skill", () => {
   });
 
   test("the text goes through the secret mask", async () => {
-    const d = await onTrick(`Use the key ${KEY} for the call.\n`);
+    const d = await onTrick(`Use the key ${KEY} for the call.\n`, "copy");
     expect(await cmdTrickSkill(d, ["legs"])).toBe(EXIT.OK);
     expect(d.out.join("\n")).not.toContain(KEY);
     expect(d.out.join("\n")).toContain("Use the key ");

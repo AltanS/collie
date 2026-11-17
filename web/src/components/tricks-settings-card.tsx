@@ -13,7 +13,7 @@ import { TokenUseChip } from "@/components/token-use-label";
 import { RepoAddRow, type RepoAddCall, type RepoListCall } from "@/components/tricks-repo-sheet";
 import { useArm } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
-import { addOfficialTrick, apiErrorFields, fetchOfficialTricks, fetchTrickCodeFile, fetchTrickCodeIndex, setTrickAuto, setTrickValue, switchTrick, undoTrick } from "@/lib/api";
+import { addOfficialTrick, apiErrorFields, apiErrorStatus, fetchOfficialTricks, fetchTrickCodeFile, fetchTrickCodeIndex, setTrickAuto, setTrickValue, switchTrick, undoTrick } from "@/lib/api";
 import { fieldProblemWords } from "@/components/trick-settings-group";
 import { t } from "@/lib/i18n";
 import { TrickBoundary } from "@/lib/tricks/boundary";
@@ -747,7 +747,9 @@ function TricksList({
       // The trick changed after the person read it (review 8 V-N1): read it again, nothing was approved.
       const code = apiErrorFields(thrown)?.error;
       // A Windows machine refuses a shell run line (fault d); the bridge's message is `TRICKS_WINDOWS_SHELL_LINE`.
-      const line = code === "moved" ? t("settings.tricks.switchMoved") : code === "windows-shell" ? t("settings.tricks.switchShellOnWindows") : t("settings.tricks.switchFailed", { name: trick.name });
+      // The bridge cannot show every byte of the code as it is (`codeShowsWhole`, a 409 `not-whole`): it stays off, and the phone says why.
+      const notWhole = code === "not-whole" && apiErrorStatus(thrown) === 409;
+      const line = code === "moved" ? t("settings.tricks.switchMoved") : code === "windows-shell" ? t("settings.tricks.switchShellOnWindows") : notWhole ? t("settings.tricks.switchNotWhole") : t("settings.tricks.switchFailed", { name: trick.name });
       setStatus(line, "error");
     } finally {
       flying.current.delete(key);

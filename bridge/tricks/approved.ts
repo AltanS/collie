@@ -664,9 +664,9 @@ export async function removeTrickCopies(configDir: string, id: string): Promise<
  * made twice, the second inside the switch file's lock: the bridge's approval of a trick of this id takes the
  * same lock, so a folder that appeared while this add waited for it is seen and nothing is removed.
  * Inside the lock the three paths are only RENAMED aside, to `<parent>/.gone-<id>-<random>` (a trick id holds no
- * dot, and the same parent keeps the rename atomic): the lock is a file that another writer takes over after
- * five seconds (`SWITCH_LOCK_STALE_MS`), and a slow `rm` of a state folder a trick has filled must never hold it, or a
- * takeover's "off" would be written over by this add's older copy of the file. The renamed paths are removed
+ * dot, and the same parent keeps the rename atomic): every other writer waits for the lock at most six seconds
+ * (`SWITCH_LOCK_WAIT_MS`) and then fails, so a slow `rm` of a state folder a trick has filled must never hold it, or
+ * a phone's approval or a `collie trick on` would fail for it. The renamed paths are removed
  * after the unlock, and the bridge's start sweeps what a crash left ({@link sweepGone}). A dotted name is
  * never a trick id, so no scan, list or prune reads one as a trick. A rename moves a symbolic link itself and
  * never follows it, and `rm` with recursive and force removes a link and never follows it either.

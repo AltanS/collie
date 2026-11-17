@@ -319,6 +319,65 @@ describe("the write route", () => {
     expect(receipt(await r.service.setValue(HOST, "legs", { rid: R3, key: "repo", value: "" })).info.needsSetup).toBe(true);
   });
 
+  test("A7: a run of writes restarts the trick ONCE, a second after the last write, with the last value", async () => {
+    const r = await rig();
+    await tick(r);
+    const before = r.specs.length;
+    const rids = ["a", "b", "c", "d", "e"].map((c) => `${c}f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5`);
+    for (const [i, rid] of rids.entries()) {
+      receipt(await r.service.setValue(HOST, "legs", { rid, key: "repo", value: `lodge/${String(i)}` }));
+      // A tick between the writes, each less than a second after the last: no run yet.
+      r.clock.t += 400;
+      r.service.noteWatched();
+      await r.service.tick();
+    }
+    expect(r.specs.length).toBe(before);
+    // One second after the last write (400 ms are gone): one run, never five.
+    r.clock.t += 700;
+    r.service.noteWatched();
+    await r.service.tick();
+    expect(r.specs.length).toBe(before + 1);
+    expect(factsOf(r.specs.at(-1)).values).toEqual({ repo: "lodge/4", rows: 10 });
+    expect(factsOf(r.specs.at(-1)).trigger).toEqual({ kind: "start" });
+    r.clock.t += 5000;
+    r.service.noteWatched();
+    await r.service.tick();
+    // Later runs are the trick's own timer, not a restart a write left behind: at most one more in 5 s.
+    expect(r.specs.length).toBeLessThanOrEqual(before + 2);
+  });
+
+  test("A7: a value write reads the one trick, not the whole folder", async () => {
+    const r = await rig();
+    await tick(r);
+    // A trick added at the terminal after the last scan: a full scan would list it, a one-trick read does not.
+    const dir = join(r.configDir, TRICKS_DIR, "fresh");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "trick.toml"), 'id = "fresh"\nname = "Fresh"\nplaces = ["belt"]\n');
+    receipt(await r.service.setValue(HOST, "legs", { rid: R1, key: "repo", value: "lodge/workshop" }));
+    expect((await r.service.reply(undefined)).tricks.map((trick) => trick.id)).toEqual(["legs"]);
+    // The next scan finds it, as ever.
+    await r.service.refresh(true);
+    expect((await r.service.reply(undefined)).tricks.map((trick) => trick.id).toSorted()).toEqual(["fresh", "legs"]);
+    // A write to a trick the service does not hold yet takes the whole scan, so it is found, not a 404.
+    const late = join(r.configDir, TRICKS_DIR, "late");
+    await mkdir(late, { recursive: true });
+    await writeFile(join(late, "trick.toml"), 'id = "late"\nname = "Late"\nrun = "./x.sh"\nplaces = ["belt"]\ncontract = 3\n[[field]]\nkey = "x"\nkind = "text"\nlabel = "X"\n');
+    expect(receipt(await r.service.setValue(HOST, "late", { rid: R2, key: "x", value: "y" })).changed).toBe(true);
+  });
+
+  test("A7: the seen request ids are bounded at the service: past the cap the oldest is forgotten and writes again", async () => {
+    const r = await rig();
+    const rid = (n: number): string => `${n.toString(16).padStart(8, "0")}-3b4a-4c5d-8e6f-708192a3b4c5`;
+    receipt(await r.service.setValue(HOST, "legs", { rid: rid(0), key: "rows", value: 1 }));
+    // The same id and payload is answered from memory.
+    expect(receipt(await r.service.setValue(HOST, "legs", { rid: rid(0), key: "rows", value: 1 })).changed).toBe(true);
+    for (let n = 1; n <= VALUE_WRITES_SEEN_MAX; n += 1) receipt(await r.service.setValue(HOST, "legs", { rid: rid(n), key: "rows", value: (n % 40) + 2 }));
+    // rid(0) is the oldest and is out: the same id with another payload is a new write, not a 409.
+    expect(await r.service.setValue(HOST, "legs", { rid: rid(0), key: "rows", value: 7 })).toMatchObject({ status: 200 });
+    // A recent id is still held: another payload under it is refused.
+    expect(await r.service.setValue(HOST, "legs", { rid: rid(VALUE_WRITES_SEEN_MAX), key: "rows", value: 49 })).toEqual({ status: 409, body: { error: "request-id-reused", rid: rid(VALUE_WRITES_SEEN_MAX) } });
+  });
+
   test("review G point 7: a value write while the trick is off stores the value and starts no run", async () => {
     const r = await rig({}, false);
     await tick(r);

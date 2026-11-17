@@ -4,13 +4,14 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TricksSwitchCard, TricksSwitchControl } from "@/components/tricks-switch-card";
+import { startAgainLine, startAgainNames, TricksSwitchCard, TricksSwitchControl } from "@/components/tricks-switch-card";
 import { setTricksSwitch } from "@/lib/api";
 import { ARM_DWELL_MS } from "@/lib/arm";
 import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { clearStatus, currentStatus } from "@/lib/status";
 import { tricksStore } from "@/lib/tricks/store";
+import type { WireTrickInfo } from "@/lib/tricks/schema";
 import { hillDecision, trickDecision } from "@/test/hill-fixtures";
 import { server } from "@/test/setup";
 
@@ -243,5 +244,58 @@ describe("the tricks switch on a Windows bridge", () => {
     renderControl({ tricksOff: true });
     expect(await screen.findByRole("switch", { name: LABEL })).toBeDisabled();
     expect(document.querySelector('[data-line="windows"]')?.textContent).toBe("Tricks do not run on a Windows machine yet.");
+  });
+});
+
+// "These start again" (2026-11-17): while the big switch is off, the tricks whose own switch is on are named.
+describe("the line that names the tricks a tap on the switch starts again", () => {
+  const LINE = '[data-line="starts"]';
+  const names = (count: number): string[] => Array.from({ length: count }, (_, n) => `trick-${String.fromCharCode(97 + n)}`);
+  const row = (name: string, on: boolean): WireTrickInfo => ({ host: "lodge", id: name.toLowerCase(), name, icon: "flask", on, state: on ? "ok" : "off", places: [], provenance: { via: "folder" } });
+
+  it("switch off, no trick on: no line", () => {
+    render(<TricksSwitchCard on={false} disabled={false} startAgain={[]} onToggle={() => {}} />);
+    expect(document.querySelector(LINE)).toBeNull();
+  });
+
+  it("switch off, one trick on: its name, no list words", () => {
+    render(<TricksSwitchCard on={false} disabled={false} startAgain={["Tracker"]} onToggle={() => {}} />);
+    expect(document.querySelector(LINE)?.textContent).toBe("These start again: Tracker.");
+  });
+
+  it("switch off, three tricks on: the three names, joined with commas", () => {
+    render(<TricksSwitchCard on={false} disabled={false} startAgain={names(3)} onToggle={() => {}} />);
+    expect(document.querySelector(LINE)?.textContent).toBe("These start again: trick-a, trick-b, trick-c.");
+  });
+
+  it("exactly five names: all five, no count", () => {
+    expect(startAgainLine(names(5))).toBe("These start again: trick-a, trick-b, trick-c, trick-d, trick-e.");
+  });
+
+  it("seven tricks on: five names, then 'and 2 more'", () => {
+    render(<TricksSwitchCard on={false} disabled={false} startAgain={names(7)} onToggle={() => {}} />);
+    expect(document.querySelector(LINE)?.textContent).toBe("These start again: trick-a, trick-b, trick-c, trick-d, trick-e and 2 more.");
+  });
+
+  it("six tricks on: 'and 1 more'", () => {
+    expect(startAgainLine(names(6))).toBe("These start again: trick-a, trick-b, trick-c, trick-d, trick-e and 1 more.");
+  });
+
+  it("switch on: no line, whatever is on", () => {
+    render(<TricksSwitchCard on disabled={false} startAgain={names(3)} onToggle={() => {}} />);
+    expect(document.querySelector(LINE)).toBeNull();
+  });
+
+  it("a Windows bridge: only the Windows line", () => {
+    render(<TricksSwitchCard on={false} disabled={false} windows startAgain={names(3)} onToggle={() => {}} />);
+    expect(document.querySelector(LINE)).toBeNull();
+    expect(document.querySelector('[data-line="windows"]')).not.toBeNull();
+  });
+
+  it("the names come from the list's tricks that are on, in order, and from nothing on a member", () => {
+    const tricks = [row("Tracker", true), row("Legs", false), row("Gates", true)];
+    expect(startAgainNames({ tricks })).toEqual(["Tracker", "Gates"]);
+    expect(startAgainNames({ tricks: [row("Legs", false)] })).toEqual([]);
+    expect(startAgainNames({ tricks, runsOn: { lead: "lodge" } })).toEqual([]);
   });
 });
