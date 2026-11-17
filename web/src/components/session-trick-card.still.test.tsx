@@ -78,7 +78,7 @@ function readCode(toggle: () => HTMLButtonElement) {
 }
 
 describe.each(["chat", "agent-view"] as const)("the card's yes, in the %s's scroll", (host) => {
-  it("is off until the code was read AND the card stood still for a second; the decline is never held", () => {
+  it("is off until the fold was opened and its end seen AND the card stood still for a second; the decline is never held", () => {
     const { yes, no, toggle } = draw(host);
     wait(STILL_MS * 2);
     // Still for two seconds, but the code is not read: off.
@@ -105,20 +105,87 @@ describe.each(["chat", "agent-view"] as const)("the card's yes, in the %s's scro
     expect(onSend).toHaveBeenCalledWith("on", null, { digest: HASH, opened: [1] });
   });
 
-  it("scrolling the chat to read moves the card on the screen but not in the thread: the yes is not kept off", () => {
+  it("the person's own scroll starts the wait again, and the wait ends a second after the scroll stops", () => {
     const { yes, toggle } = draw(host);
     readCode(toggle);
-    // The person scrolls down through the code for three seconds, a step every tick.
+    wait(STILL_MS + STILL_TICK_MS * 2);
+    expect(yes()).toBeEnabled();
+    // The person scrolls for three seconds, a step every tick: the yes moves under the finger, so it waits.
     for (let i = 0; i < 30; i++) {
       cardTop -= 10;
       scroll += 10;
       wait(STILL_TICK_MS);
+      expect(yes()).toBeDisabled();
     }
+    // The scroll stops: a second later the yes is on, so reading down never keeps it off for ever.
+    wait(STILL_MS - STILL_TICK_MS * 2);
+    expect(yes()).toBeDisabled();
+    wait(STILL_TICK_MS * 3);
     expect(yes()).toBeEnabled();
-    // And it stays on while they go on scrolling.
-    cardTop -= 50;
-    scroll += 50;
+  });
+
+  it("a dock card that goes moves the yes on the screen while its place in the thread stays: the wait starts again", () => {
+    scroll = 400;
+    const { yes, toggle } = draw(host);
+    readCode(toggle);
+    wait(STILL_MS + STILL_TICK_MS * 2);
+    expect(yes()).toBeEnabled();
+    // The dock below the scroller empties, the scroller grows, the list re-pins: the card drops 120 px on the
+    // screen, and its place in the content is the same.
+    cardTop += 120;
+    scroll -= 120;
     wait(STILL_TICK_MS);
+    expect(yes()).toBeDisabled();
+    wait(STILL_MS + STILL_TICK_MS * 2);
+    expect(yes()).toBeEnabled();
+  });
+
+  it("the keyboard opening (the visual viewport shrinks) starts the wait again at once", () => {
+    const viewport = Object.assign(new EventTarget(), { offsetTop: 0, offsetLeft: 0, width: 390, height: 800 });
+    vi.stubGlobal("visualViewport", viewport);
+    const { yes, toggle } = draw(host);
+    readCode(toggle);
+    wait(STILL_MS + STILL_TICK_MS * 2);
+    expect(yes()).toBeEnabled();
+    act(() => {
+      viewport.height = 460;
+      viewport.dispatchEvent(new Event("resize"));
+    });
+    expect(yes()).toBeDisabled();
+    wait(STILL_MS + STILL_TICK_MS * 2);
+    expect(yes()).toBeEnabled();
+  });
+
+  it("an end seen last, by a jump to the end, arms the yes only a second later", () => {
+    // The observer the test drives: the end comes on screen when the test says so.
+    const watched: { callback: (entries: readonly { isIntersecting: boolean }[]) => void; target: Element | null }[] = [];
+    class Jump {
+      private readonly at: (typeof watched)[number];
+      constructor(callback: (entries: readonly { isIntersecting: boolean }[]) => void) {
+        this.at = { callback, target: null };
+        watched.push(this.at);
+      }
+      observe(target: Element): void {
+        this.at.target = target;
+      }
+      disconnect(): void {
+        this.at.target = null;
+      }
+      unobserve(): void {}
+    }
+    vi.stubGlobal("IntersectionObserver", Jump);
+    const { yes, toggle } = draw(host);
+    readCode(toggle);
+    // The card has stood still for two seconds with the end not seen.
+    wait(STILL_MS * 2);
+    expect(yes()).toBeDisabled();
+    act(() => {
+      for (const one of watched.filter((o) => o.target !== null)) one.callback([{ isIntersecting: true }]);
+    });
+    expect(yes()).toBeDisabled();
+    wait(STILL_MS - STILL_TICK_MS * 2);
+    expect(yes()).toBeDisabled();
+    wait(STILL_TICK_MS * 3);
     expect(yes()).toBeEnabled();
   });
 

@@ -41,21 +41,33 @@ import { cn } from "@/lib/utils";
 // without code stand with the facts, and its cards of code stand one under the other in the fold, each
 // under its "Card N" label, because the facts table and the seam lines name cards by number.
 //
-// ── THE GUARDS (security reads of package I and review 7, unchanged in substance) ────────────────────
+// ── THE GUARDS (security reads of package I, review 7 and the read of f1d386c21) ─────────────────────
+//   WHAT THE CHECK IS: the fold was opened and the end of each card's code was on screen. It is not proof
+//   that a person read the code, and no text here or on the card claims that.
 //   * The yes is off until the END of every card's code was on screen: a 1 px mark after the last line
-//     of each, watched by an IntersectionObserver whose root is the chat's own scroll box (the scroller
-//     the card flows in), with the room the floating composer cards and the model tag take off its bottom
-//     (`--tail-room`) cut from that root. A closed fold never counts: the marks of the code exist only
-//     while the fold is open and has finished opening (`useOpenWatch`), so a fold still sliding, or one
-//     sliding shut, sees nothing. Closing the fold again keeps what was seen; a card with other code (a
-//     new digest or hash) is a new card here (`key`) and starts again from nothing (lib/hill/group-opened.ts).
+//     of each, watched by an IntersectionObserver whose root is the scroll box the card flows in (the
+//     chat's list, or an agent view's own scroller), with the room the floating composer cards and the
+//     model tag take off its bottom (`--tail-room`) cut from that root; and when the observer reports, the
+//     mark is looked at again against the tail room as it is NOW (`inView`), and on every scroll and resize
+//     after, so a mark under a floating card that came later does not count. A closed fold never counts:
+//     the marks of the code exist only while the fold is open and has finished opening (`useOpenWatch`), so
+//     a fold still sliding, or one sliding shut, sees nothing. Closing the fold again keeps what was seen; a
+//     card with other code (a new digest or hash) is a new card here (`key`) and starts again from nothing
+//     (lib/hill/group-opened.ts).
 //   * Opening the fold brings its row to the top of the chat and stops the chat following its tail
-//     (`onReadCode`, agent-chat.tsx), so the code grows below the row and the end is reached by reading
-//     down, never by the list jumping to its tail.
-//   * And the card has stood still for a second (hooks/use-still.ts), measured in the chat's scroll
-//     content: the person scrolling the chat to read moves nothing, a row put in above the card, or the
-//     card itself growing or shrinking (the fold), waits again.
-//   * A press whose touch began before the yes was ready is not a tap on it (`pressedReady`).
+//     (`onReadCode`, agent-chat.tsx), so the code grows below the row instead of the list pinning its end.
+//     A fling or "jump to latest" can still bring the end on screen at once; the wait below covers that.
+//   * And the card has stood still for a second (hooks/use-still.ts): the yes's place on the SCREEN and the
+//     card's place in the scroll box's content. Any move of either starts the second again, whoever caused
+//     it: the person's own scroll, a dock card that comes or goes, the keyboard, a row put in above, the
+//     card growing or shrinking (the fold). A scroll's wait ends a second after the scroll stops. The second
+//     also starts again when the check above turns true (it is part of the wait's key), so an end seen last
+//     by a jump arms only a second later.
+//   * A press whose touch began before the yes was ready is not a tap on it (`pressedReady`), and "Try
+//     again" asks the same: ready, and a press that began on a ready card. It is offered only on the card
+//     this answer was sent from; a changed card offers the yes again, never a retry.
+//   * A proposal whose card holds no code (no code card, no code in its view) offers no yes: it cannot show
+//     what the yes would approve.
 //   * Nothing is focused or recommended: the card has no recommendation line and no default.
 //   * A view the phone cannot draw whole (a node it does not know, a part that throws) offers no yes at
 //     all, only the decline and one line that says why.
@@ -82,6 +94,16 @@ export function isSessionProposal(decision: HillDecision, self: string): boolean
 /** The cards one session shows: open ones not closed here, and closed ones while this phone holds their answer. */
 export function sessionProposals(open: readonly HillDecision[], closed: readonly HillDecision[], self: string, later: readonly string[]): HillDecision[] {
   return [...open.filter((d) => isSessionProposal(d, self) && !later.includes(d.id)), ...closed.filter((d) => isSessionProposal(d, self))].toSorted((a, b) => a.at - b.at);
+}
+
+/**
+ * Whether a proposal card waits, unanswered, in the session at walky address `self`: the chat's jump-to-latest
+ * arrow wears its dot for it while the person is scrolled up, as it does for new output (read of f1d386c21, point 5).
+ */
+export function useSessionProposalWaiting(self: string): boolean {
+  const open = useHillOpen();
+  const later = useSessionLater();
+  return open.some((d) => isSessionProposal(d, self) && !later.includes(d.id));
 }
 
 /** One piece of a card's view: the card of the group it belongs to (1 for a single card), and its nodes. */
@@ -142,8 +164,11 @@ function inView(el: Element, box: HTMLElement | null): boolean {
 
 /**
  * The mark after the last line of one card's code, or of a card's facts: tells `onSeen(card)` once it was on
- * screen while `live.current` is true. The root is the chat's scroll box (or the screen when there is none),
- * less its tail room. Where there is no IntersectionObserver, every scroll and resize looks again.
+ * screen while `live.current` is true. The root is the scroll box the card flows in (or the screen when there
+ * is none), less its tail room. The observer only says the mark crossed into that root; the mark counts once
+ * it is also inside the box above the tail room as it is NOW (`inView`, read of f1d386c21 point 3), looked at
+ * then and on every scroll and resize while the observer holds it as crossing. Where there is no
+ * IntersectionObserver, every scroll and resize looks with `inView` alone.
  */
 function EndMark({ card, live, onSeen }: { card: number; live: MutableRefObject<boolean>; onSeen: (card: number) => void }) {
   const end = useRef<HTMLDivElement>(null);
@@ -152,34 +177,42 @@ function EndMark({ card, live, onSeen }: { card: number; live: MutableRefObject<
     call.current = onSeen;
   });
   useEffect(() => {
-    const tail = end.current;
-    if (tail === null) return;
+    const mark = end.current;
+    if (mark === null) return;
+    const tail: HTMLDivElement = mark;
     const box = scrollBoxOf(tail);
-    if (globalThis.IntersectionObserver !== undefined) {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          // A mark a closing fold still holds sees nothing: only a fold open and settled counts.
-          if (!live.current || !entries.some((entry) => entry.isIntersecting)) return;
-          observer.disconnect();
-          call.current(card);
-        },
-        { root: box, rootMargin: `0px 0px -${String(tailRoomOf(box))}px 0px` },
-      );
-      observer.observe(tail);
-      return () => observer.disconnect();
-    }
-    const look = () => {
-      if (!live.current || !inView(tail, box)) return;
+    const hasObserver = globalThis.IntersectionObserver !== undefined;
+    // Whether the observer last said the mark is inside its root; with no observer, every look decides alone.
+    let crossing = !hasObserver;
+    let done = false;
+    const stop = () => {
+      done = true;
       window.removeEventListener("scroll", look, true);
       window.removeEventListener("resize", look);
-      call.current(card);
     };
+    function look(): void {
+      // A mark a closing fold still holds sees nothing: only a fold open and settled counts.
+      if (done || !crossing || !live.current || !inView(tail, box)) return;
+      stop();
+      observer?.disconnect();
+      call.current(card);
+    }
+    const observer = hasObserver
+      ? new IntersectionObserver(
+          (entries) => {
+            crossing = entries.some((entry) => entry.isIntersecting);
+            look();
+          },
+          { root: box, rootMargin: `0px 0px -${String(tailRoomOf(box))}px 0px` },
+        )
+      : null;
     window.addEventListener("scroll", look, true);
     window.addEventListener("resize", look);
-    look();
+    if (observer === null) look();
+    else observer.observe(tail);
     return () => {
-      window.removeEventListener("scroll", look, true);
-      window.removeEventListener("resize", look);
+      stop();
+      observer?.disconnect();
     };
   }, [card, live]);
   return <div ref={end} aria-hidden data-slot="chat-approval-end" data-card={card} className="h-px" />;
@@ -278,14 +311,23 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
   const yesOptions = decision.options.filter((option) => option.intent !== decline);
   const declineOption = decision.options.find((option) => option.intent === decline);
   const locked = lockedBy(answer);
+  // A proposal whose card holds no code cannot show what its yes would approve: no yes (read of f1d386c21, point 5).
+  const noCode = group === undefined && single === null;
+  const blocked = unshown || noCode;
+  // Whether this card, as drawn now, sent the answer that is on screen: only then is Try again offered.
+  const [sentHere, setSentHere] = useState(false);
 
   // The scroll box the card flows in (the chat's list), once the card is in the page.
   useLayoutEffect(() => {
     if (root !== null) setWithin(scrollBoxOf(root));
   }, [root]);
-  // The card's own place in the chat's content: scrolling is not a move, a shift or a change of size is.
-  const still = useStill(root, cardKey(decision), within);
-  const ready = !locked && !unshown && unopened.length === 0 && still;
+  // The yes's place on the screen and the card's place in the scroll box's content: any move waits again. The
+  // check below is part of the key, so the second starts again when it turns true (read of f1d386c21, point 2).
+  const [optionsBox, setOptionsBox] = useState<HTMLDivElement | null>(null);
+  // The check: the fold was opened and every card's end was on screen. Not proof that anyone read the code.
+  const endsSeen = unopened.length === 0;
+  const still = useStill(root, `${cardKey(decision)}:${endsSeen ? "seen" : "unseen"}`, within, optionsBox);
+  const ready = !locked && !blocked && endsSeen && still;
   const pressedReady = useRef(false);
   // A touch that began before the yes was ready is not a tap on it, whichever condition was missing.
   useEffect(() => {
@@ -311,18 +353,20 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
     if (!ready) return;
     // A keyboard or assistive click has no touch (detail 0); a pointer's press must have begun on a ready yes.
     if (event.detail > 0 && !pressedReady.current) return;
+    setSentHere(true);
     if (groupAnswer === undefined) onSend(option.intent, null);
     else onSend(option.intent, null, groupAnswer);
   }
 
+  // Try again holds the yes's guards: ready, and a press that began on a ready card (read of f1d386c21, point 4).
   function retry() {
-    if (answer.phase !== "failed") return;
+    if (answer.phase !== "failed" || !sentHere || !ready || !pressedReady.current) return;
     if (groupAnswer === undefined) onSend(answer.intent, answer.text);
     else onSend(answer.intent, answer.text, groupAnswer);
   }
 
   const sendingIntent = answer.phase === "sending" ? answer.intent : null;
-  const hint = unshown ? null : unopened.length === 0 ? null : codeOpen ? "hill.single.readEnd" : "hill.chat.openCode";
+  const hint = blocked ? null : endsSeen ? null : codeOpen ? "hill.single.readEnd" : "hill.chat.openCode";
 
   return (
     <div ref={setRoot} data-slot="chat-approval" data-id={decision.id} data-ready={ready ? "" : undefined}>
@@ -341,7 +385,7 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
           {pieces.facts.map((piece) => (
             <div key={`facts:${String(piece.card)}`} data-slot="chat-approval-facts" data-card={piece.card} className="flex min-w-0 flex-col">
               <Piece decisionId={decision.id} view={piece.view} ctx={ctx} onUnshown={noteUnshown} />
-              {/* A group's card of facts alone is read here, open; a single card's end is the end of its code. */}
+              {/* A group's card of facts alone has its end here, open; a single card's end is the end of its code. */}
               {!codeCards.has(piece.card) && needed.includes(piece.card) && <EndMark card={piece.card} live={alwaysLive} onSeen={mark} />}
             </div>
           ))}
@@ -373,10 +417,10 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
           )}
 
           {locked ? (
-            <AnswerStatus decision={decision} answer={answer} onRetry={retry} slot="chat-approval-status" />
+            <AnswerStatus decision={decision} answer={answer} slot="chat-approval-status" />
           ) : (
             <div className="flex flex-col gap-2">
-              {unshown && (
+              {blocked && (
                 <p data-slot="chat-approval-unshown" className="font-content text-xs text-muted-foreground">
                   {t("hill.chat.unshown")}
                 </p>
@@ -387,13 +431,14 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
                 </p>
               )}
               <div
+                ref={setOptionsBox}
                 data-slot="chat-approval-options"
                 className="flex flex-col gap-1.5"
                 onPointerDownCapture={() => {
                   pressedReady.current = ready;
                 }}
               >
-                {!unshown &&
+                {!blocked &&
                   yesOptions.map((option, i) => (
                     <OptionButton
                       key={`${String(i)}:${option.intent}`}
@@ -413,14 +458,16 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
                   <OptionButton
                     data-slot="chat-approval-option"
                     data-intent={declineOption.intent}
-                    keyLabel={unshown ? 1 : yesOptions.length + 1}
+                    keyLabel={blocked ? 1 : yesOptions.length + 1}
                     label={declineOption.label}
                     onClick={(event) => choose(declineOption, event)}
                     className="min-h-11 items-center px-3"
                   />
                 )}
+                {/* Inside the options box, so a press on Try again is a press the box saw begin. A changed card,
+                    or one not ready, offers no Try again: the yes is the way to send again. */}
+                <AnswerStatus decision={decision} answer={answer} onRetry={sentHere && ready ? retry : undefined} slot="chat-approval-status" />
               </div>
-              <AnswerStatus decision={decision} answer={answer} onRetry={retry} slot="chat-approval-status" />
             </div>
           )}
         </div>

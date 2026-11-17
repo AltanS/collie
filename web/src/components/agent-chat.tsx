@@ -56,7 +56,7 @@ import { AnsiOutput } from "@/components/ansi-output";
 import { OutputZoom } from "@/components/output-zoom";
 import { CardDock, dockFits, hasDialogCard } from "@/components/card-dock";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
-import { SessionTrickCards } from "@/components/session-trick-card";
+import { SessionTrickCards, useSessionProposalWaiting } from "@/components/session-trick-card";
 import { HookHoldCard } from "@/components/hook-hold-card";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
 import { AgentsFooter } from "@/components/agents-footer";
@@ -530,6 +530,8 @@ export function AgentChat({
   );
   const { lead: crewLead } = useCrew();
   const walkySelf = paneAddress(paneId, scope, crewLead, agent?.instance);
+  // A trick proposal of this session waits at the tail: the jump-to-latest arrow wears its dot (parity with new output).
+  const trickWaiting = useSessionProposalWaiting(walkySelf) && agent !== undefined;
   // The live panes a walky talky message names its sessions from, and the opener a name chip uses: the
   // switcher's own (M80 spec 12). `switchToPane` is a hoisted function, and resolves the target's own host.
   const walkyLive = useMemo(() => ({ panes: herd, lead: crewLead }), [herd, crewLead]);
@@ -974,7 +976,7 @@ export function AgentChat({
     );
   }, [text, revision, logicalText, truncated, following]);
   const display = shown.text;
-  const hasNew = !following && display !== text;
+  const hasNew = !following && (display !== text || trickWaiting);
 
   // The agent's own statusline (model · ctx% · cwd · branch · tokens · permission mode) is stripped
   // off the mirror by stripChrome so it doesn't duplicate the composer — but it carries real context
@@ -2351,7 +2353,8 @@ export function AgentChat({
 
   // A trick this session proposed (package I): Collie's own card, last in whichever body is on screen (Chat, the
   // mirror, or an agent view standing in for both), in that body's own scroll like a message (session-trick-card.tsx), never a band of its own. Opening its code brings
-  // the fold's row to the top and stops the list following the tail, so the code is read from its start.
+  // the fold's row to the top and stops the list following the tail, so the code grows below the row (the check is
+  // only that its end was on screen, session-trick-card.tsx).
   const trickCards =
     agent === undefined ? null : <SessionTrickCards self={walkySelf} onReadCode={(row) => void listRef.current?.scrollToChild(row, true)} />;
 
@@ -3175,6 +3178,7 @@ export function AgentChat({
                       : handleReturned
                   }
                   tail={trickCards}
+                  hasNew={trickWaiting}
                 />
               </CardWaitingCtx.Provider>
               </WalkyOpenProvider>
