@@ -761,6 +761,8 @@ export class TricksService implements TricksSurface {
   private prunedAt = -Infinity;
   /** The switch for tricks as a whole (feature-switch.ts). */
   private readonly feature: NonNullable<TricksServiceDeps["feature"]> & { set?(on: boolean): boolean };
+  /** Aborted when tricks are switched off as a whole: it kills every program running now, then a fresh one stands for the next runs. */
+  private runStop = new AbortController();
   /** The last scan found tricks switched off as a whole: every runtime is folded in as off, its own switch kept. */
   private suspended = false;
   /** What `onLocalApi` was last told; null before the first. */
@@ -789,7 +791,12 @@ export class TricksService implements TricksSurface {
     );
     this.feature = deps.feature ?? new TricksFeatureSwitch(deps.stateDir, this.warn);
     // A move of the switch folds in at once (after the read that saw it), so the parts go and the rows move.
-    this.feature.onChange?.(() => {
+    this.feature.onChange?.((on) => {
+      // Off kills the programs that run now (their runs end `stopped`; the waiting runs are refused at `recheck`).
+      if (!on) {
+        this.runStop.abort();
+        this.runStop = new AbortController();
+      }
       queueMicrotask(() => {
         this.scannedAt = -Infinity;
         void this.refresh(true);
@@ -2036,6 +2043,7 @@ export class TricksService implements TricksSurface {
       env: scrubEnv(this.deps.env, manifest.env ?? [], { host: this.host() }),
       stdin: JSON.stringify(facts),
       platform: this.deps.platform,
+      signal: this.runStop.signal,
       ...this.deps.limits,
     });
     rt.lastRunAt = startedAt;
