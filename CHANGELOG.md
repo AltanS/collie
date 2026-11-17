@@ -130,6 +130,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A picture the page already loaded is there on the first frame.** Every picture that goes through the token fetch (Chat and History pictures, the mirror cards, the pager) used to paint one frame with no picture when it was mounted again, even with its bytes in memory. It now reads the object URL it already holds on the first render; nothing is stored on the device.
 - **A picture in Chat holds its place while it loads.** A screenshot or tool picture in the Chat thread and in History used to enter from nothing and push the text below it down by its whole height. A quiet box of the Hill pager picture's height now stands where it will come, and leaves when the picture arrives; a picture that cannot load leaves no gap.
 - **The mirror's [Image] badge stays until its picture card is there.** On a screen with a picture the badge used to disappear for a moment once the picture was known and before its bytes arrived, then the card came in. The badge now stays on its line until the card replaces it.
+- **The first frame draws the controls where they stood last time.** Collie remembers on the phone, as yes or no, which controls the machine's multiplexer offered, whether it holds one space or many, and whether a microphone was offered. A durable machine's dashboard, a pane's strips and belt buttons, the Spaces +, the New page and a draft's small microphone no longer swap when the first read lands, and a first visit or a wiped phone draws as before.
 
 ### Docs
 
