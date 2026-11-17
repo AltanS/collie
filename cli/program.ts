@@ -1194,16 +1194,16 @@ export const COMMANDS: readonly Command[] = [
   // are about the programs Collie drives. Nothing links by itself, and nothing restarts.
   {
     name: "harness",
-    summary: `link a harness so Collie can send to it by data: ${HARNESS_SUBCOMMANDS.join(", ")}`,
+    summary: `experimental, opt-in: link Claude Code so Collie can send to it by data: ${HARNESS_SUBCOMMANDS.join(", ")}`,
     subcommands: [
       {
         name: "link",
-        summary: `link a harness: write its ${installWordAny()}, so Collie can send to it by data (available: claude)`,
+        summary: `link a harness: write its ${installWordAny()}, so Collie can send to it by data; an experiment, Claude Code only (available: claude)`,
         run: (args, s) => runHarnessLink(args, s.io, false),
       },
       {
         name: "unlink",
-        summary: `remove a harness's ${installWordAny()}; Collie then uses the screen path for it`,
+        summary: `remove a harness's ${installWordAny()}; Collie then uses the screen path for it, as it does with no link`,
         run: (args, s) => runHarnessLink(args, s.io, true),
       },
       {
