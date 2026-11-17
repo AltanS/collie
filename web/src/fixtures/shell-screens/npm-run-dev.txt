@@ -1,0 +1,11 @@
+dev@devbox:~/src/site$ npm run dev
+
+> site@0.4.0 dev
+> vite
+
+
+  VITE v6.0.3  ready in 412 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+  ➜  press h + enter to show help

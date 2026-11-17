@@ -1,0 +1,8 @@
+dev@devbox:~/src/app$ cat setup.log
+Choose an install type:
+  1) minimal
+  2) standard
+  3) full
+Selected: 2
+Installing standard ... done
+dev@devbox:~/src/app$ 

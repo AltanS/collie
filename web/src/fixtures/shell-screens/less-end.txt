@@ -1,0 +1,10 @@
+Version 2.4.0
+  - the export button
+  - dark mode
+
+Version 2.3.1
+  - fix the cursor on resize
+
+Version 2.3.0
+  - the config file
+(END)

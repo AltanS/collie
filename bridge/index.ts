@@ -88,7 +88,7 @@ import { spaceFolders } from "./space-view.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
 import { LaunchWindow, foregroundHarnessOf } from "./launch-window.ts";
-import { createPaneHarness, createPaneProfile, createPaneVersion, procProbe, profileBinaries, sharedForegroundRead } from "./pane-binary.ts";
+import { createPaneForeground, createPaneHarness, createPaneProfile, createPaneVersion, procProbe, profileBinaries, sharedForegroundRead } from "./pane-binary.ts";
 import { StarterReceiptStore } from "./starter-launch.ts";
 import { AnswerReceiptStore } from "./durable/answer.ts";
 import { ControlReceiptStore } from "./durable/control.ts";
@@ -2171,6 +2171,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           profile: paneProfile,
           // A pane the multiplexer names no agent on is named by the program in its foreground (#793).
           paneHarness: foregroundRead === undefined ? undefined : createPaneHarness({ read: foregroundRead, binaries: harnessBinaries, probe: paneProbe }),
+          // The blind road's menu sign by what stands in the foreground (M102 spec 12); no read: unknown.
+          paneForeground: foregroundRead === undefined ? undefined : createPaneForeground(foregroundRead),
           starting: (paneId, named) => launchWindow.starting(name, paneId, named, foregroundHarness?.(paneId)),
           framed: (paneId, harness) => launchWindow.framed(name, paneId, harness),
           deaf: (paneId, harness, typedAt) => launchWindow.deaf(name, paneId, harness, typedAt),

@@ -1,0 +1,7 @@
+dev@devbox:~/src/app$ ps aux | head -6
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root           1  0.0  0.0 168404 13120 ?        Ss   Nov14   0:02 /sbin/init
+root           2  0.0  0.0      0     0 ?        S    Nov14   0:00 [kthreadd]
+dev         2214  4.0  0.6 1213448 182340 pts/1  Sl+  08:31   3:12 node server.js
+dev         3301  0.0  0.0  22112  5120 pts/2    R+   10:44   0:00 ps aux
+dev@devbox:~/src/app$ 

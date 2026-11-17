@@ -1,0 +1,8 @@
+~/src/app on  main via  v22.11.0
+❯ cat todo.txt
+1. fix the login redirect
+2. write the release notes
+3. ask about the logo
+
+~/src/app on  main via  v22.11.0 took 2s
+❯ 

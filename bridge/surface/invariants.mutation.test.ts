@@ -7,7 +7,9 @@
 //
 // The assertions never say "the reader read it right". They say:
 //   I7  on a screen that shows a menu sign (the test's own profile-free oracle below), no road of
-//       Collie's writes Enter, a digit or a letter. Only the person's key from the pad may.
+//       Collie's writes Enter, a digit or a letter. Only the person's key from the pad may. Text with
+//       no key in a box the reader found, and the blind road on a shell prompt or a capture labeled with
+//       no open dialog, are the oracle's lookalikes (textIntoFoundBox, noMenuForBlind).
 //   I4  on a screen with no menu sign, the person's override is not refused before a write, except for
 //       a read question or permission, a known secret, stale_surface, menu_open or pane_gone.
 //       (probe_failed is left to the gates suite: this pane takes no keys, so a probe never shows here.)
@@ -19,8 +21,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { askOf } from "../../web/src/lib/surface/surface.ts";
-import { knownRed, redTitle, type KnownRedId } from "../../web/src/test/invariants/known-red.ts";
 import { replayHint, rngOf, runSeeds, sample, type Rng } from "../../web/src/test/invariants/seed.ts";
+import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { collieOwn, invariantRig, menuBytes, personOverride, personTap, type Write , type RigOptions } from "./invariants-rig.ts";
 
 const FIXTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures");
@@ -56,6 +58,34 @@ export function menuSign(screen: string): boolean {
   return rows.some((row) => YN_FORM.test(row) || HINT.test(row));
 }
 
+/**
+ * The one case the oracle reads too wide (M102 spec 12, the lead's call of 2026-11-17): text written with
+ * no key at all into the input box the reader FOUND (modal none, composer empty or draft). The sign the
+ * oracle saw is then the agent's own answer above its box (a numbered list, a quoted dialog), and the text
+ * sits in the box and picks nothing. For the person's override that is the whole rule; for Collie's own
+ * send and the first tap the capture's label must say no dialog is open (idle, draft, running) too. Any
+ * key, or a box not found, stays I7.
+ */
+function textIntoFoundBox(label: Label | null, answer: SendAnswer, before: SendAnswer | undefined, writes: readonly Write[]): boolean {
+  if (label !== null && label.state !== "idle" && label.state !== "draft" && label.state !== "running") return false;
+  if (writes.some((w) => w.kind === "keys")) return false;
+  const seen = answer.surface ?? before?.surface;
+  return seen !== undefined && seen.modal === "none" && (seen.composer === "empty" || seen.composer === "draft");
+}
+
+/**
+ * The blind road's side of the same call (M102 spec 12, decision 3): no dialog is open where the label
+ * says idle, draft or running, and a shell waits at its prompt where the bottom row is a bare `$`, `#` or
+ * `%` prompt (old output above it is no menu), and a capture named `quoted` shows a dialog quoted in the
+ * agent's prose, not an open one. Every other capture stays I7 for the blind road.
+ */
+function noMenuForBlind(name: string, label: Label, screen: string): boolean {
+  if (label.state === "idle" || label.state === "draft" || label.state === "running") return true;
+  if (label.state === "other" && name.includes("quoted")) return true;
+  const bottom = screen.split("\n").map(plain).findLast((row) => row.trim() !== "") ?? "";
+  return /^\s*\S*[$#%]\s*$/u.test(bottom.replace(/\r/gu, ""));
+}
+
 // ── the mutations ──
 
 type Mutation = "insert-row" | "warning-under-command" | "right-clock" | "ansi-noise" | "rewrap" | "cut-top";
@@ -84,12 +114,23 @@ export function mutate(raw: string, mutation: Mutation, rng: Rng): string {
     case "right-clock": {
       const at = bottomIndex(rows, rng, 10);
       const row = rows[at] ?? "";
-      const width = Math.max(80, plain(row).length + 4);
-      rows[at] = `${row}${" ".repeat(Math.max(1, width - plain(row).length - 8))}12:34:56`;
+      // Before a row's trailing CR, as ansi-noise does: a clock after a bare CR is a byte order no grid read carries.
+      const cr = row.endsWith("\r") ? "\r" : "";
+      const body = row.slice(0, row.length - cr.length);
+      const width = Math.max(80, plain(body).length + 4);
+      rows[at] = `${body}${" ".repeat(Math.max(1, width - plain(body).length - 8))}12:34:56${cr}`;
       return rows.join("\n");
     }
     case "ansi-noise":
-      return rows.map((row) => (rng.chance(0.4) ? `${rng.pick(NOISE)}${row}${rng.chance(0.5) ? "\u001b[0m" : ""}` : row)).join("\n");
+      // A capture's row may end in CR (a CRLF file): the reset goes before it, for a reset after a bare CR
+      // is a byte order no multiplexer's grid read carries, and the screen reader starts the row over there.
+      return rows
+        .map((row) => {
+          if (!rng.chance(0.4)) return row;
+          const cr = row.endsWith("\r") ? "\r" : "";
+          return `${rng.pick(NOISE)}${row.slice(0, row.length - cr.length)}${rng.chance(0.5) ? "\u001b[0m" : ""}${cr}`;
+        })
+        .join("\n");
     case "rewrap": {
       const width = rng.pick([40, 60, 100]);
       return rows
@@ -141,7 +182,7 @@ const CASES = SEEDS.flatMap(casesOf);
 interface Found {
   readonly i7: string[];
   readonly i7Blind: string[];
-  readonly i4: Map<KnownRedId | "other", string[]>;
+  readonly i4: Map<I4Bucket, string[]>;
 }
 
 function describeWrites(writes: readonly Write[]): string {
@@ -151,10 +192,11 @@ function describeWrites(writes: readonly Write[]): string {
 const OVERRIDE_REFUSALS: ReadonlySet<string> = new Set(["stale_surface", "menu_open", "pane_gone", "probe_failed"]);
 
 /** Which red entry an override refusal belongs to; `other` is one no entry names, and the green test fails on it. */
-function bucketOf(reason: string | undefined): KnownRedId | "other" {
-  if (reason === "not_free" || reason === "unconfirmed") return "i4-bridge-not-free";
-  if (reason === "turn_running") return "i4-bridge-turn";
-  if (reason === "draft_present") return "i4-bridge-draft-no-box";
+type I4Bucket = "not-free" | "turn" | "draft-no-box" | "other";
+function bucketOf(reason: string | undefined): I4Bucket {
+  if (reason === "not_free" || reason === "unconfirmed") return "not-free";
+  if (reason === "turn_running") return "turn";
+  if (reason === "draft_present") return "draft-no-box";
   return "other";
 }
 
@@ -177,11 +219,16 @@ async function run(): Promise<Found> {
       const over = await personOverride(overRig, TEXT);
       const blind = await personTap(blindRig, TEXT);
       if (c.menu) {
-        for (const [road, writes] of [["Collie's own send", own.writes], ["the person's first tap", tap.writes], ["the person's override", over.writes]] as const) {
+        const roads = [
+          ["Collie's own send", textIntoFoundBox(c.label, own.answer, undefined, own.writes) ? [] : own.writes],
+          ["the person's first tap", textIntoFoundBox(c.label, tap.answer, undefined, tap.writes) ? [] : tap.writes],
+          ["the person's override", textIntoFoundBox(null, over.commit, over.prepare, over.writes) ? [] : over.writes],
+        ] as const;
+        for (const [road, writes] of roads) {
           const bad = menuBytes(writes);
           if (bad.length > 0) found.i7.push(`${road} wrote ${describeWrites(bad)} onto a menu: ${hint}`);
         }
-        const badBlind = menuBytes(blind.writes);
+        const badBlind = noMenuForBlind(c.name, c.label, c.screen) ? [] : menuBytes(blind.writes);
         if (badBlind.length > 0) found.i7Blind.push(`the blind road wrote ${describeWrites(badBlind)} onto a menu: ${hint}`);
       } else {
         const r = over.commit.receipt;
@@ -236,16 +283,16 @@ describe("M102-15 part 1c, mutated captures of the corpus", () => {
     expect((await results()).i4.get("other") ?? []).toEqual([]);
   }, 120_000);
 
-  const blind = knownRed("i7-blind-road");
-  test.failing(`I7: the blind road (an agent with no profile) writes no Enter, digit or letter onto a menu ${redTitle(blind.id)}`, async () => {
+  // Red on the base; since M102 spec 12 the generic menu sign gates the blind road for every send, by the pane's foreground.
+  test("I7: the blind road (an agent with no profile) writes no Enter, digit or letter onto a menu", async () => {
     const hits = (await results()).i7Blind;
-    console.info(`[invariants.mutation] i7-blind-road: ${String(hits.length)} hits; first: ${hits[0] ?? "-"}`);
+    console.info(`[invariants.mutation] blind road: ${String(hits.length)} hits; first: ${hits[0] ?? "-"}`);
     expect(hits).toEqual([]);
   }, 120_000);
 
-  for (const id of ["i4-bridge-not-free", "i4-bridge-turn"] as const) {
-    const red = knownRed(id);
-    test.failing(`I4 on mutated captures: ${red.what} ${redTitle(id)}`, async () => {
+  // Red on the base, green since M102 spec 12: an override is no longer refused not_free or turn_running.
+  for (const id of ["not-free", "turn"] as const) {
+    test(`I4 on mutated captures: no override is refused in the ${id} bucket`, async () => {
       const hits = (await results()).i4.get(id) ?? [];
       console.info(`[invariants.mutation] ${id}: ${String(hits.length)} hits`);
       expect(hits).toEqual([]);
@@ -253,7 +300,7 @@ describe("M102-15 part 1c, mutated captures of the corpus", () => {
   }
 
   // The draft without a box shows on a few captures only, so the sample may miss it: listed, not asserted.
-  test("I4 on mutated captures: the draft-without-a-box refusals are counted (i4-bridge-draft-no-box, asserted in the gates suite)", async () => {
-    console.info(`[invariants.mutation] i4-bridge-draft-no-box: ${String(((await results()).i4.get("i4-bridge-draft-no-box") ?? []).length)} hits`);
+  test("I4 on mutated captures: the draft-without-a-box refusals are counted (asserted in the gates suite)", async () => {
+    console.info(`[invariants.mutation] draft-no-box: ${String(((await results()).i4.get("draft-no-box") ?? []).length)} hits`);
   }, 120_000);
 });

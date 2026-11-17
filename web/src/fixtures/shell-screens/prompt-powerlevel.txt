@@ -1,0 +1,7 @@
+╭─  ~/src/app   main ?1 ··························· ✔  10:42:07
+╰─ git branch
+  feature/export
+* main
+  release-1.2
+╭─  ~/src/app   main ?1 ··························· ✔  10:42:11
+╰─ 

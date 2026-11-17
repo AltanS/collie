@@ -1,0 +1,17 @@
+dev@devbox:~/src/app$ npm test
+
+ FAIL  src/parser.test.ts
+  parser
+    ✓ reads an empty file (2 ms)
+    ✕ reads a header (5 ms)
+    ✕ keeps the order (3 ms)
+
+Summary of all failing tests:
+  1) parser reads a header
+     expected "Title" to be "title"
+  2) parser keeps the order
+     expected [ 2, 1 ] to equal [ 1, 2 ]
+
+Tests: 2 failed, 1 passed, 3 total
+Time:  1.21 s
+dev@devbox:~/src/app$ 

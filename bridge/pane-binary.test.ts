@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { hostFor, WSL_FLAGS } from "./host.ts";
 import type { ForegroundProcess } from "./journal/types.ts";
 import { piProcessOf } from "./journal/pi.ts";
-import { argvFromCmdline, createPaneHarness, createPaneProfile, envFromEnviron, createPaneVersion, PANE_LAST_GOOD_MS, paneBinaryOf, paneHarnessOf, procProbe, profileBinaries, sharedForegroundRead, type ForegroundOutcome, type ProcessProbe } from "./pane-binary.ts";
+import { argvFromCmdline, createPaneForeground, createPaneHarness, createPaneProfile, envFromEnviron, createPaneVersion, PANE_LAST_GOOD_MS, paneBinaryOf, paneForegroundOf, paneHarnessOf, SHELL_NAMES, procProbe, profileBinaries, sharedForegroundRead, type ForegroundOutcome, type ProcessProbe } from "./pane-binary.ts";
 import { createVersionReader, VersionCache } from "./surface/binary-version.ts";
 import { findTool } from "./tools.ts";
 import { loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
@@ -478,5 +478,40 @@ describe("paneHarnessOf: which harness runs in the pane, by its foreground progr
       const journal = piProcessOf(processes)?.harness ?? null;
       expect([processes.map((p) => p.argv.join(" ")), journal]).toEqual([processes.map((p) => p.argv.join(" ")), send === "pi" || send === "omp" ? send : null]);
     }
+  });
+});
+
+describe("paneForegroundOf: what stands in the pane's foreground, for the blind road (M102 spec 12)", () => {
+  const p = (...argv: string[]): ForegroundProcess => ({ argv });
+
+  test("every shell of the table, bare, by path, as a login shell or with flags only, is a shell", () => {
+    for (const name of SHELL_NAMES) {
+      expect(paneForegroundOf([p(name)])).toBe("shell");
+      expect(paneForegroundOf([p(`/usr/bin/${name}`, "-l")])).toBe("shell");
+      expect(paneForegroundOf([p(`-${name}`)])).toBe("shell");
+    }
+    expect(paneForegroundOf([p("C:\\Program Files\\PowerShell\\7\\pwsh.exe", "-NoLogo")])).toBe("shell");
+    expect(paneForegroundOf([p("python3", "/usr/bin/xonsh")])).toBe("shell");
+  });
+
+  test("a child in the foreground, a shell running a script or a command, is a program", () => {
+    expect(paneForegroundOf([p("apt", "upgrade")])).toBe("program");
+    expect(paneForegroundOf([p("bash", "deploy.sh")])).toBe("program");
+    expect(paneForegroundOf([p("sh", "-c", "read -p 'ok? ' x")])).toBe("program");
+    expect(paneForegroundOf([p("zsh"), p("less", "README.md")])).toBe("program");
+    expect(paneForegroundOf([p("node", "/opt/agent/cli.js")])).toBe("program");
+  });
+
+  test("no process, or one with no argv, is unknown", () => {
+    expect(paneForegroundOf([])).toBe("unknown");
+    expect(paneForegroundOf([p()])).toBe("unknown");
+    expect(paneForegroundOf([p("bash"), p("")])).toBe("unknown");
+  });
+
+  test("over the shared read: a failed read is unknown", async () => {
+    const ok = createPaneForeground(() => Promise.resolve({ ok: true, value: [p("fish")] }));
+    const failed = createPaneForeground(() => Promise.resolve({ ok: false }));
+    expect(await ok("%1")).toBe("shell");
+    expect(await failed("%1")).toBe("unknown");
   });
 });

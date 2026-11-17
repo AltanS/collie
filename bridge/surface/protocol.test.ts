@@ -14,6 +14,7 @@ import type { HeldCancelAnswer, SendAnswer } from "../../web/src/lib/surface/sen
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { lineText, splitLines } from "../../web/src/lib/blocks.ts";
 import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
+import { normalizePrompt } from "../../web/src/lib/surface/edges.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { isFree, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
@@ -4790,6 +4791,86 @@ describe("a prompt edge closes a receipt as effective", () => {
     const answer = await send("hello there");
     expect(answer.receipt?.outcome).toBe("refused");
     expect(protocol.promptEdge("%1", hashOf(deps, "hello there"), clock.now)).toBeNull();
+  });
+});
+
+// ── the agent's own word settles an unknown (M102 spec 13) ──
+
+describe("a prompt event settles an unknown send inside its window (M102 spec 13)", () => {
+  const TEXT = "please fix the parser test";
+  /** A pane that keeps the text in its box after Enter: S2 finds no evidence, the send ends unknown. */
+  const stuck = (options: Parameters<typeof rig>[0] = {}) => {
+    const r = rig(options);
+    r.pane.afterInput = (p, what) => {
+      if (what.endsWith("Enter")) p.box = TEXT;
+    };
+    return r;
+  };
+  /** The Claude profile with its prompt event taken out of the edge map. */
+  const noPromptEvent = (profile: Profile): Profile => {
+    const events = Object.fromEntries(Object.entries(profile.edges?.events ?? {}).filter(([, kind]) => kind !== "prompt"));
+    return { ...profile, edges: { rereadMs: profile.edges?.rereadMs ?? 700, settleMs: profile.edges?.settleMs ?? 1500, events } };
+  };
+
+  test("unknown on a harness whose profile names a prompt event: the receipt waits 30 s for it, and the event settles it effective", async () => {
+    const { send, protocol, deps, clock } = stuck();
+    const answer = await send(TEXT);
+    const id = answer.receipt!.requestId;
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+    const until = answer.receipt!.awaitingEventUntil!;
+    expect(until).toBeGreaterThan(clock.now);
+    expect(until - clock.now).toBeLessThanOrEqual(30_000);
+    expect(protocol.recent("%1").find((row) => row.requestId === id)?.awaitingEventUntil).toBe(until);
+    expect(protocol.promptEdge("%1", deps.store.hashText(TEXT), clock.now + 1_000)).toBe(id);
+    const settled = deps.store.get(id)?.receipt;
+    expect(settled?.outcome).toBe("effective");
+    expect(settled?.reason).toBeUndefined();
+    expect(settled?.awaitingEventUntil).toBeUndefined();
+    // A retry under the same id answers the settled receipt; nothing is typed again.
+    const replay = await send(TEXT, { id });
+    expect(replay.replayed).toBe(true);
+    expect(replay.receipt?.outcome).toBe("effective");
+  });
+
+  test("an event past the window settles nothing: the receipt stays unknown, it only cost the wait", async () => {
+    const { send, protocol, deps } = stuck();
+    const answer = await send(TEXT);
+    const until = answer.receipt!.awaitingEventUntil!;
+    expect(protocol.promptEdge("%1", deps.store.hashText(TEXT), until + 1)).toBeNull();
+    expect(deps.store.get(answer.receipt!.requestId)?.receipt?.outcome).toBe("unknown");
+  });
+
+  test("an event whose text the agent changed (trimmed inside, a fold, a rewritten command) settles nothing", async () => {
+    const { send, protocol, deps, clock } = stuck();
+    const answer = await send(TEXT);
+    for (const changed of ["please fix the  parser test", "[Pasted text #1 +2 lines]", "/please fix the parser test", `${TEXT}\nand one more queued line`]) {
+      expect(protocol.promptEdge("%1", deps.store.hashText(changed), clock.now + 1_000)).toBeNull();
+    }
+    expect(deps.store.get(answer.receipt!.requestId)?.receipt?.outcome).toBe("unknown");
+  });
+
+  test("outer white space and CR line ends are the same text on both sides", async () => {
+    const { send, protocol, deps, clock } = stuck();
+    const answer = await send(TEXT);
+    expect(protocol.promptEdge("%1", deps.store.hashText(normalizePrompt(`  ${TEXT}\r\n`)), clock.now + 1_000)).toBe(answer.receipt!.requestId);
+  });
+
+  test("a harness whose profile names no prompt event: the unknown carries no window", async () => {
+    const { send } = stuck({ edit: noPromptEvent });
+    const answer = await send(TEXT);
+    expect(answer.receipt?.outcome).toBe("unknown");
+    expect(answer.receipt?.awaitingEventUntil).toBeUndefined();
+  });
+
+  test("a sent receipt carries no window, and a refused one opens none", async () => {
+    const { pane, send } = rig();
+    const sent = await send("a text that goes through");
+    expect(sent.receipt?.outcome).toBe("sent");
+    expect(sent.receipt?.awaitingEventUntil).toBeUndefined();
+    pane.box = "a draft the person typed";
+    const refused = await send("hello there");
+    expect(refused.receipt?.outcome).toBe("refused");
+    expect(refused.receipt?.awaitingEventUntil).toBeUndefined();
   });
 });
 
