@@ -3651,8 +3651,9 @@ export const en = {
   // `on` and `watch` are rights (M105 step one): the same words as the proposal card's chips (bridge/tricks/version-card.ts).
   "settings.tricks.about.on": "Runs when a session changes state.",
   "settings.tricks.about.watch": "Runs when these files change: {paths}.",
-  "settings.tricks.about.access.see": "It sees your machines, your sessions and their states, your usage and the Hill. It does not see what is on a screen.",
-  "settings.tricks.about.access.read": "It reads what is on your sessions' screens.",
+  "settings.tricks.about.access.see": "It asks to see your machines, your sessions and their states, your usage and the Hill, not what is on a screen.",
+  "settings.tricks.about.access.read": "It asks to read what is on your sessions' screens.",
+  "settings.tricks.about.access.unknown": "It asks for access this app does not know yet. Update the app before you say yes.",
   "settings.tricks.about.from": "Where it comes from",
   "settings.tricks.about.local": "Added on this machine.",
   "settings.tricks.about.proposedAgent": "Proposed by an agent session on {host}.",
@@ -4292,6 +4293,7 @@ export const PENDING_TRANSLATION = [
   "harnessBar.history",
   "settings.tricks.about.access.see",
   "settings.tricks.about.access.read",
+  "settings.tricks.about.access.unknown",
   "settings.tricks.accessOff",
   "settings.tricks.warn.api",
   // Account -> Profile rename, 2026-11-17: English changed, the other bundles read English until the translation pass.

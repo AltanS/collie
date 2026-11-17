@@ -177,6 +177,39 @@ describe("buildApiWorld over a real HillService and a real WalkyInstances", () =
     expect(statSync(r.file).mtimeMs).toBe(r.before.mtime);
   });
 
+  // Review 3, item 5: a crew member's row is the watch's memory and the crew overview's, never a dial.
+  test("a crew member's machines row makes no network call: it comes from the census", async () => {
+    const r = await realRig();
+    const dials: string[] = [];
+    const realFetch = globalThis.fetch;
+    const realConnect = Bun.connect;
+    globalThis.fetch = Object.assign(
+      (): never => {
+        dials.push("fetch");
+        throw new Error("machines dialed with fetch");
+      },
+      { preconnect: () => dials.push("fetch.preconnect") },
+    );
+    Bun.connect = (): never => {
+      dials.push("Bun.connect");
+      throw new Error("machines dialed with Bun.connect");
+    };
+    try {
+      const result = await apiTable(buildApiWorld(r.deps)).get("machines")!.run({}, ctx());
+      expect(result.ok).toBe(true);
+      const rows = result.ok ? JSON.parse(JSON.stringify(result.answer)).machines : [];
+      // The member's load is the sample the watch observed before the call, and its version the overview's.
+      expect(rows.find((row: { id: string }) => row.id === "lodge")).toEqual({ id: "lodge", label: "lodge", reachable: true, version: "1.29.0", load: { cpu: 0.5, memory: 0.75, sessions: 3 } });
+    } finally {
+      globalThis.fetch = realFetch;
+      Bun.connect = realConnect;
+    }
+    expect(dials).toEqual([]);
+    // The only sources read: the watch's census, the crew overview from memory, and this machine's own panes (peeked).
+    expect([...new Set(r.reads)].toSorted()).toEqual(["crewStatus", "instances.peek", "watch.census"]);
+    expect(r.writes).toEqual([]);
+  });
+
   test("a bridge with no watch (a crew peer) answers its own row, from the sampler", async () => {
     const r = await realRig();
     const row = machineBodies().rows[1]!;

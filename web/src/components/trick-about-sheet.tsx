@@ -172,6 +172,13 @@ function runRows(trick: Pick<WireTrickInfo, "run" | "everyMs">): FactRow[] {
   ];
 }
 
+/** The key of the line for each `access` word the row may carry, `unknown` included (review 3, item 4). */
+const ACCESS_LINE_KEYS = {
+  see: "settings.tricks.about.access.see",
+  read: "settings.tricks.about.access.read",
+  unknown: "settings.tricks.about.access.unknown",
+} as const satisfies Readonly<Record<NonNullable<WireTrickInfo["access"]>, string>>;
+
 function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
   const rows: FactRow[] = tokens ? tokenRows(trick) : [];
   const places = Array.isArray(trick.places) ? trick.places : [];
@@ -190,8 +197,9 @@ function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
   // `on` and `watch` are rights (M105 step one): the same two lines as the proposal card's chips.
   if (trick.events !== undefined && trick.events.length > 0) rows.push({ key: "on", node: t("settings.tricks.about.on") });
   if (trick.watch !== undefined && trick.watch.length > 0) rows.push({ key: "watch", node: t("settings.tricks.about.watch", { paths: trick.watch.join(", ") }) });
-  // `access` (M105 spec 04): the one line of the level the trick declares. `none` has no line.
-  if (trick.access !== undefined) rows.push({ key: "access", node: <span data-line="access">{t(trick.access === "read" ? "settings.tricks.about.access.read" : "settings.tricks.about.access.see")}</span> });
+  // `access` (M105 spec 04): the one line of the level the trick declares. `none` has no line, and a level this
+  // phone does not know has one fixed line (review 3, item 4).
+  if (trick.access !== undefined) rows.push({ key: "access", node: <span data-line="access">{t(ACCESS_LINE_KEYS[trick.access])}</span> });
   for (const line of warningLines(trick)) {
     rows.push({
       key: `warn:${line.kind}`,

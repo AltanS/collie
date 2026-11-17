@@ -165,15 +165,19 @@ collie api events --wait 25 --after <cursor>
 `--session`, `--lines`, `--after` and `--wait`. Without `--json` the answer prints as plain lines.
 With `--json` it prints the answer line as the bridge sent it, for a program.
 
-| Operation | Flags | What it answers |
-| --- | --- | --- |
-| `hello` | none | The API version, the Collie version, `experimental: true` and the operations offered |
-| `sessions` | none | One row per agent session of this machine: `id`, `machine`, `agent`, `label`, `folder` (the folder name, never the path), `state`, `account` (a label) and `rev` |
-| `brief` | `--session` | One session's `state`, whether an ask is open, when its last turn ended and whether a draft is in its input box. No text |
-| `read` | `--session`, `--lines` | One session's screen as plain text, secrets masked and the length capped, with `truncated` |
-| `accounts` | none | Each agent account's `id`, `agent`, `label`, `kind`, `signedIn` and `running`. No email, plan or path |
-| `hill.list` | none | The open decisions on the Hill: `id`, `machine`, `sender`, `title`, `urgency` and `date`. No body |
-| `events` | `--after`, `--wait` | Up to 256 events after a cursor, and `next`, the cursor to ask from next. `--wait` holds the request for up to 25 seconds when there is no event |
+The trick level is the `access` a trick declares to call the operation through `t.api`
+([Reading Collie through the local API](tricks-reference.md#reading-collie-through-the-local-api)).
+
+| Operation | Flags | Trick level | What it answers |
+| --- | --- | --- | --- |
+| `hello` | none | `see` | The API version, the Collie version, `experimental: true` and the operations offered |
+| `sessions` | none | `see` | One row per agent session of this machine: `id`, `machine`, `agent`, `label`, `folder` (the folder name, never the path), `state`, `account` (a label) and `rev` |
+| `brief` | `--session` | `see` | One session's `state`, whether an ask is open, when its last turn ended and whether a draft is in its input box. No text |
+| `read` | `--session`, `--lines` | `read` | One session's screen as plain text, secrets masked and the length capped, with `truncated` |
+| `accounts` | none | `see` | Each agent account's `id`, `agent`, `label`, `kind`, `signedIn` and `running`. No email, plan or path |
+| `hill.list` | none | `see` | The open decisions on the Hill: `id`, `machine`, `sender`, `title`, `urgency` and `date`. No body |
+| `machines` | none | `see` | One row per machine of the Machines page, the lead first: `id`, `label` (a short name, never a full host name or an address), `reachable`, `version` and `load` (`cpu`, `memory`, `sessions`). No address, key or path |
+| `events` | `--after`, `--wait` | `see` | Up to 256 events after a cursor, and `next`, the cursor to ask from next. `--wait` holds the request for up to 25 seconds when there is no event |
 
 > **Experimental.** The names, the fields and the exit codes of the local API may change in a
 > later minor release. Treat the output as something to read today, not as a contract.

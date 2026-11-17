@@ -66,6 +66,22 @@ async function scratch(answer: (request: Line) => Reply | null): Promise<Scratch
   return out;
 }
 
+/** A scratch server that answers the first bytes of a connection with `payload` as it is, then ends the connection when `end` says so. */
+async function hostile(payload: string, end: boolean): Promise<string> {
+  const dir = await tempDir();
+  const socket = join(dir, "sock");
+  const server = createServer((conn: Socket) => {
+    conn.on("error", () => {});
+    conn.once("data", () => {
+      if (end) conn.end(payload);
+      else conn.write(payload);
+    });
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(socket, resolve));
+  return socket;
+}
+
 async function trickWith(api: Facts["api"]): Promise<Trick> {
   const dir = await tempDir();
   const facts: Facts = {
@@ -139,6 +155,21 @@ describe("t.api", () => {
     });
     const t = await trickWith({ socket: server.socket, access: "read" });
     expect(await t.api("brief", { session: "lodge:9" })).toEqual({ ok: false, error: { code: "api.session_unknown", message: "No such session." } });
+  });
+
+  // Review 3, item 5: a hostile answer is a plain error, never a throw.
+  test("an answer too large is a plain error, and the call ends at once", async () => {
+    const socket = await hostile("x".repeat(3 * 1024 * 1024), false);
+    const t = await trickWith({ socket, access: "see" });
+    const started = performance.now();
+    expect(await t.api("sessions")).toEqual({ ok: false, error: { code: "trick.api_failed", message: "Collie's local API sent an answer that is too large." } });
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  test("an answer that is not JSON, or JSON that is not an object, is a plain error", async () => {
+    const socket = await hostile('not json\nnull\n[1,2]\n"r"\n{"id":"r","ok":tru\n', true);
+    const t = await trickWith({ socket, access: "see" });
+    expect(await t.api("machines")).toEqual({ ok: false, error: { code: "trick.api_unreachable", message: "Collie's local API closed the connection." } });
   });
 
   test("a server that never answers ends the call at the limit with a plain answer", async () => {

@@ -311,46 +311,50 @@ describe("discovery and the switch", () => {
   });
 });
 
-describe("the switched-on count (M105 spec 03, the local API's life)", () => {
-  test("told once after the first scan, then only when it moves: on, a second scan, off, a folder gone", async () => {
-    const told: number[] = [];
-    const r = await rig([exited(belt("1"))], { onSwitchedOnCount: (count) => told.push(count) });
+describe("the local API's life (M105 spec 03: `onLocalApi`, told from `localApiWanted`)", () => {
+  test("told once after the first scan, then only when the switch moves: a second scan, off, on, a folder gone, a trick on", async () => {
+    const told: boolean[] = [];
+    let on = true;
+    const r = await rig([exited(belt("1"))], { feature: { on: () => on }, onLocalApi: (wanted) => told.push(wanted) });
     const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
     await r.service.refresh(true);
-    expect(told).toEqual([0]);
+    expect(told).toEqual([true]);
     await r.service.refresh(true);
-    expect(told).toEqual([0]);
+    expect(told).toEqual([true]);
+    // A trick switched on, off and gone moves nothing: the socket follows the switch for tricks as a whole.
     await switchOn(r.stateDir, "legs");
     await r.service.refresh(true);
-    expect(told).toEqual([0, 1]);
     await writeSwitches(r.stateDir, { on: new Map() });
-    await r.service.refresh(true);
-    expect(told).toEqual([0, 1, 0]);
-    await switchOn(r.stateDir, "legs");
     await r.service.refresh(true);
     await rm(dir, { recursive: true });
     await r.service.refresh(true);
-    expect(told).toEqual([0, 1, 0, 1, 0]);
+    expect(told).toEqual([true]);
+    on = false;
+    await r.service.refresh(true);
+    expect(told).toEqual([true, false]);
+    on = true;
+    await r.service.refresh(true);
+    expect(told).toEqual([true, false, true]);
   });
 
-  test("where tricks do not run (deps.active false: a peer, a deputy, a deposed lead) the count is 0; a tick tells each change", async () => {
-    const told: number[] = [];
+  test("where tricks do not run (deps.active false: a peer, a deputy, a deposed lead) it is told false; a tick tells each change", async () => {
+    const told: boolean[] = [];
     let active = false;
-    const r = await rig([exited(belt("1"))], { active: () => active, onSwitchedOnCount: (count) => told.push(count) });
+    const r = await rig([exited(belt("1"))], { active: () => active, onLocalApi: (wanted) => told.push(wanted) });
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
-    expect(told).toEqual([0]);
-    // The crown comes: the next tick, with no scan of its own needed, tells the count.
+    expect(told).toEqual([false]);
+    // The crown comes: the next tick, with no scan of its own needed, tells it.
     active = true;
     await r.service.tick();
-    expect(told).toEqual([0, 1]);
-    // Deposed: the tick tells 0 before its own gate returns, whether or not a phone watched.
+    expect(told).toEqual([false, true]);
+    // Deposed: the tick tells false before its own gate returns, whether or not a phone watched.
     active = false;
     await r.service.tick();
-    expect(told).toEqual([0, 1, 0]);
+    expect(told).toEqual([false, true, false]);
     await r.service.tick();
-    expect(told).toEqual([0, 1, 0]);
+    expect(told).toEqual([false, true, false]);
   });
 
   test("the local API stands while tricks are switched on where tricks run, with no trick on, and closes when the switch goes off", async () => {
@@ -376,30 +380,31 @@ describe("the switched-on count (M105 spec 03, the local API's life)", () => {
     expect(told).toEqual([true, false, true, false]);
   });
 
-  test("on Windows (the gate) the count is never above 0", async () => {
-    const told: number[] = [];
-    const r = await rig([exited(belt("1"))], { platform: "win32", onSwitchedOnCount: (count) => told.push(count) });
+  test("on Windows (the gate) it is never told true", async () => {
+    const told: boolean[] = [];
+    const r = await rig([exited(belt("1"))], { platform: "win32", onLocalApi: (wanted) => told.push(wanted) });
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
     await r.service.refresh(true);
-    expect(told.every((count) => count === 0)).toBe(true);
+    expect(told.every((wanted) => !wanted)).toBe(true);
+    expect(r.service.localApiWanted()).toBe(false);
   });
 
-  test("a trick switched on but stopped by its backoff still counts", async () => {
-    const told: number[] = [];
-    const r = await rig([exited("", 1)], { onSwitchedOnCount: (count) => told.push(count) });
+  test("a trick stopped by its backoff leaves the socket standing", async () => {
+    const told: boolean[] = [];
+    const r = await rig([exited("", 1)], { onLocalApi: (wanted) => told.push(wanted) });
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
     for (const t of [T0, T0 + 60_000, T0 + 360_000, T0 + 360_000 + 1_800_000]) await tickAt(r, t);
     expect((await r.service.reply(undefined)).tricks[0]?.state).toBe("stopped");
     await tickAt(r, T0 + 100 * 60 * 60_000);
-    expect(told).toEqual([1]);
+    expect(told).toEqual([true]);
   });
 
   test("a listener that throws breaks no scan", async () => {
     const r = await rig([exited(belt("1"))], {
-      onSwitchedOnCount: () => {
+      onLocalApi: () => {
         throw new Error("boom");
       },
     });
@@ -1724,6 +1729,40 @@ describe("the approved copy (crew slice 2)", () => {
     file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(file.on.legs.hash).toBe(v2);
     expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v3, powersChanged: true });
+  });
+
+  // Review 3, item 5: `access` is in the powers, so a version that raises it waits for a person, auto or not.
+  test("auto holds a version that raises access, none to see and see to read; one that keeps it is taken", async () => {
+    const audits: string[] = [];
+    const r = await rig([exited(belt("1"))], { audit: (e) => audits.push(`${e.action} ${e.detail.by ?? ""}`.trim()) });
+    const toml = (access?: string): string => `${MANIFEST}contract = 3\n${access === undefined ? "" : `access = "${access}"\n`}`;
+    const dir = await makeTrick(r.configDir, "legs", toml(), { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    await updateSwitches(r.stateDir, (now) => withEntry(now, "legs", { ...now.on.get("legs")!, auto: true }));
+    const v1 = await codeHashOf(dir);
+    const held = async (want: string): Promise<void> => {
+      const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+      expect(file.on.legs.hash).toBe(want);
+    };
+    // none -> see: waits.
+    await writeFile(join(dir, "trick.toml"), toml("see"));
+    const v2 = await newVersion(r, dir, T0 + 1000, "#!/bin/sh\necho 2\n");
+    await held(v1);
+    expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v2, powersChanged: true });
+    expect(audits).toEqual([]);
+    // A person says yes; auto stays on.
+    expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
+    await updateSwitches(r.stateDir, (now) => withEntry(now, "legs", { ...now.on.get("legs")!, auto: true }));
+    // see -> see with new code: taken without asking.
+    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 3\n");
+    await held(v3);
+    expect(audits.at(-1)).toBe("trick.approve auto");
+    // see -> read: waits.
+    await writeFile(join(dir, "trick.toml"), toml("read"));
+    const v4 = await newVersion(r, dir, T0 + 40_000, "#!/bin/sh\necho 4\n");
+    await held(v3);
+    expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v4, powersChanged: true });
   });
 
   test("B5: auto holds a new version that does something new (a new warning kind), though its rights did not move", async () => {
