@@ -184,12 +184,13 @@ describe("Change login: before the start", () => {
     expect(screen.queryByText(/outside Collie/)).toBeNull();
   });
 
-  it("an agent whose sign-in does not reach running sessions lists them without the outside line", async () => {
+  it("an agent whose sign-in does not reach running sessions shows no list and no outside line", async () => {
     const codex = defaultRow({ id: "codex:default", harness: "codex", folder: "~/.codex", identity: ME, running: 1, panes: ["w1:p1"] });
     serveList([codex], undefined, [HARNESS_CODEX]);
     mount(["/settings/accounts/codex%3Adefault", `/settings/accounts/${encodeURIComponent("codex:default")}/login`], [agentPane("w1:p1", { sessionName: "Fix the build" })]);
-    expect(await screen.findByRole("button", { name: /Fix the build/ })).toBeInTheDocument();
-    expect(screen.getByText("Sessions you start from now on use the new login.")).toBeInTheDocument();
+    expect(await screen.findByText("Sessions you start from now on use the new login.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Fix the build/ })).toBeNull();
+    expect(screen.queryByRole("listitem")).toBeNull();
     expect(screen.queryByText(/outside Collie/)).toBeNull();
   });
 

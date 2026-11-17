@@ -256,8 +256,8 @@ function Hint({ text }: { text: string }) {
 
 /**
  * What happens to the sessions that run: they follow (with their count when some run), or only new ones.
- * Under the count, one row per session that runs in the profile, and for an agent whose sessions follow,
- * the line for the sessions Collie does not list.
+ * For an agent whose sessions follow, under the count: one row per session that runs in the profile, and
+ * the line for the sessions Collie does not list. An agent whose sessions do not follow lists none.
  */
 function ReachLines({ reach, sessions, onOpenSession }: { reach: Reach; sessions: readonly ReachedSession[]; onOpenSession: (paneId: string) => void }) {
   const follows = reach.kind === "running";
@@ -267,10 +267,10 @@ function ReachLines({ reach, sessions, onOpenSession }: { reach: Reach; sessions
         <p className="text-sm">{follows ? t("accounts.changeLogin.reach") : t("accounts.changeLogin.newOnly")}</p>
         {follows && reach.count > 0 && <Hint text={tn("accounts.changeLogin.running", reach.count)} />}
       </div>
-      {sessions.length > 0 && (
+      {follows && sessions.length > 0 && (
         <>
           <SessionList sessions={sessions} onOpen={onOpenSession} />
-          {follows && <Hint text={t("accounts.changeLogin.outside")} />}
+          <Hint text={t("accounts.changeLogin.outside")} />
         </>
       )}
     </div>
