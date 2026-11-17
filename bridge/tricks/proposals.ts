@@ -85,6 +85,8 @@ export const PROPOSAL_NOT_OPTION = "That is not an option of this card.";
 export const PROPOSAL_NO_TRICKS = "Tricks are not set up on this Collie, so nothing was proposed.";
 /** A new version Collie could not compare with the one that runs (review 7 R9): no card shows "0 files". */
 export const PROPOSAL_NOT_COMPARED = "Collie could not compare this version with the one that runs, so it was not proposed. Try again, or ask your person to add it on the machine.";
+/** A version whose code is the code that runs: no card, nothing to approve. */
+export const PROPOSAL_NO_CHANGE = "This version has the same code as the one that runs, so there is nothing to approve and it was not proposed.";
 /** The stored copy moved while its card was made (review 7 R9). */
 export const PROPOSAL_STORE_MOVED = "The stored proposal changed while its card was made, so nothing was proposed. Propose it again.";
 
@@ -436,6 +438,8 @@ export class TrickProposals {
     // the yes installs the new code (review 7 R9).
     const code = codeHashOfFiles(proposal.files.filter((file) => isCodePath(file.rel)));
     if ((!diff.counted && diff.files.length > 0) || (diff.files.length === 0 && code !== base.baseHash)) return { ok: false, code: "cannot_show", error: PROPOSAL_NOT_COMPARED };
+    // The same code as the one that runs: nothing for a yes to approve, so no card at all (the lead's decision, 2026-11-17).
+    if (diff.files.length === 0) return { ok: false, code: "exists", error: PROPOSAL_NO_CHANGE };
     const had = new Set(base.baseManifest === undefined ? [] : await this.warningKinds(base.baseDir, base.baseManifest));
     return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces, settingsLeft: proposal.settingsLeft === true, helpers: shippedHelpers(proposal.files, id) });
   }

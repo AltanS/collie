@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { parseJson } from "../../web/src/lib/json.ts";
 import { HILL_SUMMARY_MAX, type HillCollieRef, type HillDecision, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
+import { viewHasCode } from "../../web/src/lib/hill/code-card.ts";
 import {
   ACCESS_LINES,
   AGENT_VIEW_PLACE,
@@ -56,7 +57,8 @@ import { rulesChange, rulesDiffRows } from "./rules-diff.ts";
 // masked in it, and git's output not cut. Collie recommends `use` only when every changed file is
 // shown, the rights did not change and a text search finds nothing new. Otherwise the summary says how
 // much is shown ("1 of 3 files shown."), and a card with no view at all says "The change is too large
-// to show here. Read it on the machine before you say yes."
+// to show here. Read it on the machine before you say yes." A card whose view shows no code offers
+// "Keep" only (2026-11-17): the yes is then on the machine.
 //
 // EVERY NEW RIGHT SHOWS, OR THERE IS NO "USE" (security read 2, item 1). When the new rights, the inputs
 // sentence, the new instructions and the warnings do not fit one view together, the card offers "Keep"
@@ -387,7 +389,10 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
     priority: "today",
     recommends: powersChanged || warnings.length > 0 || !whole ? null : recommend,
   };
-  const single = shown.view === null ? card : { ...card, view: shown.view };
+  // A card whose view shows no code offers no yes (the lead's decision, 2026-11-17): the phone shows such a
+  // card with "Keep" only, so the bridge makes it that way. Its summary sends the person to the machine.
+  const viewed = shown.view === null ? card : { ...card, view: shown.view };
+  const single = shown.view !== null && viewHasCode(shown.view) ? viewed : keepOnly(viewed);
   if (rulesFit && (whole || fileCount > diff.files.length)) return single;
   // Not whole on one card: every line on a group of cards (card-group.ts), the rules first. A line the mask
   // changed shows masked, its card says so, and Collie recommends nothing. More than 8 cards, a file that is
@@ -629,8 +634,8 @@ function fitCode(head: readonly ViewNode[], diff: VersionDiff): VersionViewShown
     if (rows > 0) view.push(filesTable(files, rows));
     let shown = 0;
     const listed = new Set(files.slice(0, rows).map((file) => file.rel));
-    // A row whose bit alone moved has no line to show: the row is the whole change.
-    shown += files.slice(0, rows).filter((file) => file.hunk !== null && file.hunk.length === 0 && file.mode !== undefined).length;
+    // A file counts as shown only by a diff node of its own: a bit that alone moved has its one line
+    // (version-diff.ts `noLineChange`), so no card counts a file whose code part shows nothing (2026-11-17).
     for (const [i, file] of largest.slice(0, hunks).entries()) {
       const hunk = hunkNode(file, i === hunks - 1 ? lines : DIFF_LIMITS.lines);
       if (hunk === null) continue;
@@ -767,6 +772,11 @@ export class VersionCards implements TrickVersionsPort {
     if (!auto.ok) this.warn(`${ref.id}: the new version is in, but take changes without asking could not be turned on: ${auto.message}`);
     return { ok: true };
   }
+}
+
+/** A card with "Keep" alone and no recommendation: what a version card with no code to show offers. */
+function keepOnly(card: Omit<HillPostInput, "requestId">): Omit<HillPostInput, "requestId"> {
+  return { ...card, options: (card.options ?? []).filter((option) => option.intent === "keep"), recommends: null };
 }
 
 /** A version change's answer as the card's verdict, its refusal in the card's words. */
