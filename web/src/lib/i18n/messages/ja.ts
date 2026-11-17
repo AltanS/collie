@@ -3201,6 +3201,7 @@ export const ja: Dictionary = {
   "apiError.accounts.default": "デフォルトのプロファイルは削除できません。",
   "apiError.accounts.unknown": "このプロファイルはもうありません。何も開始されていません。",
   "apiError.accounts.store_unreadable": "プロファイルのファイルを読み取れなかったため、何も変更されていません。",
+  "apiError.local.no_text": "ブリッジのローカルキーでは、画面もメッセージも読み取れません。ペアリング済みデバイスとして読み取ってください。",
   "apiError.api.unknown_op": "ローカル API にそのような操作はありません。hello で一覧を取得してください。",
   "apiError.api.denied": "ローカル API はこの操作を許可していません。hello で一覧を取得してください。",
   "apiError.api.no_run_token": "このリリースでは、ローカル API はトリック自身の実行に応答します。",

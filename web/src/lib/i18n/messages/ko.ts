@@ -3194,6 +3194,7 @@ export const ko: Dictionary = {
   "apiError.accounts.default": "기본 프로필은 제거할 수 없습니다.",
   "apiError.accounts.unknown": "이 프로필은 더 이상 없습니다. 아무것도 시작되지 않았습니다.",
   "apiError.accounts.store_unreadable": "프로필 파일을 읽을 수 없어 아무것도 바뀌지 않았습니다.",
+  "apiError.local.no_text": "브리지의 로컬 키로는 화면도 메시지도 읽을 수 없습니다. 페어링된 기기로 읽으세요.",
   "apiError.api.unknown_op": "로컬 API에 그런 작업이 없습니다. hello로 목록을 요청하세요.",
   "apiError.api.denied": "로컬 API가 이 작업을 허용하지 않습니다. hello로 목록을 요청하세요.",
   "apiError.api.no_run_token": "이 릴리스에서 로컬 API는 트릭 자신의 실행에 응답합니다.",

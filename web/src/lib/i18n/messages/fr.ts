@@ -3044,6 +3044,7 @@ export const fr: Dictionary = {
   "apiError.accounts.default": "Le profil Par défaut ne peut pas être supprimé.",
   "apiError.accounts.unknown": "Ce profil n'existe plus. Rien n'a été démarré.",
   "apiError.accounts.store_unreadable": "Le fichier des profils n'a pas pu être lu, donc rien n'a été modifié.",
+  "apiError.local.no_text": "La clé locale du bridge ne lit aucun écran ni aucun message. Lisez ceci en tant qu'appareil associé.",
   "apiError.api.unknown_op": "L'API locale n'a pas cette opération. Demandez-lui la liste avec hello.",
   "apiError.api.denied": "L'API locale n'autorise pas cette opération. Demandez-lui la liste avec hello.",
   "apiError.api.no_run_token": "L'API locale répond à l'exécution propre d'un trick dans cette version.",

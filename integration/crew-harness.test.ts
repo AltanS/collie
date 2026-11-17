@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { createServer } from "node:net";
 
 import { HOST } from "../bridge/host.ts";
+import { writeTricksFeature } from "../bridge/tricks/feature-switch.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import { EXIT } from "../cli/io.ts";
 import { askSocket, cmdWalkySend, cmdWalkyStatus, type WalkyDeps } from "../cli/walky.ts";
@@ -645,6 +646,14 @@ describe("agent views: the write gate, through real requests (lead addition 1)",
   const session = "local/w1:p1";
   const sendBody = JSON.stringify({ id: "view-gate-000001", pane: "w1:p1", text: "hello", view: { trick: "morph", session } });
   const switchBody = JSON.stringify({ trick: "morph", session, on: true });
+  // Tricks as a whole are off by default, and the view service refuses `trick_off` before it looks for the trick. These tests
+  // prove the write gate for an UNKNOWN trick, so the switch is on for the block and back off after it.
+  beforeAll(() => {
+    writeTricksFeature(lead.stateDir, true);
+  });
+  afterAll(() => {
+    writeTricksFeature(lead.stateDir, false);
+  });
   const post = (path: string, body: string, headers: Record<string, string>): Promise<Response> =>
     fetch(`${lead.origin()}${path}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body });
 

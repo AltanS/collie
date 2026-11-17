@@ -3041,6 +3041,7 @@ export const pt: Dictionary = {
   "apiError.accounts.default": "O perfil Padrão não pode ser removido.",
   "apiError.accounts.unknown": "Este perfil não existe mais. Nada foi iniciado.",
   "apiError.accounts.store_unreadable": "O arquivo de perfis não pôde ser lido, então nada foi alterado.",
+  "apiError.local.no_text": "A chave local do bridge não lê nenhuma tela nem mensagem. Leia isto como um dispositivo pareado.",
   "apiError.api.unknown_op": "A API local não tem essa operação. Peça a lista com hello.",
   "apiError.api.denied": "A API local não permite esta operação. Peça a lista com hello.",
   "apiError.api.no_run_token": "A API local responde à própria execução de um truque nesta versão.",

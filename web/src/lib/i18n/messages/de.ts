@@ -3232,6 +3232,7 @@ export const de: Dictionary = {
   "apiError.accounts.default": "Das Profil Standard kann nicht entfernt werden.",
   "apiError.accounts.unknown": "Dieses Profil gibt es nicht mehr. Es wurde nichts gestartet.",
   "apiError.accounts.store_unreadable": "Die Profildatei konnte nicht gelesen werden, daher wurde nichts geändert.",
+  "apiError.local.no_text": "Der lokale Schlüssel der Bridge liest keinen Bildschirm und keine Nachricht. Lies das als gekoppeltes Gerät.",
   "apiError.api.unknown_op": "Die lokale API kennt diese Operation nicht. Frage sie mit hello nach der Liste.",
   "apiError.api.denied": "Die lokale API erlaubt diese Operation nicht. Frage sie mit hello nach der Liste.",
   "apiError.api.no_run_token": "Die lokale API antwortet in dieser Version auf den eigenen Lauf eines Tricks.",

@@ -277,7 +277,8 @@ describe("moving the switch", () => {
     expect(r.specs).toHaveLength(1);
   });
 
-  test("off while a program RUNS: the child is killed, and the tap and the answer waiting behind it never start", async () => {
+  // POSIX only: the trick runs `./legs.sh`, a `#!/bin/sh` program, which the runner refuses on Windows.
+  test.skipIf(process.platform === "win32")("off while a program RUNS: the child is killed, and the tap and the answer waiting behind it never start", async () => {
     const pids = await tempRoot();
     const pidFile = join(pids, "pids");
     // The first run answers at once (it draws the belt); every later run records its pid and sleeps.
