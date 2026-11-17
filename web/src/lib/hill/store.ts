@@ -389,6 +389,19 @@ export function useHillCount(): number {
   );
 }
 
+/**
+ * How many open decisions a trick posted (`from.kind === "trick"`). The switch for tricks as a whole arms on
+ * these: off, the bridge hides them and they cannot be answered, but they stay stored and come back when
+ * tricks are switched on. Collie's own cards about a trick (kind `collie`) are no trick's Decision.
+ */
+export function useHillTrickCount(): number {
+  return useSyncExternalStore(
+    subscribe,
+    () => held.open.filter((decision) => decision.from.kind === "trick").length,
+    () => 0,
+  );
+}
+
 /** What this page's answer to one decision came to, until the next list; null when it sent none. */
 export function useHillAnswerHeld(decisionId: string): HillAnswerHeld | null {
   return useSyncExternalStore(

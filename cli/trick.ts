@@ -58,10 +58,12 @@ import {
   type OfficialState,
   type TricksRunsOn,
   type Refusal,
+  TRICKS_OFF_LINE,
   TRICKS_WINDOWS_LINE,
   TRICKS_WINDOWS_SHELL_LINE,
   tricksGated,
 } from "../web/src/lib/tricks/schema.ts";
+import { readTricksFeature } from "../bridge/tricks/feature-switch.ts";
 import { readEnvMarkers } from "./beacon.ts";
 import { readTrickFolder } from "./trick-folder.ts";
 import type { PaneKind } from "./walky.ts";
@@ -133,6 +135,18 @@ export interface TrickDeps {
 export function refuseTricksOnWindows(deps: { readonly platform?: NodeJS.Platform | undefined; readonly io: Io }): boolean {
   if (!tricksGated(deps.platform)) return false;
   deps.io.err(`error: ${TRICKS_WINDOWS_LINE}`);
+  return true;
+}
+
+/**
+ * The refusal of the verbs that bring code in or teach an agent while tricks as a whole are switched off on
+ * this machine (bridge/tricks/feature-switch.ts; no file is off): one sentence, and where to switch them on.
+ * True when it refused; the caller returns `EXIT.FAIL`. `trick check --run` and `trick dev` do not ask: they
+ * are a developer's tools, run once in their own terminal on a folder they name, and nothing reaches a phone.
+ */
+export function refuseWhileTricksOff(deps: { readonly ctx: Pick<CliContext, "stateDir">; readonly io: Io }): boolean {
+  if (readTricksFeature(deps.ctx.stateDir).on) return false;
+  deps.io.err(`error: ${TRICKS_OFF_LINE}`);
   return true;
 }
 
@@ -344,6 +358,8 @@ export async function cmdTrickList(deps: TrickDeps, args: readonly string[]): Pr
   ]);
   for (const line of lines) deps.io.out(line);
   if (runsOn !== undefined) deps.io.out(runsOnText(runsOn));
+  // Each SWITCH above is the trick's own; while tricks as a whole are off, none of them runs.
+  if (!readTricksFeature(deps.ctx.stateDir).on) deps.io.out(TRICKS_OFF_LINE);
   if (rows.some((r) => r.pending)) deps.io.out("NEW: a new version waits for your yes. Approve it in Settings, Tricks, on the phone, or with collie trick on <id>.");
   if (!bridge) deps.io.out("(the bridge did not answer: state and last run are from the files only)");
   if (rows.some((r) => r.skill && r.on)) deps.io.out("An agent reads what a trick asks of it with: collie trick skill <id>");
@@ -396,6 +412,8 @@ export async function cmdTrickSkill(deps: TrickDeps, args: readonly string[]): P
     deps.io.err("usage: collie trick skill [<id>]   (an id is 1 to 32 of a-z, 0-9 and -)");
     return EXIT.USAGE;
   }
+  // Switched off as a whole, no trick teaches an agent anything (no agent view's rules are handed out).
+  if (refuseWhileTricksOff(deps)) return EXIT.FAIL;
   const found = (await foundTricks(deps)).tricks.find((t) => t.id === id);
   if (found === undefined) return skillRefusal(deps, `no such trick: ${id}`);
   const entry = switchesOf(deps).switches.on.get(id);
@@ -512,6 +530,8 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
     deps.io.out(WARNINGS_HONESTY);
   }
   deps.io.out(`${id} is on. The bridge picks it up within seconds; its timer runs while a phone watches.`);
+  // Its own switch is written; tricks as a whole decide whether it runs at all.
+  if (!readTricksFeature(deps.ctx.stateDir).on) deps.io.out("Tricks are switched off on this machine, so it runs only after collie tricks on.");
   deps.io.out(`Approved the code of ${id} as it is now: sha256 ${approved.hash}. The bridge runs this copy; an edit of the folder waits for your yes.`);
   // Agent instructions are approved with the code: name the bytes, and where to read them.
   const rules = approved.manifest;

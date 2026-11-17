@@ -1463,7 +1463,7 @@ export const LATER: readonly LaterEntry[] = [
 // ── Commands ─────────────────────────────────────────────────────────────────────────────────
 
 /** The three verb trees: `collie trick`, `collie trick view` and `collie hill`. */
-export type CommandGroup = "trick" | "trick view" | "hill";
+export type CommandGroup = "trick" | "tricks" | "trick view" | "hill";
 
 export interface CommandFlag {
   readonly flag: string;
@@ -1481,7 +1481,7 @@ export interface CommandEntry {
 
 const JSON_FLAG: CommandFlag = { flag: "--json", what: "Print one JSON document instead of text." };
 
-/** Every verb of `collie trick`, `collie trick view` and `collie hill`. The test holds this list to the CLI's own verb lists. */
+/** Every verb of `collie trick`, `collie tricks`, `collie trick view` and `collie hill`. The test holds this list to the CLI's own verb lists. */
 export const COMMANDS: readonly CommandEntry[] = [
   { group: "trick", verb: "list", usage: "trick list [--json] [--official]", what: "Lists every trick folder with its switch, state, last run and last error.", flags: [JSON_FLAG, { flag: "--official", what: "List the official tricks this Collie can add from the phone." }] },
   { group: "trick", verb: "add", usage: "trick add [<name> | <https-url>[//<folder>][#<ref>]]", what: "Copies a trick from a git repository into the tricks folder, off. With no source it lists the official tricks and adds nothing.", flags: [] },
@@ -1514,6 +1514,9 @@ export const COMMANDS: readonly CommandEntry[] = [
   { group: "trick", verb: "guide", usage: "trick guide [--json]", what: "Prints how to write a trick and hand it to the person, as plain text for an agent.", flags: [JSON_FLAG] },
   { group: "trick", verb: "propose", usage: "trick propose <folder> [--request-id <uuid>] [--json]", what: "Hands a trick folder to the person as a card of Collie's own on the lead: on the Hill, or in Settings, Tricks, while the Hill is off. Nothing runs before their yes.", flags: [{ flag: "--request-id", what: "The proposal's request id, a UUID. The same sender, id and files get the same answer." }, JSON_FLAG] },
   { group: "trick", verb: "view", usage: "trick view <trick> <verb> [args]", what: "Runs one verb of an agent view, from the agent's pane. The verbs are the `trick view` commands below.", flags: [] },
+  { group: "tricks", verb: "on", usage: "tricks on [--json]", what: "Switches tricks on for this machine. They are an experiment and off until switched on. Each trick still has its own switch.", flags: [JSON_FLAG] },
+  { group: "tricks", verb: "off", usage: "tricks off [--json]", what: "Switches tricks off for this machine: no trick runs or draws. Each trick keeps its own switch.", flags: [JSON_FLAG] },
+  { group: "tricks", verb: "status", usage: "tricks status [--json]", what: "Says whether tricks are on for this machine.", flags: [JSON_FLAG] },
   { group: "trick view", verb: "start", usage: 'trick view <trick> start [--session <address>] [--rules <id>] ["<what you do>"] [--json]', what: "Says the agent is drawing. The phone shows Drawing and the note until `show` lands.", flags: [{ flag: "--session", what: "The session's address, copied from the request's head." }, { flag: "--rules", what: "The id of the rules the agent holds." }, JSON_FLAG] },
   { group: "trick view", verb: "show", usage: 'trick view <trick> show [--session <address>] <file.json | -> [--title "<one line, at most 80>"] [--image <path>[=<caption>]]... [--json]', what: "Draws one whole screen from a file, or from stdin with `-`.", flags: [{ flag: "--session", what: "The session's address." }, { flag: "--title", what: "The screen's title, one line." }, { flag: "--image", what: "Add a picture, with an optional caption. The first is ref 0." }, JSON_FLAG] },
   { group: "trick view", verb: "set", usage: "trick view <trick> set [--session <address>] <id> <file.json | -> [--after <id> | --first] [--image <path>[=<caption>]]... [--json]", what: "Puts one block on the screen. A block with that id is replaced where it stands.", flags: [{ flag: "--session", what: "The session's address." }, { flag: "--after", what: "Put a new block after this one." }, { flag: "--first", what: "Put a new block first." }, { flag: "--image", what: "Add a picture to the screen's set." }, JSON_FLAG] },

@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { writeTricksFeature } from "../bridge/tricks/feature-switch.ts";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -20,7 +21,7 @@ import { realFiles } from "./sys.ts";
 import { leadStore, member } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { inputsSentence, parseTrickDocument, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT, type TricksReply } from "../web/src/lib/tricks/schema.ts";
-import { STATUS_TEXT_MAX, TRICKS_WINDOWS_LINE, TRICKS_WINDOWS_SHELL_LINE } from "../web/src/lib/tricks/schema.ts";
+import { STATUS_TEXT_MAX, TRICKS_OFF_LINE, TRICKS_WINDOWS_LINE, TRICKS_WINDOWS_SHELL_LINE } from "../web/src/lib/tricks/schema.ts";
 import { trickGuide } from "./trick-guide.ts";
 
 const dirs: string[] = [];
@@ -973,10 +974,22 @@ describe("collie trick skill", () => {
     await cmdTrickInit(d, ["legs"]);
     if (skill !== null) await writeFile(join(d.configDir, "tricks", "legs", "SKILL.md"), skill);
     expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
+    // Tricks as a whole are on: a trick teaches an agent only then (bridge/tricks/feature-switch.ts).
+    writeTricksFeature(d.stateDir, true);
     d.out.length = 0;
     d.err.length = 0;
     return d;
   }
+
+  test("with tricks switched off as a whole, a trick that is on teaches nothing: one sentence, and where to switch them on", async () => {
+    const d = await onTrick();
+    writeTricksFeature(d.stateDir, false);
+    expect(await cmdTrickSkill(d, ["legs"])).toBe(EXIT.FAIL);
+    expect(d.err).toEqual([`error: ${TRICKS_OFF_LINE}`]);
+    expect(d.out).toEqual([]);
+    // The brief with no id is for an agent that writes a trick: it reads the same with tricks off.
+    expect(await cmdTrickSkill(d, [])).toBe(EXIT.OK);
+  });
 
   test("is a verb of the tree, and the list marks which tricks have a SKILL.md", async () => {
     expect(TRICK_SUBCOMMANDS).toContain("skill");

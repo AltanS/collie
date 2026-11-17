@@ -90,6 +90,7 @@ function life(f: Folders, hillOn = true): Life {
     onCollieAnswer: (ref, intent) => Promise.resolve(ref.type === "rights" ? answerRights(intent) : { ok: false, reason: "no" }),
   });
   const service = new TricksService({
+    feature: { on: () => true },
     configDir: f.configDir,
     stateDir: f.stateDir,
     memberId: "lodge",

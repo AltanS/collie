@@ -284,6 +284,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: with the Hill off, the hill's revision while it holds a card of Collie's own about
   // a trick (M96 spec 14), absent otherwise, so a body that never had such a card carries no such key.
   trickCardsRev: true,
+  // Not a crew dimension: the switch for tricks as a whole, present only while it is off, which is the
+  // default (2026-11-17); a server built with no tricks runner (every solo test here) carries none.
+  tricksOff: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -544,6 +547,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       // With the Hill off, the hill's revision while it holds a card of Collie's own about a trick.
       "trickCardsRev",
       "trickViewsRev",
+      "tricksOff",
       "tricksRev",
       "ts",
       "update",

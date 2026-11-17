@@ -88,7 +88,7 @@ interface Rig {
   readonly removedMembers: Set<string>;
 }
 
-function rig(receipts: HillReceiptSurface = memoryHillReceipts(), keepId?: () => void): Rig {
+function rig(receipts: HillReceiptSurface = memoryHillReceipts(), keepId?: () => void, tricksOn?: () => boolean): Rig {
   let n = 0;
   const store = new HillStore(null, () => state.clock);
   const state: Omit<Rig, "hill"> = {
@@ -132,6 +132,7 @@ function rig(receipts: HillReceiptSurface = memoryHillReceipts(), keepId?: () =>
     },
     memberId: "m_aaaaaaaaaa",
     keepId,
+    tricksOn,
     machine: "desk",
     now: () => state.clock,
     mintId: () => {
@@ -1397,5 +1398,39 @@ describe("clearing closed decisions", () => {
     expect(hill.clear(null)).toEqual({ cleared: [decision.id], skipped: [] });
     expect(store.all()).toEqual([]);
     expect(audit.at(-1)).toMatchObject({ action: "hill.clear", detail: { count: 1 } });
+  });
+});
+
+describe("tricks switched off as a whole (bridge/tricks/feature-switch.ts)", () => {
+  test("a trick's open Decision stays stored, is not served, and its answer is refused before anything closes or runs", async () => {
+    const switched = { on: true };
+    const r = rig(memoryHillReceipts(), undefined, () => switched.on);
+    const asked = posted(r.hill.postDecision(trickSender(), input(1)));
+    const agent = posted(r.hill.post(POSTER, input(2)));
+    const revOn = r.hill.rev();
+    expect(r.hill.list().open.map((decision) => decision.id).toSorted()).toEqual([agent.id, asked.id].toSorted());
+
+    switched.on = false;
+    // The list's revision moves with the switch, so a phone holding the old one refetches.
+    expect(r.hill.rev()).not.toBe(revOn);
+    expect(r.hill.list().open.map((decision) => decision.id)).toEqual([agent.id]);
+    expect(await r.hill.answer(answerOf(asked, 100, "yes"), asked.id, "Pixel 9")).toEqual({ kind: "tricks-off" });
+    expect(r.taps).toEqual([]);
+    expect(r.store.get(asked.id)?.state).toBe("open");
+    // An agent's Decision is not a trick's: it is served and answered as before.
+    expect((await receiptOf(r, answerOf(agent, 101, "yes"))).code).toBe("ok");
+
+    // Back on: the same Decision shows again and its answer runs the trick.
+    switched.on = true;
+    expect(r.hill.list().open.map((decision) => decision.id)).toEqual([asked.id]);
+    expect((await receiptOf(r, answerOf(asked, 102, "yes"))).code).toBe("ok");
+    expect(r.taps.map((tap) => tap.trickId)).toEqual(["nightly-leg"]);
+  });
+
+  test("with no switch wired (a test seam) a trick's Decisions are served as before", () => {
+    const r = rig();
+    const asked = posted(r.hill.postDecision(trickSender(), input(1)));
+    expect(r.hill.tricksOff()).toBe(false);
+    expect(r.hill.list().open.map((decision) => decision.id)).toEqual([asked.id]);
   });
 });

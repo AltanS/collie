@@ -4,6 +4,8 @@
 
 This page lists every place, part, manifest key, limit and command of a ColliePWA trick, and it is complete. It is generated from the code, so it cannot drift. It is the one list: other pages link here and do not repeat its tables.
 
+Tricks are experimental. They may change, lose settings, or be withdrawn in a patch release. They are off until you switch them on at the top of Settings → Tricks, or with `collie tricks on`.
+
 ## Places
 
 A place is a spot on the phone where a trick can show (a surface). A program trick, a program on your machine that prints parts, draws in the first six. An agent view, one screen that the session's own agent draws, is the seventh.
@@ -1640,6 +1642,22 @@ Every verb of `collie trick`.
 | `guide` | `--json` | Print one JSON document instead of text. |
 | `propose` | `--request-id` | The proposal's request id, a UUID. The same sender, id and files get the same answer. |
 | `propose` | `--json` | Print one JSON document instead of text. |
+
+### `collie tricks`
+
+The switch for tricks as a whole on this machine. Tricks are an experiment and off until switched on.
+
+| Verb | Usage | What it does |
+| --- | --- | --- |
+| `on` | `collie tricks on [--json]` | Switches tricks on for this machine. They are an experiment and off until switched on. Each trick still has its own switch. |
+| `off` | `collie tricks off [--json]` | Switches tricks off for this machine: no trick runs or draws. Each trick keeps its own switch. |
+| `status` | `collie tricks status [--json]` | Says whether tricks are on for this machine. |
+
+| Verb | Flag | What it does |
+| --- | --- | --- |
+| `on` | `--json` | Print one JSON document instead of text. |
+| `off` | `--json` | Print one JSON document instead of text. |
+| `status` | `--json` | Print one JSON document instead of text. |
 
 ### `collie trick view`
 

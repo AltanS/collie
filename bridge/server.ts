@@ -254,6 +254,7 @@ import { asksBound, TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tric
 import type { OfficialTricksSurface } from "./tricks/official-install.ts";
 import { placeTrickSessions } from "./tricks/panes.ts";
 import type { TricksSurface } from "./tricks/service.ts";
+import { TRICKS_OFF_LINE } from "../web/src/lib/tricks/schema.ts";
 import { snapshotPlan } from "./crew/merge.ts";
 import { selectHostFrom, type HostSelector } from "./crew/registry.ts";
 import { crewHerdTagFor } from "./crew/tags.ts";
@@ -646,6 +647,8 @@ const WALKY_DELIVER_ROUTE = /^\/api\/pane\/([^/]+)\/walky\/([^/]+)\/deliver$/;
 const TRICKS_TAP_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/tap$/;
 // And the off switch (M94 slice 04): write-gated like the tap, the same file `collie trick on|off` writes.
 const TRICKS_SWITCH_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/switch$/;
+/** The switch for tricks as a whole: two segments, so it never meets a trick's `<host>/<id>/switch`. */
+const TRICKS_FEATURE_ROUTE = "/api/tricks/switch";
 // Pairing by a request a paired phone approves (ADR 0139, bridge/pair-request.ts). The asking browser's
 // poll is OPEN (its poll secret, in a header, is its credential; `OPEN_API_PATTERNS`), and the approver's
 // read and answer of one request need a paired device's token (`pairApproveGateLevel`). Each id's shape
@@ -2090,6 +2093,9 @@ export function startServer(opts: {
     // tricks (service.ts `rev`): an install with neither sends the bytes it always sent.
     const tricksRev = opts.tricks?.rev();
     if (tricksRev !== undefined) body.tricksRev = tricksRev;
+    // The switch for tricks as a whole (bridge/tricks/feature-switch.ts), as `hillOff` carries the Hill's: every
+    // phone draws the switch and the off state from it, so a second phone sees a change on its next poll.
+    if (opts.tricks !== undefined && !opts.tricks.switchedOn()) body.tricksOff = true;
     // The trick sessions (M94 slice 03, bridge/tricks/panes.ts): the Tricks Space after the real Spaces, a
     // tab per trick, a pane per session part. Added AFTER `sessions` took its counts and outside every
     // state engine, so no count, triage or push ever sees one. None without a trick session.
@@ -3376,6 +3382,23 @@ export function startServer(opts: {
         }
         const answer = await tricksTapRoute(tricks, tricksTap, body, url.searchParams);
         return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+      }
+      // The switch for tricks as a whole: read by any paired device, moved with the write right, as the Hill's
+      // switch and a trick's own switch are, because it decides whether any trick's program runs. The value
+      // also rides on the snapshot as `tricksOff`, which is what the phone draws from.
+      if (pathname === TRICKS_FEATURE_ROUTE && (req.method === "GET" || req.method === "POST")) {
+        const denied = guard(req, cfg, req.method === "GET" ? TRICKS_ROUTE_RIGHTS.reply : TRICKS_ROUTE_RIGHTS.feature, pairingGate);
+        if (denied) return denied;
+        let body: JsonValue | undefined;
+        if (req.method === "POST") {
+          try {
+            // SAFETY: `Request.json()` output IS a JsonValue by construction; `tricksFeatureRoute` checks the one field.
+            body = (await req.json()) as JsonValue;
+          } catch {
+            body = undefined;
+          }
+        }
+        return tricksFeatureRoute(opts.tricks, req.method === "POST" ? { body } : null, { device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       const tricksSwitch = TRICKS_SWITCH_ROUTE.exec(pathname);
       if (tricksSwitch !== null && req.method === "POST") {
@@ -10376,6 +10399,29 @@ export function withHill(body: SnapshotResponse, hill: Pick<HillService, "isOn" 
   return withHillRev(body, hill.rev());
 }
 
+/**
+ * `GET` and `POST /api/tricks/switch`: the switch for tricks as a whole (bridge/tricks/feature-switch.ts).
+ * `GET` (`write` null) answers `{ on }`. `POST` takes `{ "on": boolean }` and nothing else and answers `{ on }`
+ * as the switch now reads; 400 for another body, 409 on a Windows bridge (the gate stays first), 503 when the
+ * file could not be written, 404 with no tricks runner.
+ */
+export function tricksFeatureRoute(
+  tricks: Pick<TricksSurface, "switchedOn" | "switchTo" | "gateLine"> | undefined,
+  write: { readonly body: JsonValue | undefined } | null,
+  context: { readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (tricks === undefined) return text("not found", 404);
+  if (write === null) return json({ on: tricks.switchedOn() }, context.acceptEncoding);
+  const doc = asJsonObject(write.body);
+  const on = asJsonBoolean(doc?.on);
+  if (doc === undefined || on === undefined || Object.keys(doc).length !== 1) return text('bad request: the body is { "on": true } or { "on": false }', 400);
+  const gate = tricks.gateLine();
+  if (gate !== null) return text(gate, 409);
+  const now = tricks.switchTo(on, context.device);
+  if (now === null) return text("the tricks switch could not be saved on this machine; nothing changed", 503);
+  return json({ on: now }, context.acceptEncoding);
+}
+
 /** What the answer route says while the Hill is switched off: nothing was typed, and the decision stays open. */
 export const HILL_SWITCHED_OFF_TEXT = "the Hill is off on this Collie, so nothing was sent";
 
@@ -10481,6 +10527,8 @@ export async function hillAnswerRoute(
       return text(HILL_UNSAVED_TEXT, 503);
     case "off":
       return text(HILL_SWITCHED_OFF_TEXT, 409);
+    case "tricks-off":
+      return text(TRICKS_OFF_LINE, 409);
   }
 }
 

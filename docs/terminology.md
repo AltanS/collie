@@ -330,11 +330,19 @@ minutes, a body of at most 4,000 characters, and a reply chain of at most 4 repl
 ## Trick
 
 A folder that adds its own parts to Collie: a small program, rules for an agent, or both. Collie draws
-what it shows, in Collie's own look. A trick is off until you switch it on, and its program runs as
-you ([Tricks](tricks.md)). There are two kinds, a [program trick](#program-trick) and an
+what it shows, in Collie's own look. Tricks are an experiment: they run only while the
+[tricks switch](#tricks-switch) is on, a trick is off until you switch it on too, and its program runs
+as you ([Tricks](tricks.md)). There are two kinds, a [program trick](#program-trick) and an
 [agent view](#agent-view). The old word for a trick was "mod". The mods folder of herdr-app is a
 different thing, a panel of that app
 ([The Collie panel for herdr-app](multiplexers.md#the-collie-panel-for-herdr-app)).
+
+## Tricks switch
+
+The one switch for tricks as a whole on a machine, at the top of Settings → Tricks and in
+`collie tricks on|off|status`. Tricks are an experiment, so it is off until you switch it on. While it
+is off no trick runs or draws, and each trick keeps its own switch for when you switch it on
+([Switch tricks on or off](tricks.md#switch-tricks-on-or-off)).
 
 ## Program trick
 
