@@ -18,6 +18,7 @@ import { BuildStamp } from "@/components/build-stamp";
 import { CrewFooterLink } from "@/components/crew-footer-link";
 import { CrewTab } from "@/components/crew-tab";
 import { TelemetryNotice } from "@/components/telemetry-notice";
+import { useTelemetryNoticeRead } from "@/hooks/use-telemetry-notice";
 import { UpdateBanner, arriveAtUpdateLine } from "@/components/update-banner";
 import { TrickCardsLine } from "@/components/trick-cards";
 import { Fab } from "@/components/ui/fab";
@@ -286,6 +287,9 @@ export function HomeRoute() {
   // scrolls, so nothing else restores this. Keyed on the scope (host + session), so two herdr
   // sessions — or two crew members — keep independent positions. See lib/scroll-memory.ts.
   const scrollRef = useScrollMemory<HTMLDivElement>(`home:${scopeKey(data.scope)}`);
+  // The install-count notice's one read: a device that has not spent the notice keeps the list unseen for
+  // at most 400 ms while it answers, so the notice never opens above a list that has painted (calm load).
+  const telemetry = useTelemetryNoticeRead();
   // THE UPDATE LINE, BROUGHT INTO VIEW ONCE (2026-11-06). A tap on the header mark while the app is
   // updating opens this screen and asks for the line that says what is happening
   // (`lib/bundle-apply.ts`). Taken after mount, so the scroll memory's layout effect has already put
@@ -323,13 +327,13 @@ export function HomeRoute() {
           load-bearing: it makes this scroller the containing block for its absolutely-positioned
           descendants. Tailwind's `sr-only` is `position: absolute`, so every status label in the
           list would otherwise escape this scroller's clip and grow the document's own scrollbar. */}
-      <div ref={scrollRef} className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+      <div ref={scrollRef} className={cn("relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto", telemetry.held && "invisible")}>
         {/* A notice BELOW the header is content, not viewport chrome: it is an inset box on the
             page gutter, not a full-bleed strip. Full-bleed it ran its left edge 16px outside the
             list it sat on top of — two left edges stacked, the loudest misalignment on the page. */}
         <ReadOnlyBanner device={data.device} />
         {/* Once per device: the install count is on by default (M86 spec 02). Self-hides. */}
-        <TelemetryNotice />
+        <TelemetryNotice read={telemetry} />
 
         <main className="flex-1">
           {/* THE TRICKS' TILES (the `dashboard` place, 2026-11-10): one per trick, in a strip at the top
