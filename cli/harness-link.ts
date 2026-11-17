@@ -83,7 +83,7 @@ const CLAUDE_CALL_MS = 30_000;
 export const PART_MARKER = "// collie-inside part";
 const markerLine = (harness: string, version: string): string => `${PART_MARKER} ${harness} ${version}`;
 
-/** The part text this build carries for a file harness, or null: no part for it in this build yet. */
+/** The part text this build carries for a file harness, or null: no part for it in this build. */
 export type PartTexts = Readonly<Record<"pi" | "omp" | "opencode", string | null>>;
 /** No file part ships yet (M99 specs 06 and 08 add them). */
 export const BUILT_PARTS = { pi: null, omp: null, opencode: null } satisfies PartTexts;
@@ -256,7 +256,7 @@ export function cmdHarnessLink(deps: HarnessLinkDeps, harness: LinkHarness): num
   }
   const wrote = writePart(deps, harness);
   if (wrote.kind === "no-part") {
-    io.err(`error: this Collie has no ${INSTALL_WORD[harness]} for ${harness} yet.`);
+    io.err(`error: this Collie has no ${INSTALL_WORD[harness]} for ${harness}.`);
     return EXIT.FAIL;
   }
   if (wrote.kind === "foreign") {
@@ -277,6 +277,7 @@ export function cmdHarnessLink(deps: HarnessLinkDeps, harness: LinkHarness): num
   writeRecord(deps, harness, version);
   io.out(`linked ${harness}: ${INSTALL_WORD[harness]} ${version}.`);
   if (harness === "claude") io.out("  A running Claude Code session takes it after /reload-plugins; a new session takes it at start.");
+  io.out(`  This is an experiment, for Claude Code only. The screen path stays the normal road. \`collie harness unlink ${harness}\` turns it off.`);
   if (blockedByPolicy(deps, harness)) io.out(`  note: a managed setting (allowManagedHooksOnly) stops the hooks of user plugins here, so the ${INSTALL_WORD[harness]} stays idle.`);
   return EXIT.OK;
 }
@@ -426,7 +427,7 @@ export function linkFindings(deps: Pick<HarnessLinkDeps, "ctx" | "files" | "mana
     const words = linkStateWords(harness, state);
     if (state.kind === "not-linked") {
       const built = harness === "claude" || (deps.parts ?? BUILT_PARTS)[harness] !== null;
-      return ok(check, built ? `not linked: \`collie harness link ${harness}\` lets Collie send to it by data` : `not linked: no ${INSTALL_WORD[harness]} for it in this build yet`);
+      return ok(check, built ? `not linked: an optional experiment; Collie uses the screen path` : `not linked: no ${INSTALL_WORD[harness]} for it in this build`);
     }
     if (state.kind === "older" || state.kind === "missing") return warn(check, words, `\`collie harness link ${harness}\` writes this build's ${INSTALL_WORD[harness]}`);
     if (state.kind === "blocked") return warn(check, words, "ask the administrator to allow the hooks of user plugins, or leave it: Collie uses the screen path");

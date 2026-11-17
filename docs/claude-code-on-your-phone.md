@@ -232,9 +232,15 @@ apps. See [Web Push](voice-and-push.md#web-push-optional).
 
 ## Send by data (optional, experimental)
 
-Collie normally types each message into the pane and reads the box back to prove it arrived. With
-Collie 1.29.0 or later you can link Claude Code instead. A plain message from the phone then goes
-into Claude Code as data, and no key is typed.
+Send by data is an experiment. You turn it on yourself, for Claude Code only, and nothing in Collie
+asks you to. The normal road is the screen: Collie types each message into the pane and reads the box
+back to prove it arrived. That road works with no link, and it carries every message that the link
+does not.
+
+With Collie 1.29.0 or later you can link Claude Code. A plain message from the phone then goes into
+Claude Code as data, and no key is typed, when the plugin is connected, Collie knows the state of the
+turn and the message is plain text. Any other send keeps the screen road, so on a linked machine
+many sends can still go by the screen. `collie harness unlink claude` turns the link off.
 
 ```bash
 collie harness link claude     # needs Claude Code on your PATH
@@ -254,13 +260,17 @@ What linking does:
   in once the box is empty. The plugin tells Collie only whether a draft is there, never its text.
 - An Allow or Deny tap on a permission card answers the dialog through the plugin. A tap at the desk
   still wins when it comes first.
-- Everything else keeps the screen path: slash commands, shell lines, attachments and steers.
+- Everything else keeps the screen path: slash commands, shell lines, attachments and steers. So do
+  questions and plans (`AskUserQuestion`, `ExitPlanMode`), a session that started before the link and
+  has not run `/reload-plugins`, and a session that runs as a background job.
 - The plugin never calls a model, never reads a key or a password, and writes no file.
 
 What it does not do:
 
-- Nothing goes by data until you run `collie harness link claude`. Only Claude Code can be linked in this
-  version; the other agents keep the screen path.
+- Nothing goes by data until you run `collie harness link claude`. Only Claude Code can be linked;
+  the other agents keep the screen path.
+- It does not remove send failures. When Claude Code refuses a message and nothing entered, the same
+  send is typed once by the screen road. Any other failure still reads "may have arrived".
 - Windows keeps the screen path. `collie harness link` refuses there.
 - When an administrator sets `allowManagedHooksOnly`, Claude Code runs no plugin hooks. The plugin
   then stays idle and Collie types as before. `collie doctor` says so on its `link-claude` line.
