@@ -1,3 +1,4 @@
+import { HILL_ANSWER_RIGHT } from "../hill/parse.ts";
 import { afterAll, describe, expect, test } from "bun:test";
 import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -1070,7 +1071,8 @@ describe("package I: the card in the session that proposed it, switched on with 
   test("no agent door reaches the yes: the answer route needs the write right, the walky socket has no answer op, the local API only reads", async () => {
     const server = await readFile(join(import.meta.dir, "..", "server.ts"), "utf8");
     const route = server.slice(server.indexOf('if (pathname === "/api/hill/answer" && req.method === "POST")'));
-    expect(route.slice(0, 200)).toContain('browserGate("write")');
+    expect(route.slice(0, 200)).toContain("browserGate(HILL_ANSWER_RIGHT)");
+    expect(HILL_ANSWER_RIGHT).toBe("write");
     const socket = await readFile(join(import.meta.dir, "..", "walky", "socket.ts"), "utf8");
     expect(socket).not.toContain('"hill.answer"');
     expect(socket).not.toContain('"trick.on"');
