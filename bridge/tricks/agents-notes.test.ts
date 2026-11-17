@@ -26,7 +26,11 @@ function cardText(manifest: TrickManifest, files: Record<string, string>): strin
 describe("the notes init writes", () => {
   test("their text is pinned to NOTES_VERSION: a change to the text bumps the version and this hash", () => {
     const hash = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft)).digest("hex").slice(0, 16);
-    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 5, hash: "7c36b5e6d11f7adb", draft: "30d901f38ead50c8" });
+    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 6, hash: "0059a80526fc454a", draft: "75802a20e01ac85b" });
+    // v5's bytes stay as shipped (security read of package I), so a draft init wrote at v5 is still named, as v5.
+    const v5 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 5)).digest("hex").slice(0, 16);
+    expect({ hash: v5(false), draft: v5(true) }).toEqual({ hash: "7c36b5e6d11f7adb", draft: "30d901f38ead50c8" });
+    expect(shippedNotesVersion("legs", sampleAgents("legs", "ts", true, 5))).toBe(5);
     // v4's bytes stay as shipped (package I), so a draft init wrote at v4 is still named, as v4.
     const v4 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 4)).digest("hex").slice(0, 16);
     expect({ hash: v4(false), draft: v4(true) }).toEqual({ hash: "7c36b5e6d11f7adb", draft: "dd553c9f6f186664" });
@@ -54,6 +58,14 @@ describe("the notes init writes", () => {
     const text = sampleAgents("legs", "sh", true);
     expect(text).toContain("never run\n   `collie tricks on` or `collie hill on`: all three refuse inside an agent's pane.");
     expect(sampleAgents("legs", "sh", true, 4)).not.toContain("collie hill on");
+  });
+
+  test("v6: the notes say where a belt mark sits and what cwd is, and v5 does not", () => {
+    const text = sampleAgents("legs", "ts", true);
+    expect(text).toContain("A belt mark sits at the end of the scrolling strip, off screen until the person scrolls; the fixed block at the right is Collie's own.");
+    expect(text).toContain("`cwd` is the pane's folder. A workspace folder can hold several repositories; look inside it.");
+    expect(sampleAgents("legs", "ts", true, 5)).not.toContain("off screen until the person scrolls");
+    expect(sampleAgents("legs", "ts", true, 5)).not.toContain("`cwd` is the pane's folder");
   });
 
   test("a draft init wrote before v2 is still named as the notes Collie ships, as v1", () => {
