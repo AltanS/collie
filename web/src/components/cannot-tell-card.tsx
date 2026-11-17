@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Collapse } from "@/components/ui/collapse";
 import { useLocale } from "@/hooks/use-locale";
 import type { StyledLine } from "@/lib/blocks";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 // THE "CANNOT TELL" CARD (M102 spec 04, the picked option "Screen first"). A send ended `unknown`: the bridge
@@ -18,6 +18,10 @@ import { cn } from "@/lib/utils";
 // each one does. The card draws the screen it is given and calls the two handlers it is given.
 //
 // A read-only device sees the card without the buttons: it may look and may not answer.
+//
+// A FINAL ANSWER (the M102 review, K). "It arrived" that the bridge answers 409 (the receipt did not end
+// unknown) or 404 (an older member that has no such mark) cannot succeed on another tap: the line says so
+// and Close takes the place of "It arrived", so the card never loops on "Try again". Other failures keep it.
 //
 // WAITING (spec 13). When the receipt says the agent's own word may still come (`awaitingUntil`), the
 // sentence says so and "Send again" is off until the time passes. It is `aria-disabled`, not `disabled`, so
@@ -40,6 +44,13 @@ export interface CannotTellFacts {
   readonly awaitingUntil: number | null;
 }
 
+/**
+ * What became of "It arrived": `recorded` (the card goes), `failed` (on the way: Try again stays), or a final
+ * answer that no tap can change (the M102 review, K): `settled`, the receipt did not end unknown (409), and
+ * `unknownHere`, the machine does not know the mark, an older member (404). A final answer offers Close.
+ */
+export type ArrivedAnswer = "recorded" | "failed" | "settled" | "unknownHere";
+
 /** How long the ring stays after a tap on Send over the unchanged draft. */
 export const RING_MS = 1_600;
 
@@ -54,13 +65,22 @@ export interface CannotTellCardProps {
   readonly wrap?: boolean;
   /** Raised each time a tap on Send met the unchanged kept draft: each one is a new tick. A card mounted at a tick rings for later ones only. */
   readonly ring?: number;
-  /** "It arrived": resolves true when the bridge recorded it and the card should go, false when it could not. */
-  readonly onArrived: () => Promise<boolean>;
+  /** "It arrived": what became of the person's word (`ArrivedAnswer`). */
+  readonly onArrived: () => Promise<ArrivedAnswer>;
+  /** Close, offered after a final answer to "It arrived": ends the question. Sends nothing and clears nothing. */
+  readonly onClose: () => void;
   /** The second button: Send again, or Enter it again for a sign-in code. */
   readonly onAgain: () => void;
 }
 
-type CardLine = "failed" | "waiting" | null;
+type CardLine = "failed" | "waiting" | "settled" | "unknownHere" | null;
+
+const LINE_WORDS = {
+  failed: "cannotTell.arrivedFailed",
+  waiting: "cannotTell.waiting",
+  settled: "cannotTell.arrivedSettled",
+  unknownHere: "cannotTell.arrivedUnknownHere",
+} as const satisfies Record<Exclude<CardLine, null>, MessageKey>;
 
 /** The live screen: one scroller that opens at its bottom and gives way first when the dock is short. */
 function Screen({ lines, wrap }: { lines: StyledLine[]; wrap: boolean }) {
@@ -71,11 +91,13 @@ function Screen({ lines, wrap }: { lines: StyledLine[]; wrap: boolean }) {
   );
 }
 
-export function CannotTellCard({ facts, lines, wrap = false, ring = 0, onArrived, onAgain }: CannotTellCardProps) {
+export function CannotTellCard({ facts, lines, wrap = false, ring = 0, onArrived, onAgain, onClose }: CannotTellCardProps) {
   useLocale();
   const { awaitingUntil, secret, readOnly } = facts;
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<CardLine>(null);
+  // A final answer to "It arrived" (409, 404): its words stay, and Close takes the place of "It arrived".
+  const [final, setFinal] = useState<"settled" | "unknownHere" | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [ringed, setRinged] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -115,10 +137,15 @@ export function CannotTellCard({ facts, lines, wrap = false, ring = 0, onArrived
     if (busy) return;
     setBusy(true);
     setLine(null);
-    const done = await onArrived().catch(() => false);
+    const answer = await onArrived().catch((): ArrivedAnswer => "failed");
     if (!mounted.current) return;
     setBusy(false);
-    if (!done) setLine("failed");
+    if (answer === "settled" || answer === "unknownHere") {
+      setFinal(answer);
+      setLine(answer);
+      return;
+    }
+    if (answer === "failed") setLine("failed");
   }
 
   function again(): void {
@@ -126,7 +153,7 @@ export function CannotTellCard({ facts, lines, wrap = false, ring = 0, onArrived
       setLine("waiting");
       return;
     }
-    setLine(null);
+    setLine(final);
     onAgain();
   }
 
@@ -143,10 +170,16 @@ export function CannotTellCard({ facts, lines, wrap = false, ring = 0, onArrived
         <Screen lines={lines} wrap={wrap} />
         {!readOnly && (
           <div className="flex gap-2">
-            <Button type="button" variant="secondary" data-action="arrived" aria-busy={busy} className="h-11 min-w-0 flex-1" onClick={() => void arrived()}>
-              {busy && <Icon name="busy" aria-hidden className="size-3.5 animate-spin" />}
-              {t("cannotTell.arrived")}
-            </Button>
+            {final === null ? (
+              <Button type="button" variant="secondary" data-action="arrived" aria-busy={busy} className="h-11 min-w-0 flex-1" onClick={() => void arrived()}>
+                {busy && <Icon name="busy" aria-hidden className="size-3.5 animate-spin" />}
+                {t("cannotTell.arrived")}
+              </Button>
+            ) : (
+              <Button type="button" variant="secondary" data-action="close" className="h-11 min-w-0 flex-1" onClick={onClose}>
+                {t("cannotTell.close")}
+              </Button>
+            )}
             <Button
               type="button"
               variant="secondary"
@@ -164,7 +197,7 @@ export function CannotTellCard({ facts, lines, wrap = false, ring = 0, onArrived
       <Collapse open={shownLine !== null}>
         {shownLine !== null && (
           <p data-slot="cannot-tell-line" role="status" className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
-            {t(shownLine === "failed" ? "cannotTell.arrivedFailed" : "cannotTell.waiting")}
+            {t(LINE_WORDS[shownLine])}
           </p>
         )}
       </Collapse>

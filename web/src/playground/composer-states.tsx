@@ -656,7 +656,8 @@ function CannotTellPhone({ secret = false, readOnly = false, waits = false, line
           facts={{ requestId: "cannot-tell-demo", secret, readOnly, awaitingUntil }}
           lines={lines}
           wrap
-          onArrived={() => Promise.resolve(true)}
+          onArrived={() => Promise.resolve("recorded")}
+          onClose={() => undefined}
           onAgain={none}
         />
       </div>

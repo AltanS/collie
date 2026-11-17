@@ -3408,7 +3408,8 @@ export function AgentChat({
                       lines: screenLines,
                       wrap: prefs.wrap,
                       ring: cannotTellRing,
-                      onArrived: () => composerRef.current?.markArrived() ?? Promise.resolve(false),
+                      onArrived: () => composerRef.current?.markArrived() ?? Promise.resolve("failed"),
+                      onClose: () => composerRef.current?.closeCannotTell(),
                       onAgain: () => composerRef.current?.answerAgain(),
                     }
               }

@@ -6417,6 +6417,8 @@ describe("the cannot tell card (M102 spec 04)", () => {
   const SENTENCE = "Collie cannot tell if this arrived. Look at the screen.";
   const WAITING = "Collie is waiting for the agent's own word that it arrived. Send again turns on when the wait ends.";
   const FAILED = "Collie could not record that. Try again, or clear the draft yourself.";
+  const SETTLED = "Collie already knows how this send ended, so there is nothing to record. Look at the screen.";
+  const UNKNOWN_HERE = "This machine cannot record that. Look at the screen to see whether it arrived.";
   const SCREEN = splitLines(parseAnsi("  I found three notes in the sample list.\n\n  Working on it. One moment."));
   const SIGN_IN: Surface = { revision: 3, turn: "idle", modal: "none", composer: "empty", field: "secret" };
   const UNKNOWN = (id: string, parts: Parameters<typeof sendAnswer>[3] = {}) => sendAnswer(id, "unknown", "no_evidence", { offers: ["keys"], ...parts });
@@ -6449,7 +6451,8 @@ describe("the cannot tell card (M102 spec 04)", () => {
                     lines: SCREEN,
                     wrap: true,
                     ring,
-                    onArrived: () => handle.current?.markArrived() ?? Promise.resolve(false),
+                    onArrived: () => handle.current?.markArrived() ?? Promise.resolve("failed"),
+                    onClose: () => handle.current?.closeCannotTell(),
                     onAgain: () => handle.current?.answerAgain(),
                   }
             }
@@ -6568,9 +6571,9 @@ describe("the cannot tell card (M102 spec 04)", () => {
     expect(screen.queryByRole("button", { name: "Undo clear" })).toBeNull();
   });
 
-  it("cannot tell: a mark the bridge refuses keeps the card and the draft, says so in the card's line, and takes another tap", async () => {
+  it("cannot tell: a mark that fails on the way keeps the card and the draft, says so in the card's line, and takes another tap", async () => {
     let refuse = true;
-    const arrivals = bridge({ arrived: () => (refuse ? new HttpResponse("this send did not end unknown", { status: 409 }) : HttpResponse.json({ word: "arrived" })) });
+    const arrivals = bridge({ arrived: () => (refuse ? new HttpResponse("bridge down", { status: 500 }) : HttpResponse.json({ word: "arrived" })) });
     const user = userEvent.setup();
     renderCannotTell();
     await sendUnknown(user);
@@ -6583,6 +6586,36 @@ describe("the cannot tell card (M102 spec 04)", () => {
     await user.click(screen.getByRole("button", { name: "It arrived" }));
     await waitFor(() => expect(card()).toBeNull());
     expect(arrivals).toHaveLength(2);
+  });
+
+  it("cannot tell: a receipt that did not end unknown (409) is final: the card says so, offers Close, and never Try again (the M102 review, K)", async () => {
+    const arrivals = bridge({ arrived: () => new HttpResponse("this send did not end unknown", { status: 409 }) });
+    const user = userEvent.setup();
+    renderCannotTell();
+    await sendUnknown(user);
+    await user.click(screen.getByRole("button", { name: "It arrived" }));
+    expect(await screen.findByText(SETTLED)).toBeInTheDocument();
+    expect(screen.queryByText(FAILED)).toBeNull();
+    expect(screen.queryByRole("button", { name: "It arrived" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(card()).toBeNull());
+    // Close ends the question only: the draft stays, and nothing more was sent or marked.
+    expect(screen.getByRole("textbox")).toHaveValue("run the sample check");
+    expect(arrivals).toHaveLength(1);
+    expect(recordedSends()).toHaveLength(1);
+  });
+
+  it("cannot tell: an older member that does not know the mark (404) is final: the card says so and offers Close (the M102 review, K)", async () => {
+    const arrivals = bridge({ arrived: () => new HttpResponse("not found", { status: 404 }) });
+    const user = userEvent.setup();
+    renderCannotTell();
+    await sendUnknown(user);
+    await user.click(screen.getByRole("button", { name: "It arrived" }));
+    expect(await screen.findByText(UNKNOWN_HERE)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "It arrived" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(card()).toBeNull());
+    expect(arrivals).toHaveLength(1);
   });
 
   it("cannot tell: Send on the unchanged draft sends nothing, rings the card for 1600 ms, and brings it into view", async () => {

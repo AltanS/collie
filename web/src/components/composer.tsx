@@ -123,7 +123,7 @@ import { findUnknownSendMatch, type UnknownSend } from "@/lib/unknown-send";
 import { clearNotice, phoneRefusal, readingRefusal, RefusalActions, refusalKey, SendRefusalNotice, stepLabel, stopNotice, type SendRefusal } from "@/components/send-notice";
 import { mintRequestId } from "@/lib/worktree-name";
 import { Icon } from "@/components/icons/icon";
-import type { CannotTellFacts } from "@/components/cannot-tell-card";
+import type { ArrivedAnswer, CannotTellFacts } from "@/components/cannot-tell-card";
 
 /** The status line a verified send leaves, by where the text went. */
 const STATUS_KEY = {
@@ -178,7 +178,9 @@ export interface ComposerHandle {
    * kept draft through the belt's own clear (so "Undo clear" shows) and ends the card. Resolves false when the bridge
    * could not record it, and nothing else changes.
    */
-  markArrived: () => Promise<boolean>;
+  markArrived: () => Promise<ArrivedAnswer>;
+  /** The "cannot tell" card's Close after a final answer to "It arrived": the question ends; nothing is sent or cleared. */
+  closeCannotTell: () => void;
   /**
    * The "cannot tell" card's second button: Send again (a new request through the whole Send Protocol, no "Send it
    * again?" asked on top), or for a sign-in code Enter it again (the field opens empty, nothing is restored).
@@ -1527,7 +1529,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const sendViewTapRef = useRef<(tap: ViewTap) => Promise<ViewSendResult>>(() => Promise.resolve({ sent: false, line: null, code: null }));
   const padKeysRef = useRef<(keys: string[]) => Promise<boolean>>(() => Promise.resolve(false));
   const typeAnywayRef = useRef<() => void>(() => undefined);
-  const markArrivedRef = useRef<() => Promise<boolean>>(() => Promise.resolve(false));
+  const markArrivedRef = useRef<() => Promise<ArrivedAnswer>>(() => Promise.resolve("failed"));
+  const closeCannotTellRef = useRef<() => void>(() => undefined);
   const answerAgainRef = useRef<() => void>(() => undefined);
   const sendLineRef = useRef<(line: string) => Promise<boolean>>(() => Promise.resolve(false));
   const lineCanStartRef = useRef<() => boolean>(() => false);
@@ -1543,6 +1546,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       padKeys: (keys) => padKeysRef.current(keys),
       typeAnyway: () => typeAnywayRef.current(),
       markArrived: () => markArrivedRef.current(),
+      closeCannotTell: () => closeCannotTellRef.current(),
       answerAgain: () => answerAgainRef.current(),
       sendLine: (line) => sendLineRef.current(line),
       lineCanStart: () => lineCanStartRef.current(),
@@ -2181,6 +2185,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   padKeysRef.current = (keys) => direct.sendPaneKeys(keys);
   typeAnywayRef.current = () => void typeAnyway();
   markArrivedRef.current = markUnknownArrived;
+  closeCannotTellRef.current = endCannotTell;
   answerAgainRef.current = answerCannotTellAgain;
   sendLineRef.current = (line) => send(line, false);
   lineCanStartRef.current = () => {
@@ -3009,19 +3014,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    * "It arrived" on the "cannot tell" card (M102 spec 04): the person's word goes to the bridge, and only when it was
    * recorded does anything here change. The kept draft then goes through the belt's own clear (`clearByHand`, so
    * "Undo clear" is one tap away), and only while the field still holds what it held at the send: words typed since
-   * are the next message. A sign-in code keeps no draft, so only the question ends. False leaves everything as it was.
+   * are the next message. A sign-in code keeps no draft, so only the question ends. Any answer but `recorded` leaves
+   * everything as it was: `failed` may be tapped again, and a 409 (`settled`) or a 404 (`unknownHere`) is final, for the
+   * card to say so and offer Close (the M102 review, K).
    */
-  async function markUnknownArrived(): Promise<boolean> {
+  async function markUnknownArrived(): Promise<ArrivedAnswer> {
     const answer = unknownAnswer;
     const pending = pendingUnknown;
-    if (answer === null) return false;
+    if (answer === null) return "failed";
     try {
       await api.postArrived(paneId, answer.requestId, scope);
-    } catch {
-      return false;
+    } catch (e) {
+      if (api.isApiErrorStatus(e, 409)) return "settled";
+      if (api.isApiErrorStatus(e, 404)) return "unknownHere";
+      return "failed";
     }
     // A new send ended this question while the request ran: the word is on the old receipt, and the new one is untouched.
-    if (unknownAnswerRef.current?.requestId !== answer.requestId) return true;
+    if (unknownAnswerRef.current?.requestId !== answer.requestId) return "recorded";
     if (
       pending !== null &&
       pending.isDraft &&
@@ -3035,7 +3044,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setUnknownAnswer(null);
     setProtocolOffer(null);
     setSendRefusal(null);
-    return true;
+    return "recorded";
+  }
+
+  /** Close on the "cannot tell" card after a final answer: the question and its notice end. The draft stays as it is. */
+  function endCannotTell(): void {
+    if (pendingUnknown !== null) forgetUnknownSend(scope, paneId, pendingUnknown.sentText, isShell);
+    setPendingUnknown(null);
+    setUnknownAnswer(null);
+    setSendRefusal(null);
   }
 
   /**
