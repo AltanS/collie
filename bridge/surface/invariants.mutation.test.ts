@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { askOf } from "../../web/src/lib/surface/surface.ts";
 import { knownRed, redTitle, type KnownRedId } from "../../web/src/test/invariants/known-red.ts";
 import { replayHint, rngOf, runSeeds, sample, type Rng } from "../../web/src/test/invariants/seed.ts";
-import { collieOwn, invariantRig, menuBytes, personOverride, personTap, type Write } from "./invariants-rig.ts";
+import { collieOwn, invariantRig, menuBytes, personOverride, personTap, type Write , type RigOptions } from "./invariants-rig.ts";
 
 const FIXTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures");
 const PANES = join(FIXTURES, "panes");
@@ -158,13 +158,17 @@ function bucketOf(reason: string | undefined): KnownRedId | "other" {
   return "other";
 }
 
+const CLAUDE_PIN: RigOptions["pinVersions"] = [{ range: "2.1.0 - 2.1.296", low: "2.1.0", high: "2.1.296", status: "verified", verifiedThrough: "2.1.296", verifiedOn: "2026-10-12" }];
+
 async function run(): Promise<Found> {
   const found: Found = { i7: [], i7Blind: [], i4: new Map() };
   for (const c of CASES) {
     const hint = replayHint(c.seed, `${c.name} ${c.mutation}`);
     const harness = c.label.harness === "shell" ? "" : c.label.harness;
     const draw = { kind: "fixed", text: c.screen, echoes: false } as const;
-    const rigs = [invariantRig({ draw, harness, version: c.label.version }), invariantRig({ draw, harness, version: c.label.version }), invariantRig({ draw, harness, version: c.label.version }), invariantRig({ draw, harness: "an-agent-collie-has-no-profile-for", version: null })];
+    // The Claude captures span versions past the shipped range; the same pin as the protocol tests keeps them profiled.
+    const agent = harness === "claude" ? { harness, version: c.label.version, pinVersions: CLAUDE_PIN } : { harness, version: c.label.version };
+    const rigs = [invariantRig({ ...agent, draw }), invariantRig({ ...agent, draw }), invariantRig({ ...agent, draw }), invariantRig({ draw, harness: "an-agent-collie-has-no-profile-for", version: null })];
     const [ownRig, tapRig, overRig, blindRig] = rigs;
     if (ownRig === undefined || tapRig === undefined || overRig === undefined || blindRig === undefined) throw new Error("rig");
     try {

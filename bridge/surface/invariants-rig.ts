@@ -28,8 +28,8 @@ export interface Write {
 }
 
 /**
- * What the pane draws. `box`: Claude Code's input box (two grey rules, the prompt glyph, a status row),
- * which the Claude profile finds. `bare`: the same transcript with no box, so no profile finds a frame
+ * What the pane draws. `box`: an input box (two grey rules, the prompt glyph, a status row) that the
+ * profile the gates suite names finds. `bare`: the same transcript with no box, so no profile finds a frame
  * (the null frame). `fixed`: a capture of the corpus, as it is.
  */
 export type PaneDraw = { readonly kind: "box" } | { readonly kind: "bare" } | { readonly kind: "fixed"; readonly text: string; readonly echoes: boolean };
@@ -115,8 +115,6 @@ export class LogPane {
   };
 }
 
-/** The Claude range the protocol tests pin, so a lab run that moves claude.json does not move these cases. */
-const CLAUDE_RANGE: Profile["versions"] = [{ range: "2.1.0 - 2.1.296", low: "2.1.0", high: "2.1.296", status: "verified", verifiedThrough: "2.1.296", verifiedOn: "2026-10-12" }];
 
 export interface InvariantRig {
   readonly pane: LogPane;
@@ -142,7 +140,9 @@ export function nextId(): string {
 export interface RigOptions {
   readonly draw: PaneDraw;
   /** The multiplexer's agent string; a harness with no profile takes the blind road. */
-  readonly harness?: string;
+  readonly harness: string;
+  /** A version range that replaces the profile's own, so a lab run that moves the profile does not move the cases. */
+  readonly pinVersions?: Profile["versions"];
   readonly version?: string | null;
   /** The Surface every read is folded to (the seam), with the read's own revision. Absent: what the readers read. */
   readonly surface?: Surface;
@@ -173,7 +173,8 @@ export function invariantRig(options: RigOptions): InvariantRig {
     ring: new RowRing(),
     profile: (harness: string) => {
       const loaded: Profile | undefined = loadProfiles().get(harness);
-      const base = harness === "claude" && loaded !== undefined ? { ...loaded, versions: CLAUDE_RANGE } : loaded;
+      const pin = options.pinVersions;
+      const base = pin !== undefined && loaded !== undefined ? { ...loaded, versions: pin } : loaded;
       const lookup: ProfileForOptions = base === undefined ? { log: () => undefined } : { log: () => undefined, profiles: new Map([[harness, base]]) };
       return Promise.resolve(profileFor(harness, version, lookup));
     },
@@ -186,7 +187,7 @@ export function invariantRig(options: RigOptions): InvariantRig {
     surfaceSeam: forced === undefined ? undefined : (read: Surface) => ({ ...forced, revision: read.revision }),
   };
   const protocol = new SendProtocol(deps);
-  const harness = options.harness ?? "claude";
+  const harness = options.harness;
   return {
     pane,
     protocol,

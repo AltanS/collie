@@ -17,9 +17,11 @@ import { isFree, type Surface } from "../../web/src/lib/surface/surface.ts";
 import { knownRed, redTitle, type KnownRedId } from "../../web/src/test/invariants/known-red.ts";
 import { replayHint, rngOf, runSeeds, sample } from "../../web/src/test/invariants/seed.ts";
 import { allSurfaces, overrideReaches, type SurfaceCase } from "../../web/src/test/invariants/surfaces.ts";
-import { collieOwn, invariantRig, keysOf, personOverride, retrySame, textWrites, type PaneDraw } from "./invariants-rig.ts";
+import { collieOwn, invariantRig, keysOf, personOverride, retrySame, textWrites, type PaneDraw, type RigOptions } from "./invariants-rig.ts";
 
 const TEXT = "please carry on with the parser fix";
+/** The profile whose box the rig draws, pinned to one range so a lab run that moves its versions does not move the cases. */
+const AGENT = { harness: "claude", pinVersions: [{ range: "2.1.0 - 2.1.296", low: "2.1.0", high: "2.1.296", status: "verified", verifiedThrough: "2.1.296", verifiedOn: "2026-10-12" }] } satisfies Pick<RigOptions, "harness" | "pinVersions">;
 const SAMPLE = 320;
 const SCREENS: readonly { readonly name: string; readonly draw: PaneDraw }[] = [
   { name: "box", draw: { kind: "box" } },
@@ -71,8 +73,8 @@ interface Outcome {
 
 async function runCase(c: Case): Promise<Outcome> {
   const hint = replayHint(c.seed, `${c.surface.id} screen=${c.draw}`);
-  const person = invariantRig({ draw: c.pane, surface: c.surface.surface });
-  const own = invariantRig({ draw: c.pane, surface: c.surface.surface });
+  const person = invariantRig({ ...AGENT, draw: c.pane, surface: c.surface.surface });
+  const own = invariantRig({ ...AGENT, draw: c.pane, surface: c.surface.surface });
   try {
     const { prepare, commit, writes, id } = await personOverride(person, TEXT);
     const receipt = commit.receipt;
@@ -167,7 +169,7 @@ describe("M102-15 part 1a, the named cases of each I4 bucket", () => {
   for (const n of named) {
     const label = `turn=${n.surface.turn} modal=${String(n.surface.modal)} composer=${n.surface.composer} reason=${n.surface.reason ?? "-"} screen=${n.draw.kind}`;
     test.failing(`I4 override on ${label} ${redTitle(n.id)}`, async () => {
-      const rig = invariantRig({ draw: n.draw, surface: n.surface });
+      const rig = invariantRig({ ...AGENT, draw: n.draw, surface: n.surface });
       try {
         const { commit } = await personOverride(rig, TEXT);
         const receipt = commit.receipt;
@@ -189,7 +191,7 @@ describe("M102-15 I5, no long wait on a reading alone", () => {
   const red = knownRed("i5-held-long");
   test.failing(`I5: a send held on a screen that is not free says heldLong after two minutes ${redTitle(red.id)}`, async () => {
     const surface: Surface = { revision: 1, turn: "running", modal: "none", composer: "unknown" };
-    const rig = invariantRig({ draw: { kind: "box" }, surface, holds: true });
+    const rig = invariantRig({ ...AGENT, draw: { kind: "box" }, surface, holds: true });
     try {
       const id = "inv-held-long-1";
       const first = await rig.handle({ id, text: TEXT, mode: "send", fromPhone: true });
