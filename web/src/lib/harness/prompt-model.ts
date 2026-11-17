@@ -204,7 +204,12 @@ export interface PromptModel {
    * prompt), in place of {@link signature}, whose lookback reaches into the transcript. A row there
    * that ticks (a tool's timer, a spinner, a clock) changed the bound region between the phone's read
    * and the bridge's, and the bridge refused the tap. The rows are a suffix of `signature`'s rows,
-   * so the bridge finds them wherever it found `signature`, ending at the same row.
+   * so the bridge finds them wherever it found `signature`, ending at the same row. A grammar may
+   * start them lower, below a row the dialog itself redraws (Claude's self-answer countdown): the
+   * phone has already compared the whole dialog by `askRegion`, and the bridge checks the rest.
+   *
+   * Its presence is also a fact the comparisons read: the rows under the edge hold what the dialog
+   * asks about. `promptsEqual` and the ask id (lib/surface/lift.ts) compare `askRegion` only then.
    *
    * Set only with a string {@link askRegion} whose rows under the edge hold the subject (a rule
    * right above the question proves no frame), and never with {@link styledSignature} or

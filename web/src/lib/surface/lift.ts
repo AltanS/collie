@@ -14,6 +14,7 @@ import type { Block, StyledLine } from "../blocks";
 import { buildBlocks } from "../harness/index";
 import { adapterFor } from "../harness/registry";
 import { blockOwnsKeyboard, dialogModelOf, DIALOG_CONTRACT, type DialogKind } from "../harness/dialog-contract";
+import type { PromptModel } from "../harness/prompt-model";
 import { shortHash, type Ask, type AskKind, type AskOption } from "./surface";
 
 /** The blocks the phone would build for this screen: the agent's adapter, or one raw block. */
@@ -60,6 +61,21 @@ interface Lifted {
   readonly hashText: string;
 }
 
+/**
+ * What a prompt's ask binds to and hashes. The dialog block alone (`askRegion`, a countdown inside it
+ * held still) where the grammar found its edge AND the rows under the edge hold what the dialog asks
+ * about (`bindRegion` set, PromptModel). With an edge but no subject under it (a plan approval paints
+ * its plan above the rule), the binding keeps the lookback that holds the subject: a revised dialog
+ * with the same rows under the rule is another ask, never the same id. With no edge the region is null
+ * and the bridge refuses a tap. A grammar whose signature starts at the dialog binds its region.
+ */
+function promptBinding(m: PromptModel, region: string, signature: string): Pick<Lifted, "region" | "hashText"> {
+  if (m.askRegion === undefined) return { region, hashText: signature };
+  if (m.askRegion !== null && m.bindRegion !== undefined) return { region: m.askRegion, hashText: m.askRegion };
+  if (m.askRegion === null) return { region: null, hashText: signature };
+  return { region: signature, hashText: signature };
+}
+
 function lifted(block: Block): Lifted | null {
   switch (block.kind) {
     case "prompt-select": {
@@ -70,9 +86,7 @@ function lifted(block: Block): Lifted | null {
         blockKind: "prompt-select",
         labels: m.options.map((o) => o.label),
         signature: c.signature(m),
-        // The dialog block alone, where the grammar's region reads above it (PromptModel.askRegion).
-        region: m.askRegion === undefined ? c.region(m) : m.askRegion,
-        hashText: m.askRegion ?? c.signature(m),
+        ...promptBinding(m, c.region(m), c.signature(m)),
       };
     }
     case "wizard": {
