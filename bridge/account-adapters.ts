@@ -88,6 +88,17 @@ export interface AccountAdapter {
    * menu and not a plain session. Absent: the sign-in start is the same as for a signed-out folder.
    */
   signInAgainArgs?: readonly string[];
+  /**
+   * Whether a sign-in that ends well reaches the sessions of the folder that already run, with no
+   * restart (Change login). True only where it is proven from the agent's own code; absent is "not
+   * proven", and the phone then says that sessions started from now on use the new login.
+   */
+  reachesRunningSessions?: boolean;
+  /**
+   * The hosts of the sign-in address the agent prints, exact names, for the phone's "Open sign-in page"
+   * button. An address on any other host, or not `https:`, is shown as text to copy. Absent: no button.
+   */
+  signInHosts?: readonly string[];
   /** The agent's own status command. Absent: the agent says nothing about who is signed in. */
   status?: AccountStatus;
   /** The settings file that holds Collie's hooks, where the bridge can tell. */
@@ -162,6 +173,13 @@ export const ACCOUNT_ADAPTERS = {
     hooksFile: (dir) => join(dir, "settings.json"),
     // `claude /login` opens the login method menu on a signed-in folder too (lab of 2026-11-15).
     signInAgainArgs: ["/login"],
+    // Claude Code 2.1.325 (read from its code, 2026-11-16): a running session checks the modification
+    // time of `<config dir>/.credentials.json` before each main request and loads the login again when it
+    // changed, so a `/login` that ends well in any process of the folder reaches every session of it.
+    // The bridge never opens or stats that file; the agent does.
+    reachesRunningSessions: true,
+    // The two addresses `/login` prints (lab of 2026-11-15, claude--v2325-login-url and -console-url).
+    signInHosts: ["claude.com", "platform.claude.com"],
     // `.claude.json` is the state file: `<dir>/.claude.json` with the variable set, `~/.claude.json`
     // without. A shared account that never started holds links only, so it has none.
     status: { args: ["auth", "status"], needs: [".claude.json"], needsAtHome: [".claude.json"], parse: parseClaudeAuthStatus },

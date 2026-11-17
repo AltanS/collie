@@ -716,6 +716,35 @@ may have no Collie hooks yet; its page says so and shows the line that installs 
 
 **Remove** forgets the account's name only. The folder, its links and its login stay.
 
+#### Change the login of an account
+
+When one login has run out of usage and another has some left, you can move an account to the other
+login without a new session. Open the account's page and tap **Change login**. In a session, tap the
+session's name and then **Change login**: it opens the same page for the account that session runs
+under. The page shows who is signed in now and, for Claude Code, how many sessions of the account run.
+
+**Change login** starts the agent's own sign-in for the account's folder, in the same way as **Sign in
+again**. The phone shows the agent's sign-in screens as cards. Pick the login method, tap **Open
+sign-in page** to sign in with the other account in your browser, and paste the code into the
+**Sign-in code** field. The button opens only the agent's own sign-in address; any other address is
+shown as text to copy. Then go back to the Change login page and tap **Finish**. Collie closes the
+sign-in session, asks the agent who is signed in, and shows the result. When the list already shows a
+new email, the page finishes by itself.
+
+- **Claude Code**: running sessions of the account continue on the new login from their next message.
+  Claude Code itself loads a changed login before each request, so no session needs a restart and each
+  keeps its conversation.
+- **Codex, pi and Grok**: the new login is used by sessions you start after the change. Start a new
+  session to use it.
+
+The old login stays until the new sign-in succeeds. If you cancel, enter a wrong code or leave the
+sign-in, the account stays signed in as before, and the result says "Still signed in as" with the
+same email. The sign-in address and the code are not stored, logged or sent anywhere else. The
+agent writes the new login into the account's folder; Collie does not open that file.
+
+On a crew member's session there is no **Change login** row, because accounts are per machine. Change
+the login on the member's own Collie.
+
 > **Note.** Accounts are per machine. A crew member's accounts are its own, and the New page reads
 > the accounts of the machine you start on. Windows offers no accounts yet.
 >

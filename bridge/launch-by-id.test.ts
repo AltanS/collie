@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -744,6 +744,40 @@ describe("POST /api/launch — with an account", () => {
     const mux = new FakeMux();
     expect((await run(mux, { harness: "claude", signIn: true }, { accounts: await accountsWith() })).status).toBe(200);
     expect(mux.texts).toEqual([["w1:p1", "claude"]]);
+  });
+  accountTest("Change login: on an account that reads signed in, the launch types the agent's own login menu, as Sign in again does", async () => {
+    const home = await mkdtemp(join(tmpdir(), "collie-change-login-"));
+    try {
+      // Claude Code has run in both folders: its state file is there (existence only).
+      await writeFile(join(home, ".claude.json"), "{}");
+      const work = join(home, ".claude-work");
+      await mkdir(work, { recursive: true });
+      await writeFile(join(work, ".claude.json"), "{}");
+      const store = memoryAccountStore();
+      await store.add({ id: ACCOUNT, harness: "claude", label: "Work", kind: "own", dir: work, addedAt: 1, device: "pixel" });
+      const signedIn = { code: 0, stdout: JSON.stringify({ loggedIn: true, email: "work@example.com", subscriptionType: "max" }), stderr: "" };
+      const accounts = new Accounts({
+        store,
+        status: () => Promise.resolve(signedIn),
+        harnesses: { list: () => Promise.resolve([{ id: "claude", label: "Claude Code", found: true }]), launch: harnessLaunch },
+        home,
+        env: {},
+        platform: "linux",
+        disk: realLinkDisk,
+      });
+      // The page read the list first, so the bridge holds "signed in".
+      await accounts.body();
+      for (const [body, line] of [
+        [{ harness: "claude", signIn: true }, "claude /login"],
+        [{ harness: "claude", account: ACCOUNT, signIn: true }, `CLAUDE_CONFIG_DIR='${work}' claude /login`],
+      ] as const) {
+        const mux = new FakeMux();
+        expect((await run(mux, body, { accounts })).status).toBe(200);
+        expect(mux.texts).toEqual([["w1:p1", line]]);
+      }
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
   });
 });
 

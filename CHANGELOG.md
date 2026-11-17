@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Change login moves an account to another login while its sessions keep running.** On a signed-in account's page, or from a session's name, Change login shows who is signed in and starts the agent's own sign-in for that folder. Open sign-in page opens the agent's sign-in address in the phone's browser, the code goes into the Sign-in code field, and Finish closes the sign-in session and says who is signed in now. Running Claude Code sessions of the account use the new login from their next message, with no restart; for Codex, pi and Grok, new sessions use it. The old login stays until the new sign-in succeeds.
+
 ### Changed
 
 - **Stop takes a hold of two seconds, not two taps.** The first tap changed the word to "Stop?", and that did not say that a second tap was needed. Now you hold the button: it fills from one edge to the other, and the turn stops when the fill is complete. A finger lifted earlier stops nothing, and the button says "Hold" for a moment. A keyboard and a screen reader keep the two presses, because they cannot hold.

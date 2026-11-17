@@ -7,6 +7,7 @@ import { SendReceipts } from "@/components/send-receipts";
 import { useCacheWatch } from "@/hooks/use-cache-watch";
 import { useLocale } from "@/hooks/use-locale";
 import { usePushControl } from "@/hooks/use-push";
+import { accountName, useAccounts, type AccountRow } from "@/lib/accounts";
 import { t, type MessageKey } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
 import type { CacheWatchState } from "@/lib/types";
@@ -40,12 +41,23 @@ interface PaneSettingsSheetProps {
   hooks?: "live" | "holds" | "none";
   /** A program's conversation (M56 spec 14): no cache switch, because a program has no prompt cache. The receipts stay. */
   program?: boolean;
+  /**
+   * Change login (M101): the session's agent and its added account's id (absent for Default), and where
+   * a tap goes. Absent hides the row: a crew member's pane (accounts are per machine and a sign-in is
+   * not started over the crew link), a read-only device, a program. The row shows only when this
+   * machine's Accounts list has that account.
+   */
+  changeLogin?: { harness: string; account: string | undefined; onOpen: (accountId: string) => void };
 }
 
-export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename, hooks, program = false }: PaneSettingsSheetProps) {
+export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename, hooks, program = false, changeLogin }: PaneSettingsSheetProps) {
   useLocale();
   const { state: push } = usePushControl();
   const { state, busy, toggle } = useCacheWatch(paneId, open && !program, scope);
+  // This machine's own accounts, read only while the sheet is open and the row can show.
+  const accounts = useAccounts(undefined, open && changeLogin !== undefined);
+  const accountId = changeLogin === undefined ? undefined : (changeLogin.account ?? `${changeLogin.harness}:default`);
+  const account = accounts.body?.accounts.find((a) => a.id === accountId && a.harness === changeLogin?.harness);
 
   // Push first, because it is the only one of the three that is about this DEVICE rather than this pane,
   // and the remedy is on another screen.
@@ -64,6 +76,7 @@ export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename, hook
           onToggle={(next) => void toggle(next)}
           onRename={onRename}
           hooks={hooks}
+          changeLogin={account === undefined || changeLogin === undefined ? undefined : { account, onOpen: () => changeLogin.onOpen(account.id) }}
         />
       )}
       {/* The last ten sends for this pane, from the bridge's receipts (M56 spec 09). Read when the sheet opens. */}
@@ -87,6 +100,7 @@ export function PaneSettingsView({
   onToggle,
   onRename,
   hooks,
+  changeLogin,
 }: {
   /** Null until the bridge answers. The switch is disabled and the hint is the ordinary one. */
   state: CacheWatchState | null;
@@ -100,6 +114,8 @@ export function PaneSettingsView({
   onRename?: () => void;
   /** The pane's hook source (M56 spec 11), or `holds` when it holds permissions (M56 spec 12). Absent hides the row. */
   hooks?: "live" | "holds" | "none" | undefined;
+  /** The Change login row under Rename: the session's account, named in the row's hint. Absent hides it. */
+  changeLogin?: { account: AccountRow; onOpen: () => void } | undefined;
 }) {
   useLocale();
   const globalOn = state?.global === true;
@@ -114,6 +130,18 @@ export function PaneSettingsView({
             icon={<Icon name="edit" className="size-4 shrink-0 text-muted-foreground" />}
             label={t("paneActions.rename.label")}
             onClick={onRename}
+          />
+        </div>
+      )}
+      {/* Change login (M101): the account this session runs under, with who is signed in on it. The same
+          page as the account's own Change login (routes/settings-change-login.tsx). */}
+      {changeLogin !== undefined && (
+        <div className="px-1" data-slot="pane-change-login">
+          <ActionRow
+            icon={<Icon name="sign-in" className="size-4 shrink-0 text-muted-foreground" />}
+            label={t("accounts.changeLogin.action")}
+            hint={[accountName(changeLogin.account), changeLogin.account.identity?.email].filter((x) => x !== undefined && x !== "").join(" · ")}
+            onClick={changeLogin.onOpen}
           />
         </div>
       )}
