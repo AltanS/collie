@@ -7,7 +7,9 @@
 // only the pure parts: which ending is a dead end, the line it says, and the key the exit is bound to.
 //
 // Nothing here answers. The exit opens; the person presses keys. A key from the pad is the person's own
-// key press on the rows they see, and a screen that moved since is refused by the bridge.
+// key press on the rows they see, and it carries no rows guard: the bridge sends it as it is, also on a
+// screen that moved since (`api.sendKeys`, no expected rows). The live screen beside the pad, and the
+// second tap Enter asks, are what keep it to the screen the person sees.
 //
 // THE KEY. The exit belongs to ONE dialog. It is keyed on the dialog's identity, never on a screen
 // revision or an ask hash: a frameless dialog whose region holds a ticking row changes both on every
