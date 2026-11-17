@@ -115,6 +115,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A queued message is never joined to your draft.** When the queued card's Send again could not start after the card was dropped, its words went into the box after your draft, so the next Send sent both as one message. Now they come back as a message that did not go does: into the box when it is empty, else they wait beside the notice with Put back.
 - **The sign-in field says when a crew member runs an older Collie.** On such a member's pane the field now says, in one line under its frame, that the member does not check that the sign-in field is still there before it types the code. When the member's name is not known, the line says This machine.
 - **Put back keeps every message that did not go, and keeps them through a pane switch or a reload.** A second message that came back while the box held a draft used to replace the first one on Put back, and Put back lived only on the screen. Now every such message waits, the newest first, with how many wait, stored like your draft; Put back brings the next one. An Undo after Clear counts as a draft, so a message that comes back then waits on Put back and Undo still brings your draft back.
+- **Change login in a session opens that session's own profile.** A session in a folder that is not a profile no longer offers Change login for Default.
 
 ### Docs
 

@@ -2710,6 +2710,12 @@ export interface AccountRow {
    * as {@link live} is: the folder a session reported, else the launch note.
    */
   running?: number;
+  /**
+   * The ids of the panes on THIS machine that run in this row's folder: exactly the panes {@link running}
+   * counts, a sign-in session left out, at most 64. Absent when none. A pane in a folder no row names is
+   * in no row's list, so the phone offers nothing for it (additive-optional; an older bridge sends none).
+   */
+  panes?: string[];
   /** Shared only: entries that should be links and are not. */
   unlinked?: string[];
   /** Only where the adapter can tell. */

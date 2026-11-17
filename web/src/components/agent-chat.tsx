@@ -4105,13 +4105,12 @@ export function AgentChat({
           scope={scope}
           hooks={agent?.hooks}
           program={gridless}
-          // Change login (M101) for the account this session runs under: this machine's panes only, on a
-          // device that may write, never a program. The row itself shows only when the account is listed.
+          // Change login (M101) for the profile this session runs in: this machine's panes only, on a
+          // device that may write, never a program. The row itself shows only when a profile's list names this pane.
           changeLogin={
             agent && agent.kind !== "shell" && !readOnly && !gridless && isLead(scope)
               ? {
                   harness: agent.agent,
-                  account: agent.account?.id,
                   onOpen: (accountId) => {
                     closeDrawer();
                     nav.down(changeLoginPath(accountId, scope));
