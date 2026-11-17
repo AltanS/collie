@@ -256,7 +256,10 @@
 // where the multiplexer pastes a whole text (`pasteBlock`), else it is refused `multiline`: a line break
 // could submit it. An override is never held, joins no hold queue, and one id writes at most once. A held
 // row says `heldLong` once it waited HELD_LONG_MS (two minutes). A send Collie makes alone (a held release,
-// a queued send, WalkyTalky, a hook, a steer) never takes this road and is unchanged.
+// a queued send, WalkyTalky, a hook, a steer) never takes this road and is unchanged, with one stricter
+// rule: on the blind road (no profile) the menu sign refuses EVERY send `menu_open`, before any key. The
+// manual Send's turn rule (`steeringTurn`) refuses no override: a turn that does not queue it is typed
+// with no key too. An override typed after a draft says so on its receipt (`draftSeen`).
 //
 // The agent's own word (M102 spec 13): a receipt opens for a prompt edge when the submit key goes out
 // (`openSend`), on the data road when the text is handed to the part. An `unknown` that ends with it open,
@@ -299,6 +302,7 @@ import {
   sendLines,
   surfaceWords,
   takesManualSend,
+  HELD_LONG_MS,
   wsFree,
   type ReadMark,
   type SendAnswer,
@@ -2935,6 +2939,8 @@ interface RunState {
   answerWait?: boolean;
   /** S0 read a sign-in field (`idle.frame.secret`): the text is a secret, named by the phone or not. */
   secretField?: boolean;
+  /** The override road typed after a draft in the box (M102 spec 12): the receipt carries `draftSeen`. */
+  draftSeen?: boolean;
   /**
    * A release met a box that is still starting: its probe never showed, or an earlier probe character
    * is still pending there (the header). It goes back to its place, the try does not count, and the
@@ -3362,6 +3368,7 @@ export class SendProtocol {
       if (receipt.late !== undefined) row.late = receipt.late;
       if (receipt.word !== undefined) row.word = receipt.word;
       if (receipt.awaitingEventUntil !== undefined) row.awaitingEventUntil = receipt.awaitingEventUntil;
+      if (receipt.draftSeen === true) row.draftSeen = true;
       // A refusal's line and the Surface words are stored to be read later: the list carries them.
       if (receipt.detail !== undefined) row.detail = receipt.detail;
       if (receipt.saw !== undefined) row.saw = receipt.saw;
@@ -3842,6 +3849,8 @@ export class SendProtocol {
     const panes = new Map<string, HeldEntry[]>();
     for (const entry of holds.list(session)) {
       if (entry.state === "ended") continue;
+      // A hold never waits on a reading alone for long unmarked (M102 spec 12, decision 6): the phone shows the screen.
+      if (entry.state === "held" && entry.heldLong !== true && now - entry.heldAt >= HELD_LONG_MS) holds.markLong(entry.id);
       const rows = panes.get(entry.paneId);
       if (rows === undefined) panes.set(entry.paneId, [entry]);
       else rows.push(entry);
@@ -4369,6 +4378,7 @@ export class SendProtocol {
     if (state.blind) receipt.saw = BLIND_SAW;
     // The person's word, beside what Collie saw: the outcome stays whatever the run ended as (M102 spec 01).
     if (state.overrode) receipt.word = "override";
+    if (state.draftSeen === true) receipt.draftSeen = true;
     // The agent's own word may still settle an `unknown` (M102 spec 13): its window, when one is open.
     if (outcome === "unknown") {
       const until = this.awaitingEventUntil(state);
@@ -5213,8 +5223,9 @@ export class SendProtocol {
     }
     // A pane whose last rows look like an agent's (an input box, a dialog, a footer a profile names) is
     // no shell to type into blind: the agent may be starting, or one Collie has no name for here.
-    // The person's override (M102 spec 12) never types where a menu shows, blind or not.
-    if (overrideAsked(state.request) && menuSignOf(snap) !== null) throw overrideRefusal("menu_open", snap, MENU_OPEN);
+    // No text and no Enter where a menu shows (M102 spec 12; the invariant suite's blind-road case): for
+    // the person's override and for every other send on this road, which the menu sign only makes stricter.
+    if (menuSignOf(snap) !== null) throw overrideRefusal("menu_open", snap, MENU_OPEN);
     if (blindRoadSign(snap.rows, snap.surface) !== null) {
       // The person's override: on the rows they saw, the text with no key.
       if (overrideAsked(state.request)) {
@@ -5289,7 +5300,11 @@ export class SendProtocol {
       throw new Ended("refused", "multiline", { surface: s0.surface, detail: NEWLINE_SUBMITS });
     }
     state.manual = takesManualSend(s0.surface);
-    if (state.manual) this.gateSteeringTurn(state, s0);
+    // The person's override meets the manual turn rule in `overrideAtS0`: a turn that would refuse it is
+    // typed there with no key (M102 spec 12), a turn that queues it still takes the queue key here.
+    if (state.manual && overrideAsked(state.request)) {
+      if (steeringTurn(state, s0) === "queue") state.queued = true;
+    } else if (state.manual) this.gateSteeringTurn(state, s0);
     this.checkGeneration(state, "refused");
   }
 
@@ -5568,7 +5583,9 @@ export class SendProtocol {
    */
   private reaches(state: RunState, s0: Snap): boolean {
     const { surface, frame } = s0;
-    if (takesManualSend(surface)) return false;
+    // The manual Send keeps its road, unless its own turn rule would refuse: the running signs of a turn
+    // on a screen S0 could not read (a harness that does not queue). The override types there, no key.
+    if (takesManualSend(surface)) return steeringTurn(state, s0) instanceof Ended;
     if (surface.turn === "running" && surface.modal === "none" && frame !== null && surface.composer === "empty") return turnRefusal(state, s0, frame) !== null;
     return true;
   }
@@ -5586,6 +5603,8 @@ export class SendProtocol {
     if (lines.length > 1 && mux.pasteBlock === undefined) throw new Ended("refused", "multiline", { surface: snap.surface, framed: snap.frame !== null, offers: ["keys"], detail: OVERRIDE_ONE_LINE });
     this.lap(state, "s0");
     state.overrode = true;
+    // Text Collie may not read was in the box: the person's text goes after it, and the receipt says so.
+    if (snap.surface.composer === "draft") state.draftSeen = true;
     state.phase = "write";
     this.guard(state);
     const { paneId } = state.target;

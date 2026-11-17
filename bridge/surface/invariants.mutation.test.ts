@@ -19,7 +19,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { askOf } from "../../web/src/lib/surface/surface.ts";
-import { knownRed, redTitle, type KnownRedId } from "../../web/src/test/invariants/known-red.ts";
 import { replayHint, rngOf, runSeeds, sample, type Rng } from "../../web/src/test/invariants/seed.ts";
 import { collieOwn, invariantRig, menuBytes, personOverride, personTap, type Write , type RigOptions } from "./invariants-rig.ts";
 
@@ -89,7 +88,15 @@ export function mutate(raw: string, mutation: Mutation, rng: Rng): string {
       return rows.join("\n");
     }
     case "ansi-noise":
-      return rows.map((row) => (rng.chance(0.4) ? `${rng.pick(NOISE)}${row}${rng.chance(0.5) ? "\u001b[0m" : ""}` : row)).join("\n");
+      // A capture's row may end in CR (a CRLF file): the reset goes before it, for a reset after a bare CR
+      // is a byte order no multiplexer's grid read carries, and the screen reader starts the row over there.
+      return rows
+        .map((row) => {
+          if (!rng.chance(0.4)) return row;
+          const cr = row.endsWith("\r") ? "\r" : "";
+          return `${rng.pick(NOISE)}${row.slice(0, row.length - cr.length)}${rng.chance(0.5) ? "\u001b[0m" : ""}${cr}`;
+        })
+        .join("\n");
     case "rewrap": {
       const width = rng.pick([40, 60, 100]);
       return rows
@@ -141,7 +148,7 @@ const CASES = SEEDS.flatMap(casesOf);
 interface Found {
   readonly i7: string[];
   readonly i7Blind: string[];
-  readonly i4: Map<KnownRedId | "other", string[]>;
+  readonly i4: Map<I4Bucket, string[]>;
 }
 
 function describeWrites(writes: readonly Write[]): string {
@@ -151,10 +158,11 @@ function describeWrites(writes: readonly Write[]): string {
 const OVERRIDE_REFUSALS: ReadonlySet<string> = new Set(["stale_surface", "menu_open", "pane_gone", "probe_failed"]);
 
 /** Which red entry an override refusal belongs to; `other` is one no entry names, and the green test fails on it. */
-function bucketOf(reason: string | undefined): KnownRedId | "other" {
-  if (reason === "not_free" || reason === "unconfirmed") return "i4-bridge-not-free";
-  if (reason === "turn_running") return "i4-bridge-turn";
-  if (reason === "draft_present") return "i4-bridge-draft-no-box";
+type I4Bucket = "not-free" | "turn" | "draft-no-box" | "other";
+function bucketOf(reason: string | undefined): I4Bucket {
+  if (reason === "not_free" || reason === "unconfirmed") return "not-free";
+  if (reason === "turn_running") return "turn";
+  if (reason === "draft_present") return "draft-no-box";
   return "other";
 }
 
@@ -236,16 +244,16 @@ describe("M102-15 part 1c, mutated captures of the corpus", () => {
     expect((await results()).i4.get("other") ?? []).toEqual([]);
   }, 120_000);
 
-  const blind = knownRed("i7-blind-road");
-  test.failing(`I7: the blind road (an agent with no profile) writes no Enter, digit or letter onto a menu ${redTitle(blind.id)}`, async () => {
+  // Red on the base; since M102 spec 12 the generic menu sign gates the blind road for every send.
+  test("I7: the blind road (an agent with no profile) writes no Enter, digit or letter onto a menu", async () => {
     const hits = (await results()).i7Blind;
-    console.info(`[invariants.mutation] i7-blind-road: ${String(hits.length)} hits; first: ${hits[0] ?? "-"}`);
+    console.info(`[invariants.mutation] blind road: ${String(hits.length)} hits; first: ${hits[0] ?? "-"}`);
     expect(hits).toEqual([]);
   }, 120_000);
 
-  for (const id of ["i4-bridge-not-free", "i4-bridge-turn"] as const) {
-    const red = knownRed(id);
-    test.failing(`I4 on mutated captures: ${red.what} ${redTitle(id)}`, async () => {
+  // Red on the base, green since M102 spec 12: an override is no longer refused not_free or turn_running.
+  for (const id of ["not-free", "turn"] as const) {
+    test(`I4 on mutated captures: no override is refused in the ${id} bucket`, async () => {
       const hits = (await results()).i4.get(id) ?? [];
       console.info(`[invariants.mutation] ${id}: ${String(hits.length)} hits`);
       expect(hits).toEqual([]);
@@ -253,7 +261,7 @@ describe("M102-15 part 1c, mutated captures of the corpus", () => {
   }
 
   // The draft without a box shows on a few captures only, so the sample may miss it: listed, not asserted.
-  test("I4 on mutated captures: the draft-without-a-box refusals are counted (i4-bridge-draft-no-box, asserted in the gates suite)", async () => {
-    console.info(`[invariants.mutation] i4-bridge-draft-no-box: ${String(((await results()).i4.get("i4-bridge-draft-no-box") ?? []).length)} hits`);
+  test("I4 on mutated captures: the draft-without-a-box refusals are counted (asserted in the gates suite)", async () => {
+    console.info(`[invariants.mutation] draft-no-box: ${String(((await results()).i4.get("draft-no-box") ?? []).length)} hits`);
   }, 120_000);
 });

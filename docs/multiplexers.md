@@ -709,10 +709,13 @@ at them and tap again. On a menu, use the keys to pick an option, because typed 
 On a screen Collie cannot read, on a box that already holds a draft, or during a turn the agent does
 not queue into, Collie pastes your text into the box in one piece and presses no key at all. The card
 then says your text is in the box, and offers the keys: check the screen, and press Enter there when
-it is right. A message of more than one line goes this way only on Herdr, which pastes it whole;
+it is right. When the box already held a draft, the card can say so: your text went in after it. A message of more than one line goes this way only on Herdr, which pastes it whole;
 elsewhere send it one line at a time. On a screen that takes the manual Send, the second tap sends it
 as before, and on a turn the agent queues into, it goes in as any send does. Collie never holds a
 message you typed this way, and one tap types it at most once.
+
+On an agent Collie has no profile for, no message goes into a screen that shows a menu or a yes/no
+prompt, whether you sent it or Collie did; answer the menu with the keys.
 
 A held send that waits two minutes or longer is marked as waiting long, so the phone can show the
 screen with a way to send it now or cancel it.

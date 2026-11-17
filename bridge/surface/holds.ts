@@ -85,6 +85,8 @@ export interface HeldEntry {
   readonly versionUnread?: true;
   /** The id of the WalkyTalky message this request types (see {@link HeldRow.walky}). */
   readonly walky?: string;
+  /** Held {@link HELD_LONG_MS} or more, marked by the hold poll (see {@link HeldRow.heldLong}, M102 spec 12). */
+  readonly heldLong?: true;
 }
 
 export interface HoldInput {
@@ -150,6 +152,7 @@ export function parseHeldEntry(raw: JsonValue | undefined): HeldEntry | null {
   if (node.versionUnread === true) entry = { ...entry, versionUnread: true };
   const walky = asJsonString(node.walky);
   if (walky !== undefined && WALKY_MESSAGE_ID.test(walky)) entry = { ...entry, walky };
+  if (node.heldLong === true) entry = { ...entry, heldLong: true };
   return entry;
 }
 
@@ -164,7 +167,8 @@ export function heldRow(entry: HeldEntry, now?: number): HeldRow {
   if (entry.cause !== undefined) row = { ...row, cause: entry.cause };
   if (entry.versionUnread === true) row = { ...row, versionUnread: true };
   if (entry.walky !== undefined) row = { ...row, walky: entry.walky };
-  if (now !== undefined && entry.state === "held" && now - entry.heldAt >= HELD_LONG_MS) row = { ...row, heldLong: true };
+  const long = entry.heldLong === true || (now !== undefined && now - entry.heldAt >= HELD_LONG_MS);
+  if (entry.state === "held" && long) row = { ...row, heldLong: true };
   return row;
 }
 
@@ -249,6 +253,13 @@ export class HoldStore {
 
   get(id: string): HeldEntry | null {
     return this.entries.get(id) ?? null;
+  }
+
+  /** A request still held {@link HELD_LONG_MS} after it was held is marked `heldLong`, once. Null when it is not held. */
+  markLong(id: string): HeldEntry | null {
+    const known = this.get(id);
+    if (known === null || known.state !== "held") return null;
+    return known.heldLong === true ? known : this.write({ ...known, heldLong: true });
   }
 
   /** Every entry, in queue order; with a session and a pane, only that pane's. */

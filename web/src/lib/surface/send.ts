@@ -279,6 +279,11 @@ export interface SendReceipt {
    */
   readonly awaitingEventUntil?: number;
   /**
+   * Set on a `typed_not_submitted(override)` that typed into a box holding a draft (M102 spec 12): the
+   * person's text went after text Collie may not have read, so the phone can say so. Absent otherwise.
+   */
+  readonly draftSeen?: true;
+  /**
    * Set on a send a program session took (M56 spec 14): the request id the program acknowledged.
    * The driver passes the request id to the program unchanged, so it equals `requestId`. Absent on
    * every send into a screen.
@@ -390,6 +395,8 @@ export interface SendReceiptRow {
   readonly word?: SendWord;
   /** Until when the agent's prompt event may still settle an `unknown` (see {@link SendReceipt.awaitingEventUntil}). */
   readonly awaitingEventUntil?: number;
+  /** The override typed after a draft (see {@link SendReceipt.draftSeen}). */
+  readonly draftSeen?: true;
   /** The line of a refusal or a `typed_not_submitted` (see {@link SendReceipt.detail}). */
   readonly detail?: string;
   /** What the bridge saw at that end, four words (see {@link SendReceipt.saw}). */

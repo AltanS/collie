@@ -199,7 +199,21 @@ describe("1. the gate table: every refusal a person's send could meet, before an
     expect(plain.receipt?.outcome).toBe("refused");
     screen.writes = [];
     screen.keys = [];
-    typedNoKey(await override("and also this"), screen, "and also this");
+    const typed = await override("and also this");
+    typedNoKey(typed, screen, "and also this");
+    // The receipt says a draft was in the box: the person's text went after it.
+    expect(typed.receipt?.draftSeen).toBe(true);
+  });
+
+  test("a turn's running signs on a screen S0 cannot read, on a harness that takes nothing in a turn: before refused turn_running; now typed, no key", async () => {
+    const screen = new ScreenPane(PROMPT_ROWS(["✻ Working… (12s · esc to interrupt)", "", "> "]));
+    const { send, override } = rig(screen, { harness: FRAMELESS, edit: noQueue });
+    expect((await send("hello", { rowsHash: "x", fromPhone: true })).receipt?.reason).not.toBe("override");
+    screen.writes = [];
+    screen.keys = [];
+    const typed = await override("then the docs");
+    typedNoKey(typed, screen, "then the docs");
+    expect(typed.receipt?.draftSeen).toBeUndefined();
   });
 
   test("a running turn on a harness that takes nothing in a turn: before refused turn_running (never held); now typed, no key", async () => {
@@ -325,6 +339,16 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
     });
   }
 
+  test("Collie's own send on the blind road (no profile, no person) meets a menu: refused menu_open, nothing typed, no key", async () => {
+    for (const [, rows] of MENUS) {
+      const screen = new ScreenPane(PROMPT_ROWS(rows));
+      const answer = await rig(screen, { harness: NO_PROFILE }).send("yes please");
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "menu_open", keys: [] });
+      expect(screen.writes).toEqual([]);
+      expect(screen.keys).toEqual([]);
+    }
+  });
+
   test("the menu sign answers with the rows its hash covers, and the next tap on them still refuses", async () => {
     const screen = new ScreenPane(PROMPT_ROWS(MENUS[0]![1]));
     const r = rig(screen, { harness: FRAMELESS });
@@ -433,6 +457,10 @@ describe("4. at most once, never held, and the long hold (M102 spec 12, decision
     expect(r.protocol.heldOf("main", "%1")[0]?.heldLong).toBeUndefined();
     r.clock.now += 1;
     expect(r.protocol.heldOf("main", "%1")[0]?.heldLong).toBe(true);
+    // The hold poll marks the entry itself, so the mark survives a restart.
+    expect(holds.list()[0]?.heldLong).toBeUndefined();
+    await Promise.all(r.protocol.tickHolds("main", () => ({ revision: 1, turn: "running", modal: "none", composer: "empty" })));
+    expect(holds.list()[0]?.heldLong).toBe(true);
   });
 });
 

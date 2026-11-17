@@ -48,16 +48,19 @@ export interface MenuBox {
   readonly skip: ReadonlySet<number>;
 }
 
-const POINTERS = "❯›>▶►→➜❱▸➤⟩❭〉";
+/** Pointer glyphs, with the icon fonts' own chevrons and carets (Nerd Font U+F054, U+F0DA, U+F105, U+F061). */
+const POINTERS = "❯›>▶►→➜❱▸➤⟩❭〉\u{F054}\u{F0DA}\u{F105}\u{F061}";
 const BORDERS = /[│┃║▌▐╭╮╰╯┌┐└┘├┤]/gu;
 const POINTER_ROW = new RegExp(`^(\\s*)([${POINTERS}])(\\s*)(\\S.*)$`, "u");
 const NUMBERED = /^\s*(?:\[(\d{1,2})\]|(\d{1,2})[.)]|(\d{1,2})(?=\s{2,}))\s+\S/u;
 const NUMBER_LEAD = /^\s*(?:\[\d{1,2}\]|\d{1,2}[.)]|\d{1,2}(?=\s{2,}))\s+/u;
-const CHECKBOX_LEAD = /^\s*(?:\[[ xX✓✔•*-]?\]|\([ ○●◉xX✓✔•*-]?\)|[☐☑☒◯○◉◻◼])\s+/u;
+/** A radio or a check box, with the icon fonts' own (circle-o, circle, dot-circle, square-o, square, check-square, check-circle). */
+const BOX_GLYPHS = "☐☑☒◯○◉◻◼\u{F10C}\u{F111}\u{F192}\u{F096}\u{F0C8}\u{F046}\u{F14A}\u{F058}";
+const CHECKBOX_LEAD = new RegExp(`^\\s*(?:\\[[ xX✓✔•*-]?\\]|\\([ ○●◉xX✓✔•*-]?\\)|[${BOX_GLYPHS}])\\s+`, "u");
 const YES_NO_FORM = /[([]\s*y(?:es)?\s*\/\s*n(?:o)?\s*[)\]]/iu;
 /** The words of a choice row, alone on it once its pointer, number and box are gone. */
 const CHOICE =
-  /^(?:yes|no|y|n|ok|allow|deny|cancel|always|never|accept|reject|decline|approve|skip|continue|proceed|abort|retry|quit|allow once|allow always|always allow|deny once|yes,? (?:allow|and|for|always|don'?t|proceed)\b.*|no,? (?:and|tell|deny|cancel|exit|keep|quit|thanks)\b.*)$/iu;
+  /^(?:yes|no|y|n|ok|allow|deny|cancel|always|never|accept|reject|decline|approve|skip|continue|proceed|abort|retry|quit|submit|confirm|allow once|allow always|always allow|deny once|yes,? (?:allow|and|for|always|don'?t|proceed)\b.*|no,? (?:and|tell|deny|cancel|exit|keep|quit|thanks)\b.*)$/iu;
 /** One key as a hint names it. A private-use glyph is an icon font's key cap. */
 const KEY_ATOM =
   "(?:enter|return|esc|escape|tab|space|backspace|shift\\+tab|shift\\+[a-z]|ctrl\\+[a-z.]|alt\\+[a-z↑↓]|\\^[a-z]|⌃[a-z]|f\\d{1,2}|pgup|pgdn|up|down|left|right|[↑↓←→⏎↵⎋]+|[\\u{E000}-\\u{F8FF}\\u{F0000}-\\u{FFFFD}]|arrow keys|arrows)";
@@ -80,7 +83,7 @@ const COMMAND_QUERY = new RegExp(`^\\s*(?:[${POINTERS}]\\s*)?/[\\w:.-]*\\s*$`, "
 /** A row of choice words side by side: `Skip  Confirm`, `Yes | No`. */
 const ITEMS = /\s{2,}|\s*[|│·]\s*/u;
 /** A mark in front of an option's text, after the pointer: a tick or a radio. */
-const MARK_LEAD = /^[✔✓●○◉◯☐☑☒◻◼]\s+/u;
+const MARK_LEAD = new RegExp(`^[✔✓●${BOX_GLYPHS}]\\s+`, "u");
 /** A row that only continues the one above it in a tree: a tool's result, a nested line. */
 const TREE_LEAD = /^\s*[⎿└├│]/u;
 
@@ -179,7 +182,7 @@ export function menuSign(texts: readonly string[], box: MenuBox | null = null): 
 /**
  * Whether a pointer row heads a pointed list: two rows or more next to it start where its option text
  * starts (a tick or a radio after the pointer passed over), or one such row with a rule over and under
- * the list. A long prompt echoed behind the same glyph wraps into rows that line up the same way: a
+ * the list; under a radio list each sibling may carry its own radio. A long prompt echoed behind the same glyph wraps into rows that line up the same way: a
  * pointer row that fills the window's width, in a list with no wide gap inside any row (a menu's
  * description column has one), is a wrapped paragraph. A row that continues a tree (`⎿`) is no option.
  */
@@ -191,7 +194,10 @@ function pointedList(rows: ReadonlyMap<number, string>, at: number, pointer: Reg
     for (let j = at + dir; rows.has(j); j += dir) {
       const other = rows.get(j)!;
       if (isBlank(other) || TREE_LEAD.test(other)) break;
-      if (other.search(/\S/u) !== col) break;
+      // A sibling starts where the option text starts, or, under a radio list, with its own radio where the pointer row's radio stands.
+      const start = other.search(/\S/u);
+      const radio = mark !== null && start === col - mark[0].length && MARK_LEAD.test(other.slice(start));
+      if (start !== col && !radio) break;
       list.push(j);
     }
   }

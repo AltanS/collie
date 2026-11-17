@@ -86,7 +86,7 @@ describe("the generic menu sign over the fixture corpus", () => {
     expect(DIALOGS.filter((c) => menuSign(c.texts, null) === null).map((c) => c.name)).toEqual([]);
   });
 
-  it("profile-free (no box): the false rate on idle screens stays where it was measured (35 of 229 on 2026-11-16)", () => {
+  it("profile-free (no box): the false rate on idle screens stays where it was measured (36 of 230 on 2026-11-17)", () => {
     // With no box to set the person's text and the transcript apart, a list in the agent's answer, a
     // notice's digit row and a login screen's "Esc to cancel" read as a menu. That costs the person a
     // press on the key pad on a screen whose box the reader did not find, never a wrong key.

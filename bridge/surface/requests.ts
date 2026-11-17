@@ -224,6 +224,7 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   // `awaitingEventUntil` is lenient like `late`: a value that is not a time is dropped (M102 spec 13).
   const awaiting = asJsonNumber(node.awaitingEventUntil);
   if (awaiting !== undefined && Number.isSafeInteger(awaiting) && awaiting > 0) whole.awaitingEventUntil = awaiting;
+  if (node.draftSeen === true) whole.draftSeen = true;
   if (acknowledged !== undefined) whole.acknowledged = acknowledged;
   if (detail !== undefined) whole.detail = detail;
   if (saw !== undefined) whole.saw = saw;

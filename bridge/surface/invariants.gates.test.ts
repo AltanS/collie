@@ -14,7 +14,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 
 import { isFree, type Surface } from "../../web/src/lib/surface/surface.ts";
-import { knownRed, redTitle, type KnownRedId } from "../../web/src/test/invariants/known-red.ts";
 import { replayHint, rngOf, runSeeds, sample } from "../../web/src/test/invariants/seed.ts";
 import { allSurfaces, overrideReaches, type SurfaceCase } from "../../web/src/test/invariants/surfaces.ts";
 import { collieOwn, invariantRig, keysOf, personOverride, retrySame, textWrites, type PaneDraw, type RigOptions } from "./invariants-rig.ts";
@@ -48,10 +47,11 @@ const SEEDS = runSeeds();
 const CASES: readonly Case[] = SEEDS.flatMap(casesOf);
 const covered = new Set(CASES.map((c) => `${c.surface.id} ${c.draw}`)).size;
 
-/** Which red entry an I4 break belongs to, by what the bridge answered. */
-function i4Bucket(answer: { readonly outcome?: string; readonly reason?: string }): KnownRedId | null {
-  if (answer.reason === "not_free" || answer.reason === "unconfirmed") return "i4-bridge-not-free";
-  if (answer.reason === "draft_present") return "i4-bridge-draft-no-box";
+/** Which bucket an I4 break belongs to, by what the bridge answered (both were red before M102 spec 12). */
+type I4Bucket = "not-free" | "draft-no-box";
+function i4Bucket(answer: { readonly outcome?: string; readonly reason?: string }): I4Bucket | null {
+  if (answer.reason === "not_free" || answer.reason === "unconfirmed") return "not-free";
+  if (answer.reason === "draft_present") return "draft-no-box";
   // Anything else is a break no entry names yet: the green test below fails on it.
   return null;
 }
@@ -66,7 +66,7 @@ function notFreeForCollie(surface: Surface): boolean {
 interface Outcome {
   readonly c: Case;
   readonly i4: string | null;
-  readonly i4Bucket: KnownRedId | null;
+  readonly i4Bucket: I4Bucket | null;
   readonly i6: string | null;
   readonly i6Own: string | null;
 }
@@ -79,7 +79,7 @@ async function runCase(c: Case): Promise<Outcome> {
     const { prepare, commit, writes, id } = await personOverride(person, TEXT);
     const receipt = commit.receipt;
     let i4: string | null = null;
-    let bucket: KnownRedId | null = null;
+    let bucket: I4Bucket | null = null;
     if (overrideReaches(c.surface.surface)) {
       // A draft in the box is the person's own road: Add to it or Replace it, both offered with the refusal.
       const draftRoad = receipt?.reason === "draft_present" && (commit.offers.includes("append") || commit.offers.includes("replace"));
@@ -142,9 +142,10 @@ describe("M102-15 part 1a, the bridge's gates over every Surface", () => {
     expect(unbucketed).toEqual([]);
   }, 120_000);
 
-  for (const id of ["i4-bridge-not-free", "i4-bridge-draft-no-box"] as const) {
-    const red = knownRed(id);
-    test.failing(`I4 ${red.what} ${redTitle(id)}`, async () => {
+  // Red on the base, green since M102 spec 12: a stale, torn, contested, unreachable or modal-less unknown
+  // read (not-free), and a draft with no box Collie can find (draft-no-box), no longer refuse an override.
+  for (const id of ["not-free", "draft-no-box"] as const) {
+    test(`I4: no override is refused in the ${id} bucket`, async () => {
       const list = await allOutcomes();
       const hits = list.filter((o) => o.i4Bucket === id).map((o) => o.i4);
       // The named cases below run on every seed, so this expected failure is real whatever the sample reached.
@@ -154,21 +155,18 @@ describe("M102-15 part 1a, the bridge's gates over every Surface", () => {
   }
 });
 
-/**
- * One fixed case per red bucket, run on every seed, so each expected failure is red for a reason the
- * report can name and not because the sample happened to reach it.
- */
+/** One fixed case per bucket, run on every seed, so each stays green whatever the sample reached. */
 describe("M102-15 part 1a, the named cases of each I4 bucket", () => {
-  const named: readonly { readonly id: KnownRedId; readonly surface: Surface; readonly draw: PaneDraw }[] = [
-    { id: "i4-bridge-not-free", surface: { revision: 1, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale" }, draw: { kind: "box" } },
-    { id: "i4-bridge-not-free", surface: { revision: 1, turn: "idle", modal: "none", composer: "unreachable" }, draw: { kind: "box" } },
-    { id: "i4-bridge-not-free", surface: { revision: 1, turn: "unknown", modal: "none", composer: "unknown" }, draw: { kind: "box" } },
-    { id: "i4-bridge-not-free", surface: { revision: 1, turn: "unknown", modal: "unknown", composer: "unknown", reason: "torn" }, draw: { kind: "bare" } },
-    { id: "i4-bridge-draft-no-box", surface: { revision: 1, turn: "idle", modal: "none", composer: "draft" }, draw: { kind: "bare" } },
+  const named: readonly { readonly id: I4Bucket; readonly surface: Surface; readonly draw: PaneDraw }[] = [
+    { id: "not-free", surface: { revision: 1, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale" }, draw: { kind: "box" } },
+    { id: "not-free", surface: { revision: 1, turn: "idle", modal: "none", composer: "unreachable" }, draw: { kind: "box" } },
+    { id: "not-free", surface: { revision: 1, turn: "unknown", modal: "none", composer: "unknown" }, draw: { kind: "box" } },
+    { id: "not-free", surface: { revision: 1, turn: "unknown", modal: "unknown", composer: "unknown", reason: "torn" }, draw: { kind: "bare" } },
+    { id: "draft-no-box", surface: { revision: 1, turn: "idle", modal: "none", composer: "draft" }, draw: { kind: "bare" } },
   ];
   for (const n of named) {
     const label = `turn=${n.surface.turn} modal=${String(n.surface.modal)} composer=${n.surface.composer} reason=${n.surface.reason ?? "-"} screen=${n.draw.kind}`;
-    test.failing(`I4 override on ${label} ${redTitle(n.id)}`, async () => {
+    test(`I4 override on ${label} (${n.id})`, async () => {
       const rig = invariantRig({ ...AGENT, draw: n.draw, surface: n.surface });
       try {
         const { commit } = await personOverride(rig, TEXT);
@@ -188,8 +186,7 @@ describe("M102-15 part 1a, the named cases of each I4 bucket", () => {
  * waits up to 30 minutes on a reading alone and says only "Something is open".
  */
 describe("M102-15 I5, no long wait on a reading alone", () => {
-  const red = knownRed("i5-held-long");
-  test.failing(`I5: a send held on a screen that is not free says heldLong after two minutes ${redTitle(red.id)}`, async () => {
+  test("I5: a send held on a screen that is not free says heldLong after two minutes", async () => {
     const surface: Surface = { revision: 1, turn: "running", modal: "none", composer: "unknown" };
     const rig = invariantRig({ ...AGENT, draw: { kind: "box" }, surface, holds: true });
     try {
