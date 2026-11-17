@@ -179,7 +179,11 @@ export const DIALOG_CONTRACT: DialogContract = {
     commits: promptsEqual,
     identity: promptsSameIdentity,
     signature: (m) => m.signature,
-    region: (m) => m.signature,
+    // The dialog's own rows where the grammar found its edge (`bindRegion`), so a ticking row in the
+    // transcript above it cannot refuse the tap at the bridge. A model with a style or a column range
+    // binds `signature`, whose rows those describe.
+    region: (m) =>
+      m.bindRegion !== undefined && m.styledSignature === undefined && m.bindColumns === undefined ? m.bindRegion : m.signature,
     styled: (m) => m.styledSignature,
     columns: (m) => m.bindColumns,
     tail: (m) => m.bindTail,

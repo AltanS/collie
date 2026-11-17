@@ -67,7 +67,7 @@ import { COLLAPSE_MS } from "./ui/collapse";
 import { AgentChat } from "./agent-chat";
 import { saveChatTail } from "@/lib/chat-tail";
 import { __resetMaskedHint, maskedHintRetired } from "@/lib/masked-hint";
-import { ARM_DWELL_MS } from "@/lib/arm";
+import { ARM_DWELL_MS, STOP_HOLD_MS } from "@/lib/arm";
 
 // M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
 // These suites drive sends against a mocked network and never poll first, so they pin the pane live;
@@ -5159,7 +5159,7 @@ describe("AgentChat, the newest turn's picture on a pi pane (M39, #292)", () => 
 });
 
 // M68 spec 02: Stop on the belt of a pane with a screen. The rule is `stopFor` (the bridge says a key exists;
-// the turn only decides live or dimmed); the first tap arms, the second posts the request id alone and the receipt shows under the box.
+// the turn only decides live or dimmed); a hold of two seconds posts the request id alone and the receipt shows under the box.
 describe("AgentChat: Stop on a pane with a screen", () => {
   const RUNNING: Surface = { revision: 4, turn: "running", modal: "none", composer: "empty" };
   const IDLE_SURFACE: Surface = { revision: 4, turn: "idle", modal: "none", composer: "empty" };
@@ -5204,26 +5204,35 @@ describe("AgentChat: Stop on a pane with a screen", () => {
     expect(screen.queryByRole("button", { name: "Tap again to stop the turn" })).toBeNull();
   });
 
-  it("arms on the first tap, posts one fresh request id on the second and tells the receipt under the box", async () => {
+  it("a short tap posts nothing and says Hold; a hold posts one fresh request id and tells the receipt under the box", async () => {
     const user = userEvent.setup();
     const posted = serveStop({ requestId: "echo-0001", outcome: "stopped", keys: ["Escape"] });
     renderChat({ agent: stopAgent({ surface: RUNNING, canStop: true }) });
-    await user.click(await screen.findByRole("button", { name: "Stop the turn" }));
+    const stop = await screen.findByRole("button", { name: "Stop the turn" });
+    await user.click(stop);
     expect(posted).toHaveLength(0);
-    await pastTheDwell();
-    await user.click(screen.getByRole("button", { name: "Tap again to stop the turn" }));
-    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(stop).toHaveTextContent("Hold");
+    expect(screen.queryByRole("button", { name: "Tap again to stop the turn" })).toBeNull();
+    // The hold: the finger rests for STOP_HOLD_MS, and the Stop goes out with the finger still down.
+    fireEvent.pointerDown(stop, { button: 0, clientX: 5, clientY: 5, pointerType: "touch" });
+    await new Promise<void>((resolve) => setTimeout(resolve, STOP_HOLD_MS - 300));
+    expect(posted).toHaveLength(0);
+    await waitFor(() => expect(posted).toHaveLength(1), { timeout: 2000 });
     expect(posted[0]).toEqual({ requestId: expect.stringMatching(/^[A-Za-z0-9_-]{8,64}$/) });
     expect(await screen.findByText("Stopped.")).toBeInTheDocument();
   });
 
-  it("tells a refusal in its own words and presses nothing more", async () => {
+  // A key cannot hold, so it keeps the two presses: the first arms, the second stops.
+  it("by keyboard: arms on the first press, stops on the second, and tells a refusal in its own words", async () => {
     const user = userEvent.setup();
     const posted = serveStop({ requestId: "echo-0002", outcome: "refused", reason: "draft_present" });
     renderChat({ agent: stopAgent({ surface: RUNNING, canStop: true }) });
-    await user.click(await screen.findByRole("button", { name: "Stop the turn" }));
+    (await screen.findByRole("button", { name: "Stop the turn" })).focus();
+    await user.keyboard("{Enter}");
+    expect(posted).toHaveLength(0);
     await pastTheDwell();
-    await user.click(screen.getByRole("button", { name: "Tap again to stop the turn" }));
+    screen.getByRole("button", { name: "Tap again to stop the turn" }).focus();
+    await user.keyboard("{Enter}");
     expect(await screen.findByText("The box holds your text and this harness's stop key would clear it.")).toBeInTheDocument();
     expect(posted).toHaveLength(1);
   });

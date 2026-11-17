@@ -29,6 +29,10 @@ export interface AccountHarness {
   newFolder: string;
   /** The command that starts the agent. Absent from an older bridge: the id stands in for it. */
   binary?: string;
+  /** Present when a sign-in that ends well reaches the sessions that already run (Change login). */
+  reachesRunningSessions?: true;
+  /** The hosts of the agent's sign-in address the phone may open. Absent: none, the address is text to copy. */
+  signInHosts?: string[];
 }
 
 /** One window of a reading. `usedPct` null: the window passed its reset time and was not read since. */
@@ -55,6 +59,8 @@ export interface AccountRow {
   seenAt: number | null;
   /** A pane of this account runs now. */
   live: boolean;
+  /** How many agent panes of this account run now, a sign-in session left out. Absent: none, or an older bridge. */
+  running?: number;
   /** Shared only: entries that should be links and are not. */
   unlinked?: string[];
   /** Only where the adapter can tell. */

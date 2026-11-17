@@ -1,0 +1,60 @@
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [38;5;246mv2.1.325[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mOpus[39m [38;5;246m5.5[39m [38;5;246m·[39m [38;5;246mClaude[39m [38;5;246mMax[39m
+[38;5;174m ▝▝[39m   [38;5;174m▝▝[39m   [38;5;246m~/.cache/collie-lab/login-panel-lab/work[39m
+
+[38;5;174m▎[39m [1mAuto[0m [1mmode[0m [1mis[0m [1mnow[0m [1mClaude[0m [1mCode's[0m [1mdefault[0m [1mpermission[0m [1mmode.[0m
+[38;5;174m▎[39m [38;5;246mAuto[39m [38;5;246mmode[39m [38;5;246mlets[39m [38;5;246mClaude[39m [38;5;246mhandle[39m [38;5;246mpermission[39m [38;5;246mprompts[39m [38;5;246mautomatically.[39m [38;5;246mClaude[39m [38;5;246mchecks[39m [38;5;246meach[39m [38;5;246mtool[39m [38;5;246mcall[39m [38;5;246mfor[39m [38;5;246mrisky[39m [38;5;246mactions[39m [38;5;246mand[39m [38;5;246mprompt[39m [38;5;246minjection[39m [38;5;246mbefore[39m [38;5;246mexecuting,[39m [38;5;246mruns[39m [38;5;246mthe[39m [38;5;246mones[39m [38;5;246mit[39m [38;5;246massesses[39m [38;5;246mas[39m [38;5;246mlower-risk,[39m [38;5;246mand[39m [38;5;246mblocks[39m [38;5;246mthe[39m [38;5;246mrest.[39m
+[38;5;174m▎[39m [38;5;246mhttps://code.claude.com/docs/en/permission-modes[39m
+
+[38;5;246m[48;5;237m❯ [38;5;231msay hello[39m
+[38;5;246m[49m  ⎿  Interrupted · What should Claude do instead?[39m
+
+[38;5;246m[48;5;237m❯ /login[39m
+
+[38;5;153m[49m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [1m[38;5;153mLogin[0m
+
+  [38;5;246mBrowser didn't open? Use the url below to sign in (c to copy)[39m
+
+[38;5;246mhttps://claude.com/cai/oauth/authorize?code=true&client_id=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&scope=org%3Acreate_api_key+user%
+3Aprofile+user%3Ainference+user%3Asessions%3Aclaude_code+user%3Amcp_servers+user%3Afile_upload+user%3Aplugins+user%3Aprivacy_consents%3Awrite&code_challenge=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX&code_challenge_meth
+od=S256&state=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX[39m
+
+
+  Paste code here if prompted >
+
+  [3m[38;5;246mEsc[0m [3m[38;5;246mto[0m [3m[38;5;246mcancel[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

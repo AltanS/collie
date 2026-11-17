@@ -46,10 +46,9 @@ ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) sta
    one direction, then the commit key. The pointed row shows `❯`, because a bare Enter takes it. The
    arrows go bound to the tapped screen; Enter goes only bound to a fresh read with the pointer on the
    tapped row. A grammar never shapes a plan to survive a race.
-6. **On omp's tool approval, a race never turns a denial into an approval.** On the clamped list of
-   omp 18.1 to 18.6, the first row commits as `Up, Enter` and the last as `Down, Enter`, so a desk arrow
-   between the bridge's read and its send cannot move the commit off the tapped edge row. On the
-   wrapping list of 18.12, Deny is the footer's own Escape, which denies from any row; a desk arrow can
+6. **On omp's tool approval, a race never turns a denial into an approval.** On the clamped list of omp 18.1 to 18.6, the first row
+   commits as `Up, Enter` and the last as `Down, Enter`, so a desk arrow between the bridge's read and its send cannot move the commit
+   off the tapped edge row. On the wrapping list of 18.12, Deny is the footer's own Escape, which denies from any row; a desk arrow can
    only move an approval to its neighbour.
 7. **A card shows what it binds, or declines.** The omp approval card carries every row of the command
    or the write; a body the agent cut, a hidden or bidi character or a clipped row declines. The omp
@@ -65,7 +64,8 @@ ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) sta
    bind a pointer drawn as a style (`styledSignature`, ADR 0080). The bridge holds no grammar.
 10. **One dock, one card, a way to put it down.** Every card renders in one dock above the belt,
     outside every scroller, capped. A Terminal control shows the rows it replaced, for that dialog
-    only. The draft notice and held sends float over the mirror's bottom edge and move nothing.
+    only. The draft notice and held sends float over the mirror's bottom edge and move no footer row.
+    Chat and the mirror end above them, by one room shared with the model tag: the larger of the two, as a card covers the tag's corner.
 
 ## Today in the code
 
@@ -96,7 +96,7 @@ ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) sta
 - Rule 9: `DEFAULT_PROMPT_TAIL_LINES` = 6, `verifyPromptBinding` (`bridge/prompt-binding.ts`);
   `checkPromptBinding`, one read, text then style at the same place, `MAX_EXPECTED_PROMPT_CHARS` =
   32768 (`bridge/server.ts`); `tailLinesFor`, `MAX_TAIL_LINES` = 12 (`web/src/lib/tail-lines.ts`).
-- Rule 10: `CardDock` (55dvh, 40dvh with the keyboard up); `PromptPanel`, `rawMode`; `HeldCard`.
+- Rule 10: `CardDock` (55dvh, 40dvh with the keyboard up); `PromptPanel`, `rawMode`; `HeldCard`; `useFloatingClear`, `bottomRoom`.
 
 ## Recorded, not found in the code
 

@@ -515,6 +515,7 @@ export function SessionStream({
   questionPending = false,
   agent,
   pins,
+  clearBottom,
 }: {
   /** The held window plus its one control, from `useChatWindow`. */
   feed: ChatFeed;
@@ -539,6 +540,8 @@ export function SessionStream({
   fontSize: number;
   /** The pane view's one list handle: a send snaps the body it is looking at back to the tail. */
   listRef: RefObject<ChatMessageListHandle | null>;
+  /** What floats over the stream's bottom edge, in px (ChatMessageList `clearBottom`). */
+  clearBottom?: number;
   /**
    * The saved-copy sentence while this window is the phone's saved copy, else `null`. It takes the
    * top slot in place of "Load older" and "Start of the conversation" (see {@link SavedCopyRow}).
@@ -883,6 +886,7 @@ export function SessionStream({
       // scrolling back through a conversation would stop a permission dialog appearing. Reading
       // older turns is an ordinary act in this body and a rare one in that one.
       className={look.gutter === "16" ? "px-4 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]" : "px-3 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]"}
+      clearBottom={clearBottom}
       style={textTokens(fontSize)}
       // The pin sits beside the scrollport, so it takes the gutter and the chat font size from here. Only the
       // hugging look does: the look before it keeps the overlay as it was.

@@ -2757,6 +2757,19 @@
   }
  },
  {
+  "fixture": "claude--v2325-login-url-in-session--w220.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 23,
+   "bottom": 25,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2325-login-url-typed--w120.txt",
   "frame": {
    "top": 7,

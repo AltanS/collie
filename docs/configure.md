@@ -310,12 +310,15 @@ turn starts or ends. A tap on the dimmed button does nothing and sends nothing. 
 stop key has no button. Stop does not type anything and does not send a message. It presses the
 agent's own stop key, once, and tells you what happened.
 
-A Stop needs two taps. The first tap arms the button: the word changes to **Stop?** and the button
-keeps its size. Tap it again within four seconds to stop the turn. A second tap that lands at once,
-within 0.4 seconds, counts as the same touch and is ignored. If you wait, the arm lapses and nothing
-is pressed. The arm also lapses when you open another pane, and the button goes dim when the turn
-ends. While the second tap is in flight the button takes no more taps, so a quick third tap cannot
-press a second Stop.
+To stop a turn, hold the button for two seconds. While you hold, the button fills from one edge to
+the other, and the turn stops when the fill is complete. If you lift your finger earlier, nothing is
+pressed, and the button says **Hold** for a moment. A sideways scroll of the belt also ends the hold.
+The button keeps its size all the time. The hold ends when you open another pane, and the button goes
+dim when the turn ends. While the Stop is in flight the button takes no more presses, so a second hold
+cannot press a second Stop.
+
+With a keyboard or a screen reader, Stop takes two presses, because neither can hold. The first press
+changes the word to **Stop?**. Press again within four seconds to stop the turn.
 
 Which key stops a turn is the harness's own choice, and the harness profile holds it. Most agents
 stop on Escape, some on Ctrl+C, and some need Escape twice. The profile decides, not this page.
@@ -712,6 +715,35 @@ The history of an own folder is found with no restart and no `.env` line. An own
 may have no Collie hooks yet; its page says so and shows the line that installs them.
 
 **Remove** forgets the account's name only. The folder, its links and its login stay.
+
+#### Change the login of an account
+
+When one login has run out of usage and another has some left, you can move an account to the other
+login without a new session. Open the account's page and tap **Change login**. In a session, tap the
+session's name and then **Change login**: it opens the same page for the account that session runs
+under. The page shows who is signed in now and, for Claude Code, how many sessions of the account run.
+
+**Change login** starts the agent's own sign-in for the account's folder, in the same way as **Sign in
+again**. The phone shows the agent's sign-in screens as cards. Pick the login method, tap **Open
+sign-in page** to sign in with the other account in your browser, and paste the code into the
+**Sign-in code** field. The button opens only the agent's own sign-in address; any other address is
+shown as text to copy. Then go back to the Change login page and tap **Finish**. Collie closes the
+sign-in session, asks the agent who is signed in, and shows the result. When the list already shows a
+new email, the page finishes by itself.
+
+- **Claude Code**: running sessions of the account continue on the new login from their next message.
+  Claude Code itself loads a changed login before each request, so no session needs a restart and each
+  keeps its conversation.
+- **Codex, pi and Grok**: the new login is used by sessions you start after the change. Start a new
+  session to use it.
+
+The old login stays until the new sign-in succeeds. If you cancel, enter a wrong code or leave the
+sign-in, the account stays signed in as before, and the result says "Still signed in as" with the
+same email. The sign-in address and the code are not stored, logged or sent anywhere else. The
+agent writes the new login into the account's folder; Collie does not open that file.
+
+On a crew member's session there is no **Change login** row, because accounts are per machine. Change
+the login on the member's own Collie.
 
 > **Note.** Accounts are per machine. A crew member's accounts are its own, and the New page reads
 > the accounts of the machine you start on. Windows offers no accounts yet.
