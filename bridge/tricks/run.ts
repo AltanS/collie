@@ -34,6 +34,8 @@ export interface RunSpec {
   /** The facts document, written to stdin and then closed. */
   stdin: string;
   timeoutMs?: number;
+  /** Aborted: the program's whole group is killed at once and the run ends `stopped` (tricks switched off as a whole). */
+  signal?: AbortSignal;
   stdoutCap?: number;
   stderrCap?: number;
   /** The platform, for the shell. Default `HOST.platform` (bridge/host.ts). */
@@ -139,6 +141,7 @@ export type RunOutcome =
   | { kind: "exited"; code: number; stdout: string; stderr: string; ms: number }
   | { kind: "timeout"; stderr: string; ms: number; limitMs: number }
   | { kind: "overflow"; stderr: string; ms: number }
+  | { kind: "stopped"; stderr: string; ms: number }
   | { kind: "spawn-failed"; message: string; ms: number };
 
 /**
@@ -254,6 +257,8 @@ export async function runProgram(spec: RunSpec): Promise<RunOutcome> {
   // Fault d: on Windows a shell line never starts, whoever asked (the bridge, check --run, trick dev).
   const refused = windowsRunProblem(spec.command, platform);
   if (refused !== null) return { kind: "spawn-failed", message: refused, ms: 0 };
+  // Stopped before it began: nothing starts.
+  if (spec.signal?.aborted === true) return { kind: "stopped", stderr: "", ms: 0 };
   let child: RunChild;
   const startedAt = Date.now();
   try {
@@ -264,10 +269,10 @@ export async function runProgram(spec: RunSpec): Promise<RunOutcome> {
     return { kind: "spawn-failed", message: redactText(err instanceof Error ? err.message : String(err)), ms: elapsed() };
   }
   const pid = child.pid;
-  let ended: "timeout" | "overflow" | null = null;
+  let ended: "timeout" | "overflow" | "stopped" | null = null;
   const out = readCapped(child.stdout, spec.stdoutCap ?? STDOUT_CAP_BYTES, true, () => stop("overflow"));
   const err = readCapped(child.stderr, spec.stderrCap ?? STDERR_CAP_BYTES, false, () => {});
-  function stop(why: "timeout" | "overflow"): void {
+  function stop(why: "timeout" | "overflow" | "stopped"): void {
     if (ended !== null) return;
     ended = why;
     const leader = (): void => {
@@ -284,6 +289,8 @@ export async function runProgram(spec: RunSpec): Promise<RunOutcome> {
     err.cancel();
   }
   const timer = setTimeout(() => stop("timeout"), timeoutMs);
+  const onAbort = (): void => stop("stopped");
+  spec.signal?.addEventListener("abort", onAbort, { once: true });
   let grace: ReturnType<typeof setTimeout> | undefined;
   try {
     try {
@@ -299,11 +306,13 @@ export async function runProgram(spec: RunSpec): Promise<RunOutcome> {
     }, PIPE_GRACE_MS);
     const [stdout, stderrRead] = await Promise.all([out.done, err.done]);
     const stderr = redactText(stderrRead.text);
+    if (ended === "stopped") return { kind: "stopped", stderr, ms: elapsed() };
     if (ended === "timeout") return { kind: "timeout", stderr, ms: elapsed(), limitMs: timeoutMs };
     if (ended === "overflow" || stdout.over) return { kind: "overflow", stderr, ms: elapsed() };
     return { kind: "exited", code, stdout: redactText(stdout.text), stderr, ms: elapsed() };
   } finally {
     clearTimeout(timer);
+    spec.signal?.removeEventListener("abort", onAbort);
     if (grace !== undefined) clearTimeout(grace);
   }
 }
@@ -328,6 +337,8 @@ export function outcomeProblem(outcome: RunOutcome, max: number): string | null 
         return `The program did not start: ${outcome.message}`;
       case "timeout":
         return `The program ran past ${Math.round(outcome.limitMs / 1000)} s and was stopped${tail(outcome.stderr)}`;
+      case "stopped":
+        return `The program was stopped${tail(outcome.stderr)}`;
       case "overflow":
         return `The program printed more than ${STDOUT_CAP_BYTES / 1024} KiB and was stopped${tail(outcome.stderr)}`;
       case "exited":

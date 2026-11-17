@@ -239,6 +239,36 @@ describe("one run", () => {
     expect(outcomeProblem(outcome, 200)).toBe("The program ran past 2 s and was stopped");
   });
 
+  test("an abort kills the whole process group at once and ends the run stopped; an abort before the start starts nothing", async () => {
+    const cwd = await tempDir();
+    const pidFile = join(cwd, "child.pid");
+    const program = [
+      'import { writeFileSync } from "node:fs";',
+      'const child = Bun.spawn([process.execPath, "-e", "await Bun.sleep(30000)"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });',
+      `writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));`,
+      "await Bun.sleep(30000);",
+      "",
+    ].join("\n");
+    const stop = new AbortController();
+    const running = script(cwd, program, { stdin: "", signal: stop.signal });
+    for (let i = 0; i < 200 && !(await readFile(pidFile, "utf8").then((t) => t.trim() !== "", () => false)); i += 1) await Bun.sleep(25);
+    const child = Number((await readFile(pidFile, "utf8")).trim());
+    expect(alive(child)).toBe(true);
+    const began = performance.now();
+    stop.abort();
+    const outcome = await running;
+    expect(outcome.kind).toBe("stopped");
+    expect(performance.now() - began).toBeLessThan(2000);
+    for (let i = 0; i < 40 && alive(child); i += 1) await Bun.sleep(50);
+    expect(alive(child)).toBe(false);
+    expect(outcomeProblem(outcome, 200)).toBe("The program was stopped");
+
+    const marker = join(cwd, "started");
+    const before = await script(cwd, `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "x");\n`, { signal: stop.signal });
+    expect(before.kind).toBe("stopped");
+    expect(await Bun.file(marker).exists()).toBe(false);
+  });
+
   test("the timeout reaches a grandchild under a live child (on Windows: taskkill /T over the live tree)", async () => {
     const cwd = await tempDir();
     const pidFile = join(cwd, "grandchild.pid");

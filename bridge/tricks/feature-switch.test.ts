@@ -17,7 +17,7 @@ import type { OfficialEntry } from "./official.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import { proposalHash } from "./propose-wire.ts";
 import { TRICKS_ROUTE_RIGHTS } from "./routes.ts";
-import type { RunOutcome, RunSpec } from "./run.ts";
+import { runProgram, type RunOutcome, type RunSpec } from "./run.ts";
 import { TricksService, type TricksHillPort, type TricksServiceDeps } from "./service.ts";
 import { withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
@@ -58,6 +58,10 @@ interface RigOptions {
   switched?: boolean;
   /** Leave the runner's `feature` dep out, so it builds the file switch itself (fail closed). */
   defaultSwitch?: boolean;
+  /** The trick's program: the body of legs.sh after the shebang. With it set, the run seam starts a REAL child (`runProgram`). */
+  program?: string;
+  /** The Decision's content hash the Hill port gives back for any card, so an answer from the Hill queues and runs. */
+  seen?: string;
 }
 
 /** A bridge with the trick `legs` in its folder, switched on at the folder's code hash, as after a restart. */
@@ -69,7 +73,7 @@ async function rig(opts: RigOptions = {}): Promise<Rig> {
   await mkdir(dir, { recursive: true });
   await mkdir(stateDir, { recursive: true });
   await writeFile(join(dir, "trick.toml"), MANIFEST);
-  await writeFile(join(dir, "legs.sh"), "#!/bin/sh\n", { mode: 0o755 });
+  await writeFile(join(dir, "legs.sh"), `#!/bin/sh\n${opts.program ?? ""}`, { mode: 0o755 });
   const code = await trickCodeHash(dir);
   const on: Switches = withSwitch({ on: new Map() }, "legs", true, "2026-11-17T08:00:00Z", code.ok ? code.hash : null, await powersOfDir(dir, "legs"));
   await writeSwitches(stateDir, on);
@@ -83,7 +87,7 @@ async function rig(opts: RigOptions = {}): Promise<Rig> {
     sync: () => [],
     off: (trick) => withdrawn.push(trick.id),
     prune: () => {},
-    seenOf: () => undefined,
+    seenOf: () => opts.seen,
   };
   const deps: TricksServiceDeps = {
     configDir,
@@ -99,6 +103,7 @@ async function rig(opts: RigOptions = {}): Promise<Rig> {
     audit: (entry) => audit.push(entry),
     run: async (spec): Promise<RunOutcome> => {
       specs.push(spec);
+      if (opts.program !== undefined) return await runProgram(spec);
       if (gate.wait !== null) await gate.wait;
       return EXITED;
     },
@@ -270,6 +275,57 @@ describe("moving the switch", () => {
     await tick(r, T0 + 31_000);
     await tick(r, T0 + 62_000);
     expect(r.specs).toHaveLength(1);
+  });
+
+  test("off while a program RUNS: the child is killed, and the tap and the answer waiting behind it never start", async () => {
+    const pids = await tempRoot();
+    const pidFile = join(pids, "pids");
+    // The first run answers at once (it draws the belt); every later run records its pid and sleeps.
+    const program = `if [ -f '${join(pids, "first")}' ]; then echo $$ >> '${pidFile}'; exec sleep 30; fi\ntouch '${join(pids, "first")}'\nprintf '%s' '${BELT}'\n`;
+    const r = await rig({ switched: true, program, seen: "seen" });
+    const pidsNow = async (): Promise<number[]> => (await readFile(pidFile, "utf8").catch(() => "")).split("\n").filter((line) => line !== "").map(Number);
+    const alive = (pid: number): boolean => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    let slow: Promise<void> | undefined;
+    try {
+      await tick(r, T0);
+      expect(r.specs).toHaveLength(1);
+      const rev = (await r.service.reply(undefined)).parts[0]?.rev;
+      expect(rev).toBeGreaterThan(0);
+      r.clock.t = T0 + 31_000;
+      slow = r.service.tick();
+      for (let i = 0; i < 200 && (await pidsNow()).length === 0; i += 1) await Bun.sleep(10);
+      const [child] = await pidsNow();
+      expect(child).toBeGreaterThan(0);
+      expect(alive(child!)).toBe(true);
+      // One phone tap and one answer from the Hill wait behind the running program.
+      const tap = r.service.tap(HOST, "legs", { rid: RID, node: "belt", intent: "x", rev });
+      const answer = r.service.tapFromHill(HOST, "legs", { rid: "8a1d2e3f-4b5c-4d6e-8f70-8192a3b4c5d6", node: "hill/ship", intent: "yes", value: { text: null } }, "dc_abcdefabcdef");
+      await Bun.sleep(50);
+      expect(r.specs).toHaveLength(2);
+      expect(r.service.switchTo(false, "phone-a")).toBe(false);
+      // The program is gone, and the run it belonged to ends now, not at the 10 s limit.
+      for (let i = 0; i < 200 && alive(child!); i += 1) await Bun.sleep(10);
+      expect(alive(child!)).toBe(false);
+      await slow;
+      // Neither waiting run started a program: no third spec, no second pid.
+      expect(await tap).toEqual({ status: 200, body: { rid: RID, code: "rejected", message: TRICKS_OFF_LINE } });
+      expect(await answer).toBe(false);
+      expect(r.specs).toHaveLength(2);
+      expect(await pidsNow()).toEqual([child!]);
+      await tick(r, T0 + 62_000);
+      expect(r.specs).toHaveLength(2);
+      expect((await r.service.reply(undefined)).parts).toEqual([]);
+    } finally {
+      for (const pid of await pidsNow()) if (alive(pid)) process.kill(pid, "SIGKILL");
+      await slow?.catch(() => {});
+    }
   });
 
   test("on, off, on: each trick keeps its own switch, the file of switches is never written, and the trick runs again", async () => {
