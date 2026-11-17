@@ -75,8 +75,6 @@ describe("the key gate shares the pane lock", () => {
     const gate = new KeyGate(writer);
     gate.share(lockOf(101));
     const pressing = gate.press("%1", ["Enter"], "person_tap");
-    // The press takes the lock, then calls the multiplexer on a later turn.
-    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
     expect(new SessionLocks(lockOf(202)).acquire("other\u0000%1", "req", Date.now() + 30_000, Date.now())).toBe(false);
     release();
     await pressing;

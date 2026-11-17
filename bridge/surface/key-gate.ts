@@ -98,7 +98,10 @@ export class KeyGate {
    * at all. A free pane, or one this bridge already holds, costs no wait. With no shared lock, `work` runs as before.
    */
   async hold<T>(paneId: string, spanMs: number, work: () => Promise<T>, busy: () => T): Promise<T> {
-    const owner = await this.takeWaiting(paneId, spanMs);
+    // The first try is synchronous: a free pane writes in the same turn as before (a person's key still
+    // moves the gate's revision at once, so a token minted before it is stale).
+    const now = this.takeNow(paneId, spanMs);
+    const owner = now === false ? await this.takeWaiting(paneId, spanMs) : now;
     if (owner === false) return busy();
     try {
       return await work();
@@ -113,7 +116,8 @@ export class KeyGate {
    * key goes out anyway and `bypassed` says so, for the route's record. Inside this bridge it is a press, as before.
    */
   async pressAlways(paneId: string, keys: readonly string[]): Promise<{ readonly ack: MuxAck; readonly bypassed: boolean }> {
-    const owner = await this.takeWaiting(paneId, PRESS_SPAN_MS);
+    const now = this.takeNow(paneId, PRESS_SPAN_MS);
+    const owner = now === false ? await this.takeWaiting(paneId, PRESS_SPAN_MS) : now;
     try {
       this.bump(paneId);
       this.sends.person_tap++;
@@ -123,14 +127,20 @@ export class KeyGate {
     }
   }
 
-  /** The lock taken for a new owner (its name), null with no shared lock, false when another bridge kept it through the wait. */
-  private async takeWaiting(paneId: string, spanMs: number): Promise<string | null | false> {
+  /** One try, now: the new owner's name, null with no shared lock, false while another bridge holds the pane. */
+  private takeNow(paneId: string, spanMs: number): string | null | false {
     const lock = this.paneLock;
     if (lock === null) return null;
     const owner = `gate-${String(this.nextHold++)}`;
-    for (let attempt = 0; attempt <= LOCK_WAIT_MS / LOCK_POLL_MS; attempt++) {
-      if (attempt > 0) await this.pause(LOCK_POLL_MS);
-      if (lock.take(paneId, owner, this.now() + spanMs)) return owner;
+    return lock.take(paneId, owner, this.now() + spanMs) ? owner : false;
+  }
+
+  /** Further tries {@link LOCK_POLL_MS} apart for {@link LOCK_WAIT_MS}: the owner's name, or false when another bridge kept the pane. */
+  private async takeWaiting(paneId: string, spanMs: number): Promise<string | null | false> {
+    for (let attempt = 0; attempt < LOCK_WAIT_MS / LOCK_POLL_MS; attempt++) {
+      await this.pause(LOCK_POLL_MS);
+      const owner = this.takeNow(paneId, spanMs);
+      if (owner !== false) return owner;
     }
     return false;
   }
