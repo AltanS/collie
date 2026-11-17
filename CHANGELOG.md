@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The Dashboard names the trick an agent proposes.** With the Hill off, the line about a waiting trick now reads "An agent proposes a trick: legs." for one proposal, "An agent proposes a new version of legs." for a proposed new version, and "Agents propose 3 tricks." for several, and its button says Review instead of Read it. It still opens the oldest card. A long name is cut with an ellipsis on one line. Any other waiting card (a version Collie found, a trick stopped for its rights) keeps the plain line.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added

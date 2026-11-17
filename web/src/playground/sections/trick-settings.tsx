@@ -712,7 +712,7 @@ export function TrickSettingsSection(): ReactNode {
         </Card>
         <Card state="trick-settings-waiting-line" label="44 · the Dashboard's line, only while the Hill is off and a card waits">
           <div className="w-[390px] max-w-full bg-background p-4">
-            <TrickCardsLineView onOpen={noop} />
+            <TrickCardsLineView cards={[proposalGroup()]} onOpen={noop} />
           </div>
         </Card>
         <Card state="trick-settings-card-page" label="45 · the card's page: the Hill's card, Settings' shell, no Hill words">

@@ -7,7 +7,8 @@ import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { useTrickCards } from "@/lib/hill/store";
 import type { HillDecision } from "@/lib/hill/wire";
-import { t } from "@/lib/i18n";
+import { isHiddenChar } from "@/lib/hidden-chars";
+import { t, tn } from "@/lib/i18n";
 import { trickCardPath } from "@/lib/nav";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
@@ -73,9 +74,57 @@ export function TrickCardsWaiting() {
   return <TrickCardsWaitingList cards={cards} onOpen={open} />;
 }
 
-/** The Dashboard's line, every value handed in: the line and its one button. */
-export function TrickCardsLineView({ onOpen, className }: { onOpen: () => void; className?: string }) {
+/**
+ * What the Dashboard's line says (Altan's words, 2026-11-17). It counts every open card of Collie's own about a
+ * trick (the store's `useTrickCards`): a proposed new trick, a proposed new version (both a `proposal` ref, the
+ * version one titled "Use the new version of ..."), a new version the runner found, a trick stopped for its
+ * rights and a carried trick that did not start. Only the first two are an agent's proposal, so only they get
+ * the proposal sentences; any other card in the list keeps the plain old line (`home.trickWaits.line`).
+ */
+export type TrickLine =
+  | { kind: "new"; name: string }
+  | { kind: "version"; name: string }
+  | { kind: "many"; count: number }
+  | { kind: "plain" };
+
+/** The title the bridge gives a proposed new version (bridge/tricks/version-card.ts `titleFrame`). */
+const VERSION_PROPOSAL_TITLE = "Use the new version of ";
+
+/** The line for the open cards, oldest first. Never called with none. */
+export function trickLineOf(cards: readonly HillDecision[]): TrickLine {
+  const proposals = cards.filter((card) => card.from.ref?.type === "proposal");
+  if (proposals.length !== cards.length || cards.length === 0) return { kind: "plain" };
+  const [only] = cards;
+  if (cards.length > 1 || only === undefined) return { kind: "many", count: cards.length };
+  const name = shownName(only.from.ref?.id ?? "");
+  return only.title.startsWith(VERSION_PROPOSAL_TITLE) ? { kind: "version", name } : { kind: "new", name };
+}
+
+/**
+ * The trick's name as the card carries it (its `ref.id`, which the reader holds to `[a-z0-9-]` already), with
+ * every character that does not show as itself taken out. It is drawn as text, never as markup.
+ */
+function shownName(raw: string): string {
+  return [...raw].filter((ch) => !isHiddenChar(ch)).join("");
+}
+
+/** A sentence with a name in it: the words before, the name, the words after, in the language's own order. */
+function aroundName(key: "home.trickWaits.proposes" | "home.trickWaits.proposesVersion", name: string) {
+  const slot = "\uE000";
+  const [before = "", after = ""] = t(key, { name: slot }).split(slot);
+  return (
+    <p data-line="proposal" className="flex min-w-0 items-baseline">
+      <span className="shrink-0 whitespace-pre">{before}</span>
+      <span data-slot="trick-name" className="min-w-0 truncate" title={name}>{name}</span>
+      <span className="shrink-0 whitespace-pre">{after}</span>
+    </p>
+  );
+}
+
+/** The Dashboard's line, every value handed in: the open cards and the one button. */
+export function TrickCardsLineView({ cards, onOpen, className }: { cards: readonly HillDecision[]; onOpen: () => void; className?: string }) {
   useLocale();
+  const line = trickLineOf(cards);
   const action = (
     <Button size="sm" variant="outline" className={NOTICE_ACTION} onClick={onOpen}>
       {t("home.trickWaits.open")}
@@ -84,7 +133,10 @@ export function TrickCardsLineView({ onOpen, className }: { onOpen: () => void; 
   return (
     <div data-slot="trick-waits" className={className}>
       <Notice tone="neutral" variant="box" action={action}>
-        <p>{t("home.trickWaits.line")}</p>
+        {line.kind === "new" && aroundName("home.trickWaits.proposes", line.name)}
+        {line.kind === "version" && aroundName("home.trickWaits.proposesVersion", line.name)}
+        {line.kind === "many" && <p>{tn("home.trickWaits.proposesMany", line.count)}</p>}
+        {line.kind === "plain" && <p>{t("home.trickWaits.line")}</p>}
       </Notice>
     </div>
   );
@@ -97,7 +149,7 @@ export function TrickCardsLine({ className }: { className?: string }) {
   const open = useOpenTrickCard();
   const oldest = cards[0];
   if (root?.hillOff !== true || oldest === undefined) return null;
-  return <TrickCardsLineView className={className} onOpen={() => open(oldest)} />;
+  return <TrickCardsLineView className={className} cards={cards} onOpen={() => open(oldest)} />;
 }
 
 /** Opening a card: one level down, so Back steps back to where the tap was made. */
