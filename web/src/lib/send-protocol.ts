@@ -73,6 +73,11 @@ export interface SendReply {
    * typed its text after them. Absent on any other send, and on a bridge that does not say.
    */
   readonly draftSeen?: true;
+  /**
+   * The receipt's `textAlreadyTyped` (M102 spec 12): the box already held this very text, so nothing was
+   * typed again and no key went out. The person presses Enter on the Keys pad.
+   */
+  readonly textAlreadyTyped?: true;
 }
 
 const PROFILE_STATUSES: readonly ProfileStatus[] = ["verified", "provisional", "revoked"];
@@ -154,6 +159,7 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     ...wordOf(receipt?.word),
     ...awaitingOf(receipt?.awaitingEventUntil),
     ...draftSeenOf(receipt?.draftSeen),
+    ...alreadyTypedOf(receipt?.textAlreadyTyped),
   };
 }
 
@@ -165,6 +171,11 @@ function awaitingOf(value: JsonValue | undefined): { awaitingUntil?: number } {
 
 /** The receipt's `word` as the field to spread: one of {@link SEND_WORDS}, else nothing. */
 /** The receipt's `draftSeen` as the field to spread: only a literal true counts. */
+/** The receipt's `textAlreadyTyped` as the field to spread: only a literal true counts. */
+function alreadyTypedOf(value: JsonValue | undefined): { textAlreadyTyped?: true } {
+  return value === true ? { textAlreadyTyped: true } : {};
+}
+
 function draftSeenOf(value: JsonValue | undefined): { draftSeen?: true } {
   return value === true ? { draftSeen: true } : {};
 }

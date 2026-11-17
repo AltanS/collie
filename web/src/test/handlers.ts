@@ -614,6 +614,8 @@ export interface SendAnswerParts {
   readonly awaitingEventUntil?: number;
   /** The receipt's `draftSeen` (M102 spec 12): an override typed after words already in the box. */
   readonly draftSeen?: boolean;
+  /** The receipt's `textAlreadyTyped` (M102 spec 12): the box already held this text; nothing typed again. */
+  readonly textAlreadyTyped?: boolean;
 }
 
 /** An answer body the way the bridge writes one: a receipt with the outcome and reason, then the offers. */
@@ -624,6 +626,7 @@ export function sendAnswer(id: string, outcome: string | null, reason?: string, 
     if (parts.queued === true) receipt.queued = true;
     if (parts.awaitingEventUntil !== undefined) receipt.awaitingEventUntil = parts.awaitingEventUntil;
     if (parts.draftSeen === true) receipt.draftSeen = true;
+    if (parts.textAlreadyTyped === true) receipt.textAlreadyTyped = true;
     body.receipt = receipt;
   }
   if (parts.rowsHash !== undefined) body.rowsHash = parts.rowsHash;
