@@ -140,8 +140,11 @@ describe("values.json", () => {
     store.write("legs", { repo: "lodge/workshop" });
     const path = valuesPath(stateDir, "legs");
     expect(path).toBe(join(trickStateDir(stateDir, "legs"), ".collie", "values.json"));
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
-    expect((await stat(dirname(path))).mode & 0o777).toBe(0o700);
+    // A file mode is POSIX; Windows keeps the folder private by its access list, and the rest of the test runs there.
+    if (process.platform !== "win32") {
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+      expect((await stat(dirname(path))).mode & 0o777).toBe(0o700);
+    }
     expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ v: 1, values: { repo: "lodge/workshop" } });
     store.write("legs", { repo: "lodge/other" });
     // No temp file is left beside it.
@@ -171,7 +174,7 @@ describe("values.json", () => {
     const store = new TrickValues(stateDir);
     expect(() => store.write("legs", { repo: SECRET })).toThrow(/not a real folder/u);
     expect(await readdir(target)).toEqual([]);
-    expect((await stat(target)).mode & 0o777).toBe(0o755);
+    if (process.platform !== "win32") expect((await stat(target)).mode & 0o777).toBe(0o755);
     // A values file the link holds is not read either.
     await writeFile(join(target, "values.json"), JSON.stringify({ v: 1, values: { repo: SECRET } }));
     expect(store.read("legs")).toEqual({ values: {}, unread: true });

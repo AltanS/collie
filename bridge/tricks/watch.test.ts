@@ -70,7 +70,8 @@ describe("the numbers", () => {
   });
 
   test("~/ is the home folder given, and nothing else is rewritten", () => {
-    expect(expandWatchPath("~/notes/a.md", "/home/x")).toBe("/home/x/notes/a.md");
+    // `join` is the product's own: it writes the platform's separator, so the expectation does too.
+    expect(expandWatchPath("~/notes/a.md", "/home/x")).toBe(join("/home/x", "notes", "a.md"));
     expect(expandWatchPath("/etc/hosts", "/home/x")).toBe("/etc/hosts");
     expect(expandWatchPath("~other/a", "/home/x")).toBe("~other/a");
   });
