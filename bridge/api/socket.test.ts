@@ -2,7 +2,7 @@
 // socket in its own temp folder under the system's temp dir and removes it; no TCP port is opened.
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, lstatSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, linkSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, lstatSync, existsSync, readFileSync } from "node:fs";
 import { once } from "node:events";
 import { createConnection, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -303,8 +303,14 @@ describe("the socket's life", () => {
     renameSync(aside, r.path);
     await new Promise<void>((resolve) => stale.close(() => resolve()));
     expect(lstatSync(r.path).isSocket()).toBe(true);
-    const before = lstatSync(r.path).ino;
+    // Pin the old file by a second name. A freed inode number can be handed to the next file at once
+    // (CI did, 2026-11-17), so comparing numbers proves nothing; a pinned inode cannot be reused.
+    const pinned = join(r.dir, "pinned");
+    linkSync(r.path, pinned);
+    const before = lstatSync(pinned).ino;
+    expect(lstatSync(r.path).ino).toBe(before);
     expect(await r.api.start()).toBe(true);
+    expect(lstatSync(pinned).ino).toBe(before);
     expect(lstatSync(r.path).ino).not.toBe(before);
     const client = await Client.open(r.path);
     expect(await client.ask({ op: "hello", args: HELLO_ARGS })).toMatchObject({ ok: true });
