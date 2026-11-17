@@ -53,6 +53,28 @@ describe("answerAsk with the card's hash (`seen`)", () => {
   });
 });
 
+// M102 spec 14 decision 3: a hook hold that ends at its limit hands the dialog on the screen to a new
+// keys ask. A tap that arrives for the hold's old id gets `ask_gone` with that new ask. The phone used
+// to drop the ask and say the dialog was gone; now the card becomes the screen's card in one step.
+describe("a tap for a hold that ended while the screen dialog is open", () => {
+  const post = vi.mocked(postAskAnswer);
+  const HOLD_ASK: Ask = { id: "ask-hold000000000a", kind: "permission", options: [{ id: "1", label: "Yes" }, { id: "2", label: "No" }], channel: "hook", hash: "dddddddddddddd" };
+  const SCREEN: Ask = { ...HOLD_ASK, id: "ask-keys000000000b", channel: "keys" };
+  const YES = { card: "prompt-select", index: 0, label: "Yes" } as const;
+
+  it("comes back moved, with the screen dialog's ask for the next tap", async () => {
+    post.mockReset();
+    post.mockResolvedValue({ outcome: "refused", reason: "ask_gone", ask: SCREEN, surface: null, detail: "Collie let the hook go. The dialog on the screen is a new card.", replayed: false });
+    expect(await answerAsk({ paneId: "w1:p1", ask: HOLD_ASK, tap: YES, via: "hold-card" })).toEqual({ status: "moved", ask: SCREEN });
+  });
+
+  it("with no dialog left on the screen it is gone, as before", async () => {
+    post.mockReset();
+    post.mockResolvedValue({ outcome: "refused", reason: "ask_gone", ask: null, surface: null, detail: null, replayed: false });
+    expect(await answerAsk({ paneId: "w1:p1", ask: HOLD_ASK, tap: YES })).toEqual({ status: "gone" });
+  });
+});
+
 describe("cardHashOf", () => {
   const picker = readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "claude--menu-model-picker.txt"), "utf8");
   const blocks = readerBlocks(splitLines(parseAnsi(picker)), "claude");

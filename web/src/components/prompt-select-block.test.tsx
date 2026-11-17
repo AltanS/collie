@@ -424,7 +424,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       "w1:p1",
       ["1", "Enter"],
       undefined,
-      model.signature,
+      model.bindRegion ?? model.signature,
     );
   });
 
@@ -664,7 +664,7 @@ describe("PromptSelectBlock — wired tap (component → handler → api)", () =
       "w1:p1",
       ["1", "Enter"],
       undefined,
-      model.signature,
+      model.bindRegion ?? model.signature,
     );
   });
 

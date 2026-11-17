@@ -68,6 +68,11 @@ export interface SendReply {
    * `awaitingEventUntil`. Absent on a bridge that does not say, which reads as "not waiting".
    */
   readonly awaitingUntil?: number;
+  /**
+   * The receipt's `draftSeen` (M102 spec 12): an override found words already in the agent's box and
+   * typed its text after them. Absent on any other send, and on a bridge that does not say.
+   */
+  readonly draftSeen?: true;
 }
 
 const PROFILE_STATUSES: readonly ProfileStatus[] = ["verified", "provisional", "revoked"];
@@ -148,6 +153,7 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     ...viewLineOf(node.view),
     ...wordOf(receipt?.word),
     ...awaitingOf(receipt?.awaitingEventUntil),
+    ...draftSeenOf(receipt?.draftSeen),
   };
 }
 
@@ -158,6 +164,11 @@ function awaitingOf(value: JsonValue | undefined): { awaitingUntil?: number } {
 }
 
 /** The receipt's `word` as the field to spread: one of {@link SEND_WORDS}, else nothing. */
+/** The receipt's `draftSeen` as the field to spread: only a literal true counts. */
+function draftSeenOf(value: JsonValue | undefined): { draftSeen?: true } {
+  return value === true ? { draftSeen: true } : {};
+}
+
 function wordOf(value: JsonValue | undefined): { word?: SendWord } {
   const word = pick(value, SEND_WORDS);
   return word === null ? {} : { word };

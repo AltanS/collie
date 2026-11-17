@@ -99,6 +99,7 @@ import {
   PAIR_WINDOW_MS,
 } from "./pair-limit.ts";
 import { readFileSync } from "node:fs";
+import { API_VERSION } from "../web/src/lib/api-version.ts";
 import { mkdir, mkdtemp, realpath, rm, symlink, truncate, utimes, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -180,6 +181,11 @@ import {
 import type { StateEngine } from "./state-engine.ts";
 import { HEAD_CASES, NOT_HEAD_CASES } from "./agent-view/testdata/head-cases.ts";
 import { BAD_HEAD } from "../web/src/lib/agent-view/wire.ts";
+import { readFileSync as readFixture } from "node:fs";
+import { parseAnsi } from "../web/src/lib/ansi.ts";
+import { splitLines } from "../web/src/lib/blocks.ts";
+import { detectPromptSelect } from "../web/src/lib/harness/claude/prompt-select.ts";
+import { DIALOG_CONTRACT } from "../web/src/lib/harness/dialog-contract.ts";
 
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
 // regression here silently opens remote shell access, so it gets the most direct coverage.
@@ -734,7 +740,7 @@ describe("pane write prompt binding", () => {
     text?: string;
     submit?: boolean;
     id?: string;
-    expected_prompt?: string | number | null;
+    expected_prompt?: string | readonly string[] | number | null;
     expected_styled?: string | number | null;
     expected_columns?: { start: number; end: number } | number[] | string | null;
     expected_tail_lines?: number | string | null;
@@ -1566,6 +1572,81 @@ describe("pane write prompt binding", () => {
           expect(client.keys).toEqual([]);
           expect(client.texts).toEqual([]);
         }
+      }
+    });
+  });
+
+  // A Claude permission with its self-answer countdown inside the dialog. The phone binds the rows
+  // above the clock sentence and the rows below it as two literal parts; the bridge checks both.
+  describe("a dialog whose own rows hold a self-answer countdown", () => {
+    const BG = readFixture(new URL("../web/src/fixtures/panes/claude--v2303-permission-bash-bg-agent-rm--w160.txt", import.meta.url), "utf8");
+    const sentence = (clock: string) =>
+      `⚠ Claude Code will automatically deny this request in ${clock}, to avoid blocking progress on an unattended session`;
+    /** The capture with the countdown under its explanation row; `other` swaps the command. */
+    function screen(clock: string, other = false): string {
+      const rows = (other ? BG.replace("level.py;", "level.sh;") : BG).split("\n");
+      const at = rows.findIndex((row) => row.includes("Dangerous rm operation"));
+      rows.splice(at + 1, 0, ` \u001b[0m\u001b[2m│\u001b[0m \u001b[38;2;255;193;7m${sentence(clock)}\u001b[0m\r`);
+      return rows.join("\n");
+    }
+    /** What the phone puts in `expected_prompt` for the dialog it showed (dialog-guard `sendBoundKeys`). */
+    function phoneBinding(text: string): string | readonly string[] {
+      const model = detectPromptSelect(splitLines(parseAnsi(text)));
+      expect(model).not.toBeNull();
+      const contract = DIALOG_CONTRACT["prompt-select"];
+      return contract.parts?.(model!) ?? contract.region(model!);
+    }
+    async function tapOn(shown: string, onScreen: string) {
+      const client = new FakePaneClient();
+      client.text = onScreen;
+      const { audit, entries } = auditEntries();
+      const res = await keysPane(asMux(client), cfg(), "w1:p1", request({ keys: ["1"], expected_prompt: phoneBinding(shown) }), audit, "phone", "default");
+      return { res, client, entries };
+    }
+
+    test("the tap in A's last moment does not answer B, another command under the same question and options", async () => {
+      expect(screen("1:20", true)).not.toBe(screen("1:20"));
+      const { res, client, entries } = await tapOn(screen("0:01"), screen("1:20", true));
+      expect(res.status).toBe(409);
+      expect(client.keys).toEqual([]);
+      expect(entries[0]?.detail).toMatchObject({ promptBinding: { checked: true, passed: false } });
+    });
+
+    test("the same dialog a second later, only the clock moved, takes the tap", async () => {
+      for (const clock of ["1:19", "0:59", "0:05"]) {
+        const { res, client } = await tapOn(screen("1:20"), screen(clock));
+        expect(res.status).toBe(200);
+        expect(client.keys).toEqual([["w1:p1", ["1"]]]);
+      }
+    });
+
+    test("the binding is a list only with a clock in the dialog; without one it stays the one string", () => {
+      const parts = phoneBinding(screen("1:20"));
+      expect(Array.isArray(parts)).toBe(true);
+      expect(parts).toHaveLength(2);
+      expect(parts[0]).toContain("level.py;");
+      for (const part of parts) expect(part).not.toContain("automatically deny");
+      expect(Array.isArray(phoneBinding(BG))).toBe(false);
+    });
+
+    test("a list this bridge cannot check is refused with nothing typed", async () => {
+      const [head, rest] = phoneBinding(screen("1:20"));
+      const bad: PaneActionBody[] = [
+        { keys: ["1"], expected_prompt: [rest!] },
+        { keys: ["1"], expected_prompt: [head!, ""] },
+        { keys: ["1"], expected_prompt: [head!, rest!, rest!, rest!, rest!] },
+        { keys: ["1"], expected_prompt: [head!, rest!], expected_styled: "x" },
+        { keys: ["1"], expected_prompt: [head!, rest!], expected_columns: { start: 0, end: 80 } },
+      ];
+      for (const body of bad) {
+        const client = new FakePaneClient();
+        client.text = screen("1:20");
+        const { audit } = auditEntries();
+        const res = await keysPane(asMux(client), cfg(), "w1:p1", request(body), audit, null, "default");
+        expect(res.status).toBe(400);
+        expect(await res.text()).toBe("bad expected_prompt");
+        expect(client.reads).toEqual([]);
+        expect(client.keys).toEqual([]);
       }
     });
   });
@@ -3103,6 +3184,19 @@ describe("bridgeConfigBody — /api/config reports the crew mode", () => {
   test("push disabled still round-trips its key untouched", () => {
     const body = bridgeConfigBody({ push: false, vapidPublicKey: "", build: "unknown", mode: "solo" });
     expect(body).toEqual({ push: false, vapidPublicKey: "", build: "unknown" });
+  });
+});
+
+// M102 spec 14 decision 4: the API number, appended last, so the phone can tell its bundle from the bridge.
+describe("bridgeConfigBody — the API number", () => {
+  const base = { push: true, vapidPublicKey: "BKey", build: "abc123", mode: "solo" } as const;
+
+  test("rides last when passed, the handler's own number, and is absent otherwise", () => {
+    const body = bridgeConfigBody({ ...base, redact: false, apiVersion: API_VERSION });
+    expect(body.apiVersion).toBe(API_VERSION);
+    expect(Object.keys(body).at(-1)).toBe("apiVersion");
+    expect("apiVersion" in bridgeConfigBody(base)).toBe(false);
+    expect(readFileSync(join(import.meta.dir, "server.ts"), "utf8")).toContain("apiVersion: API_VERSION,");
   });
 });
 

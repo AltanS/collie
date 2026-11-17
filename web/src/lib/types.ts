@@ -293,6 +293,12 @@ export interface AgentView {
    */
   sendProtocol?: true;
   /**
+   * Present on a terminal pane whose bridge answers a screen card's tap by `POST /api/ask/<id>`, also
+   * when a lead forwards it (M102 spec 14). On a crew member's pane it moves card taps off the raw keys
+   * route. Absent from an older bridge.
+   */
+  askRoute?: true;
+  /**
    * Mirrors `PaneWire.canStop` (M68): a Stop has a key to press on this pane, because its profile names an
    * interrupt key and is not revoked. The belt draws Stop for a pane with a screen only with it, and
    * only while `surface.turn` is `running` (`stopFor`, lib/harness-bar.ts). The bridge decides from the
@@ -2493,6 +2499,8 @@ export interface FolderBrowseResponse {
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
+  /** The bridge's API number (M102 spec 14, lib/api-version.ts). Absent from an older bridge. */
+  apiVersion?: number;
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
   /**

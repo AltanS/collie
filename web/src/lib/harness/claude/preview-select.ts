@@ -118,8 +118,9 @@ const DIALOG_SCAN_LIMIT = 48;
 
 // Lines above the first option folded into the core signature — enough to capture the dialog's
 // subject (the prompt/context shown above the question), which is what distinguishes two same-shaped
-// dialogs. Mirrors prompt-select's SIGNATURE_LOOKBACK: err wide — a false "changed" is a harmless
-// refresh, whereas a false match types a keystroke into a live terminal.
+// dialogs. Mirrors prompt-select's SIGNATURE_LOOKBACK: err wide — a false "changed" is a refresh,
+// whereas a false match types a keystroke into a live terminal. Used only when the dialog's own top
+// rule is not found: a ticking row above the dialog would otherwise refuse every tap.
 const SIGNATURE_LOOKBACK = 40;
 
 /**
@@ -282,10 +283,10 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
       preview,
       note,
       steps,
-      regionSignature: texts
-        .slice(Math.max(0, firstOpt - SIGNATURE_LOOKBACK), fi + 1)
-        .join("\n"),
-      coreSignature: computeCoreSignature(texts, firstOpt, lastOpt, noteCol),
+      // From the dialog's own rule where the head was read off it: the transcript above is not the
+      // dialog, and a timer, spinner or clock there ticks while the question waits. Else the lookback.
+      regionSignature: texts.slice(head.edge ?? Math.max(0, firstOpt - SIGNATURE_LOOKBACK), fi + 1).join("\n"),
+      coreSignature: computeCoreSignature(texts, firstOpt, lastOpt, noteCol, head.edge),
     },
     startLine,
   };
@@ -299,6 +300,12 @@ const CHIP_ROW = /^[←→\s]*[☐☒☑✔✅]\s/u;
 interface QuestionHead {
   /** The row that tops the paragraph: the stepper, the chip row or the rule. */
   top: number;
+  /**
+   * The dialog's own top rule, when the head was read off it (a stepper or a `☐` chip right under the
+   * rule): the dialog's rows then run from this rule to the footer and hold the question and the
+   * options, which are what it asks about. Absent when the head was found by the `?` scan.
+   */
+  edge?: number;
   /** The wizard stepper's row, or -1 for a single-question dialog. */
   stepperIdx: number;
   steps: WizardStepChip[] | null;
@@ -341,8 +348,8 @@ function readRuleAnchoredPreviewHead(
     const t = texts[i]!;
     if (isBlank(t) || isRuleRow(texts, i)) continue;
     const stepper = parseStepperLine(lines[i]!);
-    if (stepper) return { top: i, stepperIdx: i, steps: stepper.chips };
-    if (SINGLE_SELECT_CHIP.test(t)) return { top: i, stepperIdx: -1, steps: null };
+    if (stepper) return { top: i, stepperIdx: i, steps: stepper.chips, edge: ruleAt };
+    if (SINGLE_SELECT_CHIP.test(t)) return { top: i, stepperIdx: -1, steps: null, edge: ruleAt };
     return null;
   }
   return null;
@@ -373,8 +380,9 @@ function computeCoreSignature(
   firstOpt: number,
   lastOpt: number,
   noteCol: number,
+  edge?: number,
 ): string {
-  const head = texts.slice(Math.max(0, firstOpt - SIGNATURE_LOOKBACK), firstOpt);
+  const head = texts.slice(edge ?? Math.max(0, firstOpt - SIGNATURE_LOOKBACK), firstOpt);
   const left: string[] = [];
   for (let i = firstOpt; i <= lastOpt; i++) {
     left.push(splitAtDisplayColumn(texts[i]!, noteCol).left.replace(/❯/g, " "));

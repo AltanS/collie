@@ -7,6 +7,7 @@ import {
   verifyExpectedPrompt,
   verifyExpectedStyled,
   verifyPromptBinding,
+  verifyPromptParts,
 } from "./prompt-binding.ts";
 import {
   decodeStyledRegion,
@@ -824,5 +825,37 @@ describe("the declared tail window", () => {
     expect(verifyExpectedPrompt(screen(6), region, tailWindow)).toEqual({ ok: true });
     expect(verifyExpectedPrompt(screen(7), region, tailWindow)).toEqual({ ok: true });
     expect(verifyExpectedPrompt(screen(8), region, tailWindow)).toEqual({ ok: false, reason: "not_in_tail" });
+  });
+});
+
+describe("verifyPromptParts", () => {
+  const read = ["older output", "Title", "subject one", "subject two", "clock 1:20", "Question?", "1. Yes", "2. No", "footer"].join("\n");
+  const parts = ["Title\nsubject one\nsubject two", "Question?\n1. Yes\n2. No\nfooter"];
+
+  test("every part in order, one left-out row between, the last in the tail: bound", () => {
+    expect(verifyPromptParts(read, parts)).toEqual({ ok: true });
+    expect(verifyPromptParts(read.replace("1:20", "0:05"), parts)).toEqual({ ok: true });
+  });
+
+  test("a changed row inside a part refuses", () => {
+    expect(verifyPromptParts(read.replace("subject two", "subject 2"), parts)).toEqual({ ok: false, reason: "not_found" });
+    expect(verifyPromptParts(read.replace("2. No", "2. Nope"), parts)).toEqual({ ok: false, reason: "not_found" });
+  });
+
+  test("the parts must sit apart by 1 to MAX_PART_GAP_ROWS rows, no more and no less", () => {
+    expect(verifyPromptParts(read.replace("clock 1:20\n", ""), parts).ok).toBe(false);
+    expect(verifyPromptParts(read.replace("clock 1:20", "a\nb\nc\nd\ne"), parts).ok).toBe(false);
+    expect(verifyPromptParts(read.replace("clock 1:20", "a\nb\nc\nd"), parts).ok).toBe(true);
+  });
+
+  test("out of order, or the last part away from the tail, refuses", () => {
+    expect(verifyPromptParts(read, parts.toReversed()).ok).toBe(false);
+    expect(verifyPromptParts(`${read}\n1\n2\n3\n4\n5\n6\n7`, parts)).toEqual({ ok: false, reason: "not_in_tail" });
+  });
+
+  test("fewer than two parts, too many, or an empty one is empty", () => {
+    expect(verifyPromptParts(read, [parts[1]!])).toEqual({ ok: false, reason: "empty" });
+    expect(verifyPromptParts(read, [parts[0]!, " "])).toEqual({ ok: false, reason: "empty" });
+    expect(verifyPromptParts(read, [...parts, ...parts, "x"])).toEqual({ ok: false, reason: "empty" });
   });
 });

@@ -144,7 +144,7 @@ function notSent(result: ActionResult, why: string): Failure {
 /** Send `keys` bound to the region of `m`, the read that showed the state the keys are aimed at. */
 function sendBoundTo<K extends DialogKind>(target: Target<K>, keys: string[], m: DialogModels[K]): Promise<ActionResult> {
   const contract = DIALOG_CONTRACT[target.kind];
-  return sendBoundKeys(target, keys, contract.region(m), contract.styled?.(m), contract.columns?.(m));
+  return sendBoundKeys(target, keys, contract.region(m), contract.styled?.(m), contract.columns?.(m), undefined, contract.parts?.(m));
 }
 
 /**
@@ -185,7 +185,7 @@ async function reachField<K extends DialogKind>(
 ): Promise<Step<K>> {
   if (!seen.focused) {
     if (access.digitFocuses && seen.text === "") {
-      const sent = await sendBoundKeys(target, [seen.key], guarded.region, guarded.styled, guarded.columns);
+      const sent = await sendBoundKeys(target, [seen.key], guarded.region, guarded.styled, guarded.columns, undefined, guarded.parts);
       if (sent.status !== "sent") return notSent(sent, "bridge");
     } else {
       const walked = await walkToField(target, access, seen);
