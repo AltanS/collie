@@ -164,3 +164,29 @@ describe("D: a code that may have gone cannot be sent twice by one tap", () => {
     expect(codeField()).toHaveValue(CODE);
   });
 });
+
+describe("L: an armed Type it anyway never goes out with a code", () => {
+  it("a code sent while Type it anyway is armed carries no rows hash and no override, and the arm is gone after", async () => {
+    const user = userEvent.setup();
+    server.use(...sendHandler((request) => (request.mode === "prepare" ? sendAnswer(request.id, null, undefined, { rowsHash: "ab12cd" }) : sendAnswer(request.id, "sent"))));
+    const m = mount({ surface: FREE });
+    await act(async () => {
+      m.handle.current?.typeAnyway();
+    });
+    await waitFor(() => expect(screen.getByPlaceholderText(/typed past this screen/)).toBeInTheDocument());
+    m.update({ surface: SECRET });
+    await user.type(codeField(), CODE);
+    await user.click(screen.getByRole("button", { name: "Send the code" }));
+    await waitFor(() => expect(recordedSends().filter((request) => request.mode !== "prepare")).toHaveLength(1));
+    const code = recordedSends().find((request) => request.secret === true);
+    expect(code?.rowsHash).toBeUndefined();
+    expect(code?.override).toBeUndefined();
+    m.update({ surface: FREE });
+    await user.type(screen.getByRole("textbox"), "a normal message");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends().filter((request) => request.mode !== "prepare")).toHaveLength(2));
+    const normal = recordedSends().filter((request) => request.mode !== "prepare")[1];
+    expect(normal?.override).toBeUndefined();
+    expect(normal?.rowsHash).toBeUndefined();
+  });
+});

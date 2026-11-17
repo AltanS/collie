@@ -1248,6 +1248,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the tap, read fresh by a `prepare`. The next send from the field carries it with `override`, so the
   // bridge types only while the screen still hashes the same. One send; any answer disarms it.
   const [overrideHash, setOverrideHash] = useState<string | null>(null);
+  // A sign-in field ends the arm (the M102 review, L): the arm was for another screen, a code never goes with
+  // `override` or its rows hash, and an arm left standing would go out with the next normal send after the field.
+  useEffect(() => {
+    if (secretField) setOverrideHash(null);
+  }, [secretField]);
   // The send in flight is the one "Type it anyway" armed (not a commit tap's override): only its refusal
   // re-arms on the rows the bridge read now.
   const typeAnywaySendRef = useRef(false);
@@ -2061,6 +2066,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    */
   async function sendSecret(code: string): Promise<boolean> {
     secretSpentRef.current = false;
+    // A code never carries an armed Type it anyway (the M102 review, L): the arm goes with this send.
+    setOverrideHash(null);
     const went = await send(code, false, undefined, undefined, true);
     return went || secretSpentRef.current;
   }
