@@ -655,9 +655,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // draft stays in the box.
   const live = useLive(paneId, scope);
   const offline = stale === true || !live;
-  // A fact the phone knows before any read (a host it cannot reach, sending off) arrives with its note;
-  // only that locks a box out of reach. A box the read could not reach takes the override (M102 spec 03).
-  const blocked = unreachableNote !== undefined;
+  // A fact blocks the box: the caller's note (a host it cannot reach, sending off) or a multiplexer that
+  // cannot type into a pane at all. Both lock. A box the read could not reach takes the override
+  // (M102 spec 03).
+  const blocked = unreachableNote !== undefined || missingSend !== null;
   const slot = sendSlot(shownSurface, { gone, readOnly, offline, blocked });
   // THE WAY OUT (M56 spec 07, lib/way-out.ts): which state this is, and whether the Keys dock opens and
   // can send. The rule is one function so that no refusal, no flag and no lock can hide the key pad on
