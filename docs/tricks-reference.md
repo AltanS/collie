@@ -1251,7 +1251,7 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 | `watch` | list of paths | no | at most 8 paths of at most 1024 characters, each an absolute path, or a path under the home folder written with a leading tilde | 1 | Kept for a later Collie. This one leaves it out with a note. Leave it out. |
 | `on` | list of words | no | `session.status`, `turn.end`, `ask.open` | 1 | Kept for a later Collie. This one leaves it out with a note. Leave it out. |
 | `mode` | word | no | `once` or `serve`. Default `once` | 1 | `once` runs once per trigger and prints one document. `serve` is kept for a later Collie. |
-| `contract` | whole number | no | 1 to 999. Default 1. This Collie speaks 1 to 2 | 1 | The contract the trick is written for. Write 2 to read files with `inputs` or to add an agent view. A higher number than this Collie knows is refused with one line. |
+| `contract` | whole number | no | 1 to 999. Default 1. This Collie speaks 1 to 3 | 1 | The contract the trick is written for. Write 2 to read files with `inputs` or to add an agent view, 3 to keep settings with `[[field]]`. A higher number than this Collie knows is refused with one line. |
 | `icon` | word | no | one of the icon words in Shared values. Default `plug` | 1 | The trick's icon. `collie trick check` names a wrong one. |
 | `places` | list of words | yes | 1 to 16 of `belt`, `session`, `dashboard`, `status`, `tabbar`, `menu`, `agent-view`. Each once | 1 | Where its parts draw. Each place a part uses must be listed. `agent-view` adds an agent view and needs contract 2. |
 | `env` | list of names | no | at most 32 names of at most 64 characters: letters, digits and `_`, not starting with a digit | 1 | Environment names the program gets beyond the base list, such as `GH_TOKEN`. The person sees each one. |
@@ -1261,6 +1261,7 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 | `version` | text | no | 1 to 24 characters: letters, digits, `.`, `+` and `-`, such as `1.2.0` | 1 | The trick's own version. The About sheet shows it. Collie never compares it and reads no tag. |
 | `rules` | file name | yes, with `agent-view`; refused without it | a file in the trick's folder of at most 64 characters ending in `.md`, such as `rules.md` | 2 | The instructions the agent of a session reads. The person reads them whole before they switch the trick on. |
 | `decides` | word | no | `reply`. Refused on a trick that is only an agent view | 1 | Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again. |
+| `field` | list of tables | no | at most 12 `[[field]]` tables. Each has `key` (spelled like a trick id, each once), `kind` (`text`, `choice`, `switch` or `number`), `label` (at most 40 characters) and may have `hint` (at most 120), `default` and `required`. A `choice` lists 2 to 8 `options` of at most 40 characters; a `number` names whole `min` and `max` within 999999999 either way; a `text` value is one line of at most 200 characters; a `switch` is never `required` | 3 | Settings the person keeps for the trick, set in its About sheet on the phone or with `collie trick set <id> <key> <value>`. The program reads them in its facts as `values`. A value is the person's data and untrusted for the program: show it, never run it. A new or changed field is a new version and asks again; a changed value does not ask, and runs the trick once. |
 
 In `trick.toml`:
 
@@ -1292,6 +1293,7 @@ Collie writes the facts on stdin. The program ignores a field it does not know, 
 | `sessions` | always | The agent and shell sessions, at most 256. On a crew's lead they are every member's, the lead's own first. |
 | `spaces` | always | Each space as `name`, `folder` (`folder` is left out when there is none), at most 64. |
 | `sessionsOmitted` | only when some are left out | How many sessions the caps left out. Only a crew's lead counts them: a solo machine past the cap leaves the rest out with no count. Absent when none. |
+| `values` | contract 3, a trick with `[[field]]` | Each field's value by its key: the person's own, else the field's `default`. A field with neither is left out. A value is the person's data and untrusted for the program: show it, never run it. |
 
 A session in `sessions` has these fields:
 
@@ -1352,7 +1354,7 @@ The program prints one JSON document on stdout and exits 0:
 
 | Key | Needed | What it is |
 | --- | --- | --- |
-| `v` | yes | The contract number of the document: a whole number from 1 to 2, this Collie's own. The helper prints the contract of the facts. |
+| `v` | yes | The contract number of the document: a whole number from 1 to 3, this Collie's own. The helper prints the contract of the facts. |
 | `parts` | yes | The parts, at most 24, each at most 16 KiB. `[]` is allowed. See [Places](#places). |
 | `asOf` | no | When the data was true, as an ISO 8601 time with a zone, such as `2026-11-08T09:41:00Z`. Give it when the data is older than the run. |
 | `fresh` | no | How long the parts stay fresh: 5s to 24h, one whole number and `s`, `m` or `h`, such as `90s`. Left out, 3 times `every`, at least 1 minute, or 10 minutes for a trick with no timer, and never more than 24h. Past it, the phone draws every tone as unknown. |
@@ -1369,7 +1371,7 @@ Collie checks strictly what a person or an agent writes: `trick.toml`, `collie h
 | A node of a kind this Collie does not know | Left out, with a `dropped` note. The rest of the view draws. |
 | A part in a place this Collie does not know | Left out whole, with a `dropped` note. The other parts draw. |
 | A key or an attribute this Collie does not know, inside a part, at contract 1 | Ignored, with an `ignored` note. A node with only such attributes draws as if it had none. |
-| A key or an attribute this Collie does not know, at any depth of a part, at contract 2 | That part is refused alone, with an `unknown-key` refusal that names the key and ends: "A contract 2 trick uses only the keys this Collie knows, so the part is left out; the other parts draw." Collie keeps no last good version of it. |
+| A key or an attribute this Collie does not know, at any depth of a part, at contract 2 or newer | That part is refused alone, with an `unknown-key` refusal that names the key and ends: "A contract 2 trick uses only the keys this Collie knows, so the part is left out; the other parts draw." Collie keeps no last good version of it. |
 | A key this Collie does not know at the top of the document, beside `v`, `parts`, `asOf`, `fresh` and `decisions` | Ignored, with an `ignored` note, at every contract. Every part draws. A key that changes how a part draws or what a tap does goes in the part, never at the top. |
 | A bad value of a known field | That part is refused alone, and the other parts draw. The last good version of the part stays on the phone, marked old. |
 | A bad Decision | That Decision is refused alone. Its open card stays as it is. |
@@ -1524,6 +1526,16 @@ Tricks do not run on a Windows machine yet. [Collie on Windows](windows.md) says
 | One answer of one machine | at most 8 MiB |
 | One run | at most 24 MiB |
 
+### Fields, contract 3
+
+| Limit | Value |
+| --- | --- |
+| Fields of one trick | at most 12 |
+| A label, a hint | at most 40 and 120 characters |
+| A text value | one line of at most 200 characters, no control character |
+| A choice | 2 to 8 options of at most 40 characters |
+| A number | a whole number from `min` to `max`, each within 999999999 either way |
+
 ### The rules file
 
 | Limit | Value |
@@ -1565,6 +1577,7 @@ Every verb of `collie trick`.
 | `on` | `collie trick on <id>` | Switches a trick on, approving its code as it is now. It refuses inside an agent's pane. |
 | `off` | `collie trick off <id>` | Switches a trick off. |
 | `auto` | `collie trick auto <id> on\|off` | Takes new versions without asking while the powers do not change. A trick with rules never takes one. |
+| `set` | `collie trick set <id> <key> <value>` | Sets one of a trick's settings (`[[field]]`) through the running bridge. A changed value runs the trick once. It refuses inside an agent's pane. |
 | `check` | `collie trick check [--run] [--json] <folder>` | Checks a trick folder: its manifest, places and command lines. |
 | `dev` | `collie trick dev <folder\|id> [--tap <intent> [--text <words>] [--node <node>] [--rid <uuid>]] [--facts <file.json>] [--state <dir>] [--inputs <dir>] [--json] [--watch]` | Runs a trick once with fixture facts and prints what the phone would get. It never talks to the bridge. |
 | `init` | `collie trick init [--sh] [--dir <folder>] <id>` | Makes a new trick folder with a program and the helper. In an agent's pane the folder is a draft in the working folder, outside the tricks folder. |
@@ -1580,6 +1593,7 @@ Every verb of `collie trick`.
 | `list` | `--official` | List the official tricks this Collie can add from the phone. |
 | `update` | `--ref` | Fetch this branch, tag or commit instead of the same ref. |
 | `update` | `--dry-run` | Print what would change and change nothing. |
+| `set` | `--clear` | Clear the setting back to its default, in place of a value. |
 | `check` | `--run` | Run the program once, as the bridge would. |
 | `check` | `--json` | Print one JSON document instead of text. |
 | `dev` | `--tap` | Run it as a tap with this intent. |

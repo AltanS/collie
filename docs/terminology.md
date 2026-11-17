@@ -270,6 +270,13 @@ and its own text, then the facts Collie knows: where it draws, what it reads, wh
 asks for, what a text search of its code found, and where it came from
 ([The About sheet](tricks.md#the-about-sheet)).
 
+## Trick setting
+
+A value a trick asks you for, such as a repository or a branch. The trick lists its settings in
+`trick.toml` as `[[field]]`; you set them in the trick's About sheet or with `collie trick set`. A
+setting is your data: the trick gets it, Collie runs nothing with it
+([Settings a trick asks you for](tricks-authoring.md#settings-a-trick-asks-you-for)).
+
 ## Decision
 
 One question that an agent or a trick puts on the Hill, with the options you pick from. You answer it by
