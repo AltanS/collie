@@ -148,7 +148,9 @@ describe("composer taps: send() from anywhere but the round Send button (fix 1)"
     mount({ starting: true });
     // The header says Starting now; in the composer the box is off and its placeholder says it. No row holds the words.
     expect(screen.queryByText("Starting…")).toBeNull();
-    expect(field()).toBeDisabled();
+    expect(field()).not.toBeDisabled();
+    expect(field()).toHaveAttribute("readonly");
+    expect(field()).toHaveAttribute("aria-disabled", "true");
     expect(field()).toHaveAttribute("placeholder", "Starting…");
     await expectTapAnswers(() => user.click(screen.getByRole("button", { name: "Compact" })));
     expect(screen.getAllByText("Starting…")).toHaveLength(1);
@@ -300,7 +302,9 @@ describe("composer taps: the round Send button that cannot act (fix 4)", () => {
     const m = mount();
     await user.type(field(), "hello");
     m.update({ starting: true });
-    expect(field()).toBeDisabled();
+    expect(field()).not.toBeDisabled();
+    expect(field()).toHaveAttribute("readonly");
+    expect(field()).toHaveAttribute("aria-disabled", "true");
     expect(field()).toHaveValue("hello");
     await expectTapAnswers(() => user.click(screen.getByRole("button", { name: "Send" })));
     expect(document.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent("Starting…");
@@ -351,7 +355,9 @@ describe("composer taps: held rows while the launch starts (fix 6)", () => {
 
   it("no tap vanishes: Submit, Discard and Resend are off while starting, with the box off and saying Starting", () => {
     mount({ held: [typed], starting: true });
-    expect(field()).toBeDisabled();
+    expect(field()).not.toBeDisabled();
+    expect(field()).toHaveAttribute("readonly");
+    expect(field()).toHaveAttribute("aria-disabled", "true");
     expect(field()).toHaveAttribute("placeholder", "Starting…");
     expect(screen.getByRole("button", { name: "Submit the text in the box" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Discard the text in the box" })).toBeDisabled();

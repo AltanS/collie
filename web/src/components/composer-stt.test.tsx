@@ -369,7 +369,9 @@ describe("Composer — hands-free", () => {
     expect(screen.queryByRole("button", { name: /transcribe and send/i })).toBeNull();
     act(() => recorder.finish());
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("wait for the first screen"));
-    expect(screen.getByRole("textbox")).toBeDisabled();
+    expect(screen.getByRole("textbox")).not.toBeDisabled();
+    expect(screen.getByRole("textbox")).toHaveAttribute("readonly");
+    expect(screen.getByRole("textbox")).toHaveAttribute("aria-disabled", "true");
     expect(sent).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /^Send$/ })).toHaveAttribute("aria-disabled", "true");
   });

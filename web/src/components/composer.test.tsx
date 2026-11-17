@@ -6047,7 +6047,10 @@ describe("Composer — known launch startup send-lock", () => {
     const props = renderComposer({ starting: true });
     // The placeholder says why, inside the box: the reply words are gone, and no row of its own holds "Starting…".
     const box = screen.getByPlaceholderText("Starting…");
-    expect(box).toBeDisabled();
+    expect(box).not.toBeDisabled();
+    expect(box).toHaveAttribute("readonly");
+    expect(box).toHaveAttribute("aria-disabled", "true");
+    expect(box).toHaveClass("opacity-50", "cursor-not-allowed");
     expect(screen.queryByText("Starting…")).toBeNull();
     expect(box.closest("[class*='bg-muted/40']")).not.toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
@@ -6078,19 +6081,63 @@ describe("Composer — known launch startup send-lock", () => {
     const box = screen.getByPlaceholderText(/type a reply/i);
     expect(box).not.toBeDisabled();
     await user.type(box, "keep this draft");
+    box.focus();
     act(() => start(true));
-    expect(box).toBeDisabled();
+    // Held: not disabled (a disabled field drops focus and the keyboard with it), read only and aria-disabled.
+    expect(box).not.toBeDisabled();
+    expect(box).toHaveAttribute("readonly");
+    expect(box).toHaveAttribute("aria-disabled", "true");
+    expect(box).toHaveFocus();
     expect(box).toHaveAttribute("placeholder", "Starting…");
     expect(box).toHaveValue("keep this draft");
+    // Keys, Enter, Ctrl+Enter, paste, cut, drop, composition and a change event that got through change nothing and send nothing.
+    await user.keyboard("more{Enter}");
+    fireEvent.keyDown(box, { key: "Enter" });
     fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    fireEvent.keyDown(box, { key: "Enter", metaKey: true });
+    await user.paste("pasted words");
+    fireEvent.paste(box, { clipboardData: { items: [], getData: () => "fire pasted" } });
+    expect(fireEvent.cut(box)).toBe(false);
+    expect(fireEvent.drop(box)).toBe(false);
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: "keep this draft, composed" } });
+    fireEvent.compositionEnd(box, { data: "composed" });
+    expect(box).toHaveValue("keep this draft");
+    expect(box).toHaveFocus();
     await user.click(screen.getByRole("button", { name: /^Send$/ }));
     expect(typed).not.toHaveBeenCalled();
     expect(loadDraft(undefined, "start:p1")).toBe("keep this draft");
     act(() => start(false));
     expect(box).not.toBeDisabled();
+    expect(box).not.toHaveAttribute("readonly");
+    expect(box).not.toHaveAttribute("aria-disabled");
+    expect(box).toHaveFocus();
     expect(box).toHaveValue("keep this draft");
     await user.type(box, "!");
     expect(box).toHaveValue("keep this draft!");
+  });
+
+  it("every error ends the hold: a stale or lost read frees the box for the offline rules, a gone pane locks it", async () => {
+    const user = userEvent.setup();
+    const typed = vi.fn();
+    server.use(...replyHandler(typed));
+    // A failed read or a reconnect: the copy is stale. The box is not held, takes a draft, and sends nothing.
+    const props = renderComposer({ starting: true, stale: true });
+    const box = screen.getByRole("textbox");
+    expect(box).not.toHaveAttribute("readonly");
+    expect(box).not.toHaveAttribute("aria-disabled");
+    await user.type(box, "typed while the read is down");
+    expect(box).toHaveValue("typed while the read is down");
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    expect(typed).not.toHaveBeenCalled();
+    expect(props.onSent).not.toHaveBeenCalled();
+    cleanup();
+    // The pane closed under the hold: the lock takes over with its own words, not the hold's.
+    renderComposer({ starting: true, gone: true });
+    const gone = screen.getByRole("textbox");
+    expect(gone).toBeDisabled();
+    expect(gone).not.toHaveAttribute("placeholder", "Starting…");
+    expect(typed).not.toHaveBeenCalled();
   });
 
   it("does not turn a box off for Type mode, where keys still go", async () => {

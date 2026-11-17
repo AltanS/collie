@@ -78,7 +78,9 @@ describe("AgentChat: a launch's startup gate", () => {
     // no row of the composer carries a notice.
     expect(startingTitle()).toBeInTheDocument();
     expect(startingTitle()).toHaveTextContent("Starting…");
-    expect(box).toBeDisabled();
+    expect(box).not.toBeDisabled();
+    expect(box).toHaveAttribute("readonly");
+    expect(box).toHaveAttribute("aria-disabled", "true");
     expect(box).toHaveAttribute("placeholder", "Starting…");
     expect(box).toHaveValue("draft survives startup");
     expect(screen.getAllByText("Starting…")).toHaveLength(1);
@@ -97,6 +99,7 @@ describe("AgentChat: a launch's startup gate", () => {
     expect(startingBeads()).toBe("");
     // The box is back, editable, with the kept draft; the placeholder is the pane's own again.
     expect(box).not.toBeDisabled();
+    expect(box).not.toHaveAttribute("readonly");
     expect(box).toHaveValue("draft survives startup");
     await user.type(box, "!");
     expect(box).toHaveValue("draft survives startup!");
@@ -112,13 +115,14 @@ describe("AgentChat: a launch's startup gate", () => {
     const view = mount({ agent: shell, agentLaunch: undefined });
     await user.type(screen.getByRole("textbox"), "kept");
     view.update({ agentLaunch: launch });
-    expect(screen.getByRole("textbox")).toBeDisabled();
+    expect(screen.getByRole("textbox")).toHaveAttribute("readonly");
     view.update({ text: TRUST, agent: { ...known, surface: ASK } });
     await waitFor(() => expect(screen.getByRole("button", { name: "Answer the dialog" })).toBeInTheDocument());
     expect(view.onReady).toHaveBeenCalledOnce();
     expect(startingTitle()).toBeNull();
     expect(startingBeads()).toBe("");
     expect(screen.getByRole("textbox")).toHaveValue("kept");
+    expect(screen.getByRole("textbox")).not.toHaveAttribute("readonly");
   });
 
   it("does not open on a saved read, and does not unlock a pane whose sending is off", () => {
