@@ -54,7 +54,7 @@ export const en = {
   "settings.section.experiments.blurb": "Features still being tested",
   // The Tricks section (M94 slice 04): its index row renders only while the phone holds a tricks reply.
   "settings.section.tricks.title": "Tricks",
-  "settings.section.tricks.blurb": "Switch tricks on and off",
+  "settings.section.tricks.blurb": "Add tricks and switch each one on or off",
   "settings.section.machines.title": "Machines",
   "settings.section.machines.blurb": "CPU, memory, disk, network, alert rules",
   "settings.nav.back": "Back",
@@ -3907,7 +3907,7 @@ export const en = {
   // sheet until 2026-11-13).
   "settings.tricks.hill.waits.one": "{count} question waits on the Hill. You cannot answer it while it is off.",
   "settings.tricks.hill.waits.other": "{count} questions wait on the Hill. You cannot answer them while it is off.",
-  // The switch for tricks as a whole, first on Settings, Tricks (2026-11-17): off by default. Its armed second tap
+  // The switch for tricks as a whole, a card in Settings, Experiments (2026-11-18, it began first on Settings, Tricks on 2026-11-17): off by default. Its armed second tap
   // counts the Decisions that tricks posted (they stay stored and come back when tricks are on).
   "settings.tricks.switch.about": "Tricks are small programs that add buttons, lines and pages to Collie. A trick's program runs as you on this machine.",
   "settings.tricks.switch.contract": "Tricks are an experiment: they may change, lose settings, or be withdrawn in a patch release.",
@@ -3917,8 +3917,7 @@ export const en = {
   "settings.tricks.switch.starts": "These start again: {names}.",
   "settings.tricks.switch.andMore.one": "{names} and {count} more",
   "settings.tricks.switch.andMore.other": "{names} and {count} more",
-  "settings.tricks.switch.offLine": "Tricks are switched off on this machine; switch them on at the top of this page.",
-  "settings.experiments.tricks.caption": "Switched on and off at the top of Settings, Tricks.",
+  "settings.tricks.switch.offLine": "Tricks are switched off on this machine; switch them on in Settings, Experiments.",
   "hill.state.answered": "Answered",
   "hill.state.dismissed": "Dismissed",
   "hill.state.expired": "Expired",
@@ -4141,6 +4140,8 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "settings.section.tricks.blurb",
+  "settings.tricks.switch.offLine",
   "hill.hold.hint",
   "settings.tricks.about.shows",
   "settings.tricks.about.shows.belt",

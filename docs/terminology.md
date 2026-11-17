@@ -341,9 +341,10 @@ different thing, a panel of that app
 
 ## Tricks switch
 
-The one switch for tricks as a whole on a machine, at the top of Settings → Tricks and in
+The one switch for tricks as a whole on a machine, in Settings → Experiments and in
 `collie tricks on|off|status`. Tricks are an experiment, so it is off until you switch it on. While it
-is off no trick runs or draws, and each trick keeps its own switch for when you switch it on
+is on, Settings shows a Tricks row for the list. While it is off no trick runs or draws, and each
+trick keeps its own switch for when you switch it on
 ([Switch tricks on or off](tricks.md#switch-tricks-on-or-off)).
 
 ## Program trick

@@ -3,7 +3,7 @@
 A trick adds its own parts to ColliePWA on your phone: a count, a question, or a whole screen.
 
 Tricks are experimental. They may change, lose settings, or be withdrawn in a patch release. They are
-off until you switch them on at the top of Settings → Tricks, or with `collie tricks on`. See
+off until you switch them on in Settings → Experiments, or with `collie tricks on`. See
 [Switch tricks on or off](#switch-tricks-on-or-off).
 
 Collie is a web app for your phone. It lets you watch and answer the AI coding agents that run in the
@@ -423,15 +423,17 @@ collie tricks status
 ```
 
 Tricks as a whole have one switch for each machine, and it is off until you switch it on. On the phone
-it is the first card in Settings → Tricks. Settings → Experiments lists Tricks too, and its row opens
-that page. The switch holds for the machine, on every phone at once. A trick's program runs as you on
+it is the **Tricks** card in Settings → Experiments, under the card for the Hill. While the switch is
+on, Settings has a **Tricks** row that opens the list of your tricks. While it is off, that row is
+gone, and a link to Settings → Tricks opens Settings → Experiments. The switch holds for the machine,
+on every phone at once. A trick's program runs as you on
 this machine.
 
 While tricks are off, no trick runs and none draws a part, in any place. No agent view opens, and no
 trick asks on the Hill. A Decision that a trick asked before stays open but hidden, and it is back
 when tricks are on again. `collie trick add`, `collie trick update` and `collie trick propose` answer
-that tricks are off and where to switch them on. The list of tricks stays, so you can read each one
-before you switch.
+that tricks are off and where to switch them on. `collie trick list` still lists your tricks, so you
+can read each one before you switch.
 
 Each trick keeps its own switch. Tricks on does not switch on any trick, and tricks off does not
 switch any trick off: a trick that was on runs again once tricks are on. On a Windows machine the
@@ -604,7 +606,7 @@ Most problems show in the trick's row in Settings → Tricks, or in `collie tric
 
 | What you see | What it means and what to do |
 | --- | --- |
-| "Tricks are switched off on this machine; ..." | Tricks as a whole are off. Switch them on at the top of Settings → Tricks, or run `collie tricks on` |
+| "Tricks are switched off on this machine; ..." | Tricks as a whole are off. Switch them on in Settings → Experiments, or run `collie tricks on` |
 | "This trick cannot run. ..." | `trick.toml` has an error, and the rest of the line says which. Run `collie trick check <folder>` and fix each line it prints |
 | "Part of this trick is not shown. ..." | The trick runs, but Collie refused one part of what it printed, for example a status line over its length. The rest of the line says which. Run `collie trick dev <folder>` to see each refusal |
 | "A new version waits for your yes." | The folder moved past the approved copy. Tap the line to open its card, or run `collie trick on <id>` |

@@ -1,20 +1,29 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
+import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
+import { server } from "@/test/setup";
 import { withHeaderHost } from "@/test/header-host";
 import { SettingsExperimentsRoute } from "./settings-sections";
 
 // The fifth section. Chat left it (ADR 0082); the Hill moved in on 2026-11-13, so the page is its contract and
-// the Hill's one switch plus a row for Tricks (2026-11-17, whose switch lives on Settings, Tricks), and the settings index shows the row (routes/settings.test.tsx). The contract is
+// the Hill's one switch plus the one switch for Tricks as a whole (2026-11-18: it moved here from Settings, Tricks, whose index row now shows only while it is on), and the settings index shows the row (routes/settings.test.tsx). The contract is
 // stated ONCE at the top of the page rather than repeated per card.
 
-function renderExperiments() {
+function renderExperiments(data: Partial<HomeData> = {}) {
   const router = createMemoryRouter(
     [
-      { path: "/settings/experiments", element: withHeaderHost(<SettingsExperimentsRoute />) },
-      { path: "/settings", element: <div data-testid="settings" /> },
-      { path: "/settings/tricks", element: <div data-testid="settings-tricks" /> },
+      {
+        id: ROOT_ROUTE_ID,
+        path: "/",
+        loader: () => data,
+        children: [
+          { path: "settings/experiments", element: withHeaderHost(<SettingsExperimentsRoute />) },
+          { path: "settings", element: <div data-testid="settings" /> },
+        ],
+      },
     ],
     { initialEntries: ["/settings/experiments"] },
   );
@@ -42,20 +51,34 @@ describe("SettingsExperimentsRoute", () => {
     renderExperiments();
     const contract = await screen.findByText(/Anything here may change/);
     const sw = await screen.findByRole("switch", { name: "The Hill" });
-    expect(screen.getAllByRole("switch")).toEqual([sw]);
+    expect(screen.getAllByRole("switch")).toHaveLength(2);
     expect(contract.compareDocumentPosition(sw) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("Agents and tricks ask you here. Off: they cannot post, and the Hill leaves the bar.")).toBeInTheDocument();
   });
 
-  it("holds a Tricks row under the Hill, with no second switch, and it opens Settings, Tricks", async () => {
-    const router = renderExperiments();
+  it("holds the Tricks card under the Hill's, with its switch and its own words, and no row that opens a page", async () => {
+    renderExperiments({ tricksOff: true });
     const hill = await screen.findByRole("switch", { name: "The Hill" });
-    const row = await screen.findByRole("button", { name: /Tricks/ });
-    expect(row).toHaveTextContent("Switched on and off at the top of Settings, Tricks.");
-    expect(hill.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.queryByRole("switch", { name: "Tricks" })).toBeNull();
-    await userEvent.click(row);
-    expect(await screen.findByTestId("settings-tricks")).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe("/settings/tricks");
+    const tricks = await screen.findByRole("switch", { name: "Tricks" });
+    expect(tricks).not.toBeChecked();
+    expect(hill.compareDocumentPosition(tricks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector('[data-slot="tricks-switch"]')).not.toBeNull();
+    expect(screen.getByText("Tricks are small programs that add buttons, lines and pages to Collie. A trick's program runs as you on this machine.")).toBeInTheDocument();
+    expect(screen.getByText("Tricks are an experiment: they may change, lose settings, or be withdrawn in a patch release.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Tricks/ })).toBeNull();
+    expect(document.querySelector('[data-slot="tricks-experiment-row"]')).toBeNull();
+  });
+
+  it("the Tricks card writes the switch through POST /api/tricks/switch", async () => {
+    let posted = "";
+    server.use(
+      http.post("/api/tricks/switch", async ({ request }) => {
+        posted = await request.text();
+        return HttpResponse.json({ on: true });
+      }),
+    );
+    renderExperiments({ tricksOff: true });
+    await userEvent.click(await screen.findByRole("switch", { name: "Tricks" }));
+    await waitFor(() => expect(posted).toBe('{"on":true}'));
   });
 });

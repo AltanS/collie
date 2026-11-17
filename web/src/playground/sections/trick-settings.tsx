@@ -16,6 +16,7 @@ import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
 import { RepoAddSheet } from "@/components/tricks-repo-sheet";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
+import { HillSwitchCard } from "@/components/hill-switch-card";
 import { TricksSwitchCard } from "@/components/tricks-switch-card";
 import { addOfficialTrick, addRepoTrick, listRepoTricks } from "@/lib/api";
 import { syncHill } from "@/lib/hill/store";
@@ -30,13 +31,14 @@ import { CodeFailure, type TrickCodeReader } from "@/components/trick-code-folds
 
 import { CODE_INDEX, CODE_INDEX_LONG, CODE_INDEX_NEXT, codeFileOf } from "../fixtures/trick-code";
 
+import { ExperimentsContract } from "@/routes/settings-sections";
 import { RootRouter } from "../harness";
 import { Card, Group, Section, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "trick-settings",
   title: "Trick settings",
-  intent: "The Tricks card on Settings, in each state a list of tricks can be in, at 390 px.",
+  intent: "The Tricks list on Settings, and its switch card in Settings, Experiments, in each state a list of tricks can be in, at 390 px.",
 };
 
 const NOW = Date.parse("2026-11-08T09:41:00Z");
@@ -420,7 +422,7 @@ function RepoSheetBox({ n, state, label, initialUrl, readOnMount = false }: { n:
   );
 }
 
-/** The switch card at the top of Settings, Tricks, in a 390px column, with a switch that flips in place. */
+/** The tricks switch card as Settings, Experiments draws it (under the Hill's), in a 390px column, with a switch that flips in place. */
 function SwitchCardCase({ n, state, label, initial, waiting = 0, windows = false, startAgain }: { n: number; state: string; label: string; initial: boolean; waiting?: number; windows?: boolean; startAgain?: readonly string[] }) {
   const [on, setOn] = useState(initial);
   return (
@@ -432,19 +434,42 @@ function SwitchCardCase({ n, state, label, initial, waiting = 0, windows = false
   );
 }
 
+/** Settings, Experiments with both cards, the Hill's and the one for tricks as a whole, each switch flipping in place. */
+function ExperimentsCase({ n, state, label, hillOn, tricksOn }: { n: number; state: string; label: string; hillOn: boolean; tricksOn: boolean }) {
+  const [hill, setHill] = useState(hillOn);
+  const [tricks, setTricks] = useState(tricksOn);
+  return (
+    <Card state={state} label={`${n} · ${label}`}>
+      <div className="flex h-[844px] w-[390px] max-w-full flex-col bg-background">
+        <RootRouter data={homeSolo}>
+          <AppHeaderHost bridge="connected" error={false}>
+            <SettingsPage title="settings.section.experiments.title">
+              <ExperimentsContract />
+              <HillSwitchCard on={hill} disabled={false} onToggle={setHill} />
+              <TricksSwitchCard on={tricks} disabled={false} onToggle={setTricks} />
+            </SettingsPage>
+          </AppHeaderHost>
+        </RootRouter>
+      </div>
+    </Card>
+  );
+}
+
 export function TrickSettingsSection(): ReactNode {
   useRepoRoutes();
   return (
     <Section def={DEF}>
-      {/* The switch for tricks as a whole (bridge/tricks/feature-switch.ts), first on Settings, Tricks. Off by default. */}
+      {/* The switch for tricks as a whole (bridge/tricks/feature-switch.ts), a card in Settings, Experiments since 2026-11-18. Off by default. While it is on, the Settings index shows the Tricks row; off, the row and a deep link to Settings, Tricks are gone. */}
       <Group title="The switch for tricks as a whole">
+        <ExperimentsCase n={66} state="settings-experiments-off" label="Settings, Experiments with both cards, both off (the default)" hillOn={false} tricksOn={false} />
+        <ExperimentsCase n={67} state="settings-experiments-on" label="Settings, Experiments with both cards, both on: the Settings index now shows the Tricks row" hillOn tricksOn />
         <SwitchCardCase n={47} state="tricks-switch-on" label="tricks on" initial />
         <SwitchCardCase n={48} state="tricks-switch-off" label="tricks off (the default)" initial={false} />
         <SwitchCardCase n={49} state="tricks-switch-armed" label="3 questions from tricks wait: tap once, it arms; tap again inside four seconds, it goes off" initial waiting={3} />
         <SwitchCardCase n={50} state="tricks-switch-windows" label="a Windows bridge: the line, and the switch cannot move" initial={false} windows />
         <SwitchCardCase n={64} state="tricks-switch-off-starts" label="tricks off, three tricks on: the line names them; switch on and it goes" initial={false} startAgain={["Release Gates", "Tracker", "Browser leg"]} />
         <SwitchCardCase n={65} state="tricks-switch-off-starts-many" label="tricks off, seven tricks on: five names, then 'and 2 more'" initial={false} startAgain={["Release Gates", "Tracker", "Browser leg", "Todo list", "Usage line", "Morph", "Notes"]} />
-        <ListCard n={51} state="trick-settings-tricks-off" label="tricks off: the list stays readable, every switch is disabled, one line says why" tricks={[HEALTHY[0] ?? trick("x", "x"), { ...(HEALTHY[2] ?? trick("y", "y")), on: false, state: "off" }]} tricksOff />
+        <ListCard n={51} state="trick-settings-tricks-off" label="a moment after tricks go off, before the page leaves for Settings, Experiments: the list stays readable, every switch is disabled, one line says why" tricks={[HEALTHY[0] ?? trick("x", "x"), { ...(HEALTHY[2] ?? trick("y", "y")), on: false, state: "off" }]} tricksOff />
       </Group>
       <Group title="The list">
         <ListCard n={1} state="trick-settings-healthy" label="three tricks, three origins" tricks={HEALTHY} />
@@ -752,7 +777,7 @@ export function TrickSettingsSection(): ReactNode {
       </Group>
       {/* A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): the list card draws nothing; the switch card (case 50) says the line once. */}
       <Group title="A Windows bridge">
-        <ListCard n={36} state="trick-settings-windows-gate" label="a Windows bridge: no list card, the switch card (50) says the line once" tricks={[]} gate="windows" />
+        <ListCard n={36} state="trick-settings-windows-gate" label="a Windows bridge: no list card, the switch card (50) in Settings, Experiments says the line once" tricks={[]} gate="windows" />
       </Group>
       {/* Add from a repository (2026-11-17): the row is the last of every list above; here is its sheet, and the row with tricks off. */}
       <Group title="Add from a repository">

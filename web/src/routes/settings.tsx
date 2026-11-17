@@ -13,6 +13,7 @@ import { useUpdatesStatus } from "@/components/updates-settings-card";
 import { addedCount, useAccounts } from "@/lib/accounts";
 import { hasExperiments } from "@/lib/experiments";
 import { useRememberedAnswer } from "@/lib/remembered-shape";
+import { useOptionalRootData } from "@/lib/route-data";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -130,8 +131,9 @@ const ROWS: Row[] = [
     : []),
 ];
 
-// Tricks sits after Machines and before Experiments, always there (2026-11-17): it holds the switch for
-// tricks as a whole, so it shows on every bridge, also one with no trick.
+// Tricks sits after Machines and before Experiments, and only while the switch for tricks as a whole is on
+// (2026-11-18): that switch is a card in Settings, Experiments, and the row is the way into the list it
+// switched on. Off, the row is gone. The value is the snapshot's `tricksOff`, there from the first frame.
 const TRICKS_ROW: Row = {
   id: "tricks",
   to: (scope) => settingsSectionPath("tricks", scope),
@@ -151,8 +153,9 @@ const ACCOUNTS_ROW: Row = {
   blurb: "accounts.row.none",
 };
 
-function rows(withAccounts: boolean): Row[] {
+function rows(withAccounts: boolean, withTricks: boolean): Row[] {
   const base = withAccounts ? withRow(ROWS, ACCOUNTS_ROW, "harnesses") : ROWS;
+  if (!withTricks) return base;
   const at = base.findIndex((row) => row.id === "experiments");
   return at === -1 ? [...base, TRICKS_ROW] : [...base.slice(0, at), TRICKS_ROW, ...base.slice(at)];
 }
@@ -173,17 +176,17 @@ export const LIST_HOLD_MS = 400;
 /**
  * The quiet stand-in for the list card, on a first visit with no remembered answer, until the two
  * read has landed or {@link LIST_HOLD_MS} has passed. It is the card's own box with the rows that
- * are always there, empty and of their exact height (the Updates row, `ROWS` and Tricks: 16px padding twice
+ * are always there, empty and of their exact height (the Updates row, `ROWS` and Tricks while it is on: 16px padding twice
  * around the 24px title line and the 20px caption line, so `box-content h-11 p-4`), inside the same
  * list group, so a theme's row edges and gaps come out as they will. No spinner and no words: a state
  * with nothing to say keeps its slot (DESIGN.md §2). The row that may be added (Accounts)
  * are not counted, so the card grows by it if it arrives late, which is the rare, accepted case.
  */
-function ListHold() {
+function ListHold({ withTricks }: { withTricks: boolean }) {
   return (
     <Card className="gap-0 py-0" data-slot="settings-list-hold" aria-hidden="true">
       <div data-slot="list-group">
-        {[...ROWS.map((row) => row.id), TRICKS_ROW.id, "updates"].map((id) => (
+        {[...ROWS.map((row) => row.id), ...(withTricks ? [TRICKS_ROW.id] : []), "updates"].map((id) => (
           <div key={id} className="box-content h-11 p-4" />
         ))}
       </div>
@@ -195,6 +198,8 @@ export function SettingsRoute() {
   const nav = useNav();
   const scope = useScope();
   const updates = useUpdatesStatus();
+  // The Tricks row only while the switch for tricks as a whole is on: the snapshot's `tricksOff`, so the first frame is right.
+  const withTricks = useOptionalRootData()?.tricksOff !== true;
   // Accounts (M101): a row only while the machine answers the accounts route, so an older bridge, Windows and an install with no account-capable agent are unchanged.
   const accounts = useAccounts();
   const accountsCount = addedCount(accounts.body);
@@ -246,7 +251,7 @@ export function SettingsRoute() {
             17): index.css draws the line between two rows, so the last has none, and a theme's
             `rows: cards` makes them cards inside this one card, like every other list. */}
         {holdList ? (
-          <ListHold />
+          <ListHold withTricks={withTricks} />
         ) : (
           <Card className="gap-0 py-0">
             <div data-slot="list-group">
@@ -271,7 +276,7 @@ export function SettingsRoute() {
                 }
                 onOpen={() => nav.down(updatesPath(scope))}
               />
-              {rows(withAccounts === true).map((row) => (
+              {rows(withAccounts === true, withTricks).map((row) => (
                 <SettingsNavRow
                   key={row.id}
                   icon={row.icon}
