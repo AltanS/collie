@@ -353,6 +353,29 @@ describe("the switched-on count (M105 spec 03, the local API's life)", () => {
     expect(told).toEqual([0, 1, 0]);
   });
 
+  test("the local API stands while tricks are switched on where tricks run, with no trick on, and closes when the switch goes off", async () => {
+    const told: boolean[] = [];
+    let on = true;
+    let active = true;
+    const r = await rig([exited(belt("1"))], { feature: { on: () => on }, active: () => active, onLocalApi: (wanted) => told.push(wanted) });
+    // No trick at all, the switch on: the socket stands.
+    await r.service.tick();
+    expect(told).toEqual([true]);
+    expect(r.service.localApiWanted()).toBe(true);
+    // The terminal writes off: the next tick closes it, and tells only the change.
+    on = false;
+    await r.service.tick();
+    await r.service.tick();
+    expect(told).toEqual([true, false]);
+    on = true;
+    await r.service.tick();
+    expect(told).toEqual([true, false, true]);
+    // Deposed (a peer, a deputy): no socket, the switch on or not.
+    active = false;
+    await r.service.tick();
+    expect(told).toEqual([true, false, true, false]);
+  });
+
   test("on Windows (the gate) the count is never above 0", async () => {
     const told: number[] = [];
     const r = await rig([exited(belt("1"))], { platform: "win32", onSwitchedOnCount: (count) => told.push(count) });

@@ -68,6 +68,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **The local API follows the switch for tricks as a whole.** Its socket stands while tricks are switched on on a machine where they run, also with no trick on, and closes within a second when tricks are switched off, from the phone or with `collie tricks off`.
 - **The switch for tricks as a whole answers only for its own machine.** A request that names a crew member gets a 400, as the Hill's switch does, instead of reading as if it moved the member's switch.
 - **`collie tricks on` and `collie hill on` refuse in a pane where an agent works.** Switching tricks or the Hill on is the person's choice, so both answer as `collie trick on` does there, and name where the person switches it: Settings, Tricks, or Settings, Experiments. `off` still works anywhere.
 - **A tap on a plan approval answers only the plan you saw.** When Claude Code shows a revised plan under the same question and options, the phone takes it as a new question and asks for a new tap.
