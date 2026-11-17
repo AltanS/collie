@@ -263,7 +263,7 @@ describe("SettingsRoute — the index", () => {
 
 // ── THE CALM FIRST PAINT ────────────────────────────────────────────────────────────────────────
 //
-// The Accounts row (after Harnesses) and the Tricks row (before Experiments) depend on reads that end
+// The Profiles row (after Harnesses) and the Tricks row (before Experiments) depend on reads that end
 // after the first paint, and each sits in the middle of the list, so a row that arrived late pushed
 // every row after it down. jsdom has no layout, so these cases read the DOM instead: the order and
 // length of the rows on the first paint, and again once the reads have landed. Equal lists mean no
@@ -340,8 +340,8 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
 
     const first = listTitles();
     expect(document.querySelector('[data-slot="settings-list-hold"]')).toBeNull();
-    // Accounts right after Harnesses, Tricks right before Experiments, from the first frame.
-    expect(first.indexOf("Accounts")).toBe(first.indexOf("Harness configurations") + 1);
+    // Profiles right after Harnesses, Tricks right before Experiments, from the first frame.
+    expect(first.indexOf("Profiles")).toBe(first.indexOf("Harness configurations") + 1);
     expect(first.indexOf("Tricks")).toBe(first.indexOf("Experiments") - 1);
     expect(first).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL + 2);
 
@@ -366,7 +366,7 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
     await screen.findByRole("button", { name: /Appearance/ });
 
     const first = listTitles();
-    expect(first).not.toContain("Accounts");
+    expect(first).not.toContain("Profiles");
     expect(first).not.toContain("Tricks");
     expect(first).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
 
@@ -383,9 +383,9 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
     writeAnswer("settings-tricks-row", false);
     server.use(http.get("/api/accounts", () => HttpResponse.json(body())));
     renderIndex({ tricks: false });
-    const row = await screen.findByRole("button", { name: /Accounts/ });
+    const row = await screen.findByRole("button", { name: /Profiles/ });
     const titles = listTitles();
-    expect(titles.indexOf("Accounts")).toBe(titles.indexOf("Harness configurations") + 1);
+    expect(titles.indexOf("Profiles")).toBe(titles.indexOf("Harness configurations") + 1);
     expect(row).toHaveTextContent("One login per agent");
     await waitFor(() => expect(readAnswer("settings-accounts-row")).toBe(true));
   });
@@ -446,7 +446,7 @@ describe("SettingsRoute — the list does not move while the page loads", () => 
     expect(document.querySelector('[data-slot="settings-list-hold"]')).toBeNull();
     const titles = listTitles();
     expect(titles).toHaveLength(SETTLED_ROWS_WITHOUT_OPTIONAL);
-    expect(titles).not.toContain("Accounts");
+    expect(titles).not.toContain("Profiles");
     expect(titles).not.toContain("Tricks");
   });
 
