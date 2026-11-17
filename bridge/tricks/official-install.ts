@@ -91,7 +91,7 @@ export type OfficialAnswer =
   | { status: 200; body: { id: string; state: OfficialState } }
   | { status: 400; body: { error: "official-invalid" } }
   | { status: 404; body: { error: "unknown-official" } }
-  | { status: 409; body: { error: "runs-on" | "windows" | "busy" | "taken" | "added" | "no-update" | "not-added" | "blocked" | "changed"; message: string } }
+  | { status: 409; body: { error: "runs-on" | "windows" | "windows-shell" | "busy" | "taken" | "added" | "no-update" | "not-added" | "blocked" | "changed"; message: string } }
   | { status: 422; body: { error: "mismatch" | "too-large"; message: string } }
   | { status: 502; body: { error: "unreachable"; message: string } }
   | { status: 500; body: { error: "failed"; message: string } };
@@ -244,7 +244,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     const entry = this.entries().find((e) => e.id === id);
     if (entry === undefined) return { status: 404, body: { error: "unknown-official" } };
     // Fault d: a POSIX trick (a shell run line) never runs on Windows, so its add fetches nothing there.
-    if (entry.posix === true && (this.deps.platform ?? HOST.platform) === "win32") return { status: 409, body: { error: "windows", message: TRICKS_WINDOWS_SHELL_LINE } };
+    if (entry.posix === true && (this.deps.platform ?? HOST.platform) === "win32") return { status: 409, body: { error: "windows-shell", message: TRICKS_WINDOWS_SHELL_LINE } };
     if (this.busy) return { status: 409, body: { error: "busy", message: OFFICIAL_LINES.busy } };
     this.busy = true;
     let fetchDir: string | null = null;

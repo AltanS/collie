@@ -416,6 +416,8 @@ export function officialFailureLine<TThrown>(thrown: TThrown, mode: "add" | "upd
   if (code === "unreachable") return t(add ? "settings.tricks.official.unreachable" : "settings.tricks.official.updateUnreachable");
   // A repository that sent more than a listed commit can be is the same class of refusal as a mismatch.
   if (code === "mismatch" || code === "too-large") return t(add ? "settings.tricks.official.mismatch" : "settings.tricks.official.updateMismatch");
+  // A POSIX trick (a shell run line) on a Windows machine (fault d): the same words as the switch's refusal.
+  if (code === "windows-shell") return t("settings.tricks.switchShellOnWindows");
   if (code === "busy") return t("settings.tricks.official.busy");
   if (code === "taken") return t("settings.tricks.official.taken");
   // The new code needs a name the person's own files hold in the trick's folder: nothing was changed.

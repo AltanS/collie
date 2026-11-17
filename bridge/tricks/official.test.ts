@@ -1197,7 +1197,7 @@ describe("a POSIX trick on the list (fault d of the Windows milestone)", () => {
     };
     const pin = { ...fixtureEntry(REPO, C1, H1), posix: true as const };
     const win = await rig([pin], { platform: "win32", git });
-    expect(await win.official.install("legs", "add")).toEqual({ status: 409, body: { error: "windows", message: TRICKS_WINDOWS_SHELL_LINE } });
+    expect(await win.official.install("legs", "add")).toEqual({ status: 409, body: { error: "windows-shell", message: TRICKS_WINDOWS_SHELL_LINE } });
     expect(fetched).toBe(0);
     const linux = await rig([pin], { platform: "linux", git });
     expect((await linux.official.install("legs", "add")).status).not.toBe(409);

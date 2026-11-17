@@ -5,11 +5,11 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { originLine } from "@/lib/tricks/row-words";
-import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, versionCardOpener, warningLines } from "@/components/tricks-settings-card";
+import { HOLD_MS, TricksSettingsCard, autoLine, officialFailureLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, versionCardOpener, warningLines } from "@/components/tricks-settings-card";
 import type { HillDecision } from "@/lib/hill/wire";
 import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import { collieCard } from "@/test/hill-fixtures";
-import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
+import { addOfficialTrick, setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { ABOUT_MAX, DESCRIPTION_MAX, inputsSentence, TRICKS_WINDOWS_LINE, TRICKS_WINDOWS_SHELL_LINE, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
@@ -967,6 +967,17 @@ describe("review 8 V-N1: a switch on names the code the person read", () => {
     await user.click(await screen.findByRole("switch", { name: "Browser leg" }));
     await vi.waitFor(() => expect(currentStatus()?.text).toBe(TRICKS_WINDOWS_SHELL_LINE));
     expect(screen.getByRole("switch", { name: "Browser leg" })).not.toBeChecked();
+  });
+
+  it("an official add refused for a POSIX trick on Windows says the same sentence (fault d, review D item 5)", async () => {
+    server.use(http.post("/api/tricks/official/legs/add", () => HttpResponse.json({ error: "windows-shell", message: TRICKS_WINDOWS_SHELL_LINE }, { status: 409 })));
+    let line = "";
+    try {
+      await addOfficialTrick("legs", "add");
+    } catch (thrown) {
+      line = officialFailureLine(thrown, "add", "Legs");
+    }
+    expect(line).toBe(TRICKS_WINDOWS_SHELL_LINE);
   });
 
   it("the wire keeps approves only as 64 hex", () => {
