@@ -232,8 +232,9 @@ export class PaneLockFiles {
     return `${JSON.stringify(body)}\n`;
   }
 
-  private temp(path: string): string {
-    return `${path}.${String(this.pid)}.${randomBytes(4).toString("hex")}.tmp`;
+  /** The tail of a temp file's name beside its target: this pid and a random tag, so two writers never share one. */
+  private tag(): string {
+    return `${String(this.pid)}.${randomBytes(4).toString("hex")}.tmp`;
   }
 
   /** The lock taken (its bytes), or null when another live process holds it. */
@@ -250,7 +251,7 @@ export class PaneLockFiles {
 
   /** Exclusive create with the whole content. False when the file exists. */
   private create(path: string, raw: string): boolean {
-    const temp = this.temp(path);
+    const temp = `${path}.${this.tag()}`;
     writeFileSync(temp, raw, { mode: 0o600 });
     try {
       linkSync(temp, path);
@@ -293,7 +294,7 @@ export class PaneLockFiles {
       if (again === null) return this.create(path, raw) ? raw : null;
       // Someone took it in between (the content moved) and it is not stale: theirs.
       if (again !== seen && !this.staleRaw(path, again)) return null;
-      const temp = this.temp(path);
+      const temp = `${path}.${this.tag()}`;
       writeFileSync(temp, raw, { mode: 0o600 });
       renameSync(temp, path);
       this.options.log?.(`[pane-lock] took over a stale pane lock (${path})`);
@@ -309,7 +310,7 @@ export class PaneLockFiles {
       const path = this.pathOf(paneId);
       if (this.readRaw(path) !== mine.raw) return;
       const raw = this.body(until);
-      const temp = this.temp(path);
+      const temp = `${path}.${this.tag()}`;
       writeFileSync(temp, raw, { mode: 0o600 });
       renameSync(temp, path);
       mine.raw = raw;
@@ -341,7 +342,7 @@ export class PaneLockFiles {
         if (codeOf(err) !== "EEXIST") throw err;
       }
       if (attempt > 0 || !this.oldMutex(mutex)) return false;
-      const aside = this.temp(mutex);
+      const aside = `${mutex}.${this.tag()}`;
       try {
         renameSync(mutex, aside);
       } catch {
