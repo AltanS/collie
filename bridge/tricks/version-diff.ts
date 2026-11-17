@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import { gitBinary, gitEnv, HARDENING, looksBinary } from "../changes.ts";
+import { HOST } from "../host.ts";
 import { redactText } from "../redact.ts";
 import { CODE_BYTES_MAX, diskTrickFs, unsafeText, walkTrickCode, type TrickFs } from "./code-hash.ts";
 
@@ -97,6 +98,18 @@ export interface VersionDiffOptions {
    * its bits kept apart). Absent: read off the disk.
    */
   nextExec?: ReadonlySet<string>;
+  /** The platform: on Windows no file keeps a mode, so the x bit never counts as a change. Default `HOST.platform` (bridge/host.ts). */
+  platform?: NodeJS.Platform;
+}
+
+/**
+ * Whether the platform keeps a file's executable bit. Windows does not: a copy written there reads back with
+ * another mode than a proposal carries, and `chmod` does nothing. So on Windows the x bit is never part of
+ * "changed", no card says a file can or can no longer run as a program, and a version whose only change is
+ * a mode is no change at all.
+ */
+export function keepsFileModes(platform: NodeJS.Platform): boolean {
+  return platform !== "win32";
 }
 
 /** The sums of a folder's code entries, and which of its files are executable. */
@@ -283,13 +296,14 @@ export async function versionDiff(opts: VersionDiffOptions): Promise<VersionDiff
   const none: Sums = { sum: new Map(), exec: new Set() };
   const [old, now] = await Promise.all([opts.base === null ? Promise.resolve(none) : sums(opts.base, fs), sums(opts.next, fs)]);
   const nowExec = opts.nextExec ?? now.exec;
+  const modes = keepsFileModes(opts.platform ?? HOST.platform);
   const rels = [...new Set([...old.sum.keys(), ...now.sum.keys()])].toSorted();
   const files: ChangedFile[] = [];
   let modeOnly = false;
   for (const rel of rels) {
     const was = old.sum.get(rel);
     const is = now.sum.get(rel);
-    const mode = is === undefined ? undefined : modeChange(rel, old, nowExec);
+    const mode = is === undefined || !modes ? undefined : modeChange(rel, old, nowExec);
     if (was === is && mode === undefined) continue;
     const change: FileChange = was === undefined ? "added" : is === undefined ? "removed" : "changed";
     // Only the bit moved: nothing to count, and one line that says so, so it is whole as it is.

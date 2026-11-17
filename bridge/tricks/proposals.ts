@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "../../web/src/lib/json.ts";
 import type { HillCollieRef, HillDecision, HillPostInput } from "../../web/src/lib/hill/wire.ts";
+import { HOST } from "../host.ts";
 import type { JsonObject } from "../json.ts";
 import { givesAgentsInstructions, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { type HillCollieSender, type HillCollieVerdict, type HillOneAnswer, type HillPostAnswer, type HillPostOptions } from "../hill/service.ts";
@@ -15,7 +16,7 @@ import { proposalCard, proposalDiff, proposalRequestId, proposalVersionCard, PRO
 import { checkProposedFiles, foldKey, proposalHash, PROPOSE_HAS_RULES, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
 import { trickWarnings, WARN_PLAIN } from "./scan.ts";
 import type { ProposalPlaced, ProposalTarget } from "./service.ts";
-import { versionDiff, type VersionDiff } from "./version-diff.ts";
+import { keepsFileModes, versionDiff, type VersionDiff } from "./version-diff.ts";
 import { GROUP_FILES_MAX, shippedHelpers } from "./card-group.ts";
 import { PROPOSALS_MACHINE_HOUR_MAX, PROPOSALS_MEMBER_OPEN_MAX, PROPOSALS_OPEN_MAX, PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER_OPEN_MAX, PROPOSAL_EXPIRY_MS } from "../../web/src/lib/tricks/limits.ts";
 
@@ -150,6 +151,8 @@ export interface TrickProposalsDeps {
   self?: { memberId: string; machine: string };
   /** `nextExec`: the files the proposal marked executable; its stored copy is 0600 (review 7, `+x`). */
   diff?: (base: string | null, next: string, nextExec: ReadonlySet<string>) => Promise<VersionDiff>;
+  /** The platform: on Windows no file keeps a mode (version-diff.ts `keepsFileModes`). Default `HOST.platform` (bridge/host.ts). */
+  platform?: NodeJS.Platform;
   now?: () => number;
   warn?: (line: string) => void;
   audit?: (entry: { action: string; detail: Record<string, string> }) => void;
@@ -309,6 +312,7 @@ export class TrickProposals {
   private readonly deps: TrickProposalsDeps;
   private readonly now: () => number;
   private readonly warn: (line: string) => void;
+  private readonly platform: NodeJS.Platform;
   private readonly diff: (base: string | null, next: string, nextExec: ReadonlySet<string>) => Promise<VersionDiff>;
   private state: ProposalsState | null = null;
   /** Every change runs one at a time: a propose, an answer, a sweep. */
@@ -317,9 +321,10 @@ export class TrickProposals {
   constructor(deps: TrickProposalsDeps) {
     this.deps = deps;
     this.now = deps.now ?? Date.now;
+    this.platform = deps.platform ?? HOST.platform;
     this.warn = deps.warn ?? ((line) => console.warn(`[tricks] ${line}`));
     // Every changed file gets its diff, up to the most a group of cards shows (card-group.ts).
-    this.diff = deps.diff ?? ((base, next, nextExec) => versionDiff({ base, next, nextExec, filesMax: GROUP_FILES_MAX }));
+    this.diff = deps.diff ?? ((base, next, nextExec) => versionDiff({ base, next, nextExec, filesMax: GROUP_FILES_MAX, platform: this.platform }));
   }
 
   /** `<configDir>/tricks/.collie-proposed`. */
@@ -434,7 +439,8 @@ export class TrickProposals {
     if (base === null) {
       // A new trick's code is its files' own bytes, every line added: no git run, nothing left out.
       const sizes = new Map(proposal.files.map((file) => [file.rel, file.bytes.byteLength]));
-      const executable = new Set(proposal.files.filter((file) => file.executable).map((file) => file.rel));
+      // A mode counts only where the platform keeps one: on Windows no file can run as a program by its mode.
+      const executable = new Set(keepsFileModes(this.platform) ? proposal.files.filter((file) => file.executable).map((file) => file.rel) : []);
       return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), warnings: kinds, crew, replaces, runsOn, sizes, executable, settingsLeft: proposal.settingsLeft === true, ...proposalDiff(id, proposal.files) });
     }
     const exec = new Set(proposal.files.filter((file) => file.executable).map((file) => file.rel));

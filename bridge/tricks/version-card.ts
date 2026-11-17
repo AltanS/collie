@@ -110,6 +110,8 @@ export interface VersionCardDeps {
   tricks: () => VersionCardTricks | null;
   /** The diff of two folders. Default: version-diff.ts `versionDiff`. */
   diff?: (base: string | null, next: string) => Promise<VersionDiff>;
+  /** The platform of the default diff: on Windows no file keeps a mode (version-diff.ts `keepsFileModes`). Default `HOST.platform`. */
+  platform?: NodeJS.Platform;
   /** Whether this bridge leads a crew: a new `inputs` glob then reads on every machine, and the card says so. */
   crew?: () => boolean;
   warn?: (line: string) => void;
@@ -709,7 +711,7 @@ export class VersionCards implements TrickVersionsPort {
 
   constructor(deps: VersionCardDeps) {
     this.deps = deps;
-    this.diff = deps.diff ?? ((base, next) => versionDiff({ base, next, filesMax: GROUP_FILES_MAX }));
+    this.diff = deps.diff ?? ((base, next) => versionDiff({ base, next, filesMax: GROUP_FILES_MAX, platform: deps.platform }));
     this.warn = deps.warn ?? (() => undefined);
   }
 
