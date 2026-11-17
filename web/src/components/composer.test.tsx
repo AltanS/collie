@@ -523,7 +523,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
     expect(onAnswerDialog).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole("button", { name: "Send here" }));
+    await user.click(screen.getByRole("button", { name: "Send anyway" }));
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
     expect(recordedSends().map(({ text, mode, rowsHash }) => ({ text, mode, rowsHash }))).toEqual([
       { text: "carry on please", mode: "send", rowsHash: undefined },
@@ -553,7 +553,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     const user = await typeAndSend("ls -la");
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/could not find the input box/i));
     expect(screen.queryByRole("button", { name: "Answer the dialog" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Send here" }));
+    await user.click(screen.getByRole("button", { name: "Send anyway" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(2));
     expect(recordedSends()[1]!.rowsHash).toBe("77aa00");
   });
@@ -695,7 +695,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen/i));
-    expect(screen.getByRole("button", { name: "Send here" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send anyway" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
     expect(onAnswerDialog).toHaveBeenCalledTimes(1);
     // Only the first tap went out, and it typed nothing: the bridge refused before any key.
@@ -729,7 +729,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     await user.click(screen.getByRole("button", { name: "Hide this notice" }));
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull());
     // The offers stay: the ✕ hid only the notice.
-    expect(screen.getByRole("button", { name: "Send here" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send anyway" })).toBeInTheDocument();
 
     // The same words over the same screen stay hidden; a send that reads another screen shows again.
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -753,7 +753,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
 
     await user.click(screen.getByRole("button", { name: "Hide this notice" }));
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull());
-    expect(screen.queryByRole("button", { name: "Send here" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send anyway" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(2));
@@ -767,10 +767,10 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     const { container } = renderWithContainer({ surface: unreadable });
     await user.type(screen.getByRole("textbox"), "carry on please");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Send here" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send anyway" })).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: "Dismiss the send offers" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Send here" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Send anyway" })).toBeNull());
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull());
   });
 
@@ -969,7 +969,7 @@ describe("Composer: password prompt", () => {
     await waitFor(() => expect(screen.getByText("[sudo] password for altan:")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /use type/i })).toBeInTheDocument();
     // The two-tap Send is untouched: a false positive costs a dismissal, not an action.
-    expect(screen.getByRole("button", { name: "Send here" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send anyway" })).toBeInTheDocument();
     expect(recordedSends()).toHaveLength(1);
   });
 
@@ -5428,7 +5428,7 @@ describe("the cap (M56 spec 09)", () => {
     server.use(...capBridge(false));
     renderWithContainer({ surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
-    await user.click(await screen.findByRole("button", { name: "Send here" }));
+    await user.click(await screen.findByRole("button", { name: "Send anyway" }));
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
     expect(recordedSends().map(({ rowsHash, capAck }) => ({ rowsHash, capAck }))).toEqual([{ rowsHash: undefined, capAck: undefined }, { rowsHash: "0f00ba", capAck: undefined }]);
   });
@@ -5437,13 +5437,13 @@ describe("the cap (M56 spec 09)", () => {
     server.use(...capBridge(true));
     const { container } = renderWithContainer({ surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
-    await user.click(await screen.findByRole("button", { name: "Send here" }));
+    await user.click(await screen.findByRole("button", { name: "Send anyway" }));
 
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/on agent 2\.1\.301 5 times today/i));
     // The phone's own words stand in the notice, not the bridge's English.
     expect(container.querySelector('[data-slot="composer-refusal"]')).not.toHaveTextContent(/bridge's own english/i);
     expect(screen.getByRole("textbox")).toHaveValue("carry on please");
-    expect(screen.queryByRole("button", { name: "Send here" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send anyway" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Confirm and type" }));
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
@@ -5464,7 +5464,7 @@ describe("the cap (M56 spec 09)", () => {
     );
     const { container } = renderWithContainer({ surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
-    await user.click(await screen.findByRole("button", { name: "Send here" }));
+    await user.click(await screen.findByRole("button", { name: "Send anyway" }));
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent("on agent 5 times today"));
     expect(container.querySelector('[data-slot="composer-refusal"]')?.textContent).not.toMatch(/agent -|\s{2}/u);
   });
@@ -5473,7 +5473,7 @@ describe("the cap (M56 spec 09)", () => {
     server.use(...capBridge(true));
     renderWithContainer({ surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
-    await user.click(await screen.findByRole("button", { name: "Send here" }));
+    await user.click(await screen.findByRole("button", { name: "Send anyway" }));
     await screen.findByRole("button", { name: "Confirm and type" });
     // The field, the Send button and the Keys board are all still there, enabled, with the draft kept.
     expect(screen.getByRole("textbox")).toBeEnabled();
@@ -5486,7 +5486,7 @@ describe("the cap (M56 spec 09)", () => {
     server.use(...capBridge(true));
     renderWithContainer({ surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
-    await user.click(await screen.findByRole("button", { name: "Send here" }));
+    await user.click(await screen.findByRole("button", { name: "Send anyway" }));
     await screen.findByRole("button", { name: "Confirm and type" });
     await user.click(screen.getByRole("button", { name: "Dismiss the send offers" }));
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -6090,9 +6090,9 @@ describe("Composer — known launch startup send-lock", () => {
     const box = screen.getByRole("textbox");
     await user.type(box, "offered draft");
     await user.click(screen.getByRole("button", { name: /^Send$/ }));
-    await screen.findByRole("button", { name: "Type here" });
+    await screen.findByRole("button", { name: "Send anyway" });
     act(lock);
-    const commit = screen.getByRole("button", { name: "Type here" });
+    const commit = screen.getByRole("button", { name: "Send anyway" });
     expect(commit).toBeDisabled();
     await user.click(commit);
     expect(typed).toHaveBeenCalledOnce();
@@ -6239,7 +6239,7 @@ describe("the unread card (M102 spec 03)", () => {
             prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
             display={{ open: false, onToggle: vi.fn() }}
             onSent={vi.fn()}
-            unreadIdentity={identity}
+            unreadState={identity}
             {...over}
           />
         </CrewProvider>
@@ -6370,16 +6370,61 @@ describe("the unread card (M102 spec 03)", () => {
     expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("where the manual Send is open, the notice and its button say Send here, never Type (the lead's decision)", async () => {
+  // The phone's own read can differ from the bridge's fresh one, so no word before the tap promises that
+  // Enter goes or that it does not: one wording on every screen, and the receipt says what happened
+  // (the M102 review, pass 2, item 1).
+  async function expectNeutralWords(shown: Surface): Promise<void> {
+    server.use(
+      ...sendHandler((request) =>
+        request.mode === "prepare"
+          ? sendAnswer(request.id, null, undefined, { rowsHash: "0aaa10" })
+          : sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0aaa09", surface: shown }),
+      ),
+    );
+    const user = userEvent.setup();
+    const { handle } = renderUnread(null, { surface: shown });
+    await user.type(screen.getByRole("textbox"), "carry on");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/Collie cannot read this screen\. Check the pane, then tap Send anyway\.$/u));
+    expect(screen.getByRole("button", { name: "Send anyway" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^(Type here|Send here)$/u })).toBeNull();
+    expect(document.body.textContent).not.toMatch(/presses Enter|no Enter/u);
+    act(() => handle.current?.typeAnyway());
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveAttribute("placeholder", "Your message goes past this screen\u2026"));
+  }
+
+  it("before the tap no word promises Enter either way, where the manual Send is open", async () => {
+    await expectNeutralWords({ revision: 3, turn: "idle", modal: "unknown", composer: "empty" });
+  });
+
+  it("before the tap no word promises Enter either way, where the manual Send is shut", async () => {
+    await expectNeutralWords({ revision: 3, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale" });
+  });
+
+  // WIRE-12, M102 review 2 item 5: a manual commit whose screen changed only in numbers or a spinner is placed with
+  // no key and answered typed_not_submitted/override. The phone says to press Enter on the Keys pad and opens it.
+  it("a manual commit the bridge placed with no key says press Enter on the Keys pad, and opens the pad", async () => {
     const manual: Surface = { revision: 3, turn: "idle", modal: "unknown", composer: "empty" };
-    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0aaa09", surface: manual })));
+    server.use(
+      ...sendHandler((request) =>
+        request.override === true
+          ? sendAnswer(request.id, "typed_not_submitted", "override", { offers: ["keys"], surface: manual })
+          : sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0aaa11", surface: manual }),
+      ),
+    );
     const user = userEvent.setup();
     renderUnread(null, { surface: manual });
     await user.type(screen.getByRole("textbox"), "carry on");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toBe("Collie could not find the input box. Collie cannot read this screen. Check the pane, then tap Send here: it types your text and presses Enter."));
-    expect(screen.getByRole("button", { name: "Send here" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Type here" })).toBeNull();
+    const commit = await screen.findByRole("button", { name: "Send anyway" });
+    // The Keys pad is shut until the receipt says the text waits for Enter.
+    expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "false");
+    await user.click(commit);
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(recordedSends()[1]).toMatchObject({ text: "carry on", rowsHash: "0aaa11", override: true });
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/Collie pressed no Enter\. Check the screen, then press Enter on the Keys pad\./u));
+    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "true");
   });
 
   it("unread card: an override the screen moved under says so and stays armed on the screen now", async () => {
@@ -6404,7 +6449,7 @@ describe("the unread card (M102 spec 03)", () => {
     expect(recordedSends()[2]).toMatchObject({ text: "go on", rowsHash: "0fff07", override: true });
   });
 
-  it("unread card: a not_free refusal with the rows hash offers Type here, which sends the override on those rows (I4)", async () => {
+  it("unread card: a not_free refusal with the rows hash offers Send anyway, which sends the override on those rows (I4)", async () => {
     const stale: Surface = { revision: 3, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale" };
     server.use(
       ...sendHandler((request) =>
@@ -6415,12 +6460,12 @@ describe("the unread card (M102 spec 03)", () => {
     renderUnread(null, { surface: stale });
     await user.type(screen.getByRole("textbox"), "carry on please");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await user.click(await screen.findByRole("button", { name: "Send anyway" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(2));
     expect(recordedSends()[1]).toMatchObject({ text: "carry on please", rowsHash: "0ddd04", override: true });
   });
 
-  it("unread card: a not_free refusal on a sign-in field offers no Type here", async () => {
+  it("unread card: a not_free refusal on a sign-in field offers no Send anyway", async () => {
     const secret: Surface = { revision: 3, turn: "unknown", modal: "unknown", composer: "unknown", field: "secret" };
     server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "not_free", { offers: ["keys"], rowsHash: "0eee05", surface: secret })));
     const user = userEvent.setup();
@@ -6429,7 +6474,7 @@ describe("the unread card (M102 spec 03)", () => {
     await user.click(screen.getByRole("button", { name: "Send the code" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(1));
     await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')).not.toBeNull());
-    expect(screen.queryByRole("button", { name: "Send here" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send anyway" })).toBeNull();
   });
 
   it("unread card: a refusal whose step is the screen asks the pane to show the card", async () => {
@@ -6873,7 +6918,7 @@ describe("Send it now on a row held for two minutes (M102 spec 02)", () => {
     const user = userEvent.setup();
     renderHeld();
     await user.click(screen.getByRole("button", { name: SEND_NOW }));
-    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent("Collie could not read the screen again. Send, then tap Type here."));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent("Collie could not read the screen again. Send, then tap Send anyway."));
     expect(cancels).toEqual([]);
     expect(recordedSends()).toHaveLength(1);
     // The row stays held, with its button.

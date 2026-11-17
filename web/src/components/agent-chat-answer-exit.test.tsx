@@ -142,7 +142,7 @@ describe("AgentChat: an answer that cannot go (M102 spec 10)", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "true"));
     // The card the answer did not go from is put away; the keys are keys, never answers.
     expect(screen.queryByRole("button", { name: /^1\.?\s*Yes$|^Yes$/ })).toBeNull();
-    expect(within(exit).queryByRole("button", { name: "Type it anyway" })).toBeNull();
+    expect(within(exit).queryByRole("button", { name: "Send past this screen" })).toBeNull();
   });
 
   it("a stale_surface refusal opens the exit with the refused line", async () => {

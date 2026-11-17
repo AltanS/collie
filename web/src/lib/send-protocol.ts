@@ -277,6 +277,7 @@ export type SendNote =
   | "steerUnsupported"
   | "steerNotAllowed"
   | "codeRejected"
+  | "noSecretField"
   | "held"
   | "expired"
   | "cancelled"
@@ -335,6 +336,16 @@ export function surfaceNote(surface: Surface): SurfaceNote {
   if (surface.composer === "draft" && modal === "none") return "draft";
   if (surface.turn === "idle" && modal === "none" && surface.composer === "empty") return "free";
   return "unknown";
+}
+
+/**
+ * Whether a Surface reads as a screen Collie cannot read, the pane's unread state (the M102 review 2, H): an
+ * unreadable modal, an unreachable box, a stale, torn or contested read, or no word for it at all. A free box, a
+ * running turn, a draft and an ask Collie read are states it can read.
+ */
+export function readsUnread(surface: Surface): boolean {
+  const note = surfaceNote(surface);
+  return note === "unreadable" || note === "unreachable" || note === "unknown" || note === "stale" || note === "torn" || note === "contested";
 }
 
 /** What an answer means for the composer. */
@@ -415,6 +426,8 @@ function refusalNote(reason: SendReason | null): SendNote {
       return "moved";
     case "code_rejected":
       return "codeRejected";
+    case "no_secret_field":
+      return "noSecretField";
     case "menu_open":
       return "menuOpen";
     default:
@@ -457,7 +470,13 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
  * live with their feature. `steered` is a sentence here; Recent sends wears the one word
  * (`sendReceipts.outcome.steered`), as its other outcomes do.
  */
-export type NoteKey = `composer.protocol.${Exclude<SendNote, "steered" | "steerUnsupported" | "steerNotAllowed">}` | "composer.steer.unsupported" | "composer.steer.notAllowed" | "composer.steer.steered";
+export type NoteKey =
+  | `composer.protocol.${Exclude<SendNote, "steered" | "steerUnsupported" | "steerNotAllowed" | "unconfirmed" | "noticeKey">}`
+  | "composer.protocol.unconfirmedPast"
+  | "composer.protocol.noticeKeyPast"
+  | "composer.steer.unsupported"
+  | "composer.steer.notAllowed"
+  | "composer.steer.steered";
 
 export function noteKey(note: SendNote): NoteKey {
   switch (note) {
@@ -467,6 +486,12 @@ export function noteKey(note: SendNote): NoteKey {
       return "composer.steer.unsupported";
     case "steerNotAllowed":
       return "composer.steer.notAllowed";
+    // The two sentences that name the commit offer name it as it reads, Send anyway, and promise nothing
+    // about Enter: the phone's read can differ from the bridge's (the M102 review, pass 2).
+    case "unconfirmed":
+      return "composer.protocol.unconfirmedPast";
+    case "noticeKey":
+      return "composer.protocol.noticeKeyPast";
     default:
       return `composer.protocol.${note}`;
   }
@@ -617,6 +642,8 @@ export function nextStep(reply: SendReply, verdict: Verdict, toCard: boolean, su
       return "stop";
     // A menu or a yes/no prompt stood in the way of an override: the person answers it on the pad.
     case "menu_open":
+    // A code that met no sign-in field: there is no field to enter it again into, so the person reads the screen.
+    case "no_secret_field":
       return "screen";
     case "reserved_lead":
     case "multiline":
@@ -635,7 +662,7 @@ export function nextStep(reply: SendReply, verdict: Verdict, toCard: boolean, su
 /**
  * Whether the phone's own sentence already says what the bridge's English detail says (the
  * 2026-10-16 field case, "Collie cannot read this screen" twice). Only for a refusal, and only for
- * the reasons whose bridge line repeats the phone's sentence: `unconfirmed`, `stale_surface`, `busy`,
+ * the reasons whose bridge line repeats the phone's sentence: `unconfirmed`, `stale_surface`, `no_secret_field`, `busy`,
  * `pane_gone`, `draft_present`, and `not_free` when the line is the plain one. Every other reason,
  * and every outcome that is no refusal, keeps the line: it says what the phone's sentence does not
  * (a `not_free` that names what is open, a dialog that Enter may have answered). An `unconfirmed`
@@ -643,7 +670,7 @@ export function nextStep(reply: SendReply, verdict: Verdict, toCard: boolean, su
  * `probe_failed` with the `late_keys` cause keeps it as every `probe_failed` does: the line says the
  * agent showed Collie's keys late and to wait, which the phone's sentence does not (#623).
  */
-const REPEATS_THE_NOTE: ReadonlySet<SendReason> = new Set(["unconfirmed", "stale_surface", "pane_gone", "draft_present", "bad_head", "stale_view"]);
+const REPEATS_THE_NOTE: ReadonlySet<SendReason> = new Set(["unconfirmed", "stale_surface", "pane_gone", "draft_present", "bad_head", "stale_view", "no_secret_field"]);
 const PLAIN_NOT_FREE = "The input box is not free.";
 
 function ownSentence(reply: SendReply): boolean {

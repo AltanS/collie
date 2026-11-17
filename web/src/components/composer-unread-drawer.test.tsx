@@ -7,16 +7,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { markLive, resetLiveness } from "@/lib/liveness";
 import { __forgetSendAgainMemory } from "@/lib/send-again";
 import { __forgetSendIntentMemory } from "@/lib/send-intent";
-import { parseAnsi } from "@/lib/ansi";
-import { splitLines } from "@/lib/blocks";
 import { clearStatus } from "@/lib/status";
 import type { Surface } from "@/lib/surface/surface";
 import { CrewProvider } from "./crew-provider";
 import { Composer, type ComposerHandle } from "./composer";
-import { unreadIdentity } from "./unread-dialog-block";
 
-// The M102 safety review, I: the Keys drawer opens once per unread screen, and a screen whose clock, spinner or
-// timer ticks is the same screen, so a drawer the person closed stays closed.
 
 const FREE: Surface = { revision: 1, turn: "idle", modal: "none", composer: "empty" };
 
@@ -69,33 +64,40 @@ function mount(first: Partial<ComponentProps<typeof Composer>> = {}): Mounted {
   return { handle, update: (next) => update(next) };
 }
 
-/** The identity of one unread screen whose spinner row's timer and clock read `seconds`. */
-function screenId(seconds: number, words = "Pick a mode for the lab run"): string {
-  const text = [words, "  > fast", "    careful", `\u2733 Wibbling\u2026 (${seconds}s \u00b7 \u2193 ${seconds * 10} tokens)`, `lab clock 12:15:0${seconds}`].join("\n");
-  return unreadIdentity(null, splitLines(parseAnsi(text)));
-}
-
 const keys = () => screen.getByRole("button", { name: "Keys" });
 
-describe("I: the Keys drawer opens once per unread screen", () => {
-  it("a drawer the person closed stays closed while the screen's timer and clock tick", async () => {
+// The M102 review 2, I: the drawer follows the pane's unread STATE, never its rows. The pane view names the state
+// (`unreadState`, a word such as "unread"); the drawer opens once when a pane goes from not unread to unread.
+describe("I: the Keys drawer opens once per unread state of a pane", () => {
+  it("a drawer the person closed stays closed while the state lasts", async () => {
     const user = userEvent.setup();
-    const m = mount({ unreadIdentity: screenId(4) });
+    const m = mount({ unreadState: "unread" });
     await waitFor(() => expect(keys()).toHaveAttribute("aria-expanded", "true"));
     await user.click(keys());
     await waitFor(() => expect(keys()).toHaveAttribute("aria-expanded", "false"));
-    m.update({ unreadIdentity: screenId(5) });
-    m.update({ unreadIdentity: screenId(6) });
+    m.update({ unreadState: "unread", text: "other rows" });
     expect(keys()).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("a new unread screen (other words) opens the drawer again", async () => {
+  it("the state ends and comes again: the drawer opens again", async () => {
     const user = userEvent.setup();
-    const m = mount({ unreadIdentity: screenId(4) });
+    const m = mount({ unreadState: "unread" });
     await waitFor(() => expect(keys()).toHaveAttribute("aria-expanded", "true"));
     await user.click(keys());
     await waitFor(() => expect(keys()).toHaveAttribute("aria-expanded", "false"));
-    m.update({ unreadIdentity: screenId(5, "Pick a target for the lab run") });
+    m.update({ unreadState: null });
+    m.update({ unreadState: "unread" });
+    await waitFor(() => expect(keys()).toHaveAttribute("aria-expanded", "true"));
+  });
+
+  it("another pane's unread state opens the drawer for that pane", async () => {
+    const user = userEvent.setup();
+    markLive("w1:p2");
+    const m = mount({ unreadState: "unread" });
+    await waitFor(() => expect(keys()).toHaveAttribute("aria-expanded", "true"));
+    await user.click(keys());
+    await waitFor(() => expect(keys()).toHaveAttribute("aria-expanded", "false"));
+    m.update({ paneId: "w1:p2", unreadState: "unread" });
     await waitFor(() => expect(keys()).toHaveAttribute("aria-expanded", "true"));
   });
 });

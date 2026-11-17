@@ -667,7 +667,7 @@ instead. So does a message that finds the input box not free, for example under 
 screen that changes between Collie's two reads, or a probe character that failed and that one
 Backspace took back out of a box Collie read clean again. Such a message goes after five free polls over ten
 seconds, or after a turn Collie sees. A command there is still refused, and so is a send on a
-screen you confirmed with Type here. A send on a pane with no profile is never held. Collie keeps the text and shows a card that floats over the bottom of the terminal view: "Queued.
+screen you confirmed with Send anyway. A send on a pane with no profile is never held. Collie keeps the text and shows a card that floats over the bottom of the terminal view: "Queued.
 Sends when the turn ends." On an agent whose version Collie could not read, the card says so and
 points to `collie doctor`: Collie types into a running turn only on a version the agent reported. The card shows the text and a Cancel button. Collie sends it after the turn ends, once the
 pane reads free on two polls in a row, oldest first. Each later held send waits for the turn that
@@ -698,9 +698,11 @@ not an edge, is counted but never logged. An edge from a pane of another multipl
 machine, for example a Herdr TUI pane seen by a bridge that drives the Herdr core, is counted as
 `foreign-mux` and not logged.
 
-#### Type it anyway
+#### Send past this screen
 
-When Collie cannot send your message as it stands, the card offers **Type it anyway**. This works on
+When Collie cannot send your message as it stands, the card offers **Send past this screen**, and the
+notice under the box offers **Send anyway**. Neither word says whether Enter goes: what happened is in
+the answer after your tap. This works on
 every screen except four: a sign-in field (enter the code again there), a question or permission
 Collie read (answer it on its own card), a screen that changed since you looked, and a screen that
 shows a menu or a yes/no prompt. A screen that changed comes back with the rows as they are now; look

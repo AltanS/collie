@@ -64,13 +64,13 @@ function todaysBridge(surface: Surface) {
   server.use(
     ...sendHandler((request) => {
       if (request.rowsHash !== undefined) return sendAnswer(request.id, "typed_not_submitted", "mismatch", { offers: ["keys"] });
-      if (takesManualSend(surface)) return sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: HASH, surface, detail: "Check the pane, then tap Type here." });
+      if (takesManualSend(surface)) return sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: HASH, surface, detail: "Check the pane, then tap Send anyway." });
       return sendAnswer(request.id, "refused", "not_free", { offers: ["keys"], rowsHash: HASH, surface, detail: "The input box is not free." });
     }),
   );
 }
 
-const OVERRIDE_BUTTON = /^(type here|send here|type it anyway|send it now)$/i;
+const OVERRIDE_BUTTON = /^(send anyway|send past this screen|send it now)$/i;
 
 /** The person's road to the override from a fresh mount: type, Send, then the override button. Null when it got through. */
 async function overrideRoad(surface: Surface): Promise<string | null> {

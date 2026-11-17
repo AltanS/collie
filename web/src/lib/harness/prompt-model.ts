@@ -369,20 +369,6 @@ function tickSteadyRow(row: string): string {
   return row.replace(RUNNING_BRACKET, (_all, ellipsis: string, gap: string, inner: string) => `${ellipsis}${gap}(${inner.replace(/\d+/gu, "0")})`);
 }
 
-/**
- * One row of a screen as an identity for "the same unread screen" reads it (the M102 review, H, I, J): what
- * {@link tickSteadyRow} holds still, and on top every digit run as `0` and every braille glyph as `*`, as the
- * bridge's override compare reads the rows above a found box (bridge/surface/protocol.ts `tickMarked`). So a
- * clock, a spinner or a timer that moves anywhere on the screen leaves the identity as it was; any other change
- * of words still changes it. An identity only: never a check that a key or a text may go.
- */
-export function steadyScreenRow(row: string): string {
-  return tickSteadyRow(row)
-    .replace(/[\u2800-\u28ff]/gu, "*")
-    .replace(/\d+/gu, "0")
-    .trimEnd();
-}
-
 /** A signature with each of its rows read by {@link tickSteadyRow}. Same row count, same order. */
 function tickSteadySignature(signature: string): string {
   return signature.split("\n").map(tickSteadyRow).join("\n");

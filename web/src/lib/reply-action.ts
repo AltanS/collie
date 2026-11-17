@@ -100,7 +100,11 @@ export async function sendText(args: ReplyArgs): Promise<ReplyOutcome> {
   // The extra confirm is its own intent: it must not replay the commit the cap refused.
   const resendOf = args.resendOf;
   const viewKey = args.view === undefined ? "" : JSON.stringify(args.view);
-  const intent = requestIdFor(args.held, `${mode}\u0000${rowsHash ?? ""}\u0000${capAck ? "cap" : ""}\u0000${override ? "override" : ""}\u0000${resendOf ?? ""}\u0000${args.when ?? ""}\u0000${viewKey}\u0000${args.text}`, args.mint ?? mintRequestId);
+  // A sign-in code never enters the intent's key: the composer keeps a code's lost intent in memory for the next tap,
+  // and the code itself is kept nowhere but its field. The composer drops that intent whenever the field's text
+  // changes, so the text is bound there, not here (the M102 review 2, D).
+  const textKey = args.secret === true ? "\u0001secret" : args.text;
+  const intent = requestIdFor(args.held, `${mode}\u0000${rowsHash ?? ""}\u0000${capAck ? "cap" : ""}\u0000${override ? "override" : ""}\u0000${resendOf ?? ""}\u0000${args.when ?? ""}\u0000${viewKey}\u0000${textKey}`, args.mint ?? mintRequestId);
   const body: SendRequestBody = args.view === undefined ? { id: intent.requestId, pane: args.paneId, text: args.text, mode } : { id: intent.requestId, pane: args.paneId, text: args.text, mode, view: args.view };
   try {
     const reply = await postSend({ ...body, rowsHash: rowsHash ?? undefined, capAck: capAck ? true : undefined, resendOf, when: args.when, secret: args.secret === true ? true : undefined, override: override ? true : undefined }, args.scope);

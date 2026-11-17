@@ -16,11 +16,6 @@ interface SendOfferStripProps {
   onDismiss: () => void;
   /** The cap's extra confirm is the next commit (M56 spec 09): its button says so. */
   capConfirm?: boolean;
-  /**
-   * The manual Send is open on this screen (`takesManualSend`): the commit types the text AND presses
-   * the submit key, so it says Send, never Type (M102 spec 12, the lead's decision 2026-11-17).
-   */
-  sends?: boolean;
 }
 
 const LABEL_KEYS = {
@@ -29,24 +24,19 @@ const LABEL_KEYS = {
   cancel: "composer.protocol.cancel",
   submit: "composer.protocol.submit",
   discard: "composer.protocol.discard",
-  commit: "composer.protocol.commit",
+  // One word on every screen: it says what the tap asks for and never whether Enter goes, because the
+  // phone's read can differ from the bridge's (the M102 review, pass 2). The receipt says what happened.
+  commit: "composer.protocol.commitPast",
   keys: "composer.protocol.keys",
 } as const satisfies Record<SendOffer, string>;
 
-/** The label of one offer: the commit says what it will do on this screen. */
-function commitLabel(offer: SendOffer, capConfirm: boolean, sends: boolean): (typeof LABEL_KEYS)[SendOffer] | "composer.protocol.commitCap" | "composer.protocol.commitSends" {
-  if (offer !== "commit") return LABEL_KEYS[offer];
-  if (capConfirm) return "composer.protocol.commitCap";
-  return sends ? "composer.protocol.commitSends" : LABEL_KEYS.commit;
-}
-
-export function SendOfferStrip({ offers, disabled, onOffer, onDismiss, capConfirm = false, sends = false }: SendOfferStripProps) {
+export function SendOfferStrip({ offers, disabled, onOffer, onDismiss, capConfirm = false }: SendOfferStripProps) {
   useLocale();
   return (
     <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground" data-testid="send-offers">
       {offers.map((offer) => (
         <Button key={offer} variant="ghost" size="sm" className="h-7 px-2 text-xs font-medium" disabled={disabled} onClick={() => onOffer(offer)}>
-          {t(commitLabel(offer, capConfirm, sends))}
+          {t(offer === "commit" && capConfirm ? "composer.protocol.commitCap" : LABEL_KEYS[offer])}
         </Button>
       ))}
       <Button

@@ -331,7 +331,7 @@ describe("the session page's rows (send drill 3)", () => {
   it("the cap's refusal reads as the cap's sentence with the receipt's numbers; a plain unconfirmed one keeps the generic sentence", () => {
     const plain: SendReceiptRow = { ...base, outcome: "refused", reason: "unconfirmed" };
     const capped: SendReceiptRow = { ...plain, cap: { count: 5, limit: 5, harness: "codex", version: "-" } };
-    expect(receiptSentence(plain, say)).toBe("composer.protocol.unconfirmed");
+    expect(receiptSentence(plain, say)).toBe("composer.protocol.unconfirmedPast");
     expect(receiptSentence(capped, say)).toBe(`composer.protocol.capConfirm ${JSON.stringify({ count: "5", harness: "codex", version: "\u0000" })}`);
     expect(receiptSentence({ ...base, outcome: "sent" }, say)).toBeNull();
   });
