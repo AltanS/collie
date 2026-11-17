@@ -716,7 +716,7 @@ export const en = {
   "composer.protocol.idReused": "This request was already used for another text. Send again.",
   "composer.protocol.refused": "The send was refused, so nothing was typed. Read the line below, then change the text or send again.",
   "composer.protocol.codeRejected": "The agent did not take the code. Its words are below. Get a new code, then send it.",
-  "composer.protocol.noSecretField": "Collie cannot see the sign-in field now. Nothing was typed. Look at the screen, or use Type.",
+  "composer.protocol.noSecretField": "Collie cannot see the sign-in field now. Nothing was typed. Look at the screen, or use Type. Type sends each key at once, with no check.",
   "composer.protocol.menuOpen": "A menu or a question is on the screen, so nothing was typed. Answer it with the Keys pad.",
   "composer.protocol.overrideTypedDraft": "Your text is in the agent's box, after words that were already there. Collie pressed no Enter. Check the box, then press Enter on the Keys pad.",
   "composer.protocol.overrideMoved": "The screen changed before your text went in, so nothing was typed. Look at the screen now, then tap Send to send past this screen again.",

@@ -280,7 +280,7 @@ describe("D, pass 2: a code the bridge found no sign-in field for", () => {
     await sendCode(user);
     const notice = await waitFor(() => {
       const found = document.querySelector<HTMLElement>('[data-slot="composer-refusal"]');
-      expect(found?.textContent).toMatch(/Collie cannot see the sign-in field now\. Nothing was typed\. Look at the screen, or use Type\./u);
+      expect(found?.textContent).toMatch(/Collie cannot see the sign-in field now\. Nothing was typed\. Look at the screen, or use Type\. Type sends each key at once, with no check\./u);
       return found!;
     });
     // The bridge's English line is not shown: it would claim the field is gone when the bridge may only have failed to read it.
