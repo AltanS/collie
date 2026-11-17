@@ -569,6 +569,8 @@ them. An agent that is not on the machine's login `PATH` stays in the list, disa
 installed". For another terminal agent, declare a row for it as above: it shows in the **Command**
 select under **Shell**, starts in a pane like any command, and Collie shows no status for it.
 
+MiniMax Code (`mcode`) is in the list as an experiment: it works where the multiplexer names an `mcode` pane, today the Herdr core.
+
 To verify, reload the dashboard and look under the herd. If a row fails to load,
 `journalctl --user -u collie -n 20` prints the error.
 
