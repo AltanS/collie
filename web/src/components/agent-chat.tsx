@@ -3639,6 +3639,8 @@ export function AgentChat({
                   isShell={isShell}
                   cwd={agent?.cwd || undefined}
                   held={agent?.held}
+                  // The screen a held row that waited two minutes shows under its label (M102 spec 12).
+                  heldScreen={{ lines: screenLines, wrap: prefs.wrap }}
                   // Stop on the belt (M68 spec 02): the bridge says the profile has an interrupt key (live
                   // while the turn runs, dimmed otherwise). The rule is lib/harness-bar.ts `stopFor`; a gone pane or a read-only device has none.
                   stopOffered={stopFor(agent) && !gone && !readOnly}

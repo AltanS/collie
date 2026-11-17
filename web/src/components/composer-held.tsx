@@ -21,11 +21,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import { QUEUED_BUTTON, QUEUED_FLOAT, QUEUED_FLOAT_TEXT, QUEUED_HEAD, QUEUED_LABEL } from "@/components/queued-block";
+import { RawMirror } from "@/components/raw-mirror";
 import { Button } from "@/components/ui/button";
 import { useLocale } from "@/hooks/use-locale";
 import { cancelHeldSend, isApiErrorStatus } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
+import type { StyledLine } from "@/lib/blocks";
 import { t, tn, type MessageKey } from "@/lib/i18n";
+import { holdsMask } from "@/lib/masked-text";
 import type { Scope } from "@/lib/scope";
 import { setStatus } from "@/lib/status";
 import type { HeldRow } from "@/lib/surface/send";
@@ -50,8 +53,14 @@ function heldKey(row: HeldRow): MessageKey {
   }
 }
 
+/** A row that waited two minutes in the hold (M102 spec 12): it shows the screen and offers Send it now. */
+function isLong(row: HeldRow): boolean {
+  return row.state === "held" && row.heldLong === true;
+}
+
 /** The label a row wears: what the bridge is doing with it, or why it never went out. */
 function labelKey(row: HeldRow): MessageKey {
+  if (isLong(row)) return "composer.held.long";
   if (row.state === "held") return heldKey(row);
   if (row.state === "running") return "composer.held.sending";
   if (row.outcome === "unknown") return "composer.held.unknown";
@@ -114,13 +123,28 @@ interface HeldCardProps {
   onChanged: () => void;
   /** A Cancel the bridge took: the row's words, so the caller can give them back to the box. */
   onReturn?: ((words: string) => void) | undefined;
+  /**
+   * The pane's live screen, drawn under the label of a long row (a row held two minutes). Absent: no screen box.
+   */
+  screen?: { lines: StyledLine[]; wrap: boolean };
+  /** Send it now on a long row: cancel the row, then send its text once past the hold. True when the bridge took it. */
+  onSendNow: (row: HeldRow) => Promise<boolean>;
+}
+
+/** The live screen of a long row: one scroller that opens at its bottom, bounded so the card stays small. */
+function HeldScreen({ lines, wrap }: { lines: StyledLine[]; wrap: boolean }) {
+  return (
+    <div data-slot="held-screen" className="flex max-h-40 min-w-0 flex-col">
+      <RawMirror lines={lines} wrap={wrap} anchor="bottom" className="min-h-0 overflow-y-auto overscroll-contain" />
+    </div>
+  );
 }
 
 /** Lines of a row's text in the card: a row on its own or in the open list, and the first of several while collapsed. */
 const CLAMP_ONE = "line-clamp-3";
 const CLAMP_COLLAPSED = "line-clamp-2";
 
-export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending, onSend, onChanged, onReturn }: HeldCardProps) {
+export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending, onSend, onChanged, onReturn, screen, onSendNow }: HeldCardProps) {
   useLocale();
   // The request whose call is in flight: its buttons wait, the others stay live.
   const [busy, setBusy] = useState<string | null>(null);
@@ -170,15 +194,28 @@ export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending,
       if (await onSend(row, action)) await release(row);
     });
 
+  // Send it now: the composer cancels the row and sends its text once past the hold. A row whose
+  // text holds the bridge's mask is not sent from here, it would type the dots.
+  const sendNow = (row: HeldRow) => act(row, async () => void (await onSendNow(row)));
+
   /** The buttons a row's state allows, at the right of its label. Nothing when the composer may not act. */
   function actions(row: HeldRow): ReactNode {
     const disabled = busy !== null;
     if (!canAct) return null;
     if (row.state === "held") {
-      return (
+      const cancel = (
         <Button type="button" variant="outline" size="sm" className={QUEUED_BUTTON} disabled={disabled} aria-label={t("composer.held.cancelAria")} onClick={() => void act(row, () => release(row, true))}>
           {t("composer.held.cancel")}
         </Button>
+      );
+      if (!isLong(row) || !canSend || holdsMask(row.text)) return cancel;
+      return (
+        <span className="flex items-center gap-1">
+          <Button type="button" variant="outline" size="sm" className={QUEUED_BUTTON} disabled={disabled || sending} aria-label={t("composer.held.sendNowAria")} onClick={() => void sendNow(row)}>
+            {t("composer.held.sendNow")}
+          </Button>
+          {cancel}
+        </span>
       );
     }
     if (row.state !== "ended") return null;
@@ -208,6 +245,10 @@ export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending,
     );
   }
 
+  // The screen shows once per card, under the first long row (or the collapsed head), never once per row.
+  const firstLong = rows.find(isLong);
+  const screenBox = screen === undefined ? null : <HeldScreen lines={screen.lines} wrap={screen.wrap} />;
+
   /** One row as it was on its own: label, its buttons, the text clamped. */
   function rowBlock(row: HeldRow, className?: string): ReactNode {
     return (
@@ -217,6 +258,7 @@ export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending,
           {actions(row)}
         </div>
         <p className={cn(QUEUED_FLOAT_TEXT, CLAMP_ONE)}>{row.text}</p>
+        {row === firstLong && screenBox}
       </div>
     );
   }
@@ -235,7 +277,7 @@ export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending,
   // Every row waiting for the turn: one count says it. Else the first row's own label, which is the
   // one the next send is about to act on.
   const allHeld = rows.every((row) => row.state === "held");
-  const headLabel = allHeld ? tn("composer.held.count", rows.length) : t(labelKey(first));
+  const headLabel = firstLong !== undefined ? t("composer.held.long") : allHeld ? tn("composer.held.count", rows.length) : t(labelKey(first));
   const head = (
     <div data-slot="held-head" className={QUEUED_HEAD}>
       <p className={QUEUED_LABEL}>{headLabel}</p>
@@ -251,6 +293,7 @@ export function HeldCard({ paneId, scope, rows, canAct, canSend = true, sending,
       <div data-slot="held-card" data-mode="collapsed" className={QUEUED_FLOAT}>
         {head}
         <p className={cn(QUEUED_FLOAT_TEXT, CLAMP_COLLAPSED)}>{first.text}</p>
+        {screenBox !== null && firstLong !== undefined && screenBox}
       </div>
     );
   }
