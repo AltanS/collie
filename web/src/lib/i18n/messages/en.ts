@@ -643,6 +643,8 @@ export const en = {
   // A crew member that runs an older Collie types a code without the bridge's check that the field is still there
   // (`no_secret_field`, the M102 review 3): the sign-in field says so, once, under its frame.
   "composer.secret.olderMachine": "{machine} runs an older Collie, so it does not check that the sign-in field is still there before it types.",
+  // The same line when the member's name is not known: a neutral word, never a sentence that starts with a space.
+  "composer.secret.olderMachineUnnamed": "This machine runs an older Collie, so it does not check that the sign-in field is still there before it types.",
   "composer.secret.reopen": "Open the code field",
   "composer.secret.onlyField": "The screen asks for a sign-in code. Only the code field can send now, so nothing was sent.",
   "composer.steer.queuedInstead": "Queued instead: the agent kept it for after the turn.",
@@ -4117,6 +4119,7 @@ export const PENDING_TRANSLATION = [
   "composer.protocol.commitCapPast",
   "composer.protocol.capConfirmPast",
   "composer.secret.olderMachine",
+  "composer.secret.olderMachineUnnamed",
   "composer.heldBack.kept",
   "composer.heldBack.putBack",
   "composer.heldBack.boxFull",

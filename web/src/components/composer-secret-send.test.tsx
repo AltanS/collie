@@ -300,6 +300,11 @@ describe("the M102 review 3: a crew member on an older Collie has no check that 
     expect(screen.getByText("minibox runs an older Collie, so it does not check that the sign-in field is still there before it types.")).toBeInTheDocument();
   });
 
+  it("a member whose name is unknown is named in a neutral word, never a sentence that starts with a space", () => {
+    mount({ olderMember: "" });
+    expect(screen.getByText("This machine runs an older Collie, so it does not check that the sign-in field is still there before it types.")).toBeInTheDocument();
+  });
+
   it("the sign-in field on any other pane draws no such line", () => {
     mount();
     expect(codeField()).toBeInTheDocument();

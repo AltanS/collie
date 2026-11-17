@@ -3654,7 +3654,7 @@ export function AgentChat({
                   canSteer={agent?.canSteer}
                   // A crew member on an older Collie types a code without checking that the sign-in field is still
                   // there: the field says so (the M102 review 3). The same mark as the card dock's line.
-                  olderMember={olderMemberCards ? (agent?.host ?? scope?.host ?? "") : undefined}
+                  olderMember={olderMemberCards ? agent?.host || scope?.host || "" : undefined}
                   // A queued message Stop gave back stands in the box: a draft refusal points at its card (ADR 0122).
                   returnedDraft={chatFeed.window.queuedSends.some((row) => row.state === "returned")}
                   isShell={isShell}

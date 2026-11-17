@@ -476,7 +476,7 @@ interface ComposerProps {
   /**
    * The name of the crew member this pane lives on, when that member runs an older Collie (lib/send-path.ts
    * `cardsOnOlderMember`): its bridge types a code without checking that the sign-in field is still there, and the
-   * field says so in one line (the M102 review 3). Absent on every other pane.
+   * field says so in one line (the M102 review 3). Empty when the member's name is not known. Absent on every other pane.
    */
   olderMember?: string;
   /** The pane's active todo list, drawn as a belt pill and an in-flow dock when non-empty. */
@@ -2143,8 +2143,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function secretReason(): string | null {
     // The lock speaks through the field's own placeholder (`lockedWhy`), so only a launch needs this line.
     if (starting && !locked) return translate("newPage.starting");
-    if (olderMember !== undefined) return translate("composer.secret.olderMachine", { machine: olderMember });
-    return null;
+    if (olderMember === undefined) return null;
+    // An unknown name gets a neutral word (the M102 review 3), never a sentence that starts with a space.
+    if (olderMember.trim() === "") return translate("composer.secret.olderMachineUnnamed");
+    return translate("composer.secret.olderMachine", { machine: olderMember });
   }
   /** The "Answer the dialog" word and the notice's card button: a tap that found no card says so. */
   function answerDialog(): void {
