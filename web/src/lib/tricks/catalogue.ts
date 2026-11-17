@@ -409,7 +409,7 @@ export const PLACES = {
   status: {
     id: "status",
     name: "Status chip",
-    where: "One chip in the status line above the Belt, after Collie's own items.",
+    where: "One chip in the status line above the Belt, at the left end of the row; the model and the usage stay at the right end.",
     shows: "One chip: a short text, an icon, a `tone`, and a live time with `at` and `clock`. It takes no view.",
     tap: "A tap opens the trick's Page when it has one. The chip is not a control and takes no intent.",
     limits: [ONE_PER_TRICK, { what: "`text`", value: `1 to ${String(STATUS_TEXT_MAX)} characters` }, PART_SIZE],

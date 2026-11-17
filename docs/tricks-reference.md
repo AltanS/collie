@@ -15,7 +15,7 @@ A place is a spot on the phone where a trick can show (a surface). A program tri
 | `belt` | Belt | A mark at the end of the Belt, the scrolling strip of controls. It never takes fixed room. | A program |
 | `session` | Page | A page of the trick's own: a row on the Dashboard under Tricks, and a screen of its own. The code word is `session`. | A program |
 | `dashboard` | Dashboard tile | A round tile in the strip at the top of the Dashboard. The strip is hidden while no trick has a tile. | A program |
-| `status` | Status chip | One chip in the status line above the Belt, after Collie's own items. | A program |
+| `status` | Status chip | One chip in the status line above the Belt, at the left end of the row; the model and the usage stay at the right end. | A program |
 | `tabbar` | Bottom bar item | An item in the Dashboard's bottom bar, after the Hill. | A program |
 | `menu` | Session settings rows | Rows in a session's settings (the sheet of the session's ⋮ button), in a group of the trick's own after Collie's rows and Close, under the heading "From the trick", then the trick's name. Agent sessions only. Adds rows to a session's settings. | A program |
 | `agent-view` | Agent view | A view of one agent session, beside Terminal and Chat. The session's own agent draws it, and the person switches it on per session. | A session's agent |
@@ -192,7 +192,7 @@ A program prints:
 
 ### `status`
 
-**Where.** One chip in the status line above the Belt, after Collie's own items.
+**Where.** One chip in the status line above the Belt, at the left end of the row; the model and the usage stay at the right end.
 
 **Shows.** One chip: a short text, an icon, a `tone`, and a live time with `at` and `clock`. It takes no view.
 
@@ -1647,7 +1647,6 @@ Tricks do not run on a Windows machine yet. [Collie on Windows](windows.md) says
 | --- | --- |
 | Cards | card 1 holds the facts and at most 7 cards hold the code, 6 KB each |
 | Code shown in all | 42 KB, at most 64 files |
-| The yes | a hold of 1.5 seconds on the phone, or two presses of a key. The answer carries the hash of the cards, and the bridge hashes the stored files again before it installs. No card has to be opened or read first |
 
 ## Commands
 

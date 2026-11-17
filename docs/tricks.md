@@ -39,8 +39,8 @@ Collie's own look.
 
 - **Six places take a program's parts.** On the Dashboard: a tile in the strip at the top, a row
   under Tricks that opens the trick's own Page, and an item in the bottom bar. In an agent
-  session: a chip in the status line, a mark at the end of the Belt, and rows in the session's
-  settings.
+  session: a chip at the left end of the status line, a mark at the end of the Belt, and rows in the
+  session's settings.
 - **The agent view is the seventh.** It is a view of one agent session, beside Terminal and Chat, and
   that session's own agent draws it.
 - **The Hill is the eighth, and it ships with Collie.** It is the page of questions that wait for you,

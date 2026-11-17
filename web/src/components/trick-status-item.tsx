@@ -17,8 +17,8 @@ import type { AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // A TRICK'S ITEM IN THE STATUS LINE (M94 re-cut, the `status` place): one chip in the usage row above the
-// Belt (components/model-tag.tsx), after Collie's own items, in the same 10px type and the same 12px line,
-// so it reads as one more figure of the row and never as a pill dropped into it. The model name gives way to
+// Belt (components/model-tag.tsx), at the row's LEFT end (the model and the usage end the row at the right), in the
+// same 10px type and the same 12px line, so it reads as one more figure of the row and never as a pill dropped into it. The model name gives way to
 // it first (lib/tricks/status.ts); `ModelTag` measures and hides.
 //
 // THE CHIP IS NOT A CONTROL. It has no `intent` and no status shape. A tap opens the trick's own session

@@ -80,6 +80,19 @@ describe("fitStatusRow", () => {
     expect(fitStatusRow({ room: 267, fixed, gap, forms, widths }).count).toBe(1);
   });
 
+  it("keeps a least gap between the two ends, `between`, which is the gap before the first chip", () => {
+    // 24 + 4 + 112 + 12 + 70 = 222 with a gap of 12 between the ends, 214 with the item gap of 4.
+    expect(fitStatusRow({ room: 222, fixed, gap, forms, widths: [70], between: 12 }).count).toBe(1);
+    expect(fitStatusRow({ room: 221, fixed, gap, forms, widths: [70], between: 12 }).count).toBe(0);
+    expect(fitStatusRow({ room: 214, fixed, gap, forms, widths: [70] }).count).toBe(1);
+    // The gaps between two chips stay the item gap: 24 + 4 + 112 + 12 + 60 + 4 + 60 = 276.
+    expect(fitStatusRow({ room: 276, fixed, gap, forms, widths: [60, 60], between: 12 }).count).toBe(2);
+    expect(fitStatusRow({ room: 275, fixed, gap, forms, widths: [60, 60], between: 12 }).count).toBe(1);
+    // The name takes what is left beside the chips and the gap: 340 - 116 - 12 - 60 = 152 holds the full form (85).
+    expect(fitStatusRow({ room: 340, fixed, gap, forms, widths: [60], between: 12 })).toEqual({ count: 1, form: 0 });
+    expect(fitStatusRow({ room: 270, fixed, gap, forms, widths: [60], between: 12 })).toEqual({ count: 1, form: 1 });
+  });
+
   it("takes a name narrower than the floor at its own width, and works with no name or no figures", () => {
     // Name of 10: 10 + 4 + 70 = 84.
     expect(fitStatusRow({ room: 84, fixed: 0, gap, forms: [10], widths: [70] })).toEqual({ count: 1, form: 0 });

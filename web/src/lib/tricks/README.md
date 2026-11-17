@@ -1076,7 +1076,7 @@ no surface drew them) is left out with a `dropped` note, and the other parts dra
 word is a `later` note; a manifest with no place left is refused.
 
 A `status` part is `{ at: "status", id, chip: { text, icon?, tone?, at?, clock? } }`: one chip, with
-the tree's chip attributes and no others, in the usage row after Collie's own items, in manifest
+the tree's chip attributes and no others, in the usage row at its left end (the model and the usage stay at the right), in manifest
 order. `text` is 1 to 12 characters. There is no `state` and no `intent`: the chip is not a control,
 and a tap opens the trick's session when it has one. One per trick. When the line is wider than its
 room the model name gives way first (the effort leaves it, then an ellipsis), the figures stay, and

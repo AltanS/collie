@@ -2,7 +2,7 @@
 // a trick draws in. The belt's trick marks at the end of its scrolling strip, after Collie's own keys and
 // never in the pinned block (one with nothing to do among them; word marks, three of them, at 390 px),
 // and the trick session: its row on the Dashboard and in Switch session, and its screen with no Composer.
-// Then the `status` place, the tricks' items in the usage row above the belt, the `dashboard` and
+// Then the `status` place, the tricks' items at the left end of the usage row above the belt, the `dashboard` and
 // `tabbar` places (tiles at the top of the Dashboard, items in its bottom bar after the Hill; the whole
 // Dashboard with both is the "Dashboard places" section), and the three look fixes of the renderer. Every card
 // mounts the REAL components at 390 px over a store of its own, so a tap shows the busy state and the
@@ -174,14 +174,14 @@ function Belt({ marks, toEnd = false }: { marks: readonly WireTrickPart[]; toEnd
 const USAGE = { context: 42, limits: [{ window: "5h", used: 58 }, { window: "7d", used: 81 }] };
 const LEGS_PANE_FOR_STATUS = trickPane("legs", LEGS_SESSION, { paneLabel: "Browser leg" });
 
-/** The usage row over a stand-in mirror, with the tricks' items after Collie's own. `width` is the mirror box's; `own` false leaves Collie's items out. */
+/** The usage row over a stand-in mirror, with the tricks' items at the left end and Collie's own at the right. `width` is the mirror box's; `own` false leaves Collie's items out. */
 function StatusLine({ parts, width = 390, own = true }: { parts: readonly WireTrickPart[]; width?: number; own?: boolean }) {
   const store = useStore();
   const trailing = useMemo(() => statusItemsOf({ parts, sessions: [LEGS_PANE_FOR_STATUS], onOpenSession: IGNORE, store }), [parts, store]);
   return (
     <div style={{ width }} className="relative h-12 max-w-full overflow-hidden rounded-sm border border-border bg-background">
       <p className="px-3 pt-2 font-mono text-xs text-muted-foreground">Case 24 is red. Rerunning it now.</p>
-      <ModelTag model={own ? "claude-opus-5-5" : undefined} usage={own ? USAGE : undefined} trailing={trailing} />
+      <ModelTag model={own ? "claude-opus-5-5" : undefined} effort={own ? "medium" : undefined} usage={own ? USAGE : undefined} trailing={trailing} />
     </div>
   );
 }
@@ -263,13 +263,13 @@ export function TrickPlacesSection(): ReactNode {
         </Card>
       </Group>
       <Group title="The status line">
-        <Card state="trick-status-two" label="4 · two items after usage">
+        <Card state="trick-status-two" label="4 · two items at the left end, the model and the usage at the right">
           <StatusLine parts={[LEGS_STATUS, SPEND_STATUS]} />
         </Card>
-        <Card state="trick-status-only" label="5 · items, no usage">
+        <Card state="trick-status-only" label="5 · items, no usage: they still start at the left">
           <StatusLine parts={[LEGS_STATUS, SPEND_STATUS]} own={false} />
         </Card>
-        <Card state="trick-status-narrow" label="6 · narrow, tricks give way">
+        <Card state="trick-status-narrow" label="6 · narrow: the model gives way first, the chips stay">
           <StatusLine parts={[LEGS_STATUS, SPEND_STATUS]} width={300} />
         </Card>
         <Card state="trick-status-stale" label="7 · stale, tone gone">

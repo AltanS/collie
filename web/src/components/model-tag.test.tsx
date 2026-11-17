@@ -418,10 +418,10 @@ describe("ModelTag trick status items", () => {
   }
   const hidden = (container: HTMLElement) => [...container.querySelectorAll("[data-status-item]")].filter((el) => el.hasAttribute("data-hidden")).map((el) => el.getAttribute("data-status-item"));
 
-  it("draws the items after Collie's own, in order, and a lone item draws the tag with no model", () => {
+  it("draws the items at the left end, before Collie's own, in order, and a lone item draws the tag with no model", () => {
     const { container } = render(<ModelTag model="claude-opus-5-5" trailing={items} />);
     const row = container.querySelector("[data-slot='model-tag']")?.textContent;
-    expect(row).toContain("Opus 5.5item aitem bitem c");
+    expect(row).toContain("item aitem bitem cOpus 5.5");
     expect(container.querySelectorAll("[data-status-item]")).toHaveLength(3);
     expect(render(<ModelTag model={undefined} trailing={items.slice(0, 1)} />).container.querySelector("[data-slot='model-tag']")?.textContent).toBe("item a");
     expect(render(<ModelTag model={undefined} trailing={[]} />).container.innerHTML).toBe("");
@@ -437,10 +437,11 @@ describe("ModelTag trick status items", () => {
 
   it("hides the newest items first when the row is wider than its room, inert and invisible, still in the tree", () => {
     stubLayout();
-    // The mirror box is 280px: 70% is 196, less 8 of padding, 188. "Opus 5.5" is 40, each item 60, gaps of 6:
-    // 40 + 6 + 60 + 6 + 60 = 172 fits two; the third would make 238.
+    // The mirror box is 250px: the row is 24 less and the two ends' padding 16, so 210. The name stands down to its
+    // floor of 24, each item is 60, gaps of 4 between items and 8 between the ends: 24 + 8 + 60 + 4 + 60 = 156 fits
+    // two; the third makes 220.
     const { container } = render(
-      <div data-w="280">
+      <div data-w="250">
         <ModelTag model="claude-opus-5-5" trailing={items} />
       </div>,
     );
@@ -471,20 +472,41 @@ describe("ModelTag trick status items", () => {
     expect(hidden(wide.container)).toEqual([]);
   });
 
-  describe("the operator's full Claude row (a Crew CPU chip of 70px)", () => {
+  describe("a full row: the chips at the left end, the model and the usage at the right end", () => {
     const usage = { context: 19, limits: [{ window: "5h" as const, used: 12 }, { window: "7d" as const, used: 3 }], cost: 0.11 };
-    const crew: StatusItem[] = [{ id: "crew-cpu", trick: "crew-cpu", face: <span data-w="70">Crew CPU</span> }];
+    const chip = (width: number): StatusItem[] => [{ id: "crew-cpu", trick: "crew-cpu", face: <span data-w={String(width)}>Crew CPU</span> }];
     const label = (container: HTMLElement) => container.querySelector("[data-slot='usage-label']");
     const effortHidden = (container: HTMLElement) => container.querySelector("[data-slot='usage-effort']")?.hasAttribute("data-hidden");
+    const tag = (container: HTMLElement) => container.querySelector("[data-slot='model-tag']");
 
-    // The row in 5px-a-character layout: the name and effort 40 + 45 = 85, the figures 30 + 25 + 20 + 25 with
-    // three gaps of 4 = 112, the chip 70. All of it is 85 + 4 + 112 + 4 + 70 = 275, over the room of a 360px
-    // phone (floor(252) - 8 = 244) and of a 390px one (floor(273) - 8 = 265). Without the effort it is 230.
-    it.each([360, 390])("at %ipx the chip stays and the effort leaves the name first", (width) => {
+    it("puts the chips first and pins the model and the usage to the right end, as two separate grounds", () => {
+      const { container } = render(<ModelTag model="claude-opus-5-5" usage={usage} trailing={chip(70)} />);
+      const row = tag(container)?.firstElementChild;
+      const [left, right] = [...(row?.children ?? [])];
+      expect(left?.getAttribute("data-slot")).toBe("usage-trick-items");
+      expect(right?.getAttribute("data-slot")).toBe("usage-own");
+      // The right end is pinned and never shrinks for a chip; the left end clips instead of pushing it.
+      expect(right?.className).toMatch(/\bml-auto\b/);
+      expect(right?.className).toMatch(/\bshrink-0\b/);
+      expect(left?.className).toMatch(/\bmin-w-0\b/);
+      expect(left?.className).toMatch(/\boverflow-x-clip\b/);
+      // Under the row nothing takes a ground of its own: the empty space between the ends shows the mirror.
+      expect(tag(container)?.className).not.toMatch(/\bbg-/);
+      expect(tag(container)?.className).toMatch(/\binset-x-3\b/);
+      expect(tag(container)?.className).toContain("pointer-events-none");
+    });
+
+    // The row at 360px is 336 wide, less 16 of padding: room 320. The model with its effort (85) and the figures
+    // (30 + 25 + 20 + 25, three gaps of 4: 112) are 201 at the right end, and 8 stand between the ends. A chip of
+    // 115 makes 324, over 320. Without the effort it is 279. At 390px the room is 350 and a chip of 145 makes 354.
+    it.each([
+      [360, 115],
+      [390, 145],
+    ])("at %ipx the chip stays and the effort leaves the name first", (width, chipWidth) => {
       stubLayout();
       const { container } = render(
         <div data-w={String(width)}>
-          <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={crew} />
+          <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={chip(chipWidth)} />
         </div>,
       );
       expect(hidden(container)).toEqual([]);
@@ -497,11 +519,12 @@ describe("ModelTag trick status items", () => {
       expect(label(container)?.className).toContain("truncate");
     });
 
-    it("keeps the whole name with the effort when the row has room for all of it", () => {
+    it("keeps the whole name with the effort while the empty space between the ends is there", () => {
       stubLayout();
+      // 360px with the 70px chip: 201 + 8 + 70 = 279, under the room of 320. The space between shrinks first.
       const { container } = render(
-        <div data-w="480">
-          <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={crew} />
+        <div data-w="360">
+          <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={chip(70)} />
         </div>,
       );
       expect(hidden(container)).toEqual([]);
@@ -510,25 +533,26 @@ describe("ModelTag trick status items", () => {
 
     it("keeps the chip while the name is cut, and hides the last chips only when they alone fill the row", () => {
       stubLayout();
-      // 300px: room 202. Figures 112 + the name's floor 24 + gaps 8 leave 58: the 70px chip cannot stay.
+      // 220px: room 180. The name's floor (24) and the figures (112) make 140 with their gap, and 8 and 70 more
+      // for the chip make 218: the chip cannot stay.
       const small = render(
-        <div data-w="300">
-          <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={crew} />
+        <div data-w="220">
+          <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={chip(70)} />
         </div>,
       );
       expect(hidden(small.container)).toEqual(["crew-cpu"]);
-      // Two chips of 60 on 480px (room 328): name floor 24 + 4 + 112 + 4 + 60 + 4 + 60 = 268 fits both, and the
-      // name takes the short form (40 fits in what is left, the full 85 does not).
+      // 340px: room 300. Two chips of 60 make 140 + 8 + 60 + 4 + 60 = 272, so both stay; the name has 52 left, the
+      // short form (40) fits and the full one (85) does not.
       const two = render(
-        <div data-w="480">
+        <div data-w="340">
           <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={items.slice(0, 2)} />
         </div>,
       );
       expect(hidden(two.container)).toEqual([]);
       expect(effortHidden(two.container)).toBe(true);
-      // Three of them do not fit: the last one gives way, the first two stay.
+      // Three of them make 336: the last one gives way, the first two stay.
       const three = render(
-        <div data-w="480">
+        <div data-w="340">
           <ModelTag model="claude-opus-5-5" effort="medium" usage={usage} trailing={items} />
         </div>,
       );

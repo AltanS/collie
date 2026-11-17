@@ -688,7 +688,7 @@ export function AgentChat({
     });
   }, [beltParts, trickSessions, agent, openTrickSession]);
   // THE TRICKS' STATUS ITEMS (M94 re-cut, the `status` place): one per `status` part, in manifest order,
-  // in the usage row above the belt, after Collie's own items. A tap opens the trick's session, if it has one.
+  // in the usage row above the belt, at its left end (the model and the usage stay at the right). A tap opens the trick's session, if it has one.
   const statusParts = useTrickParts("status");
   const statusItems = useMemo(() => {
     if (statusParts.length === 0) return undefined;

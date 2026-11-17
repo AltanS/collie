@@ -978,14 +978,14 @@ describe("the line of where a trick shows", () => {
   test("the words of each place, exactly, and the agent view last; each place once; none for a trick with neither", () => {
     expect(SHOWS_IN_WORDS).toEqual({
       belt: "the end of the Belt in each session",
-      status: "the usage row of each session",
+      status: "the left end of the usage row of each session",
       session: "a page of its own (a row under Tricks on the Dashboard)",
       dashboard: "a tile in the strip at the top of the Dashboard",
       tabbar: "an item in the bottom bar of the Dashboard",
       menu: "rows in each session's settings",
     });
     expect(showsIn({ places: ["status", "tabbar", "status"], agentView: true })).toEqual([
-      { kind: "para", text: "It shows in: the usage row of each session, an item in the bottom bar of the Dashboard, a view of a session, beside Terminal and Chat." },
+      { kind: "para", text: "It shows in: the left end of the usage row of each session, an item in the bottom bar of the Dashboard, a view of a session, beside Terminal and Chat." },
     ]);
     expect(showsIn({ places: [] })).toEqual([]);
     expect(showsIn(undefined)).toEqual([]);
@@ -999,8 +999,8 @@ describe("the line of where a trick shows", () => {
     if (pending === null) throw new Error("no pending");
     const card = versionCard({ ...base, base: { dir: "/y", manifest: manifest() }, pending: { ...pending, manifest: manifest({ access: "see", places: ["status", "dashboard"] }) } }, DIFF);
     const texts = (card?.view ?? []).map((node) => ("text" in node ? node.text : undefined));
-    expect(texts).toContain("It shows in: the usage row of each session, a tile in the strip at the top of the Dashboard.");
-    expect(texts.indexOf("It shows in: the usage row of each session, a tile in the strip at the top of the Dashboard.")).toBeGreaterThan(texts.indexOf(ACCESS_LINES.see));
+    expect(texts).toContain("It shows in: the left end of the usage row of each session, a tile in the strip at the top of the Dashboard.");
+    expect(texts.indexOf("It shows in: the left end of the usage row of each session, a tile in the strip at the top of the Dashboard.")).toBeGreaterThan(texts.indexOf(ACCESS_LINES.see));
     const none = versionCard({ ...base, base: { dir: "/y", manifest: manifest() }, pending: { ...pending, manifest: manifest({ access: "see", places: [] }) } }, DIFF);
     expect(JSON.stringify(none?.view)).not.toContain("It shows in");
   });
