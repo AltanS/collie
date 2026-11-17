@@ -194,7 +194,7 @@ A program prints:
 
 **Where.** One chip in the status line above the Belt, at the left end of the row; the model and the usage stay at the right end.
 
-**Shows.** One chip: a short text, an icon, a `tone`, and a live time with `at` and `clock`. It takes no view.
+**Shows.** One chip: a short text, an icon, a `tone`, and a live time with `at` and `clock`. It takes no view. It draws in the type and the colour of the usage figures beside it, and the trick sets no size. Only the tones `warn` and `danger` change the colour; every other tone reads as the row.
 
 **A tap.** A tap opens the trick's Page when it has one. The chip is not a control and takes no intent.
 
@@ -214,9 +214,9 @@ A program prints:
       "at": "status",
       "id": "ci",
       "chip": {
-        "text": "CI green",
+        "text": "CI red",
         "icon": "check",
-        "tone": "ok"
+        "tone": "danger"
       }
     }
   ]

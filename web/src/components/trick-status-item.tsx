@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { USAGE_FIGURE, USAGE_ICON, USAGE_TYPE } from "@/components/usage-type";
 import { sessionOfMark } from "@/components/belt-trick-mark";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
@@ -12,14 +13,17 @@ import { TrickClock } from "@/lib/tricks/render";
 import { partKey, type WireTrickPart } from "@/lib/tricks/schema";
 import { useTrickPart, tricksStore, type TricksStore } from "@/lib/tricks/store";
 import { trickTimeText } from "@/lib/tricks/time";
-import { inkOf } from "@/lib/tricks/tone";
+import { rowInkOf } from "@/lib/tricks/tone";
 import type { AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // A TRICK'S ITEM IN THE STATUS LINE (M94 re-cut, the `status` place): one chip in the usage row above the
 // Belt (components/model-tag.tsx), at the row's LEFT end (the model and the usage end the row at the right), in the
-// same 10px type and the same 12px line, so it reads as one more figure of the row and never as a pill dropped into it. The model name gives way to
-// it first (lib/tricks/status.ts); `ModelTag` measures and hides.
+// same type as the usage figures beside it (components/usage-type.ts: size, line, weight, colour, tabular digits,
+// icon size), so it reads as one more figure of the row and never as a pill dropped into it. It has no ground of its
+// own: the left end of the row has the same ground as the right end. Only the tones `warn` and `danger` change
+// the colour (lib/tricks/tone.ts `rowInkOf`); the trick sets no size. The model name gives way to it first
+// (lib/tricks/status.ts); `ModelTag` measures and hides.
 //
 // THE CHIP IS NOT A CONTROL. It has no `intent` and no status shape. A tap opens the trick's own session
 // when it has one, one level down, as a belt mark with no intent does. With none, a fresh chip takes no tap
@@ -62,7 +66,7 @@ function TrickStatusItem({
   if (chip === undefined || chip === null) return null;
   const trickName = trick?.name ?? part.trick;
   const stale = part.stale === true || isPastWindow(part, now);
-  const ink = inkOf(chip.tone, stale);
+  const ink = rowInkOf(chip.tone, stale);
   const Icon = chip.icon === undefined ? null : trickIconOf(chip.icon);
   const age = stale && part.asOf !== undefined ? trickTimeText(part.asOf, "ago", now) : null;
   const tapped = session !== undefined || age !== null;
@@ -72,12 +76,12 @@ function TrickStatusItem({
   };
   const face = (
     <>
-      {Icon !== null && <Icon aria-hidden className={cn("size-2.5 shrink-0", ink)} />}
+      {Icon !== null && <Icon aria-hidden className={cn(USAGE_ICON, "shrink-0", ink)} />}
       <span className={cn("whitespace-nowrap", ink)}>{chip.text}</span>
       {chip.at !== undefined && chip.clock !== undefined && <TrickClock at={chip.at} clock={chip.clock} now={now} />}
     </>
   );
-  const frame = "inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap tabular-nums";
+  const frame = cn("inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap", USAGE_TYPE, USAGE_FIGURE);
   if (!tapped) {
     return (
       <span data-slot="trick-status" data-trick={part.trick} className={frame}>

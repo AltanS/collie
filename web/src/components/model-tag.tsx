@@ -7,6 +7,7 @@ import { knownWindowName } from "@/lib/accounts";
 import { t, type MessageKey } from "@/lib/i18n";
 import { hasResizeObserver } from "@/lib/env";
 import { effortLabel, modelLabel } from "@/lib/model-label";
+import { USAGE_FIGURE, USAGE_TYPE } from "@/components/usage-type";
 import { formatTokens } from "@/lib/token-count";
 import { fitStatusRow } from "@/lib/tricks/status";
 import type { PaneUsage, UsageLimit } from "@/lib/types";
@@ -315,7 +316,7 @@ function Percent({ used }: { used: number }) {
   const percent = wholePercent(used);
   const hot = isHot(used);
   return (
-    <span data-slot="usage-percent" data-hot={hot || undefined} className={cn("tabular-nums", hot && "text-status-blocked")}>
+    <span data-slot="usage-percent" data-hot={hot || undefined} className={cn(USAGE_FIGURE, hot && "text-status-blocked")}>
       {percent}%
     </span>
   );
@@ -390,7 +391,7 @@ export function ModelTag({
     <div
       ref={tagRef}
       data-slot="model-tag"
-      className="pointer-events-none absolute inset-x-3 bottom-1 z-10 text-[10px]/3 text-muted-foreground"
+      className={cn("pointer-events-none absolute inset-x-3 bottom-1 z-10", USAGE_TYPE)}
     >
       <span className="flex items-center justify-between gap-2 whitespace-nowrap">
         {items.length > 0 && (
@@ -423,7 +424,7 @@ export function ModelTag({
             {drawnTokens !== null && (
               <span data-gauge="context" data-slot="usage-tokens" className="flex shrink-0 items-center gap-0.5">
                 <span>{drawnTokens.short}</span>
-                <span className="tabular-nums">{drawnTokens.text}</span>
+                <span className={USAGE_FIGURE}>{drawnTokens.text}</span>
               </span>
             )}
             {gauges.map((g) => (
@@ -433,12 +434,12 @@ export function ModelTag({
               </span>
             ))}
             {more > 0 && (
-              <span data-slot="usage-more" aria-hidden className="shrink-0 tabular-nums">
+              <span data-slot="usage-more" aria-hidden className={cn("shrink-0", USAGE_FIGURE)}>
                 +{more}
               </span>
             )}
             {cost !== null && (
-              <span data-slot="usage-cost" className="shrink-0 tabular-nums">
+              <span data-slot="usage-cost" className={cn("shrink-0", USAGE_FIGURE)}>
                 {formatCost(cost)}
               </span>
             )}

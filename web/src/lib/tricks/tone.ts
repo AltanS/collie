@@ -22,3 +22,17 @@ export function inkOf(tone: string | undefined, stale: boolean): string {
   if (stale && STATUS_TONES.has(tone)) return TONE_TEXT_CLASS.unknown;
   return TONE_TEXT_CLASS[tone];
 }
+
+/**
+ * A chip's ink IN THE USAGE ROW (components/trick-status-item.tsx): the row has one type and one colour, the usage
+ * figures', and a chip draws in them by default, so `plain` and `muted` (and a tone this row has no word for) are the
+ * row's own ink: no class, the colour is inherited. Only `warn` and `danger` change it, to the tokens they always
+ * had (the caution colour and the notice red that a hot usage figure wears). A stale chip loses its tone and reads as
+ * the row; its tap says its age.
+ */
+export function rowInkOf(tone: string | undefined, stale: boolean): string {
+  if (stale) return "";
+  if (tone === "warn") return TONE_TEXT_CLASS.warn;
+  if (tone === "danger") return TONE_TEXT_CLASS.danger;
+  return "";
+}

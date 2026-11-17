@@ -71,7 +71,10 @@ const TRIAGE_BELT = wire("triage", { at: "belt", id: "belt", mark: { icon: "eye"
 /** No intent, and no session in the pane list: the same button control, aria-disabled. */
 const QUIET_BELT = wire("quiet", { at: "belt", id: "belt", mark: { icon: "bell", label: "idle", tone: "muted" } });
 /** The legs trick's status item: the legs fixture's count as a chip, tapping opens its session. */
-const LEGS_STATUS = wire("legs", { at: "status", id: "status", chip: { text: "tag 5/7", icon: "flask", tone: "accent" } });
+const LEGS_STATUS = wire("legs", { at: "status", id: "status", chip: { text: "tag 5/7", icon: "flask", tone: "plain" } });
+/** The two tones that change the colour of a chip in the usage row: the caution colour and the notice red. */
+const TRIAGE_STATUS = wire("triage", { at: "status", id: "status", chip: { text: "triage 3", icon: "eye", tone: "warn" } });
+const TRACKER_STATUS = wire("tracker", { at: "status", id: "status", chip: { text: "2 red", icon: "bell", tone: "danger" } });
 const SPEND_STATUS = wire("spend", { at: "status", id: "status", chip: { text: "$7.42", tone: "plain" } });
 /** Past its fresh window: the tone goes, a tap says the age. */
 const SPEND_OLD = { ...SPEND_STATUS, asOf: new Date(NOW - 20 * 60_000).toISOString() };
@@ -101,7 +104,7 @@ const SPEND_TAB = wire("spend", { at: "tabbar", id: "tabbar", item: { label: "Sp
 
 /** A store over a stand-in bridge that answers a tap after a moment, so the busy state is seen. */
 function placesStore(): TricksStore {
-  const parts = [LEGS_BELT, TRACKER_BELT, TRIAGE_BELT, QUIET_BELT, LEGS_SESSION, TRACKER_SESSION, LEGS_STATUS, SPEND_STATUS, LEGS_TILE, TRACKER_TILE, SPEND_TILE, LEGS_TAB, TRIAGE_TAB, SPEND_TAB];
+  const parts = [LEGS_BELT, TRACKER_BELT, TRIAGE_BELT, QUIET_BELT, LEGS_SESSION, TRACKER_SESSION, LEGS_STATUS, SPEND_STATUS, TRIAGE_STATUS, TRACKER_STATUS, LEGS_TILE, TRACKER_TILE, SPEND_TILE, LEGS_TAB, TRIAGE_TAB, SPEND_TAB];
   return createTricksStore({
     fetchTricks: () => Promise.resolve({ rev: 1, tricks: [LEGS, TRACKER, TRIAGE, QUIET, SPEND], parts, present: parts.map(partKey) }),
     tapTrick: (_host, _trick, body) => new Promise<TrickTapReply>((resolve) => setTimeout(() => resolve({ rid: body.rid, code: "ok" }), 1500)),
@@ -263,7 +266,7 @@ export function TrickPlacesSection(): ReactNode {
         </Card>
       </Group>
       <Group title="The status line">
-        <Card state="trick-status-two" label="4 · two items at the left end, the model and the usage at the right">
+        <Card state="trick-status-two" label="4 · two items at the left end, in the usage figures' own type; the model and the usage at the right">
           <StatusLine parts={[LEGS_STATUS, SPEND_STATUS]} />
         </Card>
         <Card state="trick-status-only" label="5 · items, no usage: they still start at the left">
@@ -271,6 +274,9 @@ export function TrickPlacesSection(): ReactNode {
         </Card>
         <Card state="trick-status-narrow" label="6 · narrow: the model gives way first, the chips stay">
           <StatusLine parts={[LEGS_STATUS, SPEND_STATUS]} width={300} />
+        </Card>
+        <Card state="trick-status-tones" label="6b · the usage row's own type and colour by default; only warn and danger change the colour">
+          <StatusLine parts={[LEGS_STATUS, TRIAGE_STATUS, TRACKER_STATUS]} />
         </Card>
         <Card state="trick-status-stale" label="7 · stale, tone gone">
           <StatusLine parts={[LEGS_STATUS, SPEND_OLD]} />
