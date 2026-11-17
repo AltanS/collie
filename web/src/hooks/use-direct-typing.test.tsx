@@ -37,7 +37,7 @@ function Harness({ sendKeys, suspended = false, agentKey = "claude", paneKey = "
   });
   return (
     <>
-      <button type="button" onClick={direct.activate}>Start typing</button>
+      <button type="button" onClick={() => void direct.activate()}>Start typing</button>
       <button type="button" onClick={direct.deactivate}>Stop typing</button>
       <button type="button" onClick={() => void direct.sendPaneKeys(["Tab"]).then(onDock)}>Dock key</button>
       <output aria-label="Typing mode">{direct.active ? "active" : "inactive"}</output>

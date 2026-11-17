@@ -19,23 +19,24 @@ describe("sendSlot", () => {
     ["an overlay Collie cannot read", at({ modal: "unreadable" }), "manual"],
     ["no match", UNREAD_SURFACE, "manual"],
     ["a weak cue (idle, modal unknown)", at({ modal: "unknown" }), "manual"],
-    ["a stale read", at({ turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale" }), "wait"],
-    ["a torn read", at({ turn: "unknown", modal: "unknown", composer: "unknown", reason: "torn" }), "wait"],
-    ["a contested read", at({ turn: "unknown", modal: "unknown", composer: "unknown", reason: "contested" }), "wait"],
-    ["a box out of reach", at({ composer: "unreachable", turn: "unknown", modal: "unknown" }), "unreachable"],
+    ["a stale read", at({ turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale" }), "manual"],
+    ["a torn read", at({ turn: "unknown", modal: "unknown", composer: "unknown", reason: "torn" }), "manual"],
+    ["a contested read", at({ turn: "unknown", modal: "unknown", composer: "unknown", reason: "contested" }), "manual"],
+    // A box the read could not reach takes the override (M102 spec 03, I4); only a fact the phone knows locks it.
+    ["a box the read could not reach", at({ composer: "unreachable", turn: "unknown", modal: "unknown" }), "manual"],
   ])("%s gives %s", (_name, surface, slot) => {
     expect(sendSlot(surface, NONE)).toBe(slot);
   });
 
-  it("the facts outrank the Surface: gone, then read-only, then a box out of reach, then offline", () => {
+  it("the facts outrank the Surface: gone, then read-only, then a blocked box, then offline", () => {
     expect(sendSlot(ask("menu"), { gone: true, readOnly: true, offline: true })).toBe("gone");
     expect(sendSlot(at({}), { ...NONE, readOnly: true, offline: true })).toBe("readOnly");
-    expect(sendSlot(unreachable(at({})), { ...NONE, offline: true })).toBe("unreachable");
+    expect(sendSlot(unreachable(at({})), { ...NONE, offline: true, blocked: true })).toBe("unreachable");
     expect(sendSlot(ask("menu"), { ...NONE, offline: true })).toBe("offline");
   });
 
   it("only gone, read-only and a box out of reach lock the field", () => {
-    const slots: SendSlot[] = ["gone", "readOnly", "unreachable", "offline", "answer", "running", "manual", "wait", "draft", "send"];
+    const slots: SendSlot[] = ["gone", "readOnly", "unreachable", "offline", "answer", "running", "manual", "draft", "send"];
     expect(slots.filter((slot) => fieldLocked(slot))).toEqual(["gone", "readOnly", "unreachable"]);
   });
 });

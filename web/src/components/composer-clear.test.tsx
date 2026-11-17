@@ -86,7 +86,7 @@ describe("the Keys board's Clear button", () => {
     const posted = serveClear({ requestId: "echo-0001", outcome: "cleared" });
     mount("free");
     const clear = await openKeys(user);
-    expect(clear).toBeDisabled();
+    expect(clear).toHaveAttribute("aria-disabled", "true");
     await user.click(clear);
     expect(posted).toHaveLength(0);
   });
@@ -94,10 +94,10 @@ describe("the Keys board's Clear button", () => {
   it("is greyed while a dialog owns the keys, and while the link is down", async () => {
     const user = userEvent.setup();
     mount("ask");
-    expect(await openKeys(user)).toBeDisabled();
+    expect(await openKeys(user)).toHaveAttribute("aria-disabled", "true");
     cleanup();
     mount("offline");
-    expect(await openKeys(user)).toBeDisabled();
+    expect(await openKeys(user)).toHaveAttribute("aria-disabled", "true");
   });
 
   it("is enabled when the box holds a draft, shows its word and reaches 44px", async () => {

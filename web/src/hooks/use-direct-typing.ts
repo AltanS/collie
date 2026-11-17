@@ -97,6 +97,9 @@ interface DirectTypingOptions {
    *  the refusal below would block the very remedy being offered. */
   replyDraft: () => string;
   canActivate: () => boolean;
+  /** The words a refused arming shows (M102 spec 11): why `canActivate` said no. Absent, the catch-up
+   *  words stand. A tap on Type never ends with nothing on screen. */
+  refusalWords?: () => string;
   /** True while the view the mode belongs to has stopped being live: a gone pane, a read-only
    *  device, or the idle pause. Arming survives none of them — see the disarm effect below. */
   suspended: boolean;
@@ -176,6 +179,7 @@ export function useDirectTyping({
   inputRef,
   replyDraft,
   canActivate,
+  refusalWords,
   suspended,
   // Bound under another name: it is the composer's pressKeys, already a lib/api write, and a bare
   // `sendKeys(` call here would read as a second door to the scan in lib/key-writes.test.ts.
@@ -217,15 +221,24 @@ export function useDirectTyping({
     dropKeyboard();
   });
 
-  function activate() {
-    if (!canActivate()) return;
+  /**
+   * Arm the mode. True when it armed; false when it refused, and a refusal always says why on the status
+   * line (M102 spec 11). `discardDraft` is the password-prompt handoff: the draft there is a secret the
+   * pane never took, so it is no reason to refuse, and it is dropped only once the mode has armed.
+   */
+  function activate(opts: { discardDraft?: () => void } = {}): boolean {
+    if (!canActivate()) {
+      setStatus(refusalWords?.() ?? t("composer.tap.typeWait"), "info");
+      return false;
+    }
     // A buffered reply and live keystrokes cannot safely share one field. Keep the durable draft
     // exactly where it is and make the user send or clear it before arming direct terminal input.
-    if (replyDraft().length > 0) {
+    if (opts.discardDraft === undefined && replyDraft().length > 0) {
       setStatus(t("directTyping.status.draftPending"), "info");
-      return;
+      return false;
     }
     onActivate();
+    opts.discardDraft?.();
     // A new armed session owns the field from here: any blur still pending belongs to an older one,
     // and this cancellation is what keeps it from landing on the session that replaced it.
     cancelPendingBlur();
@@ -245,6 +258,7 @@ export function useDirectTyping({
     // The watchdog starts at the arming, not at the first key: the trap is arming, then typing a
     // chat message after the agent underneath has exited, so an untouched mode must expire too.
     pokeIdleTimer();
+    return true;
   }
 
   /** Disarm and forget the transient state. Leaves the field alone — callers decide about focus. */

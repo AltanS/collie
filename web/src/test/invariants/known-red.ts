@@ -24,52 +24,6 @@ export interface KnownRed {
 }
 
 export const KNOWN_RED = {
-  // ── I4, the phone: a tap on a dialog ──
-  "i4-tap-tick-unframed": {
-    invariant: "I4",
-    fixedBy: "M102-10",
-    where: "web/src/lib/harness/prompt-model.ts:306-309 (sameDialogRows: with no bindRegion it compares the lookback signature), web/src/lib/harness/guard.ts entryGuard (refuses `changed`)",
-    what: "A tap on a dialog with no frame of its own (a Claude ask, the first-run menu, agy and muse asks) is refused `changed` while a row above it ticks: the person cannot answer until the timer stops.",
-  },
-  // ── I4, the phone: the composer offers the override ──
-  "i4-phone-slot": {
-    invariant: "I4",
-    fixedBy: "M102-03",
-    where: "web/src/lib/send-slot.ts:62-69 (sendSlot), web/src/lib/surface/send.ts:106-111 (takesManualSend)",
-    what: "On a stale, torn or contested read, a box out of reach or a draft-less unknown box, the composer's Send slot is wait or unreachable: the phone offers no override at all.",
-  },
-  "i4-phone-commit": {
-    invariant: "I4",
-    fixedBy: "M102-03",
-    where: "web/src/components/composer.tsx:1948-1949 (the notice draws only the bridge's offers; a not_free refusal offers keys alone), web/src/lib/surface/send.ts:504 (offersFor gives a refusal only keys)",
-    what: "A not_free refusal that carries the rows hash shows no Type it anyway button, so the person cannot send the override from the phone.",
-  },
-  // ── I2, a tap ends in a request, a change or words ──
-  "i2-hold-guard": {
-    invariant: "I2",
-    fixedBy: "M102-11",
-    where: "web/src/components/hook-hold-card.tsx:89 (the 400 ms guard returns with nothing)",
-    what: "A tap on a hook hold card in its first 400 ms makes no request, no change and no words.",
-  },
-  "i2-hold-reject": {
-    invariant: "I2",
-    fixedBy: "M102-11",
-    where: "web/src/components/hook-hold-card.tsx:90 (void Promise.resolve(onAnswer(index)).finally(...): no catch, no words)",
-    what: "When the hold card's answer handler rejects, the rejection is unhandled and the card shows no words; only the busy mark clears.",
-  },
-  "i2-words-raw": {
-    invariant: "I2",
-    fixedBy: "M102-11",
-    where: "web/src/lib/api.ts:1601-1606 (plainFailureMessage: `HTTP <status>: <first body line>`), api.ts:560 (ApiError message `<path> → <status> <body>`), web/src/lib/api-error-message.ts:66 (describeThrownError falls back to it)",
-    what: "A 4xx or 5xx whose body is a proxy's HTML page reaches the thumb as `HTTP 502: <html><head><title>...`, on send, ask, hold card, keys, Stop and Clear.",
-  },
-  // ── I1, an enabled control or words ──
-  "i1-hold-disabled": {
-    invariant: "I1",
-    fixedBy: "M102-11",
-    where: "web/src/components/agent-chat.tsx:3229 (disabled={readOnly || gone || !holdsAnswered}), web/src/components/hook-hold-card.tsx:82-86 (no reason drawn)",
-    what: "A hook hold card on a crew member that does not mark the Send Protocol greys every option and says nothing.",
-  },
 } as const satisfies Record<string, KnownRed>;
 
 export type KnownRedId = keyof typeof KNOWN_RED;

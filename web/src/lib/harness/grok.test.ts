@@ -122,8 +122,26 @@ const allOpencodeFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("oc--") && f.endsWith(".txt"))
   .toSorted();
 
+// Open unprinted-key findings (ADR 0151 rule 2, M102 spec 03): the /model picker's Ctrl+C option sends a
+// key the picker does not print (measured live, MODEL_PICKER_NOTES.md), and no entry of
+// UNPRINTED_KEY_EXCEPTIONS names it. Each goes red the day it is printed, named or no longer sent.
+const MODEL_PICKER_CTRL_C =
+  "the /model picker's Ctrl+C option is not printed on the picker (measured live, grok/MODEL_PICKER_NOTES.md); not one of a to g";
+const UNPRINTED_KEY_FINDINGS: Readonly<Record<string, string>> = Object.fromEntries(
+  [
+    "grok--model-effort-moved.txt",
+    "grok--model-effort.txt",
+    "grok--model-picker-moved.txt",
+    "grok--model-picker.txt",
+    "grok--model-window-moved.txt",
+    "grok--model-window.txt",
+    "grok--v1.0.77-model-picker--w61.txt",
+  ].map((name) => [name, MODEL_PICKER_CTRL_C]),
+);
+
 describeAdapterConformance(grokAdapter, {
   ownFixtures,
+  unprintedKeyFindings: UNPRINTED_KEY_FINDINGS,
   foreignFixtures: [...allClaudeFixtures, ...allOmpFixtures, ...allCodexFixtures, ...allOpencodeFixtures],
   neutralFixtures,
   // A long draft pushes the hint row out of the tail the bridge binds to, so these captures must

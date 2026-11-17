@@ -19,6 +19,7 @@ import { useHarnessBarEnabled } from "@/lib/harness-bar-pref";
 import { useMuxDeclared } from "@/lib/mux-capability";
 import { canonicalAgent } from "@/lib/operator-scope";
 import type { Scope } from "@/lib/scope";
+import { setStatus } from "@/lib/status";
 import { PANE_ACTION_ICONS, type OperatorCommand, type PaneAction, type PaneActionIcon } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -551,6 +552,12 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
   function click(detail: number) {
     const byPointer = pointerMade.current && detail !== 0;
     pointerMade.current = false;
+    // No running turn: no hold, no arm, no request (the bridge would only answer `turn_idle`). The tap, by a
+    // pointer or a key, says so and names Esc on the Keys pad for a turn Collie does not see (M102 spec 11).
+    if (!running && disabled !== true) {
+      setStatus(translate("belt.stop.notRunning"), "info");
+      return;
+    }
     // A pointer's press was a hold or a too-short tap, and the hold judged it already.
     if (byPointer) return;
     // An idle turn has nothing to stop: no arm, no request. The bridge would only answer `turn_idle`.

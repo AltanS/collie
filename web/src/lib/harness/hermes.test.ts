@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../ansi";
 import { splitLines, type StyledLine } from "../blocks";
 import { promptsEqual, type PromptModel } from "./prompt-model";
-import { describeAdapterConformance } from "./conformance";
+import { UNPRINTED_KEY_EXCEPTIONS, describeAdapterConformance, printedKeys, shownBlocks } from "./conformance";
 import { adapterFor } from "./registry";
 import { hermesAdapter } from "./hermes";
 import { detectApprovalRegion } from "./hermes/approval";
@@ -519,5 +519,35 @@ describe("the adapter's titled top rule (issue 657): negative cases", () => {
     expect(isRule(TITLED)).toBe(false);
     expect(frame([BARE, PROMPT, TITLED])).toBeNull();
     expect(frame([TITLED, PROMPT, TITLED])).toBeNull();
+  });
+});
+
+// M102 spec 03: the unread card's declared key on the command palette. Hermes declares ctrl+c, and the
+// 2026-10-16 live probe stands for the clarify and approval panels (CLARIFY_NOTES.md, APPROVAL_NOTES.md),
+// where Hermes binds no Escape. The palette prints "Esc cancels", and no probe is recorded for it.
+describe("the unread card's cancel key on the command palette", () => {
+  const PALETTE = "hermes--palette.txt";
+  const cardKey = (): string | undefined => {
+    const card = shownBlocks(hermesAdapter, load(PALETTE)).find((b) => b.kind === "unread-dialog");
+    return card?.kind === "unread-dialog" ? card.cancel.key : undefined;
+  };
+
+  it("the palette shows the unread card with the declared cancel key, and prints Esc", () => {
+    // The guard for the expected failure below: it must fail for the key, not for a missing card.
+    expect(cardKey()).toBe(hermesAdapter.cancelKey);
+    expect(printedKeys(load(PALETTE).map(lineText)).has("escape")).toBe(true);
+  });
+
+  // EXPECTED TO FAIL until the orchestrator's live probe of the Hermes palette (Esc and ctrl+c) in the
+  // next harness lab pass. Its result decides the fix, and the worker picks none: either the declared
+  // key becomes per-screen data (Escape where the palette prints it), or ctrl+c stays as entry f with
+  // that probe recorded in its `probes`. Either way this test then passes, and `it.fails` goes red here.
+  it.fails("the cancel key the card offers on the palette is the key the palette prints, or entry f with its live probe named (waits on the live probe of the palette)", () => {
+    const key = cardKey()!;
+    const printed = printedKeys(load(PALETTE).map(lineText)).has(key.toLowerCase());
+    const f = UNPRINTED_KEY_EXCEPTIONS.find((entry) => entry.letter === "f")!;
+    const probed =
+      f.keys.includes(key) && (f.probes ?? []).some((p) => p.harness === "hermes" && /palette/iu.test(p.screen));
+    expect(printed || probed, `the card offers ${key} on the palette, which prints Esc and has no live probe for ${key}`).toBe(true);
   });
 });

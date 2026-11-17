@@ -19,6 +19,7 @@ import type { ChatStatus } from "@/lib/chat-window";
 import { dropPending, unmatched, usePending } from "@/lib/durable-pending";
 import { clockTime } from "@/lib/format";
 import { t, type MessageKey } from "@/lib/i18n";
+import { holdsMask } from "@/lib/masked-text";
 import { blockOfPin, isPinnable, writingItemId } from "@/lib/message-pins";
 import type { Ask, PinRow, QueuedSendRow } from "@/lib/types";
 import { AskCard, type AskCardProps } from "@/components/ask-card";
@@ -211,11 +212,19 @@ function QueuedCard({ queued, sendNow }: { queued: readonly string[]; sendNow: (
 
 /**
  * What a receipt card's buttons ask of the pane view: send the box (`submit`) or empty it (`discard`)
- * on a returned card, or drop an unconfirmed card and press nothing (`dismiss`).
+ * on a returned card, drop an unconfirmed card and press nothing (`dismiss`), or drop it and send its text again
+ * as a new send (`sendAgain`, M102 spec 04).
  */
-export type QueuedCardAction = "submit" | "discard" | "dismiss";
+export type QueuedCardAction = "submit" | "discard" | "dismiss" | "sendAgain";
 
-type QueuedCardAct = ((requestId: string, action: QueuedCardAction) => Promise<boolean>) | null;
+/**
+ * How a card's act ended: true when it was done, false when nothing was (the pane view has said why), and `"gone"` when
+ * the card was no longer waiting, so nothing was sent again (the card says so itself).
+ */
+export type QueuedCardResult = boolean | "gone";
+
+/** A card's act: its request id, the action, and the card's own text (what a `sendAgain` sends again). */
+type QueuedCardAct = ((requestId: string, action: QueuedCardAction, text: string) => Promise<QueuedCardResult>) | null;
 
 /**
  * THE RECEIPT QUEUE (ADR 0122): the sends Collie itself queued behind a running turn, for a harness
@@ -228,13 +237,14 @@ type QueuedCardAct = ((requestId: string, action: QueuedCardAction) => Promise<b
  *   - Returned: the agent holds the text as a draft in its box, so the card says so and offers Send (a
  *     submit of what the box holds) and Discard (the box emptied). A run of texts a Stop gave back
  *     together is ONE card, with one Send and one Discard.
- *   - Unconfirmed: Collie cannot tell where the message went. The card says so, and its one button,
- *     Discard, drops the card and presses nothing.
+ *   - Unconfirmed: Collie cannot tell where the message went. The card says so. Discard drops the card and
+ *     presses nothing; Send again, on its right, drops the card and only then sends its text again as a new send,
+ *     by the person's tap (M102 spec 04). A card that is no longer waiting sends nothing and says so.
  *
  * PENDING, NEVER RETRYING, like the queue card: a tap disables the card's buttons until the card goes
  * away (the next answer drops it) or {@link SEND_NOW_PENDING_MS} pass, or the act itself failed.
  */
-function ReceiptQueueCards({ rows, act }: { rows: readonly QueuedSendRow[]; act: QueuedCardAct }) {
+export function ReceiptQueueCards({ rows, act }: { rows: readonly QueuedSendRow[]; act: QueuedCardAct }) {
   const waiting = rows.filter((row) => row.state === "queued");
   return (
     <>
@@ -267,7 +277,8 @@ function ReceiptQueueCards({ rows, act }: { rows: readonly QueuedSendRow[]; act:
 interface CardButton {
   readonly action: QueuedCardAction;
   readonly word: MessageKey;
-  readonly aria: MessageKey;
+  /** The accessible name, which starts with the word. Absent: the visible word is the name. */
+  readonly aria?: MessageKey;
   readonly variant: "outline" | "ghost";
   readonly slot: string;
 }
@@ -279,6 +290,8 @@ const RETURNED_BUTTONS: readonly CardButton[] = [
 ];
 const UNCONFIRMED_BUTTONS: readonly CardButton[] = [
   { action: "dismiss", word: "chat.stream.unconfirmedDiscard", aria: "chat.stream.unconfirmedDiscardAria", variant: "outline", slot: "stream-unconfirmed-discard" },
+  // Beside Discard, on its right as on the "cannot tell" card (M102 spec 04).
+  { action: "sendAgain", word: "composer.step.sendAgain", variant: "outline", slot: "stream-unconfirmed-send-again" },
 ];
 
 function ReceiptCard({
@@ -297,6 +310,10 @@ function ReceiptCard({
   buttons: readonly CardButton[];
 }) {
   const [pending, setPending] = useState<QueuedCardAction | null>(null);
+  // The card's one line under its words: a Send again that found the card gone says nothing was sent.
+  const [gone, setGone] = useState(false);
+  // A text the bridge masked is dots, not the message: sending it again would type the dots, so no Send again.
+  const shown = buttons.filter((button) => button.action !== "sendAgain" || !holdsMask(row.text));
   useEffect(() => {
     if (pending === null) return;
     const timer = setTimeout(() => setPending(null), SEND_NOW_PENDING_MS);
@@ -307,8 +324,13 @@ function ReceiptCard({
     if (pending !== null || act === null) return;
     setPending(action);
     // A refusal or a failed write has already told the operator why (the pane view's status line).
-    void act(row.requestId, action).then(
-      (done) => (done ? undefined : setPending(null)),
+    setGone(false);
+    void act(row.requestId, action, row.text).then(
+      (done) => {
+        if (done === "gone") setGone(true);
+        if (done !== true) setPending(null);
+        return done;
+      },
       () => setPending(null),
     );
   };
@@ -319,7 +341,7 @@ function ReceiptCard({
         <p className={QUEUED_LABEL}>{t(label)}</p>
         {act !== null && (
           <div className="flex items-center gap-1">
-            {buttons.map((button) => (
+            {shown.map((button) => (
               <Button
                 key={button.action}
                 type="button"
@@ -330,7 +352,7 @@ function ReceiptCard({
                 disabled={pending !== null}
                 aria-busy={pending === button.action}
                 // The accessible name STARTS with the visible word (WCAG 2.5.3, Label in Name).
-                aria-label={t(button.aria)}
+                aria-label={button.aria === undefined ? undefined : t(button.aria)}
                 onClick={() => onTap(button.action)}
               >
                 {pending === button.action ? (
@@ -346,6 +368,11 @@ function ReceiptCard({
       </div>
       <p className="text-xs text-muted-foreground">{t(why)}</p>
       <p className={QUEUED_TEXT}>{row.text}</p>
+      {gone && (
+        <p data-slot="stream-receipt-line" role="status" className="text-xs text-muted-foreground">
+          {t("cannotTell.queuedGone")}
+        </p>
+      )}
     </div>
   );
 }
@@ -559,7 +586,7 @@ export function SessionStream({
    * Discard on an unconfirmed one. Passed ONLY where this device may write to this pane; leave it out
    * and the cards have no buttons. Resolves false when nothing was done.
    */
-  onReturned?: (requestId: string, action: QueuedCardAction) => Promise<boolean>;
+  onReturned?: (requestId: string, action: QueuedCardAction, text: string) => Promise<QueuedCardResult>;
   /**
    * The open asks of a pane that carries them as data (ADR 0100), and the props every card shares. Each card sits
    * under the block that shows its item, or at the tail when that item is not on screen. The list holds

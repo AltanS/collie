@@ -22,7 +22,6 @@ import type { Surface } from "@/lib/surface/surface";
 import { recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
 import { server } from "@/test/setup";
 
-import { knownRed, redTitle } from "./known-red";
 import { replayHint, rngOf, runSeeds, sample } from "./seed";
 import { allSurfaces, overrideReaches, surfaceId } from "./surfaces";
 
@@ -137,7 +136,6 @@ describe("M102-15 part 1a, the rendered composer", () => {
     });
   }
 
-  const red = knownRed("i4-phone-commit");
   const reachNot: readonly Surface[] = [
     { revision: 3, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale" },
     { revision: 3, turn: "unknown", modal: "unknown", composer: "unknown", reason: "torn" },
@@ -147,7 +145,7 @@ describe("M102-15 part 1a, the rendered composer", () => {
   ];
   for (const surface of reachNot) {
     if (!overrideReaches(surface)) throw new Error(`${surfaceId(surface)} is outside I4`);
-    it.fails(`I4: the override goes out from the phone on ${surfaceId(surface)} ${redTitle(red.id)}`, async () => {
+    it(`I4: the override goes out from the phone on ${surfaceId(surface)}`, async () => {
       expect(await overrideRoad(surface)).toBeNull();
     });
   }

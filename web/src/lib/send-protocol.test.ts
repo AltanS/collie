@@ -87,7 +87,7 @@ describe("readSend", () => {
   };
 
   it("only sent and effective clear the draft, and a cleared send says nothing about the screen", () => {
-    expect(readSend(reply("sent", null))).toEqual({ clear: true, note: "sent", offers: [], surface: null, detail: null, toCard: false, cap: null });
+    expect(readSend(reply("sent", null))).toEqual({ clear: true, note: "sent", offers: [], surface: null, detail: null, toCard: false, cap: null, step: null, waits: false });
     expect(readSend(reply("effective", null)).clear).toBe(true);
     expect(readSend(reply("unknown", "bound")).clear).toBe(false);
   });
@@ -137,7 +137,7 @@ describe("readSend", () => {
     const body: JsonObject = { receipt: { outcome: "sent", queued: true }, offers: [] };
     const queued = readSendReply(body)!;
     expect(queued.queued).toBe(true);
-    expect(readSend(queued)).toEqual({ clear: true, note: "queued", offers: [], surface: null, detail: null, toCard: false, cap: null });
+    expect(readSend(queued)).toEqual({ clear: true, note: "queued", offers: [], surface: null, detail: null, toCard: false, cap: null, step: null, waits: false });
     expect(readSendReply({ receipt: { outcome: "sent", queued: "yes" }, offers: [] })!.queued).toBe(false);
     expect(reply("sent", null).queued).toBe(false);
   });
@@ -153,9 +153,12 @@ describe("readSend", () => {
     const detail = "Collie cannot read this screen. Check the pane, then tap Type here.";
     const unreadable: Surface = { revision: 1, turn: "idle", modal: "unreadable", composer: "empty" };
     expect(readSend(reply("refused", "unconfirmed", ["commit", "keys"], { surface: unreadable, detail })).detail).toBeNull();
-    for (const reason of ["stale_surface", "busy", "pane_gone", "draft_present"]) {
+    for (const reason of ["stale_surface", "pane_gone", "draft_present"]) {
       expect(readSend(reply("refused", reason, ["commit"], { detail: "The bridge's line." })).detail).toBeNull();
     }
+    // busy: the plain "still running" line goes; a full hold queue names its count and stays (M102 spec 02).
+    expect(readSend(reply("refused", "busy", [], { detail: "Another send on this pane is still running." })).detail).toBeNull();
+    expect(readSend(reply("refused", "busy", [], { detail: "This pane already holds 5 messages." })).detail).toBe("This pane already holds 5 messages.");
     // not_free: the plain line goes, a line that names what is open stays.
     expect(readSend(reply("refused", "not_free", [], { surface: RUNNING, detail: "The input box is not free." })).detail).toBeNull();
     expect(readSend(reply("refused", "not_free", [], { surface: RUNNING, detail: "Something is open at the input box." })).detail).toBe("Something is open at the input box.");
@@ -178,8 +181,9 @@ describe("readSend", () => {
     expect(readSend(reply("refused", "draft_present", ["append", "replace", "cancel"]))).toMatchObject({ clear: false, note: "draft", offers: ["append", "replace", "cancel"] });
     // A command onto a draft is offered Replace and Cancel only, and its sentence names only those.
     expect(readSend(reply("refused", "draft_present", ["replace", "cancel"]))).toMatchObject({ clear: false, note: "draftCommand", offers: ["replace", "cancel"] });
-    // A draft the bridge found no frame for offers the key pad alone: no strip button, so the plain sentence stays.
-    expect(readSend(reply("refused", "draft_present", ["keys"]))).toMatchObject({ note: "draft", offers: [] });
+    // A draft the bridge found no frame for, or one too long to empty in one request, offers the key pad
+    // alone: its own sentence, and Empty the box is the step (M102 spec 02).
+    expect(readSend(reply("refused", "draft_present", ["keys"]))).toMatchObject({ note: "draftUnseen", offers: [], step: "emptyBox" });
     expect(readSend(reply("refused", "stale_surface", ["keys"]))).toMatchObject({ clear: false, note: "moved", offers: [] });
     expect(readSend(reply("refused", "not_free")).note).toBe("notFree");
     expect(readSend(reply("refused", "bound")).note).toBe("bound");
@@ -229,7 +233,7 @@ describe("a held send (M56 spec 15)", () => {
   const reply = (outcome: string) => readSendReply({ receipt: { outcome }, offers: [], detail: "The agent is working. The bridge holds it." })!;
 
   it("a held answer clears the draft, says held, and carries no offers, no detail and no refusal", () => {
-    expect(readSend(reply("held"))).toEqual({ clear: true, note: "held", offers: [], surface: null, detail: null, toCard: false, cap: null });
+    expect(readSend(reply("held"))).toEqual({ clear: true, note: "held", offers: [], surface: null, detail: null, toCard: false, cap: null, step: null, waits: false });
   });
 
   it("expired and cancelled keep the draft and say so, with no offers", () => {

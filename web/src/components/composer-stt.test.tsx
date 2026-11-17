@@ -198,7 +198,7 @@ describe("Composer — the record button is drawn only when there is a microphon
     expect(screen.queryByRole("button", { name: /record a voice message/i })).toBeNull();
   });
 
-  it("renders a disabled microphone wearing the bridge's reason when the provider can't serve", async () => {
+  it("renders a dimmed microphone wearing the bridge's reason when the provider can't serve", async () => {
     server.use(
       configHandler({
         push: false,
@@ -208,7 +208,8 @@ describe("Composer — the record button is drawn only when there is a microphon
     );
     renderComposer();
     const button = await screen.findByRole("button", { name: /codex is not signed in/i });
-    expect(button).toBeDisabled();
+    // Dimmed with `aria-disabled`, the tap kept: a tap shows the reason (M102 spec 11; composer.taps.test.tsx).
+    expect(button).toHaveAttribute("aria-disabled", "true");
   });
 });
 

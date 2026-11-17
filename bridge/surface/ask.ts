@@ -29,7 +29,7 @@ import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { rowText } from "../../web/src/lib/surface/frame.ts";
 import { askOfLift, liftDialog, readerBlocks, type LiftedDialog } from "../../web/src/lib/surface/lift.ts";
 import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
-import type { ReadMark } from "../../web/src/lib/surface/send.ts";
+import { ANOTHER_SEND, type ReadMark } from "../../web/src/lib/surface/send.ts";
 import { askOf, shortHash, type Ask, type Surface } from "../../web/src/lib/surface/surface.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RowRing, SessionLocks } from "./protocol.ts";
@@ -408,7 +408,7 @@ function sentenceOf(reason: AskReason): string | undefined {
     case "no_plan":
       return "Collie does not answer this choice from here. Use the screen and the keys.";
     case "busy":
-      return "Another send on this pane is still running.";
+      return ANOTHER_SEND;
     case "pane_gone":
       return "The pane holds another program now, or cannot be read.";
     default:

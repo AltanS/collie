@@ -854,6 +854,25 @@ describe("NavTray — operator preset rows", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("unread card: while it is open, Enter asks a second tap, and only the second tap sends (M102 spec 03)", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const { rerender } = render(<NavTray onSend={onSend} confirmEnter />);
+    await user.click(screen.getByRole("button", { name: "Enter" }));
+    expect(onSend).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Enter, tap again to send" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["Enter"]);
+    // The arrows stay one tap: only Enter can confirm a menu's default.
+    onSend.mockClear();
+    await user.click(screen.getByRole("button", { name: "Up" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["Up"]);
+    // With no card, Enter is one tap again.
+    onSend.mockClear();
+    rerender(<NavTray onSend={onSend} />);
+    await user.click(screen.getByRole("button", { name: "Enter" }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(["Enter"]);
+  });
+
   describe("a modifier key made in the editor", () => {
     // What the builder saves: a plain `{kind:"mod"}`, here two cells wide in a free spot of row 2.
     const withMod = boardOf(2, [
@@ -925,15 +944,15 @@ describe("NavTray — operator preset rows", () => {
     expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+c"]);
   });
 
-  it("a key the multiplexer refuses is disabled, as on the fixed pad", () => {
+  it("a key the multiplexer refuses is greyed in its place and sends nothing", () => {
     render(<NavTray onSend={vi.fn()} board={custom} unsupportedKeys={["Home"]} />);
-    expect(screen.getByRole("button", { name: "Home" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("button", { name: "Ctrl+B, then C" })).toBeEnabled();
   });
 
   it("a refused key anywhere in a sequence greys the whole key", () => {
     render(<NavTray onSend={vi.fn()} board={boardOf(1, [[0, key("ctrl+b", "End")]])} unsupportedKeys={["End"]} />);
-    expect(screen.getByRole("button", { name: "Ctrl+B, then End" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ctrl+B, then End" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("a sticky modifier key still composes onto the next chord key and stages it", async () => {
@@ -982,7 +1001,7 @@ describe("NavTray — operator preset rows", () => {
     const user = userEvent.setup();
     const onClear = vi.fn(() => Promise.resolve());
     const { rerender } = render(<NavTray onSend={vi.fn()} clearBox={{ available: false, onClear }} />);
-    expect(screen.getByRole("button", { name: "Clear the input box" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Clear the input box" })).toHaveAttribute("aria-disabled", "true");
     rerender(<NavTray onSend={vi.fn()} disabled clearBox={{ available: true, onClear }} />);
     await user.click(screen.getByRole("button", { name: "Clear the input box" }));
     expect(onClear).not.toHaveBeenCalled();

@@ -91,6 +91,8 @@ export interface ExpandedEditorProps {
   readonly sendInert: boolean;
   readonly onCollapse: () => void;
   readonly onSend: () => void;
+  /** A tap on the inert Send (M102 spec 11): the composer says why it cannot act. */
+  readonly onInertSend?: () => void;
   /** The composer's Attach button and its picker, first in the row (last for the left hand). */
   readonly leading: ReactNode;
   /** The composer's small mic, beside Send. */
@@ -114,6 +116,7 @@ export function ExpandedEditor({
   sendInert,
   onCollapse,
   onSend,
+  onInertSend,
   leading,
   trailing,
   hidden,
@@ -155,10 +158,11 @@ export function ExpandedEditor({
       }
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        if (!sendInert) onSend();
+        if (sendInert) onInertSend?.();
+        else onSend();
       }
     },
-    [onCollapse, onSend, sendInert],
+    [onCollapse, onSend, onInertSend, sendInert],
   );
 
   return createPortal(
@@ -211,7 +215,7 @@ export function ExpandedEditor({
           className={cn("size-9 shrink-0 rounded-full", sendInert && "opacity-50")}
           onMouseDown={(event) => event.preventDefault()}
           aria-disabled={sendInert ? true : undefined}
-          onClick={sendInert ? undefined : onSend}
+          onClick={sendInert ? onInertSend : onSend}
           aria-label={sendLabel}
         >
           <Icon name="send-ready" className="size-4" />

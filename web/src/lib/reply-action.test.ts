@@ -174,6 +174,8 @@ describe("plainFailureMessage", () => {
   it("keeps the status and the first line that has words, and leaves a JSON body to the catalogue", () => {
     expect(plainFailureMessage(404, "\n  no such terminal pane  \nmore")).toBe("HTTP 404: no such terminal pane");
     expect(plainFailureMessage(502, "")).toBe("HTTP 502");
+    // A proxy's page is no sentence: the status alone, which the display layer says in words (M102 spec 11).
+    expect(plainFailureMessage(502, "<html><body>Bad Gateway</body></html>")).toBe("HTTP 502");
     expect(plainFailureMessage(400, `{"error":"x"}`)).toBeNull();
     expect(plainFailureMessage(400, "x".repeat(400))).toHaveLength("HTTP 400: ".length + 160);
   });

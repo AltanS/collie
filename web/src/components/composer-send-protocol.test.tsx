@@ -437,7 +437,7 @@ describe("Steer or queue on the Send button (M69)", () => {
     renderSteer({ surface: running, canSteer: true });
     await openMenu(user, "change course");
     await user.click(await screen.findByRole("button", { name: STEER }));
-    expect(await screen.findByText(/Steer is not available on this pane\. Nothing was sent\./)).toBeInTheDocument();
+    expect(await screen.findByText(/Steer is not available on this pane, so nothing was sent\./)).toBeInTheDocument();
     expect(loadDraft(undefined, "w1:p1")).toBe("change course");
   });
 
