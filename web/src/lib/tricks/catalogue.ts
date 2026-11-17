@@ -326,7 +326,7 @@ export const PLACES = {
   belt: {
     id: "belt",
     name: "Belt",
-    where: "A mark at the end of the Belt, the scrolling strip of controls. It never takes fixed room.",
+    where: "A mark at the end of the Belt, the scrolling strip of controls. It never takes fixed room. It sits at the end of the scrolling strip, off screen until the person scrolls; the fixed block at the right is Collie's own.",
     shows: "One mark: an icon, a face word (`label`), a `badge` and a `tone`. It takes no view.",
     tap: "With an `intent`, a tap runs the trick with that intent. Without one, the mark is the same button and takes no tap.",
     limits: [
@@ -1075,7 +1075,7 @@ const SESSION_WORDS = {
   name: { present: "when it has one", what: "The session's name." },
   agent: { present: "an agent only", what: "The agent's name. A shell has none." },
   status: { present: "always", what: `One of ${codeList(SESSION_STATUSES)}.` },
-  cwd: { present: "when known", what: "The session's working folder." },
+  cwd: { present: "when known", what: "The session's working folder. `cwd` is the pane's folder. A workspace folder can hold several repositories; look inside it." },
   space: { present: "when known", what: "The label of the session's space." },
   tab: { present: "when known", what: "The label of the session's tab." },
   lastActiveAt: { present: "when known", what: "When the session was last active, as an ISO 8601 time. The sessions of a crew's members have none." },

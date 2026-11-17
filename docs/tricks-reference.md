@@ -12,7 +12,7 @@ A place is a spot on the phone where a trick can show (a surface). A program tri
 
 | Place | Name | Where it shows | Drawn by |
 | --- | --- | --- | --- |
-| `belt` | Belt | A mark at the end of the Belt, the scrolling strip of controls. It never takes fixed room. | A program |
+| `belt` | Belt | A mark at the end of the Belt, the scrolling strip of controls. It never takes fixed room. It sits at the end of the scrolling strip, off screen until the person scrolls; the fixed block at the right is Collie's own. | A program |
 | `session` | Page | A page of the trick's own: a row on the Dashboard under Tricks, and a screen of its own. The code word is `session`. | A program |
 | `dashboard` | Dashboard tile | A round tile in the strip at the top of the Dashboard. The strip is hidden while no trick has a tile. | A program |
 | `status` | Status chip | One chip in the status line above the Belt, at the left end of the row; the model and the usage stay at the right end. | A program |
@@ -22,7 +22,7 @@ A place is a spot on the phone where a trick can show (a surface). A program tri
 
 ### `belt`
 
-**Where.** A mark at the end of the Belt, the scrolling strip of controls. It never takes fixed room.
+**Where.** A mark at the end of the Belt, the scrolling strip of controls. It never takes fixed room. It sits at the end of the scrolling strip, off screen until the person scrolls; the fixed block at the right is Collie's own.
 
 **Shows.** One mark: an icon, a face word (`label`), a `badge` and a `tone`. It takes no view.
 
@@ -1311,7 +1311,7 @@ A session in `sessions` has these fields:
 | `name` | when it has one | The session's name. |
 | `agent` | an agent only | The agent's name. A shell has none. |
 | `status` | always | One of `idle`, `working`, `blocked`, `done`, `unknown`. |
-| `cwd` | when known | The session's working folder. |
+| `cwd` | when known | The session's working folder. `cwd` is the pane's folder. A workspace folder can hold several repositories; look inside it. |
 | `space` | when known | The label of the session's space. |
 | `tab` | when known | The label of the session's tab. |
 | `lastActiveAt` | when known | When the session was last active, as an ISO 8601 time. The sessions of a crew's members have none. |

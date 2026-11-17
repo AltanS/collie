@@ -195,6 +195,10 @@ also has `value`, `"on"` or `"off"`, the state the person asked for. The phone n
 switch itself, so print the new `on` in the answer. A label that reads like one of Collie's own rows
 is refused, never cut.
 
+A `belt` mark sits at the end of the scrolling strip, off screen until the person scrolls; the fixed block at the
+right is Collie's own. In the facts, `cwd` is the pane's folder. A workspace folder can hold several
+repositories; look inside it.
+
 Add `sessions` to a `menu` part or a `belt` mark to show it only in those sessions, by the facts'
 session ids. Collie binds each id to the pane and the conversation that are open now. A pane id that
 goes to a new session, or a session that starts a new conversation (`/clear`), shows nothing until

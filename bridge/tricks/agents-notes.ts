@@ -18,11 +18,13 @@ export const NOTES_FILE = "AGENTS.md";
  * 2026-11-17): the card shows in the session that proposed it, so the last step names that place first.
  * v5 (security read of package I, 2026-11-17): the draft's last step also says never to run
  * `collie tricks on` or `collie hill on`.
+ * v6 (2026-11-18): two plain facts, for an agent that writes a trick: a belt mark sits at the end of the scrolling
+ * strip, off screen until the person scrolls, and `cwd` is the pane's folder, which can hold several repositories.
  */
-export const NOTES_VERSION = 5;
+export const NOTES_VERSION = 6;
 
 /** Every version of the notes a Collie shipped. A proposal names an older one byte for byte as that version. */
-const NOTES_VERSIONS = [1, 2, 3, 4, 5] as const;
+const NOTES_VERSIONS = [1, 2, 3, 4, 5, 6] as const;
 type NotesVersion = (typeof NOTES_VERSIONS)[number];
 
 /**
@@ -100,6 +102,11 @@ function agentsShLoop(id: string, draft: boolean, version: NotesVersion): string
 `;
 }
 
+/** v6: where a belt mark sits, said after the places. */
+const BELT_NOTE = " A belt mark sits at the end of the scrolling strip, off screen until the person scrolls; the fixed block at the right is Collie's own.";
+/** v6: what `cwd` is, said after the facts. */
+const CWD_NOTE = " `cwd` is the pane's folder. A workspace folder can hold several repositories; look inside it.";
+
 /** v3: the settings a person keeps (contract 3), in a few lines. */
 const FIELDS_NOTE = `
 ## Settings the person keeps (contract 3)
@@ -147,7 +154,7 @@ The program must never write a code file into its own folder: in the approved co
   the machine is renamed, so key saved state on it), \`host\` (the machine's name, to show only, never a
   key), \`sessions\` (each with \`id\` as \`memberId:paneId\`, \`memberId\`, \`sessionId\` (opaque, never
   parse it), \`paneId\`, \`host\` (a name to show), \`name\`, \`agent\`, \`status\`, \`cwd\`, \`space\`,
-  \`tab\`, \`lastActiveAt\`) and \`spaces\` (\`name\`, \`folder\`).
+  \`tab\`, \`lastActiveAt\`) and \`spaces\` (\`name\`, \`folder\`).${version >= 6 ? CWD_NOTE : ""}
 - A short list of the Collie service's environment: \`PATH\`, \`HOME\`, \`USER\`, \`LOGNAME\`,
   \`SHELL\`, \`LANG\`, \`LC_*\`, \`TZ\`, \`TERM\`, \`TMPDIR\`, the \`XDG_*_HOME\` folders,
   \`XDG_RUNTIME_DIR\`, \`NVM_DIR\` and \`BUN_INSTALL\`. Any other variable the program needs, list
@@ -172,7 +179,7 @@ One JSON document on stdout, at most 64 KiB, within 10 seconds. \`v\` is the con
   (an item in the Dashboard's bottom bar, after the Hill). A \`dashboard\` and a \`tabbar\` part take
   one \`item\`: \`{ "label": "Legs", "icon": "flask", "badge": 3, "tone": "ok" }\`, the label 1 to 16
   characters, the badge a count from 0 to 9999 or 1 to 12 characters. An item takes no \`intent\`: a
-  tap opens the trick's session when it has one. One belt, status, dashboard and tabbar part per trick.
+  tap opens the trick's session when it has one. One belt, status, dashboard and tabbar part per trick.${version >= 6 ? BELT_NOTE : ""}
 - Optional: \`asOf\` (an ISO 8601 instant) and \`fresh\` (such as \`"90s"\`): past that window the phone
   shows the part's age and drops its tone.
 - A part's \`view\` is a list of nodes \`{ kind, text, attrs, kids }\`, the Tree UI's kinds (\`card\`,
