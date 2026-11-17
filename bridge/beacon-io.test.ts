@@ -190,15 +190,23 @@ describe("procBeaconLiveness", () => {
     expect(ps.runs).toEqual([]);
   });
 
-  test("Windows has no probe: null, and nothing runs", async () => {
+  test("Windows asks the native read alone: no stat file is read and nothing runs (#798)", async () => {
     const ps = fakePs(() => LSTART);
-    expect(await procBeaconLiveness({ platform: "win32", readText: () => null, run: ps.run }).startTimeOf(PID)).toBeNull();
+    const read: string[] = [];
+    const readText = (path: string) => (read.push(path), "1 (x) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 555 0 0");
+    const native = (pid: number) => (pid === PID ? 1_794_847_739_081_296 : null);
+    const win = procBeaconLiveness({ platform: "win32", readText, run: ps.run, native });
+    expect(await win.startTimeOf(PID)).toBe(1_794_847_739_081_296);
+    expect(await win.startTimeOf(PID + 1)).toBeNull();
+    expect(read).toEqual([]);
     expect(ps.runs).toEqual([]);
   });
 
   test("the hook target registration reads its own start with the same probe", () => {
     expect(readStartTimeSync(PID, { platform: "darwin", readText: () => null, run: () => LSTART })).toBe(STORED);
     expect(readStartTimeSync(PID, { platform: "darwin", readText: () => null, run: () => null })).toBeNull();
-    expect(readStartTimeSync(PID, { platform: "win32", readText: () => null, run: () => LSTART })).toBeNull();
+    expect(readStartTimeSync(PID, { platform: "win32", readText: () => null, run: () => LSTART, native: () => 42 })).toBe(42);
+    expect(readStartTimeSync(PID, { platform: "win32", readText: () => null, run: () => LSTART, native: () => null })).toBeNull();
+    expect(readStartTimeSync(PID, { platform: "freebsd", readText: () => null, run: () => LSTART, native: () => 42 })).toBeNull();
   });
 });

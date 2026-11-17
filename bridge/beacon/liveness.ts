@@ -7,7 +7,7 @@
 // seam (M11/03, `bridge/beacon-io.ts`) answers with the same probe. A mismatch would make every live
 // beacon read expired, silently.
 //
-// TWO PLATFORM PROBES, ONE MODULE (M80 spec 11, issue 647), in {@link startTimeProbe}:
+// THREE PLATFORM PROBES, ONE MODULE (M80 spec 11, issue 647; issue 798), in {@link startTimeProbe}:
 //
 //  - Linux: field 22 of `/proc/<pid>/stat`, clock ticks since boot. One file read, unchanged since
 //    M11, so a beacon written before the update still reads live after it.
@@ -15,9 +15,13 @@
 //    no `/proc`, so this is one subprocess (about 20 ms), run only when there is no stat file. NOT
 //    `ps -o etime=` (`bridge/journal/process-start.ts`): elapsed time turned into a start moves by a
 //    second between two reads, so it is no identity.
+//  - Windows: the process's creation time from kernel32 (`bridge/win32-process.ts`), whole
+//    microseconds since the Unix epoch. In process and under a millisecond: PowerShell, the only
+//    shell-level answer, takes seconds per run (#798, #762). No stat file is read there, because any
+//    user may create `C:\proc` and plant one.
 //
-// Every other platform (Windows) has no probe: the emitter writes no beacon there, and the reader
-// reads none live. The two units never meet: a beacon is read on the host that wrote it.
+// Every other platform (FreeBSD and the rest) has no probe: the emitter writes no beacon there, and the
+// reader reads none live. The units never meet: a beacon is read on the host that wrote it.
 //
 // NO FILESYSTEM CALL AND NO SUBPROCESS, exactly like the rest of `bridge/beacon/`: this module says
 // where to read, what to run and how to parse it, and the caller's own seam does the reading.
@@ -59,12 +63,16 @@ export interface StartTimeCommand {
 }
 
 /**
- * How a host reads a pid's start time. The stat file is read first on every host: where `/proc`
- * exists it answers, and nothing is run. Only when there is no stat file does the command run, and
- * only macOS has one. So Linux never runs `ps`, and macOS, which has no `/proc`, always does.
+ * How a host reads a pid's start time. On Windows the native read is the whole probe. Everywhere else
+ * the stat file is read first: where `/proc` exists it answers, and nothing is run. Only when there is
+ * no stat file does the command run, and only macOS has one. So Linux never runs `ps`, and macOS,
+ * which has no `/proc`, always does.
  */
 export interface StartTimeProbe {
-  readonly stat: { readonly path: (pid: number) => string; readonly parse: (text: string) => number | null };
+  /** The stat file and its parser. Null on Windows, where a `C:\proc` file is anyone's to write. */
+  readonly stat: { readonly path: (pid: number) => string; readonly parse: (text: string) => number | null } | null;
+  /** The caller's in-process read (`bridge/win32-process.ts` `win32StartTime`): true on Windows only. */
+  readonly native: boolean;
   /** Run when the stat file is absent: {@link PS_LSTART} on macOS, null on every other platform. */
   readonly command: StartTimeCommand | null;
 }
@@ -110,13 +118,44 @@ export const PS_LSTART: StartTimeCommand = {
 
 /**
  * How `platform` reads a pid's start time. The emitter, the reader and the hook-target registration
- * all ask this, so they cannot drift: the stat file, then `ps -o lstart=` on macOS only.
+ * all ask this, so they cannot drift: the native read on Windows; elsewhere the stat file, then
+ * `ps -o lstart=` on macOS only.
  */
 export function startTimeProbe(platform: NodeJS.Platform): StartTimeProbe {
-  return { stat: { path: procStatPath, parse: parseProcStartTime }, command: platform === "darwin" ? PS_LSTART : null };
+  if (platform === "win32") return { stat: null, native: true, command: null };
+  return { stat: { path: procStatPath, parse: parseProcStartTime }, native: false, command: platform === "darwin" ? PS_LSTART : null };
 }
 
-/** Whether `platform` has a start-time probe at all: Linux and macOS. Elsewhere no beacon is ever written. */
+/**
+ * Whether `platform` has a start-time probe at all: Linux, macOS and Windows. Elsewhere no beacon is
+ * ever written. A Linux host with no `/proc` mounted has the probe and every read of it fails, which
+ * also writes no beacon.
+ */
 export function hasStartTimeProbe(platform: NodeJS.Platform): boolean {
-  return platform === "linux" || startTimeProbe(platform).command !== null;
+  const probe = startTimeProbe(platform);
+  return platform === "linux" || probe.native || probe.command !== null;
+}
+
+/**
+ * One pid's start time through `probe`, synchronously, with the caller's seams for the reads. The
+ * emitter and the bridge's own hook-target file both call this, so the order lives in one place:
+ * the native read where the probe has one, else the stat file, else the command.
+ */
+export function readStartTimeWith(
+  probe: StartTimeProbe,
+  pid: number,
+  seams: {
+    readonly readText: (path: string) => string | null;
+    readonly native: (pid: number) => number | null;
+    readonly run: (command: StartTimeCommand, pid: number) => string | null;
+  },
+): number | null {
+  if (probe.native) return seams.native(pid);
+  if (probe.stat !== null) {
+    const stat = seams.readText(probe.stat.path(pid));
+    if (stat !== null) return probe.stat.parse(stat);
+  }
+  if (probe.command === null) return null;
+  const text = seams.run(probe.command, pid);
+  return text === null ? null : probe.command.parse(text);
 }

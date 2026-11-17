@@ -12,7 +12,7 @@ import { defaultTuiosSocket } from "../bridge/mux/tuios/client.ts";
 import { ZELLIJ_MUX } from "../bridge/mux/zellij/adapter.ts";
 import { resolveZellijBinary, zellijBinaryCandidates } from "../bridge/mux/zellij/exec.ts";
 import { parseSessionList, ZELLIJ_LIST_SESSIONS_ARGS } from "../bridge/mux/zellij/protocol.ts";
-import { liveHookTargets } from "./beacon.ts";
+import { liveHookTargets, type PidProbeDeps } from "./beacon.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
@@ -84,6 +84,8 @@ export interface MuxListDeps {
   readonly exec: Exec;
   readonly files: Files;
   readonly uid?: number | undefined;
+  /** How a bridge's pid is checked (`cli/beacon.ts` `readPidStartTime`). Absent means the host's real probe. */
+  readonly pidProbe?: PidProbeDeps | undefined;
   /** The herdr-core dial. Absent means the real one. */
   readonly dial?: ((socketPath: string, timeoutMs: number) => Promise<HcCoreReading>) | undefined;
 }
@@ -228,7 +230,7 @@ export async function muxListReport(deps: MuxListDeps): Promise<MuxListReport> {
     }),
   );
 
-  const targets = liveHookTargets({ ctx: deps.ctx, files: deps.files, uid: deps.uid });
+  const targets = liveHookTargets({ ctx: deps.ctx, files: deps.files, uid: deps.uid, pidProbe: deps.pidProbe });
   const driversOf = (mux: string): Driver[] =>
     targets.filter((target) => target.mux === mux).map((target) => ({ instance: target.instance, port: target.port, pid: target.pid }));
   const unplaced = targets

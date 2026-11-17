@@ -6,8 +6,9 @@ import { isAbsolute, join, posix } from "node:path";
 import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
 import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget, type HookTargetRecord } from "../bridge/beacon/hook-targets.ts";
 import { edgeModelOf } from "../bridge/beacon/parse.ts";
-import { procStatPath, startTimeProbe, type StartTimeCommand } from "../bridge/beacon/liveness.ts";
+import { procStatPath, readStartTimeWith, startTimeProbe, type StartTimeCommand } from "../bridge/beacon/liveness.ts";
 import { HOST } from "../bridge/host.ts";
+import { win32ProcessInfo, win32StartTime } from "../bridge/win32-process.ts";
 import {
   BEACON_SCHEMA_VERSION,
   EDGE_SCHEMA_VERSION,
@@ -48,7 +49,8 @@ export { privateDir };
 // `SessionEnd` runs on a 1.5 s default budget, which sets the shape of the work: one environment
 // read, one parse, one probe for the pid's start time, one atomic write. No network, and nothing that
 // can block on another process. The probe is a `/proc` read on Linux; on macOS, which has no `/proc`,
-// it is one `ps` run (about 20 ms) with a 1 s timeout (`bridge/beacon/liveness.ts`, M80 spec 11).
+// it is one `ps` run (about 20 ms) with a 1 s timeout (`bridge/beacon/liveness.ts`, M80 spec 11); on
+// Windows it is an in-process kernel32 call (issue 798).
 //
 // ── THE PAYLOAD, AS CAPTURED (2026-08-20, `claude -p` under a throwaway CLAUDE_CONFIG_DIR) ─────────
 //
@@ -79,6 +81,9 @@ export { privateDir };
 // (Ubuntu, Debian) the shell forks the command and waits, so `process.ppid` is the shell, which is
 // gone as soon as `collie` exits (issue 689). {@link agentPidOf} climbs past such a shell to the first
 // ancestor that is not one, and falls back to `process.ppid` whenever it cannot read a process.
+// Windows has no exec: Claude Code runs a hook through Git Bash (`bash.exe`, and Git's `bin\bash.exe`
+// may itself be a launcher that starts `usr\bin\bash.exe`), and a shell there waits as the hook's
+// parent instead of replacing itself, so the climb matters on Windows too (issue 798).
 
 // ── THE CONTEXT READING (.adr/0115, amended 2026-10-24) ───────────────────────────────────────────
 //
@@ -221,6 +226,8 @@ export interface PidProbeDeps {
   readonly platform?: NodeJS.Platform;
   /** Runs a probe command: its stdout, or null when it failed. Defaults to {@link runStartTimeCommand}. */
   readonly run?: (command: StartTimeCommand, pid: number) => string | null;
+  /** The in-process read on Windows (issue 798). Defaults to kernel32's `win32StartTime`. */
+  readonly native?: (pid: number) => number | null;
 }
 
 /**
@@ -248,8 +255,13 @@ export interface ProcessInfo {
   readonly ppid: number;
 }
 
-/** Names of the shells a hook command may run through (`comm`, so no path). */
-const SHELL_COMMS: ReadonlySet<string> = new Set(["sh", "dash", "bash", "zsh", "ksh", "ash", "busybox"]);
+/**
+ * Names of the shells a hook command may run through (`comm`, so no path). On Windows the reader
+ * reports the executable's name in lower case without `.exe`, so Git's `bash.exe`, `cmd.exe` and
+ * PowerShell meet the same list. None of these replaces itself with the command on Windows: there is
+ * no exec, so the shell waits as the hook's parent and is gone with it (issue 798).
+ */
+export const SHELL_COMMS: ReadonlySet<string> = new Set(["sh", "dash", "bash", "zsh", "ksh", "ash", "busybox", "cmd", "powershell", "pwsh"]);
 
 /** How many shells {@link agentPidOf} climbs past. `sh -c` under a wrapper is two at most; the third is slack. */
 const SHELL_HOPS_MAX = 3;
@@ -297,11 +309,16 @@ export function parsePsProcess(text: string): ProcessInfo | null {
   return comm === "" ? null : { comm, ppid: Number(match[1]) };
 }
 
-/** Linux and macOS' process reader; any other platform, and any failure, is null (no climb). */
-export function readProcessInfo(pid: number): ProcessInfo | null {
+/**
+ * The process reader of Linux, macOS and Windows (kernel32, `bridge/win32-process.ts`, which reports a
+ * parent only when it started no later than the child); any other platform, and any failure, is null
+ * (no climb).
+ */
+export function readProcessInfo(pid: number, platform: NodeJS.Platform = HOST.platform): ProcessInfo | null {
   try {
-    if (HOST.platform === "linux") return parseProcStatProcess(readFileSync(procStatPath(pid), "utf8"));
-    if (HOST.platform !== "darwin") return null;
+    if (platform === "win32") return win32ProcessInfo(pid);
+    if (platform === "linux") return parseProcStatProcess(readFileSync(procStatPath(pid), "utf8"));
+    if (platform !== "darwin") return null;
     const text = execFileSync("/bin/ps", ["-o", "ppid=,comm=", "-p", String(pid)], {
       encoding: "utf8",
       env: { LC_ALL: "C" },
@@ -317,21 +334,20 @@ export function readProcessInfo(pid: number): ProcessInfo | null {
 /**
  * The pid's start time, from the platform's probe (`bridge/beacon/liveness.ts`): the stat file on
  * Linux, one `ps -o lstart=` run on macOS (`darwin`), where there is no stat file (M80 spec 11,
- * issue 647).
+ * issue 647), and kernel32's creation time on Windows (issue 798).
  *
  * It is not optional in the record (`BeaconRecord.pidStartTime`) and it must not be faked: a beacon
  * carrying a start time no probe will ever return reads as EXPIRED for its whole life, which would
  * present a working agent as a dead one. So an unreadable start time means NO BEACON — the reader's
- * honest answer to an absent file is already the right one. That is every host other than Linux and
- * macOS (Windows among them), and any probe that failed.
+ * honest answer to an absent file is already the right one. That is every host other than Linux,
+ * macOS and Windows, and any probe that failed.
  */
 export function readPidStartTime(deps: Pick<BeaconEmitDeps, "files" | "pidProbe">, pid: number): number | null {
-  const probe = startTimeProbe(deps.pidProbe?.platform ?? HOST.platform);
-  const stat = deps.files.read(probe.stat.path(pid));
-  if (stat !== null) return probe.stat.parse(stat);
-  if (probe.command === null) return null;
-  const text = (deps.pidProbe?.run ?? runStartTimeCommand)(probe.command, pid);
-  return text === null ? null : probe.command.parse(text);
+  return readStartTimeWith(startTimeProbe(deps.pidProbe?.platform ?? HOST.platform), pid, {
+    readText: (path) => deps.files.read(path),
+    native: deps.pidProbe?.native ?? win32StartTime,
+    run: deps.pidProbe?.run ?? runStartTimeCommand,
+  });
 }
 
 /**
