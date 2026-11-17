@@ -11,6 +11,8 @@ interface SelectProps extends Omit<ComponentProps<"select">, "className"> {
    * the text starts after it; the caller sizes and tints it. Omit and the text starts at the edge.
    */
   lead?: ReactNode;
+  /** The chosen option is a VALUE the person set (a trick's setting): the `muted` ground and medium weight of `ui/badge.tsx`'s `value` chip. */
+  valueChip?: boolean;
 }
 
 /**
@@ -31,7 +33,7 @@ interface SelectProps extends Omit<ComponentProps<"select">, "className"> {
  * Settings selects (language, typeface, terminal font) carry the same construction by hand and have
  * not been moved onto this yet.
  */
-export function Select({ className, lead, children, ...props }: SelectProps) {
+export function Select({ className, lead, valueChip = false, children, ...props }: SelectProps) {
   return (
     <div data-slot="select" className={cn("relative", className)}>
       <select
@@ -39,6 +41,7 @@ export function Select({ className, lead, children, ...props }: SelectProps) {
         className={cn(
           "h-11 w-full appearance-none truncate rounded-lg border border-border bg-background pr-8 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
           lead === undefined ? "pl-3" : "pl-8",
+          valueChip && "bg-muted font-medium",
         )}
       >
         {children}

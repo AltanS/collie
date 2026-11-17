@@ -497,3 +497,57 @@ describe("why a trick uses agent tokens: the first row of What it does (2026-11-
     expect(screen.queryByRole("list", { name: "What it does" })).toBeNull();
   });
 });
+
+// THE VALUES STAND ON CHIPS: the label and the plain sentence stay muted, the one thing a row is read for sits on a
+// chip (the foreground at medium weight, `muted`, a uniform hairline). The words around it are the dictionary's.
+describe("TrickAboutSheet values on chips", () => {
+  const WITH_FACTS: WireTrickInfo = {
+    ...FULL,
+    places: ["belt", "status"],
+    version: "1.2.0",
+    run: "bun run gates.ts --repo owner/name",
+    everyMs: 300_000,
+    watch: ["~/notes/todo.md"],
+  };
+  const chips = (row: Element | null) => [...(row?.querySelectorAll('[data-slot="trick-value"]') ?? [])].map((el) => el.textContent);
+
+  it("draws the places, the file paths, the names, the globs, the version and the timer's spans each on a chip, and the sentence stays plain", () => {
+    open(WITH_FACTS);
+    const dialog = screen.getByRole("dialog");
+    const rowOf = (text: string) => within(dialog).getByText((_, el) => el?.tagName === "LI" && (el.textContent ?? "").includes(text));
+    expect(chips(rowOf("Draws in:"))).toEqual(["belt, status"]);
+    expect(rowOf("Draws in:")).toHaveTextContent("Draws in: belt, status.");
+    expect(chips(rowOf("Asks for the environment names"))).toEqual(["GH_TOKEN"]);
+    expect(chips(rowOf("Runs when these files change"))).toEqual(["~/notes/todo.md"]);
+    expect(chips(rowOf("Reads "))).toEqual(["TODO.md"]);
+    expect(chips(dialog.querySelector('[data-line="timer"]'))).toEqual(["5 min", "5 min"]);
+    expect(dialog.querySelector('[data-line="timer"]')).toHaveTextContent("Runs when it starts, then every 5 min after the last run. It runs only while a phone has looked in the last 5 min.");
+    expect(chips(dialog.querySelector('[data-line="version"]'))).toEqual(["1.2.0"]);
+  });
+
+  it("draws the run line whole on a chip that wraps, and a trick with no timer keeps its plain line", () => {
+    open({ ...WITH_FACTS, everyMs: undefined });
+    const run = screen.getByRole("dialog").querySelector('[data-line="run"]');
+    expect(run).toHaveTextContent("bun run gates.ts --repo owner/name");
+    expect(run?.getAttribute("data-slot")).toBe("trick-value");
+    expect(run?.className).toMatch(/\bbreak-all\b/);
+    expect(run?.className).toMatch(/\bwhitespace-pre-wrap\b/);
+    expect(chips(screen.getByRole("dialog").querySelector('[data-line="timer"]'))).toEqual([]);
+  });
+
+  it("a chip is the foreground at medium weight on a muted ground with one border on all four sides, and wraps instead of scrolling", () => {
+    open(WITH_FACTS);
+    const chip = screen.getByRole("dialog").querySelector('[data-slot="trick-value"]');
+    const classes = (chip?.className ?? "").split(/\s+/);
+    expect(classes).toEqual(expect.arrayContaining(["bg-muted", "text-foreground", "border", "border-border", "font-medium", "whitespace-normal", "break-words"]));
+    expect(classes.some((c) => /^border-(l|r|t|b|x|y)(-|$)/.test(c))).toBe(false);
+    expect(classes.some((c) => /^(overflow-x|whitespace-nowrap)/.test(c))).toBe(false);
+  });
+
+  it("never lets a value break the chip marks: a value with the private marks in it is drawn without them", () => {
+    open({ ...WITH_FACTS, env: ["A\uE000B", "C\uE001D"] });
+    const row = screen.getByRole("dialog").querySelector('[data-slot="trick-value"]');
+    expect(row).not.toBeNull();
+    expect(screen.getByRole("dialog")).toHaveTextContent("Asks for the environment names AB, CD.");
+  });
+});
