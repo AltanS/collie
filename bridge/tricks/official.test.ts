@@ -13,7 +13,7 @@ import { DESCRIPTION_MAX, TRICK_CONTRACT, TRICKS_WINDOWS_SHELL_LINE } from "../.
 import { isListedOrigin, isUnlistedOfficialOrigin, officialStanding, officialStateOf, officialWire, parseOfficialList, pinnedPlaces, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_PREVIOUS_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
 import { canonicalRepoUrl, ORIGIN_FILE, parseOrigin, renderOrigin, renderProposalOrigin, sameRepo } from "./origin.ts";
 import { caseClash } from "./proposal-install.ts";
-import { APPROVED_DIR, approvedCopyDir, switchesPath, TRICKS_DIR } from "./paths.ts";
+import { APPROVED_DIR, approvedCopyDir, switchesPath, TRICKS_DIR, tricksStateDir } from "./paths.ts";
 import { tricksOfficialRoute } from "./routes.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
 import { parseSwitches, withSwitch, writeSwitches } from "./switches.ts";
@@ -492,6 +492,26 @@ describe.if(posix)("adding from the list", () => {
       expect(env.GIT_CONFIG_PARAMETERS).toBeUndefined();
       expect(env.GIT_TERMINAL_PROMPT).toBe("0");
     }
+  });
+
+  test("every git run of an add has an empty temp HOME and CURL_HOME, so no ~/.netrc is read, and the folder goes", async () => {
+    const repo = await fixtureRepo([V1]);
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))]);
+    await r.official.install("legs", "add");
+    expect(r.gitEnvs.length).toBeGreaterThan(2);
+    const homes = new Set<string | undefined>();
+    for (const env of r.gitEnvs) {
+      expect(env.HOME).toBeDefined();
+      expect(env.CURL_HOME).toBe(env.HOME);
+      expect(env.XDG_CONFIG_HOME).toBe(env.HOME);
+      expect(env.USERPROFILE).toBe(env.HOME);
+      homes.add(env.HOME);
+    }
+    expect(homes.size).toBe(1);
+    const [home] = [...homes];
+    // It lived under the fetch's temp folder, not the unit's own HOME (the rig sets one), and the folder went.
+    expect(home?.startsWith(tricksStateDir(r.stateDir))).toBe(true);
+    expect(await stat(home ?? "/nonexistent").catch(() => null)).toBeNull();
   });
 
   test("another hash than the list's installs nothing, removes what was fetched, and says so plainly", async () => {

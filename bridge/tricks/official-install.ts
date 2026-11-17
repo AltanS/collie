@@ -181,13 +181,28 @@ export async function candidateHash(candidate: Candidate, dir: string): Promise<
   return hashed.hash;
 }
 
-/** The fetch options of an official fetch: the hardening, {@link OFFICIAL_GIT}, no global config, the deadline. */
-export function officialFetchOptions(deps: Pick<OfficialTricksDeps, "env" | "git" | "allowFile" | "now" | "maxBytes">, deadline: number): FetchOptions {
+/**
+ * An empty folder for one fetch to call its home: `home` inside the fetch's temp folder, so it goes with it.
+ * git reads `~/.netrc` through curl, and a login the operator keeps for one of the three hosts would go to
+ * that host on a phone fetch or an official add; with HOME and CURL_HOME here there is nothing to read.
+ */
+export async function fetchHome(fetchDir: string): Promise<string> {
+  const home = join(fetchDir, "home");
+  await mkdir(home, { recursive: true, mode: 0o700 });
+  return home;
+}
+
+/**
+ * The fetch options of an official fetch: the hardening, {@link OFFICIAL_GIT}, no global config, the deadline,
+ * and `home` (from {@link fetchHome}) as the home of every git run, so no `~/.netrc`, no XDG config and no
+ * user config is read.
+ */
+export function officialFetchOptions(deps: Pick<OfficialTricksDeps, "env" | "git" | "allowFile" | "now" | "maxBytes">, deadline: number, home: string): FetchOptions {
   const opts: FetchOptions = {
     env: deps.env,
     allowFile: deps.allowFile === true,
     extraConfig: OFFICIAL_GIT,
-    extraEnv: { GIT_CONFIG_GLOBAL: devNull },
+    extraEnv: { GIT_CONFIG_GLOBAL: devNull, HOME: home, CURL_HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: home },
     deadline,
     maxBytes: deps.maxBytes ?? OFFICIAL_FETCH_BYTES_MAX,
   };
@@ -285,7 +300,7 @@ export class OfficialTricks implements OfficialTricksSurface {
   private async fetch(entry: OfficialEntry, fetchDir: string, mode: "add" | "update", deadline: number): Promise<Candidate> {
     let candidate: Candidate;
     try {
-      candidate = await fetchOfficial(entry, fetchDir, officialFetchOptions(this.deps, deadline));
+      candidate = await fetchOfficial(entry, fetchDir, officialFetchOptions(this.deps, deadline, await fetchHome(fetchDir)));
     } catch (err) {
       if (!(err instanceof FetchRefused)) throw err;
       this.deps.warn?.(`${entry.id}: the official fetch was refused (${err.step}): ${err.message}`);

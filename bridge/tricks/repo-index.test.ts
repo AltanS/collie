@@ -1,15 +1,15 @@
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { TRICKS_OFF_LINE } from "../../web/src/lib/tricks/schema.ts";
-import { REPO_INDEX_TERMINAL_LINE } from "../../web/src/lib/tricks/repo-index.ts";
+import { readPhoneSource, REPO_INDEX_TERMINAL_LINE } from "../../web/src/lib/tricks/repo-index.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { FetchSlot, spawnGit, type GitRunner, type GitRunOptions } from "./fetch.ts";
 import { ORIGIN_FILE, parseOrigin } from "./origin.ts";
 import { switchesPath, tricksConfigDir, tricksStateDir } from "./paths.ts";
-import { REPO_FETCH_PREFIX, RepoIndexTricks, type RepoIndexDeps } from "./repo-index.ts";
+import { gitLinkOf, REPO_FETCH_PREFIX, RepoIndexTricks, type RepoIndexDeps } from "./repo-index.ts";
 import { parseSwitches, updateSwitches, withSwitch } from "./switches.ts";
 
 // A repository's index on the phone (package J), against local bare repositories. Nothing here reaches the
@@ -90,7 +90,7 @@ function seamGit(bare: string, calls: Call[], hold?: Promise<void>): GitRunner {
     calls.push({ args: [...args], env: opts.env });
     if (hold !== undefined && args.includes("fetch")) await hold;
     return await spawnGit(
-      args.map((a) => (a === LINK ? bare : a)),
+      args.map((a) => (a === LINK || a === `${LINK}.git` ? bare : a)),
       opts,
     );
   };
@@ -333,5 +333,174 @@ describe.if(posix)("adding from an index", () => {
     const mixed = await r.repo.add({ rid: rid(), url: LINK, folder: "mixed", commit: fx.sha });
     expect("error" in mixed.body && mixed.body.error).toBe("refused");
     expect(await readdir(tricksConfigDir(r.configDir)).catch(() => [])).toEqual([]);
+  });
+});
+
+describe("the link a link check refuses", () => {
+  // Pinned by construction (REVIEW-J point 5): each of these must stop at the check, before git is asked
+  // anything, whatever the shape of the check is later.
+  const REFUSED: [string, string][] = [
+    ["percent-encoding in the path", "https://github.com/owner/re%70o"],
+    ["percent-encoded dot steps", "https://github.com/owner/%2e%2e/repo"],
+    ["percent-encoding in the host", "https://github%2ecom/owner/repo"],
+    ["a backslash", "https://github.com/owner\\repo"],
+    ["a backslash before the host ends", "https://github.com\\@evil.example/owner/repo"],
+    ["a newline inside", "https://github.com/owner/re\npo"],
+    ["a newline then an option", "https://github.com/owner/repo\n--upload-pack=touch-x"],
+    ["a carriage return inside", "https://github.com/owner/re\rpo"],
+    ["a tab inside", "https://github.com/owner/re\tpo"],
+    ["a space inside", "https://github.com/owner/re po"],
+    ["an IDN host", "https://g\u00efthub.com/owner/repo"],
+    ["a punycode host", "https://xn--gthub-zra.com/owner/repo"],
+    ["a punycode lookalike of a listed host", "https://xn--github-9ua.com/owner/repo"],
+    ["an IDN path", "https://github.com/owner/r\u00e9po"],
+    ["ext::", "ext::sh -c touch% x"],
+    ["ext:: after a scheme", "https://github.com/owner/repo ext::sh"],
+    ["file://", "file:///etc/passwd"],
+    ["git://", "git://github.com/owner/repo"],
+    ["ssh://", "ssh://git@github.com/owner/repo"],
+    ["scp form", "git@github.com:owner/repo"],
+    ["scp form with a path", "github.com:owner/repo.git"],
+    ["an option as the link", "--upload-pack=touch-x"],
+    ["http", "http://github.com/owner/repo"],
+    ["a user name", "https://user@github.com/owner/repo"],
+    ["a fragment", "https://github.com/owner/repo#main"],
+    ["a query", "https://github.com/owner/repo?x=1"],
+  ];
+
+  test("the parser refuses each, and the bridge fetches nothing for it", async () => {
+    const r = await rig("/nowhere");
+    for (const [what, url] of REFUSED) {
+      expect({ what, refused: "code" in readPhoneSource(url) }).toEqual({ what, refused: true });
+      const answer = await r.repo.list({ rid: rid(), url });
+      expect({ what, ok: answer.status === 200 }).toEqual({ what, ok: false });
+      const add = await r.repo.add({ rid: rid(), url, folder: "idle-watch", commit: "a".repeat(40) });
+      expect({ what, ok: add.status === 200 }).toEqual({ what, ok: false });
+    }
+    expect(r.calls).toHaveLength(0);
+    expect(r.audits).toHaveLength(0);
+  });
+
+  test("a clean link of each listed host is still taken", () => {
+    for (const url of ["https://github.com/owner/repo", "https://github.com/owner/repo.git", "https://gitlab.com/group/sub/repo", "https://codeberg.org/owner/repo"]) {
+      expect({ url, refused: "code" in readPhoneSource(url) }).toEqual({ url, refused: false });
+    }
+  });
+});
+
+describe("the link git is given", () => {
+  test("gitLinkOf adds .git when the path has none, and leaves one that has it", () => {
+    const give = (url: string): string => {
+      const source = readPhoneSource(url);
+      if ("code" in source) throw new Error(url);
+      return gitLinkOf(source);
+    };
+    expect(give("https://github.com/owner/repo")).toBe("https://github.com/owner/repo.git");
+    expect(give("https://gitlab.com/group/repo")).toBe("https://gitlab.com/group/repo.git");
+    expect(give("https://gitlab.com/group/sub/repo")).toBe("https://gitlab.com/group/sub/repo.git");
+    expect(give("https://codeberg.org/owner/repo")).toBe("https://codeberg.org/owner/repo.git");
+    expect(give("https://gitlab.com/group/repo.git")).toBe("https://gitlab.com/group/repo.git");
+  });
+
+  test("the fetch seam gets the link with .git on each of the three hosts, and the answer shows the link as pasted", async () => {
+    for (const url of ["https://github.com/owner/repo", "https://gitlab.com/group/sub/repo", "https://codeberg.org/owner/repo", "https://gitlab.com/group/repo.git"]) {
+      const r = await rig("/nowhere");
+      const fetches: string[][] = [];
+      r.deps.git = async (args, opts) => {
+        r.calls.push({ args: [...args], env: opts.env });
+        if (args.includes("fetch")) fetches.push([...args]);
+        if (args.includes("fetch")) return { code: 128, stdout: new Uint8Array(0), stderr: "fatal: stop here", timedOut: false, capped: false };
+        return await spawnGit(args, opts);
+      };
+      const repo = new RepoIndexTricks(r.deps);
+      await repo.list({ rid: rid(), url });
+      expect(fetches).toHaveLength(1);
+      const want = url.endsWith(".git") ? url : `${url}.git`;
+      // After the `--` that ends the options, the link is the one git is given.
+      const after = fetches[0]?.slice((fetches[0]?.indexOf("--") ?? 0) + 1);
+      expect({ url, given: after?.[0] }).toEqual({ url, given: want });
+      expect(fetches[0]?.filter((a) => a.startsWith("https://"))).toEqual([want]);
+    }
+  });
+
+  test.if(posix)("a list and an add read through the .git link, and the origin and the reply keep the link as pasted", async () => {
+    const fx = await fixtureRepo(REPO);
+    const r = await rig(fx.bare);
+    const listed = await r.repo.list({ rid: rid(), url: LINK });
+    if (listed.status !== 200) throw new Error(JSON.stringify(listed.body));
+    expect(listed.body.url).toBe(LINK);
+    const fetch = r.calls.find((c) => c.args.includes("fetch"));
+    expect(fetch?.args).toContain(`${LINK}.git`);
+    expect(fetch?.args).not.toContain(LINK);
+    const added = await r.repo.add({ rid: rid(), url: LINK, folder: "idle-watch", commit: fx.sha });
+    expect(added.status).toBe(200);
+    const origin = parseOrigin(await readFile(join(tricksConfigDir(r.configDir), "idle-watch", ORIGIN_FILE), "utf8"));
+    expect(origin?.url).toBe(LINK);
+  });
+});
+
+describe.if(posix)("a git of a fetch has an empty home", () => {
+  test("every git run gets one temp HOME and CURL_HOME that is empty, is not the operator's, and is gone after", async () => {
+    const fx = await fixtureRepo(REPO);
+    const r = await rig(fx.bare);
+    const operatorHome = r.deps.env.HOME;
+    const seen: { home: string | undefined; curl: string | undefined; entries: string[] | null }[] = [];
+    const inner = r.deps.git;
+    if (inner === undefined) throw new Error("no seam");
+    r.deps.git = async (args, opts) => {
+      const home = opts.env.HOME;
+      seen.push({ home, curl: opts.env.CURL_HOME, entries: home === undefined ? null : await readdir(home).catch(() => null) });
+      return await inner(args, opts);
+    };
+    const repo = new RepoIndexTricks(r.deps);
+    expect((await repo.list({ rid: rid(), url: LINK })).status).toBe(200);
+    expect(seen.length).toBeGreaterThan(2);
+    for (const run of seen) {
+      expect(run.home).toBeDefined();
+      expect(run.home).not.toBe(operatorHome);
+      expect(run.curl).toBe(run.home);
+      expect(run.entries).toEqual([]);
+    }
+    expect(new Set(seen.map((s) => s.home)).size).toBe(1);
+    expect(await stat(seen[0]?.home ?? "/nonexistent").catch(() => null)).toBeNull();
+    // A second fetch gets its own.
+    const first = seen[0]?.home;
+    seen.length = 0;
+    expect((await repo.list({ rid: rid(), url: LINK })).status).toBe(200);
+    expect(seen[0]?.home).not.toBe(first);
+  });
+});
+
+describe.if(posix)("a git that hangs", () => {
+  test("is killed at the deadline, with the process it started, and the answer is a refusal", async () => {
+    const fx = await fixtureRepo(REPO);
+    const root = await tempDir();
+    const bin = join(root, "bin");
+    await mkdir(bin);
+    const pidFile = join(root, "hung.pid");
+    const real = Bun.which("git");
+    if (real === null) throw new Error("no git for the fixture");
+    // A git that does what git does, except `fetch`: that one starts a long sleep and hangs on it.
+    await writeFile(join(bin, "git"), `#!/bin/sh\nfor a in "$@"; do\n  if [ "$a" = fetch ]; then echo $$ > "$HUNG_PID"; exec sleep 60; fi\ndone\nexec ${real} "$@"\n`);
+    await chmod(join(bin, "git"), 0o755);
+    const r = await rig(fx.bare, { timeoutMs: 1500 });
+    const hung = new RepoIndexTricks({ ...r.deps, git: undefined, allowFile: false, now: undefined, env: { PATH: `${bin}:/usr/bin:/bin`, HOME: join(root, "home"), HUNG_PID: pidFile } });
+    const started = Date.now();
+    const answer = await hung.list({ rid: rid(), url: LINK });
+    const took = Date.now() - started;
+    expect(took).toBeLessThan(20_000);
+    expect(answer.status).not.toBe(200);
+    expect("error" in answer.body && answer.body.error).toBe("unreachable");
+    const pid = Number((await readFile(pidFile, "utf8")).trim());
+    expect(pid).toBeGreaterThan(1);
+    let alive = true;
+    try {
+      process.kill(pid, 0);
+    } catch {
+      alive = false;
+    }
+    expect(alive).toBe(false);
+    // The slot is free and the temp folder went.
+    expect((await readdir(tricksStateDir(r.stateDir)).catch(() => [])).filter((n) => n.startsWith(REPO_FETCH_PREFIX))).toEqual([]);
   });
 });
