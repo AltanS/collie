@@ -1024,3 +1024,57 @@ describe("`on` and `watch` are rights", () => {
     r.service.stop();
   });
 });
+
+// ── One scan at bridge start (the lead, 2026-11-17): reacting tricks and the local API stand with no phone ──
+
+describe("the scan at bridge start", () => {
+  test("a reacting trick on and no phone: one scan, its start run, the socket count told, and an event runs it", async () => {
+    const told: number[] = [];
+    const r = await rig([OK], { onSwitchedOnCount: (count) => told.push(count) });
+    await makeTrick(r.configDir, "react", ON_MANIFEST());
+    await switchOn(r.stateDir, "react");
+    // No noteWatched: no phone has looked since the bridge started.
+    await r.service.boot();
+    expect(kinds(r)).toEqual(["start"]);
+    expect(told).toEqual([1]);
+    r.clock.t = T0 + REACT_FLOOR_MS + 1;
+    r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
+    await tick(50);
+    expect(kinds(r)).toEqual(["start", "event"]);
+    r.service.stop();
+  });
+
+  test("no trick on: no scan, no run, and no socket count told", async () => {
+    const told: number[] = [];
+    const r = await rig([OK], { onSwitchedOnCount: (count) => told.push(count) });
+    await makeTrick(r.configDir, "react", ON_MANIFEST());
+    await r.service.boot();
+    expect(r.specs).toHaveLength(0);
+    expect(told).toEqual([]);
+    r.service.stop();
+  });
+
+  test("a trick that only runs on its timer gets the scan but no start run: it still waits for a phone", async () => {
+    const told: number[] = [];
+    const r = await rig([OK], { onSwitchedOnCount: (count) => told.push(count) });
+    await makeTrick(r.configDir, "timed", `id = "timed"\nname = "Timed"\nrun = "./t.sh"\nplaces = ["belt"]\nevery = "1m"\n`);
+    await switchOn(r.stateDir, "timed");
+    await r.service.boot();
+    expect(r.specs).toHaveLength(0);
+    expect(told).toEqual([1]);
+    r.service.stop();
+  });
+
+  test("where tricks do not run (a crew peer, a deputy) or behind the Windows gate: nothing", async () => {
+    for (const extra of [{ active: () => false }, { platform: "win32" as const }]) {
+      const told: number[] = [];
+      const r = await rig([OK], { ...extra, onSwitchedOnCount: (count) => told.push(count) });
+      await makeTrick(r.configDir, "react", ON_MANIFEST());
+      await switchOn(r.stateDir, "react");
+      await r.service.boot();
+      expect(r.specs).toHaveLength(0);
+      expect(told).toEqual([]);
+      r.service.stop();
+    }
+  });
+});

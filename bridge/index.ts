@@ -4273,6 +4273,9 @@ const tricks =
       });
 onRepoFacts = () => tricks?.repoFactsMoved();
 tricks?.start();
+// One scan at start, where a trick is on and tricks run here, so reacting tricks and the local API stand
+// without a phone's look (TricksService.boot). It never throws.
+void tricks?.boot();
 
 // The official list (bridge/tricks/official-install.ts): what this release can add with a tap, and the
 // add itself, in the runner's lane. Nothing is fetched until the person taps Add.

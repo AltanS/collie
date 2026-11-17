@@ -715,6 +715,35 @@ export class TricksService implements TricksSurface {
     this.timer.unref?.();
   }
 
+  /**
+   * ONE SCAN AT BRIDGE START, so a trick that reacts (`on`, `watch`) and the local API stand without a
+   * phone's look (the lead, 2026-11-17). Only where it is needed: never while the Windows gate is closed,
+   * never where tricks do not run (`deps.active` false: a crew peer, a deputy, a deposed lead), and only
+   * when the switch file holds a trick that is on. Then one forced scan (it also tells the switched-on
+   * count, which opens the local API), and the start run of each trick that reacts, since a trick takes
+   * no event before its start run. A trick that only runs on its timer still waits for a phone, as
+   * before. One scan, not a loop: a failure is logged once, and the next phone look scans as today.
+   * Resolves when the start runs it began are done, which is what a test waits on.
+   */
+  async boot(): Promise<void> {
+    if (this.gated() || this.deps.active?.() === false) return;
+    try {
+      const switches = await this.readSwitches();
+      if (switches.on.size === 0) return;
+      await this.refresh(true);
+      const now = this.now();
+      const started: Promise<void>[] = [];
+      for (const rt of this.runtimes.values()) {
+        const manifest = rt.approved?.found.manifest;
+        const reacts = (manifest?.on?.length ?? 0) > 0 || (manifest?.watch?.length ?? 0) > 0;
+        if (reacts && rt.pendingStart && this.due(rt, now)) started.push(this.begin(rt, { kind: "start" }, null));
+      }
+      await Promise.all(started);
+    } catch (err) {
+      this.warn(`the scan at start failed, the next phone look scans: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   stop(): void {
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
