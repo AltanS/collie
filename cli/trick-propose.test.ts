@@ -16,7 +16,7 @@ import { PROPOSE_LINE_PREFIX, WALKY_LINE_MAX } from "../bridge/walky/parse.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { spaceOf } from "../bridge/walky/space.ts";
 import { PROPOSE_LINE_MS, PROPOSE_LINES_MAX, walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
-import { MANIFEST_KEYS, PLACE_KINDS } from "../web/src/lib/tricks/schema.ts";
+import { MANIFEST_KEYS, PLACE_KINDS, TRICKS_OFF_LINE } from "../web/src/lib/tricks/schema.ts";
 import { asJsonObject, parseJsonObject } from "../web/src/lib/json.ts";
 import { capture, context } from "./fakes.ts";
 import type { HillDeps } from "./hill.ts";
@@ -388,6 +388,14 @@ describe("collie trick propose, over the walky socket", () => {
       "propose: request id 0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f",
     ]);
     expect(PROPOSE_ADDED_HERE_HINT).toBe("Copy the folder outside the tricks folder and propose the copy, or ask the person to switch it on.");
+  });
+
+  socketTest("tricks switched off: the bridge's off sentence is printed, nothing is proposed, and it exits STATE", async () => {
+    const b = await bridge(async () => ({ ok: false, code: "no_tricks", error: TRICKS_OFF_LINE }));
+    const d = deps([walkySocketPath(b.stateDir)]);
+    expect(await cmdTrickPropose(d, [trickFolder()])).toBe(EXIT.STATE);
+    expect(d.io.stdout).toEqual([]);
+    expect(d.io.stderr).toEqual([`propose: ${TRICKS_OFF_LINE}`, "propose: request id 0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f"]);
   });
 
   socketTest("a bridge without proposals answers unknown, and the CLI says so", async () => {

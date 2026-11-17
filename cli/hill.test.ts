@@ -28,6 +28,7 @@ import {
   cmdHillList,
   cmdHillPost,
   cmdHillStatus,
+  cmdHillOn,
   cmdHillSwitch,
   cmdHillWithdraw,
   durationMs,
@@ -467,6 +468,19 @@ describe("the Hill's switch", () => {
     const bad = { ...own, io: capture() };
     expect(cmdHillSwitch(bad, "on", ["now"])).toBe(EXIT.USAGE);
     expect(bad.io.stderr[0]).toBe("error: unknown argument `now`");
+  });
+
+  test("hill on in an agent's pane is refused with the person-only sentence and writes nothing; a shell pane writes", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "hill-switch-"));
+    cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }));
+    const ctx = context({ HERDR_PANE_ID: "w1:p2", HERDR_SOCKET_PATH: "/run/user/1000/herdr.sock" }, { stateDir });
+    const agent = { ctx, now: () => 1000, followSkill: null, paneKind: async () => "agent" as const, io: capture() };
+    expect(await cmdHillOn(agent, [])).toBe(EXIT.REFUSED);
+    expect(agent.io.stderr[0]).toBe("error: collie hill on is your person's choice, and this runs in a pane where an agent works.");
+    expect(readHillSwitch(stateDir).on).toBe(false);
+    const shell = { ...agent, paneKind: async () => "shell" as const, io: capture() };
+    expect(await cmdHillOn(shell, [])).toBe(EXIT.OK);
+    expect(readHillSwitch(stateDir).on).toBe(true);
   });
 
   test("the WalkyTalky skill follows a real change only, and a sync fault is one line that does not change the exit (M96 spec 12)", () => {
