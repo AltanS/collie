@@ -1018,3 +1018,63 @@ describe("a trick that gives agents instructions (contract 2)", () => {
     expect(openCards(l)).toEqual([]);
   });
 });
+
+describe("package I: the card in the session that proposed it, switched on with one answer", () => {
+  test("propose in a session ties the card to that pane and says where it is: the session, and the Hill only while it is on", async () => {
+    const on = await lead();
+    const p = proposal("legs");
+    const answer = await on.proposals.propose(p, AGENT);
+    expect(answer).toMatchObject({ ok: true, where: { session: true, hill: true } });
+    expect(openCards(on)[0]?.replyTo).toBe("workshop/%3#abcd");
+    // The same files again (a retry) say the same place.
+    expect(await on.proposals.propose(proposal("legs", "console.log(1)\n", { rid: p.requestId }), AGENT)).toMatchObject({ ok: true, where: { session: true, hill: true } });
+    const off = await lead({ hillOff: true });
+    expect(await off.proposals.propose(proposal("legs"), AGENT)).toMatchObject({ ok: true, where: { session: true, hill: false } });
+    // A terminal has no session: its card is in Settings, Tricks only.
+    const term = await lead({ hillOff: true });
+    expect(await term.proposals.propose(proposal("legs"), TERMINAL)).toMatchObject({ ok: true, where: { session: false, hill: false } });
+    expect(openCards(term)[0]?.replyTo).toBeNull();
+  });
+
+  test("the yes carries the hash the card showed: exactly those bytes go on; a stale hash is refused in one sentence and nothing is written", async () => {
+    const l = await lead({ hillOff: true });
+    const p = proposal("legs");
+    await l.proposals.propose(p, AGENT);
+    const [card] = openCards(l);
+    const request = { rid: nextRid(), node: `hill/${card!.id}`, intent: "on", value: { text: null } };
+    const stale = await l.hill.answer({ ...request, group: { digest: "0".repeat(64), opened: [1] } }, card!.id, "Pixel 9");
+    expect(stale.kind === "receipt" && stale.receipt).toMatchObject({ code: "rejected", reason: HILL_GROUP_CHANGED, state: "open" });
+    expect(HILL_GROUP_CHANGED.split(". ").length).toBeLessThanOrEqual(2);
+    expect(await listed(l)).toEqual([]);
+    const yes = await l.hill.answer({ ...request, rid: nextRid(), group: { digest: p.hash, opened: [1] } }, card!.id, "Pixel 9");
+    expect(yes.kind === "receipt" && yes.receipt).toMatchObject({ code: "ok", state: "answered" });
+    expect((await l.service.reply(undefined)).tricks.find((t) => t.id === "legs")).toMatchObject({ on: true });
+  });
+
+  test("the same request id twice switches on once and answers the same receipt", async () => {
+    const l = await lead();
+    const p = proposal("legs");
+    await l.proposals.propose(p, AGENT);
+    const [card] = openCards(l);
+    const request = { rid: nextRid(), node: `hill/${card!.id}`, intent: "on", value: { text: null }, group: { digest: p.hash, opened: [1] } };
+    const first = await l.hill.answer(request, card!.id, "Pixel 9");
+    const sentAfterFirst = l.sent.length;
+    const second = await l.hill.answer(request, card!.id, "Pixel 9");
+    expect(first.kind === "receipt" && first.receipt.code).toBe("ok");
+    expect(second.kind === "receipt" ? second.receipt : null).toEqual(first.kind === "receipt" ? first.receipt : null);
+    // Typed once, installed once.
+    expect(l.sent.length).toBe(sentAfterFirst);
+    expect(await listed(l)).toEqual(["legs"]);
+  });
+
+  test("no agent door reaches the yes: the answer route needs the write right, the walky socket has no answer op, the local API only reads", async () => {
+    const server = await readFile(join(import.meta.dir, "..", "server.ts"), "utf8");
+    const route = server.slice(server.indexOf('if (pathname === "/api/hill/answer" && req.method === "POST")'));
+    expect(route.slice(0, 200)).toContain('browserGate("write")');
+    const socket = await readFile(join(import.meta.dir, "..", "walky", "socket.ts"), "utf8");
+    expect(socket).not.toContain('"hill.answer"');
+    expect(socket).not.toContain('"trick.on"');
+    const { DECLARED } = await import("../api/operations.ts");
+    for (const op of Object.values(DECLARED)) expect([op.name, op.kind, op.right]).toEqual([op.name, "read", "look"]);
+  });
+});

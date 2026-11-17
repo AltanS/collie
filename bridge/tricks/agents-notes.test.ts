@@ -26,12 +26,12 @@ function cardText(manifest: TrickManifest, files: Record<string, string>): strin
 describe("the notes init writes", () => {
   test("their text is pinned to NOTES_VERSION: a change to the text bumps the version and this hash", () => {
     const hash = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft)).digest("hex").slice(0, 16);
-    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 2, hash: "0d345a22caaa582f", draft: "1d39cfe8d79174fe" });
+    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 3, hash: "0d345a22caaa582f", draft: "de7dfc2e1ad0cabe" });
   });
 
-  test("v2 (M96 spec 14): a draft's last step names where the person reads it, and never says the Hill must be on", () => {
+  test("v3 (package I): a draft's last step names where the card is, the session first, and never says the Hill must be on", () => {
     const text = sampleAgents("legs", "sh", true);
-    expect(text).toContain("They read it on the Hill, or in\n   Settings, Tricks, while the Hill is off.");
+    expect(text).toContain("Its card shows in this session on the\n   phone and in Settings, Tricks (on the Hill too, while it is on).");
     expect(text).not.toContain("send this draft to the Hill");
     expect(text).not.toMatch(/switch (the Hill|it) on/iu);
   });
@@ -40,7 +40,8 @@ describe("the notes init writes", () => {
     const v1 = sampleAgents("legs", "sh", true, 1);
     expect(v1).toContain("send this draft to the Hill");
     expect(shippedNotesVersion("legs", v1)).toBe(1);
-    expect(shippedNotesVersion("legs", sampleAgents("legs", "sh", true))).toBe(2);
+    expect(shippedNotesVersion("legs", sampleAgents("legs", "sh", true, 2))).toBe(2);
+    expect(shippedNotesVersion("legs", sampleAgents("legs", "sh", true))).toBe(3);
     expect(shippedNotesVersion("legs", "# Legs\n")).toBeNull();
     const text = cardText(SH, { "trick.toml": 'id = "legs"\n', "program.sh": PROGRAM_SH, [NOTES_FILE]: v1 });
     expect(text).toContain(helperNote({ what: "notes", version: 1 }));

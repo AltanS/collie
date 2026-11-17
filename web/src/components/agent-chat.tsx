@@ -56,6 +56,7 @@ import { AnsiOutput } from "@/components/ansi-output";
 import { OutputZoom } from "@/components/output-zoom";
 import { CardDock, dockFits, hasDialogCard } from "@/components/card-dock";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
+import { SessionTrickCards } from "@/components/session-trick-card";
 import { HookHoldCard } from "@/components/hook-hold-card";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
 import { AgentsFooter } from "@/components/agents-footer";
@@ -3380,6 +3381,9 @@ export function AgentChat({
               onExit={() => raiseExit(holdExitKey(agent.hold?.askId ?? ""), "error")}
             />
           )}
+          {/* A trick this session proposed (package I): Collie's own card, where the docked cards sit, so the
+              person reads it and switches it on where they talk to the agent (session-trick-card.tsx). */}
+          {agent !== undefined && <SessionTrickCards self={walkySelf} />}
           {display && olderMemberCards && hasDialogCard(blocks) && (
             <div className="px-3 pb-1">
               <Notice tone="neutral" variant="box">

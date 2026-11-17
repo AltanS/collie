@@ -376,6 +376,7 @@ export function DecisionCard({
   playgroundCard,
   initialDraft = "",
   onDraft,
+  localDecline,
 }: {
   decision: HillDecision;
   answer: HillAnswerState;
@@ -392,6 +393,12 @@ export function DecisionCard({
   initialDraft?: string;
   /** Told the field's words on every change, so they outlive the card (lib/hill/store.ts `noteHillDraft`). */
   onDraft?: (text: string) => void;
+  /**
+   * A decline that stays on this phone (package I, the card in a proposal's session): the option with this
+   * intent runs `run` and sends nothing, and the Dismiss button is not drawn, so no tap in that place ends
+   * the proposal. Absent: every option and Dismiss answer the bridge, as on the Hill.
+   */
+  localDecline?: { intent: string; run: () => void };
 }) {
   useLocale();
   const [draft, setDraft] = useState(initialDraft);
@@ -455,6 +462,11 @@ export function DecisionCard({
   }
 
   function choose(option: HillOption) {
+    if (localDecline !== undefined && option.intent === localDecline.intent && !locked) {
+      disarm();
+      localDecline.run();
+      return;
+    }
     if (optionsBlocked) return;
     if (option.confirm !== undefined) {
       if (tap(`option:${option.intent}`) !== "fire") return;
@@ -780,6 +792,7 @@ export function DecisionCard({
         ) : (
           <span className="flex-1" />
         )}
+        {localDecline === undefined && (
         <Button
           type="button"
           variant="ghost"
@@ -807,6 +820,7 @@ export function DecisionCard({
             ]}
           />
         </Button>
+        )}
       </div>
     </Card>
   );

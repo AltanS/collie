@@ -279,8 +279,10 @@ collie trick propose ~/work/idle-watch
 
 `propose` takes the draft from the agent's own work folder, such as the `./<id>/` that `init` made.
 It adds nothing to this machine's tricks. `propose` runs the same check as `collie trick check`, then sends the files to the person as a
-card, "Switch on the trick idle-watch?". The person reads it on the Hill, or in Settings, Tricks,
-while the Hill is off. It leaves dot files, `node_modules/`, logs, `inputs/`,
+card, "Switch on the trick idle-watch?". The card shows in the agent's own session on the phone, and
+in Settings, Tricks under "Waiting for your yes", and on the Hill too while the Hill is on. One tap on
+Switch it on approves exactly the code the card showed and switches the trick on. Not now closes the
+card in the session, and the trick still waits in Settings, Tricks. It leaves dot files, `node_modules/`, logs, `inputs/`,
 `media/`, `captures/` and `config.toml` behind. It prints the card's id. Read the answer with
 `collie hill status <id>`, or wait for it as a message. The message says what happened: the trick is
 installed and on, or the person declined and nothing was installed.

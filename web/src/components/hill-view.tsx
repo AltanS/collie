@@ -421,7 +421,7 @@ export function HillView({
  * A card wired to the bridge: its answer state and its send come from `useHillAnswer`, the machine's
  * tint from the crew roster (none on a solo install), and a trick's icon from the tricks list.
  */
-export function LiveDecisionCard({ decision }: { decision: HillDecision }) {
+export function LiveDecisionCard({ decision, localDecline }: { decision: HillDecision; localDecline?: { intent: string; run: () => void } }) {
   const { state, send } = useHillAnswer(decision.id);
   const { servers } = useCrew();
   const { tricks } = useTricksState();
@@ -436,6 +436,7 @@ export function LiveDecisionCard({ decision }: { decision: HillDecision }) {
       trickIcon={trickIcon}
       initialDraft={hillDraft(decision.id)}
       onDraft={(text) => noteHillDraft(decision.id, text)}
+      localDecline={localDecline}
     />
   );
 }
