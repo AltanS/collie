@@ -523,7 +523,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
     expect(onAnswerDialog).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole("button", { name: "Type here" }));
+    await user.click(screen.getByRole("button", { name: "Send here" }));
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
     expect(recordedSends().map(({ text, mode, rowsHash }) => ({ text, mode, rowsHash }))).toEqual([
       { text: "carry on please", mode: "send", rowsHash: undefined },
@@ -553,7 +553,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     const user = await typeAndSend("ls -la");
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/could not find the input box/i));
     expect(screen.queryByRole("button", { name: "Answer the dialog" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Type here" }));
+    await user.click(screen.getByRole("button", { name: "Send here" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(2));
     expect(recordedSends()[1]!.rowsHash).toBe("77aa00");
   });
@@ -695,7 +695,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/cannot read this screen/i));
-    expect(screen.getByRole("button", { name: "Type here" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send here" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Answer the dialog" }));
     expect(onAnswerDialog).toHaveBeenCalledTimes(1);
     // Only the first tap went out, and it typed nothing: the bridge refused before any key.
@@ -729,7 +729,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     await user.click(screen.getByRole("button", { name: "Hide this notice" }));
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull());
     // The offers stay: the ✕ hid only the notice.
-    expect(screen.getByRole("button", { name: "Type here" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send here" })).toBeInTheDocument();
 
     // The same words over the same screen stay hidden; a send that reads another screen shows again.
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -753,7 +753,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
 
     await user.click(screen.getByRole("button", { name: "Hide this notice" }));
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull());
-    expect(screen.queryByRole("button", { name: "Type here" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send here" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(2));
@@ -767,10 +767,10 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     const { container } = renderWithContainer({ surface: unreadable });
     await user.type(screen.getByRole("textbox"), "carry on please");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Type here" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send here" })).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: "Dismiss the send offers" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Type here" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Send here" })).toBeNull());
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toBeNull());
   });
 
@@ -969,7 +969,7 @@ describe("Composer: password prompt", () => {
     await waitFor(() => expect(screen.getByText("[sudo] password for altan:")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /use type/i })).toBeInTheDocument();
     // The two-tap Send is untouched: a false positive costs a dismissal, not an action.
-    expect(screen.getByRole("button", { name: "Type here" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send here" })).toBeInTheDocument();
     expect(recordedSends()).toHaveLength(1);
   });
 
@@ -5428,7 +5428,7 @@ describe("the cap (M56 spec 09)", () => {
     server.use(...capBridge(false));
     renderWithContainer({ surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
-    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await user.click(await screen.findByRole("button", { name: "Send here" }));
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
     expect(recordedSends().map(({ rowsHash, capAck }) => ({ rowsHash, capAck }))).toEqual([{ rowsHash: undefined, capAck: undefined }, { rowsHash: "0f00ba", capAck: undefined }]);
   });
@@ -5437,13 +5437,13 @@ describe("the cap (M56 spec 09)", () => {
     server.use(...capBridge(true));
     const { container } = renderWithContainer({ surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
-    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await user.click(await screen.findByRole("button", { name: "Send here" }));
 
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/on agent 2\.1\.301 5 times today/i));
     // The phone's own words stand in the notice, not the bridge's English.
     expect(container.querySelector('[data-slot="composer-refusal"]')).not.toHaveTextContent(/bridge's own english/i);
     expect(screen.getByRole("textbox")).toHaveValue("carry on please");
-    expect(screen.queryByRole("button", { name: "Type here" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send here" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Confirm and type" }));
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
@@ -5464,7 +5464,7 @@ describe("the cap (M56 spec 09)", () => {
     );
     const { container } = renderWithContainer({ surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
-    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await user.click(await screen.findByRole("button", { name: "Send here" }));
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent("on agent 5 times today"));
     expect(container.querySelector('[data-slot="composer-refusal"]')?.textContent).not.toMatch(/agent -|\s{2}/u);
   });
@@ -5473,7 +5473,7 @@ describe("the cap (M56 spec 09)", () => {
     server.use(...capBridge(true));
     renderWithContainer({ surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
-    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await user.click(await screen.findByRole("button", { name: "Send here" }));
     await screen.findByRole("button", { name: "Confirm and type" });
     // The field, the Send button and the Keys board are all still there, enabled, with the draft kept.
     expect(screen.getByRole("textbox")).toBeEnabled();
@@ -5486,7 +5486,7 @@ describe("the cap (M56 spec 09)", () => {
     server.use(...capBridge(true));
     renderWithContainer({ surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
-    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await user.click(await screen.findByRole("button", { name: "Send here" }));
     await screen.findByRole("button", { name: "Confirm and type" });
     await user.click(screen.getByRole("button", { name: "Dismiss the send offers" }));
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -6352,6 +6352,36 @@ describe("the unread card (M102 spec 03)", () => {
     await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/after words that were already there\. Collie pressed no Enter/u));
   });
 
+  it("unread card: an override whose text was already in the box says nothing was typed again, and opens the pad", async () => {
+    server.use(
+      ...sendHandler((request) =>
+        request.mode === "prepare"
+          ? sendAnswer(request.id, null, undefined, { rowsHash: "0ccc08" })
+          : sendAnswer(request.id, "typed_not_submitted", "override", { offers: ["keys"], surface: UNREAD, textAlreadyTyped: true }),
+      ),
+    );
+    const user = userEvent.setup();
+    const { handle } = renderUnread(null);
+    act(() => handle.current?.typeAnyway());
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    await user.type(screen.getByRole("textbox"), "yes please");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toBe("This text was already in the agent's box, so nothing was typed again. Press Enter on the Keys pad."));
+    expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("where the manual Send is open, the notice and its button say Send here, never Type (the lead's decision)", async () => {
+    const manual: Surface = { revision: 3, turn: "idle", modal: "unknown", composer: "empty" };
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0aaa09", surface: manual })));
+    const user = userEvent.setup();
+    renderUnread(null, { surface: manual });
+    await user.type(screen.getByRole("textbox"), "carry on");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toBe("Collie could not find the input box. Collie cannot read this screen. Check the pane, then tap Send here: it types your text and presses Enter."));
+    expect(screen.getByRole("button", { name: "Send here" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Type here" })).toBeNull();
+  });
+
   it("unread card: an override the screen moved under says so and stays armed on the screen now", async () => {
     server.use(
       ...sendHandler((request) =>
@@ -6399,7 +6429,7 @@ describe("the unread card (M102 spec 03)", () => {
     await user.click(screen.getByRole("button", { name: "Send the code" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(1));
     await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')).not.toBeNull());
-    expect(screen.queryByRole("button", { name: "Type here" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send here" })).toBeNull();
   });
 
   it("unread card: a refusal whose step is the screen asks the pane to show the card", async () => {
@@ -6417,6 +6447,8 @@ describe("the cannot tell card (M102 spec 04)", () => {
   const SENTENCE = "Collie cannot tell if this arrived. Look at the screen.";
   const WAITING = "Collie is waiting for the agent's own word that it arrived. Send again turns on when the wait ends.";
   const FAILED = "Collie could not record that. Try again, or clear the draft yourself.";
+  const SETTLED = "Collie already knows how this send ended, so there is nothing to record. Look at the screen.";
+  const UNKNOWN_HERE = "This machine cannot record that. Look at the screen to see whether it arrived.";
   const SCREEN = splitLines(parseAnsi("  I found three notes in the sample list.\n\n  Working on it. One moment."));
   const SIGN_IN: Surface = { revision: 3, turn: "idle", modal: "none", composer: "empty", field: "secret" };
   const UNKNOWN = (id: string, parts: Parameters<typeof sendAnswer>[3] = {}) => sendAnswer(id, "unknown", "no_evidence", { offers: ["keys"], ...parts });
@@ -6449,7 +6481,8 @@ describe("the cannot tell card (M102 spec 04)", () => {
                     lines: SCREEN,
                     wrap: true,
                     ring,
-                    onArrived: () => handle.current?.markArrived() ?? Promise.resolve(false),
+                    onArrived: () => handle.current?.markArrived() ?? Promise.resolve("failed"),
+                    onClose: () => handle.current?.closeCannotTell(),
                     onAgain: () => handle.current?.answerAgain(),
                   }
             }
@@ -6527,6 +6560,27 @@ describe("the cannot tell card (M102 spec 04)", () => {
     expect(screen.getByRole("textbox")).toHaveValue("run the sample check");
   });
 
+  it("cannot tell: a send the bridge stopped mid-way says the text may be in the box, and a screen reader hears it (M102 spec 16)", async () => {
+    server.use(...sendHandler((request) => sendAnswer(request.id, "unknown", "interrupted", { offers: ["keys"] })));
+    const user = userEvent.setup();
+    renderCannotTell();
+    await user.type(screen.getByRole("textbox"), "run the sample check");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    const words = "Collie stopped while it typed this. Your text may be in the box without Enter. Look at the screen.";
+    expect(await screen.findByRole("group", { name: words })).toBeInTheDocument();
+    expect(card()?.querySelector('[role="status"]')?.textContent).toBe(words);
+    expect(noticeShown()).toBe(false);
+  });
+
+  it("cannot tell: the card's sentence is a live region, so the notice it stands in for is still heard", async () => {
+    bridge();
+    const user = userEvent.setup();
+    renderCannotTell();
+    await sendUnknown(user);
+    const live = card()?.querySelector('[role="status"]');
+    expect(live?.textContent).toBe("Collie cannot tell if this arrived. Look at the screen.");
+  });
+
   it("cannot tell: a host with no card keeps today's notice and its second-tap question", async () => {
     bridge();
     const user = userEvent.setup();
@@ -6568,9 +6622,9 @@ describe("the cannot tell card (M102 spec 04)", () => {
     expect(screen.queryByRole("button", { name: "Undo clear" })).toBeNull();
   });
 
-  it("cannot tell: a mark the bridge refuses keeps the card and the draft, says so in the card's line, and takes another tap", async () => {
+  it("cannot tell: a mark that fails on the way keeps the card and the draft, says so in the card's line, and takes another tap", async () => {
     let refuse = true;
-    const arrivals = bridge({ arrived: () => (refuse ? new HttpResponse("this send did not end unknown", { status: 409 }) : HttpResponse.json({ word: "arrived" })) });
+    const arrivals = bridge({ arrived: () => (refuse ? new HttpResponse("bridge down", { status: 500 }) : HttpResponse.json({ word: "arrived" })) });
     const user = userEvent.setup();
     renderCannotTell();
     await sendUnknown(user);
@@ -6583,6 +6637,36 @@ describe("the cannot tell card (M102 spec 04)", () => {
     await user.click(screen.getByRole("button", { name: "It arrived" }));
     await waitFor(() => expect(card()).toBeNull());
     expect(arrivals).toHaveLength(2);
+  });
+
+  it("cannot tell: a receipt that did not end unknown (409) is final: the card says so, offers Close, and never Try again (the M102 review, K)", async () => {
+    const arrivals = bridge({ arrived: () => new HttpResponse("this send did not end unknown", { status: 409 }) });
+    const user = userEvent.setup();
+    renderCannotTell();
+    await sendUnknown(user);
+    await user.click(screen.getByRole("button", { name: "It arrived" }));
+    expect(await screen.findByText(SETTLED)).toBeInTheDocument();
+    expect(screen.queryByText(FAILED)).toBeNull();
+    expect(screen.queryByRole("button", { name: "It arrived" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(card()).toBeNull());
+    // Close ends the question only: the draft stays, and nothing more was sent or marked.
+    expect(screen.getByRole("textbox")).toHaveValue("run the sample check");
+    expect(arrivals).toHaveLength(1);
+    expect(recordedSends()).toHaveLength(1);
+  });
+
+  it("cannot tell: an older member that does not know the mark (404) is final: the card says so and offers Close (the M102 review, K)", async () => {
+    const arrivals = bridge({ arrived: () => new HttpResponse("not found", { status: 404 }) });
+    const user = userEvent.setup();
+    renderCannotTell();
+    await sendUnknown(user);
+    await user.click(screen.getByRole("button", { name: "It arrived" }));
+    expect(await screen.findByText(UNKNOWN_HERE)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "It arrived" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(card()).toBeNull());
+    expect(arrivals).toHaveLength(1);
   });
 
   it("cannot tell: Send on the unchanged draft sends nothing, rings the card for 1600 ms, and brings it into view", async () => {

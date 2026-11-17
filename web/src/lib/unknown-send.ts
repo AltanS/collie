@@ -44,6 +44,8 @@ export function findUnknownSendMatch(
   entries: readonly TranscriptEntry[],
 ): TranscriptEntry | undefined {
   const wanted = normalizePrompt(pending.sentText);
+  // A send kept with no text (a sign-in code, which is never kept) has nothing to be recognised by.
+  if (wanted === "") return undefined;
   return entries.find((entry) => {
     if (entry.role !== "user" || entry.abandoned === true || entry.requestId !== undefined) return false;
     if (pending.seenUserUuids.has(entry.uuid)) return false;

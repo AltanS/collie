@@ -44,6 +44,7 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type StyledLine } from "@/lib/blocks";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
 import type { HeldRow, SendMode, SendOffer, SendRequestBody, SendWhen } from "@/lib/surface/send";
+import { takesManualSend } from "@/lib/surface/send";
 import { Notice } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
@@ -123,7 +124,7 @@ import { findUnknownSendMatch, type UnknownSend } from "@/lib/unknown-send";
 import { clearNotice, phoneRefusal, readingRefusal, RefusalActions, refusalKey, SendRefusalNotice, stepLabel, stopNotice, type SendRefusal } from "@/components/send-notice";
 import { mintRequestId } from "@/lib/worktree-name";
 import { Icon } from "@/components/icons/icon";
-import type { CannotTellFacts } from "@/components/cannot-tell-card";
+import type { ArrivedAnswer, CannotTellFacts } from "@/components/cannot-tell-card";
 
 /** The status line a verified send leaves, by where the text went. */
 const STATUS_KEY = {
@@ -140,12 +141,37 @@ const STATUS_KEY = {
  * an override typed after words already in the agent's box (`draftSeen`), and an override the screen
  * moved under, which comes back armed on the screen now (M102 spec 12).
  */
-function refusalSentence(sentence: string, facts: { returnedDraft: boolean; note: SendNote; draftSeen: boolean; overrideMoved: boolean }): string {
+function refusalSentence(
+  sentence: string,
+  facts: { returnedDraft: boolean; note: SendNote; draftSeen: boolean; overrideMoved: boolean; alreadyTyped: boolean; manualSends: boolean },
+): string {
   if (facts.returnedDraft && facts.note === "draft") return translate("composer.protocol.draftIsReturned");
+  // The box already held this text: nothing typed again, no key (spec 12, the lead's decision 2026-11-17).
+  if (facts.alreadyTyped) return translate("composer.protocol.alreadyTyped");
   if (facts.note === "overrideTyped" && facts.draftSeen) return translate("composer.protocol.overrideTypedDraft");
   if (facts.overrideMoved) return translate("composer.protocol.overrideMoved");
+  // Where the manual Send is open, the next tap types AND submits: the button reads Send here, so a sentence
+  // that names the button names it so. Only the plain sentences: a cause's own words stay as they are.
+  if (facts.manualSends) return sendsForm(sentence);
   return sentence;
 }
+
+/**
+ * The Send form of a sentence that ends on "Type here", for a screen whose manual Send submits; else as
+ * it is. The note is the sentence's END: `answerSentence` puts what Collie saw on the screen before it.
+ */
+function sendsForm(sentence: string): string {
+  for (const [plain, sends] of SENDS_FORMS) {
+    const ending = translate(plain);
+    if (sentence.endsWith(ending)) return sentence.slice(0, sentence.length - ending.length) + translate(sends);
+  }
+  return sentence;
+}
+
+const SENDS_FORMS = [
+  ["composer.protocol.unconfirmed", "composer.protocol.unconfirmedSends"],
+  ["composer.protocol.noticeKey", "composer.protocol.noticeKeySends"],
+] as const;
 
 function verifiedNote(note: SendNote, when: SendWhen | undefined): keyof typeof STATUS_KEY {
   if (note === "steered" || note === "held") return note;
@@ -178,7 +204,9 @@ export interface ComposerHandle {
    * kept draft through the belt's own clear (so "Undo clear" shows) and ends the card. Resolves false when the bridge
    * could not record it, and nothing else changes.
    */
-  markArrived: () => Promise<boolean>;
+  markArrived: () => Promise<ArrivedAnswer>;
+  /** The "cannot tell" card's Close after a final answer to "It arrived": the question ends; nothing is sent or cleared. */
+  closeCannotTell: () => void;
   /**
    * The "cannot tell" card's second button: Send again (a new request through the whole Send Protocol, no "Send it
    * again?" asked on top), or for a sign-in code Enter it again (the field opens empty, nothing is restored).
@@ -189,6 +217,11 @@ export interface ComposerHandle {
    * through the Send Protocol, never a draft, so the box keeps whatever the person is typing. Resolves true when it went.
    */
   sendLine: (line: string) => Promise<boolean>;
+  /**
+   * Whether a `sendLine` could start now (the M102 review, G): false raises the composer's notice with the reason and
+   * sends nothing, so a caller that would drop something first (the queued card) keeps it.
+   */
+  lineCanStart: () => boolean;
 }
 
 /** A tap in an agent view: the screen's rev and the control path the bridge reads, and the words it names (display only). */
@@ -210,6 +243,10 @@ export interface ViewSendResult {
   /** The bridge's refusal code before the Send Protocol (`stale_view`, `busy`...), or null. */
   readonly code: string | null;
 }
+
+/** The last send from this composer, for Send again. A sign-in code names no text: it is never kept. */
+type LastSend = { readonly secret: false; readonly value: string; readonly isDraft: boolean } | { readonly secret: true };
+const SECRET_SEND: LastSend = { secret: true };
 
 interface ComposerProps {
   paneId: string;
@@ -936,13 +973,29 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // WHAT THE "CANNOT TELL" CARD IS ABOUT (M102 spec 04): the request id of the `unknown` send, whether it was a sign-in
   // code, how long the agent's own word may still come, and which notice the send raised (so the card, while it is
   // on screen, can stand in for exactly that one). It lives and goes with `pendingUnknown`: one open question.
-  const [unknownAnswer, setUnknownAnswer] = useState<{ requestId: string; secret: boolean; awaitingUntil: number | null; noticeKey: string } | null>(null);
+  const [unknownAnswer, setUnknownAnswer] = useState<{ requestId: string; secret: boolean; awaitingUntil: number | null; noticeKey: string; interrupted: boolean } | null>(null);
   const unknownAnswerRef = useRef(unknownAnswer);
   unknownAnswerRef.current = unknownAnswer;
+  // THE WAIT OF AN `unknown` SEND (spec 13), for every Send again of it, the card's and the notice's alike
+  // (the M102 review, E): while the agent's own word may still come, Send again sends nothing. A clock
+  // that turns Send again on when the wait ends; it never sends.
+  const awaitingUntil = unknownAnswer?.awaitingUntil ?? null;
+  const [awaitNow, setAwaitNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (awaitingUntil === null) return;
+    const left = awaitingUntil - Date.now();
+    if (left <= 0) {
+      if (awaitNow < awaitingUntil) setAwaitNow(Date.now());
+      return;
+    }
+    const timer = setTimeout(() => setAwaitNow(Date.now()), Math.min(left, 60_000));
+    return () => clearTimeout(timer);
+  }, [awaitingUntil, awaitNow]);
+  const awaitingWord = awaitingUntil !== null && awaitNow < awaitingUntil;
   const onCannotTellRef = useRef(onCannotTell);
   onCannotTellRef.current = onCannotTell;
   const cannotTellFacts = useMemo<CannotTellFacts | null>(
-    () => (unknownAnswer === null || !hasCannotTellHost ? null : { requestId: unknownAnswer.requestId, secret: unknownAnswer.secret, readOnly, awaitingUntil: unknownAnswer.awaitingUntil }),
+    () => (unknownAnswer === null || !hasCannotTellHost ? null : { requestId: unknownAnswer.requestId, secret: unknownAnswer.secret, readOnly, awaitingUntil: unknownAnswer.awaitingUntil, interrupted: unknownAnswer.interrupted }),
     [unknownAnswer, hasCannotTellHost, readOnly],
   );
   useEffect(() => {
@@ -1073,7 +1126,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const refusalWordsRef = useRef<string | null>(null);
   // The text of the last send from this composer, for the notice's Send again (M102 spec 02). A send
   // from the field is sent again from the field as it reads now; a quick reply keeps its own words.
-  const lastSendRef = useRef<{ readonly value: string; readonly isDraft: boolean } | null>(null);
+  // A sign-in code is never kept (the M102 review, A): its entry names no text, and its Send again is
+  // "Enter it again", the code field opened empty.
+  const lastSendRef = useRef<LastSend | null>(null);
+  // Set when a code send ended `unknown`: the code may have gone, so the code field empties (`sendSecret`).
+  const secretSpentRef = useRef(false);
   // What the bridge said of the last send from an agent view: the line it typed, or its refusal code.
   const viewAnswerRef = useRef<{ line: string | null; code: string | null }>({ line: null, code: null });
   // Which notice that is (send-notice.tsx `refusalKey`: the screen it is about and its words), and
@@ -1222,6 +1279,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the tap, read fresh by a `prepare`. The next send from the field carries it with `override`, so the
   // bridge types only while the screen still hashes the same. One send; any answer disarms it.
   const [overrideHash, setOverrideHash] = useState<string | null>(null);
+  // A sign-in field ends the arm (the M102 review, L): the arm was for another screen, a code never goes with
+  // `override` or its rows hash, and an arm left standing would go out with the next normal send after the field.
+  useEffect(() => {
+    if (secretField) setOverrideHash(null);
+  }, [secretField]);
   // The send in flight is the one "Type it anyway" armed (not a commit tap's override): only its refusal
   // re-arms on the rows the bridge read now.
   const typeAnywaySendRef = useRef(false);
@@ -1503,9 +1565,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const sendViewTapRef = useRef<(tap: ViewTap) => Promise<ViewSendResult>>(() => Promise.resolve({ sent: false, line: null, code: null }));
   const padKeysRef = useRef<(keys: string[]) => Promise<boolean>>(() => Promise.resolve(false));
   const typeAnywayRef = useRef<() => void>(() => undefined);
-  const markArrivedRef = useRef<() => Promise<boolean>>(() => Promise.resolve(false));
+  const markArrivedRef = useRef<() => Promise<ArrivedAnswer>>(() => Promise.resolve("failed"));
+  const closeCannotTellRef = useRef<() => void>(() => undefined);
   const answerAgainRef = useRef<() => void>(() => undefined);
   const sendLineRef = useRef<(line: string) => Promise<boolean>>(() => Promise.resolve(false));
+  const lineCanStartRef = useRef<() => boolean>(() => false);
   useImperativeHandle(
     ref,
     () => ({
@@ -1518,8 +1582,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       padKeys: (keys) => padKeysRef.current(keys),
       typeAnyway: () => typeAnywayRef.current(),
       markArrived: () => markArrivedRef.current(),
+      closeCannotTell: () => closeCannotTellRef.current(),
       answerAgain: () => answerAgainRef.current(),
       sendLine: (line) => sendLineRef.current(line),
+      lineCanStart: () => lineCanStartRef.current(),
     }),
     [startMessage],
   );
@@ -2026,7 +2092,36 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     setSendRefusal({ ...phoneRefusal(translate("composer.tap.noCard")), screen: true });
   }
-  async function send(value: string, isDraft: boolean, when?: SendWhen, tap?: ViewTap): Promise<boolean> {
+  /**
+   * The code field's own send (M102 spec 06): the one path a text for a sign-in field takes. True when the
+   * frame should empty: the code went, or it may have gone (`unknown`). A code that may have gone is not
+   * left in the field for a tap that would send it twice; "Enter it again" is the way on (the M102 review, D).
+   */
+  async function sendSecret(code: string): Promise<boolean> {
+    secretSpentRef.current = false;
+    // A code never carries an armed Type it anyway (the M102 review, L): the arm goes with this send.
+    setOverrideHash(null);
+    const went = await send(code, false, undefined, undefined, true);
+    return went || secretSpentRef.current;
+  }
+  /**
+   * Why a text from elsewhere (not the code field, not a view tap) cannot start now, in the order `send` asks: a
+   * launch or a running send, a sign-in field, a link that is down, a dialog that owns the keys. Null: it can.
+   */
+  function lineRefusal(): SendRefusal | null {
+    const tapWords = refusedTapWords();
+    if (tapWords !== null) return phoneRefusal(tapWords);
+    const notTheField = secretRefusal(false);
+    if (notTheField !== null) return notTheField;
+    if (offlineRef.current) return phoneRefusal(translate("composer.send.reconnect"));
+    if (slot === "answer") return phoneRefusal(translate("composer.status.dialogWaiting"), true);
+    return null;
+  }
+  /** Why a send that did not come from the code field cannot go now (the M102 review, B), or null. */
+  function secretRefusal(fromSecret: boolean): SendRefusal | null {
+    return secretFieldRef.current && !fromSecret ? phoneRefusal(translate("composer.secret.onlyField")) : null;
+  }
+  async function send(value: string, isDraft: boolean, when?: SendWhen, tap?: ViewTap, fromSecret = false): Promise<boolean> {
     // A shell line keeps its leading space or tab, which keeps it out of Sent (M61): the bridge checks
     // the raw text. An agent pane's text is trimmed at both ends, as it always was. The emptiness
     // check and the mode read the fully trimmed text on both, so neither sees a difference.
@@ -2042,6 +2137,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (agentView !== undefined) onViewRequest?.({ text: t, phase: "failed", reason: refusal.sentence, line: null, about: tap?.about ?? null });
       return false;
     }
+    // While the screen asks for a sign-in code, a text from anywhere but the code field (a quick reply, a
+    // harness command, a Send again, the queued card, the normal box behind a closed frame) would be typed
+    // into that field and submitted. The phone refuses it, with words, and sends nothing (the M102 review, B).
+    const notTheField = secretRefusal(fromSecret);
+    if (notTheField !== null) {
+      setSendRefusal(notTheField);
+      if (agentView !== undefined) onViewRequest?.({ text: t, phase: "failed", reason: notTheField.sentence, line: null, about: tap?.about ?? null });
+      return false;
+    }
     // AN AGENT VIEW ON SCREEN: the text goes as typed with the view's key, and a tap goes with the
     // screen's rev and its control and no text at all. The bridge builds the line, head and tail included,
     // from its own stored screen (agent views SECURITY rule 2); the phone adds nothing. A send from the view
@@ -2049,7 +2153,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const view = agentView === undefined ? undefined : tap === undefined ? { trick: agentView.trick, session: agentView.session } : { trick: agentView.trick, session: agentView.session, rev: tap.rev, control: tap.control };
     if (tap !== undefined && view === undefined) return false;
     viewAnswerRef.current = { line: null, code: null };
-    if (view === undefined) lastSendRef.current = { value, isDraft };
+    if (view === undefined) lastSendRef.current = fromSecret ? SECRET_SEND : { secret: false, value, isDraft };
     const tell = (phase: ViewRequestNote["phase"], reason: string | null = null): void => {
       if (view !== undefined) onViewRequest?.({ text: t, phase, reason, line: phase === "sent" ? viewAnswerRef.current.line : null, about: tap?.about ?? null });
     };
@@ -2076,7 +2180,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     try {
       // "Type it anyway" armed one send past the screen the card showed: it carries that screen's rows
       // hash and the person's word, override, and the armed state goes with this send (M102 spec 03).
-      const past = tap === undefined && view === undefined ? overrideHash : null;
+      const past = tap === undefined && view === undefined && !fromSecret ? overrideHash : null;
       if (past !== null) setOverrideHash(null);
       typeAnywaySendRef.current = past !== null;
       const sent =
@@ -2084,7 +2188,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           ? await sendThroughProtocol(t, isDraft, modeFor(trimmed), past, false, undefined, undefined, undefined, t, true).finally(() => {
               typeAnywaySendRef.current = false;
             })
-          : await sendThroughProtocol(tap === undefined ? t : "", isDraft, tap === undefined ? modeFor(trimmed) : "send", null, false, undefined, view === undefined ? when : undefined, view, t);
+          : await sendThroughProtocol(tap === undefined ? t : "", isDraft, tap === undefined ? modeFor(trimmed) : "send", null, false, undefined, view === undefined ? when : undefined, view, t, false, fromSecret);
       tell(sent ? "sent" : "failed", sent ? null : refusalWordsRef.current);
       return sent;
     } catch (thrown) {
@@ -2108,7 +2212,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     try {
       const reply = await api.postSend({ id: mintRequestId(), pane: paneId, text: "", mode: "prepare" }, scope);
       if (reply.rowsHash === null) {
-        setSendRefusal(phoneRefusal(translate("unreadDialog.typeAnywayFailed")));
+        setSendRefusal(phoneRefusal(translate(takesManualSend(shownSurface) ? "unreadDialog.typeAnywayFailedSends" : "unreadDialog.typeAnywayFailed")));
         return;
       }
       setOverrideHash(reply.rowsHash);
@@ -2121,8 +2225,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   padKeysRef.current = (keys) => direct.sendPaneKeys(keys);
   typeAnywayRef.current = () => void typeAnyway();
   markArrivedRef.current = markUnknownArrived;
+  closeCannotTellRef.current = endCannotTell;
   answerAgainRef.current = answerCannotTellAgain;
   sendLineRef.current = (line) => send(line, false);
+  lineCanStartRef.current = () => {
+    const refusal = lineRefusal();
+    if (refusal !== null) setSendRefusal(refusal);
+    return refusal === null;
+  };
   sendViewTapRef.current = async (tap) => {
     const sent = await send(tap.words, false, undefined, tap);
     return { sent, ...viewAnswerRef.current };
@@ -2135,8 +2245,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // `resend` is a resend of an ended held row: the request carries the old id and an empty text, the
   // bridge takes the row's own text, and `shown` (the row's text, maybe masked) is only for the preview.
   // `shown` is the text the person sees as sent when it is not `t`: a tap's words, whose request carries no text.
-  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }, when?: SendWhen, view?: SendRequestBody["view"], shown?: string, override = false): Promise<boolean> {
+  // `fromSecret` is true only for the code field's own send: it alone is sent as `secret`, and while the
+  // screen asks for a code it alone may go (the M102 review, B, here as the backstop for every caller).
+  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }, when?: SendWhen, view?: SendRequestBody["view"], shown?: string, override = false, fromSecret = false): Promise<boolean> {
     if (starting) return false;
+    const notTheField = secretRefusal(fromSecret);
+    if (notTheField !== null) {
+      setSendRefusal(notTheField);
+      return false;
+    }
     setSending(true);
     setSendRefusal(null);
     setPendingUnknown(null); // a new send supersedes the last one's open question (#511)
@@ -2157,7 +2274,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     stampSend(paneId);
     try {
       // A text for a sign-in field says so (`secret`): the bridge writes no `line` of it, only its hash and length.
-      const secret = secretFieldRef.current && resend === undefined && view === undefined;
+      // Only the code field's own send is one, so a text from anywhere else is never typed into that field.
+      const secret = fromSecret && resend === undefined && view === undefined;
       const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: loadIntent(scope, paneId), secret, override };
       const res = await sendText(view === undefined ? base : { ...base, view });
       if (res.status === "noAnswer") {
@@ -2213,8 +2331,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         setHandledKey(normalizeDraft(t));
         setPreviewLatched(false);
       }
-      // A resend makes no offer: an offer would carry the row's text, which may be masked.
-      const offered = reading.offers.length > 0 && resend === undefined;
+      // A resend makes no offer: an offer would carry the row's text, which may be masked. A sign-in code
+      // makes none either: an offer keeps the text for a later tap, and a code is never kept (the M102 review, A).
+      const offered = reading.offers.length > 0 && resend === undefined && !secret;
       setProtocolOffer(offered ? { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null } : null);
       // The revision the answer read: a Send again that waits for another send turns on once a later read differs.
       const refusal = { ...readingRefusal(reading), atRevision: (reply.surface ?? shownSurface).revision };
@@ -2226,23 +2345,25 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // An override that met a menu, or whose text waits for the person's Enter (M102 spec 12): the Keys
       // pad opens, unless the person has a drawer open. A refused override carries the screen now and
       // its hash, so "Type it anyway" stays armed on the rows the card shows next.
-      if (reply.reason === "menu_open" || reading.note === "overrideTyped") {
+      if (reply.reason === "menu_open" || reading.note === "overrideTyped" || reply.textAlreadyTyped === true) {
         if (drawerRef.current === null) requestDrawer("keys");
       }
       if (override && typeAnywaySendRef.current && reply.outcome === "refused" && reply.cap === null && reply.rowsHash !== null) setOverrideHash(reply.rowsHash);
       const noticeOn = reply.surface ?? shownSurface;
-      const notice: SendRefusal = { ...refusal, sentence: refusalSentence(refusal.sentence, { returnedDraft, note: reading.note, draftSeen: reply.draftSeen === true, overrideMoved: override && reply.outcome === "refused" && (reply.reason === "stale_surface" || reply.reason === "stale_view") && reply.rowsHash !== null }) };
+      const notice: SendRefusal = { ...refusal, sentence: refusalSentence(refusal.sentence, { returnedDraft, note: reading.note, draftSeen: reply.draftSeen === true, alreadyTyped: reply.textAlreadyTyped === true, manualSends: takesManualSend(reply.surface ?? shownSurface), overrideMoved: override && reply.outcome === "refused" && (reply.reason === "stale_surface" || reply.reason === "stale_view") && reply.rowsHash !== null }) };
       setSendRefusal(notice, noticeOn, offered);
       // An `unknown` outcome is an open question the journal can still answer (#511): remember the
       // send, so its text landing as a user turn retires this notice and the kept draft. A resend
       // carries no text of its own to recognise, so it is never remembered.
       if (reading.note === "unknown" && resend === undefined) {
-        setPendingUnknown({ sentText: t, draftText: draftAtSend, isDraft, at: sentAt, seenUserUuids });
+        if (secret) secretSpentRef.current = true;
+        // A sign-in code is remembered by no text at all: nothing of it is kept for a resend (the M102 review, A).
+        setPendingUnknown({ sentText: secret ? "" : t, draftText: secret ? "" : draftAtSend, isDraft, at: sentAt, seenUserUuids });
         // The next tap on this same text asks "Send it again?" first (lib/send-again.ts, memory only).
         if (isDraft && t !== "") rememberUnknownSend(scope, paneId, t, Date.now(), isShell);
         // The bridge took the text and could not see it land: the pane's card asks which it was (M102 spec 04). Only
         // an `unknown` receipt has a request to mark; a sign-in code keeps no text, so it awaits nothing to send again.
-        if (reply.outcome === "unknown") setUnknownAnswer({ requestId: res.requestId, secret, awaitingUntil: awaitingOnPhone(reply.awaitingUntil), noticeKey: refusalKey(notice, noticeOn) });
+        if (reply.outcome === "unknown") setUnknownAnswer({ requestId: res.requestId, secret, awaitingUntil: awaitingOnPhone(reply.awaitingUntil), noticeKey: refusalKey(notice, noticeOn), interrupted: reply.reason === "interrupted" });
       }
       // A password prompt on the screen the composer already shows (#103): the bridge could not see
       // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.
@@ -2309,7 +2430,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (currentStatus()?.text === reading) clearStatus();
     }
     if (hash === null) {
-      setSendRefusal(phoneRefusal(translate("unreadDialog.typeAnywayFailed")));
+      setSendRefusal(phoneRefusal(translate(takesManualSend(shownSurface) ? "unreadDialog.typeAnywayFailedSends" : "unreadDialog.typeAnywayFailed")));
       return false;
     }
     try {
@@ -2494,20 +2615,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const refusalStep = sendRefusal?.step ?? null;
   // Send again after a refusal for another running send waits until a later read differs and the box
   // holds no text (the other send went or was taken back). It never sends by itself.
-  const stepWaiting =
+  const otherSendWaiting =
     refusalStep === "sendAgain" &&
     sendRefusal?.waits === true &&
     sendRefusal.atRevision !== undefined &&
     (shownSurface.revision === sendRefusal.atRevision || shownSurface.composer === "draft");
+  // A Send again of an `unknown` send also waits for the agent's own word, as the card's does (spec 13).
+  const stepWaiting = otherSendWaiting || (refusalStep === "sendAgain" && awaitingWord);
   const stepButton =
     refusalStep === "sendAgain"
-      ? !locked && lastSendRef.current !== null
+      ? !locked && lastSendRef.current !== null && (!lastSendRef.current.secret || secretField)
       : refusalStep === "stop"
         ? stopOffered
         : refusalStep === "emptyBox"
           ? way.keysSendable
           : refusalStep === "screen" && screen !== undefined && !screen.on;
-  const stepWord = stepLabel(refusalStep);
+  // A code's Send again is "Enter it again": nothing of it was kept to send (the M102 review, A).
+  const stepWord = refusalStep === "sendAgain" && lastSendRef.current?.secret === true ? translate("cannotTell.enterAgain") : stepLabel(refusalStep);
   function onRefusalStep(): void {
     if (refusalStep === "stop") {
       void stopTurn();
@@ -2524,17 +2648,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (refusalStep !== "sendAgain" || stepWaiting) return;
     sendAgainNow();
   }
+  /** "Enter it again" for a sign-in code: the code field opens empty and takes the focus. Nothing is restored or sent. */
+  function enterSecretAgain(): void {
+    setSendRefusal(null);
+    setSecretClosed(false);
+    setSecretFresh((n) => n + 1);
+  }
   /**
    * The person's tap on a Send again (the notice's step, or the "cannot tell" card's button): the last send once more, as a
    * new request through the whole Send Protocol. The tap is the decision, so the "Send it again?" second tap is not
-   * asked on top of it. A draft is sent from the field as it reads now; with the box emptied since, the card's own
-   * message is what goes, because that is the send the tap is about.
+   * asked on top of it. A send that ended unknown is sent again by its OWN text (`pendingUnknown.sentText`), never by the
+   * field as it reads now: words typed or edited since are the next message (the M102 review, C). The field is left as
+   * it is, unless it still holds exactly that text, which then goes as the draft it is. Any other draft is sent from the
+   * field as it reads now.
    */
   function sendAgainNow(): void {
     const last = lastSendRef.current;
     if (last === null) return;
+    // The one wait guard for both buttons: while the agent's own word may still come, nothing goes (spec 13).
+    const until = unknownAnswerRef.current?.awaitingUntil ?? null;
+    if (until !== null && Date.now() < until) return;
+    // A code has no text kept to send again: the field opens empty, while the screen still asks for one.
+    if (last.secret) {
+      if (secretFieldRef.current) enterSecretAgain();
+      return;
+    }
     const field = composeLine(input, attachments, isShell);
-    const line = last.isDraft ? (field.trim() === "" && pendingUnknown !== null ? pendingUnknown.sentText : field) : last.value;
+    if (pendingUnknown !== null && pendingUnknown.sentText !== "") {
+      const kept = pendingUnknown.sentText;
+      forgetUnknownSend(scope, paneId, kept, isShell);
+      void send(kept, last.isDraft && sentForm(field, isShell) === kept);
+      return;
+    }
+    const line = last.isDraft ? field : last.value;
     forgetUnknownSend(scope, paneId, line, isShell);
     void send(line, last.isDraft);
   }
@@ -2569,7 +2715,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           : secretField
             ? translate("composer.secret.hint")
             : overrideHash !== null
-              ? translate("unreadDialog.typeAnywayHint")
+              ? translate(takesManualSend(shownSurface) ? "unreadDialog.typeAnywayHintSends" : "unreadDialog.typeAnywayHint")
               : staleWords
                 ? translate("composer.stale.hint")
                 : steerWords
@@ -2957,19 +3103,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    * "It arrived" on the "cannot tell" card (M102 spec 04): the person's word goes to the bridge, and only when it was
    * recorded does anything here change. The kept draft then goes through the belt's own clear (`clearByHand`, so
    * "Undo clear" is one tap away), and only while the field still holds what it held at the send: words typed since
-   * are the next message. A sign-in code keeps no draft, so only the question ends. False leaves everything as it was.
+   * are the next message. A sign-in code keeps no draft, so only the question ends. Any answer but `recorded` leaves
+   * everything as it was: `failed` may be tapped again, and a 409 (`settled`) or a 404 (`unknownHere`) is final, for the
+   * card to say so and offer Close (the M102 review, K).
    */
-  async function markUnknownArrived(): Promise<boolean> {
+  async function markUnknownArrived(): Promise<ArrivedAnswer> {
     const answer = unknownAnswer;
     const pending = pendingUnknown;
-    if (answer === null) return false;
+    if (answer === null) return "failed";
     try {
       await api.postArrived(paneId, answer.requestId, scope);
-    } catch {
-      return false;
+    } catch (e) {
+      if (api.isApiErrorStatus(e, 409)) return "settled";
+      if (api.isApiErrorStatus(e, 404)) return "unknownHere";
+      return "failed";
     }
     // A new send ended this question while the request ran: the word is on the old receipt, and the new one is untouched.
-    if (unknownAnswerRef.current?.requestId !== answer.requestId) return true;
+    if (unknownAnswerRef.current?.requestId !== answer.requestId) return "recorded";
     if (
       pending !== null &&
       pending.isDraft &&
@@ -2983,7 +3133,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setUnknownAnswer(null);
     setProtocolOffer(null);
     setSendRefusal(null);
-    return true;
+    return "recorded";
+  }
+
+  /** Close on the "cannot tell" card after a final answer: the question and its notice end. The draft stays as it is. */
+  function endCannotTell(): void {
+    if (pendingUnknown !== null) forgetUnknownSend(scope, paneId, pendingUnknown.sentText, isShell);
+    setPendingUnknown(null);
+    setUnknownAnswer(null);
+    setSendRefusal(null);
   }
 
   /**
@@ -2999,9 +3157,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     setPendingUnknown(null);
     setUnknownAnswer(null);
-    setSendRefusal(null);
-    setSecretClosed(false);
-    setSecretFresh((n) => n + 1);
+    enterSecretAgain();
   }
 
   /** Undo: the text, the chips with their previews, the chip numbering and the stored draft come
@@ -3851,6 +4007,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {protocolOffer !== null && (
             <SendOfferStrip
               offers={protocolOffer.offers}
+              sends={takesManualSend(shownSurface)}
               disabled={starting || sending || locked}
               onOffer={onProtocolOffer}
               // The ✕ drops the strip and hides the notice over it: a notice that still says "tap Type
@@ -3968,7 +4125,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                           ? { word: stepWord, disabled: sending || stepWaiting, onPress: onRefusalStep }
                           : null
                     }
-                    wait={!refusalSecret && stepButton && refusalStep === "sendAgain" && sendRefusal.waits === true ? (stepWaiting ? "waits" : "ready") : null}
+                    wait={!refusalSecret && stepButton && refusalStep === "sendAgain" ? (awaitingWord ? "awaiting" : sendRefusal.waits === true ? (otherSendWaiting ? "waits" : "ready") : null) : null}
                     onCard={refusalCard ? answerDialog : null}
                     onScreen={refusalScreen && !refusalCard && refusalStep !== "screen" ? () => screen?.onToggle() : null}
                     onKeys={refusalKeys ? () => requestDrawer("keys") : null}
@@ -4080,7 +4237,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // A locked field says why in the composer's own words (the gone, read-only and out-of-reach
             // placeholders): the frame's own "Not saved" line would leave a dead Send with no reason.
             lockedWhy={locked ? placeholderWords : undefined}
-            onSend={(code) => send(code, false)}
+            onSend={sendSecret}
             onClose={() => {
               setSecretClosed(true);
               setSendRefusal(phoneRefusal(translate("composer.secret.closed")));

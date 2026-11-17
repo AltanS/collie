@@ -150,6 +150,15 @@ describe("the Keys board's Clear button", () => {
     expect(await screen.findByText("The box did not clear. What is left was not touched.")).toBeInTheDocument();
   });
 
+  it("says another Collie is typing into the pane, in Clear's own words, when the pane is busy (M102 spec 16)", async () => {
+    const user = userEvent.setup();
+    serveClear({ requestId: "echo-0003", outcome: "refused", reason: "pane_busy" });
+    mount("draft");
+    await user.click(await openKeys(user));
+    expect(await screen.findByText("Another Collie is typing into this pane, so nothing was cleared. Tap Clear again in a moment.")).toBeInTheDocument();
+    expect(screen.queryByText(/Send this one again/u)).toBeNull();
+  });
+
   it("says an older machine cannot clear yet when its route answers a bare 404", async () => {
     const user = userEvent.setup();
     server.use(http.post(/\/api\/pane\/[^/]+\/clear$/, () => HttpResponse.json({ error: "not found" }, { status: 404 })));

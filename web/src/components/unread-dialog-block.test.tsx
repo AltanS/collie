@@ -386,6 +386,39 @@ describe("unread card: your Keys pad (M102 spec 03)", () => {
     }
   });
 
+  /** A spinner row whose timer and token count tick: the same row, a second later. */
+  const spinnerRow = (seconds: number) => splitLines(parseAnsi(`\u2733 Wibbling\u2026 (${seconds}s \u00b7 \u2193 ${seconds * 10} tokens) lab clock 12:15:0${seconds}`))[0]!;
+
+  it("unread card: a timer that ticks between the two taps keeps the Enter cap armed, so the second tap sends (the M102 review, J)", async () => {
+    let board = DEFAULT_BOARD;
+    for (let cell = 0; cell < board.cells.length; cell++) board = setCell(board, cell, null);
+    setKeyBoard(board);
+    const block = cardBlock();
+    const onPadKeys = vi.fn(() => Promise.resolve(true));
+    const props = { cancel: block.cancel, onAction: vi.fn(), onPadKeys, onTypeAnyway: vi.fn() };
+    const { rerender } = render(<UnreadDialogBlock {...props} lines={[...block.lines, spinnerRow(4)]} />);
+    const user = userEvent.setup();
+    await user.click(caps().find((b) => b.getAttribute("aria-label") === "Enter")!);
+    rerender(<UnreadDialogBlock {...props} lines={[...block.lines, spinnerRow(5)]} />);
+    await user.click(screen.getByRole("button", { name: /^Tap again to send / }));
+    expect(onPadKeys).toHaveBeenCalledExactlyOnceWith(["Enter"]);
+  });
+
+  it("unread card: a screen whose words changed between the two taps only arms again, and Enter does not go", async () => {
+    let board = DEFAULT_BOARD;
+    for (let cell = 0; cell < board.cells.length; cell++) board = setCell(board, cell, null);
+    setKeyBoard(board);
+    const block = cardBlock();
+    const onPadKeys = vi.fn(() => Promise.resolve(true));
+    const props = { cancel: block.cancel, onAction: vi.fn(), onPadKeys, onTypeAnyway: vi.fn() };
+    const { rerender } = render(<UnreadDialogBlock {...props} lines={block.lines} />);
+    const user = userEvent.setup();
+    await user.click(caps().find((b) => b.getAttribute("aria-label") === "Enter")!);
+    rerender(<UnreadDialogBlock {...props} lines={block.lines.slice(1)} />);
+    await user.click(caps().find((b) => b.getAttribute("aria-label") === "Enter")!);
+    expect(onPadKeys).not.toHaveBeenCalled();
+  });
+
   it("unread card: an Enter cap asks a second tap, as the declared key does, and the arrows do not", async () => {
     let board = DEFAULT_BOARD;
     for (let cell = 0; cell < board.cells.length; cell++) board = setCell(board, cell, null);

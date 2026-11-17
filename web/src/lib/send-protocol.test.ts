@@ -94,6 +94,15 @@ describe("readSend", () => {
 
   // The review's F3: the bridge's English detail is dropped for every `unconfirmed`, so the notice's own
   // sentence travels as a cause the phone translates. An answer without it keeps the generic sentence.
+  it("the phone never arms an override (Type here) for a Submit, whose text is already in the box (the M102 review, F)", () => {
+    const unreadable: Surface = { revision: 1, turn: "idle", modal: "unreadable", composer: "empty" };
+    const notFree = (offers: string[] = ["keys"]): JsonObject => ({ receipt: { outcome: "refused", reason: "not_free" }, offers, rowsHash: "ab12", surface: parseJsonObject(JSON.stringify(unreadable)) ?? {} });
+    expect(readSend(readSendReply(notFree())!, "send").offers).toEqual(["commit"]);
+    expect(readSend(readSendReply(notFree())!, "submit").offers).toEqual([]);
+    // Not even a commit the bridge itself offered: a commit is always sent with `override`.
+    expect(readSend(readSendReply(notFree(["commit", "keys"]))!, "submit").offers).toEqual([]);
+  });
+
   it("a refusal with the notice cause says the number would answer the notice, and keeps the commit offer", () => {
     const body: JsonObject = { receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["commit", "keys"], cause: "notice_key", detail: "That message would answer the notice above the box." };
     expect(readSend(readSendReply(body)!)).toMatchObject({ clear: false, note: "noticeKey", offers: ["commit"], detail: null });

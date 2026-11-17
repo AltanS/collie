@@ -28,6 +28,10 @@ describe("findUnknownSendMatch (#511)", () => {
     expect(findUnknownSendMatch(pending(), [entry({ ts: "2026-10-18T13:30:00.000Z" })])).not.toBeUndefined();
   });
 
+  it("a send remembered with no text (a sign-in code) never matches, not even a turn with no text", () => {
+    expect(findUnknownSendMatch(pending({ sentText: "", draftText: "" }), [entry({ parts: [] })])).toBeUndefined();
+  });
+
   it("never matches a turn already on screen before the send", () => {
     expect(findUnknownSendMatch(pending(), [entry({ uuid: "seen-1" })])).toBeUndefined();
   });

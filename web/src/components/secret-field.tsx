@@ -7,9 +7,10 @@
 // THE TEXT IS ITS OWN. The frame holds what is typed in its own state, never in the composer's draft,
 // so the person's normal draft stays apart and is there again after Close or a send. Nothing here
 // writes a store: no draft, no request-id intent, no hold (the Send Protocol's secret path, M101 and
-// M102 spec 05). The frame empties after a send that went, and only then: when the send did not go the
-// text stays in the frame's own state (memory of the field only, never stored), so the person can send it
-// again or replace it (M102 spec 11).
+// M102 spec 05). The frame empties after a send that went or may have gone (`unknown`: a second tap would
+// send the code twice, so the way on is "Enter it again", the M102 review, D). When the send did not go
+// the text stays in the frame's own state (memory of the field only, never stored), so the person can
+// send it again or replace it (M102 spec 11).
 //
 // SHOWN BY DEFAULT. A one-time code is pasted and checked, so it is shown; Show or Hide masks it. Paste
 // takes the slot Show takes once text is typed, so nothing moves. A pasted code is trimmed (a copy from a
@@ -34,7 +35,8 @@ import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export interface SecretFieldProps {
-  /** Sends the text once through the composer's own send (the secret path). Resolves whether it went. */
+  /** Sends the text once through the composer's own send (the secret path). Resolves true when the frame
+   *  should empty: the code went or may have gone. False keeps the text: it did not go. */
   onSend: (text: string) => Promise<boolean>;
   /** Ends the secret state. Sends nothing. */
   onClose: () => void;
@@ -79,8 +81,8 @@ export function SecretField({ onSend, onClose, disabled, sending = false, reason
   async function send(): Promise<void> {
     const text = value.trim();
     if (text === "" || disabled) return;
-    // The text leaves the frame only when the send went. A send that did not go keeps it, so the person
-    // can send it again or replace it. It is state of this frame alone and is never written anywhere.
+    // The text leaves the frame when the send went or may have gone. A send that did not go keeps it, so
+    // the person can send it again or replace it. It is state of this frame alone and is never written anywhere.
     if (await onSend(text)) setValue("");
   }
 

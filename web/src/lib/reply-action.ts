@@ -104,7 +104,7 @@ export async function sendText(args: ReplyArgs): Promise<ReplyOutcome> {
   const body: SendRequestBody = args.view === undefined ? { id: intent.requestId, pane: args.paneId, text: args.text, mode } : { id: intent.requestId, pane: args.paneId, text: args.text, mode, view: args.view };
   try {
     const reply = await postSend({ ...body, rowsHash: rowsHash ?? undefined, capAck: capAck ? true : undefined, resendOf, when: args.when, secret: args.secret === true ? true : undefined, override: override ? true : undefined }, args.scope);
-    return { status: "answered", reply, reading: readSend(reply), requestId: intent.requestId };
+    return { status: "answered", reply, reading: readSend(reply, mode), requestId: intent.requestId };
   } catch (e) {
     // A view send the bridge refused before the Send Protocol answers 409 with `{ error, code, view: true }`.
     // It is an answer, not a lost one: never retried under the same id.

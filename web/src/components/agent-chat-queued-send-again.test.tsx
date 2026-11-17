@@ -19,6 +19,7 @@ import { resetPinsForTests } from "@/lib/loaders";
 import { fixtureAgents, FIXTURE_CHAT_GEN, FIXTURE_SEQ_BASE, fixtureTranscript, paneTextWithDraft, recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/msw";
+import type { Surface } from "@/lib/surface/surface";
 import type { AgentView } from "@/lib/types";
 import { AgentChat } from "./agent-chat";
 
@@ -36,7 +37,7 @@ const LOST_ID = "req-lost-00001";
 const LOST_TEXT = "where did it go";
 
 /** Mount Chat on a pane whose window carries one unconfirmed queued card; `discard` is the bridge's answer to its Discard. */
-function mountWithLostCard(discard: () => Response) {
+function mountWithLostCard(discard: () => Response, over: Partial<AgentView> = {}) {
   const discards: string[] = [];
   server.use(
     http.get(/\/api\/pane\/[^/]+\/chat/, () =>
@@ -59,7 +60,7 @@ function mountWithLostCard(discard: () => Response) {
     }),
     ...sendHandler((request) => sendAnswer(request.id, "sent")),
   );
-  const agent: AgentView = { ...fixtureAgents[0]!, hasSession: true };
+  const agent: AgentView = { ...fixtureAgents[0]!, hasSession: true, ...over };
   const element = withHeaderHost(
     <AgentChat paneId={agent.paneId} agent={agent} agents={[agent]} shellPanes={[]} tabs={[]} text={paneTextWithDraft("recent pane output")} onBack={vi.fn()} onSelect={vi.fn()} />,
   );
@@ -100,5 +101,15 @@ describe("AgentChat: the queued card's Send again (M102 spec 04)", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Send again" })).toBeEnabled());
     expect(recordedSends()).toHaveLength(0);
     expect(screen.queryByText("This message is not waiting any more, so nothing was sent again.")).toBeNull();
+  });
+
+  it("a composer that cannot send now keeps the card: nothing is dropped or sent, and the words say why (the M102 review, G)", async () => {
+    const secret: Surface = { revision: 4, turn: "idle", modal: "none", composer: "empty", field: "secret" };
+    const discards = mountWithLostCard(() => HttpResponse.json({ result: "dismissed" }), { sendProtocol: true, surface: secret });
+    await userEvent.click(await screen.findByRole("button", { name: "Send again" }));
+    expect(await screen.findByText("The screen asks for a sign-in code. Only the code field can send now, so nothing was sent.")).toBeInTheDocument();
+    expect(discards).toEqual([]);
+    expect(recordedSends()).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Send again" })).toBeEnabled();
   });
 });

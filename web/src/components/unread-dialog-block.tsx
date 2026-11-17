@@ -7,6 +7,7 @@ import { CORE_KEYS, missingCore } from "@/lib/key-board";
 import { useKeyBoard } from "@/lib/key-board-store";
 import type { IconKey } from "@/components/icons/keys";
 import { lineText, type StyledLine, type UnreadDialogModel } from "@/lib/blocks";
+import { steadyScreenRow } from "@/lib/harness/prompt-model";
 import { keyLabel } from "@/lib/key-queue";
 import { OptionGroupCaption, PromptPanel } from "@/components/option-button";
 import { RawMirror } from "@/components/raw-mirror";
@@ -99,9 +100,13 @@ const CORE_FACE: ReadonlyMap<string, IconKey> = new Map<string, IconKey>([
 // the screen's own rows print `esc dismiss`; otherwise it names the key, never a verb.
 const NAMES_A_DISMISS = /\besc\s+dismiss\b/i;
 
-/** The identity of one unread screen: its declared key and its rows. The arm, the shown signal and the composer's once-per-screen Keys drawer key on it. */
+/**
+ * The identity of one unread screen: its declared key and its rows, with every ticking part held still
+ * (`steadyScreenRow`: a clock, a spinner, a timer). The arm, the shown signal, the composer's once-per-screen
+ * Keys drawer and the unread card a refusal opens key on it, never on the pane revision (the M102 review, H, I, J).
+ */
 export function unreadIdentity(cancel: UnreadDialogModel | null, lines: readonly StyledLine[]): string {
-  return `${cancel?.key ?? ""}\n${lines.map(lineText).join("\n")}`;
+  return `${cancel?.key ?? ""}\n${lines.map((line) => steadyScreenRow(lineText(line))).join("\n")}`;
 }
 
 export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onReport, onShown, paneId, onPadKeys, onTypeAnyway, secret = false, caption: said, onClose }: UnreadDialogBlockProps) {

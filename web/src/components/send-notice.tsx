@@ -128,8 +128,8 @@ const CLEAR_REFUSALS = {
   pane_gone: "keys.clear.receipt.refused.paneGone",
   stale_screen: "keys.clear.receipt.refused.staleScreen",
   unsupported_build: "keys.clear.receipt.refused.unsupportedBuild",
-  // Another bridge writes into the pane (M102 spec 16): the send's own busy words, until the cards session gives Clear its own line.
-  pane_busy: "composer.protocol.busy",
+  // Another bridge writes into the pane (M102 spec 16): nothing was pressed, and a later tap can clear.
+  pane_busy: "keys.clear.receipt.refused.paneBusy",
 } as const satisfies Record<ClearReason, MessageKey>;
 
 /**
@@ -144,11 +144,18 @@ export function clearNotice(receipt: ClearReceipt): SendRefusal {
   return phoneRefusal(translate(CLEAR_REFUSALS[reason]), reason === "dialog_open");
 }
 
+const WAIT_WORDS = {
+  waits: "composer.step.sendAgainWaits",
+  ready: "composer.step.sendAgainReady",
+  awaiting: "cannotTell.waiting",
+} as const satisfies Record<"waits" | "ready" | "awaiting", MessageKey>;
+
 interface RefusalActionsProps {
   /** The step's own button (M102 spec 02), first: the action that changes the situation. */
   readonly step: { readonly word: string; readonly disabled: boolean; readonly onPress: () => void } | null;
-  /** A Send again that waits for another send: its reason while it is off, then that it turned on. */
-  readonly wait: "waits" | "ready" | null;
+  /** A Send again that waits for another send: its reason while it is off, then that it turned on.
+   *  `awaiting`: it waits for the agent's own word on an `unknown` send, in the "cannot tell" card's words. */
+  readonly wait: "waits" | "ready" | "awaiting" | null;
   readonly onCard: (() => void) | null;
   readonly onScreen: (() => void) | null;
   readonly onKeys: (() => void) | null;
@@ -186,7 +193,7 @@ export function RefusalActions({ step, wait, onCard, onScreen, onKeys }: Refusal
       )}
       {wait !== null && (
         <span className="basis-full text-right text-[11px] text-muted-foreground" aria-live="polite">
-          {translate(wait === "waits" ? "composer.step.sendAgainWaits" : "composer.step.sendAgainReady")}
+          {translate(WAIT_WORDS[wait])}
         </span>
       )}
     </span>
@@ -261,6 +268,9 @@ export function refusalKey(refusal: SendRefusal, surface: Surface | null): strin
  *  adds the ✕ that hides the notice. */
 export function SendRefusalNotice({ refusal, action, onDismiss }: { refusal: SendRefusal; action?: ReactNode; onDismiss?: () => void }) {
   const icon = refusal.tone === "caution" ? <Icon name="warning" /> : <Icon name="ok" />;
+  // A screen reader hears the notice when it appears (M102, the chaos run): a refusal answers the person's
+  // own tap, so a caution interrupts; a neutral receipt (Stopped, Cleared, Discarded) waits its turn.
+  const announce = refusal.tone === "caution" ? "alert" : "status";
   const words = (
     <>
       <span data-slot="composer-refusal">{refusal.sentence}</span>
@@ -273,7 +283,7 @@ export function SendRefusalNotice({ refusal, action, onDismiss }: { refusal: Sen
   );
   if (onDismiss === undefined) {
     return (
-      <Notice tone={refusal.tone} variant="box" className="mb-2" icon={icon} action={action}>
+      <Notice tone={refusal.tone} variant="box" className="mb-2" icon={icon} action={action} announce={announce}>
         {words}
       </Notice>
     );
@@ -286,6 +296,7 @@ export function SendRefusalNotice({ refusal, action, onDismiss }: { refusal: Sen
       icon={icon}
       action={action}
       onDismiss={onDismiss}
+      announce={announce}
       dismissLabel={translate("composer.protocol.dismissNotice")}
     >
       {words}

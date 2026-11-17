@@ -1069,15 +1069,21 @@ export function AgentChat({
   // THE UNREAD CARD A REFUSAL OPENS (M102 spec 03): a send refused on a screen Collie cannot read opens
   // the unread card with no declared key, on the screen as it is, until the screen moves on. Never over a
   // card a grammar lifted: a read permission prompt or question keeps its own card (hard stop 6a).
-  const [unreadOpenedAt, setUnreadOpenedAt] = useState<number | null>(null);
-  useEffect(() => {
-    if (unreadOpenedAt !== null && shown.revision !== unreadOpenedAt) setUnreadOpenedAt(null);
-  }, [shown.revision, unreadOpenedAt]);
+  // It keys on the screen's own content with the ticking rows held still (`unreadIdentity`), never on the pane
+  // revision, which a clock or a spinner moves every second (the M102 review, H). The screen the card opens on is
+  // the one on display when the refusal comes back, read through a ref: the send's closure is older.
   const screenLines = useMemo(() => splitLines(parseAnsi(display)), [display]);
-  const unreadFallback = unreadOpenedAt !== null && !hasDialogCard(blocks) ? screenLines : null;
+  const screenId = useMemo(() => unreadIdentity(null, screenLines), [screenLines]);
+  const screenIdRef = useRef(screenId);
+  screenIdRef.current = screenId;
+  const [unreadOpenedFor, setUnreadOpenedFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (unreadOpenedFor !== null && screenId !== unreadOpenedFor) setUnreadOpenedFor(null);
+  }, [screenId, unreadOpenedFor]);
+  const unreadFallback = unreadOpenedFor !== null && unreadOpenedFor === screenId && !hasDialogCard(blocks) ? screenLines : null;
   const unreadOnScreen = blocks.find((b) => b.kind === "unread-dialog");
   const unreadId =
-    unreadOnScreen?.kind === "unread-dialog" ? unreadIdentity(unreadOnScreen.cancel, unreadOnScreen.lines) : unreadFallback !== null ? unreadIdentity(null, unreadFallback) : null;
+    unreadOnScreen?.kind === "unread-dialog" ? unreadIdentity(unreadOnScreen.cancel, unreadOnScreen.lines) : unreadFallback !== null ? screenId : null;
   // Hard stop 6b: a screen that asks for a secret gets no "Type it anyway" on the card.
   const unreadSecret = useMemo(() => detectNoEchoPrompt(screenLines) !== null, [screenLines]);
   // The docked card fits the dock (a permission card with subject rows, card-dock.tsx): the reading
@@ -2151,12 +2157,15 @@ export function AgentChat({
       // Discard, and only when the bridge says it dropped THAT card is its text sent again, as a new send from the
       // composer (a new id, the whole protocol). A card that is no longer waiting, answered by a refusal or by
       // "no such send", sends nothing, so a stale card can never send twice. Any other failure sends nothing either.
+      // The composer is asked first whether it can send now (a send still running, a dialog, a sign-in field, a
+      // launch): when it cannot, its notice says why, and the card stays with nothing dropped (the M102 review, G).
       if (action === "sendAgain") {
         const composer = composerRef.current;
         if (composer === null) {
           setStatus(t("chat.status.sendFailed"), "error");
           return false;
         }
+        if (!composer.lineCanStart()) return false;
         try {
           const answer = await cancelHeldSend(requestId, paneId, scope);
           revalidator.revalidate();
@@ -3399,7 +3408,8 @@ export function AgentChat({
                       lines: screenLines,
                       wrap: prefs.wrap,
                       ring: cannotTellRing,
-                      onArrived: () => composerRef.current?.markArrived() ?? Promise.resolve(false),
+                      onArrived: () => composerRef.current?.markArrived() ?? Promise.resolve("failed"),
+                      onClose: () => composerRef.current?.closeCannotTell(),
                       onAgain: () => composerRef.current?.answerAgain(),
                     }
               }
@@ -3666,7 +3676,7 @@ export function AgentChat({
                   dialogCard={display ? hasDialogCard(blocks) || unreadFallback !== null || exitShown !== null : false}
                   // An exit's Keys drawer opens once per exit raised, as the unread card's does once per screen.
                   unreadIdentity={display ? (exitShown !== null ? `exit:${exitShown.n}` : unreadId) : null}
-                  onScreenUnread={() => setUnreadOpenedAt(shown.revision)}
+                  onScreenUnread={() => setUnreadOpenedFor(screenIdRef.current)}
                   // The `answer` slot with no card for its dialog (M102 spec 10, diagnosis B): the exit opens.
                   onAnswerUnseen={() => raiseExit(composerAsk === null ? null : askExitKey(composerAsk), "unseen")}
                   onCannotTell={setCannotTell}
