@@ -12,6 +12,7 @@ import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "../bridge/beacon/fake.ts";
 import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
+import { localSnapshotView } from "../bridge/local-key.ts";
 import { FakeDurableProgram, SOCKET_ONLY_SKIP } from "../bridge/mux/durable/fixture.ts";
 import { SYSTEM_PROBE, type SocketProbe } from "../bridge/mux/durable/client.ts";
 import { hookTargetFileName, hookTargetsDir } from "../bridge/beacon/hook-targets.ts";
@@ -2614,6 +2615,25 @@ describe("collie doctor — a packaged install", () => {
     expect(f?.detail).toContain("records no version");
   });
 
+  // The bridge answers its own local key a text-free view of the snapshot (bridge/local-key.ts). The
+  // restart row must read the same from it as from the phone's body.
+  test("`restart-pending` reads the same off the local key's view as off the full snapshot", async () => {
+    const full = {
+      agents: [{ paneId: "w1:p1", kind: "agent", agent: "claude", status: "blocked", terminalTitle: "a title an agent wrote", asks: [{ question: "Delete it?" }] }],
+      shellPanes: [],
+      sessions: [],
+      update: { restartNeeded: true, restartCommand: "systemctl --user restart collie", current: "1.5.2", latest: null, installKind: "packaged" },
+    };
+    const run = async (body: JsonObject): Promise<string> => {
+      const h = systemOwned({}, [], [new Response(JSON.stringify(body), { status: 200 })]);
+      await cmdDoctor(h.deps, []);
+      return h.io.stdout.join("\n");
+    };
+    const said = await run(full);
+    expect(said).toContain("nothing restarted it");
+    expect(await run(localSnapshotView(full))).toBe(said);
+  });
+
   test("a linked clone still gets every one of those answers the old way", async () => {
     // The control. All four assertions above must fail on a checkout, or they are pinning nothing.
     const run = await findings(harness(null));
@@ -3698,5 +3718,73 @@ describe("statusline-claude: does Claude Code state the context window (.adr/011
   test("no row without the hooks, and a file that does not parse is not this row's to judge", () => {
     expect(row({ statusLine: { type: "command", command: own } }, "linux", false)).toEqual([]);
     expect(rowFor("{ // a comment\n }")[0]?.status).toBe("ok");
+  });
+});
+
+// ── The local key's snapshot view (bridge/local-key.ts) prints what the full snapshot prints ─────
+
+describe("doctor over the local key's view of the snapshot", () => {
+  // Every field the phone gets, with text in the ones the view leaves out: a title, an ask, a held send.
+  const pane = (over: JsonObject): JsonObject => ({
+    paneId: "w1:p1",
+    workspaceId: "w1",
+    workspaceLabel: "collie",
+    workspaceNumber: 1,
+    tabId: "w1:t1",
+    agent: "claude",
+    status: "idle",
+    cwd: "/home/someone/private-project",
+    focused: false,
+    kind: "agent",
+    terminalTitle: "a title an agent wrote",
+    agentTitle: "Fixing the build",
+    subtitle: "leak.person@example.org",
+    asks: [{ id: "a1", question: "Shall I delete the production database now?" }],
+    held: [{ requestId: "r1", text: "push it to main" }],
+    ...over,
+  });
+  const FULL: JsonObject = {
+    bridge: "connected",
+    agents: [
+      pane({ paneId: "w1:p1", hasSession: true }),
+      pane({ paneId: "w1:p2", hasSession: false }),
+      pane({ paneId: "w2:p1", agent: "codex", hasSession: false }),
+      pane({ paneId: "w2:p2", agent: "pi", status: "working" }),
+    ],
+    shellPanes: [pane({ paneId: "w3:p1", agent: "shell", kind: "shell" })],
+    workspaces: [],
+    tabs: [],
+    sessions: [{ name: "default", isPrimary: true, reachable: true, agents: 4, working: 1, blocked: 0 }],
+    update: { restartNeeded: false, current: "1.5.2", latest: null },
+    ts: 1_800_000_000_000,
+  };
+
+  async function plain(body: JsonObject, args: string[] = []): Promise<string> {
+    const h = harness(null);
+    const base = h.deps.fetch;
+    h.deps = {
+      ...h.deps,
+      fetch: async (url, init) => {
+        if (url.endsWith("/api/snapshot")) return new Response(JSON.stringify(body), { status: 200 });
+        return await base(url, init);
+      },
+    };
+    await cmdDoctor(h.deps, args);
+    return h.io.stdout.join("\n");
+  }
+
+  // `collie update --check` (and the phone's preflight behind it) reads doctor's `--json` findings
+  // (`doctorCheck`, cli/update-check.ts), so the same findings from either body is the same preflight.
+  test("the --json findings the update preflight reads are the same", async () => {
+    const said = await plain(FULL, ["--json"]);
+    expect(said).toContain("agent-sessions");
+    expect(await plain(localSnapshotView(FULL), ["--json"])).toBe(said);
+  });
+
+  test("the history rows (agent-sessions, integration-*) print the same, line for line", async () => {
+    const said = await plain(FULL);
+    // The fixture reaches the rows that read panes: a journalled pane with no session is named.
+    expect(said).toContain("w1:p2 (claude)");
+    expect(await plain(localSnapshotView(FULL))).toBe(said);
   });
 });

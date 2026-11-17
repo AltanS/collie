@@ -17,6 +17,10 @@ import { hashesEqual } from "./pairing.ts";
 // WHAT IT OPENS, AND WHY THAT IS ALL:
 //   - Reads only. `guard` asks for it at the `"read"` level and at no other, so it never types into a
 //     terminal, never opens the Files view (`device-read`), never revokes a device.
+//   - Five reads, and no screen or message among them. `apiFrontGate` refuses it on every route not
+//     marked in `LOCAL_KEY_ROUTES`, and the snapshot and the tricks list answer it a view with the
+//     CLI's fields only (bridge/local-key.ts). Any program running as the operator can read this
+//     file, an agent included, so a script that reads panes sends a paired device's token instead.
 //   - From this host, through nothing: a request carrying a proxy's header (`X-Forwarded-For`,
 //     `Forwarded`, `X-Real-IP` and the like) is refused, and the TCP peer must be loopback. Only when
 //     the bridge binds one concrete non-loopback address (a crew peer on its tailnet address, where

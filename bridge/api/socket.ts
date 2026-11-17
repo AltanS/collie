@@ -26,8 +26,8 @@
 // program that only finds THIS socket, and nothing more. It does not stop a program of the same Unix user: such a
 // program can read every screen and type into every pane through the multiplexer's own socket, and can
 // read another program's memory, the token in a run's memory included, and can read the owner-only
-// `<stateDir>/local-secret` and use it on the bridge's loopback door, whose routes that return a session's
-// text are still open to it (bridge/local-secret.ts). The socket is closed to OTHER Unix
+// `<stateDir>/local-secret`, though on the bridge's loopback door that key reads no screen or message text
+// (bridge/local-key.ts `LOCAL_KEY_ROUTES`). The socket is closed to OTHER Unix
 // users (the file mode and the folder mode), to other machines and to pages in a browser (no TCP port, no
 // HTTP: a page can reach loopback HTTP, never a Unix socket). A connection is the unit its caps count by.
 // Every `read` call leaves one log line: `[api] read by=trick:<id> session=<id> result=<ok or the error

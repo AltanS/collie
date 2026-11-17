@@ -203,8 +203,8 @@ ways. It can read a pane through the multiplexer itself. It can read another pro
 trick's token included.
 
 It can also read Collie's local secret, the file `local-secret` in the Collie state directory. With
-that secret it can use the bridge's loopback address, which still answers the routes that return a
-session's text. Collie does not stop any of this. The socket is `api/sock` in
+that secret it reaches only five reads on the bridge's loopback address, and none of them returns a
+screen or a message. Collie does not stop the other ways. The socket is `api/sock` in
 the Collie state directory, mode 0600 inside a folder of mode 0700. It is closed to other users, to
 other machines and to pages in a browser, because it is a Unix socket and not a web address.
 

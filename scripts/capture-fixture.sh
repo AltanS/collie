@@ -12,12 +12,10 @@
 # The buffer is written EXACTLY as the bridge returns it (real ESC bytes, no trailing
 # newline added), because the grammar tests must see what the renderer sees.
 #
-# THE TOKEN. Reads need the pairing token (ADR 0086). The script sends, in this order:
-#   COLLIE_TOKEN   a paired device's token, if set (docs/upgrading.md, "Scripts must pair once")
-#   local-secret   else the bridge's own read credential, $COLLIE_STATE_DIR/local-secret
-#                  (default ~/.local/state/collie). It works because this script dials loopback.
-#                  For a second instance, set COLLIE_STATE_DIR to that instance's state folder.
-# The header goes to curl through a file descriptor, so the token never shows in `ps`.
+# THE TOKEN. A pane read needs a paired device's token (ADR 0086): set COLLIE_TOKEN
+# (`collie pair`, then claim the code; docs/upgrading.md, "Scripts must pair once").
+# The bridge's own local key ($COLLIE_STATE_DIR/local-secret) reads no screen, so it is no
+# fallback here. The header goes to curl through a file descriptor, so the token never shows in `ps`.
 # The bridge masks known secret shapes (COLLIE_REDACT, docs/security.md), so a key on screen is
 # captured as `•` marks.
 #
@@ -36,14 +34,9 @@ mkdir -p "$DIR"
 pane_enc="$(jq -rn --arg s "$PANE" '$s|@uri')"
 out="$DIR/$NAME.txt"
 
-TOKEN="${COLLIE_TOKEN:-}"
+TOKEN="$(printf '%s' "${COLLIE_TOKEN:-}" | tr -d '[:space:]')"
 if [[ -z "$TOKEN" ]]; then
-  secret_file="${COLLIE_STATE_DIR:-$HOME/.local/state/collie}/local-secret"
-  [[ -r "$secret_file" ]] && TOKEN="$(tr -d '[:space:]' < "$secret_file")"
-fi
-if [[ -z "$TOKEN" ]]; then
-  echo "capture-fixture: no token. Set COLLIE_TOKEN to a paired device's token, or COLLIE_STATE_DIR" >&2
-  echo "  to the running bridge's state folder (it holds local-secret)." >&2
+  echo "capture-fixture: set COLLIE_TOKEN to a paired device's token (collie pair); the bridge's local key reads no pane" >&2
   exit 2
 fi
 

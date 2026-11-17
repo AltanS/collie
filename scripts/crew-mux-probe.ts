@@ -4,15 +4,10 @@
 //
 //   bun scripts/crew-mux-probe.ts --lead http://127.0.0.1:8787 --host member
 //
-// THE TOKEN. Every read needs the pairing token (ADR 0086), so each call carries
-// `Authorization: Bearer …`, taken from the first of these that holds one:
-//
-//   • `COLLIE_TOKEN`, a paired device's token (`collie pair`, then claim the code; docs/upgrading.md
-//     "Scripts must pair once"). Use this against any lead, local or remote.
-//   • the lead's own local read credential, `$COLLIE_STATE_DIR/local-secret` (default
-//     `~/.local/state/collie`), and ONLY when `--lead` names loopback (`127.0.0.1`, `localhost`,
-//     `[::1]`): that file is this machine's own secret and is never sent to another host. For a
-//     second instance, set `COLLIE_STATE_DIR` to its state folder.
+// THE TOKEN. Every read needs a paired device's token (ADR 0086), sent as `Authorization: Bearer …`
+// from `COLLIE_TOKEN` (`collie pair`, then claim the code; docs/upgrading.md "Scripts must pair once").
+// The script reads panes, and the bridge's own local key (`<stateDir>/local-secret`) reads no screen
+// (bridge/local-key.ts), so without `COLLIE_TOKEN` the script says so and stops.
 //
 // The token goes in an environment variable, never a flag, so it does not show in `ps`.
 //
@@ -56,10 +51,6 @@
 // only calls it makes are the reads in {@link MUX_READ_ONLY_CHECKS} plus calls to UNDECLARED verbs,
 // which refuse before they touch anything.
 
-import { readFileSync } from "node:fs";
-
-import { resolveStateDir } from "../bridge/config.ts";
-import { localAuthHeader, readLocalSecret } from "../bridge/local-secret.ts";
 import { declareCapabilities, MUX_CAPABILITIES } from "../bridge/mux/capabilities.ts";
 import { MUX_READ_ONLY_CHECKS } from "../bridge/mux/conformance.ts";
 import {
@@ -107,39 +98,17 @@ function flag(args: readonly string[], name: string): string | undefined {
   return at < 0 ? undefined : args[at + 1];
 }
 
-/** Whether a base URL names this machine's loopback, the only place the local secret may go. */
-export function isLoopbackUrl(base: string): boolean {
-  let host: string;
-  try {
-    host = new URL(base).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
-  return host === "localhost" || host === "[::1]" || host === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/u.test(host);
-}
+/** The line the script stops with when no paired device's token is set. */
+export const NO_TOKEN_LINE =
+  "crew-mux-probe: set COLLIE_TOKEN to a paired device's token (collie pair); the bridge's local key reads no pane";
 
 /**
- * The `Authorization` header for every call, or none (see "THE TOKEN" above). `COLLIE_TOKEN` wins;
- * the local secret is read only for a loopback lead. `read` is the file seam, so a test reads no disk.
+ * The `Authorization` header for every call: `COLLIE_TOKEN`, a paired device's token, or null when it
+ * is unset or blank. There is no fallback: the local key reads no pane (see "THE TOKEN" above).
  */
-export function authHeaders(
-  lead: string,
-  env: Record<string, string | undefined>,
-  read: (path: string) => string | null,
-) {
+export function authHeaders(env: Record<string, string | undefined>): { authorization: string } | null {
   const token = env.COLLIE_TOKEN?.trim() ?? "";
-  if (token !== "") return { authorization: `Bearer ${token}` };
-  if (!isLoopbackUrl(lead)) return {};
-  return localAuthHeader(readLocalSecret(resolveStateDir(env), read));
-}
-
-/** A file's text, or null when it cannot be read. */
-function readOrNull(path: string): string | null {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return null;
-  }
+  return token === "" ? null : { authorization: `Bearer ${token}` };
 }
 
 async function fetchJson(url: string, headers: Record<string, string>): Promise<string> {
@@ -370,7 +339,11 @@ async function main(): Promise<void> {
   const lead = (flag(args, "--lead") ?? "").replace(/\/$/u, "");
   const member = flag(args, "--host") ?? "";
   if (lead === "" || member === "") usage();
-  const headers = authHeaders(lead, process.env, readOrNull);
+  const headers = authHeaders(process.env);
+  if (headers === null) {
+    console.error(NO_TOKEN_LINE);
+    process.exit(2);
+  }
 
   // SAFETY: `GET /api/config` answers `BridgeConfig`, and with `?host=` its `mux` block is that
   // member's own declaration or absent (M22/03) — the absent case is refused below.

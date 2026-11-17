@@ -159,14 +159,24 @@ the token.
 ### The CLI's own reads
 
 At each start the bridge writes a new random secret to `local-secret` in its state folder.
-`collie doctor` and `collie crew update` send it to read their own bridge on the same machine.
-The file is owner-only, so only your account can read it, and a clean stop deletes it. The
-bridge takes it for reads only, never for a write or the Files view, and never from another machine.
-It accepts the secret from loopback only, and never on a request that carries a proxy's header such
+`collie doctor`, `collie status`, `collie sessions`, `collie trick list` and `collie crew update`
+send it to read their own bridge on the same machine. The file is owner-only, so only your account
+can read it, and a clean stop deletes it.
+
+This local key reads no screen and no message. It reaches five reads: the snapshot, the tricks list,
+the telemetry switch, the update check and the config. The snapshot gives it pane ids, agents,
+states and space names, with no title, ask or held send. The tricks list gives each trick's state
+and last error, with no output. Every other route refuses it with `403`, a member's pane too.
+
+> **Note.** A script that read panes with `local-secret` now needs a paired device's token. Pair
+> once with `collie pair`, then send that token as `COLLIE_TOKEN`.
+
+The bridge never takes the key for a write or the Files view, and never from another machine.
+It accepts the key from loopback only, and never on a request that carries a proxy's header such
 as `X-Forwarded-For`. A crew member that binds `COLLIE_HOST` to its tailnet address has nothing on
 loopback, so there the bridge also accepts it from this machine's own addresses. A plain TCP relay
-on the same machine, such as `socat` or `ssh -L`, can still pass the secret on. The file is what
-keeps the secret yours, so keep the state folder owner-only.
+on the same machine, such as `socat` or `ssh -L`, can still pass the key on. The file is what
+keeps the key yours, so keep the state folder owner-only.
 
 ### Give a device an expiry
 
@@ -372,7 +382,7 @@ facts. It is not a list of fixes. The state folder is `~/.local/state/collie` un
 | A pairing code on screen | `collie pair` prints its code in a pane. A program that reads that pane through the multiplexer can claim the code before your phone does. The phone then hears that no code waits, and the audit log shows a pairing you did not make. |
 | `POST /api/pair/request` on loopback | A program can ask for a pairing request, show its code in a pane and send the front door's header to choose the network line the phone shows. It still needs a person to tap the right code on a paired device. |
 | `POST /api/pair` on loopback | It needs a live code. Its `Origin` rule stops a web page, not a local program: a local program writes its own `Origin` and `Host` headers, and a request with no `Origin` is taken from a loopback host name. |
-| `local-secret` in the state folder | The CLI's read credential. It reads every session through the bridge on the same machine. It never writes, and never opens the Files view. |
+| `local-secret` in the state folder | The CLI's read credential, on the bridge of the same machine. It reads pane ids, agents, states and space names, the tricks list and the update check. It reads no screen and no message, never writes, and never opens the Files view. |
 | The profile of a paired browser | The browser keeps its token in local storage. A program that reads the profile files gets a full device token. A program that drives the browser, for example through a debugging port, taps as you. |
 | `tricks/switches.json` in the state folder, and `tricks/.collie-approved/` in the config folder | A program that writes an approved copy and its hash into the switch file switches a trick on, with take changes without asking too. No tap is asked. |
 | A trick folder in the config folder, its `rules.md` included | A program can write a trick folder, or edit the files of one that is on, an agent view's instructions included. An agent cannot propose instructions through `collie trick propose`, but that refusal is for an agent that follows the rules. A trick with instructions never takes a change without asking, so the edit waits as a new version, and the version card that shows the change is the only gate. |

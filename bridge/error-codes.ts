@@ -389,6 +389,14 @@ export const ERROR_CODES = {
   /** The account list on disk is not one this build can write; nothing was changed. */
   "accounts.store_unreadable": "the profile list cannot be read; nothing was changed",
 
+  // ── The bridge's local key: `<stateDir>/local-secret` on the loopback port (bridge/local-key.ts) ──
+  /**
+   * The local key reached a route not in `LOCAL_KEY_ROUTES`: every route that returns a screen or a
+   * message, and every route nobody has marked yet. Only a caller holding the key gets this; a phone
+   * never holds it.
+   */
+  "local.no_text": "the bridge's local key reads no screen or message text; read this as a paired device (a script sends COLLIE_TOKEN)",
+
   // ── The local API: `<stateDir>/api/sock`, one JSON line per request (M105 spec 03, bridge/api/) ──
   /** The request names no operation this bridge offers. */
   "api.unknown_op": "the local API has no such operation here; send hello to see the operations it offers",

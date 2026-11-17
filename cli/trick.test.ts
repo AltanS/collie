@@ -19,6 +19,8 @@ import { GROUP_CAPACITY_WORDS, GROUP_TOO_LARGE } from "../bridge/tricks/card-gro
 import { TAP_SHOWS_NOTHING, agentPaneRefusal, checkStatic, runAgainstFixture, cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, sampleProgram, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, SWITCHED_ON_NOT_WHOLE, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
 import { checkWarnings, HELPER_VERSION, helperVersion, isBareImport, isScannedFile, looksBinary, runsLines, shippedHelperVersion, TRICK_HELPER } from "../bridge/tricks/scan.ts";
 import { realFiles } from "./sys.ts";
+import type { JsonObject } from "../bridge/json.ts";
+import { localTricksView } from "../bridge/local-key.ts";
 import { leadStore, member } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { inputsSentence, parseTrickDocument, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT, type TricksReply } from "../web/src/lib/tricks/schema.ts";
@@ -1384,5 +1386,58 @@ describe("review 8 V-N1: collie trick on names the rules it approves", () => {
     const out = d.out.join("\n");
     expect(out).toContain(`It gives your agents instructions: rules.md, sha256 ${sha}.`);
     expect(out).toMatch(/Read them before an agent view uses them: .*\.collie-approved.*rules\.md/u);
+  });
+});
+
+// ── The local key's view of GET /api/tricks (bridge/local-key.ts) prints what the full reply prints ──
+
+describe("trick list and the doctor's tricks row over the local key's view", () => {
+  // The phone's reply, with text the view leaves out: a part's output, the About, the rules, a value.
+  const FULL: JsonObject = {
+    rev: 7,
+    tricks: [
+      {
+        host: "lodge",
+        id: "legs",
+        name: "legs",
+        icon: "plug",
+        on: true,
+        state: "failing",
+        places: ["belt"],
+        error: "The program exited with 1",
+        lastRunAt: "2026-11-08T09:41:00.000Z",
+        pending: { version: "abc1234", code: "a new version an agent wrote" },
+        about: "PLANTED trick output: 42 widgets sold",
+        description: "leak.person@example.org",
+        values: { token: "a value a person typed" },
+      },
+      { host: "lodge", id: "arms", name: "arms", icon: "plug", on: false, state: "off", places: ["status"] },
+    ],
+    parts: [{ host: "lodge", trick: "legs", at: "belt", id: "p1", text: "PLANTED trick output: 42 widgets sold" }],
+    present: ["lodge/legs/belt/p1"],
+    runsOn: { lead: "desk" },
+    path: "/usr/local/bin:/usr/bin",
+  };
+
+  test("the table, the --json document and the doctor row are the same from either answer", async () => {
+    const d = await deps();
+    await cmdTrickInit(d, ["legs"]);
+    await cmdTrickInit(d, ["arms"]);
+    await cmdTrickSwitch(d, ["legs"], true);
+    const printed = async (answer: JsonObject): Promise<{ table: string[]; doc: string[]; doctor: string }> => {
+      const over: TrickDeps & Captured = { ...d, fetch: async () => new Response(JSON.stringify(answer), { status: 200 }) };
+      d.out.length = 0;
+      await cmdTrickList(over, []);
+      const table = [...d.out];
+      d.out.length = 0;
+      await cmdTrickList(over, ["--json"]);
+      const doc = [...d.out];
+      return { table, doc, doctor: JSON.stringify(await tricksFindings(over)) };
+    };
+    const said = await printed(FULL);
+    expect(said.table.join("\n")).toContain("The program exited with 1");
+    expect(said.table.join("\n")).toContain("NEW");
+    expect(said.doctor).toContain("PATH /usr/local/bin:/usr/bin");
+    expect(await printed(localTricksView(FULL))).toEqual(said);
   });
 });
