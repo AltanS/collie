@@ -726,6 +726,14 @@ export function resolveJournalRoots(
     "dsh-tui": envRoots("COLLIE_DSH_ROOT", join(env.DSH_HOME?.trim() || join(home, ".dsh"), "sessions"), env),
     // OpenClaw keeps one SQLite per agent under its state folder, which `OPENCLAW_STATE_DIR` moves.
     openclaw: envRoots("COLLIE_OPENCLAW_ROOT", env.OPENCLAW_STATE_DIR ?? join(home, ".openclaw"), env),
+    // MiniMax Code keeps dated session folders under `$MINIMAX_DATA_DIR/v2/sessions`, ~/.minimax/v2
+    // when that var is unset or blank (its README, § Configuration), and its SQLite index under
+    // v2/sqlite. The program's own variable is `MINIMAX_DATA_DIR`; there is no `MINIMAX_HOME`.
+    mcode: envRoots(
+      "COLLIE_MCODE_ROOT",
+      join(env.MINIMAX_DATA_DIR?.trim() || join(home, ".minimax"), "v2", "sessions"),
+      env,
+    ),
   };
 }
 

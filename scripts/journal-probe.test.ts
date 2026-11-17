@@ -40,6 +40,17 @@ describe("refFor", () => {
   test("a grok path whose parent is not a uuid is skipped, not guessed", () => {
     expect(refFor("grok", "/tmp/sessions/not-a-uuid/chat_history.jsonl")).toBeNull();
   });
+
+  test("mcode decodes the base64url session id out of the parent directory", () => {
+    const id = "mvs_eeeea151d98844409cc358330f9e61bd";
+    // SAFETY: Buffer.from of a validated id always encodes; base64url emits no path separators.
+    const dir = `12-00-00-000-session_${Buffer.from(id).toString("base64url")}`;
+    expect(refFor("mcode", `/tmp/.minimax/v2/sessions/2026/11/03/${dir}/messages.jsonl`)).toEqual({ kind: "id", value: id });
+  });
+
+  test("an mcode path whose parent names no session_ suffix is skipped", () => {
+    expect(refFor("mcode", "/tmp/sessions/2026/11/03/plain/messages.jsonl")).toBeNull();
+  });
 });
 
 test("importing journal-probe has no side effects", async () => {

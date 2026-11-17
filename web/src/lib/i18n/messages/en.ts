@@ -1721,6 +1721,8 @@ export const en = {
   "harnessBar.effort": "Effort",
   "harnessBar.compact": "Compact",
   "harnessBar.resume": "Resume",
+  "harnessBar.plan": "Plan",
+  "harnessBar.history": "History",
   "harnessBar.tree": "Tree",
   "harnessBar.confirmAria": "Tap again to confirm {command}",
   // The Jobs mark and its sheet (components/jobs-sheet.tsx, ADR 0128). `{count}` is the RUNNING jobs.
@@ -4154,6 +4156,8 @@ export const PENDING_TRANSLATION = [
   "apiError.api.failed",
   "settings.tricks.about.on",
   "settings.tricks.about.watch",
+  "harnessBar.plan",
+  "harnessBar.history",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

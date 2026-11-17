@@ -399,6 +399,27 @@ const MUSE: readonly AgentCommand[] = [
 // A Map, not an object literal: the keys tested against it come from Herdr's agent string and from
 // what the operator typed in `commands.toml`, so an object lookup would answer for inherited names
 // ("constructor", "toString") that ship no catalog at all.
+// ── mcode (MiniMax Code) ─────────────────────────────────────────────────────
+const MCODE: readonly AgentCommand[] = [
+  { command: "/plan", description: "Switch Plan Mode or view the latest Plan", takesArg: true, argHint: "[on|off|status|view]", common: true, dangerous: false }, // harness-bar
+  { command: "/compact", description: "Compact session context to free up tokens", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
+  { command: "/history", description: "Review and branch from earlier prompts", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
+  { command: "/sessions", description: "Search, resume, and manage sessions", takesArg: true, argHint: "[query]", common: true, dangerous: false }, // harness-bar
+  { command: "/init", description: "Teach MCode this repository and initialize instructions", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/new", description: "Start a fresh conversation with empty context", takesArg: false, argHint: "", common: true, dangerous: true },
+  { command: "/clear", description: "Clear current conversation context", takesArg: false, argHint: "", common: true, dangerous: true },
+  { command: "/goal", description: "Start or manage the current Session Goal", takesArg: true, argHint: "<objective|action>", common: false, dangerous: false },
+  { command: "/review", description: "Review staged, unstaged, and untracked local changes", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/fork", description: "Fork a new session from current state", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/rewind", description: "Rewind session to an earlier turn", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/retry", description: "Resend the last message after a failed response", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/context", description: "Show context window utilization and breakdown", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/status", description: "Show version, model, account, and connectivity info", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/usage", description: "Show token usage and cost metrics", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/doctor", description: "Run diagnostics on MCode configuration and environment", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/help", description: "Show available commands and usage guide", takesArg: false, argHint: "", common: false, dangerous: false },
+];
+
 const CATALOG = new Map<string, readonly AgentCommand[]>([
   ["claude", CLAUDE],
   ["codex", CODEX],
@@ -412,6 +433,7 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
   // so both keys are filed — one catalog, two spellings.
   ["agy", AGY],
   ["antigravity", AGY],
+  ["mcode", MCODE],
 ]);
 
 /**
