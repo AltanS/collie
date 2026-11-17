@@ -39,7 +39,7 @@ export const KNOWN_RED = {
   },
   "i4-tap-tick-unframed": {
     invariant: "I4",
-    fixedBy: "NONE",
+    fixedBy: "M102-10",
     where: "web/src/lib/harness/prompt-model.ts:306-309 (sameDialogRows: with no bindRegion it compares the lookback signature), web/src/lib/harness/guard.ts entryGuard (refuses `changed`)",
     what: "A tap on a dialog with no frame of its own (a Claude ask, the first-run menu, agy and muse asks) is refused `changed` while a row above it ticks: the person cannot answer until the timer stops.",
   },
