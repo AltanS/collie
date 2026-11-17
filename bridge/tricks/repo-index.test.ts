@@ -436,7 +436,9 @@ describe("the link git is given", () => {
         r.calls.push({ args: [...args], env: opts.env });
         if (args.includes("fetch")) fetches.push([...args]);
         if (args.includes("fetch")) return { code: 128, stdout: new Uint8Array(0), stderr: "fatal: stop here", timedOut: false, capped: false };
-        return await spawnGit(args, opts);
+        // The only other run before the fetch is `git init`. The test asks what the fetch is given, not whether this
+        // machine's git can make a repository, so it is answered here and no real git runs.
+        return { code: 0, stdout: new Uint8Array(0), stderr: "", timedOut: false, capped: false };
       };
       const repo = new RepoIndexTricks(r.deps);
       await repo.list({ rid: rid(), url });
