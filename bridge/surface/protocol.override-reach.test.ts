@@ -297,6 +297,10 @@ describe("1. the gate table: every refusal a person's send could meet, before an
 
 describe("2. the harm cases: an override never answers a question (M102 spec 12)", () => {
   const dialogs = Object.entries(LABELS.fixtures).filter(([, label]) => label.state === "dialog");
+  // Each of the four walks reads every dialog fixture of the corpus (722 screens). That took 6.5 to 6.9 s
+  // on the Windows VM and 4 s on a loaded Linux host, against bun's 5 s. The walk stays whole; the limit is
+  // the one that a slow machine needs.
+  const WALK_TIMEOUT_MS = 60_000;
 
   test("every dialog fixture of every harness, read unread (no frame, no reader): refused menu_open, nothing typed, no key", async () => {
     const harnesses = new Set<string>();
@@ -310,7 +314,7 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
     }
     expect(typed).toEqual([]);
     expect(harnesses.size).toBeGreaterThanOrEqual(11);
-  });
+  }, WALK_TIMEOUT_MS);
 
   for (const foreground of [undefined, "unknown", "program"] as const) {
     test(`the same dialogs on a pane with no profile (the blind road, foreground ${foreground ?? "not read"}): refused menu_open, nothing typed, no key`, async () => {
@@ -322,7 +326,7 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
         else expect(answer.receipt?.menuSign).toBeDefined();
       }
       expect(typed).toEqual([]);
-    });
+    }, WALK_TIMEOUT_MS);
   }
 
   const MENUS: readonly (readonly [string, readonly string[]])[] = [

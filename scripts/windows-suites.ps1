@@ -14,9 +14,9 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 546 in all, each one named, with its reason:
-#              bridge 311: 174 from before 1.29.0 and 137 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
-#                adapters 10, then Accounts 45, then 11 more of the data path for a dropped or failed data send and a shadowed part; see below). Of the 174, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 6 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
+#              Today, 547 in all, each one named, with its reason:
+#              bridge 312: 174 from before 1.29.0 and 138 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
+#                adapters 10, then Accounts 45, then 11 more of the data path for a dropped or failed data send and a shadowed part, then 1 for the pane's program environment read of pi (#793); see below). Of the 174, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 6 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
 #                worktree (see "The fake git of a new worktree, bridge" below). 42 are the Hill and the tricks (see
@@ -101,6 +101,10 @@
 #                - "procProbe sees a live process's executable and folder" (pane-binary.test.ts, off Linux: it reads /proc)
 #                - "two copies of one harness" (pane-binary.test.ts, win32: its fake omp copies are POSIX sh scripts), its one test and
 #                  the hook Bun counts with it. The Windows path of paneBinaryOf runs on Windows with a fake host ("no /proc" tests).
+#                One more, new with the pi pane fix (#793), in the 138 new:
+#                - "procProbe reads a live process's environment, and nothing on another host" (pane-binary.test.ts, off Linux: it reads
+#                  /proc/<pid>/environ of a live `sleep`, and Windows has neither /proc nor `sleep`; the parse of that file, `envFromEnviron`,
+#                  and the other-host answer run on Windows in the tests beside it)
 #              The fake git of a new worktree, bridge (6). bridge/worktree-add.test.ts hands `addWorktree` a fake git, a POSIX
 #                `#!/bin/sh` script that Windows cannot spawn (EFTYPE). Those tests are `test.skipIf` on win32; every test
 #                there that runs the real git runs on Windows too (M81). Each name sits on one line, so the pin test can find it:
@@ -238,7 +242,7 @@
 #                executable bit and reads it through `file://`, as the add from the list does (bridge 33 above).
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 311,
+  [int]$MaxSkipsBridge = 312,
   [int]$MaxSkipsCli = 200,
   [int]$MaxSkipsScripts = 35
 )
