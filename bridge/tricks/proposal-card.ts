@@ -216,7 +216,7 @@ function summaryOf(who: string, replaces: boolean, full: string, short: string):
 export const PROPOSAL_TOO_LARGE = "This trick asks for more than a card can show, so it was not proposed. Ask your person to add it on the machine.";
 
 /** A proposal's card, or why there is none: a refusal code of the propose wire and its plain words. */
-export type ProposalCardResult = { ok: true; card: Omit<HillPostInput, "requestId"> } | { ok: false; code: "card_too_large" | GroupRefusal["code"]; error: string };
+export type ProposalCardResult = { ok: true; card: Omit<HillPostInput, "requestId"> } | { ok: false; code: "card_too_large" | "exists" | GroupRefusal["code"]; error: string };
 
 const TOO_LARGE_FACTS = { ok: false, code: "card_too_large", error: PROPOSAL_TOO_LARGE } as const;
 /** A line with a run of spaces a phone would push out of sight: refused on one card and on a group alike (review 7 R2). */

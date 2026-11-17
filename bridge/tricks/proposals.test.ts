@@ -15,6 +15,7 @@ import { approvedCopyDir, approvedTrickDir, TRICKS_DIR, trickStateDir } from "./
 import { PROPOSAL_AUTHOR_WORDS } from "./proposal-card.ts";
 import {
   PROPOSAL_CHANGED,
+  PROPOSAL_NO_CHANGE,
   PROPOSAL_NOT_COMPARED,
   PROPOSAL_ORPHAN_MS,
   PROPOSAL_STORE_MOVED,
@@ -687,6 +688,34 @@ describe("a trick id that exists", () => {
       expect(openCards(l)).toEqual([]);
       expect(await stat(l.proposals.storeDir("legs", v2.hash)).catch(() => null)).toBeNull();
     }
+  });
+
+  test("a new version with the same code as the one that runs makes no card at all (2026-11-17)", async () => {
+    const l = await lead();
+    await proposedOn(l, "legs");
+    const same = proposal("legs", "old\n");
+    expect(await l.proposals.propose(same, AGENT)).toEqual({ ok: false, code: "exists", error: PROPOSAL_NO_CHANGE });
+    expect(openCards(l)).toEqual([]);
+    expect(await stat(l.proposals.storeDir("legs", same.hash)).catch(() => null)).toBeNull();
+  });
+
+  test("a new version whose only change is a file mode shows that change as a line of code, and its yes needs the end seen (2026-11-17)", async () => {
+    const l = await lead();
+    await proposedOn(l, "legs");
+    const read = readProposal({ requestId: nextRid(), files: wireFiles([
+      { rel: "trick.toml", bytes: enc(manifest("legs")), executable: false },
+      { rel: "program.ts", bytes: enc("old\n"), executable: false },
+    ]) });
+    if (!read.ok) throw new Error(read.refusal.error);
+    expect(await l.proposals.propose(read.proposal, AGENT)).toMatchObject({ ok: true, kind: "version" });
+    const [card] = openCards(l);
+    expect(card?.view).toContainEqual({ kind: "diff", text: "program.ts: mode -x, it can no longer run as a program", attrs: { file: "program.ts" } });
+    const one = singleCodeCard(card!);
+    expect(one).not.toBeNull();
+    // A yes that does not name the card's code as seen is refused; with it, the yes lands.
+    const bare = await l.hill.answer({ rid: nextRid(), node: `hill/${card!.id}`, intent: "on", value: { text: null } }, card!.id, "Pixel 9");
+    expect(bare.kind === "receipt" ? bare.receipt.code : bare.kind).toBe("rejected");
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "ok" });
   });
 
   test("a stored copy that changes while its card is made is not posted (review 7 R9)", async () => {

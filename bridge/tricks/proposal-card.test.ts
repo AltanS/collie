@@ -156,3 +156,10 @@ describe("one tap switches the trick on", () => {
     for (const option of options) expect(option.confirm).toBeUndefined();
   });
 });
+
+describe("no card without code to read (2026-11-17)", () => {
+  test("a new trick's empty file shows one line that says so", () => {
+    const diff = addedDiff([{ rel: "empty.ts", bytes: new Uint8Array() }]);
+    expect(diff.files).toEqual([{ rel: "empty.ts", change: "added", plus: 0, minus: 0, hunk: ["empty.ts: an empty file, added"] }]);
+  });
+});

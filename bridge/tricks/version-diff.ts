@@ -118,6 +118,25 @@ async function sums(dir: string, fs: TrickFs): Promise<Sums> {
   return out;
 }
 
+/**
+ * The line a card's code shows for a file whose change has no line of its own, so no card of a new version is
+ * ever without code to read (the lead's decision, 2026-11-17). The file's path leads, as git's own header does.
+ */
+export function noLineChange(rel: string, what: "+x" | "-x" | "added" | "removed"): string {
+  switch (what) {
+    case "+x":
+      return `${rel}: mode +x, it can now run as a program`;
+    case "-x":
+      return `${rel}: mode -x, it can no longer run as a program`;
+    case "added":
+      return `${rel}: an empty file, added`;
+    case "removed":
+      return `${rel}: an empty file, removed`;
+    default:
+      return what satisfies never;
+  }
+}
+
 /** `+x` or `-x` when a file in both folders changed its executable bit. */
 function modeChange(rel: string, old: Sums, now: ReadonlySet<string>): "+x" | "-x" | undefined {
   if (!old.sum.has(rel)) return undefined;
@@ -262,10 +281,10 @@ export async function versionDiff(opts: VersionDiffOptions): Promise<VersionDiff
     const mode = is === undefined ? undefined : modeChange(rel, old, nowExec);
     if (was === is && mode === undefined) continue;
     const change: FileChange = was === undefined ? "added" : is === undefined ? "removed" : "changed";
-    // Only the bit moved: nothing to count and no line to show, so it is whole as it is.
+    // Only the bit moved: nothing to count, and one line that says so, so it is whole as it is.
     if (was === is && mode !== undefined) {
-      files.push({ rel, change, plus: 0, minus: 0, hunk: [], mode });
-        modeOnly = true;
+      files.push({ rel, change, plus: 0, minus: 0, hunk: [noLineChange(rel, mode)], mode });
+      modeOnly = true;
       continue;
     }
     const file: ChangedFile = { rel, change, plus: null, minus: null, hunk: null };
@@ -288,6 +307,16 @@ export async function versionDiff(opts: VersionDiffOptions): Promise<VersionDiff
     // `--no-index` exits 1 when the files differ, 0 when they are the same, and anything else on an error.
     if (answer.timedOut || (answer.code !== 0 && answer.code !== 1)) continue;
     const read = readPatch(answer.stdout);
+    // An empty file added or removed: git prints its header and no hunk. One line says what happened. A changed
+    // file with no hunk has nothing a card could show, so it stays unread and no card counts it as shown.
+    if (read.hunk.length === 0) {
+      if (file.change === "changed") continue;
+      file.plus = 0;
+      file.minus = 0;
+      file.hunk = [noLineChange(file.rel, file.change)];
+      counted = true;
+      continue;
+    }
     const lines = read.hunk.map(readViewLine);
     file.plus = read.plus;
     file.minus = read.minus;

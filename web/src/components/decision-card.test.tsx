@@ -675,7 +675,8 @@ describe("after the tap", () => {
 
   it("says what Collie did for its own Decision, wears the app's mark, and says nothing of a trick", () => {
     const from: HillDecision["from"] = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "lodge", harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "version", id: "legs", hash: "a".repeat(64) } };
-    const decision = hillDecision({ from, target: null, options: [{ intent: "use", label: "Use the new version" }, { intent: "keep", label: "Keep the old version" }] });
+    // With code to show: a version card with none offers no yes (2026-11-17).
+    const decision = hillDecision({ from, target: null, view: [{ kind: "diff", text: "+console.log(1);", attrs: { file: "program.ts" } }], options: [{ intent: "use", label: "Use the new version" }, { intent: "keep", label: "Keep the old version" }] });
     const used = renderCard(decision, answered(hillReceipt({ delivery: "none" }), "use"));
     expect(used.slot("decision-receipt")?.textContent).toBe("Now running the new version.");
     expect(used.container.querySelector('[data-slot="decision-collie-mark"]')).not.toBeNull();
@@ -984,6 +985,24 @@ describe("the Decision card, a single card of Collie's own with code", () => {
       view: code,
       ...over,
     });
+
+  it("offers no yes on a trick card with no code to show, only the decline, with the line that says why (2026-11-17)", () => {
+    for (const [decision, decline, yes] of [
+      [proposal({ view: [{ kind: "para", text: "It asks for no new rights." }] }), "later", "on"],
+      [proposal({ view: undefined }), "later", "on"],
+      [hillDecision({ from: collie("version"), target: null, text: "none", options: [{ intent: "use", label: "Use the new version" }, { intent: "keep", label: "Keep the old version" }] }), "keep", "use"],
+    ] as const) {
+      const card = renderCard(decision);
+      expect(card.option(decline)).toBeEnabled();
+      expect(card.container.querySelector(`[data-slot="decision-option"][data-intent="${yes}"]`)).toBeNull();
+      expect(card.slot("decision-code-unshown")).toHaveTextContent("This phone cannot show all of this card, so the trick cannot be switched on here.");
+      card.unmount();
+    }
+    // With code, both options show and no such line.
+    const shown = renderCard(proposal());
+    expect(shown.option("on")).toBeInTheDocument();
+    expect(shown.slot("decision-code-unshown")).toBeNull();
+  });
 
   /** Every view taller than the screen and far over the fold's cap, and an observer the case drives. */
   function tallScreen() {

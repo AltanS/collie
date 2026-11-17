@@ -62,13 +62,16 @@ describe("the diff of two copies", () => {
     expect(hunk.join("\n")).toContain("+echo 2");
   });
 
-  test("a file whose executable bit alone moved is listed +x, counted, and its row is the whole change (review 7)", async () => {
+  test("a file whose executable bit alone moved is listed +x, counted, and its code part says so in one line (review 7, 2026-11-17)", async () => {
     const base = await folder({ "trick.toml": MANIFEST, "legs.sh": "echo 1\n", "keep.sh": "echo 2\n" });
     const same = { "trick.toml": MANIFEST, "legs.sh": "echo 1\n", "keep.sh": "echo 2\n" };
     // A stored proposal is 0600: the bits it marked are passed in. This half runs on every platform.
     const diff = await versionDiff({ base, next: await folder(same), nextExec: new Set(["legs.sh"]) });
-    expect(diff).toEqual({ files: [{ rel: "legs.sh", change: "changed", plus: 0, minus: 0, hunk: [], mode: "+x" }], counted: true });
-    expect(JSON.stringify(versionView([], [], diff))).toContain('"text":"changed +x"');
+    expect(diff).toEqual({ files: [{ rel: "legs.sh", change: "changed", plus: 0, minus: 0, hunk: ["legs.sh: mode +x, it can now run as a program"], mode: "+x" }], counted: true });
+    const view = JSON.stringify(versionView([], [], diff));
+    expect(view).toContain('"text":"changed +x"');
+    // The code part holds the change as text, so the card has code to show and its yes works after its end.
+    expect(view).toContain('{"kind":"diff","text":"legs.sh: mode +x, it can now run as a program","attrs":{"file":"legs.sh"}}');
     // A folder by hand: the bits are read off the disk, which only a POSIX file mode holds. Inline, not a
     // skip: the Windows run's skip budget (scripts/windows-suites.ps1) counts every skipped test.
     if (process.platform === "win32") return;
@@ -79,6 +82,43 @@ describe("the diff of two copies", () => {
       ["keep.sh", "-x"],
       ["legs.sh", "+x"],
     ]);
+  });
+
+  test("an empty file added, removed or renamed shows one line each, so the card has code (2026-11-17)", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "old.txt": "", "gone.txt": "" });
+    const next = await folder({ "trick.toml": MANIFEST, "new.txt": "", "gone2.txt": "" });
+    const diff = await versionDiff({ base, next });
+    expect(diff).toEqual({
+      counted: true,
+      files: [
+        { rel: "gone.txt", change: "removed", plus: 0, minus: 0, hunk: ["gone.txt: an empty file, removed"] },
+        { rel: "gone2.txt", change: "added", plus: 0, minus: 0, hunk: ["gone2.txt: an empty file, added"] },
+        { rel: "new.txt", change: "added", plus: 0, minus: 0, hunk: ["new.txt: an empty file, added"] },
+        { rel: "old.txt", change: "removed", plus: 0, minus: 0, hunk: ["old.txt: an empty file, removed"] },
+      ],
+    });
+    const view = versionView([], [], diff);
+    expect(view !== null && viewHasCode(view)).toBe(true);
+  });
+
+  test("a change of line ends alone still has lines to show: git prints them, the CR dropped (2026-11-17)", async () => {
+    const base = await folder({ "trick.toml": MANIFEST, "legs.sh": "echo 1\n" });
+    const next = await folder({ "trick.toml": MANIFEST, "legs.sh": "echo 1\r\n" });
+    const diff = await versionDiff({ base, next });
+    expect(diff.files.map((file) => [file.rel, file.hunk?.slice(1)])).toEqual([["legs.sh", ["-echo 1", "+echo 1"]]]);
+  });
+
+  test("a version whose change shows no code (a binary file, no git) offers Keep only (2026-11-17)", () => {
+    const base = subject();
+    for (const files of [
+      [{ rel: "blob.bin", change: "changed", plus: null, minus: null, hunk: null }],
+      [{ rel: "legs.sh", change: "changed", plus: null, minus: null, hunk: null }],
+    ] satisfies VersionDiff["files"][]) {
+      const card = versionCard(base, { counted: false, files });
+      expect(card?.options?.map((option) => option.intent)).toEqual(["keep"]);
+      expect(card?.recommends).toBeNull();
+      expect(card?.view === undefined || !viewHasCode(card.view)).toBe(true);
+    }
   });
 
   test("with no git, every file is listed by what happened to it, with no counts and no hunks", async () => {
@@ -501,9 +541,13 @@ describe("the card's words and view", () => {
     const withFields = versionCard({ ...base, pending: { ...pending, manifest: { ...pending.manifest!, fields } } }, diff);
     expect(withFields?.options).toEqual([{ intent: "keep", label: "Keep the old version" }]);
     expect(withFields?.summary).toContain(VERSION_TOO_MUCH_START);
-    // The same diff with the field list unchanged is not held back by the rule: "Use" is offered.
+    // With the field list unchanged the rule does not hold it back. That card shows no code either (its
+    // masked notes fill the view), so it offers Keep only too (2026-11-17); a change that shows offers "Use".
     const same = versionCard({ ...base, pending: { ...pending, manifest: { ...pending.manifest! } } }, diff);
-    expect(same?.options?.map((option) => option.intent)).toContain("use");
+    expect(same?.summary).not.toContain(VERSION_TOO_MUCH_START);
+    expect(same?.options?.map((option) => option.intent)).toEqual(["keep"]);
+    const shows = versionCard({ ...base, pending: { ...pending, manifest: { ...pending.manifest! } } }, { counted: true, files: files.slice(0, 1) });
+    expect(shows?.options?.map((option) => option.intent)).toContain("use");
   });
 
   test("a request id is a canonical UUID that moves with the trick, the hash and the count", () => {

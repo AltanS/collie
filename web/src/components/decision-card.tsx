@@ -432,6 +432,10 @@ export function DecisionCard({
   // (hooks/use-still.ts; security read of package I, 2026-11-17, point 2).
   const trickDecline = trickCardDecline(decision);
   const [optionsBox, setOptionsBox] = useState<HTMLDivElement | null>(null);
+  // A trick card with no code to show (no group, no code in its view) cannot show what a yes would approve: it
+  // offers the decline only, with the line that says why (the lead's decision, 2026-11-17).
+  const noCode = trickDecline !== null && group === undefined && single === null;
+  const shownOptions = noCode ? decision.options.filter((option) => option.intent === trickDecline) : decision.options;
   const still = useStill(trickDecline === null ? null : optionsBox, `${decision.id}:${group?.digest ?? single?.key ?? ""}:${String(page)}`);
   const pressedReady = useRef(false);
   const holdsYes = (intent: string) => trickDecline !== null && intent !== trickDecline && !still;
@@ -468,7 +472,7 @@ export function DecisionCard({
   const summary = useHidesLines<HTMLParagraphElement>(!moreOpen);
   const summaryHides = summary.hides;
   const hasMore = hasBody || summaryHides;
-  const recommended = decision.options.find((o) => o.intent === decision.recommends?.intent);
+  const recommended = shownOptions.find((o) => o.intent === decision.recommends?.intent);
   const sendingIntent = answer.phase === "sending" ? answer.intent : null;
   const target = decision.target;
   const goesTo = targetLine(decision);
@@ -713,7 +717,12 @@ export function DecisionCard({
                         pressedReady.current = still;
                       }}
                     >
-                      {decision.options.map((option, i) => {
+                      {noCode && (
+                        <p data-slot="decision-code-unshown" className="text-xs text-muted-foreground">
+                          {t("hill.chat.unshown")}
+                        </p>
+                      )}
+                      {shownOptions.map((option, i) => {
                         const isArmed = armed === `option:${option.intent}`;
                         const busy = sendingIntent === option.intent;
                         const isRecommended = recommended?.intent === option.intent;

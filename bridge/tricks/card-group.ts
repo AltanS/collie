@@ -6,7 +6,7 @@ import { HELPER_FILE, shippedHelperVersion } from "./scan.ts";
 import { NOTES_FILE, NOTES_VERSION, shippedNotesTexts, shippedNotesVersion } from "./agents-notes.ts";
 import type { ProposedFile } from "./propose-wire.ts";
 import { bytesOf, cellPath, checked, countCell } from "./version-card.ts";
-import { readViewLine, VIEW_GAP_MAX, type ChangedFile, type VersionDiff } from "./version-diff.ts";
+import { noLineChange, readViewLine, VIEW_GAP_MAX, type ChangedFile, type VersionDiff } from "./version-diff.ts";
 
 // A GROUP OF CARDS (crew slice 8): the code of a trick that does not fit one card, shown whole on up to
 // seven more. Card 1 is Collie's facts (proposal-card.ts, version-card.ts); this module lays out cards 2
@@ -233,6 +233,8 @@ export function addedFile(file: Pick<ProposedFile, "rel" | "bytes">): ChangedFil
   const lines = text.split("\n");
   if (lines.at(-1) === "") lines.pop();
   const read = lines.map((line) => readViewLine(line));
+  // An empty file has no line: one says so, so its card has code to show (2026-11-17).
+  if (read.length === 0) return { rel: file.rel, change: "added", plus: 0, minus: 0, hunk: [noLineChange(file.rel, "added")] };
   const hunk = [`@@ -0,0 +1,${String(read.length)} @@`, ...read.map((line) => `+${line.line}`)];
   const changed: ChangedFile = { rel: file.rel, change: "added", plus: read.length, minus: 0, hunk };
   const masked = read.filter((line) => line.masked);
