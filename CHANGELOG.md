@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A trick's card leaves its page once you answer it.** Dismiss, Switch it on, Use the new version or Not now on a card opened from Settings, Tricks or the Dashboard shows what happened for a moment, then the page closes. Before, the card stayed on the page with its Back, Next and Dismiss buttons until you left the page, though Collie had already closed it.
+
 ## [1.29.0] - 2026-11-12
 
 ### Added
