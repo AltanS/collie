@@ -2349,8 +2349,8 @@ export function AgentChat({
     composerRef.current?.focusInput();
   }
 
-  // A trick this session proposed (package I): Collie's own card, last in whichever body is on screen, in that
-  // body's own scroll like a message (session-trick-card.tsx), never a band of its own. Opening its code brings
+  // A trick this session proposed (package I): Collie's own card, last in whichever body is on screen (Chat, the
+  // mirror, or an agent view standing in for both), in that body's own scroll like a message (session-trick-card.tsx), never a band of its own. Opening its code brings
   // the fold's row to the top and stops the list following the tail, so the code is read from its start.
   const trickCards =
     agent === undefined ? null : <SessionTrickCards self={walkySelf} onReadCode={(row) => void listRef.current?.scrollToChild(row, true)} />;
@@ -3109,6 +3109,7 @@ export function AgentChat({
                 onTap={tapInView}
                 onStale={agentView.noteChanged}
                 onLink={viewLink}
+                tail={trickCards}
               />
             )}
             {!agentView.showing && (chatShown ? (
