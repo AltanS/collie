@@ -151,7 +151,16 @@ function MachineRow({ target, showName, io }: { target: MachineTarget; showName:
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           {showName ? <div className="truncate text-sm font-medium">{target.name}</div> : null}
-          {reading.state === "loading" ? <p className="text-sm text-muted-foreground">{t("settings.worktreeFolder.loading")}</p> : null}
+          {reading.state === "loading" ? (
+            <>
+              <p className="text-sm text-muted-foreground">{t("settings.worktreeFolder.loading")}</p>
+              {/* CALM LOAD: the answered row's path line, empty and unseen, so the row does not grow by it
+                  when the read lands. One line of the path's own size; a long path that wraps still grows. */}
+              <p aria-hidden="true" data-slot="worktree-folder-hold" className="invisible break-all font-mono text-xs">
+                {"\u00a0"}
+              </p>
+            </>
+          ) : null}
           {reading.state === "failed" ? <p className="text-sm text-muted-foreground">{t("settings.worktreeFolder.unavailable")}</p> : null}
           {answer !== null ? (
             <>
@@ -174,6 +183,8 @@ function MachineRow({ target, showName, io }: { target: MachineTarget; showName:
             {t("settings.worktreeFolder.change")}
           </Button>
         ) : null}
+        {/* The button's own height, unseen, while the read runs: the row is at least as tall as it will be. */}
+        {reading.state === "loading" ? <div aria-hidden="true" data-slot="worktree-folder-hold-button" className="h-11 shrink-0" /> : null}
       </div>
       {answer !== null && !canWrite ? <p className="pt-2 text-xs text-muted-foreground">{t("settings.worktreeFolder.readOnly")}</p> : null}
       <Collapse open={editing}>

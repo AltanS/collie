@@ -42,6 +42,38 @@ function member(id: string, isLead: boolean): ServerSummary {
   return { id, name: id, isLead, reachable: true, protocol: "ok" } as ServerSummary;
 }
 
+// CALM LOAD (row 15): while the read runs the row holds the answered row's lines and the button's box, unseen.
+describe("WorktreeFolderControl while the read runs", () => {
+  const row = () => screen.getByTestId("worktree-folder-row");
+  const hold = () => row().querySelector('[data-slot="worktree-folder-hold"]');
+  const holdButton = () => row().querySelector('[data-slot="worktree-folder-hold-button"]');
+
+  it("reserves the path line and the button box, and the answered row stands in their place", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.get("/api/worktree/folder", async () => {
+        await gate;
+        return HttpResponse.json(UNSET);
+      }),
+    );
+    renderCard(<WorktreeFolderControl />);
+    expect(await screen.findByText("Reading…")).toBeInTheDocument();
+    expect(hold()).toHaveClass("invisible", "font-mono", "text-xs");
+    expect(hold()).toHaveAttribute("aria-hidden", "true");
+    expect(holdButton()).toHaveClass("h-11", "shrink-0");
+    // The held lines sit where the answer's lines will: under the loading line, beside the button's box.
+    const lines = hold()!.parentElement!;
+    expect(lines.children).toHaveLength(2);
+    release();
+    await screen.findByText("Default");
+    expect(hold()).toBeNull();
+    expect(holdButton()).toBeNull();
+    expect(row().querySelector('[data-testid="worktree-folder-value"]')).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Change" })).toBeInTheDocument();
+  });
+});
+
 describe("WorktreeFolderControl", () => {
   it("shows Default and the folder the rule gives while nothing is set", async () => {
     server.use(http.get("/api/worktree/folder", () => HttpResponse.json(UNSET)));
