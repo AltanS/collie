@@ -8,7 +8,7 @@ import { t, type MessageKey } from "@/lib/i18n";
 import { hasResizeObserver } from "@/lib/env";
 import { effortLabel, modelLabel } from "@/lib/model-label";
 import { formatTokens } from "@/lib/token-count";
-import { visibleStatusCount } from "@/lib/tricks/status";
+import { fitStatusRow } from "@/lib/tricks/status";
 import type { PaneUsage, UsageLimit } from "@/lib/types";
 import type { UsageRow } from "@/lib/usage-row";
 import { cn } from "@/lib/utils";
@@ -67,12 +67,14 @@ import { cn } from "@/lib/utils";
 //
 // THE TRICKS' STATUS ITEMS FOLLOW COLLIE'S OWN (M94 re-cut, the `status` place): one chip per trick, in
 // manifest order, after the cost, in the same type and the same gap (components/trick-status-item.tsx).
-// They are the first thing to give way. When the row is wider than the room it has, the last item hides,
-// then the one before it, and Collie's own items never move: the model name truncates only once no trick
-// item is left (lib/tricks/status.ts holds the rule, {@link useStatusFit} measures). A hidden item stays
-// in the tree, invisible and inert and out of the reading order, so its width is still measured and it
-// returns the moment there is room. A trick item may take a tap, so it takes touches back the way the
-// notice slot does; the tag itself still takes none.
+// A chip KEEPS ITS PLACE (the operator, 2026-11-17: his Claude rows are full at 360px, and the chip he
+// asked for was always the one hidden). When the row is wider than the room it has, the MODEL NAME gives
+// way first: `Opus 5.5 · medium`, then `Opus 5.5`, then the name cut with an ellipsis. The figures keep
+// their own rule (the window count). Only when the chips are more than the row holds, with the name down
+// to its floor, does the last chip hide, then the one before it (lib/tricks/status.ts holds the rule,
+// {@link useStatusFit} measures). A hidden item stays in the tree, invisible and inert and out of the
+// reading order, so its width is still measured and it returns the moment there is room. A trick item
+// may take a tap, so it takes touches back the way the notice slot does; the tag itself still takes none.
 
 /** At or above this percentage a gauge turns red. */
 export const USAGE_HOT_AT = 80;
@@ -106,24 +108,35 @@ function naturalWidth(el: HTMLElement): number {
   return Math.max(el.offsetWidth, el.scrollWidth);
 }
 
+/** What the measure decides: how many trick items show, and which form of the model name (0 is the full one). */
+interface StatusFitState {
+  shown: number;
+  form: number;
+}
+
 /**
- * How many of the trick items fit, measured from the DOM after every render and, where there is a
- * `ResizeObserver` (not jsdom), whenever the mirror box, the Collie group or an item changes size. `key`
- * names the items, so the observer follows them when they change. Returns the count to show, from the
- * first.
+ * How the row fits, measured from the DOM after every render and, where there is a `ResizeObserver` (not
+ * jsdom), whenever the mirror box, the Collie group or an item changes size. `key` names the items, so the
+ * observer follows them when they change. Returns the trick items to show, from the first, and the form of
+ * the model name. Both forms of the name stay in the tree (the hidden one invisible), so each width is
+ * known whichever is drawn.
  */
-function useStatusFit(key: string, gap: number, count: number, tagRef: RefObject<HTMLDivElement | null>, ownRef: RefObject<HTMLSpanElement | null>, itemsRef: RefObject<HTMLSpanElement | null>): number {
-  const [shown, setShown] = useState(count);
+function useStatusFit(key: string, gap: number, count: number, tagRef: RefObject<HTMLDivElement | null>, ownRef: RefObject<HTMLSpanElement | null>, itemsRef: RefObject<HTMLSpanElement | null>): StatusFitState {
+  const [fit, setFit] = useState<StatusFitState>({ shown: count, form: 0 });
   const measure = useCallback(() => {
     const box = tagRef.current?.parentElement;
     const items = itemsRef.current;
     if (box === null || box === undefined || items === null) return;
     const room = Math.floor(box.clientWidth * TAG_MAX_SHARE) - TAG_PADDING;
     const mine = ownRef.current === null ? [] : [...ownRef.current.children].filter((el): el is HTMLElement => el instanceof HTMLElement);
-    const own = mine.reduce((sum, el) => sum + naturalWidth(el), 0) + gap * Math.max(0, mine.length - 1);
+    const others = mine.filter((el) => el.dataset.slot !== "usage-label");
+    const fixed = others.reduce((sum, el) => sum + naturalWidth(el), 0) + gap * Math.max(0, others.length - 1);
+    const name = ownRef.current?.querySelector<HTMLElement>("[data-slot='usage-name']");
+    const effort = ownRef.current?.querySelector<HTMLElement>("[data-slot='usage-effort']");
+    const forms = name === null || name === undefined ? [] : effort === null || effort === undefined ? [name.offsetWidth] : [name.offsetWidth + effort.offsetWidth, name.offsetWidth];
     const widths = [...items.children].filter((el): el is HTMLElement => el instanceof HTMLElement).map((el) => el.offsetWidth);
-    const next = visibleStatusCount({ room, own, gap, widths });
-    setShown((was) => (was === next ? was : next));
+    const next = fitStatusRow({ room, fixed, gap, forms, widths });
+    setFit((was) => (was.shown === next.count && was.form === next.form ? was : { shown: next.count, form: next.form }));
   }, [gap, tagRef, ownRef, itemsRef]);
   useLayoutEffect(() => {
     if (count > 0) measure();
@@ -139,7 +152,7 @@ function useStatusFit(key: string, gap: number, count: number, tagRef: RefObject
     return () => observer.disconnect();
     // `key` is the items' identity: a new set of items has new elements to observe.
   }, [key, count, measure, tagRef, ownRef, itemsRef]);
-  return Math.min(shown, count);
+  return { shown: Math.min(fit.shown, count), form: count === 0 ? 0 : fit.form };
 }
 
 /** The short label and the spoken sentence of the two windows this build words itself. */
@@ -344,7 +357,7 @@ export function ModelTag({
   const ownRef = useRef<HTMLSpanElement>(null);
   const itemsRef = useRef<HTMLSpanElement>(null);
   const items = trailing ?? [];
-  const shown = useStatusFit(items.map((item) => item.id).join(" "), ITEM_GAPS[usageRow].px, items.length, tagRef, ownRef, itemsRef);
+  const { shown, form } = useStatusFit(items.map((item) => item.id).join(" "), ITEM_GAPS[usageRow].px, items.length, tagRef, ownRef, itemsRef);
   const name = modelLabel(model);
   const heard = gaugesOf(usage);
   // The row draws the context and the first few windows; the rest are counted, and every one is still spoken.
@@ -375,7 +388,16 @@ export function ModelTag({
       <span className={cn("flex min-w-0 items-center whitespace-nowrap", ITEM_GAPS[usageRow].className)}>
         {(label !== null || gauges.length > 0 || drawnTokens !== null || cost !== null) && (
           <span ref={ownRef} aria-hidden data-slot="usage-own" className={cn("flex min-w-0 items-center", ITEM_GAPS[usageRow].className)}>
-            {label !== null && <span className="min-w-0 truncate">{label}</span>}
+            {name !== null && (
+              <span data-slot="usage-label" className="min-w-0 truncate">
+                <span data-slot="usage-name">{name}</span>
+                {level !== null && (
+                  <span data-slot="usage-effort" data-hidden={form > 0 || undefined} className={cn(form > 0 && "invisible absolute")}>
+                    {` · ${level}`}
+                  </span>
+                )}
+              </span>
+            )}
             {drawnTokens !== null && (
               <span data-gauge="context" data-slot="usage-tokens" className="flex shrink-0 items-center gap-0.5">
                 <span>{drawnTokens.short}</span>
