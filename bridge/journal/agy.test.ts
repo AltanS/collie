@@ -7,6 +7,7 @@ import { join } from "node:path";
 
 import { agyJournal, AgyTranscriptSource, createAgyReducer, parseAgyTranscript } from "./agy.ts";
 import { NO_CURSOR } from "./cursor.ts";
+import { fileKey, type ProcReader } from "./proc-locks.ts";
 
 // Synthetic content in the native 1.4.4-1.4.8 wire schema: no user conversation or credentials.
 const ID = "11111111-2222-3333-4444-555555555555";
@@ -352,6 +353,69 @@ describe("AGY read-only source and exact discovery", () => {
     const outside = join(foreign, "presence", `${ID}.lock`);
     await writeFile(outside, "");
     expect(await agyJournal(root, () => Promise.resolve(`n${outside}\n`)).discover!("/cwd", hints)).toBeNull();
+  });
+
+  test("binds the process's lock via /proc/locks when lsof fails (PrivateTmp sandbox)", async () => {
+    const root = await home();
+    const { db } = database(root);
+    db.close();
+    const lock = join(root, "presence", `${ID}.lock`);
+    await writeFile(lock, "");
+    const st = statSync(lock, { bigint: true });
+    const proc: ProcReader = {
+      flocks: async (pid) => (pid === 42 ? new Set([fileKey(st.dev, st.ino)]) : new Set()),
+    };
+    const failingFiles = () => Promise.reject(Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }));
+    const adapter = agyJournal(root, failingFiles, proc);
+    const hints = { processes: [{ pid: 42, argv: ["agy"] }] };
+    expect(await adapter.discover!("/cwd", hints)).toEqual({ kind: "id", value: ID });
+  });
+
+  test("fails closed when /proc/locks reports multiple presence locks or an outside lock", async () => {
+    const root = await home();
+    const foreign = await home();
+    const { db } = database(root);
+    db.close();
+    const lock1 = join(root, "presence", `${ID}.lock`);
+    const lock2 = join(root, "presence", `${OTHER}.lock`);
+    await writeFile(lock1, "");
+    await writeFile(lock2, "");
+    const st1 = statSync(lock1, { bigint: true });
+    const st2 = statSync(lock2, { bigint: true });
+
+    const multiProc: ProcReader = {
+      flocks: async (pid) => (pid === 42 ? new Set([fileKey(st1.dev, st1.ino), fileKey(st2.dev, st2.ino)]) : new Set()),
+    };
+    expect(
+      await agyJournal(root, () => Promise.resolve([]), multiProc).discover!("/cwd", {
+        processes: [{ pid: 42, argv: ["agy"] }],
+      }),
+    ).toBeNull();
+
+    const outside = join(foreign, "presence", `${ID}.lock`);
+    await writeFile(outside, "");
+    const stOutside = statSync(outside, { bigint: true });
+    const outsideProc: ProcReader = {
+      flocks: async (pid) => (pid === 42 ? new Set([fileKey(stOutside.dev, stOutside.ino)]) : new Set()),
+    };
+    expect(
+      await agyJournal(root, () => Promise.resolve([]), outsideProc).discover!("/cwd", {
+        processes: [{ pid: 42, argv: ["agy"] }],
+      }),
+    ).toBeNull();
+  });
+
+  test("falls back to openFiles (lsof) when /proc/locks is unavailable (non-Linux or empty)", async () => {
+    const root = await home();
+    const { db } = database(root);
+    db.close();
+    const lock = join(root, "presence", `${ID}.lock`);
+    await writeFile(lock, "");
+    const nonLinuxProc: ProcReader = {
+      flocks: async () => null,
+    };
+    const adapter = agyJournal(root, () => Promise.resolve([lock]), nonLinuxProc);
+    expect(await adapter.discover!("/cwd", { processes: [{ pid: 42, argv: ["agy"] }] })).toEqual({ kind: "id", value: ID });
   });
 });
 
