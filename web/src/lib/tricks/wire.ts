@@ -356,6 +356,8 @@ export function readTricksReply(raw: JsonValue | undefined): TricksReply | undef
   if (runsOn !== undefined) reply.runsOn = runsOn;
   // The Windows gate: a word of another shape is left out, so an older or newer bridge reads as ungated.
   if (body.gate === "windows") reply.gate = "windows";
+  // Tricks switched off as a whole: only the word `true` counts, so a value of another shape reads as on.
+  if (body.off === true) reply.off = true;
   return reply;
 }
 

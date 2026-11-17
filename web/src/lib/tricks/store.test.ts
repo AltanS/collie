@@ -461,6 +461,21 @@ describe("B7: a bridge that runs no tricks", () => {
     expect(readOfficialTricksReply({ tricks: [], gate: "windows" })?.gate).toBe("windows");
     expect(readOfficialTricksReply({ tricks: [], gate: "linux" })).toEqual({ tricks: [] });
   });
+
+  it("reads `off: true` and leaves a word of another shape out, so an older or odder bridge reads as on", async () => {
+    const base = { rev: 1, parts: [], present: [], tricks: [] };
+    expect(readTricksReply({ ...base, off: true })?.off).toBe(true);
+    expect(readTricksReply({ ...base, off: "yes" })).toEqual(base);
+    expect(readTricksReply({ ...base, off: false })).toEqual(base);
+    // The store keeps it from the last reply and drops it when the next reply carries none.
+    let body: JsonValue = { ...base, rev: 2, off: true };
+    const store = createTricksStore({ fetchTricks: async () => readTricksReply(body)!, tapTrick: async () => Promise.reject(new Error("no")), mintRequestId: () => "r" });
+    await store.syncTricks(2);
+    expect(store.getState().off).toBe(true);
+    body = { ...base, rev: 3 };
+    await store.syncTricks(3);
+    expect(store.getState().off).toBeUndefined();
+  });
 });
 
 describe("the wire readers", () => {

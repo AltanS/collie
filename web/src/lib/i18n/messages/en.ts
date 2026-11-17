@@ -3788,6 +3788,15 @@ export const en = {
   // sheet until 2026-11-13).
   "settings.tricks.hill.waits.one": "{count} question waits on the Hill. You cannot answer it while it is off.",
   "settings.tricks.hill.waits.other": "{count} questions wait on the Hill. You cannot answer them while it is off.",
+  // The switch for tricks as a whole, first on Settings, Tricks (2026-11-17): off by default. Its armed second tap
+  // counts the Decisions that tricks posted (they stay stored and come back when tricks are on).
+  "settings.tricks.switch.about": "Tricks are small programs that add buttons, lines and pages to Collie. A trick's program runs as you on this machine.",
+  "settings.tricks.switch.contract": "Tricks are an experiment: they may change, lose settings, or be withdrawn in a patch release.",
+  "settings.tricks.switch.failed": "Could not switch tricks. Try again.",
+  "settings.tricks.switch.waits.one": "{count} question from a trick waits on the Hill. You cannot answer it while tricks are off.",
+  "settings.tricks.switch.waits.other": "{count} questions from tricks wait on the Hill. You cannot answer them while tricks are off.",
+  "settings.tricks.switch.offLine": "Tricks are switched off on this machine; switch them on at the top of this page.",
+  "settings.experiments.tricks.caption": "Switched on and off at the top of Settings, Tricks.",
   "hill.state.answered": "Answered",
   "hill.state.dismissed": "Dismissed",
   "hill.state.expired": "Expired",
@@ -4121,6 +4130,13 @@ export const PENDING_TRANSLATION = [
   "composer.heldBack.putBack",
   "composer.heldBack.boxFull",
   "composer.heldBack.count",
+  "settings.tricks.switch.about",
+  "settings.tricks.switch.contract",
+  "settings.tricks.switch.failed",
+  "settings.tricks.switch.waits.one",
+  "settings.tricks.switch.waits.other",
+  "settings.tricks.switch.offLine",
+  "settings.experiments.tricks.caption",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

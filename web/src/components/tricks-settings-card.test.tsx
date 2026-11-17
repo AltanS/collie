@@ -965,3 +965,67 @@ describe("review 8 V-N1: a switch on names the code the person read", () => {
     expect(readTrick(JSON.parse(JSON.stringify({ ...LEGS, approves: "nope" })))?.approves).toBeUndefined();
   });
 });
+
+// Tricks switched off as a whole (components/tricks-switch-card.tsx): the list stays readable, every control
+// that writes is disabled, and one line says why.
+describe("tricks switched off as a whole", () => {
+  const AUTO: WireTrickInfo = { ...LEGS, auto: true, autoAt: "2026-11-08T09:30:00Z" };
+
+  function renderOff(store: TricksStore, loader?: () => object, tricksOff?: boolean) {
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={NO_OFFICIAL} tricksOff={tricksOff} />, loader }], { initialEntries: ["/"] });
+    return render(<RouterProvider router={router} />);
+  }
+
+  it("on: the switches are enabled and the line is absent", async () => {
+    const store = await storeWith([AUTO, TRACKER]);
+    renderOff(store);
+    await findRow("legs");
+    expect(screen.getByRole("switch", { name: "Browser leg" })).toBeEnabled();
+    expect(screen.getByRole("switch", { name: "Tracker" })).toBeEnabled();
+    expect(document.querySelector('[data-line="tricks-off"]')).toBeNull();
+  });
+
+  it("the snapshot's tricksOff: every switch and Undo is disabled, one line says why, once, at the top", async () => {
+    const store = await storeWith([AUTO, TRACKER]);
+    renderOff(store, () => ({ tricksOff: true }));
+    await vi.waitFor(() => expect(document.querySelector('[data-line="tricks-off"]')).not.toBeNull());
+    await findRow("legs");
+    const lines = document.querySelectorAll('[data-line="tricks-off"]');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.textContent).toBe("Tricks are switched off on this machine; switch them on at the top of this page.");
+    expect(screen.getByTestId("tricks-settings").firstElementChild).toBe(lines[0]);
+    expect(screen.getByRole("switch", { name: "Browser leg" })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "Tracker" })).toBeDisabled();
+    expect(rowOf("legs").querySelector('[data-slot="trick-undo"]')).toBeDisabled();
+    // The rows stay readable: a trick's own position is shown as it was kept.
+    expect(screen.getByRole("switch", { name: "Browser leg" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Tracker" })).not.toBeChecked();
+  });
+
+  it("the reply's off: the same", async () => {
+    const reply: TricksReply = { rev: 5, tricks: [LEGS], parts: [], present: [], off: true };
+    const store = createTricksStore({ fetchTricks: async () => reply, tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
+    await store.syncTricks(5);
+    renderOff(store);
+    await findRow("legs");
+    expect(document.querySelector('[data-line="tricks-off"]')).not.toBeNull();
+    expect(screen.getByRole("switch", { name: "Browser leg" })).toBeDisabled();
+  });
+
+  it("the About sheet still opens, and its take-changes switch is disabled", async () => {
+    const store = await storeWith([AUTO]);
+    renderOff(store, undefined, true);
+    const row = await findRow("legs");
+    await userEvent.click(within(row).getByRole("button", { name: /Browser leg/ }));
+    const auto = await screen.findByRole("switch", { name: "Take changes without asking" });
+    expect(auto).toBeDisabled();
+  });
+
+  it("Add is disabled on an official entry", async () => {
+    const store = await storeWith([]);
+    const entry = { id: "morph", name: "Morph", description: "Shapes things.", repo: "https://example.test/morph", repoName: "owner/morph", commit: "a".repeat(40), state: "absent" } as const;
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={async () => ({ tricks: [entry] })} tricksOff /> }], { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByRole("button", { name: "Add Morph" })).toBeDisabled();
+  });
+});

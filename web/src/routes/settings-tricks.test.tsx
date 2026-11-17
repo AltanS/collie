@@ -40,6 +40,13 @@ describe("Settings → Tricks", () => {
     expect(screen.queryByTestId("tricks-settings")).toBeNull();
   });
 
+  it("draws the switch for tricks as a whole even with no tricks reply", async () => {
+    mount("/settings/tricks");
+    const sw = await screen.findByRole("switch", { name: "Tricks" });
+    expect(sw).toBeChecked();
+    expect(screen.queryByTestId("tricks-settings")).toBeNull();
+  });
+
   it("offers the row once the store holds a reply, and the page lists the tricks", async () => {
     const reply: TricksReply = {
       rev: 3,
@@ -60,5 +67,12 @@ describe("Settings → Tricks", () => {
     mount("/settings/tricks");
     expect(await screen.findByRole("switch", { name: "Browser leg" })).toBeChecked();
     expect(screen.getByText("Added by CLI")).toBeInTheDocument();
+  });
+
+  it("puts the switch for tricks as a whole first on the page, above the list", async () => {
+    mount("/settings/tricks");
+    const sw = await screen.findByRole("switch", { name: "Tricks" });
+    const list = await screen.findByTestId("tricks-settings");
+    expect(sw.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
