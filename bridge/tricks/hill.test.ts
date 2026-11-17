@@ -12,9 +12,9 @@ import { HillService, type HillPlace } from "../hill/service.ts";
 import { hillDir, HillStore } from "../hill/store.ts";
 import { hillAnswerRoute, hillListRoute, hillMediaRoute } from "../server.ts";
 import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
-import { parseJsonObject } from "../../web/src/lib/json.ts";
+import { asJsonNumber, asJsonObject, parseJsonObject } from "../../web/src/lib/json.ts";
 import { DECIDES_REPLY_LINE, parseFacts, parseTrickDocument, type Refusal, type TrickDecision, type TrickFacts, type TrickTapReply } from "../../web/src/lib/tricks/schema.ts";
-import { decisionContentHash, imageFileDigest, REASK_AFTER_MS, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
+import { decisionContentHash, forgetMapRecord, imageFileDigest, REASK_AFTER_MS, scopeKeyAddress, TrickHill, TRICKS_MAP_FILE, trickRequestId, type TrickHillTrick } from "./hill.ts";
 import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { TRICKS_DIR } from "./paths.ts";
@@ -708,6 +708,13 @@ describe("images", () => {
   });
 });
 
+/** One trick's saved record in the map file: its generation and its keys, or undefined. */
+function recordOf(stateDir: string, id: string): { gen: number | undefined; keys: JsonObject | undefined } | undefined {
+  const tricks = asJsonObject(parseJsonObject(readFileSync(join(stateDir, "hill", TRICKS_MAP_FILE), "utf8"))?.tricks);
+  const row = asJsonObject(tricks?.[id]);
+  return row === undefined ? undefined : { gen: asJsonNumber(row.gen), keys: asJsonObject(row.keys) };
+}
+
 describe("switched off", () => {
   test("every open decision is withdrawn at once, the trick is off; answered ones stay; back on, the open ones post again", async () => {
     const r = rig();
@@ -721,6 +728,38 @@ describe("switched off", () => {
     sync(r, [decision("a"), decision("b")]);
     expect(open(r).map((held) => held.from.trickKey)).toEqual(["b"]);
     expect(open(r)[0]?.id).not.toBe(b.id);
+  });
+
+  test("forget (review J, last read): open decisions are withdrawn and the map drops every key of the id, answered ones too", async () => {
+    const r = rig();
+    sync(r, [decision("a"), decision("b")]);
+    const a = open(r).find((held) => held.from.trickKey === "a")!;
+    await answer(r, a, 100, "skip");
+    const b = open(r)[0]!;
+    r.tricks.forget(LEGS);
+    expect(r.store.get(b.id)).toMatchObject({ state: "withdrawn", closedReason: "the trick is off" });
+    expect(r.tricks.entries(LEGS.id)).toEqual({});
+    // The keys are gone and the generation only went up, so a request id of the old trick is never reused.
+    const saved = recordOf(r.stateDir, LEGS.id);
+    expect(saved?.keys).toEqual({});
+    expect(saved?.gen).toBeGreaterThan(0);
+    // The same content from a new trick of this id posts as new: nothing answered is remembered.
+    sync(r, [decision("a"), decision("b")]);
+    expect(open(r).map((held) => held.from.trickKey).toSorted()).toEqual(["a", "b"]);
+  });
+
+  test("forgetMapRecord empties one trick's keys in the file, moves its generation up and keeps the others; no file, no change", () => {
+    const r = rig();
+    forgetMapRecord(r.stateDir, "legs");
+    sync(r, [decision("a")]);
+    const path = join(r.stateDir, "hill", TRICKS_MAP_FILE);
+    const before = recordOf(r.stateDir, LEGS.id);
+    expect(Object.keys(before?.keys ?? {})).toEqual(["a"]);
+    const tricks = asJsonObject(parseJsonObject(readFileSync(path, "utf8"))?.tricks) ?? {};
+    writeFileSync(path, JSON.stringify({ v: 1, tricks: { ...tricks, other: tricks[LEGS.id] } }));
+    forgetMapRecord(r.stateDir, LEGS.id);
+    expect(recordOf(r.stateDir, LEGS.id)).toEqual({ gen: (before?.gen ?? 0) + 1, keys: {} });
+    expect(recordOf(r.stateDir, "other")).toEqual(before);
   });
 
   test("prune: a trick the scan no longer finds is off", () => {

@@ -8,7 +8,7 @@ import { readPhoneSource, REPO_INDEX_TERMINAL_LINE } from "../../web/src/lib/tri
 import { trickCodeHash } from "./code-hash.ts";
 import { FetchSlot, spawnGit, type GitRunner, type GitRunOptions } from "./fetch.ts";
 import { ORIGIN_FILE, parseOrigin } from "./origin.ts";
-import { switchesPath, tricksConfigDir, tricksStateDir } from "./paths.ts";
+import { switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { gitLinkOf, REPO_FETCH_PREFIX, RepoIndexTricks, type RepoIndexDeps } from "./repo-index.ts";
 import { parseSwitches, updateSwitches, withSwitch } from "./switches.ts";
 
@@ -303,6 +303,32 @@ describe.if(posix)("adding from an index", () => {
     expect(origin).toEqual({ url: LINK, ref: null, commit: fx.sha, subdir: "idle-watch", at: "2026-11-17T09:00:00.000Z" });
     expect(await readFile(join(dir, ORIGIN_FILE), "utf8")).not.toContain("official");
     expect(r.audits.at(-1)).toEqual({ action: "trick.repo.add", detail: { host: "github.com", repo: "owner/repo", commit: fx.sha.slice(0, 12), trick: "idle-watch", hash: answer.body.hash.slice(0, 16), result: "ok" } });
+  });
+
+  test("review J, last read: the copies, the state folder and the switch entry a removed trick left are gone when an add lands, and the views and Hill keys are forgotten", async () => {
+    const fx = await fixtureRepo(REPO);
+    const forgotten: string[] = [];
+    const r = await rig(fx.bare, { forgetTrick: (id) => void forgotten.push(id) });
+    const state = trickStateDir(r.stateDir, "idle-watch");
+    await mkdir(join(state, ".collie"), { recursive: true });
+    await writeFile(join(state, ".collie", "values.json"), '{"v":1,"values":{"rows":9}}\n');
+    await writeFile(join(state, "saved.json"), '{"old":true}\n');
+    const copy = join(tricksConfigDir(r.configDir), ".collie-approved", "idle-watch", "c".repeat(16), "inputs");
+    await mkdir(copy, { recursive: true });
+    await updateSwitches(r.stateDir, (now) => withSwitch(now, "idle-watch", true, "2026-11-16T09:00:00.000Z", "c".repeat(64)));
+    const answer = await r.repo.add({ rid: rid(), url: LINK, folder: "idle-watch", commit: fx.sha });
+    expect(answer.status).toBe(200);
+    expect(await stat(join(state, ".collie", "values.json")).catch(() => null)).toBeNull();
+    expect(await stat(join(state, "saved.json")).catch(() => null)).toBeNull();
+    expect(await stat(copy).catch(() => null)).toBeNull();
+    expect(parseSwitches(await readFile(switchesPath(r.stateDir), "utf8")).switches.on.has("idle-watch")).toBe(false);
+    expect(forgotten).toEqual(["idle-watch"]);
+    // A folder of that name is a trick that exists, not a leftover: a second add is refused and removes nothing.
+    await mkdir(join(state, ".collie"), { recursive: true });
+    await writeFile(join(state, "saved.json"), '{"mine":true}\n');
+    expect((await r.repo.add({ rid: rid(), url: LINK, folder: "idle-watch", commit: fx.sha })).status).toBe(409);
+    expect((await stat(join(state, "saved.json"))).isFile()).toBe(true);
+    expect(forgotten).toEqual(["idle-watch"]);
   });
 
   test("the same request id adds once; another body under it is refused", async () => {

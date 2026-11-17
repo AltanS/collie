@@ -9,7 +9,7 @@ import { hillImageMime } from "../hill/media.ts";
 import { CODE_BYTES_MAX, CONFIG_FILE, diskTrickFs, hashCodeEntries, isPictureName, linkRefusal, PICTURE_DIRS, walkFingerprint, walkTrickCode, WRITABLE_TOP_DIRS, type CodeEntry, type TrickFs } from "./code-hash.ts";
 import { readManifestFile, readSmallFile } from "./discover.ts";
 import { ORIGIN_FILE } from "./origin.ts";
-import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, tricksConfigDir } from "./paths.ts";
+import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, tricksConfigDir, trickStateDir } from "./paths.ts";
 import { MIGRATED, parseSwitches, SWITCHES_VERSION, updateSwitches, withApproval, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 
 // THE APPROVED COPY (M94, crew slice 2): a trick runs from a copy of the code a person said yes to, so an
@@ -650,18 +650,36 @@ export async function removeTrickCopies(configDir: string, id: string): Promise<
 }
 
 /**
- * Before a NEW trick is written under `id` (an add from the official list, from a repository, or at the
- * terminal): forget what an earlier trick of that name left. A switch entry a removed folder left behind goes
- * off (an auto flag or an approved hash of the old code must never carry to the new one), and its approved and
- * pending copies are removed, so a copy of the same code hashes the same and would be kept, old config,
- * origin record and writable folders with it. Does nothing while a folder of that name is there: that is a
- * trick that exists, not a leftover. Throws only when the switch file cannot be written.
+ * Before a NEW trick is written under `id` (an add from the official list, from a repository, at the terminal,
+ * or an agent's proposal): forget what an earlier trick of that name left. A switch entry a removed folder left
+ * behind goes off (an auto flag or an approved hash of the old code must never carry to the new one), its
+ * approved and pending copies are removed, so a copy of the same code hashes the same and would be kept, old
+ * config, origin record and writable folders with it, and so is its state folder `<stateDir>/tricks/<id>/`
+ * (`.collie/values.json` and what the old program saved: a different author's code must not read them).
+ * `forget` then drops what lives beside the files: the agent views and the Hill's posted keys of that id.
+ * It runs only when the files went, and is the caller's to give: a bridge hands it its live stores, the
+ * terminal hands it a disk-only one (a running bridge keeps its own copy in memory).
+ *
+ * Does nothing while a folder of that name is there: that is a trick that exists, not a leftover. The look is
+ * made twice, the second inside the switch file's lock: the bridge's approval of a trick of this id takes the
+ * same lock, so a folder that appeared while this add waited for it is seen and nothing is removed.
+ * `rm` with recursive and force removes a symbolic link at one of these paths and never follows it.
+ * Throws only when the switch file cannot be written or a folder cannot be removed (the add stops).
  */
-export async function forgetLeftovers(opts: { stateDir: string; configDir: string; id: string; at: string }): Promise<void> {
+export async function forgetLeftovers(opts: { stateDir: string; configDir: string; id: string; at: string; forget?: (id: string) => void | Promise<void> }): Promise<void> {
   if (!isTrickId(opts.id)) return;
-  if ((await lstat(join(tricksConfigDir(opts.configDir), opts.id)).catch(() => null)) !== null) return;
-  await updateSwitches(opts.stateDir, (now) => (now.on.has(opts.id) ? withSwitch(now, opts.id, false, opts.at) : now));
-  await removeTrickCopies(opts.configDir, opts.id);
+  const folder = join(tricksConfigDir(opts.configDir), opts.id);
+  const there = async (): Promise<boolean> => (await lstat(folder).catch(() => null)) !== null;
+  if (await there()) return;
+  let cleared = false;
+  await updateSwitches(opts.stateDir, async (now) => {
+    if (await there()) return now;
+    await rm(trickStateDir(opts.stateDir, opts.id), { recursive: true, force: true });
+    await removeTrickCopies(opts.configDir, opts.id);
+    cleared = true;
+    return now.on.has(opts.id) ? withSwitch(now, opts.id, false, opts.at) : now;
+  });
+  if (cleared) await opts.forget?.(opts.id);
 }
 
 /** The approved copy a switch entry names, or null when it approves nothing. */

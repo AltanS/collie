@@ -11,7 +11,7 @@ import { HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_OFF, HillService, type Hil
 import { HillStore } from "../hill/store.ts";
 import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { ORIGIN_FILE } from "./origin.ts";
-import { approvedCopyDir, approvedTrickDir, TRICKS_DIR } from "./paths.ts";
+import { approvedCopyDir, approvedTrickDir, TRICKS_DIR, trickStateDir } from "./paths.ts";
 import { PROPOSAL_AUTHOR_WORDS } from "./proposal-card.ts";
 import {
   PROPOSAL_CHANGED,
@@ -94,7 +94,7 @@ interface Lead {
   live: Set<string>;
 }
 
-async function lead(opts: { hillOff?: boolean; diff?: (base: string | null, next: string) => Promise<VersionDiff> } = {}): Promise<Lead> {
+async function lead(opts: { hillOff?: boolean; diff?: (base: string | null, next: string) => Promise<VersionDiff>; forgetTrick?: (id: string) => void } = {}): Promise<Lead> {
   const root = await tempDir();
   const configDir = join(root, "config");
   const stateDir = join(root, "state");
@@ -141,6 +141,7 @@ async function lead(opts: { hillOff?: boolean; diff?: (base: string | null, next
     revBase: 1000,
     run: async () => ({ kind: "exited", code: 0, stdout: JSON.stringify({ v: 1, parts: [] }), stderr: "", ms: 1 }),
     versions: cards,
+    forgetTrick: opts.forgetTrick ?? (() => undefined),
   });
   // The real diff: a failed one refuses a new version's card (review 7 R9), so the rig no longer fakes one.
   const deps: ConstructorParameters<typeof TrickProposals>[0] = { configDir, stateDir, hill, tricks: () => service, now: () => clock.t, warn: () => undefined };
@@ -327,6 +328,27 @@ describe("a proposal for a new trick", () => {
     expect(again).toMatchObject({ ok: true, codeHash: first.codeHash });
     expect(await stat(join(copy, "inputs", "stale.txt")).catch(() => null)).toBeNull();
     expect((await readdir(approvedTrickDir(l.configDir, "legs")).catch(() => [])).filter((n) => !n.startsWith("."))).toEqual([first.codeHash.slice(0, 16)]);
+  });
+
+  test("review J, last read: the state folder, the views and the Hill keys of a removed trick are gone before a new trick of that id first runs", async () => {
+    const forgotten: string[] = [];
+    const l = await lead({ forgetTrick: (id) => void forgotten.push(id) });
+    const p = proposal("legs");
+    const origin = { by: "agent" as const, host: "workshop", label: "repo#one", at: "2026-11-16T09:00:00Z" };
+    const first = await l.service.installProposed("legs", p.files, origin, p.hash);
+    if (!first.ok) throw new Error(first.message);
+    // The old program saved a value and a file; the folder is removed by hand and the entry goes.
+    const state = trickStateDir(l.stateDir, "legs");
+    await mkdir(join(state, ".collie"), { recursive: true });
+    await writeFile(join(state, ".collie", "values.json"), '{"v":1,"values":{"rows":9}}\n');
+    await writeFile(join(state, "saved.json"), '{"old":true}\n');
+    await rm(join(l.configDir, TRICKS_DIR, "legs"), { recursive: true, force: true });
+    await writeSwitches(l.stateDir, { on: new Map(), version: SWITCHES_VERSION });
+    expect(forgotten).toEqual(["legs"]);
+    expect(await l.service.installProposed("legs", p.files, origin, p.hash)).toMatchObject({ ok: true });
+    expect(await stat(join(state, ".collie", "values.json")).catch(() => null)).toBeNull();
+    expect(await stat(join(state, "saved.json")).catch(() => null)).toBeNull();
+    expect(forgotten).toEqual(["legs", "legs"]);
   });
 
   test("a folder of that name that appeared since the card is never written over", async () => {

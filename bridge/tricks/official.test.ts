@@ -13,7 +13,7 @@ import { DESCRIPTION_MAX, TRICK_CONTRACT, TRICKS_WINDOWS_SHELL_LINE } from "../.
 import { isListedOrigin, isUnlistedOfficialOrigin, officialStanding, officialStateOf, officialWire, parseOfficialList, pinnedPlaces, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_PREVIOUS_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
 import { canonicalRepoUrl, ORIGIN_FILE, parseOrigin, renderOrigin, renderProposalOrigin, sameRepo } from "./origin.ts";
 import { caseClash } from "./proposal-install.ts";
-import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, switchesPath, TRICKS_DIR, tricksStateDir } from "./paths.ts";
+import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, switchesPath, TRICKS_DIR, trickStateDir, tricksStateDir } from "./paths.ts";
 import { tricksOfficialRoute } from "./routes.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
 import { parseSwitches, withSwitch, writeSwitches } from "./switches.ts";
@@ -688,6 +688,20 @@ describe.if(posix)("adding from the list", () => {
     expect((await r.official.install("legs", "add")).status).toBe(200);
     expect(parseSwitches(await readFile(switchesPath(r.stateDir), "utf8")).switches.on.has("legs")).toBe(false);
     expect(await stat(approvedTrickDir(r.configDir, "legs")).catch(() => null)).toBeNull();
+  });
+
+  test("review J, last read: the state folder a removed trick left is gone when the official add lands, and the views and Hill keys are forgotten", async () => {
+    const repo = await fixtureRepo([V1]);
+    const forgotten: string[] = [];
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))], { forgetTrick: (id) => void forgotten.push(id) });
+    const state = trickStateDir(r.stateDir, "legs");
+    await mkdir(join(state, ".collie"), { recursive: true });
+    await writeFile(join(state, ".collie", "values.json"), '{"v":1,"values":{"rows":9}}\n');
+    await writeFile(join(state, "saved.json"), '{"old":true}\n');
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    expect(await stat(join(state, ".collie", "values.json")).catch(() => null)).toBeNull();
+    expect(await stat(join(state, "saved.json")).catch(() => null)).toBeNull();
+    expect(forgotten).toEqual(["legs"]);
   });
 
   test("a fetch past the time cap is the network line, and nothing stays", async () => {

@@ -4,6 +4,10 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { parseJsonObject } from "../web/src/lib/json.ts";
+import { AgentViewStore, trickViewsDir, viewEntry } from "../bridge/agent-view/store.ts";
+import { TRICKS_MAP_FILE } from "../bridge/tricks/hill.ts";
+import { hillDir } from "../bridge/hill/store.ts";
 import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { ORIGIN_FILE, parseOrigin } from "../bridge/tricks/origin.ts";
 import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, PENDING_DIR, switchesPath, trickStateDir } from "../bridge/tricks/paths.ts";
@@ -262,6 +266,36 @@ describe.if(posix)("collie trick add", () => {
     expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.FAIL);
     expect(parseSwitches(await readFile(switchesPath(r.stateDir), "utf8")).switches.on.has("legs")).toBe(true);
     expect((await stat(stale)).isDirectory()).toBe(true);
+  });
+
+  test("review J, last read: the state folder, the agent views and the Hill keys of a removed trick are gone before the new trick lands; another trick's stay", async () => {
+    const repo = await fixtureRepo([{ "trick.toml": txt(MANIFEST("legs")), "program.sh": PROGRAM }]);
+    const r = await rig();
+    // What the old trick of this id left: the person's values, a file its program saved, two views, a posted key.
+    const state = trickStateDir(r.stateDir, "legs");
+    await mkdir(join(state, ".collie"), { recursive: true });
+    await writeFile(join(state, ".collie", "values.json"), '{"v":1,"values":{"rows":9}}\n');
+    await writeFile(join(state, "saved.json"), '{"old":true}\n');
+    const views = new AgentViewStore(trickViewsDir(r.stateDir), Date.now, () => {});
+    views.put(viewEntry({ trick: "legs", session: "lodge/%1", on: true, shows: 0, changedAt: 1 }));
+    views.put(viewEntry({ trick: "legs", session: "lodge/%2", on: true, shows: 0, changedAt: 2 }));
+    views.put(viewEntry({ trick: "morph", session: "lodge/%1", on: true, shows: 0, changedAt: 3 }));
+    const key = { decisionId: "dc_1", hash: "a".repeat(16), state: "answered", seq: 1 };
+    await mkdir(hillDir(r.stateDir), { recursive: true });
+    await writeFile(join(hillDir(r.stateDir), TRICKS_MAP_FILE), `${JSON.stringify({ v: 1, tricks: { legs: { gen: 2, keys: { ask: key } }, morph: { gen: 0, keys: { ask: key } } } })}\n`);
+    expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.OK);
+    expect(await stat(join(state, ".collie", "values.json")).catch(() => null)).toBeNull();
+    expect(await stat(join(state, "saved.json")).catch(() => null)).toBeNull();
+    const after = new AgentViewStore(trickViewsDir(r.stateDir), Date.now, () => {});
+    expect(after.all().map((entry) => `${entry.trick} ${entry.session}`)).toEqual(["morph lodge/%1"]);
+    const map = parseJsonObject(await readFile(join(hillDir(r.stateDir), TRICKS_MAP_FILE), "utf8"));
+    // The keys of the old trick are gone, its generation went up (a request id is never reused); the other trick is as it was.
+    expect(map?.tricks).toEqual({ legs: { gen: 3, keys: {} }, morph: { gen: 0, keys: { ask: key } } });
+    // A folder that is there is no leftover: the refused second add removes nothing.
+    await mkdir(join(state, ".collie"), { recursive: true });
+    await writeFile(join(state, "saved.json"), '{"mine":true}\n');
+    expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.FAIL);
+    expect((await stat(join(state, "saved.json"))).isFile()).toBe(true);
   });
 
   test("adds a trick at the top of a repository, off, with its origin record", async () => {

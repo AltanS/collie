@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { JsonValue } from "../json.ts";
@@ -40,7 +40,7 @@ import type { HillTrickTap } from "../hill/service.ts";
 import type { ViewGate } from "../agent-view/service.ts";
 import type { TrickRightsPort, TrickRightsSubject } from "./rights-card.ts";
 import { bindingAgainst, bindParts, type GenerationOf, type InstanceOf } from "./bound.ts";
-import { approveFolder, copyListing, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, removeTrickCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
+import { approveFolder, copyListing, forgetLeftovers, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { fieldsChanged } from "./version-card.ts";
 import { codeHashOfFiles, diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
@@ -457,6 +457,12 @@ export interface TricksServiceDeps {
   platform?: NodeJS.Platform;
   /** The trick's decisions on the hill. Absent: decisions are parsed and posted nowhere. */
   decisions?: TricksHillPort;
+  /**
+   * A new trick was added under this id (an agent's proposal, here; the official list and the repository index
+   * get their own): drop what lives beside its files from an earlier trick of that name, its agent views and its
+   * Hill keys. Absent: nothing of the kind is held.
+   */
+  forgetTrick?: (id: string) => void | Promise<void>;
   /** The tap receipt file. Default `<stateDir>/tricks/receipts.json`. */
   receipts?: TrickReceiptSurface;
   /**
@@ -2368,15 +2374,14 @@ export class TricksService implements TricksSurface {
     return await this.lane(async () => {
       await this.refresh(true);
       if (this.runtimes.has(id)) return { ok: false, message: `A trick named ${id} is here now. Nothing was switched on.` };
+      // Decision 3: a trick new to this machine starts from a new state folder, no approved or pending copy of
+      // an earlier trick of this id (a copy of equal code would hash the same and be kept as it is, with its old
+      // config, origin record and writable folders), a fresh switch entry, and none of its views or Hill keys.
+      // Nothing is removed while a folder of this name is there; the write below refuses one anyway.
+      await forgetLeftovers({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, id, at: new Date(this.now()).toISOString(), forget: this.deps.forgetTrick });
       // ... and the stage on disk must hash to those same bytes right before it is renamed into place.
       const written = await writeProposedTrick(tricksConfigDir(this.deps.configDir), id, files, origin, { expect: codeHashOfFiles(files) });
       if (!written.ok) return { ok: false, message: written.code === "mismatch" ? PROPOSAL_CHANGED : written.reason };
-      // Decision 3: a trick new to this machine starts from a new state folder and a fresh switch entry. The
-      // write above refused a folder of this name, so a state folder left here belongs to no trick that runs.
-      await rm(trickStateDir(this.deps.stateDir, id), { recursive: true, force: true });
-      // The same holds for the approved and pending copies an earlier trick of this id left: a copy of equal
-      // code would hash the same and be kept as it is, with its old config, origin record and writable folders.
-      await removeTrickCopies(this.deps.configDir, id);
       const placed = await this.approveWritten(id, written.codeHash, "The trick was written but changed before it could be approved, so it stays off.", { fresh: true });
       await this.freshScan();
       return placed;

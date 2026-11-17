@@ -4191,6 +4191,24 @@ const localApi =
         granted: LOCAL_TIER_RIGHTS,
         platform: HOST.platform,
       });
+// A trick's decisions go into the hill (M94, M96); `<stateDir>/hill/tricks.json` keeps the map.
+const trickHill =
+  cfg.tricksDir === undefined
+    ? undefined
+    : new TrickHill({
+        stateDir: cfg.stateDir,
+        // With the Hill switched off (`hill.isOn()`) a trick's Decisions are not posted, and the map stays.
+        hill,
+        // A key of another member resolves only when the run's own facts listed it (M99 slice 5), through
+        // the lead's pane list, so a program cannot name a machine outside the crew.
+        addressOf: (scopeKey, listed) => scopeKeyAddress(scopeKey, (memberId) => isOwnId(bridgeId, memberId), walkyMemberId ?? LOCAL_MEMBER, hillPlace, listed),
+      });
+// A trick added under the id of an earlier one starts with none of that one's agent views or Hill keys
+// (approved.ts `forgetLeftovers`): the official list, the repository index and a proposal's yes call it.
+const forgetTrick = (id: string): void => {
+  views?.forgetTrick(id);
+  trickHill?.forget({ id, name: id, memberId: bridgeId.id });
+};
 const tricks =
   cfg.tricksDir === undefined
     ? undefined
@@ -4201,14 +4219,8 @@ const tricks =
         previousId: bridgeId.previous,
         keepId: bridgeId.keep,
         // A trick's decisions go into the hill (M94, M96); `<stateDir>/hill/tricks.json` keeps the map.
-        decisions: new TrickHill({
-          stateDir: cfg.stateDir,
-          // With the Hill switched off (`hill.isOn()`) a trick's Decisions are not posted, and the map stays.
-          hill,
-          // A key of another member resolves only when the run's own facts listed it (M99 slice 5), through
-          // the lead's pane list, so a program cannot name a machine outside the crew.
-          addressOf: (scopeKey, listed) => scopeKeyAddress(scopeKey, (memberId) => isOwnId(bridgeId, memberId), walkyMemberId ?? LOCAL_MEMBER, hillPlace, listed),
-        }),
+        decisions: trickHill,
+        forgetTrick,
         inputs: tricksInputs,
         crewWide: () => crewLead !== undefined,
         world: (memberId, opts) => {
@@ -4323,6 +4335,7 @@ const officialTricks =
         offLine: () => tricks.offLine(),
         lane: (work) => tricks.officialLane(work),
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
+        forgetTrick,
         repoFacts,
       });
 // A repository's index (bridge/tricks/repo-index.ts): Settings, Tricks, "Add from a repository". Nothing is
@@ -4340,6 +4353,7 @@ const repoTricks =
         offLine: () => tricks.offLine(),
         lane: (work) => tricks.officialLane(work),
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
+        forgetTrick,
       });
 // A fetch a stopped bridge left behind under <stateDir>/tricks/ goes now, before anyone can tap Add.
 void officialTricks?.sweep();

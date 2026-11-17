@@ -144,6 +144,22 @@ describe("a show with pictures", () => {
     expect(readdirSync(r.mediaRoot)).toEqual([]);
   });
 
+  posix("review J, last read: forgetTrick drops every view of the id, its files and its pictures, and leaves another trick's views", async () => {
+    const r = await rig();
+    const one = file(r.work, "a.png", png(120));
+    const shown = await r.service.show(T, SESSION, { view: view(1), title: null, images: [{ path: one, caption: null }] });
+    expect(shown.ok).toBe(true);
+    expect(readdirSync(r.mediaRoot)).toHaveLength(1);
+    const other = await r.service.switch({ trick: "other", session: SESSION, on: true }, null);
+    expect(other.ok).toBe(true);
+    const files = (): string[] => readdirSync(join(trickViewsDir(r.state), VIEWS_FOLDER));
+    expect(files()).toHaveLength(3);
+    r.service.forgetTrick(T);
+    expect(files()).toHaveLength(1);
+    expect(readdirSync(r.mediaRoot)).toEqual([]);
+    expect(new AgentViewStore(trickViewsDir(r.state), Date.now, () => undefined).all().map((entry) => entry.trick)).toEqual(["other"]);
+  });
+
   test("lead addition 6: the route answers one 404 for every miss, and checks both ids before any path", async () => {
     const r = await rig();
     for (const [set, id] of [

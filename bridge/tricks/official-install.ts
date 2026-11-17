@@ -120,6 +120,8 @@ export interface OfficialTricksDeps {
    * the list stays readable and an add or an update is refused before anything is fetched.
    */
   offLine?: () => string | null;
+  /** An add forgets what an earlier trick of that id left beside its files: its agent views and Hill keys (approved.ts `forgetLeftovers`). Absent: none held. */
+  forgetTrick?: (id: string) => void | Promise<void>;
   /** The platform: on Windows an entry marked `posix` (a shell run line) is not added. Default `HOST.platform` (bridge/host.ts). */
   platform?: NodeJS.Platform;
   /** Run a write in the tricks runner's serial lane and wait for its next scan (service.ts `officialLane`). Absent: run it as it is. */
@@ -353,7 +355,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     let written: ProposalWrite;
     if (mode === "add") {
       // Added means switched off: a switch entry a removed folder left behind for this id goes first.
-      await forgetLeftovers({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, id: entry.id, at });
+      await forgetLeftovers({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, id: entry.id, at, forget: this.deps.forgetTrick });
       written = await writeNewTrick(root, entry.id, candidate.files, originText, { expect: entry.hash });
     } else {
       // Only code moves (the proposal version write's rule): the new version's config.toml, pictures and
