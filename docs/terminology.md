@@ -445,6 +445,6 @@ The files a trick asks to run on: when one of them changes, the trick runs again
 ## Local API
 
 A read-only Unix socket on the machine, for programs of your own user: list the sessions, read a
-screen with secrets masked, follow the [events](#event). It exists where a trick runs, and
+screen with secrets masked, follow the [events](#event). It is on while tricks are switched on, and
 `collie api` is its command. It is experimental, and it is closed to other users, other machines and
 browser pages ([The local API](commands.md#the-local-api-experimental)).

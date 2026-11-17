@@ -22,7 +22,7 @@ import { AskLate } from "./walky.ts";
 //
 // THE ROAD. One connection to `<stateDir>/api/sock`, one request line `{id, op, args}`, one answer
 // line, close. The socket exists only while a trick is switched on (ADR 0152); with none, the verb
-// prints ONE line to stderr, "The local API is on while a trick is on.", and exits {@link EXIT.STATE}.
+// prints ONE line to stderr, "The local API is on while tricks are switched on.", and exits {@link EXIT.STATE}.
 // Windows has no such socket, so it prints the same line. The socket is dialled only when it is a
 // socket of this user inside folders only this user can write (the check the hold and walky sockets
 // get), because a socket another user could plant would read the request and could answer it. There is
@@ -47,7 +47,7 @@ import { AskLate } from "./walky.ts";
 // the person's terminal. An error is `error: <message>` on stderr.
 
 /** The one line of a socket that is not there. */
-export const NO_LOCAL_API = "The local API is on while a trick is on.";
+export const NO_LOCAL_API = "The local API is on while tricks are switched on.";
 /** How long one request may take, and how long an `events` wait may. */
 export const API_ASK_MS = 10_000;
 export const API_WAIT_ASK_MS = 35_000;
@@ -96,7 +96,7 @@ export function apiHelp(operations: readonly CliOperation[]): string[] {
     "usage: collie api <operation> [flags] [--json]",
     "",
     "Experimental: the shapes of the local API may change in a minor release.",
-    "The local API is on while a trick is on, and it only reads.",
+    "The local API is on while tricks are switched on, and it only reads.",
     "",
   ];
   for (const one of operations) {

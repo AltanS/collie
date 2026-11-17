@@ -34,7 +34,7 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **Multiplexers** | `collie mux list` · `collie mux list --json` | Every multiplexer this build can drive, which of them this machine has, which Collie instance drives each, and the command that starts one nobody drives ([which multiplexers this machine has](multiplexers.md#which-multiplexers-this-machine-has)) |
 | **WalkyTalky** | `collie walky who` · `collie walky send <address> <text>` · `collie walky reply <id> <text>` · `collie walky inbox` · `collie walky status <id>` · `collie walky off` · `collie walky on` | Message an agent session from a terminal, or from one agent to another ([WalkyTalky](walky-talky.md)) |
 | **Hill** | `collie hill post --title <t> --summary <s> --option <intent>=<label> [--image <path>[=<caption>]] ...` · `collie hill status <id>` · `collie hill withdraw <id>` · `collie hill list` · `collie hill clear` · `collie hill on\|off` | An agent puts one decision on the hill for you to answer, then follows it up. Up to four images (PNG, JPEG or WebP, 2 MB each) ride along by path; the bridge reads each file itself. The answer comes back as a WalkyTalky message. `collie hill post --help` prints every flag and the rules (M96). `collie hill off` switches the Hill off on this Collie, the same switch as Settings → Alerts → The Hill; `on` switches it back. On a crew member the post goes to the lead's Hill; exit 5 means the lead did not answer, and the same `--request-id` posts once; `collie hill clear` removes every closed decision and prints how many went, open ones stay, and the Answered group on the Hill page has the same Clear button with a second tap to confirm ([The Hill](hill.md), [Decisions from any machine](crew.md#decisions-from-any-machine)) |
-| **Local API** | `collie api` · `collie api <operation> [flags] [--json]` | Experimental: ask the local, read-only API of this machine for its sessions, a screen or the events. It is on while a trick is on, and `collie api` alone lists the operations and their flags ([The local API](#the-local-api-experimental)) |
+| **Local API** | `collie api` · `collie api <operation> [flags] [--json]` | Experimental: ask the local, read-only API of this machine for its sessions, a screen or the events. It is on while tricks are switched on, and `collie api` alone lists the operations and their flags ([The local API](#the-local-api-experimental)) |
 | **Tricks** | `collie trick list` · `collie trick add [<name> \| <https-url>[//<folder>][#<ref>]]` · `collie trick update <id>` · `collie trick remove <id>` · `collie trick on <id>` · `collie trick off <id>` · `collie trick auto <id> on\|off` · `collie trick init [--sh] [--dir <folder>] <id>` · `collie trick dev <folder\|id>` · `collie trick check [--run] [--json] <folder>` · `collie trick helper <id\|folder>` · `collie trick skill [<id>]` | Add a trick from a git repository, switch it on or off, and write one. A trick is a small program that adds parts to Collie. `add` with no source lists the official repository and adds nothing, and a trick stays off until `on`, which is your yes to its code and refuses in an agent's pane. `dev` runs a trick once and prints what the phone would draw, and `check` lists what its code does ([Tricks](tricks.md), [Write a trick](tricks-authoring.md)) |
 | **Theme check** | `collie theme check <file>...` · `collie theme check --json <file>...` | Check theme files with the app's own parser before you share them: one line per refusal and per contrast warning, the words Settings shows. Exits 0 when every file passes, 1 when one is refused, 2 on a usage error. `--shipped` accepts the id of a shipped theme. Reads only the files you name ([Check a theme before you share it](themes.md#check-a-theme-before-you-share-it)) |
 | **Theme brief** | `collie theme skill` · `collie theme --skill` | Print the brief for an AI agent that writes a theme: the steps, with `collie theme check`, and the sections of [Themes](themes.md) that list every key and word a theme file may use |
@@ -153,7 +153,7 @@ group the members under that machine's name, one line per instance.
 
 ## The local API (experimental)
 
-A program on this machine can list your agent sessions, read a screen and follow events, over a Unix socket, while a trick is on.
+A program on this machine can list your agent sessions, read a screen and follow events, over a Unix socket, while tricks are switched on.
 
 ```
 collie api hello
@@ -178,9 +178,10 @@ With `--json` it prints the answer line as the bridge sent it, for a program.
 > **Experimental.** The names, the fields and the exit codes of the local API may change in a
 > later minor release. Treat the output as something to read today, not as a contract.
 
-**It exists where a trick runs.** The local API exists where a trick runs, and it is gone when
-the last trick goes off: the bridge removes the socket and ends every open wait. With no trick
-on, `collie api` prints one line, `The local API is on while a trick is on.`, and exits 3.
+**It is on while tricks are switched on.** The local API is on while tricks are switched on, on a
+machine where tricks run (not on a crew member that only follows its lead). When tricks go off,
+the bridge removes the socket and ends every open wait. With tricks off, `collie api` prints one
+line, `The local API is on while tricks are switched on.`, and exits 3.
 Windows has no such socket and prints the same line.
 
 **What it is, in honest words.** It is a convenience for programs of the same Unix user, not a

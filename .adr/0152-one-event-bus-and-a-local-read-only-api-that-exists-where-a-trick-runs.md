@@ -34,9 +34,11 @@ paired device, and a Unix user can already read every screen through the multipl
    loopback HTTP: a page in a browser can reach loopback, and a Unix socket it cannot. Not the
    WalkyTalky socket and not the hooks socket: each of those can be switched off alone, and neither
    may widen or narrow what the other reaches.
-4. **It exists only where a trick runs.** The socket stands while at least one trick is switched on
-   and is removed, with every open wait ended, when the last trick goes off. A bridge with no trick
-   on has no socket, and `collie api` says so in one line.
+4. **It is on while tricks are switched on, and only where tricks run.** The socket stands while
+   tricks are switched on, on a bridge where tricks run (never on a crew peer or deputy that only
+   follows its lead, never on Windows). When tricks go off, it is removed and every open wait ends.
+   A bridge with tricks off has no socket, and `collie api` says so in one line. One function in
+   the bridge decides it, so the rule has one place to change.
 5. **Read only, and the table denies by default.** The one right of the local tier is `look`. Each
    row names its right, a row whose right was not granted answers `api.denied`, and a test walks
    the table. A second test fails when any operation can reach the code that answers an ask.

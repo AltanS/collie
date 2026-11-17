@@ -4128,6 +4128,12 @@ const repoFacts =
 // least one trick is switched on AND tricks run on this bridge (TricksService tells the count, 0 on a crew
 // peer, a deputy, a deposed lead and Windows). No tricks folder, no socket ever. Every operation sees the
 // bridge through `ApiWorld` (bridge/api/world.ts) alone: reads only.
+// THE ONE CONDITION of the socket (decision 14, as Altan changed it on 2026-11-17): every start and stop
+// of the local API goes through this function and nothing else decides it. Today it asks "does a trick
+// run here": the count the TricksService tells, already 0 where tricks do not run. When the one switch
+// for the whole tricks feature lands, this function reads that switch instead ("the local API is on
+// while tricks are switched on, on a bridge where tricks run").
+const localApiWanted = (switchedOnHere: number): boolean => switchedOnHere > 0;
 const localApi =
   cfg.tricksDir === undefined
     ? undefined
@@ -4260,8 +4266,8 @@ const tricks =
         // Fault B: a trick stopped for its rights says so on the Hill too, once per trick and mismatch.
         rights: new RightsCards({ hill, warn: (line) => console.warn(`[tricks] ${line}`) }),
         repoFacts,
-        // The local API stands while a trick is on (decision 14); start and stop run one at a time.
-        onSwitchedOnCount: (count) => void (count > 0 ? localApi?.start() : localApi?.stop()),
+        // The local API stands while `localApiWanted` says so (decision 14); start and stop run one at a time.
+        onSwitchedOnCount: (count) => void (localApiWanted(count) ? localApi?.start() : localApi?.stop()),
         // A trick that lists `on` runs on the bus's events (bridge/tricks/triggers.ts).
         bus: eventBus,
       });

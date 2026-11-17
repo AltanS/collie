@@ -329,11 +329,11 @@ The rule today: Speech to text is a provider seam Collie owns, off by default an
 
 ### Tricks and the Hill
 
-The rule today: Tricks that react and the local API stand on one internal event bus, and the API is read only, on a Unix socket that exists only while a trick is on (0152). Trick code may cross the crew link as inert data and runs only on a tap on the machine that runs it (0144 rule 3, which took the addendum of 2026-11-10 to 0016), and the footer's Hill item and trick items are in 0147 (rules 7 and 12). No record decides the rest of tricks or the Hill on its own yet.
+The rule today: Tricks that react and the local API stand on one internal event bus, and the API is read only, on a Unix socket that exists only while tricks are switched on, where tricks run (0152). Trick code may cross the crew link as inert data and runs only on a tap on the machine that runs it (0144 rule 3, which took the addendum of 2026-11-10 to 0016), and the footer's Hill item and trick items are in 0147 (rules 7 and 12). No record decides the rest of tricks or the Hill on its own yet.
 
 | # | Decision | Status |
 | --- | --- | --- |
-| [0152](./0152-one-event-bus-and-a-local-read-only-api-that-exists-where-a-trick-runs.md) | One internal event bus; a read-only local API on a Unix socket that exists only while a trick is on. | Accepted |
+| [0152](./0152-one-event-bus-and-a-local-read-only-api-that-exists-where-a-trick-runs.md) | One internal event bus; a read-only local API on a Unix socket that exists only while tricks are switched on. | Accepted |
 
 ### Process, lint and tests
 

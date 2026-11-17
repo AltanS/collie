@@ -12,8 +12,8 @@
 // Every caller is the same user, so the socket cannot tell two callers apart; a connection is the unit
 // its caps count by.
 //
-// WHEN IT EXISTS (decision 14). While at least one trick is switched on: bridge/index.ts calls `start`
-// when the count of switched-on tricks goes above zero and `stop` when it goes back to zero, and a
+// WHEN IT EXISTS (decision 14). While tricks are switched on, on a bridge where tricks run:
+// bridge/index.ts calls `start` and `stop` as its one function `localApiWanted` says, and a
 // bridge with no tricks folder never builds one. On Windows there is no socket (logged once). `start`
 // and `stop` are idempotent and run one at a time, in the order called, so a quick on/off/on ends with
 // ONE server on a socket file that is its own. `start` refuses a path that holds something other than a
@@ -85,8 +85,8 @@ export interface ApiSocketDeps {
   readonly table: OperationTable;
   /** The rights every caller of this socket holds: {@link LOCAL_TIER_RIGHTS}. */
   readonly granted: readonly Right[];
-  /** Default `process.platform`; a test passes `"win32"` to see the gate. */
-  readonly platform?: NodeJS.Platform;
+  /** The host's platform (`HOST.platform` from bridge/host.ts at the edge); a test passes `"win32"` to see the gate. */
+  readonly platform: NodeJS.Platform;
   readonly log?: (line: string) => void;
   /** How long one request line may take. Default {@link REQUEST_LINE_MS}; a test shortens it. */
   readonly lineMs?: number;
@@ -202,7 +202,7 @@ export class ApiSocket {
   private async open(): Promise<boolean> {
     if (this.live !== null) return true;
     const path = this.deps.socketPath;
-    if ((this.deps.platform ?? process.platform) === "win32") {
+    if (this.deps.platform === "win32") {
       if (!this.windowsLogged) this.log("[api] no socket: the local API needs a Unix socket on this host");
       this.windowsLogged = true;
       return false;

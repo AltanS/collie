@@ -173,7 +173,7 @@ describe("no socket", () => {
     expect(await cmdApi(d, ["hello"])).toBe(EXIT.STATE);
     expect(d.io.stderr).toEqual([NO_LOCAL_API]);
     expect(d.io.stdout).toEqual([]);
-    expect(NO_LOCAL_API).toBe("The local API is on while a trick is on.");
+    expect(NO_LOCAL_API).toBe("The local API is on while tricks are switched on.");
   });
 
   test("a socket whose connection ends with no answer says the same", async () => {

@@ -1263,10 +1263,10 @@ export const COMMANDS: readonly Command[] = [
   },
   // ── The local API (M105 spec 03) ───────────────────────────────────────────
   // EXPERIMENTAL. One verb, generated from the operation table: `collie api <operation> [flags]`. It
-  // reads the running bridge's local socket, which exists only while a trick is on (ADR 0152).
+  // reads the running bridge's local socket, which exists only while tricks are switched on (ADR 0152).
   {
     name: "api",
-    summary: "experimental, read only: ask the local API of this machine (on while a trick is on): `api <operation> [flags] [--json]`",
+    summary: "experimental, read only: ask the local API of this machine (on while tricks are switched on): `api <operation> [flags] [--json]`",
     usage: () => apiHelp(declaredOperations()),
     run: (args, s) => cmdApi(apiDeps(s.io), args),
   },
