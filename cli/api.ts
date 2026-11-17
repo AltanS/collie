@@ -23,7 +23,8 @@ import { AskLate } from "./walky.ts";
 // THE ROAD. One connection to `<stateDir>/api/sock`, one request line `{id, op, args}`, one answer
 // line, close. The socket exists only while a trick is switched on (ADR 0152); with none, the verb
 // prints ONE line to stderr, "The local API is on while tricks are switched on.", and exits {@link EXIT.STATE}.
-// Windows has no such socket, so it prints the same line. The socket is dialled only when it is a
+// Windows has no such socket in this release (tricks are gated there, and the socket follows "tricks run
+// here"), so it prints {@link NO_LOCAL_API_WINDOWS} and exits the same {@link EXIT.STATE}. The socket is dialled only when it is a
 // socket of this user inside folders only this user can write (the check the hold and walky sockets
 // get), because a socket another user could plant would read the request and could answer it. There is
 // no token to send: the file mode is the credential.
@@ -49,6 +50,8 @@ import { AskLate } from "./walky.ts";
 
 /** The one line of a socket that is not there. */
 export const NO_LOCAL_API = "The local API is on while tricks are switched on.";
+/** The one line on a Windows machine: the socket follows "tricks run here", and tricks are gated there (TRICKS_WINDOWS_LINE says it of tricks). */
+export const NO_LOCAL_API_WINDOWS = "The local API is not available on a Windows machine yet.";
 /** How long one request may take, and how long an `events` wait may. */
 export const API_ASK_MS = 10_000;
 export const API_WAIT_ASK_MS = 35_000;
@@ -270,7 +273,7 @@ export async function cmdApi(deps: ApiDeps, argv: readonly string[]): Promise<nu
   if (!parsed.ok) return say(deps, EXIT.USAGE, `error: ${parsed.why}`);
 
   const path = apiSocketPath(deps.stateDir);
-  if (deps.platform === "win32") return say(deps, EXIT.STATE, NO_LOCAL_API);
+  if (deps.platform === "win32") return say(deps, EXIT.STATE, NO_LOCAL_API_WINDOWS);
   const state = probe(deps, path);
   if (state === "absent") return say(deps, EXIT.STATE, NO_LOCAL_API);
   if (state === "unsafe") return say(deps, EXIT.STATE, `error: ${path} is not a socket private to this user; nothing was sent`);

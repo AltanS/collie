@@ -68,6 +68,13 @@ function countingFactory(): Counted {
   return { factory, opened, closed };
 }
 
+// A manifest's `watch` path starts with `/` or `~/` (web/src/lib/tricks/schema.ts), so the temp-folder path of a
+// real file on Windows (`C:\...`) is refused with "A watched path starts with / or ~/." and the trick never
+// watches. Tricks are closed on Windows behind the gate, so no Windows path form is defined yet; a test that
+// writes a real file path into a manifest is POSIX only before the Windows gate for tricks opens. The watcher
+// itself (bridge/tricks/watch.test.ts) runs on Windows.
+const watchTest = test.skipIf(process.platform === "win32");
+
 const FAST: WatchOptions = { debounceMs: 40, maxWaitMs: 160, pollMs: 60 };
 
 // ── TrickReactions against a fake host ───────────────────────────────────────────────────────────────
@@ -434,7 +441,7 @@ describe("the wire: what a program receives in `trigger`", () => {
     r.service.stop();
   });
 
-  test("watch: exactly kind, path and count; path is the path as the manifest wrote it", async () => {
+  watchTest("watch: exactly kind, path and count; path is the path as the manifest wrote it", async () => {
     const dir = await tempDir();
     const file = join(dir, "todo.md");
     await writeFile(file, "a");
@@ -848,7 +855,7 @@ describe("switch-off and stop end it all", () => {
     r.service.stop();
   });
 
-  test("tricks switched off as a whole: the subscription and the watch close, an event or a file change runs nothing, and on opens them again", async () => {
+  watchTest("tricks switched off as a whole: the subscription and the watch close, an event or a file change runs nothing, and on opens them again", async () => {
     const dir = await tempDir();
     const file = join(dir, "todo.md");
     await writeFile(file, "a");
@@ -878,7 +885,7 @@ describe("switch-off and stop end it all", () => {
     r.service.stop();
   });
 
-  test("stop frees the service's own bus subscription and its file watches", async () => {
+  watchTest("stop frees the service's own bus subscription and its file watches", async () => {
     const dir = await tempDir();
     const file = join(dir, "todo.md");
     await writeFile(file, "a");
@@ -894,7 +901,7 @@ describe("switch-off and stop end it all", () => {
 });
 
 describe("`watch` runs a trick, and never loops on its own writes", () => {
-  test("an editor's save (a temp file renamed over the file) is one run", async () => {
+  watchTest("an editor's save (a temp file renamed over the file) is one run", async () => {
     const dir = await tempDir();
     const file = join(dir, "todo.md");
     await writeFile(file, "first");
@@ -906,7 +913,7 @@ describe("`watch` runs a trick, and never loops on its own writes", () => {
     r.service.stop();
   });
 
-  test("five quick writes are one run", async () => {
+  watchTest("five quick writes are one run", async () => {
     const dir = await tempDir();
     const file = join(dir, "todo.md");
     await writeFile(file, "0");
@@ -920,7 +927,7 @@ describe("`watch` runs a trick, and never loops on its own writes", () => {
     r.service.stop();
   });
 
-  test("a trick that writes the file it watches runs once for an outside change, not again for its own write", async () => {
+  watchTest("a trick that writes the file it watches runs once for an outside change, not again for its own write", async () => {
     const dir = await tempDir();
     const file = join(dir, "state.json");
     await writeFile(file, "{}");
@@ -948,7 +955,7 @@ describe("`watch` runs a trick, and never loops on its own writes", () => {
     own.service.stop();
   });
 
-  test("a file's change while the trick runs does not queue a second run after it", async () => {
+  watchTest("a file's change while the trick runs does not queue a second run after it", async () => {
     const dir = await tempDir();
     const file = join(dir, "todo.md");
     await writeFile(file, "a");
@@ -974,7 +981,7 @@ describe("`watch` runs a trick, and never loops on its own writes", () => {
     r.service.stop();
   });
 
-  test("when fs.watch cannot open (ENOSPC) the files are polled, the trick's row says so, and a changed time runs it", async () => {
+  watchTest("when fs.watch cannot open (ENOSPC) the files are polled, the trick's row says so, and a changed time runs it", async () => {
     const dir = await tempDir();
     const file = join(dir, "todo.md");
     await writeFile(file, "a");
@@ -999,7 +1006,7 @@ describe("`watch` runs a trick, and never loops on its own writes", () => {
     r.service.stop();
   });
 
-  test("switching off closes the watch and its timers; a restart (a config change) sets it up again", async () => {
+  watchTest("switching off closes the watch and its timers; a restart (a config change) sets it up again", async () => {
     const dir = await tempDir();
     const file = join(dir, "todo.md");
     await writeFile(file, "a");

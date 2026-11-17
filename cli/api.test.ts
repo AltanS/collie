@@ -4,10 +4,11 @@ import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { apiSocketTest } from "../bridge/api/skip.ts";
 import { apiSocketPath } from "../bridge/api/socket.ts";
 import { DECLARED, OPERATION_NAMES } from "../bridge/api/operations.ts";
 import { asJsonObject, parseJsonObject } from "../web/src/lib/json.ts";
-import { apiHelp, API_ASK_MS, API_WAIT_ASK_MS, cmdApi, declaredOperations, escapeC1, flagOf, NO_LOCAL_API, parseFlags, plainLines, type ApiDeps, type CliOperation } from "./api.ts";
+import { apiHelp, API_ASK_MS, API_WAIT_ASK_MS, cmdApi, declaredOperations, escapeC1, flagOf, NO_LOCAL_API, NO_LOCAL_API_WINDOWS, parseFlags, plainLines, type ApiDeps, type CliOperation } from "./api.ts";
 import { capture } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { run } from "./program.ts";
@@ -63,6 +64,33 @@ function deps(dir: string, over: Partial<ApiDeps> = {}): ApiDeps & { readonly io
   };
 }
 
+interface Seam {
+  readonly requests: string[];
+  readonly over: Partial<ApiDeps>;
+}
+
+/**
+ * The same road with no socket in it: a `files` that sees a private socket of this user at the API path and an `ask`
+ * that records the request line and answers `answer`. For the tests of what the verb builds from the table, which
+ * are logic and so run on Windows too; the tests of a real scratch socket below are `apiSocketTest`.
+ */
+function seam(dir: string, answer: string): Seam {
+  const path = apiSocketPath(dir);
+  const requests: string[] = [];
+  const files = { ...realFiles, entryType: (p: string) => (p === path ? ("other" as const) : ("directory" as const)), ownerUid: () => 1000, mode: () => 0o700 };
+  return {
+    requests,
+    over: {
+      files,
+      uid: 1000,
+      ask: async (_path, line) => {
+        requests.push(line.trim());
+        return answer;
+      },
+    },
+  };
+}
+
 const FAKE: readonly CliOperation[] = [
   ...declaredOperations(),
   {
@@ -102,8 +130,8 @@ describe("generated from the table", () => {
     expect(text).toContain("--workshop <text>  (required) The workshop to count.");
     expect(text).toContain("--max-items <number>");
     const dir = stateDir();
-    const served = await serve(dir, () => JSON.stringify({ id: "req-1", ok: true, counted: 3 }));
-    const d = deps(dir, { operations: FAKE });
+    const served = seam(dir, JSON.stringify({ id: "req-1", ok: true, counted: 3 }));
+    const d = deps(dir, { ...served.over, operations: FAKE });
     expect(await cmdApi(d, ["tally", "--workshop", "lodge", "--max-items=7"])).toBe(EXIT.OK);
     expect(parseJsonObject(served.requests[0] ?? "")).toEqual({ id: "req-1", op: "tally", args: { workshop: "lodge", maxItems: 7 } });
     expect(d.io.stdout).toEqual(["counted: 3"]);
@@ -112,8 +140,8 @@ describe("generated from the table", () => {
   test("hello takes --client from its declaration and sends it as args.client", async () => {
     expect(apiHelp(declaredOperations()).join("\n")).toContain("--client <text>");
     const dir = stateDir();
-    const served = await serve(dir, () => JSON.stringify({ id: "req-1", ok: true, api: 1 }));
-    const d = deps(dir);
+    const served = seam(dir, JSON.stringify({ id: "req-1", ok: true, api: 1 }));
+    const d = deps(dir, served.over);
     expect(await cmdApi(d, ["hello", "--client", "trick:cpu-load"])).toBe(EXIT.OK);
     expect(parseJsonObject(served.requests[0] ?? "")).toEqual({ id: "req-1", op: "hello", args: { client: "trick:cpu-load" } });
   });
@@ -200,12 +228,15 @@ describe("no socket", () => {
     expect(d.io.stderr).toEqual([NO_LOCAL_API]);
   });
 
-  test("Windows has no socket and prints the same line without looking", async () => {
+  test("Windows has no local API yet: its own line, the same exit as no socket, and nothing is dialled or looked at", async () => {
     const dir = stateDir();
     const served = await serve(dir, () => "{}");
     const d = deps(dir, { platform: "win32" });
     expect(await cmdApi(d, ["hello"])).toBe(EXIT.STATE);
-    expect(d.io.stderr).toEqual([NO_LOCAL_API]);
+    expect(d.io.stderr).toEqual([NO_LOCAL_API_WINDOWS]);
+    expect(d.io.stdout).toEqual([]);
+    expect(NO_LOCAL_API_WINDOWS).toBe("The local API is not available on a Windows machine yet.");
+    expect(NO_LOCAL_API_WINDOWS).not.toBe(NO_LOCAL_API);
     expect(served.requests).toEqual([]);
   });
 
@@ -218,7 +249,7 @@ describe("no socket", () => {
     expect(d.io.stderr[0]).toContain("is not a socket private to this user");
   });
 
-  test("a socket in a folder others can write is not dialled", async () => {
+  apiSocketTest("a socket in a folder others can write is not dialled", async () => {
     const dir = stateDir();
     const served = await serve(dir, () => JSON.stringify({ ok: true }));
     chmodSync(dirname(apiSocketPath(dir)), 0o777);
@@ -239,7 +270,7 @@ describe("a scratch socket answering", () => {
     ],
   };
 
-  test("sends one request line {id, op, args} and, with --json, prints the answer line as it came", async () => {
+  apiSocketTest("sends one request line {id, op, args} and, with --json, prints the answer line as it came", async () => {
     const dir = stateDir();
     const line = JSON.stringify(SESSIONS);
     const served = await serve(dir, () => line);
@@ -250,7 +281,7 @@ describe("a scratch socket answering", () => {
     expect(d.io.stderr).toEqual([]);
   });
 
-  test("security read 2, item 3: with --json, DEL and C1 (a raw CSI) print as \\u00XX, and the line reads back the same value", async () => {
+  apiSocketTest("security read 2, item 3: with --json, DEL and C1 (a raw CSI) print as \\u00XX, and the line reads back the same value", async () => {
     const dir = stateDir();
     const hostile = { ...SESSIONS, sessions: [{ ...SESSIONS.sessions[0], label: "lodge\u009b31m\u007fx\u0080\u009f" }] };
     const line = JSON.stringify(hostile);
@@ -265,7 +296,7 @@ describe("a scratch socket answering", () => {
     expect(escapeC1('{"a":"plain é"}')).toBe('{"a":"plain é"}');
   });
 
-  test("without --json, a list of objects prints as aligned columns and a missing cell as a dash", async () => {
+  apiSocketTest("without --json, a list of objects prints as aligned columns and a missing cell as a dash", async () => {
     const dir = stateDir();
     await serve(dir, () => JSON.stringify(SESSIONS));
     const d = deps(dir);
@@ -312,7 +343,7 @@ describe("a scratch socket answering", () => {
     expect(plainLines({ ok: true, sessions: [{ label: "a\u001b]0;x\u0007b" }] }).join("\n")).not.toContain("\u001b");
   });
 
-  test("an events wait gets 35 s, every other request 10 s", async () => {
+  apiSocketTest("an events wait gets 35 s, every other request 10 s", async () => {
     const dir = stateDir();
     await serve(dir, () => JSON.stringify({ ok: true, events: [], next: "b.1" }));
     const seen: number[] = [];
@@ -328,7 +359,7 @@ describe("a scratch socket answering", () => {
     expect([API_ASK_MS, API_WAIT_ASK_MS]).toEqual([10_000, 35_000]);
   });
 
-  test("an answer that never comes ends in a failure, not a hang", async () => {
+  apiSocketTest("an answer that never comes ends in a failure, not a hang", async () => {
     const dir = stateDir();
     await serve(dir, () => null);
     const d = deps(dir, { ask: (path, line) => askSocket(path, line, 100) });
@@ -343,7 +374,7 @@ describe("a scratch socket answering", () => {
     expect(late.io.stderr).toEqual(["error: the local API did not answer within 10 s"]);
   });
 
-  test("an answer that is not a JSON answer line is a failure", async () => {
+  apiSocketTest("an answer that is not a JSON answer line is a failure", async () => {
     const dir = stateDir();
     await serve(dir, () => "not json");
     const d = deps(dir);
@@ -355,7 +386,7 @@ describe("a scratch socket answering", () => {
 describe("an error answer", () => {
   const refusal = (code: string, message: string): string => JSON.stringify({ id: "req-1", ok: false, error: { code, message } });
 
-  test("prints error: <message> on stderr and exits REFUSED", async () => {
+  apiSocketTest("prints error: <message> on stderr and exits REFUSED", async () => {
     const dir = stateDir();
     await serve(dir, () => refusal("api.session_unknown", "no session on this machine has that id; send sessions for the ids of now"));
     const d = deps(dir);
@@ -364,7 +395,7 @@ describe("an error answer", () => {
     expect(d.io.stdout).toEqual([]);
   });
 
-  test("api.failed exits FAIL", async () => {
+  apiSocketTest("api.failed exits FAIL", async () => {
     const dir = stateDir();
     await serve(dir, () => refusal("api.failed", "the operation failed inside the bridge; try again"));
     const d = deps(dir);
@@ -372,7 +403,7 @@ describe("an error answer", () => {
     expect(d.io.stderr).toEqual(["error: the operation failed inside the bridge; try again"]);
   });
 
-  test("with --json the error answer is printed to stdout as sent, with the same exit code", async () => {
+  apiSocketTest("with --json the error answer is printed to stdout as sent, with the same exit code", async () => {
     const dir = stateDir();
     const line = refusal("api.busy", "too many screens are being read now; try again in 500 ms");
     await serve(dir, () => line);

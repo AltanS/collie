@@ -15,8 +15,9 @@
 //
 // WHEN IT EXISTS (decision 14). While tricks are switched on, on a bridge where tricks run:
 // bridge/index.ts calls `start` and `stop` as its one function `localApiWanted` says, and a
-// bridge with no tricks folder never builds one. On Windows there is no socket (logged once). `start`
-// and `stop` are idempotent and run one at a time, in the order called, so a quick on/off/on ends with
+// bridge with no tricks folder never builds one. On Windows there is no socket in this release: tricks are
+// gated there (`TricksService.gated`), the socket follows "tricks run here", so `start` is a no-op that logs
+// once (see `open`). `start` and `stop` are idempotent and run one at a time, in the order called, so a quick on/off/on ends with
 // ONE server on a socket file that is its own. `start` refuses a path that holds something other than a
 // socket, and a socket another live process answers on; a dead socket left behind is unlinked. `stop`
 // closes the server, answers every open request at once with `api.closing`, and closes every connection.
@@ -211,6 +212,10 @@ export class ApiSocket {
   private async open(): Promise<boolean> {
     if (this.live !== null) return true;
     const path = this.deps.socketPath;
+    // No local API on Windows in this release (decision of 2026-11-17): the socket follows "tricks run here",
+    // and tricks are closed there behind the gate (`TricksService.gated`, which also keeps `localApiWanted`
+    // false). A Unix socket path is no Windows path either. Nothing is made on disk; the way back is to lift
+    // the gate and give the API a Windows transport together.
     if (this.deps.platform === "win32") {
       if (!this.windowsLogged) this.log("[api] no socket: the local API needs a Unix socket on this host");
       this.windowsLogged = true;
