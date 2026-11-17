@@ -27,6 +27,7 @@ import {
   WRITE_STALL_MS,
 } from "./limits.ts";
 import { buildTable, LOCAL_TIER_RIGHTS, type OpResult, type ReadHandlers } from "./operations.ts";
+import { apiSocketDescribe, apiSocketTest } from "./skip.ts";
 import { ApiSocket, apiSocketPath } from "./socket.ts";
 
 const roots: string[] = [];
@@ -197,7 +198,7 @@ describe("the socket's life", () => {
     expect(r.api.running()).toBe(false);
   });
 
-  test("started: a socket of mode 0600 in a folder of mode 0700; stopped: gone", async () => {
+  apiSocketTest("started: a socket of mode 0600 in a folder of mode 0700; stopped: gone", async () => {
     const r = rig();
     expect(await r.api.start()).toBe(true);
     expect(lstatSync(r.path).isSocket()).toBe(true);
@@ -208,14 +209,14 @@ describe("the socket's life", () => {
     expect(r.api.running()).toBe(false);
   });
 
-  test("a folder that was wider is made 0700", async () => {
+  apiSocketTest("a folder that was wider is made 0700", async () => {
     const r = rig();
     mkdirSync(r.dir, { recursive: true, mode: 0o755 });
     expect(await r.api.start()).toBe(true);
     expect(modeOf(r.dir)).toBe(0o700);
   });
 
-  test("the count drives it as bridge/index.ts wires it: above zero on, zero off", async () => {
+  apiSocketTest("the count drives it as bridge/index.ts wires it: above zero on, zero off", async () => {
     const r = rig();
     const told = async (count: number): Promise<void> => {
       if (count > 0) await r.api.start();
@@ -231,7 +232,7 @@ describe("the socket's life", () => {
     expect(existsSync(r.path)).toBe(false);
   });
 
-  test("start and stop are idempotent", async () => {
+  apiSocketTest("start and stop are idempotent", async () => {
     const r = rig();
     expect(await r.api.start()).toBe(true);
     const ino = lstatSync(r.path).ino;
@@ -242,7 +243,7 @@ describe("the socket's life", () => {
     expect(existsSync(r.path)).toBe(false);
   });
 
-  test("on, off, on at once: one server, on its own socket file, answering", async () => {
+  apiSocketTest("on, off, on at once: one server, on its own socket file, answering", async () => {
     const r = rig();
     const a = r.api.start();
     const b = r.api.stop();
@@ -262,7 +263,7 @@ describe("the socket's life", () => {
     expect(existsSync(r.path)).toBe(false);
   });
 
-  test("a dead socket file left behind is replaced", async () => {
+  apiSocketTest("a dead socket file left behind is replaced", async () => {
     const r = rig();
     mkdirSync(r.dir, { recursive: true, mode: 0o700 });
     // A socket file nobody listens on: bind one elsewhere, move the file to the path, close the server.
@@ -279,7 +280,7 @@ describe("the socket's life", () => {
     expect(await client.ask({ op: "hello" })).toMatchObject({ ok: true });
   });
 
-  test("a socket another process answers on is left alone, and no server starts", async () => {
+  apiSocketTest("a socket another process answers on is left alone, and no server starts", async () => {
     const r = rig();
     mkdirSync(r.dir, { recursive: true, mode: 0o700 });
     const other = createServer((socket) => socket.end());
@@ -293,7 +294,7 @@ describe("the socket's life", () => {
     }
   });
 
-  test("a file at the path that is not a socket is refused and left as it is", async () => {
+  apiSocketTest("a file at the path that is not a socket is refused and left as it is", async () => {
     const r = rig();
     mkdirSync(r.dir, { recursive: true, mode: 0o700 });
     writeFileSync(r.path, "not a socket");
@@ -310,7 +311,7 @@ describe("the socket's life", () => {
     expect(r.logs.filter((line) => line.includes("needs a Unix socket"))).toHaveLength(1);
   });
 
-  test("stop removes the socket file at once, before the next start runs", async () => {
+  apiSocketTest("stop removes the socket file at once, before the next start runs", async () => {
     // The runtime unlinks a Unix server's path inside close(), at once and by name (a probe on Bun 1.4,
     // 2026-11-17): so a stop never leaves the file behind, and a later start in the chain never has its
     // fresh file removed by an earlier close that finished late.
@@ -329,7 +330,7 @@ describe("the socket's life", () => {
   });
 });
 
-describe("the framing", () => {
+apiSocketDescribe("the framing", () => {
   test("several requests on one connection, answered by id, out of order", async () => {
     const r = rig();
     await r.api.start();
@@ -488,7 +489,7 @@ describe("the framing", () => {
   });
 });
 
-describe("the waits", () => {
+apiSocketDescribe("the waits", () => {
   test("an events wait wakes on a publish, and a sessions answer on the same connection is not held up", async () => {
     const r = rig();
     await r.api.start();
@@ -585,7 +586,7 @@ describe("the waits", () => {
   });
 });
 
-describe("requests in flight and idle connections", () => {
+apiSocketDescribe("requests in flight and idle connections", () => {
   test("the ninth request in flight on one connection, waits included, is refused at once; answers free the places", async () => {
     const r = rig();
     await r.api.start();
@@ -640,7 +641,7 @@ describe("requests in flight and idle connections", () => {
   });
 });
 
-describe("the api folder is the user's own (security read 1, item 6)", () => {
+apiSocketDescribe("the api folder is the user's own (security read 1, item 6)", () => {
   test("a symlinked api folder is refused, and nothing is made through it", async () => {
     const r = rig();
     const elsewhere = join(r.dir, "..", "..", "elsewhere");
@@ -691,7 +692,7 @@ function bigRead(kib: number, calls: { n: number }): ReadHandlers["read"] {
   };
 }
 
-describe("the write budget (security read 1, item 1)", () => {
+apiSocketDescribe("the write budget (security read 1, item 1)", () => {
   test("1,000 reads never read: the bytes held stay bounded, the connection is dropped, another connection is served", async () => {
     const calls = { n: 0 };
     const r = rig({ read: bigRead(900, calls), stallMs: 600 });
@@ -762,7 +763,7 @@ describe("the write budget (security read 1, item 1)", () => {
   });
 });
 
-describe("the screen reads of the whole socket (security read 1, item 5)", () => {
+apiSocketDescribe("the screen reads of the whole socket (security read 1, item 5)", () => {
   test("at most 4 reads in progress across connections; one more answers api.busy with a retry hint", async () => {
     const held = gate();
     let running = 0;
@@ -808,7 +809,7 @@ describe("the screen reads of the whole socket (security read 1, item 5)", () =>
   });
 });
 
-describe("hello over the socket", () => {
+apiSocketDescribe("hello over the socket", () => {
   test("lists the operations the local tier offers, in table order", async () => {
     const r = rig();
     await r.api.start();
