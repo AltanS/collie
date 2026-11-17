@@ -147,8 +147,21 @@ describe("in the About sheet and on the row", () => {
     expect(readTrick(JSON.parse(JSON.stringify({ ...TRICK, fields: [{ key: "x", kind: "secret", label: "X" }] })) as JsonValue)?.fields).toBeUndefined();
   });
 
+  it("review G point 5: one quiet line says the settings are not for secrets, for a writer and for a read-only device", () => {
+    const words = "Not for secrets. Every paired phone can see these.";
+    const { section } = group();
+    expect(within(section).getByText(words)).toHaveAttribute("data-line", "settings-no-secrets");
+    expect(within(section).getByText(words).className).toContain("text-muted-foreground");
+    expect(section.querySelectorAll('[data-line="settings-no-secrets"]')).toHaveLength(1);
+  });
+
+  it("the no-secrets line shows for a read-only device and with no value set", () => {
+    const { section } = group({ values: { repo: "lodge/workshop" } }, { canWrite: false });
+    expect(within(section).getByText("Not for secrets. Every paired phone can see these.")).toBeInTheDocument();
+  });
+
   it("the new words wait for translation", () => {
-    for (const key of ["settings.tricks.about.settings", "settings.tricks.needsSetup", "settings.tricks.fields.needsSetup"]) expect(PENDING_TRANSLATION).toContain(key);
+    for (const key of ["settings.tricks.about.settings", "settings.tricks.needsSetup", "settings.tricks.fields.needsSetup", "settings.tricks.fields.noSecrets"]) expect(PENDING_TRANSLATION).toContain(key);
     // No locale carries them yet: they are never translated by hand.
     const de = readFileSync(join(__dirname, "../lib/i18n/messages/de.ts"), "utf8");
     expect(de).not.toContain("settings.tricks.fields.");
