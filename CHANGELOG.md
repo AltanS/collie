@@ -58,6 +58,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Two sessions may trade 12 messages in 10 minutes.** The limit was 6, and `COLLIE_WALKY_PAIR_LIMIT` still sets it.
 - **The example facts of `collie trick dev` use a neutral home folder.** Run with no `--facts`, `collie trick dev` and the `--run` check of `collie trick` feed the program a built-in example (one working session and one idle one). Its folders were the maintainer's own home; they are `/home/dev/...` now, and the rest of each path is as before. Pass `--facts <file>` to use your own.
 - **The word "session" means an agent session only.** The switcher, its "All spaces" row and the error for an unknown one say "space" for a Herdr, tmux or zellij group. The update texts say that your terminal and agents keep running. A trick's own screen is a "page", and the 5-hour usage window reads "5 hours". The `collie config` text of `multi_session` and a line of `collie crew` follow.
+- **One name for one action: Send anyway.** The unread screen card said "Send past this screen" where the composer said "Send anyway". Both say "Send anyway" now, and the notice that tells you to tap it again names it the same. The notice for a draft Collie cannot read names its button "Empty the box".
 
 ### Fixed
 

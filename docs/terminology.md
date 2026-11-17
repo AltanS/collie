@@ -193,6 +193,14 @@ rearrange it with the pencil next to **Keys**, and Collie keeps it in this brows
 arrow is missing from your pad, a quiet line says so, with **Put back**
 ([Your own key pad](configure.md#your-own-key-pad)).
 
+## Send anyway
+
+The button that sends your message although Collie cannot check the screen. It has one name in both
+places: on the card for a screen Collie cannot read, and in the notice under the box. The word does not
+say whether Enter goes. The answer after your tap says what happened. It is not offered on a sign-in
+field, a question or permission Collie read, a screen that changed since you looked, or a menu or
+yes/no prompt ([Send anyway](multiplexers.md#send-anyway)).
+
 ## Type mode
 
 The composer mode where each key goes to the terminal as you type. It turns itself off after 60

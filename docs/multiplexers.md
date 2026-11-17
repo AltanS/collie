@@ -698,10 +698,10 @@ not an edge, is counted but never logged. An edge from a pane of another multipl
 machine, for example a Herdr TUI pane seen by a bridge that drives the Herdr core, is counted as
 `foreign-mux` and not logged.
 
-#### Send past this screen
+#### Send anyway
 
-When Collie cannot send your message as it stands, the card offers **Send past this screen**, and the
-notice under the box offers **Send anyway**. Neither word says whether Enter goes: what happened is in
+When Collie cannot send your message as it stands, the card and the notice under the box both offer
+**Send anyway**. The word does not say whether Enter goes: what happened is in
 the answer after your tap. This works on
 every screen except four: a sign-in field (enter the code again there), a question or permission
 Collie read (answer it on its own card), a screen that changed since you looked, and a screen that
