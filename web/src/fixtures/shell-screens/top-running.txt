@@ -1,0 +1,12 @@
+top - 10:44:02 up 3 days,  2:11,  1 user,  load average: 0.42, 0.51, 0.48
+Tasks: 287 total,   1 running, 286 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  3.1 us,  1.0 sy,  0.0 ni, 95.7 id,  0.1 wa,  0.0 hi,  0.1 si,  0.0 st
+MiB Mem :  31842.1 total,  18210.4 free,   7012.8 used,   6618.9 buff/cache
+MiB Swap:   8192.0 total,   8192.0 free,      0.0 used.  24829.3 avail Mem
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+   2214 dev       20   0 1213448 182340  64312 S   4.0   0.6   3:12.44 node
+   1088 root      20   0  412300  41288  30112 S   1.3   0.1   0:44.10 Xorg
+   3301 dev       20   0   22112   5120   3712 R   0.7   0.0   0:00.03 top
+      1 root      20   0  168404  13120   8512 S   0.0   0.0   0:02.11 systemd
+      2 root      20   0       0      0      0 S   0.0   0.0   0:00.01 kthreadd

@@ -1,0 +1,13 @@
+dev@devbox:~/src/rs$ cargo build
+   Compiling rs v0.1.0 (/home/dev/src/rs)
+warning: unused variable: `count`
+ --> src/main.rs:4:9
+  |
+4 |     let count = 0;
+  |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_count`
+  |
+  = note: `#[warn(unused_variables)]` on by default
+
+warning: `rs` (bin "rs") generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.81s
+dev@devbox:~/src/rs$ 

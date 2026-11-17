@@ -1,0 +1,7 @@
+dev@devbox:~$ ssh build02
+The authenticity of host 'build02 (10.0.0.13)' can't be established.
+ED25519 key fingerprint is SHA256:abcdefghijklmnopqrstuvwxyz0123456789ABCDEF.
+This key is not known by any other names.
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added 'build02' (ED25519) to the list of known hosts.
+ops@build02:~$ 

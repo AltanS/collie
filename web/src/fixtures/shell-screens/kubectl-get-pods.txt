@@ -1,0 +1,6 @@
+dev@devbox:~/src/app$ kubectl get pods
+NAME                       READY   STATUS    RESTARTS   AGE
+api-7d9f8b6c5d-2xk4p       1/1     Running   0          3h
+api-7d9f8b6c5d-9lmzq       1/1     Running   0          3h
+worker-5c6b7d8e9f-abcde    1/1     Running   2          1d
+dev@devbox:~/src/app$ 

@@ -1,0 +1,7 @@
+dev@devbox:~/src/app$ sudo apt remove cowsay
+The following packages will be REMOVED:
+  cowsay
+0 upgraded, 0 newly installed, 1 to remove and 0 not upgraded.
+Do you want to continue? [Y/n] y
+Removing cowsay (3.03+dfsg2-8) ...
+dev@devbox:~/src/app$ 

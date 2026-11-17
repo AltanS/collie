@@ -1,0 +1,11 @@
+dev@devbox:~$ python3
+Python 3.12.3 (main, Nov  6 2024, 18:32:19) [GCC 13.2.0] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+>>> items = ["a", "b", "c"]
+>>> for i, x in enumerate(items, 1):
+...     print(f"{i}. {x}")
+...
+1. a
+2. b
+3. c
+>>> 

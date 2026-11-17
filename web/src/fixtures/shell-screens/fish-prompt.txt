@@ -1,0 +1,5 @@
+Welcome to fish, the friendly interactive shell
+Type help for instructions on how to use fish
+dev@devbox ~/s/app (main)> ls
+README.md  package.json  src/  test/
+dev@devbox ~/s/app (main)> 

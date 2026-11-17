@@ -1,0 +1,7 @@
+devbox% make
+cc -O2 -o bin/tool src/tool.c
+devbox% ./bin/tool --list
+1  alpha
+2  beta
+3  gamma
+devbox% 

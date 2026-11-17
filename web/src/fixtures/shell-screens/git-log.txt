@@ -1,0 +1,12 @@
+dev@devbox:~/src/app$ git log --oneline -10
+a1b2c3d (HEAD -> main, origin/main) fix: keep the cursor on resize
+9f8e7d6 feat: add the export button
+5d4c3b2 docs: explain the config file
+1a2b3c4 test: cover the empty list
+e5f6a7b refactor: split the parser
+c8d9e0f chore: bump deps
+b7a6c5d fix: handle a missing env var
+4e3d2c1 feat: dark mode
+0f1e2d3 ci: cache node_modules
+6a5b4c3 initial commit
+dev@devbox:~/src/app$ 

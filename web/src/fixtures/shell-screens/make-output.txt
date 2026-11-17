@@ -1,0 +1,7 @@
+dev@devbox:~/src/app$ make
+mkdir -p build
+cc -Wall -O2 -c src/a.c -o build/a.o
+cc -Wall -O2 -c src/b.c -o build/b.o
+cc -Wall -O2 -c src/c.c -o build/c.o
+cc -o bin/app build/a.o build/b.o build/c.o
+dev@devbox:~/src/app$ 

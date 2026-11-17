@@ -1,0 +1,5 @@
+dev@devbox:~/src/app$ git branch -vv
+  feature/export  9f8e7d6 [origin/feature/export] feat: add the export button
+* main            a1b2c3d [origin/main] fix: keep the cursor on resize
+  release-1.2     4e3d2c1 [origin/release-1.2: behind 3] feat: dark mode
+dev@devbox:~/src/app$ 

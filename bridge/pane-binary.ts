@@ -252,6 +252,50 @@ export function createPaneHarness(deps: { readonly read: ForegroundRead; readonl
   };
 }
 
+/**
+ * WHAT STANDS IN A PANE'S FOREGROUND, for the blind road (M102 spec 12): a pane no profile reads.
+ *  • `shell`: every foreground process is an interactive shell of {@link SHELL_NAMES}, with no script
+ *    or command argument (flags only, a login shell's `-bash` included). The pane waits at a prompt.
+ *  • `program`: any other foreground process (a shell running a child shows the child; `bash x.sh`
+ *    and `bash -c …` run a script). It may be asking something.
+ *  • `unknown`: no read (tmux, zellij, tuios and tern have none here; a read that fails or is slow), an
+ *    empty list, or a process with no argv.
+ */
+export type PaneForeground = "shell" | "program" | "unknown";
+
+/** The interactive shells, by program name (lower case, no `.exe`). Data, not a branch per shell. */
+export const SHELL_NAMES: ReadonlySet<string> = new Set(["sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh", "nu", "xonsh", "elvish", "pwsh"]);
+
+/** The pane's {@link PaneForeground} from its foreground processes. */
+export function paneForegroundOf(processes: readonly ForegroundProcess[]): PaneForeground {
+  if (processes.length === 0) return "unknown";
+  const each = processes.map(foregroundOfOne);
+  if (each.includes("unknown")) return "unknown";
+  return each.every((one) => one === "shell") ? "shell" : "program";
+}
+
+function foregroundOfOne(process: ForegroundProcess): PaneForeground {
+  const [first, ...rest] = process.argv;
+  if (first === undefined || first.length === 0) return "unknown";
+  // An interpreter that runs a shell's script (`python3 /usr/bin/xonsh`) is that shell.
+  const [program, args] = isInterpreter(first) && rest[0] !== undefined ? [rest[0], rest.slice(1)] : [first, rest];
+  return SHELL_NAMES.has(programName(program)) && args.every((arg) => arg.startsWith("-")) ? "shell" : "program";
+}
+
+/** A program's name: the last path part, a login shell's leading `-` and a `.exe` cut, lower case. */
+function programName(word: string): string {
+  const last = word.split(/[/\\]/u).at(-1) ?? word;
+  return last.replace(/^-/u, "").replace(/\.exe$/iu, "").toLowerCase();
+}
+
+/** The send path's {@link paneForegroundOf} over the pane's shared foreground read (`SendDeps.paneForeground`). */
+export function createPaneForeground(read: ForegroundRead): (paneId: string) => Promise<PaneForeground> {
+  return async (paneId) => {
+    const outcome = await read(paneId);
+    return outcome.ok ? paneForegroundOf(outcome.value) : "unknown";
+  };
+}
+
 /** The process's pid when `/proc/<pid>/cmdline` is the argv the multiplexer reported, else undefined. */
 function provenPid(process: ForegroundProcess, probe: ProcessProbe): number | undefined {
   return process.pid !== undefined && sameArgv(probe.cmdlineOf(process.pid), process.argv) ? process.pid : undefined;

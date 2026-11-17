@@ -1,0 +1,14 @@
+dev@devbox:~/src/app$ history | tail -12
+  488  git status
+  489  git diff
+  490  npm test
+  491  git add -p
+  492  git commit -m "fix: trim the header"
+  493  git push
+  494  cd ../api
+  495  make build
+  496  ./bin/api --port 9000
+  497  cd -
+  498  ls
+  499  history | tail -12
+dev@devbox:~/src/app$ 

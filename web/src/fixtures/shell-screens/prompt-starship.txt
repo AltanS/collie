@@ -1,0 +1,6 @@
+~/src/app on  main [!?] via  v22.11.0
+❯ ls
+README.md  package.json  src  test
+
+~/src/app on  main [!?] via  v22.11.0
+❯ 

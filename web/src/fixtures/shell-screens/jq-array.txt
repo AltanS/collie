@@ -1,0 +1,5 @@
+dev@devbox:~/src/app$ jq '.items[] | .name' data.json
+"alpha"
+"beta"
+"gamma"
+dev@devbox:~/src/app$ 

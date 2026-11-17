@@ -1,0 +1,11 @@
+dev@devbox:~/src/app$ ls -l
+total 48
+-rw-r--r-- 1 dev dev  1067 Nov  3 10:12 LICENSE
+-rw-r--r-- 1 dev dev  2210 Nov 16 09:41 README.md
+drwxr-xr-x 2 dev dev  4096 Nov 16 09:40 bin
+drwxr-xr-x 4 dev dev  4096 Nov 12 18:03 docs
+-rw-r--r-- 1 dev dev   812 Nov 16 09:41 package.json
+drwxr-xr-x 6 dev dev  4096 Nov 16 09:44 src
+drwxr-xr-x 3 dev dev  4096 Nov 14 11:20 test
+-rw-r--r-- 1 dev dev   402 Nov  2 15:30 tsconfig.json
+dev@devbox:~/src/app$ 

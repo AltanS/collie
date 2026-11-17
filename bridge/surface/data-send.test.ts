@@ -83,6 +83,11 @@ dataDescribe("never twice", () => {
     expect(r.mux.calls.filter((call) => call === "readGrid").length).toBeGreaterThan(0);
     // The part polls afterwards: nothing for it.
     expect((await part.next({ waitMs: 1000 })).status).toBe(204);
+    // The receipt the data road opened closed again (M102 spec 13): at most one open receipt answers to the id.
+    const hash = r.store.hashText("nobody polls");
+    const first = r.protocol.promptEdge("w1:p1", hash, Date.now());
+    expect(r.protocol.promptEdge("w1:p1", hash, Date.now())).toBeNull();
+    if (first !== null) expect(first).toBe(id);
   });
 
   test("taken with no word: may have arrived, and nothing sends it again", async () => {
@@ -97,6 +102,12 @@ dataDescribe("never twice", () => {
     expect(r.mux.calls).toEqual([]);
     expect(r.hub.stateOf(id)).toBe("taken");
     expect(r.hub.withdraw(id)).toBe(false);
+    // The same hash receipt as the screen road (M102 spec 13): the agent's prompt event settles it.
+    expect(answer.receipt?.awaitingEventUntil).toBeGreaterThan(Date.now());
+    expect(r.protocol.promptEdge("w1:p1", r.store.hashText("another text"), Date.now())).toBeNull();
+    expect(r.protocol.promptEdge("w1:p1", r.store.hashText("taken, no word"), Date.now())).toBe(id);
+    expect(r.store.get(id)?.receipt?.outcome).toBe("effective");
+    expect(r.store.get(id)?.receipt?.awaitingEventUntil).toBeUndefined();
   });
 
   test("taken and failed: may have arrived, no key, nothing sent again", async () => {

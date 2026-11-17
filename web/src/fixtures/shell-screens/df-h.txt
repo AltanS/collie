@@ -1,0 +1,6 @@
+dev@devbox:~/src/app$ df -h
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/nvme0n1p2  468G  201G  244G  46% /
+tmpfs            16G  2.1M   16G   1% /dev/shm
+/dev/nvme0n1p1  511M   61M  451M  12% /boot/efi
+dev@devbox:~/src/app$ 

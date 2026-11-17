@@ -373,6 +373,21 @@ describe("the person's word on a stored receipt (M102 spec 01)", () => {
     expect(read && "word" in read).toBe(false);
   });
 
+  test("a blind-road menuSign survives a restart; an unknown kind or a row that is no index drops it, and the receipt stays (M102 spec 12)", () => {
+    const store = new RequestStore(dir);
+    const { record } = store.accept(input({ id: "req-menu-sign-01" }));
+    store.settle("req-menu-sign-01", { ...receiptFor(record, "refused"), reason: "menu_open", menuSign: { kind: "yes-no", row: 2 } });
+    expect(new RequestStore(dir).get("req-menu-sign-01")?.receipt).toMatchObject({ outcome: "refused", reason: "menu_open", menuSign: { kind: "yes-no", row: 2 } });
+    const path = join(dir, "req-menu-sign-01.json");
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    for (const bad of [{ kind: "wizard", row: 2 }, { kind: "hint", row: -1 }, { kind: "hint", row: 1.5 }, "yes-no"]) {
+      writeFileSync(path, JSON.stringify({ ...raw, receipt: { ...raw.receipt, menuSign: bad } }));
+      const read = new RequestStore(dir).get("req-menu-sign-01")?.receipt;
+      expect(read).toMatchObject({ outcome: "refused", reason: "menu_open" });
+      expect(read && "menuSign" in read).toBe(false);
+    }
+  });
+
   test("markArrived writes arrived on a settled unknown receipt once, and keeps the outcome", () => {
     const store = new RequestStore(dir);
     unknownReceipt(store, "req-word-mark-01");
