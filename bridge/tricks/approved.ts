@@ -9,7 +9,7 @@ import { hillImageMime } from "../hill/media.ts";
 import { CODE_BYTES_MAX, CONFIG_FILE, diskTrickFs, hashCodeEntries, isPictureName, linkRefusal, PICTURE_DIRS, walkFingerprint, walkTrickCode, WRITABLE_TOP_DIRS, type CodeEntry, type TrickFs } from "./code-hash.ts";
 import { readManifestFile, readSmallFile } from "./discover.ts";
 import { ORIGIN_FILE } from "./origin.ts";
-import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, tricksConfigDir, trickStateDir } from "./paths.ts";
+import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, hash16, PENDING_DIR, pendingTrickDir, switchesPath, tricksConfigDir, tricksStateDir, trickStateDir } from "./paths.ts";
 import { MIGRATED, parseSwitches, SWITCHES_VERSION, updateSwitches, withApproval, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 
 // THE APPROVED COPY (M94, crew slice 2): a trick runs from a copy of the code a person said yes to, so an
@@ -663,8 +663,14 @@ export async function removeTrickCopies(configDir: string, id: string): Promise<
  * Does nothing while a folder of that name is there: that is a trick that exists, not a leftover. The look is
  * made twice, the second inside the switch file's lock: the bridge's approval of a trick of this id takes the
  * same lock, so a folder that appeared while this add waited for it is seen and nothing is removed.
- * `rm` with recursive and force removes a symbolic link at one of these paths and never follows it.
- * Throws only when the switch file cannot be written or a folder cannot be removed (the add stops).
+ * Inside the lock the three paths are only RENAMED aside, to `<parent>/.gone-<id>-<random>` (a trick id holds no
+ * dot, and the same parent keeps the rename atomic): the lock is a file that another writer takes over after
+ * five seconds (`SWITCH_LOCK_STALE_MS`), and a slow `rm` of a state folder a trick has filled must never hold it, or a
+ * takeover's "off" would be written over by this add's older copy of the file. The renamed paths are removed
+ * after the unlock, and the bridge's start sweeps what a crash left ({@link sweepGone}). A dotted name is
+ * never a trick id, so no scan, list or prune reads one as a trick. A rename moves a symbolic link itself and
+ * never follows it, and `rm` with recursive and force removes a link and never follows it either.
+ * Throws only when the switch file cannot be written or a path cannot be renamed (the add stops).
  */
 export async function forgetLeftovers(opts: { stateDir: string; configDir: string; id: string; at: string; forget?: (id: string) => void | Promise<void> }): Promise<void> {
   if (!isTrickId(opts.id)) return;
@@ -672,14 +678,54 @@ export async function forgetLeftovers(opts: { stateDir: string; configDir: strin
   const there = async (): Promise<boolean> => (await lstat(folder).catch(() => null)) !== null;
   if (await there()) return;
   let cleared = false;
-  await updateSwitches(opts.stateDir, async (now) => {
-    if (await there()) return now;
-    await rm(trickStateDir(opts.stateDir, opts.id), { recursive: true, force: true });
-    await removeTrickCopies(opts.configDir, opts.id);
-    cleared = true;
-    return now.on.has(opts.id) ? withSwitch(now, opts.id, false, opts.at) : now;
-  });
-  if (cleared) await opts.forget?.(opts.id);
+  const aside: string[] = [];
+  try {
+    await updateSwitches(opts.stateDir, async (now) => {
+      if (await there()) return now;
+      for (const path of [trickStateDir(opts.stateDir, opts.id), approvedTrickDir(opts.configDir, opts.id), pendingTrickDir(opts.configDir, opts.id)]) {
+        const to = await moveAside(path, opts.id);
+        if (to !== null) aside.push(to);
+      }
+      cleared = true;
+      return now.on.has(opts.id) ? withSwitch(now, opts.id, false, opts.at) : now;
+    });
+    if (cleared) await opts.forget?.(opts.id);
+  } finally {
+    // Outside the lock, and also when the write or `forget` threw: what went aside is not wanted back.
+    for (const path of aside) await removeTree(path);
+  }
+}
+
+/** The prefix of a path set aside for removal. Never a trick id: ids hold no dot. */
+export const GONE_PREFIX = ".gone-";
+
+/** Rename `path` to a dotted sibling `.gone-<id>-<random>`. Its new name, or null when nothing was there. */
+async function moveAside(path: string, id: string): Promise<string | null> {
+  const to = join(dirname(path), `${GONE_PREFIX}${id}-${randomBytes(6).toString("hex")}`);
+  try {
+    await rename(path, to);
+    return to;
+  } catch (err) {
+    if (err instanceof Error && "code" in err && err.code === "ENOENT") return null;
+    throw err;
+  }
+}
+
+/**
+ * Remove every `.gone-*` entry that a crash between the rename and the removal of {@link forgetLeftovers} left,
+ * in the three folders it renames inside. Run once when the bridge starts. Never throws.
+ */
+export async function sweepGone(opts: { stateDir: string; configDir: string }): Promise<number> {
+  const root = tricksConfigDir(opts.configDir);
+  let removed = 0;
+  for (const parent of [tricksStateDir(opts.stateDir), join(root, APPROVED_DIR), join(root, PENDING_DIR)]) {
+    for (const name of await names(parent)) {
+      if (!name.startsWith(GONE_PREFIX)) continue;
+      await removeTree(join(parent, name));
+      removed += 1;
+    }
+  }
+  return removed;
 }
 
 /** The approved copy a switch entry names, or null when it approves nothing. */

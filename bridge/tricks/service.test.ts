@@ -17,7 +17,7 @@ import { payloadDigest } from "../worktree-receipts.ts";
 import { WalkyInstances } from "../walky/instances.ts";
 import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
 import { tricksTapRoute } from "./routes.ts";
-import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, SWITCH_MOVED, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, RIGHTS_LINE, TAP_LOST_LINE, TAP_REFUSED_LINES, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
+import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, SWITCH_MOVED, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, RIGHTS_LINE, TAP_LOST_LINE, STALE_CARD_LINE, TAP_REFUSED_LINES, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
 import { updateSwitches, withEntry, withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
 const dirs: string[] = [];
@@ -1251,6 +1251,18 @@ describe("consent tied to the code", () => {
     return { synced, offs, port };
   }
   const ASK = { key: "a", title: "Rerun?", summary: "Case 8 failed." };
+
+  test("point 2 (read of 1bf6c747a): an answer from the hill for a card the map does not hold says one sentence and runs nothing", async () => {
+    const spy = hillSpy();
+    const r = await rig([exited(belt("1"))], { decisions: spy.port });
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const runs = r.specs.length;
+    expect(await r.service.tapFromHill(HOST, "legs", { rid: REQ, node: "hill/a", intent: "rerun", value: { text: null } }, "dc_oldtrick000")).toBe(false);
+    expect(r.warnings.filter((line) => line.includes(STALE_CARD_LINE))).toHaveLength(1);
+    expect(r.specs.length).toBe(runs);
+  });
 
   test("an edited program keeps running its approved copy; a new version waits, and the switch approves it", async () => {
     const spy = hillSpy();
@@ -2799,5 +2811,64 @@ describe("access and the local API in the facts", () => {
     socket = SOCKET;
     r.service.apiMoved();
     expect((await r.service.reply(undefined)).tricks[0]?.accessOff).toBeUndefined();
+  });
+});
+
+describe("review J, read of 1bf6c747a, point 3: the service forgets an id that arrives between scans", () => {
+  test("a folder that appears after the first scan runs the forget hook before the trick can run", async () => {
+    const seen: { id: string; runs: number }[] = [];
+    const r = await rig([exited(belt("x"))], {
+      forgetTrick: (id) => {
+        seen.push({ id, runs: r.specs.length });
+      },
+    });
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    // The first scan learns the ids it holds and forgets none.
+    await r.service.refresh(true);
+    expect(seen).toEqual([]);
+    // Another scan with no new id forgets none either.
+    await r.service.refresh(true);
+    expect(seen).toEqual([]);
+    // `collie trick add` at the terminal: a new folder, and a switch entry for it, appear between two scans.
+    await makeTrick(r.configDir, "fresh", MANIFEST.replace('id = "legs"', 'id = "fresh"').replace("./legs.sh", "./fresh.sh"), { "fresh.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs", "fresh");
+    await r.service.refresh(true);
+    // Before the trick had a runtime or a run.
+    expect(seen).toEqual([{ id: "fresh", runs: 0 }]);
+    expect(r.specs).toHaveLength(0);
+    // Held now: later scans forget nothing.
+    await r.service.refresh(true);
+    expect(seen).toHaveLength(1);
+  });
+
+  test("a folder removed and put back is an arrival again; a failing hook is logged and the trick still lists", async () => {
+    let calls = 0;
+    const r = await rig([exited(belt("x"))], {
+      forgetTrick: () => {
+        calls += 1;
+        throw new Error("views offline");
+      },
+    });
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await r.service.refresh(true);
+    await rm(join(r.configDir, TRICKS_DIR, "legs"), { recursive: true });
+    await r.service.refresh(true);
+    expect(calls).toBe(0);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await r.service.refresh(true);
+    expect(calls).toBe(1);
+    expect(r.warnings.some((w) => w.includes("views offline"))).toBe(true);
+    expect((await r.service.reply(undefined)).tricks.map((t) => t.id)).toEqual(["legs"]);
+  });
+
+  test("a bridge with no tricks folder at its first look: the folder's first trick is not an arrival at the first good scan", async () => {
+    const seen: string[] = [];
+    const r = await rig([exited(belt("x"))], { forgetTrick: (id) => void seen.push(id) });
+    await r.service.refresh(true);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await r.service.refresh(true);
+    // The first scan found no folder: that scan counts as the first, so a trick after it is an arrival.
+    expect(seen).toEqual(["legs"]);
   });
 });

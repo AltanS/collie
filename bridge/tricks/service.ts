@@ -40,7 +40,7 @@ import type { HillTrickTap } from "../hill/service.ts";
 import type { ViewGate } from "../agent-view/service.ts";
 import type { TrickRightsPort, TrickRightsSubject } from "./rights-card.ts";
 import { bindingAgainst, bindParts, type GenerationOf, type InstanceOf } from "./bound.ts";
-import { approveFolder, copyListing, forgetLeftovers, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
+import { approveFolder, copyListing, forgetLeftovers, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, sweepGone, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { fieldsChanged } from "./version-card.ts";
 import { codeHashOfFiles, diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
@@ -308,6 +308,9 @@ export type ValueAnswer =
 export const VALUES_ON_LEAD = "Tricks run on the lead of this crew, and their settings live there. Set the value on the lead, or on the phone.";
 /** The words of a value write the disk refused. */
 export const VALUES_WRITE_FAILED = "The value could not be saved on this machine. Try again; if it fails again, look at the bridge's log.";
+
+/** Why an answer from the Hill is not given to a trick: the card is not one the trick holds now. One sentence. */
+export const STALE_CARD_LINE = "That card is not one this trick asked, so the answer was not given to it.";
 
 /** What the runner needs of the trick's decisions on the hill (hill.ts `TrickHill`). */
 export interface TricksHillPort {
@@ -750,6 +753,10 @@ export class TricksService implements TricksSurface {
   private readonly warningsOf = new Map<string, { codeHash: string; warnings: WireTrickWarning[] }>();
   /** The warnings read in flight, one at a time. */
   private warningRead: Promise<void> | null = null;
+  /** The start's sweep of `.gone-*` leftovers (`boot`); a test waits on it. */
+  swept: Promise<void> = Promise.resolve();
+  /** Whether a good scan ran already: the first one only learns which trick ids the service holds. */
+  private scannedOnce = false;
   /** When the unreferenced copies were last pruned. */
   private prunedAt = -Infinity;
   /** The switch for tricks as a whole (feature-switch.ts). */
@@ -887,6 +894,11 @@ export class TricksService implements TricksSurface {
    */
   async boot(): Promise<void> {
     if (this.gated() || this.deps.active?.() === false) return;
+    // What a crashed add left set aside (approved.ts `forgetLeftovers`), whatever is switched on. Not awaited:
+    // the removal of a large state folder never holds the start.
+    this.swept = (async () => {
+      await sweepGone({ stateDir: this.deps.stateDir, configDir: this.deps.configDir });
+    })();
     try {
       const switches = await this.readSwitches();
       if (switches.on.size === 0) return;
@@ -1032,6 +1044,7 @@ export class TricksService implements TricksSurface {
           switches = await this.readSwitches();
         }
         const scan = await this.scanner.scan(new Set(switches.on.keys()));
+        await this.forgetArrivals(scan);
         // Read after the switch file, so a scan never folds in a switch older than the one it read.
         this.suspended = this.switchedOff();
         this.apply(scan, switches);
@@ -1060,6 +1073,31 @@ export class TricksService implements TricksSurface {
     const need = this.scansStarted + 1;
     // At most: join the scan in flight, then run one of our own.
     for (let i = 0; i < 3 && this.scanDone < need; i += 1) await this.refresh(true);
+  }
+
+  /**
+   * A scan other than the first one that sees a trick id this service did not hold before: a trick added at
+   * the terminal under the id of an earlier one (`collie trick add` cannot reach this process's memory). It
+   * runs the same `forgetTrick` hook an add through the bridge runs (the agent views and the Hill keys of
+   * that id), BEFORE {@link apply} lets the trick run, so a session's view of the old trick never carries
+   * the new one's rules and an old card never answers to the new program. The first good scan only records
+   * the ids it holds; a kept scan (it ran over, or the folder could not be listed) changes nothing. A hook
+   * that throws is logged and the trick still runs: the files are the new trick's, and the next arrival
+   * tries again.
+   */
+  private async forgetArrivals(scan: TricksScan): Promise<void> {
+    if (scan.kept !== undefined) return;
+    const first = !this.scannedOnce;
+    this.scannedOnce = true;
+    if (first || this.deps.forgetTrick === undefined) return;
+    for (const found of scan.tricks) {
+      if (this.runtimes.has(found.id)) continue;
+      try {
+        await this.deps.forgetTrick(found.id);
+      } catch (err) {
+        this.warn(`the views and Hill keys of a new trick "${found.id}" could not be forgotten: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
   }
 
   /** Fold a scan and the switches into the runtimes and the list. */
@@ -2181,7 +2219,15 @@ export class TricksService implements TricksSurface {
    */
   async tapFromHill(host: string, id: string, tap: HillTrickTap, decisionId: string): Promise<boolean> {
     const request: TapRequest = { rid: tap.rid, node: tap.node, intent: tap.intent, value: { text: tap.value.text } };
-    const answer = await this.runTap(host, id, request, this.deps.decisions?.seenOf(id, decisionId));
+    const seen = this.deps.decisions?.seenOf(id, decisionId);
+    // The Hill routes an answer by trick id only. A card the CURRENT map of this trick does not hold (an
+    // earlier trick of the id posted it and its withdraw failed, or the map forgot it) never reaches the
+    // program: the new trick did not ask that question. Nothing runs and no receipt is kept.
+    if (this.deps.decisions !== undefined && seen === undefined) {
+      this.warn(`${id}: ${STALE_CARD_LINE}`);
+      return false;
+    }
+    const answer = await this.runTap(host, id, request, seen);
     return answer.status === 200 && answer.body.code === "ok";
   }
 
