@@ -63,6 +63,11 @@ export interface SendReply {
   readonly viewLine?: string;
   /** The person's word on the receipt (M102 spec 01), when it carries one: beside the outcome, never a proof. */
   readonly word?: SendWord;
+  /**
+   * Until when the agent's own word on this send may still come, epoch milliseconds (M102 spec 13): the receipt's
+   * `awaitingEventUntil`. Absent on a bridge that does not say, which reads as "not waiting".
+   */
+  readonly awaitingUntil?: number;
 }
 
 const PROFILE_STATUSES: readonly ProfileStatus[] = ["verified", "provisional", "revoked"];
@@ -142,7 +147,14 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     cause: pick(node.cause, SEND_CAUSES),
     ...viewLineOf(node.view),
     ...wordOf(receipt?.word),
+    ...awaitingOf(receipt?.awaitingEventUntil),
   };
+}
+
+/** The receipt's `awaitingEventUntil` as the field to spread: a positive finite number of epoch milliseconds, else nothing. */
+function awaitingOf(value: JsonValue | undefined): { awaitingUntil?: number } {
+  const until = asJsonNumber(value);
+  return until === undefined || !Number.isFinite(until) || until <= 0 ? {} : { awaitingUntil: until };
 }
 
 /** The receipt's `word` as the field to spread: one of {@link SEND_WORDS}, else nothing. */

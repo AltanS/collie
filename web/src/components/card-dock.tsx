@@ -23,6 +23,7 @@ import { MenuBlock, type MenuBlockAction } from "@/components/menu-block";
 import { AutocompleteBlock } from "@/components/autocomplete-block";
 import { BoxTextBlock } from "@/components/box-text-block";
 import { UnreadDialogBlock } from "@/components/unread-dialog-block";
+import { CannotTellCard, type CannotTellCardProps } from "@/components/cannot-tell-card";
 
 // ── THE CARD DOCKS IN ONE SLOT (.adr/0059) ─────────────────────────────────────────────────────
 // The lifted card used to render INSIDE the mirror's scroller, after the <pre>, so where its bottom
@@ -130,6 +131,12 @@ export interface CardDockProps {
   onUnreadTypeAnyway?: () => void;
   /** The screen asks for a secret: the unread card offers no "Type it anyway". */
   unreadSecret?: boolean;
+  /**
+   * The card of a send Collie cannot tell about (M102 spec 04): the composer's `unknown` send, with the screen
+   * and the person's two answers. It docks only where no dialog card is lifted, and the unread card wins over it.
+   * Null or absent, none.
+   */
+  cannotTell?: CannotTellCardProps | null;
 }
 
 /** The block kinds that dock a dialog card: each answers a dialog on the pane. The completion popup
@@ -272,6 +279,7 @@ function liftedCard({
   onUnreadPadKeys,
   onUnreadTypeAnyway,
   unreadSecret,
+  cannotTell,
 }: CardDockProps): ReactNode {
   const promptBlock = blocks.find((b): b is PromptBlock => b.kind === "prompt-select");
   if (promptBlock) {
@@ -376,6 +384,12 @@ function liftedCard({
         secret={unreadSecret}
       />
     );
+  }
+  // A send that ended unknown asks the person which it was (M102 spec 04). A dialog on the pane owns the
+  // keys and wins, as the unread card above does; the completion popup and the box text yield to it, since
+  // the person must answer it before the box means anything.
+  if (cannotTell !== null && cannotTell !== undefined && !hasDialogCard(blocks)) {
+    return <CannotTellCard key={cannotTell.facts.requestId} {...cannotTell} />;
   }
   // No handler and no `disabled`: the completion popup emits no keystroke, so there is nothing for a
   // read-only device to be refused. Last only because it is the least specific tail shape; every

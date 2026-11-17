@@ -707,6 +707,13 @@ export const en = {
   "composer.step.emptyBox": "Empty the box",
   "composer.step.sendAgainWaits": "Send again turns on when the other send ends.",
   "composer.step.sendAgainReady": "The other send ended. You can send again.",
+  // The card of a send Collie cannot tell about (M102 spec 04): the screen, then the person's word.
+  "cannotTell.sentence": "Collie cannot tell if this arrived. Look at the screen.",
+  "cannotTell.arrived": "It arrived",
+  "cannotTell.enterAgain": "Enter it again",
+  "cannotTell.waiting": "Collie is waiting for the agent's own word that it arrived. Send again turns on when the wait ends.",
+  "cannotTell.arrivedFailed": "Collie could not record that. Try again, or clear the draft yourself.",
+  "cannotTell.queuedGone": "This message is not waiting any more, so nothing was sent again.",
   "composer.protocol.retry": "No answer ({error}). Tap Send again: it does not send twice.",
   // A send into a sign-in field that got no answer: its next tap takes a new request id, so the
   // sentence above would not be true.
@@ -3957,6 +3964,12 @@ export const PENDING_TRANSLATION = [
   "composer.step.emptyBox",
   "composer.step.sendAgainWaits",
   "composer.step.sendAgainReady",
+  "cannotTell.sentence",
+  "cannotTell.arrived",
+  "cannotTell.enterAgain",
+  "cannotTell.waiting",
+  "cannotTell.arrivedFailed",
+  "cannotTell.queuedGone",
   "composer.secret.label",
   "composer.secret.placeholder",
   "composer.secret.paste",

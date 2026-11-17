@@ -68,7 +68,7 @@ import { paneSurface } from "@/lib/send-slot";
 import { answerAsk, cardHashOf, type AskTapResult } from "@/lib/dialog-ask";
 import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
 import { askOptionFor } from "@/lib/ask-reply";
-import { cancelHeldSend, cancelWalky, deliverWalky, dropWalky, refreshNow, setWalkyOff } from "@/lib/api";
+import { cancelHeldSend, cancelWalky, deliverWalky, dropWalky, isApiErrorStatus, refreshNow, setWalkyOff } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { sameKeys } from "@/lib/harness/prompt-model";
 import { askOf, type Ask } from "@/lib/surface/surface";
@@ -77,6 +77,7 @@ import { isLive, useLive } from "@/lib/liveness";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
 import { Composer, type ComposerHandle, type ViewTap } from "@/components/composer";
+import type { CannotTellFacts } from "@/components/cannot-tell-card";
 import { AgentViewScreen } from "@/components/agent-view-screen";
 import { useAgentViewPane } from "@/hooks/use-agent-view-pane";
 import { useTrickHandlers } from "@/hooks/use-trick-handlers";
@@ -92,7 +93,7 @@ import { paneGitHead } from "@/lib/git-head";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CardWaitingCtx } from "@/components/chat-cards";
-import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine, type QueuedCardAction } from "@/components/session-stream";
+import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine, type QueuedCardAction, type QueuedCardResult } from "@/components/session-stream";
 import { readingRefusal } from "@/components/send-notice";
 import { sendText } from "@/lib/reply-action";
 import type { IntentId } from "@/lib/durable-control";
@@ -642,6 +643,11 @@ export function AgentChat({
   }, [landscape, zen, autoZenActive]);
   const listRef = useRef<ChatMessageListHandle>(null);
   const composerRef = useRef<ComposerHandle>(null);
+  // THE "CANNOT TELL" CARD (M102 spec 04): the composer reports the send that ended `unknown`, the dock draws the
+  // card where the unread card sits, and its two answers go back through the composer, which owns the send. The
+  // ring is a tick the composer raises when a tap on Send met the unchanged kept draft.
+  const [cannotTell, setCannotTell] = useState<CannotTellFacts | null>(null);
+  const [cannotTellRing, setCannotTellRing] = useState(0);
   // A trick's own session, one level down: the one way a belt mark, a status item and the switcher open it.
   const openTrickSession = useCallback((pane: AgentView) => nav.down(trickSessionPath(pane.paneId)), [nav]);
   // THE TRICKS' BELT MARKS (M94 slice 03): one per `belt` part, in manifest order, at the end of the belt's
@@ -2055,7 +2061,7 @@ export function AgentChat({
   // on an unconfirmed card goes through the held-cancel route, which drops the card and presses nothing.
   const returnedIntents = useRef(new Map<string, IntentId>());
   const handleReturned = useCallback(
-    async (requestId: string, action: QueuedCardAction): Promise<boolean> => {
+    async (requestId: string, action: QueuedCardAction, cardText: string): Promise<QueuedCardResult> => {
       const refusal = refuseWrite();
       if (refusal) {
         setStatus(refusal, "error");
@@ -2068,6 +2074,30 @@ export function AgentChat({
       if (!isLive(paneId, scope)) {
         setStatus(t("composer.send.reconnect"), "error");
         return false;
+      }
+      // Send again on an unconfirmed card (M102 spec 04): the card is dropped first, through the same request as
+      // Discard, and only when the bridge says it dropped THAT card is its text sent again, as a new send from the
+      // composer (a new id, the whole protocol). A card that is no longer waiting, answered by a refusal or by
+      // "no such send", sends nothing, so a stale card can never send twice. Any other failure sends nothing either.
+      if (action === "sendAgain") {
+        const composer = composerRef.current;
+        if (composer === null) {
+          setStatus(t("chat.status.sendFailed"), "error");
+          return false;
+        }
+        try {
+          const answer = await cancelHeldSend(requestId, paneId, scope);
+          revalidator.revalidate();
+          if (answer.result !== "dismissed") return "gone";
+        } catch (e) {
+          if (isApiErrorStatus(e, 404)) {
+            revalidator.revalidate();
+            return "gone";
+          }
+          setStatus(describeThrownError(e), "error");
+          return false;
+        }
+        return composer.sendLine(cardText);
       }
       if (action === "dismiss") {
         try {
@@ -3271,6 +3301,19 @@ export function AgentChat({
               onUnreadPadKeys={(keys) => composerRef.current?.padKeys(keys) ?? Promise.resolve(false)}
               onUnreadTypeAnyway={() => composerRef.current?.typeAnyway()}
               unreadSecret={unreadSecret || composerSurface.field === "secret"}
+              // The send Collie cannot tell about: the screen as it is now, and the person's two answers (M102 spec 04).
+              cannotTell={
+                cannotTell === null
+                  ? null
+                  : {
+                      facts: cannotTell,
+                      lines: screenLines,
+                      wrap: prefs.wrap,
+                      ring: cannotTellRing,
+                      onArrived: () => composerRef.current?.markArrived() ?? Promise.resolve(false),
+                      onAgain: () => composerRef.current?.answerAgain(),
+                    }
+              }
               // Report a problem from the card (ADR 0123, amendment 2026-10-28): this machine's panes only,
               // as in the pane menu, since the report route reads no member's pane yet.
               onUnreadDialogReport={isLead(scope) ? (cancel) => openReport(unreadDialogReport(paneId, scope, cancel)) : undefined}
@@ -3531,6 +3574,10 @@ export function AgentChat({
                   dialogCard={display ? hasDialogCard(blocks) || unreadFallback !== null : false}
                   unreadIdentity={display ? unreadId : null}
                   onScreenUnread={() => setUnreadOpenedAt(shown.revision)}
+                  onCannotTell={setCannotTell}
+                  onCannotTellRing={() => setCannotTellRing((n) => n + 1)}
+                  // The card shows where no dialog card lifts and the unread card does not stand (see the CardDock above).
+                  cannotTellInView={display ? !hasDialogCard(blocks) && unreadFallback === null : false}
                   text={text}
                   terminalDraft={terminalDraft}
                   rawTerminalDraft={rawTerminalDraft}

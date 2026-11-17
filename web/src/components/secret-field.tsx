@@ -22,7 +22,7 @@
 //
 // Attachments, the long-press menu, Steer and hold are absent here.
 
-import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 import { Icon } from "@/components/icons/icon";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,8 @@ export interface SecretFieldProps {
   /** Why the field is disabled when it is not a running send (the lock, a launch): said in a line under the
    *  frame, since the frame's own placeholder is fixed. Null or absent: no line. */
   reason?: string | null;
+  /** Take the focus when the frame mounts: "Enter it again" on the "cannot tell" card opens the frame ready to type in. */
+  focusOnMount?: boolean;
   /** Where a send starts from, for the design reference only: the text and whether it is shown. */
   start?: { readonly value: string; readonly shown: boolean };
 }
@@ -57,12 +59,16 @@ export function cleanPaste(text: string): string {
 /** One icon control in the field's row: drawn 36px, reaching 44px. */
 const ICON_BUTTON = cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full");
 
-export function SecretField({ onSend, onClose, disabled, sending = false, reason = null, start }: SecretFieldProps) {
+export function SecretField({ onSend, onClose, disabled, sending = false, reason = null, focusOnMount = false, start }: SecretFieldProps) {
   useLocale();
   const [value, setValue] = useState(start?.value ?? "");
   const [shown, setShown] = useState(start?.shown ?? true);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const label = t("composer.secret.label");
+  // The prop only ever changes together with the frame's key (the composer remounts it), so this runs once per frame.
+  useEffect(() => {
+    if (focusOnMount) fieldRef.current?.focus();
+  }, [focusOnMount]);
 
   async function send(): Promise<void> {
     const text = value.trim();

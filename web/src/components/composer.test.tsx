@@ -15,6 +15,10 @@ import { server } from "@/test/setup";
 import { fixtureServers, recordedSends, sendAnswer, sendHandler, type SentRequest } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
 import { Composer, type ComposerHandle } from "./composer";
+import { CardDock } from "./card-dock";
+import type { CannotTellFacts } from "./cannot-tell-card";
+import { parseAnsi } from "@/lib/ansi";
+import { splitLines } from "@/lib/blocks";
 import { addRow, chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
 import { resetKeyBoard, setKeyBoard } from "@/lib/key-board-store";
 import { type PaneJob, type PaneSubagent, type PinRow, type ServerSummary, type TranscriptEntry } from "@/lib/types";
@@ -22,7 +26,7 @@ import { __resetBeltIntents, queueBeltIntent, takeBeltIntent } from "@/lib/belt-
 import { paneScopeKey } from "@/lib/scope";
 import { SubagentSheetCtx, type SubagentSheetHandle, type SubagentTarget } from "./chat-cards";
 import type { Surface } from "@/lib/surface/surface";
-import { asJsonObject } from "@/lib/json";
+import { asJsonObject, asJsonString, parseJsonObject } from "@/lib/json";
 import { markLive } from "@/lib/liveness";
 import { __forgetSendAgainMemory } from "@/lib/send-again";
 import { beginCatchUp, endCatchUp, setLocked } from "@/lib/idle";
@@ -6322,5 +6326,338 @@ describe("the unread card (M102 spec 03)", () => {
     await user.type(screen.getByRole("textbox"), "hello");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(onScreenUnread).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("the cannot tell card (M102 spec 04)", () => {
+  const SENTENCE = "Collie cannot tell if this arrived. Look at the screen.";
+  const WAITING = "Collie is waiting for the agent's own word that it arrived. Send again turns on when the wait ends.";
+  const FAILED = "Collie could not record that. Try again, or clear the draft yourself.";
+  const SCREEN = splitLines(parseAnsi("  I found three notes in the sample list.\n\n  Working on it. One moment."));
+  const SIGN_IN: Surface = { revision: 3, turn: "idle", modal: "none", composer: "empty", field: "secret" };
+  const UNKNOWN = (id: string, parts: Parameters<typeof sendAnswer>[3] = {}) => sendAnswer(id, "unknown", "no_evidence", { offers: ["keys"], ...parts });
+
+  /**
+   * A composer wired as the pane view wires it: the composer reports the send it cannot tell about, the dock draws the
+   * card, and the card's two answers go back through the composer's handle.
+   */
+  function renderCannotTell(over: Partial<ComponentProps<typeof Composer>> = {}) {
+    const handle = createRef<ComposerHandle>();
+    let setReadOnly: (next: boolean) => void = () => undefined;
+    let landEntry: (entry: TranscriptEntry) => void = () => undefined;
+    function Harness() {
+      const [entries, setEntries] = useState<readonly TranscriptEntry[]>([]);
+      landEntry = (entry) => setEntries((prev) => [...prev, entry]);
+      const [facts, setFacts] = useState<CannotTellFacts | null>(null);
+      const [ring, setRing] = useState(0);
+      const [readOnly, setReadOnlyState] = useState(false);
+      setReadOnly = setReadOnlyState;
+      return (
+        <CrewProvider servers={undefined}>
+          <StatusSentinel />
+          <CardDock
+            blocks={[]}
+            cannotTell={
+              facts === null
+                ? null
+                : {
+                    facts,
+                    lines: SCREEN,
+                    wrap: true,
+                    ring,
+                    onArrived: () => handle.current?.markArrived() ?? Promise.resolve(false),
+                    onAgain: () => handle.current?.answerAgain(),
+                  }
+            }
+          />
+          <Composer
+            ref={handle}
+            paneId="w1:p1"
+            agent="claude"
+            isShell={false}
+            gone={false}
+            readOnly={readOnly}
+            surface={FREE}
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
+            display={{ open: false, onToggle: vi.fn() }}
+            onSent={vi.fn()}
+            onCannotTell={setFacts}
+            onCannotTellRing={() => setRing((n) => n + 1)}
+            chatEntries={entries}
+            {...over}
+          />
+        </CrewProvider>
+      );
+    }
+    markLive("w1:p1", Date.now());
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Harness /> }])} />);
+    return { handle, setReadOnly: (next: boolean) => act(() => setReadOnly(next)), land: (entry: TranscriptEntry) => act(() => landEntry(entry)) };
+  }
+
+  /** The bridge's side: the first send ends unknown, later ones go; the arrived route records each id it is asked about. */
+  function bridge(options: { arrived?: () => Response; awaiting?: () => number } = {}) {
+    const arrivals: string[] = [];
+    let n = 0;
+    server.use(
+      ...sendHandler((request) => {
+        n += 1;
+        return n === 1 ? UNKNOWN(request.id, options.awaiting === undefined ? {} : { awaitingEventUntil: options.awaiting() }) : sendAnswer(request.id, "sent");
+      }),
+      http.post(/\/api\/pane\/[^/]+\/arrived$/, async ({ request }) => {
+        arrivals.push(asJsonString(parseJsonObject(await request.text())?.requestId) ?? "");
+        return options.arrived?.() ?? HttpResponse.json({ word: "arrived" });
+      }),
+    );
+    return arrivals;
+  }
+
+  /** Type a draft, send it, and wait for the card the unknown answer opens. */
+  async function sendUnknown(user: ReturnType<typeof userEvent.setup>, draft = "run the sample check") {
+    await user.type(screen.getByRole("textbox"), draft);
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByRole("group", { name: /Collie (cannot tell|is waiting)/u });
+  }
+
+  const card = () => document.querySelector('[data-slot="cannot-tell-card"]');
+  const noticeShown = () => document.querySelector('[data-slot="composer-refusal"]') !== null;
+  const sendButton = async () => {
+    const button = screen.getByRole("button", { name: "Send" });
+    await waitFor(() => expect(button).toBeEnabled());
+    return button;
+  };
+
+  it("cannot tell: the card shows on an unknown answer with the screen, and the box's own notice does not", async () => {
+    bridge();
+    const user = userEvent.setup();
+    renderCannotTell();
+    await sendUnknown(user);
+    expect(screen.getByRole("group", { name: SENTENCE })).toBeInTheDocument();
+    expect(screen.getByText(/Working on it\. One moment\./u)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "It arrived" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send again" })).toBeInTheDocument();
+    expect(noticeShown()).toBe(false);
+    // The draft stays: an unknown receipt keeps it.
+    expect(screen.getByRole("textbox")).toHaveValue("run the sample check");
+  });
+
+  it("cannot tell: a host with no card keeps today's notice and its second-tap question", async () => {
+    bridge();
+    const user = userEvent.setup();
+    renderCannotTell({ onCannotTell: undefined, onCannotTellRing: undefined });
+    await user.type(screen.getByRole("textbox"), "run the sample check");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(noticeShown()).toBe(true));
+    expect(card()).toBeNull();
+  });
+
+  it("cannot tell: It arrived posts once with the request id, clears through the belt's clear, and Undo clear brings the draft back", async () => {
+    const arrivals = bridge();
+    const user = userEvent.setup();
+    renderCannotTell();
+    await sendUnknown(user);
+    const sentId = recordedSends()[0]!.id;
+    await user.click(screen.getByRole("button", { name: "It arrived" }));
+    await waitFor(() => expect(card()).toBeNull());
+    expect(arrivals).toEqual([sentId]);
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    // The one clear path: its Undo slot shows, and the mistaken tap is one tap back.
+    await user.click(await screen.findByRole("button", { name: "Undo clear" }));
+    expect(screen.getByRole("textbox")).toHaveValue("run the sample check");
+    // Nothing was sent again, and the card stays gone.
+    expect(recordedSends()).toHaveLength(1);
+    expect(arrivals).toHaveLength(1);
+    expect(card()).toBeNull();
+  });
+
+  it("cannot tell: words typed since the send are the next message, so It arrived ends the card and keeps them", async () => {
+    bridge();
+    const user = userEvent.setup();
+    renderCannotTell();
+    await sendUnknown(user);
+    await user.type(screen.getByRole("textbox"), " and more");
+    await user.click(screen.getByRole("button", { name: "It arrived" }));
+    await waitFor(() => expect(card()).toBeNull());
+    expect(screen.getByRole("textbox")).toHaveValue("run the sample check and more");
+    expect(screen.queryByRole("button", { name: "Undo clear" })).toBeNull();
+  });
+
+  it("cannot tell: a mark the bridge refuses keeps the card and the draft, says so in the card's line, and takes another tap", async () => {
+    let refuse = true;
+    const arrivals = bridge({ arrived: () => (refuse ? new HttpResponse("this send did not end unknown", { status: 409 }) : HttpResponse.json({ word: "arrived" })) });
+    const user = userEvent.setup();
+    renderCannotTell();
+    await sendUnknown(user);
+    await user.click(screen.getByRole("button", { name: "It arrived" }));
+    expect(await screen.findByText(FAILED)).toBeInTheDocument();
+    expect(card()).not.toBeNull();
+    expect(screen.getByRole("textbox")).toHaveValue("run the sample check");
+    expect(screen.queryByRole("button", { name: "Undo clear" })).toBeNull();
+    refuse = false;
+    await user.click(screen.getByRole("button", { name: "It arrived" }));
+    await waitFor(() => expect(card()).toBeNull());
+    expect(arrivals).toHaveLength(2);
+  });
+
+  it("cannot tell: Send on the unchanged draft sends nothing, rings the card for 1600 ms, and brings it into view", async () => {
+    bridge();
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      const user = userEvent.setup();
+      renderCannotTell();
+      await sendUnknown(user);
+      expect(card()).not.toHaveAttribute("data-highlight");
+      await user.click(await sendButton());
+      await waitFor(() => expect(card()).toHaveAttribute("data-highlight"));
+      expect(card()?.className).toContain("ring-primary");
+      expect(scrolled).toHaveBeenCalledTimes(1);
+      // Nothing was sent, and no "Send it again?" question took the Send slot.
+      expect(recordedSends()).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: "Send it again?" })).toBeNull();
+      // The ring is for about 1.6 seconds.
+      await waitFor(() => expect(card()).not.toHaveAttribute("data-highlight"), { timeout: 3000 });
+      expect(recordedSends()).toHaveLength(1);
+    } finally {
+      // SAFETY: the test planted the stub on the prototype; jsdom has no scrollIntoView of its own, so removing it restores that.
+      Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+    }
+  });
+
+  it("cannot tell: a changed draft sends as usual and ends the card", async () => {
+    bridge();
+    const user = userEvent.setup();
+    renderCannotTell();
+    await sendUnknown(user);
+    await user.type(screen.getByRole("textbox"), " with a second line");
+    await user.click(await sendButton());
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(recordedSends()[1]).toMatchObject({ text: "run the sample check with a second line" });
+    await waitFor(() => expect(card()).toBeNull());
+  });
+
+  it("cannot tell: Send again is a new id through /api/send, with no Send it again? step", async () => {
+    bridge();
+    const user = userEvent.setup();
+    renderCannotTell();
+    await sendUnknown(user);
+    await user.click(screen.getByRole("button", { name: "Send again" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(recordedSends()[1]).toMatchObject({ text: "run the sample check", mode: "send" });
+    expect(recordedSends()[1]!.id).not.toBe(recordedSends()[0]!.id);
+    expect(screen.queryByRole("button", { name: "Send it again?" })).toBeNull();
+    await waitFor(() => expect(card()).toBeNull());
+  });
+
+  it("cannot tell: a secret send keeps no text, and Enter it again opens the sign-in field empty", async () => {
+    const arrivals = bridge();
+    const user = userEvent.setup();
+    renderCannotTell({ surface: SIGN_IN });
+    await user.type(screen.getByRole("textbox", { name: "Sign-in code" }), "FAKEcode1234");
+    await user.click(screen.getByRole("button", { name: "Send the code" }));
+    await screen.findByRole("group", { name: SENTENCE });
+    expect(recordedSends()[0]?.secret).toBe(true);
+    // Two buttons: the word, and Enter it again. No Send again, because no text is kept to send.
+    expect(screen.getByRole("button", { name: "It arrived" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+    expect(noticeShown()).toBe(false);
+    expect(loadDraftEntry(undefined, "w1:p1")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Enter it again" }));
+    const field = await screen.findByRole("textbox", { name: "Sign-in code" });
+    expect(field).toHaveValue("");
+    await waitFor(() => expect(field).toHaveFocus());
+    expect(card()).toBeNull();
+    // Nothing was sent again and nothing was restored anywhere.
+    expect(recordedSends()).toHaveLength(1);
+    expect(arrivals).toHaveLength(0);
+    expect(loadDraftEntry(undefined, "w1:p1")).toBeNull();
+    expect(document.body.textContent).not.toContain("FAKEcode1234");
+  });
+
+  it("cannot tell: It arrived on a sign-in code marks the word and ends the card, with no draft to clear", async () => {
+    const arrivals = bridge();
+    const user = userEvent.setup();
+    renderCannotTell({ surface: SIGN_IN });
+    await user.type(screen.getByRole("textbox", { name: "Sign-in code" }), "FAKEcode1234");
+    await user.click(screen.getByRole("button", { name: "Send the code" }));
+    await screen.findByRole("group", { name: SENTENCE });
+    await user.click(screen.getByRole("button", { name: "It arrived" }));
+    await waitFor(() => expect(card()).toBeNull());
+    expect(arrivals).toEqual([recordedSends()[0]!.id]);
+    expect(screen.queryByRole("button", { name: "Undo clear" })).toBeNull();
+  });
+
+  it("cannot tell: a read-only device sees the card without its buttons", async () => {
+    bridge();
+    const user = userEvent.setup();
+    const { setReadOnly } = renderCannotTell();
+    await sendUnknown(user);
+    setReadOnly(true);
+    expect(screen.getByRole("group", { name: SENTENCE })).toBeInTheDocument();
+    expect(screen.getByText(/Working on it\. One moment\./u)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "It arrived" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+  });
+
+  it("cannot tell: while the agent's own word may still come, Send again is off, says why on a tap, turns on by itself, and sends nothing by itself", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const until = Date.now() + 5_000;
+      bridge({ awaiting: () => until });
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderCannotTell();
+      await sendUnknown(user);
+      expect(screen.getByRole("group", { name: WAITING })).toBeInTheDocument();
+      const again = screen.getByRole("button", { name: "Send again" });
+      expect(again).toHaveAttribute("aria-disabled", "true");
+      // "It arrived" stays live while Send again waits.
+      expect(screen.getByRole("button", { name: "It arrived" })).not.toHaveAttribute("aria-disabled", "true");
+      // A tap says the same sentence in the card's own line, and sends nothing.
+      await user.click(again);
+      expect(await screen.findAllByText(WAITING)).toHaveLength(2);
+      expect(recordedSends()).toHaveLength(1);
+      // The time passes: the sentence and the button change on their own, and still nothing is sent.
+      await act(async () => {
+        vi.advanceTimersByTime(5_100);
+      });
+      await waitFor(() => expect(screen.getByRole("group", { name: SENTENCE })).toBeInTheDocument());
+      expect(screen.getByRole("button", { name: "Send again" })).toHaveAttribute("aria-disabled", "false");
+      // The card's line, which said the same words, closes with them (it leaves through the Collapse's exit).
+      await waitFor(() => expect(screen.queryByText(WAITING)).toBeNull());
+      expect(recordedSends()).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cannot tell: a sign-in code waits too, so Enter it again is off while the agent's word may come", async () => {
+    const until = Date.now() + 60_000;
+    bridge({ awaiting: () => until });
+    const user = userEvent.setup();
+    renderCannotTell({ surface: SIGN_IN });
+    await user.type(screen.getByRole("textbox", { name: "Sign-in code" }), "FAKEcode1234");
+    await user.click(screen.getByRole("button", { name: "Send the code" }));
+    await screen.findByRole("group", { name: WAITING });
+    expect(screen.getByRole("button", { name: "Enter it again" })).toHaveAttribute("aria-disabled", "true");
+    await user.click(screen.getByRole("button", { name: "Enter it again" }));
+    // The tap says the wait in the card's line, and the card stays: nothing was entered again.
+    expect(await screen.findAllByText(WAITING)).toHaveLength(2);
+    expect(card()).not.toBeNull();
+    expect(recordedSends()).toHaveLength(1);
+  });
+
+  it("cannot tell: the card goes when the journal shows the text landed, with no tap", async () => {
+    bridge();
+    const user = userEvent.setup();
+    const { land } = renderCannotTell();
+    await sendUnknown(user);
+    expect(card()).not.toBeNull();
+    land(userTurn("run the sample check", "u-landed"));
+    await waitFor(() => expect(card()).toBeNull());
+    // The journal settled it: the kept draft went with it, and nothing was marked or sent again.
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    expect(recordedSends()).toHaveLength(1);
   });
 });

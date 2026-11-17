@@ -19,7 +19,9 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
+import { CannotTellCard } from "@/components/cannot-tell-card";
 import { Composer } from "@/components/composer";
+import { ReceiptQueueCards } from "@/components/session-stream";
 import { readingRefusal, RefusalActions, SendRefusalNotice, stepLabel } from "@/components/send-notice";
 import { readSend, type SendReply } from "@/lib/send-protocol";
 import { SecretField } from "@/components/secret-field";
@@ -28,7 +30,7 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type UnreadDialogModel } from "@/lib/blocks";
 import { SubagentSheet } from "@/components/subagent-sheet";
 import { t } from "@/lib/i18n";
-import type { PaneSubagent, PaneTodo } from "@/lib/types";
+import type { PaneSubagent, PaneTodo, QueuedSendRow } from "@/lib/types";
 import { markLive } from "@/lib/liveness";
 import { saveDraft } from "@/lib/drafts";
 import { forgetUnknownSend } from "@/lib/send-again";
@@ -621,6 +623,49 @@ function UnreadCardPhone({ cancel, secret = false }: { cancel: UnreadDialogModel
   );
 }
 
+/** An invented screen after a send Collie cannot tell about (M102 spec 04): the agent's own words, nothing of anyone's. */
+const CANNOT_TELL_LINES = splitLines(
+  parseAnsi("  I found three notes in the sample list.\n  The first is about the weekly plan.\n\n  What should I do with them?\n\n  > run the sample check, tell me what fails\n\n  Working on it. One moment."),
+);
+const CANNOT_TELL_SIGN_IN_LINES = splitLines(parseAnsi("  Sign in to continue\n\n  Open the link in your browser, then paste\n  the code it shows below.\n\n  Code:"));
+
+/** The wait of card 45 stays on screen for ten minutes, long enough to look at. */
+const WAIT_MS = 600_000;
+
+/** The real "cannot tell" card in the card dock's place: the dock's own rule and padding. Its taps change nothing on this page. */
+function CannotTellPhone({ secret = false, readOnly = false, waits = false, lines }: { secret?: boolean; readOnly?: boolean; waits?: boolean; lines: typeof CANNOT_TELL_LINES }) {
+  const [awaitingUntil] = useState(() => (waits ? Date.now() + WAIT_MS : null));
+  return (
+    <PhoneMock>
+      <div className="border-t border-border bg-background px-3 pt-2 pb-2">
+        <CannotTellCard
+          facts={{ requestId: "cannot-tell-demo", secret, readOnly, awaitingUntil }}
+          lines={lines}
+          wrap
+          onArrived={() => Promise.resolve(true)}
+          onAgain={none}
+        />
+      </div>
+    </PhoneMock>
+  );
+}
+
+/** A queued card that turned unconfirmed: Collie cannot tell where the message went. Invented text. */
+const LOST_CARD: QueuedSendRow = { requestId: "queued-demo-0001", state: "unconfirmed", text: "After this turn, summarise the three sample notes in two lines each." };
+
+/** The queued card's unconfirmed state, the real cards: Discard, and Send again on its right. */
+function UnconfirmedQueuedPhone() {
+  return (
+    <PhoneMock>
+      <ChromeBlock>
+        <div className="px-3 pb-3">
+          <ReceiptQueueCards rows={[LOST_CARD]} act={() => Promise.resolve(true)} />
+        </div>
+      </ChromeBlock>
+    </PhoneMock>
+  );
+}
+
 /** The field itself with a code in it, shown or masked: the real component, started where a paste leaves it. */
 function SignInTyped({ shown }: { shown: boolean }) {
   return (
@@ -876,6 +921,23 @@ export function wayOutGroups(): ReactNode[] {
         reach="Type it anyway on a screen Collie cannot read. The text is in the agent's box, no Enter was pressed, and the person presses Enter on the Keys pad."
         c={{ outcome: "typed_not_submitted", reason: "override", surface: { ...STOP_FREE, modal: "unknown", composer: "unknown" } }}
       />
+    </Group>,
+    <Group key="cannot-tell" title="Cannot tell">
+      <SignInCase n={42} state="cannot-tell-short" title="A short message" reach="A send ended unknown: Collie typed the text and could not see it land. The card shows the screen as it is. It arrived clears the draft with Undo clear; Send again sends it as a new message.">
+        <CannotTellPhone lines={CANNOT_TELL_LINES} />
+      </SignInCase>
+      <SignInCase n={43} state="cannot-tell-secret" title="A sign-in code" reach="The send was a sign-in code, which is never kept. The buttons are It arrived and Enter it again; the second opens the sign-in field empty.">
+        <CannotTellPhone secret lines={CANNOT_TELL_SIGN_IN_LINES} />
+      </SignInCase>
+      <SignInCase n={44} state="cannot-tell-read-only" title="A read-only device" reach="This device may look and may not answer: the card shows the sentence and the screen with no buttons.">
+        <CannotTellPhone readOnly lines={CANNOT_TELL_LINES} />
+      </SignInCase>
+      <SignInCase n={45} state="cannot-tell-waiting" title="Waiting for the agent's word" reach="The receipt says the agent's own word may still come. Send again is off, a tap says why in a line under the buttons, and it turns on by itself when the wait ends. It arrived stays on.">
+        <CannotTellPhone waits lines={CANNOT_TELL_LINES} />
+      </SignInCase>
+      <SignInCase n={46} state="cannot-tell-queued" title="Queued card, not confirmed" reach="A queued message Collie cannot place. Discard drops the card and sends nothing; Send again, on its right, drops the card and then sends the text as a new message.">
+        <UnconfirmedQueuedPhone />
+      </SignInCase>
     </Group>,
   ];
 }
