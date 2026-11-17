@@ -4,14 +4,14 @@
 //   sender   30 tokens per sender per 10 minutes. The key is `kind + memberId + address`, never the
 //            label, which is display data the sender chooses. An operator's broadcast takes one
 //            token per target it reaches.
-//   pair     6 messages per 10 minutes between the same two addresses, either direction: two agents
+//   pair     12 messages per 10 minutes between the same two addresses, either direction: two agents
 //            that answer each other cannot run a loop past it.
 //   member   on a lead, one outer bucket per member that dials it: 60 tokens per 10 minutes, so one
 //            machine cannot spend the lead's typing on its own.
 
 export const RATE_LIMIT = 30;
 export const RATE_WINDOW_MS = 10 * 60 * 1000;
-export const PAIR_LIMIT = 6;
+export const PAIR_LIMIT = 12;
 export const MEMBER_LIMIT = 60;
 /** The most keys one limiter remembers. The one seen least recently goes first. */
 const KEYS_MAX = 512;

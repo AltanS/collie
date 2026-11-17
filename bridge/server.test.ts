@@ -279,7 +279,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     inside: false,
     sendProtocol: false,
     walky: true,
-    walkyPairLimit: 6,
+    walkyPairLimit: 12,
     skipServe: false,
     basePath: "/",
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,

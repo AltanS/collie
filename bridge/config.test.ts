@@ -404,18 +404,18 @@ describe("loadConfig", () => {
     expect(loadConfig().cacheWarnSeconds).toBe(300);
   });
 
-  test("COLLIE_WALKY_PAIR_LIMIT defaults to 6, takes 1 to 100 and falls back to 6 outside that or off a number", () => {
-    expect(loadConfig().walkyPairLimit).toBe(6);
+  test("COLLIE_WALKY_PAIR_LIMIT defaults to 12, takes 1 to 100 and falls back to 12 outside that or off a number", () => {
+    expect(loadConfig().walkyPairLimit).toBe(12);
     process.env.COLLIE_WALKY_PAIR_LIMIT = "2";
     expect(loadConfig().walkyPairLimit).toBe(2);
     process.env.COLLIE_WALKY_PAIR_LIMIT = "100";
     expect(loadConfig().walkyPairLimit).toBe(100);
     process.env.COLLIE_WALKY_PAIR_LIMIT = "0";
-    expect(loadConfig().walkyPairLimit).toBe(6);
+    expect(loadConfig().walkyPairLimit).toBe(12);
     process.env.COLLIE_WALKY_PAIR_LIMIT = "101";
-    expect(loadConfig().walkyPairLimit).toBe(6);
+    expect(loadConfig().walkyPairLimit).toBe(12);
     process.env.COLLIE_WALKY_PAIR_LIMIT = "many";
-    expect(loadConfig().walkyPairLimit).toBe(6);
+    expect(loadConfig().walkyPairLimit).toBe(12);
   });
 
   test("uses the default upload cap when unset, and resolves COLLIE_MAX_UPLOAD_MB to bytes", () => {

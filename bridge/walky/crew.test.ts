@@ -466,11 +466,11 @@ describe("the lead takes a member's message", () => {
     expect(await fromMemberOf(crew, over, laptop)).toMatchObject({ body: { receipts: [{ state: "refused", reason: "rate limit" }] } });
   });
 
-  test("two panes may trade 6 messages in 10 minutes, either direction; the 7th is `pair limit`", async () => {
+  test("two panes may trade 12 messages in 10 minutes, either direction; the 13th is `pair limit`", async () => {
     const lead = service("desk", [pane("w1:p1")]);
     const crew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
     const laptop = member({ memberId: "laptop" });
-    for (let n = 0; n < 6; n += 1) {
+    for (let n = 0; n < 12; n += 1) {
       const id = `wt_${n.toString().padStart(12, "p")}`;
       expect(await fromMemberOf(crew, signed(id, "laptop", "desk/w1:p1"), laptop)).toMatchObject({ body: { receipts: [{ state: "accepted" }] } });
     }
