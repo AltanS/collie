@@ -218,10 +218,12 @@ describe("a hold past its until (2026-11-17, second review)", () => {
 
 describe("the folder", () => {
   test("XDG_RUNTIME_DIR first, then /run/user/<uid>, then the state home; never /tmp", () => {
-    expect(paneLockDir({ XDG_RUNTIME_DIR: "/run/user/1000" }, 1000, () => false, "/home/a")).toBe("/run/user/1000/collie/pane-locks");
-    expect(paneLockDir({}, 1000, (p) => p === "/run/user/1000", "/home/a")).toBe("/run/user/1000/collie/pane-locks");
-    expect(paneLockDir({}, 1000, () => false, "/home/a")).toBe("/home/a/.local/state/collie-pane-locks");
-    expect(paneLockDir({ XDG_STATE_HOME: "/st" }, -1, () => true, "/home/a")).toBe("/st/collie-pane-locks");
+    // The expected paths are built with `join`, as the code builds its own: on Windows `join` writes
+    // backslashes, so a hand-typed "/run/user/..." would differ by the separator alone.
+    expect(paneLockDir({ XDG_RUNTIME_DIR: "/run/user/1000" }, 1000, () => false, "/home/a")).toBe(join("/run/user/1000", "collie", "pane-locks"));
+    expect(paneLockDir({}, 1000, (p) => p === "/run/user/1000", "/home/a")).toBe(join("/run/user/1000", "collie", "pane-locks"));
+    expect(paneLockDir({}, 1000, () => false, "/home/a")).toBe(join("/home/a", ".local", "state", "collie-pane-locks"));
+    expect(paneLockDir({ XDG_STATE_HOME: "/st" }, -1, () => true, "/home/a")).toBe(join("/st", "collie-pane-locks"));
     expect(paneLockDir({}, -1, () => false, "")).toBeNull();
   });
 
