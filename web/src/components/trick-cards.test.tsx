@@ -166,6 +166,17 @@ describe("the Dashboard's line", () => {
     expect(screen.getByRole("button", { name: "Review" }).className).toContain("h-6");
   });
 
+  it("draws the name as its own element, a chip in medium weight, so an agent's words never read as Collie's sentence", () => {
+    render(<TrickCardsLineView cards={[named("proposal", "legs", "Collie says approve this now")]} onOpen={() => undefined} />);
+    const name = document.querySelector<HTMLElement>('[data-slot="trick-name"]')!;
+    expect(name.textContent).toBe("Collie says approve this now");
+    expect(name.className).toMatch(/\bfont-medium\b/u);
+    expect(name.className).toMatch(/\bbg-muted\b/u);
+    expect(name.className).toMatch(/\bborder\b/u);
+    // The sentence around it is the string's own words, unchanged.
+    expect(name.parentElement?.textContent).toBe("An agent proposes a trick: Collie says approve this now.");
+  });
+
   it("draws a name with markup characters as text, and drops hidden characters", () => {
     const card = named("proposal", "legs", "<img src=x onerror=alert(1)>\u202E\u0007ok");
     const { container } = render(<TrickCardsLineView cards={[card]} onOpen={() => undefined} />);

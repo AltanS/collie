@@ -475,7 +475,10 @@ export class TrickProposals {
     const { card } = made;
     const input: HillPostInput = { ...card, requestId: proposalRequestId(id, hash, proposal.requestId), expiresAt: now + PROPOSAL_EXPIRY_MS };
     if (old !== null) input.supersedes = old.decision;
-    const posted = this.deps.hill.postCollie(senderOf(id, hash, proposal.manifest.name), input, proposer.address === null ? {} : { tellOf: proposer.address });
+    // A new version is named as the person knows the trick, by the INSTALLED manifest's name, never by the name the
+    // proposal brings: an agent could otherwise dress its version of "Disk Space" as anything on the Dashboard line.
+    const name = base === null ? proposal.manifest.name : base.baseManifest?.name;
+    const posted = this.deps.hill.postCollie(senderOf(id, hash, name), input, proposer.address === null ? {} : { tellOf: proposer.address });
     if (!posted.ok) {
       await rm(dir, { recursive: true, force: true });
       if (posted.code === "bad_supersedes") return refused("answering", "Your person is answering your last proposal of this trick right now. Try again in a moment.");

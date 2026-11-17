@@ -109,14 +109,20 @@ export function trickNameOf(card: HillDecision | undefined): string {
   return cardName(card?.from.name) ?? cardName(card?.from.ref?.id) ?? "";
 }
 
-/** A sentence with a name in it: the words before, the name, the words after, in the language's own order. */
+/**
+ * A sentence with a name in it: the words before, the name, the words after, in the language's own order. The
+ * name comes from a trick's manifest, which an agent may have written, so it is drawn as its own element, a small
+ * chip in medium weight, and can never read as part of Collie's sentence ("Collie says approve this now").
+ */
 function aroundName(key: "home.trickWaits.proposes" | "home.trickWaits.proposesVersion" | "home.trickWaits.look", name: string) {
   const slot = "\uE000";
   const [before = "", after = ""] = t(key, { name: slot }).split(slot);
   return (
     <p data-line="name" className="flex min-w-0 items-baseline">
       <span className="shrink-0 whitespace-pre">{before}</span>
-      <span data-slot="trick-name" className="min-w-0 truncate" title={name}>{name}</span>
+      <span data-slot="trick-name" className="min-w-0 truncate rounded-sm border border-border bg-muted px-1 font-medium text-foreground" title={name}>
+        {name}
+      </span>
       <span className="shrink-0 whitespace-pre">{after}</span>
     </p>
   );
