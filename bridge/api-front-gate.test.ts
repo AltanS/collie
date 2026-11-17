@@ -720,6 +720,40 @@ describe("isSameHostPeer: loopback, or this host's own addresses on a concrete b
   });
 });
 
+// ── A trick's setting: the value route is a write (security read of package G, point 7) ─────
+
+describe("the trick value route is gated at the write level", () => {
+  const path = "/api/tricks/lodge/legs/value";
+  const headers = { host: "collie.ts.net", origin: "https://collie.ts.net", "x-device-id": "tablet", "content-type": "application/json" };
+
+  test("the level is write, and server.ts asks the guard for exactly that level on the POST route", () => {
+    expect(TRICKS_ROUTE_RIGHTS.value).toBe("write");
+    const at = SERVER_CODE.indexOf("TRICKS_VALUE_ROUTE.exec(pathname)");
+    expect(at).toBeGreaterThan(0);
+    const next = SERVER_CODE.slice(at).match(/guard\(req, cfg, ([A-Za-z_.]+)/);
+    expect(next?.[1]).toBe("TRICKS_ROUTE_RIGHTS.value");
+    expect(SERVER_CODE.slice(at, at + 200)).toContain('req.method === "POST"');
+  });
+
+  test("a read-only device is refused at the gate with 403, and the same device may still read the list", () => {
+    const c = config({ deviceHeader: "x-device-id", deviceAllowlist: ["phone"], allowAnyHost: true });
+    const post = new Request(`http://collie.ts.net${path}`, { method: "POST", headers });
+    expect(guard(post, c, TRICKS_ROUTE_RIGHTS.value)!.status).toBe(403);
+    expect(guard(new Request("http://collie.ts.net/api/tricks", { headers }), c, TRICKS_ROUTE_RIGHTS.reply)).toBeNull();
+    // The device the allowlist names may write.
+    const writer = new Request(`http://collie.ts.net${path}`, { method: "POST", headers: { ...headers, "x-device-id": "phone" } });
+    expect(guard(writer, c, TRICKS_ROUTE_RIGHTS.value)).toBeNull();
+  });
+
+  test("the local credential, which an agent beside the bridge can hold, is refused at the value route", async () => {
+    const { store } = await storeWith(true);
+    const secret = mintLocalSecret();
+    const gate = browserPairingGate(store, localCredentialOf(secret), () => "127.0.0.1", "127.0.0.1", () => new Set(["100.64.10.2"]));
+    const denied = guard(request("POST", path, { authorization: `Bearer ${secret}`, origin: "http://127.0.0.1:8787", "content-type": "application/json" }), config(), TRICKS_ROUTE_RIGHTS.value, gate);
+    expect(denied?.status).toBe(403);
+  });
+});
+
 // ── A trick's code for the About sheet's folds (package F) ──────────────────────────────────
 
 describe("the trick code route needs a paired device's token", () => {

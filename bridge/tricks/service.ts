@@ -41,6 +41,7 @@ import type { ViewGate } from "../agent-view/service.ts";
 import type { TrickRightsPort, TrickRightsSubject } from "./rights-card.ts";
 import { bindingAgainst, bindParts, type GenerationOf, type InstanceOf } from "./bound.ts";
 import { approveFolder, copyListing, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
+import { fieldsChanged } from "./version-card.ts";
 import { codeHashOfFiles, diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
 import { envPath, scrubEnv, type ProgramEnv } from "./env.ts";
@@ -291,7 +292,7 @@ export interface ValueReceipt {
   info: WireTrickInfo;
 }
 
-/** Why a value write was refused, as a code the phone and the CLI branch on: a field rule, or no such field. */
+/** Why a value write was refused, as a code the phone branches on: a field rule, or no such field. */
 export type ValueRefusalCode = FieldRefusal | "unknown-field";
 
 /** The value route's answer: the receipt, or why not in plain words that name the next step. */
@@ -1377,7 +1378,8 @@ export class TricksService implements TricksSurface {
     const after = now === undefined ? null : await trickWarnings(dir, now).catch(() => null);
     const added = (after ?? []).filter((w) => !before.has(w.kind));
     const info: WireTrickPending = { hash, files, powersChanged, warnings: wireWarnings(added) };
-    const doesMore = after === null || added.length > 0;
+    // A version whose field list differs does more: it asks the person for something else (review G, point 1).
+    const doesMore = after === null || added.length > 0 || fieldsChanged(was, now);
     return now === undefined ? { info, doesMore } : { info, manifest: now, doesMore };
   }
 
