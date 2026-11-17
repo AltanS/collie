@@ -9,9 +9,12 @@ import {
   admit,
   buildTable,
   DECLARED,
+  holds,
   LOCAL_TIER_RIGHTS,
   offeredOf,
+  OPERATION_LEVELS,
   OPERATION_NAMES,
+  RIGHT_ORDER,
   row,
   tableOf,
   type ArgType,
@@ -22,12 +25,12 @@ import {
   type TableRow,
 } from "./operations.ts";
 
-const LOCAL = new Set<Right>(LOCAL_TIER_RIGHTS);
-const RIGHTS: readonly Right[] = ["look", "send", "control"];
+const LOCAL: Right = LOCAL_TIER_RIGHTS;
+const RIGHTS: readonly Right[] = ["see", "read", "send", "control"];
 const SESSION = encodeSessionId({ machine: "inst-test-a1", paneId: "w1:p2", instance: "k3f9" });
 
 const stub = async (): Promise<OpResult> => ({ ok: true, answer: { stub: true } });
-const READS: ReadHandlers = { sessions: stub, brief: stub, read: stub, accounts: stub, "hill.list": stub };
+const READS: ReadHandlers = { sessions: stub, brief: stub, read: stub, accounts: stub, "hill.list": stub, machines: stub };
 
 function newBus(): EventBus {
   return new EventBus({ machine: () => "inst-test-a1", bootId: "boot1" });
@@ -42,31 +45,50 @@ function fullTable(bus = newBus()): ReturnType<typeof buildTable> {
 }
 
 describe("the table walk", () => {
-  test("the seven names, declared once each, in hello's order", () => {
-    expect([...OPERATION_NAMES]).toEqual(["hello", "sessions", "brief", "read", "accounts", "hill.list", "events"]);
+  test("the eight names, declared once each, in hello's order", () => {
+    expect([...OPERATION_NAMES]).toEqual(["hello", "sessions", "brief", "read", "accounts", "hill.list", "machines", "events"]);
     expect(Object.keys(DECLARED).toSorted()).toEqual([...OPERATION_NAMES].toSorted());
     for (const name of OPERATION_NAMES) expect(DECLARED[name].name).toBe(name);
     expect([...fullTable().keys()]).toEqual([...OPERATION_NAMES]);
   });
 
-  test("every row names a right; on the local tier every row is a read that needs look, and only events waits", () => {
+  test("every row names a right of the four; every row is a read; only events waits", () => {
     for (const one of fullTable().values()) {
       expect(RIGHTS).toContain(one.right);
       expect(one.kind).toBe("read");
-      expect(one.right).toBe("look");
       expect(one.waits).toBe(one.name === "events");
       expect(one.summary.length).toBeGreaterThan(0);
     }
-    expect(LOCAL_TIER_RIGHTS).toEqual(["look"]);
   });
 
-  test("every row is admitted with look and denied with no rights, or with send and control alone", () => {
+  test("read is the only row above see, and the table takes each right from OPERATION_LEVELS", () => {
     const table = fullTable();
-    for (const name of table.keys()) {
-      expect(admit(table, name, LOCAL).ok).toBe(true);
-      expect(admit(table, name, new Set())).toEqual({ ok: false, code: "api.denied" });
-      expect(admit(table, name, new Set<Right>(["send", "control"]))).toEqual({ ok: false, code: "api.denied" });
+    expect([...table.values()].filter((one) => one.right !== "see").map((one) => one.name)).toEqual(["read"]);
+    expect(table.get("read")!.right).toBe("read");
+    for (const name of OPERATION_NAMES) expect({ name, right: DECLARED[name].right }).toEqual({ name, right: OPERATION_LEVELS[name] });
+    expect(Object.keys(OPERATION_LEVELS)).toEqual([...OPERATION_NAMES]);
+    expect(OPERATION_LEVELS).toEqual({ hello: "see", sessions: "see", brief: "see", read: "read", accounts: "see", "hill.list": "see", machines: "see", events: "see" });
+  });
+
+  test("the levels are ordered: a grant holds its own level and every one below it, never one above", () => {
+    expect([...RIGHT_ORDER]).toEqual(["see", "read", "send", "control"]);
+    for (const [g, granted] of RIGHT_ORDER.entries()) {
+      for (const [n, needed] of RIGHT_ORDER.entries()) expect({ granted, needed, holds: holds(granted, needed) }).toEqual({ granted, needed, holds: g >= n });
     }
+  });
+
+  test("the local tier grants read, which holds see: every row is admitted and offered", () => {
+    expect(LOCAL_TIER_RIGHTS).toBe("read");
+    const table = fullTable();
+    for (const name of table.keys()) expect(admit(table, name, LOCAL).ok).toBe(true);
+    expect(offeredOf(table, LOCAL)).toEqual([...OPERATION_NAMES]);
+  });
+
+  test("a see grant is offered every row but read, and read is denied", () => {
+    const table = fullTable();
+    expect(offeredOf(table, "see")).toEqual(OPERATION_NAMES.filter((name) => name !== "read"));
+    expect(admit(table, "read", "see")).toEqual({ ok: false, code: "api.denied" });
+    for (const name of OPERATION_NAMES.filter((one) => one !== "read")) expect(admit(table, name, "see").ok).toBe(true);
   });
 
   test("an unknown name is refused, by exact name only", () => {
@@ -76,13 +98,15 @@ describe("the table walk", () => {
     }
   });
 
-  test("a planted row that needs a right the local tier does not grant is refused and not offered", () => {
+  test("deny by default: a planted send or control row is refused for a read grant and not offered", () => {
     const planted = (right: Right): TableRow => row({ name: `planted.${right}`, kind: "read", right, waits: false, summary: "planted", args: [], parse: () => ({ ok: true, args: {} }), handle: stub });
     const table = tableOf([...fullTable().values(), planted("send"), planted("control")]);
     expect(admit(table, "planted.send", LOCAL)).toEqual({ ok: false, code: "api.denied" });
     expect(admit(table, "planted.control", LOCAL)).toEqual({ ok: false, code: "api.denied" });
     expect(offeredOf(table, LOCAL)).toEqual([...OPERATION_NAMES]);
-    expect(offeredOf(table, new Set<Right>(["send"]))).toEqual(["planted.send"]);
+    // A send grant holds see and read too: the order, not a list.
+    expect(offeredOf(table, "send")).toEqual([...OPERATION_NAMES, "planted.send"]);
+    expect(admit(table, "planted.control", "send")).toEqual({ ok: false, code: "api.denied" });
   });
 
   test("a name twice is a bug, refused when the table is built", () => {
@@ -106,7 +130,7 @@ describe("the table walk", () => {
 
 describe("arguments", () => {
   test("an operation with no arguments refuses any", async () => {
-    for (const name of ["hello", "sessions", "accounts", "hill.list"]) {
+    for (const name of ["sessions", "accounts", "hill.list", "machines"]) {
       expect(await fullTable().get(name)!.run({ x: 1 }, ctx())).toEqual({ ok: false, code: "api.bad_request", detail: { reason: "this operation takes no arguments" } });
     }
   });
@@ -137,6 +161,27 @@ describe("hello", () => {
     const answer = await fullTable().get("hello")!.run({}, ctx({ offered: ["hello", "events"] }));
     expect(answer).toEqual({ ok: true, answer: { api: 1, collie: "9.9.9-test", experimental: true, operations: ["hello", "events"] } });
     if (answer.ok) expect(Object.keys(answer.answer)).toEqual(["api", "collie", "experimental", "operations"]);
+  });
+
+  test("client: the answer is the same with it and without it; the name goes to the context's log hook only", async () => {
+    const named: string[] = [];
+    const hello = fullTable().get("hello")!;
+    const plain = await hello.run({}, ctx({ offered: ["hello", "events"], nameClient: (client) => named.push(client) }));
+    const withClient = await hello.run({ client: "trick:cpu-load" }, ctx({ offered: ["hello", "events"], nameClient: (client) => named.push(client) }));
+    expect(withClient).toEqual(plain);
+    expect(named).toEqual(["trick:cpu-load"]);
+    // A context with no log hook answers the same.
+    expect(await hello.run({ client: "trick:cpu-load" }, ctx({ offered: ["hello", "events"] }))).toEqual(plain);
+  });
+
+  test("client: 1 to 64 of letters, digits and _ . : -, else a bad request; no other argument", async () => {
+    const hello = fullTable().get("hello")!;
+    for (const client of ["a", "trick:cpu-load", "x".repeat(64), "A.b_c:d-9"]) expect((await hello.run({ client }, ctx())).ok).toBe(true);
+    for (const args of [{ client: "" }, { client: "x".repeat(65) }, { client: "trick cpu" }, { client: "trick/../x" }, { client: "a\nb" }, { client: "\u001b[2J" }, { client: 3 }, { client: null }, { client: "ok", x: 1 }, { x: 1 }]) {
+      const result = await hello.run(args, ctx());
+      expect({ args, ok: result.ok }).toEqual({ args, ok: false });
+      if (!result.ok) expect(result.code).toBe("api.bad_request");
+    }
   });
 });
 

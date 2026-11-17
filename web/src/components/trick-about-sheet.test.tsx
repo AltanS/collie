@@ -113,6 +113,30 @@ describe("TrickAboutSheet", () => {
     expect(rows.slice(-2)).toEqual(["Runs when a session changes state.", "Runs when these files change: ~/notes/todo.md, /etc/hosts."]);
   });
 
+  it("says the level of access in its one plain line, none for none, and never calls it a permission", () => {
+    const see = "It sees your machines, your sessions and their states, your usage and the Hill. It does not see what is on a screen.";
+    const read = "It reads what is on your sessions' screens.";
+    const rowsFor = (access: WireTrickInfo["access"]): (string | null)[] => {
+      const trick: WireTrickInfo = { ...FULL, warnings: undefined };
+      if (access !== undefined) trick.access = access;
+      const { unmount } = open(trick);
+      const does = within(screen.getByRole("dialog")).getByRole("list", { name: "What it does" });
+      const rows = within(does).getAllByRole("listitem").map((li) => li.textContent);
+      unmount();
+      return rows;
+    };
+    expect(rowsFor("see").at(-1)).toBe(see);
+    expect(rowsFor("read").at(-1)).toBe(read);
+    expect(rowsFor(undefined).join(" ")).not.toMatch(/It sees your machines|It reads what is on/u);
+    for (const text of [see, read]) expect(text).not.toMatch(/permission|can only/iu);
+    // The wire reader keeps one of the two words and drops any other.
+    const wire = { host: "lodge", id: "gates", name: "Release Gates", icon: "flask", on: true, state: "ok", places: ["belt"] };
+    expect(readTrick({ ...wire, access: "read" })?.access).toBe("read");
+    expect(readTrick({ ...wire, access: "send" })?.access).toBeUndefined();
+    expect(readTrick({ ...wire, access: "see", accessOff: true })).toMatchObject({ access: "see", accessOff: true });
+    expect(readTrick({ ...wire, accessOff: true })?.accessOff).toBeUndefined();
+  });
+
   it("leaves out each row whose fact is absent, and the whole group when none is there", () => {
     open({ ...BASE, places: [] });
     expect(screen.queryByText("What it does")).toBeNull();

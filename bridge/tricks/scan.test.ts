@@ -137,3 +137,37 @@ describe("the lead's probe lines", () => {
     expect(await warningsOf("f=payload; sh $f.txt", { "payload.txt": "echo hi\n" })).toContainEqual({ kind: "spawn", file: "trick.toml", text: `${RUN_UNREAD} ${RUN_DYNAMIC_WORDS}` });
   });
 });
+
+// A TRICK THAT TALKS TO THE LOCAL API PAST ITS HELPER (M105 spec 04, decision 4): one warning kind, `api`,
+// for code that names Collie's local socket or runs `collie api` itself. The helper's own `t.api` is not it.
+describe("the local API's own warning kind", () => {
+  const kinds = (found: { kind: string }[]): string[] => found.map((w) => w.kind);
+
+  test("a direct dial of the socket in a .ts file", async () => {
+    const found = await warningsOf("program.ts", { "program.ts": 'import { connect } from "node:net";\nconst s = connect("/home/dev/.local/state/collie/api/sock");\n' });
+    expect(found).toContainEqual(expect.objectContaining({ kind: "api", file: "program.ts" }));
+    const joined = await warningsOf("program.ts", { "program.ts": 'const p = join(state, "api", "sock");\n' });
+    expect(kinds(joined)).toContain("api");
+  });
+
+  test("`collie api` in a shell run line, in a shell file and as a spawn of a program", async () => {
+    expect(kinds(await warningsOf("collie api machines --json", {}))).toContain("api");
+    expect(kinds(await warningsOf("./run.sh", { "run.sh": "#!/bin/sh\ncollie api sessions\n" }))).toContain("api");
+    expect(kinds(await warningsOf("program.ts", { "program.ts": 'await t.sh("collie", ["api", "machines"]);\n' }))).toContain("api");
+  });
+
+  test("the shipped helper, a call of t.api and a plain mention in a comment are not flagged", async () => {
+    const withHelper = await warningsOf("program.ts", { "program.ts": 'import { run } from "./trick.ts";\nrun(async (t) => {\n  const m = await t.api("machines");\n  t.status({ text: String(m.ok) });\n});\n', "trick.ts": TRICK_HELPER });
+    expect(kinds(withHelper)).not.toContain("api");
+    expect(withHelper.filter((w) => w.file === "trick.ts")).toEqual([]);
+    expect(kinds(await warningsOf("program.ts", { "program.ts": "// collie api and api/sock are named here only in a comment\nconsole.log(1);\n" }))).not.toContain("api");
+  });
+
+  test("the plain words, the order on the row, and the card's verb", async () => {
+    const { WARN_PLAIN, wireWarnings } = await import("./scan.ts");
+    const { WARN_VERBS } = await import("./version-card.ts");
+    expect(WARN_PLAIN.api).toBe("This trick talks to Collie's local API directly, past its helper.");
+    expect(WARN_VERBS.api).toBe("talks to Collie's local API directly, past its helper");
+    expect(wireWarnings([{ kind: "api", file: "a.ts", line: 1, text: "x" }])).toEqual([{ kind: "api", text: WARN_PLAIN.api }]);
+  });
+});

@@ -492,6 +492,12 @@ export interface TricksServiceDeps {
    * scan. bridge/index.ts opens the local API socket while it is above zero (M105 spec 03, decision 14).
    */
   onSwitchedOnCount?: (count: number) => void;
+  /**
+   * The local API socket's path while it stands, else null (bridge/index.ts: `apiSocketPath` while the `ApiSocket`
+   * runs). A trick whose approved manifest declares `access` gets it in its facts as `api` (M105 spec 04), and
+   * when it is null the row says so once. Absent: the local API never stands here.
+   */
+  localApi?: () => string | null;
   /** The bridge's event bus: a trick that lists `on` runs on its events (triggers.ts). Absent: `on` runs nothing. */
   bus?: EventBus;
   /** The file watch's knobs, for a test (watch.ts). Absent: the production values. */
@@ -1666,6 +1672,9 @@ export class TricksService implements TricksSurface {
     // `on` and `watch` are rights (M105 step one): the row and the card say them in words.
     if (m?.on !== undefined) info.events = m.on;
     if (m?.watch !== undefined) info.watch = m.watch;
+    // `access` (M105 spec 04) is a right the row names. An ON trick where the socket does not stand says so once.
+    if (m?.access !== undefined) info.access = m.access;
+    if (m?.access !== undefined && info.on && (this.deps.localApi?.() ?? null) === null) info.accessOff = true;
     if (m?.inputs !== undefined && m.inputs.length > 0) info.inputs = { globs: m.inputs, crew: this.deps.crewWide?.() ?? false };
     if (m?.description !== undefined) info.description = m.description;
     if (m?.about !== undefined) info.about = m.about;
@@ -1706,6 +1715,11 @@ export class TricksService implements TricksSurface {
   /** A read of the repository facts changed what they say: every row takes them, and the rev moves once. */
   repoFactsMoved(): void {
     for (const id of this.runtimes.keys()) this.publish(id);
+  }
+
+  /** The local API's socket started or stopped: every row takes the note of a trick that reads through it. */
+  apiMoved(): void {
+    this.repoFactsMoved();
   }
 
   /** Whether the trick may run at all: on, with an approved copy that holds and whose manifest parsed. */
@@ -1958,6 +1972,10 @@ export class TricksService implements TricksSurface {
     }
     // Contract 3: the person's values ride in the facts, and nowhere else (values.ts `withValues`).
     const facts = withValues(buildFacts({ memberId: host, ...world }, { id, dir: run.dir, state }, trigger, manifest.contract), manifest, this.values.read(id));
+    // The local API, for a trick that declares `access`, while its socket stands: the path and the level, never
+    // an environment variable (M105 spec 04). Without the socket there is no `api`, and `t.api` answers an error.
+    const socket = manifest.access === undefined ? null : (this.deps.localApi?.() ?? null);
+    if (manifest.access !== undefined && socket !== null) facts.api = { socket, access: manifest.access };
     const outcome = await (this.deps.run ?? runProgram)({
       command,
       cwd: run.dir,

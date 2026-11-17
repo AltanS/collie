@@ -95,7 +95,7 @@ export function proposalTold(id: string, intent: string, kind: "new" | "version"
 }
 
 /** Every warning kind, for a code search that failed. */
-const ALL_WARNINGS = ["spawn", "network", "write", "model", "import"] as const satisfies readonly (keyof typeof WARN_PLAIN)[];
+const ALL_WARNINGS = ["spawn", "network", "write", "model", "import", "api"] as const satisfies readonly (keyof typeof WARN_PLAIN)[];
 
 /** Who proposes, as this bridge knows them. */
 export interface Proposer extends ProposerFacts {

@@ -40,6 +40,11 @@
 // `trick.toml` strictly, so it would refuse a `field` key as a typo, a confusing line. At contract 3 it says
 // "This trick needs a newer Collie" instead. Everything of contract 2 holds at 3 unchanged (the closed part
 // read included); a contract 2 trick that lists `[[field]]` is refused with `FIELDS_NEED_CONTRACT`.
+//
+// Contract 3 also takes the manifest key `access` (M105 spec 04, 2026-11-17): how much of Collie's local API
+// the trick reads through the helper's `t.api`. Inside 3, not a number of its own, by the rule above: no
+// build that speaks 3 has shipped, and a shipped contract 2 build would refuse `access` as a typo, as it
+// would `field`. A trick that names `access` at contract 1 or 2 is refused with `ACCESS_NEEDS_CONTRACT`.
 
 /** The newest trick contract this Collie speaks. */
 export const TRICK_CONTRACT = 3;
@@ -58,3 +63,6 @@ export const MENU_CONTRACT = 2;
 
 /** The first contract that takes the manifest table list `[[field]]` (the settings a person keeps for a trick). */
 export const FIELDS_CONTRACT = 3;
+
+/** The first contract that takes the manifest key `access` (how much of Collie's local API a trick reads). */
+export const ACCESS_CONTRACT = 3;

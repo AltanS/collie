@@ -10,12 +10,16 @@
 // `api.denied`, and admission happens before a single argument is read. operations.test.ts walks every
 // row, and plants a row with a right the local tier does not grant to see it refused.
 //
-// RIGHTS. `look` reads, `send` would type into a session, `control` would change one. The local tier
-// grants `look` ONLY ({@link LOCAL_TIER_RIGHTS}); no row in this step needs more, and a later right
-// needs its own spec, security read and Altan's word.
+// RIGHTS (M105 spec 04, decision 1). Four levels, in order: `see` < `read` < `send` < `control`. A grant
+// of a level holds every level below it ({@link holds}). `see` is lists and states, never the text of a
+// screen or a message; `read` adds the text of a session's screen (`read`, always masked); `send` would
+// type into a session, `control` would change one. The local tier grants `read` ({@link
+// LOCAL_TIER_RIGHTS}), so it holds `see` too; no row in this step needs more than `read`, and `send` or
+// `control` needs its own spec, security read and Altan's word. {@link OPERATION_LEVELS} is the level of
+// each row, and the table takes its rights from it.
 //
-// THE SEVEN NAMES. `hello` and `events` are answered here. The other five (`sessions`, `brief`, `read`,
-// `accounts`, `hill.list`) are declared here, arguments included, and their handlers come in through
+// THE EIGHT NAMES. `hello` and `events` are answered here. The other six (`sessions`, `brief`, `read`,
+// `accounts`, `hill.list`, `machines`) are declared here, arguments included, and their handlers come in through
 // {@link TableDeps.reads}: a row whose handler this bridge was not given is not in its table at all, so
 // it is neither offered by `hello` nor callable (`api.unknown_op`). Nothing here reaches a write path:
 // the context a handler gets carries no way to type, answer an ask, or change a session.
@@ -29,18 +33,45 @@ import { MAX_READ_LINES } from "../read-limits.ts";
 import { wireEvent } from "./event-wire.ts";
 import { CURSOR_MAX, EVENTS_PER_ANSWER, WAIT_MAX_SECONDS, WAITS_PER_CONNECTION, WAITS_TOTAL } from "./limits.ts";
 
-/** What a caller may be granted. */
-export type Right = "look" | "send" | "control";
+/** What a caller may be granted, and what a row needs: one level of {@link RIGHT_ORDER}. */
+export type Right = "see" | "read" | "send" | "control";
 
-/** The rights of a caller of the local socket: read only, in this step (decision 15). */
-export const LOCAL_TIER_RIGHTS: readonly Right[] = ["look"];
+/** The levels, lowest first. A grant of one holds every level before it. */
+export const RIGHT_ORDER: readonly Right[] = ["see", "read", "send", "control"];
+
+/** Whether a grant of `granted` holds the level `needed`: the same level, or one above it. */
+export function holds(granted: Right, needed: Right): boolean {
+  return RIGHT_ORDER.indexOf(granted) >= RIGHT_ORDER.indexOf(needed);
+}
+
+/** The grant of a caller of the local socket: `read`, which holds `see` (spec 04, decision 1). Read only. */
+export const LOCAL_TIER_RIGHTS: Right = "read";
 
 /** The version of the API's wire, in `hello`. */
 export const API_VERSION = 1;
 
 /** Every operation name, in the order `hello` lists them. */
-export const OPERATION_NAMES = ["hello", "sessions", "brief", "read", "accounts", "hill.list", "events"] as const;
+export const OPERATION_NAMES = ["hello", "sessions", "brief", "read", "accounts", "hill.list", "machines", "events"] as const;
 export type OperationName = (typeof OPERATION_NAMES)[number];
+
+/** The levels a row of this step may need. */
+export type ReadLevel = Extract<Right, "see" | "read">;
+
+/**
+ * The level each operation needs (spec 04, decision 1): `read` for the screen's text, `see` for every
+ * other. {@link DECLARED} takes its rights from here, and a trick's helper (cli/trick-kit/) holds its own
+ * copy, which a test compares with this one.
+ */
+export const OPERATION_LEVELS = {
+  hello: "see",
+  sessions: "see",
+  brief: "see",
+  read: "read",
+  accounts: "see",
+  "hill.list": "see",
+  machines: "see",
+  events: "see",
+} as const satisfies { readonly [K in OperationName]: ReadLevel };
 
 /** The type of one declared argument: text, or a whole number. */
 export type ArgType = "string" | "integer";
@@ -75,6 +106,11 @@ export interface OperationContext {
   standing(): boolean;
   /** Take one wait slot; null when the connection or the whole socket holds the most already. A row that does not wait gets null. */
   claimWait(): (() => void) | null;
+  /**
+   * `hello`'s `client`: the name the caller gives itself, for the socket's own log line of this connection.
+   * Trusted for nothing: it changes no right and no answer (spec 04, decision 5). Absent: not logged.
+   */
+  nameClient?(client: string): void;
 }
 
 /** One row, typed by its arguments. */
@@ -136,23 +172,33 @@ export function tableOf(rows: readonly TableRow[]): OperationTable {
 
 export type Admission = { readonly ok: true; readonly row: TableRow } | { readonly ok: false; readonly code: "api.unknown_op" | "api.denied" };
 
-/** Admit a request by its operation name and the caller's rights. Denies by default. */
-export function admit(table: OperationTable, op: string, granted: ReadonlySet<Right>): Admission {
+/** Admit a request by its operation name and the caller's grant. Denies by default: a row whose level the grant does not hold is refused. */
+export function admit(table: OperationTable, op: string, granted: Right): Admission {
   const found = table.get(op);
   if (found === undefined) return { ok: false, code: "api.unknown_op" };
-  if (!granted.has(found.right)) return { ok: false, code: "api.denied" };
+  if (!holds(granted, found.right)) return { ok: false, code: "api.denied" };
   return { ok: true, row: found };
 }
 
-/** The names a caller with these rights may call, in table order. */
-export function offeredOf(table: OperationTable, granted: ReadonlySet<Right>): string[] {
-  return [...table.values()].filter((one) => granted.has(one.right)).map((one) => one.name);
+/** The names a caller with this grant may call, in table order. */
+export function offeredOf(table: OperationTable, granted: Right): string[] {
+  return [...table.values()].filter((one) => holds(granted, one.right)).map((one) => one.name);
 }
 
 // ── The arguments ────────────────────────────────────────────────────────────────────────────────
 
 /** No arguments. */
 export type NoArgs = Readonly<Record<string, never>>;
+
+/** `hello`: the name the caller gives itself, or none (decision 5). */
+export interface HelloArgs {
+  readonly client: string | undefined;
+}
+
+/** The longest `client` name. */
+export const CLIENT_MAX = 64;
+/** A `client` name: letters, digits and `_ . : -`, such as `trick:<id>`. */
+const CLIENT_NAME = /^[A-Za-z0-9_.:-]+$/u;
 
 /** One session, by its opaque id (ids.ts resolves it). */
 export interface SessionArgs {
@@ -174,12 +220,13 @@ export interface EventsArgs {
 
 /** The argument type of each operation. */
 export interface ArgsOf {
-  hello: NoArgs;
+  hello: HelloArgs;
   sessions: NoArgs;
   brief: SessionArgs;
   read: ReadArgs;
   accounts: NoArgs;
   "hill.list": NoArgs;
+  machines: NoArgs;
   events: EventsArgs;
 }
 
@@ -190,6 +237,16 @@ function onlyKeys(input: JsonObject, allowed: readonly string[]): boolean {
 function parseNone(input: JsonObject): Parsed<NoArgs> {
   if (!onlyKeys(input, [])) return { ok: false, reason: "this operation takes no arguments" };
   return { ok: true, args: {} };
+}
+
+function parseHello(input: JsonObject): Parsed<HelloArgs> {
+  if (!onlyKeys(input, ["client"])) return { ok: false, reason: "an argument this operation does not take" };
+  if (input.client === undefined) return { ok: true, args: { client: undefined } };
+  const client = asJsonString(input.client);
+  if (client === undefined || client.length > CLIENT_MAX || !CLIENT_NAME.test(client)) {
+    return { ok: false, reason: `args.client must be 1 to ${String(CLIENT_MAX)} letters, digits or _ . : -` };
+  }
+  return { ok: true, args: { client } };
 }
 
 function parseSession(input: JsonObject): Parsed<SessionArgs> {
@@ -240,24 +297,33 @@ const SESSION_ARG: ArgDecl = { name: "session", type: "string", required: true, 
 
 /** Every operation, declared. */
 export const DECLARED: Declarations = {
-  hello: { name: "hello", kind: "read", right: "look", waits: false, summary: "The API version, the Collie version and the operations offered.", args: [], parse: parseNone },
-  sessions: { name: "sessions", kind: "read", right: "look", waits: false, summary: "The agent sessions of this machine.", args: [], parse: parseNone },
-  brief: { name: "brief", kind: "read", right: "look", waits: false, summary: "The state of one session, with no text.", args: [SESSION_ARG], parse: parseSession },
+  hello: {
+    name: "hello",
+    kind: "read",
+    right: OPERATION_LEVELS.hello,
+    waits: false,
+    summary: "The API version, the Collie version and the operations offered.",
+    args: [{ name: "client", type: "string", required: false, help: "A name for this connection in the bridge's log, such as trick:<id>. Trusted for nothing." }],
+    parse: parseHello,
+  },
+  sessions: { name: "sessions", kind: "read", right: OPERATION_LEVELS.sessions, waits: false, summary: "The agent sessions of this machine.", args: [], parse: parseNone },
+  brief: { name: "brief", kind: "read", right: OPERATION_LEVELS.brief, waits: false, summary: "The state of one session, with no text.", args: [SESSION_ARG], parse: parseSession },
   read: {
     name: "read",
     kind: "read",
-    right: "look",
+    right: OPERATION_LEVELS.read,
     waits: false,
     summary: "The screen of one session, secrets masked, capped.",
     args: [SESSION_ARG, { name: "lines", type: "integer", required: false, help: `How many lines of the screen, 1 to ${String(MAX_READ_LINES)}. Default: the bridge's own.` }],
     parse: parseRead,
   },
-  accounts: { name: "accounts", kind: "read", right: "look", waits: false, summary: "The agent accounts of this machine.", args: [], parse: parseNone },
-  "hill.list": { name: "hill.list", kind: "read", right: "look", waits: false, summary: "The open decisions on the Hill, with no body.", args: [], parse: parseNone },
+  accounts: { name: "accounts", kind: "read", right: OPERATION_LEVELS.accounts, waits: false, summary: "The agent accounts of this machine.", args: [], parse: parseNone },
+  "hill.list": { name: "hill.list", kind: "read", right: OPERATION_LEVELS["hill.list"], waits: false, summary: "The open decisions on the Hill, with no body.", args: [], parse: parseNone },
+  machines: { name: "machines", kind: "read", right: OPERATION_LEVELS.machines, waits: false, summary: "The machines of the crew, with their load, as the Machines page knows them.", args: [], parse: parseNone },
   events: {
     name: "events",
     kind: "read",
-    right: "look",
+    right: OPERATION_LEVELS.events,
     waits: true,
     summary: "The events after a cursor, waiting up to 25 seconds for one.",
     args: [
@@ -271,8 +337,8 @@ export const DECLARED: Declarations = {
 /** A handler of each operation. */
 export type Handlers = { readonly [K in OperationName]: (args: ArgsOf[K], ctx: OperationContext) => Promise<OpResult> };
 
-/** The five read operations whose handlers come from outside this file. */
-export type ReadName = "sessions" | "brief" | "read" | "accounts" | "hill.list";
+/** The six read operations whose handlers come from outside this file. */
+export type ReadName = "sessions" | "brief" | "read" | "accounts" | "hill.list" | "machines";
 export type ReadHandlers = Pick<Handlers, ReadName>;
 
 export interface TableDeps {
@@ -280,7 +346,7 @@ export interface TableDeps {
   readonly version: () => string;
   /** The event bus, read only. */
   readonly bus: Pick<EventBus, "since" | "waitFor">;
-  /** The five read handlers. One left out is not offered on this bridge. */
+  /** The six read handlers. One left out is not offered on this bridge. */
   readonly reads?: Partial<ReadHandlers>;
 }
 
@@ -289,9 +355,15 @@ function bind<K extends OperationName>(name: K, handler: Handlers[K] | undefined
   return row<ArgsOf[K]>({ ...DECLARED[name], handle: handler });
 }
 
-/** `hello` (decision 17): what this socket is and what the caller may call. */
+/**
+ * `hello` (decision 17): what this socket is and what the caller may call. A `client` name goes to the
+ * socket's log line and nowhere else: the answer is the same with it and without it (spec 04, decision 5).
+ */
 function hello(deps: TableDeps): Handlers["hello"] {
-  return async (_args, ctx) => ({ ok: true, answer: { api: API_VERSION, collie: deps.version(), experimental: true, operations: [...ctx.offered] } });
+  return async (args, ctx) => {
+    if (args.client !== undefined) ctx.nameClient?.(args.client);
+    return { ok: true, answer: { api: API_VERSION, collie: deps.version(), experimental: true, operations: [...ctx.offered] } };
+  };
 }
 
 /**
@@ -355,6 +427,8 @@ function bindByName(name: OperationName, handlers: Partial<Handlers>): TableRow 
       return bind(name, handlers.accounts);
     case "hill.list":
       return bind(name, handlers["hill.list"]);
+    case "machines":
+      return bind(name, handlers.machines);
     case "events":
       return bind(name, handlers.events);
     default: {

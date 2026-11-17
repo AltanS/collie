@@ -1,6 +1,6 @@
-// THE FIVE READS OF THE LOCAL API (M105 spec 03, decisions 4, 12, 15 to 17): `sessions`, `brief`,
-// `read`, `accounts` and `hill.list`. They fill the five rows of the operation table that
-// operations.ts declares and leaves to a handler (`TableDeps.reads`).
+// THE SIX READS OF THE LOCAL API (M105 spec 03, decisions 4, 12, 15 to 17; spec 04, decision 6):
+// `sessions`, `brief`, `read`, `accounts`, `hill.list` and `machines`. They fill the six rows of the
+// operation table that operations.ts declares and leaves to a handler (`TableDeps.reads`).
 //
 // READ ONLY, BY CONSTRUCTION. A handler gets the bridge only through `ApiWorld` (world.ts), the one
 // narrow interface of getters the operations see, and bridge/index.ts builds an object of exactly that
@@ -36,6 +36,22 @@
 //            Equal rows have equal revs, so a caller that holds a rev may skip a row it has seen; a
 //            collision (about 1 in 4 billion per change) only costs that caller one skipped update.
 //
+// THE FIELDS OF `machines` (spec 04, decision 6), one row per machine of the Machines page, the lead first:
+//   id         the machine's id. For the machine that answers, this bridge's stable id, the `machine` of
+//              `sessions` and of every event; for a crew member, its member id (the same value).
+//   label      the Machines page's name of the machine (`MachineRow.name`): a member's join label, the
+//              lead's short host name. Only its first dot-separated part, and only when that part is a
+//              plain name (letters, digits, `-`, `_`, not all digits); otherwise the id. So a full host
+//              name, an address or anything with a user name or a path never reaches the answer.
+//   reachable  whether the lead reaches the machine now (`health` is `reachable`); the answering one is.
+//   version    the Collie version the machine reported, when it reads as a version (`1.29.0`,
+//              `1.29.0-beta.2`); this bridge's own for itself; null when unknown or of another shape.
+//   load       `cpu` (busy fraction of all cores) and `memory` (used over total), each 0..1 to two
+//              places, from the last sample the watch holds, null with none; `sessions`, the agent
+//              sessions: for this machine the rows `sessions` lists, for a member the count its own
+//              snapshot answer gave, null when it gave none.
+// Nothing here dials: the rows are the watch's memory and the crew overview's (world.ts).
+//
 // `read` MASKS ALWAYS. The text goes through `maskPaneRead`, the phone's own mask for a mirror read
 // (bridge/answer-mask.ts), whatever `COLLIE_REDACT` says: a program of the same Unix user is not the
 // person's own phone, and the operator's switch was made for the phone. The mask is BEST EFFORT
@@ -48,7 +64,7 @@ import type { BusEvent } from "../events/bus.ts";
 import { stripAnsi } from "../journal/text.ts";
 import type { JsonObject } from "../json.ts";
 import { personName } from "../pane-name.ts";
-import type { AccountRow, AgentStatus, AgentView } from "../types.ts";
+import type { AccountRow, AgentStatus, AgentView, CrewMemberStatus, MachineRow } from "../types.ts";
 import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
 import { idOf, resolveSession, type PaneSighting, type SessionView } from "./ids.ts";
 import { apiListedPane } from "./listed.ts";
@@ -64,8 +80,14 @@ export interface PaneSource {
 /** A screen read: the text as the multiplexer renders it (escapes kept), or that it could not be read. */
 export type ScreenRead = { readonly ok: true; readonly text: string; readonly truncated: boolean } | { readonly ok: false };
 
-/** What the five reads see of the bridge: the API's world (world.ts), less the version `hello` reads. */
-export type ReadsDeps = Omit<ApiWorld, "version">;
+/** One machine as the Machines page knows it: its row there, and on a lead the crew overview's row of the same id. */
+export interface MachineSource {
+  readonly row: MachineRow;
+  readonly member: CrewMemberStatus | undefined;
+}
+
+/** What the six reads see of the bridge: the API's world (world.ts). */
+export type ReadsDeps = ApiWorld;
 
 /** The text of a `read` answer is cut to this many bytes of the serialized JSON, below the socket's 1 MiB cap. */
 export const READ_TEXT_MAX_BYTES = 900 * 1024;
@@ -92,6 +114,28 @@ export function folderName(cwd: string): string {
 export function labelOf(pane: AgentView): string {
   const named = personName(pane)?.name;
   return clip(named ?? pane.agent) || pane.agent;
+}
+
+/** A plain machine name: letters, digits, `-` and `_`, at most 63, not all digits. */
+const MACHINE_NAME = /^(?![0-9]+$)[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/u;
+
+/** The label of a machine: the first part of its name when that is a plain name, else its id (header). */
+export function machineLabel(name: string, id: string): string {
+  const first = name.trim().split(".")[0] ?? "";
+  return MACHINE_NAME.test(first) ? first : id;
+}
+
+/** A bare version as the crew wire spells one: three numbers, then an optional `-<word>` and `.<number>`s (`-beta.2`). */
+const BARE_VERSION = /^\d{1,6}\.\d{1,6}\.\d{1,6}(?:-[A-Za-z][0-9A-Za-z-]{0,30}(?:\.\d{1,6}){0,3})?$/u;
+
+/** A version a member reported, or null when it gave none or one of another shape. */
+function memberVersion(version: string | undefined): string | null {
+  return version !== undefined && BARE_VERSION.test(version) ? version : null;
+}
+
+/** A fraction to two places, or null when it is no number. */
+function fraction(value: number): number | null {
+  return Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
 }
 
 /** The sender label of Collie's own card on the Hill. */
@@ -180,7 +224,7 @@ export function capText(text: string, maxBytes: number): CappedText {
   return { text: lines.slice(from).join("\n"), cut: true };
 }
 
-/** The five handlers, over the bridge's getters. */
+/** The six handlers, over the bridge's getters. */
 export function buildReads(deps: ReadsDeps): ReadHandlers {
   const agentPanes = (): PaneSource[] => agentPanesOf(deps.panes());
 
@@ -205,13 +249,15 @@ export function buildReads(deps: ReadsDeps): ReadHandlers {
     };
   };
 
-  const sessions = async (): Promise<OpResult> => {
-    const rows: JsonObject[] = [];
-    for (const source of agentPanes()) {
+  /** The agent panes `sessions` lists: those whose instance token the registry holds. */
+  const listed = (): { readonly source: PaneSource; readonly instance: string }[] =>
+    agentPanes().flatMap((source) => {
       const instance = deps.instanceOf(source.muxSession, source.pane.paneId);
-      if (instance === null) continue;
-      rows.push(wireOf(sessionRow(source, instance)));
-    }
+      return instance === null ? [] : [{ source, instance }];
+    });
+
+  const sessions = async (): Promise<OpResult> => {
+    const rows = listed().map(({ source, instance }) => wireOf(sessionRow(source, instance)));
     return { ok: true, answer: { sessions: rows } };
   };
 
@@ -332,5 +378,26 @@ export function buildReads(deps: ReadsDeps): ReadHandlers {
     return { ok: true, answer: { cards } };
   };
 
-  return { sessions, brief, read, accounts, "hill.list": hillList };
+  // `machines` (spec 04, decision 6): built field by field, so an address, a key, a path or a reason the
+  // rows carry never reaches the answer (header).
+  const machineRow = ({ row, member }: MachineSource): JsonObject => {
+    const self = row.isLead;
+    const id = self ? deps.machine() : row.id;
+    const sample = row.sample;
+    return {
+      id,
+      label: machineLabel(row.name, id),
+      reachable: row.health === "reachable",
+      version: self ? deps.version() : memberVersion(member?.version),
+      load: {
+        cpu: sample === undefined ? null : fraction(sample.cpu),
+        memory: sample === undefined || sample.memTotal <= 0 ? null : fraction(sample.memUsed / sample.memTotal),
+        sessions: self ? listed().length : (member?.panes ?? null),
+      },
+    };
+  };
+
+  const machines = async (): Promise<OpResult> => ({ ok: true, answer: { machines: deps.machines().map(machineRow) } });
+
+  return { sessions, brief, read, accounts, "hill.list": hillList, machines };
 }

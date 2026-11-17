@@ -231,6 +231,17 @@ describe("TricksSettingsCard: the rows", () => {
     expect(within(await findRow("legs")).getByText(line)).toBeInTheDocument();
   });
 
+  it("a trick that reads through the local API, where it is off, says so once and alone", async () => {
+    const off: WireTrickInfo = { ...LEGS, access: "see", accessOff: true };
+    const line = "This trick reads through Collie's local API, which is off here.";
+    expect(slotLine(off, NOW)).toEqual({ text: line, trouble: false });
+    // A trick that is off has nothing to say yet; a trick whose socket stands says nothing.
+    expect(slotLine({ ...off, on: false, state: "off" }, NOW).text).toBe("Added by agent · 2 h ago");
+    expect(slotLine({ ...LEGS, access: "see" }, NOW).text).toBe("Added by agent · 2 h ago");
+    renderCard(await storeWith([off]));
+    expect(within(await findRow("legs")).getByText(line)).toBeInTheDocument();
+  });
+
   it("keeps every row the same three lines, whatever the state", async () => {
     const failing: WireTrickInfo = { ...LEGS, id: "bad", name: "Bad", state: "failing", error: "exit 2" };
     renderCard(await storeWith([LEGS, TRACKER, failing]));

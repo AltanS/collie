@@ -3,6 +3,14 @@
 // other: both are thin listeners of the bus. This test reads the import statements of every non-test
 // `.ts` file under the three folders, resolves each relative specifier to a path, and refuses a path
 // inside a folder the importer may not reach. Every folder must exist and hold sources, so the scan is never vacuous.
+//
+// THE IMPORTS ARE READ BY A TOKENIZER, NOT A TEXT SCAN. A regular expression over the text read comments
+// and strings as code: a comment that named an import raised a false alarm, and a comment that opened like
+// an import (`/* import type ... from */`) could swallow the real import after it. Bun's own transpiler
+// (`Bun.Transpiler.scanImports`) tokenizes, so neither happens. The seam forbids a TYPE import across it
+// too, and the transpiler leaves those out (they are erased), so the `type` modifiers are dropped from the
+// text first ({@link withoutTypeModifiers}): that only turns a type import into the same import of values,
+// which the scanner then reports. A rewrite inside a comment or a string changes nothing the scanner reads.
 
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -21,18 +29,22 @@ const FORBIDDEN = {
 
 const AREAS: readonly Area[] = ["events", "api", "tricks"];
 
-// `import ... from "x"`, `import type ... from "x"`, `export ... from "x"`, `import "x"`, `import("x")`.
-const SPECIFIERS = [
-  /\b(?:import|export)\s+(?:type\s+)?[^'";]*?\bfrom\s*["']([^"']+)["']/gu,
-  /\bimport\s*["']([^"']+)["']/gu,
-  /\bimport\s*\(\s*["']([^"']+)["']\s*\)/gu,
-];
+const SCANNER = new Bun.Transpiler({ loader: "ts" });
 
-/** Every module specifier a source text names. */
+/**
+ * The text with every `type` modifier of an import or export dropped: `import type {`, `import type X from`,
+ * `export type {`, `export type *`, and `{ type X }` inside braces. A type alias (`export type X =`) is left alone.
+ */
+function withoutTypeModifiers(text: string): string {
+  return text
+    .replace(/\b(import|export)\s+type(?=\s*[{*])/gu, "$1")
+    .replace(/\bimport\s+type\s+(?=[A-Za-z_$][\w$]*\s*(?:,|\bfrom\b))/gu, "import ")
+    .replace(/([{,]\s*)type\s+(?=[A-Za-z_$][\w$]*\s*(?:[,}]|\bas\b))/gu, "$1");
+}
+
+/** Every module specifier a source text names in an import, an export or an `import()`, type imports included. */
 function specifiersOf(text: string): string[] {
-  const out = new Set<string>();
-  for (const pattern of SPECIFIERS) for (const match of text.matchAll(pattern)) out.add(match[1]!);
-  return [...out];
+  return [...new Set(SCANNER.scanImports(withoutTypeModifiers(text)).map((found) => found.path))];
 }
 
 /** The area a resolved path sits in, or null. */
@@ -96,5 +108,36 @@ describe("the seam", () => {
     expect(violationsOf(tricks, `import { EventBus } from "../events/bus.ts";`)).toEqual([]);
     expect(violationsOf(events, `import { a } from "./tricks-words.ts"; import { b } from "../api-shape.ts";`)).toEqual([]);
     expect(violationsOf(events, `import { a } from "../walky/api/x.ts";`)).toEqual([]);
+  });
+
+  test("every spelling of a type import is caught", () => {
+    const events = join(BRIDGE, "events", "x.ts");
+    for (const text of [
+      `import type { A } from "../api/ids.ts";`,
+      `import type A from "../api/ids.ts";`,
+      `import type * as A from "../api/ids.ts";`,
+      `import { type A } from "../api/ids.ts";`,
+      `import { type A as B, type C } from "../api/ids.ts";`,
+      `export type { A } from "../api/ids.ts";`,
+      `export type * from "../api/ids.ts";`,
+    ]) {
+      expect({ text, found: violationsOf(events, text) }).toEqual({ text, found: ["../api/ids.ts -> api"] });
+    }
+  });
+
+  test("a comment or a string that names an import is not one; a real import after such a comment is still seen", () => {
+    const events = join(BRIDGE, "events", "x.ts");
+    const fake = [
+      `// import { a } from "../tricks/run.ts";`,
+      `/* import type { A } from "../api/ids.ts"; */`,
+      `/**\n * export { b } from "../api";\n * const m = await import("../tricks/run.ts");\n */`,
+      `const words = "import { x } from '../api/operations.ts'";`,
+      `const tpl = \`import "../tricks/hill.ts"\`;`,
+      `export type Alias = { type: string };`,
+    ].join("\n");
+    expect(violationsOf(events, fake)).toEqual([]);
+    expect(violationsOf(events, `/* import type { T } from */ import { a } from "../tricks/run.ts";`)).toEqual(["../tricks/run.ts -> tricks"]);
+    expect(violationsOf(events, `${fake}\n// import type\nimport type { B } from "../api/ids.ts";`)).toEqual(["../api/ids.ts -> api"]);
+    expect(violationsOf(events, `const r = /"/; import { c } from "../tricks/run.ts";`)).toEqual(["../tricks/run.ts -> tricks"]);
   });
 });

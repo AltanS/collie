@@ -67,6 +67,9 @@ const WARN_PATTERNS = {
   network: /\bfetch\s*\(|\bWebSocket\b|\bXMLHttpRequest\b|\bnet\.connect\b|\bhttps?\.(?:request|get)\s*\(|\brequests\.(?:get|post|put|delete)\b|\burllib\b|(["'`])(?:gh|curl|wget|ssh)\1/,
   write: /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|copyFile|copyFileSync|rename|renameSync|rm|rmSync|unlink|unlinkSync|mkdir|mkdirSync)\s*\(|\bBun\.write\s*\((?!\s*Bun\.std(?:out|err)\b)/,
   model: new RegExp(`\\b(?:anthropic|openai|openrouter)\\b|\\[\\s*["'\`](?:${AGENT_NAMES})["'\`]|\\b(?:which|findTool|tool|Bun\\.which)\\s*\\(\\s*["'\`](?:${AGENT_NAMES})["'\`]`, "i"),
+  // Collie's local socket named by its path (`api/sock`, or `"api", "sock"` joined) or `collie api` itself, in a
+  // line or as the program and first word of an argument list: the trick talks past its helper (M105 spec 04).
+  api: /\bapi\/sock\b|(["'`])api\1\s*,\s*(["'`])sock\2|\bcollie\s+api\b|(["'`])collie\3\s*,\s*\[?\s*(["'`])api\4/,
 } satisfies Record<Exclude<CheckWarningKind, "import">, RegExp>;
 /** In a shell file: a subshell, a tool that reaches the network by its bare name, a redirect into a file, and an agent program in command position. */
 const SHELL_SPAWN = /\$\(/;
@@ -83,6 +86,7 @@ export const WARN_TEXT = {
   write: "writes a file outside the trick's state folder, as far as a grep can tell",
   model: "calls an agent program or a model API; a timer run should only read; a timer that calls a model spends your subscription with no session to show for it",
   import: "imports a package; a script Collie's runtime runs gets no install, so it may import only files in its own folder and node: or bun: built-ins",
+  api: "names Collie's local API socket or runs collie api itself, past the helper that holds the level the trick declares",
 } satisfies Record<CheckWarningKind, string>;
 
 /**
@@ -95,10 +99,11 @@ export const WARN_PLAIN = {
   write: "This trick writes files outside its own state folder.",
   model: "On a timer this trick starts an agent or calls a model. Each run can use your subscription.",
   import: "This trick imports a package Collie does not install, so it may not run.",
+  api: "This trick talks to Collie's local API directly, past its helper.",
 } satisfies Record<CheckWarningKind, string>;
 
 /** The order the kinds are listed in, on the row and in the summary. */
-const KIND_ORDER: readonly CheckWarningKind[] = ["model", "network", "spawn", "write", "import"];
+const KIND_ORDER: readonly CheckWarningKind[] = ["model", "api", "network", "spawn", "write", "import"];
 
 /** The line printed beside every list of warnings: what they are and are not. */
 export const WARNINGS_HONESTY = "These come from a text search of the code, not a proof: a program can do any of this in a way no pattern sees, and a trick runs with your full rights.";
@@ -306,6 +311,7 @@ export function checkWarnings(sources: readonly { file: string; text: string; sh
         if (WARN_PATTERNS.spawn.test(code) || (shell && SHELL_SPAWN.test(t))) hit("spawn");
         if (WARN_PATTERNS.network.test(code) || (shell && SHELL_NETWORK.test(t))) hit("network");
         if ((WARN_PATTERNS.write.test(code) || (shell && SHELL_WRITE.test(t))) && !OWN_PLACES.test(code)) hit("write");
+        if (WARN_PATTERNS.api.test(code)) hit("api");
         if (timer && (WARN_PATTERNS.model.test(code) || (shell && SHELL_MODEL.test(t)))) hit("model");
       });
   }
@@ -316,8 +322,8 @@ export function checkWarnings(sources: readonly { file: string; text: string; sh
 
 /** The helper file a TypeScript trick imports. */
 export const HELPER_FILE = "trick.ts";
-/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v6`. */
-export const HELPER_VERSION = 6;
+/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v7`. */
+export const HELPER_VERSION = 7;
 /** The helper's source (cli/trick-kit/trick.ts), held in the binary as text. */
 export const TRICK_HELPER: string = trickHelperSource();
 
@@ -335,8 +341,9 @@ function sha256(text: string): string {
  * v2 (the facts' `v`, `t.hillAnswer` beside `t.tap`; M94 review 11 made it v3), and v3 (contract 1 only; v4
  * reads contract 2's `inputs` and prints the facts' own contract as `v`), and v4 (v5 adds `t.menu` and a
  * belt mark's `sessions`), and v5 (v6 ends a run after the pipe took the output, not with `process.exit`
- * over a write in flight, which Windows lost; it speaks contract 3 and reads its `values` as `t.values`). A trick
- * folder keeps the copy it was approved with: an older one stays Collie's code, so a new Collie asks for no yes.
+ * over a write in flight, which Windows lost; it speaks contract 3 and reads its `values` as `t.values`), and v6
+ * (v7 adds `t.api`, Collie's local API through the declared `access`). A trick folder keeps the copy it was
+ * approved with: an older one stays Collie's code, so a new Collie asks for no yes.
  */
 const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
   ["534f992f9aa2a4a6e53945c1b46e7b407ab9528b3839970e6552d83b23ed13bb", 1],
@@ -344,6 +351,7 @@ const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
   ["15d022db6ff7efb5a19e148c7f29478b3cc50fd4d4dc9fb868ce576b84f03ad6", 3],
   ["c25f26e2450c71b92146bf62ca45978978890fa6afc085caf0909b64372a200b", 4],
   ["433bb8cae8929213274ed421f82cc63255a5a763732491a785c61f9f40bd4a1d", 5],
+  ["52fed09e380c66a9902731aa111cc299c63bc2fcec83227f4f91963070789dfe", 6],
 ]);
 
 /** The version of a helper this Collie ships (this one, or one of `older`) whose bytes `text` are, or null for any other text. */

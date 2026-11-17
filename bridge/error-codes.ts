@@ -392,7 +392,7 @@ export const ERROR_CODES = {
   // ── The local API: `<stateDir>/api/sock`, one JSON line per request (M105 spec 03, bridge/api/) ──
   /** The request names no operation this bridge offers. */
   "api.unknown_op": "the local API has no such operation here; send hello to see the operations it offers",
-  /** The operation needs a right the caller was not granted. The local tier grants `look` only. */
+  /** The operation needs a level the caller's grant does not hold. The local tier grants `read`, which holds `see`. */
   "api.denied": "the local API does not grant the right this operation needs; send hello to see the operations it offers",
   /** The line is not a request the socket reads; `reason` is one of the socket's own fixed phrases. */
   "api.bad_request": "the request cannot be read ({reason}); send one JSON object per line, as {\"op\": \"hello\"}",
