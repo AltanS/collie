@@ -1052,7 +1052,7 @@ describe("a post on a slow crew link", () => {
 
 describe("status of Collie's own card, from the session it tells", () => {
   const COLLIE = { kind: "collie" as const, ref: { type: "proposal" as const, id: "legs", hash: "a".repeat(64) }, label: "Collie" };
-  const CARD = { requestId: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f", title: "Switch on the trick legs?", summary: "A session on desk proposes it.", options: [{ intent: "on", label: "Switch it on" }, { intent: "later", label: "Not now" }], text: "none" as const, recommends: null };
+  const CARD = { requestId: "0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f", title: "Switch on the trick legs?", summary: "A session on desk proposes it.", options: [{ intent: "on", label: "Switch it on" }, { intent: "later", label: "Not now" }], text: "none" as const, recommends: null, view: [{ kind: "diff" as const, text: "@@ -0,0 +1 @@\n+console.log(1);", attrs: { file: "program.ts" } }] };
 
   socketTest("the proposing session reads the card before and after the answer; another pane does not", async () => {
     const b = await bridge(true, { onCollieAnswer: async () => ({ ok: true }) });
@@ -1062,7 +1062,8 @@ describe("status of Collie's own card, from the session it tells", () => {
     const before = deps(sock);
     expect(await cmdHillStatus(before, ["dc_cli000000001"])).toBe(EXIT.OK);
     expect(before.io.stdout).toEqual(["dc_cli000000001 open", "title: Switch on the trick legs?"]);
-    await b.hill.answer({ rid: "11111111-1111-4111-8111-111111111111", node: "hill/dc_cli000000001", intent: "on", value: { text: null } }, "dc_cli000000001", "Pixel 9");
+    // A phone that showed the card's code to its end (C-A2): a trick card's yes needs it.
+    await b.hill.answer({ rid: "11111111-1111-4111-8111-111111111111", node: "hill/dc_cli000000001", intent: "on", value: { text: null }, group: { digest: COLLIE.ref.hash, opened: [1] } }, "dc_cli000000001", "Pixel 9");
     const after = deps(sock);
     expect(await cmdHillStatus(after, ["dc_cli000000001"])).toBe(EXIT.OK);
     expect(after.io.stdout).toEqual(["dc_cli000000001 answered", "title: Switch on the trick legs?", "answer: on (Switch it on)", "by: Pixel 9", "delivery: typed"]);

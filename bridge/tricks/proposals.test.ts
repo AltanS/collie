@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { HOST } from "../host.ts";
 import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { memoryHillReceipts } from "../hill/receipts.ts";
-import { HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_OFF, HillService, type HillPlace } from "../hill/service.ts";
+import { HILL_CODE_READ_FIRST, HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_OFF, HillService, type HillPlace } from "../hill/service.ts";
 import { HillStore } from "../hill/store.ts";
 import type { HillDecision, HillReceipt } from "../../web/src/lib/hill/wire.ts";
 import { ORIGIN_FILE } from "./origin.ts";
@@ -262,6 +262,27 @@ describe("a proposal for a new trick", () => {
     const [card] = openCards(l);
     expect(await tap(l, card!, "on")).toMatchObject({ code: "rejected", reason: PROPOSAL_CHANGED });
     expect(l.store.get(card!.id)?.state).toBe("open");
+    expect(await listed(l)).toEqual([]);
+  });
+
+  test("a stored trick card with no code part refuses the yes: nothing installs or switches, the decline still goes (2026-11-17)", async () => {
+    const l = await lead();
+    const p = proposal("legs");
+    await l.proposals.propose(p, AGENT);
+    const [card] = openCards(l);
+    // The stored card loses its code part, as an older bridge or a hand edit of the store could leave it.
+    const { view: _code, ...bare } = card!;
+    expect(l.store.put(bare)).toBe(true);
+    expect(singleCodeCard(l.store.get(card!.id)!)).toBeNull();
+    // A yes with the old card's digest and card 1 opened, and a yes with nothing, are both refused.
+    expect(await tap(l, card!, "on")).toMatchObject({ code: "rejected", reason: HILL_CODE_READ_FIRST, state: "open" });
+    const plain = await l.hill.answer({ rid: nextRid(), node: `hill/${card!.id}`, intent: "on", value: { text: null } }, card!.id, "Pixel 9");
+    expect(plain.kind === "receipt" && plain.receipt).toMatchObject({ code: "rejected", reason: HILL_CODE_READ_FIRST, state: "open" });
+    expect(l.store.get(card!.id)?.state).toBe("open");
+    expect(await listed(l)).toEqual([]);
+    expect(await stat(join(l.configDir, TRICKS_DIR, "legs")).catch(() => null)).toBeNull();
+    // Not now still closes it.
+    expect(await tap(l, bare, "later")).toMatchObject({ code: "ok" });
     expect(await listed(l)).toEqual([]);
   });
 

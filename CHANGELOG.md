@@ -38,6 +38,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **The bridge refuses a yes to a trick card that holds no code.** A stored proposal or new-version card with no code part answers a yes with "Read the code to its end first." and installs and switches nothing; Keep, Not now and a dismiss still close it.
 - **A trick card always has code to read before its yes.** A new version whose only change is a file that can now run as a program, or no longer can, shows that change as one line in its code, and so does an empty file added or removed. A version with the same code as the one that runs makes no card. A card with no code to show, in Settings, Tricks, on the Hill or in a chat, offers only Keep or Not now, with the line that says the phone cannot show it.
 - **A trick card in the chat waits again whenever its yes moves on the screen.** Your own scroll, a dock card that goes, the keyboard or a row above the card each start the one-second wait again, and so does the end of the code coming on screen. A card with no code to show offers no yes, Try again holds the same waits, and a waiting card sets the dot on the jump-to-latest arrow.
 - **A trick proposal also shows while an agent view stands in for the chat.** The same card stands last in the agent view's own scroll, with the same waits before its yes, so it never needs a trip to Settings.
