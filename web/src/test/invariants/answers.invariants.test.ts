@@ -24,41 +24,14 @@ import { ASK_OUTCOMES, ASK_REASONS } from "@/lib/surface/ask";
 import { CLEAR_OUTCOMES, CLEAR_REASONS } from "@/lib/surface/clear";
 import { SEND_OUTCOMES, SEND_REASONS } from "@/lib/surface/send";
 import { STOP_OUTCOMES, STOP_REASONS } from "@/lib/surface/stop";
-import type { JsonObject, JsonValue } from "@/lib/json";
+import type { JsonObject } from "@/lib/json";
 import type { Ask } from "@/lib/surface/surface";
 
+import { commonAnswers, json, type Answer } from "./bridge-answers";
 import { knownRed, redTitle } from "./known-red";
 import { replayHint, rngOf, runSeeds, sample } from "./seed";
 
 const PANE = "inv:p1";
-const STATUSES = [400, 404, 409, 500, 502, 503, 504] as const;
-
-/** One generated answer: how the stubbed fetch behaves. */
-type Answer =
-  | { readonly kind: "status"; readonly status: number; readonly body: string; readonly label: string }
-  | { readonly kind: "throw"; readonly error: () => Error; readonly label: string };
-
-const json = (value: JsonValue): string => JSON.stringify(value);
-const HTML = "<html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center></body></html>";
-
-/** The failures every route meets alike: statuses with each body shape, the broken links, bodies of other bridges. */
-function commonAnswers(): Answer[] {
-  const out: Answer[] = [];
-  for (const status of STATUSES) {
-    out.push({ kind: "status", status, body: json({ ok: false, error: "The bridge refused.", code: "unknown_code_from_a_newer_bridge" }), label: `${String(status)} json` });
-    out.push({ kind: "status", status, body: HTML, label: `${String(status)} html` });
-    out.push({ kind: "status", status, body: "", label: `${String(status)} empty` });
-  }
-  out.push({ kind: "throw", error: () => new DOMException("The operation timed out.", "TimeoutError"), label: "time-out" });
-  out.push({ kind: "throw", error: () => new DOMException("The operation was aborted.", "AbortError"), label: "abort" });
-  out.push({ kind: "throw", error: () => new TypeError("Failed to fetch"), label: "link dropped" });
-  out.push({ kind: "status", status: 200, body: "this is not json", label: "200 not json" });
-  out.push({ kind: "status", status: 200, body: json({}), label: "200 empty object (older bridge)" });
-  out.push({ kind: "status", status: 200, body: json({ surprise: true, version: 99 }), label: "200 unknown fields only (newer bridge)" });
-  out.push({ kind: "status", status: 200, body: "null", label: "200 null" });
-  return out;
-}
-
 /** An object with the reason added when there is one. */
 function reasoned(base: JsonObject, reason: string | undefined): JsonObject {
   const out: JsonObject = { ...base };
