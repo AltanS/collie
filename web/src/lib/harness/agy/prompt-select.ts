@@ -14,6 +14,29 @@ export type { PromptFamily, PromptModel, PromptOption };
 
 const SIGNATURE_LOOKBACK = 40;
 
+// A dialog's own top: a title alone on its row ("Command", "Question") with the dialog's rule right
+// under it (measured on agy 1.3 to 1.4.12 captures). Two words at most, a capital first.
+const DIALOG_TITLE = /^\p{Lu}\p{L}*(?: \p{L}+)?$/u;
+// A question that is its own subject: the tool's question header ("Question 1/2: Which animal?").
+const OWN_QUESTION = /^Question\s+\d+\/\d+:/u;
+
+/**
+ * The row of the dialog's title, when the FIRST rule above the question sits right under a title row
+ * and the rows between that rule and the question hold what the dialog asks about (a permission's
+ * "Requesting permission for:" and its command), or the question is its own subject. Else -1, and the
+ * dialog binds and compares the lookback signature as before. A command row drawn as a rule, a stray
+ * rule in the transcript or a title of another shape all give -1.
+ */
+function dialogTop(texts: string[], questionAt: number, question: string): number {
+  for (let i = questionAt - 1, seen = 0; i > 0 && seen < SIGNATURE_LOOKBACK; i--, seen++) {
+    if (!isHorizontalRule(texts[i]!)) continue;
+    if (!DIALOG_TITLE.test(texts[i - 1]!.trim())) return -1;
+    const holds = OWN_QUESTION.test(question) || texts.slice(i + 1, questionAt).some((t) => !isBlank(t));
+    return holds ? i - 1 : -1;
+  }
+  return -1;
+}
+
 export function regionSignature(texts: string[], from: number, footer: number): string {
   return texts.slice(Math.max(0, from), footer + 1).join("\n");
 }
@@ -212,7 +235,17 @@ export function detectPromptSelectRegionIn(texts: string[]): PromptRegion | null
   for (let i = questionAt + 1; i < firstOpt; i++) {
     if (!isBlank(texts[i]!) && !isHorizontalRule(texts[i]!)) startLine = firstOpt;
   }
-  return { model: { question, options, family, signature, coreSignature }, startLine, statusStartLine: footerIndex + 1 };
+  const model: PromptModel = { question, options, family, signature, coreSignature };
+  // The dialog's own rows, title to footer, where they hold its subject (`dialogTop`): what the phone
+  // compares and binds, and what the ask id covers, so a ticking row above the dialog (a subagent
+  // band's timer, a spinner) refuses no tap. The rows hold no countdown, so the two are one text.
+  const dialogAt = dialogTop(texts, questionAt, question);
+  if (dialogAt >= 0) {
+    const own = regionSignature(texts, dialogAt, footerIndex);
+    model.askRegion = own;
+    model.bindRegion = own;
+  }
+  return { model, startLine, statusStartLine: footerIndex + 1 };
 }
 
 export function detectPromptSelect(lines: StyledLine[]): PromptModel | null {

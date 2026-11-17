@@ -700,6 +700,8 @@ export const en = {
   "composer.protocol.refused": "The send was refused, so nothing was typed. Read the line below, then change the text or send again.",
   "composer.protocol.codeRejected": "The agent did not take the code. Its words are below. Get a new code, then send it.",
   "composer.protocol.menuOpen": "A menu or a question is on the screen, so nothing was typed. Answer it with the Keys pad.",
+  "composer.protocol.overrideTypedDraft": "Your text is in the agent's box, after words that were already there. Collie pressed no Enter. Check the box, then press Enter on the Keys pad.",
+  "composer.protocol.overrideMoved": "The screen changed before your text went in, so nothing was typed. Look at the screen now, then tap Send to type it anyway.",
   "composer.protocol.overrideTyped": "Your text is in the agent's box. Collie pressed no Enter. Check the screen, then press Enter on the Keys pad.",
   "composer.protocol.draftUnseen": "The input box holds a draft that Collie cannot read whole, so nothing was typed. Empty the box deletes that draft. Then send again.",
   "composer.step.sendAgain": "Send again",
@@ -876,6 +878,8 @@ export const en = {
   "chat.status.askGone": "The dialog is gone; Collie read the screen again",
   "chat.status.askUnknown": "No proof the answer went; the screen shows what happened",
   "chat.status.askDesk": "The desk answered first. Collie did not use your tap.",
+  "chat.status.askMoved": "The hold ended before your tap. The card now answers the dialog on the screen.",
+  "app.apiSkew": "This page comes from another Collie version than this machine. It reloads when nothing unsent is open.",
   "chat.hold.title": "Permission: {tool}",
   "chat.hold.subagent": "A subagent asks. Answer it on this card, not on the screen.",
   "chat.hold.moreLines": "The input has {count} lines. Scroll the box to read all of them.",
@@ -3986,6 +3990,8 @@ export const PENDING_TRANSLATION = [
   "unreadDialog.caption",
   "composer.protocol.menuOpen",
   "composer.protocol.overrideTyped",
+  "composer.protocol.overrideTypedDraft",
+  "composer.protocol.overrideMoved",
   "unreadDialog.keysAria",
   "unreadDialog.typeAnyway",
   "unreadDialog.typeAnywayHint",
@@ -4063,6 +4069,8 @@ export const PENDING_TRANSLATION = [
   "answerExit.changed",
   "answerExit.unseen",
   "answerExit.closeAria",
+  "chat.status.askMoved",
+  "app.apiSkew",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

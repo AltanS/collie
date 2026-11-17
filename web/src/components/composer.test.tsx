@@ -6335,6 +6335,45 @@ describe("the unread card (M102 spec 03)", () => {
     expect(recordedSends()).toHaveLength(2);
   });
 
+  it("unread card: an override typed after words already in the agent's box says so (draftSeen)", async () => {
+    server.use(
+      ...sendHandler((request) =>
+        request.mode === "prepare"
+          ? sendAnswer(request.id, null, undefined, { rowsHash: "0ccc05" })
+          : sendAnswer(request.id, "typed_not_submitted", "override", { offers: ["keys"], surface: UNREAD, draftSeen: true }),
+      ),
+    );
+    const user = userEvent.setup();
+    const { handle } = renderUnread(null);
+    act(() => handle.current?.typeAnyway());
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    await user.type(screen.getByRole("textbox"), "yes please");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/after words that were already there\. Collie pressed no Enter/u));
+  });
+
+  it("unread card: an override the screen moved under says so and stays armed on the screen now", async () => {
+    server.use(
+      ...sendHandler((request) =>
+        request.mode === "prepare"
+          ? sendAnswer(request.id, null, undefined, { rowsHash: "0eee06" })
+          : request.rowsHash === "0eee06"
+            ? sendAnswer(request.id, "refused", "stale_surface", { offers: ["keys"], rowsHash: "0fff07", surface: UNREAD })
+            : sendAnswer(request.id, "sent"),
+      ),
+    );
+    const user = userEvent.setup();
+    const { handle } = renderUnread(null);
+    act(() => handle.current?.typeAnyway());
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    await user.type(screen.getByRole("textbox"), "go on");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/The screen changed before your text went in, so nothing was typed/u));
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(3));
+    expect(recordedSends()[2]).toMatchObject({ text: "go on", rowsHash: "0fff07", override: true });
+  });
+
   it("unread card: a not_free refusal with the rows hash offers Type here, which sends the override on those rows (I4)", async () => {
     const stale: Surface = { revision: 3, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale" };
     server.use(

@@ -227,7 +227,8 @@ describe("M102-15, the guarded key tap on real dialogs", () => {
     const shownText = insertRow(text, top, tick[0]);
     const shown = dialogDetector("prompt-select", "claude")(lines(shownText));
     if (shown === null) throw new Error("the named dialog does not lift");
-    expect(shown.bindRegion).toBeUndefined();
+    // Since staging d7af75e5c this ask binds its question's own rows (`bindRegion`), so the tick sits outside
+    // the compare either way; the seeded run above still covers the dialogs that have no frame.
     const result = await tapFresh({ name, harness: "claude", text: shownText, prompt: shown, top }, insertRow(text, top, tick[1]), DETECTED + 2, shown.options[0]);
     expect({ status: result.status, writes: mockSendKeys.mock.calls.length, all }).toEqual({ status: "sent", writes: 1, all: [] });
   });

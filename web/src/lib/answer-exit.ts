@@ -38,7 +38,7 @@ export const EXIT_SENTENCE = {
 
 /**
  * The exit an ask answer's ending opens, or null when the ending is settled or shows its own next card.
- * `sent`, `gone` and `desk` are settled; `changed` and `mismatch` hand back the dialog now, and the card
+ * `sent`, `gone` and `desk` are settled; `changed`, `mismatch` and `moved` hand back the dialog now, and the card
  * re-renders on it (the lead's decision 4).
  */
 export function exitOfAsk(result: AskTapResult): AnswerExitWhy | null {
@@ -46,6 +46,7 @@ export function exitOfAsk(result: AskTapResult): AnswerExitWhy | null {
     case "sent":
     case "changed":
     case "mismatch":
+    case "moved":
     case "gone":
     case "desk":
       return null;

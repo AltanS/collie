@@ -225,6 +225,49 @@ export function verifyPromptBinding(
   return { ok: true, styled: "checked" };
 }
 
+/** The most parts one list binding may hold. */
+export const MAX_PROMPT_PARTS = 4;
+/**
+ * How many rows may sit between two parts of a list binding, at most. A part boundary leaves out the
+ * rows the phone saw redraw by themselves (a countdown sentence, which rewraps to one to three rows as
+ * its clock changes width), and nothing else: at least one row, never more than this.
+ */
+export const MAX_PART_GAP_ROWS = 4;
+
+/**
+ * The binding check for an `expected_prompt` given as ORDERED LITERAL PARTS: every part is on the
+ * read, in order, the last one where a single region would be (its last match, ending inside the last
+ * `tailLines` rows, a trailing task checklist and a named footer run handled as `verifyExpectedPrompt`
+ * does), and each earlier part ends 1 to {@link MAX_PART_GAP_ROWS} rows above the start of the part
+ * after it. Normalized rows, as the single check counts them. No grammar here: which rows were left
+ * out, and why, is the phone's decision; the bridge checks only that everything else is still there.
+ */
+export function verifyPromptParts(
+  freshText: string,
+  parts: readonly string[],
+  tailLines = DEFAULT_PROMPT_TAIL_LINES,
+): PromptBindingResult {
+  if (parts.length < 2 || parts.length > MAX_PROMPT_PARTS) return { ok: false, reason: "empty" };
+  const expected = parts.map(normalizePromptRegion);
+  if (expected.some((lines) => lines.length === 0)) return { ok: false, reason: "empty" };
+  const freshLines = normalizePromptRegion(freshText);
+  const last = matchText(freshText, freshLines, parts.at(-1)!, tailLines);
+  if (!last.ok) return { ok: false, reason: last.reason };
+  let nextStart = last.start;
+  for (let k = expected.length - 2; k >= 0; k--) {
+    const lines = expected[k]!;
+    let found = -1;
+    for (let gap = 1; gap <= MAX_PART_GAP_ROWS && found < 0; gap++) {
+      const start = nextStart - gap - lines.length;
+      if (start < 0) break;
+      if (lines.every((line, offset) => freshLines[start + offset] === line)) found = start;
+    }
+    if (found < 0) return { ok: false, reason: "not_found" };
+    nextStart = found;
+  }
+  return { ok: true };
+}
+
 /** The refusal a shadow observation WOULD give. It is recorded in the audit line, never returned as a
  *  verdict (see {@link composerBelowShadow}). */
 export type BindingShadow = "composer_below";

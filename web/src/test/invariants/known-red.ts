@@ -50,19 +50,6 @@ export const KNOWN_RED = {
     where: "bridge/surface/holds.ts:35 (HOLD_MS, 30 minutes), bridge/surface/protocol.ts:3489-3510 (holdsEnd), protocol.ts:3699 (tickHolds marks nothing after two minutes)",
     what: "A person's send held on a screen that is not free waits up to 30 minutes on the reader, and after two minutes nothing on the receipt lets the phone show the screen and Send it now.",
   },
-  // ── I2, a tap ends in a request, a change or words ──
-  "i2-stop-hold-pane": {
-    invariant: "I2",
-    fixedBy: "M102-11",
-    where: "web/src/components/harness-bar.tsx:510 (the epoch moves with the pane), harness-bar.tsx:515 (stopHeld returns with nothing on an old stamp)",
-    what: "A finger that holds Stop while the pane changes under it sees the button fill to the end on a running turn, then nothing: no Stop, no word, no dim button.",
-  },
-  "i2-change-login-crash": {
-    invariant: "I2",
-    fixedBy: "NONE",
-    where: "web/src/routes/settings-change-login.tsx:74 (`body?.accounts.find`: a body with no accounts field throws in render)",
-    what: "After Finish, a list answer from an older or newer bridge with no accounts field crashes the page to the router's error screen: no result, no way back but the browser.",
-  },
   // ── I7, no accident on a menu ──
   "i7-blind-road": {
     invariant: "I7",
