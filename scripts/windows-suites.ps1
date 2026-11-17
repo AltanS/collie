@@ -14,7 +14,7 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 546 in all, each one named, with its reason:
+#              Today, 528 in all, each one named, with its reason:
 #              bridge 311: 174 from before 1.29.0 and 137 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
 #                adapters 10, then Accounts 45, then 11 more of the data path for a dropped or failed data send and a shadowed part; see below). Of the 174, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 6 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
@@ -163,10 +163,11 @@
 #                - 4 in bridge/accounts-store.test.ts, a good row, the duplicate row, the store add and the listener
 #                - 3 in bridge/launch-by-id.test.ts, a launch with an account, and Change login's start on a signed-in account
 #                - 1 in bridge/worktree-from-folder.test.ts, a worktree with an account
-#              cli 200 in all: 16 are new since 1.29.0: 3 of the hold card, 8 of the harness verbs and 5 of the first full trick run (3
-#                of the Hill verbs and the tricks, 2 of the helper's output), below. The other 184: 21 in the next paragraph, then 3 of the statusLine wrapper, 54 of walky talky, 21 of the agent view,
-#                69 of the Hill verbs and the tricks (72 with the 3 above; see "The Hill verbs and the tricks, cli" below), and 16 gated on Windows (b) (18 with the 2 above)
-#                (see "The helper's output, cli" below). Of the 21, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
+#              cli 182 in all: 14 are new since 1.29.0: 3 of the hold card, 8 of the harness verbs and 3 of the first full trick run (all
+#                of the Hill verbs and the tricks), below. The other 168: 21 in the next paragraph, then 3 of the statusLine wrapper, 54 of walky talky, 21 of the agent view,
+#                and 69 of the Hill verbs and the tricks (72 with the 3 above; see "The Hill verbs and the tricks, cli" below). The 18 of
+#                the helper's output, once gated on Windows (b), run on Windows again since the helper v6 (see "The helper's output, cli" below).
+#                Of the 21, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
 #                platform. The other 9:
 #                "a per-call override wins over the Exec's own environment (#283) > a child killed by a signal says which one"
@@ -220,13 +221,11 @@
 #                PATH lookup, are `claudeTest`, a skip on win32: link claude, link claude twice, unlink claude, the managed setting,
 #                the interrupted first link, unlink while `claude plugin list` fails, "update: harness sync rewrites an older linked
 #                part" and "touches nothing else".
-#              The helper's output, cli (18): gated on Windows (b). A program that uses the trick helper (`./trick.ts`) prints
-#                nothing on Windows yet, so Collie gates tricks there (bridge/tricks/service.ts `gated`). Each test that runs
-#                such a program is `helperTest`, a `test.skipIf` on win32: 3 in cli/trick.test.ts ("the folder init writes
-#                passes check --run with no refusal, in both forms", and from the first full trick run "the starter run with
-#                no config.toml prints nothing the bridge refuses" and "check --run reports a printed status over its
-#                limit, and fails"), 9 in cli/trick-kit/trick.test.ts and 6 in
-#                cli/trick-dev.test.ts. Remove them with the fix of the helper's output.
+#              The helper's output, cli (0, was 18): fault b of the Windows milestone. A program that used the trick helper
+#                (`./trick.ts`) printed nothing on Windows, because the helper ended a run with `process.exit` over a stdout write
+#                in flight. Helper v6 ends after the pipe took the output, so the 18 tests that run such a program (3 in
+#                cli/trick.test.ts, 9 in cli/trick-kit/trick.test.ts, 6 in cli/trick-dev.test.ts) are no longer `helperTest`
+#                and run on Windows. Tricks stay gated on Windows (bridge/tricks/service.ts `gated`) until Altan lifts the gate.
 #              scripts 35: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
 #                install.sh is POSIX sh, and Windows installs with install.ps1, tested beside it.
 #                The other 2 are in the harness lab (scripts/harness-canary/lab/):
@@ -239,7 +238,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$Out,
   [int]$MaxSkipsBridge = 311,
-  [int]$MaxSkipsCli = 200,
+  [int]$MaxSkipsCli = 182,
   [int]$MaxSkipsScripts = 35
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

@@ -23,10 +23,6 @@ import { inputsSentence, parseTrickDocument, TRICK_CONTRACT, TRICK_CONTRACT_DEFA
 import { STATUS_TEXT_MAX, TRICKS_WINDOWS_LINE } from "../web/src/lib/tricks/schema.ts";
 import { trickGuide } from "./trick-guide.ts";
 
-// gated on Windows (b): a program that uses the helper (`./trick.ts`) prints nothing on Windows yet, so
-// Collie gates tricks there (bridge/tricks/service.ts `gated`). Each `helperTest` runs such a program.
-const helperTest = test.skipIf(process.platform === "win32");
-
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "collie-trick-cli-"));
@@ -170,7 +166,7 @@ describe("collie trick init", () => {
     expect(sampleProgram("legs").trimEnd().split("\n").length).toBeLessThanOrEqual(30);
   });
 
-  helperTest("the folder init writes passes check --run with no refusal, in both forms", async () => {
+  test("the folder init writes passes check --run with no refusal, in both forms", async () => {
     const d = await deps();
     await cmdTrickInit(d, ["hello"]);
     const dir = join(d.configDir, "tricks", "hello");
@@ -206,7 +202,7 @@ describe("collie trick init", () => {
 });
 
 describe("decision 8 (the first full trick run, 2026-11-16): nothing the bridge refuses", () => {
-  helperTest("the starter run with no config.toml prints nothing the bridge refuses", async () => {
+  test("the starter run with no config.toml prints nothing the bridge refuses", async () => {
     const d = await deps();
     await cmdTrickInit(d, ["hello"]);
     const dir = join(d.configDir, "tricks", "hello");
@@ -223,7 +219,7 @@ describe("decision 8 (the first full trick run, 2026-11-16): nothing the bridge 
     expect(trickGuide().join("\n")).toContain(`A status text is ${String(STATUS_TEXT_MAX)} characters at most.`);
   });
 
-  helperTest("check --run reports a printed status over its limit, and fails", async () => {
+  test("check --run reports a printed status over its limit, and fails", async () => {
     const d = await deps();
     await cmdTrickInit(d, ["hello"]);
     const dir = join(d.configDir, "tricks", "hello");
