@@ -40,7 +40,7 @@ import type { HillTrickTap } from "../hill/service.ts";
 import type { ViewGate } from "../agent-view/service.ts";
 import type { TrickRightsPort, TrickRightsSubject } from "./rights-card.ts";
 import { bindingAgainst, bindParts, type GenerationOf, type InstanceOf } from "./bound.ts";
-import { approveFolder, copyListing, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
+import { approveFolder, copyListing, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, removeTrickCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { fieldsChanged } from "./version-card.ts";
 import { codeHashOfFiles, diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
@@ -2374,6 +2374,9 @@ export class TricksService implements TricksSurface {
       // Decision 3: a trick new to this machine starts from a new state folder and a fresh switch entry. The
       // write above refused a folder of this name, so a state folder left here belongs to no trick that runs.
       await rm(trickStateDir(this.deps.stateDir, id), { recursive: true, force: true });
+      // The same holds for the approved and pending copies an earlier trick of this id left: a copy of equal
+      // code would hash the same and be kept as it is, with its old config, origin record and writable folders.
+      await removeTrickCopies(this.deps.configDir, id);
       const placed = await this.approveWritten(id, written.codeHash, "The trick was written but changed before it could be approved, so it stays off.", { fresh: true });
       await this.freshScan();
       return placed;

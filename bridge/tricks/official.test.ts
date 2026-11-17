@@ -13,7 +13,7 @@ import { DESCRIPTION_MAX, TRICK_CONTRACT, TRICKS_WINDOWS_SHELL_LINE } from "../.
 import { isListedOrigin, isUnlistedOfficialOrigin, officialStanding, officialStateOf, officialWire, parseOfficialList, pinnedPlaces, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_PREVIOUS_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
 import { canonicalRepoUrl, ORIGIN_FILE, parseOrigin, renderOrigin, renderProposalOrigin, sameRepo } from "./origin.ts";
 import { caseClash } from "./proposal-install.ts";
-import { APPROVED_DIR, approvedCopyDir, switchesPath, TRICKS_DIR, tricksStateDir } from "./paths.ts";
+import { APPROVED_DIR, approvedCopyDir, approvedTrickDir, switchesPath, TRICKS_DIR, tricksStateDir } from "./paths.ts";
 import { tricksOfficialRoute } from "./routes.ts";
 import { PENDING_SETTLE_MS, TricksService } from "./service.ts";
 import { parseSwitches, withSwitch, writeSwitches } from "./switches.ts";
@@ -634,6 +634,60 @@ describe.if(posix)("adding from the list", () => {
     await writeSwitches(r.stateDir, withSwitch({ on: new Map() }, "legs", true, "2026-11-10T09:00:00Z", "c".repeat(64)));
     expect((await r.official.install("legs", "add")).status).toBe(200);
     expect(parseSwitches(await readFile(switchesPath(r.stateDir), "utf8")).switches.on.has("legs")).toBe(false);
+  });
+
+  test("review J note: a copy left under .collie-approved by a removed trick never carries to a new trick of the same id", async () => {
+    const repo = await fixtureRepo([V1, V2]);
+    const [c1, c2] = [repo.shas[0] ?? "", repo.shas[1] ?? ""];
+    const [h1, h2] = [await hashOf(V1_LEGS), await hashOf(V2_LEGS)];
+    const r = await rig([fixtureEntry(repo.url, c1, h1)]);
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    expect((await r.service.setSwitch("lodge", "legs", true)).status).toBe(200);
+    const first = approvedCopyDir(r.configDir, "legs", h1);
+    expect((await stat(first)).isDirectory()).toBe(true);
+    // The old trick leaves: switched off, its folder removed by hand (`collie trick remove` would clear the copies itself).
+    await mkdir(join(first, "inputs"), { recursive: true });
+    await writeFile(join(first, "inputs", "stale.txt"), "left by the old trick");
+    expect((await r.service.setSwitch("lodge", "legs", false)).status).toBe(200);
+    await rm(trickDir(r, "legs"), { recursive: true, force: true });
+    expect((await stat(first)).isDirectory()).toBe(true);
+    // A different trick of the same id is added: the old copy goes, and the switch must ask for the new code.
+    r.entries = [fixtureEntry(repo.url, c2, h2)];
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    expect(await stat(first).catch(() => null)).toBeNull();
+    expect(await stat(approvedTrickDir(r.configDir, "legs")).catch(() => null)).toBeNull();
+    // The phone showed the old code's hash: refused, nothing approved.
+    const moved = await r.service.setSwitch("lodge", "legs", true, h1);
+    expect(moved).toMatchObject({ status: 409, body: { error: "moved" } });
+    expect(parseSwitches(await readFile(switchesPath(r.stateDir), "utf8")).switches.on.has("legs")).toBe(false);
+    // The new code's hash: approved, and what runs is the new bytes only.
+    expect((await r.service.setSwitch("lodge", "legs", true, h2)).status).toBe(200);
+    const kept = parseSwitches(await readFile(switchesPath(r.stateDir), "utf8")).switches.on.get("legs");
+    expect(kept?.hash).toBe(h2);
+    expect(await readFile(join(approvedCopyDir(r.configDir, "legs", h2), "program.sh"), "utf8")).toContain("# two");
+    expect(await readdir(approvedTrickDir(r.configDir, "legs"))).toEqual([h2.slice(0, 16)]);
+    // The same code again from another add: a copy of equal code hashes the same and would be kept as it is,
+    // with whatever its writable folders hold, so nothing may be there to keep.
+    const second = approvedCopyDir(r.configDir, "legs", h2);
+    await mkdir(join(second, "inputs"), { recursive: true });
+    await writeFile(join(second, "inputs", "stale.txt"), "left by the second trick");
+    expect((await r.service.setSwitch("lodge", "legs", false)).status).toBe(200);
+    await rm(trickDir(r, "legs"), { recursive: true, force: true });
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    expect((await r.service.setSwitch("lodge", "legs", true, h2)).status).toBe(200);
+    expect(await stat(join(second, "inputs", "stale.txt")).catch(() => null)).toBeNull();
+    expect(await readFile(join(second, "program.sh"), "utf8")).toContain("# two");
+  });
+
+  test("review J note: a stale switch entry with its auto flag and its copies are cleared by an add, and a folder that is there is left alone", async () => {
+    const repo = await fixtureRepo([V1]);
+    const r = await rig([fixtureEntry(repo.url, repo.shas[0] ?? "", await hashOf(V1_LEGS))]);
+    const old = "c".repeat(64);
+    await writeSwitches(r.stateDir, { on: new Map([["legs", { at: "2026-11-09T09:00:00Z", hash: old, auto: true, by: "phone", powers: null }]]), version: 3 });
+    await mkdir(approvedCopyDir(r.configDir, "legs", old), { recursive: true });
+    expect((await r.official.install("legs", "add")).status).toBe(200);
+    expect(parseSwitches(await readFile(switchesPath(r.stateDir), "utf8")).switches.on.has("legs")).toBe(false);
+    expect(await stat(approvedTrickDir(r.configDir, "legs")).catch(() => null)).toBeNull();
   });
 
   test("a fetch past the time cap is the network line, and nothing stays", async () => {

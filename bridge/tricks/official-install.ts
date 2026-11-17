@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { HOST } from "../host.ts";
 import { rulesTextProblems, TRICKS_WINDOWS_SHELL_LINE, type OfficialState, type OfficialTricksReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { forgetLeftovers } from "./approved.ts";
 import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { fetchSource, FetchRefused, FetchSlot, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
 import { officialStanding, officialStateOf, officialWire, pinnedPlaces, shippedOfficialList, type OfficialEntry, type OfficialStanding } from "./official.ts";
@@ -11,7 +12,6 @@ import type { RepoFactsPort } from "./repo-facts.ts";
 import { renderOrigin } from "./origin.ts";
 import { tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { replaceCode, writeNewTrick, type ProposalWrite } from "./proposal-install.ts";
-import { updateSwitches, withSwitch } from "./switches.ts";
 
 // ADDING A TRICK FROM THE FROM COLLIE LIST (M94). The only network use of the feature, and only on the
 // person's tap: `POST /api/tricks/official/<id>/add` (or `/update`), write-gated like the trick switch
@@ -353,7 +353,7 @@ export class OfficialTricks implements OfficialTricksSurface {
     let written: ProposalWrite;
     if (mode === "add") {
       // Added means switched off: a switch entry a removed folder left behind for this id goes first.
-      await updateSwitches(this.deps.stateDir, (now) => (now.on.has(entry.id) ? withSwitch(now, entry.id, false, at) : now));
+      await forgetLeftovers({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, id: entry.id, at });
       written = await writeNewTrick(root, entry.id, candidate.files, originText, { expect: entry.hash });
     } else {
       // Only code moves (the proposal version write's rule): the new version's config.toml, pictures and
