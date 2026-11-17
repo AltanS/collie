@@ -410,11 +410,11 @@ export const PLACES = {
     id: "status",
     name: "Status chip",
     where: "One chip in the status line above the Belt, at the left end of the row; the model and the usage stay at the right end.",
-    shows: "One chip: a short text, an icon, a `tone`, and a live time with `at` and `clock`. It takes no view.",
+    shows: "One chip: a short text, an icon, a `tone`, and a live time with `at` and `clock`. It takes no view. It draws in the type and the colour of the usage figures beside it, and the trick sets no size. Only the tones `warn` and `danger` change the colour; every other tone reads as the row.",
     tap: "A tap opens the trick's Page when it has one. The chip is not a control and takes no intent.",
     limits: [ONE_PER_TRICK, { what: "`text`", value: `1 to ${String(STATUS_TEXT_MAX)} characters` }, PART_SIZE],
     who: "program",
-    examples: [{ kind: "document", json: { v: 1, parts: [{ at: "status", id: "ci", chip: { text: "CI green", icon: "check", tone: "ok" } }] } }],
+    examples: [{ kind: "document", json: { v: 1, parts: [{ at: "status", id: "ci", chip: { text: "CI red", icon: "check", tone: "danger" } }] } }],
   },
   tabbar: {
     id: "tabbar",
