@@ -10,6 +10,8 @@ import { trickCodeHash } from "../bridge/tricks/code-hash.ts";
 import { OFFICIAL_REPOS, shippedOfficialList } from "../bridge/tricks/official.ts";
 import { ORIGIN_FILE, renderOrigin } from "../bridge/tricks/origin.ts";
 import { approvedCopyDir, switchesPath } from "../bridge/tricks/paths.ts";
+import { approveFolder } from "../bridge/tricks/approved.ts";
+import { switchMasked } from "../bridge/tricks/code-view.ts";
 import { HILL_WRITING } from "./hill-rules.ts";
 import { cmdTrickAdd, OFFICIAL_TRICKS_REPO } from "./trick-add.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -864,6 +866,22 @@ describe("collie trick on, off and list", () => {
     expect(clean.out[0]).toStartWith("quiet is on.");
   });
 
+  test("A5: on refuses code the phone cannot show as it is, names the file, says why, and writes no switch", async () => {
+    const d = await deps();
+    await cmdTrickInit(d, ["--sh", "legs"]);
+    const dir = join(d.configDir, "tricks", "legs");
+    await writeFile(join(dir, "program.sh"), `#!/bin/sh\nKEY="${KEY}"\n`);
+    expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.FAIL);
+    expect(d.err).toEqual([`error: ${switchMasked("program.sh", "legs")}`, "error: Collie switches on only code that every person who reads it on the phone can see as it is."]);
+    expect(await readFile(switchesPath(d.stateDir), "utf8").catch(() => null)).toBeNull();
+    // The helper `init` writes for a TypeScript trick is larger than the phone shows of one file; it is
+    // Collie's own, byte for byte, so a fresh trick still switches on.
+    const ts = await deps();
+    await cmdTrickInit(ts, ["quiet"]);
+    expect((await stat(join(ts.configDir, "tricks", "quiet", "trick.ts"))).size).toBeGreaterThan(32 * 1024);
+    expect(await cmdTrickSwitch(ts, ["quiet"], true)).toBe(EXIT.OK);
+  });
+
   test("list shows the bridge's state, last run and error when it answers", async () => {
     const d = await deps({
       rev: 5,
@@ -969,11 +987,14 @@ describe("collie trick skill", () => {
   const TEXT = "# legs\n\nKeep the file notes.md up to date.\n";
 
   /** A trick folder `legs` with a SKILL.md, switched on. */
-  async function onTrick(skill: string | null = TEXT): Promise<Awaited<ReturnType<typeof deps>>> {
+  async function onTrick(skill: string | null = TEXT, approve: "verb" | "copy" = "verb"): Promise<Awaited<ReturnType<typeof deps>>> {
     const d = await deps();
     await cmdTrickInit(d, ["legs"]);
     if (skill !== null) await writeFile(join(d.configDir, "tricks", "legs", "SKILL.md"), skill);
-    expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
+    // A SKILL.md the phone cannot show as it is (a key, over 32 KiB) is refused by `trick on` (A5): such a
+    // case approves the copy itself, as an approval from before that rule left it.
+    if (approve === "copy") expect((await approveFolder({ stateDir: d.ctx.stateDir, configDir: d.ctx.configDir, id: "legs", by: "cli", at: "2026-11-17T10:00:00.000Z" })).ok).toBe(true);
+    else expect(await cmdTrickSwitch(d, ["legs"], true)).toBe(EXIT.OK);
     // Tricks as a whole are on: a trick teaches an agent only then (bridge/tricks/feature-switch.ts).
     writeTricksFeature(d.stateDir, true);
     d.out.length = 0;
@@ -1082,7 +1103,7 @@ describe("collie trick skill", () => {
     expect(link.out).toEqual([]);
     expect(link.err[0]).toBe("legs has no SKILL.md");
 
-    const big = await onTrick("x".repeat(SKILL_BYTES_MAX + 1));
+    const big = await onTrick("x".repeat(SKILL_BYTES_MAX + 1), "copy");
     expect(await cmdTrickSkill(big, ["legs"])).toBe(EXIT.FAIL);
     expect(big.err).toEqual(["legs has a SKILL.md larger than 32 KiB, so it is not read"]);
     expect(big.out).toEqual([]);
@@ -1093,7 +1114,7 @@ describe("collie trick skill", () => {
   });
 
   test("the text goes through the secret mask", async () => {
-    const d = await onTrick(`Use the key ${KEY} for the call.\n`);
+    const d = await onTrick(`Use the key ${KEY} for the call.\n`, "copy");
     expect(await cmdTrickSkill(d, ["legs"])).toBe(EXIT.OK);
     expect(d.out.join("\n")).not.toContain(KEY);
     expect(d.out.join("\n")).toContain("Use the key ");

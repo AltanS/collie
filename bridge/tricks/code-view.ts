@@ -7,7 +7,7 @@ import { looksBinary } from "../changes.ts";
 import { redactText } from "../redact.ts";
 import { CODE_BYTES_MAX, codeHashOfFiles, diskTrickFs, walkTrickCode, type TrickFs } from "./code-hash.ts";
 import { MANIFEST_FILE } from "./paths.ts";
-import { kindRank, scanTrickFolder, type CheckWarning } from "./scan.ts";
+import { HELPER_FILE, kindRank, scanTrickFolder, shippedHelperVersion, type CheckWarning } from "./scan.ts";
 import { readViewLine } from "./version-diff.ts";
 
 // THE CODE OF A TRICK, FOR THE ABOUT SHEET'S "READ THE CODE" FOLDS (2026-11-17, package F).
@@ -34,6 +34,14 @@ import { readViewLine } from "./version-diff.ts";
 // It is a text search, and the sheet says so.
 //
 // READS ONLY. No write route, no new right.
+//
+// ── NO SWITCH ON OF CODE THE SHEET CANNOT SHOW AS IT IS (A5) ──────────────────────────────────────────
+// The fold may mask and cut. So a switch on outside a card, from the phone's switch (service.ts `setSwitch`)
+// or from `collie trick on`, is refused while the code it would approve holds a file the fold cannot show
+// whole and as it is: a line the mask changes (a key, or a hidden character as `?`), a file over
+// {@link CODE_VIEW_BYTES_MAX}, or a file that is not UTF-8 text ({@link codeShowsWhole}). Collie's own helper,
+// byte for byte, is left out: card 1 of a proposal names it the same way. The one rule of every card: a
+// view that cannot show every byte as it is offers no yes.
 
 export type { WireCodeFile as CodeFile, WireCodeIndex as CodeIndex, WireCodeIndexFile as CodeIndexFile, WireCodeMark as CodeMark };
 
@@ -175,4 +183,41 @@ export async function codeFile(source: CodeSource, rel: string, fs: TrickFs = di
   const marks = marksOf(await warningsOf(source, read.files), rel);
   const shown = marks.filter((mark) => mark.line <= lines.length);
   return { ok: true, body: { file: rel, size: file.bytes.length, lines, leftOut: file.bytes.length - end, masked, marks: shown, marksLeft: marks.length - shown.length } };
+}
+
+/** Why a switch on is refused for code the About sheet cannot show whole and as it is (A5). Bridge English. */
+export function switchNotText(rel: string, id: string): string {
+  return `${rel} is not text, so the phone cannot show it, and ${id} stays off. Code must be text; pictures go in media/.`;
+}
+export function switchTooLarge(rel: string, id: string): string {
+  return `${rel} is larger than ${String(CODE_VIEW_BYTES_MAX / 1024)} KB, more than the phone shows of one file, so ${id} stays off. Split it into smaller files.`;
+}
+export function switchMasked(rel: string, id: string): string {
+  return `${rel} holds text the phone cannot show as it is (a key, or a hidden character), so ${id} stays off. Take it out of the code.`;
+}
+
+/** Whether every file of the code a switch on would approve shows whole and as it is, or the first that does not. */
+export type CodeWholeCheck = { ok: true } | CodeRefusal | { ok: false; code: "not-whole"; rel: string; message: string };
+
+/**
+ * Whether the About sheet shows every code file of `source` whole and as it is: read once, checked against its
+ * hash, then each file: UTF-8 text, at most {@link CODE_VIEW_BYTES_MAX}, and no line the mask changes. Collie's
+ * own helper, byte for byte, passes. A switch on outside a card is refused otherwise (A5).
+ */
+export async function codeShowsWhole(source: Pick<CodeSource, "dir" | "hash">, id: string, fs: TrickFs = diskTrickFs): Promise<CodeWholeCheck> {
+  const read = await readCode({ ...source, copy: "next", manifest: undefined }, fs);
+  if (!read.ok) return read;
+  for (const file of read.files) {
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(file.bytes);
+    } catch {
+      return { ok: false, code: "not-whole", rel: file.rel, message: switchNotText(file.rel, id) };
+    }
+    if (looksBinary(file.bytes)) return { ok: false, code: "not-whole", rel: file.rel, message: switchNotText(file.rel, id) };
+    if (file.rel === HELPER_FILE && shippedHelperVersion(text) !== null) continue;
+    if (file.bytes.length > CODE_VIEW_BYTES_MAX) return { ok: false, code: "not-whole", rel: file.rel, message: switchTooLarge(file.rel, id) };
+    if (maskedLines(text).masked > 0) return { ok: false, code: "not-whole", rel: file.rel, message: switchMasked(file.rel, id) };
+  }
+  return { ok: true };
 }

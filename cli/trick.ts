@@ -8,6 +8,7 @@ import { redactText } from "../bridge/redact.ts";
 import { GROUP_CAPACITY_WORDS } from "../bridge/tricks/card-group.ts";
 import { proposalCardCount, type ProposalCardCount } from "../bridge/tricks/proposal-card.ts";
 import { approvedDirOf, approveFolder, pruneCopies, verifyCopy } from "../bridge/tricks/approved.ts";
+import { codeShowsWhole } from "../bridge/tricks/code-view.ts";
 import { CONFIG_FILE, diskTrickFs, trickCodeHash, walkTrickCode } from "../bridge/tricks/code-hash.ts";
 import { officialStanding, shippedOfficialList } from "../bridge/tricks/official.ts";
 import { originRepoName, originShort, proposalShort } from "../bridge/tricks/origin.ts";
@@ -525,6 +526,14 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
   if (held?.hash === code.hash && heldCopy !== null && (await verifyCopy(heldCopy, code.hash)).ok) {
     deps.io.out(`${id} is already on, with this code approved (sha256 ${code.hash}).`);
     return EXIT.OK;
+  }
+  // A5: the terminal is held to the phone's rule. Code the phone cannot show whole and as it is (a key, a
+  // hidden character, a file over its size, a file that is not text) is not switched on here either.
+  const whole = await codeShowsWhole({ dir, hash: code.hash }, id);
+  if (!whole.ok) {
+    deps.io.err(`error: ${whole.message}`);
+    if (whole.code === "not-whole") deps.io.err("error: Collie switches on only code that every person who reads it on the phone can see as it is.");
+    return EXIT.FAIL;
   }
   // The copy is what is approved: its hash, and the warnings of its code, read at the moment of consent.
   // The copy must be the code hashed above (review 8 V-N1): a folder that moved in between is refused.
