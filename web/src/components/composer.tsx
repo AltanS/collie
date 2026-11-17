@@ -87,6 +87,7 @@ import { asksSendAgain, forgetUnknownSend, rememberUnknownSend, SEND_AGAIN_CONFI
 import { useHostLabel } from "@/components/crew-provider";
 import { fitsDraftStore, loadDraftEntry, saveDraft } from "@/lib/drafts";
 import { clearIntent, clearIntentIfDraftChanged, loadIntent, saveIntent } from "@/lib/send-intent";
+import type { IntentId } from "@/lib/durable-control";
 import { wipeDevice } from "@/lib/wipe";
 import { AttachmentChip, type ComposerAttachment } from "@/components/attachment-chip";
 import { ImageEditor } from "@/components/image-editor";
@@ -1116,6 +1117,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const lastSendRef = useRef<LastSend | null>(null);
   // Set when a code send ended `unknown`: the code may have gone, so the code field empties (`sendSecret`).
   const secretSpentRef = useRef(false);
+  // The request of a code send whose answer was lost (the M102 review 2, D): the next tap on the same code asks with
+  // the same id, so the bridge's "one id writes once" holds. In memory only, and it names no code: the intent's key
+  // leaves the text out (`sendText`), and the id is dropped when the field's text changes, the field goes, or any
+  // answer arrives. `where` is the pane it was for.
+  const secretIntentRef = useRef<{ readonly where: string; readonly intent: IntentId } | null>(null);
   // What the bridge said of the last send from an agent view: the line it typed, or its refusal code.
   const viewAnswerRef = useRef<{ line: string | null; code: string | null }>({ line: null, code: null });
   // Which notice that is (send-notice.tsx `refusalKey`: the screen it is about and its words), and
@@ -2267,18 +2273,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // A text for a sign-in field says so (`secret`): the bridge writes no `line` of it, only its hash and length.
       // Only the code field's own send is one, so a text from anywhere else is never typed into that field.
       const secret = fromSecret && resend === undefined && view === undefined;
-      const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: loadIntent(scope, paneId), secret, override };
+      const where = paneScopeKey(scope, paneId);
+      const secretHeld = secret && secretIntentRef.current?.where === where ? secretIntentRef.current.intent : null;
+      const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: secret ? secretHeld : loadIntent(scope, paneId), secret, override };
       const res = await sendText(view === undefined ? base : { ...base, view });
       if (res.status === "noAnswer") {
-        // No answer: the id stays, so the next tap on the same text asks for the same request. Not for a
-        // sign-in field: the stored intent names the text, so its next tap takes a new id.
-        if (!secret) saveIntent(scope, paneId, res.intent, draftLine);
-        // A sign-in field's next tap is a new request, so its notice does not say it cannot send twice.
+        // No answer: the id stays, so the next tap on the same text asks for the same request. A sign-in code's
+        // intent is never stored: it stays in memory, bound to the field's text until that changes (the M102 review 2, D).
+        if (secret) secretIntentRef.current = { where, intent: res.intent };
+        else saveIntent(scope, paneId, res.intent, draftLine);
+        // A code's notice still asks the person to look first: the field may have closed, or its text changed, since.
         setSendRefusal(phoneRefusal(secret ? translate("composer.protocol.retrySecret") : translate("composer.protocol.retry", { error: res.error })));
         return false;
       }
       // Any answer ends the intent. A refusal from the phone itself (offline) asked nothing, so an earlier id stays.
-      if (res.status !== "refused" || res.reason !== "offline") clearIntent(scope, paneId);
+      if (res.status !== "refused" || res.reason !== "offline") {
+        if (secret) secretIntentRef.current = null;
+        else clearIntent(scope, paneId);
+      }
       if (res.status === "refused") {
         if (res.reason === "view") {
           // A refusal of a send from a view, before the protocol: Collie's words for its code, never the code.
@@ -4228,6 +4240,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // placeholders): the frame's own "Not saved" line would leave a dead Send with no reason.
             lockedWhy={locked ? placeholderWords : undefined}
             onSend={sendSecret}
+            // The field's text changed, or the frame went: a code's lost request is not this text's any more.
+            onTextChange={() => {
+              secretIntentRef.current = null;
+            }}
             onClose={() => {
               setSecretClosed(true);
               setSendRefusal(phoneRefusal(translate("composer.secret.closed")));

@@ -9,6 +9,8 @@ import { __forgetSendAgainMemory } from "@/lib/send-again";
 import { __forgetSendIntentMemory } from "@/lib/send-intent";
 import { clearStatus } from "@/lib/status";
 import type { Surface } from "@/lib/surface/surface";
+import { http, HttpResponse } from "msw";
+import { asJsonString, parseJsonObject } from "@/lib/json";
 import { recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
 import { server } from "@/test/setup";
 import { CrewProvider } from "./crew-provider";
@@ -188,5 +190,94 @@ describe("L: an armed Type it anyway never goes out with a code", () => {
     const normal = recordedSends().filter((request) => request.mode !== "prepare")[1];
     expect(normal?.override).toBeUndefined();
     expect(normal?.rowsHash).toBeUndefined();
+  });
+});
+
+/**
+ * The bridge for a lost answer: the first `lost` requests get no answer (the link drops), then the bridge answers
+ * with `then`. Every request's id is kept, and whether it named the code, never the code itself.
+ */
+function bridgeThatLoses(lost: number, then: (id: string) => ReturnType<typeof sendAnswer>) {
+  const asked: { id: string; code: boolean }[] = [];
+  server.use(
+    http.post("/api/send", async ({ request }) => {
+      const body = parseJsonObject(await request.text());
+      const id = asJsonString(body?.id) ?? "";
+      asked.push({ id, code: asJsonString(body?.text) === CODE && body?.secret === true });
+      if (asked.length <= lost) return HttpResponse.error();
+      return HttpResponse.json(then(id));
+    }),
+  );
+  return asked;
+}
+
+async function tapSendCode(user: ReturnType<typeof userEvent.setup>, asked: readonly unknown[], count: number) {
+  await user.click(screen.getByRole("button", { name: "Send the code" }));
+  await waitFor(() => expect(asked).toHaveLength(count));
+  // The send has ended once the notice or an empty field says so: the button is busy no more.
+  await waitFor(() => expect(screen.getByRole("button", { name: "Send the code" })).toHaveAttribute("aria-busy", "false"));
+}
+
+describe("D, pass 2: a code whose answer was lost goes again under the same request id", () => {
+  it("the next tap on the same code reuses the request id, so the bridge writes it once", async () => {
+    const user = userEvent.setup();
+    const asked = bridgeThatLoses(1, (id) => sendAnswer(id, "sent"));
+    mount();
+    await user.type(codeField(), CODE);
+    await tapSendCode(user, asked, 1);
+    expect(codeField()).toHaveValue(CODE);
+    await tapSendCode(user, asked, 2);
+    expect(asked[1]).toEqual({ id: asked[0]!.id, code: true });
+    // The id was kept in memory only: nothing in the page's storage names the code or the request.
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain(CODE);
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain(asked[0]!.id);
+  });
+
+  it("a change to the field's text drops the kept id: the next tap is a new request", async () => {
+    const user = userEvent.setup();
+    const asked = bridgeThatLoses(1, (id) => sendAnswer(id, "sent"));
+    mount();
+    await user.type(codeField(), CODE);
+    await tapSendCode(user, asked, 1);
+    await user.type(codeField(), "9{Backspace}");
+    expect(codeField()).toHaveValue(CODE);
+    await tapSendCode(user, asked, 2);
+    expect(asked[1]!.id).not.toBe(asked[0]!.id);
+  });
+
+  it("an answer drops the kept id: after a refusal the next tap is a new request", async () => {
+    const user = userEvent.setup();
+    const asked = bridgeThatLoses(1, (id) => sendAnswer(id, "refused", "unconfirmed", { offers: [], surface: SECRET }));
+    mount();
+    await user.type(codeField(), CODE);
+    await tapSendCode(user, asked, 1);
+    await tapSendCode(user, asked, 2);
+    expect(asked[1]!.id).toBe(asked[0]!.id);
+    await tapSendCode(user, asked, 3);
+    expect(asked[2]!.id).not.toBe(asked[1]!.id);
+  });
+
+  it("a closed field drops the kept id: the code typed again after it is a new request", async () => {
+    const user = userEvent.setup();
+    const asked = bridgeThatLoses(1, (id) => sendAnswer(id, "sent"));
+    mount();
+    await user.type(codeField(), CODE);
+    await tapSendCode(user, asked, 1);
+    await user.click(screen.getByRole("button", { name: "Close the code field" }));
+    await user.click(await screen.findByRole("button", { name: "Open the code field" }));
+    await user.type(codeField(), CODE);
+    await tapSendCode(user, asked, 2);
+    expect(asked[1]!.id).not.toBe(asked[0]!.id);
+  });
+});
+
+describe("D, pass 2: a code the bridge found no sign-in field for", () => {
+  it("no_secret_field says the field is gone and nothing was typed", async () => {
+    const user = userEvent.setup();
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "no_secret_field", { offers: ["keys"], surface: FREE })));
+    mount();
+    await sendCode(user);
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/The sign-in field is not on the screen any more\. Nothing was typed\./u));
+    codeNeverPlain();
   });
 });

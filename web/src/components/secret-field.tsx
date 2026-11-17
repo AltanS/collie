@@ -40,6 +40,12 @@ export interface SecretFieldProps {
   onSend: (text: string) => Promise<boolean>;
   /** Ends the secret state. Sends nothing. */
   onClose: () => void;
+  /**
+   * The text this frame holds changed, or the frame went (closed, or replaced by a fresh one). The composer drops the
+   * request id it kept for a code whose answer was lost, so only the very same text goes again under it (the M102
+   * review 2, D). Called with no text: the code never leaves the frame this way.
+   */
+  onTextChange?: () => void;
   /** A send runs, or the pane cannot be written: the field and its buttons wait. */
   disabled: boolean;
   /** A send runs: Send shows a busy state, so the wait has a mark of its own. */
@@ -67,12 +73,19 @@ export function cleanPaste(text: string): string {
 /** One icon control in the field's row: drawn 36px, reaching 44px. */
 const ICON_BUTTON = cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full");
 
-export function SecretField({ onSend, onClose, disabled, sending = false, reason = null, focusOnMount = false, lockedWhy, start }: SecretFieldProps) {
+export function SecretField({ onSend, onClose, onTextChange, disabled, sending = false, reason = null, focusOnMount = false, lockedWhy, start }: SecretFieldProps) {
   useLocale();
   const [value, setValue] = useState(start?.value ?? "");
   const [shown, setShown] = useState(start?.shown ?? true);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const label = t("composer.secret.label");
+  // Every change of the text, and the frame's end, is told; the latest callback is the one called.
+  const onTextChangeRef = useRef(onTextChange);
+  onTextChangeRef.current = onTextChange;
+  useEffect(() => {
+    onTextChangeRef.current?.();
+  }, [value]);
+  useEffect(() => () => onTextChangeRef.current?.(), []);
   // The prop only ever changes together with the frame's key (the composer remounts it), so this runs once per frame.
   useEffect(() => {
     if (focusOnMount) fieldRef.current?.focus();

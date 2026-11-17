@@ -277,6 +277,7 @@ export type SendNote =
   | "steerUnsupported"
   | "steerNotAllowed"
   | "codeRejected"
+  | "noSecretField"
   | "held"
   | "expired"
   | "cancelled"
@@ -415,6 +416,8 @@ function refusalNote(reason: SendReason | null): SendNote {
       return "moved";
     case "code_rejected":
       return "codeRejected";
+    case "no_secret_field":
+      return "noSecretField";
     case "menu_open":
       return "menuOpen";
     default:
@@ -629,6 +632,8 @@ export function nextStep(reply: SendReply, verdict: Verdict, toCard: boolean, su
       return "stop";
     // A menu or a yes/no prompt stood in the way of an override: the person answers it on the pad.
     case "menu_open":
+    // A code that met no sign-in field: there is no field to enter it again into, so the person reads the screen.
+    case "no_secret_field":
       return "screen";
     case "reserved_lead":
     case "multiline":

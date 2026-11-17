@@ -91,6 +91,8 @@ export const SEND_REASONS = [
   // agent's own error row says it did not take it (the profile's `idle.signInErrors`). The one refusal
   // after the submit key: the agent refused it, not Collie, and the detail is the agent's words.
   "code_rejected",
+  // refused (M102 review 2, D): a `secret` send met no sign-in field on the screen; nothing typed
+  "no_secret_field",
 ] as const;
 export type SendReason = (typeof SEND_REASONS)[number];
 
