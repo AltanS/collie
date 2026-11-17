@@ -263,14 +263,14 @@ describe("where it will run", () => {
 describe("the line of where a proposed trick shows", () => {
   const diff = addedDiff([{ rel: "program.ts", bytes: enc("console.log(1);\n") }]);
   const textsOf = (view: readonly ViewNode[] | undefined): (string | undefined)[] => (view ?? []).map((node) => ("text" in node ? node.text : undefined));
-  const LINE = "It shows in: the usage row of each session, a page of its own (a row under Tricks on the Dashboard).";
+  const LINE = "It shows in: the left end of the usage row of each session, a page of its own (a row under Tricks on the Dashboard).";
 
   test("a new trick's card names its places, after the chip bar of its rights", () => {
     const card = cardOf({ ...BARE, places: ["status", "session"] });
     const texts = textsOf(card.view);
     expect(texts).toContain(LINE);
     expect((card.view ?? []).findIndex((node) => node.kind === "bar")).toBeLessThan(texts.indexOf(LINE));
-    expect(SHOWS_IN_WORDS.status).toBe("the usage row of each session");
+    expect(SHOWS_IN_WORDS.status).toBe("the left end of the usage row of each session");
   });
 
   test("a trick with no place carries no line, on either card", () => {

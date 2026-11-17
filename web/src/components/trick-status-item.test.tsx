@@ -47,10 +47,11 @@ beforeEach(() => clearStatus());
 afterEach(() => cleanup());
 
 describe("the tricks' items in the status line", () => {
-  it("draws each chip after the cost, in manifest order, with its icon and its words", async () => {
+  it("draws each chip at the left end, before the model and the usage, in manifest order, with its icon and its words", async () => {
     await mount([part("tag", { text: "tag 5/7", icon: "tag", tone: "accent" }), part("spend", { text: "$7.42" })]);
     const row = document.querySelector("[data-slot='model-tag']");
     expect(row?.textContent).toContain("Opus 5.5$1.50");
+    expect(row?.textContent?.indexOf("$7.42")).toBeLessThan(row?.textContent?.indexOf("Opus 5.5") ?? -1);
     // The eye reads the face; the screen reader reads the trick's name before it.
     const items = [...document.querySelectorAll("[data-slot='trick-status']")].map((el) => [el.getAttribute("data-trick"), el.querySelector("[aria-hidden]:not(svg)")?.textContent]);
     expect(items).toEqual([
@@ -60,7 +61,7 @@ describe("the tricks' items in the status line", () => {
     const own = document.querySelector("[data-slot='usage-own']");
     const first = document.querySelector("[data-status-item]");
     expect(first).toBeInstanceOf(Node);
-    expect(first === null ? 0 : own?.compareDocumentPosition(first)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(first === null ? 0 : own?.compareDocumentPosition(first)).toBe(Node.DOCUMENT_POSITION_PRECEDING);
     // The tone inks the chip through the schema's tone map, and the icon is the trick's own.
     expect(document.querySelector("[data-slot='trick-status'] svg")).not.toBeNull();
     expect(document.querySelector("[data-slot='trick-status'] span.text-status-working, [data-slot='trick-status'] span[class*='text-']")).not.toBeNull();

@@ -3692,7 +3692,7 @@ export const en = {
   "settings.tricks.place.agentView": "agent view",
   "settings.tricks.about.shows": "It shows in: {places}.",
   "settings.tricks.about.shows.belt": "the end of the Belt in each session",
-  "settings.tricks.about.shows.status": "the usage row of each session",
+  "settings.tricks.about.shows.status": "the left end of the usage row of each session",
   "settings.tricks.about.shows.session": "a page of its own (a row under Tricks on the Dashboard)",
   "settings.tricks.about.shows.dashboard": "a tile in the strip at the top of the Dashboard",
   "settings.tricks.about.shows.tabbar": "an item in the bottom bar of the Dashboard",

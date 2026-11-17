@@ -17,13 +17,15 @@ import { cn } from "@/lib/utils";
 // super small above the belt, floating and at all times": which brain is answering is a fact he
 // checks before he sends, and until now it was one tap away inside the Model command.
 //
-// IT FLOATS ON THE MIRROR'S BOTTOM-RIGHT CORNER, inside the same `relative` box the terminal-draft
+// IT FLOATS ON THE MIRROR'S BOTTOM EDGE, one row with two ends, inside the same `relative` box the terminal-draft
 // notice's slot pins to (agent-chat.tsx). Absolute, so it changes the height of nothing: not the
 // scroller, not the card dock, not the chrome block (DESIGN.md §2). It is not a floating LAYER in the
 // sense of ui/sheet.tsx: it is anchored to the pane, scrolls with nothing, takes no touch
 // (`pointer-events-none`, so a tap on it reaches the mirror under it) and holds no control. The
-// right corner because terminal and chat text both start at the left, and the centre belongs to the
-// jump-to-latest button. Under the notice slot's `z-20`, so a draft notice covers it while it shows.
+// model and the usage end the row at the RIGHT, because terminal and chat text both start at the left and
+// the centre belongs to the jump-to-latest button; the tricks' status chips start it at the LEFT (below).
+// Each end is its own small ground, so the empty space between them shows the mirror, not a bar. Under the
+// notice slot's `z-20`, so a draft notice covers it while it shows.
 //
 // 10px on a 12px line box, the caption size the belt's own tags use, on a page ground translucent
 // enough that the mirror's last row still shows where the tag ends, and opaque enough that a dot does
@@ -65,11 +67,13 @@ import { cn } from "@/lib/utils";
 // (Altan, 2026-10-25). The effort goes with the model either way. The tag is absolute, so it arriving
 // or leaving moves nothing (DESIGN.md §2): there is no line to reserve because it owns none.
 //
-// THE TRICKS' STATUS ITEMS FOLLOW COLLIE'S OWN (M94 re-cut, the `status` place): one chip per trick, in
-// manifest order, after the cost, in the same type and the same gap (components/trick-status-item.tsx).
+// THE TRICKS' STATUS ITEMS START THE ROW AT THE LEFT (M94 re-cut, the `status` place; the left end since
+// 2026-11-18, the operator: "there is some empty space as it is"): one chip per trick, in manifest order, in
+// the same type and the same gap (components/trick-status-item.tsx). The right end never moves when a chip
+// comes, goes or changes width: it is pinned to the right edge, and the chips take the room to its left.
+// The empty space between the two ends gives way first, down to {@link BETWEEN} px.
 // A chip KEEPS ITS PLACE (the operator, 2026-11-17: his Claude rows are full at 360px, and the chip he
-// asked for was always the one hidden). When the row is wider than the room it has, the MODEL NAME gives
-// way first: `Opus 5.5 · medium`, then `Opus 5.5`, then the name cut with an ellipsis. The figures keep
+// asked for was always the one hidden). When the row is full, the MODEL NAME gives way first: `Opus 5.5 · medium`, then `Opus 5.5`, then the name cut with an ellipsis. The figures keep
 // their own rule (the window count). Only when the chips are more than the row holds, with the name down
 // to its floor, does the last chip hide, then the one before it (lib/tricks/status.ts holds the rule,
 // {@link useStatusFit} measures). A hidden item stays in the tree, invisible and inert and out of the
@@ -91,10 +95,13 @@ const DOTS = 5;
  */
 export const MODEL_TAG_ROOM = 18;
 
-/** The tag's widest share of the mirror box it floats in (`max-w-[70%]` below). */
-const TAG_MAX_SHARE = 0.7;
-/** The tag's own horizontal padding, `px-1` on both sides, in px. */
-const TAG_PADDING = 8;
+// The right end's widest share of the mirror box it floats in is 70% of the box: `max-w-[calc((100%+24px)*0.7)]` below, since the row is 24px less than the box.
+/** The row's inset from the mirror box on each side, `inset-x-3`, in px. */
+const ROW_INSET = 24;
+/** The padding of the two ends, `px-1` on both sides of each, in px. Counted for both even when the left end is empty. */
+const ENDS_PADDING = 16;
+/** The least gap between the chips at the left end and the model and usage at the right end, in px (`gap-2`). */
+const BETWEEN = 8;
 /**
  * The gap between two items in px, and the class that draws it: `gap-1.5` (6px) beside the dots, `gap-1`
  * (4px) beside the percentages. A percentage is 3px wider than its five dots, and the longest realistic
@@ -127,7 +134,7 @@ function useStatusFit(key: string, gap: number, count: number, tagRef: RefObject
     const box = tagRef.current?.parentElement;
     const items = itemsRef.current;
     if (box === null || box === undefined || items === null) return;
-    const room = Math.floor(box.clientWidth * TAG_MAX_SHARE) - TAG_PADDING;
+    const room = box.clientWidth - ROW_INSET - ENDS_PADDING;
     const mine = ownRef.current === null ? [] : [...ownRef.current.children].filter((el): el is HTMLElement => el instanceof HTMLElement);
     const others = mine.filter((el) => el.dataset.slot !== "usage-label");
     const fixed = others.reduce((sum, el) => sum + naturalWidth(el), 0) + gap * Math.max(0, others.length - 1);
@@ -135,7 +142,7 @@ function useStatusFit(key: string, gap: number, count: number, tagRef: RefObject
     const effort = ownRef.current?.querySelector<HTMLElement>("[data-slot='usage-effort']");
     const forms = name === null || name === undefined ? [] : effort === null || effort === undefined ? [name.offsetWidth] : [name.offsetWidth + effort.offsetWidth, name.offsetWidth];
     const widths = [...items.children].filter((el): el is HTMLElement => el instanceof HTMLElement).map((el) => el.offsetWidth);
-    const next = fitStatusRow({ room, fixed, gap, forms, widths });
+    const next = fitStatusRow({ room, fixed, gap, forms, widths, between: BETWEEN });
     setFit((was) => (was.shown === next.count && was.form === next.form ? was : { shown: next.count, form: next.form }));
   }, [gap, tagRef, ownRef, itemsRef]);
   useLayoutEffect(() => {
@@ -383,11 +390,26 @@ export function ModelTag({
     <div
       ref={tagRef}
       data-slot="model-tag"
-      className="pointer-events-none absolute right-3 bottom-1 z-10 max-w-[70%] rounded-[2px] bg-background/90 px-1 text-[10px]/3 text-muted-foreground"
+      className="pointer-events-none absolute inset-x-3 bottom-1 z-10 text-[10px]/3 text-muted-foreground"
     >
-      <span className={cn("flex min-w-0 items-center whitespace-nowrap", ITEM_GAPS[usageRow].className)}>
+      <span className="flex items-center justify-between gap-2 whitespace-nowrap">
+        {items.length > 0 && (
+          <span ref={itemsRef} data-slot="usage-trick-items" className={cn("flex min-w-0 items-center overflow-x-clip rounded-[2px]", shown > 0 && "bg-background/90 px-1", ITEM_GAPS[usageRow].className)}>
+            {items.map((item, i) => (
+              <span
+                key={item.id}
+                data-status-item={item.id}
+                data-hidden={i >= shown || undefined}
+                inert={i >= shown || undefined}
+                className={cn("flex shrink-0 items-center", i >= shown && "invisible absolute bottom-0 left-0")}
+              >
+                {item.face}
+              </span>
+            ))}
+          </span>
+        )}
         {(label !== null || gauges.length > 0 || drawnTokens !== null || cost !== null) && (
-          <span ref={ownRef} aria-hidden data-slot="usage-own" className={cn("flex min-w-0 items-center", ITEM_GAPS[usageRow].className)}>
+          <span ref={ownRef} aria-hidden data-slot="usage-own" className={cn("ml-auto flex max-w-[calc((100%+24px)*0.7)] shrink-0 items-center rounded-[2px] bg-background/90 px-1", ITEM_GAPS[usageRow].className)}>
             {name !== null && (
               <span data-slot="usage-label" className="min-w-0 truncate">
                 <span data-slot="usage-name">{name}</span>
@@ -420,21 +442,6 @@ export function ModelTag({
                 {formatCost(cost)}
               </span>
             )}
-          </span>
-        )}
-        {items.length > 0 && (
-          <span ref={itemsRef} data-slot="usage-trick-items" className={cn("flex items-center", ITEM_GAPS[usageRow].className)}>
-            {items.map((item, i) => (
-              <span
-                key={item.id}
-                data-status-item={item.id}
-                data-hidden={i >= shown || undefined}
-                inert={i >= shown || undefined}
-                className={cn("flex shrink-0 items-center", i >= shown && "invisible absolute right-0 bottom-0")}
-              >
-                {item.face}
-              </span>
-            ))}
           </span>
         )}
       </span>

@@ -4357,13 +4357,13 @@ export const RULES_WORDS = "Gives your agents instructions written by its author
  * trick is drawn"). One line on every approval card and in the About sheet: "It shows in: the usage row of each
  * session, an item in the bottom bar of the Dashboard." The phone's own copies are `settings.tricks.about.shows*`,
  * held equal by a test. Each phrase was checked against where the app draws the place (docs/tricks.md "Where a
- * trick can show"): `belt` a mark at the end of the Belt, `status` a chip in the usage row, `session` the trick's
+ * trick can show"): `belt` a mark at the end of the Belt, `status` a chip at the left end of the usage row, `session` the trick's
  * own Page with its row under Tricks, `dashboard` the tile strip, `tabbar` the bottom bar after the Hill, `menu`
  * the rows of a session's settings. None holds a comma, so the list reads as a list.
  */
 export const SHOWS_IN_WORDS = {
   belt: "the end of the Belt in each session",
-  status: "the usage row of each session",
+  status: "the left end of the usage row of each session",
   session: "a page of its own (a row under Tricks on the Dashboard)",
   dashboard: "a tile in the strip at the top of the Dashboard",
   tabbar: "an item in the bottom bar of the Dashboard",

@@ -507,7 +507,7 @@ describe("TrickAboutSheet where it shows (2026-11-17)", () => {
     open(trick);
     const line = screen.getByRole("dialog").querySelector('[data-line="shows"]')?.textContent;
     expect(line).toBe(showsInLine({ places: ["belt", "status", "session", "dashboard", "tabbar", "menu"], agentView: true }));
-    expect(line).toContain("the usage row of each session");
+    expect(line).toContain("the left end of the usage row of each session");
     expect(line).toContain("a page of its own (a row under Tricks on the Dashboard)");
   });
 
@@ -538,8 +538,8 @@ describe("TrickAboutSheet values on chips", () => {
     open(WITH_FACTS);
     const dialog = screen.getByRole("dialog");
     const rowOf = (text: string) => within(dialog).getByText((_, el) => el?.tagName === "LI" && (el.textContent ?? "").includes(text));
-    expect(chips(rowOf("It shows in:"))).toEqual(["the end of the Belt in each session, the usage row of each session"]);
-    expect(rowOf("It shows in:")).toHaveTextContent("It shows in: the end of the Belt in each session, the usage row of each session.");
+    expect(chips(rowOf("It shows in:"))).toEqual(["the end of the Belt in each session, the left end of the usage row of each session"]);
+    expect(rowOf("It shows in:")).toHaveTextContent("It shows in: the end of the Belt in each session, the left end of the usage row of each session.");
     expect(chips(rowOf("Asks for the environment names"))).toEqual(["GH_TOKEN"]);
     expect(chips(rowOf("Runs when these files change"))).toEqual(["~/notes/todo.md"]);
     expect(chips(rowOf("Reads "))).toEqual(["TODO.md"]);
