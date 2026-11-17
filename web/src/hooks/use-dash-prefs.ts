@@ -285,6 +285,11 @@ export function loadPageZoomPref(): boolean {
   return loadPrefs().pageZoom;
 }
 
+/** The stored Chat or Terminal choice, for the pane loader's read of a thread before the pane screen mounts. */
+export function loadPaneViewPref(): PaneView {
+  return loadPrefs().paneView;
+}
+
 function savePrefs(prefs: DashPrefs): void {
   try {
     if (typeof localStorage !== "undefined") {

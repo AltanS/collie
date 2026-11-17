@@ -233,6 +233,67 @@ describe("paneLoader and the read a row started (lib/pane-prefetch.ts)", () => {
   });
 });
 
+describe("paneLoader reads the first page of Chat while a switch is pending (lib/chat-held.ts)", () => {
+  const open = (paneId: string) => new Request(`http://localhost/pane/${encodeURIComponent(paneId)}`);
+  const page = {
+    paneId: "w1:p1",
+    available: true,
+    page: "live",
+    gen: 1_759_000_000_000,
+    rev: 2,
+    head: 1,
+    oldest: 1,
+    hasOlder: false,
+    upserts: [{ uuid: "a", seq: 1, ts: "", role: "assistant", parts: [{ kind: "text", text: "hello" }] }],
+  };
+
+  /** A snapshot whose first agent holds a session, and the chat reads the page makes. */
+  function world(hasSession: boolean) {
+    const seen = { chats: 0 };
+    server.use(
+      http.get("/api/snapshot", () =>
+        HttpResponse.json({ ...fixtureSnapshot, agents: fixtureSnapshot.agents.map((a, i) => (i === 0 ? { ...a, hasSession } : a)) }),
+      ),
+      http.get(/\/api\/pane\/[^/]+\/chat/, () => {
+        seen.chats += 1;
+        return HttpResponse.json(page);
+      }),
+    );
+    return seen;
+  }
+
+  it("holds the page before the navigation lands, once, and not again on a poll", async () => {
+    const seen = world(true);
+    const { rootLoader, paneLoader } = await import("./loaders");
+    const { heldChat } = await import("./chat-held");
+    await rootLoader();
+    await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(heldChat(paneScopeKey(undefined, "w1:p1"), undefined)?.entries.map((e) => e.uuid)).toEqual(["a"]);
+    expect(seen.chats).toBe(1);
+    // The same URL again is a poll, which the Chat body's own read covers.
+    await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(seen.chats).toBe(1);
+  });
+
+  it("reads nothing for a pane that holds no session", async () => {
+    const seen = world(false);
+    const { rootLoader, paneLoader } = await import("./loaders");
+    await rootLoader();
+    await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(seen.chats).toBe(0);
+  });
+
+  it("reads nothing while the device shows the terminal", async () => {
+    const seen = world(true);
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" }));
+    const { rootLoader, paneLoader } = await import("./loaders");
+    await rootLoader();
+    await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    expect(seen.chats).toBe(0);
+    localStorage.removeItem("collie:dash-prefs:v1");
+  });
+});
+
 describe("paneLoader for a pane with no screen (paneGrid false)", () => {
   async function declare(paneGrid: boolean) {
     server.use(
