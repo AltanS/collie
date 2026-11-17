@@ -552,17 +552,24 @@ function surfaceAfter(reply: SendReply, note: SurfaceNote): SurfaceNote | null {
  * the rows hash and the screen is no sign-in field and no ask Collie has read, the phone offers the
  * commit, Type here, which sends the text with `override` bound to those rows (spec 01). The bridge's
  * own offers stay as they are; this only adds the one the phone may offer by itself.
+ *
+ * NEVER FOR A SUBMIT (the M102 review, F). A Submit's text is already in the box (a popup at Enter
+ * refused it), so an override would type it a second time. A commit is always sent with `override`, so
+ * a Submit's answer carries no commit at all, not even one the bridge offered.
  */
-function withOverride(reply: SendReply, offers: readonly SendOffer[]): readonly SendOffer[] {
+function withOverride(reply: SendReply, offers: readonly SendOffer[], mode: SendMode): readonly SendOffer[] {
+  if (mode === "submit") return offers.filter((offer) => offer !== "commit");
   if (reply.outcome !== "refused" || reply.reason !== "not_free" || reply.rowsHash === null || reply.surface === null) return offers;
   if (reply.surface.field === "secret" || askOf(reply.surface.modal) !== null || offers.includes("commit")) return offers;
   return [...offers, "commit"];
 }
 
-export function readSend(reply: SendReply): SendReading {
+/** What an answer means. `mode` is the request's: a Submit's answer never offers the override. */
+export function readSend(reply: SendReply, mode: SendMode = "send"): SendReading {
   const offers = withOverride(
     reply,
     reply.offers.filter((offer) => offer !== "keys"),
+    mode,
   );
   const base = noteAndOffers(reply, offers);
   const surface = base.clear || reply.surface === null ? null : surfaceAfter(reply, surfaceNote(reply.surface));
