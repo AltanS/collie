@@ -10,7 +10,7 @@ import { AuditLog } from "../audit.ts";
 import { isRefusalReason, REFUSAL_REASONS } from "../refusal.ts";
 import { parseJsonObject, type JsonValue } from "../../web/src/lib/json.ts";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
-import { ASK_OFF_TEXT, askRoute, heldCancelRoute, parseSendRequest, REPLY_OFF_TEXT, replySendOf, replyThroughProtocol, SEND_MAX_TEXT, SEND_OFF_TEXT, sendReceiptsRoute, sendRoute, type AskRouteRuntime, type SendRouteRuntime } from "../server.ts";
+import { ASK_OFF_TEXT, askRoute, paneTakesAskRoute, heldCancelRoute, parseSendRequest, REPLY_OFF_TEXT, replySendOf, replyThroughProtocol, SEND_MAX_TEXT, SEND_OFF_TEXT, sendReceiptsRoute, sendRoute, type AskRouteRuntime, type SendRouteRuntime } from "../server.ts";
 import { readFileSync } from "node:fs";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
@@ -312,6 +312,12 @@ describe("a refusal before the protocol leaves one record with its code", () => 
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("a terminal pane with an ask book marks askRoute; a program pane and a session with no ask book do not (decision 2)", () => {
+    expect(paneTakesAskRoute({ asks: {} })).toBe(true);
+    expect(paneTakesAskRoute({ asks: {}, driver: {} })).toBe(false);
+    expect(paneTakesAskRoute({})).toBe(false);
   });
 
   test("every code a record writes is in the one exported list", () => {

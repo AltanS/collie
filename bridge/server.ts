@@ -2024,7 +2024,10 @@ export function startServer(opts: {
       const held = from.send?.heldOf(from.name, wire.paneId) ?? [];
       const shown = cfg.redact ? held.map((row) => ({ ...row, text: redactText(row.text) })) : held;
       // M69: a pane the phone may steer says so (paneCanSteer).
-      const marked: PaneWire = paneCanSteer(from, wire.paneId) ? { ...withHold, sendProtocol: true as const, canSteer: true as const } : { ...withHold, sendProtocol: true as const };
+      const steered: PaneWire = paneCanSteer(from, wire.paneId) ? { ...withHold, sendProtocol: true as const, canSteer: true as const } : { ...withHold, sendProtocol: true as const };
+      // M102 spec 14: a terminal pane whose ask book answers a screen card's tap by id says so, so a lead
+      // sends this member's card taps by the ask route, with this bridge's checks and record, not raw keys.
+      const marked: PaneWire = paneTakesAskRoute(from) ? { ...steered, askRoute: true as const } : steered;
       return held.length === 0 ? marked : { ...marked, held: shown };
     };
     // M99 spec 15: a linked pane says so. Only a `true` rides; an unlinked pane and every older body carry no key.
@@ -9831,6 +9834,15 @@ export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; 
  */
 export function paneCanSteer(from: { readonly send?: unknown; readonly driver?: unknown; readonly surface?: Pick<SurfaceShadow, "canSteer"> }, paneId: string): boolean {
   return from.driver === undefined && from.send !== undefined && from.surface?.canSteer(paneId) === true;
+}
+
+/**
+ * Whether a pane of this session carries `askRoute` (M102 spec 14): a terminal session whose ask book
+ * answers a screen card's tap by id, through `POST /api/ask/<id>`, also when a lead forwards it. A
+ * program session answers through its driver and keeps its own route on a crew; it carries no mark.
+ */
+export function paneTakesAskRoute(from: { readonly driver?: unknown; readonly asks?: unknown }): boolean {
+  return from.driver === undefined && from.asks !== undefined;
 }
 
 /** What `sendRoute` reads of a session runtime: a {@link SessionRuntime} is one. */

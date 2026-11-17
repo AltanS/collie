@@ -396,6 +396,9 @@ const PANE_WIRE_KEYS = {
   // only, on a pane whose Surface shadow reads a harness Collie may steer, and this harness builds no
   // Send Protocol, so it is absent here and no golden byte moved.
   canSteer: true,
+  // Not a crew dimension: the ask route's mark (M102 spec 14). It rides with `sendProtocol` only, on a
+  // session with an ask book, and this harness builds none, so it is absent here and no golden byte moved.
+  askRoute: true,
   // Not a crew dimension: the pane's held sends (M56 spec 15). They ride with `sendProtocol` and only
   // when a send is held, and this harness builds no Send Protocol, so no golden byte moved.
   held: true,
