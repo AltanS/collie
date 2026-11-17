@@ -1,0 +1,105 @@
+{
+  "id": "mcode",
+  "identity": {
+    "binary": "mcode",
+    "versionCommand": [
+      "mcode",
+      "--version"
+    ],
+    "versionRegex": "\\d+\\.\\d+\\.\\d+"
+  },
+  "versions": [
+    {
+      "range": "0.7.0 - 0.7.6",
+      "status": "provisional",
+      "verifiedThrough": null,
+      "verifiedOn": null
+    }
+  ],
+  "idle": {
+    "frame": {
+      "top": {
+        "pattern": "^\\s*─+$",
+        "minCells": 8,
+        "column": 0,
+        "maxColumn": 8
+      },
+      "prompt": {
+        "pattern": "^\\s*›(?:\\s+(?<draft>.*))?$",
+        "column": 0,
+        "maxColumn": 8
+      },
+      "bottom": {
+        "pattern": "^\\s*─+$",
+        "minCells": 8,
+        "column": 0,
+        "maxColumn": 8
+      },
+      "continuationIndent": 4,
+      "maxDraftRows": 60,
+      "maxTailRows": 8
+    },
+    "placeholders": {
+      "texts": [
+        "Ask Mcode to do anything",
+        "Start · @ file or Plugin · / autocomplete"
+      ],
+      "prefixes": [
+        "Ask Mcode to do anything"
+      ],
+      "sgr": 2,
+      "anyText": true
+    },
+    "volatile": {
+      "above": {
+        "maxRows": 6
+      },
+      "below": {
+        "maxRows": 8,
+        "footerMaxRows": 4
+      }
+    },
+    "runningRows": [
+      "^esc to cancel\\b",
+      "^[⠀-⣿]\\s+\\S.*\\.\\.\\.\\s*$"
+    ]
+  },
+  "keys": {
+    "submit": [
+      "Enter"
+    ],
+    "newline": [
+      "ctrl+j"
+    ],
+    "interrupt": [
+      "Escape"
+    ],
+    "clear": {
+      "key": "Backspace",
+      "slack": 16
+    },
+    "navigation": {
+      "up": "Up",
+      "down": "Down",
+      "confirm": "Enter",
+      "cancel": "Escape"
+    }
+  },
+  "reservedLeads": [
+    "/",
+    "@",
+    "!"
+  ],
+  "probe": {
+    "char": "⌁",
+    "status": "provisional",
+    "note": "Provisional profile for MiniMax Code (mcode)"
+  },
+  "paste": {
+    "bracketed": true
+  },
+  "hooks": {},
+  "collapse": {
+    "pattern": "\\[Pasted [^\\]]*\\]"
+  }
+}

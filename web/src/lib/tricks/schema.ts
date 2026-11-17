@@ -168,7 +168,7 @@ export const IMAGE_SIDE_MAX = 4096;
 /** The manifest's `run` command line. */
 export const RUN_MAX = 1024;
 /** One `watch` path in the manifest, and the number of them. */
-export const WATCH_PATH_MAX = 1024;
+export const WATCH_PATH_MAX = 256;
 export const WATCH_MAX = 8;
 /** Bytes of a facts string the bridge copies from the snapshot (a name, a tab, a cwd). */
 export const FACT_TEXT_MAX_BYTES = 4096;
@@ -498,15 +498,26 @@ export const DEFAULT_TRICK_ICON: TrickIcon = "plug";
 export const ACTION_ICONS = ["play", "pause", "check", "x", "refresh", "archive", "flag", "star", "send", "note", "search", "more"] as const satisfies readonly TrickIcon[];
 export type ActionIcon = (typeof ACTION_ICONS)[number];
 
-/** The events a manifest may name in `on` (a later slice, the event bus). */
+/** The events a manifest may name in `on`: the bus's three live types (M105 spec 03). */
 export const TRICK_EVENTS = ["session.status", "turn.end", "ask.open"] as const;
 export type TrickEvent = (typeof TRICK_EVENTS)[number];
 /** `mode`: `once` runs per trigger; `serve` keeps the program running (a later slice). */
 export const TRICK_MODES = ["once", "serve"] as const;
 export type TrickMode = (typeof TRICK_MODES)[number];
 /** The parts of a manifest that a later slice builds. Refused as "later" until a caller enables them. */
-export const LATER_TRIGGERS = ["watch", "on", "serve"] as const;
+export const LATER_TRIGGERS = ["serve"] as const;
 export type LaterTrigger = (typeof LATER_TRIGGERS)[number];
+/**
+ * The two triggers that react (M105 step one): `on` (an event of the bus) and `watch` (a file changed). Built,
+ * but a caller of `parseManifest` names them in `triggers` to have them read; the bridge's one reader does
+ * ({@link MANIFEST_TRIGGERS}), so a folder, a proposal and the CLI's check all read the same manifest.
+ */
+export const REACTING_TRIGGERS = ["watch", "on"] as const;
+export type ReactingTrigger = (typeof REACTING_TRIGGERS)[number];
+/** The triggers a caller may enable in `ParseManifestOptions.triggers`. */
+export type ManifestTrigger = LaterTrigger | ReactingTrigger;
+/** What every real reader of a manifest enables: the two that react. `serve` stays later. */
+export const MANIFEST_TRIGGERS: readonly ManifestTrigger[] = ["on", "watch"];
 
 /** The session statuses the facts carry (`AgentStatus` in bridge/types.ts). */
 export const SESSION_STATUSES = ["idle", "working", "blocked", "done", "unknown"] as const;
@@ -1366,10 +1377,19 @@ export type FactsTrigger =
        */
       seen?: string;
     }
-  /** A later slice: a watched file changed. */
-  | { kind: "watch"; path: string }
-  /** A later slice: an event of the bus, with the session it is about. */
-  | { kind: "event"; event: TrickEvent; session?: string };
+  /**
+   * A watched file changed (M105 step one). `path` is the path as the manifest wrote it. `count` is how
+   * many separate changes were folded into this run (1 for one); a burst inside the debounce window is one.
+   */
+  | { kind: "watch"; path: string; count: number }
+  /**
+   * An event of the bus (M105 step one). `event` is its type. `session` is the facts scope id
+   * (`<memberId>:<paneId>`, as `facts.sessions[].id`) of the session it is about, of the newest event
+   * when several were folded. `count` is how many events were folded into this run (1 for one); events the
+   * bus dropped for this trick are counted too. Delivery is at least once and not ordered across
+   * sessions: a program must be safe against a repeat.
+   */
+  | { kind: "event"; event: TrickEvent; session: string; count: number };
 
 export interface FactsSession {
   /**
@@ -1629,6 +1649,22 @@ export interface WireTrickInfo {
   /** The environment names the manifest asks for past the base allow-list, so the person sees them. */
   env?: string[];
   /**
+   * The manifest's `on`: the bus events that run the trick (M105 step one). A right: the row says
+   * "Runs when a session changes state." Absent: none, or an older bridge.
+   */
+  events?: TrickEvent[];
+  /**
+   * The manifest's `watch`, each path as written: the files whose change runs the trick (M105 step one).
+   * A right: the row names them. Absent: none, or an older bridge.
+   */
+  watch?: string[];
+  /**
+   * Set when the trick's file watch could not be set up, so the bridge checks the files on a clock instead:
+   * the interval in seconds. A note, never a refusal: the row says it alone, in the phone's words, with no
+   * system error in them (that stays in the bridge's log). Absent: the watch works, or an older bridge.
+   */
+  watchPollSeconds?: number;
+  /**
    * Contract 2 (M99): the globs the trick reads from its agent sessions' folders, and whether this bridge
    * leads a crew (the files then come from every machine). The row says it in one sentence
    * ({@link inputsSentence}). Absent: no inputs, or an older bridge.
@@ -1777,6 +1813,12 @@ export interface TricksReply {
    * `TRICKS_WINDOWS_LINE`). The list, the parts and the keys are empty then. Absent everywhere else.
    */
   gate?: TricksGate;
+  /**
+   * Set while tricks as a whole are switched off on this bridge (bridge/tricks/feature-switch.ts, off by
+   * default). The list stays readable (name, kind, About): each row's `on` is that trick's own switch, which
+   * the big switch never changes, and its `state` is `off`. No parts and no keys ride along. Absent while on.
+   */
+  off?: true;
 }
 
 // ── The Windows gate (bridge/tricks/service.ts `gated`) ──────────────────────────────────────
@@ -1788,6 +1830,13 @@ export interface TricksReply {
  * the helper's output, the timeout kill and the shell line are not ready there yet.
  */
 export const TRICKS_WINDOWS_LINE = "Tricks do not run on a Windows machine yet.";
+
+/**
+ * What a bridge, the CLI and the official add say while tricks as a whole are switched off on the machine
+ * (bridge/tricks/feature-switch.ts): one sentence, and where a person switches them on. The phone says it in
+ * its own words (`settings.tricks.switch.offLine`).
+ */
+export const TRICKS_OFF_LINE = "Tricks are switched off on this machine; switch them on at the top of Settings, Tricks, or run `collie tricks on`.";
 
 /**
  * What a Windows machine says of a shell `run` line (fault d of the Windows milestone): Windows runs the
@@ -4755,8 +4804,8 @@ export function newerContractReason(asked: number): string {
 export interface ParseManifestOptions {
   /** The folder's name. A manifest whose `id` differs is refused. */
   folder?: string;
-  /** The later triggers this Collie runs. Default none: `watch`, `on` and `mode = "serve"` are skipped with a reason. */
-  triggers?: readonly LaterTrigger[];
+  /** The triggers this Collie runs. Default none: `watch`, `on` and `mode = "serve"` are skipped with a reason. */
+  triggers?: readonly ManifestTrigger[];
   /** The place kinds this Collie draws. Default `NEAR_PLACES`. */
   places?: readonly PlaceKind[];
 }
@@ -4933,8 +4982,8 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
     manifest.every = every;
     manifest.everyMs = everyMs;
   }
-  if (watch !== undefined && triggers.includes("watch")) manifest.watch = watch;
-  if (on.length > 0 && triggers.includes("on")) manifest.on = on;
+  if (watch !== undefined && triggers.includes("watch")) manifest.watch = [...new Set(watch)];
+  if (on.length > 0 && triggers.includes("on")) manifest.on = [...new Set(on)];
   if (mode === "serve" && triggers.includes("serve")) manifest.mode = "serve";
   if (env !== undefined && env.length > 0) manifest.env = [...new Set(env)];
   if (inputs !== undefined && inputs.length > 0) manifest.inputs = [...new Set(inputs)];
@@ -4955,13 +5004,15 @@ export const INPUT_FILE_FACT_KEYS = ["rel", "path", "bytes", "sha256", "mtime", 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 export const SPACE_FACT_KEYS = ["name", "folder"] as const;
 export const TRICK_FACT_KEYS = ["id", "dir", "state"] as const;
+/** The most runs a `watch` or `event` trigger's `count` may name folded together. */
+export const TRIGGER_COUNT_MAX = 1_000_000;
 export const TRIGGER_KINDS = ["start", "timer", "tap", "watch", "event"] as const;
 export const TRIGGER_KEYS = {
   start: ["kind"],
   timer: ["kind"],
   tap: ["kind", "rid", "node", "intent", "value", "from", "seen"],
-  watch: ["kind", "path"],
-  event: ["kind", "event", "session"],
+  watch: ["kind", "path", "count"],
+  event: ["kind", "event", "session", "count"],
 } as const satisfies { readonly [K in (typeof TRIGGER_KINDS)[number]]: readonly string[] };
 
 export interface ParsedFacts {
@@ -5038,14 +5089,17 @@ function readTrigger(f: Fields): FactsTrigger | undefined {
     case "watch": {
       t.keys(TRIGGER_KEYS.watch);
       const path = t.text("path", { max: WATCH_PATH_MAX, required: true });
-      return path === undefined ? undefined : { kind, path };
+      const count = t.int("count", { min: 1, max: TRIGGER_COUNT_MAX, required: true });
+      return path === undefined || count === undefined ? undefined : { kind, path, count };
     }
     case "event": {
       t.keys(TRIGGER_KEYS.event);
       const event = t.word("event", TRICK_EVENTS, true);
-      const session = t.text("session", { max: 256 });
-      if (event === undefined) return undefined;
-      return session === undefined ? { kind, event } : { kind, event, session };
+      const session = t.text("session", { max: 256, required: true });
+      const count = t.int("count", { min: 1, max: TRIGGER_COUNT_MAX, required: true });
+      if (event === undefined || session === undefined || count === undefined) return undefined;
+      if (!isScopeKey(session)) t.push("target", "session", '"session" must be the scope key memberId:paneId.');
+      return { kind, event, session, count };
     }
     case "tap": {
       t.keys(TRIGGER_KEYS.tap);

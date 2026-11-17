@@ -16,10 +16,17 @@ import { fetchAuthedBytes } from "@/lib/api";
 // on a phone is far beyond the pictures one session shows. A failed load is not kept, so the next
 // render asks again (after pairing, say).
 //
+// THE FIRST RENDER READS THE RESOLVED MAP. Beside the promises sits a second table of the object URLs
+// that have RESOLVED, so a picture the page already fetched is there on the very first render of a
+// new mount (a pane reopened, a Chat body mounted again) instead of one frame later, after an effect.
+// It is memory only, never storage: an object URL means nothing to the next page load, and it is
+// dropped together with its promise on eviction and on reset.
+//
 // `data:` URLs are already the bytes and pass through untouched.
 
 const CACHE_MAX = 64;
 const cache = new Map<string, Promise<string>>();
+const resolved = new Map<string, string>();
 
 function remember(path: string, url: Promise<string>): void {
   cache.set(path, url);
@@ -28,6 +35,7 @@ function remember(path: string, url: Promise<string>): void {
   if (oldest === undefined) return;
   const evicted = cache.get(oldest);
   cache.delete(oldest);
+  resolved.delete(oldest);
   void evicted?.then((u) => URL.revokeObjectURL(u)).catch(() => undefined);
 }
 
@@ -38,7 +46,12 @@ function remember(path: string, url: Promise<string>): void {
 export function authedObjectUrl(path: string): Promise<string> {
   const hit = cache.get(path);
   if (hit !== undefined) return hit;
-  const pending = fetchAuthedBytes(path).then((blob) => URL.createObjectURL(blob));
+  const pending: Promise<string> = fetchAuthedBytes(path).then((blob) => {
+    const url = URL.createObjectURL(blob);
+    // An entry evicted while its bytes were in flight is not kept: nothing would ever revoke it.
+    if (cache.get(path) === pending) resolved.set(path, url);
+    return url;
+  });
   remember(path, pending);
   pending.catch(() => {
     if (cache.get(path) === pending) cache.delete(path);
@@ -55,7 +68,8 @@ export interface AuthedUrl {
 /**
  * The displayable URL for `src`: itself for a `data:` URL, an object URL for an `/api` path, and
  * `null` while that is loading or when `src` is `null`. `failed` turns true when the load failed, so
- * a caller can show its own stand-in (an image card's "[Image]" badge, say).
+ * a caller can show its own stand-in (an image card's "[Image]" badge, say). A path whose URL already
+ * resolved answers it on the first render, with no effect in between.
  */
 export function useAuthedUrl(src: string | null): AuthedUrl {
   const passThrough = src === null || src.startsWith("data:");
@@ -82,11 +96,12 @@ export function useAuthedUrl(src: string | null): AuthedUrl {
   }, [src, passThrough]);
   if (passThrough) return { url: src, failed: false };
   // A state left from an earlier `src` says nothing about this one.
-  if (state.src !== src) return { url: null, failed: false };
+  if (state.src !== src) return { url: resolved.get(src) ?? null, failed: false };
   return { url: state.url, failed: state.failed };
 }
 
 /** Test helper: forget every cached URL. */
 export function __resetAuthedUrls(): void {
   cache.clear();
+  resolved.clear();
 }

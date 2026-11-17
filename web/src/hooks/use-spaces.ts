@@ -176,7 +176,9 @@ export function useSpaceActions(canWrite?: () => boolean) {
         kind: "shell",
       };
       const noun = what === "tab" ? t("space.noun.tab") : t("space.noun.space");
-      setStatus(t("space.create.ready", { what: noun }), "success");
+      // "Launch your agent" is wrong where the phone launched one: the new pane's header says "Starting…"
+      // for that (`agentLaunch` below), so the ready line stays out of its way.
+      if (harness === undefined) setStatus(t("space.create.ready", { what: noun }), "success");
       // A topology write: whichever view the operator lands back on (the tab strip they just left,
       // the dashboard behind it) should not wait out an idle-timed gap to show the new pane.
       stampTopology();

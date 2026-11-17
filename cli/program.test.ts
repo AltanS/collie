@@ -101,7 +101,8 @@ const STT_VERBS = ["stt"];
 /** The config-file tree (ADR 0040). Declared right after `stt`, for the same reasons. */
 const CONFIG_VERBS = ["config"];
 // Collie tricks (M94 slice 01). Declared after `config`: a trick is a folder in the same config dir.
-const TRICK_VERBS = ["trick"];
+// `tricks` is the switch for tricks as a whole (cli/tricks-switch.ts), beside the one trick's verb.
+const TRICK_VERBS = ["trick", "tricks"];
 const DURABLE_VERBS = ["durable"];
 // `mux list` (M76 spec 02). Declared after `durable`: it reads the multiplexers the durable adapter is one of.
 const MUX_VERBS = ["mux"];
@@ -114,6 +115,8 @@ const SESSIONS_VERBS = [SESSIONS_VERB];
 const WALKY_VERBS = ["walky"];
 // The hill (M96), declared right after `walky`: an agent posts a decision over the same socket.
 const HILL_VERBS = ["hill"];
+// The local API's command face (M105), declared right after `hill`.
+const API_VERBS = ["api"];
 // `theme check` (M59 spec 05), declared after `walky`. It reads files and touches no state.
 const THEME_VERBS = ["theme"];
 // The manual, printed out of the binary: `collie skill` for an AI agent, `collie docs` for the
@@ -144,6 +147,7 @@ describe("the verb table", () => {
       ...SESSIONS_VERBS,
       ...WALKY_VERBS,
       ...HILL_VERBS,
+      ...API_VERBS,
       ...THEME_VERBS,
       ...CREW_VERBS,
       ...MANUAL_VERBS,
@@ -509,6 +513,8 @@ describe("the subcommand trees", () => {
       "stt",
       "config",
       "trick",
+      // `tricks on|off|status`: the switch for tricks as a whole (cli/tricks-switch.ts).
+      "tricks",
       "durable",
       "mux",
       "harness",
@@ -646,6 +652,7 @@ describe("exit codes", () => {
       // cli/trick-add.test.ts drives them against a local bare repository through the test seam.
       // `trick view` talks to this host's running bridges over their local sockets, and a `show` puts a
       // screen on one; cli/trick-view.test.ts drives every sub-verb against a temp socket.
+      // `tricks on|off` write the switch for tricks as a whole into the state dir; cli/tricks-switch.test.ts.
       ...TRICK_VERBS,
       ...DURABLE_VERBS,
       // `mux list` resolves the real context and reads the real hook target registry, and removes the
@@ -660,6 +667,9 @@ describe("exit codes", () => {
       // `hill` talks to the same sockets, and a `post` puts a decision on a running bridge's hill.
       // cli/hill.test.ts drives every sub-verb against a temp socket.
       ...HILL_VERBS,
+      // `api` dials the local API socket of this host's own running bridge, when a trick is on there.
+      // cli/api.test.ts drives it against a scratch socket.
+      ...API_VERBS,
       // `sessions` dials this host's own running bridge for its snapshot. cli/sessions.test.ts drives it against a fake fetch.
       ...SESSIONS_VERBS,
     ];

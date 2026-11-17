@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { writeTricksFeature } from "../bridge/tricks/feature-switch.ts";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -94,6 +95,8 @@ async function rig(official?: string): Promise<Rig> {
   await mkdir(configDir, { recursive: true });
   await mkdir(stateDir, { recursive: true });
   await mkdir(home, { recursive: true });
+  // Tricks as a whole are on: add and update bring code in only then (bridge/tricks/feature-switch.ts).
+  writeTricksFeature(stateDir, true);
   const out: string[] = [];
   const err: string[] = [];
   const io: Io = { out: (l) => out.push(l), err: (l) => err.push(l) };

@@ -6,7 +6,7 @@ import { LIBRARY_STORAGE_KEY, __resetThemeStore, setActiveTheme } from "@/lib/th
 import { clearStatus, setStatus } from "@/lib/status";
 import { collieMark, markIsLive, markState } from "@/test/collie-mark";
 import { savedAtLabel } from "@/lib/format";
-import { CollieHome, markReading, spinRate } from "./collie-home";
+import { CollieHome, STARTING_BEADS, markReading, spinRate } from "./collie-home";
 
 // The chunked marks are replaced by a marker each, so the header can be asked which mark it draws.
 vi.mock("./kawaii-mark", () => ({ KawaiiMark: () => <span data-mark="kawaii" /> }));
@@ -385,6 +385,62 @@ describe("CollieHome — the link coming back", () => {
   });
 });
 
+// ── AN AGENT STARTING ────────────────────────────────────────────────────────────────────────────
+//
+// The phone launched an agent and the bridge has not read its first screen. The mark turns at the
+// loading pace, three beads in four in the info colour, the fourth in the mark's own (`initial` leaves
+// that bead's variable unset, so its fill falls through to the mark's own colour, as in `loading`).
+describe("CollieHome — an agent starting", () => {
+  const bead = (root: ParentNode, i: number) => collieMark(root)?.style.getPropertyValue(`--mark-bead-${i}`);
+
+  it("turns at the loading pace, with six of eight beads in the info colour and the rest left alone", () => {
+    const { container, getByRole } = render(<CollieHome trouble={false} starting />);
+    expect(markState(container)).toBe("loading");
+    expect(markIsLive(container)).toBe(true);
+    expect(bead(container, 0)).toBe("initial");
+    expect(bead(container, 1)).toBe("var(--status-info)");
+    expect(bead(container, 2)).toBe("var(--status-info)");
+    expect(bead(container, 3)).toBe("var(--status-info)");
+    expect(bead(container, 4)).toBe("initial");
+    expect(bead(container, 7)).toBe("var(--status-info)");
+    expect(getByRole("button", { name: "Starting…" })).toBeInTheDocument();
+  });
+
+  it("draws no forced bead while nothing starts", () => {
+    const { container } = render(<CollieHome trouble={false} />);
+    expect(bead(container, 1)).toBe("");
+  });
+
+  it("gives way to the app updating and to lost", () => {
+    const updating = render(<CollieHome trouble={false} applying starting />);
+    expect(markState(updating.container)).toBe("applying");
+    expect(bead(updating.container, 1)).not.toBe("var(--status-info)");
+    updating.unmount();
+    const dead = render(<CollieHome trouble lost starting />);
+    expect(markState(dead.container)).toBe("idle");
+    expect(bead(dead.container, 1)).toBe("");
+    expect(dead.getByRole("button", { name: "Collie home, not connected" })).toBeInTheDocument();
+  });
+
+  it("outranks the link coming back", () => {
+    const { container } = render(<CollieHome trouble={false} reconnected starting />);
+    expect(markState(container)).toBe("loading");
+    expect(bead(container, 1)).toBe("var(--status-info)");
+  });
+
+  it("changes the state of the SAME mark, and the mark rests again when it ends", () => {
+    const { container, rerender } = render(<CollieHome trouble={false} />);
+    const before = collieMark(container);
+    rerender(<CollieHome trouble={false} starting />);
+    expect(collieMark(container)).toBe(before);
+    expect(markIsLive(container)).toBe(true);
+    rerender(<CollieHome trouble={false} />);
+    expect(collieMark(container)).toBe(before);
+    expect(markIsLive(container)).toBe(false);
+    expect(bead(container, 1)).toBe("");
+  });
+});
+
 // THE HEADER DRAWS THE WORN THEME'S CHARACTER, inside the same measurement box (`data-slot="collie-mark"`) whichever
 // one it is, so the agent-start handoff finds its anchor under every mark.
 describe("CollieHome — the mark", () => {
@@ -424,22 +480,24 @@ describe("CollieHome — the mark", () => {
 // THE MARK'S ONE READING: the state it draws and where a tap on it goes, decided together, so the
 // look and the tap cannot disagree. Only a state that is about a place points there.
 describe("markReading", () => {
-  const quiet = { lost: false, applying: false, reconnected: false, loading: false };
+  const quiet = { lost: false, applying: false, starting: false, reconnected: false, loading: false };
 
   it.each([
-    ["nothing on", quiet, { state: "rest", target: "home" }],
-    ["loading", { ...quiet, loading: true }, { state: "loading", target: "home" }],
-    ["the link coming back", { ...quiet, reconnected: true, loading: true }, { state: "reconnected", target: "home" }],
-    ["the app updating", { ...quiet, applying: true, reconnected: true, loading: true }, { state: "applying", target: "update-line" }],
-    ["a dead link, over an update", { lost: true, applying: true, reconnected: true, loading: true }, { state: "idle", target: "home" }],
+    ["nothing on", quiet, { state: "rest", target: "home", beads: null }],
+    ["loading", { ...quiet, loading: true }, { state: "loading", target: "home", beads: null }],
+    ["the link coming back", { ...quiet, reconnected: true, loading: true }, { state: "reconnected", target: "home", beads: null }],
+    ["an agent starting", { ...quiet, starting: true }, { state: "loading", target: "home", beads: STARTING_BEADS }],
+    ["an agent starting, over the link coming back and loading", { ...quiet, starting: true, reconnected: true, loading: true }, { state: "loading", target: "home", beads: STARTING_BEADS }],
+    ["the app updating, over an agent starting", { ...quiet, applying: true, starting: true, reconnected: true, loading: true }, { state: "applying", target: "update-line", beads: null }],
+    ["a dead link, over an update and an agent starting", { lost: true, applying: true, starting: true, reconnected: true, loading: true }, { state: "idle", target: "home", beads: null }],
   ] as const)("%s", (_name, input, expected) => {
     expect(markReading(input)).toEqual(expected);
   });
 
   it("points away from home only while the mark draws the update", () => {
     const flags = [false, true];
-    for (const lost of flags) for (const applying of flags) for (const reconnected of flags) for (const loading of flags) {
-      const reading = markReading({ lost, applying, reconnected, loading });
+    for (const lost of flags) for (const applying of flags) for (const starting of flags) for (const reconnected of flags) for (const loading of flags) {
+      const reading = markReading({ lost, applying, starting, reconnected, loading });
       expect(reading.target === "update-line").toBe(reading.state === "applying");
     }
   });

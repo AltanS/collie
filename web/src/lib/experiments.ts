@@ -18,9 +18,11 @@
 /**
  * Every experiment the section holds today, newest last. Empty from the day Chat graduated (ADR 0082) to
  * 2026-11-13, when the Hill became an experiment: off by default, one switch here
- * (`components/hill-switch-card.tsx`).
+ * (`components/hill-switch-card.tsx`). Tricks as a whole joined it on 2026-11-17: off by default too, but
+ * its switch lives at the top of Settings, Tricks (`components/tricks-switch-card.tsx`); the row here only
+ * opens that page.
  */
-export const EXPERIMENTS = ["hill"] as const;
+export const EXPERIMENTS = ["hill", "tricks"] as const;
 
 /** One experiment's name, so a card naming something nobody built is a compile error. */
 export type ExperimentId = (typeof EXPERIMENTS)[number];

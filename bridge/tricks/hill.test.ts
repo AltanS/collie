@@ -814,6 +814,7 @@ async function serviceRig(manifest?: string): Promise<ServiceRig> {
   const state: Scripted = { outcome: exited(doc([RED])) };
   const out = Object.assign(base, state, { configDir, clock, specs });
   const service = new TricksService({
+    feature: { on: () => true },
     configDir,
     stateDir,
     memberId: HOST,
@@ -995,6 +996,7 @@ describe.skipIf(process.platform === "win32")("end to end with the legs trick", 
     const base = rig(stateDir, T0);
     const clock = { t: T0 };
     const service = new TricksService({
+      feature: { on: () => true },
       configDir,
       stateDir,
       memberId: HOST,

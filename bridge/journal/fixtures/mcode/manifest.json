@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "mvs_7c98f4cb5ac547f4853d3c624ef2fd28",
+  "createdAtMs": 1794676240870,
+  "updatedAtMs": 1794676240870,
+  "source": "local-runtime",
+  "layout": "v2-final-dated-session",
+  "paths": {
+    "sessionDir": "/home/operator/.minimax/v2/sessions/2026/11/14/17-10-40-870-session_bXZzXzdjOThmNGNiNWFjNTQ3ZjQ4NTNkM2M2MjRlZjJmZDI4",
+    "ledger": "/home/operator/.minimax/v2/sessions/2026/11/14/17-10-40-870-session_bXZzXzdjOThmNGNiNWFjNTQ3ZjQ4NTNkM2M2MjRlZjJmZDI4/ledger.jsonl",
+    "display": "/home/operator/.minimax/v2/sessions/2026/11/14/17-10-40-870-session_bXZzXzdjOThmNGNiNWFjNTQ3ZjQ4NTNkM2M2MjRlZjJmZDI4/display.jsonl",
+    "snapshot": "/home/operator/.minimax/v2/sessions/2026/11/14/17-10-40-870-session_bXZzXzdjOThmNGNiNWFjNTQ3ZjQ4NTNkM2M2MjRlZjJmZDI4/snapshot.json",
+    "reports": "/home/operator/.minimax/v2/sessions/2026/11/14/17-10-40-870-session_bXZzXzdjOThmNGNiNWFjNTQ3ZjQ4NTNkM2M2MjRlZjJmZDI4/reports",
+    "messages": "/home/operator/.minimax/v2/sessions/2026/11/14/17-10-40-870-session_bXZzXzdjOThmNGNiNWFjNTQ3ZjQ4NTNkM2M2MjRlZjJmZDI4/messages.jsonl"
+  }
+}

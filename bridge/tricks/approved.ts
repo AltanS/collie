@@ -319,7 +319,7 @@ export async function syncConfig(src: string, copyDir: string, fs: TrickFs = dis
  * text above. The keys go in sorted order (`env`, `inputs`, `places`, then {@link LATER_POWER_KEYS}), which is
  * the order every stored hash was written in.
  */
-export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "inputs" | "agentView" | "rules" | "rulesSha256" | "decides">): string {
+export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "inputs" | "agentView" | "rules" | "rulesSha256" | "decides" | "on" | "watch">): string {
   const env = [...new Set(manifest.env ?? [])].toSorted();
   const places = [...new Set<string>([...manifest.places, ...(manifest.agentView === true ? [AGENT_VIEW_PLACE] : [])])].toSorted();
   const inputs = [...new Set(manifest.inputs ?? [])].toSorted();
@@ -327,6 +327,10 @@ export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "input
   if (manifest.rules !== undefined) later.rules = manifest.rulesSha256 ?? "";
   // `decides = "reply"`: its Decisions may type the person's answer into a session. Absent hashes as before.
   if (manifest.decides !== undefined) later.replies = manifest.decides;
+  // `on` and `watch` (M105 step one) make the trick run when something happens, so each is a right: a
+  // version that adds one, or names another event or path, asks again. Sorted and once; absent hashes as before.
+  if (manifest.on !== undefined) later.reacts = [...new Set<string>(manifest.on)].toSorted();
+  if (manifest.watch !== undefined) later.watches = [...new Set(manifest.watch)].toSorted();
   return powersHash({ env, inputs, places }, later);
 }
 
@@ -359,14 +363,18 @@ export interface FirstPowers {
 
 /** The power keys added after the first three. A new right gets its key here, and in {@link LATER_POWER_KEYS}. */
 export interface LaterPowers {
+  /** The manifest's `on` events, sorted and once (M105 step one). Named so it sorts after `places`. */
+  reacts?: readonly string[];
   /** The manifest's `decides`: `reply` when the trick's Decisions may answer into a session (2026-11-12). Named so it sorts after `places`. */
   replies?: string;
   /** The rules file's SHA-256, or the empty string for rules named but not read. */
   rules?: string;
+  /** The manifest's `watch` paths as written, sorted and once (M105 step one). */
+  watches?: readonly string[];
 }
 
 /** The later keys, in sorted order. */
-export const LATER_POWER_KEYS = ["replies", "rules"] as const satisfies readonly (keyof LaterPowers)[];
+export const LATER_POWER_KEYS = ["reacts", "replies", "rules", "watches"] as const satisfies readonly (keyof LaterPowers)[];
 
 /** Whether a later power key holds nothing, so it hashes as if absent: absent, or an empty list. The empty string holds something. */
 export function neutralPower(value: string | readonly string[] | undefined): boolean {
@@ -375,11 +383,11 @@ export function neutralPower(value: string | readonly string[] | undefined): boo
 
 /** The powers hash: the three first keys, then each later key that holds something, all keys in sorted order. */
 export function powersHash(first: FirstPowers, later: LaterPowers = {}): string {
-  const doc: FirstPowers & LaterPowers = { env: first.env, inputs: first.inputs, places: first.places };
-  for (const key of LATER_POWER_KEYS) {
+  const held = LATER_POWER_KEYS.flatMap((key) => {
     const value = later[key];
-    if (value !== undefined && !neutralPower(value)) doc[key] = value;
-  }
+    return value !== undefined && !neutralPower(value) ? [[key, value] as const] : [];
+  });
+  const doc = { env: first.env, inputs: first.inputs, places: first.places, ...Object.fromEntries(held) };
   return createHash("sha256").update(JSON.stringify(doc)).digest("hex").slice(0, 16);
 }
 

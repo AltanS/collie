@@ -52,6 +52,7 @@ import { clearAllDrafts, clearDraft, clearPutBack } from "@/lib/drafts";
 import { forgetAgain } from "@/lib/new-page";
 import { forgetSlots } from "@/lib/slots";
 import { forgetNoPromptsConfirms } from "@/lib/no-prompts";
+import { forgetAnswers } from "@/lib/remembered-shape";
 import { forgetTroubleSignals } from "@/lib/report/once";
 import {
   clearDeviceToken,
@@ -231,6 +232,13 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     "trouble-signals",
     (context) => {
       if (context.reason !== "password") forgetTroubleSignals();
+    },
+  ],
+  [
+    // The remembered shape facts (lib/remembered-shape.ts): booleans about which rows a page draws. No content, but they describe this pairing's machine.
+    "answers",
+    (context) => {
+      if (context.reason !== "password") forgetAnswers();
     },
   ],
   [

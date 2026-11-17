@@ -5,6 +5,7 @@ import { fetchConfig } from "@/lib/api";
 import { acceptOperatorFonts, applyOperatorFonts, type OperatorFontFace } from "@/lib/operator-fonts";
 import { designPrefs, subscribeDesign } from "@/lib/design";
 import { getDeviceToken, subscribePairing } from "@/lib/pairing";
+import { readRememberedMux, readRememberedSttOffered, rememberMux, rememberStt } from "@/lib/remembered-mux";
 import { normalizeScope, scopeKey, type Scope } from "@/lib/scope";
 import type {
   MuxConfig,
@@ -55,11 +56,23 @@ let currentFonts: readonly OperatorFontFace[] = [];
 // `null` until a read succeeds, AND on a bridge that publishes none — the two are deliberately the
 // same value, because both mean "nothing said otherwise" and mux-capability.ts answers both the
 // same way: capable.
-let currentMux: MuxConfig | null = null;
+//
+// THE SEED: at module load it starts from the last known answer of THIS machine (lib/remembered-mux.ts),
+// so the first frame draws the controls where they stood last time. The rule is "last known, else
+// capable; a real read replaces it": with nothing remembered it is `null` and mux-capability.ts's
+// fail-open default holds, and a successful read below replaces it in full, never merging into it.
+// Only this front machine's block is seeded; a member's and a session's blocks (below) keep their
+// maps empty until their own read, because the remembered answers are per mount and never per host.
+let currentMux: MuxConfig | null = readRememberedMux();
 // `null` until a read succeeds AND on every bridge whose operator configured no provider — the two
 // are the same value on purpose, because both mean "there is no microphone here" (ADR 0029). Absent
 // is the feature being off, so nothing has to distinguish them.
 let currentStt: SttCapability | null = null;
+// Whether the last read offered a speech provider, remembered on this device (lib/remembered-mux.ts).
+// It is NOT put into `currentStt`: Settings names the provider from that block and a remembered
+// boolean has no provider to name. `getSttCapabilityOrSeed` below hands the composer's microphone a
+// disabled placeholder while the first read of this page is in flight, and nothing else.
+let seededStt = readRememberedSttOffered();
 // `null` until a read succeeds AND on every bridge older than the field. The two are the same value
 // on purpose: both mean "nothing said otherwise", and lib/attachments.ts answers both with the
 // contract that shipped before attachments existed — 10 MB, images only.
@@ -113,6 +126,10 @@ export function loadOperatorCommands(): Promise<void> {
       applyOperatorFonts(currentFonts, designPrefs().font);
       currentMux = cfg.mux ?? null;
       currentStt = cfg.stt ?? null;
+      // Remember this machine's own answer for the next cold load (after the swap above, so a failure to
+      // write never costs the read).
+      rememberMux(cfg.mux);
+      rememberStt(cfg.stt);
       currentUpload = cfg.upload ?? null;
       currentWhistle = cfg.whistle ?? null;
       loaded = true;
@@ -275,6 +292,20 @@ export function getSttCapability(): SttCapability | null {
 }
 
 /**
+ * What the composer's microphone asks: the real block, or, until the first read of this page lands, a
+ * DISABLED placeholder when the last read on this device offered a provider, so the small microphone
+ * is drawn in its place from the first frame. Disabled because a remembered boolean cannot say whether
+ * the provider can serve right now, nor what it takes (`input`); the real block enables it in the same
+ * slot. `null` when nothing was offered, nothing is remembered, or the read has landed with no provider.
+ */
+export function getSttCapabilityOrSeed(): SttCapability | null {
+  if (currentStt !== null) return currentStt;
+  return seededStt && !everLoaded ? SEEDED_STT : null;
+}
+
+const SEEDED_STT: SttCapability = { provider: "", available: false };
+
+/**
  * What this collie accepts as an attachment, or `null` when nothing has said otherwise (no read yet,
  * a failed read, or a bridge older than the field). Consumers go through lib/attachments.ts, which
  * is where `null` becomes an answer.
@@ -373,6 +404,7 @@ export function __resetOperatorCommands(): void {
   currentFonts = [];
   currentMux = null;
   currentStt = null;
+  seededStt = false;
   currentWhistle = null;
   currentUpload = null;
   inflight = null;
@@ -380,6 +412,15 @@ export function __resetOperatorCommands(): void {
   loaded = false;
   everLoaded = false;
   listeners.clear();
+}
+
+/**
+ * Test helper: start the store from what this device remembers, as a page load does. The reset above
+ * leaves it empty, so a case that wants a seed writes the answers first and then calls this.
+ */
+export function __seedOperatorConfig(): void {
+  currentMux = readRememberedMux();
+  seededStt = readRememberedSttOffered();
 }
 
 /** Whether a read of the config has ever succeeded in this page session. */

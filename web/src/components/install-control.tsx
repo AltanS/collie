@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 import { Icon } from "@/components/icons/icon";
 
 import { Button } from "@/components/ui/button";
@@ -6,6 +8,15 @@ import { Collapse } from "@/components/ui/collapse";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { probeShareSheetInstall, promptInstall, useInstallOffer } from "@/lib/install";
+import { useRememberedAnswer } from "@/lib/remembered-shape";
+import { cn } from "@/lib/utils";
+
+/**
+ * How long a device that was offered the install last time waits for the browser to offer it again
+ * before the card's place is given back. The browser has no "no offer" answer to wait for, so this is
+ * the bound: past it, the card's place goes (one shift, once) and the device remembers that.
+ */
+export const INSTALL_WAIT_MS = 3000;
 
 // The PWA install card. Present ONLY while the browser holds an install offer (lib/install.ts) —
 // which is what makes it honest: a device that already installed and an insecure origin both render
@@ -24,12 +35,31 @@ import { probeShareSheetInstall, promptInstall, useInstallOffer } from "@/lib/in
 export function InstallControl({ shareSheet = probeShareSheetInstall() }: { shareSheet?: boolean }) {
   useLocale();
   const offered = useInstallOffer();
+  // CALM LOAD. The offer arrives after the first paint, on a cold open of this page, and a card that
+  // enters the flow then pushes the list down. A device that was offered it last time draws the card's
+  // place from the first frame: the real card, `invisible` (same height at any width and in any
+  // language), swapped for the visible one when the offer lands. There is no "no" from the browser, so
+  // the place is given back after INSTALL_WAIT_MS, once, and that is remembered. A spent offer gives it back at once.
+  const [gaveUp, setGaveUp] = useState(false);
+  const sawOffer = useRef(false);
+  const expected = useRememberedAnswer("settings-install-card", offered ? true : gaveUp ? false : undefined) === true;
+  // An offer that was held and is now spent (the button, or an install by any path) is the answer "no".
+  useEffect(() => {
+    if (offered) sawOffer.current = true;
+    else if (sawOffer.current) setGaveUp(true);
+  }, [offered]);
+  useEffect(() => {
+    if (!expected || offered) return;
+    const timer = setTimeout(() => setGaveUp(true), INSTALL_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [expected, offered]);
+  const held = expected && !offered && !shareSheet;
 
   return (
     <>
-      <Collapse open={offered}>
-        {offered ? (
-          <Card className="gap-0 py-0">
+      <Collapse open={offered || held}>
+        {offered || held ? (
+          <Card className={cn("gap-0 py-0", !offered && "invisible")} data-place={offered ? undefined : "held"}>
             <div className="flex items-center justify-between gap-4 p-4">
               <div className="flex min-w-0 items-start gap-3">
                 <Icon name="install-app" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />

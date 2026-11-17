@@ -67,39 +67,41 @@ The API and the code still call the channel `program`.
 The agent that runs in a pane: Claude Code, Codex, pi, OmO, or a durable agent
 ([Claude Code on your phone](claude-code-on-your-phone.md)).
 
-## Account
+## Profile
 
-A second login of one agent, kept beside the first. You pick it when you start a session, in
-**Settings → Accounts**. With none added, nothing changes. Accounts belong to one machine: a crew
-member's accounts are its own. Collie does not switch accounts, because the agent keeps the login in
-the folder of the account ([Accounts](configure.md#accounts)).
+A profile is signed in on its own, for example Work with your work subscription beside Default with
+your personal one. You pick the profile when you start a session, and the session stays in it. Add
+one in **Settings → Profiles**; with none added, nothing changes. Profiles belong to one machine: a
+crew member's profiles are its own. **Change login** gives a profile another login, and its sessions
+follow ([Profiles](configure.md#profiles)). Edge builds of 1.29 called it an account.
 
-## Default account
+## Default profile
 
-The account every agent has. It is the agent's normal folder, started with nothing set. A plain
-**Claude Code** entry on the New page keeps using it ([Accounts](configure.md#accounts)).
+The profile every agent has, shown as **Default**. It is the agent's normal folder, started with
+nothing set. A plain **Claude Code** entry on the New page keeps using it
+([Profiles](configure.md#profiles)).
 
-## Shared account
+## Shared profile
 
-A Claude Code account that Collie makes in a new folder, `~/.claude-<name>`. It links the Default
-account's setup and history into that folder, so your sessions, `/resume`, skills and settings stay
-one set, and only the login is its own. An **Own** account is the other kind: a folder you already
-use, taken as it is. The other agents offer Own accounts only ([Accounts](configure.md#accounts)).
+A Claude Code profile that Collie makes in a new folder, `~/.claude-<name>`. It links the Default
+profile's setup and history into that folder, so your sessions, `/resume`, skills and settings stay
+one set, and only the login is its own. An **Own** profile is the other kind: a folder you already
+use, taken as it is. The other agents offer Own profiles only ([Profiles](configure.md#profiles)).
 
 ## Change login
 
-The button that moves an account to another login without a new session. It starts the agent's own
+The button that moves a profile to another login without a new session. It starts the agent's own
 sign-in, and the old login stays until the new sign-in works. After **Finish**, Collie asks the agent
 who is signed in. Claude Code sessions that run go on with the new login from their next message.
 Codex, pi and Grok use it for sessions you start afterwards
-([Change the login of an account](configure.md#change-the-login-of-an-account)).
+([Change the login of a profile](configure.md#change-the-login-of-a-profile)).
 
 ## Sign-in code field
 
 The field where you paste the code that a browser sign-in gives you. The agent's sign-in screens show
 as cards, and the card's button opens only the agent's own sign-in address. The code and the address
 are not stored, logged or sent anywhere else
-([Change the login of an account](configure.md#change-the-login-of-an-account)).
+([Change the login of a profile](configure.md#change-the-login-of-a-profile)).
 
 ## Usage window
 
@@ -330,11 +332,19 @@ minutes, a body of at most 4,000 characters, and a reply chain of at most 4 repl
 ## Trick
 
 A folder that adds its own parts to Collie: a small program, rules for an agent, or both. Collie draws
-what it shows, in Collie's own look. A trick is off until you switch it on, and its program runs as
-you ([Tricks](tricks.md)). There are two kinds, a [program trick](#program-trick) and an
+what it shows, in Collie's own look. Tricks are an experiment: they run only while the
+[tricks switch](#tricks-switch) is on, a trick is off until you switch it on too, and its program runs
+as you ([Tricks](tricks.md)). There are two kinds, a [program trick](#program-trick) and an
 [agent view](#agent-view). The old word for a trick was "mod". The mods folder of herdr-app is a
 different thing, a panel of that app
 ([The Collie panel for herdr-app](multiplexers.md#the-collie-panel-for-herdr-app)).
+
+## Tricks switch
+
+The one switch for tricks as a whole on a machine, at the top of Settings → Tricks and in
+`collie tricks on|off|status`. Tricks are an experiment, so it is off until you switch it on. While it
+is off no trick runs or draws, and each trick keeps its own switch for when you switch it on
+([Switch tricks on or off](tricks.md#switch-tricks-on-or-off)).
 
 ## Program trick
 
@@ -393,8 +403,8 @@ others ([The parts](tricks.md#the-parts), [Parts](tricks-reference.md#parts)).
 ## Power
 
 What a trick may reach beyond its own code: the environment names it asks for (`env`), the places it
-draws in (`places`), and the files it reads from your agent sessions (`inputs`). The About sheet lists
-them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
+draws in (`places`), the files it reads from your agent sessions (`inputs`), and when it runs on its
+own (`on`, `watch`). The About sheet lists them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
 sometimes say "rights" for the same thing ([What a trick may and may not do](tricks.md#powers-the-environment-and-the-warnings)).
 
 ## About sheet
@@ -435,3 +445,23 @@ and the code is replaced only on your yes ([A trick an agent proposes](hill.md#a
 The page of Decisions that wait for you, grouped Now, Today and Later, with the answered ones below.
 It is the fourth item of the Dashboard's bottom bar. One crew has one Hill, on the lead. "Hill" is the
 view's name and stays the same in every language ([The Hill](hill.md)).
+
+## Event
+
+A short note the bridge makes when an agent session changes state, ends a turn or opens a question:
+`session.status`, `turn.end` or `ask.open`. It holds ids and states, never text. A trick that lists
+`on` runs on events, and the [local API](#local-api) answers them. An event can come twice, so a
+program must be safe against a repeat ([When a trick reacts](tricks-reference.md#when-a-trick-reacts)).
+
+## Watch
+
+The files a trick asks to run on: when one of them changes, the trick runs again. Like `on`, it is a
+[power](#power) the card names, and a new one waits for your yes
+([When a trick reacts](tricks-reference.md#when-a-trick-reacts)).
+
+## Local API
+
+A read-only Unix socket on the machine, for programs of your own user: list the sessions, read a
+screen with secrets masked, follow the [events](#event). It is on while tricks are switched on, and
+`collie api` is its command. It is experimental, and it is closed to other users, other machines and
+browser pages ([The local API](commands.md#the-local-api-experimental)).

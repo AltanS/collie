@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import type { JsonValue } from "../json.ts";
-import { parseManifest, RULES_MAX_BYTES, rulesTextProblems, type TrickManifest, type Refusal } from "../../web/src/lib/tricks/schema.ts";
+import { MANIFEST_TRIGGERS, parseManifest, RULES_MAX_BYTES, rulesTextProblems, type TrickManifest, type Refusal } from "../../web/src/lib/tricks/schema.ts";
 import { CONFIG_FILE, diskTrickFs, hashCodeEntries, walkFingerprint, walkTrickCode, type FsStat, type TrickFs } from "./code-hash.ts";
 import { ORIGIN_FILE, readOrigin, readProposalOrigin, type ProposalOrigin, type TrickOrigin } from "./origin.ts";
 import { MANIFEST_FILE } from "./paths.ts";
@@ -75,7 +75,7 @@ export function readManifestText(text: string | null, id: string): ManifestRead 
     const why = err instanceof Error ? err.message : String(err);
     return { refusals: [{ code: "type", path: "", reason: `${MANIFEST_FILE} is not TOML: ${why}` }] };
   }
-  const parsed = parseManifest(doc, { folder: id });
+  const parsed = parseManifest(doc, { folder: id, triggers: MANIFEST_TRIGGERS });
   return parsed.manifest === undefined ? { refusals: parsed.refusals } : { manifest: parsed.manifest, refusals: parsed.refusals };
 }
 

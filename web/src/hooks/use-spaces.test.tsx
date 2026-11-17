@@ -321,6 +321,14 @@ describe("useSpaceActions — start", () => {
     expect(mockStartLaunch).toHaveBeenCalledWith(what, { cwd: "~/src/app", requestId: REQUEST_ID, besidePaneId: "w7:p2" }, {});
     expect(router.state.location.pathname).toBe("/pane/w7%3Ap1");
     expect(readAgentLaunch(router.state.location.state, "w7:p1", {})?.harness).toBe("kiro");
+    // The phone launched an agent: the new pane's header says "Starting…", so "launch your agent" is not said.
+    expect(screen.getByTestId("status-probe")).not.toHaveTextContent("launch your agent");
+  });
+
+  it.each([{ kind: "shell" }, { kind: "row", command: "htop" }] as const)("a tab with no agent to start still says it is ready (%j)", async (what) => {
+    mockStartLaunch.mockResolvedValueOnce(pane("w7"));
+    const router = await press({ what, requestId: REQUEST_ID, beside: { paneId: "w7:p2", workspaceId: "w7" } });
+    expect(readAgentLaunch(router.state.location.state, "w7:p1", {})).toBeUndefined();
     expect(screen.getByTestId("status-probe")).toHaveTextContent("New tab ready, launch your agent");
   });
 

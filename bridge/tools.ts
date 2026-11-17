@@ -25,6 +25,7 @@ export function fallbackDirs(home: string): string[] {
     join(home, ".local", "bin"),
     join(home, ".bun", "bin"),
     join(home, ".cargo", "bin"),
+    join(home, ".minimax-code", "bin"),
     "/usr/local/bin",
     "/usr/bin",
     "/bin",

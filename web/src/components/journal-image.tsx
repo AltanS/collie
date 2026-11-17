@@ -11,7 +11,8 @@ import type { Scope } from "@/lib/scope";
  *
  * `imageSrc` decides whether the reference is loadable AT ALL (`lib/api.ts`): a blob path on the
  * host the pane belongs to, or inline bytes, and nothing else. A journal is an agent's own output,
- * so a reference it refuses renders nothing rather than a broken image.
+ * so a reference it refuses renders nothing rather than a broken image. While the bytes load, a quiet
+ * box of `PagerPicture`'s height holds the place (a picture's size is not on the wire).
  */
 export function JournalImage({
   ref_,
@@ -23,9 +24,17 @@ export function JournalImage({
   scope?: Scope;
 }) {
   // Vetted first, then loaded with the pairing token (lib/authed-url.ts): reads need it (ADR 0086),
-  // and an `<img src>` cannot send it. Nothing is drawn until the bytes are here.
-  const { url } = useAuthedUrl(imageSrc(ref_, scope));
-  if (url === null) return null;
+  // and an `<img src>` cannot send it. A picture the page already fetched is there on the first
+  // render (the resolved map in that module).
+  const src = imageSrc(ref_, scope);
+  const { url, failed } = useAuthedUrl(src);
+  // A reference `imageSrc` refuses, or a load that failed, draws nothing, as it always did: the
+  // reserve below is only for a picture that is on its way, so no empty band can stay behind.
+  if (src === null || failed) return null;
+  // THE RESERVE, WHILE THE BYTES COME. The wire carries no width or height, so the box is the
+  // `PagerPicture` one (`h-40`, hill-media.tsx): the line under it does not jump by the whole
+  // picture's height when the bytes land. It is replaced by the picture, never kept beside it.
+  if (url === null) return <span aria-hidden data-slot="journal-image-reserve" className="block h-40 w-full" />;
   return (
     <ImageSheet
       src={url}

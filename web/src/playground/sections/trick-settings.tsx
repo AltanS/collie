@@ -15,6 +15,7 @@ import { TrickCardsLineView, TrickCardsWaitingList } from "@/components/trick-ca
 import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
+import { TricksSwitchCard } from "@/components/tricks-switch-card";
 import { addOfficialTrick } from "@/lib/api";
 import { syncHill } from "@/lib/hill/store";
 import { clearStatus } from "@/lib/status";
@@ -118,7 +119,7 @@ function WaitingRowCard({ n, state, label, tricks }: { n: number; state: string;
   return <ListCard n={n} state={state} label={label} tricks={tricks} />;
 }
 
-function ListCard({ n, state, label, tricks, readOnly, hillOff, gate }: { n: number; state: string; label: string; tricks: WireTrickInfo[]; readOnly?: boolean; hillOff?: boolean; gate?: TricksGate }) {
+function ListCard({ n, state, label, tricks, readOnly, hillOff, tricksOff, gate }: { n: number; state: string; label: string; tricks: WireTrickInfo[]; readOnly?: boolean; hillOff?: boolean; tricksOff?: boolean; gate?: TricksGate }) {
   const store = useListStore(tricks, gate);
   return (
     <Card state={state} label={`${n} · ${label}`}>
@@ -134,6 +135,7 @@ function ListCard({ n, state, label, tricks, readOnly, hillOff, gate }: { n: num
             now={NOW}
             readOnly={readOnly}
             hillOff={hillOff}
+            tricksOff={tricksOff}
           />
         </RootRouter>
       </div>
@@ -333,9 +335,29 @@ function OfficialSheetBox({ n, state, label, entry }: { n: number; state: string
   );
 }
 
+/** The switch card at the top of Settings, Tricks, in a 390px column, with a switch that flips in place. */
+function SwitchCardCase({ n, state, label, initial, waiting = 0, windows = false }: { n: number; state: string; label: string; initial: boolean; waiting?: number; windows?: boolean }) {
+  const [on, setOn] = useState(initial);
+  return (
+    <Card state={state} label={`${n} · ${label}`}>
+      <div className="w-[390px] max-w-full bg-background p-4">
+        <TricksSwitchCard on={on} disabled={false} waiting={waiting} windows={windows} onToggle={setOn} />
+      </div>
+    </Card>
+  );
+}
+
 export function TrickSettingsSection(): ReactNode {
   return (
     <Section def={DEF}>
+      {/* The switch for tricks as a whole (bridge/tricks/feature-switch.ts), first on Settings, Tricks. Off by default. */}
+      <Group title="The switch for tricks as a whole">
+        <SwitchCardCase n={47} state="tricks-switch-on" label="tricks on" initial />
+        <SwitchCardCase n={48} state="tricks-switch-off" label="tricks off (the default)" initial={false} />
+        <SwitchCardCase n={49} state="tricks-switch-armed" label="3 questions from tricks wait: tap once, it arms; tap again inside four seconds, it goes off" initial waiting={3} />
+        <SwitchCardCase n={50} state="tricks-switch-windows" label="a Windows bridge: the line, and the switch cannot move" initial={false} windows />
+        <ListCard n={51} state="trick-settings-tricks-off" label="tricks off: the list stays readable, every switch is disabled, one line says why" tricks={[HEALTHY[0] ?? trick("x", "x"), { ...(HEALTHY[2] ?? trick("y", "y")), on: false, state: "off" }]} tricksOff />
+      </Group>
       <Group title="The list">
         <ListCard n={1} state="trick-settings-healthy" label="three tricks, three origins" tricks={HEALTHY} />
         <ListCard
@@ -455,10 +477,10 @@ export function TrickSettingsSection(): ReactNode {
         />
       </Group>
       <Group title="Settings of a trick (contract 3)">
-        <ListCard n={47} state="trick-settings-fields-needs-setup" label="a required setting is empty: the row says Needs setup (tap the name)" tricks={[FIELDS_TRICK, HEALTHY[2] ?? trick("x", "x")]} />
-        <SheetBox n={48} state="trick-settings-fields" label="the Settings group: one row per field, text, choice, switch, number" values trick={FIELDS_TRICK} />
-        <SheetBox n={49} state="trick-settings-fields-set" label="every setting set" values trick={{ ...FIELDS_TRICK, needsSetup: undefined, values: { repo: "lodge/workshop", branch: "edge", notify: true, rows: 20 } }} />
-        <SheetBox n={50} state="trick-settings-fields-unread" label="the saved settings do not read" values trick={{ ...FIELDS_TRICK, valuesUnread: true }} />
+        <ListCard n={56} state="trick-settings-fields-needs-setup" label="a required setting is empty: the row says Needs setup (tap the name)" tricks={[FIELDS_TRICK, HEALTHY[2] ?? trick("x", "x")]} />
+        <SheetBox n={57} state="trick-settings-fields" label="the Settings group: one row per field, text, choice, switch, number" values trick={FIELDS_TRICK} />
+        <SheetBox n={58} state="trick-settings-fields-set" label="every setting set" values trick={{ ...FIELDS_TRICK, needsSetup: undefined, values: { repo: "lodge/workshop", branch: "edge", notify: true, rows: 20 } }} />
+        <SheetBox n={59} state="trick-settings-fields-unread" label="the saved settings do not read" values trick={{ ...FIELDS_TRICK, valuesUnread: true }} />
       </Group>
       <Group title="An agent view (contract 2)">
         <ListCard n={26} state="trick-settings-agent-view" label="a view-only trick: agent view as its place, a switch" tricks={[VIEW_TRICK, HEALTHY[2] ?? trick("x", "x")]} />

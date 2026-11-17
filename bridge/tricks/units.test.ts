@@ -467,6 +467,9 @@ describe("the routes", () => {
     const calls: [string, string][] = [];
     const surface: TricksSurface = {
       rev: () => 1,
+      switchedOn: () => true,
+      switchTo: () => null,
+      gateLine: () => null,
       noteWatched: () => {},
       reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
       sessionPanes: () => undefined,
@@ -494,6 +497,9 @@ describe("the routes", () => {
     const hashes: (string | null)[] = [];
     const surface: TricksSurface = {
       rev: () => 1,
+      switchedOn: () => true,
+      switchTo: () => null,
+      gateLine: () => null,
       noteWatched: () => {},
       reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
       tap: async () => ({ status: 404, body: { error: "unknown-trick" } }),
@@ -533,6 +539,9 @@ describe("the routes", () => {
     const calls: string[] = [];
     const surface: TricksSurface = {
       rev: () => 1,
+      switchedOn: () => true,
+      switchTo: () => null,
+      gateLine: () => null,
       noteWatched: () => {},
       reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
       tap: async () => ({ status: 404, body: { error: "unknown-trick" } }),
@@ -571,6 +580,9 @@ describe("the routes", () => {
     const calls: [string, string, string][] = [];
     const surface: TricksSurface = {
       rev: () => 1,
+      switchedOn: () => true,
+      switchTo: () => null,
+      gateLine: () => null,
       noteWatched: () => {},
       reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
       tap: async () => ({ status: 404, body: { error: "unknown-trick" } }),
@@ -601,7 +613,7 @@ describe("the routes", () => {
     const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
     const list = src.slice(src.indexOf('if (pathname === "/api/tricks" && req.method === "GET")'));
     // The rights live in one table in routes.ts; server.ts reads each route's level from it.
-    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read", auto: "write", undo: "write", official: "read", officialAdd: "write", value: "write" });
+    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read", auto: "write", undo: "write", official: "read", officialAdd: "write", feature: "write", value: "write" });
     expect(list.slice(0, 400)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.reply, pairingGate)");
     expect(list.slice(0, 600)).toContain("if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();");
     // The runner's PATH for the host's own CLI only is held by a real request in the crew harness

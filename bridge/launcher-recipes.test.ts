@@ -48,6 +48,18 @@ describe("the recipe table", () => {
     expect(recipeOptions("hermes")).toEqual([]);
     expect(recipeOptions("__proto__")).toEqual([]);
   });
+
+  test("mcode builds a recipe from its chips, and refuses a conflicting mode", () => {
+    expect(recipeOptions("mcode").map((o) => o.id)).toEqual(["continue", "ptc", "lightweight", "standard"]);
+    expect(buildRecipe("mcode", ["continue", "ptc"])).toEqual({
+      ok: true,
+      command: "mcode --continue --ptc",
+      label: "MiniMax Code, Continue last, Programmatic Tool Calling",
+      noPrompts: false,
+      options: ["continue", "ptc"],
+    });
+    expect(buildRecipe("mcode", ["lightweight", "standard"]).ok).toBe(false);
+  });
 });
 
 describe("buildRecipe", () => {

@@ -161,6 +161,9 @@ function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
   if (trick.rules !== undefined) rows.push({ key: "rules", node: t("settings.tricks.about.rules") });
   if (trick.inputs !== undefined) rows.push({ key: "reads", node: readsLine(trick.inputs) });
   if (trick.env !== undefined && trick.env.length > 0) rows.push({ key: "env", node: t("settings.tricks.about.env", { names: trick.env.join(", ") }) });
+  // `on` and `watch` are rights (M105 step one): the same two lines as the proposal card's chips.
+  if (trick.events !== undefined && trick.events.length > 0) rows.push({ key: "on", node: t("settings.tricks.about.on") });
+  if (trick.watch !== undefined && trick.watch.length > 0) rows.push({ key: "watch", node: t("settings.tricks.about.watch", { paths: trick.watch.join(", ") }) });
   for (const line of warningLines(trick)) {
     rows.push({
       key: `warn:${line.kind}`,

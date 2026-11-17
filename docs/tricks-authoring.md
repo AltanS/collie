@@ -2,6 +2,11 @@
 
 A trick is a folder: a manifest, and a program or a rules file. This page builds one of each.
 
+Tricks are experimental. They may change, lose settings, or be withdrawn in a patch release. They are
+off until you switch them on at the top of Settings → Tricks, or with `collie tricks on`
+([Switch tricks on or off](tricks.md#switch-tricks-on-or-off)). `collie trick dev` and
+`collie trick check --run` run a folder once in your terminal with tricks off too.
+
 ```sh
 collie trick init my-trick
 collie trick dev my-trick

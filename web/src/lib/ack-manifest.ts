@@ -108,6 +108,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The Hill's switch in Settings and on the Hill's own off state (M96): the switch itself is the receipt, it holds the new place while the call runs and the snapshot's `hillOff` then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
   },
+  setTricksSwitch: {
+    channel: "inline",
+    why: "The switch for tricks as a whole, at the top of Settings, Tricks: the switch itself is the receipt, it holds the new place while the call runs and the snapshot's `tricksOff` then confirms it; a failed call puts the switch back and lands as a line under it, because the operator asked for something that did not happen.",
+  },
   setHillCrewState: {
     channel: "inline",
     why: "The crew state's segmented control at the top of the Hill (1.29.0): the control itself is the receipt, it holds the new value while the call runs and the helper line under it says what the value does; a failed call puts the control back and lands as a line under it, because the operator asked for something that did not happen.",

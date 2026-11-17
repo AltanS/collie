@@ -2397,6 +2397,8 @@ export function AgentChat({
         <RouteHeader
           onHome={onBackArrow ?? onBack}
           width="wide"
+          // The mark says an agent is starting, and the title says so too (`condition` below).
+          starting={startup.starting}
           // Zen takes the whole row off the screen — the one shell owns the <header> element, so
           // only the shell can stop drawing it, and this is how a route asks. See HeaderClaim.hidden
           // for what survives (the element, its safe-area inset, its reserved rule) and why.
@@ -2502,7 +2504,7 @@ export function AgentChat({
               Wrapped in HeaderStatus: while a status is live (lib/status.ts) it takes this whole
               slot over, in the same box, rather than floating a toast over the tab strip's own "+"
               — see that component's header for the reasoning and what replaced. */}
-          <HeaderStatus>
+          <HeaderStatus condition={startup.starting ? { text: t("newPage.starting"), tone: "note" } : undefined}>
           {agent ? (
             // THE TAP SURFACE IS A SIBLING OF THE LINES, NOT THEIR PARENT, and that is what lets the
             // meta ride on line 2. The block used to BE the button, so anything with a tap of its own
@@ -4105,13 +4107,12 @@ export function AgentChat({
           scope={scope}
           hooks={agent?.hooks}
           program={gridless}
-          // Change login (M101) for the account this session runs under: this machine's panes only, on a
-          // device that may write, never a program. The row itself shows only when the account is listed.
+          // Change login (M101) for the profile this session runs in: this machine's panes only, on a
+          // device that may write, never a program. The row itself shows only when a profile's list names this pane.
           changeLogin={
             agent && agent.kind !== "shell" && !readOnly && !gridless && isLead(scope)
               ? {
                   harness: agent.agent,
-                  account: agent.account?.id,
                   onOpen: (accountId) => {
                     closeDrawer();
                     nav.down(changeLoginPath(accountId, scope));
