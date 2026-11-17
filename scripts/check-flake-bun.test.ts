@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 633 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 640 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([406, 192, 35]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([413, 192, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 6 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -265,7 +265,7 @@ describe("the Windows check runs the flake's Bun", () => {
     // server and dials it is `apiSocketTest` or `apiSocketDescribe` (bridge/api/skip.ts), a skip on win32, one reason for all.
     const apiSocketText = readFileSync(join(ROOT, "bridge", "api", "socket.test.ts"), "utf8");
     const apiSocketSkips = (apiSocketText.match(/^ {2}apiSocketTest\(/gm) ?? []).length + testsInBlocks(apiSocketText, "apiSocketDescribe(");
-    expect(apiSocketSkips).toBe(60);
+    expect(apiSocketSkips).toBe(62);
     expect(script).toContain("bridge/api/skip.ts");
     expect(script).toContain("bridge/api/socket.test.ts");
     const apiSkip = readFileSync(join(ROOT, "bridge", "api", "skip.ts"), "utf8");
@@ -279,11 +279,18 @@ describe("the Windows check runs the flake's Bun", () => {
     const repoIndexSkips = testsInBlocks(repoIndex, "describe.if(posix)(") + (repoIndex.match(/^ {2}test\.if\(posix\)\(/gm) ?? []).length;
     expect(repoIndexSkips).toBe(13);
     const apiEndToEndSkips = testsInBlocks(readFileSync(join(ROOT, "bridge", "api", "trick-end-to-end.test.ts"), "utf8"), 'describe.skipIf(process.platform === "win32")(');
-    expect(apiEndToEndSkips).toBe(4);
+    expect(apiEndToEndSkips).toBe(5);
     const approvedSkips = (readFileSync(join(ROOT, "bridge", "tricks", "approved.test.ts"), "utf8").match(/^ {2}test\.if\(process\.platform !== "win32"\)\(/gm) ?? []).length;
     expect(approvedSkips).toBe(1);
-    for (const file of ["bridge/tricks/repo-index.test.ts", "bridge/api/trick-end-to-end.test.ts", "bridge/tricks/approved.test.ts"]) expect(script).toContain(file);
-    expect(script).toContain("Not listed before, bridge (18)");
+    // Four more, after that run: the 3 tests of bridge/tricks/service.test.ts that start a real `#!/bin/sh` program to print the run token
+    // (`describe.skipIf(win32)`), and the one test of bridge/tricks/feature-switch.test.ts that kills a real `#!/bin/sh` child (`./legs.sh`,
+    // which the runner refuses on Windows).
+    const runTokenPrintSkips = testsInBlocks(readFileSync(join(ROOT, "bridge", "tricks", "service.test.ts"), "utf8"), 'describe.skipIf(process.platform === "win32")("the run token: a program that prints it back"');
+    expect(runTokenPrintSkips).toBe(3);
+    const switchKillSkips = (readFileSync(join(ROOT, "bridge", "tricks", "feature-switch.test.ts"), "utf8").match(/^ {2}test\.skipIf\(process\.platform === "win32"\)\(/gm) ?? []).length;
+    expect(switchKillSkips).toBe(1);
+    for (const file of ["bridge/tricks/repo-index.test.ts", "bridge/api/trick-end-to-end.test.ts", "bridge/tricks/approved.test.ts", "bridge/tricks/service.test.ts", "bridge/tricks/feature-switch.test.ts"]) expect(script).toContain(file);
+    expect(script).toContain("Not listed before, bridge (23)");
     // Nine tests of bridge/tricks/triggers.test.ts write a real file path into a `watch` manifest, which the schema refuses
     // on Windows (a path starts with / or ~/): `watchTest`, a skip on win32 before the Windows gate for tricks opens.
     const watchSkips = (readFileSync(join(ROOT, "bridge", "tricks", "triggers.test.ts"), "utf8").match(/^ {2}watchTest\(/gm) ?? []).length;
@@ -291,7 +298,7 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(script).toContain("bridge/tricks/triggers.test.ts");
     expect(budget("Bridge")).toBe(
       viewMediaSkips.length + posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips +
-        hillSkips.length + legsEndToEnd + officialSkips + dataPathSkips + adapterSkips + accountSkips + apiSocketSkips + watchSkips + repoIndexSkips + apiEndToEndSkips + approvedSkips,
+        hillSkips.length + legsEndToEnd + officialSkips + dataPathSkips + adapterSkips + accountSkips + apiSocketSkips + watchSkips + repoIndexSkips + apiEndToEndSkips + approvedSkips + runTokenPrintSkips + switchKillSkips,
     );
     // The cli allowance adds the three real runs of the POSIX install leg a crew member runs, and the
     // 54 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
