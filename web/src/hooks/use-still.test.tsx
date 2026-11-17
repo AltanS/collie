@@ -60,4 +60,32 @@ describe("useStill", () => {
     rerender(<Probe keyed="b" />);
     expect(state(container)).toBe("false");
   });
+
+  it("the page hidden and shown again waits a whole second again, and a hidden page is not still", () => {
+    const { container } = render(<Probe />);
+    wait(STILL_MS + STILL_TICK_MS);
+    expect(state(container)).toBe("true");
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(state(container)).toBe("false");
+    wait(STILL_MS - STILL_TICK_MS * 2);
+    expect(state(container)).toBe("false");
+    wait(STILL_TICK_MS * 3);
+    expect(state(container)).toBe("true");
+  });
+
+  it("the window taking focus waits a whole second again", () => {
+    const { container } = render(<Probe />);
+    wait(STILL_MS + STILL_TICK_MS);
+    expect(state(container)).toBe("true");
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(state(container)).toBe("false");
+    wait(STILL_MS - STILL_TICK_MS * 2);
+    expect(state(container)).toBe("false");
+    wait(STILL_TICK_MS * 3);
+    expect(state(container)).toBe("true");
+  });
 });

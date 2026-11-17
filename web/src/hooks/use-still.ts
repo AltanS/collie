@@ -44,7 +44,7 @@ function placeOf(el: Element, within: Element | null, screen: Element | null): s
  * `within` is the scroll box a card flows in like a message, `screen` the box whose place on the screen is
  * watched (the yes; default `el`). Every move of either restarts the second, the person's own scroll too:
  * the wait then ends a second after the scroll stops, so reading down never keeps the yes off for ever
- * (read of f1d386c21, point 1).
+ * (read of f1d386c21, point 1). The page hidden and shown again, and the window taking focus, restart it too.
  */
 export function useStill(el: HTMLElement | null, key: string, within: HTMLElement | null = null, screen: HTMLElement | null = null): boolean {
   const [state, setState] = useState({ key: "", still: false });
@@ -83,11 +83,18 @@ export function useStill(el: HTMLElement | null, key: string, within: HTMLElemen
     };
     vv?.addEventListener("resize", moved);
     vv?.addEventListener("scroll", moved);
+    // The page coming back from the background (or the window taking focus) is a new look at the card: the
+    // timers ran slow or not at all while it was away, and the card may have been redrawn behind the lock
+    // screen. Wait a whole second again from that moment (counsel on Edge 5, A6).
+    document.addEventListener("visibilitychange", moved);
+    window.addEventListener("focus", moved);
     return () => {
       clearInterval(timer);
       observer?.disconnect();
       vv?.removeEventListener("resize", moved);
       vv?.removeEventListener("scroll", moved);
+      document.removeEventListener("visibilitychange", moved);
+      window.removeEventListener("focus", moved);
     };
   }, [el, key, within, screen]);
   return el !== null && state.key === key && state.still;

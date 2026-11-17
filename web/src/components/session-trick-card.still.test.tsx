@@ -156,6 +156,21 @@ describe.each(["chat", "agent-view"] as const)("the card's yes, in the %s's scro
     expect(yes()).toBeEnabled();
   });
 
+  it("the page coming back from the background, or the window taking focus, starts the wait again at once", () => {
+    const { yes, toggle } = draw(host);
+    readCode(toggle);
+    wait(STILL_MS + STILL_TICK_MS * 2);
+    expect(yes()).toBeEnabled();
+    for (const [target, type] of [[document, "visibilitychange"], [window, "focus"]] as const) {
+      act(() => {
+        target.dispatchEvent(new Event(type));
+      });
+      expect(yes()).toBeDisabled();
+      wait(STILL_MS + STILL_TICK_MS * 2);
+      expect(yes()).toBeEnabled();
+    }
+  });
+
   it("an end seen last, by a jump to the end, arms the yes only a second later", () => {
     // The observer the test drives: the end comes on screen when the test says so.
     const watched: { callback: (entries: readonly { isIntersecting: boolean }[]) => void; target: Element | null }[] = [];

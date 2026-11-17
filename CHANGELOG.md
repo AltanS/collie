@@ -87,6 +87,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **The yes of a card waits a whole second again when you come back to the page.** The one-second wait before a card's yes can be tapped now starts over when the page returns from the background or the window takes focus, so a card drawn behind a locked screen is not tappable at the first touch.
 - **Two writers can no longer both hold the switch lock.** A stale lock is now taken over by renaming it aside and checking the file that moved, and the lock file carries a nonce that its release must match, so a slow writer never removes the lock another writer took over.
 - **A consent verb refuses when it cannot prove the pane a shell.** `collie trick on`, `collie trick auto <id> on`, `collie tricks on`, `collie hill on`, `collie hill clear --spoken` and `collie hill state quiet|away` run in a pane with multiplexer markers only when the bridge says the pane is a shell. A failed check, a bridge that does not answer and an unknown pane refuse with the same person-only sentence; a terminal with no markers is not asked.
 - **Switching tricks off stops the programs that run at that moment.** The switch for tricks as a whole kills every running trick program, with its child processes, at once instead of letting it run to the 10 second limit; a tap or a Decision's answer waiting behind it never starts. A test with a real slow program holds this.
