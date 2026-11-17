@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 import { RunTokens } from "./run-tokens.ts";
 
@@ -11,8 +12,8 @@ describe("the run tokens", () => {
     const b = tokens.mint("workshop", "read", "run-2");
     expect(a).toMatch(/^[A-Za-z0-9_-]{43}$/u);
     expect(b).not.toBe(a);
-    expect(tokens.resolve(a)).toEqual({ trickId: "lodge", level: "see" });
-    expect(tokens.resolve(b)).toEqual({ trickId: "workshop", level: "read" });
+    expect(tokens.resolve(a)).toMatchObject({ trickId: "lodge", level: "see" });
+    expect(tokens.resolve(b)).toMatchObject({ trickId: "workshop", level: "read" });
   });
 
   test("an unknown token, one of another length or alphabet, and a near miss resolve to nothing", () => {
@@ -53,7 +54,7 @@ describe("the run tokens", () => {
     const c = tokens.mint("workshop", "see", "run-3");
     tokens.endTrick("lodge");
     expect([tokens.resolve(a), tokens.resolve(b)]).toEqual([null, null]);
-    expect(tokens.resolve(c)).toEqual({ trickId: "workshop", level: "see" });
+    expect(tokens.resolve(c)).toMatchObject({ trickId: "workshop", level: "see" });
   });
 
   test("tricks off, or the bridge stops: every token dies", () => {
@@ -62,5 +63,35 @@ describe("the run tokens", () => {
     const c = tokens.mint("workshop", "see", "run-3");
     tokens.clear();
     expect([tokens.resolve(a), tokens.resolve(c), tokens.size()]).toEqual([null, null, 0]);
+  });
+
+  test("resolve answers the token's hash hex as its key, never the token; alive asks by that key", () => {
+    const tokens = new RunTokens();
+    const a = tokens.mint("lodge", "see", "run-1");
+    const key = tokens.resolve(a)?.key ?? "";
+    expect(key).toBe(createHash("sha256").update(a, "utf8").digest("hex"));
+    expect(key).not.toContain(a);
+    expect(tokens.alive(key)).toBe(true);
+    tokens.end("run-1");
+    expect(tokens.alive(key)).toBe(false);
+    expect(tokens.alive("not-a-key")).toBe(false);
+  });
+
+  test("every death is told to the hook once, with the token's key: run end, a second mint, the trick, clear", () => {
+    const ended: string[] = [];
+    const tokens = new RunTokens((key) => ended.push(key));
+    const keyOf = (token: string): string => createHash("sha256").update(token, "utf8").digest("hex");
+    const a = tokens.mint("lodge", "see", "run-1");
+    tokens.end("run-1");
+    tokens.end("run-1");
+    expect(ended).toEqual([keyOf(a)]);
+    const b = tokens.mint("lodge", "see", "run-2");
+    const b2 = tokens.mint("lodge", "see", "run-2");
+    expect(ended).toEqual([keyOf(a), keyOf(b)]);
+    const c = tokens.mint("workshop", "read", "run-3");
+    tokens.endTrick("lodge");
+    expect(ended).toEqual([keyOf(a), keyOf(b), keyOf(b2)]);
+    tokens.clear();
+    expect(ended).toEqual([keyOf(a), keyOf(b), keyOf(b2), keyOf(c)]);
   });
 });

@@ -5,7 +5,7 @@ import { basename, dirname, extname, isAbsolute, join, normalize, sep } from "no
 import { createAccessGate, DOOR_PRESETS, FORWARDING_HEADERS } from "./access-jwt.ts";
 import type { Accounts } from "./accounts-routes.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
-import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import type { ActivityLedger } from "./activity.ts";
 import { type AuditDetail, type AuditEntry, AuditLog } from "./audit.ts";
 import { recordRefusal, withRefusal, type RefusalReason } from "./refusal.ts";
@@ -246,6 +246,7 @@ import {
   type PairRequestDeps,
 } from "./pair-request.ts";
 import { LOCAL_LABEL, type LocalCredential } from "./local-secret.ts";
+import { isLocalKeyRoute, localSnapshotView, localTricksView } from "./local-key.ts";
 import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
@@ -3318,6 +3319,10 @@ export function startServer(opts: {
         // and a member refuses posts (`not_on_lead`). The revision below is this bridge's own store.
         const merged = crewLead ? crewLead.merge(body, plan) : body;
         const out = crewLead && cfg.redact ? maskSnapshotTitles(merged) : merged;
+        // The bridge's own local key gets the CLI's fields and no screen or message text (bridge/local-key.ts).
+        if (isLocalRequest(req, pairingGate)) {
+          return withBuildHeader(json(localSnapshotView(parseJsonObject(JSON.stringify(out)) ?? {}), req.headers.get("accept-encoding")), await buildId());
+        }
         // The agent views' revision rides beside the hill's (or its off switch), this bridge's own, lead-local as the hill.
         return withBuildHeader(json(withTrickViewsRev(withHill(out, hill), views?.rev()), req.headers.get("accept-encoding")), await buildId());
       }
@@ -3349,7 +3354,10 @@ export function startServer(opts: {
         if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();
         // The runner's PATH is for `collie doctor` and `collie trick list` only: the host's own CLI, never a phone.
         const forCli = isLocalRequest(req, pairingGate);
-        return json(await tricks.reply(parseSince(url.searchParams.get("since")), { bound: asksBound(url.searchParams), forCli }), req.headers.get("accept-encoding"));
+        const reply = await tricks.reply(parseSince(url.searchParams.get("since")), { bound: asksBound(url.searchParams), forCli });
+        // The local key gets each trick's row and the PATH, and no part, About or rule (bridge/local-key.ts).
+        if (forCli) return json(localTricksView(parseJsonObject(JSON.stringify(reply)) ?? {}), req.headers.get("accept-encoding"));
+        return json(reply, req.headers.get("accept-encoding"));
       }
       // The official list: the read is gated like the list, the add and the update like the switch,
       // since they bring code onto the machine. Only a paired phone with the write right gets past the
@@ -9446,7 +9454,8 @@ export function guard(
     // The host's own CLI (`<stateDir>/local-secret`, bridge/local-secret.ts): a READ credential and
     // nothing else, from this host through no proxy only (`browserPairingGate`) — `local` answers
     // false otherwise. Asked first, so a
-    // `collie doctor` still reads while the registry is the thing that is broken.
+    // `collie doctor` still reads while the registry is the thing that is broken. Which reads it
+    // reaches is `apiFrontGate`'s question: only the routes in LOCAL_KEY_ROUTES (bridge/local-key.ts).
     if (level === "read" && pairing.local?.(token, req) === true) return null;
     try {
       if (pairing.resolve(token) === null) {
@@ -9669,7 +9678,18 @@ export function apiFrontGate(
 ): Response | null {
   if (!pathname.startsWith("/api/")) return null;
   if (isOpenApiRoute(pathname, req.method)) return null;
-  return guard(req, cfg, "read", pairing);
+  const denied = guard(req, cfg, "read", pairing);
+  if (denied) return denied;
+  // The bridge's own local key reaches only the routes marked in LOCAL_KEY_ROUTES (bridge/local-key.ts).
+  // Here, before any route matches and before any `?host=` forward, so the lead's key never reads a
+  // member's pane either, and a route added later is closed to the key until someone marks it.
+  if (isLocalRequest(req, pairing) && !isLocalKeyRoute(pathname, req.method)) return localKeyRefusal();
+  return null;
+}
+
+/** The 403 the local key meets on a route it may not reach: one code, whose sentence names the way in. */
+export function localKeyRefusal(): Response {
+  return jsonError(apiError("local.no_text"), 403, null);
 }
 
 /**

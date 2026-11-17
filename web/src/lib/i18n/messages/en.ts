@@ -3472,6 +3472,7 @@ export const en = {
   "apiError.accounts.default": "The Default profile cannot be removed.",
   "apiError.accounts.unknown": "This profile does not exist any more. Nothing was started.",
   "apiError.accounts.store_unreadable": "The profiles file could not be read, so nothing was changed.",
+  "apiError.local.no_text": "The bridge's local key reads no screen or message. Read this as a paired device.",
   "apiError.api.unknown_op": "The local API has no such operation. Ask it with hello for the list.",
   "apiError.api.denied": "The local API does not allow this operation. Ask it with hello for the list.",
   "apiError.api.no_run_token": "The local API answers a trick's own run in this release.",
@@ -4123,7 +4124,9 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = [
+  "apiError.local.no_text",
+] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];

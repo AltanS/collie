@@ -189,6 +189,9 @@ export const API_ERROR_CODES = [
   "accounts.unknown",
   "accounts.store_unreadable",
 
+  // The bridge's local key, <stateDir>/local-secret (bridge/local-key.ts)
+  "local.no_text",
+
   // The local API, the socket at <stateDir>/api/sock (M105 spec 03)
   "api.unknown_op",
   "api.denied",

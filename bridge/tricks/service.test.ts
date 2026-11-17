@@ -13,7 +13,7 @@ import { factsWorldOf, NO_FACTS_CAPS, type FactsWorldInput } from "./facts.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { switchMasked } from "./code-view.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
-import type { RunOutcome, RunSpec } from "./run.ts";
+import { RUN_TOKEN_MARK, runProgram, type RunOutcome, type RunSpec } from "./run.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
 import { WalkyInstances } from "../walky/instances.ts";
 import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
@@ -2866,7 +2866,7 @@ describe("the run token of the local API", () => {
 
   test("the token resolves to the trick and its level while the run lasts, and dies when it exits", async () => {
     const { r, run, token, ticked } = await heldRig({}, "read");
-    expect(r.service.resolveRunToken(token())).toEqual({ trickId: "legs", level: "read" });
+    expect(r.service.resolveRunToken(token())).toMatchObject({ trickId: "legs", level: "read" });
     run.finish();
     await ticked;
     expect(r.service.resolveRunToken(token())).toBeNull();
@@ -2901,7 +2901,7 @@ describe("the run token of the local API", () => {
     await makeTrick(r.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0).catch(() => undefined);
-    expect(resolvedDuring).toEqual([{ trickId: "legs", level: "see" }]);
+    expect(resolvedDuring).toEqual([expect.objectContaining({ trickId: "legs", level: "see" })]);
     expect(r.service.resolveRunToken(token)).toBeNull();
   });
 
@@ -3005,6 +3005,152 @@ describe("the run token of the local API", () => {
       const text = await readFile(file, "utf8").catch(() => "");
       expect({ file, holds: text.includes(secret) || text.includes(second) }).toEqual({ file, holds: false });
     }
+  });
+});
+
+// Security read of spec 05, item 1: the run path awaits between `recheck` and the mint (here the inputs fetch,
+// held open by the test). A trick switched off, tricks switched off, or the trick removed inside that gap
+// gets no token and its program never starts.
+describe("the run token: a switch inside the gap between the recheck and the mint", () => {
+  const SOCKET = "/home/dev/.local/state/collie/api/sock";
+  const GAP_MANIFEST = `${MANIFEST}contract = 3\naccess = "see"\ninputs = ["TODO.md"]\n`;
+
+  async function gapRig(extra: Partial<TricksServiceDeps> = {}): Promise<{ r: Rig; ended: string[]; inGap: Promise<void>; leave: () => void; ticked: Promise<void> }> {
+    const ended: string[] = [];
+    let leave: () => void = () => undefined;
+    let entered: () => void = () => undefined;
+    const inGap = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const inputs = {
+      fetch: async () => {
+        entered();
+        await new Promise<void>((resolve) => {
+          leave = resolve;
+        });
+        return new Map();
+      },
+      forget: () => undefined,
+    };
+    const r = await rig([exited(belt("x"))], { localApi: () => SOCKET, inputs, runTokenEnded: (key) => void ended.push(key), ...extra });
+    await makeTrick(r.configDir, "legs", GAP_MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    const ticked = tickAt(r, T0);
+    await inGap;
+    return { r, ended, inGap, leave: () => leave(), ticked };
+  }
+
+  test("a control: with nothing switched, the run past the gap gets its token and starts", async () => {
+    const { r, ended, leave, ticked } = await gapRig();
+    leave();
+    await ticked;
+    expect(r.specs).toHaveLength(1);
+    expect(factsOf(r.specs[0]).api?.token).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    expect(ended).toHaveLength(1);
+  });
+
+  test("the trick switched off inside the gap: no token, no start", async () => {
+    const { r, ended, leave, ticked } = await gapRig();
+    expect(await r.service.setSwitch(HOST, "legs", false)).toMatchObject({ status: 200 });
+    await r.service.refresh(true);
+    leave();
+    await ticked;
+    expect(r.specs).toHaveLength(0);
+    expect(ended).toEqual([]);
+  });
+
+  test("tricks switched off as a whole inside the gap: no token, no start", async () => {
+    const listeners: ((on: boolean) => void)[] = [];
+    let on = true;
+    const feature = {
+      on: () => on,
+      onChange: (listener: (on: boolean) => void) => {
+        listeners.push(listener);
+        return () => undefined;
+      },
+    };
+    const { r, ended, leave, ticked } = await gapRig({ feature });
+    on = false;
+    for (const listener of listeners) listener(false);
+    leave();
+    await ticked;
+    expect(r.specs).toHaveLength(0);
+    expect(ended).toEqual([]);
+  });
+
+  test("the trick removed inside the gap: no token, no start", async () => {
+    const { r, ended, leave, ticked } = await gapRig();
+    await rm(join(r.configDir, TRICKS_DIR, "legs"), { recursive: true, force: true });
+    r.clock.t = T0 + 60_000;
+    await r.service.refresh(true);
+    leave();
+    await ticked;
+    expect(r.specs).toHaveLength(0);
+    expect(ended).toEqual([]);
+  });
+});
+
+// Security read of spec 05, item 4: a program that prints its own facts prints its run token. The bridge
+// knows the token it handed the run, so the mark stands in its place in stdout and stderr before either
+// reaches the problem line, the warning log, the parser, a part or the reply. Real programs, real runner.
+describe.skipIf(process.platform === "win32")("the run token: a program that prints it back", () => {
+  const SOCKET = "/home/dev/.local/state/collie/api/sock";
+  const PRINTS = `${MANIFEST.replace('run = "./legs.sh"', 'run = "sh legs.sh"')}contract = 3\naccess = "see"\n`;
+  // The facts on stdout and on stderr, then the token alone as the last stderr line (the problem line's tail).
+  const TOKEN_OF = `token=$(printf '%s' "$facts" | sed 's/.*"token":"\\([^"]*\\)".*/\\1/')`;
+
+  async function printing(script: string): Promise<{ r: Rig; token: () => string }> {
+    let seen = "";
+    const r = await rig(null, {
+      localApi: () => SOCKET,
+      run: async (spec) => {
+        seen = factsOf(spec).api?.token ?? "";
+        return runProgram({ ...spec, timeoutMs: 5000 });
+      },
+    });
+    await makeTrick(r.configDir, "legs", PRINTS, { "legs.sh": script });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    return { r, token: () => seen };
+  }
+
+  test("a failed run that printed its facts on stdout and stderr: the problem line, the warn log and the reply hold the mark", async () => {
+    const { r, token } = await printing(`#!/bin/sh\nfacts=$(cat)\n${TOKEN_OF}\nprintf '%s\\n' "$facts"\nprintf 'facts: %s\\n' "$facts" >&2\nprintf 'the token is %s\\n' "$token" >&2\nexit 3\n`);
+    const secret = token();
+    expect(secret).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    const reply = JSON.stringify(await r.service.reply(undefined, { bound: true }));
+    const logged = r.warnings.join("\n");
+    expect(logged).toContain(`The program exited with 3: the token is ${RUN_TOKEN_MARK}`);
+    expect(reply).toContain(`the token is ${RUN_TOKEN_MARK}`);
+    expect(logged).not.toContain(secret);
+    expect(reply).not.toContain(secret);
+  });
+
+  test("a run that drew its token into a part: the part shows the mark, never the token", async () => {
+    const { r, token } = await printing(`#!/bin/sh\nfacts=$(cat)\n${TOKEN_OF}\nprintf '{"v":1,"asOf":"2026-11-08T09:00:00Z","parts":[{"at":"belt","id":"belt","mark":{"label":"%s"}}]}\\n' "$token"\n`);
+    const secret = token();
+    expect(secret).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    const reply = await r.service.reply(undefined, { bound: true });
+    expect(JSON.stringify(reply.parts)).toContain(RUN_TOKEN_MARK);
+    expect(JSON.stringify(reply)).not.toContain(secret);
+    expect(r.warnings.join("\n")).not.toContain(secret);
+  });
+
+  test("a runner that throws with the token in its words: the log line holds the mark", async () => {
+    let seen = "";
+    const r = await rig(null, {
+      localApi: () => SOCKET,
+      run: async (spec) => {
+        seen = factsOf(spec).api?.token ?? "";
+        throw new Error(`the runner broke on ${seen}`);
+      },
+    });
+    await makeTrick(r.configDir, "legs", PRINTS, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0).catch(() => undefined);
+    expect(seen).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    expect(r.warnings.join("\n")).toContain(`the runner broke on ${RUN_TOKEN_MARK}`);
+    expect(r.warnings.join("\n")).not.toContain(seen);
   });
 });
 

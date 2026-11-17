@@ -420,9 +420,11 @@ and the bridge checks it for each read through the [run token](#run-token)
 
 A random token Collie makes for one run of a trick that declares [access](#access-of-a-trick). It is in
 the run's facts and nowhere else, and it dies when the run ends. The [local API](#local-api) answers only
-a connection that names a live one. The token keeps out a program that only finds the socket. A program
-that runs as you can still read a pane through the multiplexer, and can read another program's memory;
-Collie does not stop that ([The local API](commands.md#the-local-api-experimental)).
+a connection that names a live one. The token keeps a program that only finds the socket out of this
+socket, and nothing more. A program that runs as you can still read a pane through the multiplexer, read
+another program's memory, and read Collie's local secret file and use it on the bridge's loopback address,
+which still answers the routes that return a session's text. Collie does not stop that
+([The local API](commands.md#the-local-api-experimental)).
 
 ## About sheet
 

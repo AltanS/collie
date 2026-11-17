@@ -16,13 +16,18 @@
 // refused with `api.bad_request` and closed. After `hello`, every request is admitted at the token's level
 // (`admit`: `api.denied` for `read` on a `see` token), and the token is asked again at each request and
 // at each answer, so a token that died (its run ended, its trick or tricks went off, the bridge stops)
-// answers no more: `api.no_run_token`, and the connection closes. The token is held in memory only, for
-// this check; it is never logged and never answered.
+// answers no more: `api.no_run_token`, and the connection closes. The connection keeps only the token's
+// hash hex (`key`, from the table's `resolve`) and asks `alive(key)`; the raw token is compared once, in
+// constant time, at `hello`, and never kept, logged or answered. And when a token dies, the table tells the
+// socket at once (`endToken`, wired in bridge/index.ts): every connection bound to it answers its open
+// requests with `api.no_run_token` and closes, so an `events` wait gives its slot back with the run.
 //
 // WHAT IT IS, IN HONEST WORDS (decision 16 of ADR 0152, as ADR 0155 changes it). The token keeps out a
-// program that only finds the socket. It is NOT a wall against a program of the same Unix user: such a
+// program that only finds THIS socket, and nothing more. It does not stop a program of the same Unix user: such a
 // program can read every screen and type into every pane through the multiplexer's own socket, and can
-// read another program's memory, the token in a run's memory included. The socket is closed to OTHER Unix
+// read another program's memory, the token in a run's memory included, and can read the owner-only
+// `<stateDir>/local-secret`, though on the bridge's loopback door that key reads no screen or message text
+// (bridge/local-key.ts `LOCAL_KEY_ROUTES`). The socket is closed to OTHER Unix
 // users (the file mode and the folder mode), to other machines and to pages in a browser (no TCP port, no
 // HTTP: a page can reach loopback HTTP, never a Unix socket). A connection is the unit its caps count by.
 // Every `read` call leaves one log line: `[api] read by=trick:<id> session=<id> result=<ok or the error
@@ -101,24 +106,28 @@ function by(conn: Conn): string {
   return conn.bound === null ? "" : ` (trick:${conn.bound.trickId})`;
 }
 
-/** What a live run token stands for: the trick whose run holds it, and the level its manifest declares. */
+/** What a live run token stands for: the trick whose run holds it, the level its manifest declares, and the token's key. */
 export interface RunTokenHolder {
   readonly trickId: string;
   readonly level: Right;
+  /** The hex of the token's SHA-256: what the connection keeps in place of the token. */
+  readonly key: string;
 }
 
 /**
  * The one way the socket asks about a run token (spec 05, decision 2): the trick runner's table, handed in
  * by bridge/index.ts. `resolve` answers the holder of a live token, or null for one that is unknown or dead;
- * it compares in constant time. The socket keeps no table of its own.
+ * it compares in constant time. `alive` asks again by the key `resolve` gave. The socket keeps no table of
+ * its own; the table tells it a death through {@link ApiSocket.endToken}.
  */
 export interface RunTokenCheck {
   resolve(token: string): RunTokenHolder | null;
+  alive(key: string): boolean;
 }
 
-/** A connection's binding after a good `hello`: the token it named, and what that stood for then. */
+/** A connection's binding after a good `hello`: its token's key (never the token), and what that stood for then. */
 interface Bound {
-  readonly token: string;
+  readonly key: string;
   readonly trickId: string;
   readonly level: Right;
 }
@@ -249,6 +258,19 @@ export class ApiSocket {
   /** How many connections and waits are open: for a test and a status line. */
   counts(): SocketCounts {
     return { connections: this.connections.size, waits: this.waitsOpen };
+  }
+
+  /**
+   * A run token died (its run ended, its trick or tricks went off, the trick was removed, the bridge stops):
+   * every connection bound to it answers each open request with `api.no_run_token` and closes, at once. Its
+   * `events` waits abort with it and give their slots back. `key` is the token's hash hex.
+   */
+  endToken(key: string): void {
+    for (const conn of this.connections) {
+      if (conn.bound?.key !== key) continue;
+      for (const pending of conn.pending) this.answer(conn, pending, { ok: false, code: "api.no_run_token" });
+      this.drop(conn);
+    }
   }
 
   /** The bytes waiting to be written, on the fullest connection: for a test. */
@@ -507,7 +529,7 @@ export class ApiSocket {
       if (refused !== null) return this.refuse(conn, read, refused, true);
     }
     const bound = conn.bound;
-    if (bound === null || this.deps.tokens.resolve(bound.token) === null) return this.refuse(conn, read, { ok: false, code: "api.no_run_token" }, true);
+    if (bound === null || !this.deps.tokens.alive(bound.key)) return this.refuse(conn, read, { ok: false, code: "api.no_run_token" }, true);
     const admitted = admit(this.deps.table, op, bound.level);
     if (!admitted.ok) return this.answer(conn, read, { ok: false, code: admitted.code });
     if (conn.pending.size >= REQUESTS_PER_CONNECTION) return this.answer(conn, read, { ok: false, code: "api.too_many_requests", detail: { max: REQUESTS_PER_CONNECTION } });
@@ -535,8 +557,9 @@ export class ApiSocket {
     if (token === undefined || holder === null) return { ok: false, code: "api.no_run_token" };
     const parsed = DECLARED.hello.parse(args);
     if (!parsed.ok) return badRequest(parsed.reason);
-    if (conn.bound !== null && conn.bound.token !== token) return badRequest("a connection holds one run token");
-    conn.bound = { token, trickId: holder.trickId, level: lowerOf(holder.level, this.granted) };
+    // Two keys compare as text: each is a hash, so the compare tells a caller nothing of a token.
+    if (conn.bound !== null && conn.bound.key !== holder.key) return badRequest("a connection holds one run token");
+    conn.bound = { key: holder.key, trickId: holder.trickId, level: lowerOf(holder.level, this.granted) };
     clearTimeout(conn.helloTimer);
     conn.helloTimer = undefined;
     return null;
@@ -566,7 +589,7 @@ export class ApiSocket {
     // A token that died while the operation ran (its run ended, its trick or tricks went off) gets no answer
     // of substance: one refusal, and the connection closes (spec 05, decision 2).
     const bound = conn.bound;
-    if (bound === null || this.deps.tokens.resolve(bound.token) === null) return this.refuse(conn, pending, { ok: false, code: "api.no_run_token" }, true);
+    if (bound === null || !this.deps.tokens.alive(bound.key)) return this.refuse(conn, pending, { ok: false, code: "api.no_run_token" }, true);
     this.answer(conn, pending, result);
   }
 

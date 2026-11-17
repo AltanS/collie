@@ -1523,7 +1523,7 @@ if (!machines.ok) throw new Error(machines.error.message);
 
 > **Experimental.** `access` and `t.api` are new, and their words may still change.
 
-> **Note.** The run token keeps out a program that only finds the socket. A program that runs as you can still read a pane through the multiplexer itself, and can read another program's memory. Collie does not stop that. A trick's own program runs as you too. Collie's text search of the code flags a trick that names the socket, reads its path or token from the facts, opens a socket of its own (`createConnection`, `Bun.connect`, a `unix:` option) or runs `collie api` itself, and the card shows that line like the other findings. Such a trick would have to send its own token from its own facts.
+> **Note.** The run token keeps a program that only finds the socket out of this socket, and nothing more. A program that runs as you can still read a pane through the multiplexer itself, and can read another program's memory. It can also read Collie's local secret file and use it on the bridge's loopback address, which still answers the routes that return a session's text. Collie does not stop that. A trick's own program runs as you too. Collie's text search of the code flags a trick that names the socket, reads its path or token from the facts, opens a socket of its own (`createConnection`, `Bun.connect`, a `unix:` option) or runs `collie api` itself, and the card shows that line like the other findings. Such a trick would have to send its own token from its own facts.
 
 The socket stands while tricks are switched on, on a machine where tricks run. Where it does not (a crew peer, a deputy, Windows), the facts carry no `api`, `t.api` answers `Collie's local API is off here.`, and the trick's row says so once.
 

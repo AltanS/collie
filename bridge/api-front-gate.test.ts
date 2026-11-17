@@ -7,6 +7,7 @@ import { join } from "node:path";
 
 import { loadConfig, type Config } from "./config.ts";
 import { localCredentialOf, mintLocalSecret } from "./local-secret.ts";
+import { asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import { DEVICES_FILENAME, filePairingIo, PairingStore, sha256Hex } from "./pairing.ts";
 import {
   apiFrontGate,
@@ -25,6 +26,7 @@ import {
   requestDevice,
 } from "./server.ts";
 import { HILL_ANSWER_RIGHT } from "./hill/parse.ts";
+import { isLocalKeyRoute, LOCAL_KEY_ROUTES } from "./local-key.ts";
 import { TRICKS_ROUTE_RIGHTS } from "./tricks/routes.ts";
 import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH } from "./types.ts";
 
@@ -776,10 +778,13 @@ describe("the host's local secret at POST /api/hill/answer, through the gates se
     }
   });
 
-  test("the refusal is the write level, not a gate that refuses every token: the secret still passes the front gate and reads, and a paired device's token writes", async () => {
+  test("the front gate refuses the secret here (the route is not a local-key route), the route's own gate refuses it as a write, and a paired device's token writes", async () => {
     const { store } = await storeWith(true);
     const gate = browserPairingGate(store, credential, () => "127.0.0.1", "127.0.0.1", () => new Set(["100.64.10.2"]));
-    expect(apiFrontGate(post(secret), path, config(), gate)).toBeNull();
+    const front = apiFrontGate(post(secret), path, config(), gate);
+    expect(front?.status).toBe(403);
+    expect(asJsonString(parseJsonObject((await front?.text()) ?? "")?.code)).toBe("local.no_text");
+    // `guard` alone still admits the key as a read; the front gate is what keeps it off this route.
     expect(guard(request("GET", "/api/hill", { authorization: `Bearer ${secret}` }), config(), "read", gate)).toBeNull();
     expect(guard(post(secret), config(), HILL_ANSWER_RIGHT, gate)?.status).toBe(403);
     expect(await chain(TOKEN, "127.0.0.1", "127.0.0.1", true)).toBeNull();
@@ -844,5 +849,128 @@ describe("the trick code route needs a paired device's token", () => {
   test("with no device paired at all, the same request is refused too", async () => {
     const { store } = await storeWith(false);
     expect(apiFrontGate(request("GET", path), path, config(), store)?.status).toBe(403);
+  });
+});
+
+// ── The local key reaches only the routes it is marked for (bridge/local-key.ts) ──────────────
+
+describe("the local key: deny by default, by the mark in LOCAL_KEY_ROUTES", () => {
+  const secret = mintLocalSecret();
+  const credential = localCredentialOf(secret);
+  const bearer = { authorization: `Bearer ${secret}` };
+
+  async function localGate(): Promise<PairingGate> {
+    const { store } = await storeWith(true);
+    return browserPairingGate(store, credential, () => "127.0.0.1", "127.0.0.1", () => new Set(["100.64.10.2"]));
+  }
+
+  /** The front gate's answer for the key: null (it may go on) or the refusal's status and code. */
+  async function front(gate: PairingGate, method: string, path: string, query = ""): Promise<{ status: number; code: string | undefined } | null> {
+    const denied = apiFrontGate(request(method, `${path}${query}`, bearer), path, config(), gate);
+    if (denied === null) return null;
+    return { status: denied.status, code: asJsonString(parseJsonObject(await denied.text())?.code) };
+  }
+
+  const REFUSED = { status: 403, code: "local.no_text" };
+
+  test("the list is exactly five reads, each with a reason", () => {
+    expect(LOCAL_KEY_ROUTES.map((r) => `${r.method} ${r.path}`)).toEqual([
+      "GET /api/snapshot",
+      "GET /api/tricks",
+      "GET /api/telemetry",
+      "GET /api/update/check",
+      "GET /api/config",
+    ]);
+    for (const r of LOCAL_KEY_ROUTES) expect(r.reason.length).toBeGreaterThan(40);
+  });
+
+  test("every /api/ path the dispatcher names, every method, is refused to the key unless it is marked", async () => {
+    const gate = await localGate();
+    let refused = 0;
+    const admitted: string[] = [];
+    for (const path of everyApiPath()) {
+      for (const method of ["GET", "POST", "HEAD", "PUT", "DELETE"]) {
+        if (isOpenApiRoute(path, method)) continue;
+        const answer = await front(gate, method, path);
+        if (isLocalKeyRoute(path, method)) {
+          expect({ method, path, answer }).toEqual({ method, path, answer: null });
+          admitted.push(`${method} ${path}`);
+          continue;
+        }
+        expect({ method, path, answer }).toEqual({ method, path, answer: REFUSED });
+        refused++;
+      }
+    }
+    expect(refused).toBeGreaterThan(400);
+    expect(admitted.toSorted()).toEqual(LOCAL_KEY_ROUTES.map((r) => `${r.method} ${r.path}`).toSorted());
+  });
+
+  test("a route nobody wrote yet is refused to the key: the mark, not the route table, decides", async () => {
+    const gate = await localGate();
+    for (const path of ["/api/brand-new", "/api/pane/id1/brand-new", "/api/snapshot/more", "/api/snapshotx"]) {
+      expect(await front(gate, "GET", path)).toEqual(REFUSED);
+    }
+  });
+
+  test("every route that returns a screen or a message is refused, with ?host= too, so no member is read through the lead", async () => {
+    const gate = await localGate();
+    const textRoutes = [
+      "/api/pane/w1%3Ap1",
+      "/api/pane/w1%3Ap1/history",
+      "/api/pane/w1%3Ap1/chat",
+      "/api/pane/w1%3Ap1/pins",
+      "/api/pane/w1%3Ap1/changes",
+      "/api/pane/w1%3Ap1/held",
+      "/api/pane/w1%3Ap1/arrived",
+      "/api/pane/w1%3Ap1/walky",
+      "/api/pane/w1%3Ap1/subagent/a1",
+      "/api/pane/w1%3Ap1/claude-commands",
+      "/api/workspace/w1/changes",
+      "/api/surface",
+      "/api/hill",
+      "/api/hill/state",
+      "/api/hill/media/h1/m1",
+      "/api/trick-views",
+      "/api/trick-views/media/v1/m1",
+      "/api/blobs/b1",
+      "/api/tricks/lead/legs/code",
+      "/api/tricks/lead/legs/media/a.png",
+      "/api/durable/conversations",
+      "/api/durable/conversation/c1/items",
+      "/api/sent",
+      "/api/send/receipts",
+      "/api/send/r1",
+      "/api/walky/who",
+      "/api/report/context",
+      "/api/crew",
+    ];
+    for (const path of textRoutes) {
+      for (const query of ["", "?host=member-1", "?h=member-1&session=desk"]) {
+        expect({ path, query, answer: await front(gate, "GET", path, query) }).toEqual({ path, query, answer: REFUSED });
+      }
+    }
+  });
+
+  test("the refusal says the next step: a paired device reads this, a script sends COLLIE_TOKEN", async () => {
+    const gate = await localGate();
+    const denied = apiFrontGate(request("GET", "/api/pane/w1%3Ap1", bearer), "/api/pane/w1%3Ap1", config(), gate);
+    const body = parseJsonObject((await denied?.text()) ?? "");
+    expect(asJsonString(body?.error)).toContain("paired device");
+    expect(asJsonString(body?.error)).toContain("COLLIE_TOKEN");
+  });
+
+  test("a paired device's token is not the key: it passes the front gate on a text route", async () => {
+    const gate = await localGate();
+    expect(apiFrontGate(request("GET", "/api/pane/w1%3Ap1", { authorization: `Bearer ${TOKEN}` }), "/api/pane/w1%3Ap1", config(), gate)).toBeNull();
+  });
+
+  test("server.ts asks the mark in apiFrontGate, which runs before the session router and its ?host= forward", () => {
+    const at = SERVER_CODE.indexOf("export function apiFrontGate(");
+    const body = SERVER_CODE.slice(at, SERVER_CODE.indexOf("\n}\n", at));
+    expect(body).toContain("isLocalRequest(req, pairing) && !isLocalKeyRoute(pathname, req.method)");
+    const gateAt = SERVER_CODE.indexOf("apiFrontGate(req, pathname, cfg, pairingGate)");
+    expect(gateAt).toBeGreaterThan(0);
+    expect(gateAt).toBeLessThan(SERVER_CODE.indexOf("crewLead!.forward("));
+    expect(gateAt).toBeLessThan(SERVER_CODE.indexOf('if (pathname === "/api/snapshot")'));
   });
 });

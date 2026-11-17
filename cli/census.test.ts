@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { JsonValue } from "../bridge/json.ts";
+import type { JsonObject, JsonValue } from "../bridge/json.ts";
+import { localSnapshotView } from "../bridge/local-key.ts";
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
@@ -335,5 +336,29 @@ describe("members, grouped by host (M77)", () => {
       "    lodge     reachable  1.25.0  mux herdr  panes 2",
       "    workshop  reachable  1.25.0  mux herdr  panes 2",
     ]);
+  });
+});
+
+// ── The local key's view (bridge/local-key.ts): `collie status` counts the same from it ──────
+
+describe("collie status over the local key's view of the snapshot", () => {
+  test("the sessions block counts the same panes, states and session ids (its lines are built from these counts alone)", () => {
+    const pane = (over: JsonObject): JsonObject => ({
+      paneId: "w1:p1",
+      agent: "claude",
+      kind: "agent",
+      status: "idle",
+      terminalTitle: "a title an agent wrote",
+      asks: [{ question: "Shall I delete the production database now?" }],
+      ...over,
+    });
+    const full: JsonObject = {
+      agents: [pane({ status: "working", hasSession: true }), pane({ status: "blocked" }), pane({ status: "done", hasSession: true }), pane({ status: "a-state-from-later" }), pane({ kind: "shell" })],
+      shellPanes: [pane({ kind: "shell", agent: "shell" })],
+      sessions: [],
+    };
+    const counted = countSessions(JSON.stringify(full));
+    expect(counted?.total).toBe(4);
+    expect(countSessions(JSON.stringify(localSnapshotView(full)))).toEqual(counted);
   });
 });
