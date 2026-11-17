@@ -271,6 +271,10 @@ export function buildReads(deps: ReadsDeps): ReadHandlers {
       .filter((decision) => decision.state === "open")
       .map((decision) => ({
         id: decision.id,
+        // The bridge the poster runs on (bridge/bridge-id.ts), so a caller on a crew's lead, which lists
+        // the whole Hill as the person sees it there, can keep only one machine's cards. Null only on a
+        // card stored before every bridge had an id.
+        machine: decision.from.memberId,
         sender: { kind: decision.from.kind, label: clip(decision.from.label) },
         title: clip(decision.title),
         urgency: decision.priority,
