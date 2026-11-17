@@ -240,8 +240,9 @@
 //
 // The person's override (M102 spec 12, ADR 0142 rule 1): a phone send (`fromPhone`) that carries
 // `override` and the rows hash the person saw is never refused for a reading alone. Where S0 reads the
-// screen free, or where the manual Send is open (`takesManualSend`), it runs these steps as before, the
-// probe and the commit included. Anywhere else the reading would have refused (a box not free, a turn
+// screen free, or where the manual Send is open (`takesManualSend`) and no menu sign shows, it runs these
+// steps as before, the probe and the commit included: the person's second tap with the live screen in
+// view sends the text WITH the submit key (the receipt says `word: "override"`). Anywhere else the reading would have refused (a box not free, a turn
 // that is unknown or does not queue, a draft, a stale, torn or contested read, a pane with no profile
 // whose rows look like an agent's) it takes the override road: no probe, the text written in one piece
 // (a bracketed paste where the multiplexer has one), and NO key at all, Enter included. It ends

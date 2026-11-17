@@ -706,12 +706,14 @@ Collie read (answer it on its own card), a screen that changed since you looked,
 shows a menu or a yes/no prompt. A screen that changed comes back with the rows as they are now; look
 at them and tap again. On a menu, use the keys to pick an option, because typed text could pick one.
 
-On a screen Collie cannot read, on a box that already holds a draft, or during a turn the agent does
-not queue into, Collie pastes your text into the box in one piece and presses no key at all. The card
+Where Collie can still place and check your text, on a screen that takes the manual Send, your second
+tap sends it, Enter included: you tapped twice with the screen in view. Where it cannot, on a box that
+is not free, a box that already holds a draft, a turn it cannot read or does not queue into, or a stale
+or torn read, Collie pastes your text into the box in one piece and presses no key at all. A menu on
+the screen stops both. The card
 then says your text is in the box, and offers the keys: check the screen, and press Enter there when
 it is right. When the box already held a draft, the card can say so: your text went in after it. A message of more than one line goes this way only on Herdr, which pastes it whole;
-elsewhere send it one line at a time. On a screen that takes the manual Send, the second tap sends it
-as before, and on a turn the agent queues into, it goes in as any send does. Collie never holds a
+elsewhere send it one line at a time. On a turn the agent queues into, it goes in as any send does. Collie never holds a
 message you typed this way, and one tap types it at most once. When the box already holds the same
 text, left there by an earlier send, Collie types nothing again: press Enter on the keys.
 
