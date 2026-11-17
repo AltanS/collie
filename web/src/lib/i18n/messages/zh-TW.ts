@@ -3175,6 +3175,7 @@ export const zhTW: Dictionary = {
   "apiError.accounts.default": "預設設定檔無法移除。",
   "apiError.accounts.unknown": "這個設定檔已不存在。沒有啟動任何內容。",
   "apiError.accounts.store_unreadable": "無法讀取設定檔清單，因此沒有變更任何內容。",
+  "apiError.local.no_text": "Bridge 的本機金鑰不讀取任何螢幕或訊息。請以已配對裝置的身分讀取。",
   "apiError.api.unknown_op": "本機 API 沒有這個操作。請用 hello 要求清單。",
   "apiError.api.denied": "本機 API 不允許這個操作。請用 hello 要求清單。",
   "apiError.api.no_run_token": "在此版本中，本機 API 回應 Trick 自己的執行。",

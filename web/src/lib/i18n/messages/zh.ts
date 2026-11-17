@@ -3181,6 +3181,7 @@ export const zh: Dictionary = {
   "apiError.accounts.default": "默认配置文件无法移除。",
   "apiError.accounts.unknown": "此配置文件已不存在。没有启动任何内容。",
   "apiError.accounts.store_unreadable": "无法读取配置文件列表，因此没有更改任何内容。",
+  "apiError.local.no_text": "网桥的本地密钥不读取任何屏幕或消息。请以已配对设备的身份读取。",
   "apiError.api.unknown_op": "本地 API 没有这个操作。用 hello 请求列表。",
   "apiError.api.denied": "本地 API 不允许此操作。用 hello 请求列表。",
   "apiError.api.no_run_token": "在此版本中，本地 API 响应 Trick 自己的运行。",

@@ -3041,6 +3041,7 @@ export const tr: Dictionary = {
   "apiError.accounts.default": "Varsayılan profil kaldırılamaz.",
   "apiError.accounts.unknown": "Bu profil artık yok. Hiçbir şey başlatılmadı.",
   "apiError.accounts.store_unreadable": "Profiller dosyası okunamadı, bu yüzden hiçbir şey değiştirilmedi.",
+  "apiError.local.no_text": "Köprünün yerel anahtarı hiçbir ekranı ya da mesajı okumaz. Bunu eşleştirilmiş bir cihaz olarak okuyun.",
   "apiError.api.unknown_op": "Yerel API'de böyle bir işlem yok. Listeyi hello ile isteyin.",
   "apiError.api.denied": "Yerel API bu işleme izin vermiyor. Listeyi hello ile isteyin.",
   "apiError.api.no_run_token": "Yerel API bu sürümde bir trick'in kendi çalıştırmasına yanıt verir.",

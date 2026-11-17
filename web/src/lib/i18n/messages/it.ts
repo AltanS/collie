@@ -3047,6 +3047,7 @@ export const it: Dictionary = {
   "apiError.accounts.default": "Il profilo Predefinito non può essere rimosso.",
   "apiError.accounts.unknown": "Questo profilo non esiste più. Non è stato avviato nulla.",
   "apiError.accounts.store_unreadable": "Non è stato possibile leggere il file dei profili, quindi non è stato modificato nulla.",
+  "apiError.local.no_text": "La chiave locale del bridge non legge alcuna schermata né alcun messaggio. Leggilo come dispositivo abbinato.",
   "apiError.api.unknown_op": "L'API locale non ha questa operazione. Chiedile l'elenco con hello.",
   "apiError.api.denied": "L'API locale non consente questa operazione. Chiedile l'elenco con hello.",
   "apiError.api.no_run_token": "L'API locale risponde all'esecuzione stessa di un trick in questa versione.",
