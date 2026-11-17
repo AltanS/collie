@@ -935,7 +935,7 @@ export const en = {
   // --- chat.stream (the chat body itself) ---
   "chat.stream.empty": "Send a message to start.",
   "chat.empty.sharedFolder":
-    "Two {harness} sessions share this folder, so Collie cannot tell which one is this pane's. Start the agent with its resume command and session id, then Collie reads the right one.",
+    "Two {harness} sessions share this folder, so Collie cannot tell which one is this pane's. Start the agent with the flag that names its session id, then Collie reads the right one.",
   "chat.stream.working": "Still working…",
   "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "Waiting to send",
@@ -1659,6 +1659,7 @@ export const en = {
   "belt.jobs.exit": "Exit code {code}",
   "belt.stop": "Stop",
   "belt.stopArmed": "Stop?",
+  "belt.stopHold": "Hold",
   "belt.stopAria": "Stop the turn",
   "belt.stopArmedAria": "Tap again to stop the turn",
   "belt.stop.receipt.stopped": "Stopped.",
@@ -3907,6 +3908,7 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.waiting.title",
   "home.trickWaits.line",
   "home.trickWaits.open",
+  "belt.stopHold",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

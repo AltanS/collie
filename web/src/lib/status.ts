@@ -46,6 +46,21 @@ export function setStatus(text: string, tone: StatusTone = "info", ttlMs?: numbe
   }
 }
 
+/**
+ * Start the default countdown on a status published to persist (`ttlMs: null`), when it is still the
+ * one on screen. Publishes nothing new, so the mark's orbit does not turn again. For a notice that must
+ * stay until something finishes: a refused tap's "changed, refreshing" stays until the card refreshed.
+ */
+export function releaseStatus(id: number, ttlMs = 2500): void {
+  if (current?.id !== id) return;
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => {
+    current = null;
+    timer = null;
+    emit();
+  }, ttlMs);
+}
+
 export function clearStatus(): void {
   if (timer) {
     clearTimeout(timer);

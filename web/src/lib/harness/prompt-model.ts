@@ -199,6 +199,20 @@ export interface PromptModel {
    */
   askRegion?: string | null;
   /**
+   * The same rows as {@link askRegion}, from the dialog's own top edge to the footer, as LITERAL text:
+   * nothing held still. It is what a guarded key tap binds its first write to (the bridge's expected
+   * prompt), in place of {@link signature}, whose lookback reaches into the transcript. A row there
+   * that ticks (a tool's timer, a spinner, a clock) changed the bound region between the phone's read
+   * and the bridge's, and the bridge refused the tap. The rows are a suffix of `signature`'s rows,
+   * so the bridge finds them wherever it found `signature`, ending at the same row.
+   *
+   * Set only with a string {@link askRegion} whose rows under the edge hold the subject (a rule
+   * right above the question proves no frame), and never with {@link styledSignature} or
+   * {@link bindColumns}: those describe `signature`'s rows, so a model that carries one binds
+   * `signature` (harness/dialog-contract.ts).
+   */
+  bindRegion?: string;
+  /**
    * The canonical styled lines of the SAME rows as {@link signature} (`canonicalStyledLines`,
    * lib/styled-region.ts), as the wire value `encodeStyledRegion` builds: a `v1` format line, then
    * the lines, joined with "\n". Set ONLY by a grammar whose pointer, or any other state
@@ -247,11 +261,13 @@ export interface PromptModel {
 }
 
 /**
- * Whether two derivations are the SAME on-screen prompt — not merely the same shape. `signature`
- * (the dialog's region text, incl. the subject above the options) is the decisive check: two edits to
- * the same file yield an identical family/question/labels but a different signature, so a stale tap on
- * one can't approve the other. The family/question/label checks stay as a cheap fast-path and to keep
- * the intent explicit. (`revision` is a stub, so this content comparison is the real freshness guard.)
+ * Whether two derivations are the SAME on-screen prompt — not merely the same shape. The dialog's own
+ * rows (`sameDialogRows`: the header, the subject or command, the question, the options with the
+ * pointer, the footer) are the decisive check: two edits to the same file, or two Bash commands, yield
+ * an identical family/question/labels but different rows, so a stale tap on one can't approve the
+ * other. The family/question/label checks stay as a cheap fast-path and to keep the intent explicit.
+ * This content comparison is the whole freshness guard: the race guard no longer refuses on a moved
+ * pane revision, because a row outside the dialog that ticks moves it (lib/harness/guard.ts).
  *
  * Part of the CONTRACT, not of any harness: the race guard (lib/dialog-guard.ts) compares whatever
  * adapter produced the block through exactly this function.
@@ -259,14 +275,14 @@ export interface PromptModel {
 export function promptsEqual(a: PromptModel, b: PromptModel): boolean {
   return (
     promptsSameIdentity(a, b) &&
-    a.signature === b.signature &&
+    sameDialogRows(a, b) &&
     // The feedback row's VISIBLE state, which the identity check deliberately ignores. A committing
     // digit must not fire across a change to it: focus decides whether that digit answers at all, and
     // text appearing in the box means someone at the terminal is typing into this very dialog.
     a.feedback?.focused === b.feedback?.focused &&
     a.feedback?.text === b.feedback?.text &&
     // The EXACT plan of every option, walk included. `promptsSameIdentity` ignores the arrow count
-    // (ADR 0080), so for a grammar that draws its pointer as a glyph the byte-faithful `signature`
+    // (ADR 0080), so for a grammar that draws its pointer as a glyph the byte-faithful dialog rows
     // already refuses a moved pointer. A grammar that draws it as a style only (opencode's chip
     // background) has the same text with the pointer anywhere, and the only trace of the pointer is
     // each option's plan. Without this line a stale tap on such a dialog would pass the entry guard.
@@ -275,6 +291,21 @@ export function promptsEqual(a: PromptModel, b: PromptModel): boolean {
     // trace of such a pointer; this is the other, and the one the bridge is handed to bind to.
     a.styledSignature === b.styledSignature
   );
+}
+
+/**
+ * Whether two derivations show the same dialog rows. Where the grammar found the dialog's own top edge
+ * AND rows under it that hold the subject (`bindRegion` set on both), it compares `askRegion`, the rows
+ * from that edge to the footer, byte for byte except the self-answer countdown the grammar holds still:
+ * the transcript above the edge is not the dialog, and a timer, spinner or clock there ticks while a
+ * subagent's dialog waits. Every other derivation compares the byte-faithful `signature`, lookback
+ * included, as before: with no edge, or with a rule right above the question, a subject above the rule
+ * would fall outside `askRegion`, and a successor with another command would compare equal. A pair
+ * where only one side carries `bindRegion` is two readings of the screen, never the same dialog.
+ */
+function sameDialogRows(a: PromptModel, b: PromptModel): boolean {
+  if (a.bindRegion !== undefined && b.bindRegion !== undefined) return a.askRegion === b.askRegion;
+  return a.bindRegion === b.bindRegion && a.askRegion === b.askRegion && a.signature === b.signature;
 }
 
 /**
@@ -344,7 +375,7 @@ export function identityDiff(a: PromptModel, b: PromptModel): string | null {
   if (!sameBindColumns(a.bindColumns, b.bindColumns)) return "bindColumns";
   // The arrow COUNT of a pointer walk is not compared (ADR 0080): a walk is a claim about where
   // the pointer stands, and the pointer is our own choreography's effect, which `coreSignature`
-  // already blanks. `promptsEqual` still compares the byte-faithful `signature`, which carries
+  // already blanks. `promptsEqual` still compares the byte-faithful dialog rows, which carry
   // the pointer, so a stale tap is refused at entry; only the mid-flight identity polls, which
   // watch the pointer arrive, stop caring where it stood.
   for (let i = 0; i < a.options.length; i++) {

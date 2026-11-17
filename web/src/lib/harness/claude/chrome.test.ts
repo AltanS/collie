@@ -1211,6 +1211,8 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2325-login-console-url-pasted--w61", statusRows: 0, draft: "***************************…", stripped: 35 },
     { fixture: "v2325-login-methods--w61", statusRows: 0, draft: null, stripped: 13 },
     { fixture: "v2325-login-url--w61", statusRows: 0, draft: null, stripped: 35 },
+    // `/login` opened inside a running conversation at 220 columns (2026-11-16): the same box under the transcript.
+    { fixture: "v2325-login-url-in-session--w220", statusRows: 0, draft: null, stripped: 49 },
     { fixture: "v2325-login-url-typed--w120", statusRows: 0, draft: "***************ESTATE", stripped: 35 },
     { fixture: "v2325-login-url-typed--w61", statusRows: 0, draft: "***************ESTATE", stripped: 35 },
     // `/theme` in an onboarded session (2.1.325, 2026-11-15): the theme list under the prompt, no box.

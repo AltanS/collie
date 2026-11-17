@@ -20,9 +20,8 @@
 //     the grammar declared `clampedEnds`, even that gap is covered: the commit batch is `[Up, Enter]`
 //     on the first row and `[Down, Enter]` on the last (`commitKeysFor`, ADR 0080 point 6).
 //
-// All flows start with the same guard as their siblings: a FRESH pane read, the unconditional
-// revision check, and a re-derivation THROUGH THE PANE'S ADAPTER compared against what the user
-// tapped. The mid-flight polls re-derive the same way, against `promptsSameIdentity` — the feedback
+// All flows start with the same guard as their siblings: a FRESH pane read and a re-derivation
+// THROUGH THE PANE'S ADAPTER compared against what the user tapped (no revision check). The mid-flight polls re-derive the same way, against `promptsSameIdentity` — the feedback
 // flow moves the pointer and fills the input by design, so `promptsEqual` would reject its own work.
 
 import { FEEDBACK_MAX_LENGTH, fillAnswerField, type FieldAccess } from "./answer-field";

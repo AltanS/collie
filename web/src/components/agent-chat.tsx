@@ -33,11 +33,12 @@ import { canCopyText, copyText } from "@/lib/clipboard";
 import { t, type MessageKey } from "@/lib/i18n";
 import { savedAtLabel } from "@/lib/format";
 import { settleAfterSend } from "@/lib/harness/guard";
-import { setStatus } from "@/lib/status";
+import { currentStatus, releaseStatus, setStatus } from "@/lib/status";
 import { setFollowing as publishFollowing } from "@/lib/poll-intent";
 import { useHarnessStatusLineShown } from "@/lib/harness-prefs";
 import { stopFor } from "@/lib/harness-bar";
 import { useAutoZenEnabled, useZenEnabled } from "@/lib/zen";
+import { useFloatingClear } from "@/hooks/use-floating-clear";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, TailRoomContext, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
@@ -314,6 +315,21 @@ export function AgentChat({
   tabletop = false,
 }: AgentChatProps) {
   const revalidator = useRevalidator();
+  // A refused dialog tap (the guard found another dialog on the screen, or none): the notice stays
+  // until the refresh it starts has landed, so the person never looks at the same card under a notice
+  // that already went away. The usual countdown starts only then.
+  const noticeUntilRefreshed = useCallback(
+    async (words: string) => {
+      setStatus(words, "warn", null);
+      const notice = currentStatus();
+      try {
+        await revalidator.revalidate();
+      } finally {
+        if (notice !== null) releaseStatus(notice.id);
+      }
+    },
+    [revalidator],
+  );
   const nav = useNav();
   const { revision: localeRevision } = useLocale();
   // Poll-truth "is the data on screen not live". The one header shell derives the same boolean from
@@ -667,6 +683,7 @@ export function AgentChat({
   // The box the composer's terminal-draft notice floats in (ADR 0061), at the mirror's bottom edge.
   // State rather than a ref: the composer portals into it, so it must re-render once it exists.
   const [draftNoticeSlot, setDraftNoticeSlot] = useState<HTMLDivElement | null>(null);
+  const floatingClear = useFloatingClear(draftNoticeSlot);
 
   // "GONE" IS A FACT ONLY A LIVE ANSWER CAN STATE (M46 spec 10). With the bridge away the herd on
   // screen is what the phone kept, and a pane missing from it is a pane this phone cannot place, not
@@ -1642,8 +1659,7 @@ export function AgentChat({
         // Which step refused, for a person with the console open (`why` is a diagnosis, never UI
         // text). A harness drift shows up here as the one field that differed.
         if (result.why !== undefined) console.info("collie: tap refused", result.why);
-        setStatus(t("chat.status.menuChanged"), "warn");
-        revalidator.revalidate();
+        void noticeUntilRefreshed(t("chat.status.menuChanged"));
       } else {
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
@@ -1651,7 +1667,7 @@ export function AgentChat({
       // what someone just thumb-typed. Option taps ignore it.
       return result.status === "sent";
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold, noticeUntilRefreshed],
   );
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
@@ -1680,13 +1696,12 @@ export function AgentChat({
         setStatus(t("chat.status.sent"), "success");
         await showAfterSend();
       } else if (result.status === "changed") {
-        setStatus(t("chat.status.wizardChanged"), "warn");
-        revalidator.revalidate();
+        void noticeUntilRefreshed(t("chat.status.wizardChanged"));
       } else {
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, showAfterSend, noticeUntilRefreshed],
   );
 
   // Send an answer typed on the phone into a wizard step's field (ADR 0113): the shared recipe
@@ -1714,14 +1729,13 @@ export function AgentChat({
       } else if (result.status === "changed") {
         // Which step refused, for a person with the console open (`why` is a diagnosis, never UI text).
         if (result.why !== undefined) console.info("collie: answer refused", result.why);
-        setStatus(t("chat.status.wizardChanged"), "warn");
-        revalidator.revalidate();
+        void noticeUntilRefreshed(t("chat.status.wizardChanged"));
       } else {
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
       return result.status === "sent";
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, showAfterSend, noticeUntilRefreshed],
   );
 
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
@@ -1762,14 +1776,13 @@ export function AgentChat({
         );
         await showAfterSend();
       } else if (result.status === "changed") {
-        setStatus(t("chat.status.dialogChanged"), "warn");
-        revalidator.revalidate();
+        void noticeUntilRefreshed(t("chat.status.dialogChanged"));
       } else {
         setStatus(result.error || t("chat.status.sendFailed"), "error");
         revalidator.revalidate();
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, noticeUntilRefreshed],
   );
 
   // Tap a multi-select control (toggle a checkbox, Submit, the "Chat about this" escape, or the
@@ -1797,13 +1810,12 @@ export function AgentChat({
         setStatus(t("chat.status.sent"), "success");
         await showAfterSend();
       } else if (result.status === "changed") {
-        setStatus(t("chat.status.selectionChanged"), "warn");
-        revalidator.revalidate();
+        void noticeUntilRefreshed(t("chat.status.selectionChanged"));
       } else {
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, showAfterSend, noticeUntilRefreshed],
   );
 
   // An answer typed into a multi-select question's own field (ADR 0113): the `type` intent, under the
@@ -1831,14 +1843,13 @@ export function AgentChat({
       } else if (result.status === "changed") {
         // Which step refused, for a person with the console open (`why` is a diagnosis, never UI text).
         if (result.why !== undefined) console.info("collie: answer refused", result.why);
-        setStatus(t("chat.status.selectionChanged"), "warn");
-        revalidator.revalidate();
+        void noticeUntilRefreshed(t("chat.status.selectionChanged"));
       } else {
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
       return result.status === "sent";
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, showAfterSend, noticeUntilRefreshed],
   );
 
   // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
@@ -1895,13 +1906,12 @@ export function AgentChat({
         setStatus(t("chat.status.sent"), "success");
         await showAfterSend();
       } else if (result.status === "changed") {
-        setStatus(t("chat.status.screenChanged"), "warn");
-        revalidator.revalidate();
+        void noticeUntilRefreshed(t("chat.status.screenChanged"));
       } else {
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold, blocks],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend, asksAnswered, paneAsk, settleAskTap, agent?.hold, blocks, noticeUntilRefreshed],
   );
 
   // The unread-dialog card's one control (.adr/0053). Same guard as every other dialog tap — the
@@ -1931,13 +1941,12 @@ export function AgentChat({
         setStatus(t("chat.status.sent"), "success");
         await showAfterSend();
       } else if (result.status === "changed") {
-        setStatus(t("chat.status.screenChanged"), "warn");
-        revalidator.revalidate();
+        void noticeUntilRefreshed(t("chat.status.screenChanged"));
       } else {
         setStatus(result.error || t("chat.status.sendFailed"), "error");
       }
     },
-    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
+    [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, showAfterSend, noticeUntilRefreshed],
   );
 
   // Chat's "Send now" on the Waiting to send card: press the keys the BRIDGE declared for this
@@ -2963,6 +2972,7 @@ export function AgentChat({
               <CardWaitingCtx.Provider value={questionNotes}>
                 <SessionStream
                   feed={chatFeed}
+                  clearBottom={floatingClear}
                   address={paneScopeKey(scope, paneId)}
                   // The pane record's own status, the one live fact both bodies share. The mirror gets
                   // this for free — the agent's spinner is in the output it draws — so only this body
@@ -3026,6 +3036,7 @@ export function AgentChat({
             <ChatMessageList
               ref={listRef}
               clearBand={0}
+              clearBottom={floatingClear}
               dep={display}
               onAtBottomChange={setFollowing}
               hasNew={hasNew}

@@ -88,7 +88,7 @@ import { spaceFolders } from "./space-view.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
 import { LaunchWindow, foregroundHarnessOf } from "./launch-window.ts";
-import { createPaneProfile, createPaneVersion, procProbe, sharedForegroundRead } from "./pane-binary.ts";
+import { createPaneHarness, createPaneProfile, createPaneVersion, procProbe, profileBinaries, sharedForegroundRead } from "./pane-binary.ts";
 import { StarterReceiptStore } from "./starter-launch.ts";
 import { AnswerReceiptStore } from "./durable/answer.ts";
 import { ControlReceiptStore } from "./durable/control.ts";
@@ -1035,9 +1035,7 @@ const launchReceipts = new LaunchReceiptStore(cfg.stateDir);
 // Send Protocol reads them with that agent's profile and types nothing until its box is on screen.
 const launchWindow = new LaunchWindow(undefined, (harness) => findProfile(loadProfiles(), harness)?.id ?? harness);
 /** Each profile's binary (lower case) to its harness id: what a foreground process is matched against. */
-let profileBinaries: ReadonlyMap<string, string> | null = null;
-const harnessBinaries = (): ReadonlyMap<string, string> =>
-  (profileBinaries ??= new Map([...loadProfiles().values()].map((profile) => [profile.identity.binary.toLowerCase(), profile.id])));
+const harnessBinaries = profileBinaries;
 await launchReceipts.load();
 // A launch that was pending when the last run stopped and is older than the launch budget can no longer
 // settle: it reads `unknown`, and nothing is closed or adopted on a guess (M100 spec 04).
@@ -2167,6 +2165,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           ring,
           ledger: surfaceLedger ?? undefined,
           profile: paneProfile,
+          // A pane the multiplexer names no agent on is named by the program in its foreground (#793).
+          paneHarness: foregroundRead === undefined ? undefined : createPaneHarness({ read: foregroundRead, binaries: harnessBinaries, probe: paneProbe }),
           starting: (paneId, named) => launchWindow.starting(name, paneId, named, foregroundHarness?.(paneId)),
           framed: (paneId, harness) => launchWindow.framed(name, paneId, harness),
           deaf: (paneId, harness, typedAt) => launchWindow.deaf(name, paneId, harness, typedAt),

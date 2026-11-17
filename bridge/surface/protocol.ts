@@ -274,6 +274,7 @@ import { sendByData, type DataDoor, type DataLimits } from "./data-send.ts";
 import { pickSendPath } from "./path.ts";
 import { SHELL_PROMPT } from "./shell-prompt.ts";
 import { statSync } from "node:fs";
+import { MUX_SHELL_AGENT } from "../mux/agents.ts";
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
@@ -618,6 +619,11 @@ export interface SendTarget {
   readonly paneId: string;
   /** The agent string the multiplexer reports; it picks the profile by id. */
   readonly harness: string;
+  /**
+   * The multiplexer's own word for the pane (`""` for a shell), set only when {@link harness} was named
+   * from the program in the pane's foreground instead ({@link SendDeps.paneHarness}, #793).
+   */
+  readonly muxHarness?: string;
 }
 
 /** What {@link SendProtocol.expireHoldsOnStart} did on start: the ids it ended `expired`, and the ids it dropped. */
@@ -680,6 +686,13 @@ export interface SendDeps {
    * ({@link SendProtocol}, the launch window). A throw reads as null. Absent: no pane is starting.
    */
   readonly starting?: ((paneId: string, named: string | null) => Promise<string | null> | string | null) | undefined;
+  /**
+   * The harness the program in the pane's foreground runs, or null (bridge/pane-binary.ts
+   * `paneHarnessOf`: an exact match of the profiles' binary table, a proven pid, one harness only). Asked
+   * only for a pane the multiplexer names no agent on (#793): a shell pane where a person started pi by
+   * hand gets pi's profile instead of the blind road. A throw reads as null. Absent: no pane is named so.
+   */
+  readonly paneHarness?: ((paneId: string) => Promise<string | null> | string | null) | undefined;
   /** The box of `harness` took a key on the pane while it was starting: its window ends. Never throws into a send. */
   readonly framed?: ((paneId: string, harness: string) => void) | undefined;
   /**
@@ -3482,19 +3495,20 @@ export class SendProtocol {
   }
 
   /** One request, start to receipt. Never throws for a pane's state; every end is an answer. */
-  async handle(request: SendRequest, target: SendTarget): Promise<SendAnswer> {
-    if (request.mode === "prepare") return this.prepare(target);
+  async handle(request: SendRequest, asked: SendTarget): Promise<SendAnswer> {
+    if (request.mode === "prepare") return this.prepare(await this.namedTarget(asked));
     const running = this.inFlight.get(request.id);
     if (running !== undefined) {
       // The same id while it runs: wait for it, then answer the stored receipt.
       await running;
-      return this.handle(request, target);
+      return this.handle(request, asked);
     }
-    const generation = this.deps.generation(target.paneId) ?? "gone";
+    // The pane's generation is taken when the request arrives, before any read: the program's name below waits on one.
+    const generation = this.deps.generation(asked.paneId) ?? "gone";
     const accepted = this.deps.store.accept({
       id: request.id,
-      session: target.session,
-      paneId: target.paneId,
+      session: asked.session,
+      paneId: asked.paneId,
       paneGeneration: generation,
       surfaceRevision: request.revision ?? 0,
       mode: request.mode,
@@ -3504,10 +3518,24 @@ export class SendProtocol {
     if (accepted.kind === "id_reused") {
       // The stored request is someone else's; this refusal is not stored under its id.
       const detail = "This request id was already used for another text.";
-      const receipt = this.receiptOf(this.bareState(request, accepted.record, target, null), "refused", "id_reused", undefined, { detail });
+      const receipt = this.receiptOf(this.bareState(request, accepted.record, asked, null), "refused", "id_reused", undefined, { detail });
       return { receipt, offers: [], detail };
     }
-    if (accepted.kind === "replay") return this.replayAnswer(request, accepted.record, target);
+    if (accepted.kind === "replay") return this.replayAnswer(request, accepted.record, await this.namedTarget(asked));
+    // In flight from the accept on: the program's name below waits on a read, and a retry of the same id
+    // in that time waits for this run instead of answering a receipt that is not written yet.
+    const work = this.acceptedRun(request, accepted.record, asked, generation);
+    this.inFlight.set(request.id, work);
+    try {
+      return await work;
+    } finally {
+      this.inFlight.delete(request.id);
+    }
+  }
+
+  /** A new request after its accept: named by the pane's program where the multiplexer names none, then held or run. */
+  private async acceptedRun(request: SendRequest, record: SendRecord, asked: SendTarget, generation: string): Promise<SendAnswer> {
+    const target = await this.namedTarget(asked);
     // A pane with held sends: a new message or command joins the end of its queue, it never jumps. A
     // manual send joins too: the screen the person confirmed is not the one its turn will come on.
     // A pane with no profile never holds: its send goes in blind (see the header), so it skips this.
@@ -3519,7 +3547,7 @@ export class SendProtocol {
     // A queue of marked sends held over a draft only (M62 spec 02) does not take an unmarked send: that
     // one runs, and a draft still in the box refuses it with its offers, as on a pane with no queue.
     // A send from an agent view never joins a queue: it goes now or is refused `busy` (rule 8).
-    if (request.view !== undefined && waiting.length > 0) return this.settle(this.bareState(request, accepted.record, target, null), new Ended("refused", "busy", { detail: VIEW_BEHIND_HELD }));
+    if (request.view !== undefined && waiting.length > 0) return this.settle(this.bareState(request, record, target, null), new Ended("refused", "busy", { detail: VIEW_BEHIND_HELD }));
     const draftOnly = request.draftHolds !== true && waiting.every((entry) => entry.draftHolds === true && entry.cause === "draft_present");
     // A steer never joins (M69): it is for the turn that runs now, and goes in ahead of the held sends,
     // which wait for that turn to end anyway. Nor does a sign-in code (`secret`): a held text waits on
@@ -3528,20 +3556,14 @@ export class SendProtocol {
     const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer" && request.secret !== true && !overrideAsked(request);
     const match = joins ? ((await this.deps.profile(target.harness, target.paneId)) ?? (await this.heldPlainProfile(request, waiting, target.paneId, generation))) : null;
     if (match !== null && !(request.mode === "command" && runsInTurnEntry(request.text, match) !== null)) {
-      const state = this.bareState(request, accepted.record, target, match);
+      const state = this.bareState(request, record, target, match);
       const refusal = textRefusal(request, match);
       if (refusal !== null) return this.settle(state, refusal);
       // A command the profile never lets wait is refused, never held: it would act on a later session.
       if (state.command && neverHeldEntry(request.text, match) !== null) return this.settle(state, new Ended("refused", "turn_running", { detail: NEVER_HELD }));
       return this.hold(state, new Ended("refused", "turn_running", { detail: HELD_BEHIND }));
     }
-    const work = this.run(request, accepted.record, target);
-    this.inFlight.set(request.id, work);
-    try {
-      return await work;
-    } finally {
-      this.inFlight.delete(request.id);
-    }
+    return this.run(request, record, target);
   }
 
   // ── The held send (M56 spec 15) ──
@@ -4377,11 +4399,18 @@ export class SendProtocol {
    * One run of the steps. `release` marks the run of a held request (M56 spec 15): a refusal that means
    * "not yet" sends it back to its place in the queue instead of ending it.
    */
-  private async run(request: SendRequest, record: SendRecord, target: SendTarget, release = false, overDraft = false): Promise<SendAnswer> {
-    const own = await this.deps.profile(target.harness, target.paneId);
+  private async run(request: SendRequest, record: SendRecord, named: SendTarget, release = false, overDraft = false): Promise<SendAnswer> {
+    let target = named;
+    let own = await this.deps.profile(target.harness, target.paneId);
     // A pane where a harness is starting is that harness's pane in waiting: its shell is not the place
     // for the text, and its input box is not there yet (the launch window).
     const starting = await this.startingOf(target, own);
+    // A launch window for another harness than the one the pane's program names: two candidates, so the
+    // program's name goes and the pane reads as the multiplexer named it, as before #793.
+    if (target.muxHarness !== undefined && starting !== null && starting !== target.harness) {
+      target = { session: target.session, paneId: target.paneId, harness: target.muxHarness };
+      own = null;
+    }
     const expected = own !== null || starting === null ? null : await this.deps.profile(starting, target.paneId);
     const match = own ?? expected;
     const state: RunState = {
@@ -4553,11 +4582,30 @@ export class SendProtocol {
     return this.hold(state, end);
   }
 
+  /**
+   * The target with the harness its foreground program runs ({@link SendDeps.paneHarness}), for a pane
+   * the multiplexer names no agent on; else the target as it came. A name with no profile, or a throw,
+   * keeps the target as it came: the blind road and its refusal stay for a pane nothing can name.
+   */
+  private async namedTarget(target: SendTarget): Promise<SendTarget> {
+    if (this.deps.paneHarness === undefined || (target.harness !== "" && target.harness !== MUX_SHELL_AGENT)) return target;
+    try {
+      const harness = await this.deps.paneHarness(target.paneId);
+      if (harness === null || harness === "" || harness === MUX_SHELL_AGENT) return target;
+      return { ...target, harness, muxHarness: target.harness };
+    } catch (err) {
+      console.warn(`[send] the pane's program read failed: ${err instanceof Error ? err.message : String(err)}`);
+      return target;
+    }
+  }
+
   /** The harness starting in the pane ({@link SendDeps.starting}), or null. A throw reads as null. */
   private async startingOf(target: SendTarget, own: ProfileMatch | null): Promise<string | null> {
     if (this.deps.starting === undefined) return null;
     try {
-      const harness = await this.deps.starting(target.paneId, own === null ? null : target.harness);
+      // A harness named from the pane's program is not the multiplexer's word: the launch window reads
+      // that pane as one with no profile of its own, so an agent still starting there is waited for.
+      const harness = await this.deps.starting(target.paneId, own === null || target.muxHarness !== undefined ? null : target.harness);
       return harness === null || harness === "" ? null : harness;
     } catch (err) {
       console.warn(`[send] the starting read failed: ${err instanceof Error ? err.message : String(err)}`);
