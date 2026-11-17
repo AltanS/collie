@@ -45,7 +45,32 @@ const ICONS = {
   error: "error",
 } as const satisfies Record<StatusTone, IconKey>;
 
-export function HeaderStatus({ children }: { children: ReactNode }) {
+/**
+ * A state of the screen that holds for as long as it is true, not an event: shown in the title
+ * slot while no event status is, in the `note` look (the pane's "Starting…"). It has no dismiss
+ * button, because the screen ends it, and an event status always outranks it.
+ */
+export interface HeaderCondition {
+  text: string;
+  tone: StatusTone;
+}
+
+/** The status line itself, shared by an event and a condition so the two are the same box. */
+function StatusLine({ tone, text }: { tone: StatusTone; text: string }) {
+  return (
+    // `<output>` carries an implicit ARIA role of "status" — the same announcement contract
+    // StatusArea's own `<output>` made, kept verbatim.
+    <output
+      aria-live="polite"
+      className={cn("flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm font-semibold", TONE[tone])}
+    >
+      <Icon name={ICONS[tone]} className="size-4 shrink-0" />
+      <span className="truncate">{text}</span>
+    </output>
+  );
+}
+
+export function HeaderStatus({ children, condition }: { children: ReactNode; condition?: HeaderCondition }) {
   useLocale();
   const status = useStatus();
   // The full message, in a sheet, for the one row that cannot hold it — see StatusDetailSheet.
@@ -58,6 +83,15 @@ export function HeaderStatus({ children }: { children: ReactNode }) {
   useEffect(() => {
     setDetail(false);
   }, [statusId]);
+  // A condition (the pane's "Starting…") holds the title slot while no event status is showing, and over a word that
+  // would ride BESIDE the identity: the condition replaces the identity, so a beside word has no name to stand beside.
+  if (condition && (!status || status.beside === true)) {
+    return (
+      <div data-slot="header-condition" className="relative flex min-h-11 min-w-0 flex-1 items-center">
+        <StatusLine tone={condition.tone} text={condition.text} />
+      </div>
+    );
+  }
   // A word that stands BESIDE the identity (M104, `beside`): "Sent" after a send. The name and the time stay where
   // they are, in the same place in the tree (no wrapper, so nothing remounts and no box changes size); the word rides
   // at the right end of the name's line, in its free room, over the header's own ground (`header-center` is its
@@ -96,18 +130,7 @@ export function HeaderStatus({ children }: { children: ReactNode }) {
       data-slot="header-status"
       className={cn("relative flex min-h-11 min-w-0 flex-1 items-center", dismissable && "pointer-events-auto")}
     >
-      {/* `<output>` carries an implicit ARIA role of "status" — the same announcement contract
-          StatusArea's own `<output>` made, kept verbatim. */}
-      <output
-        aria-live="polite"
-        className={cn(
-          "flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm font-semibold",
-          TONE[status.tone],
-        )}
-      >
-        <Icon name={ICONS[status.tone]} className="size-4 shrink-0" />
-        <span className="truncate">{status.text}</span>
-      </output>
+      <StatusLine tone={status.tone} text={status.text} />
       {dismissable && (
         <>
           <button

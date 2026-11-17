@@ -320,7 +320,7 @@ machine ([Launchers added from a phone](configure.md#launchers-added-from-a-phon
 permission prompts carries a **No prompts** badge, and the phone asks you once before it first starts
 it.
 
-**Send waits for the agent's first screen.** After a start, Send reads Starting… and your draft stays
+**Send waits for the agent's first screen.** After a start, the header reads Starting… and Send waits. Your draft stays
 editable. Collie sends nothing on its own, so a dialog such as workspace trust shows before any text
 reaches the agent. Send is ready once Collie reads the agent's first screen, the agent leaves the
 pane, or two minutes pass.

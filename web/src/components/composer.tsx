@@ -4199,11 +4199,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             reason and shares that place, one notice at a time, and so does the held-send card
             (amended 2026-10-18), above the notice. See `floating` above; it renders here. */}
         {draftNoticeSlot ? createPortal(floating, draftNoticeSlot) : floating}
-        {/* A launch this phone started, before the bridge has read its first screen: Send waits, and
-            this says why for as long as it is true. */}
-        <Collapse open={starting && !locked && !direct.active}>
-          <Notice variant="box" tone="info" announce="status">{translate("newPage.starting")}</Notice>
-        </Collapse>
+        {/* A launch this phone started, before the bridge has read its first screen: Send stays inert
+            (`starting`). The reason is not said here: the header's title and mark say it (agent-chat's
+            `HeaderStatus` condition and `RouteHeader`'s `starting`), where it costs this footer no row. */}
         {/* The Send Protocol's offers (M56 spec 05), at the thumb: Add / Replace / Cancel on a draft,
             Submit / Discard on text that was typed and not sent, and the second tap on a screen
             Collie cannot read. Each is a new request; the ✕ drops the strip and sends nothing. */}

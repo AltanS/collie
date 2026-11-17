@@ -6051,7 +6051,8 @@ describe("Composer — known launch startup send-lock", () => {
     const box = screen.getByPlaceholderText(/type a reply/i);
     expect(box).not.toBeDisabled();
     await user.type(box, "keep this draft");
-    expect(screen.getByText("Starting…")).toBeInTheDocument();
+    // Send is inert, and the composer says nothing: the header's title and mark carry "Starting…".
+    expect(screen.queryByText("Starting…")).toBeNull();
     expect(screen.getByRole("button", { name: /^Send$/ })).toHaveAttribute("aria-disabled", "true");
     fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
     await user.click(screen.getByRole("button", { name: "Quick" }));
