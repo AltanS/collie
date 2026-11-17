@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 623 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 633 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([386, 202, 35]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([406, 192, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 6 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -265,7 +265,7 @@ describe("the Windows check runs the flake's Bun", () => {
     // server and dials it is `apiSocketTest` or `apiSocketDescribe` (bridge/api/skip.ts), a skip on win32, one reason for all.
     const apiSocketText = readFileSync(join(ROOT, "bridge", "api", "socket.test.ts"), "utf8");
     const apiSocketSkips = (apiSocketText.match(/^ {2}apiSocketTest\(/gm) ?? []).length + testsInBlocks(apiSocketText, "apiSocketDescribe(");
-    expect(apiSocketSkips).toBe(42);
+    expect(apiSocketSkips).toBe(60);
     expect(script).toContain("bridge/api/skip.ts");
     expect(script).toContain("bridge/api/socket.test.ts");
     const apiSkip = readFileSync(join(ROOT, "bridge", "api", "skip.ts"), "utf8");
@@ -279,11 +279,11 @@ describe("the Windows check runs the flake's Bun", () => {
     const repoIndexSkips = testsInBlocks(repoIndex, "describe.if(posix)(") + (repoIndex.match(/^ {2}test\.if\(posix\)\(/gm) ?? []).length;
     expect(repoIndexSkips).toBe(13);
     const apiEndToEndSkips = testsInBlocks(readFileSync(join(ROOT, "bridge", "api", "trick-end-to-end.test.ts"), "utf8"), 'describe.skipIf(process.platform === "win32")(');
-    expect(apiEndToEndSkips).toBe(2);
+    expect(apiEndToEndSkips).toBe(4);
     const approvedSkips = (readFileSync(join(ROOT, "bridge", "tricks", "approved.test.ts"), "utf8").match(/^ {2}test\.if\(process\.platform !== "win32"\)\(/gm) ?? []).length;
     expect(approvedSkips).toBe(1);
     for (const file of ["bridge/tricks/repo-index.test.ts", "bridge/api/trick-end-to-end.test.ts", "bridge/tricks/approved.test.ts"]) expect(script).toContain(file);
-    expect(script).toContain("Not listed before, bridge (16)");
+    expect(script).toContain("Not listed before, bridge (18)");
     // Nine tests of bridge/tricks/triggers.test.ts write a real file path into a `watch` manifest, which the schema refuses
     // on Windows (a path starts with / or ~/): `watchTest`, a skip on win32 before the Windows gate for tricks opens.
     const watchSkips = (readFileSync(join(ROOT, "bridge", "tricks", "triggers.test.ts"), "utf8").match(/^ {2}watchTest\(/gm) ?? []).length;
@@ -345,7 +345,7 @@ describe("the Windows check runs the flake's Bun", () => {
     // The local API's command face (cli/api.test.ts): the tests that dial a scratch Unix socket are `apiSocketTest`; the
     // table tests run through a seam on Windows. `check --run` of the shell sample is a POSIX program (cli/tricks-switch.test.ts).
     const apiCliSkips = (readFileSync(join(ROOT, "cli", "api.test.ts"), "utf8").match(/^ {2}apiSocketTest\(/gm) ?? []).length;
-    expect(apiCliSkips).toBe(10);
+    expect(apiCliSkips).toBe(0);
     expect(script).toContain("cli/api.test.ts");
     const checkRunSkips = namesIn("cli/tricks-switch.test.ts", /test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g);
     expect(checkRunSkips).toHaveLength(1);
