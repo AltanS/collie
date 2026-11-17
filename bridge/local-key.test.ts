@@ -5,17 +5,19 @@ import { join } from "node:path";
 import type { JsonObject, JsonValue } from "./json.ts";
 import { asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import { localCredentialOf, mintLocalSecret } from "./local-secret.ts";
-import { isLocalKeyRoute, LOCAL_KEY_ROUTES, localSnapshotView, localTricksView } from "./local-key.ts";
+import { isLocalKeyRoute, LOCAL_KEY_ROUTES, localConfigView, localSnapshotView, localTricksView, localUpdateCheckView } from "./local-key.ts";
+import { parseCrewRows } from "./update-action.ts";
 import { apiFrontGate, browserPairingGate, type PairingGate } from "./server.ts";
 import { loadConfig } from "./config.ts";
 
-// The local key's two text-free views, and the leak test: every field of the snapshot and of the
-// tricks reply is planted with an e-mail, a path, a question, a title, a held send and a trick output,
-// and none of them comes back to the key, on a marked route or on a refused one.
+// The local key's four views, and the leak test: every field of the snapshot, the tricks reply, the
+// update check and the config is planted with an e-mail, a path, a question, a title, a held send and
+// a trick output, and none of them comes back to the key, on a marked route or on a refused one.
 
 const REPO = join(import.meta.dir, "..");
 const TYPES = readFileSync(join(REPO, "bridge/types.ts"), "utf8");
 const SCHEMA = readFileSync(join(REPO, "web/src/lib/tricks/schema.ts"), "utf8");
+const UPDATE_ACTION = readFileSync(join(REPO, "bridge/update-action.ts"), "utf8");
 
 /** The field names of one declaration (`export interface X {` or `export type X = … & {`), up to its close. */
 function fieldsOf(source: string, opener: string): string[] {
@@ -23,7 +25,7 @@ function fieldsOf(source: string, opener: string): string[] {
   if (at < 0) throw new Error(`no declaration ${opener}`);
   const end = source.indexOf("\n}", at);
   const body = source.slice(at + opener.length, end);
-  return [...body.matchAll(/^ {2}(\w+)\??:/gm)].map((m) => m[1]!);
+  return [...body.matchAll(/^ {2}(?:readonly )?(\w+)\??:/gm)].map((m) => m[1]!);
 }
 
 const PLANTED = [
@@ -56,6 +58,10 @@ const SERVER = fieldsOf(TYPES, "export interface ServerSummary {");
 const UPDATE = fieldsOf(TYPES, "export interface UpdateStatus {");
 const TRICK = fieldsOf(SCHEMA, "export interface WireTrickInfo {");
 const TRICKS_REPLY = fieldsOf(SCHEMA, "export interface TricksReply {");
+const CREW_ROW = fieldsOf(UPDATE_ACTION, "export interface CrewUpdateRow {");
+/** `GET /api/update/check`: the update status, the crew run's legs, and the route's own three fields. */
+const UPDATE_CHECK = [...UPDATE, "peers", "settledAt", "preflight", "crew", "releaseNotes"];
+const CONFIG = fieldsOf(TYPES, "export interface BridgeConfig {");
 
 const KEPT_PANE: JsonObject = {
   paneId: kept("paneId"),
@@ -85,6 +91,17 @@ function tricksWorld(): JsonObject {
   return planted([...TRICKS_REPLY, "path"], { tricks: [trick], path: kept("path"), runsOn: { lead: kept("runsOn.lead"), extra: blob() } });
 }
 
+const KEPT_CREW_ROW: JsonObject = { name: kept("crew.name"), verdict: "red", reasons: [kept("crew.reason")], asOf: 1_800_000_000_000 };
+
+function updateCheckWorld(): JsonObject {
+  const row = planted(CREW_ROW, KEPT_CREW_ROW);
+  return planted(UPDATE_CHECK, { crew: [row] });
+}
+
+function configWorld(): JsonObject {
+  return planted(CONFIG, {});
+}
+
 /** Every string anywhere in a JSON value. */
 function stringsOf(value: JsonValue | undefined): string[] {
   const s = asJsonString(value);
@@ -103,6 +120,9 @@ describe("the fixture plants every declared field", () => {
     expect(SNAPSHOT).toContain("agents");
     expect(TRICK).toContain("about");
     expect(TRICKS_REPLY).toContain("parts");
+    expect(CREW_ROW).toEqual(expect.arrayContaining(["name", "version", "verdict", "reasons", "asOf", "installKind", "health"]));
+    expect(UPDATE).toContain("run");
+    expect(CONFIG).toEqual(expect.arrayContaining(["vapidPublicKey", "operatorCommands", "operatorQuickReplies", "operatorFonts", "stt", "mux"]));
   });
 });
 
@@ -149,6 +169,33 @@ describe("localTricksView: an allow-list of what trick list and doctor read", ()
   });
 });
 
+describe("localUpdateCheckView: the crew rows collie crew update prints, and nothing else", () => {
+  test("each row keeps exactly name, verdict, reasons and asOf; the body keeps only crew", () => {
+    const view = localUpdateCheckView(updateCheckWorld());
+    expect(Object.keys(view)).toEqual(["crew"]);
+    expect(view.crew).toEqual([KEPT_CREW_ROW]);
+  });
+
+  test("the CLI's own reader reads the view as it reads the full row, minus version and install kind", () => {
+    const full = updateCheckWorld();
+    const row = { ...KEPT_CREW_ROW, version: "1.2.3", installKind: "packaged" };
+    const [fromView] = parseCrewRows(localUpdateCheckView({ ...full, crew: [row] }));
+    expect(fromView).toEqual({ name: kept("crew.name"), version: null, verdict: "red", reasons: [kept("crew.reason")], asOf: 1_800_000_000_000 });
+  });
+
+  test("a reason that is not a string is dropped, and no crew in is an empty list out", () => {
+    expect(localUpdateCheckView({ crew: [{ ...KEPT_CREW_ROW, reasons: [blob(), kept("crew.reason")] }] }).crew).toEqual([KEPT_CREW_ROW]);
+    expect(localUpdateCheckView({ releaseNotes: blob() })).toEqual({ crew: [] });
+  });
+});
+
+describe("localConfigView: the status alone", () => {
+  test("the key gets an empty object, whatever the config holds", () => {
+    expect(Object.keys(configWorld()).length).toBeGreaterThan(10);
+    expect(localConfigView()).toEqual({});
+  });
+});
+
 describe("the leak test: nothing planted reaches the local key", () => {
   const secret = mintLocalSecret();
   const bearer = { authorization: `Bearer ${secret}` };
@@ -162,7 +209,7 @@ describe("the leak test: nothing planted reaches the local key", () => {
   const cfg = loadConfig({ HOME: "/tmp/collie-local-key-home" });
 
   test("the marked routes that carry the world answer views with no planted value in them", () => {
-    const answers = [localSnapshotView(world()), localTricksView(tricksWorld())];
+    const answers = [localSnapshotView(world()), localTricksView(tricksWorld()), localUpdateCheckView(updateCheckWorld()), localConfigView()];
     for (const answer of answers) {
       const text = JSON.stringify(answer);
       for (const value of PLANTED) expect({ value, found: text.includes(value) }).toEqual({ value, found: false });
@@ -171,7 +218,7 @@ describe("the leak test: nothing planted reaches the local key", () => {
     const said = answers.flatMap((a) => stringsOf(a)).filter((s) => s.startsWith("KEPT-"));
     expect([...new Set(said)].toSorted()).toEqual(
       [
-        "agent", "host", "lastRunAt", "model", "paneId", "path", "restartCommand", "runsOn.lead", "server.id", "server.mux", "server.name",
+        "agent", "crew.name", "crew.reason", "host", "lastRunAt", "model", "paneId", "path", "restartCommand", "runsOn.lead", "server.id", "server.mux", "server.name",
         "session", "session.host", "session.mux", "session.name", "trick.error", "trick.id", "workspaceLabel",
       ].map(kept).toSorted(),
     );
@@ -189,13 +236,13 @@ describe("the leak test: nothing planted reaches the local key", () => {
     for (const body of bodies) for (const value of PLANTED) expect(body.includes(value)).toBe(false);
   });
 
-  test("the two marked routes that carry the world are the two with a view; the other three carry none of it", () => {
-    expect(LOCAL_KEY_ROUTES.filter((r) => r.reason.includes("localSnapshotView") || r.reason.includes("localTricksView")).map((r) => r.path)).toEqual(["/api/snapshot", "/api/tricks"]);
+  test("the four marked routes with more than the CLI reads are the four with a view; the telemetry route carries none of it", () => {
+    expect(LOCAL_KEY_ROUTES.filter((r) => /local\w+View/.test(r.reason)).map((r) => r.path)).toEqual(["/api/snapshot", "/api/tricks", "/api/update/check", "/api/config"]);
     expect(isLocalKeyRoute("/api/snapshot", "GET")).toBe(true);
     expect(isLocalKeyRoute("/api/snapshot", "POST")).toBe(false);
   });
 
-  test("server.ts answers the key with the views on both routes", () => {
+  test("server.ts answers the key with the views on all four routes", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const snap = src.indexOf('if (pathname === "/api/snapshot")');
     const snapBody = src.slice(snap, src.indexOf("\n      }\n", snap));
@@ -206,5 +253,14 @@ describe("the leak test: nothing planted reaches the local key", () => {
     const tricks = src.indexOf('if (pathname === "/api/tricks" && req.method === "GET")');
     const tricksBody = src.slice(tricks, src.indexOf("\n      }\n", tricks));
     expect(tricksBody).toContain("if (forCli) return json(localTricksView(");
+    const check = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
+    const checkBody = src.slice(check, src.indexOf("\n      }\n", check));
+    expect(checkBody).toContain("localUpdateCheckView(");
+    const config = src.indexOf('if (pathname === "/api/config") {');
+    const configBody = src.slice(config, src.indexOf("\n      }\n", config));
+    // The view comes after both 404s (unknown session, unknown host), so `collie durable list` still tells them apart.
+    expect(configBody).toContain("if (isLocalRequest(req, pairingGate)) return json(localConfigView(),");
+    expect(configBody.indexOf("localConfigView(")).toBeGreaterThan(configBody.indexOf('apiError("host.unknown"'));
+    expect(configBody.indexOf("localConfigView(")).toBeGreaterThan(configBody.indexOf('apiError("session.unknown"'));
   });
 });

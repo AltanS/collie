@@ -246,7 +246,7 @@ import {
   type PairRequestDeps,
 } from "./pair-request.ts";
 import { LOCAL_LABEL, type LocalCredential } from "./local-secret.ts";
-import { isLocalKeyRoute, localSnapshotView, localTricksView } from "./local-key.ts";
+import { isLocalKeyRoute, localConfigView, localSnapshotView, localTricksView, localUpdateCheckView } from "./local-key.ts";
 import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
@@ -3913,6 +3913,9 @@ export function startServer(opts: {
             req.headers.get("accept-encoding"),
           );
         }
+        // The bridge's own local key learns only that the session is known: the two 404s above, or this
+        // empty body (bridge/local-key.ts). No row, no key, no speech or model fact.
+        if (isLocalRequest(req, pairingGate)) return json(localConfigView(), req.headers.get("accept-encoding"));
         // A member that has published nothing answers with the LEAD's block, because absent means
         // "use the lead's" — which is byte for byte the reading the phone gives every pane today.
         // The lead's own entry resolves `local`, so it takes its own branch and its own adapter.
@@ -4296,10 +4299,13 @@ export function startServer(opts: {
         // the Updates page's business, and the snapshot is polled by every open client. No request
         // of its own (see `UpdateMonitor.notes`).
         const releaseNotes = await updateMonitor.notes();
-        return json(
-          { ...updateStatusWithPeers(), preflight: report, crew: opts.crewLead?.updateRows() ?? [], releaseNotes },
-          req.headers.get("accept-encoding"),
-        );
+        const checked = { ...updateStatusWithPeers(), preflight: report, crew: opts.crewLead?.updateRows() ?? [], releaseNotes };
+        // The bridge's own local key gets the crew rows `collie crew update` prints, and no run record,
+        // log tail or release note (bridge/local-key.ts).
+        if (isLocalRequest(req, pairingGate)) {
+          return json(localUpdateCheckView(parseJsonObject(JSON.stringify(checked)) ?? {}), req.headers.get("accept-encoding"));
+        }
+        return json(checked, req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/update" && req.method === "POST") {
         // ── STARTING AN UPDATE FROM THE PHONE (M15/05) ──────────────────────

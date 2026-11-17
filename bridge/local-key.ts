@@ -13,10 +13,12 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../web/
 // path, before any route matches and before any `?host=` forward, so a new route is closed to the key
 // until someone adds it here with a reason.
 //
-// ALLOW-LISTED ANSWERS. Two of those routes answer a phone with text: the snapshot (titles, asks, held
-// sends, todos) and the tricks list (parts, About, rules). For the key they answer a VIEW built field
-// by field from the fields the CLI reads ({@link localSnapshotView}, {@link localTricksView}). A field
-// the snapshot gains later stays out of the view until it is added here.
+// ALLOW-LISTED ANSWERS. Four of those routes answer a phone with more than the CLI reads: the snapshot
+// (titles, asks, held sends, todos), the tricks list (parts, About, rules), the update check (the run
+// record and its log tail, release notes) and the config (the operator's rows, the push key, speech).
+// For the key they answer a VIEW built field by field from the fields the CLI reads
+// ({@link localSnapshotView}, {@link localTricksView}, {@link localUpdateCheckView},
+// {@link localConfigView}). A field a body gains later stays out of the view until it is added here.
 
 /** One route the local key may reach, and why. */
 export interface LocalKeyRoute {
@@ -46,12 +48,12 @@ export const LOCAL_KEY_ROUTES: readonly LocalKeyRoute[] = [
   {
     method: "GET",
     path: "/api/update/check",
-    reason: "collie crew update prints the verdicts the lead banked for its members; the body holds check ids and reasons, no screen or message text",
+    reason: "collie crew update prints the verdicts the lead banked for its members; the key gets localUpdateCheckView",
   },
   {
     method: "GET",
     path: "/api/config",
-    reason: "collie durable list asks whether the bridge loaded a durable session (?session=); the body holds capabilities and the operator's own rows, no screen or message text",
+    reason: "collie durable list asks whether the bridge loaded a durable session (?session=): 200 or 404; the key gets localConfigView",
   },
 ];
 
@@ -68,6 +70,8 @@ type Pick = (value: JsonValue | undefined) => JsonValue | undefined;
 const str: Pick = (v) => asJsonString(v);
 const num: Pick = (v) => asJsonNumber(v);
 const bool: Pick = (v) => asJsonBoolean(v);
+/** A list of strings: the strings of an array, in order; anything else is left out. */
+const strList: Pick = (v) => (Array.isArray(v) ? v.filter((e): e is string => asJsonString(e) !== undefined) : undefined);
 
 /** A view's fields: each name with the check its value must pass. */
 type FieldTable = Readonly<Record<string, Pick>>;
@@ -180,4 +184,38 @@ export function localTricksView(reply: JsonObject): JsonObject {
   const runsOn = asJsonObject(reply.runsOn);
   if (runsOn !== undefined) out.runsOn = pickFields(runsOn, { lead: str });
   return out;
+}
+
+/**
+ * The crew row fields of the local view, all read by cli/crew-update.ts `bankedPeerVerdicts`, through
+ * `parseCrewRows` (bridge/update-action.ts), and then `peerReportLines`, which prints them:
+ *   - `name`: matched against the members this run names, and printed.
+ *   - `verdict`: printed, and compared with the ssh walk's verdict.
+ *   - `reasons`: the first one is printed after the verdict.
+ *   - `asOf`: printed as the report's age.
+ * `parseCrewRows` also takes `version` and `installKind` when they are there, but nothing after it
+ * reads them on this path, and it reads their absence as null and unknown; so they stay out.
+ */
+const CREW_ROW_FIELDS = {
+  name: str,
+  verdict: str,
+  reasons: strList,
+  asOf: num,
+} as const satisfies FieldTable;
+
+/**
+ * `GET /api/update/check` for the local key: the `crew` rows (above), and nothing else. No run record
+ * and no log tail, no release notes, no preflight, no install facts.
+ */
+export function localUpdateCheckView(reply: JsonObject): JsonObject {
+  return { crew: listOf(reply.crew, (r) => pickFields(r, CREW_ROW_FIELDS)) };
+}
+
+/**
+ * `GET /api/config` for the local key: an empty object. Its one caller, cli/durable-attach.ts
+ * `stateOf` (`collie durable list`), reads the status alone: 200 is loaded, 404 or 400 is not. The
+ * 404 for an unknown session is answered before this view, as for a phone.
+ */
+export function localConfigView(): JsonObject {
+  return {};
 }
