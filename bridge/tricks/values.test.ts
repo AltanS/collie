@@ -102,6 +102,8 @@ async function rig(extra: Partial<TricksServiceDeps> = {}, on = true): Promise<R
     now: () => clock.t,
     warn: (line) => warnings.push(line),
     audit: (entry) => audit.push(entry),
+    // Tricks as a whole switched on (feature-switch.ts), so a changed value can run the trick.
+    feature: { on: () => true },
     revBase: 1000,
     run: async (spec): Promise<RunOutcome> => {
       specs.push(spec);
