@@ -1490,8 +1490,9 @@ export interface TrickFacts {
   sessionsOmitted?: number;
   /**
    * Present only when the trick's approved manifest says `access = "see"` or `"read"` AND the local API socket
-   * stands on this bridge (M105 spec 04): the socket's path and the declared level. The helper's `t.api` dials it.
-   * Nothing of it is in the environment. Absent: no access declared, or the socket does not stand.
+   * stands on this bridge (M105 specs 04 and 05): the socket's path, the declared level and this run's token.
+   * The helper's `t.api` dials it and names the token in `hello`. Nothing of it is in the environment.
+   * Absent: no access declared, or the socket does not stand.
    */
   api?: FactsApi;
   /**
@@ -1500,10 +1501,16 @@ export interface TrickFacts {
    */
   values?: FieldValues;
 }
-/** The local API as a trick's facts name it. The level is declared, and the helper holds it; it is not a wall. */
+/**
+ * The local API as a trick's facts name it. The level is declared, and the bridge holds it for the API (M105
+ * spec 05). The token is this run's own: the socket answers a connection that names it in `hello`, and only
+ * while the run lasts. It keeps a program that only finds the socket out; it is not a wall.
+ */
 export interface FactsApi {
   socket: string;
   access: TrickAccess;
+  /** This run's token: 43 base64url characters. It dies when the run ends. */
+  token: string;
 }
 
 // ── Types: taps and the wire ─────────────────────────────────────────────────────────────────
@@ -4300,10 +4307,14 @@ export const ACCESS_LEVELS = ["see", "read"] as const;
 export const ACCESS_WORDS = ["none", ...ACCESS_LEVELS] as const;
 /** The levels a manifest keeps: `none` is the absence of the key. */
 export type TrickAccess = (typeof ACCESS_LEVELS)[number];
-/** The card's one line for each level, in the card's own English (and the About sheet's, in the phone's words). */
+/**
+ * The card's one line for each level, in the card's own English (and the About sheet's, in the phone's words).
+ * Plain since M105 spec 05 (decision 10): the bridge holds the level for the local API, so the line says what
+ * the trick reads, with no caveat.
+ */
 export const ACCESS_LINES = {
-  see: "It asks to see your machines, your sessions and their states, your usage and the Hill, not what is on a screen.",
-  read: "It asks to read what is on your sessions' screens.",
+  see: "It reads your machines, sessions, usage and the Hill.",
+  read: "It reads your sessions' screens.",
 } as const satisfies Readonly<Record<TrickAccess, string>>;
 /** The phone's word for a level word it does not know (wire.ts): kept, so the row can say so, never dropped. */
 export const ACCESS_UNKNOWN = "unknown";
@@ -5078,7 +5089,9 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
 
 /** Every key of the facts document, of a session in it, of a space, of the trick, and of each trigger. */
 export const FACTS_KEYS = ["contract", "trigger", "trick", "memberId", "host", "sessions", "spaces", "sessionsOmitted", "values", "api"] as const;
-export const API_FACT_KEYS = ["socket", "access"] as const;
+export const API_FACT_KEYS = ["socket", "access", "token"] as const;
+/** A run token in the facts: 43 base64url characters (32 random bytes). */
+const API_TOKEN_TEXT = /^[A-Za-z0-9_-]{43}$/u;
 export const SESSION_FACT_KEYS = ["id", "memberId", "sessionId", "paneId", "host", "name", "agent", "status", "cwd", "space", "tab", "lastActiveAt", "reachable", "inputs"] as const;
 export const INPUTS_FACT_KEYS = ["state", "files", "skipped"] as const;
 export const INPUT_FILE_FACT_KEYS = ["rel", "path", "bytes", "sha256", "mtime", "kind"] as const;
@@ -5146,10 +5159,12 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
 
   const omitted = f.int("sessionsOmitted", { min: 1, max: 1_000_000 });
   // The local API, for a trick that declares `access` while the socket stands (M105 spec 04).
-  const apiFields = f.object("api", 'an object with "socket" and "access"');
+  const apiFields = f.object("api", 'an object with "socket", "access" and "token"');
   apiFields?.keys(API_FACT_KEYS);
   const socket = apiFields?.text("socket", { max: FACT_TEXT_MAX_BYTES, required: true });
   const apiAccess = apiFields?.word("access", ACCESS_LEVELS, true);
+  const apiToken = apiFields?.text("token", { max: 64, required: true });
+  if (apiToken !== undefined && !API_TOKEN_TEXT.test(apiToken)) apiFields?.push("type", "token", "The run token is 43 base64url characters.");
   const values = readFactsValues(f);
 
   if (refusals.length > 0 || trigger === undefined || trickId === undefined || dir === undefined || state === undefined || memberId === undefined || host === undefined) {
@@ -5157,7 +5172,7 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
   }
   const facts: TrickFacts = { contract: contract ?? TRICK_CONTRACT_DEFAULT, trigger, trick: { id: trickId, dir, state }, memberId, host, sessions, spaces };
   if (omitted !== undefined) facts.sessionsOmitted = omitted;
-  if (socket !== undefined && apiAccess !== undefined) facts.api = { socket, access: apiAccess };
+  if (socket !== undefined && apiAccess !== undefined && apiToken !== undefined) facts.api = { socket, access: apiAccess, token: apiToken };
   if (values !== undefined) facts.values = values;
   return { facts, refusals };
 }

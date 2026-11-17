@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -60,6 +61,7 @@ import { approvedCopyDir, approvedTrickDir, pendingTrickDir, tricksConfigDir, tr
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
 import { receiptFrame, TrickReceiptStore, type TrickReceiptRecord, type TrickReceiptSurface } from "./receipts.ts";
 import { outcomeProblem, runProgram, windowsRunProblem, type RunOutcome, type RunSpec } from "./run.ts";
+import { RunTokens, type RunTokenHolder } from "./run-tokens.ts";
 import type { RepoFactsPort } from "./repo-facts.ts";
 import { trickWarnings, wireWarnings } from "./scan.ts";
 import { TricksStore, problemLine, type CliTricksExtra } from "./store.ts";
@@ -771,6 +773,12 @@ export class TricksService implements TricksSurface {
   private suspended = false;
   /** What `onLocalApi` was last told; null before the first. */
   private localApiTold: boolean | null = null;
+  /**
+   * The run tokens of the local API (M105 spec 05, run-tokens.ts): one per run of a trick that declares
+   * `access`, while the socket stands. Each dies with its run (`runOnce`), its trick's switch or removal
+   * (`applyOne`, `apply`), tricks going off as a whole (the feature switch's `onChange`) and `stop`.
+   */
+  private readonly runTokens = new RunTokens();
   /** `on` and `watch`: the bus subscription, the file watches and the waiting requests (triggers.ts). */
   private readonly reactions: TrickReactions;
   /** The tricks whose file watch fell back to a stat check (watch.ts): the row says it, from `watchPollSeconds`. */
@@ -800,6 +808,8 @@ export class TricksService implements TricksSurface {
       if (!on) {
         this.runStop.abort();
         this.runStop = new AbortController();
+        // Every run token dies with tricks (spec 05, decision 2), before the killed runs report.
+        this.runTokens.clear();
       }
       queueMicrotask(() => {
         this.scannedAt = -Infinity;
@@ -844,6 +854,14 @@ export class TricksService implements TricksSurface {
    */
   localApiWanted(): boolean {
     return this.switchedOn() && this.deps.active?.() !== false;
+  }
+
+  /**
+   * The trick and level of a live run token, or null (M105 spec 05, decision 2): the one door the local API
+   * socket asks, through the narrow `RunTokenCheck` bridge/index.ts builds from this. Constant time.
+   */
+  resolveRunToken(token: string): RunTokenHolder | null {
+    return this.runTokens.resolve(token);
   }
 
   /** Listen for a move of the switch for tricks as a whole; the answer stops listening. */
@@ -932,6 +950,8 @@ export class TricksService implements TricksSurface {
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
     this.reactions.close();
+    // The bridge stops: no run token outlives it (spec 05, decision 2).
+    this.runTokens.clear();
   }
 
   /**
@@ -1126,6 +1146,7 @@ export class TricksService implements TricksSurface {
       for (const [id, rt] of this.runtimes) {
         if (ids.has(id)) continue;
         this.runtimes.delete(id);
+        this.runTokens.endTrick(id);
         this.store.removeTrick(host, id);
         this.deps.decisions?.off(this.hillTrick(rt));
         this.deps.inputs?.forget(id);
@@ -1205,6 +1226,8 @@ export class TricksService implements TricksSurface {
     old.entry = entry;
     old.changed = changed;
     if (switched && !on) {
+      // Its run tokens die with its switch (spec 05, decision 2), also while a run of it is still going.
+      this.runTokens.endTrick(found.id);
       old.approved = null;
       old.copyProblem = null;
       old.tampered = null;
@@ -2042,19 +2065,27 @@ export class TricksService implements TricksSurface {
     }
     // Contract 3: the person's values ride in the facts, and nowhere else (values.ts `withValues`).
     const facts = withValues(buildFacts({ memberId: host, ...world }, { id, dir: run.dir, state }, trigger, manifest.contract), manifest, this.values.read(id));
-    // The local API, for a trick that declares `access`, while its socket stands: the path and the level, never
-    // an environment variable (M105 spec 04). Without the socket there is no `api`, and `t.api` answers an error.
+    // The local API, for a trick that declares `access`, while its socket stands: the path, the level and this
+    // run's token, on stdin only, never an environment variable, an argument or a file (M105 specs 04 and 05).
+    // Without the socket there is no `api` and no token, and `t.api` answers an error.
     const socket = manifest.access === undefined ? null : (this.deps.localApi?.() ?? null);
-    if (manifest.access !== undefined && socket !== null) facts.api = { socket, access: manifest.access };
-    const outcome = await (this.deps.run ?? runProgram)({
-      command,
-      cwd: run.dir,
-      env: scrubEnv(this.deps.env, manifest.env ?? [], { host: this.host() }),
-      stdin: JSON.stringify(facts),
-      platform: this.deps.platform,
-      signal: this.runStop.signal,
-      ...this.deps.limits,
-    });
+    const runId = randomUUID();
+    if (manifest.access !== undefined && socket !== null) facts.api = { socket, access: manifest.access, token: this.runTokens.mint(id, manifest.access, runId) };
+    let outcome: RunOutcome;
+    try {
+      outcome = await (this.deps.run ?? runProgram)({
+        command,
+        cwd: run.dir,
+        env: scrubEnv(this.deps.env, manifest.env ?? [], { host: this.host() }),
+        stdin: JSON.stringify(facts),
+        platform: this.deps.platform,
+        signal: this.runStop.signal,
+        ...this.deps.limits,
+      });
+    } finally {
+      // The token dies with the run, whatever ended it: an exit, a failure, a timeout, a kill or a throw.
+      this.runTokens.end(runId);
+    }
     rt.lastRunAt = startedAt;
     // A run that was switched off (its own switch or tricks as a whole), removed or changed while it ran
     // leaves nothing behind: no part, no Decision.

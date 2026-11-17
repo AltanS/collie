@@ -1,20 +1,35 @@
 // THE LOCAL API SOCKET (M105 spec 03, decisions 13, 14, 16, 18, 20). `<stateDir>/api/sock`, mode 0600
 // in a folder of mode 0700, served by the bridge. A program or a script on this machine lists the
-// sessions, reads a screen and follows the events through it. Read only in this step: it grants the
+// sessions, reads a screen and follows the events through it. Read only in this step: the ceiling is the
 // level `read`, which holds `see` (operations.ts, spec 04 decision 1).
 //
-// WHAT IT IS, IN HONEST WORDS (decision 16). A convenience for programs of the same Unix user. It is NOT
-// a wall against them: a program running as that user can already read every screen and type into every
-// pane through the multiplexer's own socket, so this socket gives such a program nothing it could not
-// take. It is closed to OTHER Unix users (the file mode and the folder mode), to other machines and to
-// pages in a browser (no TCP port, no HTTP: a page can reach loopback HTTP, never a Unix socket). It
-// carries no token, as the WalkyTalky and hold sockets carry none: the file mode is the credential.
-// Every caller is the same user, so the socket cannot tell two callers apart; a connection is the unit
-// its caps count by. A connection may name itself in `hello` (`client`, such as `trick:<id>`): the name
-// goes into the bridge's log lines for that connection and is trusted for nothing (spec 04, decision 5).
-// Every `read` call leaves one log line: `[api] read client=<name or unnamed> session=<id> result=<ok or
-// the error code>`. It holds no screen text, label or path; the session id is logged only in its own
-// `ses_` alphabet (anything else is `invalid`), so a caller cannot put a line break into the log.
+// WHO GETS AN ANSWER (spec 05, decisions 1 to 5, ADR 0155). A trick's own run, and nothing else. When the
+// bridge starts a run of a trick that declares `access`, it mints a run token (bridge/tricks/run-tokens.ts)
+// and hands it to the run in its facts on stdin. Every connection must open with `hello` naming that token
+// (`args.token`). The socket asks the injected {@link RunTokenCheck} (`deps.tokens`, built in
+// bridge/index.ts from the trick runner's table: this folder imports nothing of bridge/tricks) and binds the
+// connection to the token: its trick id and its level, under the ceiling. Before a good `hello`, every
+// line gets ONE error and the connection closes: `api.no_run_token` for any other operation and for a
+// `hello` with no token, an unknown one or a dead one; `api.bad_request` for a line that is no request.
+// A good `hello` must arrive within the line limit (2 s) of the connect, else the connection gets one
+// `api.no_run_token` line and closes. A connection holds one token: a later `hello` must name the same one, and one that names another is
+// refused with `api.bad_request` and closed. After `hello`, every request is admitted at the token's level
+// (`admit`: `api.denied` for `read` on a `see` token), and the token is asked again at each request and
+// at each answer, so a token that died (its run ended, its trick or tricks went off, the bridge stops)
+// answers no more: `api.no_run_token`, and the connection closes. The token is held in memory only, for
+// this check; it is never logged and never answered.
+//
+// WHAT IT IS, IN HONEST WORDS (decision 16 of ADR 0152, as ADR 0155 changes it). The token keeps out a
+// program that only finds the socket. It is NOT a wall against a program of the same Unix user: such a
+// program can read every screen and type into every pane through the multiplexer's own socket, and can
+// read another program's memory, the token in a run's memory included. The socket is closed to OTHER Unix
+// users (the file mode and the folder mode), to other machines and to pages in a browser (no TCP port, no
+// HTTP: a page can reach loopback HTTP, never a Unix socket). A connection is the unit its caps count by.
+// Every `read` call leaves one log line: `[api] read by=trick:<id> session=<id> result=<ok or the error
+// code>`, the trick named by the token, never by the caller's word; a read refused before a good `hello`
+// leaves no line. It holds no screen text, label or
+// path; the session id is logged only in its own `ses_` alphabet (anything else is `invalid`), so a caller
+// cannot put a line break into the log.
 //
 // WHEN IT EXISTS (decision 14). While tricks are switched on, on a bridge where tricks run:
 // bridge/index.ts calls `start` and `stop` as its one function `localApiWanted` says, and a
@@ -79,11 +94,33 @@ import {
   WRITE_BUFFER_MAX,
   WRITE_STALL_MS,
 } from "./limits.ts";
-import { admit, offeredOf, type OperationContext, type OperationTable, type OpResult, type Right, type TableRow } from "./operations.ts";
+import { admit, DECLARED, lowerOf, offeredOf, type OperationContext, type OperationTable, type OpResult, type Right, type TableRow } from "./operations.ts";
 
-/** ` (client <name>)` for a log line of a connection that named itself, else nothing. */
+/** ` (trick:<id>)` for a log line of a connection bound to a run token, else nothing. */
 function by(conn: Conn): string {
-  return conn.client === null ? "" : ` (client ${conn.client})`;
+  return conn.bound === null ? "" : ` (trick:${conn.bound.trickId})`;
+}
+
+/** What a live run token stands for: the trick whose run holds it, and the level its manifest declares. */
+export interface RunTokenHolder {
+  readonly trickId: string;
+  readonly level: Right;
+}
+
+/**
+ * The one way the socket asks about a run token (spec 05, decision 2): the trick runner's table, handed in
+ * by bridge/index.ts. `resolve` answers the holder of a live token, or null for one that is unknown or dead;
+ * it compares in constant time. The socket keeps no table of its own.
+ */
+export interface RunTokenCheck {
+  resolve(token: string): RunTokenHolder | null;
+}
+
+/** A connection's binding after a good `hello`: the token it named, and what that stood for then. */
+interface Bound {
+  readonly token: string;
+  readonly trickId: string;
+  readonly level: Right;
 }
 
 /** The local API socket of one state dir. */
@@ -94,8 +131,10 @@ export function apiSocketPath(stateDir: string): string {
 export interface ApiSocketDeps {
   readonly socketPath: string;
   readonly table: OperationTable;
-  /** The grant every caller of this socket holds: {@link LOCAL_TIER_RIGHTS}. */
+  /** The ceiling of every caller of this socket: {@link LOCAL_TIER_RIGHTS}. A connection holds its token's level under it. */
   readonly granted: Right;
+  /** The run tokens: a connection is answered only after its `hello` names a live one. */
+  readonly tokens: RunTokenCheck;
   /** The host's platform (`HOST.platform` from bridge/host.ts at the edge); a test passes `"win32"` to see the gate. */
   readonly platform: NodeJS.Platform;
   readonly log?: (line: string) => void;
@@ -148,8 +187,10 @@ interface Conn {
   overSince: number;
   /** While paused: the `drain` listener that resumes. */
   onDrain: (() => void) | undefined;
-  /** The name the connection gave itself in `hello`, for the log only; null before it gave one. */
-  client: string | null;
+  /** The run token a good `hello` named, its trick and its level; null before one. */
+  bound: Bound | null;
+  /** Before a good `hello`: the deadline that closes the connection when none comes in time. */
+  helloTimer: ReturnType<typeof setTimeout> | undefined;
 }
 
 const RESERVED = new Set(["id", "ok", "error"]);
@@ -158,6 +199,8 @@ const NEWLINE = 0x0a;
 const NOTHING = Buffer.alloc(0);
 /** The operation that reads a screen: the one the socket-wide cap counts. */
 const SCREEN_READ_OP = "read";
+/** The operation that names the run token: the first on every connection. */
+const HELLO_OP = "hello";
 
 /** A session id as `ses_` and base64url characters, the only shape a log line may carry. */
 const LOGGABLE_SESSION = /^ses_[A-Za-z0-9_-]{1,508}$/u;
@@ -182,12 +225,10 @@ export class ApiSocket {
   private windowsLogged = false;
   private readonly log: (line: string) => void;
   private readonly granted: Right;
-  private readonly offered: readonly string[];
 
   constructor(private readonly deps: ApiSocketDeps) {
     this.log = deps.log ?? ((line) => console.log(line));
     this.granted = deps.granted;
-    this.offered = offeredOf(deps.table, this.granted);
   }
 
   /** Listen, after every start and stop called before. True when the socket stands. */
@@ -349,12 +390,21 @@ export class ApiSocket {
       stall: undefined,
       overSince: 0,
       onDrain: undefined,
-      client: null,
+      bound: null,
+      helloTimer: undefined,
     };
     this.connections.add(conn);
     socket.on("close", () => this.forget(conn));
     socket.on("data", (chunk: Buffer) => this.receive(conn, chunk));
     this.idleCheck(conn);
+    // A good `hello` must come within the line limit of the connect (spec 05): a caller with no token
+    // cannot hold one of the 32 places for the idle time. It hears one `api.no_run_token` line, then the close.
+    conn.helloTimer = setTimeout(() => {
+      if (conn.closed || conn.bound !== null) return;
+      this.write(conn, { ok: false, error: errorBody("api.no_run_token", undefined) });
+      this.drop(conn);
+    }, this.deps.lineMs ?? REQUEST_LINE_MS);
+    conn.helloTimer.unref?.();
   }
 
   /** The connection is gone: its waits abort, its answers are dropped. */
@@ -363,6 +413,7 @@ export class ApiSocket {
     conn.closed = true;
     clearTimeout(conn.timer);
     clearTimeout(conn.idle);
+    clearTimeout(conn.helloTimer);
     clearInterval(conn.stall);
     for (const pending of conn.pending) pending.answered = true;
     conn.pending.clear();
@@ -435,22 +486,29 @@ export class ApiSocket {
     try {
       text = UTF8.decode(raw);
     } catch {
-      return this.answer(conn, pending, badRequest("the line is not UTF-8"));
+      return this.refuse(conn, pending, badRequest("the line is not UTF-8"));
     }
     const body = parseJsonObject(text);
-    if (body === undefined) return this.answer(conn, pending, badRequest("the line is not a JSON object"));
+    if (body === undefined) return this.refuse(conn, pending, badRequest("the line is not a JSON object"));
     const id = asJsonString(body.id);
     if (body.id !== undefined && (id === undefined || id === "" || id.length > REQUEST_ID_MAX)) {
-      return this.answer(conn, pending, badRequest("id must be text of 1 to 64 characters"));
+      return this.refuse(conn, pending, badRequest("id must be text of 1 to 64 characters"));
     }
     const read: Pending = { id, answered: false };
-    if (Object.keys(body).some((key) => key !== "id" && key !== "op" && key !== "args")) return this.answer(conn, read, badRequest("a request has only id, op and args"));
+    if (Object.keys(body).some((key) => key !== "id" && key !== "op" && key !== "args")) return this.refuse(conn, read, badRequest("a request has only id, op and args"));
     const op = asJsonString(body.op);
-    if (op === undefined || op === "") return this.answer(conn, read, badRequest("op must be the name of an operation"));
+    if (op === undefined || op === "") return this.refuse(conn, read, badRequest("op must be the name of an operation"));
     const args = body.args === undefined ? {} : asJsonObject(body.args);
     if (op === SCREEN_READ_OP) read.readSession = sessionForLog(args);
-    if (args === undefined) return this.answer(conn, read, badRequest("args must be a JSON object"));
-    const admitted = admit(this.deps.table, op, this.granted);
+    if (args === undefined) return this.refuse(conn, read, badRequest("args must be a JSON object"));
+    // The run token (spec 05, decision 3): `hello` binds the connection to one; nothing runs before that.
+    if (op === HELLO_OP) {
+      const refused = this.hello(conn, args);
+      if (refused !== null) return this.refuse(conn, read, refused, true);
+    }
+    const bound = conn.bound;
+    if (bound === null || this.deps.tokens.resolve(bound.token) === null) return this.refuse(conn, read, { ok: false, code: "api.no_run_token" }, true);
+    const admitted = admit(this.deps.table, op, bound.level);
     if (!admitted.ok) return this.answer(conn, read, { ok: false, code: admitted.code });
     if (conn.pending.size >= REQUESTS_PER_CONNECTION) return this.answer(conn, read, { ok: false, code: "api.too_many_requests", detail: { max: REQUESTS_PER_CONNECTION } });
     const screen = admitted.row.name === SCREEN_READ_OP;
@@ -458,12 +516,39 @@ export class ApiSocket {
     conn.pending.add(read);
     const ctx: OperationContext = {
       signal: conn.controller.signal,
-      offered: this.offered,
+      offered: offeredOf(this.deps.table, bound.level),
       standing: () => this.standing(conn.live),
       claimWait: () => (admitted.row.waits ? this.claimWait(conn) : null),
-      nameClient: (client) => this.nameClient(conn, client),
     };
     void this.run(conn, read, admitted.row, args, ctx, screen);
+  }
+
+  /**
+   * A `hello`: bind the connection to the run token it names, or say why not (spec 05, decision 3). The token
+   * is asked first, so a hello with no token, an unknown one or a dead one is `api.no_run_token`, whatever
+   * else it carries (a helper of spec 04 sends `client` and no token, and hears that). Then the arguments
+   * must be exactly the row's (`token`), and a connection already bound must name the same token.
+   */
+  private hello(conn: Conn, args: JsonObject): OpResult | null {
+    const token = asJsonString(args.token);
+    const holder = token === undefined ? null : this.deps.tokens.resolve(token);
+    if (token === undefined || holder === null) return { ok: false, code: "api.no_run_token" };
+    const parsed = DECLARED.hello.parse(args);
+    if (!parsed.ok) return badRequest(parsed.reason);
+    if (conn.bound !== null && conn.bound.token !== token) return badRequest("a connection holds one run token");
+    conn.bound = { token, trickId: holder.trickId, level: lowerOf(holder.level, this.granted) };
+    clearTimeout(conn.helloTimer);
+    conn.helloTimer = undefined;
+    return null;
+  }
+
+  /**
+   * Answer a refusal. Before a good `hello` (or with `close`), the connection then closes: a caller with no
+   * live token gets one line and no second try on the same connection.
+   */
+  private refuse(conn: Conn, pending: Pending, result: OpResult, close = false): void {
+    this.answer(conn, pending, result);
+    if (close || conn.bound === null) this.drop(conn);
   }
 
   /** Run one admitted row and answer it; a handler that throws answers `api.failed`. A screen read holds one of the socket's places while it runs. */
@@ -478,26 +563,24 @@ export class ApiSocket {
     } finally {
       if (screen) this.screenReads -= 1;
     }
+    // A token that died while the operation ran (its run ended, its trick or tricks went off) gets no answer
+    // of substance: one refusal, and the connection closes (spec 05, decision 2).
+    const bound = conn.bound;
+    if (bound === null || this.deps.tokens.resolve(bound.token) === null) return this.refuse(conn, pending, { ok: false, code: "api.no_run_token" }, true);
     this.answer(conn, pending, result);
   }
 
   /**
-   * The name a connection gave itself in `hello`: logged once per new name, and kept for this
-   * connection's later log lines. It is the caller's word and is trusted for nothing (decision 5): no
-   * right, cap or answer reads it. The table's parser has already held it to `CLIENT_MAX` safe characters (operations.ts).
+   * The one log line of a `read` call, written with its first answer: the trick its run token names (spec 05,
+   * decision 5), the session id and the outcome; never the screen, never the token. A read refused before a
+   * good `hello` never ran and names nobody: it leaves no line, so a caller with no token cannot fill the log.
    */
-  private nameClient(conn: Conn, client: string): void {
-    if (conn.client === client) return;
-    conn.client = client;
-    this.log(`[api] a connection names itself ${client}`);
-  }
-
-  /** The one log line of a `read` call, written with its first answer: client, session id and outcome, never the screen. */
   private logRead(conn: Conn, pending: Pending, result: OpResult): void {
     const session = pending.readSession;
     if (session === undefined) return;
     pending.readSession = undefined;
-    this.log(`[api] read client=${conn.client ?? "unnamed"} session=${session} result=${result.ok ? "ok" : result.code}`);
+    if (conn.bound === null) return;
+    this.log(`[api] read by=trick:${conn.bound.trickId} session=${session} result=${result.ok ? "ok" : result.code}`);
   }
 
   /** One wait slot, or null at the cap. The release gives it back once. */

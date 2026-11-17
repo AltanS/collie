@@ -152,6 +152,9 @@ describe("G3: no switch on outside a card of code the About sheet cannot show wh
     expect(await check({ "program.sh": PROGRAM })).toEqual({ ok: true });
     expect(new TextEncoder().encode(TRICK_HELPER).byteLength).toBeGreaterThan(CODE_VIEW_BYTES_MAX);
     expect(await check({ "program.sh": PROGRAM, [HELPER_FILE]: TRICK_HELPER })).toEqual({ ok: true });
+    // An older shipped helper (v7, before the run token of M105 spec 05) still passes by its bytes.
+    const v7 = await Bun.$`git show 5c38e3f23:cli/trick-kit/trick.ts`.quiet().nothrow();
+    if (v7.exitCode === 0) expect(await check({ "program.sh": PROGRAM, [HELPER_FILE]: v7.stdout.toString() })).toEqual({ ok: true });
   });
 
   test("a key, a hidden character, a file over the size the sheet shows, or a file that is not text is refused, with the file named", async () => {

@@ -1667,12 +1667,13 @@ describe("the manifest's access (M105 spec 04)", () => {
   });
 });
 
-describe("the facts' api (M105 spec 04)", () => {
-  it("carries the socket and the level; another level, a missing socket or an unknown key refuses", () => {
+describe("the facts' api (M105 specs 04 and 05)", () => {
+  it("carries the socket, the level and the run token; another level, a missing socket or token, a token of another shape or an unknown key refuses", () => {
     const socket = "/home/dev/.local/state/collie/api/sock";
-    expect(parseFacts({ ...FACTS.timer, api: { socket, access: "read" } }).facts?.api).toEqual({ socket, access: "read" });
+    const token = "Tk".repeat(21) + "x";
+    expect(parseFacts({ ...FACTS.timer, api: { socket, access: "read", token } }).facts?.api).toEqual({ socket, access: "read", token });
     expect(parseFacts(FACTS.timer).facts?.api).toBeUndefined();
-    const refused: JsonValue[] = [{ socket, access: "none" }, { socket, access: "send" }, { access: "see" }, { socket }, { socket, access: "see", token: "x" }, "sock"];
+    const refused: JsonValue[] = [{ socket, access: "none", token }, { socket, access: "send", token }, { access: "see", token }, { socket, token }, { socket, access: "see" }, { socket, access: "see", token: "x" }, { socket, access: "see", token: `${token}=` }, { socket, access: "see", token, extra: 1 }, "sock"];
     for (const api of refused) {
       expect(parseFacts({ ...FACTS.timer, api }).facts, JSON.stringify(api)).toBeUndefined();
     }

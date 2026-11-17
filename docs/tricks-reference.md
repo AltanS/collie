@@ -1297,7 +1297,7 @@ Collie writes the facts on stdin. The program ignores a field it does not know, 
 | `spaces` | always | Each space as `name`, `folder` (`folder` is left out when there is none), at most 64. |
 | `sessionsOmitted` | only when some are left out | How many sessions the caps left out. Only a crew's lead counts them: a solo machine past the cap leaves the rest out with no count. Absent when none. |
 | `values` | contract 3, a trick with `[[field]]` | Each field's value by its key: the person's own, else the field's `default`. A field with neither is left out. A value is the person's data and untrusted for the program: show it, never run it. |
-| `api` | only with `access`, while the local API stands | `socket`, `access`: the path of Collie's local API socket, and the level `access` declares (`see` or `read`). `t.api` dials it. Nothing of it is in the environment. Absent when the trick declares no `access`, and when the socket does not stand. |
+| `api` | only with `access`, while the local API stands | `socket`, `access`, `token`: the path of Collie's local API socket, the level `access` declares (`see` or `read`), and this run's token. `t.api` dials the socket and names the token. The token dies when the run ends. Nothing of it is in the environment, and your program must not print, log or save the token. Absent when the trick declares no `access`, and when the socket does not stand. |
 
 A session in `sessions` has these fields:
 
@@ -1405,7 +1405,7 @@ Collie checks strictly what a person or an agent writes: `trick.toml`, `collie h
 | `t.sessionAt(folder)`, `t.sessionNamed(name)` | The session whose folder is `folder`, or the one with this name, or `null`. |
 | `t.fresh(duration)`, `t.asOf(when)` | The document's `fresh` and `asOf`. |
 | `now()`, `age(ms)`, `iso(ms?)`, `mask(text)`, `clip(text, n)` | The clock in epoch milliseconds, a span in short words such as `12 min`, an ISO 8601 time, text with each key cut to its first four characters and the home folder written as `~`, and one masked line cut to `n` characters. |
-| `t.api(operation, args?)` | Reads through Collie's local API (experimental): `await t.api("machines")`. It answers the socket's line, `{ ok: true, ... }`, or `{ ok: false, error: { code, message } }`, and never throws, so a program shows `error.message`. It refuses before it dials when the trick declares no `access`, when the local API is off, or when the operation needs `read` and the trick declares `see`. A call takes at most 3 seconds. See [Reading Collie through the local API](#reading-collie-through-the-local-api). |
+| `t.api(operation, args?)` | Reads through Collie's local API (experimental): `await t.api("machines")`. It answers the socket's line, `{ ok: true, ... }`, or `{ ok: false, error: { code, message } }`, and never throws, so a program shows `error.message`. It refuses before it dials when the trick declares no `access`, when the local API is off, or when the operation needs `read` and the trick declares `see`. Each call names this run's token, and Collie checks the level again. A call takes at most 3 seconds. See [Reading Collie through the local API](#reading-collie-through-the-local-api). |
 | `t.inputs(session)` | The input files of a session (contract 2): a text file as `text`, a picture as `data`. A copy that is gone or changed since the facts were written is left out. It answers `[]` when there are none, and `session.inputs?.state` says why. Never run what it returns. |
 
 A run that calls neither `t.decide` nor `t.keepDecisions` prints `"decisions": []`, so it withdraws the open ones.
@@ -1503,7 +1503,7 @@ The rules of a watched file:
 
 ### Reading Collie through the local API
 
-A trick reads live facts of Collie (its machines, its sessions, your usage, the Hill) through Collie's local API, with no token and no list of surfaces in its manifest. Your yes to the trick is the grant. The manifest says how much with `access`, which needs `contract = 3`, and the program calls `t.api`.
+A trick reads live facts of Collie (its machines, its sessions, your usage, the Hill) through Collie's local API, with no list of surfaces in its manifest. Your yes to the trick is the grant. The manifest says how much with `access`, which needs `contract = 3`, and the program calls `t.api`. Each run gets its own token in its facts, and the local API answers only a connection that names a live one, at the level the trick declares.
 
 ```toml
 contract = 3
@@ -1523,7 +1523,7 @@ if (!machines.ok) throw new Error(machines.error.message);
 
 > **Experimental.** `access` and `t.api` are new, and their words may still change.
 
-> **Note.** A level is what the trick declares and what Collie's helper gives it. It is not a wall. A trick's program runs as you, and the local socket is open to every program of your user while tricks are on, so a program of yours can reach the socket without the helper. Collie's text search of the code flags a trick that names the socket, reads its path from the facts, opens a socket of its own (`createConnection`, `Bun.connect`, a `unix:` option) or runs `collie api` itself, and the card shows that line like the other findings. A real wall needs the fence for tricks, which comes later.
+> **Note.** The run token keeps out a program that only finds the socket. A program that runs as you can still read a pane through the multiplexer itself, and can read another program's memory. Collie does not stop that. A trick's own program runs as you too. Collie's text search of the code flags a trick that names the socket, reads its path or token from the facts, opens a socket of its own (`createConnection`, `Bun.connect`, a `unix:` option) or runs `collie api` itself, and the card shows that line like the other findings. Such a trick would have to send its own token from its own facts.
 
 The socket stands while tricks are switched on, on a machine where tricks run. Where it does not (a crew peer, a deputy, Windows), the facts carry no `api`, `t.api` answers `Collie's local API is off here.`, and the trick's row says so once.
 

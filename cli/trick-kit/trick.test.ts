@@ -605,8 +605,14 @@ describe("helper v5: session settings rows and bound parts", () => {
 
   test("the v4 helper is still Collie's own code to the scan, so a trick folder that keeps it asks for no yes", async () => {
     const { shippedHelperVersion, HELPER_VERSION } = await import("../../bridge/tricks/scan.ts");
-    expect(HELPER_VERSION).toBe(7);
-    expect(TRICK_HELPER.startsWith("// collie trick helper v7\n")).toBe(true);
+    expect(HELPER_VERSION).toBe(8);
+    expect(TRICK_HELPER.startsWith("// collie trick helper v8\n")).toBe(true);
+    // v7, stage's helper with `t.api` before the run token (M105 spec 05): still Collie's own code to the scan.
+    const v7 = await Bun.$`git show 5c38e3f23:cli/trick-kit/trick.ts`.quiet().nothrow();
+    if (v7.exitCode === 0) {
+      expect(v7.stdout.toString().startsWith("// collie trick helper v7\n")).toBe(true);
+      expect(shippedHelperVersion(v7.stdout.toString())).toBe(7);
+    }
     // v5, the helper before `t.api`: still Collie's own code to the scan.
     const v5 = await Bun.$`git show 36e3ea0ec:cli/trick-kit/trick.ts`.quiet().nothrow();
     if (v5.exitCode === 0) expect(shippedHelperVersion(v5.stdout.toString())).toBe(5);

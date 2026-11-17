@@ -11,6 +11,7 @@ import {
   DECLARED,
   holds,
   LOCAL_TIER_RIGHTS,
+  lowerOf,
   offeredOf,
   OPERATION_LEVELS,
   OPERATION_NAMES,
@@ -123,7 +124,7 @@ describe("the table walk", () => {
   test("the reads cannot replace hello or events", async () => {
     const reads = { ...READS, hello: stub, events: stub };
     const table = buildTable({ version: () => "9.9.9-test", bus: newBus(), reads });
-    const answer = await table.get("hello")!.run({}, ctx({ offered: ["hello"] }));
+    const answer = await table.get("hello")!.run({ token: "A".repeat(43) }, ctx({ offered: ["hello"] }));
     expect(answer).toEqual({ ok: true, answer: { api: 1, collie: "9.9.9-test", experimental: true, operations: ["hello"] } });
   });
 });
@@ -157,31 +158,30 @@ describe("arguments", () => {
 });
 
 describe("hello", () => {
-  test("the answer contract: api, collie, experimental, and the operations this caller may call", async () => {
-    const answer = await fullTable().get("hello")!.run({}, ctx({ offered: ["hello", "events"] }));
+  const TOKEN = "A".repeat(43);
+
+  test("the answer contract: api, collie, experimental, and the operations this caller may call; never the token", async () => {
+    const answer = await fullTable().get("hello")!.run({ token: TOKEN }, ctx({ offered: ["hello", "events"] }));
     expect(answer).toEqual({ ok: true, answer: { api: 1, collie: "9.9.9-test", experimental: true, operations: ["hello", "events"] } });
     if (answer.ok) expect(Object.keys(answer.answer)).toEqual(["api", "collie", "experimental", "operations"]);
+    expect(JSON.stringify(answer)).not.toContain(TOKEN);
   });
 
-  test("client: the answer is the same with it and without it; the name goes to the context's log hook only", async () => {
-    const named: string[] = [];
+  test("token: exactly 43 base64url characters, else a bad request; `client` is no argument any more (spec 05, decision 5)", async () => {
     const hello = fullTable().get("hello")!;
-    const plain = await hello.run({}, ctx({ offered: ["hello", "events"], nameClient: (client) => named.push(client) }));
-    const withClient = await hello.run({ client: "trick:cpu-load" }, ctx({ offered: ["hello", "events"], nameClient: (client) => named.push(client) }));
-    expect(withClient).toEqual(plain);
-    expect(named).toEqual(["trick:cpu-load"]);
-    // A context with no log hook answers the same.
-    expect(await hello.run({ client: "trick:cpu-load" }, ctx({ offered: ["hello", "events"] }))).toEqual(plain);
-  });
-
-  test("client: 1 to 64 of letters, digits and _ . : -, else a bad request; no other argument", async () => {
-    const hello = fullTable().get("hello")!;
-    for (const client of ["a", "trick:cpu-load", "x".repeat(64), "A.b_c:d-9"]) expect((await hello.run({ client }, ctx())).ok).toBe(true);
-    for (const args of [{ client: "" }, { client: "x".repeat(65) }, { client: "trick cpu" }, { client: "trick/../x" }, { client: "a\nb" }, { client: "\u001b[2J" }, { client: 3 }, { client: null }, { client: "ok", x: 1 }, { x: 1 }]) {
+    for (const token of [TOKEN, "a-_9".repeat(10) + "abc"]) expect((await hello.run({ token }, ctx())).ok).toBe(true);
+    for (const args of [{}, { token: "" }, { token: "A".repeat(42) }, { token: "A".repeat(44) }, { token: `${"A".repeat(42)}=` }, { token: `${"A".repeat(42)}/` }, { token: 3 }, { token: null }, { client: "trick:cpu-load" }, { token: TOKEN, client: "trick:cpu-load" }, { x: 1 }]) {
       const result = await hello.run(args, ctx());
       expect({ args, ok: result.ok }).toEqual({ args, ok: false });
       if (!result.ok) expect(result.code).toBe("api.bad_request");
     }
+  });
+
+  test("lowerOf: a token's level under the ceiling", () => {
+    expect(lowerOf("see", "read")).toBe("see");
+    expect(lowerOf("read", "read")).toBe("read");
+    expect(lowerOf("send", "read")).toBe("read");
+    expect(lowerOf("read", "see")).toBe("see");
   });
 });
 
@@ -295,18 +295,22 @@ describe("events pages (security read 1, item 6)", () => {
 
 describe("the declared arguments", () => {
   // One valid sample per declared type; the parsers' own limits are met by these.
-  const sample = (type: ArgType): string | number => (type === "integer" ? 5 : "ses_sample");
+  // A run token is the one text argument with a shape of its own (43 base64url characters).
+  const sample = (type: ArgType, name = ""): string | number => {
+    if (type === "integer") return 5;
+    return name === "token" ? "A".repeat(43) : "ses_sample";
+  };
   const wrong = (type: ArgType): string | number => (type === "integer" ? "abc" : 5);
 
   test("every operation declares its arguments, and its parser takes exactly those", () => {
     for (const name of OPERATION_NAMES) {
       const declared = DECLARED[name];
-      const required = Object.fromEntries(declared.args.filter((arg) => arg.required).map((arg) => [arg.name, sample(arg.type)]));
+      const required = Object.fromEntries(declared.args.filter((arg) => arg.required).map((arg) => [arg.name, sample(arg.type, arg.name)]));
       // Only the required ones: accepted (the optional ones are optional).
       expect(declared.parse(required).ok).toBe(true);
       for (const arg of declared.args) {
         // Each declared argument, given with a value of its type, is taken.
-        expect(declared.parse({ ...required, [arg.name]: sample(arg.type) }).ok).toBe(true);
+        expect(declared.parse({ ...required, [arg.name]: sample(arg.type, arg.name) }).ok).toBe(true);
         // A value of the wrong type is refused.
         expect(declared.parse({ ...required, [arg.name]: wrong(arg.type) }).ok).toBe(false);
         // A required argument left out is refused.

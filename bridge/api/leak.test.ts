@@ -48,6 +48,8 @@ async function serialized(table: OperationTable, op: string, args: JsonObject = 
 }
 
 const ID_MAIN = idOf(MACHINE, "w1:p1", "k3f9");
+/** A run token as `hello` carries it (spec 05). */
+const HELLO_TOKEN = "Tk".repeat(21) + "x";
 const ID_SIDE = idOf(MACHINE, "w2:p1", "m4n8");
 
 /** A world with the needles everywhere, plus a field the bridge may add later on each object. */
@@ -91,7 +93,10 @@ describe("no needle in any answer of the local API", () => {
   });
 
   test("hello", async () => {
-    expectClean(await serialized(tableOf(leakyWorld()), "hello"), [NEEDLES.folderName]);
+    const answer = await serialized(tableOf(leakyWorld()), "hello", { token: HELLO_TOKEN });
+    expectClean(answer, [NEEDLES.folderName]);
+    // The run token the hello named is never in its answer (spec 05, decision 1).
+    expect(answer).not.toContain(HELLO_TOKEN);
   });
 
   test("sessions: the folder NAME is the one allowed trace of the path", async () => {
@@ -154,7 +159,7 @@ describe("no needle in any answer of the local API", () => {
     const w = leakyWorld();
     const table = tableOf(w);
     const answers = await Promise.all([
-      serialized(table, "hello"),
+      serialized(table, "hello", { token: HELLO_TOKEN }),
       serialized(table, "sessions"),
       serialized(table, "brief", { session: ID_MAIN }),
       serialized(table, "accounts"),

@@ -134,8 +134,9 @@ describe("TrickAboutSheet", () => {
   });
 
   it("says the level of access in its one plain line, none for none, and never calls it a permission", () => {
-    const see = "It asks to see your machines, your sessions and their states, your usage and the Hill, not what is on a screen.";
-    const read = "It asks to read what is on your sessions' screens.";
+    const see = "It reads your machines, sessions, usage and the Hill.";
+    const read = "It reads your sessions' screens.";
+    const runsAsYou = "This trick runs as you on this machine. It can do there what you can do.";
     const rowsFor = (access: WireTrickInfo["access"]): (string | null)[] => {
       const trick: WireTrickInfo = { ...FULL, warnings: undefined };
       if (access !== undefined) trick.access = access;
@@ -145,9 +146,9 @@ describe("TrickAboutSheet", () => {
       unmount();
       return rows;
     };
-    expect(rowsFor("see").at(-1)).toBe(see);
-    expect(rowsFor("read").at(-1)).toBe(read);
-    expect(rowsFor(undefined).join(" ")).not.toMatch(/It asks to see your machines|It asks to read what is on/u);
+    expect(rowsFor("see").slice(-2)).toEqual([runsAsYou, see]);
+    expect(rowsFor("read").slice(-2)).toEqual([runsAsYou, read]);
+    expect(rowsFor(undefined).join(" ")).not.toMatch(/It reads your|runs as you on this machine/u);
     for (const text of [see, read]) expect(text).not.toMatch(/permission|can only/iu);
     // A level this phone does not know has one fixed line (review 3, item 4).
     expect(rowsFor("unknown").at(-1)).toBe("It asks for access this app does not know yet. Update the app before you say yes.");

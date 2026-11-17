@@ -28,7 +28,7 @@ import {
 } from "./limits.ts";
 import { buildTable, LOCAL_TIER_RIGHTS, type OpResult, type ReadHandlers } from "./operations.ts";
 import { apiSocketDescribe, apiSocketTest } from "./skip.ts";
-import { ApiSocket, apiSocketPath } from "./socket.ts";
+import { ApiSocket, apiSocketPath, type RunTokenHolder } from "./socket.ts";
 
 const roots: string[] = [];
 const sockets: ApiSocket[] = [];
@@ -43,6 +43,14 @@ afterAll(() => {
 });
 
 const SESSION = encodeSessionId({ machine: "inst-test-a1", paneId: "w1:p2", instance: "k3f9" });
+
+// The run tokens of the rigs (spec 05): 43 base64url characters each, as the trick runner mints them. A
+// rig's table holds TOKEN (trick `lodge`, level `read`) and SEE_TOKEN (trick `workshop`, level `see`);
+// DEAD_TOKEN reads as a token and is in no table. A client opens with `hello` and TOKEN unless told not to.
+const TOKEN = "A".repeat(43);
+const SEE_TOKEN = "B".repeat(43);
+const DEAD_TOKEN = "C".repeat(43);
+const HELLO_ARGS = { token: TOKEN };
 
 /** A gate a stub handler waits on, so a test decides when it answers. */
 interface Gate {
@@ -65,6 +73,8 @@ interface Rig {
   readonly api: ApiSocket;
   readonly logs: string[];
   readonly briefGate: Gate;
+  /** The rig's run-token table: a test ends a token by deleting it. */
+  readonly tokens: Map<string, RunTokenHolder>;
 }
 
 interface RigOptions {
@@ -100,10 +110,15 @@ function rig(opts: RigOptions = {}): Rig {
     machines: async () => ({ ok: true, answer: { machines: [] } }),
   };
   const logs: string[] = [];
+  const tokens = new Map<string, RunTokenHolder>([
+    [TOKEN, { trickId: "lodge", level: "read" }],
+    [SEE_TOKEN, { trickId: "workshop", level: "see" }],
+  ]);
   const api = new ApiSocket({
     socketPath: path,
     table: buildTable({ version: () => "9.9.9-test", bus, reads }),
     granted: LOCAL_TIER_RIGHTS,
+    tokens: { resolve: (token) => tokens.get(token) ?? null },
     log: (line) => logs.push(line),
     platform: opts.platform ?? process.platform,
     lineMs: opts.lineMs ?? REQUEST_LINE_MS,
@@ -112,7 +127,7 @@ function rig(opts: RigOptions = {}): Rig {
     uid: opts.uid ?? process.getuid?.() ?? 0,
   });
   sockets.push(api);
-  return { path, dir: join(stateDir, "api"), bus, api, logs, briefGate };
+  return { path, dir: join(stateDir, "api"), bus, api, logs, briefGate, tokens };
 }
 
 /** A line client over the socket. */
@@ -141,11 +156,15 @@ class Client {
     });
   }
 
-  static async open(path: string): Promise<Client> {
+  /** Connect, then say `hello` with `token` (default TOKEN) and take its answer; `null` connects with no hello. */
+  static async open(path: string, token: string | null = TOKEN): Promise<Client> {
     const socket = createConnection({ path });
     await once(socket, "connect");
     const client = new Client(socket);
     clients.push(client);
+    if (token === null) return client;
+    const hello = await client.ask({ id: "open", op: "hello", args: { token } });
+    if (hello.ok !== true) throw new Error(`hello refused: ${JSON.stringify(hello)}`);
     return client;
   }
 
@@ -253,7 +272,7 @@ describe("the socket's life", () => {
     expect(r.api.running()).toBe(true);
     expect(lstatSync(r.path).isSocket()).toBe(true);
     const client = await Client.open(r.path);
-    expect(await client.ask({ id: "h", op: "hello" })).toMatchObject({ id: "h", ok: true });
+    expect(await client.ask({ id: "h", op: "hello", args: HELLO_ARGS })).toMatchObject({ id: "h", ok: true });
     // And off, on, off at once ends with no socket.
     const d = r.api.stop();
     const e = r.api.start();
@@ -277,7 +296,7 @@ describe("the socket's life", () => {
     expect(await r.api.start()).toBe(true);
     expect(lstatSync(r.path).ino).not.toBe(before);
     const client = await Client.open(r.path);
-    expect(await client.ask({ op: "hello" })).toMatchObject({ ok: true });
+    expect(await client.ask({ op: "hello", args: HELLO_ARGS })).toMatchObject({ ok: true });
   });
 
   apiSocketTest("a socket another process answers on is left alone, and no server starts", async () => {
@@ -326,7 +345,7 @@ describe("the socket's life", () => {
     await Bun.sleep(50);
     expect(lstatSync(r.path).isSocket()).toBe(true);
     const fresh = await Client.open(r.path);
-    expect(await fresh.ask({ op: "hello" })).toMatchObject({ ok: true });
+    expect(await fresh.ask({ op: "hello", args: HELLO_ARGS })).toMatchObject({ ok: true });
   });
 });
 
@@ -349,7 +368,7 @@ apiSocketDescribe("the framing", () => {
     client.sendRaw(`${JSON.stringify({ id: "1", op: "accounts" })}\n${JSON.stringify({ id: "2", op: "hill.list" })}\n{"id":"3",`);
     expect(await client.next()).toMatchObject({ id: "1", ok: true });
     expect(await client.next()).toMatchObject({ id: "2", ok: true });
-    client.sendRaw(`"op":"hello"}\n`);
+    client.sendRaw(`"op":"hello","args":${JSON.stringify(HELLO_ARGS)}}\n`);
     expect(await client.next()).toMatchObject({ id: "3", ok: true, api: 1 });
   });
 
@@ -375,11 +394,11 @@ apiSocketDescribe("the framing", () => {
       expect(codeOf(await client.next())).toBe("api.bad_request");
     }
     // An id that is not one is never echoed.
-    client.sendRaw(`${JSON.stringify({ id: "i".repeat(65), op: "hello" })}\n`);
+    client.sendRaw(`${JSON.stringify({ id: "i".repeat(65), op: "hello", args: HELLO_ARGS })}\n`);
     expect(await client.next()).toEqual({ ok: false, error: expect.objectContaining({ code: "api.bad_request" }) });
-    client.sendRaw(`${JSON.stringify({ id: 7, op: "hello" })}\n`);
+    client.sendRaw(`${JSON.stringify({ id: 7, op: "hello", args: HELLO_ARGS })}\n`);
     expect("id" in (await client.next())).toBe(false);
-    expect(await client.ask({ id: "after", op: "hello" })).toMatchObject({ id: "after", ok: true });
+    expect(await client.ask({ id: "after", op: "hello", args: HELLO_ARGS })).toMatchObject({ id: "after", ok: true });
   });
 
   test("an unknown op answers unknown_op with its id, and the message names the next step", async () => {
@@ -400,45 +419,43 @@ apiSocketDescribe("the framing", () => {
     expect(r.logs.some((line) => line.includes("a stub that fails"))).toBe(true);
   });
 
-  test("hello's client: the same answer, one log line naming the connection, the name on its later log lines", async () => {
+  test("the trick named by the token goes on the connection's later log lines", async () => {
     const r = rig();
     await r.api.start();
     const client = await Client.open(r.path);
-    const plain = await client.ask({ id: "h", op: "hello" });
-    const named = await client.ask({ id: "h", op: "hello", args: { client: "trick:cpu-load" } });
-    expect(named).toEqual(plain);
-    expect(r.logs.filter((line) => line.includes("names itself"))).toEqual(["[api] a connection names itself trick:cpu-load"]);
-    // The same name again is not logged again.
-    await client.ask({ op: "hello", args: { client: "trick:cpu-load" } });
-    expect(r.logs.filter((line) => line.includes("names itself"))).toHaveLength(1);
     await client.ask({ op: "read", args: { session: SESSION } });
-    expect(r.logs.some((line) => line.includes("read failed (client trick:cpu-load): a stub that fails"))).toBe(true);
-    // Another connection is not named by this one's word.
-    const other = await Client.open(r.path);
-    await other.ask({ op: "read", args: { session: SESSION } });
-    expect(r.logs.filter((line) => line.startsWith("[api] read failed:"))).toHaveLength(1);
+    expect(r.logs.some((line) => line.includes("read failed (trick:lodge): a stub that fails"))).toBe(true);
+    expect(r.logs.join("\n")).not.toContain(TOKEN);
   });
 
   describe("the log line of a read", () => {
     const SCREEN_TEXT = "please deploy the vault";
-    const readLines = (r: Rig): string[] => r.logs.filter((line) => line.startsWith("[api] read client="));
+    const readLines = (r: Rig): string[] => r.logs.filter((line) => line.startsWith("[api] read by="));
 
-    test("a read that succeeds logs one line: the client, the session id and ok, and none of the screen", async () => {
+    test("a read that succeeds logs one line: the trick of the token, the session id and ok, and none of the screen", async () => {
       const r = rig({ read: async () => ({ ok: true, answer: { session: SESSION, text: SCREEN_TEXT, lines: 10, truncated: false } }) });
       await r.api.start();
       const client = await Client.open(r.path);
-      await client.ask({ op: "hello", args: { client: "trick:cpu-load" } });
       expect(await client.ask({ op: "read", args: { session: SESSION } })).toMatchObject({ ok: true });
-      expect(readLines(r)).toEqual([`[api] read client=trick:cpu-load session=${SESSION} result=ok`]);
+      expect(readLines(r)).toEqual([`[api] read by=trick:lodge session=${SESSION} result=ok`]);
       expect(r.logs.join("\n")).not.toContain(SCREEN_TEXT);
+      expect(r.logs.join("\n")).not.toContain(TOKEN);
     });
 
-    test("a caller that never named itself is unnamed", async () => {
+    test("50 reads before any hello are refused, close their connections, and write no read line", async () => {
       const r = rig({ read: async () => ({ ok: true, answer: { session: SESSION, text: SCREEN_TEXT, lines: 10, truncated: false } }) });
       await r.api.start();
-      const client = await Client.open(r.path);
-      await client.ask({ op: "read", args: { session: SESSION, lines: 5 } });
-      expect(readLines(r)).toEqual([`[api] read client=unnamed session=${SESSION} result=ok`]);
+      for (let i = 0; i < 50; i += 1) {
+        const client = await Client.open(r.path, null);
+        expect(codeOf(await client.ask({ op: "read", args: { session: SESSION, lines: 5 } }))).toBe("api.no_run_token");
+        await client.ended;
+      }
+      expect(readLines(r)).toEqual([]);
+      expect(r.logs.some((line) => line.startsWith("[api] read"))).toBe(false);
+      // A read after a good hello still leaves its line.
+      const named = await Client.open(r.path);
+      expect(await named.ask({ op: "read", args: { session: SESSION } })).toMatchObject({ ok: true });
+      expect(readLines(r)).toEqual([`[api] read by=trick:lodge session=${SESSION} result=ok`]);
     });
 
     test("a refused read logs the error code", async () => {
@@ -446,7 +463,7 @@ apiSocketDescribe("the framing", () => {
       await r.api.start();
       const client = await Client.open(r.path);
       await client.ask({ op: "read", args: { session: SESSION } });
-      expect(readLines(r)).toEqual([`[api] read client=unnamed session=${SESSION} result=api.session_unknown`]);
+      expect(readLines(r)).toEqual([`[api] read by=trick:lodge session=${SESSION} result=api.session_unknown`]);
     });
 
     test("a read the table refuses for its arguments logs bad_request, and a session that is no id's shape is `invalid`", async () => {
@@ -457,9 +474,9 @@ apiSocketDescribe("the framing", () => {
       await client.ask({ op: "read", args: { session: 7 } });
       await client.ask({ op: "read", args: "text" });
       expect(readLines(r)).toEqual([
-        "[api] read client=unnamed session=invalid result=api.bad_request",
-        "[api] read client=unnamed session=invalid result=api.bad_request",
-        "[api] read client=unnamed session=invalid result=api.bad_request",
+        "[api] read by=trick:lodge session=invalid result=api.bad_request",
+        "[api] read by=trick:lodge session=invalid result=api.bad_request",
+        "[api] read by=trick:lodge session=invalid result=api.bad_request",
       ]);
       expect(r.logs.some((line) => line.startsWith("[api] forged"))).toBe(false);
     });
@@ -470,19 +487,9 @@ apiSocketDescribe("the framing", () => {
       const client = await Client.open(r.path);
       await client.ask({ op: "sessions" });
       await client.ask({ op: "accounts" });
-      await client.ask({ op: "hello" });
+      await client.ask({ op: "hello", args: HELLO_ARGS });
       expect(readLines(r)).toEqual([]);
     });
-  });
-
-  test("hello's client of a bad shape is a bad request and is not logged", async () => {
-    const r = rig();
-    await r.api.start();
-    const client = await Client.open(r.path);
-    for (const bad of ["trick cpu", "x".repeat(65), "\u001b[2J", ""]) {
-      expect(codeOf(await client.ask({ op: "hello", args: { client: bad } }))).toBe("api.bad_request");
-    }
-    expect(r.logs.some((line) => line.includes("names itself"))).toBe(false);
   });
 
   test("a line past 16 KiB answers bad_request and closes the connection", async () => {
@@ -494,7 +501,7 @@ apiSocketDescribe("the framing", () => {
     await client.ended;
     // A line just at the cap is read.
     const second = await Client.open(r.path);
-    const request = JSON.stringify({ op: "hello", id: "c" });
+    const request = JSON.stringify({ op: "hello", id: "c", args: HELLO_ARGS });
     second.sendRaw(`${request}${" ".repeat(REQUEST_LINE_MAX - request.length)}\n`);
     expect(await second.next()).toMatchObject({ id: "c", ok: true });
   });
@@ -508,7 +515,7 @@ apiSocketDescribe("the framing", () => {
     expect(await slow.next()).toMatchObject({ ok: false, error: { code: "api.bad_request" } });
     await slow.ended;
     await Bun.sleep(150);
-    expect(await idle.ask({ op: "hello" })).toMatchObject({ ok: true });
+    expect(await idle.ask({ op: "hello", args: HELLO_ARGS })).toMatchObject({ ok: true });
   });
 
   test("an answer past 1 MiB becomes answer_too_large, with its id", async () => {
@@ -534,14 +541,14 @@ apiSocketDescribe("the framing", () => {
     await r.api.start();
     const held: Client[] = [];
     for (let i = 0; i < CONNECTIONS_MAX; i += 1) held.push(await Client.open(r.path));
-    expect(await held[0]!.ask({ op: "hello" })).toMatchObject({ ok: true });
-    const extra = await Client.open(r.path);
+    expect(await held[0]!.ask({ op: "hello", args: HELLO_ARGS })).toMatchObject({ ok: true });
+    const extra = await Client.open(r.path, null);
     expect(await extra.next()).toMatchObject({ ok: false, error: { code: "api.too_many_connections" } });
     await extra.ended;
     held[1]!.close();
     await Bun.sleep(30);
     const again = await Client.open(r.path);
-    expect(await again.ask({ op: "hello" })).toMatchObject({ ok: true });
+    expect(await again.ask({ op: "hello", args: HELLO_ARGS })).toMatchObject({ ok: true });
   });
 });
 
@@ -649,19 +656,19 @@ apiSocketDescribe("requests in flight and idle connections", () => {
     const client = await Client.open(r.path);
     for (let i = 0; i < WAITS_PER_CONNECTION; i += 1) client.send({ id: `w${String(i)}`, op: "events", args: { wait: 25 } });
     for (let i = WAITS_PER_CONNECTION; i < REQUESTS_PER_CONNECTION; i += 1) client.send({ id: `b${String(i)}`, op: "brief", args: { session: SESSION } });
-    expect(await client.ask({ id: "ninth", op: "hello" })).toEqual({
+    expect(await client.ask({ id: "ninth", op: "hello", args: HELLO_ARGS })).toEqual({
       id: "ninth",
       ok: false,
       error: { code: "api.too_many_requests", message: "too many requests are in flight on this connection (at most 8); wait for an answer before you send more" },
     });
     // Another connection is not counted against this one.
     const other = await Client.open(r.path);
-    expect(await other.ask({ op: "hello" })).toMatchObject({ ok: true });
+    expect(await other.ask({ op: "hello", args: HELLO_ARGS })).toMatchObject({ ok: true });
     r.briefGate.open();
     const answered = [];
     for (let i = WAITS_PER_CONNECTION; i < REQUESTS_PER_CONNECTION; i += 1) answered.push((await client.next()).id);
     expect(answered.toSorted()).toEqual(["b4", "b5", "b6", "b7"]);
-    expect(await client.ask({ id: "after", op: "hello" })).toMatchObject({ id: "after", ok: true });
+    expect(await client.ask({ id: "after", op: "hello", args: HELLO_ARGS })).toMatchObject({ id: "after", ok: true });
   });
 
   test("an idle connection is closed with no line; one with a request in flight or a partial line stays", async () => {
@@ -676,7 +683,7 @@ apiSocketDescribe("requests in flight and idle connections", () => {
     await Bun.sleep(250);
     expect([busy.socket.destroyed, typing.socket.destroyed]).toEqual([false, false]);
     expect(r.api.counts().connections).toBe(2);
-    typing.sendRaw('"op":"hello"}\n');
+    typing.sendRaw(`"op":"hello","args":${JSON.stringify(HELLO_ARGS)}}\n`);
     expect(await typing.next()).toMatchObject({ id: "t", ok: true });
     r.briefGate.open();
     expect(await busy.next()).toMatchObject({ id: "b", ok: true });
@@ -691,7 +698,7 @@ apiSocketDescribe("requests in flight and idle connections", () => {
     const client = await Client.open(r.path);
     for (let i = 0; i < 4; i += 1) {
       await Bun.sleep(80);
-      expect(await client.ask({ op: "hello" })).toMatchObject({ ok: true });
+      expect(await client.ask({ op: "hello", args: HELLO_ARGS })).toMatchObject({ ok: true });
     }
     expect(client.socket.destroyed).toBe(false);
   });
@@ -774,7 +781,7 @@ apiSocketDescribe("the write budget (security read 1, item 1)", () => {
     expect(r.logs.some((one) => one.includes("did not read its answers"))).toBe(true);
     // The bridge still answers another connection.
     const other = await Client.open(r.path);
-    expect(await other.ask({ op: "hello" })).toMatchObject({ ok: true });
+    expect(await other.ask({ op: "hello", args: HELLO_ARGS })).toMatchObject({ ok: true });
   });
 
   test("the other connection is answered while a greedy one is paused", async () => {
@@ -870,7 +877,7 @@ apiSocketDescribe("hello over the socket", () => {
     const r = rig();
     await r.api.start();
     const client = await Client.open(r.path);
-    expect(await client.ask({ id: "h", op: "hello" })).toEqual({
+    expect(await client.ask({ id: "h", op: "hello", args: HELLO_ARGS })).toEqual({
       id: "h",
       ok: true,
       api: 1,
@@ -879,4 +886,179 @@ apiSocketDescribe("hello over the socket", () => {
       operations: ["hello", "sessions", "brief", "read", "accounts", "hill.list", "machines", "events"],
     });
   });
+});
+
+// THE RUN TOKEN (M105 spec 05, decisions 1 to 5): only a connection whose `hello` names a live token is
+// answered, at the token's level; everything else gets one error and is closed.
+apiSocketDescribe("the run token", () => {
+  test("a request before hello gets one no_run_token line and the connection closes; nothing ran", async () => {
+    const r = rig();
+    await r.api.start();
+    const client = await Client.open(r.path, null);
+    const answer = await client.ask({ id: "s", op: "sessions" });
+    expect(answer).toEqual({ id: "s", ok: false, error: { code: "api.no_run_token", message: "the local API answers a trick's own run in this release; send hello first, with the run token from the trick's facts" } });
+    await client.ended;
+    expect(r.api.counts().connections).toBe(0);
+  });
+
+  test("a hello with no token, an unknown token or one of another shape is refused and closed", async () => {
+    const r = rig();
+    await r.api.start();
+    for (const args of [undefined, {}, { token: DEAD_TOKEN }, { token: "x" }, { token: 7 }, { token: TOKEN.toLowerCase() }]) {
+      const client = await Client.open(r.path, null);
+      expect(codeOf(await client.ask(args === undefined ? { op: "hello" } : { op: "hello", args }))).toBe("api.no_run_token");
+      await client.ended;
+    }
+  });
+
+  test("a line that is no request before hello is a bad request, and the connection closes", async () => {
+    const r = rig();
+    await r.api.start();
+    const client = await Client.open(r.path, null);
+    client.sendRaw("{not json\n");
+    expect(codeOf(await client.next())).toBe("api.bad_request");
+    await client.ended;
+  });
+
+  test("helper v7's hello (a client name, no token) hears no_run_token, not a bad request", async () => {
+    const r = rig();
+    await r.api.start();
+    const client = await Client.open(r.path, null);
+    // The v7 helper writes hello and its call in one go, as here.
+    client.sendRaw(`${JSON.stringify({ id: "h", op: "hello", args: { client: "trick:lodge" } })}\n${JSON.stringify({ id: "r", op: "sessions" })}\n`);
+    expect(await client.next()).toMatchObject({ id: "h", ok: false, error: { code: "api.no_run_token" } });
+    await client.ended;
+  });
+
+  test("a good token with an argument hello does not take is a bad request, and binds nothing", async () => {
+    const r = rig();
+    await r.api.start();
+    const client = await Client.open(r.path, null);
+    expect(codeOf(await client.ask({ op: "hello", args: { token: TOKEN, client: "trick:lodge" } }))).toBe("api.bad_request");
+    await client.ended;
+  });
+
+  test("hello and a call in one write: the call is answered at the token's level", async () => {
+    const r = rig();
+    await r.api.start();
+    const client = await Client.open(r.path, null);
+    client.sendRaw(`${JSON.stringify({ id: "h", op: "hello", args: HELLO_ARGS })}\n${JSON.stringify({ id: "s", op: "sessions" })}\n`);
+    const answers = [await client.next(), await client.next()];
+    expect(answers).toContainEqual({ id: "s", ok: true, sessions: [] });
+    expect(answers).toContainEqual(expect.objectContaining({ id: "h", ok: true }));
+  });
+
+  test("a `see` token is refused `read` with the existing refusal, and hello offers it no read", async () => {
+    const r = rig({ read: async () => ({ ok: true, answer: { session: SESSION, text: "screen", lines: 1, truncated: false } }) });
+    await r.api.start();
+    const client = await Client.open(r.path, null);
+    const hello = await client.ask({ op: "hello", args: { token: SEE_TOKEN } });
+    expect(hello).toMatchObject({ ok: true, operations: ["hello", "sessions", "brief", "accounts", "hill.list", "machines", "events"] });
+    expect(await client.ask({ id: "r", op: "read", args: { session: SESSION } })).toEqual({ id: "r", ok: false, error: { code: "api.denied", message: "the local API does not grant the right this operation needs; send hello to see the operations it offers" } });
+    // The refusal leaves the connection usable: a `see` operation still answers.
+    expect(await client.ask({ op: "accounts" })).toEqual({ ok: true, accounts: [] });
+    expect(r.logs.filter((line) => line.startsWith("[api] read by="))).toEqual([`[api] read by=trick:workshop session=${SESSION} result=api.denied`]);
+  });
+
+  test("a token that dies (its run ended) answers no more: the next request is refused and the connection closes", async () => {
+    const r = rig();
+    await r.api.start();
+    const client = await Client.open(r.path);
+    expect(await client.ask({ op: "accounts" })).toMatchObject({ ok: true });
+    r.tokens.delete(TOKEN);
+    expect(codeOf(await client.ask({ op: "accounts" }))).toBe("api.no_run_token");
+    await client.ended;
+    // And a new connection with the dead token is refused at its hello.
+    const again = await Client.open(r.path, null);
+    expect(codeOf(await again.ask({ op: "hello", args: HELLO_ARGS }))).toBe("api.no_run_token");
+  });
+
+  test("a token that dies while an operation runs gets no answer of substance", async () => {
+    const r = rig();
+    await r.api.start();
+    const client = await Client.open(r.path);
+    client.send({ id: "slow", op: "brief", args: { session: SESSION } });
+    await Bun.sleep(20);
+    r.tokens.delete(TOKEN);
+    r.briefGate.open();
+    expect(await client.next()).toEqual({ id: "slow", ok: false, error: expect.objectContaining({ code: "api.no_run_token" }) });
+    await client.ended;
+  });
+
+  test("two runs, two tokens, two connections: each is its own trick, at its own level", async () => {
+    const r = rig({ read: async () => ({ ok: true, answer: { session: SESSION, text: "screen", lines: 1, truncated: false } }) });
+    await r.api.start();
+    const lodge = await Client.open(r.path, TOKEN);
+    const workshop = await Client.open(r.path, SEE_TOKEN);
+    expect(await lodge.ask({ id: "1", op: "read", args: { session: SESSION } })).toMatchObject({ id: "1", ok: true });
+    expect(codeOf(await workshop.ask({ id: "2", op: "read", args: { session: SESSION } }))).toBe("api.denied");
+    expect(r.logs.filter((line) => line.startsWith("[api] read by="))).toEqual([
+      `[api] read by=trick:lodge session=${SESSION} result=ok`,
+      `[api] read by=trick:workshop session=${SESSION} result=api.denied`,
+    ]);
+    // One run ending leaves the other's connection answered.
+    r.tokens.delete(SEE_TOKEN);
+    expect(codeOf(await workshop.ask({ op: "accounts" }))).toBe("api.no_run_token");
+    expect(await lodge.ask({ op: "accounts" })).toMatchObject({ ok: true });
+  });
+
+  test("a token of trick A never reads as trick B: a connection holds one token, a second hello with another is refused and closed", async () => {
+    const r = rig({ read: async () => ({ ok: true, answer: { session: SESSION, text: "screen", lines: 1, truncated: false } }) });
+    await r.api.start();
+    const client = await Client.open(r.path, SEE_TOKEN);
+    // The same token again is a hello like the first.
+    expect(await client.ask({ op: "hello", args: { token: SEE_TOKEN } })).toMatchObject({ ok: true });
+    const swapped = await client.ask({ op: "hello", args: HELLO_ARGS });
+    expect(swapped).toMatchObject({ ok: false, error: { code: "api.bad_request" } });
+    expect(messageOf(swapped)).toContain("a connection holds one run token");
+    await client.ended;
+    expect(r.logs.some((line) => line.includes("trick:lodge"))).toBe(false);
+  });
+
+  test("the token is in no answer and no log line", async () => {
+    const r = rig({ read: async () => ({ ok: true, answer: { session: SESSION, text: "screen", lines: 1, truncated: false } }) });
+    await r.api.start();
+    const seen: JsonObject[] = [];
+    const client = await Client.open(r.path, null);
+    seen.push(await client.ask({ id: "h", op: "hello", args: HELLO_ARGS }));
+    for (const op of ["sessions", "accounts", "hill.list", "machines"]) seen.push(await client.ask({ op }));
+    seen.push(await client.ask({ op: "read", args: { session: SESSION } }));
+    seen.push(await client.ask({ op: "events" }));
+    seen.push(await client.ask({ op: "hello", args: { token: TOKEN, extra: 1 } }));
+    const refused = await Client.open(r.path, null);
+    seen.push(await refused.ask({ op: "hello", args: { token: DEAD_TOKEN } }));
+    expect(JSON.stringify(seen)).not.toContain(TOKEN);
+    expect(JSON.stringify(seen)).not.toContain(DEAD_TOKEN);
+    expect(r.logs.join("\n")).not.toContain(TOKEN);
+    expect(r.logs.join("\n")).not.toContain(DEAD_TOKEN);
+  });
+
+  test("a caller with no good hello within the line limit of its connect gets one no_run_token line and is closed", async () => {
+    const r = rig({ lineMs: 150, idleMs: IDLE_MS });
+    await r.api.start();
+    const silent = await Client.open(r.path, null);
+    const started = performance.now();
+    expect(codeOf(await silent.next(1000))).toBe("api.no_run_token");
+    await silent.ended;
+    expect(performance.now() - started).toBeLessThan(900);
+    // A good hello in time stops the deadline: the connection is still answered after it.
+    const named = await Client.open(r.path);
+    await Bun.sleep(300);
+    expect(await named.ask({ op: "accounts" })).toEqual({ ok: true, accounts: [] });
+    expect(r.api.counts().connections).toBe(1);
+  });
+
+  test("a silent caller and a slow partial line before hello are both closed within the line limit", async () => {
+    const r = rig({ idleMs: IDLE_MS, lineMs: 100 });
+    await r.api.start();
+    const silent = await Client.open(r.path, null);
+    const slow = await Client.open(r.path, null);
+    slow.sendRaw('{"op":"hello",');
+    await silent.ended;
+    // The hello deadline and the line clock both run 100 ms here: whichever fires first sends its one line.
+    expect(["api.no_run_token", "api.bad_request"]).toContain(codeOf(await slow.next()) ?? "");
+    await slow.ended;
+    expect(r.api.counts().connections).toBe(0);
+  });
+
 });

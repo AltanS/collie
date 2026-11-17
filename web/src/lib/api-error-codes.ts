@@ -192,6 +192,7 @@ export const API_ERROR_CODES = [
   // The local API, the socket at <stateDir>/api/sock (M105 spec 03)
   "api.unknown_op",
   "api.denied",
+  "api.no_run_token",
   "api.bad_request",
   "api.session_unknown",
   "api.session_replaced",

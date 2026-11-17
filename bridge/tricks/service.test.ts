@@ -2758,7 +2758,7 @@ describe("access and the local API in the facts", () => {
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
     const facts = factsOf(r.specs[0]);
-    expect(facts.api).toEqual({ socket: SOCKET, access: "see" });
+    expect(facts.api).toEqual({ socket: SOCKET, access: "see", token: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/u) });
     expect(JSON.stringify(r.specs[0]?.env)).not.toContain("sock");
     const row = (await r.service.reply(undefined)).tricks[0];
     expect(row?.access).toBe("see");
@@ -2770,7 +2770,7 @@ describe("access and the local API in the facts", () => {
     await makeTrick(r.configDir, "legs", accessManifest("read"), { "legs.sh": "#!/bin/sh\n" });
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
-    expect(factsOf(r.specs[0]).api).toEqual({ socket: SOCKET, access: "read" });
+    expect(factsOf(r.specs[0]).api).toMatchObject({ socket: SOCKET, access: "read" });
   });
 
   test("access with no socket: no `api` in the facts, and the row carries one note", async () => {
@@ -2823,6 +2823,201 @@ describe("access and the local API in the facts", () => {
     expect((await r.service.reply(undefined)).tricks[0]?.accessOff).toBeUndefined();
   });
 });
+
+// THE RUN TOKEN (M105 spec 05, decisions 1 and 2). A run of a trick that declares `access` gets one token in
+// its facts on stdin while the socket stands; the token resolves while the run lasts and dies with it, with
+// its trick's switch, with its removal, with tricks going off and at stop. Nowhere else: not in the
+// environment, the command line, a log line, a reply or a file under the state folder.
+describe("the run token of the local API", () => {
+  const SOCKET = "/home/dev/.local/state/collie/api/sock";
+  const accessManifest = (access: string): string => `${MANIFEST}contract = 3\naccess = ${JSON.stringify(access)}\n`;
+
+  /** A held run: the outcome waits until `finish` is called. */
+  interface HeldRun {
+    outcome: Scripted;
+    finish: (outcome?: RunOutcome) => void;
+    started: Promise<void>;
+  }
+  function held(): HeldRun {
+    let finish: (outcome?: RunOutcome) => void = () => undefined;
+    let started: () => void = () => undefined;
+    const startedP = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const outcome: Scripted = {
+      later: () =>
+        new Promise<RunOutcome>((resolve) => {
+          started();
+          finish = (o) => resolve(o ?? exited(belt("x")));
+        }),
+    };
+    return { outcome, finish: (o) => finish(o), started: startedP };
+  }
+
+  async function heldRig(extra: Partial<TricksServiceDeps> = {}, access = "see"): Promise<{ r: Rig; run: HeldRun; token: () => string; ticked: Promise<void> }> {
+    const run = held();
+    const r = await rig([run.outcome, exited(belt("x"))], { localApi: () => SOCKET, ...extra });
+    await makeTrick(r.configDir, "legs", accessManifest(access), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    const ticked = tickAt(r, T0);
+    await run.started;
+    return { r, run, token: () => factsOf(r.specs[0]).api?.token ?? "", ticked };
+  }
+
+  test("the token resolves to the trick and its level while the run lasts, and dies when it exits", async () => {
+    const { r, run, token, ticked } = await heldRig({}, "read");
+    expect(r.service.resolveRunToken(token())).toEqual({ trickId: "legs", level: "read" });
+    run.finish();
+    await ticked;
+    expect(r.service.resolveRunToken(token())).toBeNull();
+  });
+
+  for (const [how, outcome] of [
+    ["a failure", exited("", 1)],
+    ["a timeout", { kind: "timeout", stderr: "", ms: 5, limitMs: 5 }],
+    ["a kill", { kind: "stopped", stderr: "", ms: 5 }],
+    ["a refused start", { kind: "spawn-failed", message: "no such file", ms: 0 }],
+  ] as const satisfies readonly (readonly [string, RunOutcome])[]) {
+    test(`the token dies when the run ends by ${how}`, async () => {
+      const { r, run, token, ticked } = await heldRig();
+      expect(r.service.resolveRunToken(token())).not.toBeNull();
+      run.finish(outcome);
+      await ticked;
+      expect(r.service.resolveRunToken(token())).toBeNull();
+    });
+  }
+
+  test("the token dies when the runner throws", async () => {
+    let token = "";
+    const resolvedDuring: ReturnType<TricksService["resolveRunToken"]>[] = [];
+    const r = await rig(null, {
+      localApi: () => SOCKET,
+      run: async (spec) => {
+        token = factsOf(spec).api?.token ?? "";
+        resolvedDuring.push(r.service.resolveRunToken(token));
+        throw new Error("the runner broke");
+      },
+    });
+    await makeTrick(r.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0).catch(() => undefined);
+    expect(resolvedDuring).toEqual([{ trickId: "legs", level: "see" }]);
+    expect(r.service.resolveRunToken(token)).toBeNull();
+  });
+
+  test("the token dies when the trick is switched off, while its run still goes", async () => {
+    const { r, run, token, ticked } = await heldRig();
+    expect(await r.service.setSwitch(HOST, "legs", false)).toMatchObject({ status: 200 });
+    await r.service.refresh(true);
+    expect(r.service.resolveRunToken(token())).toBeNull();
+    run.finish();
+    await ticked;
+  });
+
+  test("the token dies when the trick's folder is removed", async () => {
+    const { r, run, token, ticked } = await heldRig();
+    await rm(join(r.configDir, TRICKS_DIR, "legs"), { recursive: true, force: true });
+    r.clock.t = T0 + 60_000;
+    await r.service.refresh(true);
+    expect(r.service.resolveRunToken(token())).toBeNull();
+    run.finish();
+    await ticked;
+  });
+
+  test("the token dies when tricks are switched off as a whole", async () => {
+    const listeners: ((on: boolean) => void)[] = [];
+    let on = true;
+    const feature = {
+      on: () => on,
+      onChange: (listener: (on: boolean) => void) => {
+        listeners.push(listener);
+        return () => undefined;
+      },
+    };
+    const { r, run, token, ticked } = await heldRig({ feature });
+    expect(r.service.resolveRunToken(token())).not.toBeNull();
+    on = false;
+    for (const listener of listeners) listener(false);
+    expect(r.service.resolveRunToken(token())).toBeNull();
+    run.finish();
+    await ticked;
+  });
+
+  test("the token dies at stop", async () => {
+    const { r, run, token, ticked } = await heldRig();
+    r.service.stop();
+    expect(r.service.resolveRunToken(token())).toBeNull();
+    run.finish();
+    await ticked;
+  });
+
+  test("two runs get two tokens; a token of one trick never resolves as another", async () => {
+    const r = await rig([exited(belt("x"))], { localApi: () => SOCKET });
+    await makeTrick(r.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await makeTrick(r.configDir, "gates", accessManifest("read").replace('id = "legs"', 'id = "gates"'), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs", "gates");
+    await tickAt(r, T0);
+    const tokens = r.specs.map((spec) => factsOf(spec).api?.token);
+    expect(tokens).toHaveLength(2);
+    expect(new Set(tokens).size).toBe(2);
+  });
+
+  test("no socket, or no access: no token is minted", async () => {
+    const off = await rig([exited(belt("x"))], { localApi: () => null });
+    await makeTrick(off.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(off.stateDir, "legs");
+    await tickAt(off, T0);
+    expect(JSON.parse(off.specs[0]?.stdin ?? "{}").api).toBeUndefined();
+    const none = await rig([exited(belt("x"))], { localApi: () => SOCKET });
+    await makeTrick(none.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(none.stateDir, "legs");
+    await tickAt(none, T0);
+    expect(JSON.parse(none.specs[0]?.stdin ?? "{}").api).toBeUndefined();
+  });
+
+  test("the leak test: the token is in the run's stdin and nowhere else (no env, no argv, no log line, no reply, no file)", async () => {
+    const { r, run, token, ticked } = await heldRig({}, "read");
+    const secret = token();
+    expect(secret).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    const spec = r.specs[0];
+    expect(spec?.stdin).toContain(secret);
+    expect(JSON.stringify(spec?.env)).not.toContain(secret);
+    expect(spec?.command).not.toContain(secret);
+    expect(spec?.cwd).not.toContain(secret);
+    // The run prints its token back, as a careless trick might: a line of its output still never reaches a
+    // file of the state folder by the bridge's own hand, and no log line of the bridge names it.
+    run.finish(exited(belt("x")));
+    await ticked;
+    const reply = JSON.stringify(await r.service.reply(undefined, { bound: true }));
+    expect(reply).not.toContain(secret);
+    expect(r.warnings.join("\n")).not.toContain(secret);
+    // A tap runs the program again: its token is a new one, and that one also stays out of the reply.
+    const tap = JSON.stringify(await beltTap(r, REQ));
+    expect(tap).not.toContain(secret);
+    const second = factsOf(r.specs[1]).api?.token ?? "";
+    expect(second).not.toBe(secret);
+    expect(tap).not.toContain(second);
+    expect(r.service.resolveRunToken(second)).toBeNull();
+    // No file under the state folder holds either token.
+    const files = await walkFiles(r.stateDir);
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const text = await readFile(file, "utf8").catch(() => "");
+      expect({ file, holds: text.includes(secret) || text.includes(second) }).toEqual({ file, holds: false });
+    }
+  });
+});
+
+/** Every file under `dir`, recursively. */
+async function walkFiles(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...(await walkFiles(path)));
+    else if (entry.isFile()) out.push(path);
+  }
+  return out;
+}
 
 describe("review J, read of 1bf6c747a, point 3: the service forgets an id that arrives between scans", () => {
   test("a folder that appears after the first scan runs the forget hook before the trick can run", async () => {
