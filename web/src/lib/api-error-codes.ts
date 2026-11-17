@@ -188,6 +188,18 @@ export const API_ERROR_CODES = [
   "accounts.default",
   "accounts.unknown",
   "accounts.store_unreadable",
+
+  // The local API, the socket at <stateDir>/api/sock (M105 spec 03)
+  "api.unknown_op",
+  "api.denied",
+  "api.bad_request",
+  "api.session_unknown",
+  "api.session_replaced",
+  "api.too_many_waits",
+  "api.too_many_connections",
+  "api.answer_too_large",
+  "api.closing",
+  "api.failed",
 ] as const;
 
 /** Every code the bridge can send. Derived from the list, so there is exactly one place to edit. */

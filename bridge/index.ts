@@ -373,6 +373,8 @@ import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
 import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
+import { ApiSocket, apiSocketPath } from "./api/socket.ts";
+import { buildTable, LOCAL_TIER_RIGHTS } from "./api/operations.ts";
 import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
@@ -4119,6 +4121,18 @@ const repoFacts =
         onChange: () => onRepoFacts(),
         warn: (line) => console.warn(`[tricks] ${line}`),
       });
+// The local API (M105 spec 03): a read-only Unix socket at `<stateDir>/api/sock`, open only while at
+// least one trick is switched on (TricksService tells the count). No tricks folder, no socket ever.
+// The five reads beyond `hello` and `events` are wired in a later part; until then they are not offered.
+const localApi =
+  cfg.tricksDir === undefined
+    ? undefined
+    : new ApiSocket({
+        socketPath: apiSocketPath(cfg.stateDir),
+        table: buildTable({ version: () => collieVersion(rootDir), bus: eventBus }),
+        granted: LOCAL_TIER_RIGHTS,
+        platform: HOST.platform,
+      });
 const tricks =
   cfg.tricksDir === undefined
     ? undefined
@@ -4216,6 +4230,8 @@ const tricks =
         // Fault B: a trick stopped for its rights says so on the Hill too, once per trick and mismatch.
         rights: new RightsCards({ hill, warn: (line) => console.warn(`[tricks] ${line}`) }),
         repoFacts,
+        // The local API stands while a trick is on (decision 14); start and stop run one at a time.
+        onSwitchedOnCount: (count) => void (count > 0 ? localApi?.start() : localApi?.stop()),
       });
 onRepoFacts = () => tricks?.repoFactsMoved();
 tricks?.start();
@@ -4472,6 +4488,7 @@ const shutdown = async () => {
   stopInsideWatch?.();
   insideServer?.stop();
   walkyServer.stop();
+  await localApi?.stop();
   registry.disposeAll();
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).
   // A no-op when speech-to-text is off, or configured to a provider that holds nothing open.

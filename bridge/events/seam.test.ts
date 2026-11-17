@@ -2,7 +2,7 @@
 // (bridge/api/) or the tricks code (bridge/tricks/), and the API and the tricks code do not import each
 // other: both are thin listeners of the bus. This test reads the import statements of every non-test
 // `.ts` file under the three folders, resolves each relative specifier to a path, and refuses a path
-// inside a folder the importer may not reach. A folder that does not exist yet has nothing to scan.
+// inside a folder the importer may not reach. Every folder must exist and hold sources, so the scan is never vacuous.
 
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -70,6 +70,11 @@ describe("the seam", () => {
       violationsOf(file, readFileSync(file, "utf8")).map((v) => `${relative(BRIDGE, file)}: ${v}`),
     );
     expect(found).toEqual([]);
+  });
+
+  test("no folder is skipped: the bus, the API and the tricks code each have sources to scan", () => {
+    for (const area of AREAS) expect(sourcesUnder(join(BRIDGE, area)).length).toBeGreaterThan(0);
+    expect(specifiersOf(readFileSync(join(BRIDGE, "api", "operations.ts"), "utf8"))).toContain("../events/bus.ts");
   });
 
   test("the scan reads real files: the bus's own imports are seen", () => {

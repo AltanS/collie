@@ -414,6 +414,11 @@ export interface TricksServiceDeps {
    * read of the list asks for the stale ones; the read never waits for them. Absent: no facts, no read.
    */
   repoFacts?: RepoFactsPort;
+  /**
+   * Told the count of switched-on tricks after a scan or a switch moved it, and once after the first
+   * scan. bridge/index.ts opens the local API socket while it is above zero (M105 spec 03, decision 14).
+   */
+  onSwitchedOnCount?: (count: number) => void;
 }
 
 /** The approved copy a trick runs from, as read and verified. */
@@ -651,6 +656,8 @@ export class TricksService implements TricksSurface {
   private warningRead: Promise<void> | null = null;
   /** When the unreferenced copies were last pruned. */
   private prunedAt = -Infinity;
+  /** The switched-on count last told to `onSwitchedOnCount`; null before the first. */
+  private switchedOnTold: number | null = null;
 
   constructor(deps: TricksServiceDeps) {
     this.deps = deps;
@@ -850,6 +857,20 @@ export class TricksService implements TricksSurface {
       this.deps.decisions?.prune(ids, host);
     }
     for (const found of scan.tricks) this.applyOne(found, switches.on.get(found.id));
+    this.tellSwitchedOn();
+  }
+
+  /** Tell `onSwitchedOnCount` the count of switched-on tricks, when it moved. Never throws. */
+  private tellSwitchedOn(): void {
+    let count = 0;
+    for (const rt of this.runtimes.values()) if (rt.on) count += 1;
+    if (count === this.switchedOnTold) return;
+    this.switchedOnTold = count;
+    try {
+      this.deps.onSwitchedOnCount?.(count);
+    } catch (err) {
+      this.warn(`the switched-on count could not be told: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** Fold one trick folder and its switch entry into its runtime and its list entry. */
@@ -882,6 +903,7 @@ export class TricksService implements TricksSurface {
       // Off at start (switched off while the bridge was down): its open decisions go.
       if (!on) this.deps.decisions?.off({ id: found.id, name: found.manifest?.name ?? found.id, memberId: host });
       this.publish(found.id);
+      this.tellSwitchedOn();
       return;
     }
     // A change of the folder restarts nothing: the trick runs its approved copy, and a new version waits
@@ -903,6 +925,7 @@ export class TricksService implements TricksSurface {
     }
     if (switched && on) this.restart(old);
     this.publish(found.id);
+    this.tellSwitchedOn();
   }
 
   /**

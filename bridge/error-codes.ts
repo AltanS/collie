@@ -388,6 +388,28 @@ export const ERROR_CODES = {
   "accounts.unknown": "this machine has no such account for that agent; nothing was started",
   /** The account list on disk is not one this build can write; nothing was changed. */
   "accounts.store_unreadable": "the account list cannot be read; nothing was changed",
+
+  // ── The local API: `<stateDir>/api/sock`, one JSON line per request (M105 spec 03, bridge/api/) ──
+  /** The request names no operation this bridge offers. */
+  "api.unknown_op": "the local API has no such operation here; send hello to see the operations it offers",
+  /** The operation needs a right the caller was not granted. The local tier grants `look` only. */
+  "api.denied": "the local API does not grant the right this operation needs; send hello to see the operations it offers",
+  /** The line is not a request the socket reads; `reason` is one of the socket's own fixed phrases. */
+  "api.bad_request": "the request cannot be read ({reason}); send one JSON object per line, as {\"op\": \"hello\"}",
+  /** The session id is malformed, of another machine, or names no pane here now. */
+  "api.session_unknown": "no session on this machine has that id; send sessions for the ids of now",
+  /** The pane the id named now holds another session (its id was reused). */
+  "api.session_replaced": "that session has ended and its pane now holds another one; send sessions for the ids of now",
+  /** Too many `events` waits are open, on this connection or in all. */
+  "api.too_many_waits": "too many waits are open (at most {perConnection} on one connection and {total} in all); let one end, or ask without wait",
+  /** Too many programs hold a connection to the local API. */
+  "api.too_many_connections": "too many programs are connected to the local API (at most {max}); close one and connect again",
+  /** One answer would be larger than the cap. */
+  "api.answer_too_large": "the answer is larger than {maxBytes} bytes; ask for less",
+  /** The socket is going away: the last trick was switched off, or the bridge stops. */
+  "api.closing": "the local API is closing: it is on only while a trick is switched on; switch one on and connect again",
+  /** The operation failed inside the bridge. */
+  "api.failed": "the operation failed inside the bridge; try again, and read the bridge log if it fails again",
 } as const;
 
 /** Every code the bridge can send. The client mirror restates this union verbatim. */
