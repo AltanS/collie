@@ -15,6 +15,7 @@ import {
   cameFromSession,
   flowOf,
   forgetFlow,
+  hasOtherProfiles,
   loginChanged,
   reachOf,
   rememberFlow,
@@ -213,7 +214,13 @@ export function SettingsChangeLoginRoute() {
         </BottomBar>
       }
     >
-      <ChangeLoginBeforeView row={row} harness={harness} agentLabel={harnessLabel(body, row.harness)} error={startError} />
+      <ChangeLoginBeforeView
+        row={row}
+        harness={harness}
+        agentLabel={harnessLabel(body, row.harness)}
+        others={hasOtherProfiles(body?.accounts ?? [], row)}
+        error={startError}
+      />
     </SettingsPage>
   );
 }
@@ -252,13 +259,31 @@ function ReachLines({ reach }: { reach: Reach }) {
  * Screen 1, before the start: who is signed in now and what happens to the sessions that run. The
  * button is the page's foot. Exported for the design reference (playground/sections/accounts.tsx).
  */
-export function ChangeLoginBeforeView({ row, harness, agentLabel, error = null }: { row: AccountRow; harness: AccountHarness | undefined; agentLabel: string; error?: string | null }) {
+export function ChangeLoginBeforeView({
+  row,
+  harness,
+  agentLabel,
+  others = false,
+  error = null,
+}: {
+  row: AccountRow;
+  harness: AccountHarness | undefined;
+  agentLabel: string;
+  /** Another profile of this agent exists ({@link hasOtherProfiles}), so the page says they keep their login. */
+  others?: boolean;
+  error?: string | null;
+}) {
   useLocale();
   return (
     <div className="flex flex-col gap-4" data-slot="change-login-before">
       <AccountLine row={row} agentLabel={agentLabel} />
       <SignedInRow identity={row.identity} />
+      {/* The page's first sentence, under who is signed in: what this page changes. */}
+      <p className="text-sm" data-slot="change-login-what">
+        {t("accounts.changeLogin.what")}
+      </p>
       <ReachLines reach={reachOf(harness, row)} />
+      {others && <Hint text={t("accounts.changeLogin.othersKeep")} />}
       <Hint text={t("accounts.changeLogin.oldStays")} />
       {error !== null && (
         <Notice tone="danger" variant="box" announce="alert">

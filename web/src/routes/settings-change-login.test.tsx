@@ -84,7 +84,7 @@ describe("Change login: before the start", () => {
     serveList([defaultRow(), workRow({ identity: ME, running: 2 })]);
     mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"]);
     expect(await screen.findByText("me@example.com · Max")).toBeInTheDocument();
-    expect(screen.getByText("All running sessions of this profile continue with the new login.")).toBeInTheDocument();
+    expect(screen.getByText("Its sessions follow.")).toBeInTheDocument();
     expect(screen.getByText("2 sessions of this profile are running now.")).toBeInTheDocument();
     expect(screen.getByText("The old login stays until the new sign-in works.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Change login" })).toBeInTheDocument();
@@ -97,8 +97,32 @@ describe("Change login: before the start", () => {
     cleanup();
     serveList([defaultRow(), workRow({ identity: ME })]);
     mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"]);
-    expect(await screen.findByText("All running sessions of this profile continue with the new login.")).toBeInTheDocument();
+    expect(await screen.findByText("Its sessions follow.")).toBeInTheDocument();
     expect(screen.queryByText(/running now/)).toBeNull();
+  });
+
+  it("says what the page does first, under who is signed in and above the reach line", async () => {
+    serveList([defaultRow(), workRow({ identity: ME, running: 2 })]);
+    mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"]);
+    const signedIn = await screen.findByText("me@example.com · Max");
+    const what = screen.getByText("This profile gets another login.");
+    const reach = screen.getByText("Its sessions follow.");
+    expect(signedIn.compareDocumentPosition(what) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(what.compareDocumentPosition(reach) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("says the other profiles keep their login only where the agent has more than one profile", async () => {
+    serveList([defaultRow(), workRow({ identity: ME })]);
+    mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"]);
+    expect(await screen.findByText("Your other profiles keep their login.")).toBeInTheDocument();
+    expect(screen.getByText("The old login stays until the new sign-in works.")).toBeInTheDocument();
+    cleanup();
+    // Default alone for Claude Code, while another agent's profile does not count.
+    const codexOnly = defaultRow({ id: "codex:default", harness: "codex", folder: "~/.codex" });
+    serveList([defaultRow({ identity: ME }), codexOnly], undefined, [CLAUDE, HARNESS_CODEX]);
+    mount(["/settings/accounts/claude%3Adefault", `/settings/accounts/${encodeURIComponent("claude:default")}/login`]);
+    expect(await screen.findByText("This profile gets another login.")).toBeInTheDocument();
+    expect(screen.queryByText("Your other profiles keep their login.")).toBeNull();
   });
 
   it("an agent whose sign-in is not proven to reach running sessions says only new sessions use it, with no count", async () => {
@@ -106,7 +130,8 @@ describe("Change login: before the start", () => {
     serveList([codex], undefined, [HARNESS_CODEX]);
     mount(["/settings/accounts/codex%3Adefault", `/settings/accounts/${encodeURIComponent("codex:default")}/login`]);
     expect(await screen.findByText("Sessions you start from now on use the new login.")).toBeInTheDocument();
-    expect(screen.queryByText(/continue with the new login/)).toBeNull();
+    expect(screen.getByText("This profile gets another login.")).toBeInTheDocument();
+    expect(screen.queryByText("Its sessions follow.")).toBeNull();
     expect(screen.queryByText(/running now/)).toBeNull();
   });
 });

@@ -161,14 +161,14 @@ export function AccountsSection() {
         </Card>
       </Group>
       <Group title="Change login">
-        <Card state="accounts-change-login-before" label="5 Before, sessions continue">
+        <Card state="accounts-change-login-before" label="5 Before, sessions follow">
           <Screen foot>
-            <ChangeLoginBeforeView row={RUNNING_ROW} harness={CLAUDE} agentLabel="Claude Code" />
+            <ChangeLoginBeforeView row={RUNNING_ROW} harness={CLAUDE} agentLabel="Claude Code" others />
           </Screen>
         </Card>
         <Card state="accounts-change-login-before-idle" label="6 Before, no session runs">
           <Screen foot>
-            <ChangeLoginBeforeView row={WORK_ROW} harness={CLAUDE} agentLabel="Claude Code" />
+            <ChangeLoginBeforeView row={WORK_ROW} harness={CLAUDE} agentLabel="Claude Code" others />
           </Screen>
         </Card>
         <Card state="accounts-change-login-new-only" label="7 Before, new sessions only">

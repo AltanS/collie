@@ -61,6 +61,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **One name for one action: Send anyway.** The unread screen card said "Send past this screen" where the composer said "Send anyway". Both say "Send anyway" now, and the notice that tells you to tap it again names it the same. The notice for a draft Collie cannot read names its button "Empty the box".
 - **Accounts are now called profiles.** The Settings row, its pages, the session's tag, the New page and the docs say profile. A profile holds one login at a time, and Change login changes that login.
 - **The Profiles page explains a profile in one line.** The page opens with "A profile is signed in on its own." and a More that opens an example, Work beside Default, and says you pick the profile when you start a session and the session stays in it. More starts closed on every visit.
+- **Change login says what changes before you tap.** The page opens with "This profile gets another login.", then "Its sessions follow." for an agent whose sessions follow, or the existing line for new sessions only, and "Your other profiles keep their login." when the agent has more than one profile.
 
 ### Fixed
 

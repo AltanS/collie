@@ -3964,7 +3964,9 @@ export const en = {
   "accounts.identity.withPlan": "{email} · {plan}",
   // Change login (M101): the agent's own sign-in on an account that reads signed in.
   "accounts.changeLogin.action": "Change login",
-  "accounts.changeLogin.reach": "All running sessions of this profile continue with the new login.",
+  "accounts.changeLogin.what": "This profile gets another login.",
+  "accounts.changeLogin.reach": "Its sessions follow.",
+  "accounts.changeLogin.othersKeep": "Your other profiles keep their login.",
   "accounts.changeLogin.newOnly": "Sessions you start from now on use the new login.",
   "accounts.changeLogin.running.one": "{count} session of this profile is running now.",
   "accounts.changeLogin.running.other": "{count} sessions of this profile are running now.",
@@ -4150,6 +4152,8 @@ export const PENDING_TRANSLATION = [
   "accounts.intro.more",
   "accounts.intro.moreToggle",
   "accounts.intro.lessToggle",
+  "accounts.changeLogin.what",
+  "accounts.changeLogin.othersKeep",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

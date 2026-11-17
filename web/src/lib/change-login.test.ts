@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { HARNESS_CLAUDE, HARNESS_CODEX, workRow } from "@/test/accounts-fixtures";
-import { cameFromSession, flowOf, forgetFlow, loginChanged, offersChangeLogin, reachOf, rememberFlow, resultOf } from "./change-login";
+import { defaultRow, HARNESS_CLAUDE, HARNESS_CODEX, workRow } from "@/test/accounts-fixtures";
+import { cameFromSession, flowOf, forgetFlow, hasOtherProfiles, loginChanged, offersChangeLogin, reachOf, rememberFlow, resultOf } from "./change-login";
 
 // Change login's pure rules (M101): who reads signed in, what the sessions that run do, and the result.
 
@@ -23,6 +23,16 @@ describe("reachOf", () => {
     expect(reachOf(claude, workRow())).toEqual({ kind: "running", count: 0 });
     expect(reachOf(HARNESS_CODEX, workRow({ running: 2 }))).toEqual({ kind: "newOnly" });
     expect(reachOf(undefined, workRow({ running: 2 }))).toEqual({ kind: "newOnly" });
+  });
+});
+
+describe("hasOtherProfiles", () => {
+  it("Default alone or an added profile alone has none; two of one agent have, and another agent's does not count", () => {
+    expect(hasOtherProfiles([defaultRow()], defaultRow())).toBe(false);
+    expect(hasOtherProfiles([defaultRow(), workRow()], workRow())).toBe(true);
+    expect(hasOtherProfiles([defaultRow(), workRow()], defaultRow())).toBe(true);
+    const codex = defaultRow({ id: "codex:default", harness: "codex" });
+    expect(hasOtherProfiles([defaultRow(), codex], defaultRow())).toBe(false);
   });
 });
 

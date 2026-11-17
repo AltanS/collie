@@ -58,6 +58,11 @@ export function reachOf(harness: AccountHarness | undefined, row: AccountRow): R
   return { kind: "running", count: row.running ?? 0 };
 }
 
+/** Whether the list holds another profile of the row's agent: Default plus an added one, or two added. */
+export function hasOtherProfiles(rows: readonly AccountRow[], row: AccountRow): boolean {
+  return rows.some((other) => other.harness === row.harness && other.id !== row.id);
+}
+
 /** The result screen: who is signed in after the flow, set against who was before. */
 export type ChangeLoginResult =
   | { kind: "changed"; email: string; plan?: string }
