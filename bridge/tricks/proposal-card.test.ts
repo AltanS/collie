@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { MANIFEST_KEYS, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
+import { MANIFEST_KEYS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { addedDiff } from "./card-group.ts";
-import { PROPOSAL_KEY_RIGHTS, proposalCard, type ProposerFacts } from "./proposal-card.ts";
+import { PROPOSAL_KEY_RIGHTS, PROPOSAL_TOO_LARGE, proposalCard, proposalVersionCard, type ProposerFacts } from "./proposal-card.ts";
 import { DECIDES_REPLY_CHIP, RUNS_AS_YOU, runsAsYou } from "./version-card.ts";
 
 // EVERY RIGHT HAS A LINE ON THE CARD (the first full trick run, 2026-11-16, decision 1). A trick with
@@ -66,5 +66,33 @@ describe("the honest line", () => {
     const noProgram: TrickManifest = rest;
     expect(runsAsYou(noProgram)).toEqual([]);
     expect(runsAsYou(undefined)).toEqual([]);
+  });
+});
+
+// SECURITY READ 2, ITEM 1: a proposal never offers a yes over rights the card cannot show. Both proposal
+// cards refuse the proposal (`card_too_large`) when the facts do not fit one view; eight watch paths at the
+// cap always fit.
+describe("rights that do not fit a card", () => {
+  const wide = "𝔀";
+  const tooMuch: Partial<TrickManifest> = {
+    env: Array.from({ length: 32 }, (_, i) => `TOKEN_${String(i).padStart(2, "0")}_${"X".repeat(55)}`),
+    watch: Array.from({ length: WATCH_MAX }, (_, i) => `/home/dev/${String(i)}${wide.repeat(WATCH_PATH_MAX - 11)}`),
+  };
+  const atCap = Array.from({ length: WATCH_MAX }, (_, i) => `/home/dev/${String(i)}${"w".repeat(WATCH_PATH_MAX - 11)}`);
+  const diff = addedDiff([{ rel: "program.ts", bytes: enc("console.log(1);\n") }]);
+
+  test("a new trick: eight paths at the cap all show; past the view the proposal is refused", () => {
+    const words = JSON.stringify(cardOf({ ...BARE, watch: atCap }).view);
+    for (const path of atCap) expect(words).toContain(path);
+    expect(proposalCard({ id: "legs", manifest: { ...BARE, ...tooMuch }, proposer: WHO, diff, warnings: [], crew: false })).toEqual({ ok: false, code: "card_too_large", error: PROPOSAL_TOO_LARGE });
+  });
+
+  test("a new version: eight paths at the cap all show with Use; past the view the proposal is refused, so no Use", () => {
+    const fits = proposalVersionCard({ id: "legs", manifest: { ...BARE, watch: atCap }, baseManifest: BARE, proposer: WHO, diff, warnings: [], crew: false });
+    if (!fits.ok) throw new Error(fits.error);
+    const words = JSON.stringify(fits.card.view ?? fits.card.group);
+    for (const path of atCap) expect(words).toContain(path);
+    expect(fits.card.options?.map((option) => option.intent)).toEqual(["on", "later"]);
+    expect(proposalVersionCard({ id: "legs", manifest: { ...BARE, ...tooMuch }, baseManifest: BARE, proposer: WHO, diff, warnings: [], crew: false })).toEqual({ ok: false, code: "card_too_large", error: PROPOSAL_TOO_LARGE });
   });
 });

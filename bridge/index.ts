@@ -375,7 +375,8 @@ import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
 import { ApiSocket, apiSocketPath } from "./api/socket.ts";
 import { LOCAL_TIER_RIGHTS } from "./api/operations.ts";
-import { apiTable, narrowWorld, type ApiWorld } from "./api/world.ts";
+import { apiListedPane } from "./api/listed.ts";
+import { apiTable, buildApiWorld } from "./api/world.ts";
 import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
@@ -1978,6 +1979,9 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
     // Peek, never mint (security read 1, item 4): a pane with no token yet publishes nothing. Walky's own
     // tick (`walkyInstanceTimer`, every INSTANCE_TICK_MS) and the snapshot mint every pane's token.
     instanceOf: (session, paneId) => walkyInstances.peek(session, paneId),
+    // Only for panes the local API's `sessions` lists (security read 2, item 4): the one predicate
+    // reads.ts lists by, so no event names a shell pane or a trick session.
+    listed: apiListedPane,
     publish: (input) => {
       eventBus.publish(input);
     },
@@ -4139,20 +4143,18 @@ const localApi =
     ? undefined
     : new ApiSocket({
         socketPath: apiSocketPath(cfg.stateDir),
-        // Exactly the API's world (bridge/api/world.ts): `satisfies` refuses a key the interface lacks, and
-        // `narrowWorld` copies only its keys and wraps the bus down to its two reads.
+        // Exactly the API's world (bridge/api/world.ts `buildApiWorld`): the real services by narrow types;
+        // the builder holds the one literal, `satisfies ApiWorld`, then `narrowWorld`.
         table: apiTable(
-          narrowWorld({
+          buildApiWorld({
             version: () => collieVersion(rootDir),
             machine: () => bridgeId.id,
             // The one filter for real panes (review row 30): no trick session reaches an operation.
             panes: () => registry.all().flatMap((rt) => realAgentPanes(rt.engine.current().agents).map((pane) => ({ muxSession: rt.name, pane }))),
-            // Peek, never mint: a pane with no token is left out of `sessions`.
-            instanceOf: (muxSession, paneId) => walkyInstances.peek(muxSession, paneId),
-            bus: { since: (cursor) => eventBus.since(cursor), waitFor: (after, ms, signal) => eventBus.waitFor(after, ms, signal) },
-            paneAccount: (muxSession, pane) => accounts.paneAccount(muxSession, pane),
-            accountsBody: () => accounts.body(),
-            draftState: (muxSession, paneId) => insideHub?.draftOf({ session: muxSession, paneId }) ?? null,
+            instances: walkyInstances,
+            bus: eventBus,
+            accounts,
+            inside: insideHub,
             // The phone's own read of a pane (server.ts `readPane`): same request shape, same hint.
             readScreen: async (muxSession, paneId, lines) => {
               const rt = registry.all().find((candidate) => candidate.name === muxSession);
@@ -4160,11 +4162,9 @@ const localApi =
               const grid = await rt.herdr.readGrid(paneId, recentRead(lines, paneReadHint(rt.engine, paneId)));
               return grid.ok ? { ok: true, text: grid.value.text, truncated: grid.value.truncated } : { ok: false };
             },
-            // The Hill's list: an agent card's sender label is NOT read from it (reads.ts builds it with
-            // `labelOf` from the pane), so its `named()` rename never reaches an answer.
-            hillOpen: () => hill.list().open,
+            hill,
             defaultLines: cfg.readLines,
-          } satisfies ApiWorld),
+          }),
         ),
         granted: LOCAL_TIER_RIGHTS,
         platform: HOST.platform,

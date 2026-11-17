@@ -1248,7 +1248,7 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 | `name` | text | yes | at most 40 characters | 1 | The name a person reads on the row. |
 | `run` | text | yes, unless the trick is only an agent view | at most 1024 characters | 1 | What Collie runs: a TypeScript file in the folder ("program.ts"), or a shell command line. An agent view alone has none. |
 | `every` | duration | no | 5s to 24h, one whole number and `s`, `m` or `h`, such as `30s` or `5m` | 1 | How often it runs on its timer. Left out, it runs at start and on taps only. |
-| `watch` | list of paths | no | at most 8 paths of at most 1024 characters, each an absolute path, or a path under the home folder written with a leading tilde | 1 | Run when one of these files changes. A right: the card names the paths. See [When a trick reacts](#when-a-trick-reacts). |
+| `watch` | list of paths | no | at most 8 paths of at most 256 characters, each an absolute path, or a path under the home folder written with a leading tilde | 1 | Run when one of these files changes. A right: the card names the paths. See [When a trick reacts](#when-a-trick-reacts). |
 | `on` | list of words | no | `session.status`, `turn.end`, `ask.open` | 1 | Run when a session of an agent changes in one of these ways. A right: the card says it. See [When a trick reacts](#when-a-trick-reacts). |
 | `mode` | word | no | `once` or `serve`. Default `once` | 1 | `once` runs once per trigger and prints one document. `serve` is kept for a later Collie. |
 | `contract` | whole number | no | 1 to 999. Default 1. This Collie speaks 1 to 2 | 1 | The contract the trick is written for. Write 2 to read files with `inputs` or to add an agent view. A higher number than this Collie knows is refused with one line. |
@@ -1472,7 +1472,7 @@ The rules of an event run:
 | Delivery | At least once, on this machine only, in no order across sessions. A program must be safe against a repeated event. A crew's lead does not pass its members' events on. |
 | One at a time | A trick runs once at a time and has at most one run waiting. Events that arrive meanwhile fold into that run. Its `trigger` names the newest event, and `count` is how many were folded. |
 | Lost events | When Collie's queue overflows, it adds the events it lost to `count`, because it cannot know their types. |
-| The same road as the timer | A run has the same limits of time and size, the same slots and the same backoff. No run starts for a trick that has not had its start run, that is stopped, or that is backing off after a failure, or on a machine that does not schedule tricks. Collie drops such a request. It never keeps one. |
+| The same road as the timer | A run has the same limits of time and size, the same slots and the same backoff. No run starts for a trick that has not had its start run, that is stopped, or that is backing off after a failure, or on a machine that does not schedule tricks. Collie drops such a request. It never keeps one. A run that already waited when a backoff began keeps waiting, and runs with the next request or after the next tap. |
 | No phone needed | An event run or a file run happens also when no phone is open, so a trick can ask a Decision while you are away. Only the timer waits for a phone: it runs only while a phone has looked in the last 5 minutes. |
 | Spacing | Two runs of one trick that an event or a file started begin at least 10 s apart. A request inside that time is the one waiting run, or folds into it, and starts when the time ends. A tap, an answer to a Decision and a timer run neither wait for it nor count toward it. |
 | Taps first | A tap, or an answer to a Decision, goes before a waiting run of an event or a file. |
@@ -1483,7 +1483,7 @@ The rules of a watched file:
 | --- | --- |
 | Paths | At most 8. Each starts with `/` or `~/`, and `~` is the home folder of the user Collie runs as. |
 | The parent folder | Collie watches the folder of each path and reacts to the file's name, because an editor saves by writing a new file and renaming it over the old one. |
-| Links | Collie resolves each path with `realpath` when the trick switches on and again after every change, so a link that moves to another file moves the watch. `trigger.path` stays as the manifest wrote it. |
+| Links | Collie resolves each path with `realpath` when the trick switches on and again after every change, so a link that moves to another file moves the watch. `trigger.path` stays as the manifest wrote it. The card shows each path as written, so a program of yours can point a link elsewhere after your yes: that gives the trick a run, never the file's contents. |
 | A file that is not there yet | It fires when it appears, if its folder exists. If the folder is missing too, Collie checks that path every 5 s. |
 | Waiting for a burst | A change waits 300 ms after the last change of a burst, and at most 2 s after the first, so a steady stream fires at least that often. One run waits, never a queue. |
 | A trick's own writes | Collie records each file's time, size and inode when a run of the trick ends. A change starts a run only when the file differs from that record, so a trick that writes the file it watches does not loop. A write by someone else that lands during a run is absorbed too: the next change after the run starts the next one. |

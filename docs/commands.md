@@ -184,6 +184,9 @@ the bridge removes the socket and ends every open wait. With tricks off, `collie
 line, `The local API is on while tricks are switched on.`, and exits 3.
 Windows has no such socket and prints the same line.
 
+A bridge that was killed (SIGKILL) leaves its socket file behind until its next start. Until then,
+`collie api` finds nobody answering and prints the same line.
+
 **What it is, in honest words.** It is a convenience for programs of the same Unix user, not a
 wall against them. Such a program can already read every screen and type into every pane through
 the multiplexer, so this socket gives it nothing new. The socket is `api/sock` in the Collie state
@@ -193,6 +196,7 @@ the file mode is the credential.
 
 **It only reads.** It cannot type, answer an ask or change anything. Apart from `read`, which
 returns the screen, an answer holds names and states and never a message or a decision's body.
+One field holds text an agent wrote: the `title` of a card in `hill.list`, cut to 120 characters.
 `read` masks secrets in the screen text, and the mask is best effort. It finds the secret shapes
 Collie knows, and a secret in another shape passes through.
 

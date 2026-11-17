@@ -8,7 +8,7 @@ import type { AgentStatus } from "../types.ts";
 import { WalkyInstances } from "../walky/instances.ts";
 import { EventBus, type LiveEvent } from "./bus.ts";
 import { decodeSessionId } from "./session-id.ts";
-import { attachSessionSource, endsTurn, type TransitionFeed } from "./sources.ts";
+import { attachSessionSource, endsTurn, type TransitionFeed, type TransitionPane } from "./sources.ts";
 
 interface Step {
   readonly from: AgentStatus;
@@ -35,9 +35,9 @@ function stepsOf(key: string): Step[] {
 
 /** A hand-driven engine: the same two feeds the real one offers. */
 class FakeEngine implements TransitionFeed {
-  private readonly transitions = new Set<(agent: { readonly paneId: string }, from: AgentStatus, to: AgentStatus) => void>();
+  private readonly transitions = new Set<(agent: TransitionPane, from: AgentStatus, to: AgentStatus) => void>();
   private readonly removes = new Set<(paneId: string) => void>();
-  onTransition(fn: (agent: { readonly paneId: string }, from: AgentStatus, to: AgentStatus) => void): () => void {
+  onTransition(fn: (agent: TransitionPane, from: AgentStatus, to: AgentStatus) => void): () => void {
     this.transitions.add(fn);
     return () => this.transitions.delete(fn);
   }
@@ -64,6 +64,8 @@ function rig(instanceOf: (muxSession: string, paneId: string) => string | null =
     engine,
     muxSession: "default",
     machine: () => "m_k3x9q2w7ab",
+    // The predicate's own test is bridge/api/listed.test.ts; here every pane is an agent pane.
+    listed: () => true,
     instanceOf,
     publish: (input) => {
       bus.publish(input);
@@ -231,5 +233,7 @@ describe("the source mints no token (security read 1, item 4)", () => {
     const block = index.slice(start, index.indexOf("});", start));
     expect(block).toContain("walkyInstances.peek(");
     expect(block).not.toContain("tokenOf");
+    // Security read 2, item 4: the one predicate `sessions` lists by.
+    expect(block).toContain("listed: apiListedPane");
   });
 });

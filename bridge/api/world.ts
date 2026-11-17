@@ -5,16 +5,22 @@
 //
 // WHY ONE TYPE. The claim "no operation can reach code that answers an ask" rests on two things, both held
 // by ask-reach.test.ts:
-//  (a) this narrow type, which bridge/index.ts builds an object of exactly (`satisfies ApiWorld`, then
-//      {@link narrowWorld}, which copies exactly {@link API_WORLD_KEYS} and wraps the bus down to its two
-//      reads, so not even a method the object carried at run time reaches an operation), and a key test
-//      that the key list and the interface agree both ways;
+//  (a) this narrow type, which {@link buildApiWorld} builds an object of exactly (`satisfies ApiWorld`,
+//      then {@link narrowWorld}, which copies exactly {@link API_WORLD_KEYS} and wraps the bus down to its
+//      two reads, so not even a method the object carried at run time reaches an operation), and a key
+//      test that the key list and the interface agree both ways. bridge/index.ts passes the real services
+//      to that builder by narrow types (security read 2, item 5), so a test runs the very same literal
+//      against a real HillService and a real WalkyInstances;
 //  (b) a behaviour test that runs every operation of the table against a world whose write methods, on the
 //      world and on the objects it hands out, all throw, and asserts none was called.
-// The import walk stays beside them: it holds that no module of bridge/api/ imports a writer.
+// The walk over the imports stays beside them: it holds that no module of bridge/api/ imports a writer.
 
+import type { Accounts } from "../accounts-routes.ts";
 import type { EventBus } from "../events/bus.ts";
+import type { HillService } from "../hill/service.ts";
+import type { InsideHub } from "../inside/hub.ts";
 import type { AccountsBody, AgentView, PaneAccount } from "../types.ts";
+import type { WalkyInstances } from "../walky/instances.ts";
 import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
 import { buildTable, type OperationTable } from "./operations.ts";
 import { buildReads, type PaneSource, type ScreenRead } from "./reads.ts";
@@ -85,4 +91,54 @@ export function narrowWorld(world: ApiWorld): ApiWorld {
 /** The operation table over one world: `hello`, `events` and the five reads. */
 export function apiTable(world: ApiWorld): OperationTable {
   return buildTable({ version: () => world.version(), bus: world.bus, reads: buildReads(world) });
+}
+
+/**
+ * The real services the world reads, each by the narrowest type its getter needs (security read 2, item
+ * 5). Type-only imports: the walk over the imports (ask-reach.test.ts) does not follow them, so naming a
+ * writer's class here puts none of its code on an operation's path. The object passed may carry every write it has;
+ * {@link buildApiWorld} calls the members named here and nothing else.
+ */
+export interface ApiWorldDeps {
+  /** The Collie version (bridge/version.ts). */
+  readonly version: () => string;
+  /** This bridge's stable id (bridge/bridge-id.ts). */
+  readonly machine: () => string;
+  /** Every real pane of every multiplexer session now, trick sessions left out (`realAgentPanes`, bridge/tricks/panes.ts). */
+  readonly panes: () => readonly PaneSource[];
+  /** The instance tokens: peeked, never minted. */
+  readonly instances: Pick<WalkyInstances, "peek">;
+  /** The event bus: its two reads. */
+  readonly bus: Pick<EventBus, "since" | "waitFor">;
+  /** The accounts: a pane's added account, and the machine's list (only its `accounts` is read). */
+  readonly accounts: Pick<Accounts, "paneAccount"> & { body(): Promise<Pick<AccountsBody, "accounts"> | null> };
+  /** The inside hub, when this bridge has one: a pane's draft word. */
+  readonly inside: Pick<InsideHub, "draftOf"> | null;
+  /** One pane's screen (the phone's own read, built in bridge/index.ts over the multiplexer). */
+  readonly readScreen: ApiWorld["readScreen"];
+  /** The Hill: its list. */
+  readonly hill: Pick<HillService, "list">;
+  /** `COLLIE_READ_LINES`. */
+  readonly defaultLines: number;
+}
+
+/** The API's world over the real services: the one literal, narrowed. bridge/index.ts builds the table from it. */
+export function buildApiWorld(deps: ApiWorldDeps): ApiWorld {
+  return narrowWorld({
+    version: () => deps.version(),
+    machine: () => deps.machine(),
+    // The one filter for real panes (review row 30) is applied by the caller: no trick session reaches an operation.
+    panes: () => deps.panes(),
+    // Peek, never mint: a pane with no token is left out of `sessions`.
+    instanceOf: (muxSession, paneId) => deps.instances.peek(muxSession, paneId),
+    bus: { since: (cursor) => deps.bus.since(cursor), waitFor: (after, ms, signal) => deps.bus.waitFor(after, ms, signal) },
+    paneAccount: (muxSession, pane) => deps.accounts.paneAccount(muxSession, pane),
+    accountsBody: () => deps.accounts.body(),
+    draftState: (muxSession, paneId) => deps.inside?.draftOf({ session: muxSession, paneId }) ?? null,
+    readScreen: (muxSession, paneId, lines) => deps.readScreen(muxSession, paneId, lines),
+    // The Hill's list: an agent card's sender label is NOT read from it (reads.ts builds it with `labelOf`
+    // from the pane), so its `named()` rename never reaches an answer.
+    hillOpen: () => deps.hill.list().open,
+    defaultLines: deps.defaultLines,
+  } satisfies ApiWorld);
 }

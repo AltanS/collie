@@ -48,7 +48,8 @@
 // caller has drained the socket below the budget. A connection that stays above the budget for 10 s is
 // dropped. What one connection can hold is therefore the budget plus the answers of the at most 8
 // requests already in flight when it paused (each at most 1 MiB, and at most 4 screen reads on the whole
-// socket), and only for 10 s.
+// socket), and only for 10 s. All 32 connections together can so hold about 115 MB for 10 s. Only a
+// program of the same user can do that, and it is accepted (security read 2).
 
 import { once } from "node:events";
 import { chmodSync, lstatSync, mkdirSync, unlinkSync, type Stats } from "node:fs";

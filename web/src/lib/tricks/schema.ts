@@ -167,7 +167,7 @@ export const IMAGE_SIDE_MAX = 4096;
 /** The manifest's `run` command line. */
 export const RUN_MAX = 1024;
 /** One `watch` path in the manifest, and the number of them. */
-export const WATCH_PATH_MAX = 1024;
+export const WATCH_PATH_MAX = 256;
 export const WATCH_MAX = 8;
 /** Bytes of a facts string the bridge copies from the snapshot (a name, a tab, a cwd). */
 export const FACT_TEXT_MAX_BYTES = 4096;

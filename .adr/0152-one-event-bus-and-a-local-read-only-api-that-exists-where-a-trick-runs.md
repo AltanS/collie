@@ -45,7 +45,8 @@ paired device, and a Unix user can already read every screen through the multipl
 6. **The honest words.** The local API is a convenience for programs of the same Unix user, not a
    wall against them: they can already read and type through the multiplexer. It is closed to other
    users, other machines and browser pages, and it carries no token, as the file mode is the
-   credential. The docs and the code headers say this and nothing stronger.
+   credential. The docs and the code headers say this and nothing stronger. One answer carries
+   text an agent wrote: `hill.list` gives each card's title, cut to 120 characters.
 7. **Session ids are opaque.** An id holds the machine and the pane's instance token and is copied
    from `sessions`. No operation takes a bare pane id. An id whose pane now holds another session is
    `session_replaced`, once Collie has seen the pane gone. The token is dropped only after the pane

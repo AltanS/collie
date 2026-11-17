@@ -54,7 +54,12 @@ import { rulesChange, rulesDiffRows } from "./rules-diff.ts";
 // masked in it, and git's output not cut. Collie recommends `use` only when every changed file is
 // shown, the rights did not change and a text search finds nothing new. Otherwise the summary says how
 // much is shown ("1 of 3 files shown."), and a card with no view at all says "The change is too large
-// to show here. Read it on the machine before you say yes." A file name is cleaned for the view (a
+// to show here. Read it on the machine before you say yes."
+//
+// EVERY NEW RIGHT SHOWS, OR THERE IS NO "USE" (security read 2, item 1). When the new rights, the inputs
+// sentence, the new instructions and the warnings do not fit one view together, the card offers "Keep"
+// only, its view is the honest line, and its summary says the new version asks for more than the card can
+// show and to read it on the machine (`collie trick check`). A file name is cleaned for the view (a
 // character the view refuses becomes `?`); the walk refuses such names anyway (code-hash.ts).
 //
 // A LINE THE MASK CHANGED IS COUNTED AND NAMED. A file with lines the mask changed (a key, or a hidden
@@ -231,6 +236,20 @@ export function filesSentence(count: number): string {
 /** The summary's sentence for a card whose view could not be made at all. */
 export const VERSION_NOT_SHOWN = "The change is too large to show here. Read it on the machine before you say yes.";
 
+/**
+ * The summary's sentence for a card that cannot show every new right (security read 2, item 1). Such a card
+ * offers "Keep" only: the version is read and taken on the machine.
+ */
+export const VERSION_TOO_MUCH_START = "The new version asks for more than this card can show.";
+export function versionTooMuch(id: string): string {
+  return `${VERSION_TOO_MUCH_START} Read it on the machine with collie trick check, then take it there with collie trick on ${id}.`;
+}
+
+/** Whether a list of nodes fits one Decision's view whole, as the schema reads it back. */
+function fitsWhole(nodes: readonly ViewNode[]): boolean {
+  return bytesOf([...nodes]) <= DECISION_VIEW_LIMITS.bytes && checked([...nodes]) !== undefined;
+}
+
 /** "1 of 3 files shown." */
 export function shownSentence(shown: number, total: number): string {
   return `${String(shown)} of ${String(total)} ${total === 1 ? "file" : "files"} shown.`;
@@ -277,13 +296,29 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   // rules fallbacks below.
   const honest = runsAsYou(next);
   const facts = [...honest, ...plainFacts];
+  // Every new right and power shows, or there is no "Use" (security read 2, item 1): when the facts do not
+  // fit one view, the card offers "Keep" only, its view is the honest line, and its summary sends the person
+  // to the machine. The same holds for every right the head lists: environment names, places, `decides`,
+  // `on`, `watch`, the `inputs` sentence, new instructions and the warnings.
+  const somethingNew = rights.length > 0 || newRules || viewNew || reads.length > 0 || warnings.length > 0;
+  if (somethingNew && !fitsWhole(facts)) {
+    const tooMuch: Omit<HillPostInput, "requestId"> = {
+      title: versionTitle(subject.name),
+      summary: `${filesSentence(fileCount)} ${versionTooMuch(subject.id)}`,
+      options: [{ intent: "keep", label: "Keep the old version" }],
+      text: "none",
+      priority: "today",
+      recommends: null,
+    };
+    return honest.length > 0 ? { ...tooMuch, view: honest } : tooMuch;
+  }
   const oneHead = [...facts, ...rulesNodes];
   const rulesFit = rules === null || (oneHead.length <= VIEW_LIMITS.root.max && bytesOf(oneHead) <= DECISION_VIEW_LIMITS.bytes && checked(oneHead) !== undefined);
   // The view is what the person reads before the yes: how much of the change it holds decides the rest.
   // It is fitted twice. Without the honest line, as before it existed: when that fit is no view, the
   // change is "not shown". With the line first, for the view itself, so its bytes count. The honest line
-  // is never left out: when no view fits, the card's view is the line alone and the summary says to read
-  // the change on the machine.
+  // is never left out: when no view fits (the guard above has made sure the facts do), the card's view is
+  // the line alone and the summary says to read the change on the machine.
   const bare = rulesFit ? fitView([...plainFacts, ...rulesNodes], code) : fitView([...plainFacts, rulesNote(1)], code);
   const withLine = rulesFit ? fitView(oneHead, code) : fitView([...facts, rulesNote(1)], code);
   const notShown = bare.view === null || withLine.view === null;
@@ -292,8 +327,10 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   const total = Math.max(fileCount, diff.files.length);
   const whole = !notShown && shownFiles >= total;
   const tail = notShown ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shownFiles, total)}`;
-  // A long list of new rights is cut to its gist so the summary stays within the Hill's cap; the view lists every one.
-  const short = rights.length > 0 || newRules ? "It asks for new rights, listed below." : "It does something new, listed below.";
+  // A long list of new rights is cut to its gist so the summary stays within the Hill's cap; the view lists
+  // every one (the guard above). "listed below" only when the head lists something.
+  const listed = plainFacts.length > 0;
+  const short = rights.length > 0 || newRules ? (listed ? "It asks for new rights, listed below." : "It asks for new rights.") : listed ? "It does something new, listed below." : "It does something new.";
   const full = `${filesSentence(fileCount)} ${fact}${tail}`;
   const summary = [...full].length <= HILL_SUMMARY_MAX ? full : `${filesSentence(fileCount)} ${short}${tail}`;
   const options: HillPostInput["options"] = [{ intent: "use", label: "Use the new version" }];

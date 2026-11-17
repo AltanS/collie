@@ -1691,10 +1691,15 @@ export class TricksService implements TricksSurface {
     return this.reactions.counts();
   }
 
-  /** The waiting event or file request of a trick that runs nothing, after every tap and Hill answer. */
+  /**
+   * The waiting event or file request of a trick that runs nothing, after every tap and Hill answer. Admit
+   * is asked first, then the request is taken (security read 2, item 2): a refused admit (a backoff, say)
+   * leaves the waiting request and the floor as they were, so the next pump still finds it.
+   */
   private pumpReaction(rt: TrickRuntime): void {
+    if (this.reactAdmit(rt.found.id) !== "now") return;
     const waiting = this.reactions.takeWaiting(rt.found.id);
-    if (waiting !== null && this.reactAdmit(rt.found.id) === "now") void this.begin(rt, waiting, null);
+    if (waiting !== null) void this.begin(rt, waiting, null);
   }
 
   /** Tell triggers.ts which tricks react now: on, runnable, with a program, on a bridge that schedules. */

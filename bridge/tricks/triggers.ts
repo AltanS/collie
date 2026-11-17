@@ -304,6 +304,14 @@ export class TrickReactions {
       if (verdict === "drop") return;
       if (verdict === "now") {
         const left = this.floorLeft(id);
+        // A request that already waits (it outlived a backoff: service.ts `pumpReaction` asks admit
+        // before it takes) folds with this one into ONE run, which names the newest.
+        if (left === 0 && this.hasWaiting(id)) {
+          this.fold(id, trigger);
+          const folded = this.takeWaiting(id);
+          if (folded !== null) this.host.start(id, folded);
+          return;
+        }
         if (left === 0) {
           this.lastStart.set(id, this.now());
           this.host.start(id, trigger);

@@ -32,6 +32,10 @@
 // does the snapshot; so a pane's events flow from its first tick on, and a transition in the first
 // seconds of a new pane's life, before any token, is not published.
 //
+// ONLY THE PANES `sessions` LISTS (security read 2, item 4). A transition of a pane the local API would
+// not list (a bare shell; a trick session never reaches an engine anyway) publishes nothing. The test is
+// the predicate `sessions` uses, injected as `listed`, beside the token check below.
+//
 // The source never throws into the engine's poll: the engine calls its listeners inline, so a failure
 // here is caught and the event is skipped.
 
@@ -39,9 +43,15 @@ import type { AgentStatus } from "../types.ts";
 import type { PublishInput, SessionState } from "./bus.ts";
 import { encodeSessionId } from "./session-id.ts";
 
+/** What the source reads of the pane a transition names: its id, and its kind for the `listed` test. */
+export interface TransitionPane {
+  readonly paneId: string;
+  readonly kind?: string;
+}
+
 /** The part of a state engine this source needs: its transition and removal feeds. */
 export interface TransitionFeed {
-  onTransition(fn: (agent: { readonly paneId: string }, from: AgentStatus, to: AgentStatus) => void): () => void;
+  onTransition(fn: (agent: TransitionPane, from: AgentStatus, to: AgentStatus) => void): () => void;
   onRemove(fn: (paneId: string) => void): () => void;
 }
 
@@ -52,6 +62,12 @@ export interface SessionSourceOptions {
   readonly muxSession: string;
   /** This bridge's stable id (bridge/bridge-id.ts). */
   readonly machine: () => string;
+  /**
+   * Whether the local API's `sessions` would list this pane (security read 2, item 4): bridge/index.ts
+   * passes the one predicate `apiListedPane` (bridge/api/listed.ts), which this folder may not import. A
+   * shell pane or a trick session publishes nothing, so no event names an id `sessions` never lists.
+   */
+  readonly listed: (pane: TransitionPane) => boolean;
   /** The pane's WalkyTalky instance token, or null when it has none. Must mint nothing (`WalkyInstances.peek`). */
   readonly instanceOf: (muxSession: string, paneId: string) => string | null;
   /** Where the events go: the bus's `publish`. */
@@ -86,6 +102,7 @@ export function attachSessionSource(opts: SessionSourceOptions): () => void {
     try {
       const paneId = agent.paneId;
       if (to === "working") ended.delete(paneId);
+      if (!opts.listed(agent)) return;
       const instance = opts.instanceOf(opts.muxSession, paneId);
       if (instance === null) return;
       const session = encodeSessionId({ machine: opts.machine(), paneId, instance });

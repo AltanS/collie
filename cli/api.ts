@@ -38,7 +38,8 @@ import { AskLate } from "./walky.ts";
 //   1  EXIT.FAIL     the bridge answered `api.failed`, did not answer in time, or sent an answer that
 //                    is not one JSON line
 // With `--json` the answer line is printed to stdout as the bridge sent it, an error answer too, and the
-// exit code is the same.
+// exit code is the same. Only DEL and the C1 characters are written as `\u00XX` (`escapeC1`): the same
+// JSON value, and nothing that moves the person's terminal.
 //
 // THE PLAIN PRINT is generic over the answer. A scalar is `key: value`; a nested object is flattened to
 // `a.b: value`; a list of objects is a heading, then aligned columns (one per flattened key); a list of
@@ -158,6 +159,16 @@ function clean(text: string): string {
     out += control ? "?" : char;
   }
   return out;
+}
+
+/**
+ * The answer line for `--json` with DEL (U+007F) and every C1 character (U+0080 to U+009F) written as
+ * `\u00XX` (security read 2, item 3). A JSON line holds such a character only inside a string, where the
+ * escape is the same value, so the line stays valid JSON and reads back the same; a terminal never sees
+ * a raw CSI (U+009B). A C0 character cannot be raw in a JSON string: the parse above refused it.
+ */
+export function escapeC1(line: string): string {
+  return line.replace(/[\u007f-\u009f]/gu, (char) => `\\u${(char.codePointAt(0) ?? 0).toString(16).padStart(4, "0")}`);
 }
 
 function cell(value: JsonValue | undefined): string {
@@ -283,7 +294,7 @@ export async function cmdApi(deps: ApiDeps, argv: readonly string[]): Promise<nu
   const code = asJsonString(error?.code);
   const exit = ok ? EXIT.OK : code === "api.failed" ? EXIT.FAIL : EXIT.REFUSED;
   if (parsed.json) {
-    deps.io.out(line);
+    deps.io.out(escapeC1(line));
     return exit;
   }
   if (ok) {

@@ -51,6 +51,7 @@ import { personName } from "../pane-name.ts";
 import type { AccountRow, AgentStatus, AgentView } from "../types.ts";
 import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
 import { idOf, resolveSession, type PaneSighting, type SessionView } from "./ids.ts";
+import { apiListedPane } from "./listed.ts";
 import type { OpResult, ReadHandlers } from "./operations.ts";
 import type { ApiWorld } from "./world.ts";
 
@@ -118,13 +119,14 @@ function fnv1a(text: string): number {
 }
 
 /**
- * The agent panes of a list, by an allow-list: a pane of kind `agent` (or of no kind, as older panes
- * report), so a bare shell and any kind added later are left out. A trick's own session is not even in the
- * list: the world hands its panes over through `realAgentPanes` (bridge/tricks/panes.ts, the one filter of
- * review row 30) in bridge/index.ts, since bridge/api/ may not import bridge/tricks/ (events/seam.test.ts).
+ * The agent panes of a list, by the one predicate {@link apiListedPane} (listed.ts): a pane of kind `agent`
+ * (or of no kind, as older panes report), so a bare shell and any kind added later are left out. The bus
+ * source publishes for the same panes only. A trick's own session is not even in the list: the world hands
+ * its panes over through `realAgentPanes` (bridge/tricks/panes.ts, the one filter of review row 30) in
+ * bridge/index.ts, since bridge/api/ may not import bridge/tricks/ (events/seam.test.ts).
  */
 function agentPanesOf(sources: readonly PaneSource[]): PaneSource[] {
-  return sources.filter((source) => source.pane.kind === undefined || source.pane.kind === "agent");
+  return sources.filter((source) => apiListedPane(source.pane));
 }
 
 interface SessionRow {

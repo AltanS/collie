@@ -544,6 +544,69 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     r.service.stop();
   });
 
+  test("security read 2, item 2: a waiting event survives a run end where admit says no, and runs once admit says yes", async () => {
+    let release: () => void = () => {};
+    const slowFail: Scripted = {
+      later: () =>
+        new Promise((resolve) => {
+          release = () => resolve(FAIL);
+        }),
+    };
+    const r = await onRig([OK, slowFail, OK]);
+    r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
+    await tick(30);
+    expect(kinds(r)).toEqual(["start", "event"]);
+    // Admitted to wait behind the running run.
+    r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
+    await tick(20);
+    expect(r.service.reactionCounts().waiting).toBe(1);
+    // The run fails past the floor: the pump after it meets the backoff, so admit says no. The request stays.
+    r.clock.t = T0 + REACT_FLOOR_MS + 1;
+    release();
+    await tick(60);
+    expect(r.specs.length).toBe(2);
+    expect(r.service.reactionCounts()).toMatchObject({ waiting: 1, timers: 0 });
+    // The backoff ends; the next event is admitted, and it and the waiting one are ONE run, naming the newest.
+    r.clock.t = T0 + 61_000 + REACT_FLOOR_MS;
+    r.bus.publish({ type: "turn.end", session: sessionOf("c:3") });
+    await tick(60);
+    expect(kinds(r)).toEqual(["start", "event", "event"]);
+    expect(factsOf(r.specs[2]).trigger).toEqual({ kind: "event", event: "turn.end", session: scopeOf("c:3"), count: 2 });
+    expect(r.service.reactionCounts().waiting).toBe(0);
+    await tick(60);
+    expect(r.specs.length).toBe(3);
+    r.service.stop();
+  });
+
+  test("security read 2, item 2: a request that outlived a backoff also runs after a tap, once", async () => {
+    let release: () => void = () => {};
+    const slowFail: Scripted = {
+      later: () =>
+        new Promise((resolve) => {
+          release = () => resolve(FAIL);
+        }),
+    };
+    const r = await onRig([OK, slowFail, exited(belt("drawn")), OK]);
+    r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
+    await tick(30);
+    r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
+    await tick(20);
+    r.clock.t = T0 + REACT_FLOOR_MS + 1;
+    release();
+    await tick(60);
+    expect(r.service.reactionCounts().waiting).toBe(1);
+    // A tap clears the backoff and runs; at its end the waiting event runs, as it was.
+    r.clock.t = T0 + 61_000 + REACT_FLOOR_MS;
+    const rev = (await r.service.reply(undefined)).parts.find((p) => p.part === "belt")?.rev ?? 0;
+    const tap = await r.service.tap(HOST, "react", { rid: "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5", node: "belt", intent: "x", rev });
+    expect(tap.status).toBe(200);
+    await tick(60);
+    expect(kinds(r)).toEqual(["start", "event", "tap", "event"]);
+    expect(factsOf(r.specs[3]).trigger).toEqual({ kind: "event", event: "turn.end", session: scopeOf("b:2"), count: 1 });
+    expect(r.service.reactionCounts().waiting).toBe(0);
+    r.service.stop();
+  });
+
   test("a stopped trick takes no event, however long it waits", async () => {
     const r = await onRig([OK, FAIL]);
     const waits = [0, 61_000, 361_000, 2_161_000];

@@ -17,7 +17,9 @@
 //  3. THE TABLE IS READ ONLY. Every row is a `read` that needs `look`, and the local tier grants `look`.
 //  4. THE KEYS. `API_WORLD_KEYS` and the interface agree both ways (the compiler), `narrowWorld` keeps
 //     exactly those keys and a bus of two reads (at run time), and bridge/index.ts builds the table only
-//     through `apiTable(narrowWorld({ ... } satisfies ApiWorld))`.
+//     through `apiTable(buildApiWorld({ ... }))`, whose one literal is `narrowWorld({ ... } satisfies
+//     ApiWorld)` (world.ts). world-build.test.ts runs that builder over a real HillService and a real
+//     WalkyInstances (security read 2, item 5).
 //  5. THE SPIES. Every operation of the table runs, with valid arguments, against a world whose every
 //     member is a spy, carrying extra write methods (typing, answering, start, stop, close, settings, a
 //     Hill answer, mark seen) on itself and on the objects it hands out; each write throws, none is called.
@@ -220,16 +222,20 @@ describe("the keys: the operations hold exactly the world's interface", () => {
     expect("publish" in narrow.bus).toBe(false);
   });
 
-  test("bridge/index.ts builds the table only through apiTable(narrowWorld({ ... } satisfies ApiWorld))", () => {
+  test("bridge/index.ts builds the table only through apiTable(buildApiWorld({ ... })), and the builder narrows its one literal", () => {
     const index = readFileSync(join(BRIDGE, "index.ts"), "utf8");
-    expect(index).not.toMatch(/\bbuildTable\(|\bbuildReads\(/u);
+    expect(index).not.toMatch(/\bbuildTable\(|\bbuildReads\(|\bnarrowWorld\(/u);
     const start = index.indexOf("table: apiTable(");
     expect(start).toBeGreaterThan(-1);
     const block = index.slice(start, index.indexOf("granted: LOCAL_TIER_RIGHTS", start));
-    expect(block).toMatch(/^table: apiTable\(\s*narrowWorld\(\{/u);
-    expect(block).toMatch(/\} satisfies ApiWorld\),\s*\),\s*$/u);
+    expect(block).toMatch(/^table: apiTable\(\s*buildApiWorld\(\{/u);
+    expect(block).toMatch(/\}\),\s*\),\s*$/u);
+    const worldSource = readFileSync(join(BRIDGE, "api", "world.ts"), "utf8");
+    const builder = worldSource.slice(worldSource.indexOf("export function buildApiWorld("));
+    expect(builder).toMatch(/^export function buildApiWorld\(deps: ApiWorldDeps\): ApiWorld \{\s*return narrowWorld\(\{/u);
+    expect(builder).toContain("} satisfies ApiWorld);");
     // The bus goes in as its two reads, never the bus itself.
-    expect(block).toContain("bus: { since: (cursor) => eventBus.since(cursor), waitFor: (after, ms, signal) => eventBus.waitFor(after, ms, signal) }");
+    expect(builder).toContain("bus: { since: (cursor) => deps.bus.since(cursor), waitFor: (after, ms, signal) => deps.bus.waitFor(after, ms, signal) }");
   });
 });
 

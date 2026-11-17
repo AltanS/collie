@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { apiSocketPath } from "../bridge/api/socket.ts";
 import { DECLARED, OPERATION_NAMES } from "../bridge/api/operations.ts";
 import { asJsonObject, parseJsonObject } from "../web/src/lib/json.ts";
-import { apiHelp, API_ASK_MS, API_WAIT_ASK_MS, cmdApi, declaredOperations, flagOf, NO_LOCAL_API, parseFlags, plainLines, type ApiDeps, type CliOperation } from "./api.ts";
+import { apiHelp, API_ASK_MS, API_WAIT_ASK_MS, cmdApi, declaredOperations, escapeC1, flagOf, NO_LOCAL_API, parseFlags, plainLines, type ApiDeps, type CliOperation } from "./api.ts";
 import { capture } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { run } from "./program.ts";
@@ -232,6 +232,21 @@ describe("a scratch socket answering", () => {
     expect(served.requests).toEqual([JSON.stringify({ id: "req-1", op: "sessions", args: {} })]);
     expect(d.io.stdout).toEqual([line]);
     expect(d.io.stderr).toEqual([]);
+  });
+
+  test("security read 2, item 3: with --json, DEL and C1 (a raw CSI) print as \\u00XX, and the line reads back the same value", async () => {
+    const dir = stateDir();
+    const hostile = { ...SESSIONS, sessions: [{ ...SESSIONS.sessions[0], label: "lodge\u009b31m\u007fx\u0080\u009f" }] };
+    const line = JSON.stringify(hostile);
+    expect(line).toContain("\u009b");
+    await serve(dir, () => line);
+    const d = deps(dir);
+    expect(await cmdApi(d, ["sessions", "--json"])).toBe(EXIT.OK);
+    const printed = d.io.stdout[0] ?? "";
+    expect(printed).toContain(String.raw`lodge\u009b31m\u007fx\u0080\u009f`);
+    expect(/[\u007f-\u009f]/u.test(printed)).toBe(false);
+    expect(parseJsonObject(printed)).toEqual(hostile);
+    expect(escapeC1('{"a":"plain é"}')).toBe('{"a":"plain é"}');
   });
 
   test("without --json, a list of objects prints as aligned columns and a missing cell as a dash", async () => {
