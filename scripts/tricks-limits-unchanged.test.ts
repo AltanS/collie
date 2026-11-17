@@ -65,6 +65,13 @@ const PINNED: ReadonlyArray<readonly [name: string, value: unknown, was: string]
   ["FIELD_OPTION_MAX", 40, "web/src/lib/tricks/limits.ts"],
   ["FIELD_NUMBER_ABS_MAX", 999_999_999, "web/src/lib/tricks/limits.ts"],
   ["VALUE_WRITES_SEEN_MAX", 256, "bridge/tricks/values.ts"],
+  // a repository's index (new in limits.ts, 2026-11-17; the reader of bridge/tricks/repo-index.ts and the phone's copy share them)
+  ["REPO_INDEX_CONTRACT", 1, "web/src/lib/tricks/limits.ts"],
+  ["REPO_INDEX_BYTES_MAX", 32_768, "web/src/lib/tricks/limits.ts"],
+  ["REPO_INDEX_TRICKS_MAX", 50, "web/src/lib/tricks/limits.ts"],
+  ["REPO_INDEX_NAME_MAX", 40, "web/src/lib/tricks/limits.ts"],
+  ["REPO_INDEX_ABOUT_MAX", 160, "web/src/lib/tricks/limits.ts"],
+  ["REPO_INDEX_TIMEOUT_MS", 120_000, "web/src/lib/tricks/limits.ts"],
   // bridge/hill/service.ts
   ["HILL_DEFAULT_EXPIRY_DAYS", 14, "bridge/hill/service.ts"],
   ["HILL_DEFAULT_EXPIRY_MS", 14 * DAY_MS, "bridge/hill/service.ts"],

@@ -1,5 +1,5 @@
-import type { ComponentProps } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState, type ComponentProps } from "react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -25,6 +25,9 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
+/** Turns the launch on or off for the composer `renderComposer` drew: a start begins after the person typed. */
+let setStarting: (on: boolean) => void = () => undefined;
+
 function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
   const props: ComponentProps<typeof Composer> = {
     paneId: "w1:p1",
@@ -41,7 +44,12 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     onSent: vi.fn(),
     ...overrides,
   };
-  const router = createMemoryRouter([{ path: "/", element: <Composer {...props} /> }]);
+  function Harness() {
+    const [starting, setStartingState] = useState(props.starting ?? false);
+    setStarting = (on) => act(() => setStartingState(on));
+    return <Composer {...props} starting={starting} />;
+  }
+  const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
   render(<RouterProvider router={router} />);
   return props;
 }
@@ -303,8 +311,14 @@ describe("Steer or queue on the Send button (M69)", () => {
   it("a launch still starting offers neither Send nor its steer menu, and keeps the draft", async () => {
     const user = userEvent.setup();
     const { sends } = bridge([]);
-    renderSteer({ starting: true, surface: running, canSteer: true });
-    await openMenu(user, "wait for startup");
+    renderSteer({ surface: running, canSteer: true });
+    // The draft is typed before the start. While the launch starts the box is off (Altan, 2026-11-17), so a draft
+    // can only be there already; it stays in the box and nothing offers a send.
+    await user.type(field(), "wait for startup");
+    setStarting(true);
+    expect(field()).toBeDisabled();
+    expect(field()).toHaveAttribute("placeholder", "Starting…");
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
     expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.queryByRole("button", { name: STEER })).toBeNull();
     expect(screen.queryByRole("button", { name: "Send as message" })).toBeNull();

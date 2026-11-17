@@ -116,19 +116,22 @@ function baseProps(
   };
 }
 
+/** Turns the launch on or off for the composer `renderComposer` drew: a start can begin during a clip. */
+let setStarting: (on: boolean) => void = () => undefined;
+
 function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
   const props = baseProps(overrides);
-  const router = createMemoryRouter([
-    {
-      path: "/",
-      element: (
-        <>
-          <StatusSentinel />
-          <Composer {...props} />
-        </>
-      ),
-    },
-  ]);
+  function Harness() {
+    const [starting, setStartingState] = useState(props.starting ?? false);
+    setStarting = (on) => act(() => setStartingState(on));
+    return (
+      <>
+        <StatusSentinel />
+        <Composer {...props} starting={starting} />
+      </>
+    );
+  }
+  const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
   render(<RouterProvider router={router} />);
   return props;
 }
@@ -358,11 +361,15 @@ describe("Composer — hands-free", () => {
     setHandsFreeEnabled(true);
     const sent = vi.fn();
     server.use(configHandler(CONFIG_WITH_STT), sttHandler("wait for the first screen"), ...replyHandler(sent));
-    renderComposer({ starting: true });
+    renderComposer();
+    // The box is off while a launch starts (Altan, 2026-11-17), and so is the microphone, so no clip can begin
+    // then. A clip already running when the start begins still ends in a draft and never in a send.
     const recorder = await startRecording(user);
+    setStarting(true);
     expect(screen.queryByRole("button", { name: /transcribe and send/i })).toBeNull();
     act(() => recorder.finish());
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("wait for the first screen"));
+    expect(screen.getByRole("textbox")).toBeDisabled();
     expect(sent).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /^Send$/ })).toHaveAttribute("aria-disabled", "true");
   });

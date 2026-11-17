@@ -14,12 +14,12 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 529 in all, each one named, with its reason:
-#              bridge 312: 174 from before 1.29.0 and 138 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
-#                adapters 10, then Accounts 45, then 11 more of the data path for a dropped or failed data send and a shadowed part, then 1 for the pane's program environment read of pi (#793); see below). Of the 174, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 6 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
+#              Today, 541 in all, each one named, with its reason:
+#              bridge 317: 174 from before 1.29.0 and 143 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
+#                adapters 10, then Accounts 47, then 11 more of the data path for a dropped or failed data send and a shadowed part, then 1 for the pane's program environment read of pi (#793); see below). Of the 174, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 6 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
-#                worktree (see "The fake git of a new worktree, bridge" below). 42 are the Hill and the tricks (see
+#                worktree (see "The fake git of a new worktree, bridge" below). 45 are the Hill and the tricks (see
 #                "The Hill and the tricks, bridge" below).
 #                2 are "createPaneVersion — a harness off the login PATH" in pane-binary.test.ts (the test and its
 #                describe): the off-PATH agent is a `#!/bin/sh` script, which Windows cannot run.
@@ -101,7 +101,7 @@
 #                - "procProbe sees a live process's executable and folder" (pane-binary.test.ts, off Linux: it reads /proc)
 #                - "two copies of one harness" (pane-binary.test.ts, win32: its fake omp copies are POSIX sh scripts), its one test and
 #                  the hook Bun counts with it. The Windows path of paneBinaryOf runs on Windows with a fake host ("no /proc" tests).
-#                One more, new with the pi pane fix (#793), in the 138 new:
+#                One more, new with the pi pane fix (#793), in the 143 new:
 #                - "procProbe reads a live process's environment, and nothing on another host" (pane-binary.test.ts, off Linux: it reads
 #                  /proc/<pid>/environ of a live `sleep`, and Windows has neither /proc nor `sleep`; the parse of that file, `envFromEnviron`,
 #                  and the other-host answer run on Windows in the tests beside it)
@@ -131,7 +131,7 @@
 #                - "a symlink is never followed: not to a file outside, not through a folder outside" (tricks/inputs.test.ts)
 #                - "a symlink the program planted is never written through, nor read as a kept file" (tricks/inputs.test.ts)
 #                - "a FIFO as trick.toml or config.toml is refused and never hangs the scan" (tricks/units.test.ts, mkfifo)
-#                33 are bridge/tricks/official.test.ts, the add from the official list: every test of "adding from the list",
+#                36 are bridge/tricks/official.test.ts, the add from the official list: every test of "adding from the list",
 #                "updating an added trick to the list's commit" and "a git run killed at its time cap", and its 4 `test.if(posix)`
 #                cases. The fixture repository is reached as `file://` plus a temp path, which is no file URL on Windows; its
 #                programs are `#!/bin/sh` with an executable bit; the time cap kills a POSIX process group.
@@ -152,7 +152,7 @@
 #                bridge/mux/herdr/client.test.ts and of bridge/mux/tuios/client.test.ts (5 tests each, M100 spec 03) is `describe.skipIf`
 #                on win32: its stand-in daemon is a `net` server listening on a Unix socket path in a temp folder, which the
 #                Windows client does not dial (it dials a named pipe).
-#              Accounts, bridge (45). Accounts (M101) are OFF on Windows by decision: the route answers 404 there and the app hides
+#              Accounts, bridge (47). Accounts (M101) are OFF on Windows by decision: the route answers 404 there and the app hides
 #                the page. The feature rests on POSIX folder forms (`~/x`, a leading `/`), symlinks and the 0700 mode, and these tests
 #                are written in those forms, so on a Windows path module they fail by their own fixtures. Each is `accountTest`
 #                (bridge/accounts-skip.ts), a skip on win32; the tests of the same files that pass on Windows still run, and the
@@ -160,14 +160,15 @@
 #                - 2 in bridge/account-adapters.test.ts, the default folder and the journal root
 #                - 6 in bridge/account-folder.test.ts, parseFolderPath (2) and checkFolder (4)
 #                - 2 in bridge/account-links.test.ts, planLinks on a fresh default and on a file link
-#                - 27 in bridge/accounts-routes.test.ts, the found folders, the windows of a row, the adds, the remove, the start
+#                - 29 in bridge/accounts-routes.test.ts, the found folders, the windows of a row, the adds, the remove, the start
 #                  line, a pane's account, the server glue, the live journal roots, and 12 of who is signed in (spec 04: the
 #                  status command per account, its environment, the state file rule, the wait, the background refresh, the redaction, Sign in
 #                  again and the sign-in pane), and 2 of Change login (the running sessions per account, none for an unused one)
 #                - 4 in bridge/accounts-store.test.ts, a good row, the duplicate row, the store add and the listener
 #                - 3 in bridge/launch-by-id.test.ts, a launch with an account, and Change login's start on a signed-in account
 #                - 1 in bridge/worktree-from-folder.test.ts, a worktree with an account
-#              cli 182 in all: 14 are new since 1.29.0: 3 of the hold card, 8 of the harness verbs and 3 of the first full trick run (all
+#              cli 189 in all: 21 are new since 1.29.0: 3 of the hold card, 8 of the harness verbs, 3 of the first full trick run, 5 of the
+#                repository index and 2 of the proposal card in the session (all
 #                of the Hill verbs and the tricks), below. The other 168: 21 in the next paragraph, then 3 of the statusLine wrapper, 54 of walky talky, 21 of the agent view,
 #                and 69 of the Hill verbs and the tricks (72 with the 3 above; see "The Hill verbs and the tricks, cli" below). The 18 of
 #                the helper's output, once gated on Windows (b), run on Windows again since the helper v6 (see "The helper's output, cli" below).
@@ -205,9 +206,10 @@
 #                with a private /tmp", also stage from /tmp, which systemd's PrivateTmp hides.
 #                7 are cli/image-stage.test.ts, `linux(...)`: staging a picture is for a bridge under systemd's PrivateTmp,
 #                on Linux only. Its path and pass-through tests run on Windows.
-#                17 are cli/trick-add.test.ts ("collie trick add", "collie trick update", "collie trick remove"): the fixture
+#                22 are cli/trick-add.test.ts ("collie trick add", "collie trick update", "collie trick remove", and the 5 of
+#                "collie trick add <url> with no folder", the repository's index, package J): the fixture
 #                cases build symlinks, exec bits and sh hooks. The source and hardening cases run on Windows.
-#                18 are cli/trick-propose.test.ts: 17 `socketTest` (the walky socket) and 1 `posixTest` (a symlink). The
+#                20 are cli/trick-propose.test.ts: 19 `socketTest` (the walky socket) and 1 `posixTest` (a symlink). The
 #                first full trick run (2026-11-16) added 3: two run a proposed trick without its config.toml, one reads
 #                the one warning prefix, all three over the socket:
 #                - "refuses a symbolic link, even to a file inside the folder"
@@ -241,8 +243,8 @@
 #                executable bit and reads it through `file://`, as the add from the list does (bridge 33 above).
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 312,
-  [int]$MaxSkipsCli = 182,
+  [int]$MaxSkipsBridge = 317,
+  [int]$MaxSkipsCli = 189,
   [int]$MaxSkipsScripts = 35
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

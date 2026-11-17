@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 529 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 541 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([312, 182, 35]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([317, 189, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 6 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -224,7 +224,7 @@ describe("the Windows check runs the flake's Bun", () => {
     // The add from the official list: its POSIX-only describes and its `test.if(posix)` cases.
     const official = readFileSync(join(ROOT, "bridge", "tricks", "official.test.ts"), "utf8");
     const officialSkips = testsInBlocks(official, "describe.if(posix)(") + (official.match(/^ {2}test\.if\(posix\)\(/gm) ?? []).length;
-    expect(officialSkips).toBe(33);
+    expect(officialSkips).toBe(36);
     expect(script).toContain("bridge/tricks/official.test.ts");
     // The data path is off on Windows in 1.29.0 (ADR 0140, decision 15): every test on `dataRig` or the inside socket is
     // `dataTest` or `dataDescribe` (bridge/inside/data-rig.ts), a skip on win32. 63 on the rig, 19 in server.test.ts.
@@ -259,7 +259,7 @@ describe("the Windows check runs the flake's Bun", () => {
       "bridge/launch-by-id.test.ts",
       "bridge/worktree-from-folder.test.ts",
     ].reduce((sum, file) => sum + (readFileSync(join(ROOT, file), "utf8").match(/^\s*accountTest\(/gm) ?? []).length, 0);
-    expect(accountSkips).toBe(45);
+    expect(accountSkips).toBe(47);
     expect(script).toContain("bridge/accounts-skip.ts");
     expect(budget("Bridge")).toBe(
       viewMediaSkips.length + posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips +
@@ -296,10 +296,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(stagingSkips).toHaveLength(7);
     expect(script).toContain("cli/image-stage.test.ts");
     const addSkips = testsInBlocks(readFileSync(join(ROOT, "cli", "trick-add.test.ts"), "utf8"), "describe.if(posix)(");
-    expect(addSkips).toBe(17);
+    expect(addSkips).toBe(22);
     expect(script).toContain("cli/trick-add.test.ts");
     const proposeSkips = readFileSync(join(ROOT, "cli", "trick-propose.test.ts"), "utf8").match(/^ +(?:socketTest|posixTest)\(/gm) ?? [];
-    expect(proposeSkips).toHaveLength(18);
+    expect(proposeSkips).toHaveLength(20);
     expect(script).toContain("refuses a symbolic link, even to a file inside the folder");
     const helperSkips = namesIn("cli/trick-kit/trick.test.ts", /test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g);
     expect(helperSkips).toHaveLength(2);

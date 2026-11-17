@@ -53,6 +53,7 @@ import { forgetAgain } from "@/lib/new-page";
 import { forgetSlots } from "@/lib/slots";
 import { forgetNoPromptsConfirms } from "@/lib/no-prompts";
 import { forgetAnswers } from "@/lib/remembered-shape";
+import { forgetSessionLater } from "@/lib/hill/session-later";
 import { forgetTroubleSignals } from "@/lib/report/once";
 import {
   clearDeviceToken,
@@ -239,6 +240,13 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     "answers",
     (context) => {
       if (context.reason !== "password") forgetAnswers();
+    },
+  ],
+  [
+    // The "Not now" notes of trick proposals in their sessions (lib/hill/session-later.ts): decision ids of this pairing's bridge.
+    "session-later",
+    (context) => {
+      if (context.reason !== "password") forgetSessionLater();
     },
   ],
   [

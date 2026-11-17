@@ -900,6 +900,11 @@ describe("solo zero-tax — routes", () => {
       // legitimately extends this list, named here rather than exempted: write-gated like the switch,
       // this bridge's own tricks folder only, and a crew member answers `runs-on` and fetches nothing.
       "/^\\/api\\/tricks\\/official\\/([^/]+)\\/(add|update)$/",
+      // A repository's trick list (package I): read the `collie-tricks.json` of a pasted https link, or add one
+      // trick it lists. A SOLO route that legitimately extends this list, named here rather than exempted:
+      // both verbs write-gated because the bridge fetches from the pasted host, this bridge's own tricks
+      // folder only, and 404 when no repository reader is wired.
+      "/^\\/api\\/tricks\\/repo\\/(list|add)$/",
       // The operator's Cancel on a held walky talky message it sent (M62 spec 03): a write, solo; a
       // record held on a member answers `elsewhere`, never a route of its own.
       "/^\\/api\\/walky\\/([^/]+)\\/cancel$/",

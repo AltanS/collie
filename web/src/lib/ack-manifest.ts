@@ -416,6 +416,14 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "Add (or Update) on an official row in Settings → Tricks swaps its word for Collie's spinner on the spot and stays busy until the trick shows among the installed ones, off (components/tricks-settings-card.tsx); a refused or lost post says why in the status line (offline, a code mismatch, another add running), because the reason is about that one trick.",
   },
+  listRepoTricks: {
+    channel: "inline",
+    why: "Read on the repository sheet (components/tricks-repo-sheet.tsx) swaps its word for Collie's spinner and the repository's list appears under the field, which is the receipt (it carries the request id and the commit read); a refused or lost read says why in the sheet's own alert line under the field, because the reason is about that link.",
+  },
+  addRepoTrick: {
+    channel: "inline",
+    why: "Add on one row of the repository sheet (components/tricks-repo-sheet.tsx) turns its word into the spinner and then into Added on that row, and the post carries a request id so a retry of the same tap writes once; a refused or lost add says why on that row, because the reason is about that one trick.",
+  },
   tapTrick: {
     channel: "echo",
     why: "A trick's control swaps its glyph for Collie's spinner on the spot it was tapped until the receipt lands, and the trick's new parts redraw in place; a failed or unknown receipt is written in that part's own frame line, under the control, because it is about that one part (lib/tricks/part-frame.tsx).",

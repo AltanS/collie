@@ -146,9 +146,12 @@ describe("composer taps: send() from anywhere but the round Send button (fix 1)"
   it("no tap vanishes: a harness pill while the launch starts says Starting", async () => {
     const user = userEvent.setup();
     mount({ starting: true });
-    expect(screen.getAllByText("Starting…")).toHaveLength(1);
+    // The header says Starting now; in the composer the box is off and its placeholder says it. No row holds the words.
+    expect(screen.queryByText("Starting…")).toBeNull();
+    expect(field()).toBeDisabled();
+    expect(field()).toHaveAttribute("placeholder", "Starting…");
     await expectTapAnswers(() => user.click(screen.getByRole("button", { name: "Compact" })));
-    expect(screen.getAllByText("Starting…")).toHaveLength(2);
+    expect(screen.getAllByText("Starting…")).toHaveLength(1);
     expect(recordedSends()).toEqual([]);
   });
 
@@ -293,10 +296,15 @@ describe("composer taps: the round Send button that cannot act (fix 4)", () => {
 
   it("no tap vanishes: while the launch starts, a tap says Starting", async () => {
     const user = userEvent.setup();
-    mount({ starting: true });
+    // The draft is typed before the start: the box is off while it starts, and the draft stays in it.
+    const m = mount();
     await user.type(field(), "hello");
+    m.update({ starting: true });
+    expect(field()).toBeDisabled();
+    expect(field()).toHaveValue("hello");
     await expectTapAnswers(() => user.click(screen.getByRole("button", { name: "Send" })));
     expect(document.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent("Starting…");
+    expect(field()).toHaveValue("hello");
     expect(recordedSends()).toEqual([]);
   });
 });
@@ -341,9 +349,10 @@ describe("composer taps: held rows while the launch starts (fix 6)", () => {
   const typed: HeldRow = { requestId: "req00001", mode: "send", text: "left in the box", heldAt: NOW, expiresAt: NOW + 30 * 60_000, state: "ended", outcome: "typed_not_submitted" };
   const ended: HeldRow = { ...typed, requestId: "req00002", outcome: "expired" };
 
-  it("no tap vanishes: Submit, Discard and Resend are off while starting, with the Starting notice on screen", () => {
+  it("no tap vanishes: Submit, Discard and Resend are off while starting, with the box off and saying Starting", () => {
     mount({ held: [typed], starting: true });
-    expect(screen.getByText("Starting…")).toBeInTheDocument();
+    expect(field()).toBeDisabled();
+    expect(field()).toHaveAttribute("placeholder", "Starting…");
     expect(screen.getByRole("button", { name: "Submit the text in the box" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Discard the text in the box" })).toBeDisabled();
     cleanup();
