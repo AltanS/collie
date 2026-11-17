@@ -719,12 +719,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // draft stays in the box.
   const live = useLive(paneId, scope);
   const offline = stale === true || !live;
-  const slot = sendSlot(shownSurface, { gone, readOnly, offline });
+  // A fact the phone knows before any read (a host it cannot reach, sending off) arrives with its note;
+  // only that locks a box out of reach. A box the read could not reach takes the override (M102 spec 03).
+  const blocked = unreachableNote !== undefined;
+  const slot = sendSlot(shownSurface, { gone, readOnly, offline, blocked });
   // THE WAY OUT (M56 spec 07, lib/way-out.ts): which state this is, and whether the Keys dock opens and
   // can send. The rule is one function so that no refusal, no flag and no lock can hide the key pad on
   // its own; only a pane that is gone, a device that may not write and a multiplexer that sends no key
   // at all do.
-  const way = wayOut(shownSurface, { gone, readOnly, offline }, { keysCapable: canSendKeys.capable });
+  const way = wayOut(shownSurface, { gone, readOnly, offline, blocked }, { keysCapable: canSendKeys.capable });
   // The field itself is off only when nothing typed here can ever leave for this pane: a gone pane,
   // a read-only device, a box out of reach. Derived from the slot, never passed in.
   const locked = fieldLocked(slot);
@@ -1954,8 +1957,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // reserved lead (`/`, `!`, `@`) goes as a `command`, whose popup under the box is expected.
   /** The words for a send that cannot start now: the lock, the launch, or the send still running. */
   function refusedTapWords(): string | null {
-    if (locked) return lockWords ?? unreachableWords;
-    if (starting) return translate("newPage.starting");
+    // The lock speaks through the field's own placeholder (`lockedWhy`), so only a launch needs this line.
+    if (starting && !locked) return translate("newPage.starting");
     if (sending) return translate("composer.tap.sending");
     return null;
   }
@@ -1982,8 +1985,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
   /** The line under the sign-in frame while it waits: the lock's words, else the launch. */
   function secretReason(): string | null {
-    if (locked) return lockWords ?? unreachableWords;
-    if (starting) return translate("newPage.starting");
+    // The lock speaks through the field's own placeholder (`lockedWhy`), so only a launch needs this line.
+    if (starting && !locked) return translate("newPage.starting");
     return null;
   }
   /** The "Answer the dialog" word and the notice's card button: a tap that found no card says so. */
@@ -2181,7 +2184,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const refusal = { ...readingRefusal(reading), atRevision: (reply.surface ?? shownSurface).revision };
       // A screen Collie cannot read: the pane opens its card, with the person's Keys pad and "Type it
       // anyway", instead of a sentence only (M102 spec 03).
-      if (reading.step === "screen") onScreenUnread?.();
+      // A not_free refusal now offers Type here (invariant I4), so its step is the offer; the card of a screen
+      // Collie cannot read opens for it all the same.
+      if (reading.step === "screen" || (reading.offers.includes("commit") && (reading.surface === "unknown" || reading.surface === "unreachable" || reading.surface === "unreadable"))) onScreenUnread?.();
       // An override that met a menu, or whose text waits for the person's Enter (M102 spec 12): the Keys
       // pad opens, unless the person has a drawer open. A refused override carries the screen now and
       // its hash, so "Type it anyway" stays armed on the rows the card shows next.
@@ -2465,10 +2470,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // says so in the same place, before the Steer hint: a send probes the box first, so the person knows
   // why a send may come back refused.
   const staleWords = way.state !== "gone" && way.state !== "readOnly" && way.state !== "unreachable" && !direct.active && !isShell && surface.staleFrame === true;
+  // A box the read could not reach is not a lock any more (spec 03, I4): it stays typeable, and the
+  // placeholder still names it, from the way out rather than the slot.
   const placeholderWords =
     lockWords !== null
       ? lockWords
-      : direct.active
+      : way.state === "unreachable"
+        ? unreachableWords
+        : direct.active
         ? translate("composer.placeholder.direct")
         : isShell
           ? translate("composer.placeholder.shell")
@@ -3983,6 +3992,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             disabled={starting || sending || locked}
             sending={sending}
             reason={secretReason()}
+            // A locked field says why in the composer's own words (the gone, read-only and out-of-reach
+            // placeholders): the frame's own "Not saved" line would leave a dead Send with no reason.
+            lockedWhy={locked ? placeholderWords : undefined}
             onSend={(code) => send(code, false)}
             onClose={() => {
               setSecretClosed(true);

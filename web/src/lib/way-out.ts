@@ -55,9 +55,9 @@ export function wayOutState(surface: Surface, facts: ComposerFacts): WayOutState
     case "draft":
       return "draft";
     case "manual":
-      return surface.modal === "unreadable" ? "unreadable" : "no-match";
-    case "wait":
-      return surface.reason === "stale" || surface.reason === "torn" || surface.reason === "contested" ? surface.reason : "no-match";
+      if (surface.modal === "unreadable") return "unreadable";
+      if (surface.reason === "stale" || surface.reason === "torn" || surface.reason === "contested") return surface.reason;
+      return surface.composer === "unreachable" ? "unreachable" : "no-match";
   }
 }
 

@@ -445,10 +445,13 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       option: model.options[0]!,
     });
     expect(res).toEqual({ status: "sent" });
-    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["1"], undefined, model.signature);
+    // A framed dialog binds its own rows (`bindRegion`); any other binds `signature`.
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["1"], undefined, model.bindRegion ?? model.signature);
   });
 
-  it("rejects (no send) when the fresh revision differs", async () => {
+  // A moved revision is no refusal by itself (lib/harness/guard.ts): Herdr 0.9.x moves it with every
+  // repaint, so a ticking row outside the dialog refused every tap. The same menu still sends.
+  it("sends when only the fresh revision differs and the menu is the same", async () => {
     const model = fixtureModel("claude--select-menu.txt");
     mockFetchPane.mockResolvedValue({
       paneId: "w1:p1",
@@ -464,8 +467,8 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       prompt: model,
       option: model.options[0]!,
     });
-    expect(res).toEqual({ status: "changed" });
-    expect(mockSendKeys).not.toHaveBeenCalled();
+    expect(res).toEqual({ status: "sent" });
+    expect(mockSendKeys).toHaveBeenCalledTimes(1);
   });
 
   it("rejects (no send) when the fresh buffer resolves to a different menu", async () => {
@@ -508,7 +511,7 @@ describe("submitPromptOption — race guard + per-family keystroke recipe", () =
       option: model.options[1]!,
     });
     expect(res).toEqual({ status: "sent" });
-    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["2"], undefined, model.signature);
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", ["2"], undefined, model.bindRegion ?? model.signature);
   });
 
   it("rejects a 304 with MATCHING (stub) revisions when the cached text no longer shows the menu", async () => {

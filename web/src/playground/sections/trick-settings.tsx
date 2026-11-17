@@ -16,6 +16,7 @@ import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
 import { addOfficialTrick } from "@/lib/api";
+import { syncHill } from "@/lib/hill/store";
 import { clearStatus } from "@/lib/status";
 import { homeSolo } from "../fixtures";
 import { VIEW_TRICK } from "../fixtures/agent-view";
@@ -86,6 +87,35 @@ function undoStandIn(tricks: WireTrickInfo[]) {
     const found = tricks.find((m) => m.id === id) ?? trick(id, id);
     return { ...found, autoAt: undefined };
   };
+}
+
+/** The card of a new version of the trick `waits`, as the bridge lists it (spec 14): the row's line opens it. */
+const VERSION_CARD = { ...versionGroup, from: { ...versionGroup.from, ref: { type: "version" as const, id: "waits", hash: "6e".repeat(32) } } };
+
+/**
+ * While mounted, the Hill's list answers with one open version card of the trick `waits`, so that trick's row
+ * holds the line that opens it (`onCard` set). The list is the app's one store, so only this card holds it.
+ */
+function useVersionCard(): void {
+  useEffect(() => {
+    const real = window.fetch;
+    window.fetch = (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
+      if (url.pathname !== "/api/hill") return real(input, init);
+      return Promise.resolve(new Response(JSON.stringify({ v: 1, rev: 1, open: [VERSION_CARD], closed: [] }), { status: 200, headers: { "content-type": "application/json" } }));
+    };
+    syncHill(1, "tricks");
+    return () => {
+      window.fetch = real;
+      syncHill(undefined, "tricks");
+    };
+  }, []);
+}
+
+/** A list whose trick `waits` is on with a new version waiting and its card held: the slot line is a button. */
+function WaitingRowCard({ n, state, label, tricks }: { n: number; state: string; label: string; tricks: WireTrickInfo[] }) {
+  useVersionCard();
+  return <ListCard n={n} state={state} label={label} tricks={tricks} />;
 }
 
 function ListCard({ n, state, label, tricks, readOnly, hillOff, gate }: { n: number; state: string; label: string; tricks: WireTrickInfo[]; readOnly?: boolean; hillOff?: boolean; gate?: TricksGate }) {
@@ -331,6 +361,17 @@ export function TrickSettingsSection(): ReactNode {
               ],
             }),
             trick("clock", "Clock", { on: false, state: "off", places: ["belt"], provenance: { via: "cli", at: "2026-11-08T09:38:00Z" } }),
+          ]}
+        />
+      </Group>
+      <Group title="A new version waits (spec 14)">
+        <WaitingRowCard
+          n={46}
+          state="trick-settings-version-row"
+          label="on, a new version waits and its card is held: the slot line opens the card (tap it), the row opens About"
+          tricks={[
+            trick("waits", "Status clock", { places: ["status"], provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "owner/status-clock", sha: "3f2a91c0d4e5" }, pending: { hash: "b7e1d0a4c2f9".repeat(5).slice(0, 64), files: { added: 0, changed: 1, removed: 0 }, powersChanged: false, warnings: [] } }),
+            HEALTHY[1] ?? trick("x", "x"),
           ]}
         />
       </Group>

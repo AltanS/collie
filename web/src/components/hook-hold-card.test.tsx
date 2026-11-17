@@ -45,10 +45,30 @@ describe("HookHoldCard", () => {
     now += HOLD_TAP_GUARD_MS - 50;
     await userEvent.click(screen.getByRole("button", { name: /Yes/ }));
     expect(onAnswer).not.toHaveBeenCalled();
+    // The guarded tap is not silent: it says to tap again (M102 spec 11).
+    expect(screen.getByRole("status")).toHaveTextContent("This request just arrived. Tap again to answer it.");
     now += 50;
     await userEvent.click(screen.getByRole("button", { name: /Yes/ }));
     expect(onAnswer).toHaveBeenCalledWith(0);
     vi.restoreAllMocks();
+  });
+
+  it("an answer that fails says so, and the options are live again (M102 spec 11)", async () => {
+    render(<HookHoldCard note={NOTE} onAnswer={() => Promise.reject(new Error("no answer"))} />);
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + HOLD_TAP_GUARD_MS);
+    await userEvent.click(screen.getByRole("button", { name: /Yes/ }));
+    expect(await screen.findByText("The answer did not go through. Tap again to try once more.")).toBeTruthy();
+    for (const button of screen.getAllByRole("button")) expect(button).toBeEnabled();
+    vi.restoreAllMocks();
+  });
+
+  it("a disabled card says why under its options (M102 spec 11)", () => {
+    const { unmount } = render(<HookHoldCard note={NOTE} onAnswer={vi.fn()} disabled disabledReason="This device may only read. Answer it at the desk." />);
+    for (const button of screen.getAllByRole("button")) expect(button).toBeDisabled();
+    expect(screen.getByText("This device may only read. Answer it at the desk.")).toBeTruthy();
+    unmount();
+    render(<HookHoldCard note={NOTE} onAnswer={vi.fn()} disabled />);
+    expect(screen.getByText("This card cannot be answered from here. Answer it at the desk.")).toBeTruthy();
   });
 
   it("says when the input has more lines than the box shows", () => {

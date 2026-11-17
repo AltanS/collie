@@ -18,6 +18,7 @@ import {
   resolveImage,
   resolveImageUrl,
 } from "./pi.ts";
+import { journalJobs } from "../jobs-journal.ts";
 import { ongoingSubagents } from "../subagents-journal.ts";
 import { latestPlanTodos } from "../todos.ts";
 import { LiveWindows, TICK_FLOOR_MS } from "./live.ts";
@@ -1164,6 +1165,17 @@ describe("PiTranscriptSource — a pane that names no session finds it by its fo
       await rm(f.base, { recursive: true, force: true });
     });
 
+    test("pi's --session-id tells two panes in one folder apart (#780)", async () => {
+      const { f, src } = await twoLogs();
+      const pi = (...args: string[]) => ({ processes: [{ argv: ["pi", ...args] }], shared: true as const });
+      expect(await src.discoverSession(cwd, pi("--session-id", OLD))).toEqual({ kind: "id", value: OLD });
+      expect(await src.discoverSession(cwd, pi("--session-id", ONE))).toEqual({ kind: "id", value: ONE });
+      expect(await src.discoverSession(cwd, pi(`--session-id=${ONE}`))).toEqual({ kind: "id", value: ONE });
+      // An id this folder has no log for yet (pi writes it after the first reply) names nothing so far.
+      expect(await src.discoverSession(cwd, pi("--session-id", TWO))).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
     test("a path outside the sessions roots, or in another folder's place, is refused", async () => {
       const { f, mine, src } = await twoLogs();
       const outside = join(f.base, "elsewhere", `2026-10-30T10-00-00-000Z_${TWO}.jsonl`);
@@ -1485,6 +1497,10 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
         const message = { role: "toolResult", toolCallId: callId, toolName: name, content: [{ type: "text", text }], details };
         const body = { type: "message", message: isError ? { ...message, isError: true } : message };
         add(id, at === undefined ? body : { ...body, timestamp: at });
+      },
+      /** A result row with pi's `nestedCalls` record of the calls a script inside it made (#795). */
+      nestedResult(id: string, callId: string, name: string, text: string, nestedCalls: JsonValue) {
+        add(id, { type: "message", message: { role: "toolResult", toolCallId: callId, toolName: name, content: [{ type: "text", text }], details: {}, nestedCalls } });
       },
       /** `at` stamps the row with its own time, over the session's one. */
       notice(id: string, customType: string, content: string, details: JsonValue, at?: string) {
@@ -1880,6 +1896,204 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
     expect(card?.call).toMatchObject({ exitCode: 1, endedAt: Date.parse(ENDED_AT) });
     expect(card?.call).not.toHaveProperty("ongoing");
     expect(card?.result?.isError).toBe(true);
+  });
+
+  // Issues #783, #784 and #795. Task ids have gentle-pi's shape, `<start, base 36>-<n, base 36>-<random>`;
+  // the ids, labels and paths are neutral examples.
+  const TASK_A = "mw0000aa-1-ab12";
+  const TASK_B = "mw0000bb-2-cd34";
+  const RESTART_AT = "2026-09-30T12:30:00.000Z";
+  const runningJobs = (lines: string[]) => journalJobs(parsePiTranscript(lines.join("\n"))).filter((j) => j.endedAt === undefined);
+  const runningAgents = (lines: string[]) => ongoingSubagents(parsePiTranscript(lines.join("\n")));
+  const bgRun = (s: ReturnType<typeof session>, n: string, taskId: string, label = "Map it") => {
+    s.call(`a${n}`, `c${n}`, "subagent_run", { agent: "gentle-ai-worker", label, task: "…", mode: "background" });
+    s.result(`r${n}`, `c${n}`, "subagent_run", `Started task ${taskId}.`, agents(taskId, "queued", "background", "gentle-ai-worker"));
+  };
+  const bgJob = (s: ReturnType<typeof session>, n: string, jobId: string, at?: string) => {
+    s.call(`a${n}`, `c${n}`, "bash_background", { command: "bun test", label: "suite" });
+    s.result(`r${n}`, `c${n}`, "bash_background", `Started background job ${jobId} ("suite").`, job(jobId, "command", "running", null), false, at);
+  };
+
+  test("a `subagent_cancel` result ends the card its `task_id` names, with no failure (#784)", () => {
+    const s = session();
+    bgRun(s, "1", TASK_A);
+    s.call("a2", "c2", "subagent_cancel", { task_id: TASK_A });
+    s.result("r2", "c2", "subagent_cancel", `Cancelled task ${TASK_A}.`, {});
+    const card = tools(s.rows)[0]?.part;
+    expect(card?.call).toEqual({ kind: "task", agent: "gentle-ai-worker", summary: "Map it" });
+    expect(card?.result?.isError).not.toBe(true);
+    expect(runningAgents(s.rows)).toEqual([]);
+  });
+
+  test("a `subagent_cancel` that answers with an error leaves the card running (#784)", () => {
+    const flagged = session();
+    bgRun(flagged, "1", TASK_A);
+    flagged.call("a2", "c2", "subagent_cancel", { task_id: TASK_A });
+    flagged.result("r2", "c2", "subagent_cancel", `Error: task ${TASK_A} is not running.`, {}, true);
+    expect(runningAgents(flagged.rows)).toHaveLength(1);
+    // The same words with no error flag are still an error.
+    const worded = session();
+    bgRun(worded, "1", TASK_A);
+    worded.call("a2", "c2", "subagent_cancel", { task_id: TASK_A });
+    worded.result("r2", "c2", "subagent_cancel", `Error: task ${TASK_A} is not running.`, {});
+    expect(runningAgents(worded.rows)).toHaveLength(1);
+    // A cancel of another task ends nothing here.
+    const other = session();
+    bgRun(other, "1", TASK_A);
+    other.call("a2", "c2", "subagent_cancel", { task_id: TASK_B });
+    other.result("r2", "c2", "subagent_cancel", `Cancelled task ${TASK_B}.`, {});
+    expect(runningAgents(other.rows)).toHaveLength(1);
+    // The card the failed cancel left running is ended by the next cancel that works.
+    flagged.call("a3", "c3", "subagent_cancel", { task_id: TASK_A });
+    flagged.result("r3", "c3", "subagent_cancel", `Cancelled task ${TASK_A}.`, {});
+    expect(runningAgents(flagged.rows)).toEqual([]);
+  });
+
+  test("a new pi runtime ends the running jobs and subagents of the old one (#783, #784)", () => {
+    const s = session();
+    bgJob(s, "1", "job-1");
+    bgRun(s, "3", TASK_A);
+    bgJob(s, "2", "job-2");
+    s.notice("n1", "gentle-jobs.notice", 'Background job job-1 ("suite") exited with code 0 after 3s.', job("job-1", "command", "exited", 0), ENDED_AT);
+    expect(runningJobs(s.rows).map((j) => j.id)).toEqual(["job-2"]);
+    expect(runningAgents(s.rows)).toHaveLength(1);
+    // pi restarted and resumed the session: its first job is job-1 again. Nothing else in the log says so.
+    bgJob(s, "4", "job-1", RESTART_AT);
+    const jobs = journalJobs(parsePiTranscript(s.rows.join("\n")));
+    expect(jobs.filter((j) => j.endedAt === undefined).map((j) => j.startedAt)).toEqual([RESTART_AT]);
+    const old = tools(s.rows).find((t) => t.uuid === "a2")?.part;
+    expect(old?.call).toMatchObject({ jobId: "job-2", endedAt: Date.parse(RESTART_AT) });
+    expect(old?.call).not.toHaveProperty("ongoing");
+    expect(old?.call).not.toHaveProperty("exitCode");
+    expect(old?.result?.isError).not.toBe(true);
+    // The first job-1 keeps the end its own notice gave.
+    expect(tools(s.rows).find((t) => t.uuid === "a1")?.part.call).toMatchObject({ exitCode: 0, endedAt: Date.parse(ENDED_AT) });
+    // The old runtime's subagent ended too, with no failure.
+    expect(runningAgents(s.rows)).toEqual([]);
+    expect(tools(s.rows).find((t) => t.uuid === "a3")?.part.result?.isError).not.toBe(true);
+  });
+
+  test("a subagent counter that goes back ends the old runtime's cards as well", () => {
+    const s = session();
+    bgJob(s, "2", "job-3");
+    bgRun(s, "1", "mw0000aa-6-ab12", "Old");
+    bgRun(s, "3", "mw0000cc-1-ef56", "New");
+    expect(runningAgents(s.rows).map((r) => r.description)).toEqual(["New"]);
+    expect(runningJobs(s.rows)).toEqual([]);
+  });
+
+  test("a card that started after the old runtime's newest start may be the new one's, and keeps running", () => {
+    const s = session();
+    bgJob(s, "1", "job-1");
+    // Which runtime started this subagent the log does not say: no subagent number came before it.
+    bgRun(s, "2", TASK_A);
+    bgJob(s, "3", "job-1", RESTART_AT);
+    expect(runningAgents(s.rows)).toHaveLength(1);
+    expect(runningJobs(s.rows)).toHaveLength(1);
+  });
+
+  test("numbers that only grow, or that a batch holds out of order, end nothing", () => {
+    const s = session();
+    bgJob(s, "1", "job-1");
+    bgJob(s, "2", "job-2");
+    bgRun(s, "3", TASK_A);
+    bgRun(s, "4", TASK_B);
+    expect(runningJobs(s.rows)).toHaveLength(2);
+    expect(runningAgents(s.rows)).toHaveLength(2);
+    // Two jobs started in one turn: pi runs them side by side, so job-4 can be written before job-3.
+    const batch = session();
+    batch.call("a1", "c1", "bash_background", { command: "a", label: "a" });
+    batch.result("r1", "c1", "bash_background", "Started.", job("job-1", "command", "running", null));
+    batch.rows.push(
+      plain("a2", "r1", { type: "message", message: { role: "assistant", content: [
+        { type: "toolCall", id: "c2", name: "bash_background", arguments: { command: "b", label: "b" } },
+        { type: "toolCall", id: "c3", name: "bash_background", arguments: { command: "c", label: "c" } },
+      ] } }),
+      plain("r2", "a2", { type: "message", message: { role: "toolResult", toolCallId: "c2", toolName: "bash_background", content: [{ type: "text", text: "Started." }], details: job("job-4", "command", "running", null) } }),
+      plain("r3", "r2", { type: "message", message: { role: "toolResult", toolCallId: "c3", toolName: "bash_background", content: [{ type: "text", text: "Started." }], details: job("job-3", "command", "running", null) } }),
+    );
+    expect(runningJobs(batch.rows)).toHaveLength(3);
+  });
+
+  test("a new runtime's job never settles the old runtime's job of the same id (#783)", () => {
+    const s = session();
+    bgJob(s, "1", "job-1");
+    bgJob(s, "2", "job-2");
+    bgJob(s, "3", "job-1", RESTART_AT);
+    // The new runtime's job-2 (started by a script, so it has no card) ends with code 1.
+    s.notice("n1", "gentle-jobs.notice", 'Background job job-2 ("x") exited with code 1 after 3s.', job("job-2", "command", "exited", 1), "2026-09-30T12:40:00.000Z");
+    // The new job-1 ends with code 0.
+    s.notice("n2", "gentle-jobs.notice", 'Background job job-1 ("suite") exited with code 0 after 3s.', job("job-1", "command", "exited", 0), "2026-09-30T12:41:00.000Z");
+    const byTurn = (uuid: string) => tools(s.rows).find((t) => t.uuid === uuid)?.part;
+    expect(byTurn("a1")?.call).toMatchObject({ endedAt: Date.parse(RESTART_AT) });
+    expect(byTurn("a1")?.call).not.toHaveProperty("exitCode");
+    expect(byTurn("a2")?.call).toMatchObject({ endedAt: Date.parse(RESTART_AT) });
+    expect(byTurn("a2")?.call).not.toHaveProperty("exitCode");
+    expect(byTurn("a2")?.result?.isError).not.toBe(true);
+    expect(byTurn("a3")?.call).toMatchObject({ exitCode: 0, endedAt: Date.parse("2026-09-30T12:41:00.000Z") });
+  });
+
+  test("a `subagent_list_tasks` line with a final status ends that task's card (#784)", () => {
+    const s = session();
+    bgRun(s, "1", TASK_A, "One");
+    bgRun(s, "2", TASK_B, "Two");
+    s.call("a3", "c3", "subagent_list_tasks", {});
+    s.result(
+      "r3",
+      "c3",
+      "subagent_list_tasks",
+      `${TASK_A} · gentle-ai-worker · failed · background · 2m · last: interrupted\ninterrupted: parent process terminated while task was in flight\n${TASK_B} · gentle-ai-worker · running · background · 1m`,
+      {},
+    );
+    expect(runningAgents(s.rows).map((r) => r.description)).toEqual(["Two"]);
+  });
+
+  test("background subagents a script started inside one call count, and each ends by its end row (#795)", () => {
+    const s = session();
+    s.call("a1", "c1", "codemode", { code: "await tools.subagent_run(…)" });
+    const nested = (n: number, label: string, mode = "background", status = "ok") => ({
+      id: `c1/${n}`,
+      name: "subagent_run",
+      status,
+      durationMs: 60,
+      arguments: { agent: "gentle-ai-worker", mode, label, task: "…" },
+    });
+    s.nestedResult("r1", "c1", "codemode", "Script completed", {
+      complete: true,
+      calls: [nested(1, "Lane one"), nested(2, "Lane two"), nested(3, "Lane three", "task"), nested(4, "Lane four", "background", "error"), { id: "c1/5", name: "read", status: "ok", arguments: { path: "x" } }],
+    });
+    // Chat draws the one call, as before.
+    expect(tools(s.rows)).toHaveLength(1);
+    expect(tools(s.rows)[0]?.part.call?.kind).toBe("other");
+    expect(runningAgents(s.rows).map((r) => r.description)).toEqual(["Lane one", "Lane two"]);
+    const ended = (taskId: string, label: string, status: string) => ({ gentleAgents: { taskId, agent: "gentle-ai-worker", label, status, mode: "background" } });
+    s.notice("n1", "gentle-agents.result", "Subagent gentle-ai-worker finished.", ended(TASK_A, "Lane one", "completed"));
+    expect(runningAgents(s.rows).map((r) => r.description)).toEqual(["Lane two"]);
+    s.notice("n2", "gentle-agents.result", "Subagent gentle-ai-worker failed.", ended(TASK_B, "Lane two", "failed"));
+    expect(runningAgents(s.rows)).toEqual([]);
+  });
+
+  test("two open script subagents of one agent and label: an end row ends neither (#795)", () => {
+    const s = session();
+    s.call("a1", "c1", "codemode", { code: "…" });
+    const twin = (n: number) => ({ id: `c1/${n}`, name: "subagent_run", status: "ok", arguments: { agent: "gentle-ai-worker", mode: "background", label: "Same" } });
+    s.nestedResult("r1", "c1", "codemode", "Script completed", { complete: true, calls: [twin(1), twin(2)] });
+    s.notice("n1", "gentle-agents.result", "Done.", { gentleAgents: { taskId: TASK_A, agent: "gentle-ai-worker", label: "Same", status: "completed" } });
+    expect(runningAgents(s.rows)).toHaveLength(2);
+  });
+
+  test("a new runtime ends a script subagent the old runtime started (#795)", () => {
+    const s = session();
+    bgJob(s, "1", "job-1");
+    s.call("a2", "c2", "codemode", { code: "…" });
+    s.nestedResult("r2", "c2", "codemode", "Script completed", {
+      complete: true,
+      calls: [{ id: "c2/1", name: "subagent_run", status: "ok", arguments: { agent: "gentle-ai-worker", mode: "background", label: "Lane" } }],
+    });
+    bgJob(s, "3", "job-2");
+    expect(runningAgents(s.rows)).toHaveLength(1);
+    bgJob(s, "4", "job-1", RESTART_AT);
+    expect(runningAgents(s.rows)).toEqual([]);
   });
 });
 

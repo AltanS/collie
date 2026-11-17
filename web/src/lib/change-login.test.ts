@@ -1,0 +1,74 @@
+import { describe, expect, it } from "vitest";
+
+import { HARNESS_CLAUDE, HARNESS_CODEX, workRow } from "@/test/accounts-fixtures";
+import { cameFromSession, flowOf, forgetFlow, loginChanged, offersChangeLogin, reachOf, rememberFlow, resultOf } from "./change-login";
+
+// Change login's pure rules (M101): who reads signed in, what the sessions that run do, and the result.
+
+const ME = { signedIn: true, email: "me@example.com", plan: "max" };
+const OTHER = { signedIn: true, email: "other@example.com", plan: "pro" };
+
+describe("offersChangeLogin", () => {
+  it("only an account that reads signed in", () => {
+    expect(offersChangeLogin(workRow({ identity: ME }))).toBe(true);
+    expect(offersChangeLogin(workRow({ identity: { signedIn: false } }))).toBe(false);
+    expect(offersChangeLogin(workRow())).toBe(false);
+  });
+});
+
+describe("reachOf", () => {
+  it("running sessions follow only where the adapter says so; the count is the bridge's", () => {
+    const claude = { ...HARNESS_CLAUDE, reachesRunningSessions: true as const };
+    expect(reachOf(claude, workRow({ running: 2 }))).toEqual({ kind: "running", count: 2 });
+    expect(reachOf(claude, workRow())).toEqual({ kind: "running", count: 0 });
+    expect(reachOf(HARNESS_CODEX, workRow({ running: 2 }))).toEqual({ kind: "newOnly" });
+    expect(reachOf(undefined, workRow({ running: 2 }))).toEqual({ kind: "newOnly" });
+  });
+});
+
+describe("resultOf", () => {
+  it("a new email is a changed login, with its plan", () => {
+    expect(resultOf(ME, OTHER)).toEqual({ kind: "changed", email: "other@example.com", plan: "pro" });
+    expect(resultOf(undefined, OTHER)).toEqual({ kind: "changed", email: "other@example.com", plan: "pro" });
+    expect(resultOf({ signedIn: false }, { signedIn: true, email: "other@example.com" })).toEqual({ kind: "changed", email: "other@example.com" });
+  });
+
+  it("the same email, in any case, is 'still signed in'", () => {
+    expect(resultOf(ME, ME)).toEqual({ kind: "same", email: "me@example.com", plan: "max" });
+    expect(resultOf(ME, { ...ME, email: "ME@example.com" })).toMatchObject({ kind: "same" });
+  });
+
+  it("signed out after, and an answer with no email or none at all, say so", () => {
+    expect(resultOf(ME, { signedIn: false })).toEqual({ kind: "signedOut" });
+    expect(resultOf(ME, { signedIn: true })).toEqual({ kind: "unknown" });
+    expect(resultOf(ME, undefined)).toEqual({ kind: "unknown" });
+  });
+});
+
+describe("loginChanged", () => {
+  it("only a known email before and a different one now end the flow on their own", () => {
+    expect(loginChanged(ME, OTHER)).toBe(true);
+    expect(loginChanged(ME, ME)).toBe(false);
+    expect(loginChanged(ME, undefined)).toBe(false);
+    expect(loginChanged(undefined, OTHER)).toBe(false);
+    expect(loginChanged({ signedIn: false }, OTHER)).toBe(false);
+  });
+});
+
+describe("the flow in memory", () => {
+  it("one per account, replaced by a second, gone when forgotten", () => {
+    rememberFlow({ account: "acc-work", paneId: "w1:p1", from: null });
+    rememberFlow({ account: "acc-work", paneId: "w1:p2", from: null });
+    expect(flowOf("acc-work")?.paneId).toBe("w1:p2");
+    forgetFlow("acc-work");
+    expect(flowOf("acc-work")).toBeUndefined();
+  });
+
+  it("knows a session it came from", () => {
+    expect(cameFromSession("/pane/w1%3Ap3")).toBe(true);
+    expect(cameFromSession("/pane/w1%3Ap3?h=minibuch")).toBe(true);
+    expect(cameFromSession("/pane/w1%3Ap3/history")).toBe(false);
+    expect(cameFromSession("/settings/accounts/acc-work")).toBe(false);
+    expect(cameFromSession(null)).toBe(false);
+  });
+});

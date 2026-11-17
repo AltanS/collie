@@ -142,10 +142,11 @@ describe("SessionStream", () => {
   });
 
   // #508: the bridge refused to guess between two Muse sessions in one folder. The empty Chat says
-  // why and how to fix it, on a new pane too, since nothing will appear on its own.
+  // why and how to fix it, on a new pane too, since nothing will appear on its own. The remedy names
+  // no resume command: pi's `--resume` is only a picker, and its flags are `--session`/`--session-id` (#780).
   it("names a shared folder and its remedy under the empty state, and only when the bridge says so", () => {
     const line =
-      "Two Muse sessions share this folder, so Collie cannot tell which one is this pane's. Start the agent with its resume command and session id, then Collie reads the right one.";
+      "Two Muse sessions share this folder, so Collie cannot tell which one is this pane's. Start the agent with the flag that names its session id, then Collie reads the right one.";
     for (const starting of [false, true]) {
       const r = renderStream(
         feedOf({ status: { kind: "unavailable", reason: "no-session", detail: "shared-folder" } }),

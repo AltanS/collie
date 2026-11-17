@@ -886,6 +886,12 @@ export const en = {
   "chat.hold.void": "The hook stopped. Answer the dialog on the screen.",
   "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.",
   "chat.hold.mismatch": "The request changed. Collie let the hook go.",
+  "chat.hold.justShown": "This request just arrived. Tap again to answer it.",
+  "chat.hold.answerFailed": "The answer did not go through. Tap again to try once more.",
+  "chat.hold.disabled": "This card cannot be answered from here. Answer it at the desk.",
+  "chat.hold.readOnly": "This device may only read. Answer it at the desk.",
+  "chat.hold.gone": "The pane is gone, so nothing can answer this request.",
+  "chat.hold.oldBridge": "This pane's bridge cannot take an answer from the card. Answer it at the desk.",
   "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.",
   "chat.status.sendFailed": "Send failed",
   "chat.status.wizardChanged": "Wizard changed, refreshing",
@@ -965,7 +971,7 @@ export const en = {
   // --- chat.stream (the chat body itself) ---
   "chat.stream.empty": "Send a message to start.",
   "chat.empty.sharedFolder":
-    "Two {harness} sessions share this folder, so Collie cannot tell which one is this pane's. Start the agent with its resume command and session id, then Collie reads the right one.",
+    "Two {harness} sessions share this folder, so Collie cannot tell which one is this pane's. Start the agent with the flag that names its session id, then Collie reads the right one.",
   "chat.stream.working": "Still working…",
   "chat.stream.questionPending": "A question is waiting in the terminal. Your next message answers it.",
   "chat.stream.queued": "Waiting to send",
@@ -1689,6 +1695,7 @@ export const en = {
   "belt.jobs.exit": "Exit code {code}",
   "belt.stop": "Stop",
   "belt.stopArmed": "Stop?",
+  "belt.stopHold": "Hold",
   "belt.stopAria": "Stop the turn",
   "belt.stopArmedAria": "Tap again to stop the turn",
   "belt.stop.receipt.stopped": "Stopped.",
@@ -2091,6 +2098,7 @@ export const en = {
   // `{reason}` is NEVER Collie's text: it is the multiplexer's own refusal, passed through byte for
   // byte (bridge/error-codes.ts). Those messages are a translated FRAME around a raw remainder —
   // translate the frame, leave the slot where the sentence reads naturally in your language.
+  "apiError.statusOnly": "The server answered with error {status}. Try again.",
   "apiError.unknown": "Something went wrong. Try again.",
   "apiError.reply.not_submitted":
     "Your message was typed into the pane but not sent. Check the pane before sending it again.",
@@ -3907,6 +3915,28 @@ export const en = {
   "accounts.identity.signedInAs": "Signed in as",
   "accounts.identity.notSignedIn": "Not signed in",
   "accounts.identity.withPlan": "{email} · {plan}",
+  // Change login (M101): the agent's own sign-in on an account that reads signed in.
+  "accounts.changeLogin.action": "Change login",
+  "accounts.changeLogin.reach": "All running sessions of this account continue with the new login.",
+  "accounts.changeLogin.newOnly": "Sessions you start from now on use the new login.",
+  "accounts.changeLogin.running.one": "{count} session of this account is running now.",
+  "accounts.changeLogin.running.other": "{count} sessions of this account are running now.",
+  "accounts.changeLogin.oldStays": "The old login stays until the new sign-in works.",
+  "accounts.changeLogin.runs": "The sign-in runs in its own session. Sign in there, then come back here.",
+  "accounts.changeLogin.finishHint": "Finish closes the sign-in session and asks the agent who is signed in. If you did not sign in, the old login stays.",
+  "accounts.changeLogin.open": "Open sign-in",
+  "accounts.changeLogin.finish": "Finish",
+  "accounts.changeLogin.result.signedInAs": "Signed in as {email}",
+  "accounts.changeLogin.result.still": "Still signed in as {email}",
+  "accounts.changeLogin.result.reach": "Your running sessions use this login from their next message.",
+  "accounts.changeLogin.result.notFinished": "The sign-in did not finish.",
+  "accounts.changeLogin.result.unknown": "The agent did not say who is signed in now. Look at the account's page in a moment.",
+  "accounts.changeLogin.plan": "{plan} plan",
+  "accounts.changeLogin.stillOpen": "The sign-in session may still be open. Close it from its own page.",
+  "accounts.changeLogin.backToSession": "Back to the session",
+  "accounts.changeLogin.backToAccount": "Back to the account",
+  "accounts.signInPage.open": "Open sign-in page",
+  "accounts.signInPage.copy": "Copy this address into your browser if you trust it.",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */
@@ -3923,6 +3953,13 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "chat.hold.justShown",
+  "chat.hold.answerFailed",
+  "chat.hold.disabled",
+  "chat.hold.readOnly",
+  "chat.hold.gone",
+  "chat.hold.oldBridge",
+  "apiError.statusOnly",
   "composer.tap.sending",
   "composer.tap.noCard",
   "composer.tap.typeBusy",
@@ -3983,12 +4020,34 @@ export const PENDING_TRANSLATION = [
   "accounts.identity.signedInAs",
   "accounts.identity.notSignedIn",
   "accounts.identity.withPlan",
+  "accounts.changeLogin.action",
+  "accounts.changeLogin.reach",
+  "accounts.changeLogin.newOnly",
+  "accounts.changeLogin.running.one",
+  "accounts.changeLogin.running.other",
+  "accounts.changeLogin.oldStays",
+  "accounts.changeLogin.runs",
+  "accounts.changeLogin.finishHint",
+  "accounts.changeLogin.open",
+  "accounts.changeLogin.finish",
+  "accounts.changeLogin.result.signedInAs",
+  "accounts.changeLogin.result.still",
+  "accounts.changeLogin.result.reach",
+  "accounts.changeLogin.result.notFinished",
+  "accounts.changeLogin.result.unknown",
+  "accounts.changeLogin.plan",
+  "accounts.changeLogin.stillOpen",
+  "accounts.changeLogin.backToSession",
+  "accounts.changeLogin.backToAccount",
+  "accounts.signInPage.open",
+  "accounts.signInPage.copy",
   "settings.tricks.cannotRun",
   "settings.tricks.cannotRunBare",
   "settings.tricks.partNotShown",
   "settings.tricks.waiting.title",
   "home.trickWaits.line",
   "home.trickWaits.open",
+  "belt.stopHold",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

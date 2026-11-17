@@ -1008,7 +1008,21 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   const kind = forwardKind(route, req.method);
   if (kind === "write") {
     const refusal = refuseWriteBeforeAttempt(deps.state);
-    if (refusal !== null) return refusal;
+    if (refusal !== null) {
+      // The lead writes its own line for a write it refused before the dial, as for every forward it
+      // refuses: the phone shows the refusal's words, and the audit says why no forward followed the
+      // tap. Without it a tap refused here left no trace on either machine (2026-11-16).
+      const action = forwardAuditAction(route, req.method);
+      if (action !== null && deps.audit !== undefined) {
+        const entry: ForwardAuditEntry = { action, host: deps.link.memberId, outcome: deps.state.health === "incompatible" ? "incompatible" : "refused" };
+        const paneId = forwardPaneId(route) ?? (ASK_ROUTE.test(route) ? await askPaneOf(req) : undefined);
+        const session = url.searchParams.get("session");
+        if (paneId !== undefined) entry.paneId = paneId;
+        if (session !== null) entry.session = session;
+        deps.audit(entry);
+      }
+      return refusal;
+    }
   }
 
   // A text reply to a member with no Surface reader (an older build) is refused here, before any dial:

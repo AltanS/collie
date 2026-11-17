@@ -46,16 +46,22 @@ export interface HookHoldCardProps {
   /** One tap on an option, by its index in the note's options. */
   readonly onAnswer: (index: number) => Promise<void> | void;
   readonly disabled?: boolean;
+  /** Why a disabled card takes no tap, said under its options. Absent: a general line (M102 spec 11). */
+  readonly disabledReason?: string;
 }
 
 /** The card, the note, or nothing. */
-export function HookHoldCard({ note, onAnswer, disabled }: HookHoldCardProps) {
+export function HookHoldCard({ note, onAnswer, disabled, disabledReason }: HookHoldCardProps) {
   useLocale();
   const [busy, setBusy] = useState<number | null>(null);
-  // The time the card showed this request. A new ask id restarts the guard.
+  // The words a tap left on the card: the guard's "tap again", or an answer that did not go through.
+  // No tap ends in nothing (M102 spec 11).
+  const [said, setSaid] = useState<MessageKey | null>(null);
+  // The time the card showed this request. A new ask id restarts the guard and drops the words.
   const shownAt = useRef(0);
   useEffect(() => {
     shownAt.current = Date.now();
+    setSaid(null);
   }, [note.askId]);
   if (note.state !== "held") {
     return (
@@ -70,6 +76,21 @@ export function HookHoldCard({ note, onAnswer, disabled }: HookHoldCardProps) {
   if (note.adopted) return null;
   const title = t("chat.hold.title", { tool: note.tool });
   const lines = note.input.split("\n").length;
+  const off = disabled === true;
+  function tap(index: number): void {
+    // The guard still keeps a tap meant for the card before this one from answering this request,
+    // but the tap says so, so the person knows to tap again.
+    if (Date.now() - shownAt.current < HOLD_TAP_GUARD_MS) {
+      setSaid("chat.hold.justShown");
+      return;
+    }
+    setSaid(null);
+    setBusy(index);
+    Promise.resolve()
+      .then(() => onAnswer(index))
+      .catch(() => setSaid("chat.hold.answerFailed"))
+      .finally(() => setBusy(null));
+  }
   return (
     <div className="px-3 pb-2">
       <PromptPanel ariaLabel={title}>
@@ -83,14 +104,20 @@ export function HookHoldCard({ note, onAnswer, disabled }: HookHoldCardProps) {
             tone={busy === index ? "busy" : "default"}
             keyLabel={String(index + 1)}
             label={label}
-            disabled={disabled === true || busy !== null}
-            onClick={() => {
-              if (Date.now() - shownAt.current < HOLD_TAP_GUARD_MS) return;
-              setBusy(index);
-              void Promise.resolve(onAnswer(index)).finally(() => setBusy(null));
-            }}
+            disabled={off || busy !== null}
+            onClick={() => tap(index)}
           />
         ))}
+        {off && (
+          <p data-slot="hold-reason" className="font-content pl-0.5 text-xs text-muted-foreground">
+            {disabledReason ?? t("chat.hold.disabled")}
+          </p>
+        )}
+        {!off && said !== null && (
+          <p data-slot="hold-said" role="status" className="font-content pl-0.5 text-xs text-muted-foreground">
+            {t(said)}
+          </p>
+        )}
       </PromptPanel>
     </div>
   );

@@ -2,19 +2,21 @@
 //
 // Tapping any dialog button types into a REAL terminal, and the pane may have moved on between the
 // render the user saw and the tap. So before a key goes out, all five action modules do the same
-// three things, and they do them HERE:
+// two things, and they do them HERE:
 //
 //   1. A FRESH pane read for the same window.
-//   2. The fresh read's `revision` must equal the one the block was detected against — checked
-//      UNCONDITIONALLY (a 304 only proves "unchanged since the last background poll", and polls keep
-//      advancing the ETag cache while a frozen mirror stands still). Herdr 0.7.x's revision is
-//      empirically a stub (always 0), so this is defense-in-depth, not the load-bearing check.
-//   3. The fresh buffer is re-derived and must still be THE SAME DIALOG. This is the load-bearing
-//      check, and it re-derives through `adapterFor(agent).buildBlocks` — the SAME pipeline that
-//      produced the block the user tapped — then compares with the kind's contract comparator
+//   2. The fresh buffer is re-derived and must still be THE SAME DIALOG. This is the whole check,
+//      and it re-derives through `adapterFor(agent).buildBlocks` — the SAME pipeline that produced
+//      the block the user tapped — then compares with the kind's contract comparator
 //      (harness/dialog-contract.ts).
 //
-// (3) is why this module exists. Each action file used to import a Claude `detect*` function
+// There used to be a step between them: the fresh read's `revision` had to equal the one the block
+// was detected against. It is gone. The revision counts changes of the WHOLE screen, so a ticking row
+// outside the dialog moved it and every tap on a busy pane was refused with nothing sent
+// (harness/guard.ts `entryGuard` has the field case). The guard refuses when the dialog the person
+// saw is not the dialog on the screen now, and for no other reason.
+//
+// (2) is why this module exists. Each action file used to import a Claude `detect*` function
 // directly, so a non-Claude pane would have been re-verified through Claude's grammar — the guard
 // would have been checking a screen against a foreign parser. Going through the adapter means the
 // guard verifies exactly what the renderer rendered, and an adapter that emits a block kind gets the
@@ -51,7 +53,8 @@ import type { Scope } from "./scope";
 export interface DialogTarget<K extends DialogKind> {
   paneId: string;
   requestedLines: number;
-  /** The `revision` the rendered dialog was detected against. */
+  /** The `revision` the rendered dialog was detected against. Not a refusal by itself (harness/guard.ts
+   *  `entryGuard` says why); kept so a caller names the snapshot it tapped. */
   detectedRevision: number;
   /** Which machine + which named session the pane lives in — scopes every read + keystroke. */
   scope?: Scope;
@@ -103,7 +106,7 @@ export function dialogDetector<K extends DialogKind>(
 export type Compare = "commits" | "identity";
 
 /**
- * The entry guard: fresh read + revision check + re-derivation through the adapter, compared against
+ * The entry guard: fresh read + re-derivation through the adapter, compared against
  * `target.model` with the kind's `commits` (default) or `identity` comparator. On success it carries
  * back the region text of the FRESH derivation — what the caller binds its first write to.
  */

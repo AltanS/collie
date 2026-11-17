@@ -36,12 +36,15 @@ export function ongoingSubagents(entries: readonly TranscriptEntry[]): PaneSubag
   const rows: PaneSubagent[] = [];
   for (const entry of entries) {
     if (entry.abandoned === true) continue;
-    entry.parts.forEach((part, index) => {
-      if (part.kind !== "tool") return;
+    // A tool part's `nested` calls count beside it: a subagent a script started is still running work.
+    const tools = entry.parts.flatMap((part, index) =>
+      part.kind === "tool" ? [{ part, at: `${index}` }, ...(part.nested ?? []).map((inner, n) => ({ part: inner, at: `${index}.${n}` }))] : [],
+    );
+    tools.forEach(({ part, at }) => {
       const call = part.call;
       if (call?.kind !== "task" || call.ongoing !== true) return;
       const row: PaneSubagent = {
-        agentId: call.jobId ?? part.id ?? `${entry.uuid}:${index}`,
+        agentId: call.jobId ?? part.id ?? `${entry.uuid}:${at}`,
         description: clipLine(call.summary, SUBAGENT_DESCRIPTION_MAX),
         transcript: false,
       };

@@ -180,12 +180,13 @@ describe("submitPreviewOption — digit → verify pointer → Enter", () => {
     expect(mockSendKeys).not.toHaveBeenCalled();
   });
 
-  it("rejects when the fresh revision differs (frozen mirror, advanced pane)", async () => {
+  // A moved revision is no refusal by itself (lib/harness/guard.ts): the same dialog takes the tap.
+  it("does not refuse when only the fresh revision differs and the dialog is the same", async () => {
     const m = model({});
     mockFetchPane.mockResolvedValue(paneWith(buffer({}), 9));
     const res = await submitPreviewOption({ ...base, preview: m, option: m.options[0]! });
-    expect(res).toEqual({ status: "changed" });
-    expect(mockSendKeys).not.toHaveBeenCalled();
+    expect(res).not.toEqual({ status: "changed" });
+    expect(mockSendKeys).toHaveBeenCalled();
   });
 
   it("aborts the verification poll early when the dialog's identity drifts mid-flight", async () => {
