@@ -1,9 +1,10 @@
 import { asJsonBoolean, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
+import { asFieldValue } from "../../web/src/lib/tricks/schema.ts";
 import type { GateLevel } from "../crew/peer-gate.ts";
 import type { JsonValue } from "../json.ts";
 import type { TrickMediaFile } from "./media.ts";
 import type { OfficialAnswer, OfficialTricksSurface } from "./official-install.ts";
-import type { TricksSurface, SwitchAnswer, TapAnswer, VersionRouteAnswer } from "./service.ts";
+import type { TricksSurface, SwitchAnswer, TapAnswer, ValueAnswer, VersionRouteAnswer } from "./service.ts";
 
 // The tricks routes' request halves (M94 slices 01 and 04), kept out of server.ts so that file only
 // dispatches. The gate, the watch stamp and the response are server.ts's.
@@ -20,6 +21,10 @@ import type { TricksSurface, SwitchAnswer, TapAnswer, VersionRouteAnswer } from 
 //   GET  /api/tricks/official             → OfficialTricksReply: the official list with each entry's state
 //   POST /api/tricks/official/<id>/add    → body `{}`; fetch the listed commit, check its hash, install it
 //   POST /api/tricks/official/<id>/update   off (official-install.ts); `{ id, state }`, or a refusal
+//   POST /api/tricks/<host>/<id>/value    → body `{ rid, key, value }` (contract 3, values.ts): one field's
+//                                         value, null to clear it; a receipt `{ rid, code: "ok", key,
+//                                         changed, info }`, or 400 `value-invalid` / `value-refused` (with
+//                                         `code` and `message`), 404, 409 `request-id-reused` / `not-here`
 //
 // Both are this bridge's own for now: a host that is not this one is 404, and the crew merge is a
 // later slice.
@@ -44,7 +49,9 @@ export const TRICKS_ROUTE_RIGHTS = {
   // The switch for tricks as a whole (feature-switch.ts): it decides whether any program runs, so the write
   // right, the Hill switch's level. Its read is the list's level.
   feature: "write",
-} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "auto" | "undo" | "official" | "officialAdd" | "feature", GateLevel>>;
+  // A trick's settings (contract 3): what a person keeps for it, so the switch's level. A value starts a run.
+  value: "write",
+} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "auto" | "undo" | "official" | "officialAdd" | "feature" | "value", GateLevel>>;
 
 /** `since` as a rev, or undefined (every part) when absent or not a whole number at or above 0. */
 export function parseSince(raw: string | null): number | undefined {
@@ -115,6 +122,28 @@ export async function tricksUndoRoute(tricks: TricksSurface, match: RegExpExecAr
   const doc = asJsonObject(body);
   if (doc === undefined || Object.keys(doc).length !== 0) return { status: 400, body: { error: "undo-invalid" } };
   return await tricks.undoRoute(host, id);
+}
+
+/**
+ * `POST /api/tricks/<host>/<id>/value` with `{ rid, key, value }` and nothing else (contract 3): `rid` a UUID
+ * the phone minted, `key` a field key, `value` text, true or false, a number, or null to clear. Anything else
+ * is `value-invalid`, so a stray field is never read. The field's own rule is the service's check.
+ * The only writer of values in this version: no terminal verb. Known limits (the lead, 2026-11-17): the
+ * seen-id store is memory only (a restart forgets ids; the same id then writes the same value again), and
+ * value writes are not rate limited beyond the trick's one-run slot.
+ */
+export async function tricksValueRoute(tricks: TricksSurface, match: RegExpExecArray, body: JsonValue | undefined): Promise<ValueAnswer> {
+  const host = segment(match[1] ?? "");
+  const id = segment(match[2] ?? "");
+  if (host === null) return { status: 404, body: { error: "unknown-host" } };
+  if (id === null || tricks.setValue === undefined) return { status: 404, body: { error: "unknown-trick" } };
+  const doc = asJsonObject(body);
+  const rid = asJsonString(doc?.rid);
+  const key = asJsonString(doc?.key);
+  const raw = doc?.value;
+  const value = raw === null ? null : asFieldValue(raw);
+  if (doc === undefined || rid === undefined || key === undefined || value === undefined || Object.keys(doc).length !== 3) return { status: 400, body: { error: "value-invalid" } };
+  return await tricks.setValue(host, id, { rid, key, value });
 }
 
 /**

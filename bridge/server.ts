@@ -250,7 +250,7 @@ import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
-import { asksBound, TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksOfficialRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./tricks/routes.ts";
+import { asksBound, TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksOfficialRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, tricksValueRoute, parseSince } from "./tricks/routes.ts";
 import type { OfficialTricksSurface } from "./tricks/official-install.ts";
 import { placeTrickSessions } from "./tricks/panes.ts";
 import type { TricksSurface } from "./tricks/service.ts";
@@ -658,6 +658,8 @@ const PAIR_APPROVE_ROUTE = /^\/api\/pair\/approve\/([^/]+)$/;
 // Take changes without asking, and go back one version (crew slice 3): write-gated like the switch.
 const TRICKS_AUTO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/auto$/;
 const TRICKS_UNDO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/;
+// A trick's settings (contract 3): one field's value, write-gated like the switch.
+const TRICKS_VALUE_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/value$/;
 // And a picture of the trick's own `media/` folder (M94 review 11), read-gated like the list. Group 3 is
 // `media/` and the file; bridge/tricks/media.ts checks it before any path is built.
 const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
@@ -3431,6 +3433,22 @@ export function startServer(opts: {
           body = undefined;
         }
         const answer = auto ? await tricksAutoRoute(tricks, tricksVersion, body) : await tricksUndoRoute(tricks, tricksVersion, body);
+        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+      }
+      const tricksValue = TRICKS_VALUE_ROUTE.exec(pathname);
+      if (tricksValue !== null && req.method === "POST") {
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.value, pairingGate);
+        if (denied) return denied;
+        const tricks = opts.tricks;
+        if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `tricksValueRoute` checks the shape.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answer = await tricksValueRoute(tricks, tricksValue, body);
         return json(answer.body, req.headers.get("accept-encoding"), answer.status);
       }
       const tricksMedia = TRICKS_MEDIA_ROUTE.exec(pathname);

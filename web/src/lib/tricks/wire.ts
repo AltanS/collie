@@ -35,6 +35,7 @@ import {
   TRICK_EVENTS,
   TRICK_WARNINGS_MAX,
   VERSION_RE,
+  readWireFields,
   WATCH_MAX,
   WATCH_PATH_MAX,
   type OfficialState,
@@ -310,6 +311,17 @@ function readProvenance(raw: TrickProvenance): TrickProvenance {
   return rest;
 }
 
+/** A row's settings (contract 3): the fields and values held to their rules, and the two flags as true or absent. */
+function readTrickFields(asked: JsonValue | undefined, kept: JsonValue | undefined, setup: true | undefined, unread: true | undefined): Pick<WireTrickInfo, "fields" | "values" | "needsSetup" | "valuesUnread"> {
+  const read = readWireFields(asked, kept);
+  if (read === undefined) return {};
+  const out: Pick<WireTrickInfo, "fields" | "values" | "needsSetup" | "valuesUnread"> = { fields: read.fields };
+  if (Object.keys(read.values).length > 0) out.values = read.values;
+  if (setup !== undefined) out.needsSetup = true;
+  if (unread !== undefined) out.valuesUnread = true;
+  return out;
+}
+
 /** One trick entry as the list and the switch route give it, or `undefined` for a body of another shape. */
 export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined {
   // The closed words (`icon`, `state`, `places`) were written by the bridge from the schema's lists; the
@@ -330,11 +342,15 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const versioned = body.version;
   const known = body.repoFacts;
   const replying = body.decidesReply;
+  const asked = body.fields;
+  const kept = body.values;
+  const setup = asJsonBoolean(body.needsSetup) === true ? true : undefined;
+  const unread = asJsonBoolean(body.valuesUnread) === true ? true : undefined;
   const reacting = body.events;
   const watching = body.watch;
   if (!isTrickValue(body)) return undefined;
   if (body.provenance !== undefined) body.provenance = readProvenance(body.provenance);
-  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined && reacting === undefined && watching === undefined) return body;
+  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined && reacting === undefined && watching === undefined && asked === undefined && kept === undefined && setup === undefined && unread === undefined) return body;
   // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
   // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
@@ -343,7 +359,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const description = readTrickText(described, "description");
   const about = readTrickText(told, "about");
   const rules = readTrickRules(ruled);
-  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, events: _reacting, watch: _watching, ...rest } = body;
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, events: _reacting, watch: _watching, fields: _asked, values: _kept, needsSetup: _setup, valuesUnread: _unread, ...rest } = body;
   const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
   if (pending !== undefined) out.pending = pending;
   if (inputs !== undefined) out.inputs = inputs;
@@ -365,6 +381,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   if (version !== undefined && VERSION_RE.test(version)) out.version = version;
   const facts = readRepoFacts(known);
   if (facts !== undefined) out.repoFacts = facts;
+  Object.assign(out, readTrickFields(asked, kept, setup, unread));
   // Review 8 V-N5: rules that were sent but do not read, or an agent view that came without them, are kept
   // as a state of their own, never dropped: the trick cannot be switched on from this phone.
   if (rules === undefined && (ruled !== undefined || viewed === true)) out.rulesUnshown = true;

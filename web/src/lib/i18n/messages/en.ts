@@ -3657,6 +3657,21 @@ export const en = {
   "settings.tricks.about.updates": "Updates",
   "settings.tricks.about.auto.label": "Take changes without asking",
   "settings.tricks.about.auto.hint": "A change that asks for new rights, or does something new such as reaching the network, still asks.",
+  // A trick's settings (contract 3, `[[field]]`): components/trick-settings-group.tsx.
+  "settings.tricks.about.settings": "Settings",
+  "settings.tricks.fields.required": "Required",
+  "settings.tricks.fields.notSet": "Not set",
+  "settings.tricks.fields.range": "{min} to {max}",
+  "settings.tricks.fields.needsSetup": "Fill in the required settings so the trick can do its work.",
+  "settings.tricks.fields.unread": "The saved settings could not be read. Set them again.",
+  "settings.tricks.fields.onLead": "These settings live on the lead of this crew. Change them there.",
+  "settings.tricks.fields.failed": "{label} was not saved. Try again.",
+  "settings.tricks.fields.refused.text": "Use one line of at most {max} characters.",
+  "settings.tricks.fields.refused.number": "Use a whole number from {min} to {max}.",
+  "settings.tricks.fields.refused.option": "Pick one of the options.",
+  "settings.tricks.fields.refused.gone": "This setting is gone from the trick. Close the sheet and open it again.",
+  "settings.tricks.needsSetup": "Needs setup: open it to fill in its settings.",
+  "settings.tricks.valuesUnread": "Its saved settings could not be read. Open it to set them again.",
   // An agent view and its rules (contract 2). The rights lines are schema.ts's own words
   // (AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS, RULES_WORDS), held there by a test.
   "settings.tricks.place.agentView": "agent view",
@@ -4194,6 +4209,20 @@ export const PENDING_TRANSLATION = [
   "accounts.unlinked",
   "accounts.new.label",
   "accounts.filter.field",
+  "settings.tricks.about.settings",
+  "settings.tricks.fields.required",
+  "settings.tricks.fields.notSet",
+  "settings.tricks.fields.range",
+  "settings.tricks.fields.needsSetup",
+  "settings.tricks.fields.unread",
+  "settings.tricks.fields.onLead",
+  "settings.tricks.fields.failed",
+  "settings.tricks.fields.refused.text",
+  "settings.tricks.fields.refused.number",
+  "settings.tricks.fields.refused.option",
+  "settings.tricks.fields.refused.gone",
+  "settings.tricks.needsSetup",
+  "settings.tricks.valuesUnread",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

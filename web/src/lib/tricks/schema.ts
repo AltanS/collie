@@ -73,10 +73,11 @@ import {
 import { skeletonWords } from "../fold";
 import { codePointName, firstHiddenChar, hasHiddenChar } from "../hidden-chars";
 import { asJsonNumber, asJsonObject, asJsonString, asJsonBoolean, parseJson, type JsonObject, type JsonValue } from "../json";
-import { AGENT_VIEW_CONTRACT, INPUTS_CONTRACT, MENU_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
+import { AGENT_VIEW_CONTRACT, FIELDS_CONTRACT, INPUTS_CONTRACT, MENU_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
+import { FIELD_HINT_MAX, FIELD_LABEL_MAX, FIELD_NUMBER_ABS_MAX, FIELD_OPTION_MAX, FIELD_OPTIONS_MAX, FIELD_OPTIONS_MIN, FIELD_TEXT_MAX, FIELDS_MAX } from "./limits";
 import { PERMISSION_LEADS, type PermissionLead, SHEET_LABEL_FOLDS } from "./sheet-labels";
 
-export { AGENT_VIEW_CONTRACT, INPUTS_CONTRACT, MENU_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT };
+export { AGENT_VIEW_CONTRACT, FIELDS_CONTRACT, INPUTS_CONTRACT, MENU_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT };
 
 // ── Versions and byte caps ───────────────────────────────────────────────────────────────────
 
@@ -1345,6 +1346,12 @@ export interface TrickManifest {
    * ({@link DECIDES_REPLY_LINE}). A right: it is in the powers, so a version that adds it asks again.
    */
   decides?: DecidesWord;
+  /**
+   * Contract 3: the settings a person keeps for the trick (`[[field]]`, {@link TrickField}), set from the phone
+   * only. Text, not a right: not in the powers, part of the code hash like any manifest change.
+   * The program gets the values in its facts (`values`), never on a command line.
+   */
+  fields?: TrickField[];
 }
 
 /**
@@ -1467,6 +1474,11 @@ export interface TrickFacts {
   spaces: FactsSpace[];
   /** How many sessions the facts left out past {@link FACT_SESSIONS_MAX} or {@link FACT_SESSIONS_MAX_BYTES}. Absent when none. */
   sessionsOmitted?: number;
+  /**
+   * Contract 3, for a trick with `[[field]]`: each field's value by its key, the person's own, else the field's
+   * `default`. A field with neither is absent. The person's data: show it, never run it.
+   */
+  values?: FieldValues;
 }
 
 // ── Types: taps and the wire ─────────────────────────────────────────────────────────────────
@@ -1708,6 +1720,17 @@ export interface WireTrickInfo {
    * older bridge. The phone never reads GitHub itself.
    */
   repoFacts?: WireRepoFacts;
+  /**
+   * Contract 3: the fields of the manifest of what runs (the approved copy while on, else the folder), as the
+   * bridge read them. The About sheet draws one row per field. Absent: none, or an older bridge.
+   */
+  fields?: TrickField[];
+  /** The values the person set, by field key (never the defaults, which `fields` carries). Absent: none set. */
+  values?: FieldValues;
+  /** A required field has no value and no default: the row says "Needs setup". */
+  needsSetup?: true;
+  /** The saved values could not be read, so they read as empty: the row says so. */
+  valuesUnread?: true;
 }
 /**
  * A GitHub repository's facts for the About sheet: its stars and when it was last pushed to, an ISO instant.
@@ -4209,7 +4232,7 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules", "decides"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules", "decides", "field"] as const;
 
 // ── `decides`: whether a trick's Decisions answer into a session ────────────────────────────────────
 
@@ -4455,6 +4478,318 @@ export function viewOnlyRefusal(key: (typeof VIEW_ONLY_REFUSED)[number]): string
 export const AGENT_VIEW_NEEDS_RULES = `"agent-view" needs "rules": the file of instructions the session's agent reads. Add rules = "rules.md" to trick.toml.`;
 export const RULES_NEED_AGENT_VIEW = `"rules" goes with the place "agent-view": they are the instructions of the agent that draws the view. Add "agent-view" to places, or remove "rules".`;
 
+// ── Fields: the settings a person keeps for a trick (contract 3) ─────────────────────────────────────
+
+/**
+ * The four kinds a field takes, and no more (decided 2026-11-17): one line of `text`, a `choice` of 2 to 8
+ * options, a `switch`, a whole `number` between `min` and `max`. No secret kind: a key still comes through `env`.
+ */
+export const FIELD_KINDS = ["text", "choice", "switch", "number"] as const;
+export type FieldKind = (typeof FIELD_KINDS)[number];
+
+/** A field's value: text for `text` and `choice`, a boolean for `switch`, a whole number for `number`. */
+export type FieldValue = string | number | boolean;
+/** Values by field key. */
+export interface FieldValues {
+  [key: string]: FieldValue;
+}
+
+interface FieldBase {
+  /** Spelled like a trick id ({@link isTrickId}): the key of its value in the facts and in `values.json`. */
+  key: string;
+  /** What the row on the phone says, at most `FIELD_LABEL_MAX` characters. */
+  label: string;
+  /** A second line under the label, at most `FIELD_HINT_MAX` characters. */
+  hint?: string;
+  /** A field the trick cannot do without: while it has no value and no default, the row says "Needs setup". */
+  required?: true;
+}
+export interface TextField extends FieldBase {
+  kind: "text";
+  default?: string;
+}
+export interface ChoiceField extends FieldBase {
+  kind: "choice";
+  options: string[];
+  default?: string;
+}
+export interface SwitchField extends FieldBase {
+  kind: "switch";
+  /** Off when left out: a switch always has a value, so it is never `required`. */
+  default?: boolean;
+}
+export interface NumberField extends FieldBase {
+  kind: "number";
+  min: number;
+  max: number;
+  default?: number;
+}
+/** One `[[field]]` of `trick.toml`, as read. */
+export type TrickField = TextField | ChoiceField | SwitchField | NumberField;
+
+/** The keys a `[[field]]` table takes, by kind. */
+export const FIELD_KEYS = {
+  text: ["key", "kind", "label", "hint", "default", "required"],
+  choice: ["key", "kind", "label", "hint", "default", "required", "options"],
+  switch: ["key", "kind", "label", "hint", "default"],
+  number: ["key", "kind", "label", "hint", "default", "required", "min", "max"],
+} as const satisfies Record<FieldKind, readonly string[]>;
+
+/** The line a contract 1 or 2 trick that lists `[[field]]` is refused with. */
+export const FIELDS_NEED_CONTRACT = `"field" needs contract = ${String(FIELDS_CONTRACT)}. Add contract = ${String(FIELDS_CONTRACT)} to trick.toml to keep settings for the trick.`;
+
+/**
+ * Why a value breaks its field's rule, as a code the phone and the CLI branch on. `kind`: the wrong type of
+ * value; `text`: a text over its cap, or with a line break or a control character; `option`: not one of a
+ * choice's options; `range`: a number outside `min` to `max`; `whole`: a number that is not whole.
+ */
+export const FIELD_REFUSALS = ["kind", "text", "option", "range", "whole"] as const;
+export type FieldRefusal = (typeof FIELD_REFUSALS)[number];
+
+/** A value that breaks its field's rule: the code and one sentence that names the next step. */
+export interface FieldProblem {
+  code: FieldRefusal;
+  reason: string;
+}
+
+/**
+ * Why `value` breaks `field`'s rule, or undefined when it keeps it. The one check the manifest (a `default`),
+ * the bridge's write route, the CLI and the phone all run. A text value is one line of at most
+ * `FIELD_TEXT_MAX` characters with no control or invisible character; it may be empty only when the field is
+ * not required. The sentences never repeat the value: a refusal may be written to a log.
+ */
+export function fieldValueProblem(field: TrickField, value: FieldValue): FieldProblem | undefined {
+  switch (field.kind) {
+    case "switch":
+      return asJsonBoolean(value) === undefined ? { code: "kind", reason: `"${field.label}" is a switch. Send true or false.` } : undefined;
+    case "number": {
+      const number = asJsonNumber(value);
+      if (number === undefined || !Number.isFinite(number)) return { code: "kind", reason: `"${field.label}" is a number. Send a whole number from ${String(field.min)} to ${String(field.max)}.` };
+      if (!Number.isInteger(number)) return { code: "whole", reason: `"${field.label}" takes whole numbers only. Send a whole number from ${String(field.min)} to ${String(field.max)}.` };
+      if (number < field.min || number > field.max) return { code: "range", reason: `"${field.label}" is from ${String(field.min)} to ${String(field.max)}. Send a number in that range.` };
+      return undefined;
+    }
+    case "choice": {
+      const option = asJsonString(value);
+      if (option === undefined) return { code: "kind", reason: `"${field.label}" is a choice. Send one of its options.` };
+      return field.options.includes(option) ? undefined : { code: "option", reason: `"${field.label}" takes one of: ${quoteList(field.options)}. Pick one of them.` };
+    }
+    case "text": {
+      const text = asJsonString(value);
+      if (text === undefined) return { code: "kind", reason: `"${field.label}" is text. Send one line of text.` };
+      if (codePoints(text) > FIELD_TEXT_MAX) return { code: "text", reason: `"${field.label}" takes at most ${String(FIELD_TEXT_MAX)} characters. Make it shorter.` };
+      if (hasControl(text, false, false) || hasInvisible(text)) return { code: "text", reason: `"${field.label}" is one line with no control or invisible character. Remove the line break or the character.` };
+      return undefined;
+    }
+  }
+}
+
+/** A field's value now: the person's, when it keeps the field's rule, else the default, else undefined. */
+export function fieldValueOf(field: TrickField, stored: FieldValues): FieldValue | undefined {
+  const own = Object.hasOwn(stored, field.key) ? stored[field.key] : undefined;
+  if (own !== undefined && fieldValueProblem(field, own) === undefined && !(field.kind === "text" && own === "")) return own;
+  return field.default;
+}
+
+/**
+ * The values a program gets in its facts: each field's value now ({@link fieldValueOf}), by key. A field with
+ * no value and no default is left out, and so is a stored key no field names any more.
+ */
+export function effectiveValues(fields: readonly TrickField[], stored: FieldValues): FieldValues {
+  const out: FieldValues = {};
+  for (const field of fields) {
+    const value = fieldValueOf(field, stored);
+    if (value !== undefined) out[field.key] = value;
+  }
+  return out;
+}
+
+/** The stored values that still keep their field's rule, by key: what the row shows as set. */
+export function keptValues(fields: readonly TrickField[], stored: FieldValues): FieldValues {
+  const out: FieldValues = {};
+  for (const field of fields) {
+    const own = Object.hasOwn(stored, field.key) ? stored[field.key] : undefined;
+    if (own !== undefined && fieldValueProblem(field, own) === undefined && !(field.kind === "text" && own === "")) out[field.key] = own;
+  }
+  return out;
+}
+
+/** Whether a required field has no value and no default: the trick needs setup before it can do its work. */
+export function needsSetup(fields: readonly TrickField[], stored: FieldValues): boolean {
+  return fields.some((field) => field.required === true && fieldValueOf(field, stored) === undefined);
+}
+
+/**
+ * Read `[[field]]` of a manifest: at most `FIELDS_MAX` tables, each closed by its kind ({@link FIELD_KEYS}).
+ * Every rule refuses with its own sentence; nothing is cut. Undefined when the manifest lists none, or when
+ * any field is refused (the refusals are in the sink).
+ */
+function readFields(f: Fields, contract: number | undefined): TrickField[] | undefined {
+  if (!f.has("field")) return undefined;
+  if (contract !== undefined && contract < FIELDS_CONTRACT) {
+    f.push("version", "field", FIELDS_NEED_CONTRACT);
+    return undefined;
+  }
+  const list = f.array("field", { min: 1, max: FIELDS_MAX, what: "fields, each a [[field]] table" });
+  if (list === undefined) return undefined;
+  const out: TrickField[] = [];
+  const keys = new Set<string>();
+  let ok = true;
+  list.forEach((value, i) => {
+    const path = pointer("/field", i);
+    const one = readField(value, path, f.sink);
+    if (one === undefined) {
+      ok = false;
+      return;
+    }
+    if (keys.has(one.key)) {
+      f.sink.push({ code: "duplicate", path: pointer(path, "key"), reason: `The key "${one.key}" is listed twice. Give each field its own key.` });
+      ok = false;
+      return;
+    }
+    keys.add(one.key);
+    out.push(one);
+  });
+  return ok ? out : undefined;
+}
+
+/** One `[[field]]` table, or undefined with its refusals in `sink`. */
+function readField(value: JsonValue, path: string, sink: Refusal[]): TrickField | undefined {
+  const g = itemFields(value, path, sink, "a field");
+  if (g === undefined) return undefined;
+  const before = sink.length;
+  const kind = g.word("kind", FIELD_KINDS, true);
+  const keyText = g.text("key", { max: 32, required: true });
+  if (keyText !== undefined && !isTrickId(keyText)) g.push("id", "key", '"key" must be 1 to 32 lower-case letters, digits and hyphens, starting with a letter or a digit, as a trick id is.');
+  const label = g.text("label", { max: FIELD_LABEL_MAX, required: true });
+  const hint = g.text("hint", { max: FIELD_HINT_MAX });
+  const required = g.bool("required");
+  if (kind === undefined) {
+    g.keys(["key", "kind", "label", "hint", "default", "required", "options", "min", "max"]);
+    return undefined;
+  }
+  g.keys(FIELD_KEYS[kind], (key) => ({ code: "unknown-key", reason: `"${key}" is not part of a ${kind} field. Remove it.` }));
+  if (keyText === undefined || label === undefined || sink.length > before) return undefined;
+  const base: FieldBase = { key: keyText, label };
+  if (hint !== undefined) base.hint = hint;
+  if (required === true) base.required = true;
+  const field = fieldOfKind(g, kind, base);
+  if (field === undefined || sink.length > before) return undefined;
+  if (field.default !== undefined) {
+    const problem = fieldValueProblem(field, field.default);
+    if (problem !== undefined) {
+      g.push(problem.code === "kind" ? "type" : problem.code === "option" ? "word" : problem.code === "text" ? "text" : "range", "default", `"default" breaks the field's own rule: ${problem.reason}`);
+      return undefined;
+    }
+  }
+  return field;
+}
+
+/** The kind's own keys of one field. */
+function fieldOfKind(g: Fields, kind: FieldKind, base: FieldBase): TrickField | undefined {
+  switch (kind) {
+    case "switch": {
+      const value = g.bool("default");
+      return value === undefined ? { ...base, kind } : { ...base, kind, default: value };
+    }
+    case "text": {
+      const raw = g.obj.default;
+      if (raw !== undefined && asJsonString(raw) === undefined) {
+        g.push("type", "default", '"default" of a text field must be text.');
+        return undefined;
+      }
+      const value = asJsonString(raw);
+      return value === undefined ? { ...base, kind } : { ...base, kind, default: value };
+    }
+    case "choice": {
+      const options = readStrings(g, "options", { min: FIELD_OPTIONS_MIN, max: FIELD_OPTIONS_MAX, what: "options", required: true, text: { max: FIELD_OPTION_MAX } });
+      if (options === undefined) return undefined;
+      if (new Set(options).size !== options.length) {
+        g.push("duplicate", "options", '"options" lists one option twice. Give each option once.');
+        return undefined;
+      }
+      const raw = g.obj.default;
+      if (raw !== undefined && asJsonString(raw) === undefined) {
+        g.push("type", "default", '"default" of a choice field must be one of its options.');
+        return undefined;
+      }
+      const value = asJsonString(raw);
+      return value === undefined ? { ...base, kind, options } : { ...base, kind, options, default: value };
+    }
+    case "number": {
+      const rule = { min: -FIELD_NUMBER_ABS_MAX, max: FIELD_NUMBER_ABS_MAX, required: true };
+      const min = g.int("min", rule);
+      const max = g.int("max", rule);
+      if (min === undefined || max === undefined) return undefined;
+      if (min >= max) {
+        g.push("range", "max", `"max" (${String(max)}) must be above "min" (${String(min)}).`);
+        return undefined;
+      }
+      const raw = g.obj.default;
+      if (raw === undefined) return { ...base, kind, min, max };
+      const value = asJsonNumber(raw);
+      if (value === undefined) {
+        g.push("type", "default", '"default" of a number field must be a whole number.');
+        return undefined;
+      }
+      return { ...base, kind, min, max, default: value };
+    }
+  }
+}
+
+/** A JSON value as a field value: text, true or false, or a finite number; anything else is undefined. */
+export function asFieldValue(value: JsonValue | undefined): FieldValue | undefined {
+  const number = asJsonNumber(value);
+  return asJsonString(value) ?? asJsonBoolean(value) ?? (number !== undefined && Number.isFinite(number) ? number : undefined);
+}
+
+/**
+ * A trick row's `fields` and `values` as the bridge sent them (wire.ts): the fields read by the manifest's own
+ * rules, the values kept only where they keep their field's rule. Anything of another shape is undefined, as
+ * from an older bridge, and the phone shows no Settings group.
+ */
+export function readWireFields(fieldsRaw: JsonValue | undefined, valuesRaw: JsonValue | undefined): { fields: TrickField[]; values: FieldValues } | undefined {
+  if (fieldsRaw === undefined) return undefined;
+  const refusals: Refusal[] = [];
+  const fields = readFields(new Fields({ field: fieldsRaw }, "", refusals, "the row"), FIELDS_CONTRACT);
+  if (fields === undefined || refusals.length > 0) return undefined;
+  const raw = asJsonObject(valuesRaw) ?? {};
+  const values: FieldValues = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const one = asFieldValue(value);
+    if (one !== undefined) values[key] = one;
+  }
+  return { fields, values: keptValues(fields, values) };
+}
+
+/**
+ * The values of a facts document (`values`), for `collie trick check --run` with fixture facts: an object of
+ * at most `FIELDS_MAX` keys spelled as trick ids, each text of at most `FIELD_TEXT_MAX` characters, a boolean
+ * or a whole number.
+ */
+function readFactsValues(f: Fields): FieldValues | undefined {
+  const g = f.object("values", "an object of values by field key");
+  if (g === undefined) return undefined;
+  const out: FieldValues = {};
+  const entries = Object.entries(g.obj);
+  if (entries.length > FIELDS_MAX) {
+    f.push("count", "values", `"values" holds ${String(entries.length)}. It holds at most ${String(FIELDS_MAX)}.`);
+    return undefined;
+  }
+  for (const [key, raw] of entries) {
+    const text = asJsonString(raw);
+    const flag = asJsonBoolean(raw);
+    const number = asJsonNumber(raw);
+    const fits = (text !== undefined && codePoints(text) <= FIELD_TEXT_MAX && !hasControl(text, false, false)) || flag !== undefined || (number !== undefined && Number.isInteger(number) && Math.abs(number) <= FIELD_NUMBER_ABS_MAX);
+    if (!isTrickId(key) || !fits) {
+      g.push("type", key, "A value is a field key with one line of text, true or false, or a whole number.");
+      continue;
+    }
+    out[key] = text ?? flag ?? number ?? "";
+  }
+  return out;
+}
+
 /** The highest `contract` a manifest may write before it is refused as a typo rather than a newer Collie. */
 export const CONTRACT_MAX = 999;
 
@@ -4632,6 +4967,8 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   // Whether its Decisions answer into a session: one closed word, at every contract (an optional key adds
   // inside contract 1). A view-only trick runs no program, so it is refused there with the other program keys.
   const decides = f.word("decides", DECIDES_WORDS);
+  // Contract 3: the settings a person keeps for the trick (readFields).
+  const fields = readFields(f, contract);
 
   const fatal = refusals.some((r) => r.code !== "later");
   if (fatal || id === undefined || name === undefined || (run === undefined && !viewOnly) || contract === undefined) return { refusals: capRefusals(refusals) };
@@ -4653,13 +4990,14 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (description !== undefined) manifest.description = description;
   if (about !== undefined) manifest.about = about;
   if (version !== undefined && VERSION_RE.test(version)) manifest.version = version;
+  if (fields !== undefined) manifest.fields = fields;
   return { manifest, refusals: capRefusals(refusals) };
 }
 
 // ── The facts ────────────────────────────────────────────────────────────────────────────────
 
 /** Every key of the facts document, of a session in it, of a space, of the trick, and of each trigger. */
-export const FACTS_KEYS = ["contract", "trigger", "trick", "memberId", "host", "sessions", "spaces", "sessionsOmitted"] as const;
+export const FACTS_KEYS = ["contract", "trigger", "trick", "memberId", "host", "sessions", "spaces", "sessionsOmitted", "values"] as const;
 export const SESSION_FACT_KEYS = ["id", "memberId", "sessionId", "paneId", "host", "name", "agent", "status", "cwd", "space", "tab", "lastActiveAt", "reachable", "inputs"] as const;
 export const INPUTS_FACT_KEYS = ["state", "files", "skipped"] as const;
 export const INPUT_FILE_FACT_KEYS = ["rel", "path", "bytes", "sha256", "mtime", "kind"] as const;
@@ -4726,12 +5064,14 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
   });
 
   const omitted = f.int("sessionsOmitted", { min: 1, max: 1_000_000 });
+  const values = readFactsValues(f);
 
   if (refusals.length > 0 || trigger === undefined || trickId === undefined || dir === undefined || state === undefined || memberId === undefined || host === undefined) {
     return { refusals: capRefusals(refusals) };
   }
   const facts: TrickFacts = { contract: contract ?? TRICK_CONTRACT_DEFAULT, trigger, trick: { id: trickId, dir, state }, memberId, host, sessions, spaces };
   if (omitted !== undefined) facts.sessionsOmitted = omitted;
+  if (values !== undefined) facts.values = values;
   return { facts, refusals };
 }
 

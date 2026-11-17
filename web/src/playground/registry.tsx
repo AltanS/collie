@@ -185,7 +185,7 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/trick-menu").then((m) => ({ default: m.TrickMenuSection })),
   },
   {
-    def: { id: "trick-settings", group: "Tricks and Hill", title: "Trick settings", keywords: ["tricks", "TricksSettingsCard", "TrickAboutSheet", "about", "provenance", "official", "TrickCardsWaiting", "TrickCardsLine", "waiting", "TrickCardRoute"] },
+    def: { id: "trick-settings", group: "Tricks and Hill", title: "Trick settings", keywords: ["tricks", "TricksSettingsCard", "TrickAboutSheet", "about", "provenance", "official", "TrickCardsWaiting", "TrickCardsLine", "waiting", "TrickCardRoute", "TrickSettingsGroup", "fields", "setup"] },
     load: () => import("./sections/trick-settings").then((m) => ({ default: m.TrickSettingsSection })),
   },
   {
