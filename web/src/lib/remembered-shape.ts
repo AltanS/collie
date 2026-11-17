@@ -32,6 +32,8 @@ export const ANSWERS = {
   "settings-accounts-row": "flag",
   "settings-tricks-row": "flag",
   "settings-install-card": "flag",
+  // calm-first-frame: how many launcher rows the front machine had (0 to 99), for the Launch header's count.
+  "home-launch-count": "count",
 } as const satisfies Record<string, AnswerKind>;
 
 export type AnswerName = keyof typeof ANSWERS;

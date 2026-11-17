@@ -1,7 +1,7 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { NO_PROMPTS_KEY, noPromptsConfirmed } from "@/lib/no-prompts";
@@ -12,11 +12,18 @@ import type { DeviceAuth, Launcher } from "@/lib/types";
 // reads the hook, so we control what the hook returns per-case without touching the network.
 const { launchersValue } = vi.hoisted(() => {
   const current: LaunchersState = { launchers: [], home: "", harnesses: null, items: null, adding: null, loadedFor: null };
-  return { launchersValue: { current } };
+  const listeners = new Set<() => void>();
+  return { launchersValue: { current, listeners } };
 });
-vi.mock("@/lib/launchers", () => ({
-  useLaunchers: () => launchersValue.current,
-}));
+// A store, not a bare read, so a case can let the read "land" after the first paint.
+vi.mock("@/lib/launchers", async () => {
+  const { useSyncExternalStore } = await import("react");
+  const subscribe = (listener: () => void) => {
+    launchersValue.listeners.add(listener);
+    return () => launchersValue.listeners.delete(listener);
+  };
+  return { useLaunchers: () => useSyncExternalStore(subscribe, () => launchersValue.current) };
+});
 
 // Stub the bridge's launch endpoint at the api seam, so the hook's read-only short-circuit
 // (which fires before api.launch) can be proven by "api never called". The hook itself stays real.
@@ -269,4 +276,85 @@ it.each([
   await userEvent.click(await screen.findByRole("button", { name: /Kiro/ }));
   await waitFor(() => expect(router.state.location.pathname).toBe("/pane/p1"));
   expect(readAgentLaunch(router.state.location.state, "p1")?.harness).toBe(expected);
+});
+
+// CALM LOAD (row 2): the rows are read after the first paint, so the header is drawn from the remembered
+// count and the body eases in under it. The neighbours (the header, its count, its place) do not move.
+describe("LaunchStrip, first frame", () => {
+  const COUNT_KEY = "collie:shape:/:home-launch-count";
+  const loaded = (launchers: Launcher[]): LaunchersState => ({ launchers, home: "/home/op", harnesses: null, items: null, adding: null, loadedFor: "\u0000" });
+  const land = (state: LaunchersState) =>
+    act(() => {
+      launchersValue.current = state;
+      for (const listener of launchersValue.listeners) listener();
+    });
+  const asked: LaunchersState = { launchers: [], home: "", harnesses: null, items: null, adding: null, loadedFor: null };
+
+  beforeEach(() => {
+    localStorage.clear();
+    launchersValue.current = asked;
+  });
+  afterEach(() => localStorage.clear());
+
+  const header = () => document.querySelector("section h2");
+
+  it("draws the header with the remembered count on the first frame, and the body follows the read", async () => {
+    localStorage.setItem(COUNT_KEY, "2");
+    render(<RouterProvider router={makeRouter(undefined)} />);
+    await screen.findByRole("heading", { name: /Launch/ });
+    expect(header()).toHaveTextContent("Launch");
+    expect(header()).toHaveTextContent("2");
+    // The body has nothing to draw yet: no button of a launcher, and the header is where it will stay.
+    expect(screen.queryByRole("button", { name: /Runs & quota/ })).toBeNull();
+    const before = header();
+    await land(loaded([peek, quota]));
+    expect(await screen.findByRole("button", { name: /Runs & quota/ })).toBeInTheDocument();
+    expect(header()).toBe(before);
+    expect(header()).toHaveTextContent("2");
+    expect(document.querySelector("section")!.firstElementChild?.contains(header())).toBe(true);
+    expect(localStorage.getItem(COUNT_KEY)).toBe("2");
+  });
+
+  it("a folded section is the same on the first frame and after the read", async () => {
+    localStorage.setItem(COUNT_KEY, "2");
+    render(<RouterProvider router={makeRouter(undefined, false)} />);
+    await screen.findByRole("heading", { name: /Launch/ });
+    const section = document.querySelector("section")!;
+    const children = section.children.length;
+    await land(loaded([peek, quota]));
+    expect(section.children).toHaveLength(children);
+    expect(screen.queryByRole("button", { name: /Runs & quota/ })).toBeNull();
+  });
+
+  it("draws nothing for a device with no memory, as before, until the rows are there", async () => {
+    render(<RouterProvider router={makeRouter(undefined)} />);
+    await waitFor(() => expect(screen.queryByRole("heading", { name: /Launch/ })).toBeNull());
+    await land(loaded([peek]));
+    expect(await screen.findByRole("heading", { name: /Launch/ })).toBeInTheDocument();
+    expect(localStorage.getItem(COUNT_KEY)).toBe("1");
+  });
+
+  it("draws nothing for a remembered 0", async () => {
+    localStorage.setItem(COUNT_KEY, "0");
+    render(<RouterProvider router={makeRouter(undefined)} />);
+    await waitFor(() => expect(screen.queryByRole("heading", { name: /Launch/ })).toBeNull());
+  });
+
+  it("a read that finds no rows removes a remembered section and the memory with it", async () => {
+    localStorage.setItem(COUNT_KEY, "3");
+    render(<RouterProvider router={makeRouter(undefined)} />);
+    await screen.findByRole("heading", { name: /Launch/ });
+    await land(loaded([]));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: /Launch/ })).toBeNull());
+    expect(localStorage.getItem(COUNT_KEY)).toBe("0");
+  });
+
+  it("the front machine's memory never speaks for a crew member's launchers", async () => {
+    localStorage.setItem(COUNT_KEY, "3");
+    render(<RouterProvider router={makeRouter(undefined, null, { host: "mini" })} />);
+    await waitFor(() => expect(screen.queryByRole("heading", { name: /Launch/ })).toBeNull());
+    await land(loaded([peek]));
+    expect(await screen.findByRole("heading", { name: /Launch/ })).toBeInTheDocument();
+    expect(localStorage.getItem(COUNT_KEY)).toBe("3");
+  });
 });
