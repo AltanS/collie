@@ -105,11 +105,11 @@ describe("CrewOpsStore", () => {
   test("the optional `source` round-trips, and a record written without it still loads as it was", async () => {
     const io = fakeIo();
     const store = new CrewOpsStore("/state", io);
-    await store.record("minibuch", { ...RECORD, source: "herdr-core" });
+    await store.record("workshop", { ...RECORD, source: "herdr-core" });
     await store.record("typed", { ...RECORD, source: null });
     await store.record("old", RECORD);
     const reread = parseCrewOps(io.contents!)!;
-    expect(reread.members.minibuch?.source).toBe("herdr-core");
+    expect(reread.members.workshop?.source).toBe("herdr-core");
     expect(reread.members.typed?.source).toBeNull();
     expect("source" in reread.members.old!).toBe(false);
 

@@ -603,11 +603,11 @@ describe("an update in flight is the fastest thing on the screen it is on", () =
   it("a PEERS-ONLY run counts too, and it has no local record at all (M20/09)", () => {
     // "Retry crew update" writes nothing to `update.json`, so a rule that read only `run` would poll
     // that whole run at six seconds.
-    expect(intervalFor(withRun({ peers: [{ name: "minibuch", state: "updating" }] }), null)).toBe(HOT_MS);
+    expect(intervalFor(withRun({ peers: [{ name: "workshop", state: "updating" }] }), null)).toBe(HOT_MS);
     // And it stops when the lead says the run settled, not when a timer says so.
     expect(
       intervalFor(
-        withRun({ peers: [{ name: "minibuch", state: "done" }], settledAt: 5_000 }),
+        withRun({ peers: [{ name: "workshop", state: "done" }], settledAt: 5_000 }),
         null,
       ),
     ).toBe(IDLE_MS);

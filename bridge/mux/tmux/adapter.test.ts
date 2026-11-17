@@ -126,7 +126,7 @@ describe("an auto-named window shows its folder, not its program", () => {
   test("a window the operator named keeps that name", async () => {
     const fake = new FakeTmux();
     const adapter = new TmuxMux(fake);
-    const created = await adapter.createTab({ spaceId: "$1", cwd: "/var/home/altan/playground/herdr-pouch" });
+    const created = await adapter.createTab({ spaceId: "$1", cwd: "/home/dev/playground/herdr-pouch" });
     if (!created.ok) throw new Error("unreachable");
     const renamed = await adapter.renameTab(created.value.tabId, "notes");
     expect(renamed.ok).toBe(true);
@@ -143,7 +143,7 @@ describe("an auto-named window shows its folder, not its program", () => {
     const fake = new FakeTmux();
     const adapter = new TmuxMux(fake);
     // No `-n`, so tmux keeps `automatic-rename` on and names the window after the shell it opened.
-    const created = await adapter.createTab({ spaceId: "$1", cwd: "/var/home/altan/playground/herdr-pouch" });
+    const created = await adapter.createTab({ spaceId: "$1", cwd: "/home/dev/playground/herdr-pouch" });
     if (!created.ok) throw new Error("unreachable");
 
     const { tab, pane } = await tabAndPane(adapter, created.value.tabId, created.value.paneId);
@@ -166,7 +166,7 @@ describe("an auto-named window shows its folder, not its program", () => {
   test("an auto-named window with no known path falls back to its bare index", async () => {
     const fake = new FakeTmux();
     const adapter = new TmuxMux(fake);
-    const created = await adapter.createTab({ spaceId: "$1", cwd: "/var/home/altan/playground/herdr-pouch" });
+    const created = await adapter.createTab({ spaceId: "$1", cwd: "/home/dev/playground/herdr-pouch" });
     if (!created.ok) throw new Error("unreachable");
     await fake.blankPaneCwd(created.value.paneId);
 
@@ -185,7 +185,7 @@ describe("an auto-named window shows its folder, not its program", () => {
     const adapter = new TmuxMux(fake);
     // `-n 42` turns `automatic-rename` off (tmux's own behaviour), so this is the operator's choice —
     // and the rule still reads a bare digit string as positional, never as a name to keep verbatim.
-    const created = await adapter.createTab({ spaceId: "$1", label: "42", cwd: "/var/home/altan/playground/herdr-pouch" });
+    const created = await adapter.createTab({ spaceId: "$1", label: "42", cwd: "/home/dev/playground/herdr-pouch" });
     if (!created.ok) throw new Error("unreachable");
 
     const { tab, pane } = await tabAndPane(adapter, created.value.tabId, created.value.paneId);

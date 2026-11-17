@@ -60,10 +60,10 @@ describe("the discovered Host allowlist", () => {
   });
 
   test("a discovered value is baked into both supervisors", () => {
-    const spec = { ...SPEC, tailscaleHosts: "desk.ts.net,100.64.0.1" };
-    expect(systemdUnit(spec)).toContain("Environment=COLLIE_TAILSCALE_HOSTS=desk.ts.net,100.64.0.1");
+    const spec = { ...SPEC, tailscaleHosts: "desk.ts.net,100.64.10.1" };
+    expect(systemdUnit(spec)).toContain("Environment=COLLIE_TAILSCALE_HOSTS=desk.ts.net,100.64.10.1");
     expect(launchAgentPlist(spec)).toContain(
-      "<key>COLLIE_TAILSCALE_HOSTS</key>\n        <string>desk.ts.net,100.64.0.1</string>",
+      "<key>COLLIE_TAILSCALE_HOSTS</key>\n        <string>desk.ts.net,100.64.10.1</string>",
     );
   });
 
@@ -496,7 +496,7 @@ describe("the Task Scheduler task (Windows)", () => {
   });
 
   test("the launcher reads back exactly the words the task writes", () => {
-    const spec = { ...WIN_SPEC, instance: "v1", tailscaleHosts: "desk.ts.net,100.64.0.1" };
+    const spec = { ...WIN_SPEC, instance: "v1", tailscaleHosts: "desk.ts.net,100.64.10.1" };
     const argv = superviseArgs(spec);
     expect(argv.slice(0, 3)).toEqual(["_supervise", "--instance", "v1"]);
     expect(parseSuperviseArgs(argv.slice(1))).toEqual({ instance: "v1", env: bridgeEnvironment(spec) });

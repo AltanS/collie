@@ -181,7 +181,7 @@ describe("coerceDashView", () => {
 // place its first workspace held, carrying every pane of that machine; isolate keeps its chip.
 describe("stripEntries — a hidden machine's stand-in", () => {
   const crew = [
-    pane("p1", 1, "idle", { host: "bluefin" }),
+    pane("p1", 1, "idle", { host: "lodge" }),
     pane("p1", 1, "idle", { host: "workshop" }),
     pane("p1", 2, "blocked", { host: "workshop" }),
     pane("p1", 1, "working", { host: "attic" }),

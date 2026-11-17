@@ -301,10 +301,10 @@ describe("crewStatusBody — §10.2's presentation split, copied and never deriv
 describe("crewStatusBody, a member's host name (M77 spec 01)", () => {
   test("it is copied from the registry's bank, and the lead's own row carries the lead's host", () => {
     const body = crewStatusBody(
-      sources({ host: "bluefin", peers: [contribution({ memberId: "laptop", host: "minibuch" })] }),
+      sources({ host: "lodge", peers: [contribution({ memberId: "laptop", host: "workshop" })] }),
     )!;
-    expect(body.members[0]).toMatchObject({ isLead: true, host: "bluefin" });
-    expect(body.members[1]).toMatchObject({ id: "laptop", host: "minibuch" });
+    expect(body.members[0]).toMatchObject({ isLead: true, host: "lodge" });
+    expect(body.members[1]).toMatchObject({ id: "laptop", host: "workshop" });
   });
 
   test("a member that did not say has no host key, never null or an empty string", () => {

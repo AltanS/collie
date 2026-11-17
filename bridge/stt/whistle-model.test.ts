@@ -685,7 +685,7 @@ describe("the download's redirects", () => {
       ["https://127.0.0.1/x", "the download was sent to a local or private address"],
       ["https://2130706433/x", "the download was sent to a local or private address"],
       ["https://10.1.2.3/x", "the download was sent to a local or private address"],
-      ["https://100.64.0.1/x", "the download was sent to a local or private address"],
+      ["https://100.64.10.1/x", "the download was sent to a local or private address"],
       ["https://169.254.169.254/latest/meta-data", "the download was sent to a local or private address"],
       ["https://192.168.1.1/x", "the download was sent to a local or private address"],
       ["https://[::1]/x", "the download was sent to a local or private address"],

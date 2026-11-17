@@ -6,8 +6,8 @@
     },
     "trick": {
       "id": "legs",
-      "dir": "/var/home/altan/.config/collie/tricks/legs",
-      "state": "/var/home/altan/.local/state/collie/tricks/legs"
+      "dir": "/home/dev/.config/collie/tricks/legs",
+      "state": "/home/dev/.local/state/collie/tricks/legs"
     },
     "memberId": "lodge",
     "host": "lodge",
@@ -21,7 +21,7 @@
         "name": "composer",
         "agent": "claude",
         "status": "working",
-        "cwd": "/var/home/altan/projects/collie-workspace/collie",
+        "cwd": "/home/dev/projects/collie-workspace/collie",
         "space": "collie",
         "tab": "fix",
         "lastActiveAt": "2026-11-08T09:41:00Z"
@@ -33,13 +33,13 @@
         "paneId": "w6X:4",
         "host": "lodge",
         "status": "idle",
-        "cwd": "/var/home/altan"
+        "cwd": "/home/dev"
       }
     ],
     "spaces": [
       {
         "name": "collie",
-        "folder": "/var/home/altan/projects/collie-workspace"
+        "folder": "/home/dev/projects/collie-workspace"
       }
     ]
   },
@@ -57,8 +57,8 @@
     },
     "trick": {
       "id": "legs",
-      "dir": "/var/home/altan/.config/collie/tricks/legs",
-      "state": "/var/home/altan/.local/state/collie/tricks/legs"
+      "dir": "/home/dev/.config/collie/tricks/legs",
+      "state": "/home/dev/.local/state/collie/tricks/legs"
     },
     "memberId": "lodge",
     "host": "lodge",
@@ -78,8 +78,8 @@
     },
     "trick": {
       "id": "legs",
-      "dir": "/var/home/altan/.config/collie/tricks/legs",
-      "state": "/var/home/altan/.local/state/collie/tricks/legs"
+      "dir": "/home/dev/.config/collie/tricks/legs",
+      "state": "/home/dev/.local/state/collie/tricks/legs"
     },
     "memberId": "lodge",
     "host": "lodge",
@@ -93,8 +93,8 @@
     },
     "trick": {
       "id": "tracker",
-      "dir": "/var/home/altan/.config/collie/tricks/tracker",
-      "state": "/var/home/altan/.local/state/collie/tricks/tracker"
+      "dir": "/home/dev/.config/collie/tricks/tracker",
+      "state": "/home/dev/.local/state/collie/tricks/tracker"
     },
     "memberId": "lodge",
     "host": "lodge",

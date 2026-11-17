@@ -8,9 +8,9 @@ import { XDG_HOME_NAME, herdrSocketPaths, shortXdgHome, socketPathProblem, sunPa
 
 const SESSION = "collie-rig";
 /** The nightly runner's state root on 2026-10-18: the one whose Herdr could not open its socket. */
-const NIGHTLY_ROOT = "/var/home/altan/.cache/collie-lab/browser-leg-nightly/state";
+const NIGHTLY_ROOT = "/var/home/devel/.cache/collie-lab/browser-leg-nightly/state";
 /** The manual run's default state root. */
-const DEFAULT_ROOT = "/var/home/altan/.cache/collie-lab/browser-leg-state";
+const DEFAULT_ROOT = "/var/home/devel/.cache/collie-lab/browser-leg-state";
 /** A runtime dir as systemd sets it. Paths are compared through `join`, so the tests hold on Windows too. */
 const RUNTIME = "/run/user/1000";
 

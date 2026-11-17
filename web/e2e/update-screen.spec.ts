@@ -68,10 +68,10 @@ const CONFIRM = en["updateScreen.action.start"];
 const LOCK = en["updateScreen.lock"];
 const DONE = en["updateScreen.done.heading"];
 /** Step 1's heading, on the lead this "bridge" is. */
-const CHECK = fill(en["updateScreen.check.heading"], { lead: "bluefin" });
+const CHECK = fill(en["updateScreen.check.heading"], { lead: "lodge" });
 const BACK = en["updateScreen.action.back"];
 /** The crew-only case's button (M32): it names the one member it is for. */
-const RETRY_CREW = fill(en["settings.updateCard.retryOne"], { name: "minibuch" });
+const RETRY_CREW = fill(en["settings.updateCard.retryOne"], { name: "workshop" });
 
 /** Where the reload counter lives. Read back after a navigation, so `sessionStorage`. */
 const RELOADS_KEY = "e2e:reloads";
@@ -187,8 +187,8 @@ async function installBridge(page: Page): Promise<void> {
           ...fixtureSnapshot,
           servers: [
             {
-              id: "bluefin",
-              name: "bluefin",
+              id: "lodge",
+              name: "lodge",
               isLead: true,
               reachable: true,
               protocol: "ok",
@@ -217,7 +217,7 @@ async function installBridge(page: Page): Promise<void> {
           // The census. On the current lead, one member a release back: the retry's reason to exist.
           crew:
             lead === "current"
-              ? [{ name: "minibuch", version: FROM, verdict: "green", reasons: [], asOf: Date.now() }]
+              ? [{ name: "workshop", version: FROM, verdict: "green", reasons: [], asOf: Date.now() }]
               : [],
         }),
       });
@@ -421,7 +421,7 @@ test("update mode locks the app for a run this device started, reloads once at s
   // The run, walked through its states. Each one is a poll away, and the restart is the window where
   // only the standby door answers.
   for (const state of ["staging", "restarting", "verifying"] as const) step(state);
-  await expect(panel.getByRole("heading", { name: "Checking the new version on bluefin" })).toBeVisible({ timeout: 15_000 });
+  await expect(panel.getByRole("heading", { name: "Checking the new version on lodge" })).toBeVisible({ timeout: 15_000 });
   expect(await sawDone(page), "nothing said Update finished before the lead's own run did").toBe(false);
 
   // THE LEAD IS DONE, AND THAT IS NOT THE END. This phone's own step comes next: the bridge serves a
@@ -483,16 +483,16 @@ test("a run this device started that gives up before anything moved ends on its 
   await expect(panel.getByText(LOCK)).toBeVisible({ timeout: 15_000 });
 
   step("staging");
-  await expect(panel.getByRole("heading", { name: fill(en["updateScreen.build.heading"], { version: TO, lead: "bluefin" }) })).toBeVisible({
+  await expect(panel.getByRole("heading", { name: fill(en["updateScreen.build.heading"], { version: TO, lead: "lodge" }) })).toBeVisible({
     timeout: 15_000,
   });
 
   // The updater gives up: nothing moved, so the record goes back to `idle`, carrying the reason.
   currentRun = { ...runAt("idle"), reason };
-  const failed = page.getByRole("dialog", { name: fill(en["updateScreen.failed.heading"], { lead: "bluefin" }) });
+  const failed = page.getByRole("dialog", { name: fill(en["updateScreen.failed.heading"], { lead: "lodge" }) });
   await expect(failed).toBeVisible({ timeout: 15_000 });
   await expect(failed.getByText(reason)).toBeVisible();
-  await expect(failed.getByText(fill(en["updateScreen.failed.subtitle"], { lead: "bluefin", from: FROM }))).toBeVisible();
+  await expect(failed.getByText(fill(en["updateScreen.failed.subtitle"], { lead: "lodge", from: FROM }))).toBeVisible();
   // Its boxes are where Ready to start put them (DESIGN.md §6).
   expectSame("failed", await geometry(page), base);
   expect(await spills(page), "failed: nothing spills out of its box").toEqual([]);
@@ -561,13 +561,13 @@ test("a run that moves only the members takes the screen on the device that tapp
   await expect(panel.getByText(fill(en["updateScreen.row.already"], { version: TO }))).toBeVisible();
 
   // The first sweep folds the run: the member is moving, and the app stays locked.
-  crewLegs = [{ name: "minibuch", state: "updating", version: FROM, updatedAt: Date.now() }];
+  crewLegs = [{ name: "workshop", state: "updating", version: FROM, updatedAt: Date.now() }];
   await expect(panel.getByText(en["updateScreen.state.updating"], { exact: false })).toBeVisible({ timeout: 15_000 });
   expect(await appIsInert(page)).toBe(true);
 
   // The member arrives and the lead stamps the run settled. The mode ends on Done, and Back hands the
   // app back.
-  crewLegs = [{ name: "minibuch", state: "done", version: TO, updatedAt: Date.now() }];
+  crewLegs = [{ name: "workshop", state: "done", version: TO, updatedAt: Date.now() }];
   crewSettledAt = Date.now();
   const done = page.getByRole("dialog", { name: DONE });
   await expect(done).toBeVisible({ timeout: 15_000 });
@@ -691,32 +691,32 @@ async function walkEveryState(page: Page, withWorker: boolean, text: string | nu
 
   // ── Steps 1 to 4, the lead. ──
   await page.getByRole("button", { name: en["updateScreen.action.start"] }).click();
-  await expect(heading(fill(en["updateScreen.check.heading"], { lead: "bluefin" }))).toBeVisible({ timeout: 15_000 });
+  await expect(heading(fill(en["updateScreen.check.heading"], { lead: "lodge" }))).toBeVisible({ timeout: 15_000 });
   expect(await appIsInert(page), "the app is locked while the run it started is in flight").toBe(true);
   await measure("check");
 
   currentRun = crewRunAt("staging", WAITING());
-  await expect(heading(fill(en["updateScreen.build.heading"], { version: TO, lead: "bluefin" }))).toBeVisible({ timeout: 15_000 });
+  await expect(heading(fill(en["updateScreen.build.heading"], { version: TO, lead: "lodge" }))).toBeVisible({ timeout: 15_000 });
   await measure("build");
 
   currentRun = crewRunAt("restarting", WAITING());
-  await expect(heading(fill(en["updateScreen.restart.heading"], { lead: "bluefin" }))).toBeVisible({ timeout: 15_000 });
+  await expect(heading(fill(en["updateScreen.restart.heading"], { lead: "lodge" }))).toBeVisible({ timeout: 15_000 });
   await measure("restart");
 
   currentRun = crewRunAt("verifying", WAITING());
-  await expect(heading(fill(en["updateScreen.verify.heading"], { lead: "bluefin" }))).toBeVisible({ timeout: 15_000 });
+  await expect(heading(fill(en["updateScreen.verify.heading"], { lead: "lodge" }))).toBeVisible({ timeout: 15_000 });
   await measure("verify");
 
   // ── Step 5, the members, and the three shapes a member row takes. ──
-  currentRun = crewRunAt("done", [leg("minibuch", "updating"), leg("cellar", "waiting")]);
+  currentRun = crewRunAt("done", [leg("workshop", "updating"), leg("cellar", "waiting")]);
   await expect(heading(en["updateScreen.members.heading"])).toBeVisible({ timeout: 15_000 });
   await measure("members, one updating");
 
-  currentRun = crewRunAt("done", [leg("minibuch", "done", { version: TO }), leg("cellar", "waiting", { reason: "rate-limited, retries by 08:14" })]);
+  currentRun = crewRunAt("done", [leg("workshop", "done", { version: TO }), leg("cellar", "waiting", { reason: "rate-limited, retries by 08:14" })]);
   await expect(dialog.getByText(fill(en["updateScreen.ask.limited"], { name: "cellar" }))).toBeVisible({ timeout: 15_000 });
   await measure("members, one rate-limited");
 
-  currentRun = crewRunAt("done", [leg("minibuch", "done", { version: TO }), leg("cellar", "waiting", { updatedAt: Date.now() - 90_000 })]);
+  currentRun = crewRunAt("done", [leg("workshop", "done", { version: TO }), leg("cellar", "waiting", { updatedAt: Date.now() - 90_000 })]);
   await expect(dialog.getByText(/cellar has not answered for/)).toBeVisible({ timeout: 15_000 });
   await measure("members, one unreachable");
 
@@ -752,18 +752,18 @@ async function walkEveryState(page: Page, withWorker: boolean, text: string | nu
 
   // ── The other two ends, each a run of its own. ──
   currentRun = crewRunAt("rolled-back", WAITING(), "run-e2e-2");
-  await expect(heading(fill(en["updateScreen.rolledBack.heading"], { lead: "bluefin", from: FROM }))).toBeVisible({ timeout: 30_000 });
+  await expect(heading(fill(en["updateScreen.rolledBack.heading"], { lead: "lodge", from: FROM }))).toBeVisible({ timeout: 30_000 });
   await measure("rolled back");
   await page.getByRole("button", { name: en["updateScreen.action.back"] }).click();
 
   currentRun = crewRunAt("stuck", WAITING(), "run-e2e-3");
-  await expect(heading(fill(en["updateScreen.stuck.heading"], { lead: "bluefin" }))).toBeVisible({ timeout: 30_000 });
+  await expect(heading(fill(en["updateScreen.stuck.heading"], { lead: "lodge" }))).toBeVisible({ timeout: 30_000 });
   await expect(dialog.getByText("collie update --rollback")).toBeVisible();
   await measure("stuck");
   await page.getByRole("button", { name: en["updateScreen.action.back"] }).click();
 
   currentRun = crewRunAt("interrupted", WAITING(), "run-e2e-4");
-  await expect(dialog.getByText(fill(en["updateScreen.stopped.subtitle"], { lead: "bluefin", from: FROM }))).toBeVisible({ timeout: 30_000 });
+  await expect(dialog.getByText(fill(en["updateScreen.stopped.subtitle"], { lead: "lodge", from: FROM }))).toBeVisible({ timeout: 30_000 });
   await measure("stopped");
 
   test.info().annotations.push({ type: "states measured", description: seen.join(", ") });
@@ -794,10 +794,10 @@ const leg = (name: string, state: UpdatePeerLeg["state"], over: Partial<UpdatePe
   ...over,
 });
 
-const WAITING = (): UpdatePeerLeg[] => [leg("minibuch", "waiting"), leg("cellar", "waiting")];
+const WAITING = (): UpdatePeerLeg[] => [leg("workshop", "waiting"), leg("cellar", "waiting")];
 
 const CENSUS = (): UpdateCrewMember[] => [
-  { name: "minibuch", version: FROM, verdict: "green", reasons: [], asOf: Date.now() },
+  { name: "workshop", version: FROM, verdict: "green", reasons: [], asOf: Date.now() },
   { name: "cellar", version: FROM, verdict: "green", reasons: [], asOf: Date.now() },
 ];
 
@@ -817,10 +817,10 @@ function crewUpdateInfo(): UpdateInfo {
 async function installCrewBridge(page: Page): Promise<void> {
   crewStartPending = false;
   await installApiStub(page);
-  const servers = ["bluefin", "minibuch", "cellar"].map((name) => ({
+  const servers = ["lodge", "workshop", "cellar"].map((name) => ({
     id: name,
     name,
-    isLead: name === "bluefin",
+    isLead: name === "lodge",
     reachable: true,
     protocol: "ok",
   }));

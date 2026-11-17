@@ -239,7 +239,7 @@ const TRAILING = /[.:\-=+@]+$/u;
 const BARE_PANE_ID_HINT = /[:%_]/u;
 
 /**
- * `text` cut at the addresses that resolve to a live pane. A full address (`bluefin/w54:p1J`, with or
+ * `text` cut at the addresses that resolve to a live pane. A full address (`lodge/w54:p1J`, with or
  * without its token) resolves when a live pane carries that member and pane id; with a token the pane's
  * instance must agree (`matchOn`). A bare pane id resolves only when exactly one live pane carries it; a
  * bare window id never does. Only an address written WITH its token, and matched to that very instance, is

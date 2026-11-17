@@ -1050,8 +1050,8 @@ describe("pushName — the given name, never the terminal title", () => {
   const base = { agent: "claude", kind: "agent" as const };
 
   test("names a pane by the agent's own session title when nobody set a name (2026-11-13)", () => {
-    expect(pushName({ ...base, agentTitle: "Bluefin Silverblue to NixOS migration", terminalTitle: "Reviewing the diff" })).toBe(
-      "Bluefin Silverblue to NixOS migration",
+    expect(pushName({ ...base, agentTitle: "Lodge Silverblue to NixOS migration", terminalTitle: "Reviewing the diff" })).toBe(
+      "Lodge Silverblue to NixOS migration",
     );
   });
 

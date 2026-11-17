@@ -54,7 +54,7 @@ const IMAGE_TOKEN = /\[Image#\d+\]/g;
  * Live-probed 2026-10-14 (Claude Code 2.1.299, a 1,400-character paste with six newlines):
  *   `<text> P`          → `[Image #2][Pasted text #3 +6 lines]`
  *   `<text> P P`        → `[Image #7] [Image #8][Pasted text #9 +6 lines]`, the 2026-10-14
- *                         minibuch send that stalled, because only one trailing path was counted
+ *                         workshop send that stalled, because only one trailing path was counted
  *   `<text> /usr/x P`   → `[Image #14][Pasted text #15 +7 lines]`, the kept pieces gain a newline
  *   `<300 chars> P\n<rest>` and `<300 chars> P P\n<rest>` → one or two images, `+7 lines`
  *   `P <text>`, `P P <text>` → no image, or one: the piece `P <text>` is not a path

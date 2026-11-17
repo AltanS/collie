@@ -50,7 +50,7 @@ describe("findFilePaths: what plain text leaves alone", () => {
     ["a domain", "example.com is down"],
     ["a domain with a path", "github.com/AltanS/collie.git"],
     ["inside a URL", "https://example.com/docs/a.md"],
-    ["inside a URL with a port", "http://bluefin:8788/pane/a.ts"],
+    ["inside a URL with a port", "http://lodge:8788/pane/a.ts"],
     ["a call", "call utils/format.ts(x) here"],
     ["a call with a space", "utils/format.ts (x)"],
     ["a folder with a trailing slash", "under src/lib/ now"],

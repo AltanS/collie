@@ -38,7 +38,7 @@ function renderTab() {
       { path: "/", element: <CrewTab /> },
       { path: "/machines/:id", element: <div data-testid="machine" /> },
     ],
-    { initialEntries: ["/?h=bluefin"] },
+    { initialEntries: ["/?h=lodge"] },
   );
   const view = render(<RouterProvider router={router} />);
   return { router, ...view };
@@ -66,24 +66,24 @@ describe("the Crew tab", () => {
     renderTab();
     expect(screen.getByRole("status")).toHaveTextContent("Loading machines");
     release();
-    await cardOf("bluefin");
+    await cardOf("lodge");
     expect(screen.queryByText("Loading machines")).toBeNull();
   });
 
   it("asks for the last half hour, and draws one card per machine, the lead first", async () => {
     renderTab();
-    await cardOf("bluefin");
+    await cardOf("lodge");
     expect(reads[0]?.searchParams.get("spark")).toBe("30");
     const names = screen
       .getAllByRole("button")
       .map((b) => b.textContent ?? "")
-      .filter((text) => ["bluefin", "workshop", "attic", "pantry"].includes(text));
-    expect(names).toEqual(["bluefin", "workshop", "attic", "pantry"]);
+      .filter((text) => ["lodge", "workshop", "attic", "pantry"].includes(text));
+    expect(names).toEqual(["lodge", "workshop", "attic", "pantry"]);
   });
 
   it("gives a card its numbers, two sparks, the firing metric in words, and the lead mark", async () => {
     renderTab();
-    const lead = await cardOf("bluefin");
+    const lead = await cardOf("lodge");
     expect(within(lead).getByText("lead")).toBeInTheDocument();
     expect(within(lead).getByText("34%")).toBeInTheDocument();
     expect(within(lead).getByText("7.4 / 16 GB")).toBeInTheDocument();
@@ -117,13 +117,13 @@ describe("the Crew tab", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(CREW_TAB_POLL_MS + 100);
     });
-    await cardOf("bluefin");
+    await cardOf("lodge");
     answer = () => HttpResponse.json({ error: "x" }, { status: 500 });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(CREW_TAB_POLL_MS + 100);
     });
     await screen.findByText("Could not refresh. These are the last numbers Collie read.");
-    expect(await cardOf("bluefin")).toBeInTheDocument();
+    expect(await cardOf("lodge")).toBeInTheDocument();
   });
 
   it("opens a machine as a step down, carrying the dashboard as where it came from", async () => {
@@ -131,8 +131,8 @@ describe("the Crew tab", () => {
     const { router } = renderTab();
     await user.click(await screen.findByRole("button", { name: "workshop" }));
     expect(router.state.location.pathname).toBe("/machines/workshop");
-    expect(router.state.location.search).toBe("?h=bluefin");
-    expect(router.state.location.state).toMatchObject({ from: "/?h=bluefin" });
+    expect(router.state.location.search).toBe("?h=lodge");
+    expect(router.state.location.state).toMatchObject({ from: "/?h=lodge" });
   });
 });
 
@@ -184,7 +184,7 @@ describe("the Crew tab's pacing", () => {
       }),
     );
     renderTab();
-    await cardOf("bluefin");
+    await cardOf("lodge");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(CREW_TAB_POLL_MS + 100);
     });
@@ -214,7 +214,7 @@ describe("the Crew tab's pacing", () => {
 
   it("shows the cards it last had at once on a return to the tab", async () => {
     const first = renderTab();
-    await cardOf("bluefin");
+    await cardOf("lodge");
     first.unmount();
     let release = () => {};
     server.use(
@@ -226,7 +226,7 @@ describe("the Crew tab's pacing", () => {
     renderTab();
     // No skeleton: the kept census draws on the first frame.
     expect(screen.queryByText("Loading machines")).toBeNull();
-    expect(screen.getByRole("button", { name: "bluefin" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "lodge" })).toBeInTheDocument();
     release();
   });
 });

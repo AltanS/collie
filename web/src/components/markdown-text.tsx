@@ -417,7 +417,7 @@ function LinkSpan({ span }: { span: Extract<MdSpan, { kind: "link" }> }) {
     // `href` was scheme-checked in the parser. noreferrer/noopener because these URLs come from
     // agent output, and target=_blank keeps the PWA shell alive behind the tap.
     //
-    // Same break rule as a chip, and for the same reason: `http://bluefin:8788` is full of slashes
+    // Same break rule as a chip, and for the same reason: `http://lodge:8788` is full of slashes
     // and colons, every one of them a wrap opportunity, and an address split across two lines is
     // one you have to reassemble in your head before you trust the tap.
     const anchor = (

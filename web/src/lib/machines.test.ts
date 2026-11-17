@@ -17,10 +17,10 @@ const row = (id: string, over: Partial<ServerSummary> = {}): ServerSummary => ({
 });
 
 const devCrew: ServerSummary[] = [
-  row("minibuch-hc", { host: "minibuch", mux: "herdr-core" }),
-  row("bluefin-hc", { host: "bluefin", mux: "herdr-core" }),
-  row("minibuch", { host: "minibuch", mux: "herdr" }),
-  row("bluefin", { host: "bluefin", mux: "herdr", isLead: true }),
+  row("workshop-hc", { host: "workshop", mux: "herdr-core" }),
+  row("lodge-hc", { host: "lodge", mux: "herdr-core" }),
+  row("workshop", { host: "workshop", mux: "herdr" }),
+  row("lodge", { host: "lodge", mux: "herdr", isLead: true }),
 ];
 
 const unreachable = (s: ServerSummary): ServerSummary => ({ ...s, reachable: false });
@@ -29,12 +29,12 @@ const ids = (m: { instances: ServerSummary[] }) => m.instances.map((s) => s.id);
 
 describe("groupByHost: grouping and order", () => {
   it("puts every instance of one host on one machine, named by the host", () => {
-    const machines = groupByHost(devCrew, { deputyId: "minibuch" });
-    expect(machines.map((m) => m.key)).toEqual(["bluefin", "minibuch"]);
-    expect(machines.map((m) => m.name)).toEqual(["bluefin", "minibuch"]);
+    const machines = groupByHost(devCrew, { deputyId: "workshop" });
+    expect(machines.map((m) => m.key)).toEqual(["lodge", "workshop"]);
+    expect(machines.map((m) => m.name)).toEqual(["lodge", "workshop"]);
     expect(machines.map(ids)).toEqual([
-      ["bluefin", "bluefin-hc"],
-      ["minibuch", "minibuch-hc"],
+      ["lodge", "lodge-hc"],
+      ["workshop", "workshop-hc"],
     ]);
   });
 
@@ -61,21 +61,21 @@ describe("groupByHost: grouping and order", () => {
   });
 
   it("makes a row without host a machine of its own, keyed and named by the member", () => {
-    const servers = [row("bluefin", { isLead: true }), row("attic", { name: "Attic box" }), row("cellar")];
+    const servers = [row("lodge", { isLead: true }), row("attic", { name: "Attic box" }), row("cellar")];
     const machines = groupByHost(servers);
-    expect(machines.map((m) => m.key)).toEqual(["bluefin", "attic", "cellar"]);
-    expect(machines.map((m) => m.name)).toEqual(["bluefin", "Attic box", "cellar"]);
+    expect(machines.map((m) => m.key)).toEqual(["lodge", "attic", "cellar"]);
+    expect(machines.map((m) => m.name)).toEqual(["lodge", "Attic box", "cellar"]);
     expect(hasSharedHost(machines)).toBe(false);
   });
 
   it("names a one-instance machine by its member, as the rows did before hosts existed", () => {
-    const machines = groupByHost([row("bluefin", { host: "bluefin.local", isLead: true }), row("w", { host: "ws" })]);
-    expect(machines.map((m) => m.name)).toEqual(["bluefin", "w"]);
+    const machines = groupByHost([row("lodge", { host: "lodge.local", isLead: true }), row("w", { host: "ws" })]);
+    expect(machines.map((m) => m.name)).toEqual(["lodge", "w"]);
   });
 
   it("finds the machine that holds a member id", () => {
     const machines = groupByHost(devCrew);
-    expect(machineOf(machines, "minibuch-hc")?.key).toBe("minibuch");
+    expect(machineOf(machines, "workshop-hc")?.key).toBe("workshop");
     expect(machineOf(machines, "nobody")).toBeUndefined();
     expect(hasSharedHost(machines)).toBe(true);
   });
@@ -89,24 +89,24 @@ describe("groupByHost: health as a sum", () => {
   });
 
   it("is degraded when some instance is not reachable, and names it by its multiplexer", () => {
-    const servers = devCrew.map((s) => (s.id === "minibuch-hc" ? unreachable(s) : s));
-    const minibuch = groupByHost(servers).find((m) => m.key === "minibuch")!;
-    expect(minibuch.health).toBe("degraded");
-    expect(minibuch.downInstances).toEqual(["herdr-core"]);
+    const servers = devCrew.map((s) => (s.id === "workshop-hc" ? unreachable(s) : s));
+    const workshop = groupByHost(servers).find((m) => m.key === "workshop")!;
+    expect(workshop.health).toBe("degraded");
+    expect(workshop.downInstances).toEqual(["herdr-core"]);
   });
 
   it("is down when no instance is reachable", () => {
-    const servers = devCrew.map((s) => (s.host === "minibuch" ? unreachable(s) : s));
-    const minibuch = groupByHost(servers).find((m) => m.key === "minibuch")!;
-    expect(minibuch.health).toBe("down");
-    expect(minibuch.downInstances).toEqual(["herdr", "herdr-core"]);
+    const servers = devCrew.map((s) => (s.host === "workshop" ? unreachable(s) : s));
+    const workshop = groupByHost(servers).find((m) => m.key === "workshop")!;
+    expect(workshop.health).toBe("down");
+    expect(workshop.downInstances).toEqual(["herdr", "herdr-core"]);
   });
 
   it("reads the data root's health map first, the one the sheet and the crew page share", () => {
     // The row says reachable; the map, derived against the lead's clock, says it cannot be written.
     const notWritable: HostHealth = { ...hostHealth(devCrew[0]!, { at: 0, pollMs: 0 }), writable: false };
-    const health = new Map([["minibuch-hc", notWritable]]);
-    expect(groupByHost(devCrew, { health }).find((m) => m.key === "minibuch")!.health).toBe("degraded");
+    const health = new Map([["workshop-hc", notWritable]]);
+    expect(groupByHost(devCrew, { health }).find((m) => m.key === "workshop")!.health).toBe("degraded");
   });
 
   it("never counts the lead as down: its own row is always writable", () => {

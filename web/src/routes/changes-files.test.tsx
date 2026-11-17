@@ -971,15 +971,15 @@ describe("Files: a link in a Markdown file", () => {
 
   it("a relative link opens that file, as a push that keeps the machine in the address", async () => {
     guide("# Guide\n\nSee [the readme](../README.md) and [the cart](../src/cart.ts#L1).\n");
-    const router = renderAt([`${FILES}?h=minibuch&path=docs%2Fguide.md`]);
+    const router = renderAt([`${FILES}?h=workshop&path=docs%2Fguide.md`]);
     await userEvent.click(await screen.findByRole("link", { name: "the readme" }));
-    await waitFor(() => expect(router.state.location.search).toBe("?h=minibuch&path=README.md"));
+    await waitFor(() => expect(router.state.location.search).toBe("?h=workshop&path=README.md"));
     expect(router.state.historyAction).toBe("PUSH");
     expect(await screen.findByText("Run it")).toBeTruthy();
     // The browser's own Back is the first file again.
     await act(() => router.navigate(-1));
     expect(await screen.findByRole("link", { name: "the readme" })).toBeTruthy();
-    expect(router.state.location.search).toBe("?h=minibuch&path=docs%2Fguide.md");
+    expect(router.state.location.search).toBe("?h=workshop&path=docs%2Fguide.md");
   });
 
   it("the link's address is the Files address, so a long-press or a new tab lands in the same place", async () => {

@@ -765,7 +765,7 @@ describe("crew rows — what GET /api/update/check answers with", () => {
   test("crew rows carry name, version, verdict, non-green reasons worst first, and asOf", () => {
     const rows = crewUpdateRows([
       {
-        name: "minibuch",
+        name: "workshop",
         version: "1.4.1",
         preflight: { verdict: "green", asOf: 1_757_000_000_000, checks: [CHECK("tree", "green", "clean")] },
       },
@@ -784,7 +784,7 @@ describe("crew rows — what GET /api/update/check answers with", () => {
       },
     ]);
     expect(rows).toEqual([
-      { name: "minibuch", version: "1.4.1", verdict: "green", reasons: [], asOf: 1_757_000_000_000 },
+      { name: "workshop", version: "1.4.1", verdict: "green", reasons: [], asOf: 1_757_000_000_000 },
       {
         name: "attic",
         version: "1.4.0",
@@ -1073,38 +1073,38 @@ describe("updateStartVerdict — a peers-only start over a crew that may already
   });
 
   test("a member AHEAD of the lead is not behind it: nothing to start", () => {
-    const v = updateStartVerdict(ask({ peersOnly: true }), lead({ crew: [row("minibuch", "1.5.1")] }));
+    const v = updateStartVerdict(ask({ peersOnly: true }), lead({ crew: [row("workshop", "1.5.1")] }));
     expect(v).toMatchObject({ kind: "refuse", status: 409 });
     expect(JSON.stringify(v)).toContain("update.none_available");
   });
 
   test("a member on the lead's own version is not behind it either", () => {
-    const v = updateStartVerdict(ask({ peersOnly: true }), lead({ crew: [row("minibuch", "1.5.0")] }));
+    const v = updateStartVerdict(ask({ peersOnly: true }), lead({ crew: [row("workshop", "1.5.0")] }));
     expect(v).toMatchObject({ kind: "refuse", status: 409 });
   });
 
   test("a STALE failed leg whose member has since levelled itself starts nothing", () => {
     const v = updateStartVerdict(
       ask({ peersOnly: true }),
-      lead({ crew: [row("minibuch", "1.5.0")], peers: [{ name: "minibuch", state: "rolled-back" }] }),
+      lead({ crew: [row("workshop", "1.5.0")], peers: [{ name: "workshop", state: "rolled-back" }] }),
     );
     expect(v).toMatchObject({ kind: "refuse", status: 409 });
   });
 
   test("a packaged member left behind is named, not reported as nothing to take", () => {
-    const packaged: CrewUpdateRow = { ...row("minibuch", "1.4.0"), installKind: "packaged" };
+    const packaged: CrewUpdateRow = { ...row("workshop", "1.4.0"), installKind: "packaged" };
     const v = updateStartVerdict(ask({ peersOnly: true }), lead({ crew: [packaged] }));
     expect(v).toMatchObject({
       kind: "refuse",
       status: 409,
-      body: { code: "update.peers_packaged", detail: { name: "minibuch" } },
+      body: { code: "update.peers_packaged", detail: { name: "workshop" } },
     });
   });
 
   test("a failed leg whose member's version nobody could learn still starts the retry", () => {
     const v = updateStartVerdict(
       ask({ peersOnly: true }),
-      lead({ crew: [row("minibuch", null)], peers: [{ name: "minibuch", state: "unreachable" }] }),
+      lead({ crew: [row("workshop", null)], peers: [{ name: "workshop", state: "unreachable" }] }),
     );
     expect(v).toEqual({ kind: "peers", to: "1.5.0" });
   });
@@ -1124,7 +1124,7 @@ describe("updateStartVerdict — a lead on a development build", () => {
     reasons: [],
     asOf: 1,
   });
-  const crew = [row("minibuch", "1.28.0-dev+b178eb63f2"), row("bluefin-hc", "1.28.0-dev+047ee5bbd0")];
+  const crew = [row("workshop", "1.28.0-dev+b178eb63f2"), row("lodge-hc", "1.28.0-dev+047ee5bbd0")];
   const devLead = (over: Partial<UpdateStartState> = {}) =>
     state({ current: "1.28.0", latest: "1.28.0", build: "1.28.0-dev+047ee5bbd0", crew, ...over });
 
@@ -1149,7 +1149,7 @@ describe("updateStartVerdict — a lead on a development build", () => {
   });
 
   test("a release build and an Edge build lead as before", () => {
-    const behind = [row("minibuch", "1.27.4+ab12cd3")];
+    const behind = [row("workshop", "1.27.4+ab12cd3")];
     for (const build of ["1.28.0+b178eb63f2", "1.28.0", "1.28.0-edge.4+9ef26fb6e"]) {
       const v = updateStartVerdict(ask({ peersOnly: true }), devLead({ build, crew: behind }));
       expect(v).toEqual({ kind: "peers", to: "1.28.0" });

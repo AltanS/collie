@@ -9,7 +9,7 @@ const FAMILY = "👨‍👩‍👧";
 
 describe("normalizeTitle", () => {
   const cases: ReadonlyArray<[string, string | null | undefined, string | undefined]> = [
-    ["a plain name stays", "migrate bluefin", "migrate bluefin"],
+    ["a plain name stays", "migrate lodge", "migrate lodge"],
     ["the ends are trimmed", "  dialog pings  ", "dialog pings"],
     ["a name a person typed keeps its leading emoji", "🚀 launch", "🚀 launch"],
     ["a name a person typed keeps its leading star", "* todo", "* todo"],

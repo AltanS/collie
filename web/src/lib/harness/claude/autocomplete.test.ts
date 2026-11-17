@@ -103,7 +103,7 @@ describe("detectAutocompleteRegion", () => {
   it("declines a path-shaped statusline row", () => {
     // The one real near-miss: a statusline whose first field is an absolute path also opens with two
     // spaces and a slash. The command-name character set (no interior "/") is what rejects it.
-    expect(detectAutocompleteRegion(screen("/re", ["  /home/altan/nixos    main ✓"]))).toBeNull();
+    expect(detectAutocompleteRegion(screen("/re", ["  /home/dev/nixos    main ✓"]))).toBeNull();
   });
 });
 

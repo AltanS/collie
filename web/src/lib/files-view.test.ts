@@ -121,13 +121,13 @@ describe("parseJsonTree", () => {
 
 describe("headerFolder", () => {
   it("says nothing after the label when the folder is named like it", () => {
-    expect(headerFolder("/var/home/altan/projects/storefront", "storefront")).toBe("");
-    expect(headerFolder("/var/home/altan/projects/storefront/", "storefront")).toBe("");
+    expect(headerFolder("/home/dev/projects/storefront", "storefront")).toBe("");
+    expect(headerFolder("/home/dev/projects/storefront/", "storefront")).toBe("");
     expect(headerFolder("/storefront", "storefront")).toBe("");
   });
 
   it("says the folder's last segment, never the whole path, when the label is another name", () => {
-    expect(headerFolder("/var/home/altan/projects/storefront", "Shop")).toBe("storefront");
+    expect(headerFolder("/home/dev/projects/storefront", "Shop")).toBe("storefront");
     expect(headerFolder("/home/you/webapp/", "Shop")).toBe("webapp");
     expect(headerFolder("C:/Users/you/webapp", "Shop")).toBe("webapp");
     expect(headerFolder("C:\\Users\\you\\webapp\\", "Shop")).toBe("webapp");

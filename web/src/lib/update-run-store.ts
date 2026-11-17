@@ -443,7 +443,7 @@ function arm(): void {
  * `X-Crew-Preflight: fresh`, and a member whose banked verdict is unknown is refused its turn
  * (`bridge/crew/follow.ts`, `eligible`). So a phone that stops asking can leave a member sitting on
  * `waiting` with nothing on either machine saying why. Measured on the real crew: the lead granted
- * at 13:50:23, minibuch was told at 13:52:48, and did the work in four seconds.
+ * at 13:50:23, workshop was told at 13:52:48, and did the work in four seconds.
  *
  * `hooks/use-polling.ts` already reads the subject this way (`runInFlight(...) || crewMoving(...)`).
  * This is the same question, asked of the legs this store has already reconciled — and it must be

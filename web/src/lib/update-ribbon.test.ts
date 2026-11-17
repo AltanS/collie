@@ -89,12 +89,12 @@ describe("update ribbon states", () => {
     // SAFETY: `unreachable` IS a member of `UpdatePeerLegState`; the assertion only narrows the
     // inferred `string` of an object literal to it, and the union above is what makes that sound.
     const peers = [
-      { name: "minibuch", state: "unreachable" as UpdatePeerLegState, reason: "minibuch has missed 3 sweeps" },
+      { name: "workshop", state: "unreachable" as UpdatePeerLegState, reason: "workshop has missed 3 sweeps" },
     ];
     expect(read({ update: info({ releaseAvailable: false, run: run("done", { peers }) }) })).toEqual({
       kind: "peer-failed",
-      name: "minibuch",
-      reason: "minibuch has missed 3 sweeps",
+      name: "workshop",
+      reason: "workshop has missed 3 sweeps",
       target: "1.5.0", // closable, keyed to the version the run was heading for (M20/04)
     });
   });
@@ -131,7 +131,7 @@ describe("run states belong to the screen", () => {
 
   it("says nothing about a peer that is still moving", () => {
     const peers: UpdatePeerLeg[] = [
-      { name: "minibuch", state: "restarting" },
+      { name: "workshop", state: "restarting" },
       { name: "cellar", state: "done" },
     ];
     expect(read({ update: info({ releaseAvailable: false, run: run("done", { peers }) }) })).toEqual({
@@ -140,7 +140,7 @@ describe("run states belong to the screen", () => {
   });
 
   it("says nothing about a peer whose package manager owns it", () => {
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
+    const peers: UpdatePeerLeg[] = [{ name: "workshop", state: "package-managed" }];
     expect(read({ update: info({ releaseAvailable: false, run: run("done", { peers }) }) })).toEqual({
       kind: "silent",
     });
@@ -159,11 +159,11 @@ describe("run states belong to the screen", () => {
   it("keeps the FAILED leg, which is not a run in progress but a statement about one that is over", () => {
     const peers: UpdatePeerLeg[] = [
       { name: "cellar", state: "restarting" },
-      { name: "minibuch", state: "rolled-back", reason: "health gate timed out" },
+      { name: "workshop", state: "rolled-back", reason: "health gate timed out" },
     ];
     expect(read({ update: info({ releaseAvailable: false, run: run("done", { peers }) }) })).toMatchObject({
       kind: "peer-failed",
-      name: "minibuch",
+      name: "workshop",
     });
   });
 
@@ -185,12 +185,12 @@ describe("a lead on a development build, over development members (2026-11-09)",
     reason: "not started: the lead states no settled release, not 1.28.0",
     updatedAt: NOW - 30 * 60_000,
   });
-  const legs = [leg("minibuch"), leg("minibuch-hc"), leg("bluefin-hc")];
+  const legs = [leg("workshop"), leg("workshop-hc"), leg("lodge-hc")];
   const member = (name: string, version: string): UpdateCrewMember => ({ name, version, verdict: "green", reasons: [], asOf: NOW });
   const crewOn = (versions: readonly [string, string, string]): UpdateCrewMember[] => [
-    member("minibuch", versions[0]),
-    member("minibuch-hc", versions[1]),
-    member("bluefin-hc", versions[2]),
+    member("workshop", versions[0]),
+    member("workshop-hc", versions[1]),
+    member("lodge-hc", versions[2]),
   ];
   const crew = crewOn(["1.28.0-dev+b178eb63f2", "1.28.0-dev+b178eb63f2", "1.28.0-dev+047ee5bbd0"]);
   const live = (over: Partial<UpdateInfo> = {}): UpdateInfo =>
@@ -227,26 +227,26 @@ describe("a lead on a development build, over development members (2026-11-09)",
     const behind = crewOn(["1.27.4+ab12cd3", "1.27.4+ab12cd3", "1.27.4+ab12cd3"]);
     expect(read({ update: live({ build: "1.28.0+b178eb63f2" }), crew: behind })).toMatchObject({
       kind: "peer-failed",
-      name: "minibuch",
+      name: "workshop",
     });
   });
 });
 
 describe("rolled back peer on the band", () => {
   const failed = (reason?: string): UpdateInfo =>
-    info({ run: run("done", { peers: [{ name: "minibuch", state: "rolled-back", reason }] }) });
+    info({ run: run("done", { peers: [{ name: "workshop", state: "rolled-back", reason }] }) });
 
   it("names the peer with its reason", () => {
     expect(read({ update: failed("health gate timed out") })).toEqual({
       kind: "peer-failed",
-      name: "minibuch",
+      name: "workshop",
       reason: "health gate timed out",
       target: "1.5.0",
     });
     // ONE sentence for all four failed states (M20/04). It used to say "rolled back" about an
     // `unreachable` peer too, which is a specific claim that was simply false there.
     expect(ribbonText(read({ update: failed("health gate timed out") }))).toBe(
-      "Could not update minibuch: health gate timed out. See Updates.",
+      "Could not update workshop: health gate timed out. See Updates.",
     );
   });
 
@@ -264,7 +264,7 @@ describe("rolled back peer on the band", () => {
   it("still says why when the peer sent no reason at all", () => {
     const view = read({ update: failed() });
     expect(view.kind).toBe("peer-failed");
-    expect(ribbonText(view)).toMatch(/^Could not update minibuch: \S/);
+    expect(ribbonText(view)).toMatch(/^Could not update workshop: \S/);
   });
 
   it("goes quiet once the census shows that member at or above this machine's version", () => {
@@ -272,11 +272,11 @@ describe("rolled back peer on the band", () => {
     // follow kept this sentence on every screen until another run replaced the legs.
     const levelled: UpdateInfo = info({
       current: "1.5.0",
-      run: run("done", { peers: [{ name: "minibuch", state: "rolled-back", reason: "gate" }] }),
+      run: run("done", { peers: [{ name: "workshop", state: "rolled-back", reason: "gate" }] }),
       releaseAvailable: false,
     });
     const census = (version: string | null) => [
-      { name: "minibuch", version, verdict: "green" as const, reasons: [], asOf: NOW - 5_000 },
+      { name: "workshop", version, verdict: "green" as const, reasons: [], asOf: NOW - 5_000 },
     ];
     expect(read({ update: levelled, crew: census("1.5.0") })).toEqual({ kind: "silent" });
     expect(read({ update: levelled, crew: census("1.5.1") })).toEqual({ kind: "silent" });
@@ -290,11 +290,11 @@ describe("rolled back peer on the band", () => {
   it("outranks a peer that is merely still moving", () => {
     const peers: UpdatePeerLeg[] = [
       { name: "cellar", state: "restarting" },
-      { name: "minibuch", state: "rolled-back", reason: "health gate timed out" },
+      { name: "workshop", state: "rolled-back", reason: "health gate timed out" },
     ];
     expect(read({ update: info({ run: run("done", { peers }) }) })).toMatchObject({
       kind: "peer-failed",
-      name: "minibuch",
+      name: "workshop",
     });
   });
 });
@@ -432,12 +432,12 @@ describe("a packaged host reads its own line", () => {
 
 describe("what carries a close", () => {
   it("a FAILED peer can be put down, keyed to the version the run was heading for (M20/04)", () => {
-    expect(dismissTarget({ kind: "peer-failed", name: "minibuch", reason: "gate", target: "1.5.0" })).toEqual({
+    expect(dismissTarget({ kind: "peer-failed", name: "workshop", reason: "gate", target: "1.5.0" })).toEqual({
       scope: "crew",
       version: "1.5.0",
     });
     // With nothing to key it to, it stays: a dismissal no newer version can raise again is a mute.
-    expect(dismissTarget({ kind: "peer-failed", name: "minibuch", reason: "gate", target: null })).toBeNull();
+    expect(dismissTarget({ kind: "peer-failed", name: "workshop", reason: "gate", target: null })).toBeNull();
   });
 
   it("gives the bundle row and silence no dismiss at all", () => {
@@ -459,7 +459,7 @@ describe("the two bundle states are carried by the header mark, not the band", (
     expect(carriedByMark({ kind: "silent" })).toBe(false);
     expect(carriedByMark({ kind: "available", version: "1.5.0" })).toBe(false);
     expect(carriedByMark({ kind: "available-packaged", version: "1.5.0", manager: null })).toBe(false);
-    expect(carriedByMark({ kind: "peer-failed", name: "minibuch", reason: "gate", target: "1.5.0" })).toBe(false);
+    expect(carriedByMark({ kind: "peer-failed", name: "workshop", reason: "gate", target: "1.5.0" })).toBe(false);
   });
 });
 
@@ -471,16 +471,16 @@ describe("the band and the card read one clock", () => {
     // at 17:58, and the band had gone quiet at 17:53 because state (d) borrowed (c)'s window. The
     // band no longer draws that state at all (M28/01) — the reading it and the card share still has
     // to answer the question, and the update screen is now the surface that renders the answer.
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "restarting", updatedAt: NOW - 15 * 60_000 }];
+    const peers: UpdatePeerLeg[] = [{ name: "workshop", state: "restarting", updatedAt: NOW - 15 * 60_000 }];
     const stale = run("done", { updatedAt: NOW - DONE_WINDOW_MS - 1, peers });
     const reading = readRun({ update: info({ releaseAvailable: false, run: stale }), now: NOW });
     expect(reading.moving).toBe(true);
-    expect(reading.movingLegs.map((l) => l.name)).toEqual(["minibuch"]);
+    expect(reading.movingLegs.map((l) => l.name)).toEqual(["workshop"]);
   });
 
   it("goes still the moment the lead stamps the run settled, and not before", () => {
     // `settledAt` is the key, never elapsed time. Spec 01 writes it when the last leg goes terminal.
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "restarting" }];
+    const peers: UpdatePeerLeg[] = [{ name: "workshop", state: "restarting" }];
     const moving = info({ releaseAvailable: false, run: run("done", { peers }) });
     expect(readRun({ update: moving, now: NOW }).moving).toBe(true);
 
@@ -496,11 +496,11 @@ describe("the band and the card read one clock", () => {
     // surfaces used to require a `done` record here and were therefore blind to it.
     const update = info({
       releaseAvailable: false,
-      peers: [{ name: "minibuch", state: "updating" }],
+      peers: [{ name: "workshop", state: "updating" }],
     });
     const reading = readRun({ update, now: NOW });
     expect(reading.moving).toBe(true);
-    expect(reading.movingLegs.map((l) => l.name)).toEqual(["minibuch"]);
+    expect(reading.movingLegs.map((l) => l.name)).toEqual(["workshop"]);
   });
 
   it("past the patience window the reading calls the run slow; before it, it does not", () => {
@@ -508,7 +508,7 @@ describe("the band and the card read one clock", () => {
       readRun({
         update: info({
           releaseAvailable: false,
-          run: run("done", { peers: [{ name: "minibuch", state: "restarting", updatedAt: NOW - ago }] }),
+          run: run("done", { peers: [{ name: "workshop", state: "restarting", updatedAt: NOW - ago }] }),
         }),
         now: NOW,
       });
@@ -520,13 +520,13 @@ describe("the band and the card read one clock", () => {
 
   it("readRun answers every question both surfaces ask, from one pass", () => {
     const legs: UpdatePeerLeg[] = [
-      { name: "minibuch", state: "restarting", updatedAt: NOW - 3 * 60_000 },
+      { name: "workshop", state: "restarting", updatedAt: NOW - 3 * 60_000 },
       { name: "cellar", state: "package-managed" },
       { name: "attic", state: "done" },
     ];
     const reading = readRun({ update: info({ run: run("done", { peers: legs }) }), now: NOW });
     expect(reading.moving).toBe(true);
-    expect(reading.movingLegs.map((l) => l.name)).toEqual(["minibuch"]);
+    expect(reading.movingLegs.map((l) => l.name)).toEqual(["workshop"]);
     expect(reading.managed.map((l) => l.name)).toEqual(["cellar"]);
     expect(reading.failed).toBeNull();
     expect(reading.elapsedMs).toBe(3 * 60_000);
@@ -537,7 +537,7 @@ describe("the band and the card read one clock", () => {
   it("readRun reports a settled run as still, whatever its legs say", () => {
     // The lead's stamp is the answer. A client that re-folded the rows would be a second opinion
     // about a question already answered, and two opinions is the bug.
-    const legs: UpdatePeerLeg[] = [{ name: "minibuch", state: "restarting", updatedAt: NOW - 60_000 }];
+    const legs: UpdatePeerLeg[] = [{ name: "workshop", state: "restarting", updatedAt: NOW - 60_000 }];
     const reading = readRun({
       update: info({ run: run("done", { peers: legs, settledAt: NOW - 5_000 }) }),
       now: NOW,
@@ -556,10 +556,10 @@ describe("legs come from the live status, not from a record the caller was holdi
   // failed legs — a copy no timestamp could call stale. Read from it, the card showed last run's
   // failures for the whole of this run while the band, which holds no such copy, was right.
 
-  const settled: UpdateRun = run("done", { updatedAt: NOW - 60_000, settledAt: NOW - 60_000, peers: [{ name: "minibuch", state: "rolled-back", reason: "health gate timed out", updatedAt: NOW - 60_000 }] });
+  const settled: UpdateRun = run("done", { updatedAt: NOW - 60_000, settledAt: NOW - 60_000, peers: [{ name: "workshop", state: "rolled-back", reason: "health gate timed out", updatedAt: NOW - 60_000 }] });
 
   it("this run's legs at the top level beat last run's legs on a held record", () => {
-    const live = info({ run: run("done", { updatedAt: NOW - 60_000 }), peers: [{ name: "minibuch", state: "restarting", updatedAt: NOW - 2_000 }] });
+    const live = info({ run: run("done", { updatedAt: NOW - 60_000 }), peers: [{ name: "workshop", state: "restarting", updatedAt: NOW - 2_000 }] });
     const legs = peerLegsOf(live, settled);
     expect(legs.map((l) => l.state)).toEqual(["restarting"]);
   });
@@ -567,7 +567,7 @@ describe("legs come from the live status, not from a record the caller was holdi
   it("the settle stamp comes from the document the legs came from", () => {
     // This run is still moving, so it has no settle stamp. Last run's, off the held record, would
     // read as "the crew is done" over a band that is still counting.
-    const live = info({ run: run("done", { updatedAt: NOW - 60_000 }), peers: [{ name: "minibuch", state: "restarting", updatedAt: NOW - 2_000 }] });
+    const live = info({ run: run("done", { updatedAt: NOW - 60_000 }), peers: [{ name: "workshop", state: "restarting", updatedAt: NOW - 2_000 }] });
     expect(crewSettledAt(live, settled)).toBeNull();
   });
 
@@ -666,17 +666,17 @@ describe("the crew link sentence", () => {
 // ── THE ✕ ON A FAILED RUN CLOSES IT (1.21.1) ────────────────────────────────────────────────────
 //
 // The release lane on 2026-10-13: the lead updated itself to 1.21.0 from the phone, the crew step
-// settled with minibuch unreachable, and the red row could not be put down. The bridge recorded the
+// settled with workshop unreachable, and the red row could not be put down. The bridge recorded the
 // close (`dismissedCrewVersion: "1.21.0"`), and `ribbonView` never read it.
 describe("a closed crew failure stays closed", () => {
   const SETTLED = NOW - 5 * 60_000;
   // SAFETY: `unreachable` IS a member of `UpdatePeerLegState`; the assertion only narrows the
   // inferred `string` of an object literal to it.
-  const minibuch = [
+  const workshop = [
     {
-      name: "minibuch",
+      name: "workshop",
       state: "unreachable" as UpdatePeerLegState,
-      reason: "minibuch was not reached",
+      reason: "workshop was not reached",
       updatedAt: SETTLED,
     },
   ];
@@ -685,12 +685,12 @@ describe("a closed crew failure stays closed", () => {
       current: "1.21.0",
       latest: "1.21.0",
       releaseAvailable: false,
-      run: run("done", { from: "1.20.2", to: "1.21.0", peers: minibuch, settledAt }),
+      run: run("done", { from: "1.20.2", to: "1.21.0", peers: workshop, settledAt }),
     });
 
   it("names the failure before the close, and the close is keyed to the run's version", () => {
     const view = read({ update: settled() });
-    expect(view).toMatchObject({ kind: "peer-failed", name: "minibuch", target: "1.21.0" });
+    expect(view).toMatchObject({ kind: "peer-failed", name: "workshop", target: "1.21.0" });
     expect(dismissTarget(view)).toEqual({ scope: "crew", version: "1.21.0" });
   });
 
@@ -707,11 +707,11 @@ describe("a closed crew failure stays closed", () => {
   });
 
   it("a NEW run of the same version that fails again is named again", () => {
-    // "Try minibuch again" settles after the close: a new run, and a new sentence.
+    // "Try workshop again" settles after the close: a new run, and a new sentence.
     const later = settled(SETTLED + 10 * 60_000);
     expect(read({ update: later, dismissedCrewVersion: "1.21.0", dismissedCrewAt: SETTLED + 60_000 })).toMatchObject({
       kind: "peer-failed",
-      name: "minibuch",
+      name: "workshop",
     });
   });
 
@@ -720,7 +720,7 @@ describe("a closed crew failure stays closed", () => {
       current: "1.21.1",
       latest: "1.21.1",
       releaseAvailable: false,
-      run: run("done", { from: "1.21.0", to: "1.21.1", peers: minibuch, settledAt: SETTLED }),
+      run: run("done", { from: "1.21.0", to: "1.21.1", peers: workshop, settledAt: SETTLED }),
     });
     expect(read({ update: next, dismissedCrewVersion: "1.21.0" })).toMatchObject({ kind: "peer-failed" });
   });

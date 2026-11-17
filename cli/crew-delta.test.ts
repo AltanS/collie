@@ -64,15 +64,15 @@ const crewOf = (...ids: readonly string[]): TrustStoreData => leadStore({ peers:
 describe("crewDelta: the machines a multiplexer knows that this crew does not have", () => {
   test("names the machines of a source that no member covers, by the list's own name", async () => {
     const { deps } = setup({
-      core: machines({ target: "altan@minibuch", name: "minibuch" }, { target: "vps" }, { target: "nas", name: "nas" }),
+      core: machines({ target: "dev@workshop", name: "workshop" }, { target: "vps" }, { target: "nas", name: "nas" }),
       store: crewOf("nas"),
       ops: { nas: record("nas", "herdr-core") },
     });
     const delta = await crewDelta(deps);
-    expect(delta.missing).toEqual([{ source: "herdr-core", targets: ["minibuch", "vps"] }]);
+    expect(delta.missing).toEqual([{ source: "herdr-core", targets: ["workshop", "vps"] }]);
     expect(delta.forgotten).toEqual([]);
     expect(deltaLines(delta)).toEqual([
-      "herdr-core knows 2 machines that are not in this crew: minibuch, vps. Add them with `collie crew add`.",
+      "herdr-core knows 2 machines that are not in this crew: workshop, vps. Add them with `collie crew add`.",
     ]);
   });
 
@@ -92,9 +92,9 @@ describe("crewDelta: the machines a multiplexer knows that this crew does not ha
 
   test("a blocked machine and a sandbox are not missing", async () => {
     const { deps } = setup({
-      core: machines({ target: "vps", via: true }, { target: "scratch", temporary: true }, { target: "minibuch" }),
+      core: machines({ target: "vps", via: true }, { target: "scratch", temporary: true }, { target: "workshop" }),
     });
-    expect((await crewDelta(deps)).missing).toEqual([{ source: "herdr-core", targets: ["minibuch"] }]);
+    expect((await crewDelta(deps)).missing).toEqual([{ source: "herdr-core", targets: ["workshop"] }]);
   });
 
   test("a machine the crew already has, under another spelling, is not missing", async () => {

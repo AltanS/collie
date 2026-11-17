@@ -913,12 +913,12 @@ describe("AgentList — hiding a machine", () => {
     protocol: "ok",
     lastSeenAt: 1_000,
   });
-  const servers = [member("bluefin", true), member("workshop"), member("attic")];
+  const servers = [member("lodge", true), member("workshop"), member("attic")];
   const on = (host: string, workspaceId: string, workspaceLabel: string, workspaceNumber: number) =>
     ({ host, workspaceId, workspaceLabel, workspaceNumber, tabId: `${workspaceId}:t1` }) as const;
   const herd = [
-    agent("w1:p1", "idle", { ...on("bluefin", "w1", "collie", 1), sessionName: "lead-idle" }),
-    agent("w1:p2", "blocked", { ...on("bluefin", "w1", "collie", 1), sessionName: "lead-stuck" }),
+    agent("w1:p1", "idle", { ...on("lodge", "w1", "collie", 1), sessionName: "lead-idle" }),
+    agent("w1:p2", "blocked", { ...on("lodge", "w1", "collie", 1), sessionName: "lead-stuck" }),
     agent("w1:p1", "blocked", { ...on("workshop", "w1", "moonward", 1), sessionName: "peer-stuck" }),
     agent("w2:p1", "idle", { ...on("workshop", "w2", "docs", 2), sessionName: "peer-idle" }),
     agent("w1:p1", "working", { ...on("attic", "w1", "attic-ws", 1), sessionName: "attic-busy" }),
@@ -995,7 +995,7 @@ describe("AgentList — hiding a machine", () => {
 
   it("never hides the machine the dashboard addresses: the lead when ?h= is absent", () => {
     const { rerender } = render(
-      <AgentList agents={herd} servers={servers} hiddenMachines={["bluefin", "workshop"]} onOpen={vi.fn()} />,
+      <AgentList agents={herd} servers={servers} hiddenMachines={["lodge", "workshop"]} onOpen={vi.fn()} />,
     );
     expect(headings()).toEqual(["collie", "attic-ws"]);
     // On workshop the stored lead comes back into force, and workshop itself shows.
@@ -1003,7 +1003,7 @@ describe("AgentList — hiding a machine", () => {
       <AgentList
         agents={herd}
         servers={servers}
-        hiddenMachines={["bluefin", "workshop"]}
+        hiddenMachines={["lodge", "workshop"]}
         addressedHost="workshop"
         onOpen={vi.fn()}
       />,
@@ -1078,7 +1078,7 @@ describe("AgentList — the heading's new tab (M40/03)", () => {
     clearStatus();
   });
 
-  const LEAD = "bluefin";
+  const LEAD = "lodge";
   const PEER = "workshop";
   const servers: ServerSummary[] = [
     { id: LEAD, name: LEAD, isLead: true, reachable: true, protocol: "ok", lastSeenAt: 1_000 },

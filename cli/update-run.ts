@@ -262,7 +262,7 @@ export { HEALTH_TIMEOUT_ENV };
 /**
  * 30 s, which is a MEASURED bound and not a law: it has to clear a cold start on the slowest lane
  * actually in use, and a timeout tuned on fast hardware turns a healthy slow machine into a spurious
- * rollback. The slowest lane measured so far (minibuch, the tmux mux) takes **190 ms** from unit stop
+ * rollback. The slowest lane measured so far (workshop, the tmux mux) takes **190 ms** from unit stop
  * to listening, so 30 s is two orders of magnitude of headroom and stays the default.
  * `COLLIE_UPDATE_HEALTH_TIMEOUT_MS` is how a machine slower than that says so.
  */
@@ -389,7 +389,7 @@ function settledOutcome(run: UpdateRun): RunOutcome {
 // `http://127.0.0.1:<port>/api/health` is right for most installs and WRONG for two real ones, both
 // measured on live machines rather than imagined:
 //
-//   1. A wide bind. `COLLIE_HOST=100.64.0.8` with `COLLIE_ALLOW_NON_LOOPBACK_BIND=1` is a listener
+//   1. A wide bind. `COLLIE_HOST=100.64.10.8` with `COLLIE_ALLOW_NON_LOOPBACK_BIND=1` is a listener
 //      that is not on loopback at all, so the loopback URL connects to nothing.
 //   2. A PEER. A collie that pins a lead serves its main port behind mutual TLS
 //      (`peerListenerTls`, ADR 0013/§8.1), so a plain-HTTP GET there gets an empty reply — BoringSSL

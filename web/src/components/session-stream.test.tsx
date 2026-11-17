@@ -455,7 +455,7 @@ describe("SessionStream", () => {
           parts: [
             exec(1, "ls"),
             exec(2, "pwd"),
-            exec(3, 'collie walky send bluefin/w6:p3 "Merged."'),
+            exec(3, 'collie walky send lodge/w6:p3 "Merged."'),
             exec(4, "git status"),
             exec(5, "git log"),
           ],

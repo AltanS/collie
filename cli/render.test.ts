@@ -338,7 +338,7 @@ describe("projectUpdate", () => {
       { kind: "leg-start", memberId: "nas", leg: "restart" },
       { kind: "leg-done", memberId: "nas", leg: "restart", ok: true, detail: "its bridge came back" },
       { kind: "leg-start", memberId: "nas", leg: "verify" },
-      { kind: "leg-done", memberId: "nas", leg: "verify", ok: true, detail: "answers at 100.64.0.9:8787 · 1.2.3" },
+      { kind: "leg-done", memberId: "nas", leg: "verify", ok: true, detail: "answers at 192.0.2.9:8787 · 1.2.3" },
       { kind: "member-done", memberId: "nas", outcome: "updated" },
     ]);
     expect(view.members[0]!.legs?.map((l) => l.notes.length)).toEqual([1, 0, 0]);

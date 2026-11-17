@@ -58,7 +58,7 @@ const PROBE_DEFAULTS = {
   dirty: "no",
   dirtyfiles: "",
   version: "1.0.0",
-  address: "100.64.0.9",
+  address: "192.0.2.9",
   port: "busy",
 } satisfies Record<string, string>;
 
@@ -82,8 +82,8 @@ function opsRecord(sshHost: string, over: Partial<OpsRecord> = {}): OpsRecord {
 const twoPeers = (over: Partial<TrustStoreData> = {}): TrustStoreData =>
   leadStore({
     peers: [
-      member({ memberId: "nas", address: "100.64.0.9:8787" }),
-      member({ memberId: "attic", address: "100.64.0.10:8787" }),
+      member({ memberId: "nas", address: "192.0.2.9:8787" }),
+      member({ memberId: "attic", address: "192.0.2.10:8787" }),
     ],
     ...over,
   });

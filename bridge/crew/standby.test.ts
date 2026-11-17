@@ -114,7 +114,7 @@ describe("the bind is absent-means-closed (RFC §6.2)", () => {
 
   test("the host defaults to loopback — the failover proxy is normally co-located", () => {
     expect(standbyHostOf({})).toBe("127.0.0.1");
-    expect(standbyHostOf({ COLLIE_STANDBY_HOST: " 100.64.0.2 " })).toBe("100.64.0.2");
+    expect(standbyHostOf({ COLLIE_STANDBY_HOST: " 100.64.10.2 " })).toBe("100.64.10.2");
   });
 });
 

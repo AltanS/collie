@@ -32,7 +32,7 @@ describe("HostChip — the hide rule lives here", () => {
   });
 
   it("renders nothing on a one-machine crew, even when handed a host", () => {
-    render(<HostChip host="bluefin" />, { wrapper: one });
+    render(<HostChip host="lodge" />, { wrapper: one });
     expect(chips()).toHaveLength(0);
   });
 
@@ -179,7 +179,7 @@ describe("the herd list — blocked agents keep their own workspace, wherever th
     const moonward = screen.getByRole("heading", { name: "moonward" }).closest("section")!;
     expect(within(webapp).getByLabelText("1 needs you")).toBeInTheDocument();
     expect(within(moonward).getByLabelText("1 needs you")).toBeInTheDocument();
-    expect(within(webapp).getByLabelText("Host: bluefin")).toBeInTheDocument();
+    expect(within(webapp).getByLabelText("Host: lodge")).toBeInTheDocument();
     expect(within(moonward).getByLabelText("Host: workshop")).toBeInTheDocument();
     // The one summary slot at the top still counts both of them together, in words.
     expect(screen.getByText("2 needs you")).toBeInTheDocument();
@@ -229,7 +229,7 @@ describe("HostChip — the caption glyph is sized by the band it stands in", () 
     // not layout: an unreachable machine may not be 2px taller than a reachable one, or the band's
     // whole centring is a fact about health. DESIGN.md §2.
     const down: ServerSummary[] = [
-      { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
+      { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
       { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 98_000 },
     ];
     const unreachable = ({ children }: { children: React.ReactNode }) => (
@@ -290,7 +290,7 @@ describe("write surfaces name the machine", () => {
       <TabActionsSheet open tab={tab} onClose={vi.fn()} onRenamed={vi.fn()} onClosed={vi.fn()} />,
       { wrapper: crew },
     );
-    expect(screen.getByLabelText("Sends to host: bluefin")).toBeInTheDocument();
+    expect(screen.getByLabelText("Sends to host: lodge")).toBeInTheDocument();
   });
 
   it("the close confirm is still a two-tap, with the host visible the whole way", async () => {
@@ -310,7 +310,7 @@ describe("write surfaces name the machine", () => {
 // was answering every request, next to a composer that was accepting sends.
 describe("HostChip — 'unreachable' is the write gate's word, never the receipt's age", () => {
   const quiet = (workshop: Partial<ServerSummary>): ServerSummary[] => [
-    { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
+    { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
     {
       id: "workshop",
       name: "workshop",
@@ -358,8 +358,8 @@ describe("HostChip — 'unreachable' is the write gate's word, never the receipt
     // Even with a `ts` far past any tolerance, the lead's chip is plain: a lead we couldn't reach
     // would produce no snapshot at all, and duplicating tier 1's answer here is how two surfaces
     // start disagreeing about one outage.
-    render(<HostChip host="bluefin" />, { wrapper: at(10_000_000) });
-    expect(screen.getByLabelText("Host: bluefin")).toBeInTheDocument();
+    render(<HostChip host="lodge" />, { wrapper: at(10_000_000) });
+    expect(screen.getByLabelText("Host: lodge")).toBeInTheDocument();
   });
 });
 
@@ -371,8 +371,8 @@ describe("HostChip — 'unreachable' is the write gate's word, never the receipt
 // state outranks whose machine it is. The tint itself lands on the GLYPH ONLY: the tag root (its
 // border, background and name text) stays the literal untinted classes on every variant.
 describe("HostChip — the per-host tint (glyph only)", () => {
-  // `fixtureServers` is bluefin (lead) / workshop / attic, and lib/hosts.ts hands that roster
-  // slots 2 / 9 / 8. The numbers are asserted rather than recomputed: a change to the hash is a
+  // `fixtureServers` is lodge (lead) / workshop / attic, and lib/hosts.ts hands that roster
+  // slots 6 / 9 / 8. The numbers are asserted rather than recomputed: a change to the hash is a
   // change to every operator's learned colours, and it should have to be typed out here.
   const tag = (name: string) => screen.getByLabelText(name);
   // `tag`/`target` route through AddressTag, which wraps the glyph in its own span to carry the
@@ -395,12 +395,12 @@ describe("HostChip — the per-host tint (glyph only)", () => {
   it("gives two machines two different glyph colours", () => {
     render(
       <>
-        <HostChip host="bluefin" />
+        <HostChip host="lodge" />
         <HostChip host="workshop" />
       </>,
       { wrapper: crew },
     );
-    expect(glyphOf("Host: bluefin").getAttribute("class")).toMatch(/text-host-2/);
+    expect(glyphOf("Host: lodge").getAttribute("class")).toMatch(/text-host-6/);
     expect(glyphOf("Host: workshop").getAttribute("class")).toMatch(/text-host-9/);
   });
 
@@ -464,7 +464,7 @@ describe("HostChip — the glyph variant is the machine as tint and shape alone"
   });
 
   it("renders nothing on a one-machine install, like every other variant", () => {
-    render(<HostChip host="bluefin" variant="glyph" />, { wrapper: one });
+    render(<HostChip host="lodge" variant="glyph" />, { wrapper: one });
     expect(chips()).toHaveLength(0);
   });
 });
@@ -487,17 +487,17 @@ describe("HostChip — <host> · <mux> only when a machine runs two instances", 
     };
 
   const shared = [
-    row("bluefin", { isLead: true, host: "bluefin", mux: "herdr" }),
-    row("bluefin-hc", { host: "bluefin", mux: "herdr-core" }),
+    row("lodge", { isLead: true, host: "lodge", mux: "herdr" }),
+    row("lodge-hc", { host: "lodge", mux: "herdr-core" }),
     row("workshop", { host: "workshop", mux: "tmux" }),
   ];
 
   it("reads host and mux for each instance of a shared machine", () => {
-    render(<HostChip host="bluefin-hc" />, { wrapper: wrap(shared) });
-    expect(screen.getByLabelText("Host: bluefin · herdr-core")).toBeInTheDocument();
+    render(<HostChip host="lodge-hc" />, { wrapper: wrap(shared) });
+    expect(screen.getByLabelText("Host: lodge · herdr-core")).toBeInTheDocument();
     cleanup();
-    render(<HostChip host="bluefin" variant="bare" />, { wrapper: wrap(shared) });
-    expect(screen.getByLabelText("Host: bluefin · herdr")).toBeInTheDocument();
+    render(<HostChip host="lodge" variant="bare" />, { wrapper: wrap(shared) });
+    expect(screen.getByLabelText("Host: lodge · herdr")).toBeInTheDocument();
   });
 
   it("uses the same two parts for a one-instance machine of that crew", () => {
@@ -507,7 +507,7 @@ describe("HostChip — <host> · <mux> only when a machine runs two instances", 
 
   it("keeps the plain member name when no host carries two instances", () => {
     const apart = [
-      row("bluefin", { isLead: true, host: "bluefin", mux: "herdr" }),
+      row("lodge", { isLead: true, host: "lodge", mux: "herdr" }),
       row("workshop", { host: "workshop", mux: "tmux" }),
     ];
     render(<HostChip host="workshop" />, { wrapper: wrap(apart) });
@@ -521,16 +521,16 @@ describe("HostChip — <host> · <mux> only when a machine runs two instances", 
 
   it("falls back to the member name when two instances on a host share a mux", () => {
     const twins = [
-      row("bluefin", { isLead: true, host: "bluefin", mux: "herdr" }),
-      row("bluefin-b", { host: "bluefin", mux: "herdr" }),
+      row("lodge", { isLead: true, host: "lodge", mux: "herdr" }),
+      row("lodge-b", { host: "lodge", mux: "herdr" }),
     ];
-    render(<HostChip host="bluefin-b" />, { wrapper: wrap(twins) });
-    expect(screen.getByLabelText("Host: bluefin · bluefin-b")).toBeInTheDocument();
+    render(<HostChip host="lodge-b" />, { wrapper: wrap(twins) });
+    expect(screen.getByLabelText("Host: lodge · lodge-b")).toBeInTheDocument();
   });
 
   it("keeps the member's identity tint", () => {
-    render(<HostChip host="bluefin-hc" variant="glyph" />, { wrapper: wrap(shared) });
-    const glyph = screen.getByLabelText(/bluefin · herdr-core/).querySelector("svg");
+    render(<HostChip host="lodge-hc" variant="glyph" />, { wrapper: wrap(shared) });
+    const glyph = screen.getByLabelText(/lodge · herdr-core/).querySelector("svg");
     expect(glyph?.getAttribute("class") ?? "").toMatch(/text-/);
   });
 });

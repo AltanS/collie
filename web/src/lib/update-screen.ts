@@ -977,7 +977,7 @@ function phoneCopy(phone: PhoneState, version: string, lead: string): PhaseCopy 
   return { heading: t("updateScreen.phone.heading"), subtitle: t("updateScreen.phone.looking", { lead }), note: t("updateScreen.phone.next") };
 }
 
-/** "bluefin, minibuch and this phone run 1.12.0. cellar did not update." */
+/** "lodge, workshop and this phone run 1.12.0. cellar did not update." */
 function doneSummary(rows: readonly UpdateScreenRow[], version: string, managed: ReadonlySet<string>): string {
   const arrived = rows.filter((row) => row.status === "ok").map((row) => (row.phone ? t("updateScreen.thisPhone") : row.name));
   const behind = rows.filter((row) => behindRow(row, managed)).map((row) => row.name);

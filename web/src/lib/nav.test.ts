@@ -52,15 +52,15 @@ describe("the commit view's paths", () => {
 describe("the machines paths", () => {
   it("names the list and one machine, and carries the scope", () => {
     expect(machinesPath()).toBe("/machines");
-    expect(machinePath("bluefin")).toBe("/machines/bluefin");
+    expect(machinePath("lodge")).toBe("/machines/lodge");
     expect(machinePath("a b/c")).toBe("/machines/a%20b%2Fc");
     expect(machinesPath({ host: "badger", session: undefined })).toBe("/machines?h=badger");
   });
 
   it("names the Alerts view in the query, after the scope, and Status with no parameter", () => {
-    expect(machinePath("bluefin", undefined, "alerts")).toBe("/machines/bluefin?tab=alerts");
-    expect(machinePath("bluefin", undefined, "status")).toBe("/machines/bluefin");
-    expect(machinePath("bluefin", { host: "badger", session: undefined }, "alerts")).toBe("/machines/bluefin?h=badger&tab=alerts");
+    expect(machinePath("lodge", undefined, "alerts")).toBe("/machines/lodge?tab=alerts");
+    expect(machinePath("lodge", undefined, "status")).toBe("/machines/lodge");
+    expect(machinePath("lodge", { host: "badger", session: undefined }, "alerts")).toBe("/machines/lodge?h=badger&tab=alerts");
     expect(machineTabOf("?tab=alerts")).toBe("alerts");
     expect(machineTabOf("?h=badger&tab=alerts")).toBe("alerts");
     expect(machineTabOf("")).toBe("status");
@@ -68,8 +68,8 @@ describe("the machines paths", () => {
   });
 
   it("keeps both views one level: their parents are the same, so a switch is a side move", () => {
-    expect(ancestorsOf("/machines/bluefin")).toContain("/");
-    expect(isAncestor("/machines/bluefin?tab=alerts", "/machines/bluefin")).toBe(false);
+    expect(ancestorsOf("/machines/lodge")).toContain("/");
+    expect(isAncestor("/machines/lodge?tab=alerts", "/machines/lodge")).toBe(false);
   });
 });
 
@@ -102,22 +102,22 @@ describe("the approver's page", () => {
 
 describe("back from the machines pages", () => {
   it("goes up one level at a time: machine, Machines, Settings", () => {
-    expect(resolveUp("/machines/bluefin", "/machines", "/machines")).toEqual({ kind: "back" });
+    expect(resolveUp("/machines/lodge", "/machines", "/machines")).toEqual({ kind: "back" });
     expect(resolveUp("/machines", "/settings", "/settings")).toEqual({ kind: "back" });
   });
 
   it("replaces onto the structural parent on a cold entry, never pushes a parent", () => {
-    expect(resolveUp("/machines/bluefin", undefined, "/machines")).toEqual({ kind: "replace", to: "/machines" });
+    expect(resolveUp("/machines/lodge", undefined, "/machines")).toEqual({ kind: "replace", to: "/machines" });
   });
 
   it("steps back onto the dashboard from a machine the Crew tab opened (ADR 0085)", () => {
     // The dashboard stores its tab per device, so stepping back lands on the Crew tab again.
-    expect(resolveUp("/machines/bluefin", "/", "/machines")).toEqual({ kind: "back" });
-    expect(resolveUp("/machines/bluefin", "/?h=workshop", "/machines")).toEqual({ kind: "back" });
+    expect(resolveUp("/machines/lodge", "/", "/machines")).toEqual({ kind: "back" });
+    expect(resolveUp("/machines/lodge", "/?h=workshop", "/machines")).toEqual({ kind: "back" });
     // A cold link has nothing behind it, so it still goes up to the list.
-    expect(resolveUp("/machines/bluefin", "/", "/machines", false)).toEqual({ kind: "replace", to: "/machines" });
+    expect(resolveUp("/machines/lodge", "/", "/machines", false)).toEqual({ kind: "replace", to: "/machines" });
     expect(resolveUp("/machines", undefined, "/settings")).toEqual({ kind: "replace", to: "/settings" });
-    expect(resolveUp("/machines/bluefin", "/pane/w1%3Ap1", "/machines")).toEqual({ kind: "replace", to: "/machines" });
+    expect(resolveUp("/machines/lodge", "/pane/w1%3Ap1", "/machines")).toEqual({ kind: "replace", to: "/machines" });
   });
 });
 
@@ -369,12 +369,12 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/settings/system", "/machines", true],
     ["/", "/machines", true],
     ["/crew", "/machines", false],
-    ["/machines", "/machines/bluefin", true],
-    ["/machines?h=workshop", "/machines/bluefin", true],
-    ["/crew", "/machines/bluefin", true],
-    ["/settings", "/machines/bluefin", true],
-    ["/machines/workshop", "/machines/bluefin", false],
-    ["/pane/w1%3Ap1", "/machines/bluefin", false],
+    ["/machines", "/machines/lodge", true],
+    ["/machines?h=workshop", "/machines/lodge", true],
+    ["/crew", "/machines/lodge", true],
+    ["/settings", "/machines/lodge", true],
+    ["/machines/workshop", "/machines/lodge", false],
+    ["/pane/w1%3Ap1", "/machines/lodge", false],
     // The New page is opened from the dashboard, a space, or a pane's menu; nothing else is above it.
     ["/", "/new", true],
     ["/space/w1?h=badger", "/new", true],
@@ -497,8 +497,8 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ["/crew", "", ["/", "/settings", "/settings/system"]],
     // Machines sits under Settings, and one machine under Machines: a cold deep link gets both behind it.
     ["/machines", "", ["/", "/settings"]],
-    ["/machines/bluefin", "", ["/", "/settings", "/machines"]],
-    ["/machines/bluefin", "?h=badger", ["/?h=badger", "/settings?h=badger", "/machines?h=badger"]],
+    ["/machines/lodge", "", ["/", "/settings", "/machines"]],
+    ["/machines/lodge", "?h=badger", ["/?h=badger", "/settings?h=badger", "/machines?h=badger"]],
     // The New page: the screen it names behind it. A pane's worktree gets the pane too.
     ["/new", "", ["/"]],
     ["/new", "?machine=mini", ["/?h=mini"]],

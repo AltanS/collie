@@ -1399,7 +1399,7 @@ describe("the walky talky routes (M62)", () => {
   });
 
   it("hands back the skipped shell panes and the refusal counts when the bridge sends them", async () => {
-    const skipped = [{ address: "bluefin/w1:p2", memberId: "bluefin", machine: "bluefin", label: "zsh" }];
+    const skipped = [{ address: "lodge/w1:p2", memberId: "lodge", machine: "lodge", label: "zsh" }];
     const refusals = { counts: { "rate limit": 3 }, since: 1_700_000_000_000 };
     server.use(http.get("/api/walky/who", () => HttpResponse.json({ targets: [], skipped, refusals })));
     await expect(fetchWalkyWho()).resolves.toEqual({ targets: [], skipped, refusals });

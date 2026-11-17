@@ -23,7 +23,7 @@ import type { HarnessInfo } from "./types.ts";
 // `kiro-cli`, which Herdr reports as `kiro`.
 //
 // ── FOUND, WITH THE LOGIN SHELL'S PATH ──────────────────────────────────────────────────────────
-// A bridge under systemd or Herdr has a short PATH (on bluefin both `opencode` and `pi` live in a
+// A bridge under systemd or Herdr has a short PATH (on lodge both `opencode` and `pi` live in a
 // folder only the profile adds). So the search runs over the login shell's PATH (`bridge/login-path.ts`),
 // and `findTool` then adds its fixed folders (`bridge/tools.ts`). A found result is kept for
 // {@link FOUND_TTL_MS}, so a phone that opens the sheet twice in a row costs one look.

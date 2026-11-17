@@ -53,7 +53,7 @@ import {
 //     moved by the tap alone, because nothing else can finish inside the window it asserts.
 //
 // WHAT WAS PROVEN BY HAND FIRST. 2026-09-09, release lane, Collie 1.6.0 to 1.7.0, iPhone PWA on
-// `collie.ts.sprqvntrs.com`: the operator tapped the footer chip repeatedly, each tap showed
+// `collie.example.test`: the operator tapped the footer chip repeatedly, each tap showed
 // "updating…", stopped, and came back stale. It took about three minutes. Cases five to seven are
 // that incident, split into the three paths that fit it. Case three names the 2026-09-07 latch
 // regression the two-lane split was built for.

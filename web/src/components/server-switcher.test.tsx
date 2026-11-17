@@ -13,8 +13,8 @@ import { ServerSwitcher } from "./server-switcher";
 // presentation of a member that is down or incompatible — §10.2's "listed, never hidden".
 
 const lead: ServerSummary = {
-  id: "bluefin",
-  name: "bluefin",
+  id: "lodge",
+  name: "lodge",
   isLead: true,
   reachable: true,
   protocol: "ok",
@@ -91,7 +91,7 @@ const location = (router: ReturnType<typeof renderSwitcher>) =>
 
 const trigger = () => screen.queryByRole("button", { name: /switch host/i });
 // Rows are looked up INSIDE the sheet's list: the trigger carries the current machine's name too, so
-// a bare `getByRole("button", {name: /bluefin/})` would be ambiguous.
+// a bare `getByRole("button", {name: /lodge/})` would be ambiguous.
 const row = (name: RegExp) => within(screen.getByRole("list")).getByRole("button", { name });
 
 describe("ServerSwitcher — trigger visibility", () => {
@@ -133,7 +133,7 @@ describe("ServerSwitcher — selecting a machine", () => {
   it("selecting the lead restores today's bare URL — absent `?h=` IS the lead", async () => {
     const router = renderSwitcher([lead, peer], "workshop");
     await userEvent.click(trigger()!);
-    await userEvent.click(row(/bluefin/i));
+    await userEvent.click(row(/lodge/i));
     expect(location(router)).toBe("/");
   });
 
@@ -141,7 +141,7 @@ describe("ServerSwitcher — selecting a machine", () => {
     renderSwitcher([lead, peer], "workshop");
     await userEvent.click(trigger()!);
     expect(row(/workshop/i)).toHaveAttribute("aria-current", "true");
-    expect(row(/bluefin/i)).not.toHaveAttribute("aria-current");
+    expect(row(/lodge/i)).not.toHaveAttribute("aria-current");
   });
 
   // M5/04: looking is not the dangerous verb. An unreachable member's last-good herd is merged,
@@ -209,12 +209,12 @@ describe("ServerSwitcher — a down or skewed machine is listed, never hidden", 
 describe("ServerSwitcher — counts come from the merged rows, not the roster", () => {
   it("counts each machine's blocked and working agents", async () => {
     renderSwitcher([lead, peer], undefined, [
-      agentOn("bluefin", "w1:p1", "working"),
+      agentOn("lodge", "w1:p1", "working"),
       agentOn("workshop", "w1:p1", "blocked"),
       agentOn("workshop", "w2:p1", "blocked"),
     ]);
     await userEvent.click(trigger()!);
-    expect(within(row(/bluefin/i)).getByText("1 working")).toBeInTheDocument();
+    expect(within(row(/lodge/i)).getByText("1 working")).toBeInTheDocument();
     expect(within(row(/workshop/i)).getByText("2 needs you")).toBeInTheDocument();
   });
 
@@ -230,7 +230,7 @@ describe("ServerSwitcher — counts come from the merged rows, not the roster", 
 // `lastSeenAt` is comparable to.
 describe("ServerSwitcher — staleness on the rows", () => {
   const quiet: ServerSummary[] = [
-    { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
+    { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
     { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 98_000 },
   ];
 
@@ -264,11 +264,11 @@ describe("ServerSwitcher — the per-host tint", () => {
   const glyphClass = (name: RegExp) => row(name).querySelector("svg")!.getAttribute("class") ?? "";
 
   it("tints each row's leading glyph with that machine's own colour", async () => {
-    // bluefin / workshop / attic on this roster take slots 2 / 9 / 8 (lib/hosts.ts). Typed out
+    // lodge / workshop / attic on this roster take slots 6 / 9 / 8 (lib/hosts.ts). Typed out
     // rather than recomputed: changing the hash changes colours the operator has already learned.
     renderSwitcher([lead, peer, down], undefined);
     await userEvent.click(trigger()!);
-    expect(glyphClass(/bluefin/)).toContain("text-host-2");
+    expect(glyphClass(/lodge/)).toContain("text-host-6");
     expect(glyphClass(/workshop/)).toContain("text-host-9");
     expect(glyphClass(/attic/)).toContain("text-host-8");
   });
@@ -276,7 +276,7 @@ describe("ServerSwitcher — the per-host tint", () => {
   it("adds no second mark for the same fact — the glyph is tinted, not joined by a dot", async () => {
     renderSwitcher([lead, peer], undefined);
     await userEvent.click(trigger()!);
-    expect(row(/bluefin/).querySelector('[class*="bg-host-"]')).toBeNull();
+    expect(row(/lodge/).querySelector('[class*="bg-host-"]')).toBeNull();
   });
 });
 
@@ -290,7 +290,7 @@ describe("ServerSwitcher — the show switch", () => {
   it("shows every machine by default, each switch named by the caption and its machine", async () => {
     renderSwitcher([lead, peer, down], undefined);
     await userEvent.click(trigger()!);
-    for (const name of [/bluefin/, /workshop/, /attic/]) {
+    for (const name of [/lodge/, /workshop/, /attic/]) {
       expect(showSwitch(name)).toHaveAttribute("aria-checked", "true");
     }
     expect(screen.getByText("Show on the dashboard")).toBeInTheDocument();
@@ -333,8 +333,8 @@ describe("ServerSwitcher — the show switch", () => {
     expect(locked).toHaveAccessibleDescription("The machine you are on is always shown");
     expect(screen.getByText("The machine you are on is always shown")).toBeInTheDocument();
     // Every other row's switch is free, and says nothing more.
-    expect(showSwitch(/bluefin/)).toBeEnabled();
-    expect(showSwitch(/bluefin/)).not.toHaveAttribute("aria-describedby");
+    expect(showSwitch(/lodge/)).toBeEnabled();
+    expect(showSwitch(/lodge/)).not.toHaveAttribute("aria-describedby");
     await userEvent.click(locked);
     expect(currentHiddenMachines()).toEqual(["workshop"]);
   });
@@ -348,10 +348,10 @@ describe("ServerSwitcher — the show switch", () => {
 });
 
 describe("ServerSwitcher: one row per machine when a host runs two instances (M77)", () => {
-  const blueTui: ServerSummary = { ...lead, host: "bluefin", mux: "herdr" };
-  const blueCore: ServerSummary = { ...peer, id: "bluefin-hc", name: "bluefin-hc", host: "bluefin", mux: "herdr-core" };
-  const miniTui: ServerSummary = { ...peer, id: "minibuch", name: "minibuch", host: "minibuch", mux: "herdr" };
-  const miniCore: ServerSummary = { ...peer, id: "minibuch-hc", name: "minibuch-hc", host: "minibuch", mux: "herdr-core" };
+  const blueTui: ServerSummary = { ...lead, host: "lodge", mux: "herdr" };
+  const blueCore: ServerSummary = { ...peer, id: "lodge-hc", name: "lodge-hc", host: "lodge", mux: "herdr-core" };
+  const miniTui: ServerSummary = { ...peer, id: "workshop", name: "workshop", host: "workshop", mux: "herdr" };
+  const miniCore: ServerSummary = { ...peer, id: "workshop-hc", name: "workshop-hc", host: "workshop", mux: "herdr-core" };
   const twoPerHost = [blueTui, miniCore, blueCore, miniTui];
   const showSwitch = (name: RegExp) =>
     within(screen.getByRole("list")).getByRole("switch", { name: new RegExp(`^Show on the dashboard ${name.source}`) });
@@ -361,9 +361,9 @@ describe("ServerSwitcher: one row per machine when a host runs two instances (M7
     await userEvent.click(trigger()!);
     const rows = within(screen.getByRole("list")).getAllByRole("button");
     expect(rows).toHaveLength(2);
-    expect(within(rows[0]!).getByText("bluefin")).toBeInTheDocument();
+    expect(within(rows[0]!).getByText("lodge")).toBeInTheDocument();
     expect(within(rows[0]!).getByText("herdr · herdr-core")).toBeInTheDocument();
-    expect(within(rows[1]!).getByText("minibuch")).toBeInTheDocument();
+    expect(within(rows[1]!).getByText("workshop")).toBeInTheDocument();
     expect(within(rows[1]!).getByText("herdr · herdr-core")).toBeInTheDocument();
     expect(within(screen.getByRole("list")).getAllByRole("switch")).toHaveLength(2);
   });
@@ -371,45 +371,45 @@ describe("ServerSwitcher: one row per machine when a host runs two instances (M7
   it("hides and shows every instance of the machine with its one switch", async () => {
     renderSwitcher(twoPerHost, undefined);
     await userEvent.click(trigger()!);
-    await userEvent.click(showSwitch(/minibuch/));
-    expect(currentHiddenMachines()).toEqual(["minibuch", "minibuch-hc"]);
-    expect(showSwitch(/minibuch/)).toHaveAttribute("aria-checked", "false");
-    await userEvent.click(showSwitch(/minibuch/));
+    await userEvent.click(showSwitch(/workshop/));
+    expect(currentHiddenMachines()).toEqual(["workshop", "workshop-hc"]);
+    expect(showSwitch(/workshop/)).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(showSwitch(/workshop/));
     expect(currentHiddenMachines()).toEqual([]);
   });
 
   it("marks the machine holding the addressed member active, and a tap on it keeps that member", async () => {
-    const router = renderSwitcher(twoPerHost, "minibuch-hc");
+    const router = renderSwitcher(twoPerHost, "workshop-hc");
     await userEvent.click(trigger()!);
-    expect(row(/minibuch/)).toHaveAttribute("aria-current", "true");
-    expect(showSwitch(/minibuch/)).toBeDisabled();
-    await userEvent.click(row(/minibuch/));
-    expect(location(router)).toBe("/?h=minibuch-hc");
+    expect(row(/workshop/)).toHaveAttribute("aria-current", "true");
+    expect(showSwitch(/workshop/)).toBeDisabled();
+    await userEvent.click(row(/workshop/));
+    expect(location(router)).toBe("/?h=workshop-hc");
   });
 
   it("selects a machine's first instance: the lead on the lead's machine, the TUI before the core elsewhere", async () => {
     // The scope is a prop here, fixed at render, so each direction gets its own render.
-    const fromCore = renderSwitcher(twoPerHost, "bluefin-hc");
+    const fromCore = renderSwitcher(twoPerHost, "lodge-hc");
     await userEvent.click(trigger()!);
-    await userEvent.click(row(/minibuch/));
-    expect(location(fromCore)).toBe("/?h=minibuch");
+    await userEvent.click(row(/workshop/));
+    expect(location(fromCore)).toBe("/?h=workshop");
     cleanup();
 
-    const fromMinibuch = renderSwitcher(twoPerHost, "minibuch-hc");
+    const fromWorkshop = renderSwitcher(twoPerHost, "workshop-hc");
     await userEvent.click(trigger()!);
-    await userEvent.click(row(/bluefin/));
-    expect(location(fromMinibuch)).toBe("/");
+    await userEvent.click(row(/lodge/));
+    expect(location(fromWorkshop)).toBe("/");
   });
 
   it("names the instance that is down and sums the machine's counts", async () => {
     renderSwitcher([blueTui, blueCore, miniTui, { ...miniCore, reachable: false }], undefined, [
-      agentOn("minibuch", "w1:p1", "blocked"),
-      agentOn("minibuch-hc", "w1:p2", "blocked"),
+      agentOn("workshop", "w1:p1", "blocked"),
+      agentOn("workshop-hc", "w1:p2", "blocked"),
     ]);
     await userEvent.click(trigger()!);
-    expect(within(row(/minibuch/)).getByText("herdr-core unreachable")).toBeInTheDocument();
-    expect(within(row(/minibuch/)).getByText("2 needs you")).toBeInTheDocument();
+    expect(within(row(/workshop/)).getByText("herdr-core unreachable")).toBeInTheDocument();
+    expect(within(row(/workshop/)).getByText("2 needs you")).toBeInTheDocument();
     // Degraded, not down: the row keeps its full ink.
-    expect(row(/minibuch/).className).not.toContain("opacity-60");
+    expect(row(/workshop/).className).not.toContain("opacity-60");
   });
 });

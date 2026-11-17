@@ -27,13 +27,13 @@ describe("MarkdownText line breaking", () => {
   });
 
   it("a chip too long for a narrow column may break anywhere", () => {
-    const long = "/var/home/altan/projects/collie/web/src/components/markdown-text.tsx";
+    const long = "/home/dev/projects/collie/web/src/components/markdown-text.tsx";
     render(<MarkdownText text={`open \`${long}\` now`} />);
     expect(chipOf(long).className).toContain("wrap-anywhere");
   });
 
   it("a short link is not split across lines either", () => {
-    render(<MarkdownText text="Chat is live on http://bluefin:8788 for you" />);
+    render(<MarkdownText text="Chat is live on http://lodge:8788 for you" />);
     expect(screen.getByRole("link").className).toContain("whitespace-nowrap");
   });
 
@@ -140,19 +140,19 @@ describe("MarkdownText file paths", () => {
 });
 
 // ── Web addresses inside backticks ─────────────────────────────────────────────────────────────
-// Claude Code prints most addresses as code spans (`http://bluefin:8788`), which the parser keeps
+// Claude Code prints most addresses as code spans (`http://lodge:8788`), which the parser keeps
 // verbatim, so they were dead text until the code span itself looked for an address.
 
 describe("MarkdownText web addresses in code spans", () => {
   it("a code span that is an address is one link in a new tab, and keeps the chip", () => {
-    const { container } = render(<MarkdownText text="open `http://bluefin:8788` now" />);
+    const { container } = render(<MarkdownText text="open `http://lodge:8788` now" />);
     const link = screen.getByRole("link");
-    expect(link.getAttribute("href")).toBe("http://bluefin:8788");
+    expect(link.getAttribute("href")).toBe("http://lodge:8788");
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
-    expect(link.querySelector("code")?.textContent).toBe("http://bluefin:8788");
+    expect(link.querySelector("code")?.textContent).toBe("http://lodge:8788");
     expect(container.querySelectorAll("a")).toHaveLength(1);
-    expect(container.textContent).toBe("open http://bluefin:8788 now");
+    expect(container.textContent).toBe("open http://lodge:8788 now");
   });
 
   it("an address in a span with a trailing full stop links without it", () => {
@@ -178,7 +178,7 @@ describe("MarkdownText web addresses in code spans", () => {
   });
 
   it("a plain word, a command and a javascript: address in a span are not links", () => {
-    const { container } = render(<MarkdownText text="`bluefin` `bun run test` `javascript:alert(1)` `www.example.com`" />);
+    const { container } = render(<MarkdownText text="`lodge` `bun run test` `javascript:alert(1)` `www.example.com`" />);
     expect(container.querySelector("a")).toBeNull();
     expect(container.querySelectorAll("code")).toHaveLength(4);
   });
@@ -187,13 +187,13 @@ describe("MarkdownText web addresses in code spans", () => {
     const opened: string[] = [];
     const { container } = render(
       <FileLinksProvider value={testFileOpener(opened)}>
-        <MarkdownText text="see `src/cart.ts:12` and `http://bluefin:8788`" />
+        <MarkdownText text="see `src/cart.ts:12` and `http://lodge:8788`" />
       </FileLinksProvider>,
     );
     const links = [...container.querySelectorAll("a")];
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
       "/pane/w1%3Ap1/changes/files?path=src%2Fcart.ts&line=12",
-      "http://bluefin:8788",
+      "http://lodge:8788",
     ]);
     fireEvent.click(links[0]!);
     expect(opened).toHaveLength(1);

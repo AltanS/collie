@@ -186,7 +186,7 @@ export function MachinesSection() {
           span={2}
         >
           <PhoneFrameCard height={1500}>
-            <MachinesRouter home={homeCrew} machines={crew} start="/machines/bluefin" history={day} />
+            <MachinesRouter home={homeCrew} machines={crew} start="/machines/lodge" history={day} />
           </PhoneFrameCard>
         </Card>
 
@@ -228,7 +228,7 @@ export function MachinesSection() {
           reach="open an idle machine. The same charts at a low level, so the axis and the legend can be read without the lines in the way."
         >
           <PhoneFrameCard height={1500}>
-            <MachinesRouter home={homeCrew} machines={crew} start="/machines/bluefin" history={calm} />
+            <MachinesRouter home={homeCrew} machines={crew} start="/machines/lodge" history={calm} />
           </PhoneFrameCard>
         </Card>
 
@@ -238,7 +238,7 @@ export function MachinesSection() {
           reach="open a machine on a platform that gives no interface counters. The network chart says so instead of drawing an empty plot."
         >
           <PhoneFrameCard height={1500}>
-            <MachinesRouter home={homeCrew} machines={crew} start="/machines/bluefin" history={noCounters} />
+            <MachinesRouter home={homeCrew} machines={crew} start="/machines/lodge" history={noCounters} />
           </PhoneFrameCard>
         </Card>
 
@@ -268,7 +268,7 @@ export function MachinesSection() {
           reach="open a machine while the bridge cannot answer the history. The numbers above still show; each chart box says it could not load."
         >
           <PhoneFrameCard height={1300}>
-            <MachinesRouter home={homeCrew} machines={crew} start="/machines/bluefin" history={failed} />
+            <MachinesRouter home={homeCrew} machines={crew} start="/machines/lodge" history={failed} />
           </PhoneFrameCard>
         </Card>
 

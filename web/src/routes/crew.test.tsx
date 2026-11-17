@@ -128,9 +128,9 @@ describe("CrewRoute", () => {
   it("draws every member as a node, each announcing its name and its health", async () => {
     renderCrew(loaded);
 
-    const nodes = await screen.findAllByRole("button", { name: /bluefin|workshop|attic/ });
+    const nodes = await screen.findAllByRole("button", { name: /lodge|workshop|attic/ });
     expect(nodes.map((n) => n.getAttribute("aria-label"))).toEqual([
-      "bluefin, lead, reachable",
+      "lodge, lead, reachable",
       "workshop, deputy, reachable",
       "attic, conflicted",
     ]);
@@ -138,7 +138,7 @@ describe("CrewRoute", () => {
 
   it("badges the lead's node and the deputy's, and nobody else's", async () => {
     renderCrew(loaded);
-    const nodes = await screen.findAllByRole("button", { name: /bluefin|workshop|attic/ });
+    const nodes = await screen.findAllByRole("button", { name: /lodge|workshop|attic/ });
 
     expect(within(nodes[0]!).getByText("lead")).toBeInTheDocument();
     expect(within(nodes[1]!).getByText("deputy")).toBeInTheDocument();
@@ -192,7 +192,7 @@ describe("CrewRoute", () => {
     const user = userEvent.setup();
     renderCrew(loaded);
 
-    await user.click(await screen.findByRole("button", { name: /^bluefin/ }));
+    await user.click(await screen.findByRole("button", { name: /^lodge/ }));
     // `rotatedAt` is aged against the payload's own `ts` — the LEAD's clock. 100_000 → 400_000 is
     // 5 minutes on that clock, and no value of `Date.now()` may change the answer.
     expect(await screen.findByText("generation 3 · rotated 5m")).toBeInTheDocument();
@@ -205,7 +205,7 @@ describe("CrewRoute", () => {
     const user = userEvent.setup();
     renderCrew({ status: { ...fixtureCrewStatus, deputy: null }, error: false });
 
-    await user.click(await screen.findByRole("button", { name: /^bluefin/ }));
+    await user.click(await screen.findByRole("button", { name: /^lodge/ }));
     expect(await screen.findByText("no deputy named")).toBeInTheDocument();
   });
 
@@ -270,7 +270,7 @@ describe("CrewRoute", () => {
     const user = userEvent.setup();
     const router = renderCrew(loaded);
 
-    await user.click(await screen.findByRole("button", { name: /^bluefin/ }));
+    await user.click(await screen.findByRole("button", { name: /^lodge/ }));
     await user.click(await screen.findByRole("button", { name: "Go to this machine" }));
     expect(router.state.location.pathname).toBe("/");
     expect(router.state.location.search).toBe("");
@@ -371,17 +371,17 @@ describe("CrewRoute — the per-host tint", () => {
     (await screen.findAllByRole("button", { name })).find((n) => n.tagName.toLowerCase() === "g")!;
 
   it("tints each node's glyph with the same colour that machine wears on the dashboard", async () => {
-    // fixtureServers is bluefin / workshop / attic, which lib/hosts.ts slots 2 / 9 / 8 — the same
+    // fixtureServers is lodge / workshop / attic, which lib/hosts.ts slots 6 / 9 / 8 — the same
     // numbers host-chip.test.tsx asserts, written out for the same reason.
     renderCrew(loaded, "/crew", fixtureServers);
-    expect((await node(/^bluefin/)).querySelector("svg")!.getAttribute("class")).toContain("text-host-2");
+    expect((await node(/^lodge/)).querySelector("svg")!.getAttribute("class")).toContain("text-host-6");
     expect((await node(/^workshop/)).querySelector("svg")!.getAttribute("class")).toContain("text-host-9");
     expect((await node(/^attic/)).querySelector("svg")!.getAttribute("class")).toContain("text-host-8");
   });
 
   it("leaves the page exactly as it was when there is no roster to colour against", async () => {
     renderCrew(loaded);
-    expect((await node(/^bluefin/)).querySelector("svg")!.getAttribute("class")).toContain(
+    expect((await node(/^lodge/)).querySelector("svg")!.getAttribute("class")).toContain(
       "text-muted-foreground",
     );
     expect(document.body.innerHTML).not.toMatch(/host-\d/);
@@ -404,31 +404,31 @@ describe("CrewRoute: one card per machine when a host runs two instances (M77)",
   const twoPerHost: CrewData = {
     status: {
       ...fixtureCrewStatus,
-      self: { id: "bluefin", name: "bluefin", version: "1.25.0" },
-      deputy: { id: "minibuch", warrantGeneration: 2 },
+      self: { id: "lodge", name: "lodge", version: "1.25.0" },
+      deputy: { id: "workshop", warrantGeneration: 2 },
       members: [
-        instance({ id: "bluefin", isLead: true, host: "bluefin", mux: "herdr" }),
-        instance({ id: "bluefin-hc", host: "bluefin", mux: "herdr-core" }),
-        instance({ id: "minibuch", host: "minibuch", mux: "herdr" }),
-        instance({ id: "minibuch-hc", host: "minibuch", mux: "herdr-core", health: "unreachable", lastSeenAt: 500 }),
+        instance({ id: "lodge", isLead: true, host: "lodge", mux: "herdr" }),
+        instance({ id: "lodge-hc", host: "lodge", mux: "herdr-core" }),
+        instance({ id: "workshop", host: "workshop", mux: "herdr" }),
+        instance({ id: "workshop-hc", host: "workshop", mux: "herdr-core", health: "unreachable", lastSeenAt: 500 }),
       ],
     },
     error: false,
   };
-  const cards = async () => screen.findAllByRole("group", { name: /^(bluefin|minibuch),/ });
+  const cards = async () => screen.findAllByRole("group", { name: /^(lodge|workshop),/ });
 
   it("draws two machine cards with two instance lines each, lead's machine first", async () => {
     renderCrew(twoPerHost);
     const [blue, mini] = await cards();
-    expect(blue).toHaveAccessibleName("bluefin, reachable");
-    expect(mini).toHaveAccessibleName("minibuch, degraded");
+    expect(blue).toHaveAccessibleName("lodge, reachable");
+    expect(mini).toHaveAccessibleName("workshop, degraded");
     expect(within(blue!).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
-      "bluefin, lead, reachable",
-      "bluefin-hc, reachable",
+      "lodge, lead, reachable",
+      "lodge-hc, reachable",
     ]);
     expect(within(mini!).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
-      "minibuch, deputy, reachable",
-      "minibuch-hc, unreachable",
+      "workshop, deputy, reachable",
+      "workshop-hc, unreachable",
     ]);
     // No formation drawing beside the cards.
     expect(screen.queryByRole("group", { name: /^Crew formation/ })).not.toBeInTheDocument();
@@ -462,7 +462,7 @@ describe("CrewRoute: one card per machine when a host runs two instances (M77)",
   it("opens an instance's paperwork from its line, without navigating", async () => {
     const user = userEvent.setup();
     const router = renderCrew(twoPerHost);
-    await user.click(await screen.findByRole("button", { name: "minibuch-hc, unreachable" }));
+    await user.click(await screen.findByRole("button", { name: "workshop-hc, unreachable" }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/crew");
   });
@@ -495,8 +495,8 @@ describe("CrewRoute: one card per machine when a host runs two instances (M77)",
       },
       error: false,
     });
-    const nodes = await screen.findAllByRole("button", { name: /bluefin|workshop|attic/ });
+    const nodes = await screen.findAllByRole("button", { name: /lodge|workshop|attic/ });
     expect(nodes.map((n) => n.tagName.toLowerCase())).toEqual(["g", "g", "g"]);
-    expect(screen.queryAllByRole("group", { name: /^(bluefin|workshop|attic),/ })).toHaveLength(0);
+    expect(screen.queryAllByRole("group", { name: /^(lodge|workshop|attic),/ })).toHaveLength(0);
   });
 });

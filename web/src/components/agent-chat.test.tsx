@@ -1979,7 +1979,7 @@ describe("AgentChat — statusline strip scroll containment", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const crewRoster: ServerSummary[] = [
-  { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 5_000 },
+  { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 5_000 },
   // Reachable-but-long-unseen would be equally stale; unreachable is the case the operator meets.
   { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 1_000 },
   {
@@ -2069,7 +2069,7 @@ describe("AgentChat — a pane on a host the lead can't reach", () => {
   });
 
   it("a live host in the same crew is completely untouched", () => {
-    renderCrewChat("bluefin");
+    renderCrewChat("lodge");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/type a reply/i)).not.toBeDisabled();
   });

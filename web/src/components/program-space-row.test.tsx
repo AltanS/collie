@@ -107,12 +107,12 @@ describe("ProgramSpaceRow: the row's states", () => {
   });
 
   it("a crew member's program names the member after its place", () => {
-    const { slot } = renderRow(program("support"), "minibuch");
-    expect(slot("program-space-line")?.textContent).toBe("pi-durable, local, minibuch");
+    const { slot } = renderRow(program("support"), "workshop");
+    expect(slot("program-space-line")?.textContent).toBe("pi-durable, local, workshop");
   });
 
   it("the tap hands the whole session, host included", async () => {
-    const session = program("support", { host: "minibuch" });
+    const session = program("support", { host: "workshop" });
     const { row, onOpen } = renderRow(session);
     await userEvent.click(row);
     expect(onOpen).toHaveBeenCalledWith(session);
@@ -136,17 +136,17 @@ describe("ProgramSection", () => {
 
   it("in a crew, names the member on a member's program and no machine on the lead's own", () => {
     const servers: ServerSummary[] = [
-      { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
-      { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
+      { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
+      { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
     ];
     const { container } = render(
       <ProgramSection
-        programs={[program("desk", { host: "bluefin" }), program("support", { host: "minibuch", where: "remote" })]}
+        programs={[program("desk", { host: "lodge" }), program("support", { host: "workshop", where: "remote" })]}
         servers={servers}
         onOpen={() => {}}
       />,
     );
     const lines = [...container.querySelectorAll('[data-slot="program-space-line"]')].map((n) => n.textContent);
-    expect(lines).toEqual(["pi-durable, local", "pi-durable, remote, minibuch"]);
+    expect(lines).toEqual(["pi-durable, local", "pi-durable, remote, workshop"]);
   });
 });

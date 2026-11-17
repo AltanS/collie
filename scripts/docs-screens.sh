@@ -24,7 +24,7 @@
 #     a live lead the same card grows one line per member, worst first"). Every fake crew
 #     member name here comes from the playground's own fake outbuilding roster (lodge,
 #     workshop, attic, …) — never a real Tailscale hostname; that leaked into this script
-#     once already (`minibuch`, on the rolled-back peer, fixed 2026-09-10).
+#     once already (`workshop`, on the rolled-back peer, fixed 2026-09-10).
 #   - "update band (a/b/d)" and "update band (c)" → the top band's states. (c)'s toggle is
 #     flipped on to reach the post-run "Tap to reload" state and flipped back off after,
 #     because that toggle drives a page-wide singleton every other band card also reads.

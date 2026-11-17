@@ -51,7 +51,7 @@ describe("useHostVersion", () => {
   it("answers nothing for the lead, a pane with no host and a solo install, and reads nothing", () => {
     const reads: string[] = [];
     server.use(http.get("/api/crew", () => (reads.push("census"), HttpResponse.json(fixtureCrewStatus))));
-    expect(renderHook(() => useHostVersion("bluefin"), { wrapper: crew }).result.current).toBeUndefined();
+    expect(renderHook(() => useHostVersion("lodge"), { wrapper: crew }).result.current).toBeUndefined();
     expect(renderHook(() => useHostVersion(undefined), { wrapper: crew }).result.current).toBeUndefined();
     expect(renderHook(() => useHostVersion("workshop"), { wrapper: solo }).result.current).toBeUndefined();
     expect(reads).toEqual([]);

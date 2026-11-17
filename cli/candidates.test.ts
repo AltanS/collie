@@ -241,11 +241,11 @@ describe("markCandidates", () => {
 
   test("a name that equals an old member id does not mark a machine at another address", () => {
     const renamed = mergeCandidates(
-      [{ source: "herdr-core", candidates: [{ target: "op@198.51.100.7", label: "minibuch", id: null, blocked: null }] }],
+      [{ source: "herdr-core", candidates: [{ target: "op@198.51.100.7", label: "workshop", id: null, blocked: null }] }],
       () => null,
     );
     const marked = markCandidates(renamed, [
-      { memberId: "minibuch", sshHost: null, key: null, addressHost: "100.64.0.8" },
+      { memberId: "workshop", sshHost: null, key: null, addressHost: "192.0.2.8" },
     ]);
     expect(marked[0]!.memberId).toBeNull();
     expect(offeredCandidates(marked).map((row) => row.target)).toEqual(["op@198.51.100.7"]);

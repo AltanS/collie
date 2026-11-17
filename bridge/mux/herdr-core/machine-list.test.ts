@@ -63,7 +63,7 @@ describe("parseHcMachines", () => {
           name: "The attic",
           session: null,
           state: "connected",
-          target: "altan@attic",
+          target: "dev@attic",
           temporary: false,
           version: "0.1.14",
           via: false,
@@ -71,7 +71,7 @@ describe("parseHcMachines", () => {
         },
       ]),
     );
-    expect(parsed).toEqual([{ target: "altan@attic", label: "The attic", id: "bb92", blocked: null }]);
+    expect(parsed).toEqual([{ target: "dev@attic", label: "The attic", id: "bb92", blocked: null }]);
   });
 
   test("name and id are optional, and an empty one reads as absent", () => {
@@ -101,14 +101,14 @@ describe("parseHcMachines", () => {
   });
 
   test("a via row is kept and blocked with the reason", () => {
-    expect(parseHcMachines(listOf([{ target: "altan@vps", name: "vps", via: true }]))).toEqual([
-      { target: "altan@vps", label: "vps", id: null, blocked: viaBlockedReason("altan@vps") },
+    expect(parseHcMachines(listOf([{ target: "dev@vps", name: "vps", via: true }]))).toEqual([
+      { target: "dev@vps", label: "vps", id: null, blocked: viaBlockedReason("dev@vps") },
     ]);
   });
 
   test("the via reason names the ssh hop and says what to do", () => {
-    expect(viaBlockedReason("ssh -p 2222 -i ~/.ssh/key altan@10.0.0.7")).toBe(
-      "reached through altan@10.0.0.7; add altan@10.0.0.7 first, or type its address",
+    expect(viaBlockedReason("ssh -p 2222 -i ~/.ssh/key dev@10.0.0.7")).toBe(
+      "reached through dev@10.0.0.7; add dev@10.0.0.7 first, or type its address",
     );
     expect(viaBlockedReason("ssh bastion")).toBe("reached through bastion; add bastion first, or type its address");
     expect(viaBlockedReason("/usr/bin/ssh -J jump -o StrictHostKeyChecking=no box")).toBe(
@@ -223,14 +223,14 @@ describe("herdrCoreMachineCandidates", () => {
   test("a sandbox is dropped and a via row is blocked, end to end", () => {
     const { probe, warnings } = probeFor({
       stdout: listOf([
-        { target: "altan@minibuch", name: "minibuch" },
+        { target: "dev@workshop", name: "workshop" },
         { target: "sbx", temporary: true },
-        { target: "altan@vps", name: "vps", via: true },
+        { target: "dev@vps", name: "vps", via: true },
       ]),
     });
     expect(herdrCoreMachineCandidates(probe)).toEqual([
-      { target: "altan@minibuch", label: "minibuch", id: null, blocked: null },
-      { target: "altan@vps", label: "vps", id: null, blocked: viaBlockedReason("altan@vps") },
+      { target: "dev@workshop", label: "workshop", id: null, blocked: null },
+      { target: "dev@vps", label: "vps", id: null, blocked: viaBlockedReason("dev@vps") },
     ]);
     expect(warnings).toEqual([]);
   });

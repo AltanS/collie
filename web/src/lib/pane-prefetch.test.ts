@@ -12,7 +12,7 @@ const { PREFETCH_TTL_MS, prefetchPane, resetPanePrefetch, takePanePrefetch } = a
 
 const body = (text: string): PaneReadResponse => ({ paneId: "w1:p1", text, truncated: false, revision: 1 });
 const LEAD = undefined;
-const PEER = { host: "minibuch" };
+const PEER = { host: "workshop" };
 
 beforeEach(() => {
   fetchPane.mockReset();

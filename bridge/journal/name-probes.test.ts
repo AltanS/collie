@@ -18,12 +18,12 @@ const row = (value: JsonObject): string => JSON.stringify(value);
 describe("Claude Code: claudeNamesOf", () => {
   test("custom-title is the person's name, ai-title the agent's, newest wins", () => {
     const lines = [
-      row({ type: "ai-title", aiTitle: "Bluefin Silverblue to NixOS migration", sessionId: SID }),
+      row({ type: "ai-title", aiTitle: "Lodge Silverblue to NixOS migration", sessionId: SID }),
       row({ type: "custom-title", customTitle: "old name", sessionId: SID }),
-      row({ type: "custom-title", customTitle: "migrate bluefin", sessionId: SID }),
-      row({ type: "agent-name", agentName: "migrate bluefin", sessionId: SID }),
+      row({ type: "custom-title", customTitle: "migrate lodge", sessionId: SID }),
+      row({ type: "agent-name", agentName: "migrate lodge", sessionId: SID }),
     ];
-    expect(claudeNamesOf(lines)).toEqual({ person: "migrate bluefin", agent: "Bluefin Silverblue to NixOS migration" });
+    expect(claudeNamesOf(lines)).toEqual({ person: "migrate lodge", agent: "Lodge Silverblue to NixOS migration" });
   });
 
   test("agent-name alone is the person's name; a window with neither row says nothing", () => {

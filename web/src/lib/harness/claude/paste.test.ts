@@ -152,7 +152,7 @@ describe("pasteCarriesSend — an image path Claude lifted out of the paste", ()
     );
   });
 
-  // The 2026-10-14 minibuch stall: two images attached at the end of a long message became two
+  // The 2026-10-14 workshop stall: two images attached at the end of a long message became two
   // trailing paths, Claude lifted both, and only the last one was counted, so Enter never came.
   it("accepts two tokens for two paths ending the text, the shape that stalled on 2026-10-14", () => {
     const body = multiline(6) + "x".repeat(1100);

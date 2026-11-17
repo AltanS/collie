@@ -255,7 +255,7 @@ export function legsStillMoving(
 /**
  * How long a crew run runs before the band stops assuming the operator will simply wait (M20/04).
  *
- * On 2026-09-07 an operator watched "Updating 1 peer: minibuch" for twelve minutes with no elapsed
+ * On 2026-09-07 an operator watched "Updating 1 peer: workshop" for twelve minutes with no elapsed
  * time, no reassurance and nothing a tap could change, and did the only thing left: tapped again,
  * many times. Two minutes is longer than every healthy leg the drill has produced and short enough
  * that a stuck one is named while the operator is still looking.
@@ -424,7 +424,7 @@ function targetOf(input: RibbonInput, to: string | null): string | null {
  * nothing read it: M28/01 moved the moving-peer states to the update screen and took the one line
  * that compared `dismissedCrewVersion` with them, while the failed-leg branch above it never had
  * one. So the ✕ posted, the bridge wrote `dismissedCrewVersion`, and the red row stayed. Seen on the
- * release lane on 2026-10-13, a 1.21.0 crew run that settled with minibuch unreachable.
+ * release lane on 2026-10-13, a 1.21.0 crew run that settled with workshop unreachable.
  *
  * A close covers ONE run. The version must match, and the run must have settled no later than the
  * close: a retry of the same version that settles afterwards is a new run, and its failure is a new

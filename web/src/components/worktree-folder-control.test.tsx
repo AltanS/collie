@@ -133,7 +133,7 @@ describe("WorktreeFolderControl", () => {
       }),
     );
     renderCard(
-      <CrewProvider servers={[member("bluefin", true), member("mini", false)]} sessions={[]} ts={0} pollMs={3_000}>
+      <CrewProvider servers={[member("lodge", true), member("mini", false)]} sessions={[]} ts={0} pollMs={3_000}>
         <WorktreeFolderControl />
       </CrewProvider>,
     );

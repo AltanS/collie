@@ -339,7 +339,7 @@ export async function doctorCheck(deps: UpdateCheckDeps): Promise<PreflightCheck
   // ── A CREW ERROR IS AMBER, AND IS REPORTED BY CHECK ID ────────────────────
   // By ID, never by the finding's `detail`. Every check's reason is rendered verbatim on the phone,
   // in the update card's preflight list, and a red one also becomes the card's `blockedReason`. The
-  // detail is free prose written for a terminal: `reach` builds `minibuch at minibuch:8788 — <why>`,
+  // detail is free prose written for a terminal: `reach` builds `workshop at workshop:8788 — <why>`,
   // so a real host and port would ride this reason into the phone UI, a screenshot and a log. It is
   // No preflight reason is translated, so the choice here is between an untranslated IDENTIFIER and
   // an untranslated SENTENCE — and the card already prints check ids in monospace beside translated

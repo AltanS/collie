@@ -238,14 +238,14 @@ describe("ConnectionBanner — the single connection surface", () => {
 
   it("keeps the lead's mux failure and updates the cause on host switches", async () => {
     h.lost = true;
-    const props = { host: "bluefin", bridge: "disconnected" as const };
+    const props = { host: "lodge", bridge: "disconnected" as const };
     renderBanner(props);
     await act(async () => {});
     expect(announced("alert")).toHaveTextContent("Herdr is down on the host");
     props.host = "workshop";
     act(() => rerenderBanner());
     expect(announced("alert")).toHaveTextContent("Can't reach Collie");
-    props.host = "bluefin";
+    props.host = "lodge";
     act(() => rerenderBanner());
     expect(announced("alert")).toHaveTextContent("Herdr is down on the host");
   });
@@ -313,7 +313,7 @@ describe("ConnectionBanner — the single connection surface", () => {
 
     it("never applies to the lead: a down mux there is still the mux", async () => {
       h.lost = true;
-      renderBanner({ host: "bluefin", servers: down("workshop"), bridge: "disconnected" });
+      renderBanner({ host: "lodge", servers: down("workshop"), bridge: "disconnected" });
       await act(async () => {});
       expect(announced("alert")).toHaveTextContent("Herdr is down on the host");
     });

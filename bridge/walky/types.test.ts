@@ -55,8 +55,8 @@ describe("the envelope", () => {
   });
 
   test("an operator's message types the header, then the body", () => {
-    const operator = { ...agent, kind: "operator" as const, from: { memberId: null, address: null, harness: null, label: "phone-altan" } };
-    expect(formatEnvelope(operator)).toBe("[walky-talky wt_k3f9x2m8q1a0] from operator \"phone-altan\"\nTests are green on fix-465. You can merge.");
+    const operator = { ...agent, kind: "operator" as const, from: { memberId: null, address: null, harness: null, label: "phone-dev" } };
+    expect(formatEnvelope(operator)).toBe("[walky-talky wt_k3f9x2m8q1a0] from operator \"phone-dev\"\nTests are green on fix-465. You can merge.");
   });
 
   test("the inbox reads any message as its header, then its body", () => {
@@ -71,7 +71,7 @@ describe("the envelope", () => {
     // Any other verdict, and none, print the header as before; an operator's header never carries it.
     const before = formatRead(agent);
     for (const via of ["in", "reply", "operator", "legacy", undefined] as const) expect(formatRead(agent, via)).toBe(before);
-    const operator = { ...agent, kind: "operator" as const, from: { memberId: null, address: null, harness: null, label: "phone-altan" } };
+    const operator = { ...agent, kind: "operator" as const, from: { memberId: null, address: null, harness: null, label: "phone-dev" } };
     expect(formatRead(operator, "outside")).toBe(formatRead(operator));
   });
 
@@ -83,8 +83,8 @@ describe("the envelope", () => {
   });
 
   test("an operator's header names the device label only", () => {
-    const operator = { ...agent, kind: "operator" as const, from: { memberId: null, address: null, harness: null, label: "phone-altan" } };
-    expect(formatHeader(operator)).toBe("[walky-talky wt_k3f9x2m8q1a0] from operator \"phone-altan\"");
+    const operator = { ...agent, kind: "operator" as const, from: { memberId: null, address: null, harness: null, label: "phone-dev" } };
+    expect(formatHeader(operator)).toBe("[walky-talky wt_k3f9x2m8q1a0] from operator \"phone-dev\"");
   });
 
   test("a reply adds ` reply to <id>` after the sender, ASCII only", () => {
@@ -146,7 +146,7 @@ describe("the outside word in the header (M98, README decision 12)", () => {
     const before = formatEnvelope(agent);
     for (const via of ["in", "reply", "operator", "legacy", undefined] as const) expect(formatEnvelope(agent, via)).toBe(before);
     // An operator's message never passes by the outside flag, and its header has no word either way.
-    const operator = { ...agent, kind: "operator" as const, from: { memberId: null, address: null, harness: null, label: "phone-altan" } };
+    const operator = { ...agent, kind: "operator" as const, from: { memberId: null, address: null, harness: null, label: "phone-dev" } };
     expect(formatEnvelope(operator, "outside")).toBe(formatEnvelope(operator));
   });
 

@@ -226,8 +226,8 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
       );
 
     test("the lead's own display name is refused, case-insensitively and as the id it would become", () => {
-      for (const label of ["bluefin", "Bluefin", " BLUEFIN ", "bluefin!"]) {
-        const refusal = join(leadStore(), label, "other", "bluefin");
+      for (const label of ["lodge", "Lodge", " LODGE ", "lodge!"]) {
+        const refusal = join(leadStore(), label, "other", "lodge");
         if (refusal === null || !isEnrollRefusal(refusal)) throw new Error(`expected a refusal for ${label}`);
         expect(refusal.takenBy).toBe("lead");
         expect(refusal.message).toBe(`the name "${label.trim()}" is already taken by the lead. Pass --label <another name>.`);
@@ -235,14 +235,14 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
     });
 
     test("the lead's member id is refused too, when the display name differs", () => {
-      const refusal = join(leadStore(), "desk", "other", "bluefin");
+      const refusal = join(leadStore(), "desk", "other", "lodge");
       expect(refusal !== null && isEnrollRefusal(refusal) && refusal.takenBy).toBe("lead");
     });
 
     test("an existing member's id is refused, and the roster is untouched", () => {
       const crowded = leadStore({ peers: [member({ memberId: "laptop" })] });
       for (const label of ["laptop", "LAPTOP"]) {
-        const refusal = join(crowded, label, "other", "bluefin");
+        const refusal = join(crowded, label, "other", "lodge");
         if (refusal === null || !isEnrollRefusal(refusal)) throw new Error(`expected a refusal for ${label}`);
         expect(refusal.takenBy).toBe("member");
         expect(refusal.message).toBe(`the name "${label}" is already taken by the member "laptop". Pass --label <another name>.`);
@@ -252,9 +252,9 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
 
     test("a free name is taken as it is typed, and no label still mints a random id", () => {
       const crowded = leadStore({ peers: [member({ memberId: "laptop" })] });
-      const free = join(crowded, "bluefin-hc", "other", "bluefin");
-      expect(free !== null && !isEnrollRefusal(free) && free.result.memberId).toBe("bluefin-hc");
-      const none = join(crowded, null, "other", "bluefin");
+      const free = join(crowded, "lodge-hc", "other", "lodge");
+      expect(free !== null && !isEnrollRefusal(free) && free.result.memberId).toBe("lodge-hc");
+      const none = join(crowded, null, "other", "lodge");
       expect(none !== null && !isEnrollRefusal(none) && none.result.memberId).toBe("collie-r1");
     });
 
@@ -279,9 +279,9 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
     });
 
     test("the SAME fingerprint re-joining keeps its own label and id", () => {
-      const held = leadStore({ peers: [member({ memberId: "bluefin-hc", fingerprint: fp("hc"), status: "unenrolled" })] });
-      const again = join(held, "bluefin-hc", "hc", "bluefin");
-      expect(again !== null && !isEnrollRefusal(again) && again.result.memberId).toBe("bluefin-hc");
+      const held = leadStore({ peers: [member({ memberId: "lodge-hc", fingerprint: fp("hc"), status: "unenrolled" })] });
+      const again = join(held, "lodge-hc", "hc", "lodge");
+      expect(again !== null && !isEnrollRefusal(again) && again.result.memberId).toBe("lodge-hc");
       expect(again !== null && !isEnrollRefusal(again) && again.audit.detail!.rejoin).toBe(true);
     });
   });

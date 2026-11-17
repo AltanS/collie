@@ -171,7 +171,7 @@ describe("pins", () => {
   });
 
   it("keys by host and session too, so a crew's two w1:p1 panes are two pins", () => {
-    const lead = pane("w1:p1", "collie", { host: "bluefin" });
+    const lead = pane("w1:p1", "collie", { host: "lodge" });
     const peer = pane("w1:p1", "collie", { host: "workshop" });
     setPinned(lead, true, [lead, peer], 1);
     expect(pinMatcher(currentPins())(lead)).toBe(true);

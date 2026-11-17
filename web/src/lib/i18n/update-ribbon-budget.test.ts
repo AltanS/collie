@@ -64,8 +64,8 @@ const SAMPLE = {
   // `cli/package-command.ts` resolves.
   manager: "pacman",
   count: "1",
-  name: "minibuch",
-  names: "minibuch",
+  name: "workshop",
+  names: "workshop",
   reason: "",
   // The longest duration the band prints in practice: a run past this is a run the wall clock has
   // already failed (`bridge/crew/follow.ts`, LEG_WALL_CLOCK_MS = 20 minutes).

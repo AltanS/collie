@@ -458,12 +458,12 @@ function publicFrontDoor(deps: CrewDeps): string | null {
  * **In https mode it is the front door, the same string `crew add` hands a peer** ({@link
  * derivedFrontDoor}): `https://<full-tailnet-name>`, or `<name>:<port>` when `COLLIE_SERVE_PORT`
  * moved it. A default https lead binds loopback and publishes only the front door, so the listener
- * port (8787) is not reachable from another machine, and a bare `bluefin` would be dialled there
+ * port (8787) is not reachable from another machine, and a bare `lodge` would be dialled there
  * (issue 334). The FULL name, not the short one: the certificate `tailscale serve` obtains names only
  * the full MagicDNS name, so the short form would fail the TLS check even where it resolves.
  *
  * **In http mode there is no TLS front door at all**, and the lead's own listener is what answers, so
- * the banner keeps the short MagicDNS name (`bluefin` resolves from any node through the search
+ * the banner keeps the short MagicDNS name (`lodge` resolves from any node through the search
  * domain, and is what a person can retype) on the default port, and appends `:<port>` only when this
  * lead moved off 8787. `COLLIE_PUBLIC_URL` wins over both, because it is the operator telling Collie
  * which ingress this machine actually publishes; its port is made explicit (443 for https, 80 for
@@ -486,7 +486,7 @@ export function joinHost(deps: CrewDeps): string | null {
   const name = tailnetName(deps.exec);
   if (name === null) return null;
   if (deps.ctx.serveMode === "https") return derivedFrontDoor(deps, name);
-  // The SHORT MagicDNS name: `bluefin`, not `bluefin.tail1234.ts.net`. MagicDNS puts the tailnet
+  // The SHORT MagicDNS name: `lodge`, not `lodge.tail1234.ts.net`. MagicDNS puts the tailnet
   // suffix in every node's search domain, so the short name resolves from any other node. If there is
   // no suffix to strip, the name is already as short as it gets.
   const short = name.split(".")[0];
@@ -826,7 +826,7 @@ async function resolveToken(deps: CrewDeps, address: string, given: string | und
  *
  * A second instance on the same box (`COLLIE_INSTANCE=hc`, `ctx.instance`) would join under the very
  * name its lead already shows for the box, and the lead now refuses that. So a named instance adds
- * its name: `bluefin-hc`. The unnamed instance keeps the bare hostname.
+ * its name: `lodge-hc`. The unnamed instance keeps the bare hostname.
  */
 export function joinLabel(deps: CrewDeps, flag: string | undefined): string | undefined {
   if (flag !== undefined && flag !== "") return flag;
@@ -1062,7 +1062,7 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
   }
 
   // What was actually dialled, and therefore what this machine must remember: a peer dials its lead
-  // again on every poll, and a bare `bluefin` would send those dials to :443 over TLS the lead never
+  // again on every poll, and a bare `lodge` would send those dials to :443 over TLS the lead never
   // answers. The origin is stored, so the second dial goes where the first one succeeded.
   const dialed = `${origin.protocol}//${origin.host}`;
   const res = attempt.res;
@@ -1161,7 +1161,7 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
  *
  * Two defaults, and both only for an address that named no scheme: `https://`, as it always did, and
  * **port 8787** — the port a collie's own listener binds, and therefore the only thing `collie crew
- * join bluefin` can mean. A typed scheme or a typed port is taken as typed, so `host:port`,
+ * join lodge` can mean. A typed scheme or a typed port is taken as typed, so `host:port`,
  * `http://…` and `https://…` resolve exactly as they did before this default existed.
  *
  * The port is the reason a bare host is no longer :443. A lead's front door on :443 is a `tailscale
