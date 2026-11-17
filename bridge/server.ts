@@ -148,7 +148,10 @@ import {
 import {
   composerBelowShadow,
   DEFAULT_PROMPT_TAIL_LINES,
+  MAX_PART_GAP_ROWS,
+  MAX_PROMPT_PARTS,
   verifyPromptBinding,
+  verifyPromptParts,
   type BindingShadow,
   type PromptBindingVerdict,
   type StyledOutcome,
@@ -6469,7 +6472,7 @@ export async function replyPane(
     return json(refusal, ae);
   }
   const binding = expected.present
-    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value, columns.value, tail.value, send.readHint)
+    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value, columns.value, tail.value, send.readHint, expected.parts)
     : null;
   if (binding && !binding.ok) {
     audit.record({
@@ -6564,7 +6567,7 @@ export async function keysPane(
   if (keys.length === 0) return text("no keys", 400);
   const ae = req.headers.get("accept-encoding");
   const binding = expected.present
-    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value, columns.value, tail.value, hint)
+    ? await checkPromptBinding(herdr, cfg, paneId, expected.value, styled.value, columns.value, tail.value, hint, expected.parts)
     : null;
   if (binding && !binding.ok) {
     audit.record({
@@ -6615,16 +6618,41 @@ export async function keysPane(
   );
 }
 
+/**
+ * `value` is the region as one text: the whole binding, or, with `parts`, the parts joined by line
+ * breaks, for the read's size and the audit line. `parts` is set when the phone sent the region as
+ * ORDERED LITERAL PARTS (`PromptModel.bindParts`): rows it left out between them, because they redraw
+ * by themselves, and `verifyPromptParts` checks the rest.
+ */
 type ExpectedPrompt =
   | { ok: true; present: false }
-  | { ok: true; present: true; value: string }
+  | { ok: true; present: true; value: string; parts?: readonly string[] }
   | { ok: false };
 
+/**
+ * The optional `expected_prompt` body field: a string, or a list of 2 to `MAX_PROMPT_PARTS` non-empty
+ * strings. The list form arrived after 1.29.0-edge.3. A bridge from before it answers a list with
+ * 400 "bad expected_prompt" (it accepted a string only) and types nothing, which is why the phone
+ * sends a list only when the dialog holds a row that redraws by itself, and the plain string always
+ * else. A list refines nothing: it cannot be combined with `expected_styled` or `expected_columns`.
+ */
 function expectedPrompt(body: JsonObject): ExpectedPrompt {
   if (!Object.prototype.hasOwnProperty.call(body, "expected_prompt")) {
     return { ok: true, present: false };
   }
   const value = body.expected_prompt;
+  if (Array.isArray(value)) {
+    if (value.length < 2 || value.length > MAX_PROMPT_PARTS) return { ok: false };
+    const parts: string[] = [];
+    for (const part of value) {
+      if (typeof part !== "string" || part.length === 0) return { ok: false };
+      parts.push(part);
+    }
+    const whole = parts.join("\n");
+    if (whole.length > MAX_EXPECTED_PROMPT_CHARS) return { ok: false };
+    if (body.expected_styled !== undefined || body.expected_columns !== undefined) return { ok: false };
+    return { ok: true, present: true, value: whole, parts };
+  }
   if (typeof value !== "string" || value.length > MAX_EXPECTED_PROMPT_CHARS) {
     return { ok: false };
   }
@@ -6759,11 +6787,14 @@ async function checkPromptBinding(
   columns?: ColumnRange,
   tailLines?: number,
   hint?: MuxReadHint,
+  parts?: readonly string[],
 ): Promise<PromptBindingCheck> {
   const tailWindow = tailLines ?? DEFAULT_PROMPT_TAIL_LINES;
   let fresh: MuxGrid;
   try {
-    const expectedRawLines = expected.split(/\r\n?|\n/).length;
+    // A list binding leaves rows out between its parts; the read must hold them too.
+    const leftOut = parts === undefined ? 0 : (parts.length - 1) * MAX_PART_GAP_ROWS;
+    const expectedRawLines = expected.split(/\r\n?|\n/).length + leftOut;
     const bindingReadLines = Math.min(
       MAX_READ_LINES,
       Math.max(
@@ -6791,7 +6822,9 @@ async function checkPromptBinding(
   const freshText = cfg.redact ? redactAnsi(fresh.text) : fresh.text;
   // With `expected_columns`, both checks run on the read cut to those columns (verifyPromptBinding).
   // With `expected_tail_lines`, the match may end that many non-blank rows from the read's end.
-  const result = verifyPromptBinding(freshText, expected, expectedStyledLines, columns, tailWindow);
+  // A list binding (`parts`) is checked part by part, in order (verifyPromptParts); it never carries a
+  // style or a column range (expectedPrompt refuses that body).
+  const result: PromptBindingVerdict = parts === undefined ? verifyPromptBinding(freshText, expected, expectedStyledLines, columns, tailWindow) : verifyPromptParts(freshText, parts, tailWindow);
   if (!result.ok) {
     const refused: Extract<PromptBindingCheck, { ok: false }>["audit"] = {
       checked: true,
@@ -6823,7 +6856,7 @@ async function checkPromptBinding(
   // A throw in the shadow check must never cost the tap, so it records nothing then.
   let shadow: BindingShadow | undefined;
   try {
-    shadow = composerBelowShadow(freshText, expected, columns);
+    shadow = composerBelowShadow(freshText, parts === undefined ? expected : parts.at(-1)!, columns);
   } catch {
     shadow = undefined;
   }

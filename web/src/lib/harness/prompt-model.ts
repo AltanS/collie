@@ -204,7 +204,12 @@ export interface PromptModel {
    * prompt), in place of {@link signature}, whose lookback reaches into the transcript. A row there
    * that ticks (a tool's timer, a spinner, a clock) changed the bound region between the phone's read
    * and the bridge's, and the bridge refused the tap. The rows are a suffix of `signature`'s rows,
-   * so the bridge finds them wherever it found `signature`, ending at the same row.
+   * so the bridge finds them wherever it found `signature`, ending at the same row. A grammar may
+   * start them lower, below a row the dialog itself redraws (Claude's self-answer countdown): the
+   * phone has already compared the whole dialog by `askRegion`, and the bridge checks the rest.
+   *
+   * Its presence is also a fact the comparisons read: the rows under the edge hold what the dialog
+   * asks about. `promptsEqual` and the ask id (lib/surface/lift.ts) compare `askRegion` only then.
    *
    * Set only with a string {@link askRegion} whose rows under the edge hold the subject (a rule
    * right above the question proves no frame), and never with {@link styledSignature} or
@@ -212,6 +217,17 @@ export interface PromptModel {
    * `signature` (harness/dialog-contract.ts).
    */
   bindRegion?: string;
+  /**
+   * The dialog's own rows as ORDERED LITERAL PARTS, when a row the dialog redraws by itself sits inside
+   * them (Claude's self-answer countdown): the rows from the edge down to that row, then the rows after
+   * it to the footer, which is {@link bindRegion}. The phone sends the list as `expected_prompt` and the
+   * bridge checks every part on its fresh read, in order, the last ending where a single region would,
+   * with only the left-out rows between them (bridge/prompt-binding.ts `verifyPromptParts`). So the
+   * subject is checked at the moment of the key, and only the moving clock is not. An older bridge
+   * refuses a list as a malformed `expected_prompt`, so it never types on a binding it cannot check.
+   * Absent when no such row is in the dialog: the single region is the whole binding.
+   */
+  bindParts?: string[];
   /**
    * The canonical styled lines of the SAME rows as {@link signature} (`canonicalStyledLines`,
    * lib/styled-region.ts), as the wire value `encodeStyledRegion` builds: a `v1` format line, then

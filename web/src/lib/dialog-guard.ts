@@ -124,6 +124,7 @@ export async function guardDialog<K extends DialogKind>(
     contract.styled,
     contract.columns,
     contract.tail,
+    contract.parts,
   );
 }
 
@@ -139,7 +140,7 @@ export async function sendGuardedKeys<K extends DialogKind>(
 ): Promise<ActionResult> {
   const guarded = await guardDialog(target, compare);
   if (!guarded.ok) return guarded.result;
-  return sendBoundKeys(target, keys, guarded.region, guarded.styled, guarded.columns, guarded.tail);
+  return sendBoundKeys(target, keys, guarded.region, guarded.styled, guarded.columns, guarded.tail, guarded.parts);
 }
 
 /** Send `keys`, mapping transport + prompt-binding failures onto the ActionResult union. `region`
@@ -149,7 +150,9 @@ export async function sendGuardedKeys<K extends DialogKind>(
  *  `columns`, the columns of each row the region was read from, as `expected_columns` when the model
  *  carries a range (lib/column-range.ts), and `tail`, the window the region may end in, as
  *  `expected_tail_lines` when the model declares one (lib/tail-lines.ts); all three are meaningless
- *  without a `region`. */
+ *  without a `region`. `parts`, the same region as ordered literal parts (`DialogComparators.parts`),
+ *  goes as `expected_prompt` in its place, with the tail window only: a model that carries parts has
+ *  no style or column range. */
 export async function sendBoundKeys(
   target: { paneId: string; scope?: Scope },
   keys: string[],
@@ -157,11 +160,14 @@ export async function sendBoundKeys(
   styled?: string,
   columns?: ColumnRange,
   tail?: number,
+  parts?: readonly string[],
 ): Promise<ActionResult> {
   try {
     const res =
       region === undefined
         ? await sendKeys(target.paneId, keys, target.scope)
+        : parts !== undefined
+          ? await sendKeys(target.paneId, keys, target.scope, parts, undefined, undefined, tail)
         : tail !== undefined
           ? await sendKeys(target.paneId, keys, target.scope, region, styled, columns, tail)
           : columns !== undefined
