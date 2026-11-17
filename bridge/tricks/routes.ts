@@ -123,6 +123,9 @@ export async function tricksUndoRoute(tricks: TricksSurface, match: RegExpExecAr
  * `POST /api/tricks/<host>/<id>/value` with `{ rid, key, value }` and nothing else (contract 3): `rid` a UUID
  * the phone minted, `key` a field key, `value` text, true or false, a number, or null to clear. Anything else
  * is `value-invalid`, so a stray field is never read. The field's own rule is the service's check.
+ * The only writer of values in this version: no terminal verb. Known limits (the lead, 2026-11-17): the
+ * seen-id store is memory only (a restart forgets ids; the same id then writes the same value again), and
+ * value writes are not rate limited beyond the trick's one-run slot.
  */
 export async function tricksValueRoute(tricks: TricksSurface, match: RegExpExecArray, body: JsonValue | undefined): Promise<ValueAnswer> {
   const host = segment(match[1] ?? "");

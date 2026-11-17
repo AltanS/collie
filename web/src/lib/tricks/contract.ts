@@ -35,7 +35,7 @@
 // neither: `menu` stays a later word in its `places`, and a part of it with `sessions` is refused alone.
 //
 // Contract 3 (2026-11-17) adds the manifest table list `[[field]]`: the settings a person keeps for a trick,
-// set from the phone or `collie trick set`, and handed to the program in its facts as `values`. A NEW
+// set from the phone, and handed to the program in its facts as `values`. A NEW
 // NUMBER, not an addition inside 2: contract 2 has shipped (v1.29.0-edge.1), and a contract 2 build reads
 // `trick.toml` strictly, so it would refuse a `field` key as a typo, a confusing line. At contract 3 it says
 // "This trick needs a newer Collie" instead. Everything of contract 2 holds at 3 unchanged (the closed part

@@ -2857,8 +2857,6 @@ const walkyServer = new WalkyServer({
   hill,
   propose: proposeDoor,
   views,
-  // `collie trick set` (contract 3): the tricks runner is made further down, and read at the call.
-  tricks: { setValueText: async (id, rid, key, text) => (tricks === undefined ? { status: 404, body: { error: "unknown-trick" } } : await tricks.setValueText(id, rid, key, text)) },
   targets: () => {
     const live = new Set(registry.ordered().map((runtime) => runtime.name));
     return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);

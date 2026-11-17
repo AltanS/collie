@@ -259,12 +259,6 @@ describe("the write route", () => {
     await expect(stat(valuesPath(r.stateDir, "legs"))).rejects.toThrow();
   });
 
-  test("the terminal's text is read as its field takes it", async () => {
-    const r = await rig();
-    expect(receipt(await r.service.setValueText("legs", R1, "rows", "12")).info.values).toEqual({ rows: 12 });
-    expect(await r.service.setValueText("legs", R2, "rows", "lots")).toMatchObject({ status: 400, body: { code: "kind" } });
-    expect(r.audit.at(-1)?.detail.by).toBe("terminal");
-  });
 });
 
 describe("approval and cards", () => {

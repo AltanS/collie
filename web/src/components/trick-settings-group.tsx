@@ -186,7 +186,7 @@ function BoxControl({ id, hintId, field, shown, disabled, onSave }: FieldControl
   const now = valueNow(field, shown);
   const text = now === undefined ? "" : String(now);
   const [draft, setDraft] = useState(text);
-  // A new value from the list (another device, the terminal) replaces the box while it is not being typed in.
+  // A new value from the list (another device) replaces the box while it is not being typed in.
   const [typing, setTyping] = useState(false);
   useEffect(() => {
     if (!typing) setDraft(text);

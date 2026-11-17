@@ -26,7 +26,7 @@ function cardText(manifest: TrickManifest, files: Record<string, string>): strin
 describe("the notes init writes", () => {
   test("their text is pinned to NOTES_VERSION: a change to the text bumps the version and this hash", () => {
     const hash = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft)).digest("hex").slice(0, 16);
-    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 3, hash: "98e66a490a8ca11d", draft: "c5193cb4390ba41f" });
+    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 3, hash: "7c36b5e6d11f7adb", draft: "48fa76eaec5a41f4" });
     // v2's bytes stay as shipped, so a draft init wrote before contract 3 is still named, as v2.
     const v2 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 2)).digest("hex").slice(0, 16);
     expect({ hash: v2(false), draft: v2(true) }).toEqual({ hash: "0d345a22caaa582f", draft: "1d39cfe8d79174fe" });

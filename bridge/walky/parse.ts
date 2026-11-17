@@ -9,7 +9,7 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../w
 import { MEMBER_ID_RE } from "../crew/identity.ts";
 import { HILL_ID_RE, isHillCrewState, type HillCrewState } from "../../web/src/lib/hill/wire.ts";
 import { HILL_BAD_ID } from "../hill/parse.ts";
-import { isRequestId, isTrickId } from "../../web/src/lib/tricks/schema.ts";
+import { isTrickId } from "../../web/src/lib/tricks/schema.ts";
 import { LOCAL_MEMBER, parseAddress } from "./address.ts";
 import { bounded, withNames, type WalkyNames } from "./names.ts";
 import type { WalkySpace } from "./space.ts";
@@ -166,12 +166,8 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
 
 // ── The local socket's requests ──────────────────────────────────────────────────────────────────
 
-export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | "pane" | HillOp | "trick.propose" | "trick.set" | ViewOp;
+export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | "pane" | HillOp | "trick.propose" | ViewOp;
 
-/** The longest value `trick.set` carries as typed; the field's own rule is the bridge's (schema.ts `fieldValueProblem`). */
-export const TRICK_SET_TEXT_MAX = 1024;
-/** What a `trick.set` request the bridge cannot read is refused with. */
-export const TRICK_SET_BAD = "bad request: trick.set names `trick` and `key` (each spelled as a trick id), a `requestId` UUID and `text` (text, or null to clear)";
 
 /** What a `hill.state` request with a word that is no crew state is refused with. */
 export const HILL_BAD_CREW_STATE = "bad request: the crew state is here, quiet or away";
@@ -212,8 +208,6 @@ export type WalkyRequest =
   | { readonly op: "hill.state"; readonly markers: readonly BeaconMarker[]; readonly state: HillCrewState | null }
   // A trick handed to the lead (crew slice 8): its fields are read by bridge/tricks/propose-wire.ts.
   | { readonly op: "trick.propose"; readonly markers: readonly BeaconMarker[]; readonly fields: JsonObject }
-  // A trick's setting from the person's terminal (contract 3, `collie trick set`): refused from an agent's pane.
-  | { readonly op: "trick.set"; readonly markers: readonly BeaconMarker[]; readonly trick: string; readonly key: string; readonly requestId: string; readonly text: string | null }
   // Agent views: every op names the trick (`trick`, a trick id) whose view it writes or reads. The
   // fields of a show, a start and a block op are read by bridge/agent-view/, which owns their shape.
   // `session` is the address the caller names with `--session`, or null: the bridge checks it against
@@ -308,15 +302,6 @@ export function readWalkyRequest(line: string, max: number = WALKY_LINE_MAX): Wa
     return done({ op, markers, state });
   }
   if (op === "trick.propose") return done({ op, markers, fields: row });
-  if (op === "trick.set") {
-    const trick = asJsonString(row.trick);
-    const key = asJsonString(row.key);
-    const requestId = asJsonString(row.requestId);
-    const typed = row.text === null ? null : asJsonString(row.text);
-    const known = Object.keys(row).every((name) => ["v", "op", "markers", "trick", "key", "requestId", "text"].includes(name));
-    if (!known || trick === undefined || !isTrickId(trick) || key === undefined || !isTrickId(key) || requestId === undefined || !isRequestId(requestId) || typed === undefined || (typed !== null && typed.length > TRICK_SET_TEXT_MAX)) return unread(TRICK_SET_BAD, markers);
-    return done({ op, markers, trick, key, requestId, text: typed });
-  }
   // Agent views. A bridge built without them answers these as it answers any op it does not know.
   if (isViewOp(op)) {
     // `session` is absent, null, or text; anything else is a request this bridge cannot read.

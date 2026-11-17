@@ -163,6 +163,9 @@ interface SeenWrite<T> {
   answer: T;
 }
 
+// KNOWN LIMIT (accepted by the lead, 2026-11-17): this store is memory only. A bridge restart forgets every id,
+// so the same id sent again after a restart writes the same value again, which changes nothing a person sees.
+// Value writes are not rate limited beyond the trick's own one-run slot (service.ts `setValue`).
 /**
  * The request ids of value writes this bridge took, at most {@link VALUE_WRITES_SEEN_MAX}, the oldest
  * forgotten first. The same id with the same payload is answered again and writes nothing; the same id with

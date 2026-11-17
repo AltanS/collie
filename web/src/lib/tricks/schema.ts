@@ -1337,7 +1337,7 @@ export interface TrickManifest {
   decides?: DecidesWord;
   /**
    * Contract 3: the settings a person keeps for the trick (`[[field]]`, {@link TrickField}), set from the phone
-   * or `collie trick set`. Text, not a right: not in the powers, part of the code hash like any manifest change.
+   * only. Text, not a right: not in the powers, part of the code hash like any manifest change.
    * The program gets the values in its facts (`values`), never on a command line.
    */
   fields?: TrickField[];
@@ -4533,26 +4533,6 @@ export function fieldValueProblem(field: TrickField, value: FieldValue): FieldPr
       return undefined;
     }
   }
-}
-
-/**
- * A value typed as text (`collie trick set <id> <key> <value>`), as its field takes it: `on`, `true`, `yes`
- * or `off`, `false`, `no` for a switch, digits with an optional `-` for a number, the text itself for text and
- * a choice. A refusal when the text does not read as the field's kind; the rule itself is
- * {@link fieldValueProblem}'s, run after.
- */
-export function fieldValueFromText(field: TrickField, text: string): { ok: true; value: FieldValue } | { ok: false; problem: FieldProblem } {
-  if (field.kind === "switch") {
-    const word = text.trim().toLowerCase();
-    if (word === "on" || word === "true" || word === "yes") return { ok: true, value: true };
-    if (word === "off" || word === "false" || word === "no") return { ok: true, value: false };
-    return { ok: false, problem: { code: "kind", reason: `"${field.label}" is a switch. Write on or off.` } };
-  }
-  if (field.kind === "number") {
-    if (!/^-?\d{1,9}$/u.test(text.trim())) return { ok: false, problem: { code: "kind", reason: `"${field.label}" is a number. Write a whole number from ${String(field.min)} to ${String(field.max)}.` } };
-    return { ok: true, value: Number(text.trim()) };
-  }
-  return { ok: true, value: text };
 }
 
 /** A field's value now: the person's, when it keeps the field's rule, else the default, else undefined. */

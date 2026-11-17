@@ -170,8 +170,8 @@ version-card.ts say "Asks you for: <labels>". The values live in `<state>/tricks
 (bridge/tricks/values.ts), mode 0600, written whole; a file that does not read reads as empty and the row
 says `valuesUnread`. They reach the program only in its facts as `values` (each field's value or default),
 never on a command line, in the environment, in a log line, a Hill card or a push. One write route,
-`POST /api/tricks/<host>/<id>/value` at the write level, with a request id and a receipt, and the walky
-op `trick.set` for `collie trick set`, refused from an agent's pane. A changed value asks nothing and runs
+`POST /api/tricks/<host>/<id>/value` at the write level, with a request id and a receipt; the phone is the only writer (no terminal verb
+in this version). A changed value asks nothing and runs
 the trick once. In a crew the values live on the lead: a member refuses the write (`not-here`), and the
 deputy carry skips the dot folder. A required field with no value puts `needsSetup` on the row.
 

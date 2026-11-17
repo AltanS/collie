@@ -31,10 +31,6 @@
 //     From an agent's pane the proposer is that session; from a bare shell or with no markers, a terminal.
 //     Its line may be up to PROPOSE_LINE_MAX when it opens with PROPOSE_LINE_PREFIX, read within
 //     PROPOSE_LINE_MS, at most PROPOSE_LINES_MAX such lines at once.
-// A trick's setting from the person's terminal (contract 3, `collie trick set`), answered only by a bridge with tricks:
-//   trick.set { trick, key, requestId, text | null } → { ok, trickSet: { id, key, changed } } | { ok: false, error, code, trickSet: true }
-//     Refused from an agent's pane (`person_only`, the speed bump of `collie trick on`), and on a crew member
-//     (`not-here`: the values live on the lead). It names no pane otherwise. The value is never logged.
 // Every hill refusal carries `hill: true`, so the CLI tells a bridge that knows the hill from an older one.
 // Agent views (a trick's view of a session the agent draws), answered only by a bridge built with them,
 // always for the asking pane's own session (bridge/agent-view/service.ts). Every one names its trick
@@ -70,7 +66,6 @@ import type { HillCrewState, HillCrewStateView, HillDecision, HillRefusalCode } 
 import type { HillService } from "../hill/service.ts";
 import type { LocalProposer } from "../tricks/propose-door.ts";
 import type { ProposeAnswer } from "../tricks/proposals.ts";
-import type { ValueAnswer } from "../tricks/service.ts";
 import { PROPOSE_TOO_MANY_PARTS, proposalParseable, type ProposeRefusalCode } from "../tricks/propose-wire.ts";
 import type { JsonObject } from "../json.ts";
 import { readChoiceFields, readKeepFields, readPendingFields, readRemoveFields, readSetFields, unknownViewField } from "../agent-view/blocks.ts";
@@ -122,14 +117,6 @@ export interface ProposeSocket {
   local(fields: JsonObject, who: LocalProposer): Promise<ProposeAnswer>;
 }
 
-/** What the socket needs of the tricks for `trick.set` (contract 3, tricks/service.ts `setValueText`). */
-export interface TrickSetSocket {
-  setValueText(id: string, rid: string, key: string, text: string | null): Promise<ValueAnswer>;
-}
-
-/** What the socket answers `trick.set` from an agent's pane: a setting is the person's. */
-export const TRICK_SET_PERSON_ONLY = "a trick's settings are your person's to set, and this runs in a pane where an agent works; ask your operator, who sets it on the phone or in a terminal";
-
 /** The pane the markers name: a session and a pane id. The service then reads its instance. */
 export interface PlacedPane {
   readonly session: string;
@@ -176,8 +163,6 @@ export interface WalkyServerDeps {
   readonly views?: ViewSocket;
   /** `collie trick propose` (crew slice 8). Absent: the op is answered as unknown. */
   readonly propose?: ProposeSocket;
-  /** `collie trick set` (contract 3). Absent: the op is answered as unknown. */
-  readonly tricks?: TrickSetSocket;
 }
 
 /** What one request is answered with. */
@@ -208,9 +193,7 @@ export type WalkyAnswer =
   // A trick proposal (crew slice 8).
   | { readonly ok: true; readonly kind: "proposal" | "version"; readonly id: string; readonly hash: string; readonly decision: string | null; readonly replaced: string | null }
   | { readonly ok: false; readonly error: string; readonly code: ProposeRefusalCode; readonly propose: true }
-  // A trick's setting (contract 3).
-  | { readonly ok: true; readonly trickSet: { readonly id: string; readonly key: string; readonly changed: boolean } }
-  | { readonly ok: false; readonly error: string; readonly code: string; readonly trickSet: true }
+
   // Agent views.
   | { readonly ok: false; readonly error: string; readonly trickView: true; readonly code?: ViewRefusalCode; readonly refusals?: readonly Refusal[] }
   | { readonly ok: true; readonly trickView: TrickViewSession; readonly help?: readonly string[] };
@@ -232,10 +215,7 @@ export async function answerRequest(
   hill?: HillSocket,
   views?: ViewSocket,
   propose?: ProposeSocket,
-  tricks?: TrickSetSocket,
 ): Promise<WalkyAnswer> {
-  // A trick's setting: the person's from a terminal. It names no pane; the markers only refuse an agent's.
-  if (request.op === "trick.set") return tricks === undefined ? answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets) : await answerTrickSet(service, request, targets, tricks);
   // A bridge built without the hill answers its operations as it answers any op it does not know.
   if (hill === undefined && isHillOp(request.op)) return answerUnread(service, { ok: false, markers: request.markers, reason: unknownOp(request.op) }, targets);
   // And so does a bridge built without agent views.
@@ -482,23 +462,6 @@ async function answerCrewState(service: WalkyService, request: Extract<WalkyRequ
   return { ok: true, crewState: set.crewState };
 }
 
-/**
- * `collie trick set` (contract 3): the person's write from a terminal, refused from an agent's pane with
- * `person_only` (a speed bump, as `collie trick on`: a process that strips the markers gets past it, and the
- * user account is the real boundary). The receipt names the trick and the key, never the value.
- */
-async function answerTrickSet(service: WalkyService, request: Extract<WalkyRequest, { op: "trick.set" }>, targets: readonly PlaceTarget[], tricks: TrickSetSocket): Promise<WalkyAnswer> {
-  if (await fromAgentPane(service, request.markers, targets)) {
-    service.noteRefusal("agent pane");
-    return { ok: false, error: TRICK_SET_PERSON_ONLY, code: "person_only", trickSet: true };
-  }
-  const answer = await tricks.setValueText(request.trick, request.requestId, request.key, request.text);
-  if (answer.status === 200) return { ok: true, trickSet: { id: request.trick, key: answer.body.key, changed: answer.body.changed } };
-  const body = answer.body;
-  if ("message" in body) return { ok: false, error: body.message, code: "code" in body ? body.code : body.error, trickSet: true };
-  return { ok: false, error: body.error === "unknown-trick" ? `there is no trick ${request.trick} here` : body.error, code: body.error, trickSet: true };
-}
-
 /** The second Clear (1.29.0): the person's verb, refused from an agent's pane and on a member. Types nothing. */
 async function answerSpokenClear(service: WalkyService, markers: WalkyRequest["markers"], targets: readonly PlaceTarget[], hill: HillSocket): Promise<WalkyAnswer> {
   if (await fromAgentPane(service, markers, targets)) {
@@ -692,7 +655,7 @@ export class WalkyServer {
       if (!read.ok) return this.reply(socket, await answerUnread(this.deps.service, read, this.deps.targets()));
       // A long line is a proposal's, or nothing: a second `op` key cannot turn it into another request.
       if (big && read.request.op !== "trick.propose") return this.reply(socket, { ok: false, error: "bad request: a long line is a trick proposal only" });
-      this.reply(socket, await answerRequest(this.deps.service, read.request, this.deps.targets(), this.deps.hill, this.deps.views, this.deps.propose, this.deps.tricks));
+      this.reply(socket, await answerRequest(this.deps.service, read.request, this.deps.targets(), this.deps.hill, this.deps.views, this.deps.propose));
     } catch (err) {
       this.log(`[walky] request failed: ${err instanceof Error ? err.message : String(err)}`);
       this.reply(socket, { ok: false, error: "failed" });

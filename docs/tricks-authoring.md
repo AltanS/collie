@@ -222,9 +222,10 @@ default = 10
 ```
 
 There are four kinds: `text` (one line), `choice` (`options`, 2 to 8), `switch` and `number` (`min`
-and `max`, whole numbers). The person sets them in the trick's About sheet, under Settings, or with
-`collie trick set <id> <key> <value>` in a terminal of their own. That command refuses in an agent's
-pane. Collie keeps the values on the machine that runs the trick, in its state folder.
+and `max`, whole numbers). The person sets them on the phone, in the trick's About sheet, under
+Settings. Collie keeps the values on the machine that runs the trick, in its state folder, as
+`.collie/values.json`. A person or an agent who edits that file by hand is the same case as an edit of
+`config.toml`: it is accepted, and Collie reads the file through the field rules on the next look.
 
 The program gets them in its facts as `values`, each field's value or its `default`, by key. The helper
 reads them as `t.values`. A required field with no value is absent: draw a part that says what to set.
@@ -234,7 +235,10 @@ A value is the person's data and untrusted for the program: show it, never run i
 shell or build a command from it.
 
 A field is in `trick.toml`, so a new or changed field is a new version and asks the person again. A new
-value asks nothing and runs the trick once. A key goes in `env`, never in a field. Every limit is in
+value asks nothing and runs the trick once.
+
+A setting is never a secret. Do not put a token, a password or a key in a field: the value is stored as
+plain text, shown on every paired phone, and readable by the trick's program. A key goes in `env`. Every limit is in
 [Fields](tricks-reference.md#fields-contract-3).
 
 ## An agent view

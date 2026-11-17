@@ -1261,7 +1261,7 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 | `version` | text | no | 1 to 24 characters: letters, digits, `.`, `+` and `-`, such as `1.2.0` | 1 | The trick's own version. The About sheet shows it. Collie never compares it and reads no tag. |
 | `rules` | file name | yes, with `agent-view`; refused without it | a file in the trick's folder of at most 64 characters ending in `.md`, such as `rules.md` | 2 | The instructions the agent of a session reads. The person reads them whole before they switch the trick on. |
 | `decides` | word | no | `reply`. Refused on a trick that is only an agent view | 1 | Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again. |
-| `field` | list of tables | no | at most 12 `[[field]]` tables. Each has `key` (spelled like a trick id, each once), `kind` (`text`, `choice`, `switch` or `number`), `label` (at most 40 characters) and may have `hint` (at most 120), `default` and `required`. A `choice` lists 2 to 8 `options` of at most 40 characters; a `number` names whole `min` and `max` within 999999999 either way; a `text` value is one line of at most 200 characters; a `switch` is never `required` | 3 | Settings the person keeps for the trick, set in its About sheet on the phone or with `collie trick set <id> <key> <value>`. The program reads them in its facts as `values`. A value is the person's data and untrusted for the program: show it, never run it. A new or changed field is a new version and asks again; a changed value does not ask, and runs the trick once. |
+| `field` | list of tables | no | at most 12 `[[field]]` tables. Each has `key` (spelled like a trick id, each once), `kind` (`text`, `choice`, `switch` or `number`), `label` (at most 40 characters) and may have `hint` (at most 120), `default` and `required`. A `choice` lists 2 to 8 `options` of at most 40 characters; a `number` names whole `min` and `max` within 999999999 either way; a `text` value is one line of at most 200 characters; a `switch` is never `required` | 3 | Settings the person keeps for the trick, set in its About sheet on the phone. The program reads them in its facts as `values`. A value is the person's data and untrusted for the program: show it, never run it. A setting is never a secret: a key comes through `env`. A new or changed field is a new version and asks again; a changed value does not ask, and runs the trick once. |
 
 In `trick.toml`:
 
@@ -1579,7 +1579,6 @@ Every verb of `collie trick`.
 | `on` | `collie trick on <id>` | Switches a trick on, approving its code as it is now. It refuses inside an agent's pane. |
 | `off` | `collie trick off <id>` | Switches a trick off. |
 | `auto` | `collie trick auto <id> on\|off` | Takes new versions without asking while the powers do not change. A trick with rules never takes one. |
-| `set` | `collie trick set <id> <key> <value>` | Sets one of a trick's settings (`[[field]]`) through the running bridge. A changed value runs the trick once. It refuses inside an agent's pane. |
 | `check` | `collie trick check [--run] [--json] <folder>` | Checks a trick folder: its manifest, places and command lines. |
 | `dev` | `collie trick dev <folder\|id> [--tap <intent> [--text <words>] [--node <node>] [--rid <uuid>]] [--facts <file.json>] [--state <dir>] [--inputs <dir>] [--json] [--watch]` | Runs a trick once with fixture facts and prints what the phone would get. It never talks to the bridge. |
 | `init` | `collie trick init [--sh] [--dir <folder>] <id>` | Makes a new trick folder with a program and the helper. In an agent's pane the folder is a draft in the working folder, outside the tricks folder. |
@@ -1595,7 +1594,6 @@ Every verb of `collie trick`.
 | `list` | `--official` | List the official tricks this Collie can add from the phone. |
 | `update` | `--ref` | Fetch this branch, tag or commit instead of the same ref. |
 | `update` | `--dry-run` | Print what would change and change nothing. |
-| `set` | `--clear` | Clear the setting back to its default, in place of a value. |
 | `check` | `--run` | Run the program once, as the bridge would. |
 | `check` | `--json` | Print one JSON document instead of text. |
 | `dev` | `--tap` | Run it as a tap with this intent. |

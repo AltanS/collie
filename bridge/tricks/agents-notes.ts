@@ -101,7 +101,7 @@ const FIELDS_NOTE = `
 
 With \`contract = 3\`, \`trick.toml\` may list up to 12 \`[[field]]\` tables: \`key\`, \`kind\` (\`text\`,
 \`choice\`, \`switch\` or \`number\`), \`label\`, and an optional \`hint\`, \`default\` and \`required\`.
-The person sets them on the phone, in the trick's About sheet, or with \`collie trick set\` in a terminal.
+The person sets them on the phone, in the trick's About sheet. A field is never a secret: a key comes through \`env\`.
 The program gets them in its facts as \`values\` (the helper: \`t.values\`), and nowhere else. A value is
 the person's data and untrusted for the program: show it, never run it. A required field with no value is
 absent: draw a part that says what to set. A new or changed field asks the person again; a new value does not.

@@ -4,7 +4,6 @@ import type { JsonValue } from "../json";
 import { FIELD_HINT_MAX, FIELD_LABEL_MAX, FIELD_OPTION_MAX, FIELD_OPTIONS_MAX, FIELD_TEXT_MAX, FIELDS_MAX } from "./limits";
 import {
   effectiveValues,
-  fieldValueFromText,
   fieldValueProblem,
   FIELDS_CONTRACT,
   keptValues,
@@ -139,15 +138,6 @@ describe("a value against its field", () => {
     expect(fieldValueProblem(rows, 2.5)?.code).toBe("whole");
     expect(fieldValueProblem(repo, `${secret}\n`)?.reason).not.toContain(secret);
     expect(fieldValueProblem(repo, "lodge/workshop")).toBeUndefined();
-  });
-
-  it("reads typed text as its field takes it", () => {
-    expect(fieldValueFromText(notify, "on")).toEqual({ ok: true, value: true });
-    expect(fieldValueFromText(notify, "off")).toEqual({ ok: true, value: false });
-    expect(fieldValueFromText(notify, "maybe")).toMatchObject({ ok: false, problem: { code: "kind" } });
-    expect(fieldValueFromText(rows, "12")).toEqual({ ok: true, value: 12 });
-    expect(fieldValueFromText(rows, "1.5")).toMatchObject({ ok: false, problem: { code: "kind" } });
-    expect(fieldValueFromText(repo, "lodge/workshop")).toEqual({ ok: true, value: "lodge/workshop" });
   });
 
   it("keeps only valid values, fills defaults, and says Needs setup for an empty required field", () => {

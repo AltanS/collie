@@ -407,7 +407,7 @@ asks for, what a text search of its code found, and where it came from
 ## Trick setting
 
 A value a trick asks you for, such as a repository or a branch. The trick lists its settings in
-`trick.toml` as `[[field]]`; you set them in the trick's About sheet or with `collie trick set`. A
+`trick.toml` as `[[field]]`; you set them on the phone, in the trick's About sheet. A
 setting is your data: the trick gets it, Collie runs nothing with it
 ([Settings a trick asks you for](tricks-authoring.md#settings-a-trick-asks-you-for)).
 
