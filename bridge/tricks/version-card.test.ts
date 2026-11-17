@@ -300,8 +300,8 @@ describe("access: the level a version raises (M105 spec 04)", () => {
     // Plain since M105 spec 05 (decision 10): the bridge holds the level for the local API.
     expect(ACCESS_LINES.see).toBe("It reads your machines, sessions, usage and the Hill.");
     expect(ACCESS_LINES.read).toBe("It reads your sessions' screens.");
-    expect(ACCESS_CHIPS.see).toBe("reads machines, sessions, usage");
-    expect(ACCESS_CHIPS.read).toBe("reads screens");
+    expect(ACCESS_CHIPS.see).toBe("the state of your machines and sessions");
+    expect(ACCESS_CHIPS.read).toBe("your sessions' screens");
     expect(accessLine(undefined)).toEqual([]);
     for (const text of [ACCESS_LINES.see, ACCESS_LINES.read, ACCESS_CHIPS.see, ACCESS_CHIPS.read]) expect(text).not.toMatch(/permission|can only/iu);
   });
