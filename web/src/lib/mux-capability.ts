@@ -329,11 +329,34 @@ export function useMuxName(): string {
  * "this is what that multiplexer looks like", which would be false.
  */
 export function useMuxLogoUrl(): string {
+  return useMuxLogo().url;
+}
+
+/** {@link useMuxLogo}'s answer: the URL once it is here, and whether it is known to come but not here yet. */
+export interface MuxLogo {
+  /** The object URL to print into a `src`, or `""` while there is none. */
+  url: string;
+  /**
+   * The bridge published a mark and its bytes are still being read. The header holds a box of the
+   * mark's final size for as long as this is true, so the word beside it never moves when the image
+   * lands (DESIGN.md §2). False when no mark was published and when the read failed: the box goes then.
+   */
+  held: boolean;
+}
+
+/**
+ * {@link useMuxLogoUrl} with the one fact it hides: a mark that is on its way. The name and the mark's
+ * path come in the same `/api/config` answer, and the bytes need a second read, so for a moment the
+ * header knows there IS a mark and has no picture to draw. No remembered answer is needed for that
+ * moment: the line holds nothing before the config lands, because the name is not there either.
+ */
+export function useMuxLogo(): MuxLogo {
   // The bridge publishes a root-absolute path. Reads need the pairing token (ADR 0086) and an
   // `<img src>` cannot send it, so the bytes are fetched with it and drawn from an object URL
   // (lib/authed-url.ts); the fetch applies the mount (ADR 0052). Empty until they are here.
   const path = useMuxConfig()?.logoUrl ?? "";
-  return useAuthedUrl(path === "" ? null : path).url ?? "";
+  const { url, failed } = useAuthedUrl(path === "" ? null : path);
+  return { url: url ?? "", held: path !== "" && url === null && !failed };
 }
 
 /**

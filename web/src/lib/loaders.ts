@@ -156,6 +156,13 @@ export interface HomeData {
    * nothing to wait for. Optional in the TYPE only, so hand-built fixtures stay valid.
    */
   trickCards?: boolean;
+  /**
+   * Whether this bridge runs tricks: the snapshot carries `tricksRev`. `false` is a real answer ("this
+   * bridge has none"), which the Settings index needs to draw its list without a Tricks row at once,
+   * because the tricks store stays empty for ever on a bridge with none and cannot say so itself.
+   * Optional in the TYPE only, so hand-built fixtures stay valid; absent there means "not known".
+   */
+  tricks?: boolean;
   /** The bridge's session registry (primary-first); empty on a single-session / older bridge. */
   sessions: SessionSummary[];
   /**
@@ -434,6 +441,7 @@ function toHomeData(
     hillOff: snap.hillOff === true,
     tricksOff: snap.tricksOff === true,
     trickCards: snap.hillRev !== undefined || snap.trickCardsRev !== undefined,
+    tricks: snap.tricksRev !== undefined,
     sessions: snap.sessions ?? [],
     servers: snap.servers ?? [],
     ts: snap.ts ?? 0,
