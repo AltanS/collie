@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 546 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 547 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([311, 200, 35]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([312, 200, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 6 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -186,6 +186,9 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(paneBinary).toContain('describe.skipIf(process.platform === "win32")("two copies of one harness');
     expect(script).toContain("procProbe sees a live process's executable and folder");
     expect(script).toContain("two copies of one harness");
+    // The environment read of pi's pane (#793): the same /proc probe, one more Linux-only test, named in the script.
+    expect(paneBinary).toContain('test.skipIf(process.platform !== "linux")("procProbe reads a live process\'s environment, and nothing on another host"');
+    expect(script).toContain("procProbe reads a live process's environment, and nothing on another host");
     // N9 (trouble check 2026-11-08): the off-PATH agent is a `#!/bin/sh` script, so the describe's one test
     // and its hook skip on Windows, as "two copies" does.
     expect(paneBinary).toContain('describe.skipIf(process.platform === "win32")("createPaneVersion — a harness off the login PATH"');
@@ -259,7 +262,7 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(accountSkips).toBe(45);
     expect(script).toContain("bridge/accounts-skip.ts");
     expect(budget("Bridge")).toBe(
-      viewMediaSkips.length + posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips +
+      viewMediaSkips.length + posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips +
         hillSkips.length + legsEndToEnd + officialSkips + dataPathSkips + adapterSkips + accountSkips,
     );
     // The cli allowance adds the three real runs of the POSIX install leg a crew member runs, and the
