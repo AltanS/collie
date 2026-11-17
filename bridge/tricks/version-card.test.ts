@@ -84,6 +84,14 @@ describe("the diff of two copies", () => {
     ]);
   });
 
+  test("on Windows the x bit is never part of a change: a mode-only change lists no file (the platform seam)", async () => {
+    const files = { "trick.toml": MANIFEST, "legs.sh": "echo 1\n" };
+    const base = await folder(files);
+    const next = await folder(files);
+    expect(await versionDiff({ base, next, nextExec: new Set(["legs.sh"]), platform: "win32" })).toEqual({ files: [], counted: false });
+    expect((await versionDiff({ base, next, nextExec: new Set(["legs.sh"]), platform: "linux" })).files.map((file) => file.mode)).toEqual(["+x"]);
+  });
+
   test("an empty file added, removed or renamed shows one line each, so the card has code (2026-11-17)", async () => {
     const base = await folder({ "trick.toml": MANIFEST, "old.txt": "", "gone.txt": "" });
     const next = await folder({ "trick.toml": MANIFEST, "new.txt": "", "gone2.txt": "" });

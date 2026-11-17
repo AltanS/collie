@@ -95,7 +95,7 @@ interface Lead {
   live: Set<string>;
 }
 
-async function lead(opts: { self?: { memberId: string; machine: string }; hillOff?: boolean; diff?: (base: string | null, next: string) => Promise<VersionDiff>; forgetTrick?: (id: string) => void } = {}): Promise<Lead> {
+async function lead(opts: { self?: { memberId: string; machine: string }; hillOff?: boolean; diff?: (base: string | null, next: string) => Promise<VersionDiff>; forgetTrick?: (id: string) => void; platform?: NodeJS.Platform } = {}): Promise<Lead> {
   const root = await tempDir();
   const configDir = join(root, "config");
   const stateDir = join(root, "state");
@@ -148,6 +148,7 @@ async function lead(opts: { self?: { memberId: string; machine: string }; hillOf
   const deps: ConstructorParameters<typeof TrickProposals>[0] = { configDir, stateDir, hill, tricks: () => service, now: () => clock.t, warn: () => undefined };
   if (opts.diff !== undefined) deps.diff = opts.diff;
   if (opts.self !== undefined) deps.self = opts.self;
+  if (opts.platform !== undefined) deps.platform = opts.platform;
   proposals = new TrickProposals(deps);
   await proposals.start();
   return { root, configDir, stateDir, clock, hill, store, service, cards, proposals, sent, live };
@@ -721,7 +722,8 @@ describe("a trick id that exists", () => {
     expect(await stat(l.proposals.storeDir("legs", same.hash)).catch(() => null)).toBeNull();
   });
 
-  test("a new version whose only change is a file mode shows that change as a line of code, and its yes needs the end seen (2026-11-17)", async () => {
+  // POSIX only: Windows keeps no file mode, so there a mode-only change is no change (the twin below runs that branch everywhere).
+  test.skipIf(process.platform === "win32")("a new version whose only change is a file mode shows that change as a line of code, and its yes needs the end seen (2026-11-17)", async () => {
     const l = await lead();
     await proposedOn(l, "legs");
     const read = readProposal({ requestId: nextRid(), files: wireFiles([
@@ -738,6 +740,20 @@ describe("a trick id that exists", () => {
     const bare = await l.hill.answer({ rid: nextRid(), node: `hill/${card!.id}`, intent: "on", value: { text: null } }, card!.id, "Pixel 9");
     expect(bare.kind === "receipt" ? bare.receipt.code : bare.kind).toBe("rejected");
     expect(await tap(l, card!, "on")).toMatchObject({ code: "ok" });
+  });
+
+  test("on Windows a mode is never a change: a version whose only change is a file mode makes no card, as the same code (the platform seam)", async () => {
+    const l = await lead({ platform: "win32" });
+    await proposedOn(l, "legs");
+    const read = readProposal({ requestId: nextRid(), files: wireFiles([
+      { rel: "trick.toml", bytes: enc(manifest("legs")), executable: false },
+      { rel: "program.ts", bytes: enc("old\n"), executable: false },
+    ]) });
+    if (!read.ok) throw new Error(read.refusal.error);
+    expect(await l.proposals.propose(read.proposal, AGENT)).toEqual({ ok: false, code: "exists", error: PROPOSAL_NO_CHANGE });
+    // The same code with the bit it was proposed with: no change either.
+    expect(await l.proposals.propose(proposal("legs", "old\n"), AGENT)).toEqual({ ok: false, code: "exists", error: PROPOSAL_NO_CHANGE });
+    expect(openCards(l)).toEqual([]);
   });
 
   test("a stored copy that changes while its card is made is not posted (review 7 R9)", async () => {
@@ -1299,5 +1315,15 @@ describe("where a proposal will run", () => {
     const l = await lead();
     expect(await l.proposals.propose(proposal("legs"), AGENT)).toMatchObject({ ok: true });
     expect(openCards(l)[0]?.summary).not.toContain("It will run on");
+  });
+});
+
+describe("a file mode where the platform keeps none (Windows)", () => {
+  test("a new trick's card says a file can run as a program only where the platform keeps the bit", async () => {
+    for (const [platform, line] of [["linux", true], ["win32", false]] as const) {
+      const l = await lead({ platform });
+      expect(await l.proposals.propose(proposal("legs"), AGENT)).toMatchObject({ ok: true, kind: "proposal" });
+      expect(JSON.stringify(openCards(l)[0]?.view).includes("program.ts: mode +x, it can run as a program"), platform).toBe(line);
+    }
   });
 });
