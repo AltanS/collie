@@ -115,6 +115,8 @@ const SESSIONS_VERBS = [SESSIONS_VERB];
 const WALKY_VERBS = ["walky"];
 // The hill (M96), declared right after `walky`: an agent posts a decision over the same socket.
 const HILL_VERBS = ["hill"];
+// The local API's command face (M105), declared right after `hill`.
+const API_VERBS = ["api"];
 // `theme check` (M59 spec 05), declared after `walky`. It reads files and touches no state.
 const THEME_VERBS = ["theme"];
 // The manual, printed out of the binary: `collie skill` for an AI agent, `collie docs` for the
@@ -145,6 +147,7 @@ describe("the verb table", () => {
       ...SESSIONS_VERBS,
       ...WALKY_VERBS,
       ...HILL_VERBS,
+      ...API_VERBS,
       ...THEME_VERBS,
       ...CREW_VERBS,
       ...MANUAL_VERBS,
@@ -664,6 +667,9 @@ describe("exit codes", () => {
       // `hill` talks to the same sockets, and a `post` puts a decision on a running bridge's hill.
       // cli/hill.test.ts drives every sub-verb against a temp socket.
       ...HILL_VERBS,
+      // `api` dials the local API socket of this host's own running bridge, when a trick is on there.
+      // cli/api.test.ts drives it against a scratch socket.
+      ...API_VERBS,
       // `sessions` dials this host's own running bridge for its snapshot. cli/sessions.test.ts drives it against a fake fetch.
       ...SESSIONS_VERBS,
     ];

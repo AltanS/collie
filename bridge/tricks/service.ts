@@ -65,6 +65,9 @@ import { TricksFeatureSwitch, type TricksFeaturePort } from "./feature-switch.ts
 import { createSwitchReader, MIGRATED, updateSwitches, withApproval, withEntry, withFreshApproval, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX } from "../../web/src/lib/tricks/limits.ts";
 import { menuMessageLine } from "../../web/src/lib/tricks/menu-message.ts";
+import type { EventBus } from "../events/bus.ts";
+import { TrickReactions, type Admit, type FloorTimers, type ReactionCounts, type ReactTrigger } from "./triggers.ts";
+import { WATCH_POLL_MS, type WatchOptions } from "./watch.ts";
 
 // The run caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
 export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX };
@@ -88,6 +91,9 @@ export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX };
 //     "watched" is a `/api/snapshot` or `/api/tricks` request from a paired phone (server.ts stamps it).
 //     The host's own CLI and a lead's sweep of this machine do not count. A `gh` trick on `30s` makes no
 //     call while the phone is in a pocket.
+//   * An event (`on`) or a file change (`watch`) runs a trick with NO phone open: only the timer waits for a
+//     look. Those runs keep every other bound here, and at least {@link REACT_FLOOR_MS} separates the
+//     STARTS of two of them (triggers.ts, THE FLOOR). Taps, Hill answers and timer runs are not delayed by it.
 //   * The first run after the trick is loaded, switched on, a new version approved or its `config.toml` changed has the
 //     trigger `start`; later ones `timer`, every `every` (at least 5 s) after the last run. A trick with
 //     no `every` runs once at start and then on taps only. Any other change in its folder (a log it
@@ -430,6 +436,17 @@ export interface TricksServiceDeps {
    * that runs tricks passes `{ on: () => true }`.
    */
   feature?: TricksFeaturePort & { onChange?(listener: (on: boolean) => void): () => void };
+  /**
+   * Told the count of switched-on tricks after a scan or a switch moved it, and once after the first
+   * scan. bridge/index.ts opens the local API socket while it is above zero (M105 spec 03, decision 14).
+   */
+  onSwitchedOnCount?: (count: number) => void;
+  /** The bridge's event bus: a trick that lists `on` runs on its events (triggers.ts). Absent: `on` runs nothing. */
+  bus?: EventBus;
+  /** The file watch's knobs, for a test (watch.ts). Absent: the production values. */
+  watchOptions?: WatchOptions;
+  /** The timer of the 10 second floor between two event or watch runs, for a test (triggers.ts). Absent: `setTimeout`. */
+  reactionTimers?: FloorTimers;
 }
 
 /** The approved copy a trick runs from, as read and verified. */
@@ -674,6 +691,12 @@ export class TricksService implements TricksSurface {
   private readonly feature: NonNullable<TricksServiceDeps["feature"]> & { set?(on: boolean): boolean };
   /** The last scan found tricks switched off as a whole: every runtime is folded in as off, its own switch kept. */
   private suspended = false;
+  /** The switched-on count last told to `onSwitchedOnCount`; null before the first. */
+  private switchedOnTold: number | null = null;
+  /** `on` and `watch`: the bus subscription, the file watches and the waiting requests (triggers.ts). */
+  private readonly reactions: TrickReactions;
+  /** The tricks whose file watch fell back to a stat check (watch.ts): the row says it, from `watchPollSeconds`. */
+  private readonly watchPolled = new Set<string>();
 
   constructor(deps: TricksServiceDeps) {
     this.deps = deps;
@@ -683,6 +706,10 @@ export class TricksService implements TricksSurface {
     this.scanner = createTrickScanner(tricksConfigDir(deps.configDir), { warn: this.warn });
     this.readSwitches = createSwitchReader(deps.stateDir, this.warn);
     this.receiptFile = deps.receipts ?? new TrickReceiptStore(deps.stateDir, this.warn);
+    this.reactions = new TrickReactions(
+      { admit: (id) => this.reactAdmit(id), start: (id, trigger) => this.reactStart(id, trigger), due: (id) => this.reactDue(id), note: (id, note) => this.reactNote(id, note), warn: this.warn },
+      { bus: deps.bus, watch: deps.watchOptions, now: this.now, timers: deps.reactionTimers },
+    );
     this.feature = deps.feature ?? new TricksFeatureSwitch(deps.stateDir, this.warn);
     // A move of the switch folds in at once (after the read that saw it), so the parts go and the rows move.
     this.feature.onChange?.(() => {
@@ -696,7 +723,9 @@ export class TricksService implements TricksSurface {
   // ── The switch for tricks as a whole (feature-switch.ts) ─────────────────────────────────────
   // THE CHECK POINT. Tricks are an experiment, off by default. While the switch is off:
   //   * every run passes `recheck` right before its program starts (start, timer, tap, a Decision's
-  //     answer, and any later trigger, since every run goes through `begin`), and `recheck` refuses first;
+  //     answer, an `on` event, a `watch` change: every run goes through `begin`), and `recheck` refuses first;
+//   * `on` and `watch` (triggers.ts) hold nothing open while off: `syncReactions` gives triggers.ts no target,
+//     so the bus subscription and the file watches close, and `reactAdmit` drops a request that still arrives;
   //   * a scan folds every trick in as off (`refresh`, `applyOne`): its parts are dropped, its approved copy
   //     is unloaded, no agent view passes `viewGate`, nothing is due; its own switch is kept for its row;
   //   * the doors that read without a scan or write before one ask `switchedOff()` themselves: `reply`
@@ -767,9 +796,39 @@ export class TricksService implements TricksSurface {
     this.timer.unref?.();
   }
 
+  /**
+   * ONE SCAN AT BRIDGE START, so a trick that reacts (`on`, `watch`) and the local API stand without a
+   * phone's look (the lead, 2026-11-17). Only where it is needed: never while the Windows gate is closed,
+   * never where tricks do not run (`deps.active` false: a crew peer, a deputy, a deposed lead), and only
+   * when the switch file holds a trick that is on. Then one forced scan (it also tells the switched-on
+   * count, which opens the local API), and the start run of each trick that reacts, since a trick takes
+   * no event before its start run. A trick that only runs on its timer still waits for a phone, as
+   * before. One scan, not a loop: a failure is logged once, and the next phone look scans as today.
+   * Resolves when the start runs it began are done, which is what a test waits on.
+   */
+  async boot(): Promise<void> {
+    if (this.gated() || this.deps.active?.() === false) return;
+    try {
+      const switches = await this.readSwitches();
+      if (switches.on.size === 0) return;
+      await this.refresh(true);
+      const now = this.now();
+      const started: Promise<void>[] = [];
+      for (const rt of this.runtimes.values()) {
+        const manifest = rt.approved?.found.manifest;
+        const reacts = (manifest?.on?.length ?? 0) > 0 || (manifest?.watch?.length ?? 0) > 0;
+        if (reacts && rt.pendingStart && this.due(rt, now)) started.push(this.begin(rt, { kind: "start" }, null));
+      }
+      await Promise.all(started);
+    } catch (err) {
+      this.warn(`the scan at start failed, the next phone look scans: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   stop(): void {
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
+    this.reactions.close();
   }
 
   /**
@@ -903,6 +962,7 @@ export class TricksService implements TricksSurface {
         for (const rt of runtimes) await this.notePending(rt);
         this.syncVersions();
         this.syncRights();
+        this.syncReactions();
         await this.readWarnings();
         await this.prune(switches);
       } catch (err) {
@@ -941,6 +1001,26 @@ export class TricksService implements TricksSurface {
       this.deps.decisions?.prune(ids, host);
     }
     for (const found of scan.tricks) this.applyOne(found, this.liveEntry(switches, found.id), switches.on.has(found.id));
+    this.tellSwitchedOn();
+  }
+
+  /**
+   * Tell `onSwitchedOnCount` the count of switched-on tricks, when it moved. Never throws. The count is 0
+   * where tricks do not run (the Windows gate; `deps.active` false: a crew peer, a deputy, a deposed lead),
+   * so the local API opens only where a trick is on AND tricks run. A trick switched on but stopped (its
+   * rights, the backoff) still counts.
+   */
+  private tellSwitchedOn(): void {
+    let count = 0;
+    const runsHere = !this.gated() && this.deps.active?.() !== false;
+    if (runsHere) for (const rt of this.runtimes.values()) if (rt.on) count += 1;
+    if (count === this.switchedOnTold) return;
+    this.switchedOnTold = count;
+    try {
+      this.deps.onSwitchedOnCount?.(count);
+    } catch (err) {
+      this.warn(`the switched-on count could not be told: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** A trick's switch entry as runs read it: none while tricks are switched off as a whole (`suspended`). */
@@ -985,6 +1065,7 @@ export class TricksService implements TricksSurface {
       // on while tricks as a whole are off: its Decisions wait, hidden, for the switch.
       if (!own) this.deps.decisions?.off({ id: found.id, name: found.manifest?.name ?? found.id, memberId: host });
       this.publish(found.id);
+      this.tellSwitchedOn();
       return;
     }
     // A change of the folder restarts nothing: the trick runs its approved copy, and a new version waits
@@ -1009,6 +1090,7 @@ export class TricksService implements TricksSurface {
     if (ownOff) this.deps.decisions?.off(this.hillTrick(old));
     if (switched && on) this.restart(old);
     this.publish(found.id);
+    this.tellSwitchedOn();
   }
 
   /**
@@ -1517,12 +1599,17 @@ export class TricksService implements TricksSurface {
     if (rt.lastRunAt !== undefined) info.lastRunAt = new Date(rt.lastRunAt).toISOString();
     const refusals = [...shown.refusals, ...rt.docRefusals].slice(0, REFUSALS_MAX);
     if (refusals.length > 0) info.refusals = refusals;
+    // A note, not a refusal: nothing was refused, the watch only checks on a clock (the row says it alone).
+    if (this.watchPolled.has(id)) info.watchPollSeconds = WATCH_POLL_MS / 1000;
     if (rt.changed) info.changed = true;
     if (rt.pending !== null) info.pending = rt.pending.info;
     if (rt.decides === true) info.decides = true;
     // Fault B: the phone says RIGHTS_LINE in its own words, from this flag.
     if (rightsStop) info.rightsMoved = true;
     if (m?.env !== undefined) info.env = m.env;
+    // `on` and `watch` are rights (M105 step one): the row and the card say them in words.
+    if (m?.on !== undefined) info.events = m.on;
+    if (m?.watch !== undefined) info.watch = m.watch;
     if (m?.inputs !== undefined && m.inputs.length > 0) info.inputs = { globs: m.inputs, crew: this.deps.crewWide?.() ?? false };
     if (m?.description !== undefined) info.description = m.description;
     if (m?.about !== undefined) info.about = m.about;
@@ -1581,6 +1668,9 @@ export class TricksService implements TricksSurface {
    * run started. Resolves when the runs it started are done, which is what a test waits on.
    */
   async tick(): Promise<void> {
+    // First, before every gate: `deps.active` can change while the bridge runs (a lead deposed, a deputy
+    // crowned), and the local API's count reads it. `tellSwitchedOn` tells only a change.
+    this.tellSwitchedOn();
     if (this.gated()) return;
     // Read the switch for tricks as a whole on every tick, watched or not, so its listeners hear a move
     // written by the terminal within a second. Off starts nothing.
@@ -1666,6 +1756,9 @@ export class TricksService implements TricksSurface {
     })();
     rt.running = run.finally(() => {
       rt.running = null;
+      // The run's own writes are absorbed by the file watch (watch.ts), then the next waiting request goes.
+      this.syncReactions();
+      this.reactions.ended(rt.found.id);
       this.pump(rt);
     });
     return rt.running;
@@ -1675,9 +1768,73 @@ export class TricksService implements TricksSurface {
   private pump(rt: TrickRuntime): void {
     if (rt.running !== null) return;
     const next = rt.hillQueue.shift() ?? rt.queued;
-    if (next === null) return;
+    if (next === null) return this.pumpReaction(rt);
     if (next === rt.queued) rt.queued = null;
     void this.begin(rt, tapTrigger(next), next);
+  }
+
+  // ── `on` and `watch` (M105 spec 03, decisions 9 to 11): the logic lives in triggers.ts and watch.ts ──────
+
+  /** Whether a request from an event or a watched file may run: the gates of `tick` except the phone, and the trick's own state. */
+  private reactAdmit(id: string): Admit {
+    const rt = this.runtimes.get(id);
+    // No `watched()` here: an event or a file change runs with no phone open (only the timer waits for one),
+    // and triggers.ts holds the floor between two such starts.
+    // Tricks switched off as a whole drop the request too (never held for the switch): THE CHECK POINT.
+    if (rt === undefined || this.deps.active?.() === false || this.gated() || this.switchedOff()) return "drop";
+    // A trick that has not had its start run, is stopped, or backs off after a failure takes no request: it is dropped, never held.
+    if (!this.runnable(rt) || rt.stopped || rt.pendingStart || rt.approved?.found.manifest?.run === undefined) return "drop";
+    if (rt.failures > 0 && this.now() < rt.nextAt) return "drop";
+    return rt.running !== null || rt.queued !== null || rt.hillQueue.length > 0 ? "wait" : "now";
+  }
+
+  private reactStart(id: string, trigger: ReactTrigger): void {
+    const rt = this.runtimes.get(id);
+    if (rt !== undefined) void this.begin(rt, trigger, null);
+  }
+
+  /** The floor ended for a trick with a waiting request: start it unless a run or a tap is ahead (`pump` takes those first). */
+  private reactDue(id: string): void {
+    const rt = this.runtimes.get(id);
+    if (rt !== undefined) this.pump(rt);
+  }
+
+  private reactNote(id: string, why: string | null): void {
+    if (why === null) this.watchPolled.delete(id);
+    else {
+      this.watchPolled.add(id);
+      // The system's error code lives in the log only; the row's sentence carries none.
+      this.warn(`${id}: could not watch its files (${why}); checking them every ${String(WATCH_POLL_MS / 1000)} seconds`);
+    }
+    this.publish(id);
+  }
+
+  /** What the reactions hold open (bus subscription, watches, timers) and what waits. For a test. */
+  reactionCounts(): ReactionCounts {
+    return this.reactions.counts();
+  }
+
+  /**
+   * The waiting event or file request of a trick that runs nothing, after every tap and Hill answer. Admit
+   * is asked first, then the request is taken (security read 2, item 2): a refused admit (a backoff, say)
+   * leaves the waiting request and the floor as they were, so the next pump still finds it.
+   */
+  private pumpReaction(rt: TrickRuntime): void {
+    if (this.reactAdmit(rt.found.id) !== "now") return;
+    const waiting = this.reactions.takeWaiting(rt.found.id);
+    if (waiting !== null) void this.begin(rt, waiting, null);
+  }
+
+  /** Tell triggers.ts which tricks react now: on, runnable, with a program, on a bridge that schedules. */
+  private syncReactions(): void {
+    // Tricks switched off as a whole react to nothing: no bus subscription and no file watch stays open.
+    const live = !this.gated() && this.deps.active?.() !== false && !this.switchedOff();
+    const targets = [...this.runtimes.values()].flatMap((rt) => {
+      const manifest = rt.approved?.found.manifest;
+      if (!live || !this.runnable(rt) || rt.approved === null || manifest?.run === undefined || (manifest.on === undefined && manifest.watch === undefined)) return [];
+      return [{ id: rt.found.id, key: `${rt.approved.hash}:${rt.approved.found.configHash ?? ""}`, events: manifest.on ?? [], watch: manifest.watch ?? [] }];
+    });
+    this.reactions.sync(targets);
   }
 
   /**

@@ -13,6 +13,8 @@ import { join } from "node:path";
 
 import { REASK_AFTER_MS } from "../bridge/tricks/hill.ts";
 import { WATCH_WINDOW_MS } from "../bridge/tricks/service.ts";
+import { REACT_FLOOR_MS } from "../bridge/tricks/triggers.ts";
+import { WATCH_DEBOUNCE_MS, WATCH_MAX_WAIT_MS, WATCH_POLL_MS } from "../bridge/tricks/watch.ts";
 import { TRICKS_CREW_FIRST_VERSION } from "../bridge/hill/crew.ts";
 import { HILL_SUMMARY_SOFT_MAX, HILL_SUMMARY_SOFT_SENTENCES, HILL_TITLE_SOFT_MAX } from "../cli/hill-rules.ts";
 import { runReferenceCli, table, word } from "./reference-kit.ts";
@@ -68,6 +70,10 @@ export function programNumbers(): ProgramNumbers {
     summarySoftMax: HILL_SUMMARY_SOFT_MAX,
     helperShCapBytes: helperNumber(helper, /const SH_CAP = (\d+) \* 1024;/u) * 1024,
     helperShTimeoutMs: helperNumber(helper, /opts\.timeoutMs \?\? (\d+)\)/u),
+    watchDebounceMs: WATCH_DEBOUNCE_MS,
+    watchMaxWaitMs: WATCH_MAX_WAIT_MS,
+    watchPollMs: WATCH_POLL_MS,
+    reactFloorMs: REACT_FLOOR_MS,
   };
 }
 
@@ -213,8 +219,7 @@ function programSection(): string[] {
       ["`trigger.kind`", "When", "Other fields"],
       program.triggers.map((row) => [word(row.kind), row.when, row.fields]),
     ),
-    "",
-    `The kinds ${program.triggersLater.map(word).join(" and ")} are in the facts schema for a later Collie. This Collie never sends them.`,
+    ...(program.triggersLater.length > 0 ? ["", `The kinds ${program.triggersLater.map(word).join(" and ")} are in the facts schema for a later Collie. This Collie never sends them.`] : []),
     ...program.tap.flatMap((sentence) => ["", sentence]),
     "",
     "Collie checks a tap before the program runs. It refuses one that names a part or a control the trick did not draw, or a session this Collie does not list, runs nothing, and answers with one of these words in `refused`:",
@@ -287,6 +292,36 @@ function programSection(): string[] {
     `A contract 1 trick that lists \`inputs\` is refused with: ${program.inputsContractLine}`,
     "",
     `> **Caution.** Inputs are untrusted data. ${program.inputsTrust}`,
+    "",
+    "### When a trick reacts",
+    "",
+    program.reacting.intro,
+    "",
+    "```toml",
+    'on = ["turn.end"]',
+    'watch = ["~/notes/todo.md"]',
+    "```",
+    "",
+    ...table(
+      ["`on` word", "When"],
+      program.reacting.events.map((row) => [word(row.event), row.when]),
+    ),
+    "",
+    "The rules of an event run:",
+    "",
+    ...table(
+      ["Rule", "What Collie does"],
+      program.reacting.eventRules.map((row) => [row.rule, row.value]),
+    ),
+    "",
+    "The rules of a watched file:",
+    "",
+    ...table(
+      ["Rule", "What Collie does"],
+      program.reacting.watchRules.map((row) => [row.rule, row.value]),
+    ),
+    "",
+    program.reacting.rights,
   ];
 }
 

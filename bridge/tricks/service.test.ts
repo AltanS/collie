@@ -311,6 +311,82 @@ describe("discovery and the switch", () => {
   });
 });
 
+describe("the switched-on count (M105 spec 03, the local API's life)", () => {
+  test("told once after the first scan, then only when it moves: on, a second scan, off, a folder gone", async () => {
+    const told: number[] = [];
+    const r = await rig([exited(belt("1"))], { onSwitchedOnCount: (count) => told.push(count) });
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await r.service.refresh(true);
+    expect(told).toEqual([0]);
+    await r.service.refresh(true);
+    expect(told).toEqual([0]);
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    expect(told).toEqual([0, 1]);
+    await writeSwitches(r.stateDir, { on: new Map() });
+    await r.service.refresh(true);
+    expect(told).toEqual([0, 1, 0]);
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    await rm(dir, { recursive: true });
+    await r.service.refresh(true);
+    expect(told).toEqual([0, 1, 0, 1, 0]);
+  });
+
+  test("where tricks do not run (deps.active false: a peer, a deputy, a deposed lead) the count is 0; a tick tells each change", async () => {
+    const told: number[] = [];
+    let active = false;
+    const r = await rig([exited(belt("1"))], { active: () => active, onSwitchedOnCount: (count) => told.push(count) });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(told).toEqual([0]);
+    // The crown comes: the next tick, with no scan of its own needed, tells the count.
+    active = true;
+    await r.service.tick();
+    expect(told).toEqual([0, 1]);
+    // Deposed: the tick tells 0 before its own gate returns, whether or not a phone watched.
+    active = false;
+    await r.service.tick();
+    expect(told).toEqual([0, 1, 0]);
+    await r.service.tick();
+    expect(told).toEqual([0, 1, 0]);
+  });
+
+  test("on Windows (the gate) the count is never above 0", async () => {
+    const told: number[] = [];
+    const r = await rig([exited(belt("1"))], { platform: "win32", onSwitchedOnCount: (count) => told.push(count) });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    await r.service.refresh(true);
+    expect(told.every((count) => count === 0)).toBe(true);
+  });
+
+  test("a trick switched on but stopped by its backoff still counts", async () => {
+    const told: number[] = [];
+    const r = await rig([exited("", 1)], { onSwitchedOnCount: (count) => told.push(count) });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    for (const t of [T0, T0 + 60_000, T0 + 360_000, T0 + 360_000 + 1_800_000]) await tickAt(r, t);
+    expect((await r.service.reply(undefined)).tricks[0]?.state).toBe("stopped");
+    await tickAt(r, T0 + 100 * 60 * 60_000);
+    expect(told).toEqual([1]);
+  });
+
+  test("a listener that throws breaks no scan", async () => {
+    const r = await rig([exited(belt("1"))], {
+      onSwitchedOnCount: () => {
+        throw new Error("boom");
+      },
+    });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await r.service.refresh(true);
+    expect((await r.service.reply(undefined)).tricks.length).toBe(1);
+    expect(r.warnings.some((line) => line.includes("boom"))).toBe(true);
+  });
+});
+
 describe("a contract 2 trick's inputs (M99 slice 6)", () => {
   const INPUTS_MANIFEST = 'id = "todo"\nname = "TODO"\nrun = "./todo.sh"\ncontract = 2\ninputs = ["TODO.md"]\nplaces = ["belt"]\n';
 

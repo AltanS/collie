@@ -444,10 +444,10 @@ describe("collie trick check", () => {
     expect(d.err.join("\n")).toContain("trick.toml /places: The trick lists no place");
     // The manifest stays strict: an unknown key is a typo, and it refuses.
     expect(d.err.join("\n")).toContain("/colour");
-    const later = await folder('id = "later"\nname = "Later"\nrun = "./p.sh"\nwatch = ["~/x.log"]\nplaces = ["belt"]\n', { "p.sh": "#!/bin/sh\necho '{}'\n" });
+    const later = await folder('id = "later"\nname = "Later"\nrun = "./p.sh"\nmode = "serve"\nplaces = ["belt"]\n', { "p.sh": "#!/bin/sh\necho '{}'\n" });
     const e = await deps();
     expect(await cmdTrickCheck(e, [later])).toBe(EXIT.OK);
-    expect(e.out.join("\n")).toContain("note: trick.toml /watch");
+    expect(e.out.join("\n")).toContain("note: trick.toml /mode");
   });
 
   test("a manifest with no about gets one soft note; with an about it gets none; a long one is an error", async () => {

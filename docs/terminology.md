@@ -401,8 +401,8 @@ others ([The parts](tricks.md#the-parts), [Parts](tricks-reference.md#parts)).
 ## Power
 
 What a trick may reach beyond its own code: the environment names it asks for (`env`), the places it
-draws in (`places`), and the files it reads from your agent sessions (`inputs`). The About sheet lists
-them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
+draws in (`places`), the files it reads from your agent sessions (`inputs`), and when it runs on its
+own (`on`, `watch`). The About sheet lists them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
 sometimes say "rights" for the same thing ([What a trick may and may not do](tricks.md#powers-the-environment-and-the-warnings)).
 
 ## About sheet
@@ -436,3 +436,23 @@ and the code is replaced only on your yes ([A trick an agent proposes](hill.md#a
 The page of Decisions that wait for you, grouped Now, Today and Later, with the answered ones below.
 It is the fourth item of the Dashboard's bottom bar. One crew has one Hill, on the lead. "Hill" is the
 view's name and stays the same in every language ([The Hill](hill.md)).
+
+## Event
+
+A short note the bridge makes when an agent session changes state, ends a turn or opens a question:
+`session.status`, `turn.end` or `ask.open`. It holds ids and states, never text. A trick that lists
+`on` runs on events, and the [local API](#local-api) answers them. An event can come twice, so a
+program must be safe against a repeat ([When a trick reacts](tricks-reference.md#when-a-trick-reacts)).
+
+## Watch
+
+The files a trick asks to run on: when one of them changes, the trick runs again. Like `on`, it is a
+[power](#power) the card names, and a new one waits for your yes
+([When a trick reacts](tricks-reference.md#when-a-trick-reacts)).
+
+## Local API
+
+A read-only Unix socket on the machine, for programs of your own user: list the sessions, read a
+screen with secrets masked, follow the [events](#event). It is on while tricks are switched on, and
+`collie api` is its command. It is experimental, and it is closed to other users, other machines and
+browser pages ([The local API](commands.md#the-local-api-experimental)).

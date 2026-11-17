@@ -428,7 +428,8 @@ describe("one open proposal per trick id", () => {
     const [old, now] = proposalCards(l);
     expect(old?.summary).not.toContain("It replaces");
     expect(now?.summary).toStartWith("An agent session (repo#one) on workshop proposes it. It replaces an earlier proposal from the same session.");
-    expect(now?.view?.[0]).toEqual({ kind: "para", text: "It replaces an earlier proposal from the same session." });
+    expect(now?.view?.[0]).toEqual({ kind: "para", text: "This trick runs as you on this machine. It can do there what you can do." });
+    expect(now?.view?.[1]).toEqual({ kind: "para", text: "It replaces an earlier proposal from the same session." });
     const again = await l.proposals.propose(proposal("legs", "2\n"), AGENT);
     expect(again).toMatchObject({ ok: true, decision: two.ok ? two.decision : "", replaced: null });
     expect(openCards(l)).toHaveLength(1);

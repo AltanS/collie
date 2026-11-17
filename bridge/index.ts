@@ -232,7 +232,7 @@ import { currentWarrant, discardForeignWarrant, refreshWarrant, type WarrantPush
 import { CLEAR_BURST_MS, Push } from "./push.ts";
 import { currentNotesReader } from "./release-notes.ts";
 import { pluginRoot } from "./root.ts";
-import { agentPaneFilesRoot, buildId, filesPrivateFolders, startServer } from "./server.ts";
+import { agentPaneFilesRoot, buildId, filesPrivateFolders, paneReadHint, recentRead, startServer } from "./server.ts";
 import {
   DEFAULT_SESSION_NAME,
   herdTagFor,
@@ -363,6 +363,8 @@ import {
 } from "./walky/crew.ts";
 import { isResting, type RouteRemote, type SendResult, type WalkyHost, type WalkyPane } from "./walky/deliver.ts";
 import { INSTANCE_TICK_MS, WalkyInstances } from "./walky/instances.ts";
+import { EventBus } from "./events/bus.ts";
+import { attachSessionSource } from "./events/sources.ts";
 import { WalkyLog } from "./walky/log.ts";
 import { PinStore } from "./pins/store.ts";
 import { WalkyOff } from "./walky/off.ts";
@@ -372,6 +374,10 @@ import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
 import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
+import { ApiSocket, apiSocketPath } from "./api/socket.ts";
+import { LOCAL_TIER_RIGHTS } from "./api/operations.ts";
+import { apiListedPane } from "./api/listed.ts";
+import { apiTable, buildApiWorld } from "./api/world.ts";
 import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
@@ -1948,6 +1954,12 @@ const paneVersion = createPaneVersion({ versions: sendVersions, binaries: harnes
 // The probe also reads the pane's agent environment: under WSL it narrows SURFACE_PLATFORM per pane.
 const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnessBinaries, probe: paneProbe, platform: SURFACE_PLATFORM, paneVersion });
 
+// The event bus (M105 spec 03): one per bridge. Every session's state engine feeds it below; the local
+// API and the trick runner are its listeners (later parts). `bridgeId` and `walkyInstances` are declared
+// further down and read only when a transition fires, after the first poll; a transition in the window
+// before they exist is skipped by the source, never published with an invented id.
+const eventBus = new EventBus({ machine: () => bridgeId.id });
+
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const built = endpoint.kind === "program" ? programAdapter(endpoint.source) : terminalAdapter(endpoint.socketPath);
   const target = built.target;
@@ -1959,6 +1971,22 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const engine = new StateEngine(herdr, cfg.pollMs, {
     argvNames: museNames === undefined ? {} : { [ARGV_NAMED_AGENT]: museNames },
     titles: sessionTitles === null ? undefined : (pane) => sessionTitles.forPane(pane),
+  });
+  // Bus events from this session's transitions. The engine stops with its session, and so does this feed.
+  attachSessionSource({
+    engine,
+    muxSession: name,
+    machine: () => bridgeId.id,
+    // Peek, never mint (security read 1, item 4): a pane with no token yet publishes nothing. Walky's own
+    // tick (`walkyInstanceTimer`, every INSTANCE_TICK_MS) and the snapshot mint every pane's token.
+    instanceOf: (session, paneId) => walkyInstances.peek(session, paneId),
+    // Only for panes the local API's `sessions` lists (security read 2, item 4): the one predicate
+    // reads.ts lists by, so no event names a shell pane or a trick session.
+    listed: apiListedPane,
+    publish: (input) => {
+      eventBus.publish(input);
+    },
+    onError: (message) => console.warn(`[events] a transition in session "${name}" was not published: ${message}`),
   });
   // The install ping's usage tally (ping v3): which agent and multiplexer pairs ran in this session, and
   // whether a pane of the pair had a part bound (the data link). The ping keeps the pairs and drops the
@@ -4109,6 +4137,47 @@ const repoFacts =
         onChange: () => onRepoFacts(),
         warn: (line) => console.warn(`[tricks] ${line}`),
       });
+// The local API (M105 spec 03): a read-only Unix socket at `<stateDir>/api/sock`, open only while at
+// least one trick is switched on AND tricks run on this bridge (TricksService tells the count, 0 on a crew
+// peer, a deputy, a deposed lead and Windows). No tricks folder, no socket ever. Every operation sees the
+// bridge through `ApiWorld` (bridge/api/world.ts) alone: reads only.
+// THE ONE CONDITION of the socket (decision 14, as Altan changed it on 2026-11-17): every start and stop
+// of the local API goes through this function and nothing else decides it. Today it asks "does a trick
+// run here": the count the TricksService tells, already 0 where tricks do not run. When the one switch
+// for the whole tricks feature lands, this function reads that switch instead ("the local API is on
+// while tricks are switched on, on a bridge where tricks run").
+const localApiWanted = (switchedOnHere: number): boolean => switchedOnHere > 0;
+const localApi =
+  cfg.tricksDir === undefined
+    ? undefined
+    : new ApiSocket({
+        socketPath: apiSocketPath(cfg.stateDir),
+        // Exactly the API's world (bridge/api/world.ts `buildApiWorld`): the real services by narrow types;
+        // the builder holds the one literal, `satisfies ApiWorld`, then `narrowWorld`.
+        table: apiTable(
+          buildApiWorld({
+            version: () => collieVersion(rootDir),
+            machine: () => bridgeId.id,
+            // The one filter for real panes (review row 30): no trick session reaches an operation.
+            panes: () => registry.all().flatMap((rt) => realAgentPanes(rt.engine.current().agents).map((pane) => ({ muxSession: rt.name, pane }))),
+            instances: walkyInstances,
+            bus: eventBus,
+            accounts,
+            inside: insideHub,
+            // The phone's own read of a pane (server.ts `readPane`): same request shape, same hint.
+            readScreen: async (muxSession, paneId, lines) => {
+              const rt = registry.all().find((candidate) => candidate.name === muxSession);
+              if (rt === undefined) return { ok: false };
+              const grid = await rt.herdr.readGrid(paneId, recentRead(lines, paneReadHint(rt.engine, paneId)));
+              return grid.ok ? { ok: true, text: grid.value.text, truncated: grid.value.truncated } : { ok: false };
+            },
+            hill,
+            defaultLines: cfg.readLines,
+          }),
+        ),
+        granted: LOCAL_TIER_RIGHTS,
+        platform: HOST.platform,
+      });
 const tricks =
   cfg.tricksDir === undefined
     ? undefined
@@ -4208,9 +4277,16 @@ const tricks =
         repoFacts,
         // The switch for tricks as a whole: off, no program runs and no part draws (service.ts `switchedOff`).
         feature: tricksFeature,
+        // The local API stands while `localApiWanted` says so (decision 14); start and stop run one at a time.
+        onSwitchedOnCount: (count) => void (localApiWanted(count) ? localApi?.start() : localApi?.stop()),
+        // A trick that lists `on` runs on the bus's events (bridge/tricks/triggers.ts).
+        bus: eventBus,
       });
 onRepoFacts = () => tricks?.repoFactsMoved();
 tricks?.start();
+// One scan at start, where a trick is on and tricks run here, so reacting tricks and the local API stand
+// without a phone's look (TricksService.boot). It never throws.
+void tricks?.boot();
 
 // The official list (bridge/tricks/official-install.ts): what this release can add with a tap, and the
 // add itself, in the runner's lane. Nothing is fetched until the person taps Add.
@@ -4468,6 +4544,9 @@ const shutdown = async () => {
   stopInsideWatch?.();
   insideServer?.stop();
   walkyServer.stop();
+  // Closes the trick runner's file watches and its bus subscription.
+  tricks?.stop();
+  await localApi?.stop();
   registry.disposeAll();
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).
   // A no-op when speech-to-text is off, or configured to a provider that holds nothing open.

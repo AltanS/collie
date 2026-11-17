@@ -499,6 +499,18 @@ describe("the wire readers", () => {
     expect(readOfficialTricksReply({ tricks: [entry] })?.tricks[0]).not.toHaveProperty("decidesReply");
   });
 
+  it("carry `events` and `watch` only as the lists the manifest allows, and drop a list of another shape", () => {
+    const trick = { host: "lodge", id: "inbox", name: "PR Inbox", icon: "plug", on: true, state: "ok", places: ["belt"] };
+    const read = (extra: JsonObject) => readTricksReply({ rev: 1, parts: [], present: [], tricks: [{ ...trick, ...extra }] })?.tricks[0];
+    expect(read({ events: ["turn.end", "ask.open"], watch: ["~/a.md", "/etc/hosts"] })).toMatchObject({ events: ["turn.end", "ask.open"], watch: ["~/a.md", "/etc/hosts"] });
+    expect(read({})).not.toHaveProperty("events");
+    expect(read({})).not.toHaveProperty("watch");
+    expect(read({ events: ["turn.end", "hologram"] })).not.toHaveProperty("events");
+    expect(read({ events: [] })).not.toHaveProperty("events");
+    expect(read({ watch: ["~/a.md", 3] })).not.toHaveProperty("watch");
+    expect(read({ watch: Array.from({ length: 9 }, (_, i) => `/a${String(i)}`) })).not.toHaveProperty("watch");
+  });
+
   it("keep a part of a kind this Collie does not know, for the placeholder to draw", () => {
     const newer = { host: "lodge", trick: "legs", part: "legs", rev: 1, value: { at: "session", id: "legs", view: [{ kind: "hologram" }] } };
     expect(readTricksReply({ rev: 1, parts: [newer], present: ["lodge/legs/legs"], tricks: [] })?.parts).toHaveLength(1);
