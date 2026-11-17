@@ -221,6 +221,7 @@ async function rig(entries: OfficialEntry[], extra: Partial<OfficialTricksDeps> 
   };
   const held = { entries };
   const service = new TricksService({
+    feature: { on: () => true },
     configDir,
     stateDir,
     memberId: "lodge",
@@ -662,6 +663,7 @@ describe.if(posix)("adding from the list", () => {
     expect(none.service.rev()).toBeUndefined();
     // A crew member runs no tricks: no folder means no card there, list or not.
     const member = new TricksService({
+      feature: { on: () => true },
       configDir: await tempDir(),
       stateDir: await tempDir(),
       memberId: "workshop",
@@ -823,7 +825,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     const stateDir = join(root, "state");
     await mkdir(configDir, { recursive: true });
     await mkdir(stateDir, { recursive: true });
-    const service = new TricksService({ configDir, stateDir, memberId: "lodge", world: () => ({ machine: "desk", sessions: [], spaces: [] }), env: { PATH: process.env.PATH ?? "" }, warn: () => {}, now: () => clock.t });
+    const service = new TricksService({ feature: { on: () => true }, configDir, stateDir, memberId: "lodge", world: () => ({ machine: "desk", sessions: [], spaces: [] }), env: { PATH: process.env.PATH ?? "" }, warn: () => {}, now: () => clock.t });
     const held = { entries: [fixtureEntry(repo.url, repo.shas[0] ?? "", h1)] };
     const official = new OfficialTricks({ configDir, stateDir, env: { PATH: process.env.PATH ?? "" }, entries: () => held.entries, lane: (w) => service.officialLane(w), allowFile: true, now: () => clock.t });
     expect((await official.install("legs", "add")).status).toBe(200);

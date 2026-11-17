@@ -107,6 +107,7 @@ async function rig(outcomes: Scripted[] | null, extra: Partial<TricksServiceDeps
   const deps: TricksServiceDeps = {
     configDir,
     stateDir,
+    feature: { on: () => true },
     memberId: HOST,
     world: (memberId) => ({
       machine: "desk",

@@ -1754,6 +1754,12 @@ export interface TricksReply {
    * `TRICKS_WINDOWS_LINE`). The list, the parts and the keys are empty then. Absent everywhere else.
    */
   gate?: TricksGate;
+  /**
+   * Set while tricks as a whole are switched off on this bridge (bridge/tricks/feature-switch.ts, off by
+   * default). The list stays readable (name, kind, About): each row's `on` is that trick's own switch, which
+   * the big switch never changes, and its `state` is `off`. No parts and no keys ride along. Absent while on.
+   */
+  off?: true;
 }
 
 // ── The Windows gate (bridge/tricks/service.ts `gated`) ──────────────────────────────────────
@@ -1765,6 +1771,13 @@ export interface TricksReply {
  * the helper's output, the timeout kill and the shell line are not ready there yet.
  */
 export const TRICKS_WINDOWS_LINE = "Tricks do not run on a Windows machine yet.";
+
+/**
+ * What a bridge, the CLI and the official add say while tricks as a whole are switched off on the machine
+ * (bridge/tricks/feature-switch.ts): one sentence, and where a person switches them on. The phone says it in
+ * its own words (`settings.tricks.switch.offLine`).
+ */
+export const TRICKS_OFF_LINE = "Tricks are switched off on this machine; switch them on at the top of Settings, Tricks, or run `collie tricks on`.";
 
 /** Whether tricks are gated on a machine of this platform (`process.platform`, injected as a fact). */
 export function tricksGated(platform: string | undefined): boolean {

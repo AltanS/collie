@@ -312,6 +312,15 @@ export interface HillServiceDeps {
    */
   readonly hillSwitch?: { on(): boolean; reading?(): HillSwitchReading; set?(on: boolean): boolean };
   /**
+   * Whether tricks as a whole are switched on on this machine (bridge/tricks/feature-switch.ts), read on each
+   * use. While off, a trick's own Decisions follow the rule of the Hill's own switch: they stay in the store
+   * untouched (their expiry still runs), the list does not serve them, an answer to one is refused before
+   * anything closes, and their notifications close once at the move to off. They show again once tricks are
+   * on. Collie's own cards about a trick are not a trick's Decisions and stay as they are. Absent: always on
+   * (a test seam; bridge/index.ts always wires the file switch).
+   */
+  readonly tricksOn?: () => boolean;
+  /**
    * The crew state (crew-state.ts `HillCrewStateFile`), read on each use. Absent: always `here`, and it
    * cannot be set.
    */
@@ -778,6 +787,9 @@ export class HillService {
   private absent = new Set<string>();
   /** The switch as last seen, so the move to off closes the open notifications once. */
   private wasOn = true;
+  /** The switch for tricks as a whole as last seen, so the move to off closes a trick's notifications once, and how often it moved. */
+  private tricksWereOn = true;
+  private tricksMoved = 0;
   /** The crew state at the last `rev()`, and how often it changed since the start. */
   private crewSeen: string | null = null;
   private crewMoved = 0;
@@ -811,7 +823,35 @@ export class HillService {
       if (this.namesSeen !== null && names !== this.namesSeen) this.namesMoved += 1;
       this.namesSeen = names;
     }
-    return stored + this.namesMoved + this.crewMoved;
+    return stored + this.namesMoved + this.crewMoved + this.tricksSwitchMoves();
+  }
+
+  /**
+   * Whether a trick's own Decisions are held back now: tricks as a whole are switched off on this machine
+   * (`deps.tricksOn`). Each call reads the switch; the first call that sees it go off closes the notification
+   * of every open Decision of a trick, as {@link isOn} does for the Hill's own switch. The Decisions stay open.
+   */
+  tricksOff(): boolean {
+    const on = this.deps.tricksOn?.() ?? true;
+    if (on !== this.tricksWereOn) this.tricksMoved += 1;
+    if (this.tricksWereOn && !on) {
+      const tags = new Set(this.deps.store.all().flatMap((decision) => (decision.state === "open" && decision.from.kind === "trick" && decision.pushTag !== undefined ? [decision.pushTag] : [])));
+      for (const tag of tags) this.deps.push?.clear(tag);
+      if (tags.size > 0) this.deps.audit?.({ action: "hill.push.cleared", detail: { why: "tricks are off", count: tags.size } });
+    }
+    this.tricksWereOn = on;
+    return !on;
+  }
+
+  /** How often the switch for tricks as a whole moved: the list's revision moves with it, so a phone refetches. */
+  private tricksSwitchMoves(): number {
+    this.tricksOff();
+    return this.tricksMoved;
+  }
+
+  /** Whether `decision` is a trick's own Decision held back while tricks are switched off. */
+  private heldBack(decision: Pick<HillDecision, "from">, tricksOff: boolean): boolean {
+    return tricksOff && decision.from.kind === "trick";
   }
 
   /**
@@ -1002,8 +1042,11 @@ export class HillService {
    */
   list(): ReturnType<HillStore["list"]> {
     const off = this.refusesHere();
+    const tricksOff = this.tricksOff();
     return this.look(() => {
-      const list = this.deps.store.list();
+      const whole = this.deps.store.list();
+      // A trick's own Decisions wait, unserved, while tricks are switched off (`tricksOff`).
+      const list = tricksOff ? { ...whole, open: whole.open.filter((decision) => !this.heldBack(decision, true)), closed: whole.closed.filter((decision) => !this.heldBack(decision, true)) } : whole;
       // The same revision the snapshot carries, so a phone that holds it reads `unchanged`.
       const rev = this.rev();
       if (off) {
@@ -1688,6 +1731,9 @@ export class HillService {
     // With the Hill off nothing is typed and no tap runs; the decision stays open for when it is back. The
     // one exception is a card of Collie's own about a trick, as the store holds it (spec 14).
     if (this.refusesHere() && !this.isHeldTrickCard(id)) return Promise.resolve({ kind: "off" });
+    // Tricks switched off as a whole: a trick's own Decision stays open, nothing closes and no program runs.
+    const held = this.deps.store.get(id);
+    if (held !== undefined && this.heldBack(held, this.tricksOff())) return Promise.resolve({ kind: "tricks-off" });
     // §25: a deposed lead's Decisions went to the machine that took over, and a peer's Hill is not the
     // crew's; an answer here could be a second one. Refused, nothing typed, nothing closed, nothing stored.
     if (this.deps.crewMode() === "peer" || this.deps.deposed?.() === true) {

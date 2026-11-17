@@ -57,6 +57,7 @@ async function rig(platform: NodeJS.Platform): Promise<Rig> {
   const deps: TricksServiceDeps = {
     configDir,
     stateDir,
+    feature: { on: () => true },
     memberId: HOST,
     platform,
     world: (memberId) => ({ machine: "desk", sessions: [], spaces: [{ name: "collie", folder: `/work/${memberId}` }] }),

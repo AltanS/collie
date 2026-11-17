@@ -340,6 +340,7 @@ import { OfficialTricks } from "./tricks/official-install.ts";
 import { RepoFacts } from "./tricks/repo-facts.ts";
 import type { TricksRunsOn } from "../web/src/lib/tricks/schema.ts";
 import { TricksService } from "./tricks/service.ts";
+import { TricksFeatureSwitch } from "./tricks/feature-switch.ts";
 import { VersionCards } from "./tricks/version-card.ts";
 import { createSessionFolders, createSessionLabels } from "./operator-space-labels.ts";
 import { INSTANCE_TOKEN, labelOf, LOCAL_MEMBER, parseAddress } from "./walky/address.ts";
@@ -2675,6 +2676,12 @@ let versionCards: VersionCards | undefined;
 // The trick proposals (crew slice 8, tricks/proposals.ts): kept on a lead or a solo bridge, inert until the
 // person's yes on the Hill. Built after the Hill, like the version card.
 let trickProposals: TrickProposals | undefined;
+// The switch for tricks as a whole (tricks/feature-switch.ts): an experiment, off by default, one file
+// `<stateDir>/tricks/feature.json` that the phone and `collie tricks on|off` write. Read behind a stat check,
+// so a switch needs no restart. Built before the Hill, which holds a trick's Decisions back while it is off,
+// and handed to the tricks runner, whose every door asks it. The local API asks `tricks.switchedOn()` and
+// listens with `tricks.onSwitchChange()`.
+const tricksFeature = new TricksFeatureSwitch(cfg.stateDir);
 const hill = new HillService({
   store: new HillStore(hillDir(cfg.stateDir), Date.now, undefined, (ids) => {
     for (const id of ids) hillMedia.remove(id);
@@ -2740,6 +2747,8 @@ const hill = new HillService({
   // behind a stat check, so a switch needs no restart. This is the one production wiring of the switch; a real
   // change from the phone lets the skill follow (`hillSkillFollower`).
   hillSwitch: new HillSwitch(cfg.stateDir, hillSkillFollower),
+  // A trick's own Decisions wait, unserved and unanswerable, while tricks as a whole are off (feature-switch.ts).
+  tricksOn: () => tricksFeature.on(),
   // The crew state (hill/crew-state.ts, 1.29.0): `here` by default, `<stateDir>/hill/state.json` once the
   // phone or `collie hill state` set it. Read behind a stat check, so a change needs no restart.
   crewState: new HillCrewStateFile(cfg.stateDir),
@@ -4197,6 +4206,8 @@ const tricks =
         // Fault B: a trick stopped for its rights says so on the Hill too, once per trick and mismatch.
         rights: new RightsCards({ hill, warn: (line) => console.warn(`[tricks] ${line}`) }),
         repoFacts,
+        // The switch for tricks as a whole: off, no program runs and no part draws (service.ts `switchedOff`).
+        feature: tricksFeature,
       });
 onRepoFacts = () => tricks?.repoFactsMoved();
 tricks?.start();
@@ -4213,6 +4224,8 @@ const officialTricks =
         runsOn: tricksRunsOn,
         // The Windows gate lives in the tricks service; the list asks it before anything is fetched.
         gate: () => tricks.gateLine(),
+        // Tricks switched off as a whole: the list stays readable, an add or an update is refused.
+        offLine: () => tricks.offLine(),
         lane: (work) => tricks.officialLane(work),
         audit: (entry) => audit.record({ action: entry.action, detail: entry.detail }),
         repoFacts,
@@ -4341,7 +4354,9 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
                         privateFolders: filesPrivateFolders(cfg),
                         redact: cfg.redact,
                         // The Windows gate (tricks/service.ts `gated`): a Windows member reads no file for a trick.
-                        allowed: () => crew.trickReads && tricks?.gated() !== true,
+                        // A member whose own switch for tricks as a whole says off reads none either; with no file
+                        // it follows its lead, as a member with no Hill file does (feature-switch.ts).
+                        allowed: () => crew.trickReads && tricks?.gated() !== true && tricksFeature.reading() !== "off",
                         audit: (detail) => audit.record({ action: "tricks.inputs", detail: { trick: detail.trick, files: detail.files, bytes: detail.bytes } }),
                       }),
                   }
