@@ -24,7 +24,7 @@ const PANE = { paneId: "w9:p1", workspaceId: "w9", workspaceLabel: "sign-in", ta
 
 /** A running agent pane of the snapshot, named by its session name. */
 function agentPane(paneId: string, over: Partial<AgentView> = {}): AgentView {
-  return { paneId, workspaceId: "w1", workspaceLabel: "lodge", tabId: "w1:t1", agent: "claude", status: "working", cwd: "/home/dev/lodge", focused: false, ...over };
+  return { paneId, workspaceId: "w1", workspaceLabel: "lodge", workspaceNumber: 1, tabId: "w1:t1", agent: "claude", status: "working", cwd: "/home/dev/lodge", focused: false, ...over };
 }
 
 /** The page under the root route, whose data is the snapshot the sessions' names come from. */

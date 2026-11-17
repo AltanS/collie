@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { AgentView, ServerSummary } from "@/lib/types";
 import { defaultRow, HARNESS_CLAUDE, HARNESS_CODEX, workRow } from "@/test/accounts-fixtures";
 import { cameFromSession, flowOf, forgetFlow, hasOtherProfiles, loginChanged, offersChangeLogin, reachOf, reachedSessions, rememberFlow, resultOf } from "./change-login";
 
@@ -41,6 +42,7 @@ describe("reachedSessions", () => {
     paneId,
     workspaceId: "w1",
     workspaceLabel: "lodge",
+    workspaceNumber: 1,
     tabId: "w1:t1",
     agent: "claude",
     status: "working",
@@ -61,8 +63,8 @@ describe("reachedSessions", () => {
   it("is empty for a row with no panes, and never reads a pane of another machine", () => {
     expect(reachedSessions(workRow(), { agents: [pane("w1:p1")] })).toEqual([]);
     const servers: ServerSummary[] = [
-      { id: "lead", name: "lead", isLead: true, reachable: true, protocol: "ok" },
-      { id: "member", name: "member", isLead: false, reachable: true, protocol: "ok" },
+      { id: "lead", name: "lead", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
+      { id: "member", name: "member", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
     ];
     const agents = [pane("w1:p1", { host: "member", sessionName: "Theirs" })];
     expect(reachedSessions(workRow({ panes: ["w1:p1"] }), { agents, servers })).toEqual([]);
