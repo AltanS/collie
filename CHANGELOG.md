@@ -107,6 +107,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The cap's confirm says Confirm and send anyway.** When Collie could not read a screen too many times today, the button used to say Confirm and type, which read as no Enter, but it leads to the same send past this screen as Send anyway. The line for a screen that changed before your text went in now says to tap Send to send past this screen again.
 - **A sign-in code that meets no field says Collie cannot see it now.** The line used to say the field was not on the screen any more, which is wrong when the machine only failed to read it. It now says Collie cannot see the sign-in field now, that nothing was typed, and to look at the screen or use Type; the notice offers the Screen button.
 - **A queued message is never joined to your draft.** When the queued card's Send again could not start after the card was dropped, its words went into the box after your draft, so the next Send sent both as one message. Now, when the box holds a draft, the message stays as its card, with Send again and Discard, and the notice says why; an empty box still takes the words.
+- **The sign-in field says when a crew member runs an older Collie.** On such a member's pane the field now says, in one line under its frame, that the member does not check that the sign-in field is still there before it types the code.
 
 ### Docs
 

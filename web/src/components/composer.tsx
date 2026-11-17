@@ -448,6 +448,12 @@ interface ComposerProps {
    * the pill would have nothing to show.
    */
   screen?: { on: boolean; onToggle: () => void };
+  /**
+   * The name of the crew member this pane lives on, when that member runs an older Collie (lib/send-path.ts
+   * `cardsOnOlderMember`): its bridge types a code without checking that the sign-in field is still there, and the
+   * field says so in one line (the M102 review 3). Absent on every other pane.
+   */
+  olderMember?: string;
   /** The pane's active todo list, drawn as a belt pill and an in-flow dock when non-empty. */
   todos?: readonly PaneTodo[];
   /**
@@ -697,7 +703,7 @@ function lockWordsFor(slot: SendSlot, unreachableWords: string): string | null {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest, unreadState = null, onScreenUnread, onAnswerUnseen, onCannotTell, onCannotTellRing, cannotTellInView, heldScreen },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest, unreadState = null, onScreenUnread, onAnswerUnseen, onCannotTell, onCannotTellRing, cannotTellInView, heldScreen, olderMember },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -2077,10 +2083,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     if (starting) sayTap(translate("newPage.starting"));
   }
-  /** The line under the sign-in frame while it waits: the lock's words, else the launch. */
+  /** The line under the sign-in frame while it waits: the launch, else an older crew member's missing check. */
   function secretReason(): string | null {
     // The lock speaks through the field's own placeholder (`lockedWhy`), so only a launch needs this line.
     if (starting && !locked) return translate("newPage.starting");
+    if (olderMember !== undefined) return translate("composer.secret.olderMachine", { machine: olderMember });
     return null;
   }
   /** The "Answer the dialog" word and the notice's card button: a tap that found no card says so. */

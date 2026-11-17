@@ -292,3 +292,17 @@ describe("D, pass 2: a code the bridge found no sign-in field for", () => {
     codeNeverPlain();
   });
 });
+
+describe("the M102 review 3: a crew member on an older Collie has no check that the field is still there", () => {
+  it("the sign-in field on such a member's pane says so in one line", () => {
+    mount({ olderMember: "minibox" });
+    expect(codeField()).toBeInTheDocument();
+    expect(screen.getByText("minibox runs an older Collie, so it does not check that the sign-in field is still there before it types.")).toBeInTheDocument();
+  });
+
+  it("the sign-in field on any other pane draws no such line", () => {
+    mount();
+    expect(codeField()).toBeInTheDocument();
+    expect(screen.queryByText(/runs an older Collie/u)).toBeNull();
+  });
+});

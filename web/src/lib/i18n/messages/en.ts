@@ -635,6 +635,9 @@ export const en = {
   "composer.secret.send": "Send the code",
   "composer.secret.close": "Close the code field",
   "composer.secret.closed": "The code field is closed. Nothing was sent.",
+  // A crew member that runs an older Collie types a code without the bridge's check that the field is still there
+  // (`no_secret_field`, the M102 review 3): the sign-in field says so, once, under its frame.
+  "composer.secret.olderMachine": "{machine} runs an older Collie, so it does not check that the sign-in field is still there before it types.",
   "composer.secret.reopen": "Open the code field",
   "composer.secret.onlyField": "The screen asks for a sign-in code. Only the code field can send now, so nothing was sent.",
   "composer.steer.queuedInstead": "Queued instead: the agent kept it for after the turn.",
@@ -4112,6 +4115,7 @@ export const PENDING_TRANSLATION = [
   "composer.protocol.commitCapPast",
   "composer.protocol.capConfirmPast",
   "cannotTell.queuedKept",
+  "composer.secret.olderMachine",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
