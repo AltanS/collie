@@ -956,6 +956,12 @@ export interface SnapshotResponse {
    */
   hillOff?: true;
   /**
+   * Tricks as a whole are switched off on this bridge (bridge/tricks/feature-switch.ts, off by default): the
+   * phone draws the switch on Settings, Tricks and the off state from it. Absent while on, and on a bridge
+   * with no tricks runner. A crew member's own value does not ride to its lead, as its `hillOff` does not.
+   */
+  tricksOff?: true;
+  /**
    * With the Hill off (M96 spec 14): the hill's revision while it holds a card of Collie's own about a
    * trick. The phone reads `GET /api/hill`, which then serves only those cards, for Settings, Tricks, the
    * Dashboard's line and the card's page. Absent with the Hill on (then `hillRev` rides) and when none is held.

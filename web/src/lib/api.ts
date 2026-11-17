@@ -29,8 +29,9 @@ import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, N
 import { pairingRefused } from "./wipe";
 import { mintRequestId } from "./worktree-name";
 import type { AccountRow, AccountsBody, AddAccountAsk } from "./accounts";
-import type { OfficialState, OfficialTricksReply, TrickTapReply, TricksReply, TapBody, WireTrickInfo } from "./tricks/schema";
+import type { FieldValue, OfficialState, OfficialTricksReply, TrickTapReply, TricksReply, TapBody, WireTrickInfo } from "./tricks/schema";
 import { readTapReplyTolerant, readTricksReplyTolerant } from "./tricks/read";
+import { readCodeFile, readCodeIndex, type WireCodeFile, type WireCodeIndex } from "./tricks/code-wire";
 import { readOfficialAddReply, readOfficialTricksReply, readTrick } from "./tricks/wire";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
@@ -3427,6 +3428,18 @@ export async function setHillSwitch(on: boolean): Promise<boolean> {
 }
 
 /**
+ * POST /api/tricks/switch: switch tricks as a whole on or off for this bridge (off by default). Answers the
+ * value the switch holds now. The snapshot carries it too (`tricksOff`), so a caller revalidates after a
+ * write and draws from the root data, never from this answer alone.
+ */
+export async function setTricksSwitch(on: boolean): Promise<boolean> {
+  const raw = await req<JsonValue>("/api/tricks/switch", { method: "POST", body: JSON.stringify({ on }) });
+  const held = asJsonBoolean(asJsonObject(raw)?.on);
+  if (held === undefined) throw new Error("/api/tricks/switch answered with a body that is not { on }");
+  return held;
+}
+
+/**
  * POST /api/hill/clear: remove every closed Decision from the Hill. Answers how many went. The lists
  * come back through the snapshot's `hillRev`, as for any change to the Hill; a refusal or a body that is
  * not `{ cleared }` throws, so the caller puts the rows back.
@@ -3500,6 +3513,27 @@ export async function switchTrick(host: string, trick: string, on: boolean, hash
   return info;
 }
 
+/**
+ * The index of a trick's code (`GET /api/tricks/<host>/<id>/code`): every code file's name, size and how many
+ * lines the text search flags, and which copy it is. A read only, asked when a person opens the sheet's
+ * "Read the code" part. A refusal throws with its status and `error` (`unknown-host` for a trick of another
+ * machine, `moved`, `no-code`); a body of another shape throws too.
+ */
+export async function fetchTrickCodeIndex(host: string, trick: string, signal?: AbortSignal): Promise<WireCodeIndex> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/code`;
+  const index = readCodeIndex(await req<JsonValue>(path, { signal, timeoutMs: GET_TIMEOUT_MS }));
+  if (index === undefined) throw new Error(`${path} answered with a body that is not a code index`);
+  return index;
+}
+
+/** One file of a trick's code (`GET .../code?file=<rel>`): its lines masked and marked, or its name and size when it is binary. Asked when a fold opens. */
+export async function fetchTrickCodeFile(host: string, trick: string, file: string, signal?: AbortSignal): Promise<WireCodeFile> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/code?file=${encodeURIComponent(file)}`;
+  const body = readCodeFile(await req<JsonValue>(path, { signal, timeoutMs: GET_TIMEOUT_MS }));
+  if (body === undefined) throw new Error(`${path} answered with a body that is not a code file`);
+  return body;
+}
+
 /** How long the phone waits for an add from the official list: the bridge's own two-minute cap, and a margin. */
 export const OFFICIAL_ADD_TIMEOUT_MS = 130_000;
 
@@ -3539,6 +3573,21 @@ export async function setTrickAuto(host: string, trick: string, on: boolean): Pr
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({ on }) });
   const info = readTrick(raw);
   if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  return info;
+}
+
+/**
+ * Set one of a trick's settings (contract 3): `POST /api/tricks/<host>/<id>/value` with `{ rid, key, value }`,
+ * null to clear it back to its default. `rid` is minted once per change, so a retry of the same change
+ * writes once. Answers the trick as the list now shows it. A refusal throws with its status and its `code`
+ * (a field rule: `kind`, `text`, `option`, `range`, `whole`; or `unknown-field`, `not-here`), which the
+ * Settings group says in its own words. A body of another shape throws.
+ */
+export async function setTrickValue(host: string, trick: string, body: { rid: string; key: string; value: FieldValue | null }): Promise<WireTrickInfo> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/value`;
+  const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(body) });
+  const info = readTrick(asJsonObject(raw)?.info);
+  if (info === undefined) throw new Error(`${path} answered with a body that is not a value receipt`);
   return info;
 }
 

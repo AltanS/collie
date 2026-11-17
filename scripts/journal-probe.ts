@@ -29,6 +29,7 @@ import { beaconsDir } from "../bridge/beacon/paths.ts";
 import { readBeacons } from "../bridge/beacon/reader.ts";
 import { loadConfig } from "../bridge/config.ts";
 import { isGrokSessionId } from "../bridge/journal/grok.ts";
+import { isMcodeSessionId } from "../bridge/journal/mcode.ts";
 import { kiroSessionIdOf } from "../bridge/journal/kiro-sessions.ts";
 import { adapterFor, buildJournalRegistry } from "../bridge/journal/registry.ts";
 import { readSqlite } from "../bridge/journal/sqlite-read.ts";
@@ -96,6 +97,19 @@ export function refFor(agent: string, path: string): AgentSessionRef | null {
     const dir = path.slice(0, slash);
     const id = dir.slice(dir.lastIndexOf("/") + 1);
     return isGrokSessionId(id) ? { kind: "id", value: id } : null;
+  }
+  // mcode names the session folder `…-session_<base64url(sessionId)>` around a fixed
+  // `messages.jsonl`, so the id is decoded from the parent directory's suffix, not the filename.
+  if (agent === "mcode") {
+    const slash = path.lastIndexOf("/");
+    if (slash <= 0) return null;
+    const dir = path.slice(0, slash);
+    const parent = dir.slice(dir.lastIndexOf("/") + 1);
+    const match = /session_([A-Za-z0-9_-]+)/.exec(parent);
+    if (!match) return null;
+    // SAFETY: base64url of an mvs_ id decodes to the id itself; the shape check guards it.
+    const decoded = Buffer.from(match[1]!, "base64url").toString("utf8");
+    return isMcodeSessionId(decoded) ? { kind: "id", value: decoded } : null;
   }
   const file = path.slice(path.lastIndexOf("/") + 1).replace(/\.jsonl$/, "");
   const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.exec(file)?.[0];

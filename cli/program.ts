@@ -136,8 +136,10 @@ import {
   WALKY_SUBCOMMANDS,
   type WalkyDeps,
 } from "./walky.ts";
+import { apiHelp, cmdApi, declaredOperations, type ApiDeps } from "./api.ts";
 import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillState, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
 import { cmdTrickView, viewTopLines, type ViewDeps } from "./trick-view.ts";
+import { cmdTricks, cmdTricksStatus, cmdTricksSwitch, TRICKS_SUBCOMMANDS } from "./tricks-switch.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
 import { cmdThemeSkill } from "./theme-skill.ts";
@@ -355,6 +357,18 @@ function walkyDeps(io: Io): WalkyDeps {
     platform: HOST.platform,
     readStdin: () => Bun.stdin.text(),
     stdinIsTty: process.stdin.isTTY === true,
+    ask: (path, line, ms) => askSocket(path, line, ms),
+  };
+}
+
+/** `api` (M105): the state dir, the files that vouch for the socket, and the socket itself. */
+function apiDeps(io: Io): ApiDeps {
+  return {
+    io,
+    stateDir: loadContext(io.err).stateDir,
+    platform: HOST.platform,
+    files: realFiles,
+    uid: process.getuid?.(),
     ask: (path, line, ms) => askSocket(path, line, ms),
   };
 }
@@ -1148,6 +1162,31 @@ export const COMMANDS: readonly Command[] = [
     ],
     run: (args, s) => cmdTrick({ io: s.io }, args),
   },
+  // The switch for tricks as a whole (bridge/tricks/feature-switch.ts): the plural is the feature, `trick on
+  // <id>` the one trick. A file in this instance's state folder, read again by the running bridge; tricks are
+  // an experiment and off until switched on.
+  {
+    name: "tricks",
+    summary: `switch tricks as a whole on or off for this machine (off until switched on): ${TRICKS_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "on",
+        summary: "switch tricks on for this machine; each trick still has its own switch",
+        run: (args, s) => cmdTricksSwitch(trickVerbDeps(s.io), "on", args),
+      },
+      {
+        name: "off",
+        summary: "switch tricks off: no trick runs or draws, and each trick keeps its own switch",
+        run: (args, s) => cmdTricksSwitch(trickVerbDeps(s.io), "off", args),
+      },
+      {
+        name: "status",
+        summary: "whether tricks are on for this machine (--json)",
+        run: (args, s) => cmdTricksStatus(trickVerbDeps(s.io), args),
+      },
+    ],
+    run: (args, s) => cmdTricks({ io: s.io }, args),
+  },
   // ── Durable programs (M55, ADR 0104) ───────────────────────────────────────
   // Declared beside `config` because it is the same shape of verb: a tree the operator's own
   // terminal drives, over a file in their own config dir. `attach` and `detach` write
@@ -1247,6 +1286,15 @@ export const COMMANDS: readonly Command[] = [
     summary: `the hill, decisions an agent asks its person: ${HILL_SUBCOMMANDS.join(", ")}`,
     subcommands: HILL_TREE,
     run: (args, s) => cmdHill({ io: s.io }, args),
+  },
+  // ── The local API (M105 spec 03) ───────────────────────────────────────────
+  // EXPERIMENTAL. One verb, generated from the operation table: `collie api <operation> [flags]`. It
+  // reads the running bridge's local socket, which exists only while tricks are switched on (ADR 0152).
+  {
+    name: "api",
+    summary: "experimental, read only: ask the local API of this machine (on while tricks are switched on): `api <operation> [flags] [--json]`",
+    usage: () => apiHelp(declaredOperations()),
+    run: (args, s) => cmdApi(apiDeps(s.io), args),
   },
   // ── Themes (M59 spec 05) ───────────────────────────────────────────────────
   // `theme check` runs the app's own theme parser and contrast report over files on disk, for a

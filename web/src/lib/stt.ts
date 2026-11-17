@@ -6,6 +6,7 @@ import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { t, type MessageKey } from "@/lib/i18n";
 import {
   getSttCapability,
+  getSttCapabilityOrSeed,
   getWhistleStatus,
   loadOperatorCommands,
   operatorConfigRead,
@@ -97,10 +98,12 @@ export function useSttCapability(): SttCapability | null {
   useEffect(() => {
     void loadOperatorCommands();
   }, []);
+  // The last known answer until the first read lands (a disabled placeholder, lib/operator-config.ts):
+  // a draft's small microphone is drawn from the first frame instead of entering after the read.
   const capability = useSyncExternalStore(
     subscribeOperatorConfig,
-    getSttCapability,
-    getSttCapability,
+    getSttCapabilityOrSeed,
+    getSttCapabilityOrSeed,
   );
   // Evaluated per render rather than memoised: it reads browser globals that do not change within a
   // page, and a memo keyed on nothing would only hide that.

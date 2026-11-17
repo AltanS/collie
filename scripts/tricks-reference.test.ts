@@ -8,8 +8,10 @@ import { HILL_SUMMARY_SOFT_MAX, HILL_SUMMARY_SOFT_SENTENCES, HILL_TITLE_SOFT_MAX
 import * as helper from "../cli/trick-kit/trick.ts";
 import { TRICK_SUBCOMMANDS } from "../cli/trick.ts";
 import { VIEW_SUBCOMMANDS, viewUsageLines } from "../cli/trick-view.ts";
+import { TRICKS_SUBCOMMANDS } from "../cli/tricks-switch.ts";
 import { REASK_AFTER_MS } from "../bridge/tricks/hill.ts";
 import { WATCH_WINDOW_MS } from "../bridge/tricks/service.ts";
+import { REACT_FLOOR_MS } from "../bridge/tricks/triggers.ts";
 import { TRICKS_CREW_FIRST_VERSION } from "../bridge/hill/crew.ts";
 import { parseAgentView } from "../web/src/lib/agent-view/wire.ts";
 import { HILL_NODE_PREFIX, HILL_STATES } from "../web/src/lib/hill/wire.ts";
@@ -265,6 +267,7 @@ describe("the page names everything the code has", () => {
 
   test("every verb of collie trick, collie trick view and collie hill", () => {
     expect(COMMANDS.filter((entry) => entry.group === "trick").map((entry) => entry.verb)).toEqual([...TRICK_SUBCOMMANDS]);
+    expect(COMMANDS.filter((entry) => entry.group === "tricks").map((entry) => entry.verb)).toEqual([...TRICKS_SUBCOMMANDS]);
     expect(COMMANDS.filter((entry) => entry.group === "trick view").map((entry) => entry.verb)).toEqual([...VIEW_SUBCOMMANDS]);
     expect(COMMANDS.filter((entry) => entry.group === "hill").map((entry) => entry.verb)).toEqual([...HILL_SUBCOMMANDS]);
     for (const entry of COMMANDS) expect(PAGE, `${entry.group} ${entry.verb}`).toContain(`\`collie ${entry.usage.replaceAll("|", "\\|")}\``);
@@ -394,7 +397,7 @@ describe("the program section", () => {
   test("every trigger kind is a row of the table or is named as one this Collie never sends", () => {
     const sent = PROGRAM.triggers.map((row) => row.kind);
     expect([...sent, ...PROGRAM.triggersLater].toSorted()).toEqual([...TRIGGER_KINDS].toSorted());
-    expect(sent).toEqual(["start", "timer", "tap"]);
+    expect(sent).toEqual(["start", "timer", "tap", "watch", "event"]);
     const receives = sectionOf("### What the program receives");
     for (const row of PROGRAM.triggers) {
       expect(receives, row.kind).toContain(`| \`${row.kind}\` |`);
@@ -410,6 +413,19 @@ describe("the program section", () => {
     expect(NUMBERS.watchWindowMs).toBe(WATCH_WINDOW_MS);
     expect(timer?.when).toContain("5 minutes");
     expect(WATCH_WINDOW_MS).toBe(5 * 60_000);
+  });
+
+  test("an event or file run needs no phone, and two of them start at least 10 s apart", () => {
+    const reacting = PROGRAM.reacting;
+    const rows = new Map(reacting.eventRules.map((row) => [row.rule, row.value]));
+    expect(NUMBERS.reactFloorMs).toBe(REACT_FLOOR_MS);
+    expect(REACT_FLOOR_MS).toBe(10_000);
+    expect(rows.get("No phone needed")).toContain("also when no phone is open");
+    expect(rows.get("No phone needed")).toContain("Only the timer waits for a phone");
+    expect(rows.get("Spacing")).toContain("at least 10 s apart");
+    expect(rows.get("Delivery")).toContain("At least once");
+    expect(rows.get("Delivery")).toContain("safe against a repeated event");
+    expect(rows.get("The same road as the timer")).not.toContain("no phone has looked");
   });
 
   test("a trigger of each sent kind passes the facts parser", () => {

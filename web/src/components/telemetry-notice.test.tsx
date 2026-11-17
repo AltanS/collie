@@ -1,9 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CALM_HOLD_MS } from "@/hooks/use-bounded-hold";
+import { __resetTelemetryRead, useTelemetryNoticeRead } from "@/hooks/use-telemetry-notice";
 import { server } from "@/test/setup";
 import {
   __reloadTelemetryNotice,
@@ -52,6 +54,7 @@ function renderNotice(initial: TelemetryView | "fail") {
 
 beforeEach(() => {
   __resetTelemetryNotice();
+  __resetTelemetryRead();
 });
 
 describe("shouldShowTelemetryNotice", () => {
@@ -216,5 +219,105 @@ describe("the update notice (revision 1 to 2)", () => {
     __reloadTelemetryNotice();
     renderNotice(view());
     expect(await screen.findByText(UPDATE_BODY)).toBeInTheDocument();
+  });
+});
+
+// CALM LOAD (row 16): the route keeps the list unseen for at most 400 ms while the one read answers, and the
+// notice is handed over already open in the frame the list appears. Past the bound it does not open on this load.
+describe("the notice and the list, on a cold load", () => {
+  /** The route's half, as routes/home.tsx wires it: the scroller is unseen while `held`; every render is noted. */
+  function renderPage(frames: string[]) {
+    function Page() {
+      const read = useTelemetryNoticeRead();
+      frames.push(`${read.held ? "held" : "shown"}:${read.view === null ? "no-notice" : "notice"}`);
+      return (
+        <div data-testid="scroller" className={read.held ? "invisible" : ""}>
+          <TelemetryNotice read={read} />
+          <main data-testid="list" />
+        </div>
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Page /> }], { initialEntries: ["/"] });
+    return render(<RouterProvider router={router} />);
+  }
+
+  /** The machine's answer, held until `release()`, after `delay` ms. */
+  function slowRead(answer: TelemetryView, delay = 0) {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.get("/api/telemetry", async () => {
+        await gate;
+        if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+        return HttpResponse.json(answer);
+      }),
+    );
+    return release;
+  }
+
+  it("keeps the list unseen, then shows the list and the open notice in one frame", async () => {
+    const release = slowRead(view());
+    const frames: string[] = [];
+    renderPage(frames);
+    expect(screen.getByTestId("scroller")).toHaveClass("invisible");
+    expect(screen.queryByText(BODY)).toBeNull();
+    release();
+    expect(await screen.findByText(BODY)).toBeInTheDocument();
+    expect(screen.getByTestId("scroller")).not.toHaveClass("invisible");
+    // The notice came with the list: no frame showed the list without it.
+    expect(frames).not.toContain("shown:no-notice");
+    expect(frames.at(-1)).toBe("shown:notice");
+    // The notice stands before the list, where it always stood.
+    const scroller = screen.getByTestId("scroller");
+    expect(scroller.firstElementChild).not.toBe(screen.getByTestId("list"));
+    expect(scroller.lastElementChild).toBe(screen.getByTestId("list"));
+  });
+
+  it("shows the list at once, with no notice, when the answer inside the bound says there is none", async () => {
+    const release = slowRead(view({ on: false, decidedBy: "settings", setting: "off" }));
+    renderPage([]);
+    expect(screen.getByTestId("scroller")).toHaveClass("invisible");
+    release();
+    await waitFor(() => expect(screen.getByTestId("scroller")).not.toHaveClass("invisible"));
+    expect(screen.queryByText(BODY)).toBeNull();
+  });
+
+  it("waits no longer than the bound, and an answer past it opens nothing on this load", async () => {
+    const release = slowRead(view());
+    renderPage([]);
+    expect(screen.getByTestId("scroller")).toHaveClass("invisible");
+    await waitFor(() => expect(screen.getByTestId("scroller")).not.toHaveClass("invisible"), { timeout: CALM_HOLD_MS * 4 });
+    release();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    expect(screen.queryByText(BODY)).toBeNull();
+  });
+
+  it("a later mount of the page draws the notice in its first frame and holds nothing", async () => {
+    const first = slowRead(view());
+    const one = renderPage([]);
+    first();
+    await screen.findByText(BODY);
+    one.unmount();
+    const frames: string[] = [];
+    renderPage(frames);
+    expect(frames[0]).toBe("shown:notice");
+    expect(screen.getByTestId("scroller")).not.toHaveClass("invisible");
+    expect(screen.getByText(BODY)).toBeInTheDocument();
+  });
+
+  it("holds nothing on a device that spent the notice, and asks nothing", async () => {
+    localStorage.setItem(KEY, "2");
+    __reloadTelemetryNotice();
+    let reads = 0;
+    server.use(
+      http.get("/api/telemetry", () => {
+        reads += 1;
+        return HttpResponse.json(view());
+      }),
+    );
+    renderPage([]);
+    expect(screen.getByTestId("scroller")).not.toHaveClass("invisible");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(reads).toBe(0);
   });
 });

@@ -146,11 +146,23 @@ export interface HomeData {
    */
   hillOff?: boolean;
   /**
+   * Whether tricks are switched off on this bridge: the snapshot carries `tricksOff`. Settings, Tricks reads
+   * it. Optional in the TYPE only, so hand-built fixtures stay valid.
+   */
+  tricksOff?: boolean;
+  /**
    * Whether the hill's store has a list to read for Collie's cards about a trick (M96 spec 14): the
    * snapshot carries `hillRev`, or with the Hill off `trickCardsRev`. A trick card's page with neither has
    * nothing to wait for. Optional in the TYPE only, so hand-built fixtures stay valid.
    */
   trickCards?: boolean;
+  /**
+   * Whether this bridge runs tricks: the snapshot carries `tricksRev`. `false` is a real answer ("this
+   * bridge has none"), which the Settings index needs to draw its list without a Tricks row at once,
+   * because the tricks store stays empty for ever on a bridge with none and cannot say so itself.
+   * Optional in the TYPE only, so hand-built fixtures stay valid; absent there means "not known".
+   */
+  tricks?: boolean;
   /** The bridge's session registry (primary-first); empty on a single-session / older bridge. */
   sessions: SessionSummary[];
   /**
@@ -427,7 +439,9 @@ function toHomeData(
     trickSessions: split.trickSessions,
     hill: snap.hillRev !== undefined,
     hillOff: snap.hillOff === true,
+    tricksOff: snap.tricksOff === true,
     trickCards: snap.hillRev !== undefined || snap.trickCardsRev !== undefined,
+    tricks: snap.tricksRev !== undefined,
     sessions: snap.sessions ?? [],
     servers: snap.servers ?? [],
     ts: snap.ts ?? 0,

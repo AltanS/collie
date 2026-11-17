@@ -2,10 +2,12 @@ import { Icon } from "@/components/icons/icon";
 
 import { useCrew } from "@/components/crew-provider";
 import { Button } from "@/components/ui/button";
+import { Collapse } from "@/components/ui/collapse";
 import { SectionHeader } from "@/components/section-header";
 import { openForCount } from "@/hooks/use-dash-prefs";
 import { writeRefusal } from "@/lib/host-health";
 import { useLaunchers } from "@/lib/launchers";
+import { ANSWER_MAX_COUNT, useRememberedAnswer } from "@/lib/remembered-shape";
 import type { Scope } from "@/lib/scope";
 import { shortenHome } from "@/lib/shorten-home";
 import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
@@ -34,8 +36,20 @@ interface LaunchStripProps {
 // height is set by a config file: `flex-wrap` fits two labels per row on a phone, so six launchers
 // is three rows of buttons between the herd you came to read and the navigator below it. Folded, the
 // header still says how many there are — the count is the reason to unfold.
+//
+// CALM LOAD. The rows are read on every mount, after the first paint, so the section used to enter in
+// the middle of the dashboard and push the Spaces, Programs and the footer down. The device now
+// remembers HOW MANY rows the front machine had (lib/remembered-shape.ts, a number from 0 to 99, never
+// a label or a command): the header is drawn with that count from the first frame, and the body, whose
+// height only the rows know, eases in under it (`Collapse`) when the read lands. A device with no
+// memory, a remembered 0 and a crew member's or a session's launchers, which the front machine's one
+// key cannot speak for, draw as before. A real read replaces the memory in full, so a section the
+// operator removed goes when the read says so.
 export function LaunchStrip({ open, onOpenChange, scope }: LaunchStripProps) {
-  const { launchers, home } = useLaunchers(scope);
+  const { launchers, home, loadedFor } = useLaunchers(scope);
+  const front = scope?.host === undefined && scope?.session === undefined;
+  const rememberedCount = useRememberedAnswer("home-launch-count", front && loadedFor !== null ? Math.min(launchers.length, ANSWER_MAX_COUNT) : undefined);
+  const count = launchers.length > 0 || loadedFor !== null || !front ? launchers.length : (rememberedCount ?? 0);
   const { launch, launching } = useSpaceActions();
   // A row that skips permission prompts is confirmed once per device before it starts (ADR 0094).
   const { guard, sheet } = useNoPromptsGuard();
@@ -48,21 +62,23 @@ export function LaunchStrip({ open, onOpenChange, scope }: LaunchStripProps) {
   // Nothing declared → no affordance at all, not an empty section. Worth a comment because an early
   // return like this reads as a forgotten empty state, when it is the intended default for every
   // install without a `launchers.toml`: that dashboard is byte-for-byte the one they had.
-  if (launchers.length === 0) return null;
+  if (count === 0) return null;
 
-  const expanded = openForCount(open, launchers.length);
+  const expanded = openForCount(open, count);
 
   return (
     <section className="flex flex-col gap-2 px-3 py-4">
       <SectionHeader
         label="Launch"
-        count={launchers.length}
+        count={count}
         open={expanded}
         onToggle={onOpenChange}
         controls="launch-body"
       />
 
       {expanded && (
+        // The body mounts with the fold open, as before; only a body that waits for its rows eases in.
+        <Collapse open={launchers.length > 0}>
         <div id="launch-body" className="flex flex-wrap gap-2">
           {launchers.map((launcher) => {
             // In flight → this row only. A launch takes a moment (the bridge waits for the new
@@ -108,6 +124,7 @@ export function LaunchStrip({ open, onOpenChange, scope }: LaunchStripProps) {
             );
           })}
         </div>
+        </Collapse>
       )}
       {sheet}
     </section>

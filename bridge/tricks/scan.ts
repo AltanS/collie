@@ -335,8 +335,8 @@ function sha256(text: string): string {
  * v2 (the facts' `v`, `t.hillAnswer` beside `t.tap`; M94 review 11 made it v3), and v3 (contract 1 only; v4
  * reads contract 2's `inputs` and prints the facts' own contract as `v`), and v4 (v5 adds `t.menu` and a
  * belt mark's `sessions`), and v5 (v6 ends a run after the pipe took the output, not with `process.exit`
- * over a write in flight, which Windows lost). A trick folder keeps the copy it was approved with: an older one stays
- * Collie's code, so a new Collie asks for no yes.
+ * over a write in flight, which Windows lost; it speaks contract 3 and reads its `values` as `t.values`). A trick
+ * folder keeps the copy it was approved with: an older one stays Collie's code, so a new Collie asks for no yes.
  */
 const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
   ["534f992f9aa2a4a6e53945c1b46e7b407ab9528b3839970e6552d83b23ed13bb", 1],
@@ -384,7 +384,7 @@ export interface FolderScan {
  * The scan of a trick folder whose code walk is `entries`: the sources, the helper, the warnings. The
  * run line itself is graded as a shell command line, whatever it names. Reads only.
  */
-export async function scanTrickFolder(folder: string, manifest: TrickManifest, entries: readonly CodeEntry[], fs: TrickFs = diskTrickFs): Promise<FolderScan> {
+export async function scanTrickFolder(folder: string, manifest: Pick<TrickManifest, "run" | "everyMs">, entries: readonly CodeEntry[], fs: TrickFs = diskTrickFs): Promise<FolderScan> {
   const all = await folderSources(folder, entries, fs);
   // A `trick.ts` whose bytes are a helper this Collie ships is Collie's code, not the trick's: it is named,
   // not grepped. A file that names itself a helper but differs is grepped as code, and flagged.
@@ -419,6 +419,11 @@ export async function scanTrickFolder(folder: string, manifest: TrickManifest, e
   const imports = manifest.run === undefined || runtimeScript(manifest.run) === null ? [] : importWarnings(out.sources);
   out.warnings = [...unreadTargets(manifest.run, targets, all, runLineOf(all)), ...checkWarnings(graded, manifest.everyMs !== undefined), ...imports].slice(0, WARNINGS_MAX);
   return out;
+}
+
+/** The order the kinds of a warning are named in: {@link KIND_ORDER}, for a reader that marks lines. */
+export function kindRank(kind: CheckWarningKind): number {
+  return KIND_ORDER.indexOf(kind);
 }
 
 /** The line of `run =` in `trick.toml`, or 1. */

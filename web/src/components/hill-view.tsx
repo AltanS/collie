@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { RouteHeader } from "@/components/app-header";
 import { ActionRow } from "@/components/action-sheet-rows";
@@ -46,10 +46,12 @@ import { cn } from "@/lib/utils";
 /**
  * The header: back to the Dashboard, the Hill's mountain mark, the title, and one line under it that
  * is always there ("3 open · 1 now", or "All clear"), so a count arriving or leaving moves nothing.
+ * `held` is the first list still on its way (routes/hill.tsx): the line keeps its place and says
+ * nothing, because "All clear" would be a claim about a hill nobody has read yet.
  */
-export function HillHeader({ count, nowCount, onBack, off = false }: { count: number; nowCount: number; onBack: () => void; off?: boolean }) {
+export function HillHeader({ count, nowCount, onBack, off = false, held = false }: { count: number; nowCount: number; onBack: () => void; off?: boolean; held?: boolean }) {
   useLocale();
-  const line = off ? t("hill.off.line") : count === 0 ? t("hill.clear") : nowCount > 0 ? `${tn("hill.open", count)} · ${t("hill.now", { count: nowCount })}` : tn("hill.open", count);
+  const line = off ? t("hill.off.line") : held ? "\u00a0" : count === 0 ? t("hill.clear") : nowCount > 0 ? `${tn("hill.open", count)} · ${t("hill.now", { count: nowCount })}` : tn("hill.open", count);
   return (
     <RouteHeader
       width="column"
@@ -350,6 +352,7 @@ export function HillView({
   closedTotal = closed.length,
   clear,
   keptTitles,
+  listed = true,
 }: {
   open: readonly HillDecision[];
   closed: readonly HillDecision[];
@@ -359,9 +362,22 @@ export function HillView({
   clear?: HillClearControl;
   /** The title of each card in `kept`, for the row of one the bridge no longer serves. */
   keptTitles?: ReadonlyMap<string, string>;
+  /**
+   * Whether `open` is a list the bridge served. False while the route draws past its bounded wait with no
+   * list yet: the fold's open state is then chosen from the first real list when it lands, never from the
+   * empty one that stood in for it. A view with no such wait leaves it true.
+   */
+  listed?: boolean;
 }) {
   useLocale();
   const [answeredOpen, setAnsweredOpen] = useState(open.length === 0);
+  // The fold starts open on a clear hill. If that first look was the empty stand-in, look again, once, at the real list.
+  const seeded = useRef(listed);
+  useEffect(() => {
+    if (!listed || seeded.current) return;
+    seeded.current = true;
+    setAnsweredOpen(open.length === 0);
+  }, [listed, open.length]);
   const answeredId = useId();
   // The closed list holds closed decisions only (lib/hill/reader.ts); an open one would draw an empty row.
   const closedRows = closed.filter((d) => d.state !== "open");

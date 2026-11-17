@@ -62,6 +62,8 @@ export interface TricksState {
   runsOn?: TricksRunsOn;
   /** Set while the last reply said tricks are gated on this bridge (`"windows"`). */
   gate?: TricksGate;
+  /** Set while the last reply said tricks are switched off on this bridge as a whole (`off: true`). */
+  off?: true;
 }
 
 /** The two routes and the id source, so a test or the playground can stand in for the bridge. */
@@ -190,6 +192,7 @@ export function createTricksStore(transport: TricksTransport, clock: () => numbe
     const next: TricksState = { rev: reply.rev, tricks: reply.tricks, parts, taps };
     if (reply.runsOn !== undefined) next.runsOn = reply.runsOn;
     if (reply.gate !== undefined) next.gate = reply.gate;
+    if (reply.off === true) next.off = true;
     commit(next);
   }
 

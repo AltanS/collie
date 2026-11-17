@@ -18,9 +18,10 @@ delete process.env.BUN_BE_BUN;
 /**
  * The newest trick contract this helper speaks: Collie's TRICK_CONTRACT (web/src/lib/tricks/contract.ts).
  * A run prints the contract its facts name as the output's "v": 1 for a trick that names none in
- * trick.toml, 2 for one that names `contract = 2` (and may list `inputs`).
+ * trick.toml, 2 for one that names `contract = 2` (and may list `inputs`), 3 for one that names
+ * `contract = 3` (and may list `[[field]]`, the settings a person keeps: `t.values`).
  */
-export const CONTRACT = 2;
+export const CONTRACT = 3;
 export type Tone = "plain" | "accent" | "warn" | "danger" | "ok" | "muted";
 export type Icon =
   | "archive" | "back" | "bell" | "branch" | "camera" | "chat" | "check" | "clock" | "close" | "copy" | "crew" | "delete"
@@ -276,6 +277,11 @@ export interface Facts {
   host: string; memberId: string; sessions: Session[]; spaces: { name: string; folder?: string }[];
   /** How many sessions the facts left out past their caps. Absent when none. */
   sessionsOmitted?: number;
+  /**
+   * Contract 3, for a trick with `[[field]]`: each setting by its key, the person's value or the field's
+   * `default`; a field with neither is absent. The person's data, UNTRUSTED for the program: show it, never run it.
+   */
+  values?: { [key: string]: string | number | boolean };
 }
 /**
  * The tap that started a run, one shape from every place: a button or an action in the trick's session,
@@ -423,6 +429,12 @@ export class Trick {
   readonly facts: Facts;
   /** `config.toml` of the trick folder, parsed; {} when there is none. */
   readonly config: { [key: string]: TomlValue };
+  /**
+   * Contract 3: the settings the person keeps for this trick (`[[field]]` in trick.toml), by key; {} when it
+   * has none. A required one with no value is absent: show a setup part that says what to set. Never pass a
+   * value to a shell or run it.
+   */
+  readonly values: { [key: string]: string | number | boolean };
   /** The tap that started this run, from any place, a Decision's answer included (`decision` set), or null. */
   readonly tap: Tap | null;
   /** Small JSON files in the trick's own state folder. A name may hold folders: `cache/ci`. */
@@ -443,6 +455,7 @@ export class Trick {
     const text = readText(join(facts.trick.dir, "config.toml"));
     // SAFETY: Bun.TOML.parse answers with a table; the program reads each setting it names.
     this.config = text === null ? {} : (Bun.TOML.parse(text) as { [key: string]: TomlValue });
+    this.values = facts.values ?? {};
     this.tap = tapOf(facts.trigger);
     const root = facts.trick.state;
     this.state = {

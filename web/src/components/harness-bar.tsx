@@ -15,7 +15,10 @@ import { useLongPress } from "@/hooks/use-long-press";
 import { STOP_HINT_MS, STOP_HOLD_MS } from "@/lib/arm";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { barFor, PROGRAM_MARK, durableBarFor, type DurableBarItem, type HarnessBarItem } from "@/lib/harness-bar";
+import { useBoundedHold } from "@/hooks/use-bounded-hold";
 import { useHarnessBarEnabled } from "@/lib/harness-bar-pref";
+import { useRememberedAnswer } from "@/lib/remembered-shape";
+import { useOperatorConfigRead } from "@/lib/stt";
 import { useMuxDeclared } from "@/lib/mux-capability";
 import { canonicalAgent } from "@/lib/operator-scope";
 import type { Scope } from "@/lib/scope";
@@ -99,6 +102,8 @@ const ICONS = new Map<string, IconKey>([
   ["compact", "harness-compact"], // fold the context up
   ["resume", "harness-resume"], // go back to an earlier session
   ["tree", "harness-tree"], // the session tree
+  ["plan", "harness-plan"], // plan mode on, off or read
+  ["history", "harness-history"], // branch from an earlier prompt
 ]);
 
 /** An operator's own row gets the slash — it is their command, and we know nothing else about it. */
@@ -136,7 +141,16 @@ export function useHarnessBarItems(
   mine?: readonly OperatorCommand[],
 ): readonly HarnessBarItem[] {
   const shown = useHarnessBarEnabled();
-  return shown ? barFor(agent, mine) : [];
+  // CALM LOAD. The operator's `bar = true` rows come with the config read, after the first paint, and
+  // they REPLACE the shipped bar: an operator who has them saw the shipped bar for a frame, then their own,
+  // with a different width and different pills. The rows are text and are never kept, but whether there
+  // were any is a flag the device may remember (lib/remembered-shape.ts). An operator who had them waits
+  // for the read, at most `CALM_HOLD_MS`, and the section is drawn once, right; past the bound it draws the
+  // shipped bar. Everyone else, and a first visit, draws the shipped bar at once, as before.
+  const read = useOperatorConfigRead();
+  const hadRows = useRememberedAnswer("belt-operator-bar", read ? (mine ?? []).some((row) => row.bar === true) : undefined);
+  const waiting = useBoundedHold(hadRows === true && !read);
+  return shown && !waiting ? barFor(agent, mine) : [];
 }
 
 export function HarnessBar({ agent, mine, onRun, disabled, hand = "right" }: HarnessBarProps) {

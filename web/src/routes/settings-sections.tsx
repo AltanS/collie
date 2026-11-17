@@ -43,9 +43,13 @@ import { TourControl } from "@/components/tour-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { TelemetrySettingsCard, TelemetrySettingsRow } from "@/components/telemetry-settings-card";
 import { MathControl } from "@/components/math-control";
+import { SettingsNavRow } from "@/components/settings-nav-row";
+import { Card } from "@/components/ui/card";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
+import { TricksSwitchControl } from "@/components/tricks-switch-card";
 import { TrickCardsWaiting } from "@/components/trick-cards";
 import { ZenControl } from "@/components/zen-control";
+import { useNav } from "@/hooks/use-nav";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
 import { EMPTY_DEVICES, type DevicesData } from "@/lib/loaders";
 import { settingsSectionPath } from "@/lib/nav";
@@ -275,15 +279,23 @@ function ExperimentsContract() {
  * The section renders even when `lib/experiments.ts` is empty, because the route stays; the
  * SETTINGS INDEX is what hides the row (routes/settings.tsx). A bookmark then lands on a page
  * carrying its contract and nothing else, which is the honest answer to "where did it go".
- * Today it holds the Hill's one switch.
+ * Today it holds the Hill's one switch and a row for Tricks, whose own switch lives at the top of
+ * Settings, Tricks.
  */
 export function SettingsExperimentsRoute() {
+  const nav = useNav();
+  const scope = useScope();
   return (
     <SettingsPage title="settings.section.experiments.title">
       <ExperimentsContract />
       {/* The Hill (bridge/hill/switch.ts): an experiment, off by default, and this is its one switch. Drawn from
           the snapshot, so it never waits on a reading of its own. Bridge-wide, like the notification switches. */}
       <HillSwitchControl />
+      {/* Tricks as a whole are an experiment too (bridge/tricks/feature-switch.ts), but their switch is the first
+          thing on Settings, Tricks: this row only opens that page, so the switch lives in one place. */}
+      <Card className="gap-0 py-0" data-slot="tricks-experiment-row">
+        <SettingsNavRow icon="mods" title={t("settings.section.tricks.title")} caption={t("settings.experiments.tricks.caption")} onOpen={() => nav.down(settingsSectionPath("tricks", scope))} />
+      </Card>
     </SettingsPage>
   );
 }
@@ -297,7 +309,10 @@ export function SettingsExperimentsRoute() {
 export function SettingsTricksRoute() {
   return (
     <SettingsPage title="settings.section.tricks.title">
-      {/* First, the cards of Collie's own that wait for a yes (M96 spec 14): with the Hill off, the one list of them. */}
+      {/* The switch for tricks as a whole is the first thing on the page. It reads the snapshot, not the tricks
+          reply, so it always renders, off included. */}
+      <TricksSwitchControl />
+      {/* Then the cards of Collie's own that wait for a yes (M96 spec 14): with the Hill off, the one list of them. */}
       <TrickCardsWaiting />
       <TricksSettingsCard />
     </SettingsPage>

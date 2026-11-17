@@ -205,6 +205,7 @@ describe("the service", () => {
       const doc = JSON.stringify({ v: 1, asOf: "2026-11-08T09:41:00Z", parts: [{ at: "session", id: "legs", tone: "accent", subtitle: "case 24 red", view: VIEW }] });
       const clock = { t: NOW };
       const service = new TricksService({
+        feature: { on: () => true },
         configDir,
         stateDir,
         memberId: HOST,

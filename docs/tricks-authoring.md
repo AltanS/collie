@@ -2,6 +2,11 @@
 
 A trick is a folder: a manifest, and a program or a rules file. This page builds one of each.
 
+Tricks are experimental. They may change, lose settings, or be withdrawn in a patch release. They are
+off until you switch them on at the top of Settings → Tricks, or with `collie tricks on`
+([Switch tricks on or off](tricks.md#switch-tricks-on-or-off)). `collie trick dev` and
+`collie trick check --run` run a folder once in your terminal with tricks off too.
+
 ```sh
 collie trick init my-trick
 collie trick dev my-trick
@@ -33,6 +38,8 @@ A trick lives in `tricks/<id>/` in Collie's config folder, `~/.config/collie` on
 - An agent view has the file that `rules` names, such as `rules.md`.
 - `config.toml` holds settings the program reads. It is not part of the code you approve, so you can
   edit it freely.
+- `[[field]]` in `trick.toml` names the settings the person sets on the phone. See
+  [Settings a trick asks you for](#settings-a-trick-asks-you-for).
 - `AGENTS.md` is the contract for an agent that grows the trick. `init` writes it.
 - `media/` holds pictures the trick shows: PNG, JPEG or WebP.
 
@@ -194,6 +201,50 @@ goes to a new session, or a session that starts a new conversation (`/clear`), s
 your next run names it again. A part without `sessions` shows in every agent session of this machine; to
 reach a crew member's session, name it. The [menu place](tricks-reference.md#menu) lists every
 limit.
+
+## Settings a trick asks you for
+
+A trick with contract 3 can ask the person for values, such as a repository, a branch or how many rows to
+show. List them in `trick.toml`, one `[[field]]` table each:
+
+```toml
+contract = 3
+
+[[field]]
+key = "repo"
+kind = "text"
+label = "Repository"
+hint = "owner/name"
+required = true
+
+[[field]]
+key = "rows"
+kind = "number"
+label = "Rows"
+min = 1
+max = 50
+default = 10
+```
+
+There are four kinds: `text` (one line), `choice` (`options`, 2 to 8), `switch` and `number` (`min`
+and `max`, whole numbers). The person sets them on the phone, in the trick's About sheet, under
+Settings. Collie keeps the values on the machine that runs the trick, in its state folder, as
+`.collie/values.json`. A person or an agent who edits that file by hand is the same case as an edit of
+`config.toml`: it is accepted, and Collie reads the file through the field rules on the next look.
+
+The program gets them in its facts as `values`, each field's value or its `default`, by key. The helper
+reads them as `t.values`. A required field with no value is absent: draw a part that says what to set.
+Collie never puts a value on a command line, in a log line, on a Hill card or in a push.
+
+A value is the person's data and untrusted for the program: show it, never run it. Never pass it to a
+shell or build a command from it.
+
+A field is in `trick.toml`, so a new or changed field is a new version and asks the person again. A new
+value asks nothing and runs the trick once.
+
+A setting is never a secret. Do not put a token, a password or a key in a field: the value is stored as
+plain text, shown on every paired phone, and readable by the trick's program. A key goes in `env`. Every limit is in
+[Fields](tricks-reference.md#fields-contract-3).
 
 ## An agent view
 

@@ -12,7 +12,7 @@ import { CODE_FILES_MAX, diskTrickFs, trickCodeHash, type TrickFs } from "./code
 import { createTrickScanner, MANIFEST_BYTES_MAX, readManifestText, TRICKS_MAX } from "./discover.ts";
 import { buildFacts, crewFactsWorld, factsWorldOf } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
-import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./routes.ts";
+import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksCodeRoute, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
 import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_STALE_MS, updateSwitches, withApproval, withEntry, withSwitch, writeSwitches } from "./switches.ts";
 
@@ -379,7 +379,7 @@ describe("the facts", () => {
     expect(facts.host).toBe("lodge");
     // One contract number on the facts, no `v` beside it: the trick's own, 1 when it names none.
     expect(facts.contract).toBe(TRICK_CONTRACT_DEFAULT);
-    expect(buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" }, TRICK_CONTRACT).contract).toBe(2);
+    expect(buildFacts(world, { id: "legs", dir: "/c/tricks/legs", state: "/s/tricks/legs" }, { kind: "timer" }, TRICK_CONTRACT).contract).toBe(TRICK_CONTRACT);
     expect(Object.keys(facts)).not.toContain("v");
   });
 
@@ -467,6 +467,9 @@ describe("the routes", () => {
     const calls: [string, string][] = [];
     const surface: TricksSurface = {
       rev: () => 1,
+      switchedOn: () => true,
+      switchTo: () => null,
+      gateLine: () => null,
       noteWatched: () => {},
       reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
       sessionPanes: () => undefined,
@@ -476,6 +479,7 @@ describe("the routes", () => {
       },
       setSwitch: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       media: async () => null,
+      code: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       autoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
     };
@@ -494,6 +498,9 @@ describe("the routes", () => {
     const hashes: (string | null)[] = [];
     const surface: TricksSurface = {
       rev: () => 1,
+      switchedOn: () => true,
+      switchTo: () => null,
+      gateLine: () => null,
       noteWatched: () => {},
       reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
       tap: async () => ({ status: 404, body: { error: "unknown-trick" } }),
@@ -504,6 +511,7 @@ describe("the routes", () => {
         return { status: 404, body: { error: "unknown-trick" } };
       },
       media: async () => null,
+      code: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       autoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
     };
@@ -533,12 +541,16 @@ describe("the routes", () => {
     const calls: string[] = [];
     const surface: TricksSurface = {
       rev: () => 1,
+      switchedOn: () => true,
+      switchTo: () => null,
+      gateLine: () => null,
       noteWatched: () => {},
       reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
       tap: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       sessionPanes: () => undefined,
       setSwitch: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       media: async () => null,
+      code: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       autoRoute: async (host, id, on) => {
         calls.push(`auto ${host} ${id} ${String(on)}`);
         return { status: 409, body: { error: "off", message: "The trick is off." } };
@@ -571,6 +583,9 @@ describe("the routes", () => {
     const calls: [string, string, string][] = [];
     const surface: TricksSurface = {
       rev: () => 1,
+      switchedOn: () => true,
+      switchTo: () => null,
+      gateLine: () => null,
       noteWatched: () => {},
       reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
       tap: async () => ({ status: 404, body: { error: "unknown-trick" } }),
@@ -580,6 +595,7 @@ describe("the routes", () => {
         calls.push([host, id, rel]);
         return null;
       },
+      code: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       autoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
       undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
     };
@@ -597,11 +613,49 @@ describe("the routes", () => {
     expect(route.exec("/api/tricks/lodge/legs/trick.toml")).toBeNull();
   });
 
+  test("the code path is decoded and handed on, with the file named by the query; an odd name is a miss", async () => {
+    const calls: [string, string, string | null][] = [];
+    const surface: TricksSurface = {
+      rev: () => 1,
+      switchedOn: () => true,
+      switchTo: () => null,
+      gateLine: () => null,
+      noteWatched: () => {},
+      reply: async () => ({ rev: 1, tricks: [], parts: [], present: [] }),
+      tap: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      sessionPanes: () => undefined,
+      setSwitch: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      media: async () => null,
+      code: async (host, id, file) => {
+        calls.push([host, id, file]);
+        return { status: 404, body: { error: "unknown-trick" } };
+      },
+      autoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+      undoRoute: async () => ({ status: 404, body: { error: "unknown-trick" } }),
+    };
+    const route = /^\/api\/tricks\/([^/]+)\/([^/]+)\/code$/;
+    const match = route.exec("/api/tricks/lod%67e/legs/code");
+    if (match === null) throw new Error("no match");
+    await tricksCodeRoute(surface, match, new URLSearchParams());
+    await tricksCodeRoute(surface, match, new URLSearchParams({ file: "src/main.ts" }));
+    expect(calls).toEqual([
+      ["lodge", "legs", null],
+      ["lodge", "legs", "src/main.ts"],
+    ]);
+    for (const file of ["", "x".repeat(513)]) expect(await tricksCodeRoute(surface, match, new URLSearchParams({ file }))).toEqual({ status: 404, body: { error: "no-file" } });
+    expect(calls.length).toBe(2);
+    const broken = route.exec("/api/tricks/%E0%A4%A/legs/code");
+    if (broken === null) throw new Error("no match");
+    expect(await tricksCodeRoute(surface, broken, new URLSearchParams())).toEqual({ status: 404, body: { error: "unknown-host" } });
+    expect(route.exec("/api/tricks/lodge/legs/code/x")).toBeNull();
+    expect(route.exec("/api/tricks/lodge/legs/media/code")).toBeNull();
+  });
+
   test("server.ts gates the list as a read and the tap as a write, stamps the watch for a paired phone only, the switch as a write, and declares both routes", () => {
     const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
     const list = src.slice(src.indexOf('if (pathname === "/api/tricks" && req.method === "GET")'));
     // The rights live in one table in routes.ts; server.ts reads each route's level from it.
-    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read", auto: "write", undo: "write", official: "read", officialAdd: "write" });
+    expect(TRICKS_ROUTE_RIGHTS).toEqual({ reply: "read", tap: "write", switch: "write", media: "read", code: "read", auto: "write", undo: "write", official: "read", officialAdd: "write", feature: "write", value: "write" });
     expect(list.slice(0, 400)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.reply, pairingGate)");
     expect(list.slice(0, 600)).toContain("if (pairedLabel(req, pairingGate) !== null) tricks.noteWatched();");
     // The runner's PATH for the host's own CLI only is held by a real request in the crew harness
@@ -618,6 +672,11 @@ describe("the routes", () => {
     expect(media.slice(0, 200)).toContain('req.method === "GET"');
     expect(media.slice(0, 300)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.media, pairingGate)");
     expect(media.slice(0, 900)).toContain("secure(new Response(file.bytes, { headers: { \"content-type\": file.mime, ...HILL_MEDIA_HEADERS } }))");
+    // A trick's code for the About sheet's folds: read-gated like the list, a GET only.
+    expect(src).toContain("const TRICKS_CODE_ROUTE = /^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/code$/;");
+    const code = src.slice(src.indexOf("const tricksCode = TRICKS_CODE_ROUTE.exec(pathname);"));
+    expect(code.slice(0, 200)).toContain('req.method === "GET"');
+    expect(code.slice(0, 300)).toContain("guard(req, cfg, TRICKS_ROUTE_RIGHTS.code, pairingGate)");
     // The official list: its read gated like the list, its add and update like the switch.
     expect(src).toContain("const TRICKS_OFFICIAL_ROUTE = /^\\/api\\/tricks\\/official\\/([^/]+)\\/(add|update)$/;");
     const officialList = src.slice(src.indexOf('if (pathname === "/api/tricks/official" && req.method === "GET")'));

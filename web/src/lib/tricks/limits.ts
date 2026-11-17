@@ -19,6 +19,11 @@ export const STDERR_CAP_BYTES = 8 * 1024;
 export const RUNS_MAX = 4;
 /** The most decision answers waiting for one trick. One more is refused as busy. */
 export const HILL_QUEUE_MAX = 32;
+/**
+ * How long after a phone looked the timers keep running (`GET /api/snapshot` or `/api/tricks` from a paired
+ * phone). With no look in this span no trick runs on a clock, and the About sheet says so in this number.
+ */
+export const WATCH_WINDOW_MS = 5 * 60_000;
 /** The wait after the first, second and third failure in a row. The fourth stops the trick. */
 export const BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000] as const;
 
@@ -42,6 +47,15 @@ export const BASE_ENV_NAMES = [
   "BUN_INSTALL",
 ] as const;
 
+// ── Reading a trick's code on the phone (bridge/tricks/code-view.ts) ─────────────────────────
+
+/**
+ * The most bytes of one code file the About sheet's "Read the code" fold carries. A longer text file shows
+ * its first part, cut at a line end, and says how much is left out. The text search still reads
+ * `SOURCE_READ_MAX` (bridge/tricks/scan.ts) bytes, so a flag can sit in the part not shown; the fold says so.
+ */
+export const CODE_VIEW_BYTES_MAX = 32 * 1024;
+
 // ── The approved copy and the skill file (bridge/tricks/approved.ts, cli/trick.ts) ──────────
 
 /** The most files seeded into `media/` and `captures/` together. */
@@ -61,6 +75,26 @@ export const INPUT_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 export const INPUT_ANSWER_MAX_BYTES = 8 * 1024 * 1024;
 /** The most file bytes one run takes in all. */
 export const INPUT_RUN_MAX_BYTES = 24 * 1024 * 1024;
+
+// ── Fields: the settings a person keeps for a trick (contract 3, schema.ts `readFields`, bridge/tricks/values.ts) ──
+
+/** The most `[[field]]` tables one manifest lists. */
+export const FIELDS_MAX = 12;
+/** The longest label of a field, what its row on the phone says. */
+export const FIELD_LABEL_MAX = 40;
+/** The longest hint of a field, the second line of its row. */
+export const FIELD_HINT_MAX = 120;
+/** The longest value of a `text` field: one line. */
+export const FIELD_TEXT_MAX = 200;
+/** The fewest and the most options of a `choice` field. */
+export const FIELD_OPTIONS_MIN = 2;
+export const FIELD_OPTIONS_MAX = 8;
+/** The longest option of a `choice` field. */
+export const FIELD_OPTION_MAX = 40;
+/** The largest size of a `number` field's `min` and `max`, either sign: a whole number of at most nine digits. */
+export const FIELD_NUMBER_ABS_MAX = 999_999_999;
+/** The request ids of value writes one bridge remembers, so the same id twice writes once. The oldest goes first. */
+export const VALUE_WRITES_SEEN_MAX = 256;
 
 // ── Proposals (bridge/tricks/propose-wire.ts, proposals.ts, card-group.ts) ───────────────────
 

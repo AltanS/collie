@@ -31,6 +31,7 @@ import {
   type WireTrickPart,
   type WireTrickPending,
   type WireTrickWarning,
+  TRICKS_OFF_LINE,
   TRICKS_WINDOWS_LINE,
   isSourceUrl,
   tricksGated,
@@ -46,6 +47,7 @@ import { envPath, scrubEnv, type ProgramEnv } from "./env.ts";
 import { HOST, hostFor, type Host } from "../host.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import type { TrickInputs } from "./inputs.ts";
+import { codeFile, codeIndex, codeSource, type CodeFile, type CodeIndex } from "./code-view.ts";
 import { readTrickMedia, type TrickMediaFile } from "./media.ts";
 import { isUnlistedOfficialOrigin, shippedOfficialList, type OfficialEntry } from "./official.ts";
 import { originRepoName, type ProposalOrigin } from "./origin.ts";
@@ -60,12 +62,18 @@ import { outcomeProblem, runProgram, windowsRunProblem, type RunOutcome, type Ru
 import type { RepoFactsPort } from "./repo-facts.ts";
 import { trickWarnings, wireWarnings } from "./scan.ts";
 import { TricksStore, problemLine, type CliTricksExtra } from "./store.ts";
+import { TricksFeatureSwitch, type TricksFeaturePort } from "./feature-switch.ts";
 import { createSwitchReader, MIGRATED, updateSwitches, withApproval, withEntry, withFreshApproval, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
-import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX } from "../../web/src/lib/tricks/limits.ts";
+import { fieldsWire, SeenWrites, TrickValues, withValues } from "./values.ts";
+import { fieldValueProblem, isRequestId, isTrickId, type FieldRefusal, type FieldValue } from "../../web/src/lib/tricks/schema.ts";
+import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX, WATCH_WINDOW_MS } from "../../web/src/lib/tricks/limits.ts";
 import { menuMessageLine } from "../../web/src/lib/tricks/menu-message.ts";
+import type { EventBus } from "../events/bus.ts";
+import { TrickReactions, type Admit, type FloorTimers, type ReactionCounts, type ReactTrigger } from "./triggers.ts";
+import { WATCH_POLL_MS, type WatchOptions } from "./watch.ts";
 
 // The run caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
-export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX };
+export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX, WATCH_WINDOW_MS };
 
 // THE TRICKS RUNNER (M94 slice 01): which trick runs when, and what its run leaves behind.
 //
@@ -86,6 +94,9 @@ export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX };
 //     "watched" is a `/api/snapshot` or `/api/tricks` request from a paired phone (server.ts stamps it).
 //     The host's own CLI and a lead's sweep of this machine do not count. A `gh` trick on `30s` makes no
 //     call while the phone is in a pocket.
+//   * An event (`on`) or a file change (`watch`) runs a trick with NO phone open: only the timer waits for a
+//     look. Those runs keep every other bound here, and at least {@link REACT_FLOOR_MS} separates the
+//     STARTS of two of them (triggers.ts, THE FLOOR). Taps, Hill answers and timer runs are not delayed by it.
 //   * The first run after the trick is loaded, switched on, a new version approved or its `config.toml` changed has the
 //     trigger `start`; later ones `timer`, every `every` (at least 5 s) after the last run. A trick with
 //     no `every` runs once at start and then on taps only. Any other change in its folder (a log it
@@ -163,8 +174,7 @@ export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX };
 // of the version the person saw. The phone's tap route refuses a `hill/` node: a decision is answered
 // on the Hill.
 
-/** How long a phone's look keeps timers running. */
-export const WATCH_WINDOW_MS = 5 * 60_000;
+// How long a phone's look keeps timers running: WATCH_WINDOW_MS, in limits.ts so the About sheet names it.
 /** The scheduler's tick. A timer of 5 s therefore runs within a second of its due time. */
 export const TICK_MS = 1000;
 /** The least time between two scans of the tricks folder. */
@@ -241,7 +251,62 @@ export interface TricksSurface {
    * (media.ts), or null for every miss. Only a trick of this bridge that is switched on.
    */
   media(host: string, id: string, rel: string): Promise<TrickMediaFile | null>;
+  /**
+   * `GET /api/tricks/<host>/<id>/code[?file=<rel>]`: the index of a trick's code, or one file of it, as the
+   * About sheet's "Read the code" folds read them (code-view.ts). A read only; no right beyond the list's.
+   */
+  code(host: string, id: string, file: string | null): Promise<CodeAnswer>;
+  /** The switch for tricks as a whole (feature-switch.ts): whether tricks run here as far as the switches go. */
+  switchedOn(): boolean;
+  /** Move it from the phone (`POST /api/tricks/switch`): whether tricks are on now, or null when it could not be written. */
+  switchTo(on: boolean, device: string | null): boolean | null;
+  /** The Windows gate's line, or null where tricks run. */
+  gateLine(): string | null;
+  /**
+   * `POST /api/tricks/<host>/<id>/value` (contract 3): one field's value, with the request id the phone
+   * minted; null clears it back to the default. See {@link TricksService.setValue}.
+   */
+  setValue?(host: string, id: string, request: ValueRequest): Promise<ValueAnswer>;
 }
+
+/** The answer of the code route. */
+export type CodeAnswer =
+  | { status: 200; body: CodeIndex | CodeFile }
+  | { status: 404; body: { error: "unknown-host" | "unknown-trick" | "no-file"; message?: string } }
+  | { status: 409; body: { error: "windows" | "no-code" | "moved"; message: string } };
+
+/** One value write: the request id, the field's key, the value (null clears it). */
+export interface ValueRequest {
+  rid: string;
+  key: string;
+  value: FieldValue | null;
+}
+
+/** The receipt of a value write that took: the request id, the key, whether the value moved, the row now. */
+export interface ValueReceipt {
+  rid: string;
+  code: "ok";
+  key: string;
+  changed: boolean;
+  info: WireTrickInfo;
+}
+
+/** Why a value write was refused, as a code the phone and the CLI branch on: a field rule, or no such field. */
+export type ValueRefusalCode = FieldRefusal | "unknown-field";
+
+/** The value route's answer: the receipt, or why not in plain words that name the next step. */
+export type ValueAnswer =
+  | { status: 200; body: ValueReceipt }
+  | { status: 400; body: { error: "value-invalid" } }
+  | { status: 400; body: { error: "value-refused"; rid: string; code: ValueRefusalCode; message: string } }
+  | { status: 404; body: { error: "unknown-host" | "unknown-trick" } }
+  | { status: 409; body: { error: "request-id-reused"; rid: string } }
+  | { status: 409; body: { error: "windows" | "not-here" | "write-failed" | "tricks-off"; message: string } };
+
+/** The words of a value write on a bridge that runs no tricks: the values live where the tricks run, on the lead. */
+export const VALUES_ON_LEAD = "Tricks run on the lead of this crew, and their settings live there. Set the value on the lead, or on the phone.";
+/** The words of a value write the disk refused. */
+export const VALUES_WRITE_FAILED = "The value could not be saved on this machine. Try again; if it fails again, look at the bridge's log.";
 
 /** What the runner needs of the trick's decisions on the hill (hill.ts `TrickHill`). */
 export interface TricksHillPort {
@@ -300,7 +365,7 @@ export type VersionRouteAnswer =
   | { status: 200; body: WireTrickInfo }
   | { status: 400; body: { error: "auto-invalid" | "undo-invalid" } }
   | { status: 404; body: { error: "unknown-host" | "unknown-trick" } }
-  | { status: 409; body: { error: "off" | "no-pending" | "moved" | "no-previous" | "copy-failed" | "has-rules" | "windows"; message: string } };
+  | { status: 409; body: { error: "off" | "no-pending" | "moved" | "no-previous" | "copy-failed" | "has-rules" | "windows" | "tricks-off"; message: string } };
 
 /** A version change as a route's answer. */
 function routeAnswer(answer: VersionAnswer): VersionRouteAnswer {
@@ -317,7 +382,8 @@ export type ProposalTarget =
   | { kind: "new" }
   /** A trick a proposal made, on, with the approved copy a new version is shown against. */
   | { kind: "version"; baseHash: string; baseDir: string; baseManifest?: TrickManifest }
-  | { kind: "refused"; reason: string };
+  /** `code`: `no_tricks` while tricks as a whole are switched off (the wire's code for "tricks do not run here"). */
+  | { kind: "refused"; reason: string; code?: "no_tricks" };
 
 /** What writing a proposal into the tricks folder came to. */
 export type ProposalPlaced = { ok: true; codeHash: string } | { ok: false; message: string };
@@ -326,7 +392,7 @@ export type ProposalPlaced = { ok: true; codeHash: string } | { ok: false; messa
 export type SwitchAnswer =
   | { status: 200; body: WireTrickInfo }
   | { status: 400; body: { error: "switch-invalid" } }
-  | { status: 409; body: { error: "moved" | "windows" | "windows-shell"; message: string } }
+  | { status: 409; body: { error: "moved" | "windows" | "windows-shell" | "tricks-off"; message: string } }
   | { status: 404; body: { error: "unknown-host" | "unknown-trick" } };
 
 export interface TricksServiceDeps {
@@ -415,6 +481,23 @@ export interface TricksServiceDeps {
    * read of the list asks for the stale ones; the read never waits for them. Absent: no facts, no read.
    */
   repoFacts?: RepoFactsPort;
+  /**
+   * The switch for tricks as a whole (feature-switch.ts), read on each use. Absent: the file switch of
+   * `stateDir`, so a runner built without one reads no file as OFF and runs nothing (fail closed). A test
+   * that runs tricks passes `{ on: () => true }`.
+   */
+  feature?: TricksFeaturePort & { onChange?(listener: (on: boolean) => void): () => void };
+  /**
+   * Told the count of switched-on tricks after a scan or a switch moved it, and once after the first
+   * scan. bridge/index.ts opens the local API socket while it is above zero (M105 spec 03, decision 14).
+   */
+  onSwitchedOnCount?: (count: number) => void;
+  /** The bridge's event bus: a trick that lists `on` runs on its events (triggers.ts). Absent: `on` runs nothing. */
+  bus?: EventBus;
+  /** The file watch's knobs, for a test (watch.ts). Absent: the production values. */
+  watchOptions?: WatchOptions;
+  /** The timer of the 10 second floor between two event or watch runs, for a test (triggers.ts). Absent: `setTimeout`. */
+  reactionTimers?: FloorTimers;
 }
 
 /** The approved copy a trick runs from, as read and verified. */
@@ -444,7 +527,7 @@ interface PendingVersion {
 /** What a version change answers: the trick as the list now shows it, or why not. */
 export type VersionAnswer =
   | { ok: true; info: WireTrickInfo }
-  | { ok: false; code: "unknown-trick" | "off" | "no-pending" | "moved" | "no-previous" | "copy-failed" | "has-rules" | "windows"; message: string };
+  | { ok: false; code: "unknown-trick" | "off" | "no-pending" | "moved" | "no-previous" | "copy-failed" | "has-rules" | "windows" | "tricks-off"; message: string };
 
 /** The rights an approval holds against the rights its copy asks for now (fault B). */
 export interface RightsMoved {
@@ -477,7 +560,10 @@ function tapTrigger(tap: Pick<QueuedTap, "request" | "seen">): FactsTrigger {
 interface TrickRuntime {
   /** The trick's folder, as the scan last read it. */
   found: FoundTrick;
+  /** On and live: its own switch is on AND tricks as a whole are on. Every run and part reads this. */
   on: boolean;
+  /** Its own switch (`switches.json`), whatever the switch for tricks as a whole says: what its row shows. */
+  own: boolean;
   /** The switch entry, while on. */
   entry: SwitchEntry | undefined;
   /** On, and the folder no longer hashes to the approved version: a new version is there. */
@@ -652,6 +738,20 @@ export class TricksService implements TricksSurface {
   private warningRead: Promise<void> | null = null;
   /** When the unreferenced copies were last pruned. */
   private prunedAt = -Infinity;
+  /** The switch for tricks as a whole (feature-switch.ts). */
+  private readonly feature: NonNullable<TricksServiceDeps["feature"]> & { set?(on: boolean): boolean };
+  /** The last scan found tricks switched off as a whole: every runtime is folded in as off, its own switch kept. */
+  private suspended = false;
+  /** The switched-on count last told to `onSwitchedOnCount`; null before the first. */
+  private switchedOnTold: number | null = null;
+  /** `on` and `watch`: the bus subscription, the file watches and the waiting requests (triggers.ts). */
+  private readonly reactions: TrickReactions;
+  /** The tricks whose file watch fell back to a stat check (watch.ts): the row says it, from `watchPollSeconds`. */
+  private readonly watchPolled = new Set<string>();
+  /** The values a person keeps for each trick (contract 3, values.ts). */
+  private readonly values: TrickValues;
+  /** The request ids of value writes already taken, with their receipts: the same id twice writes once. */
+  private readonly valueWrites = new SeenWrites<ValueAnswer>();
 
   constructor(deps: TricksServiceDeps) {
     this.deps = deps;
@@ -661,6 +761,69 @@ export class TricksService implements TricksSurface {
     this.scanner = createTrickScanner(tricksConfigDir(deps.configDir), { warn: this.warn });
     this.readSwitches = createSwitchReader(deps.stateDir, this.warn);
     this.receiptFile = deps.receipts ?? new TrickReceiptStore(deps.stateDir, this.warn);
+    this.values = new TrickValues(deps.stateDir);
+    this.reactions = new TrickReactions(
+      { admit: (id) => this.reactAdmit(id), start: (id, trigger) => this.reactStart(id, trigger), due: (id) => this.reactDue(id), note: (id, note) => this.reactNote(id, note), warn: this.warn },
+      { bus: deps.bus, watch: deps.watchOptions, now: this.now, timers: deps.reactionTimers },
+    );
+    this.feature = deps.feature ?? new TricksFeatureSwitch(deps.stateDir, this.warn);
+    // A move of the switch folds in at once (after the read that saw it), so the parts go and the rows move.
+    this.feature.onChange?.(() => {
+      queueMicrotask(() => {
+        this.scannedAt = -Infinity;
+        void this.refresh(true);
+      });
+    });
+  }
+
+  // ── The switch for tricks as a whole (feature-switch.ts) ─────────────────────────────────────
+  // THE CHECK POINT. Tricks are an experiment, off by default. While the switch is off:
+  //   * every run passes `recheck` right before its program starts (start, timer, tap, a Decision's
+  //     answer, an `on` event, a `watch` change: every run goes through `begin`), and `recheck` refuses first;
+//   * `on` and `watch` (triggers.ts) hold nothing open while off: `syncReactions` gives triggers.ts no target,
+//     so the bus subscription and the file watches close, and `reactAdmit` drops a request that still arrives;
+  //   * a scan folds every trick in as off (`refresh`, `applyOne`): its parts are dropped, its approved copy
+  //     is unloaded, no agent view passes `viewGate`, nothing is due; its own switch is kept for its row;
+  //   * the doors that read without a scan or write before one ask `switchedOff()` themselves: `reply`
+  //     (no parts), `sessionPanes`, `viewGate`, `media`, `tick`, `runTap`, `runOnce` after the program
+  //     ends, `setSwitch`, `approvePending`, `declinePending`, `undo`, `setAuto`, `officialLane`,
+  //     `proposalTarget`, `installProposed`, `installProposedVersion`.
+  // A trick's open Decisions are not withdrawn by it: the Hill hides them while tricks are off and refuses
+  // their answers, as it keeps its own waiting Decisions while the Hill is off (hill/service.ts
+  // `tricksOff`). The Windows gate stays first everywhere.
+
+  /** Whether tricks as a whole are switched off on this machine. No switch file is off. */
+  switchedOff(): boolean {
+    return !this.feature.on();
+  }
+
+  /**
+   * Whether tricks run on this bridge as far as the switches go: not gated, and switched on. Synchronous,
+   * for the local API (it opens while this is true and tricks run on this bridge).
+   */
+  switchedOn(): boolean {
+    return !this.gated() && this.feature.on();
+  }
+
+  /** Listen for a move of the switch for tricks as a whole; the answer stops listening. */
+  onSwitchChange(listener: (on: boolean) => void): () => void {
+    return this.feature.onChange?.(listener) ?? (() => {});
+  }
+
+  /** The line a door answers while tricks are switched off, or null while they are on. Windows answers its own line first. */
+  offLine(): string | null {
+    return this.switchedOff() ? TRICKS_OFF_LINE : null;
+  }
+
+  /**
+   * Move the switch for tricks as a whole from the phone. Answers whether tricks are on now, or null when it
+   * could not be written (nothing changed). Refused (null) on a Windows bridge. One `tricks.switch` audit line.
+   */
+  switchTo(on: boolean, device: string | null = null): boolean | null {
+    if (this.gated()) return null;
+    if (this.feature.set?.(on) !== true) return null;
+    this.deps.audit?.({ action: "tricks.switch", detail: device === null ? { on: String(on) } : { on: String(on), device } });
+    return this.feature.on();
   }
 
   // ── The Windows gate ────────────────────────────────────────────────────────────────────────
@@ -689,9 +852,39 @@ export class TricksService implements TricksSurface {
     this.timer.unref?.();
   }
 
+  /**
+   * ONE SCAN AT BRIDGE START, so a trick that reacts (`on`, `watch`) and the local API stand without a
+   * phone's look (the lead, 2026-11-17). Only where it is needed: never while the Windows gate is closed,
+   * never where tricks do not run (`deps.active` false: a crew peer, a deputy, a deposed lead), and only
+   * when the switch file holds a trick that is on. Then one forced scan (it also tells the switched-on
+   * count, which opens the local API), and the start run of each trick that reacts, since a trick takes
+   * no event before its start run. A trick that only runs on its timer still waits for a phone, as
+   * before. One scan, not a loop: a failure is logged once, and the next phone look scans as today.
+   * Resolves when the start runs it began are done, which is what a test waits on.
+   */
+  async boot(): Promise<void> {
+    if (this.gated() || this.deps.active?.() === false) return;
+    try {
+      const switches = await this.readSwitches();
+      if (switches.on.size === 0) return;
+      await this.refresh(true);
+      const now = this.now();
+      const started: Promise<void>[] = [];
+      for (const rt of this.runtimes.values()) {
+        const manifest = rt.approved?.found.manifest;
+        const reacts = (manifest?.on?.length ?? 0) > 0 || (manifest?.watch?.length ?? 0) > 0;
+        if (reacts && rt.pendingStart && this.due(rt, now)) started.push(this.begin(rt, { kind: "start" }, null));
+      }
+      await Promise.all(started);
+    } catch (err) {
+      this.warn(`the scan at start failed, the next phone look scans: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   stop(): void {
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
+    this.reactions.close();
   }
 
   /**
@@ -740,11 +933,14 @@ export class TricksService implements TricksSurface {
     // A phone's read asks for the repositories' facts (repo-facts.ts): lazily, in the background, within the
     // cap. The host's own CLI shows none, so its read asks for none.
     if (opts?.forCli !== true) this.deps.repoFacts?.want(this.sourceUrls());
-    return this.store.reply(since, opts?.forCli === true && this.folderExists ? this.runnerPath() : undefined, this.deps.runsOn?.(), { bound: opts?.bound === true });
+    const out = this.store.reply(since, opts?.forCli === true && this.folderExists ? this.runnerPath() : undefined, this.deps.runsOn?.(), { bound: opts?.bound === true });
+    // Switched off: the list stays readable, and no part rides along, even one a scan has not dropped yet.
+    if (this.switchedOff()) return { ...out, parts: [], present: [], off: true };
+    return out;
   }
 
   sessionPanes(): TrickSessionPanes | undefined {
-    if (!this.folderExists || this.gated()) return undefined;
+    if (!this.folderExists || this.gated() || this.switchedOff()) return undefined;
     this.rebind();
     const all = this.store.reply(undefined);
     return trickSessionPanes({
@@ -766,6 +962,7 @@ export class TricksService implements TricksSurface {
    */
   viewGate(id: string): ViewGate {
     if (this.gated()) return { ok: false, code: "trick_off", error: TRICKS_WINDOWS_LINE };
+    if (this.switchedOff()) return { ok: false, code: "trick_off", error: TRICKS_OFF_LINE };
     const rt = this.runtimes.get(id);
     if (rt === undefined) return { ok: false, code: "no_trick", error: `no trick "${id}" on this machine` };
     const entry = rt.entry;
@@ -812,6 +1009,8 @@ export class TricksService implements TricksSurface {
           switches = await this.readSwitches();
         }
         const scan = await this.scanner.scan(new Set(switches.on.keys()));
+        // Read after the switch file, so a scan never folds in a switch older than the one it read.
+        this.suspended = this.switchedOff();
         this.apply(scan, switches);
         // A snapshot of the runtimes: each step awaits, and the loop must not see the map move under it.
         const runtimes = [...this.runtimes.values()];
@@ -819,6 +1018,7 @@ export class TricksService implements TricksSurface {
         for (const rt of runtimes) await this.notePending(rt);
         this.syncVersions();
         this.syncRights();
+        this.syncReactions();
         await this.readWarnings();
         await this.prune(switches);
       } catch (err) {
@@ -856,11 +1056,41 @@ export class TricksService implements TricksSurface {
       // A trick removed while the bridge was down has its open decisions withdrawn too.
       this.deps.decisions?.prune(ids, host);
     }
-    for (const found of scan.tricks) this.applyOne(found, switches.on.get(found.id));
+    for (const found of scan.tricks) this.applyOne(found, this.liveEntry(switches, found.id), switches.on.has(found.id));
+    this.tellSwitchedOn();
   }
 
-  /** Fold one trick folder and its switch entry into its runtime and its list entry. */
-  private applyOne(found: FoundTrick, entry: SwitchEntry | undefined): void {
+  /**
+   * Tell `onSwitchedOnCount` the count of switched-on tricks, when it moved. Never throws. The count is 0
+   * where tricks do not run (the Windows gate; `deps.active` false: a crew peer, a deputy, a deposed lead),
+   * so the local API opens only where a trick is on AND tricks run. A trick switched on but stopped (its
+   * rights, the backoff) still counts.
+   */
+  private tellSwitchedOn(): void {
+    let count = 0;
+    const runsHere = !this.gated() && this.deps.active?.() !== false;
+    if (runsHere) for (const rt of this.runtimes.values()) if (rt.on) count += 1;
+    if (count === this.switchedOnTold) return;
+    this.switchedOnTold = count;
+    try {
+      this.deps.onSwitchedOnCount?.(count);
+    } catch (err) {
+      this.warn(`the switched-on count could not be told: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** A trick's switch entry as runs read it: none while tricks are switched off as a whole (`suspended`). */
+  private liveEntry(switches: Switches, id: string): SwitchEntry | undefined {
+    return this.suspended ? undefined : switches.on.get(id);
+  }
+
+  /**
+   * Fold one trick folder and its switch entry into its runtime and its list entry. `entry` is the live one
+   * ({@link liveEntry}: none while tricks are switched off); `own` is the trick's own switch, kept for its
+   * row. A trick's open Decisions are withdrawn when ITS switch goes off, never for the switch of tricks as
+   * a whole (the Hill hides them meanwhile).
+   */
+  private applyOne(found: FoundTrick, entry: SwitchEntry | undefined, own: boolean): void {
     const host = this.deps.memberId;
     const on = entry !== undefined;
     const changed = isChanged(entry, found);
@@ -869,6 +1099,7 @@ export class TricksService implements TricksSurface {
       this.runtimes.set(found.id, {
         found,
         on,
+        own,
         entry,
         changed,
         approved: null,
@@ -886,16 +1117,21 @@ export class TricksService implements TricksSurface {
         hillQueue: [],
         docRefusals: [],
       });
-      // Off at start (switched off while the bridge was down): its open decisions go.
-      if (!on) this.deps.decisions?.off({ id: found.id, name: found.manifest?.name ?? found.id, memberId: host });
+      // Off at start (switched off while the bridge was down): its open decisions go. Not for a trick that is
+      // on while tricks as a whole are off: its Decisions wait, hidden, for the switch.
+      if (!own) this.deps.decisions?.off({ id: found.id, name: found.manifest?.name ?? found.id, memberId: host });
       this.publish(found.id);
+      this.tellSwitchedOn();
       return;
     }
     // A change of the folder restarts nothing: the trick runs its approved copy, and a new version waits
     // (notePending). A config.toml edit restarts it once it reaches the copy (ensureApproved).
     old.found = found;
     const switched = old.on !== on;
+    // Its own switch went off: its Decisions go, also while tricks as a whole were off and it ran nothing.
+    const ownOff = old.own && !own;
     old.on = on;
+    old.own = own;
     old.entry = entry;
     old.changed = changed;
     if (switched && !on) {
@@ -905,11 +1141,12 @@ export class TricksService implements TricksSurface {
       old.pending = null;
       old.settle = null;
       this.store.dropParts(host, found.id);
-      this.deps.decisions?.off(this.hillTrick(old));
       this.deps.inputs?.forget(found.id);
     }
+    if (ownOff) this.deps.decisions?.off(this.hillTrick(old));
     if (switched && on) this.restart(old);
     this.publish(found.id);
+    this.tellSwitchedOn();
   }
 
   /**
@@ -1176,7 +1413,8 @@ export class TricksService implements TricksSurface {
 
   /** Fold a switch file just written into the runtime, and answer the row. */
   private async foldIn(rt: TrickRuntime, found: FoundTrick, switches: Switches): Promise<VersionAnswer> {
-    this.applyOne(found, switches.on.get(found.id));
+    // Reached only while tricks as a whole are on (every caller asks `switchedOff` first), but folded in the same way.
+    this.applyOne(found, this.liveEntry(switches, found.id), switches.on.has(found.id));
     await this.ensureApproved(rt);
     this.publish(found.id);
     this.syncVersions();
@@ -1211,6 +1449,7 @@ export class TricksService implements TricksSurface {
    */
   async approvePending(id: string, hash: string, by = "phone"): Promise<VersionAnswer> {
     if (this.gated()) return { ok: false, code: "windows", message: TRICKS_WINDOWS_LINE };
+    if (this.switchedOff()) return { ok: false, code: "tricks-off", message: TRICKS_OFF_LINE };
     return await this.serial(async () => {
       const rt = this.onRuntime(id);
       if (!("found" in rt)) return rt;
@@ -1223,6 +1462,7 @@ export class TricksService implements TricksSurface {
    * holds it. The approved copy keeps running. Refused like {@link approvePending}.
    */
   async declinePending(id: string, hash: string): Promise<VersionAnswer> {
+    if (this.switchedOff()) return { ok: false, code: "tricks-off", message: TRICKS_OFF_LINE };
     return await this.serial(async () => {
       const rt = this.onRuntime(id);
       if (!("found" in rt)) return rt;
@@ -1246,6 +1486,7 @@ export class TricksService implements TricksSurface {
    */
   async undo(id: string): Promise<VersionAnswer> {
     if (this.gated()) return { ok: false, code: "windows", message: TRICKS_WINDOWS_LINE };
+    if (this.switchedOff()) return { ok: false, code: "tricks-off", message: TRICKS_OFF_LINE };
     return await this.serial(async () => {
       const rt = this.onRuntime(id);
       if (!("found" in rt)) return rt;
@@ -1272,6 +1513,7 @@ export class TricksService implements TricksSurface {
    */
   async setAuto(id: string, on: boolean): Promise<VersionAnswer> {
     if (this.gated()) return { ok: false, code: "windows", message: TRICKS_WINDOWS_LINE };
+    if (this.switchedOff()) return { ok: false, code: "tricks-off", message: TRICKS_OFF_LINE };
     return await this.serial(async () => {
       const rt = this.onRuntime(id);
       if (!("found" in rt)) return rt;
@@ -1380,7 +1622,8 @@ export class TricksService implements TricksSurface {
       id,
       name: m?.name ?? id,
       icon: m?.icon ?? "plug",
-      on: rt.on && !rightsStop,
+      // While tricks as a whole are off, the trick's own switch: it runs again once they are on.
+      on: rt.on ? !rightsStop : rt.own,
       state: trickStateOf({ on: rt.on, found: shown, stopped: rt.stopped, failures: rt.failures, blocked: blocked && m !== undefined }),
       places: m?.places ?? [],
       provenance: { via: "folder" },
@@ -1412,16 +1655,25 @@ export class TricksService implements TricksSurface {
     if (rt.lastRunAt !== undefined) info.lastRunAt = new Date(rt.lastRunAt).toISOString();
     const refusals = [...shown.refusals, ...rt.docRefusals].slice(0, REFUSALS_MAX);
     if (refusals.length > 0) info.refusals = refusals;
+    // A note, not a refusal: nothing was refused, the watch only checks on a clock (the row says it alone).
+    if (this.watchPolled.has(id)) info.watchPollSeconds = WATCH_POLL_MS / 1000;
     if (rt.changed) info.changed = true;
     if (rt.pending !== null) info.pending = rt.pending.info;
     if (rt.decides === true) info.decides = true;
     // Fault B: the phone says RIGHTS_LINE in its own words, from this flag.
     if (rightsStop) info.rightsMoved = true;
     if (m?.env !== undefined) info.env = m.env;
+    // `on` and `watch` are rights (M105 step one): the row and the card say them in words.
+    if (m?.on !== undefined) info.events = m.on;
+    if (m?.watch !== undefined) info.watch = m.watch;
     if (m?.inputs !== undefined && m.inputs.length > 0) info.inputs = { globs: m.inputs, crew: this.deps.crewWide?.() ?? false };
     if (m?.description !== undefined) info.description = m.description;
     if (m?.about !== undefined) info.about = m.about;
     if (m?.version !== undefined) info.version = m.version;
+    // How the program starts and how often: the run line, masked as a screen read is, and the timer. The
+    // About sheet says both in plain words; a trick with no run line (an agent view alone) has neither.
+    if (m?.run !== undefined) info.run = redactText(m.run);
+    if (m?.run !== undefined && m.everyMs !== undefined) info.everyMs = m.everyMs;
     // Contract 2: an agent view and its rules, whole, for the About sheet; this build draws no view yet.
     const approves = approvesOf(rt);
     if (approves !== undefined) info.approves = approves;
@@ -1435,6 +1687,8 @@ export class TricksService implements TricksSurface {
     if (info.on && rt.entry?.by === "auto" && rt.entry.previous !== undefined) info.autoAt = rt.entry.at;
     const taken = this.warningsOf.get(id);
     if (this.wantsWarnings(rt) && taken !== undefined && taken.codeHash === rt.found.codeHash && taken.warnings.length > 0) info.warnings = taken.warnings;
+    // Contract 3: the fields of what runs, the values set, and "Needs setup" (values.ts).
+    Object.assign(info, fieldsWire(m, this.values.read(id)));
     this.store.setInfo(info);
   }
 
@@ -1476,9 +1730,17 @@ export class TricksService implements TricksSurface {
    * run started. Resolves when the runs it started are done, which is what a test waits on.
    */
   async tick(): Promise<void> {
+    // First, before every gate: `deps.active` can change while the bridge runs (a lead deposed, a deputy
+    // crowned), and the local API's count reads it. `tellSwitchedOn` tells only a change.
+    this.tellSwitchedOn();
+    if (this.gated()) return;
+    // Read the switch for tricks as a whole on every tick, watched or not, so its listeners hear a move
+    // written by the terminal within a second. Off starts nothing.
+    const off = this.switchedOff();
     // A peer, a deputy and a deposed lead schedule nothing (`deps.active`), so no trick runs twice in a crew.
-    if (!this.watched() || this.deps.active?.() === false || this.gated()) return;
+    if (!this.watched() || this.deps.active?.() === false || off) return;
     await this.refresh();
+    if (this.switchedOff()) return;
     const now = this.now();
     const started: Promise<void>[] = [];
     for (const rt of this.runtimes.values()) {
@@ -1496,11 +1758,14 @@ export class TricksService implements TricksSurface {
    */
   private async recheck(rt: TrickRuntime): Promise<string | null> {
     const id = rt.found.id;
+    // THE CHECK POINT of every run (the switch for tricks as a whole), first, and again after the reads below.
+    if (this.switchedOff()) return TRICKS_OFF_LINE;
     if (this.runtimes.get(id) !== rt) return "The trick is gone.";
     const [found, switches] = await Promise.all([this.scanner.one(id), this.readSwitches()]);
     if (found === null) return "The trick's folder could not be read again before the run.";
     if (this.runtimes.get(id) !== rt) return "The trick is gone.";
-    this.applyOne(found, switches.on.get(id));
+    if (this.switchedOff()) return TRICKS_OFF_LINE;
+    this.applyOne(found, switches.on.get(id), switches.on.has(id));
     await this.ensureApproved(rt);
     if (!rt.on) return "The trick is off.";
     if (rt.approved === null || rt.copyProblem !== null) return rt.copyProblem ?? (rt.pending === null ? NOT_APPROVED_LINE : PENDING_LINE);
@@ -1553,6 +1818,9 @@ export class TricksService implements TricksSurface {
     })();
     rt.running = run.finally(() => {
       rt.running = null;
+      // The run's own writes are absorbed by the file watch (watch.ts), then the next waiting request goes.
+      this.syncReactions();
+      this.reactions.ended(rt.found.id);
       this.pump(rt);
     });
     return rt.running;
@@ -1562,9 +1830,73 @@ export class TricksService implements TricksSurface {
   private pump(rt: TrickRuntime): void {
     if (rt.running !== null) return;
     const next = rt.hillQueue.shift() ?? rt.queued;
-    if (next === null) return;
+    if (next === null) return this.pumpReaction(rt);
     if (next === rt.queued) rt.queued = null;
     void this.begin(rt, tapTrigger(next), next);
+  }
+
+  // ── `on` and `watch` (M105 spec 03, decisions 9 to 11): the logic lives in triggers.ts and watch.ts ──────
+
+  /** Whether a request from an event or a watched file may run: the gates of `tick` except the phone, and the trick's own state. */
+  private reactAdmit(id: string): Admit {
+    const rt = this.runtimes.get(id);
+    // No `watched()` here: an event or a file change runs with no phone open (only the timer waits for one),
+    // and triggers.ts holds the floor between two such starts.
+    // Tricks switched off as a whole drop the request too (never held for the switch): THE CHECK POINT.
+    if (rt === undefined || this.deps.active?.() === false || this.gated() || this.switchedOff()) return "drop";
+    // A trick that has not had its start run, is stopped, or backs off after a failure takes no request: it is dropped, never held.
+    if (!this.runnable(rt) || rt.stopped || rt.pendingStart || rt.approved?.found.manifest?.run === undefined) return "drop";
+    if (rt.failures > 0 && this.now() < rt.nextAt) return "drop";
+    return rt.running !== null || rt.queued !== null || rt.hillQueue.length > 0 ? "wait" : "now";
+  }
+
+  private reactStart(id: string, trigger: ReactTrigger): void {
+    const rt = this.runtimes.get(id);
+    if (rt !== undefined) void this.begin(rt, trigger, null);
+  }
+
+  /** The floor ended for a trick with a waiting request: start it unless a run or a tap is ahead (`pump` takes those first). */
+  private reactDue(id: string): void {
+    const rt = this.runtimes.get(id);
+    if (rt !== undefined) this.pump(rt);
+  }
+
+  private reactNote(id: string, why: string | null): void {
+    if (why === null) this.watchPolled.delete(id);
+    else {
+      this.watchPolled.add(id);
+      // The system's error code lives in the log only; the row's sentence carries none.
+      this.warn(`${id}: could not watch its files (${why}); checking them every ${String(WATCH_POLL_MS / 1000)} seconds`);
+    }
+    this.publish(id);
+  }
+
+  /** What the reactions hold open (bus subscription, watches, timers) and what waits. For a test. */
+  reactionCounts(): ReactionCounts {
+    return this.reactions.counts();
+  }
+
+  /**
+   * The waiting event or file request of a trick that runs nothing, after every tap and Hill answer. Admit
+   * is asked first, then the request is taken (security read 2, item 2): a refused admit (a backoff, say)
+   * leaves the waiting request and the floor as they were, so the next pump still finds it.
+   */
+  private pumpReaction(rt: TrickRuntime): void {
+    if (this.reactAdmit(rt.found.id) !== "now") return;
+    const waiting = this.reactions.takeWaiting(rt.found.id);
+    if (waiting !== null) void this.begin(rt, waiting, null);
+  }
+
+  /** Tell triggers.ts which tricks react now: on, runnable, with a program, on a bridge that schedules. */
+  private syncReactions(): void {
+    // Tricks switched off as a whole react to nothing: no bus subscription and no file watch stays open.
+    const live = !this.gated() && this.deps.active?.() !== false && !this.switchedOff();
+    const targets = [...this.runtimes.values()].flatMap((rt) => {
+      const manifest = rt.approved?.found.manifest;
+      if (!live || !this.runnable(rt) || rt.approved === null || manifest?.run === undefined || (manifest.on === undefined && manifest.watch === undefined)) return [];
+      return [{ id: rt.found.id, key: `${rt.approved.hash}:${rt.approved.found.configHash ?? ""}`, events: manifest.on ?? [], watch: manifest.watch ?? [] }];
+    });
+    this.reactions.sync(targets);
   }
 
   /**
@@ -1624,7 +1956,8 @@ export class TricksService implements TricksSurface {
         return inputs === undefined ? session : { ...session, inputs };
       });
     }
-    const facts = buildFacts({ memberId: host, ...world }, { id, dir: run.dir, state }, trigger, manifest.contract);
+    // Contract 3: the person's values ride in the facts, and nowhere else (values.ts `withValues`).
+    const facts = withValues(buildFacts({ memberId: host, ...world }, { id, dir: run.dir, state }, trigger, manifest.contract), manifest, this.values.read(id));
     const outcome = await (this.deps.run ?? runProgram)({
       command,
       cwd: run.dir,
@@ -1634,8 +1967,9 @@ export class TricksService implements TricksSurface {
       ...this.deps.limits,
     });
     rt.lastRunAt = startedAt;
-    // A run that was switched off, removed or changed while it ran leaves nothing behind.
-    if (this.runtimes.get(id) !== rt || !rt.on) {
+    // A run that was switched off (its own switch or tricks as a whole), removed or changed while it ran
+    // leaves nothing behind: no part, no Decision.
+    if (this.runtimes.get(id) !== rt || !rt.on || this.switchedOff()) {
       return { rid, code: "rejected", message: "The trick was switched off while it ran." };
     }
     // A copy that stopped while the program ran (it changed on disk) keeps nothing of that run.
@@ -1831,6 +2165,8 @@ export class TricksService implements TricksSurface {
   private async runTap(host: string, id: string, request: TapRequest, seen: string | undefined, phone?: { rev: number | undefined }): Promise<TapAnswer> {
     if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
     if (this.gated()) return { status: 200, body: { rid: request.rid, code: "rejected", message: TRICKS_WINDOWS_LINE } };
+    // Switched off: nothing runs and no receipt is kept, so the same rid may tap again once tricks are on.
+    if (this.switchedOff()) return { status: 200, body: { rid: request.rid, code: "rejected", message: TRICKS_OFF_LINE } };
     const digest = payloadDigest([id, request.node, request.intent, JSON.stringify(request.value ?? null), request.from?.session ?? ""]);
     // A replay answers the same receipt again, from the receipt log, unchanged (the tree's intent rule).
     const kept = this.receipts.get(request.rid);
@@ -1898,13 +2234,27 @@ export class TricksService implements TricksSurface {
   }
 
   async media(host: string, id: string, rel: string): Promise<TrickMediaFile | null> {
-    if (!this.isOwn(host) || this.gated()) return null;
+    if (!this.isOwn(host) || this.gated() || this.switchedOff()) return null;
     await this.refresh();
     const rt = this.runtimes.get(id);
     // A trick the person never switched on gets nothing served, whatever its folder holds. The pictures
     // are the approved copy's: its program writes them there.
     if (rt === undefined || !rt.on || rt.approved === null || rt.copyProblem !== null) return null;
     return readTrickMedia(rt.approved.dir, rel);
+  }
+
+  async code(host: string, id: string, file: string | null): Promise<CodeAnswer> {
+    if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
+    if (this.gated()) return { status: 409, body: { error: "windows", message: TRICKS_WINDOWS_LINE } };
+    await this.refresh();
+    const rt = this.runtimes.get(id);
+    if (rt === undefined) return { status: 404, body: { error: "unknown-trick" } };
+    // The approved copy while one runs, else what a switch on would approve; code-view.ts says why and checks the bytes.
+    const source = codeSource(rt);
+    if (source === null) return { status: 409, body: { error: "no-code", message: "This trick has no code that can be read." } };
+    const read = file === null ? await codeIndex(source) : await codeFile(source, file);
+    if (read.ok) return { status: 200, body: read.body };
+    return read.code === "no-file" ? { status: 404, body: { error: "no-file", message: read.message } } : { status: 409, body: { error: read.code, message: read.message } };
   }
 
   /**
@@ -1917,6 +2267,8 @@ export class TricksService implements TricksSurface {
   async setSwitch(host: string, id: string, on: boolean, hash?: string | null): Promise<SwitchAnswer> {
     if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
     if (this.gated()) return { status: 409, body: { error: "windows", message: TRICKS_WINDOWS_LINE } };
+    // A trick's own switch waits for the switch of tricks as a whole (the terminal's `collie trick on|off` still writes it).
+    if (this.switchedOff()) return { status: 409, body: { error: "tricks-off", message: TRICKS_OFF_LINE } };
     const turn = this.switching.then(() => this.writeSwitch(id, on, hash));
     this.switching = turn.catch(() => {});
     return await turn;
@@ -1941,6 +2293,7 @@ export class TricksService implements TricksSurface {
   async officialLane<T>(work: () => Promise<T>): Promise<T> {
     // OfficialTricks.install asks `gateLine` before it fetches; this is the second lock on the write.
     if (this.gated()) throw new Error(TRICKS_WINDOWS_LINE);
+    if (this.switchedOff()) throw new Error(TRICKS_OFF_LINE);
     return await this.lane(async () => {
       await this.refresh(true);
       const out = await work();
@@ -1958,6 +2311,7 @@ export class TricksService implements TricksSurface {
    */
   async proposalTarget(id: string): Promise<ProposalTarget> {
     if (this.gated()) return { kind: "refused", reason: TRICKS_WINDOWS_LINE };
+    if (this.switchedOff()) return { kind: "refused", reason: TRICKS_OFF_LINE, code: "no_tricks" };
     await this.refresh(true);
     return this.targetOf(id);
   }
@@ -1985,6 +2339,7 @@ export class TricksService implements TricksSurface {
    */
   async installProposed(id: string, files: readonly ProposedFile[], origin: ProposalOrigin, cardHash: string): Promise<ProposalPlaced> {
     if (this.gated()) return { ok: false, message: TRICKS_WINDOWS_LINE };
+    if (this.switchedOff()) return { ok: false, message: TRICKS_OFF_LINE };
     // Decision 4 (2026-11-16): the bytes handed in are the card's, or nothing is written.
     if (proposalHash(files) !== cardHash) return { ok: false, message: PROPOSAL_CHANGED };
     return await this.lane(async () => {
@@ -2011,6 +2366,7 @@ export class TricksService implements TricksSurface {
    */
   async installProposedVersion(id: string, files: readonly ProposedFile[], origin: ProposalOrigin, baseHash: string, cardHash: string): Promise<ProposalPlaced> {
     if (this.gated()) return { ok: false, message: TRICKS_WINDOWS_LINE };
+    if (this.switchedOff()) return { ok: false, message: TRICKS_OFF_LINE };
     if (proposalHash(files) !== cardHash) return { ok: false, message: PROPOSAL_CHANGED };
     return await this.lane(async () => {
       await this.refresh(true);
@@ -2073,5 +2429,70 @@ export class TricksService implements TricksSurface {
     const info = this.store.reply(this.store.rev).tricks.find((trick) => trick.id === id);
     if (info === undefined) return { status: 404, body: { error: "unknown-trick" } };
     return { status: 200, body: info };
+  }
+
+  // ── The values a person keeps (contract 3, values.ts) ─────────────────────────────────────────────
+  // One write route (`POST /api/tricks/<host>/<id>/value`, write right). The phone is the only writer in this
+  // version: no terminal verb and no socket op (the lead, 2026-11-17). It runs in the lane switch writes take.
+  // A write carries a request id: the same id with the same payload is answered with the first receipt and
+  // writes nothing; with another payload it is refused. A value that breaks its field's rule is refused with
+  // the rule's code and a sentence that names the next step. One audit line per write that took: the trick
+  // and the field, NEVER the value. A changed value does not ask again: it restarts the trick once, as a
+  // config.toml edit does. The fields are those of what runs (the approved copy while on, else the folder),
+  // so a field of a version that waits for a yes cannot be set before that yes.
+  //
+  // KNOWN LIMITS (accepted by the lead, 2026-11-17): the seen-id store is memory only, so a bridge restart
+  // forgets the ids, and the same id sent again after a restart writes the same value again (no visible
+  // change). Value writes are not rate limited beyond the trick's own one-run slot: each changed value
+  // queues one run of the trick, and runs never overlap.
+
+  async setValue(host: string, id: string, request: ValueRequest): Promise<ValueAnswer> {
+    const { rid, key, value: asked } = request;
+    if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
+    if (this.gated()) return { status: 409, body: { error: "windows", message: TRICKS_WINDOWS_LINE } };
+    // A value waits for the switch of tricks as a whole, as a trick's own switch does (the lead, 2026-11-17).
+    if (this.switchedOff()) return { status: 409, body: { error: "tricks-off", message: TRICKS_OFF_LINE } };
+    // In a crew the values live on the lead, where the tricks run: a member keeps none.
+    if ((this.deps.runsOn?.() ?? null) !== null) return { status: 409, body: { error: "not-here", message: VALUES_ON_LEAD } };
+    if (!isRequestId(rid) || !isTrickId(id) || !isTrickId(key)) return { status: 400, body: { error: "value-invalid" } };
+    // JSON tells text "1", the number 1, true and null apart.
+    const digest = payloadDigest([id, key, JSON.stringify(asked)]);
+    const turn = this.lane(async (): Promise<ValueAnswer> => {
+      const seen = this.valueWrites.get(rid);
+      if (seen !== undefined) return seen.digest === digest ? seen.answer : { status: 409, body: { error: "request-id-reused", rid } };
+      await this.refresh(true);
+      const rt = this.runtimes.get(id);
+      if (rt === undefined) return { status: 404, body: { error: "unknown-trick" } };
+      const field = this.shownOf(rt).manifest?.fields?.find((one) => one.key === key);
+      if (field === undefined) return { status: 400, body: { error: "value-refused", rid, code: "unknown-field", message: `This trick has no setting "${key}". Read its About sheet for the settings it has.` } };
+      const problem = asked === null ? undefined : fieldValueProblem(field, asked);
+      if (problem !== undefined) return { status: 400, body: { error: "value-refused", rid, code: problem.code, message: problem.reason } };
+      // An empty text is no value: it clears the field back to its default, as null does.
+      const value = asked === "" && field.kind === "text" ? null : asked;
+      const stored = this.values.read(id);
+      const next = { ...stored.values };
+      if (value === null) delete next[key];
+      else next[key] = value;
+      const changed = stored.unread || JSON.stringify(stored.values[key] ?? null) !== JSON.stringify(next[key] ?? null);
+      if (changed) {
+        try {
+          this.values.write(id, next);
+        } catch (err) {
+          // The disk's reason names a path, never the value.
+          this.warn(`${id}: a setting could not be saved: ${err instanceof Error ? err.message : String(err)}`);
+          return { status: 409, body: { error: "write-failed", message: VALUES_WRITE_FAILED } };
+        }
+        this.deps.audit?.({ action: "trick.value", detail: { trick: id, field: key, by: "phone" } });
+        // A changed value asks nothing again: it runs the trick once more, as a config.toml edit does.
+        if (rt.on) this.restart(rt);
+      }
+      this.publish(id);
+      const info = this.store.reply(this.store.rev).tricks.find((trick) => trick.id === id);
+      if (info === undefined) return { status: 404, body: { error: "unknown-trick" } };
+      const answer: ValueAnswer = { status: 200, body: { rid, code: "ok", key, changed, info } };
+      this.valueWrites.remember(rid, digest, answer);
+      return answer;
+    });
+    return await turn;
   }
 }

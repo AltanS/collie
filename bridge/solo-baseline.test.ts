@@ -284,6 +284,9 @@ const SNAPSHOT_KEYS = {
   // Not a crew dimension: with the Hill off, the hill's revision while it holds a card of Collie's own about
   // a trick (M96 spec 14), absent otherwise, so a body that never had such a card carries no such key.
   trickCardsRev: true,
+  // Not a crew dimension: the switch for tricks as a whole, present only while it is off, which is the
+  // default (2026-11-17); a server built with no tricks runner (every solo test here) carries none.
+  tricksOff: true,
 } satisfies Record<keyof SnapshotResponse, true>;
 
 const SESSION_SUMMARY_KEYS = {
@@ -544,6 +547,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       // With the Hill off, the hill's revision while it holds a card of Collie's own about a trick.
       "trickCardsRev",
       "trickViewsRev",
+      "tricksOff",
       "tricksRev",
       "ts",
       "update",
@@ -885,9 +889,13 @@ describe("solo zero-tax — routes", () => {
       // the hill image's checks and headers, this bridge's own host and a trick that is on only.
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/(media\\/.+)$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/auto$/",
+      // And a trick's code for the About sheet's folds (package F): a read, gated like the list, this
+      // bridge's own host only; the approved copy's bytes, masked.
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/code$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/undo$/",
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/value$/",
       // Official tricks (M94): add or update a trick on the list this release carries. A SOLO route that
       // legitimately extends this list, named here rather than exempted: write-gated like the switch,
       // this bridge's own tricks folder only, and a crew member answers `runs-on` and fetches nothing.
@@ -1325,6 +1333,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_INSIDE",
       "COLLIE_KIRO_ROOT",
       "COLLIE_MAX_UPLOAD_MB",
+      "COLLIE_MCODE_ROOT",
       "COLLIE_MULTI_SESSION",
       "COLLIE_MUSE_ROOT",
       "COLLIE_MUX",

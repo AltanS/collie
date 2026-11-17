@@ -9,7 +9,7 @@ import { parseWalkyRequest } from "../walky/parse.ts";
 import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { folderBytes, spawnGit, type GitRunner } from "./fetch.ts";
 import { OFFICIAL_FETCH_BYTES_MAX, OFFICIAL_GIT, OFFICIAL_LINES, OfficialTricks, type OfficialTricksDeps } from "./official-install.ts";
-import { DESCRIPTION_MAX, TRICKS_WINDOWS_SHELL_LINE } from "../../web/src/lib/tricks/schema.ts";
+import { DESCRIPTION_MAX, TRICK_CONTRACT, TRICKS_WINDOWS_SHELL_LINE } from "../../web/src/lib/tricks/schema.ts";
 import { isListedOrigin, isUnlistedOfficialOrigin, officialStanding, officialStateOf, officialWire, parseOfficialList, pinnedPlaces, renderOfficialList, shippedOfficialList, OFFICIAL_ENTRIES_MAX, OFFICIAL_PREVIOUS_MAX, OFFICIAL_REPOS, type OfficialEntry } from "./official.ts";
 import { canonicalRepoUrl, ORIGIN_FILE, parseOrigin, renderOrigin, renderProposalOrigin, sameRepo } from "./origin.ts";
 import { caseClash } from "./proposal-install.ts";
@@ -111,7 +111,7 @@ describe("the strict reader", () => {
     ["a description with a direction mark", listOf(entry({ description: "Counts ‮legs." }))],
     ["a description past the cap", listOf(entry({ description: "x".repeat(141) }))],
     ["an empty name", listOf(entry({ name: "" }))],
-    ["a contract this Collie does not speak", listOf(entry({ contract: 3 }))],
+    ["a contract this Collie does not speak", listOf(entry({ contract: TRICK_CONTRACT + 1 }))],
     ["a contract that is no whole number", listOf(entry({ contract: 1.5 }))],
     ["an unknown key", listOf({ ...entryFields(), url: REPO })],
     ["a missing key", listOf({ id: "legs", name: "Legs", description: "x", repo: REPO, dir: "legs", commit: C1, contract: 1, previous: [] })],
@@ -221,6 +221,7 @@ async function rig(entries: OfficialEntry[], extra: Partial<OfficialTricksDeps> 
   };
   const held = { entries };
   const service = new TricksService({
+    feature: { on: () => true },
     configDir,
     stateDir,
     memberId: "lodge",
@@ -662,6 +663,7 @@ describe.if(posix)("adding from the list", () => {
     expect(none.service.rev()).toBeUndefined();
     // A crew member runs no tricks: no folder means no card there, list or not.
     const member = new TricksService({
+      feature: { on: () => true },
       configDir: await tempDir(),
       stateDir: await tempDir(),
       memberId: "workshop",
@@ -823,7 +825,7 @@ describe.if(posix)("updating an added trick to the list's commit", () => {
     const stateDir = join(root, "state");
     await mkdir(configDir, { recursive: true });
     await mkdir(stateDir, { recursive: true });
-    const service = new TricksService({ configDir, stateDir, memberId: "lodge", world: () => ({ machine: "desk", sessions: [], spaces: [] }), env: { PATH: process.env.PATH ?? "" }, warn: () => {}, now: () => clock.t });
+    const service = new TricksService({ feature: { on: () => true }, configDir, stateDir, memberId: "lodge", world: () => ({ machine: "desk", sessions: [], spaces: [] }), env: { PATH: process.env.PATH ?? "" }, warn: () => {}, now: () => clock.t });
     const held = { entries: [fixtureEntry(repo.url, repo.shas[0] ?? "", h1)] };
     const official = new OfficialTricks({ configDir, stateDir, env: { PATH: process.env.PATH ?? "" }, entries: () => held.entries, lane: (w) => service.officialLane(w), allowFile: true, now: () => clock.t });
     expect((await official.install("legs", "add")).status).toBe(200);

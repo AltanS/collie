@@ -12,13 +12,14 @@ import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-abo
 import { TokenUseChip } from "@/components/token-use-label";
 import { useArm } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
-import { addOfficialTrick, apiErrorFields, fetchOfficialTricks, setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
+import { addOfficialTrick, apiErrorFields, fetchOfficialTricks, fetchTrickCodeFile, fetchTrickCodeIndex, setTrickAuto, setTrickValue, switchTrick, undoTrick } from "@/lib/api";
+import { fieldProblemWords } from "@/components/trick-settings-group";
 import { t } from "@/lib/i18n";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import { useBridgeNow } from "@/lib/tricks/clock";
 import { trickListRows, type TrickOrigin } from "@/lib/tricks/list-order";
 import { placesLine, readsLine, runsOnLine, warningLines, type WarningLine } from "@/lib/tricks/row-words";
-import type { OfficialState, OfficialTricksReply, TricksRunsOn, WireOfficialTrick, WireTrickInfo } from "@/lib/tricks/schema";
+import type { FieldValue, OfficialState, OfficialTricksReply, TricksRunsOn, WireOfficialTrick, WireTrickInfo } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, type TricksStore } from "@/lib/tricks/store";
 import { trickTimeText } from "@/lib/tricks/time";
 import { trickTokenUse } from "@/lib/tricks/token-use";
@@ -100,6 +101,11 @@ import type { HillDecision } from "@/lib/hill/wire";
 // trick needs no Hill (M96 spec 14): a row whose new version waits opens that card from its slot line, and the
 // cards about new tricks are a group of their own above this card (components/trick-cards.tsx).
 //
+// TRICKS SWITCHED OFF AS A WHOLE (2026-11-17, components/tricks-switch-card.tsx). The list stays readable and each
+// row's switch shows that trick's OWN position, which the big switch never moves. Every control that writes is
+// disabled (the switches, Add, Update, Undo and the About sheet's auto switch), one line at the top of the card
+// says why, and the About sheet still opens. The bridge answers 409 `tricks-off` to those writes anyway.
+//
 // NO PROSE but the one muted line at the foot. What a trick may do is the docs' to say.
 
 // The words of a row live in lib/tricks/row-words.ts, shared with the About sheet; they stay importable from here.
@@ -146,7 +152,8 @@ export interface SlotLine {
  * from a bridge since crew slice 2, or `versionWaits`: the phone holds an open card of Collie's own about a
  * new version of it; the row opens that card, with the Hill on or off, M96 spec 14), else the one note that
  * the Hill is off for a trick that is on and asks Decisions (`hillOff`, the snapshot's; bridge/tricks/hill.ts:
- * they are not posted, the trick keeps running), else where it came from.
+ * they are not posted, the trick keeps running), else that its file watch checks on a clock
+ * (`watchPollSeconds`), else where it came from.
  */
 export function slotLine(trick: WireTrickInfo, now: number, hillOff = false, versionWaits = false): SlotLine {
   if (trick.state === "skipped") {
@@ -164,9 +171,16 @@ export function slotLine(trick: WireTrickInfo, now: number, hillOff = false, ver
   const failing = trick.state === "failing" || trick.state === "stopped";
   if (failing && trick.error !== undefined) return { text: trick.error, trouble: true };
   if (refused !== undefined) return { text: t("settings.tricks.partNotShown", { reason: refused.reason }), trouble: true };
+  // Contract 3: a required setting is empty, or the saved ones do not read. The row opens the About sheet,
+  // where the Settings group is. The trick still runs and draws its own setup part.
+  if (trick.valuesUnread === true) return { text: t("settings.tricks.valuesUnread"), trouble: true };
+  if (trick.needsSetup === true) return { text: t("settings.tricks.needsSetup"), trouble: false };
   // The new version's card is Collie's own: it needs no Hill (spec 14), and the row opens it.
   if (trick.on && (trick.pending !== undefined || versionWaits)) return { text: t("settings.tricks.pending"), trouble: false, waits: true };
   if (hillOff && trick.on && trick.decides === true) return { text: t("settings.tricks.hillOff"), trouble: false };
+  // The file watch could not be set up and the bridge checks on a clock: one plain line of its own, never
+  // after the "part is not shown" prefix, because nothing was refused. Only while the trick is on.
+  if (trick.on && trick.watchPollSeconds !== undefined) return { text: t("settings.tricks.watchPolled", { seconds: trick.watchPollSeconds }), trouble: false };
   return { text: provenanceLine(trick, now), trouble: false };
 }
 
@@ -181,12 +195,16 @@ export interface TricksSettingsCardProps {
   onAuto?: (host: string, id: string, on: boolean) => Promise<WireTrickInfo>;
   /** The undo call. The real route by default. */
   onUndo?: (host: string, id: string) => Promise<WireTrickInfo>;
+  /** The settings write (contract 3). The real route by default. */
+  onSetValue?: (host: string, id: string, body: { rid: string; key: string; value: FieldValue | null }) => Promise<WireTrickInfo>;
   /** Pin the clock (epoch ms on the bridge's clock), for a test or a playground card. */
   now?: number;
   /** Draw the switches as one that may not write, for the playground. Default: the device's own say. */
   readOnly?: boolean;
   /** Draw the rows as with the Hill switched off, for the playground. Default: the snapshot's `hillOff`. */
   hillOff?: boolean;
+  /** Draw the list as with tricks switched off, for the playground. Default: the snapshot's `tricksOff`, or the reply's `off`. */
+  tricksOff?: boolean;
   /** The official list read. The real route by default. */
   onOfficialList?: (signal?: AbortSignal) => Promise<OfficialTricksReply>;
   /** The add or update from that list. The real route by default. */
@@ -200,7 +218,7 @@ export function TricksSettingsCard(props: TricksSettingsCardProps) {
   if (state.rev === null) return null;
   // A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): one line and the Hill, no rows, no list read.
   if (state.gate === "windows") return <TricksGatedCard />;
-  return <TricksList {...props} tricks={state.tricks} runsOn={state.runsOn} />;
+  return <TricksList {...props} tricks={state.tricks} runsOn={state.runsOn} replyOff={state.off === true} />;
 }
 
 /** The card of a gated bridge: the one line. */
@@ -552,12 +570,15 @@ function TricksList({
   onSwitch = switchTrick,
   onAuto = setTrickAuto,
   onUndo = undoTrick,
+  onSetValue = setTrickValue,
   onOfficialList = fetchOfficialTricks,
   onOfficialAdd = addOfficialTrick,
   now,
   readOnly,
   hillOff,
-}: TricksSettingsCardProps & { tricks: readonly WireTrickInfo[]; runsOn?: TricksRunsOn }) {
+  tricksOff,
+  replyOff = false,
+}: TricksSettingsCardProps & { tricks: readonly WireTrickInfo[]; runsOn?: TricksRunsOn; replyOff?: boolean }) {
   useLocale();
   const clock = useBridgeNow(now);
   const root = useOptionalRootData();
@@ -566,7 +587,11 @@ function TricksList({
   const cards = useTrickCards();
   const openCard = useOpenTrickCard();
   const { refused } = usePairing();
-  const canWrite = readOnly === undefined ? !isReadOnly(root?.device) && !refused : !readOnly;
+  const mayWrite = readOnly === undefined ? !isReadOnly(root?.device) && !refused : !readOnly;
+  // Tricks switched off as a whole (the snapshot's `tricksOff`, or the reply's `off`): the rows stay readable
+  // and the About sheet opens, but every control that writes is disabled, because the bridge would refuse it.
+  const off = tricksOff ?? (root?.tricksOff === true || replyOff);
+  const canWrite = mayWrite && !off;
   // The position a flipped switch holds until the list agrees, and the switches with a post in flight
   // (a second tap on one of those does nothing; the switch itself stays drawn the same).
   const [held, setHeld] = useState<ReadonlyMap<string, boolean>>(new Map());
@@ -641,6 +666,25 @@ function TricksList({
       setStatus(t("settings.tricks.auto.failed", { name: trick.name }), "error");
     } finally {
       flying.current.delete(key);
+    }
+  }
+
+  // A trick's setting (contract 3): one request id per change, so a retry of this change writes once. The
+  // receipt is the row the list will show; the group holds the value until the list agrees. A refusal is
+  // said under the field in the phone's words, never the bridge's English.
+  async function saveValue(trick: WireTrickInfo, key: string, value: FieldValue | null): Promise<string | null> {
+    const field = trick.fields?.find((one) => one.key === key);
+    try {
+      await onSetValue(trick.host, trick.id, { rid: crypto.randomUUID(), key, value });
+      return null;
+    } catch (err) {
+      // A field rule rides in `code`; a refusal of the route itself (`not-here`) in `error`.
+      const fields = apiErrorFields(err);
+      const code = fields?.code ?? fields?.error;
+      if (code === "unknown-field" || field === undefined) return t("settings.tricks.fields.refused.gone");
+      if (code === "not-here") return t("settings.tricks.fields.onLead");
+      if (code === "kind" || code === "text" || code === "option" || code === "range" || code === "whole") return fieldProblemWords(field, { code });
+      return t("settings.tricks.fields.failed", { label: field.label });
     }
   }
 
@@ -747,6 +791,12 @@ function TricksList({
   return (
     <>
       <Card className="gap-0 py-0" data-testid="tricks-settings">
+        {/* Said once, here, for every disabled control below. */}
+        {off && (
+          <p data-line="tricks-off" className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
+            {t("settings.tricks.switch.offLine")}
+          </p>
+        )}
         {/* A crew member, a deputy or a deposed lead schedules no trick: the lead does (bridge/index.ts). */}
         {runsOn !== undefined && (
           <p data-line="runs-on" className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
@@ -814,6 +864,8 @@ function TricksList({
             auto={heldAuto.get(trickKey(aboutTrick)) ?? aboutTrick.auto === true}
             canWrite={canWrite}
             onAuto={(on) => void flipAuto(aboutTrick, on)}
+            readCode={{ index: () => fetchTrickCodeIndex(aboutTrick.host, aboutTrick.id), file: (file) => fetchTrickCodeFile(aboutTrick.host, aboutTrick.id, file) }}
+            onValue={async (key, value) => await saveValue(aboutTrick, key, value)}
           />
         </TrickBoundary>
       )}

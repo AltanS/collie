@@ -957,6 +957,31 @@ describe("terminal mirror image placeholders", () => {
     }
   });
 
+  // The cluster knows its picture's URL while the bytes are still on their way: the badge stays
+  // there until the card comes, instead of badge, nothing, card.
+  it("keeps the badge on the cluster's own line until the card's bytes are here", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get("/api/blobs/:hash", async () => {
+        await gate;
+        return new HttpResponse(new Uint8Array([1]), { headers: { "content-type": "image/png" } });
+      }),
+    );
+    const { container } = render(
+      <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[BLOB]} />,
+    );
+    expect(container.textContent).toContain("[Image]");
+    expect(container.querySelector("img")).toBeNull();
+    release();
+    await firstImg(container);
+    expect(container.textContent).not.toContain("[Image]");
+    expect(container.textContent).toContain("header");
+    expect(container.textContent).toContain("footer");
+  });
+
   it("falls back to the badge when the bridge refuses the bytes", async () => {
     // The fetch now carries the token, so a refusal (404 from an old peer, 403 before pairing)
     // arrives as an answer, not as an `<img>` error. Same outcome: the badge.
