@@ -70,7 +70,7 @@ export interface RepoAddRowProps {
   onList?: RepoListCall;
   /** The add of one listed trick. The real route by default. */
   onAdd?: RepoAddCall;
-  /** Tricks are switched off as a whole: the row is disabled and says why. */
+  /** Tricks are switched off as a whole: the row is disabled. The card says why, once, at its top. */
   tricksOff?: boolean;
   /** This device may only read: the row is disabled. */
   readOnly?: boolean;
@@ -95,11 +95,6 @@ export function RepoAddRow({ onList = listRepoTricks, onAdd = addRepoTrick, tric
         <Icon name="add" className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className="min-w-0 truncate">{t("settings.tricks.repo.row")}</span>
       </Button>
-      {tricksOff && (
-        <p data-line="repo-off" className="pb-2 text-xs text-muted-foreground">
-          {t("settings.tricks.switch.offLine")}
-        </p>
-      )}
       {/* In the page body, outside the list group: the group's rules style every child, and a fixed sheet is none of its rows. */}
       {open && createPortal(<RepoAddSheet open onClose={() => setOpen(false)} onList={onList} onAdd={onAdd} />, document.body)}
     </div>
