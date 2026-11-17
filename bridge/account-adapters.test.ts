@@ -129,3 +129,18 @@ describe("who is signed in: Claude Code's `auth status`", () => {
     expect("signInAgainArgs" in ACCOUNT_ADAPTERS.codex).toBe(false);
   });
 });
+
+describe("Change login: what the adapter says about a sign-in", () => {
+  test("only Claude Code says a completed sign-in reaches the sessions that run; Codex, pi and Grok are not proven", () => {
+    expect(accountAdapter("claude")?.reachesRunningSessions).toBe(true);
+    for (const id of ["codex", "pi", "grok"]) expect(accountAdapter(id)?.reachesRunningSessions, id).not.toBe(true);
+  });
+
+  test("the sign-in hosts are bare host names: no scheme, no path, no port, no wildcard", () => {
+    expect(accountAdapter("claude")?.signInHosts).toEqual(["claude.com", "platform.claude.com"]);
+    for (const id of ACCOUNT_HARNESSES) {
+      for (const host of accountAdapter(id)?.signInHosts ?? []) expect(host, `${id}: ${host}`).toMatch(/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/u);
+    }
+    for (const id of ["codex", "pi", "grok"]) expect(accountAdapter(id)?.signInHosts, id).toBeUndefined();
+  });
+});

@@ -2668,6 +2668,10 @@ export interface AccountHarness {
   newFolder: string;
   /** The command that starts the agent (its `HARNESS_LAUNCHES` binary), for the terminal line the page shows. */
   binary: string;
+  /** Present when a sign-in that ends well reaches the running sessions of the folder (the adapter's word). */
+  reachesRunningSessions?: true;
+  /** The hosts of the agent's sign-in address the phone may open (the adapter's list). Absent: none. */
+  signInHosts?: string[];
 }
 
 /** One account row. Per harness, the Default row first, then the added rows in the order added. */
@@ -2687,6 +2691,11 @@ export interface AccountRow {
   seenAt: number | null;
   /** A pane of this account runs now. */
   live: boolean;
+  /**
+   * How many agent panes of this account run now, a sign-in session left out. Absent when none. Counted
+   * as {@link live} is: the folder a session reported, else the launch note.
+   */
+  running?: number;
   /** Shared only: entries that should be links and are not. */
   unlinked?: string[];
   /** Only where the adapter can tell. */

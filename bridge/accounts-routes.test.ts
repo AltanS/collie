@@ -100,8 +100,20 @@ describe("GET /api/accounts", () => {
   test("only found, account-capable harnesses, each with its Default row first", async () => {
     const body = await bodyOf(build());
     expect(body.harnesses.map((h) => h.id)).toEqual(["claude", "codex"]);
-    expect(body.harnesses[0]).toEqual({ id: "claude", label: "Claude Code", select: "CLAUDE_CONFIG_DIR", kinds: ["shared", "own"], newFolder: "~/.claude-{slug}", binary: "claude" });
+    expect(body.harnesses[0]).toEqual({
+      id: "claude",
+      label: "Claude Code",
+      select: "CLAUDE_CONFIG_DIR",
+      kinds: ["shared", "own"],
+      newFolder: "~/.claude-{slug}",
+      binary: "claude",
+      reachesRunningSessions: true,
+      signInHosts: ["claude.com", "platform.claude.com"],
+    });
     expect(body.harnesses[1]?.kinds).toEqual(["own"]);
+    // Codex: a sign-in is not proven to reach running sessions, and it lists no host.
+    expect(body.harnesses[1]).not.toHaveProperty("reachesRunningSessions");
+    expect(body.harnesses[1]).not.toHaveProperty("signInHosts");
     expect(body.accounts.map((a) => a.id)).toEqual(["claude:default", "codex:default"]);
     expect(body.accounts[0]).toMatchObject({ kind: "default", label: "", folder: "~/.claude", startLine: "claude", windows: [], seenAt: null, live: false });
   });
@@ -319,6 +331,42 @@ describe("a pane's account", () => {
       [ID, true],
       ["codex:default", true],
     ]);
+  });
+
+  accountTest("Change login counts the running sessions of each account, a sign-in session left out", async () => {
+    await store.add(row);
+    const reported = (p: AgentView) => (p.paneId === "w1:p2" || p.paneId === "w1:p4" ? "/srv/work" : undefined);
+    const accounts = build({
+      reported: { reportedConfigDir: reported, reportedConfigDirs: () => [] },
+      panes: () => [
+        { session: "default", pane: pane({ paneId: "w1:p2" }) },
+        { session: "default", pane: pane({ paneId: "w1:p4" }) },
+        { session: "default", pane: pane({ paneId: "w1:p5" }) },
+        { session: "other", pane: pane({ paneId: "w1:p6" }) },
+        { session: "default", pane: pane({ paneId: "w1:p7", kind: "shell" }) },
+      ],
+    });
+    const counts = async () => (await bodyOf(accounts)).accounts.map((a) => [a.id, a.running]);
+    expect(await counts()).toEqual([
+      ["claude:default", 2],
+      [ID, 2],
+      ["codex:default", undefined],
+    ]);
+    // A sign-in session started on the Default (the pane its line was typed into) does not count, and the account still reads live.
+    accounts.noteSignIn("other", "w1:p6", "claude\u0000x");
+    accounts.noteSignIn("default", "w1:p4", "claude\u0000y");
+    expect(await counts()).toEqual([
+      ["claude:default", 1],
+      [ID, 1],
+      ["codex:default", undefined],
+    ]);
+    expect((await bodyOf(accounts)).accounts.map((a) => a.live)).toEqual([true, true, false]);
+  });
+
+  accountTest("an account no session uses has no count", async () => {
+    await store.add(row);
+    const body = await bodyOf(build({ panes: () => [] }));
+    for (const a of body.accounts) expect(a).not.toHaveProperty("running");
   });
 
   accountTest("the journal roots grow with own accounts only", async () => {

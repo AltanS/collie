@@ -449,8 +449,14 @@ interface TrickRowProps {
  * The slot line as its own target, above the row's stretched layer: it opens the waiting version's card. The
  * line keeps its drawn height; a transparent `::before` reaches 14px above and below, the 44px floor
  * (DESIGN.md §6), as a Notice's action does (ui/notice.tsx `NOTICE_ACTION_TAP`).
+ *
+ * The button itself never clips: `truncate` is `overflow: hidden`, and on the button it would cut the
+ * `::before` to the drawn 16px (the tap floor would be lost, the row's layer would take those taps) and make the
+ * box scrollable by its 14px, so a scroll (a focus, a script) moved the glyphs out of sight and left only the
+ * underline. The text sits in an inner `SLOT_OPENS_TEXT` block that truncates, as the plain `<p>` line does.
  */
-const SLOT_OPENS = "relative z-10 block w-full truncate text-left text-xs text-muted-foreground underline decoration-dotted underline-offset-2 before:absolute before:inset-x-0 before:-inset-y-3.5 before:content-['']";
+const SLOT_OPENS = "relative z-10 block w-full text-left text-xs text-muted-foreground underline decoration-dotted underline-offset-2 before:absolute before:inset-x-0 before:-inset-y-3.5 before:content-['']";
+const SLOT_OPENS_TEXT = "block truncate";
 
 function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, onUndo, onAbout, update, origin, taken, onCard }: TrickRowProps) {
   const slot = slotLine(trick, clock, hillOff, onCard !== undefined);
@@ -501,7 +507,7 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
           )}
           {slot.waits === true && onCard !== undefined ? (
             <button type="button" data-line="slot" data-slot="trick-card-open" onClick={onCard} className={SLOT_OPENS}>
-              {slot.text}
+              <span className={SLOT_OPENS_TEXT}>{slot.text}</span>
             </button>
           ) : (
             <p data-line="slot" data-trouble={slot.trouble ? "true" : undefined} className="truncate text-xs text-muted-foreground">

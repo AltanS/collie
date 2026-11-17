@@ -102,6 +102,8 @@ export interface CardDockProps {
   scope?: Scope;
   /** The screen is drawn from the on-device cache (M46 spec 10): the prompt card stays locked. */
   stale?: boolean;
+  /** A sign-in card's address hosts from the agent's adapter (Change login, M101); see BoxTextBlock. */
+  signInHosts?: readonly string[];
   /** The soft keyboard is up: the dock's cap drops from 55dvh to 40dvh. */
   composing?: boolean;
   /** The mirror's chosen face (`mirrorFont`), so a card's `font-mono` rows and its Terminal mirror
@@ -267,6 +269,7 @@ function liftedCard({
   onUnreadPadKeys,
   onUnreadTypeAnyway,
   unreadSecret,
+  signInHosts,
 }: CardDockProps): ReactNode {
   const promptBlock = blocks.find((b): b is PromptBlock => b.kind === "prompt-select");
   if (promptBlock) {
@@ -379,7 +382,7 @@ function liftedCard({
   if (autoBlock) return <AutocompleteBlock autocomplete={autoBlock.autocomplete} />;
   // Keyless like the popup, and for the same reason: the input box is live under the box it shows.
   const boxTextBlock = blocks.find((b): b is BoxBlock => b.kind === "box-text");
-  if (boxTextBlock) return <BoxTextBlock boxText={boxTextBlock.boxText} />;
+  if (boxTextBlock) return <BoxTextBlock boxText={boxTextBlock.boxText} signInHosts={signInHosts !== undefined && signInHosts.length > 0 ? signInHosts : undefined} />;
   return null;
 }
 

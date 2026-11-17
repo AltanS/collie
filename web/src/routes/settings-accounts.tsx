@@ -42,7 +42,8 @@ import { addAccount, removeAccount } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { t } from "@/lib/i18n";
 import { mutate } from "@/lib/mutate";
-import { accountPath, accountsAddPath, settingsSectionPath } from "@/lib/nav";
+import { offersChangeLogin } from "@/lib/change-login";
+import { accountPath, accountsAddPath, changeLoginPath, settingsSectionPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
 import { mintRequestId } from "@/lib/worktree-name";
 import { cn } from "@/lib/utils";
@@ -558,9 +559,17 @@ export function SettingsAccountRoute() {
         </Notice>
       )}
       <div className="flex gap-2">
-        <Button variant="outline" className="h-11 flex-1" disabled={busy} onClick={() => void signIn(row)}>
-          {t("accounts.detail.signIn")}
-        </Button>
+        {/* Where the account reads signed in, the action is Change login: its own page says what happens to
+            the sessions that run, then starts the same sign-in (routes/settings-change-login.tsx). */}
+        {offersChangeLogin(row) ? (
+          <Button variant="outline" className="h-11 flex-1" disabled={busy} onClick={() => nav.down(changeLoginPath(row.id, scope))}>
+            {t("accounts.changeLogin.action")}
+          </Button>
+        ) : (
+          <Button variant="outline" className="h-11 flex-1" disabled={busy} onClick={() => void signIn(row)}>
+            {t("accounts.detail.signIn")}
+          </Button>
+        )}
         {!isDefault && (
           <Button variant="ghost" className="h-11" disabled={busy} onClick={() => setRemoving(true)}>
             {t("accounts.detail.remove")}

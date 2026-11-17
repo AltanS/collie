@@ -908,6 +908,18 @@ describe("Composer: sign-in field", () => {
     expect(loadDraft(undefined, "w1:p1")).toBe("my normal draft");
   });
 
+  // No block without an exit: a field nothing can leave from says why, in the composer's own words.
+  it("secret field: a box out of reach says why in the field, and the code field's own line gives way", () => {
+    const OUT_OF_REACH: Surface = { revision: 3, turn: "unknown", modal: "unknown", composer: "unreachable", field: "secret" };
+    renderComposer({ surface: OUT_OF_REACH, unreachableNote: "Sending text is off on this pane." });
+    const box = screen.getByRole("textbox", { name: "Sign-in code" });
+    expect(box).toBeDisabled();
+    expect(box).toHaveAttribute("placeholder", "Sending text is off on this pane.");
+    cleanup();
+    renderComposer({ surface: SIGN_IN, readOnly: true });
+    expect(screen.getByRole("textbox", { name: "Sign-in code" })).toHaveAttribute("placeholder", "Read-only, not authorised");
+  });
+
   it("secret field: Paste trims the clipboard's code, and focuses the field where the clipboard cannot be read", async () => {
     const user = userEvent.setup();
     const readText = vi.fn(() => Promise.resolve("  PASTED-CODE-1234\n"));
