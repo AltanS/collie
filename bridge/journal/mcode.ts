@@ -46,7 +46,8 @@ import {
   type Reduction,
   rememberPending,
   type RowReducer,
-} from "./reduce.ts";import { containedRealpath, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+} from "./reduce.ts";
+import { containedRealpath, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
 import { MAX_OPEN_FILES_PIDS, openFiles as defaultOpenFiles, type OpenFiles } from "./open-files.ts";
 import { readSqlite } from "./sqlite-read.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
@@ -457,7 +458,8 @@ export class McodeTranscriptSource implements TranscriptSource {
     }
     // Tier 3: no process hints — the multiplexer fallback, five minutes only.
     if (hints?.shared === true) return null;
-    if (cwd.trim() === "") return null;    const maxAgeMs = 300_000;
+    if (cwd.trim() === "") return null;
+    const maxAgeMs = 300_000;
     for (const root of this.roots) {
       const indexed = await this.fromSqlite(root, cwd, { maxAgeMs });
       if (indexed !== null) {
