@@ -36,7 +36,9 @@ function world(over: { files?: string[]; targets?: Target[]; exec?: Parameters<t
   }
   const io = capture();
   const exec = fakeExec(over.exec);
-  const deps: MuxListDeps = { ctx: context(ENV), io, exec, files, uid: 1000, dial: over.dial };
+  // Linux's probe on every host: the world's bridges live in its fake `/proc`, and no test asks the real
+  // kernel32 (Windows) or `ps` (macOS) about a made-up pid.
+  const deps: MuxListDeps = { ctx: context(ENV), io, exec, files, uid: 1000, dial: over.dial, pidProbe: { platform: "linux" } };
   return { deps, io, files, exec };
 }
 
