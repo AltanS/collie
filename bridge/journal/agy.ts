@@ -29,7 +29,7 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { openFiles as defaultOpenFiles, pathsOf, type OpenFiles } from "./open-files.ts";
-import { fileKey, LINUX_PROC, type ProcReader } from "./proc-locks.ts";
+import { hasLock, LINUX_PROC, type ProcReader } from "./proc-locks.ts";
 import { readSqlite } from "./sqlite-read.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
@@ -600,7 +600,7 @@ export function agyJournal(
               const lockPath = join(presenceDir, entry);
               const st = await stat(lockPath, { bigint: true }).catch(() => null);
               if (st === null || !st.isFile()) continue;
-              if (locked.has(fileKey(st.dev, st.ino))) {
+              if (hasLock(locked, st.dev, st.ino)) {
                 if (await containedRealpath(lockPath, presenceDir)) ids.push(id);
               }
             }

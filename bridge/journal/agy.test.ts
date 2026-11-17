@@ -417,6 +417,21 @@ describe("AGY read-only source and exact discovery", () => {
     const adapter = agyJournal(root, () => Promise.resolve([lock]), nonLinuxProc);
     expect(await adapter.discover!("/cwd", { processes: [{ pid: 42, argv: ["agy"] }] })).toEqual({ kind: "id", value: ID });
   });
+
+  test("binds the process's lock on BTRFS where stat dev and /proc/locks anon_dev differ", async () => {
+    const root = await home();
+    const { db } = database(root);
+    db.close();
+    const lock = join(root, "presence", `${ID}.lock`);
+    await writeFile(lock, "");
+    const st = statSync(lock, { bigint: true });
+    // Simulate BTRFS: stat.dev is subvolume anon_dev (e.g. 0:53), but /proc/locks reports filesystem superblock (0:36)
+    const proc: ProcReader = {
+      flocks: async (pid) => (pid === 42 ? new Set([`0:36:${st.ino}`]) : new Set()),
+    };
+    const adapter = agyJournal(root, () => Promise.reject(new Error("lsof unavailable")), proc);
+    expect(await adapter.discover!("/cwd", { processes: [{ pid: 42, argv: ["agy"] }] })).toEqual({ kind: "id", value: ID });
+  });
 });
 
 describe("AGY plaintext transcript.jsonl fallback", () => {

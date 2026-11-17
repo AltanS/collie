@@ -44,8 +44,8 @@ const MAX_SCAN_ENTRIES = 8192;
 /** The most of a log's head read to find its header row. The header is the first, small frame. */
 const HEADER_BYTES = 64 * 1024;
 
-import { fileKey, LINUX_PROC, type ProcReader } from "./proc-locks.ts";
-export { fileKey, flocksOf, LINUX_PROC, type ProcReader } from "./proc-locks.ts";
+import { fileKey, hasLock, LINUX_PROC, type ProcReader } from "./proc-locks.ts";
+export { fileKey, flocksOf, hasLock, LINUX_PROC, type ProcReader } from "./proc-locks.ts";
 
 /**
  * The macOS lock table, over `openFiles` (bridge/journal/open-files.ts): the pid's open files, and a
@@ -141,7 +141,7 @@ async function lockedSessions(roots: readonly string[], locked: ReadonlySet<stri
         if (!isDshSessionId(id)) continue;
         const folder = join(root, project, id);
         const st = await stat(join(folder, DSH_LOCK_NAME), { bigint: true }).catch(() => null);
-        if (st === null || !st.isFile() || !locked.has(fileKey(st.dev, st.ino))) continue;
+        if (st === null || !st.isFile() || !hasLock(locked, st.dev, st.ino)) continue;
         if ((await containedRealpath(folder, root)) !== null) held.push({ id, folder, root });
       }
     }
