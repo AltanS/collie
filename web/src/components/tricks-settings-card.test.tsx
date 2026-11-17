@@ -1072,3 +1072,39 @@ describe("tricks switched off as a whole", () => {
     expect(await screen.findByRole("button", { name: "Add Morph" })).toBeDisabled();
   });
 });
+
+describe("TricksSettingsCard: one request id per settings edit (review G, point 6)", () => {
+  const WITH_FIELDS: WireTrickInfo = { ...LEGS, fields: [{ key: "repo", kind: "text", label: "Repository" }] };
+
+  it("a retry of the same edit reuses its id, a new value or a later edit after the write took gets a new one", async () => {
+    const user = userEvent.setup();
+    const rids: string[] = [];
+    let fail = true;
+    const onSetValue = vi.fn(async (_host: string, _id: string, body: { rid: string; key: string; value: string | number | boolean | null }) => {
+      rids.push(body.rid);
+      if (fail) throw new Error("offline");
+      return WITH_FIELDS;
+    });
+    const store = await storeWith([WITH_FIELDS]);
+    const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={NO_OFFICIAL} onSetValue={onSetValue} /> }], { initialEntries: ["/"] });
+    render(<RouterProvider router={router} />);
+    await user.click(await screen.findByRole("button", { name: "About Browser leg" }));
+    const dialog = screen.getByRole("dialog", { name: "Browser leg" });
+    const box = within(dialog).getByLabelText(/Repository/);
+    // The write fails and the box goes back to the saved text: the same value typed again is a retry of the same edit.
+    await user.type(box, "lodge/workshop");
+    await user.tab();
+    expect(rids).toHaveLength(1);
+    fail = false;
+    await user.type(box, "lodge/workshop");
+    await user.tab();
+    expect(rids).toHaveLength(2);
+    expect(rids[1]).toBe(rids[0]);
+    // A new edit (another value) gets a new id.
+    await user.clear(box);
+    await user.type(box, "lodge/other");
+    await user.tab();
+    expect(rids).toHaveLength(3);
+    expect(rids[2]).not.toBe(rids[0]);
+  });
+});

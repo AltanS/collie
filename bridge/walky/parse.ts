@@ -168,7 +168,6 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
 
 export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel" | "off" | "on" | "pane" | HillOp | "trick.propose" | ViewOp;
 
-
 /** What a `hill.state` request with a word that is no crew state is refused with. */
 export const HILL_BAD_CREW_STATE = "bad request: the crew state is here, quiet or away";
 
