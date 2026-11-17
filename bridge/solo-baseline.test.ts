@@ -547,6 +547,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       // With the Hill off, the hill's revision while it holds a card of Collie's own about a trick.
       "trickCardsRev",
       "trickViewsRev",
+      "tricksOff",
       "tricksRev",
       "ts",
       "update",
