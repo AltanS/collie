@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { asJsonObject, parseJson } from "../../web/src/lib/json.ts";
@@ -72,6 +72,25 @@ export function parseValuesFile(text: string): FieldValues | null {
 }
 
 /**
+ * Why the `.collie` folder is not one the bridge may use, or null when it is a real folder of this user or is
+ * not there yet. A symlink (or a file, or a folder of another user) is refused: the bridge would otherwise
+ * chmod and write through it into a place the person never chose (security read of package G, point 3).
+ * `lstat` does not follow a link. A uid check runs only where the platform has one.
+ */
+export function collieFolderProblem(dir: string): string | null {
+  let st;
+  try {
+    st = lstatSync(dir);
+  } catch {
+    return null;
+  }
+  if (!st.isDirectory()) return `${dir} is not a real folder`;
+  const uid = process.platform === "win32" ? undefined : process.getuid();
+  if (uid !== undefined && st.uid !== uid) return `${dir} belongs to another user`;
+  return null;
+}
+
+/**
  * The values store of one bridge. Reads go through a small cache keyed on the file's size, change time and
  * inode, so a row publish (every scan) costs one `stat`; a write by anyone else is read on the next look.
  */
@@ -84,6 +103,11 @@ export class TrickValues {
   read(id: string): StoredValues {
     if (!isTrickId(id)) return { values: {}, unread: false };
     const path = valuesPath(this.stateDir, id);
+    // A `.collie` that is a link or not ours reads as unread, never followed.
+    if (collieFolderProblem(dirname(path)) !== null) {
+      this.cache.delete(id);
+      return { values: {}, unread: true };
+    }
     let stamp: string;
     try {
       const st = statSync(path);
@@ -113,6 +137,8 @@ export class TrickValues {
     if (!isTrickId(id)) throw new Error(`"${id}" is not a trick id`);
     const path = valuesPath(this.stateDir, id);
     const dir = dirname(path);
+    const problem = collieFolderProblem(dir);
+    if (problem !== null) throw new Error(problem);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     chmodSync(dir, 0o700);
     const tmp = join(dir, `.values.${randomBytes(6).toString("hex")}.tmp`);
