@@ -27,7 +27,8 @@
 // The same request id answers the same receipt and presses once; a request id still in flight is
 // joined, never pressed twice. The receipts live in memory: a bridge restart forgets them, and a Stop is
 // a tap, not a message, so nothing is lost but the replay. A Stop takes no pane lock: it must not wait
-// behind a send, and a person's Escape never has. The audit line is the route's: request id, pane,
+// behind a send, and a person's Escape never has. Its press joins the key gate's machine-wide hold
+// (M102 spec 16): only another bridge writing into the pane refuses it, `press_failed`, before the key. The audit line is the route's: request id, pane,
 // keys, outcome, never a message text.
 
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";

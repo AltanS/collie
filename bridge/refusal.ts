@@ -41,6 +41,8 @@ export const REFUSAL_REASONS = [
   "no_held_send",
   /** The multiplexer takes no raw input on this pane (`rawInputRefusal`). */
   "no_raw_input",
+  /** Another bridge on this machine writes into the pane now (M102 spec 16, bridge/surface/pane-lock.ts): nothing was typed. */
+  "pane_busy",
   // ── The hook socket, written by the bridge that received the request (bridge/surface/hold.ts) ──
   /** The request line did not arrive in time. */
   "slow",

@@ -13,7 +13,7 @@ import { loadProfiles, profileFor, type Profile, type ProfileForOptions } from "
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import type { Surface } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
-import { RowRing, SendProtocol, SessionLocks, type SendDeps, type SendRequest } from "./protocol.ts";
+import { RowRing, SendProtocol, SessionLocks, type SendDeps, type SendRequest, type SharedPaneLock } from "./protocol.ts";
 import { HoldStore } from "./holds.ts";
 import { RequestStore } from "./requests.ts";
 
@@ -50,6 +50,15 @@ export class LogPane {
   readDelayMs = 0;
   /** The rig's clock, so a slow read moves it. */
   clock: { now: number } | null = null;
+  /**
+   * The bridge stops here (M102 spec 16, a crash between the text and Enter): a write this names never
+   * reaches the pane and its call never answers, as a killed process's call never does.
+   */
+  stopAt: ((write: Write) => boolean) | null = null;
+  /** Calls that never answer, so a stopped bridge's run stays pending. */
+  private stopped(write: Write): Promise<MuxAck> | null {
+    return this.stopAt?.(write) === true ? new Promise<MuxAck>(() => undefined) : null;
+  }
 
   constructor(readonly draw: PaneDraw) {}
 
@@ -78,6 +87,8 @@ export class LogPane {
 
   typeText = (paneId: string, text: string): Promise<MuxAck> => {
     void paneId;
+    const stop = this.stopped({ kind: "type", value: text });
+    if (stop !== null) return stop;
     this.log.push({ kind: "type", value: text });
     this.take(text);
     return Promise.resolve(muxAck());
@@ -85,6 +96,8 @@ export class LogPane {
 
   pasteText = (paneId: string, text: string): Promise<MuxAck> => {
     void paneId;
+    const stop = this.stopped({ kind: "paste", value: text });
+    if (stop !== null) return stop;
     this.log.push({ kind: "paste", value: text });
     this.take(text);
     return Promise.resolve(muxAck());
@@ -92,6 +105,8 @@ export class LogPane {
 
   writeKeys = (paneId: string, keys: readonly string[]): Promise<MuxAck> => {
     void paneId;
+    const stop = keys.map((key) => this.stopped({ kind: "keys", value: key })).find((call) => call !== null);
+    if (stop !== undefined && stop !== null) return stop;
     for (const key of keys) {
       this.log.push({ kind: "keys", value: key });
       const { draw } = this;
@@ -150,26 +165,34 @@ export interface RigOptions {
   readonly generation?: string | null;
   /** A hold queue (M56 spec 15), so a send the screen cannot take now is held. */
   readonly holds?: boolean;
+  /** Another bridge on the same multiplexer (M102 spec 16): the pane and the clock it shares. */
+  readonly pane?: LogPane;
+  readonly clock?: { now: number };
+  /** The machine-wide pane lock this bridge shares (pane-lock.ts); absent: the in-memory lock alone. */
+  readonly paneLock?: SharedPaneLock;
+  /** The request store's folder, kept by a restart (M102 spec 16); absent: a fresh folder of the rig's own. */
+  readonly storeDir?: string;
 }
 
 /** A Send Protocol over a {@link LogPane}. */
 export function invariantRig(options: RigOptions): InvariantRig {
   const dir = mkdtempSync(join(tmpdir(), "collie-invariants-"));
-  const pane = new LogPane(options.draw);
-  const clock = { now: 1_000_000 };
+  const pane = options.pane ?? new LogPane(options.draw);
+  const clock = options.clock ?? { now: 1_000_000 };
   pane.clock = clock;
   const now = (): number => clock.now;
   const gate = new KeyGate(pane, now);
+  if (options.paneLock !== undefined) gate.share(options.paneLock);
   const version = options.version === null ? null : (options.version ?? "2.1.200");
   const forced = options.surface;
-  const store = new RequestStore(join(dir, "sends"), now);
+  const store = new RequestStore(options.storeDir ?? join(dir, "sends"), now);
   const holds = options.holds === true ? new HoldStore(join(dir, "held"), now) : undefined;
   const deps: SendDeps = {
     mux: { readGrid: pane.readGrid, typeText: pane.typeText, pasteText: pane.pasteText },
     gate,
     store,
     holds,
-    locks: new SessionLocks(),
+    locks: new SessionLocks(options.paneLock),
     ring: new RowRing(),
     profile: (harness: string) => {
       const loaded: Profile | undefined = loadProfiles().get(harness);

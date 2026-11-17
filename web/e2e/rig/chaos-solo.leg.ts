@@ -5,7 +5,7 @@
 // No model turn: every case sends `echo ...` into a shell pane. The cases whose world needs a seam the
 // rig lacks are skipped and name the seam (CHAOS_CASES in chaos-lib.ts).
 import { Rig, phoneOn, test } from "./leg";
-import { accountedFor, screenNote, arrivals, chaosCase, chaosLine, phoneWords, recordChaos, restartLeadBridge, sendLine, sendLive, settled, shellPane, startLeadBridge, stopLeadBridge, type ChaosId } from "./chaos-lib";
+import { accountedFor, appendedTo, screenNote, arrivals, chaosCase, chaosLine, phoneWords, recordChaos, restartLeadBridge, sendLine, sendLive, settled, shellPane, startLeadBridge, stopLeadBridge, type ChaosId } from "./chaos-lib";
 import { muxOf, resizeDuring, sleep } from "./rig-lib";
 import { PHONE } from "./walky-lib";
 
@@ -56,12 +56,26 @@ test.describe("chaos on the solo rig", () => {
       const count = arrivals(await rig.screen(paneId, 120).catch(() => ""), line);
       notes.push(`arrived ${String(count)}x`, `words "${end.words}"`, await screenNote(rig, paneId));
       // The input arrived once, or the phone said in words what became of it; never twice.
-      const ok = accountedFor(count, end.words);
+      let ok = accountedFor(count, end.words);
+      // The person taps Send again, as the phone asks (M102 spec 16): the same request id after the restart
+      // types nothing (`unknown`, `interrupted`), so text a crash left in the line never gets a second copy
+      // or another line appended to it.
+      // Only after a send that did not arrive: a tap after a send that arrived is a new input.
+      const taps = [tapLog];
+      if (count === 0) {
+        taps.push(await sendLine(page, recorder, line, "Send again after the restart"));
+        await sleep(1500);
+        const after = await rig.screen(paneId, 120).catch(() => "");
+        const again = arrivals(after, line);
+        const appended = appendedTo(after, line);
+        notes.push(`after Send again: arrived ${String(again)}x, words "${await phoneWords(page)}"${appended ? ", text appended to the line left in the input" : ""}`);
+        ok = ok && again <= 1 && !appended;
+      }
       const live = await sendLive(page);
       notes.push(live ? "Send is live again" : "Send stayed dead");
       const verdict = ok && live ? "pass" : "fail";
       if (verdict === "fail") notes.push(await screenNote(rig, paneId));
-      recordChaos({ id: "bridge-dies-mid-send", verdict, note: notes.join("; "), taps: [tapLog] });
+      recordChaos({ id: "bridge-dies-mid-send", verdict, note: notes.join("; "), taps });
       test.expect(verdict, notes.join("; ")).toBe("pass");
     } finally {
       startLeadBridge(); // a case that threw must not leave the rig without its bridge (a bridge that runs is left alone)

@@ -190,7 +190,8 @@ import { redactText } from "./redact.ts";
 import { maskSurface, surfaceRouteBody, type SurfaceShadow } from "./surface/shadow.ts";
 import type { SurfaceTotals } from "./surface/counters.ts";
 import { SURFACE_VERSION } from "../web/src/lib/surface/surface.ts";
-import { gateFor } from "./surface/key-gate.ts";
+import { gateFor, isPaneBusy } from "./surface/key-gate.ts";
+import { PANE_BUSY } from "./surface/pane-lock.ts";
 import { BOX_CHANGED, type SendProtocol, type SendRequest } from "./surface/protocol.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
 import type { ClearService } from "./surface/clear.ts";
@@ -6171,6 +6172,15 @@ export async function sendReplySteps(
   submit: boolean,
   submitKeys: string[],
 ): Promise<ReplyOutcome> {
+  // The text and its submit under the pane's machine-wide lock (M102 spec 16): while another bridge writes
+  // into the pane, nothing is typed. The press inside joins this hold.
+  return gateFor(client).hold(paneId, REPLY_SPAN_MS, () => replySteps(client, paneId, txt, submit, submitKeys), () => ({ ok: false, textDelivered: false, ...apiError("reply.send_failed", { reason: PANE_BUSY }) }));
+}
+
+/** The longest the reply steps hold the machine-wide pane lock: one text write and one key press. */
+const REPLY_SPAN_MS = 20_000;
+
+async function replySteps(client: ReplySender, paneId: string, txt: string, submit: boolean, submitKeys: string[]): Promise<ReplyOutcome> {
   let textDelivered = false;
   // One shape for both ways a step can fail — a refusal the adapter returned and an exception it
   // let escape — so the partial-delivery branch cannot drift between them.
@@ -6602,6 +6612,11 @@ export async function keysPane(
     keysDetail.sent = "unconfirmed";
     audit.record({ action: "keys", paneId, session, device, detail: keysDetail });
     return json({ ok: false, ...apiError("keys.unconfirmed", { reason: sent.detail }) } satisfies ActionResponse, ae);
+  }
+  // Another bridge writes into this pane (M102 spec 16): no key left. One record with the code, never the keys' words.
+  if (isPaneBusy(sent)) {
+    recordRefusal(audit, { action: "keys", by: "bridge", outcome: "refused", reason: "pane_busy", paneId, session, device });
+    return withRefusal(json({ ok: false, ...apiError("keys.send_failed", { reason: sent.detail }) } satisfies ActionResponse, ae), "bridge", "pane_busy");
   }
   if (binding) {
     audit.record({
