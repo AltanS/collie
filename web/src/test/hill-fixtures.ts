@@ -69,7 +69,7 @@ export function groupDecision(cards = 3, over: Partial<HillDecision> = {}): Hill
     target: null,
     text: "none",
     options: [
-      { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+      { intent: "on", label: "Switch it on" },
       { intent: "later", label: "Not now" },
     ],
     group: {
@@ -92,7 +92,7 @@ export function collieCard(type: HillCollieRefType, id: string, over: Partial<Hi
     target: null,
     text: "none",
     options: [
-      { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+      { intent: "on", label: "Switch it on" },
       { intent: "later", label: "Not now" },
     ],
     ...over,

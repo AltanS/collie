@@ -936,7 +936,7 @@ export function proposalGroup(): HillDecision {
     target: null,
     text: "none",
     options: [
-      { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+      { intent: "on", label: "Switch it on" },
       { intent: "later", label: "Not now" },
     ],
     group: {
@@ -999,7 +999,7 @@ function initProposal(notesChanged: boolean, settingsLeft = false): HillDecision
     target: null,
     text: "none",
     options: [
-      { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+      { intent: "on", label: "Switch it on" },
       { intent: "later", label: "Not now" },
     ],
     group: { digest: (settingsLeft ? "c3" : notesChanged ? "c2" : "c1").repeat(32), decline: "later", parts: [{ view: facts, sha256: "21".repeat(32) }, { view: code, sha256: "22".repeat(32) }] },
@@ -1030,7 +1030,7 @@ export const versionGroup = decision({
   target: null,
   text: "none",
   options: [
-    { intent: "on", label: "Use the new version", confirm: "Yes, use it" },
+    { intent: "on", label: "Use the new version" },
     { intent: "later", label: "Keep the old version" },
   ],
   group: {

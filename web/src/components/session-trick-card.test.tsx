@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
@@ -87,6 +87,56 @@ describe("a trick proposal in its session's chat view", () => {
     expect(slot?.querySelector('[data-slot="decision-recommended-mark"]')).toBeNull();
     expect(screen.getByRole("button", { name: /Not now/u })).toBeInTheDocument();
     expect(slot?.querySelector('[data-slot="decision-dismiss"]')).toBeNull();
+  });
+
+  it("Switch it on waits until the code was on screen to its end, then ONE tap sends the answer once", async () => {
+    // A code view taller than the screen: its end mark must come on screen before the yes is active.
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(20_000);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 390, window.innerHeight * 3));
+    type Seen = (entries: readonly { isIntersecting: boolean }[]) => void;
+    const seen: { callback: Seen; target: Element | null }[] = [];
+    class FakeObserver {
+      private readonly at: { callback: Seen; target: Element | null };
+      constructor(callback: Seen) {
+        this.at = { callback, target: null };
+        seen.push(this.at);
+      }
+      observe(target: Element): void {
+        this.at.target = target;
+      }
+      disconnect(): void {
+        this.at.target = null;
+      }
+    }
+    vi.stubGlobal("IntersectionObserver", FakeObserver);
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+    const answers: unknown[] = [];
+    server.use(
+      http.post("/api/hill/answer", async ({ request }) => {
+        answers.push(await request.json());
+        return HttpResponse.json({});
+      }),
+    );
+    const card = proposalCard({ options: [{ intent: "on", label: "Switch it on" }, { intent: "later", label: "Not now" }] });
+    await holds([card]);
+    renderChat(SELF);
+    await screen.findByText("Switch on the trick legs?", { selector: "[data-testid=chat] *" });
+    const on = screen.getByRole("button", { name: /Switch it on/u });
+    // Before the code was seen the yes is not active, and a tap sends nothing.
+    expect(on).toBeDisabled();
+    await userEvent.click(on);
+    expect(answers).toEqual([]);
+    // The end of the code comes on screen: now one tap answers, with no second confirming tap.
+    act(() => {
+      for (const one of seen.filter((o) => o.target !== null)) one.callback([{ isIntersecting: true }]);
+    });
+    expect(screen.getByRole("button", { name: /Switch it on/u })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: /Switch it on/u }));
+    await waitFor(() => expect(answers).toHaveLength(1));
+    expect(answers[0]).toMatchObject({ intent: "on" });
   });
 
   it("shows nothing in another session, and never an agent's own Decision", async () => {

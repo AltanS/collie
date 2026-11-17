@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { ACCESS_LINES, MANIFEST_KEYS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { addedDiff } from "./card-group.ts";
-import { PROPOSAL_KEY_RIGHTS, PROPOSAL_TOO_LARGE, proposalCard, proposalVersionCard, type ProposerFacts } from "./proposal-card.ts";
+import { PROPOSAL_KEY_RIGHTS, PROPOSAL_ON, PROPOSAL_TOO_LARGE, PROPOSAL_USE, proposalCard, proposalVersionCard, type ProposerFacts } from "./proposal-card.ts";
 import { asksForSentence, DECIDES_REPLY_CHIP, RUNS_AS_YOU, runsAsYou } from "./version-card.ts";
 
 // EVERY RIGHT HAS A LINE ON THE CARD (the first full trick run, 2026-11-16, decision 1). A trick with
@@ -144,5 +144,15 @@ describe("access on the proposal cards", () => {
       expect(JSON.stringify(card.view)).not.toContain("It sees your machines");
       expect(card.summary).toContain("It asks for no new rights.");
     }
+  });
+});
+
+describe("one tap switches the trick on", () => {
+  test("the Switch it on and Use the new version options carry no confirm, so the phone sends at once", () => {
+    expect("confirm" in PROPOSAL_ON).toBe(false);
+    expect("confirm" in PROPOSAL_USE).toBe(false);
+    const options = cardOf(BARE).options ?? [];
+    expect(options.map((o) => o.intent)).toEqual(["on", "later"]);
+    for (const option of options) expect(option.confirm).toBeUndefined();
   });
 });

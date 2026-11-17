@@ -878,12 +878,9 @@ describe("the Decision card, with a group of cards", () => {
     fireEvent.click(at("decision-group-next")!);
     fireEvent.click(at("decision-group-next")!);
     expect(at("decision-group-unopened")).toBeNull();
-    // "Switch it on" asks twice; the second tap sends the digest and every card.
-    vi.useFakeTimers();
+    // "Switch it on" is one tap: it sends the digest and every card at once.
     fireEvent.click(yes());
-    act(() => vi.advanceTimersByTime(ARM_DWELL_MS + 1));
-    fireEvent.click(yes());
-    vi.useRealTimers();
+    expect(onSend).toHaveBeenCalledTimes(2);
     expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: "d".repeat(64), opened: [1, 2, 3] });
   });
 
@@ -974,7 +971,7 @@ describe("the Decision card, a single card of Collie's own with code", () => {
       target: null,
       text: "none",
       options: [
-        { intent: "on", label: "Switch it on", confirm: "Yes, switch on" },
+        { intent: "on", label: "Switch it on" },
         { intent: "later", label: "Not now" },
       ],
       view: code,
@@ -1022,13 +1019,9 @@ describe("the Decision card, a single card of Collie's own with code", () => {
     act(() => watched()[0]!.callback([{ isIntersecting: true }]));
     expect(option("on")).toBeEnabled();
     expect(slot("decision-code-unread")).toBeNull();
-    vi.useFakeTimers();
-    onTestFinished(() => {
-      vi.useRealTimers();
-    });
+    // One tap answers: the proposal's yes has no confirm, so it is not armed first (decided 2026-11-17).
     fireEvent.click(option("on"));
-    act(() => vi.advanceTimersByTime(ARM_DWELL_MS + 1));
-    fireEvent.click(option("on"));
+    expect(onSend).toHaveBeenCalledTimes(1);
     expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: "a".repeat(64), opened: [1] });
   });
 

@@ -431,7 +431,7 @@ how many files it has, and what it asks for. Below come the powers it asks for, 
 text search, the author's words under "Its author's words. Collie did not check them.", and then
 every file of its code, as a group of cards.
 
-- **Switch it on** asks for a second tap, "Yes, switch on". Collie reads the stored files again and
+- **Switch it on** is one tap, once every card of the code was on screen. Collie reads the stored files again and
   installs them only when their hash matches the card. The trick is then on, approved as exactly that
   code.
 - **Not now** drops the stored copy. So do Dismiss, an expiry, and a newer proposal from the same

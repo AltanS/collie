@@ -28,14 +28,14 @@ import type { VersionDiff } from "./version-diff.ts";
 //
 // ── NO RECOMMENDATION ──────────────────────────────────────────────────────────────────────────────
 // DECISION: the card never recommends "Switch it on". A proposal is code from an agent; the person's own
-// reading is the whole check. Options: "Switch it on" (with a confirm tap) and "Not now". No "always":
+// reading is the whole check. Options: "Switch it on" (ONE tap, no confirm: the operator decided 2026-11-17 that a tap activates the trick) and "Not now". No "always":
 // every proposal asks.
 //
 // ── A NEW VERSION ──────────────────────────────────────────────────────────────────────────────────
 // A proposal for a trick a proposal made gets the same card as a version the runner found
 // (version-card.ts): title "Use the new version of <id>?", the changed files against the approved copy,
 // the new rights and the new warnings, how much is shown. It names the proposer first, never
-// recommends, and has no "Use it and stop asking". Options: "Use the new version" (with a confirm tap)
+// recommends, and has no "Use it and stop asking". Options: "Use the new version" (one tap, no confirm)
 // and "Keep the old version". A proposal never carries a config.toml (propose-wire.ts `PROPOSE_NO_CONFIG`).
 
 /** The card's sender name. Display only. */
@@ -43,10 +43,10 @@ export const PROPOSAL_CARD_SENDER = "Collie";
 /** The heading of the author's words in the card's view. */
 export const PROPOSAL_AUTHOR_WORDS = "Its author's words. Collie did not check them.";
 /** The two options. */
-export const PROPOSAL_ON = { intent: "on", label: "Switch it on", confirm: "Yes, switch on" } as const;
+export const PROPOSAL_ON = { intent: "on", label: "Switch it on" } as const;
 export const PROPOSAL_LATER = { intent: "later", label: "Not now" } as const;
 /** The two options of a new version's card: the same intents, the version card's words. */
-export const PROPOSAL_USE = { intent: "on", label: "Use the new version", confirm: "Yes, use it" } as const;
+export const PROPOSAL_USE = { intent: "on", label: "Use the new version" } as const;
 export const PROPOSAL_KEEP = { intent: "later", label: "Keep the old version" } as const;
 
 
