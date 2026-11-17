@@ -12,7 +12,7 @@ import { asksForChange, asksForLines } from "./version-card.ts";
 import { TRICKS_DIR, trickStateDir } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { TRICKS_ROUTE_RIGHTS, tricksValueRoute } from "./routes.ts";
-import { TRICKS_OFF_LINE } from "../../web/src/lib/tricks/schema.ts";
+import { TRICKS_OFF_LINE, TRICKS_WINDOWS_LINE } from "../../web/src/lib/tricks/schema.ts";
 import { TricksService, VALUES_ON_LEAD, type TricksServiceDeps, type ValueAnswer } from "./service.ts";
 import { withSwitch, writeSwitches, type Switches } from "./switches.ts";
 import { stateEntries } from "../crew/standby-tricks-lead.ts";
@@ -314,6 +314,41 @@ describe("the write route", () => {
     expect(r.specs.length).toBe(before + 1);
     // Clearing (null, or an empty text) goes back to Needs setup.
     expect(receipt(await r.service.setValue(HOST, "legs", { rid: R3, key: "repo", value: "" })).info.needsSetup).toBe(true);
+  });
+
+  test("review G point 7: a value write while the trick is off stores the value and starts no run", async () => {
+    const r = await rig({}, false);
+    await tick(r);
+    const before = r.specs.length;
+    expect(receipt(await r.service.setValue(HOST, "legs", { rid: R1, key: "repo", value: "lodge/workshop" })).changed).toBe(true);
+    await tick(r);
+    await tick(r);
+    expect(r.specs.length).toBe(before);
+    expect(r.specs).toEqual([]);
+  });
+
+  test("review G point 7: a value write while tricks are off as a whole starts no run and stores nothing", async () => {
+    let featureOn = true;
+    const r = await rig({ feature: { on: () => featureOn } });
+    await tick(r);
+    const before = r.specs.length;
+    featureOn = false;
+    expect(await r.service.setValue(HOST, "legs", { rid: R1, key: "repo", value: SECRET })).toEqual({ status: 409, body: { error: "tricks-off", message: TRICKS_OFF_LINE } });
+    await tick(r);
+    expect(r.specs.length).toBe(before);
+    expect(await Bun.file(valuesPath(r.stateDir, "legs")).exists()).toBe(false);
+  });
+
+  test("review G point 7: a value write while the Windows gate is closed answers windows, writes nothing and starts no run", async () => {
+    const r = await rig({ platform: "win32" });
+    await tick(r);
+    const answer = await r.service.setValue(HOST, "legs", { rid: R1, key: "repo", value: SECRET });
+    expect(answer).toEqual({ status: 409, body: { error: "windows", message: TRICKS_WINDOWS_LINE } });
+    expect(JSON.stringify(answer)).not.toContain(SECRET);
+    await tick(r);
+    expect(r.specs).toEqual([]);
+    expect(await Bun.file(valuesPath(r.stateDir, "legs")).exists()).toBe(false);
+    expect(r.audit).toEqual([]);
   });
 
   test("on a crew member the values live on the lead: refused, nothing written", async () => {
