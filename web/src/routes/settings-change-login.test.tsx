@@ -84,8 +84,8 @@ describe("Change login: before the start", () => {
     serveList([defaultRow(), workRow({ identity: ME, running: 2 })]);
     mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"]);
     expect(await screen.findByText("me@example.com · Max")).toBeInTheDocument();
-    expect(screen.getByText("All running sessions of this account continue with the new login.")).toBeInTheDocument();
-    expect(screen.getByText("2 sessions of this account are running now.")).toBeInTheDocument();
+    expect(screen.getByText("All running sessions of this profile continue with the new login.")).toBeInTheDocument();
+    expect(screen.getByText("2 sessions of this profile are running now.")).toBeInTheDocument();
     expect(screen.getByText("The old login stays until the new sign-in works.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Change login" })).toBeInTheDocument();
   });
@@ -93,11 +93,11 @@ describe("Change login: before the start", () => {
   it("one running session reads in the singular, and an account no session uses has no count line", async () => {
     serveList([defaultRow(), workRow({ identity: ME, running: 1 })]);
     mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"]);
-    expect(await screen.findByText("1 session of this account is running now.")).toBeInTheDocument();
+    expect(await screen.findByText("1 session of this profile is running now.")).toBeInTheDocument();
     cleanup();
     serveList([defaultRow(), workRow({ identity: ME })]);
     mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"]);
-    expect(await screen.findByText("All running sessions of this account continue with the new login.")).toBeInTheDocument();
+    expect(await screen.findByText("All running sessions of this profile continue with the new login.")).toBeInTheDocument();
     expect(screen.queryByText(/running now/)).toBeNull();
   });
 
@@ -154,7 +154,7 @@ describe("Change login: the start and the end", () => {
     expect(screen.getByText("Your running sessions use this login from their next message.")).toBeInTheDocument();
     expect(closes).toEqual(["w9:p1"]);
     expect(flowOf("acc-work")).toBeUndefined();
-    await userEvent.click(screen.getByRole("button", { name: "Back to the account" }));
+    await userEvent.click(screen.getByRole("button", { name: "Back to the profile" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/accounts/acc-work"));
   });
 

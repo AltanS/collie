@@ -367,27 +367,27 @@ export const ERROR_CODES = {
 
   // ── Accounts: GET /api/accounts, POST /api/accounts[/remove], an `account` on a launch (M101) ───
   /** This machine offers no accounts: Windows, or no agent here that takes one. */
-  "accounts.unavailable": "this machine offers no accounts",
+  "accounts.unavailable": "this machine offers no profiles",
   /** Another account of the same agent already has this label. */
-  "accounts.label_taken": "another account of this agent already has that name",
+  "accounts.label_taken": "another profile of this agent already has that name",
   /** The label is empty, too long, or holds a character that is not allowed. */
   "accounts.bad_label": "the name must be 1 to 24 characters, with letters or digits",
   /** The folder is not one an account may use. `reason` names the rule it failed. */
-  "accounts.bad_folder": "that folder cannot hold an account: {reason}",
+  "accounts.bad_folder": "that folder cannot hold a profile: {reason}",
   /** Another account, or the agent's default, already uses this folder. */
-  "accounts.folder_taken": "another account already uses that folder",
+  "accounts.folder_taken": "another profile already uses that folder",
   /** The agent does not take this kind of account on this machine. */
-  "accounts.kind_unsupported": "this agent cannot take that kind of account here",
+  "accounts.kind_unsupported": "this agent cannot take that kind of profile here",
   /** The machine already keeps the most accounts it may. */
-  "accounts.limit": "this machine already has {max} accounts; remove one first",
+  "accounts.limit": "this machine already has {max} profiles; remove one first",
   /** The new folder or its links could not be made. Nothing was saved. */
-  "accounts.link_failed": "the account folder could not be set up: {reason}",
+  "accounts.link_failed": "the profile folder could not be set up: {reason}",
   /** The Default account cannot be removed. */
-  "accounts.default": "the default account cannot be removed",
+  "accounts.default": "the default profile cannot be removed",
   /** The account the request names is not one of this machine's, or not of that agent. */
-  "accounts.unknown": "this machine has no such account for that agent; nothing was started",
+  "accounts.unknown": "this machine has no such profile for that agent; nothing was started",
   /** The account list on disk is not one this build can write; nothing was changed. */
-  "accounts.store_unreadable": "the account list cannot be read; nothing was changed",
+  "accounts.store_unreadable": "the profile list cannot be read; nothing was changed",
 } as const;
 
 /** Every code the bridge can send. The client mirror restates this union verbatim. */

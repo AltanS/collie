@@ -958,7 +958,7 @@ export function wayOutGroups(): ReactNode[] {
       />
     </Group>,
     <Group key="sign-in-field" title="Sign-in field">
-      <SignInCase n={33} state="secret-framed-field" title="Sign-in code, empty" reach="Start a sign-in from the Accounts page. When the agent asks for the code, the box becomes this frame: Paste, Send, and the cross that closes it.">
+      <SignInCase n={33} state="secret-framed-field" title="Sign-in code, empty" reach="Start a sign-in from the Profiles page. When the agent asks for the code, the box becomes this frame: Paste, Send, and the cross that closes it.">
         <SignInPhone />
       </SignInCase>
       <SignInCase n={34} state="secret-framed-field-shown" title="Code pasted, shown" reach="Tap Paste or paste a code. A code is shown so you can check it; Show and Hide take Paste's place.">

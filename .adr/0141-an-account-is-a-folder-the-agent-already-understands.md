@@ -120,3 +120,7 @@ from its code: a running session reloads a changed login before each request) an
 exact hosts whose `https:` sign-in address the phone opens with one button; any other address is text to
 copy. The list counts each account's running sessions (`running`, a sign-in session left out). The phone
 ends the sign-in session and reads the identity again; the result is what the agent then says.
+
+## Addendum (2026-11-17): the app and the docs call an account a profile
+
+2026-11-17: the app and the docs call an account a profile; code and wire names stay.
