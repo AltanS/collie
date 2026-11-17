@@ -1075,6 +1075,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // A sign-in code is never kept (the M102 review, A): its entry names no text, and its Send again is
   // "Enter it again", the code field opened empty.
   const lastSendRef = useRef<LastSend | null>(null);
+  // Set when a code send ended `unknown`: the code may have gone, so the code field empties (`sendSecret`).
+  const secretSpentRef = useRef(false);
   // What the bridge said of the last send from an agent view: the line it typed, or its refusal code.
   const viewAnswerRef = useRef<{ line: string | null; code: string | null }>({ line: null, code: null });
   // Which notice that is (send-notice.tsx `refusalKey`: the screen it is about and its words), and
@@ -2025,9 +2027,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     setSendRefusal({ ...phoneRefusal(translate("composer.tap.noCard")), screen: true });
   }
-  /** The code field's own send (M102 spec 06): the one path a text for a sign-in field takes. */
-  function sendSecret(code: string): Promise<boolean> {
-    return send(code, false, undefined, undefined, true);
+  /**
+   * The code field's own send (M102 spec 06): the one path a text for a sign-in field takes. True when the
+   * frame should empty: the code went, or it may have gone (`unknown`). A code that may have gone is not
+   * left in the field for a tap that would send it twice; "Enter it again" is the way on (the M102 review, D).
+   */
+  async function sendSecret(code: string): Promise<boolean> {
+    secretSpentRef.current = false;
+    const went = await send(code, false, undefined, undefined, true);
+    return went || secretSpentRef.current;
   }
   /** Why a send that did not come from the code field cannot go now (the M102 review, B), or null. */
   function secretRefusal(fromSecret: boolean): SendRefusal | null {
@@ -2262,6 +2270,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // send, so its text landing as a user turn retires this notice and the kept draft. A resend
       // carries no text of its own to recognise, so it is never remembered.
       if (reading.note === "unknown" && resend === undefined) {
+        if (secret) secretSpentRef.current = true;
         // A sign-in code is remembered by no text at all: nothing of it is kept for a resend (the M102 review, A).
         setPendingUnknown({ sentText: secret ? "" : t, draftText: secret ? "" : draftAtSend, isDraft, at: sentAt, seenUserUuids });
         // The next tap on this same text asks "Send it again?" first (lib/send-again.ts, memory only).

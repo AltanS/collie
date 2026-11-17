@@ -143,3 +143,24 @@ describe("B: while the screen asks for a code, only the code field sends", () =>
     expect(recordedSends()).toEqual([]);
   });
 });
+
+describe("D: a code that may have gone cannot be sent twice by one tap", () => {
+  it("after a code send that ended unknown, the code field is empty", async () => {
+    const user = userEvent.setup();
+    server.use(...sendHandler((request) => sendAnswer(request.id, "unknown", "no_evidence", { offers: ["keys"], surface: SECRET })));
+    mount({ onCannotTell: vi.fn() });
+    await sendCode(user);
+    await waitFor(() => expect(codeField()).toHaveValue(""));
+    expect(screen.getByRole("button", { name: "Send the code" })).toBeDisabled();
+    expect(recordedSends()).toHaveLength(1);
+  });
+
+  it("a code the bridge refused (it did not go) still stays in the field to send again", async () => {
+    const user = userEvent.setup();
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "unconfirmed", { offers: [], surface: SECRET })));
+    mount();
+    await sendCode(user);
+    await screen.findByRole("button", { name: "Enter it again" });
+    expect(codeField()).toHaveValue(CODE);
+  });
+});
