@@ -1747,6 +1747,35 @@ describe("the approved copy (crew slice 2)", () => {
     expect(file.on.legs).toMatchObject({ hash: v3, by: "auto" });
   });
 
+  test("auto holds a new version whose field list differs (review G, point 1): a new field is something the trick asks for", async () => {
+    const audits: string[] = [];
+    const r = await rig([exited(belt("1"))], { audit: (e) => audits.push(`${e.action} ${e.detail.by ?? ""}`.trim()) });
+    const field = (label: string): string => `\n[[field]]\nkey = "repo"\nkind = "text"\nlabel = "${label}"\n`;
+    const dir = await makeTrick(r.configDir, "legs", `${MANIFEST}contract = 3\n`, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    await updateSwitches(r.stateDir, (now) => withEntry(now, "legs", { ...now.on.get("legs")!, auto: true }));
+    const v1 = await codeHashOf(dir);
+    // The same rights and the same code kinds, but the manifest now asks the person for a field: it waits.
+    await writeFile(join(dir, "trick.toml"), `${MANIFEST}contract = 3\n${field("Repository")}`);
+    const v2 = await newVersion(r, dir, T0 + 1000, "#!/bin/sh\necho 1\n");
+    let file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.hash).toBe(v1);
+    expect(audits).toEqual([]);
+    expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v2, powersChanged: false });
+    // After a yes, a change of one field label waits too, and a version with the same list is taken again.
+    expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
+    await writeFile(join(dir, "trick.toml"), `${MANIFEST}contract = 3\n${field("Repo")}`);
+    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 1\n");
+    file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.hash).toBe(v2);
+    expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v3 });
+    expect(await r.service.approvePending("legs", v3, "phone")).toMatchObject({ ok: true });
+    const v4 = await newVersion(r, dir, T0 + 40_000, "#!/bin/sh\necho 4\n");
+    file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs).toMatchObject({ hash: v4, by: "auto" });
+  });
+
   test("auto holds a new version that adds an inputs glob (contract 2): reading session folders is a new right", async () => {
     const audits: string[] = [];
     const r = await rig([exited(belt("1"))], { audit: (e) => audits.push(`${e.action} ${e.detail.by ?? ""}`.trim()) });
