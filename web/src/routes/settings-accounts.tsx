@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router";
 
 import { Bars, Foot } from "@/components/accounts-meter";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { CopyableBlock } from "@/components/ui/copyable-block";
 import { Fab } from "@/components/ui/fab";
+import { FoldPanel, MoreToggle } from "@/components/ui/fold-toggle";
 import { ListGroup } from "@/components/ui/list-group";
 import { Notice } from "@/components/ui/notice";
 import { Segmented } from "@/components/ui/segmented";
@@ -76,6 +77,37 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/**
+ * The page's first words: one line, and a More that opens the rest in place. Closed on every visit,
+ * nothing of it stored. The toggle takes the line's left edge back (`-ml-3`) so its words, not its
+ * padding, sit on the page's gutter. `startOpen` is for the design reference's open card only.
+ * Exported for the design reference (playground/sections/accounts.tsx).
+ */
+export function IntroLines({ startOpen = false }: { startOpen?: boolean }) {
+  useLocale();
+  const [open, setOpen] = useState(startOpen);
+  const id = useId();
+  return (
+    <div className="flex flex-col" data-slot="accounts-intro">
+      <Hint>{t("accounts.intro")}</Hint>
+      <div>
+        <MoreToggle
+          open={open}
+          onToggle={() => setOpen((was) => !was)}
+          controls={id}
+          data-slot="accounts-intro-toggle"
+          className="-ml-3"
+          more={t("accounts.intro.moreToggle")}
+          less={t("accounts.intro.lessToggle")}
+        />
+      </div>
+      <FoldPanel id={id} open={open}>
+        <Hint>{t("accounts.intro.more")}</Hint>
+      </FoldPanel>
+    </div>
+  );
+}
+
 /** What a page says while it has no list: nothing, a machine without accounts, or a failed read. */
 function Unavailable({ status }: { status: "loading" | "ready" | "unavailable" | "failed" }) {
   if (status === "unavailable") {
@@ -110,7 +142,7 @@ export function SettingsAccountsRoute() {
 
   return (
     <SettingsPage title="accounts.title" onScroll={(e) => setCollapsed(e.currentTarget.scrollTop > 24)}>
-      <Hint>{t("accounts.intro")}</Hint>
+      <IntroLines />
       <Unavailable status={accounts.status} />
       {body !== null && (
         // The last row clears the floating button.

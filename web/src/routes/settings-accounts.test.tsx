@@ -68,6 +68,33 @@ describe("Settings: the Accounts row", () => {
   });
 });
 
+describe("Accounts: the intro", () => {
+  it("is one line with a closed More, and More opens the example in place and Less closes it", async () => {
+    serveAccounts(body());
+    mount("/settings/accounts");
+    expect(await screen.findByText("A profile is signed in on its own.")).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "More" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/For example, Work with your work subscription/)).toBeNull();
+    await userEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Less" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/For example, Work with your work subscription beside Default with your personal one\. You pick the profile when you start a session, and the session stays in it\./)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Less" }));
+    await waitFor(() => expect(screen.queryByText(/For example, Work/)).toBeNull());
+  });
+
+  it("starts closed on every visit and stores nothing", async () => {
+    serveAccounts(body());
+    mount("/settings/accounts");
+    await userEvent.click(await screen.findByRole("button", { name: "More" }));
+    cleanup();
+    const before = JSON.stringify({ ...localStorage });
+    mount("/settings/accounts");
+    expect(await screen.findByRole("button", { name: "More" })).toHaveAttribute("aria-expanded", "false");
+    expect(JSON.stringify({ ...localStorage })).toBe(before);
+  });
+});
+
 describe("Accounts: the list", () => {
   it("shows Default alone with the add button and no found block", async () => {
     serveAccounts(body());

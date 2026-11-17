@@ -16,7 +16,7 @@ import { ListGroup } from "@/components/ui/list-group";
 import type { AccountHarness, AccountRow } from "@/lib/accounts";
 import type { BoxTextModel } from "@/lib/blocks";
 import { t } from "@/lib/i18n";
-import { AccountListRow, SignedInRow } from "@/routes/settings-accounts";
+import { AccountListRow, IntroLines, SignedInRow } from "@/routes/settings-accounts";
 import { ChangeLoginBeforeView, ChangeLoginResultView, ChangeLoginRunningView } from "@/routes/settings-change-login";
 
 import { Card, Group, Section, type SectionDef } from "../layout";
@@ -128,6 +128,18 @@ function ListOf({ rows }: { rows: AccountRow[] }) {
 export function AccountsSection() {
   return (
     <Section def={DEF}>
+      <Group title="The page's first words">
+        <Card state="accounts-intro-closed" label="15 Intro, closed">
+          <Column>
+            <IntroLines />
+          </Column>
+        </Card>
+        <Card state="accounts-intro-open" label="16 Intro, open">
+          <Column>
+            <IntroLines startOpen />
+          </Column>
+        </Card>
+      </Group>
       <Group title="The list">
         <Card state="accounts-list-identity" label="1 Email under each name">
           <ListOf rows={[DEFAULT_ROW, WORK_ROW, NEW_ROW]} />

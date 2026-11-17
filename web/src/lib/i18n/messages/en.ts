@@ -3897,7 +3897,10 @@ export const en = {
   "accounts.row.none": "One login per agent",
   "accounts.row.added": "{n} added",
   "accounts.default": "Default",
-  "accounts.intro": "A second login for an agent. Collie starts the agent with that profile's folder. You sign in on the agent's own screen.",
+  "accounts.intro": "A profile is signed in on its own.",
+  "accounts.intro.more": "For example, Work with your work subscription beside Default with your personal one. You pick the profile when you start a session, and the session stays in it.",
+  "accounts.intro.moreToggle": "More",
+  "accounts.intro.lessToggle": "Less",
   "accounts.loadFailed": "Could not read the profiles. Open this page again to retry.",
   "accounts.gone": "This profile is not in the list any more.",
   "accounts.window.session": "5 hours",
@@ -4143,6 +4146,10 @@ export const PENDING_TRANSLATION = [
   "accounts.unlinked",
   "accounts.new.label",
   "accounts.filter.field",
+  // Profiles round 2, 2026-11-17
+  "accounts.intro.more",
+  "accounts.intro.moreToggle",
+  "accounts.intro.lessToggle",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
