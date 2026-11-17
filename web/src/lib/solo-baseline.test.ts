@@ -181,6 +181,8 @@ const AGENT_VIEW_KEYS = {
   sendProtocol: true,
   // Not a crew dimension: whether a send may steer the pane's turn (M69). Rides with `sendProtocol` only.
   canSteer: true,
+  // Not a crew dimension: the ask route's mark (M102 spec 14). Rides with `sendProtocol` only.
+  askRoute: true,
   // Not a crew dimension: the pane's held sends (M56 spec 15), present only while a send waits for the turn to end.
   held: true,
   // Not a crew dimension: whether a Stop (M68) has a key to press on this pane. It rides with `surface` only,
@@ -312,6 +314,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "actions",
       "agent",
       "agentTitle",
+      "askRoute",
       "asks",
       "badge",
       "cache",

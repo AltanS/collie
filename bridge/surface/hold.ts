@@ -43,6 +43,7 @@ import {
   holdAsk,
   isElsewhereLine,
   parseHoldRequest,
+  parseHoldSkip,
   type HoldDecision,
   type HoldNote,
   type HoldProfile,
@@ -53,6 +54,7 @@ import type { EdgeKind } from "../../web/src/lib/surface/edges.ts";
 import { shortHash, type Ask } from "../../web/src/lib/surface/surface.ts";
 import { sameDialog } from "./ask.ts";
 import { placeEdge, type EdgeTarget } from "./edges.ts";
+import type { RefusalReason } from "../refusal.ts";
 
 /** How many reads in a row must miss a dialog the screen showed before the desk counts as first. */
 export const DESK_READS = 2;
@@ -583,8 +585,19 @@ export interface HoldTarget extends EdgeTarget {
   hold?(paneId: string, request: HoldRequest, conn: HoldConn, onClose: (listener: (how: "closed" | "elsewhere") => void) => void): void;
 }
 
+/**
+ * The one record each hook request leaves on the bridge that received it (M102 spec 14, I3): placed on
+ * a pane, or dropped with its reason (a pane of another multiplexer, a dead pid, a skip line from the
+ * hook). Never the tool's input.
+ */
+export type HoldRecord =
+  | { readonly outcome: "placed"; readonly session: string; readonly paneId: string }
+  | { readonly outcome: "dropped"; readonly reason: RefusalReason; readonly session?: string; readonly paneId?: string };
+
 export interface HoldServerDeps {
   readonly socketPath: string;
+  /** Where each request's one record goes (the audit log in production). Never throws to the server. */
+  readonly record?: (record: HoldRecord) => void;
   /** The host the bridge runs on (bridge/host.ts). Defaults to {@link HOST}. */
   readonly host?: Host;
   readonly liveness: BeaconLiveness;
@@ -677,8 +690,18 @@ export class HoldServer {
     }
   }
 
-  private drop(socket: Socket, reason: string, pid: number | null): void {
+  private note(record: HoldRecord): void {
+    try {
+      this.deps.record?.(record);
+    } catch {
+      // A record is not a verdict.
+    }
+  }
+
+  private drop(socket: Socket, reason: RefusalReason, pid: number | null, pane?: { readonly session: string; readonly paneId: string }): void {
     socket.destroy();
+    // Every drop is one record, a foreign multiplexer's too: the journal line below is rate limited, the record is not.
+    this.note(pane === undefined ? { outcome: "dropped", reason } : { outcome: "dropped", reason, session: pane.session, paneId: pane.paneId });
     // A pane of another multiplexer on this machine belongs to that bridge's hold socket, as in EdgeRouter.drop.
     if (reason === "foreign-mux") return;
     const key = `${reason}:${String(pid ?? "-")}`;
@@ -696,7 +719,8 @@ export class HoldServer {
     let buffer = "";
     let taken = false;
     const timer = setTimeout(() => {
-      if (!taken) this.drop(socket, "slow", null);
+      // A connection that closed with no line sent no request (another bridge's start probe, `answers`): no record.
+      if (!taken && !socket.destroyed) this.drop(socket, "slow", null);
     }, REQUEST_LINE_MS);
     timer.unref?.();
     const closeListeners: ((how: "closed" | "elsewhere") => void)[] = [];
@@ -733,6 +757,9 @@ export class HoldServer {
 
   private async route(socket: Socket, line: string, onClose: (listener: (how: "closed" | "elsewhere") => void) => void): Promise<void> {
     try {
+      // A request the hook could not hold says why in a skip line (cli/hold.ts): one record, no hold.
+      const skip = parseHoldSkip(line);
+      if (skip !== null) return this.drop(socket, skip, null);
       const request = parseHoldRequest(line);
       if (request === null) return this.drop(socket, "unparsed", null);
       const record: EdgeRecord = {
@@ -748,10 +775,11 @@ export class HoldServer {
       };
       const targets = this.deps.targets();
       const placement = await placeEdge(record, targets, this.deps.liveness);
-      if (placement.kind === "dropped") return this.drop(socket, placement.reason, request.pid);
+      if (placement.kind === "dropped") return this.drop(socket, placement.reason, request.pid, placement.pane);
       // SAFETY: `targets()` returns HoldTargets, and `placeEdge` hands back one of them unchanged.
       const target = placement.target as HoldTarget;
-      if (target.hold === undefined) return this.drop(socket, "no-hold", request.pid);
+      if (target.hold === undefined) return this.drop(socket, "no-hold", request.pid, { session: target.session, paneId: placement.paneId });
+      this.note({ outcome: "placed", session: target.session, paneId: placement.paneId });
       target.hold(placement.paneId, request, connOf(socket), onClose);
     } catch (err) {
       this.drop(socket, "error", null);

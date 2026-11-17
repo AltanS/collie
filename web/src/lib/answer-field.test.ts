@@ -60,6 +60,12 @@ function model(text: string): PromptModel {
   return m;
 }
 
+/** The region a write is bound to: the question's own rows where they hold its subject (`bindRegion`),
+ *  else the signature (harness/dialog-contract.ts). */
+function bound(m: PromptModel): string {
+  return m.bindRegion ?? m.signature;
+}
+
 const pane = (text: string) => ({ paneId: "w1:p1", text, truncated: false, revision: 5 });
 
 function access(tapped: PromptModel): FieldAccess<"prompt-select"> {
@@ -130,7 +136,7 @@ describe("fillAnswerField — one rule per test", () => {
     screens(tapped, ask(3), ask(3, "Navy"));
     const res = await fill(tapped);
     expect(res).toMatchObject({ ok: true });
-    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["4"], undefined, model(tapped).signature]]);
+    expect(mockSendKeys.mock.calls).toEqual([["w1:p1", ["4"], undefined, bound(model(tapped))]]);
     expect(mockSendReply.mock.calls).toEqual([["w1:p1", "Navy", false, undefined]]);
   });
 
@@ -152,7 +158,7 @@ describe("fillAnswerField — one rule per test", () => {
     expect(keys()).toEqual([["Down"], ["Down"], ["Down"], CLEAR, CLEAR]);
     expect(keys()).not.toContainEqual(["4"]);
     // Each arrow is bound to the read that showed where the pointer stood.
-    expect(mockSendKeys.mock.calls[1]![3]).toBe(model(ask(1, "Teal, like the sea")).signature);
+    expect(mockSendKeys.mock.calls[1]![3]).toBe(bound(model(ask(1, "Teal, like the sea"))));
     expect(mockSendReply).toHaveBeenCalledTimes(1);
   });
 

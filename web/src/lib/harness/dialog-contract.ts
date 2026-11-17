@@ -165,6 +165,12 @@ export interface DialogComparators<M> {
    * one, and `undefined` for a model that does not: the bridge's default window.
    */
   tail?(m: M): number | undefined;
+  /**
+   * The region as ordered literal parts (`expected_prompt` as a list, bridge/prompt-binding.ts
+   * `verifyPromptParts`), for a model whose own rows hold a row it redraws by itself. Absent on the
+   * kinds that never carry one, and `undefined` for a model that does not: `region` alone binds.
+   */
+  parts?(m: M): readonly string[] | undefined;
 }
 
 /** The shape of the contract table: one row of comparators per interactive block kind. */
@@ -187,6 +193,8 @@ export const DIALOG_CONTRACT: DialogContract = {
     styled: (m) => m.styledSignature,
     columns: (m) => m.bindColumns,
     tail: (m) => m.bindTail,
+    // Only with the region it refines: a model that binds `signature` (a style or a column range) has none.
+    parts: (m) => (m.bindRegion !== undefined && m.styledSignature === undefined && m.bindColumns === undefined ? m.bindParts : undefined),
   },
   wizard: {
     // Every wizard key commits too — a digit selects AND advances; Left/Right change the step. The

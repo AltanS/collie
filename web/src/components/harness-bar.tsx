@@ -507,8 +507,12 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
   // (or for a NEW turn). Every change of these bumps the epoch; a hold whose stamp is older goes nowhere.
   const epoch = useRef(0);
   const pressStamp = useRef(0);
+  // A hold the epoch dropped ends in sight: the fill clears AT the change, not at the end of the two seconds,
+  // and the word goes back to rest. It starts true (no press yet) and a fresh press sets it false.
+  const [dropped, setDropped] = useState(true);
   useEffect(() => {
     epoch.current += 1;
+    setDropped(true);
   }, [pressable, paneId]);
 
   // The hold's end. A stamp older than the epoch means the turn, the pane or the button changed under the finger.
@@ -543,7 +547,7 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
     },
   });
   // The fill stops with the turn: a finger still down on a button that no longer presses shows no clock.
-  const holding = pressable && hold["data-holding"] !== undefined;
+  const holding = pressable && !dropped && hold["data-holding"] !== undefined;
 
   function click(detail: number) {
     const byPointer = pointerMade.current && detail !== 0;
@@ -579,6 +583,7 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
       onPointerDown={(e) => {
         pointerMade.current = true;
         pressStamp.current = epoch.current;
+        setDropped(false);
         hold.onPointerDown(e);
       }}
       // A phone's long-press raises `contextmenu` half a second in. Here it is no shortcut to the Stop

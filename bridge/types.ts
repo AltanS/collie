@@ -399,6 +399,14 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    */
   sendProtocol?: true;
   /**
+   * Present (and `true`) on a terminal pane with `sendProtocol` whose bridge answers a tap on a screen
+   * card through its own `POST /api/ask/<id>`, also when a lead forwards it over the crew link (M102
+   * spec 14). A lead reads it off a member's pane to send that member's screen-card taps by the ask
+   * route instead of the raw keys route. Absent from a bridge older than the mark, whose cards keep the
+   * keys route, and on a program pane, whose answers keep the program's own route.
+   */
+  askRoute?: true;
+  /**
    * Present (and `true`) when a Stop (M68) has a key to press on this pane: it has a screen Surface and
    * its profile names an interrupt key (`keys.interrupt`) and is not revoked at the binary's version.
    * The phone draws the belt's Stop only with it, and only while the turn runs. Absent otherwise, on a
@@ -2418,6 +2426,12 @@ export interface NotificationsClearResponse {
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;
+  /**
+   * The bridge's API number (M102 spec 14 decision 4, `web/src/lib/api-version.ts`): the phone compares
+   * it with its bundle's and says so when they differ. Absent from an older bridge, and from a
+   * hand-built body that does not pass it.
+   */
+  apiVersion?: number;
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
   /**

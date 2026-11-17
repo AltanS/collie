@@ -39,7 +39,7 @@ export type ActionResult =
  * failure, and no call site has to reason about truthiness to tell the two apart.
  */
 export type GuardOutcome =
-  | { ok: true; region: string; styled?: string; columns?: ColumnRange; tail?: number }
+  | { ok: true; region: string; styled?: string; columns?: ColumnRange; tail?: number; parts?: readonly string[] }
   | { ok: false; result: ActionResult };
 
 /** Test seam for the verification polls' pacing. */
@@ -62,6 +62,8 @@ type ColumnsOf<M> = (model: M) => ColumnRange | undefined;
 /** The tail window a model's region may end in, when wider than the bridge's default
  *  (`PromptModel.bindTail`, lib/tail-lines.ts). */
 type TailOf<M> = (model: M) => number | undefined;
+/** The region as ordered literal parts, when the model's own rows hold a row it redraws by itself. */
+type PartsOf<M> = (model: M) => readonly string[] | undefined;
 
 /** One fresh read + re-derivation. Returns the model (null = no dialog on screen). */
 export async function readModel<M>(
@@ -113,6 +115,7 @@ export async function entryGuard<M>(
   styledOf?: StyledOf<M>,
   columnsOf?: ColumnsOf<M>,
   tailOf?: TailOf<M>,
+  partsOf?: PartsOf<M>,
 ): Promise<GuardOutcome> {
   let fresh;
   try {
@@ -133,12 +136,14 @@ export async function entryGuard<M>(
   const styled = styledOf?.(fresh.model);
   const columns = columnsOf?.(fresh.model);
   const tail = tailOf?.(fresh.model);
+  const parts = partsOf?.(fresh.model);
   // Assigned, never conditionally spread: a model with no style-only state, no column range and no
   // declared tail binds `region` alone.
   const outcome: Extract<GuardOutcome, { ok: true }> = { ok: true, region };
   if (styled !== undefined) outcome.styled = styled;
   if (columns !== undefined) outcome.columns = columns;
   if (tail !== undefined) outcome.tail = tail;
+  if (parts !== undefined) outcome.parts = parts;
   return outcome;
 }
 

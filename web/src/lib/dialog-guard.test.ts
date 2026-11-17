@@ -18,7 +18,8 @@ import { dialogDetector, sendBoundKeys, sendGuardedKeys } from "./dialog-guard";
 import { buildBlocks } from "./harness";
 import { DIALOG_CONTRACT, dialogModelOf, type DialogKind, type DialogModels } from "./harness/dialog-contract";
 import { submitPromptOption } from "./prompt-action";
-import { verifyPromptBinding } from "../../../bridge/prompt-binding.ts";
+import { verifyPromptBinding, verifyPromptParts } from "../../../bridge/prompt-binding.ts";
+import { liftDialog, readerBlocks } from "./surface/lift";
 
 const mockFetchPane = vi.mocked(fetchPane);
 const mockSendKeys = vi.mocked(sendKeys);
@@ -396,5 +397,156 @@ describe("bindRegion binds on every real Claude capture through the bridge's ver
     expect(DIALOG_CONTRACT["prompt-select"].region(model)).toBe(model.bindRegion);
     expect(model.signature === model.bindRegion || model.signature.endsWith(`\n${model.bindRegion!}`)).toBe(true);
     expect(verifyPromptBinding(fixture(name), model.bindRegion!, undefined, undefined, model.bindTail).ok).toBe(true);
+  });
+});
+
+// The rest of the ticking-row family (follow-up of 2026-11-17): Claude's preview question, agy's
+// prompts, the plan approval whose subject sits above its rule, and Claude's self-answer countdown.
+describe("ticking rows, plan approvals and the countdown, on the phone and in the ask id", () => {
+  // eslint-disable-next-line no-control-regex -- the fixtures are raw pane reads, ANSI and all
+  const plain = (row: string) => row.replace(/\x1b\[[0-9;]*m/g, "");
+  /** The screen with `rows` inserted right above the first row that matches `at`. */
+  function insertAbove(text: string, at: (row: string) => boolean, rows: string[]): string {
+    const sep = text.includes("\r\n") ? "\r\n" : "\n";
+    const all = text.split(sep);
+    const i = all.findIndex((row) => at(plain(row)));
+    expect(i, "the anchor row is on the screen").toBeGreaterThan(0);
+    return [...all.slice(0, i), ...rows, ...all.slice(i)].join(sep);
+  }
+  const TICK = (t: string) => [`● Bash(sleep 600)`, `  ⎿  Running… (${t} · timeout 10m)`];
+  const lift = (text: string, agent: string) => liftDialog(readerBlocks(lines(text), agent))!;
+
+  describe("Claude's preview question", () => {
+    const BASE = fixture("claude--select-preview.txt");
+    const rule = (row: string) => row.startsWith("────");
+    const model = (text: string) => dialogDetector("preview-select", "claude")(lines(text))!;
+    const shown = insertAbove(BASE, rule, TICK("4m 12s"));
+    const fresh = insertAbove(BASE, rule, TICK("4m 16s"));
+
+    it("a timer above the rule is the same dialog to the tap and the ask id, and outside the bound region", () => {
+      const c = DIALOG_CONTRACT["preview-select"];
+      expect(c.commits(model(shown), model(fresh))).toBe(true);
+      expect(c.region(model(fresh))).toMatch(/^─+\n ☐ Design/u);
+      expect(c.region(model(fresh))).not.toContain("Running");
+      expect(lift(fresh, "claude").hash).toBe(lift(shown, "claude").hash);
+      expect(lift(fresh, "claude").region).toBe(lift(shown, "claude").region);
+    });
+
+    it("another question under the same options is another dialog", () => {
+      const other = fresh.replaceAll("Which widget design should we use?", "Which widget design should we drop?");
+      expect(DIALOG_CONTRACT["preview-select"].commits(model(shown), model(other))).toBe(false);
+      expect(lift(other, "claude").hash).not.toBe(lift(shown, "claude").hash);
+    });
+  });
+
+  describe("agy's permission", () => {
+    const BASE = fixture("agy--permission-bash.txt");
+    const title = (row: string) => row === "Command";
+    const shown = insertAbove(BASE, title, TICK("4m 12s"));
+    const fresh = insertAbove(BASE, title, TICK("4m 16s"));
+    const tapped = (text: string) => dialogDetector("prompt-select", "agy")(lines(text))!;
+    const tap = (prompt: ReturnType<typeof tapped>) =>
+      submitPromptOption({ paneId: "w1:p1", requestedLines: 200, detectedRevision: 7, agent: "agy", prompt, option: prompt.options[0]! });
+
+    it("a timer above the dialog, revision moved: the tap sends once, bound to the dialog's own rows", async () => {
+      const prompt = tapped(shown);
+      expect(tapped(fresh).signature).not.toBe(prompt.signature);
+      mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: fresh, truncated: false, revision: 11 });
+      expect(await tap(prompt)).toEqual({ status: "sent" });
+      expect(mockSendKeys).toHaveBeenCalledTimes(1);
+      const sent = mockSendKeys.mock.calls[0]![3];
+      // One string, not the list form: agy's dialog holds no row that redraws by itself.
+      expect(Array.isArray(sent)).toBe(false);
+      const region = String(sent);
+      expect(region).toMatch(/^Command\n─+\n/u);
+      expect(region).not.toContain("Running");
+      expect(verifyPromptBinding(fresh, region).ok).toBe(true);
+      expect(lift(fresh, "agy").hash).toBe(lift(shown, "agy").hash);
+    });
+
+    it("another command under the same options is refused, and is another ask", async () => {
+      const prompt = tapped(shown);
+      const other = fresh.split("\n").map((row) => (plain(row).trimEnd() === "   ls -la /tmp" ? "   rm -rf /tmp" : row)).join("\n");
+      expect(other).not.toBe(fresh);
+      mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: other, truncated: false, revision: 7 });
+      expect(await tap(prompt)).toEqual({ status: "changed" });
+      expect(mockSendKeys).not.toHaveBeenCalled();
+      expect(lift(other, "agy").hash).not.toBe(lift(shown, "agy").hash);
+    });
+  });
+
+  describe("a plan approval, whose plan sits above the rule that tops the question", () => {
+    const BASE = fixture("claude-lab--plan-approval--w82.txt");
+    const REVISED = BASE.replace("the heading and prior three lines untouched.", "the heading and prior three lines rewritten.");
+    const tapped = (text: string) => dialogDetector("prompt-select", "claude")(lines(text))!;
+
+    it("carries no bindRegion: the rows under the rule do not hold the plan", () => {
+      expect(tapped(BASE).askRegion).toBeTruthy();
+      expect(tapped(BASE).bindRegion).toBeUndefined();
+    });
+
+    it("a revised plan in the same file is refused on the phone and is another ask", async () => {
+      expect(REVISED).not.toBe(BASE);
+      const prompt = tapped(BASE);
+      mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: REVISED, truncated: false, revision: 0 });
+      const res = await submitPromptOption({ paneId: "w1:p1", requestedLines: 200, detectedRevision: 0, agent: "claude", prompt, option: prompt.options[1]! });
+      expect(res).toEqual({ status: "changed" });
+      expect(mockSendKeys).not.toHaveBeenCalled();
+      expect(lift(REVISED, "claude").hash).not.toBe(lift(BASE, "claude").hash);
+    });
+  });
+
+  describe("Claude's self-answer countdown inside the dialog", () => {
+    const BG = fixture("claude--v2303-permission-bash-bg-agent-rm--w160.txt");
+    const sentence = (clock: string) =>
+      `⚠ Claude Code will automatically deny this request in ${clock}, to avoid blocking progress on an unattended session`;
+    /** The capture with the countdown under its explanation row, as the owner's phone showed it. */
+    function countdown(clock: string): string {
+      const rows = BG.split("\n");
+      const at = rows.findIndex((row) => row.includes("Dangerous rm operation"));
+      expect(at).toBeGreaterThan(0);
+      rows.splice(at + 1, 0, ` \u001b[0m\u001b[2m│\u001b[0m \u001b[38;2;255;193;7m${sentence(clock)}\u001b[0m\r`);
+      return rows.join("\n");
+    }
+    const tapped = (text: string) => dialogDetector("prompt-select", "claude")(lines(text))!;
+
+    it("the clock moving between the tap and the reads refuses nothing, and the bridge finds both parts at any clock", async () => {
+      const prompt = tapped(countdown("1:20"));
+      expect(prompt.bindParts).toHaveLength(2);
+      const [head, rest] = prompt.bindParts!;
+      expect(head).toContain("level.py;");
+      expect(rest).toBe(prompt.bindRegion);
+      expect(rest).toContain("Do you want to proceed?");
+      for (const part of prompt.bindParts!) expect(part).not.toContain("automatically deny");
+      mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: countdown("1:19"), truncated: false, revision: 9 });
+      const res = await submitPromptOption({ paneId: "w1:p1", requestedLines: 200, detectedRevision: 8, agent: "claude", prompt, option: prompt.options[0]! });
+      expect(res).toEqual({ status: "sent" });
+      const parts = mockSendKeys.mock.calls[0]![3];
+      if (!Array.isArray(parts)) throw new Error("a dialog with a clock binds a list");
+      expect(parts).toEqual(prompt.bindParts);
+      // The bridge re-reads a moment later: the clock has moved again, and both parts still bind.
+      for (const clock of ["0:59", "0:05", "about 45 seconds"]) expect(verifyPromptParts(countdown(clock), parts).ok).toBe(true);
+      // Another command under the same countdown, question and options: the first part is not there.
+      expect(verifyPromptParts(countdown("1:20").replace("level.py;", "level.sh;"), parts)).toEqual({ ok: false, reason: "not_found" });
+    });
+
+    it("a bridge that does not know the list refuses it, and the tap is a shown error with nothing retried", async () => {
+      const prompt = tapped(countdown("1:20"));
+      mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: countdown("1:19"), truncated: false, revision: 9 });
+      // Every bridge from 1.0.0 to 1.29.0-edge.3 answers a non-string `expected_prompt` with this 400.
+      mockSendKeys.mockRejectedValueOnce(new Error("400 bad expected_prompt"));
+      const res = await submitPromptOption({ paneId: "w1:p1", requestedLines: 200, detectedRevision: 8, agent: "claude", prompt, option: prompt.options[0]! });
+      expect(res.status).toBe("error");
+      expect(mockSendKeys).toHaveBeenCalledTimes(1);
+    });
+
+    it("another command under the same countdown is still refused on the phone", async () => {
+      const prompt = tapped(countdown("1:20"));
+      const other = countdown("1:19").replace("level.py;", "level.sh;");
+      expect(other).not.toBe(countdown("1:19"));
+      mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text: other, truncated: false, revision: 9 });
+      const res = await submitPromptOption({ paneId: "w1:p1", requestedLines: 200, detectedRevision: 8, agent: "claude", prompt, option: prompt.options[0]! });
+      expect(res).toEqual({ status: "changed" });
+    });
   });
 });
