@@ -807,7 +807,7 @@ async function daemon(): Promise<void> {
     // The tiers the global setup chose (COLLIE_RIG_TIERS), or the same rule here for a rig brought up by hand.
     const leg = crew ? "crew" : "solo";
     const tiers = tiersFromEnv() ?? planTiers(leg, process.env, readVersions());
-    const taken = [run.port, ...(run.member === undefined ? [] : [run.member.port])];
+    const taken = [run.port, ...(run.member === undefined ? [] : [run.member.port]), ...(run.second === undefined ? [] : [run.second.port])];
     stub = await startStub({ root: cassetteRoot(), leg: cassetteLeg(leg), plans: tiers, literals: rigLiterals(STATE_ROOT), speed: Number(process.env.COLLIE_RIG_REPLAY_SPEED ?? "1") || 1, log: (line) => log(`stub: ${line}`) }, await freePort(taken));
     run.stub = { port: stub.port, tiers };
     writeRun(run);
