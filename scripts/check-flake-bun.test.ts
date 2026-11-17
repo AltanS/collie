@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 622 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 623 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([386, 201, 35]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([386, 202, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 6 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -324,7 +324,7 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(stagingSkips).toHaveLength(7);
     expect(script).toContain("cli/image-stage.test.ts");
     const addSkips = testsInBlocks(readFileSync(join(ROOT, "cli", "trick-add.test.ts"), "utf8"), "describe.if(posix)(");
-    expect(addSkips).toBe(23);
+    expect(addSkips).toBe(24);
     expect(script).toContain("cli/trick-add.test.ts");
     const proposeSkips = readFileSync(join(ROOT, "cli", "trick-propose.test.ts"), "utf8").match(/^ +(?:socketTest|posixTest)\(/gm) ?? [];
     expect(proposeSkips).toHaveLength(20);
