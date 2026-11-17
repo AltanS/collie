@@ -40,7 +40,7 @@ import type { HillTrickTap } from "../hill/service.ts";
 import type { ViewGate } from "../agent-view/service.ts";
 import type { TrickRightsPort, TrickRightsSubject } from "./rights-card.ts";
 import { bindingAgainst, bindParts, type GenerationOf, type InstanceOf } from "./bound.ts";
-import { approveFolder, copyListing, forgetLeftovers, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
+import { approveFolder, copyListing, forgetLeftovers, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, sweepGone, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { fieldsChanged } from "./version-card.ts";
 import { codeHashOfFiles, diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
@@ -750,6 +750,8 @@ export class TricksService implements TricksSurface {
   private readonly warningsOf = new Map<string, { codeHash: string; warnings: WireTrickWarning[] }>();
   /** The warnings read in flight, one at a time. */
   private warningRead: Promise<void> | null = null;
+  /** The start's sweep of `.gone-*` leftovers (`boot`); a test waits on it. */
+  swept: Promise<void> = Promise.resolve();
   /** When the unreferenced copies were last pruned. */
   private prunedAt = -Infinity;
   /** The switch for tricks as a whole (feature-switch.ts). */
@@ -887,6 +889,11 @@ export class TricksService implements TricksSurface {
    */
   async boot(): Promise<void> {
     if (this.gated() || this.deps.active?.() === false) return;
+    // What a crashed add left set aside (approved.ts `forgetLeftovers`), whatever is switched on. Not awaited:
+    // the removal of a large state folder never holds the start.
+    this.swept = (async () => {
+      await sweepGone({ stateDir: this.deps.stateDir, configDir: this.deps.configDir });
+    })();
     try {
       const switches = await this.readSwitches();
       if (switches.on.size === 0) return;

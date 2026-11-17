@@ -1139,6 +1139,19 @@ describe("the scan at bridge start", () => {
     r.service.stop();
   });
 
+  test("review J, point 1: the start sweeps `.gone-*` leftovers of a crashed add, with no trick on", async () => {
+    const r = await rig([OK]);
+    const left = [join(r.stateDir, TRICKS_DIR, ".gone-legs-aaaaaaaaaaaa"), join(r.configDir, TRICKS_DIR, ".collie-approved", ".gone-legs-bbbbbbbbbbbb")];
+    for (const path of left) {
+      await mkdir(join(path, "deep"), { recursive: true });
+      await writeFile(join(path, "deep", "x"), "x\n");
+    }
+    await r.service.boot();
+    await r.service.swept;
+    for (const path of left) expect(await Bun.file(join(path, "deep", "x")).exists()).toBe(false);
+    r.service.stop();
+  });
+
   test("no trick on: no scan, no run, and the local API not told by the boot", async () => {
     const told: boolean[] = [];
     const r = await rig([OK], { onLocalApi: (wanted) => told.push(wanted) });
