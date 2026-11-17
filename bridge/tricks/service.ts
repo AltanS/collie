@@ -180,6 +180,8 @@ export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX, WATCH_WINDOW_MS };
 export const TICK_MS = 1000;
 /** The least time between two scans of the tricks folder. */
 export const SCAN_EVERY_MS = 2000;
+/** A changed value restarts its trick once, this long after the LAST write: a person typing or a slider moving costs one run. */
+export const VALUE_RESTART_MS = 1000;
 /** The tap receipts kept in memory with their parts, newest last. The file keeps its own. */
 export const TAP_RECEIPTS_MAX = 200;
 /** The row's line while a new version of an on trick waits for a person's yes. */
@@ -607,6 +609,8 @@ interface TrickRuntime {
   pendingStart: boolean;
   /** Earliest time the next start or timer run may begin. */
   nextAt: number;
+  /** A changed value asked for a restart at this time; each later write moves it (`tick` starts the one run). Absent: none asked. */
+  valueRestartAt?: number;
   /** The run this trick has going or waiting for a slot. */
   running: Promise<void> | null;
   /** A phone tap waiting, one deep. */
@@ -1819,6 +1823,11 @@ export class TricksService implements TricksSurface {
     const now = this.now();
     const started: Promise<void>[] = [];
     for (const rt of this.runtimes.values()) {
+      // The one restart a run of value writes asked for, once the last write is VALUE_RESTART_MS old.
+      if (rt.valueRestartAt !== undefined && now >= rt.valueRestartAt) {
+        delete rt.valueRestartAt;
+        this.restart(rt);
+      }
       if (!this.due(rt, now)) continue;
       const trigger: FactsTrigger = rt.pendingStart ? { kind: "start" } : { kind: "timer" };
       started.push(this.begin(rt, trigger, null));
@@ -2537,10 +2546,32 @@ export class TricksService implements TricksSurface {
   // config.toml edit does. The fields are those of what runs (the approved copy while on, else the folder),
   // so a field of a version that waits for a yes cannot be set before that yes.
   //
+  // Counsel on Edge build 5 (A7): the restart is one, VALUE_RESTART_MS after the last write; a write reads the
+  // one trick, not the folder; the seen ids are bounded (values.ts `SeenWrites`, the oldest out).
+  //
   // KNOWN LIMITS (accepted by the lead, 2026-11-17): the seen-id store is memory only, so a bridge restart
   // forgets the ids, and the same id sent again after a restart writes the same value again (no visible
-  // change). Value writes are not rate limited beyond the trick's own one-run slot: each changed value
-  // queues one run of the trick, and runs never overlap.
+  // change). Value writes are not rate limited, but a run of them restarts
+  // the trick once (above), and runs never overlap.
+
+  /**
+   * Read ONE trick again (its folder, its switch and its approved copy) for a value write: not every trick
+   * of the folder. A trick this service does not hold yet, or a folder that cannot be read, takes the whole
+   * scan, which also finds out that it is gone.
+   */
+  private async rescanOne(id: string): Promise<TrickRuntime | undefined> {
+    const known = this.runtimes.get(id);
+    const [found, switches] = known === undefined ? [null, null] : await Promise.all([this.scanner.one(id), this.readSwitches()]);
+    if (known === undefined || found === null || switches === null) {
+      await this.refresh(true);
+      return this.runtimes.get(id);
+    }
+    if (this.runtimes.get(id) !== known) return this.runtimes.get(id);
+    this.applyOne(found, this.liveEntry(switches, id), switches.on.has(id));
+    await this.ensureApproved(known);
+    await this.notePending(known);
+    return known;
+  }
 
   async setValue(host: string, id: string, request: ValueRequest): Promise<ValueAnswer> {
     const { rid, key, value: asked } = request;
@@ -2556,8 +2587,7 @@ export class TricksService implements TricksSurface {
     const turn = this.lane(async (): Promise<ValueAnswer> => {
       const seen = this.valueWrites.get(rid);
       if (seen !== undefined) return seen.digest === digest ? seen.answer : { status: 409, body: { error: "request-id-reused", rid } };
-      await this.refresh(true);
-      const rt = this.runtimes.get(id);
+      const rt = await this.rescanOne(id);
       if (rt === undefined) return { status: 404, body: { error: "unknown-trick" } };
       const field = this.shownOf(rt).manifest?.fields?.find((one) => one.key === key);
       if (field === undefined) return { status: 400, body: { error: "value-refused", rid, code: "unknown-field", message: `This trick has no setting "${key}". Read its About sheet for the settings it has.` } };
@@ -2579,8 +2609,9 @@ export class TricksService implements TricksSurface {
           return { status: 409, body: { error: "write-failed", message: VALUES_WRITE_FAILED } };
         }
         this.deps.audit?.({ action: "trick.value", detail: { trick: id, field: key, by: "phone" } });
-        // A changed value asks nothing again: it runs the trick once more, as a config.toml edit does.
-        if (rt.on) this.restart(rt);
+        // A changed value asks nothing again: it runs the trick once more, as a config.toml edit does, one
+        // second after the last write (a debounce: `tick` starts the run), so a run of writes costs one run.
+        if (rt.on) rt.valueRestartAt = this.now() + VALUE_RESTART_MS;
       }
       this.publish(id);
       const info = this.store.reply(this.store.rev).tricks.find((trick) => trick.id === id);
