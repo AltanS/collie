@@ -1560,6 +1560,13 @@ export function AgentChat({
           setStatus(result.detail ?? t("chat.status.askDesk"), "note");
           revalidator.revalidate();
           return false;
+        case "moved":
+          // A hold ended under the tap (its limit, a stopped hook): the card becomes the screen
+          // dialog's card in this one step, and the words say the tap did nothing (M102 spec 14).
+          setAskReplaced({ pane: paneId, refused: refusedId, ask: result.ask });
+          setStatus(t("chat.status.askMoved"), "warn");
+          revalidator.revalidate();
+          return false;
         case "gone":
           setAskReplaced({ pane: paneId, refused: refusedId, ask: null });
           setStatus(t("chat.status.askGone"), "warn");
