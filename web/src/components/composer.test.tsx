@@ -1656,21 +1656,22 @@ describe("Composer — the footer's strips animate in, never jump in", () => {
     await expectArrivedThroughCollapse(await screen.findByText(/typing into terminal/i));
   });
 
-  it("wraps the pending-send preview, which stays in the footer as a VERIFICATION surface", async () => {
-    // It is not moved to the top pills, and the reason is in composer.tsx at the strip: the "sent"
+  it("floats the pending-send preview as a toast, which stays a VERIFICATION surface", async () => {
+    // It is not a row of the footer any more (nothing moves when it comes), and not a pill: the "sent"
     // EVENT is already a pill (`composer.status.sent`, asserted here too), while this half holds the
     // words that were sent on screen until the mirror echoes them back, so the operator can check
-    // what landed rather than tapping Send twice. That outlives a pill's 2.5s and would be truncated
-    // by one.
+    // what landed rather than tapping Send twice. It shows only once the send is `SEND_SLOW_MS` old
+    // (composer-send-toast.test.tsx), so this waits for it.
     const user = userEvent.setup();
     renderComposerWithStatus();
     const box = screen.getByPlaceholderText(/type a reply/i);
     await user.type(box, "ship it");
     await user.click(screen.getByRole("button", { name: "Send" }));
 
-    const preview = await screen.findByText(/ship it/i, { selector: "span" });
-    await expectArrivedThroughCollapse(preview);
-    // The event half really is in the pills, so the footer is carrying only the verification half.
+    const preview = await screen.findByText(/ship it/i, { selector: "span" }, { timeout: 4000 });
+    expect(preview.closest('[data-slot="send-toast"]')).not.toBeNull();
+    expect(rowOf(preview)).toBeNull();
+    // The event half really is in the pills.
     expect(screen.getByTestId("status")).toHaveTextContent(/sent/i);
   }, 15000);
 });
