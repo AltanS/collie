@@ -1044,7 +1044,7 @@ export class TricksService implements TricksSurface {
           switches = await this.readSwitches();
         }
         const scan = await this.scanner.scan(new Set(switches.on.keys()));
-        await this.forgetArrivals(scan);
+        await this.forgetArrivals(scan, switches);
         // Read after the switch file, so a scan never folds in a switch older than the one it read.
         this.suspended = this.switchedOff();
         this.apply(scan, switches);
@@ -1081,17 +1081,21 @@ export class TricksService implements TricksSurface {
    * runs the same `forgetTrick` hook an add through the bridge runs (the agent views and the Hill keys of
    * that id), BEFORE {@link apply} lets the trick run, so a session's view of the old trick never carries
    * the new one's rules and an old card never answers to the new program. The first good scan only records
-   * the ids it holds; a kept scan (it ran over, or the folder could not be listed) changes nothing. A hook
-   * that throws is logged and the trick still runs: the files are the new trick's, and the next arrival
+   * the ids it holds; an id whose switch entry holds an approved hash is kept (the folder only vanished for a
+   * moment); a kept scan (it ran over, or the folder could not be listed) changes nothing. A hook that throws is logged and the trick still runs: the files are the new trick's, and the next arrival
    * tries again.
    */
-  private async forgetArrivals(scan: TricksScan): Promise<void> {
+  private async forgetArrivals(scan: TricksScan, switches: Switches): Promise<void> {
     if (scan.kept !== undefined) return;
     const first = !this.scannedOnce;
     this.scannedOnce = true;
     if (first || this.deps.forgetTrick === undefined) return;
     for (const found of scan.tricks) {
       if (this.runtimes.has(found.id)) continue;
+      // An entry WITH an approved hash is a trick that exists: its folder only vanished for a moment (the
+      // swap of `collie trick update`, which leaves the entry). A true leftover had its entry cleared by
+      // `forgetLeftovers`, so it arrives with none, or with one that approves nothing.
+      if (switches.on.get(found.id)?.hash != null) continue;
       try {
         await this.deps.forgetTrick(found.id);
       } catch (err) {
