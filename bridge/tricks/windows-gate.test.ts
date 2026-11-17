@@ -39,7 +39,7 @@ interface Rig {
 }
 
 /** A bridge on `platform` with the trick `legs` in its folder, switched on at the folder's code hash. */
-async function rig(platform: NodeJS.Platform): Promise<Rig> {
+async function rig(platform: NodeJS.Platform, env: TricksServiceDeps["env"] = { PATH: "/usr/bin:/bin" }): Promise<Rig> {
   const root = await mkdtemp(join(tmpdir(), "collie-tricks-gate-"));
   dirs.push(root);
   const configDir = join(root, "config");
@@ -60,7 +60,7 @@ async function rig(platform: NodeJS.Platform): Promise<Rig> {
     memberId: HOST,
     platform,
     world: (memberId) => ({ machine: "desk", sessions: [], spaces: [{ name: "collie", folder: `/work/${memberId}` }] }),
-    env: { PATH: "/usr/bin:/bin" },
+    env,
     now: () => clock.t,
     warn: () => {},
     revBase: 1000,
@@ -173,5 +173,16 @@ describe("windows gate", () => {
     expect(win.service.viewGate("legs")).toEqual({ ok: false, code: "trick_off", error: TRICKS_WINDOWS_LINE });
     expect(await win.service.viewGateFresh("legs")).toEqual({ ok: false, code: "trick_off", error: TRICKS_WINDOWS_LINE });
     expect(await win.service.media(HOST, "legs", "a.png")).toBeNull();
+  });
+
+  test("windows gate stays: gated() is true on win32 only, also after the four Windows faults are fixed", async () => {
+    expect((await rig("win32")).service.gated()).toBe(true);
+    expect((await rig("linux")).service.gated()).toBe(false);
+  });
+
+  test("the doctor's PATH (runnerPath) reads Path on a Windows bridge and never shows a secret (fault a)", async () => {
+    const env = { Path: "C:\\Windows\\system32", SystemRoot: "C:\\Windows", collie_token: "tok-must-not-leak" };
+    expect((await rig("win32", env)).service.runnerPath()).toBe("C:\\Windows\\system32");
+    expect((await rig("linux", env)).service.runnerPath()).toBe("");
   });
 });

@@ -3,7 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { scrubEnv, scrubReason } from "./env.ts";
+import { hostFor } from "../host.ts";
+import { envPath, isBaseEnvName, neverReason, scrubEnv, scrubReason, WINDOWS_BASE_ENV_NAMES } from "./env.ts";
 import { BUN_BE_BUN, launchOf, outcomeProblem, runProgram, runtimeScript, shellArgv, STDERR_CAP_BYTES, type RunSpec } from "./run.ts";
 
 const dirs: string[] = [];
@@ -107,6 +108,95 @@ describe("the env scrub", () => {
     expect(outcome.stdout).not.toContain(KEY.slice(4));
     // Windows spells it `Path`, and a name there is one in any case.
     expect(outcome.stdout.toUpperCase()).toContain("PATH=");
+  });
+});
+
+describe("the env scrub on Windows (fault a): names without case, the copy's own spelling, never a secret", () => {
+  const WIN = hostFor("win32");
+  const LINUX = hostFor("linux");
+  // A Windows environment copy, spelled the way Windows spells it, with secrets in odd case beside it.
+  const winEnv = {
+    Path: "C:\\Windows\\system32;C:\\Program Files\\Git\\cmd",
+    PathExt: ".COM;.EXE;.BAT;.CMD",
+    SystemRoot: "C:\\Windows",
+    windir: "C:\\Windows",
+    ComSpec: "C:\\Windows\\system32\\cmd.exe",
+    TEMP: "C:\\Users\\op\\AppData\\Local\\Temp",
+    Tmp: "C:\\Users\\op\\AppData\\Local\\Temp",
+    USERPROFILE: "C:\\Users\\op",
+    APPDATA: "C:\\Users\\op\\AppData\\Roaming",
+    LocalAppData: "C:\\Users\\op\\AppData\\Local",
+    COLLIE_TOKEN: "tok-must-not-leak",
+    collie_token: "tok-must-not-leak",
+    Collie_Token: "tok-must-not-leak",
+    Herdr_Plugin_Config_Dir: "C:\\x",
+    ssh_auth_sock: "\\\\.\\pipe\\ssh",
+    Docker_Socket: "\\\\.\\pipe\\docker",
+    bun_be_bun: "1",
+    trick_now: "1794225600",
+    OpenRouter_Api_Key: KEY,
+    gh_token: "ghp_x",
+    Aws_Secret_Access_Key: "y",
+    db_password: "hunter2",
+    // A base name whose value the mask hides is dropped on Windows too.
+    term: KEY,
+  };
+  const SECRET_VALUES = ["tok-must-not-leak", KEY, "ghp_x", "hunter2", "\\\\.\\pipe\\ssh", "\\\\.\\pipe\\docker"];
+
+  test("keeps Path, PathExt, SystemRoot and the Windows base set, in the spelling the copy carries", () => {
+    expect(scrubEnv(winEnv, [], { host: WIN })).toEqual({
+      Path: winEnv.Path,
+      PathExt: winEnv.PathExt,
+      SystemRoot: winEnv.SystemRoot,
+      windir: winEnv.windir,
+      ComSpec: winEnv.ComSpec,
+      TEMP: winEnv.TEMP,
+      Tmp: winEnv.Tmp,
+      USERPROFILE: winEnv.USERPROFILE,
+      APPDATA: winEnv.APPDATA,
+      LocalAppData: winEnv.LocalAppData,
+    });
+    for (const name of WINDOWS_BASE_ENV_NAMES) {
+      expect(isBaseEnvName(name.toLowerCase(), WIN)).toBe(true);
+      expect(isBaseEnvName(name, LINUX)).toBe(false);
+    }
+  });
+
+  test("the Windows set and the folding stay off POSIX: Linux keeps the exact-case list it had", () => {
+    expect(scrubEnv({ ...winEnv, PATH: "/usr/bin", LC_ALL: "C" }, [], { host: LINUX })).toEqual({ PATH: "/usr/bin", LC_ALL: "C" });
+  });
+
+  test("no secret-like name passes on either platform, in any case, listed or not", () => {
+    // Every never-name, listed in its own odd case: a list cannot open them. The keys stay unlisted.
+    const listedAll = ["COLLIE_TOKEN", "collie_token", "Collie_Token", "Herdr_Plugin_Config_Dir", "ssh_auth_sock", "Docker_Socket", "bun_be_bun", "trick_now"];
+    for (const host of [WIN, LINUX]) {
+      const out = scrubEnv(winEnv, listedAll, { host });
+      const values = Object.values(out).join("\n");
+      for (const secret of SECRET_VALUES) expect(values).not.toContain(secret);
+      for (const name of Object.keys(out)) expect(name.toUpperCase()).not.toMatch(/^(COLLIE_|HERDR_)|_SOCK$|_SOCKET$|^BUN_BE_BUN$/);
+    }
+    // On POSIX a listed `trick_now` is another variable than the hook TRICK_NOW; on Windows it is the hook.
+    expect(Object.keys(scrubEnv(winEnv, listedAll, { host: WIN })).map((n) => n.toUpperCase())).not.toContain("TRICK_NOW");
+    // Listed by name, in another case, a COLLIE_ or socket name is still never passed.
+    expect(scrubEnv(winEnv, ["COLLIE_TOKEN", "SSH_AUTH_SOCK", "BUN_BE_BUN", "TRICK_NOW"], { host: WIN })).not.toHaveProperty("collie_token");
+    expect(neverReason("collie_token", WIN)).toBe("a COLLIE_ variable");
+    expect(neverReason("Collie_Token", LINUX)).toBe("a COLLIE_ variable");
+    // `trick_now` is TRICK_NOW on Windows: a test hook there, never passed in a bridge run even listed.
+    expect(neverReason("trick_now", WIN)).toBe("a test hook, passed only by collie trick dev and check --run");
+    expect(scrubEnv(winEnv, ["trick_now"], { host: WIN })).not.toHaveProperty("trick_now");
+  });
+
+  test("a key the trick lists passes on Windows in the copy's spelling, matched without case", () => {
+    expect(scrubEnv(winEnv, ["GH_TOKEN"], { host: WIN })).toMatchObject({ gh_token: "ghp_x" });
+    expect(scrubEnv(winEnv, ["GH_TOKEN"], { host: LINUX })).not.toHaveProperty("gh_token");
+    expect(scrubReason("OpenRouter_Api_Key", KEY, new Set(), WIN)).toBe("not on the allow-list; a trick lists it in env");
+    expect(scrubReason("term", KEY, new Set(), WIN)).toBe("a value the secret mask hides");
+  });
+
+  test("the PATH reader finds Path on a Windows copy and PATH only on POSIX", () => {
+    expect(envPath(scrubEnv(winEnv, [], { host: WIN }), WIN)).toBe(winEnv.Path);
+    expect(envPath({ Path: "C:\\x" }, LINUX)).toBeUndefined();
+    expect(envPath({ PATH: "/usr/bin" }, LINUX)).toBe("/usr/bin");
   });
 });
 

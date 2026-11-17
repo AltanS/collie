@@ -42,7 +42,8 @@ import { bindingAgainst, bindParts, type GenerationOf, type InstanceOf } from ".
 import { approveFolder, copyListing, fileCounts, forgetMigratedPowers, holdsMigratedPowers, legacyPowersOf, migrateSwitches, powersOf, promoteCopy, pruneCopies, snapshotTrick, syncConfig, verifyCopy, type ApproveOptions } from "./approved.ts";
 import { codeHashOfFiles, diskTrickFs, unsafeText } from "./code-hash.ts";
 import { createTrickScanner, scanTrickDir, SCAN_TIMEOUT_MS, within, type FoundTrick, type TricksScan } from "./discover.ts";
-import { scrubEnv, type ProgramEnv } from "./env.ts";
+import { envPath, scrubEnv, type ProgramEnv } from "./env.ts";
+import { HOST, hostFor, type Host } from "../host.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import type { TrickInputs } from "./inputs.ts";
 import { readTrickMedia, type TrickMediaFile } from "./media.ts";
@@ -716,9 +717,15 @@ export class TricksService implements TricksSurface {
     return this.now() - this.watchedAt < WATCH_WINDOW_MS;
   }
 
-  /** The PATH a program gets. */
+  /** The host rules of `deps.platform`: Windows reads environment names without case. */
+  private host(): Host {
+    return this.deps.platform === undefined ? HOST : hostFor(this.deps.platform);
+  }
+
+  /** The PATH a program gets, by the spelling the environment carries (`Path` on Windows). */
   runnerPath(): string {
-    return scrubEnv(this.deps.env).PATH ?? "";
+    const host = this.host();
+    return envPath(scrubEnv(this.deps.env, [], { host }), host) ?? "";
   }
 
   /** How many programs run (or hold a slot) now. For a test. */
@@ -1621,7 +1628,7 @@ export class TricksService implements TricksSurface {
     const outcome = await (this.deps.run ?? runProgram)({
       command,
       cwd: run.dir,
-      env: scrubEnv(this.deps.env, manifest.env ?? []),
+      env: scrubEnv(this.deps.env, manifest.env ?? [], { host: this.host() }),
       stdin: JSON.stringify(facts),
       platform: this.deps.platform,
       ...this.deps.limits,

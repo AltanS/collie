@@ -9,7 +9,8 @@ import { APPROVED_DIR, approvedTrickDir, PENDING_DIR, switchesPath, trickStateDi
 import { parseSwitches } from "../bridge/tricks/switches.ts";
 import { EXIT, type Io } from "./io.ts";
 import { realFiles } from "./sys.ts";
-import { ADD_LIMITS, cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate, GIT_HARDENING, manifestBlurb, OFFICIAL_TRICKS_REPO, parseTrickSource, sourceRefProblem, spawnGit, type GitRunner, type TrickAddDeps } from "./trick-add.ts";
+import { hostFor } from "../bridge/host.ts";
+import { ADD_LIMITS, cmdTrickAdd, cmdTrickRemove, cmdTrickUpdate, GIT_HARDENING, gitRunEnv, manifestBlurb, OFFICIAL_TRICKS_REPO, parseTrickSource, sourceRefProblem, spawnGit, type GitRunner, type TrickAddDeps } from "./trick-add.ts";
 import { cmdTrickList, cmdTrickSwitch } from "./trick.ts";
 
 // `collie trick add`, `update` and `remove` (review 15), against a local bare repository through the test
@@ -131,6 +132,21 @@ async function expectNoLeftovers(r: Rig): Promise<void> {
   // The folders of approved and pending copies are the bridge's, not a leftover of add or update.
   expect(tricks.filter((n) => n.startsWith(".") && n !== APPROVED_DIR && n !== PENDING_DIR)).toEqual([]);
 }
+
+describe("a git run's environment on Windows (fault a)", () => {
+  test("keeps Path in its own spelling and drops every GIT_ name in any case on Windows, exact case on POSIX", () => {
+    const base = { Path: "C:\\Git\\cmd", GIT_DIR: "C:\\evil", git_config_global: "C:\\evil.cfg", Git_Exec_Path: "C:\\evil" };
+    const win = gitRunEnv(base, false, hostFor("win32"));
+    expect(win.Path).toBe("C:\\Git\\cmd");
+    expect(Object.keys(win).filter((k) => k.toUpperCase().startsWith("GIT_") && !k.startsWith("GIT_"))).toEqual([]);
+    expect(win.GIT_DIR).toBeUndefined();
+    expect(win.GIT_ALLOW_PROTOCOL).toBe("https");
+    // POSIX keeps a lower-case name: a git there does not read `git_config_global` as GIT_CONFIG_GLOBAL.
+    const onPosix = gitRunEnv(base, false, hostFor("linux"));
+    expect(onPosix.git_config_global).toBe("C:\\evil.cfg");
+    expect(onPosix.GIT_DIR).toBeUndefined();
+  });
+});
 
 describe("collie trick add: the source", () => {
   test("a bare name is that folder of the official repository, with or without a ref", () => {
