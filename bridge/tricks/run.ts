@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { HOST } from "../host.ts";
 import { redactText } from "../redact.ts";
 import { isEmbedded } from "../root.ts";
+import { windowsTreeKill, type KillSpawn } from "../tree-kill.ts";
 import { RUN_TIMEOUT_MS, STDERR_CAP_BYTES, STDOUT_CAP_BYTES } from "../../web/src/lib/tricks/limits.ts";
 
 // ONE RUN OF A TRICK'S PROGRAM (M94 slice 01): spawn, feed the facts, read with caps, kill on time.
@@ -38,6 +39,12 @@ export interface RunSpec {
   platform?: NodeJS.Platform;
   /** The runtime a script line runs with. Default this process's own ({@link ownRuntime}). For a test. */
   runtime?: Runtime;
+  /**
+   * The Windows kill's seams (bridge/tree-kill.ts): how its two programs start, and the environment its
+   * absolute paths read `SystemRoot` from. Default `Bun.spawn` and the bridge's own `process.env`, never
+   * the program's. For a test.
+   */
+  winKill?: { readonly spawn?: KillSpawn; readonly env?: Readonly<Record<string, string | undefined>> };
 }
 
 // ── THE TWO FORMS OF A RUN LINE (M94 review 4) ──────────────────────────────────────────────────
@@ -109,14 +116,21 @@ export function shellArgv(command: string, platform: NodeJS.Platform): string[] 
   return platform === "win32" ? ["cmd.exe", "/d", "/s", "/c", command] : ["/bin/sh", "-c", command];
 }
 
-/** Kill the whole group the program leads. A group that is gone already is not an error. */
-function killGroup(pid: number, platform: NodeJS.Platform): void {
+/**
+ * Kill the whole group the program leads. A group that is gone already is not an error.
+ *
+ * On Windows there is no group: the tree kill of bridge/tree-kill.ts ends the program's tree by the
+ * absolute `%SystemRoot%\System32\taskkill.exe` (never a bare `taskkill`, which the trick's folder,
+ * the run's cwd, could supply), in the background with a time limit, then the program itself, then
+ * one pass for what it left behind, found by parent pid inside the run's window.
+ */
+function killGroup(target: { pid: number; startedAt: number; leader: () => void }, platform: NodeJS.Platform, winKill: RunSpec["winKill"]): void {
+  if (platform === "win32") {
+    void windowsTreeKill(target.pid, { startedAt: target.startedAt, env: winKill?.env ?? process.env, leader: target.leader, spawn: winKill?.spawn });
+    return;
+  }
   try {
-    if (platform === "win32") {
-      Bun.spawnSync(["taskkill", "/pid", String(pid), "/t", "/f"], { stdout: "ignore", stderr: "ignore" });
-      return;
-    }
-    process.kill(-pid, "SIGKILL");
+    process.kill(-target.pid, "SIGKILL");
   } catch {
     // ESRCH: the group exited between the decision and the kill.
   }
@@ -202,6 +216,7 @@ export async function runProgram(spec: RunSpec): Promise<RunOutcome> {
   const started = performance.now();
   const elapsed = (): number => Math.round(performance.now() - started);
   let child: ReturnType<typeof Bun.spawn<"pipe", "pipe", "pipe">>;
+  const startedAt = Date.now();
   try {
     const launch = launchOf(spec.command, spec.env, { cwd: spec.cwd, platform, runtime: spec.runtime ?? ownRuntime() });
     child = Bun.spawn(launch.argv, {
@@ -223,7 +238,14 @@ export async function runProgram(spec: RunSpec): Promise<RunOutcome> {
   function stop(why: "timeout" | "overflow"): void {
     if (ended !== null) return;
     ended = why;
-    killGroup(pid, platform);
+    const leader = (): void => {
+      try {
+        child.kill(9);
+      } catch {
+        // Gone already.
+      }
+    };
+    killGroup({ pid, startedAt, leader }, platform, spec.winKill);
     // A process outside the group (one that called setsid) may still hold a pipe: let go of both.
     out.cancel();
     err.cancel();
