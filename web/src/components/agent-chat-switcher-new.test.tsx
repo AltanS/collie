@@ -93,7 +93,8 @@ describe("the Switch pane sheet's New button", () => {
     await user.click(within(titleRow()).getByRole("button", { name: "New" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     // The dashboard's tap gives `newPath({ machine, session })`, and the fixture pane names neither.
-    expect(screen.getByTestId("where")).toHaveTextContent(/^\/new$/u);
+    // The router commits a navigation after the root loader settles, which is later than the sheet closing.
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent(/^\/new$/u));
     // A push, so Back returns to the pane.
     expect(router.state.historyAction).toBe("PUSH");
   });
