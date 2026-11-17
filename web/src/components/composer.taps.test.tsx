@@ -166,7 +166,8 @@ describe("composer taps: the sign-in frame (fix 2)", () => {
     mount({ surface: SECRET, gone: true });
     const frame = screen.getByRole("group", { name: "Sign-in code" });
     expect(frame).toBeInTheDocument();
-    expect(screen.getByText("Pane is gone")).toBeInTheDocument();
+    // The lock's words stand as the field's own placeholder (stage's `lockedWhy`), so the frame is never dead.
+    expect(screen.getByRole("textbox", { name: "Sign-in code" })).toHaveAttribute("placeholder", "Pane is gone");
   });
 
   it("no tap vanishes: a frame that waits for the launch says Starting", () => {
@@ -600,9 +601,12 @@ describe("composer taps: the notices in Type mode and under the password notice 
     await user.click(screen.getByRole("button", { name: "Send" }));
     await screen.findByRole("button", { name: /use type/i });
     // The password notice stands, and a refused SEND stays under it.
-    await user.click(screen.getByRole("button", { name: "Stop the turn" }));
+    // Stop is a two-second hold for a pointer; a click no pointer made (detail 0, a key) keeps the two-tap arm.
+    fireEvent.click(screen.getByRole("button", { name: "Stop the turn" }), { detail: 0 });
     await new Promise((resolve) => setTimeout(resolve, 450));
-    await expectTapAnswers(() => user.click(screen.getByRole("button", { name: "Tap again to stop the turn" })));
+    await expectTapAnswers(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Tap again to stop the turn" }), { detail: 0 });
+    });
     expect(await screen.findByText("Stopped.")).toBeInTheDocument();
   });
 });
