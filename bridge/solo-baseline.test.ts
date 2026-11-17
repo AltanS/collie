@@ -1266,7 +1266,7 @@ describe("solo zero-tax — config", () => {
       "vapidSubject",
       // Walky talky (M62): whether this machine takes messages for its panes. A solo switch, on by default.
       "walky",
-      // The walky talky pair cap, messages per ten minutes between two panes on this machine. Default 6.
+      // The walky talky pair cap, messages per ten minutes between two panes on this machine. Default 12.
       "walkyPairLimit",
       "zellijBin",
     ]);

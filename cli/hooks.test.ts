@@ -955,7 +955,7 @@ describe("hold: the agent's start time on macOS (M80 spec 11, #647)", () => {
   const LSTART = "Mon Nov  2 10:15:33 2026\n";
   const payload: JsonObject = asJsonObject(JSON.parse(permissionPayload())) ?? {};
 
-  test("with no stat file, the injected ps run builds the request; on Windows there is none", () => {
+  test("with no stat file, the injected ps run builds the request; on Windows the native read does, and ps never runs (#798)", () => {
     const runs: number[] = [];
     const run = (_command: StartTimeCommand, pid: number): string => {
       runs.push(pid);
@@ -964,9 +964,15 @@ describe("hold: the agent's start time on macOS (M80 spec 11, #647)", () => {
     const mac = { ...holdDeps({ proc: null }), pidProbe: { platform: "darwin" as const, run } };
     expect(holdRequestOf(mac, payload, HOLD_PROFILE)?.pidStartTime).toBe(parseLstart(LSTART)!);
     expect(runs).toEqual([HOLD_PID]);
-    const windows = { ...holdDeps({ proc: null }), pidProbe: { platform: "win32" as const, run } };
-    expect(holdRequestOf(windows, payload, HOLD_PROFILE)).toBeNull();
+    // The native read is injected: a test never asks the real kernel32 about a made-up pid.
+    const asked: number[] = [];
+    const native = (pid: number): number | null => (asked.push(pid), pid === HOLD_PID ? 1_794_847_739_081_296 : null);
+    const windows = { ...holdDeps({ proc: null }), pidProbe: { platform: "win32" as const, run, native } };
+    expect(holdRequestOf(windows, payload, HOLD_PROFILE)?.pidStartTime).toBe(1_794_847_739_081_296);
+    expect(asked).toEqual([HOLD_PID]);
     expect(runs).toEqual([HOLD_PID]);
+    const gone = { ...holdDeps({ proc: null }), pidProbe: { platform: "win32" as const, run, native: () => null } };
+    expect(holdRequestOf(gone, payload, HOLD_PROFILE)).toBeNull();
   });
 });
 

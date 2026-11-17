@@ -93,9 +93,9 @@ describe("cacheWarnings", () => {
   });
 
   test("a peer's pane names its machine in the body and carries `host`; a local one carries neither", () => {
-    const out = warn([pane({ host: "minibuch" })]);
-    expect(out.messages[0]!.body).toBe("minibuch · collie · claude. One warning per cycle.");
-    expect(out.messages[0]!.host).toBe("minibuch");
+    const out = warn([pane({ host: "workshop" })]);
+    expect(out.messages[0]!.body).toBe("workshop · collie · claude. One warning per cycle.");
+    expect(out.messages[0]!.host).toBe("workshop");
     expect("host" in warn([pane()]).messages[0]!).toBe(false);
     expect("session" in warn([pane()]).messages[0]!).toBe(false);
   });

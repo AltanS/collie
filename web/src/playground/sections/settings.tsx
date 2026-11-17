@@ -640,7 +640,7 @@ export function SettingsSection() {
                 changedAt: "2026-10-11T09:41:00.000Z",
                 switchable: { ...OPEN_ALL, codex: { ok: false, reason: "codex-signed-out" } },
               }}
-              hostName="bluefin"
+              hostName="lodge"
             />
           </Stage>
         </Card>
@@ -686,7 +686,7 @@ export function SettingsSection() {
               engine="phone"
               local={PHONE_COPY}
               persisted
-              hostName="bluefin"
+              hostName="lodge"
             />
           </Stage>
         </Card>
@@ -705,7 +705,7 @@ export function SettingsSection() {
               engine="phone"
               local={PHONE_COPY}
               persisted
-              hostName="bluefin"
+              hostName="lodge"
               initialOpen
             />
           </Stage>
@@ -838,7 +838,7 @@ export function SettingsSection() {
           state="new-page-run-typed"
           label="New page, Shell, Type a command"
           reach="on the New page, switch to Shell and pick Type a command… in the Command select. It shows when the machine's launchers.toml leaves [phone] run on, which is the default."
-          note="One monospace field right under the select, with the corrections of the keyboard turned off and Go on the return key. The row is reserved only while the option is chosen, so picking it is a choice and typing moves nothing. On the real page the summary above Start reads Runs `htop` in ~/projects on bluefin, and Start checks the line first, so a line that skips permission prompts asks before its first run."
+          note="One monospace field right under the select, with the corrections of the keyboard turned off and Go on the return key. The row is reserved only while the option is chosen, so picking it is a choice and typing moves nothing. On the real page the summary above Start reads Runs `htop` in ~/projects on lodge, and Start checks the line first, so a line that skips permission prompts asks before its first run."
         >
           <Stage height={240}>
             <CommandPickerDemo run pick="typed" line="htop" />

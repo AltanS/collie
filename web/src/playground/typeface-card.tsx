@@ -48,7 +48,7 @@ const ROWS = [
     pane: "p1",
   },
   {
-    name: "sprqvntrs",
+    name: "example",
     tone: "working",
     state: "Working",
     age: "3m",

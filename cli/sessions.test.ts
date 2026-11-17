@@ -45,7 +45,7 @@ const LEAD_WIDE = {
     { name: "desk", isPrimary: false, reachable: true, agents: 1, working: 0, blocked: 0, host: "collie-04rj6a", mux: "durable", kind: "program" },
   ],
   servers: [
-    { id: "collie-04rj6a", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: NOW, mux: "herdr" },
+    { id: "collie-04rj6a", name: "annex", isLead: true, reachable: true, protocol: "ok", lastSeenAt: NOW, mux: "herdr" },
     { id: "lab", name: "lab", isLead: false, reachable: true, protocol: "ok", lastSeenAt: NOW, mux: "herdr-core" },
   ],
 };
@@ -122,9 +122,9 @@ describe("collie sessions", () => {
     expect(lines[0]).toMatch(/^MEMBER\s+MUX\s+SEAT\s+HARNESS\s+STATE\s+SESSION\s+ACTIVE$/);
     const body = lines.slice(1, 6).map((l) => l.split(/\s{2,}/));
     expect(body).toEqual([
-      ["bluefin", "durable", "-", "desk", "working", "yes", "3m"],
-      ["bluefin", "herdr", "collie (t1)", "claude claude-opus-5-5", "blocked", "yes", "3m"],
-      ["bluefin", "herdr", "zeta (t2)", "codex gpt-9", "working", "yes", "2h"],
+      ["annex", "durable", "-", "desk", "working", "yes", "3m"],
+      ["annex", "herdr", "collie (t1)", "claude claude-opus-5-5", "blocked", "yes", "3m"],
+      ["annex", "herdr", "zeta (t2)", "codex gpt-9", "working", "yes", "2h"],
       ["lab", "herdr-core", "-", "edge", "idle", "yes", "3m"],
       ["lab", "herdr-core", "narrow (p9)", "claude", "idle", "yes", "3m"],
     ]);
@@ -168,7 +168,7 @@ describe("collie sessions", () => {
     await cmdSessions(byId.deps, ["--member", "collie-04rj6a"]);
     expect(byId.io.stdout.at(-1)).toBe("3 sessions: 1 blocked, 2 working");
     const byName = harness(crew);
-    await cmdSessions(byName.deps, ["--member", "bluefin"]);
+    await cmdSessions(byName.deps, ["--member", "annex"]);
     expect(byName.io.stdout.at(-1)).toBe("3 sessions: 1 blocked, 2 working");
   });
 
@@ -178,7 +178,7 @@ describe("collie sessions", () => {
     const { rows } = parsed(h);
     const lead = rows.find((r) => r.paneId === "t1")!;
     expect(lead.member).toBe("collie-04rj6a");
-    expect(lead.memberName).toBe("bluefin");
+    expect(lead.memberName).toBe("annex");
     const member = rows.find((r) => r.paneId === "p9")!;
     expect(member.member).toBe("lab");
     expect(member.memberName).toBe("lab");
@@ -192,7 +192,7 @@ describe("collie sessions", () => {
     const snapshot = {
       ...LEAD_WIDE,
       servers: [
-        { id: "collie-04rj6a", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: NOW, mux: "herdr" },
+        { id: "collie-04rj6a", name: "annex", isLead: true, reachable: true, protocol: "ok", lastSeenAt: NOW, mux: "herdr" },
         { id: "old", name: "old", isLead: false, reachable: true, protocol: "ok", lastSeenAt: NOW },
       ],
       agents: [...LEAD_WIDE.agents.filter((a) => a.host === "collie-04rj6a"), pane({ host: "old", paneId: "o1", session: "default" })],
@@ -241,7 +241,7 @@ describe("collie sessions", () => {
       kind: "agent",
       model: "claude-opus-5-5",
       member: "collie-04rj6a",
-      memberName: "bluefin",
+      memberName: "annex",
       mux: "herdr",
       seat: "collie (t1)",
       harness: "claude claude-opus-5-5",
@@ -250,7 +250,7 @@ describe("collie sessions", () => {
       active: "3m",
     });
     expect(rows.map((r) => r.member)).toEqual(["collie-04rj6a", "collie-04rj6a", "collie-04rj6a", "lab", "lab"]);
-    expect(rows.map((r) => r.memberName)).toEqual(["bluefin", "bluefin", "bluefin", "lab", "lab"]);
+    expect(rows.map((r) => r.memberName)).toEqual(["annex", "annex", "annex", "lab", "lab"]);
   });
 
   test("on a member the footer says its panes only, and --json carries the same note", async () => {

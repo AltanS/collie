@@ -1475,15 +1475,15 @@ describe("collie doctor — the crew checks", () => {
   });
 
   test("member-reach: a silent peer with a portless address gets the exact set-address command", async () => {
-    const portless = leadStore({ peers: [member({ memberId: "laptop", address: "100.64.0.9" })] });
+    const portless = leadStore({ peers: [member({ memberId: "laptop", address: "192.0.2.9" })] });
     const { byCheck } = await findings(
       harness(portless, [new Error("connection refused")], { files: { ...healthyFiles(), ...markerFile(portless) } }),
     );
     const f = byCheck.get("member-reach");
     expect(f?.detail).toContain(
-      "laptop at 100.64.0.9 — ",
+      "laptop at 192.0.2.9 — ",
     );
-    expect(f?.detail).toContain("→ `collie crew set-address laptop 100.64.0.9:8787` (8787 unless that machine set COLLIE_PORT)");
+    expect(f?.detail).toContain("→ `collie crew set-address laptop 192.0.2.9:8787` (8787 unless that machine set COLLIE_PORT)");
     // The generic remedy is still there for the rest.
     expect(f?.remedy).toContain("collie crew set-address <member> <host:port>");
   });
@@ -2370,12 +2370,21 @@ describe("beacons", () => {
 
   test("an empty directory on a platform with no start-time probe says no agent writes one here (M80 spec 11)", async () => {
     const h = harness(null);
-    h.deps = { ...h.deps, host: hostFor("win32") };
+    h.deps = { ...h.deps, host: hostFor("freebsd") };
     const finding = (await findings(h)).byCheck.get("beacons")!;
     expect(finding.status).toBe("skipped");
     expect(finding.detail).toContain("on this platform");
     expect(finding.detail).not.toContain("not yet");
     expect(finding.detail).not.toContain("written one yet");
+    expect(finding.remedy).toContain("Windows");
+  });
+
+  test("Windows has the probe now, so an empty directory there waits for the first hook like Linux (#798)", async () => {
+    const h = harness(null);
+    h.deps = { ...h.deps, host: hostFor("win32") };
+    const finding = (await findings(h)).byCheck.get("beacons")!;
+    expect(finding.detail).not.toContain("on this platform");
+    expect(finding.detail).toContain("no agent has written one yet");
   });
 
   test("an agent that has ended leaves an expired beacon, and that is still `ok`", async () => {

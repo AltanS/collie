@@ -193,9 +193,9 @@ describe("the ask push tag is per host and session", () => {
     expect(askFloodTag("laptop")).toBe("collie:asks:laptop");
     expect(askFloodTag(LOCAL_ASK_HOST, "desk")).toBe("collie:asks/desk");
     expect(askFloodTag("laptop", "desk")).toBe("collie:asks:laptop/desk");
-    const msg = askFloodMessage(LOCAL_ASK_HOST, "bluefin (desk)", "desk");
+    const msg = askFloodMessage(LOCAL_ASK_HOST, "lodge (desk)", "desk");
     expect(msg).toMatchObject({ tag: "collie:asks/desk", session: "desk" });
-    expect("session" in askFloodMessage(LOCAL_ASK_HOST, "bluefin")).toBe(false);
+    expect("session" in askFloodMessage(LOCAL_ASK_HOST, "lodge")).toBe(false);
   });
 
   test("AskPush raises per session: the same tool call in two programs raises both panes", () => {

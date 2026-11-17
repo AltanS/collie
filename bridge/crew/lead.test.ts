@@ -240,13 +240,13 @@ describe("CrewLead — a peer's sessions never vanish (§10.2)", () => {
 
 describe("CrewLead, the host name on the merged servers rows (M77 spec 01)", () => {
   test("the lead's row states its own host, read on every merge; a member's row states the one it reported", async () => {
-    let own: string | null = "bluefin";
+    let own: string | null = "lodge";
     const h = lead([member({ memberId: "laptop" })], () => ok(body), { selfHost: () => own });
     await h.lead.sweep();
-    h.registry.recordStatus("laptop", { mux: "herdr-core", panes: 2, host: "minibuch" });
+    h.registry.recordStatus("laptop", { mux: "herdr-core", panes: 2, host: "workshop" });
     const rows = h.lead.merge(localBody(), NARROW_PLAN).servers!;
-    expect(rows.find((r) => r.id === "desk")!.host).toBe("bluefin");
-    expect(rows.find((r) => r.id === "laptop")!.host).toBe("minibuch");
+    expect(rows.find((r) => r.id === "desk")!.host).toBe("lodge");
+    expect(rows.find((r) => r.id === "laptop")!.host).toBe("workshop");
     own = null;
     expect("host" in h.lead.merge(localBody(), NARROW_PLAN).servers![0]!).toBe(false);
     // An answer that carries no host clears the banked one: a name true a sweep ago is not kept.
@@ -1438,7 +1438,7 @@ describe("the schedule reads the live run, and the fold runs on every tick", () 
     // Now the run's open leg overrides the ladder, so the three dials land on three consecutive
     // sweeps rather than across twelve and a half minutes, and the run ends on the third.
     const turns = new UpdateTurns(() => {});
-    const h = lead([member({ memberId: "minibuch" })], () => skewed, { turns });
+    const h = lead([member({ memberId: "workshop" })], () => skewed, { turns });
     turns.begin("r-live", "1.4.1");
     for (let i = 0; i < TURN_MISSED_SWEEPS; i += 1) {
       await h.lead.sweep();
@@ -1512,7 +1512,7 @@ describe("the schedule reads the live run, and the fold runs on every tick", () 
 describe("a peer that speaks to us is due", () => {
   /** A lead whose one member has climbed to the top of the incompatible ladder. */
   async function backedOff() {
-    const h = lead([member({ memberId: "minibuch" })], () => skewed);
+    const h = lead([member({ memberId: "workshop" })], () => skewed);
     for (let i = 0; i < INCOMPATIBLE_BACKOFF_MS.length; i += 1) {
       if (i > 0) h.advance(incompatibleBackoffMs(i));
       await h.lead.sweep();
@@ -1534,20 +1534,20 @@ describe("a peer that speaks to us is due", () => {
   });
 
   test("the last good body survives a reset — a schedule change is never a knowledge change", async () => {
-    const h = lead([member({ memberId: "minibuch" })], (_l, call) => (call === 1 ? ok(body) : skewed));
+    const h = lead([member({ memberId: "workshop" })], (_l, call) => (call === 1 ? ok(body) : skewed));
     await h.lead.sweep(); // banks the body
     h.advance(incompatibleBackoffMs(1));
     await h.lead.sweep(); // incompatible, so the ladder starts
     const banked = h.lead.contributions()[0]?.body;
     expect(banked?.sessions).toEqual(body.sessions);
-    h.lead.noteAdmittedContact("minibuch");
+    h.lead.noteAdmittedContact("workshop");
     // §10.2: a peer's sessions never vanish. The reset moved the SCHEDULE and nothing else.
     expect(h.lead.contributions()[0]?.body).toEqual(banked);
   });
 
   test("contact marks the member due, and the NEXT sweep does the dial — the seam dials nothing", async () => {
     const h = await backedOff();
-    h.lead.noteAdmittedContact("minibuch");
+    h.lead.noteAdmittedContact("workshop");
     // Nothing was dialled by the call itself. One dialler, and it is the sweep.
     expect(h.calls.length).toBe(h.dials);
     await h.lead.sweep();
@@ -1563,16 +1563,16 @@ describe("a peer that speaks to us is due", () => {
 
   test("a second contact inside the floor is ignored", async () => {
     const h = await backedOff();
-    h.lead.noteAdmittedContact("minibuch");
+    h.lead.noteAdmittedContact("workshop");
     await h.lead.sweep(); // spends the reset: the answer is incompatible again, so the ladder returns
     const dials = h.calls.length;
     h.advance(CONTACT_RESET_FLOOR_MS - 1);
-    h.lead.noteAdmittedContact("minibuch");
+    h.lead.noteAdmittedContact("workshop");
     await h.lead.sweep();
     expect(h.calls.length).toBe(dials);
     // One millisecond past the floor, the same contact is honoured.
     h.advance(1);
-    h.lead.noteAdmittedContact("minibuch");
+    h.lead.noteAdmittedContact("workshop");
     await h.lead.sweep();
     expect(h.calls.length).toBe(dials + 1);
   });
@@ -1580,7 +1580,7 @@ describe("a peer that speaks to us is due", () => {
   test("a peer that can reach us and cannot serve us runs out of resets, and the ladder stands", async () => {
     const h = await backedOff();
     for (let i = 0; i < MAX_CONTACT_RESETS + 2; i += 1) {
-      h.lead.noteAdmittedContact("minibuch");
+      h.lead.noteAdmittedContact("workshop");
       await h.lead.sweep();
       h.advance(CONTACT_RESET_FLOOR_MS);
     }
@@ -1590,16 +1590,16 @@ describe("a peer that speaks to us is due", () => {
 
   test("one ok answer clears the counter, so a recovered peer starts from a full allowance", async () => {
     let healthy = false;
-    const h = lead([member({ memberId: "minibuch" })], () => (healthy ? ok(body) : skewed));
+    const h = lead([member({ memberId: "workshop" })], () => (healthy ? ok(body) : skewed));
     await h.lead.sweep();
     for (let i = 0; i < MAX_CONTACT_RESETS; i += 1) {
       h.advance(CONTACT_RESET_FLOOR_MS);
-      h.lead.noteAdmittedContact("minibuch");
+      h.lead.noteAdmittedContact("workshop");
       await h.lead.sweep();
     }
     const spent = h.calls.length;
     h.advance(CONTACT_RESET_FLOOR_MS);
-    h.lead.noteAdmittedContact("minibuch");
+    h.lead.noteAdmittedContact("workshop");
     await h.lead.sweep();
     expect(h.calls.length).toBe(spent); // exhausted
 
@@ -1612,14 +1612,14 @@ describe("a peer that speaks to us is due", () => {
     await h.lead.sweep(); // back on the ladder, from step one
     const after = h.calls.length;
     h.advance(CONTACT_RESET_FLOOR_MS);
-    h.lead.noteAdmittedContact("minibuch");
+    h.lead.noteAdmittedContact("workshop");
     await h.lead.sweep();
     expect(h.calls.length).toBe(after + 1);
   });
 
   test("a genuine version skew returns to the ladder on the very next verdict", async () => {
     const h = await backedOff();
-    h.lead.noteAdmittedContact("minibuch");
+    h.lead.noteAdmittedContact("workshop");
     await h.lead.sweep();
     const dials = h.calls.length;
     // The peer answered with the same foreign version, so the ladder is right about it again.

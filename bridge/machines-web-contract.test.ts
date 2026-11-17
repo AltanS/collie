@@ -133,7 +133,7 @@ describe("the phone's Machines fetchers read the bridge's real answers", () => {
   });
 
   test("a solo collie is one row with the id `local`, and the loader reads it as a census", async () => {
-    serve(await watchOf([{ id: SOLO_MACHINE_ID, name: "bluefin", isLead: true, health: "reachable" }]));
+    serve(await watchOf([{ id: SOLO_MACHINE_ID, name: "lodge", isLead: true, health: "reachable" }]));
     const data = await machinesLoader();
     expect(data.error).toBe(false);
     expect(data.census?.machines.map((m) => [m.id, m.isLead])).toEqual([["local", true]]);

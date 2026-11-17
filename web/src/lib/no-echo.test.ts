@@ -10,11 +10,11 @@ const screen = (text: string) => splitLines(parseAnsi(text));
 
 describe("detectNoEchoPrompt", () => {
   it("recognises the prompts sudo, ssh, ssh-add and gpg print", () => {
-    expect(detectNoEchoPrompt(screen("$ sudo systemctl restart collie\n[sudo] password for altan:")))
-      .toBe("[sudo] password for altan:");
-    expect(detectNoEchoPrompt(screen("altan@host's password:"))).toBe("altan@host's password:");
-    expect(detectNoEchoPrompt(screen("Enter passphrase for /home/altan/.ssh/id_ed25519:"))).toBe(
-      "Enter passphrase for /home/altan/.ssh/id_ed25519:",
+    expect(detectNoEchoPrompt(screen("$ sudo systemctl restart collie\n[sudo] password for dev:")))
+      .toBe("[sudo] password for dev:");
+    expect(detectNoEchoPrompt(screen("dev@host's password:"))).toBe("dev@host's password:");
+    expect(detectNoEchoPrompt(screen("Enter passphrase for /home/dev/.ssh/id_ed25519:"))).toBe(
+      "Enter passphrase for /home/dev/.ssh/id_ed25519:",
     );
     expect(detectNoEchoPrompt(screen("Enter passphrase:"))).toBe("Enter passphrase:");
     expect(detectNoEchoPrompt(screen("Password:"))).toBe("Password:");
@@ -23,15 +23,15 @@ describe("detectNoEchoPrompt", () => {
 
   it("reads through the trailing whitespace a blocked terminal leaves", () => {
     // The cursor sits after the prompt, so the row is padded and the rows under it are blank.
-    expect(detectNoEchoPrompt(screen("[sudo] password for altan: \n\n\n"))).toBe(
-      "[sudo] password for altan:",
+    expect(detectNoEchoPrompt(screen("[sudo] password for dev: \n\n\n"))).toBe(
+      "[sudo] password for dev:",
     );
   });
 
   it("ignores a prompt that has scrolled up out of the live tail", () => {
     // Answered three commands ago: the terminal is not blocked on it, so offering the handoff would
     // point at the wrong thing.
-    const old = "[sudo] password for altan:\nok\n$ ls\nREADME.md\n$ ";
+    const old = "[sudo] password for dev:\nok\n$ ls\nREADME.md\n$ ";
     expect(detectNoEchoPrompt(screen(old))).toBeNull();
   });
 

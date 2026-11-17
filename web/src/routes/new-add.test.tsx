@@ -186,8 +186,8 @@ function mount(entry = "/new/add?kind=agent", servers: ServerSummary[] = []) {
 }
 
 const roster: ServerSummary[] = [
-  { id: "lead", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
-  { id: "mini", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
+  { id: "lead", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
+  { id: "mini", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
 ];
 
 const chip = (name: string) => screen.findByRole("button", { name, pressed: false });
@@ -529,7 +529,7 @@ describe("Add your own: typed lines turned off", () => {
   it("names the lead on a crew, whose switches these are, even with a member picked", async () => {
     serve({ ...ADDING, freeText: false });
     mount("/new/add?kind=command&machine=mini", roster);
-    expect(await screen.findByTestId("launcher-add-off")).toHaveTextContent("Turned off on bluefin");
+    expect(await screen.findByTestId("launcher-add-off")).toHaveTextContent("Turned off on lodge");
   });
 
   it("the recipe way still adds", async () => {
@@ -636,7 +636,7 @@ describe("Add your own: a member is picked (ADR 0127 point 4)", () => {
     serve();
     mount("/new/add?kind=agent&machine=mini", roster);
     expect(await screen.findByTestId("launcher-add-summary")).toHaveTextContent("The row is added for every machine of the crew.");
-    expect(screen.getByTestId("launcher-add-summary")).not.toHaveTextContent("minibuch");
+    expect(screen.getByTestId("launcher-add-summary")).not.toHaveTextContent("workshop");
   });
 
   it("Rename and Remove on a lead row call the lead, with no host", async () => {

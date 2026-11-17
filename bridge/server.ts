@@ -804,7 +804,7 @@ export function isPaneInput(pathname: string, method: string): boolean {
  * or renamed? On the owning host each of those settles itself (`settleTopology`). Forwarded to a
  * member, the member settles and the lead does not: the lead sees the member only through its sweep,
  * which rides the primary engine's tick, so a pane launched on a member stayed a shell, or missing,
- * on the phone for up to one idle interval (12 s; minibuch, 2026-10-14). The forward branch gives
+ * on the phone for up to one idle interval (12 s; workshop, 2026-10-14). The forward branch gives
  * these the same hot spell an input buys.
  */
 const TOPOLOGY_CREATES: ReadonlySet<string> = new Set(["/api/launch", "/api/workspace", "/api/tab", "/api/worktree"]);
@@ -9396,7 +9396,7 @@ export function pairingUnavailable(): Response {
 /**
  * A peer or interface address in one spelling, so the two compare: lower case, no IPv6 zone
  * (`fe80::1%eth0`), and an IPv4 address a dual-stack listener reports in v4-mapped form
- * (`::ffff:100.64.0.3`) as the plain IPv4 one.
+ * (`::ffff:100.64.10.3`) as the plain IPv4 one.
  */
 export function normalizePeerAddress(address: string): string {
   const a = address.trim().toLowerCase().replace(/%.*$/, "");

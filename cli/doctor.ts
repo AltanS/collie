@@ -2094,7 +2094,7 @@ export function accountWindowsFinding(deps: Pick<DoctorDeps, "ctx" | "host" | "f
  *
  * Nothing here removes a file. The sweep is a READ, on this path as on the bridge's.
  *
- * A platform with no start-time probe (`bridge/beacon/liveness.ts`: not Linux, not macOS) never gets
+ * A platform with no start-time probe (`bridge/beacon/liveness.ts`: not Linux, macOS or Windows) never gets
  * a beacon, so with the emitter installed and none on disk the row says that rather than "not yet"
  * (M80 spec 11).
  */
@@ -2106,7 +2106,7 @@ async function beacons(deps: DoctorDeps, installed: boolean): Promise<Finding> {
     return skipped(
       "beacons",
       "no agent writes one on this platform, because Collie cannot read a process's start time here",
-      "nothing to do here: only Linux and macOS have that probe",
+      "nothing to do here: only Linux, macOS and Windows have that probe",
     );
   }
   if (readings.length === 0) {

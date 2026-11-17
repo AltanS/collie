@@ -47,7 +47,7 @@ const leg = (name: string, state: UpdatePeerLeg["state"], over: Partial<UpdatePe
 });
 
 const CREW: UpdateCrewMember[] = [
-  { name: "minibuch", version: FROM, verdict: "green", reasons: [], asOf: NOW - 3_000 },
+  { name: "workshop", version: FROM, verdict: "green", reasons: [], asOf: NOW - 3_000 },
   { name: "cellar", version: FROM, verdict: "green", reasons: [], asOf: NOW - 3_000 },
 ];
 
@@ -58,15 +58,15 @@ const CLAIM: UpdateClaim = {
   peersOnly: false,
   bundleAtStart: "bundle-a",
   skipped: [],
-  lead: "bluefin",
-  members: ["minibuch", "cellar"],
+  lead: "lodge",
+  members: ["workshop", "cellar"],
   lastPhase: null,
 };
 
 const BASE: UpdateScreenInput = {
   run: undefined,
   crew: CREW,
-  leadName: "bluefin",
+  leadName: "lodge",
   stage: "idle",
   progress: null,
   installingSince: null,
@@ -82,8 +82,8 @@ const BASE: UpdateScreenInput = {
 const read = (over: Partial<UpdateScreenInput> = {}) => updateScreenView({ ...BASE, ...over });
 const other = (over: Partial<UpdateScreenInput> = {}) => read({ startedHere: false, claim: null, ...over });
 
-const WAITING = [leg("minibuch", "waiting"), leg("cellar", "waiting")];
-const ARRIVED = [leg("minibuch", "done", { version: TO }), leg("cellar", "done", { version: TO })];
+const WAITING = [leg("workshop", "waiting"), leg("cellar", "waiting")];
+const ARRIVED = [leg("workshop", "done", { version: TO }), leg("cellar", "done", { version: TO })];
 
 // ── THE WALK, ON THE DEVICE THAT STARTED IT ─────────────────────────────────────────────────────
 
@@ -95,7 +95,7 @@ describe("the seven steps, on the device that started the run", () => {
     ["verifying", { run: run("verifying", { peers: WAITING }) }, "verify", 4, "expanded", true],
     [
       "done, a member still moving",
-      { run: run("done", { peers: [leg("minibuch", "updating"), leg("cellar", "waiting")] }) },
+      { run: run("done", { peers: [leg("workshop", "updating"), leg("cellar", "waiting")] }) },
       "members",
       5,
       "expanded",
@@ -139,7 +139,7 @@ describe("the seven steps, on the device that started the run", () => {
   it("keeps the same rows, in the same order, in every state: the panel's height never changes", () => {
     const keys = cases.map(([, over]) => read(over).rows.map((row) => row.key).join(","));
     expect(new Set(keys).size).toBe(1);
-    expect(keys[0]).toBe("lead,peer:minibuch,peer:cellar,phone");
+    expect(keys[0]).toBe("lead,peer:workshop,peer:cellar,phone");
     // ...and "Ready to start" has the same rows too, so the confirm does not move either.
     const ready = read({ run: undefined, claim: null, startedHere: false, ask: { kind: "crew", version: TO, major: false, peersOnly: false, current: FROM } });
     expect(ready.rows.map((row) => row.key).join(",")).toBe(keys[0]);
@@ -149,7 +149,7 @@ describe("the seven steps, on the device that started the run", () => {
     const view = read({ run: run("staging", { peers: WAITING }) });
     expect(view.target).toBe(TO);
     expect(view.from).toBe(FROM);
-    expect(view.heading).toBe(`Building ${TO} on bluefin`);
+    expect(view.heading).toBe(`Building ${TO} on lodge`);
     expect(view.rows[0]?.versions).toBe(`${FROM} → ${TO}`);
     // The clock counts from this device's own tap.
     expect(view.startedAt).toBe(CLAIM.startedAt);
@@ -160,7 +160,7 @@ describe("the seven steps, on the device that started the run", () => {
 // ── FAULT 1: THE LEAD'S `done` IS NOT THE END ────────────────────────────────────────────────────
 
 describe("the lead's own `done` while members still wait (2026-09-23 study, fault 1)", () => {
-  const view = read({ run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "waiting")] }) });
+  const view = read({ run: run("done", { peers: [leg("workshop", "done", { version: TO }), leg("cellar", "waiting")] }) });
 
   it("stays on step 5, locked, and announces no end", () => {
     expect(view.phase).toBe("members");
@@ -175,7 +175,7 @@ describe("the lead's own `done` while members still wait (2026-09-23 study, faul
   });
 
   it("gives every OTHER device the strip for the whole of step 5, not silence", () => {
-    const seen = other({ run: run("done", { peers: [leg("minibuch", "updating"), leg("cellar", "waiting")] }) });
+    const seen = other({ run: run("done", { peers: [leg("workshop", "updating"), leg("cellar", "waiting")] }) });
     expect(seen.mode).toBe("collapsed");
     expect(seen.locked).toBe(false);
     expect(seen.mine).toBe(false);
@@ -187,19 +187,19 @@ describe("the lead's own `done` while members still wait (2026-09-23 study, faul
 
 describe("only the active row moves (fault 2)", () => {
   it("draws one active row; a member waiting its turn is queued, still and dimmed", () => {
-    const view = read({ run: run("done", { peers: [leg("minibuch", "updating"), leg("cellar", "waiting")] }) });
+    const view = read({ run: run("done", { peers: [leg("workshop", "updating"), leg("cellar", "waiting")] }) });
     const byKey = new Map(view.rows.map((row) => [row.key, row]));
     expect(byKey.get("lead")?.status).toBe("ok");
-    expect(byKey.get("peer:minibuch")?.status).toBe("active");
+    expect(byKey.get("peer:workshop")?.status).toBe("active");
     expect(byKey.get("peer:cellar")).toMatchObject({ status: "queued", dim: true });
     expect(byKey.get("phone")).toMatchObject({ status: "queued", dim: true });
     expect(view.rows.filter((row) => row.status === "active")).toHaveLength(1);
   });
 
   it("before step 5 every member waits for the lead, whatever its leg says", () => {
-    const view = read({ run: run("staging", { peers: [leg("minibuch", "updating"), leg("cellar", "waiting")] }) });
+    const view = read({ run: run("staging", { peers: [leg("workshop", "updating"), leg("cellar", "waiting")] }) });
     expect(view.rows.filter((row) => row.status === "active").map((row) => row.key)).toEqual(["lead"]);
-    expect(view.rows[1]?.word).toBe("waits for bluefin");
+    expect(view.rows[1]?.word).toBe("waits for lodge");
   });
 
   it("draws the lead as offline, not spinning, while it restarts", () => {
@@ -212,7 +212,7 @@ describe("only the active row moves (fault 2)", () => {
 
 describe("a member that needs the operator, on step 5", () => {
   const quiet = run("done", {
-    peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "waiting", { updatedAt: NOW - PEER_UNREACHABLE_MS - 30_000 })],
+    peers: [leg("workshop", "done", { version: TO }), leg("cellar", "waiting", { updatedAt: NOW - PEER_UNREACHABLE_MS - 30_000 })],
   });
 
   it("asks: Skip it, or keep trying, once it has said nothing for PEER_UNREACHABLE_MS", () => {
@@ -235,7 +235,7 @@ describe("a member that needs the operator, on step 5", () => {
 
   it("names a member's hourly limit in the row's detail slot (ADR 0062) and still offers the skip", () => {
     const view = read({
-      run: run("done", { peers: [leg("minibuch", "done", { version: TO }), leg("cellar", "waiting", { reason: "rate-limited, retries in about 14 min" })] }),
+      run: run("done", { peers: [leg("workshop", "done", { version: TO }), leg("cellar", "waiting", { reason: "rate-limited, retries in about 14 min" })] }),
     });
     expect(view.rows[2]).toMatchObject({ status: "attention", detail: "rate-limited, retries in about 14 min" });
     expect(view.note).toBe("cellar waits out its once-an-hour limit. You can skip it.");
@@ -251,7 +251,7 @@ describe("a member that needs the operator, on step 5", () => {
   it("names the skipped member at the end, and offers to try it again", () => {
     const view = read({ run: quiet, claim: { ...CLAIM, skipped: ["cellar"] }, bundle: { id: "bundle-b", version: FROM } });
     expect(view.phase).toBe("done");
-    expect(view.subtitle).toBe(`bluefin, minibuch and this phone run ${TO}. cellar did not update.`);
+    expect(view.subtitle).toBe(`lodge, workshop and this phone run ${TO}. cellar did not update.`);
     expect(view.retryNames).toEqual(["cellar"]);
   });
 });
@@ -322,7 +322,7 @@ describe("the three ends, each with a way back and never a toast alone", () => {
     const mine = read({ run: done, bundle: { id: "bundle-b", version: TO } });
     expect(mine).toMatchObject({ phase: "done", step: 7, mode: "expanded", locked: false, end: { kind: "done" } });
     expect(mine.heading).toBe("Update finished");
-    expect(mine.subtitle).toBe(`bluefin, minibuch, cellar and this phone run ${TO}.`);
+    expect(mine.subtitle).toBe(`lodge, workshop, cellar and this phone run ${TO}.`);
     expect(mine.retryNames).toEqual([]);
     expect(other({ run: done }).mode).toBe("hidden");
   });
@@ -331,7 +331,7 @@ describe("the three ends, each with a way back and never a toast alone", () => {
     const failed = run("rolled-back", { peers: WAITING, reason: "health gate timed out" });
     for (const view of [read({ run: failed }), other({ run: failed })]) {
       expect(view).toMatchObject({ phase: "rolled-back", mode: "expanded", locked: false });
-      expect(view.heading).toBe(`bluefin went back to ${FROM}`);
+      expect(view.heading).toBe(`lodge went back to ${FROM}`);
       expect(view.rows[0]).toMatchObject({ status: "failed", detail: "health gate timed out" });
       expect(view.rows[1]).toMatchObject({ status: "skipped", word: "not touched", versions: FROM });
       expect(view.end).toEqual({ kind: "failed", key: `run:run-1:${failed.startedAt}:rolled-back` });
@@ -342,7 +342,7 @@ describe("the three ends, each with a way back and never a toast alone", () => {
     const view = read({ run: run("stuck", { recovery: "collie update --rollback" }) });
     expect(view.phase).toBe("stuck");
     expect(view.recovery).toBe("collie update --rollback");
-    expect(view.subtitle).toMatch(/Run this on bluefin:$/);
+    expect(view.subtitle).toMatch(/Run this on lodge:$/);
   });
 
   it("an interrupted run is the stopped end", () => {
@@ -357,8 +357,8 @@ describe("a run this device started that gave up before anything moved (#283)", 
   it("is the failed end, with the reason as its note, instead of a panel that vanishes", () => {
     const view = read({ run: gaveUp() });
     expect(view).toMatchObject({ phase: "failed", step: 2, mode: "expanded", locked: false, dismissible: true, recovery: null });
-    expect(view.heading).toBe("The update failed on bluefin");
-    expect(view.subtitle).toBe(`Nothing was changed. bluefin still runs ${FROM}. The reason is below.`);
+    expect(view.heading).toBe("The update failed on lodge");
+    expect(view.subtitle).toBe(`Nothing was changed. lodge still runs ${FROM}. The reason is below.`);
     expect(view.note).toBe(REASON);
     expect(view.rows[0]).toMatchObject({ key: "lead", status: "failed", word: "failed", versions: FROM, detail: null });
     // A member it never reached, and this phone, were not touched.
@@ -404,7 +404,7 @@ describe("Use the app anyway, only after a stall", () => {
   });
 
   it("is offered when step 5 has not moved for LEAD_STALLED_MS", () => {
-    const view = read({ run: run("done", { peers: [leg("minibuch", "updating", { updatedAt: NOW - LEAD_STALLED_MS - 1 })] }) });
+    const view = read({ run: run("done", { peers: [leg("workshop", "updating", { updatedAt: NOW - LEAD_STALLED_MS - 1 })] }) });
     expect(view.phase).toBe("members");
     expect(view.canEscape).toBe(true);
   });
@@ -425,9 +425,9 @@ describe("Ready to start, the first screen", () => {
       run: undefined,
       claim: null,
       startedHere: false,
-      ask: { kind: "retry", version: TO, major: false, peersOnly: true, current: TO, names: ["minibuch"] },
+      ask: { kind: "retry", version: TO, major: false, peersOnly: true, current: TO, names: ["workshop"] },
     });
-    expect(view.heading).toBe("Try minibuch again");
+    expect(view.heading).toBe("Try workshop again");
     expect(view.rows[0]).toMatchObject({ status: "ok", word: `already on ${TO}` });
   });
 
@@ -460,14 +460,14 @@ describe("a start whose run has not written its record yet", () => {
     from: "1.13.1",
     to: "1.13.2",
     runId: "old",
-    peers: [leg("minibuch", "done", { version: "1.13.2" }), leg("cellar", "done", { version: "1.13.2" })],
+    peers: [leg("workshop", "done", { version: "1.13.2" }), leg("cellar", "done", { version: "1.13.2" })],
     startedAt: NOW - 86_500_000,
     updatedAt: NOW - 86_400_000,
     settledAt: NOW - 86_400_000,
   });
   const claim: UpdateClaim = { ...CLAIM, runId: "new", target: "1.13.3", startedAt: NOW - 1_000 };
   const crew: UpdateCrewMember[] = [
-    { name: "minibuch", version: "1.13.2", verdict: "green", reasons: [], asOf: NOW - 3_000 },
+    { name: "workshop", version: "1.13.2", verdict: "green", reasons: [], asOf: NOW - 3_000 },
     { name: "cellar", version: "1.13.2", verdict: "green", reasons: [], asOf: NOW - 3_000 },
   ];
   const at = (over: Partial<UpdateScreenInput> = {}) =>
@@ -477,7 +477,7 @@ describe("a start whose run has not written its record yet", () => {
     const view = at();
     expect(view).toMatchObject({ phase: "check", step: 1, mode: "expanded", mine: true, locked: true, target: "1.13.3" });
     expect(view).toMatchObject({ end: { kind: "none" }, inFlight: "lead", holdsReload: true, elapsedMs: 1_000 });
-    expect(view.heading).toBe("Checking bluefin");
+    expect(view.heading).toBe("Checking lodge");
     // Every row waits to be read. None of them claims the last run's versions.
     expect(view.rows.map((row) => row.word)).toEqual(Array(4).fill("reading its state"));
     expect(view.rows.map((row) => row.versions)).toEqual([null, null, null, null]);
@@ -486,7 +486,7 @@ describe("a start whose run has not written its record yet", () => {
   it("is the same check step for a claim that carries no run id", () => {
     const view = at({ claim: { ...claim, runId: null } });
     expect(view).toMatchObject({ phase: "check", step: 1, mode: "expanded", mine: true, locked: true, target: "1.13.3" });
-    expect(view.heading).toBe("Checking bluefin");
+    expect(view.heading).toBe("Checking lodge");
   });
 
   it("does not show the last run's failure either", () => {
@@ -528,7 +528,7 @@ describe("a run that moves only the members", () => {
   const claim: UpdateClaim = { ...CLAIM, peersOnly: true };
 
   it("is step 5, locked on the device that started it; the lead and the phone stay as they are", () => {
-    const view = read({ claim, crewRun: crewOnly([leg("minibuch", "updating")]) });
+    const view = read({ claim, crewRun: crewOnly([leg("workshop", "updating")]) });
     expect(view).toMatchObject({ phase: "members", step: 5, locked: true, inFlight: "crew" });
     expect(view.rows[0]).toMatchObject({ status: "ok", word: `already on ${TO}` });
     expect(view.rows.at(-1)).toMatchObject({ status: "ok", word: "keeps this app" });
@@ -539,19 +539,19 @@ describe("a run that moves only the members", () => {
   });
 
   it("ends on Done on the device that started it, naming the member left behind", () => {
-    const view = read({ claim, crewRun: crewOnly([leg("minibuch", "rolled-back", { reason: "health gate timed out" })], NOW - 1_000) });
+    const view = read({ claim, crewRun: crewOnly([leg("workshop", "rolled-back", { reason: "health gate timed out" })], NOW - 1_000) });
     expect(view.phase).toBe("done");
     expect(view.mode).toBe("expanded");
-    expect(view.retryNames).toEqual(["minibuch"]);
+    expect(view.retryNames).toEqual(["workshop"]);
   });
 
   it("is a strip on another device, and nothing once it is over", () => {
-    expect(other({ crewRun: crewOnly([leg("minibuch", "updating")]) }).mode).toBe("collapsed");
-    expect(other({ crewRun: crewOnly([leg("minibuch", "done", { version: TO })], NOW) }).mode).toBe("hidden");
+    expect(other({ crewRun: crewOnly([leg("workshop", "updating")]) }).mode).toBe("collapsed");
+    expect(other({ crewRun: crewOnly([leg("workshop", "done", { version: TO })], NOW) }).mode).toBe("hidden");
   });
 
   it("never takes the app away when no leg carries a clock", () => {
-    const view = read({ claim, crewRun: crewOnly([{ name: "minibuch", state: "updating", version: FROM }]) });
+    const view = read({ claim, crewRun: crewOnly([{ name: "workshop", state: "updating", version: FROM }]) });
     expect(view.locked).toBe(false);
   });
 });
@@ -580,8 +580,8 @@ describe("a document that boots holding a claim, before any source has answered"
   it("opens the panel at once, locked, on the step it last showed, with the rows it started with", () => {
     const view = read({ run: undefined, answered: false, claim: { ...CLAIM, lastPhase: "restart" } });
     expect(view).toMatchObject({ mode: "expanded", locked: true, phase: "restart", step: 3 });
-    expect(view.heading).toBe("bluefin is restarting");
-    expect(view.rows.map((row) => row.key)).toEqual(["lead", "peer:minibuch", "peer:cellar", "phone"]);
+    expect(view.heading).toBe("lodge is restarting");
+    expect(view.rows.map((row) => row.key)).toEqual(["lead", "peer:workshop", "peer:cellar", "phone"]);
   });
 
   it("after this phone's own reload, opens on step 6 and lets the first read decide the rest", () => {
@@ -598,16 +598,16 @@ describe("a document that boots holding a claim, before any source has answered"
 // ── A ROLLBACK (M60 spec 01) ─────────────────────────────────────────────────────────────────────
 
 describe("a rollback walks the same steps in its own words", () => {
-  // bluefin runs 1.12.0 and goes back to 1.11.1; this phone runs the 1.12.0 app.
+  // lodge runs 1.12.0 and goes back to 1.11.1; this phone runs the 1.12.0 app.
   const BACK_CLAIM: UpdateClaim = { ...CLAIM, target: FROM, members: [], rollback: true };
   const back = (state: UpdateRunState, over: Partial<UpdateRun> = {}) =>
     run(state, { from: TO, to: FROM, action: "rollback", ...over });
   const crewOn: UpdateCrewMember[] = [
-    { name: "minibuch", version: TO, verdict: "green", reasons: [], asOf: NOW - 3_000 },
+    { name: "workshop", version: TO, verdict: "green", reasons: [], asOf: NOW - 3_000 },
     { name: "cellar", version: TO, verdict: "green", reasons: [], asOf: NOW - 3_000 },
   ];
   const crewBack: UpdateCrewMember[] = [
-    { name: "minibuch", version: FROM, verdict: "green", reasons: [], asOf: NOW - 3_000 },
+    { name: "workshop", version: FROM, verdict: "green", reasons: [], asOf: NOW - 3_000 },
     { name: "cellar", version: FROM, verdict: "green", reasons: [], asOf: NOW - 3_000 },
   ];
   const readBack = (over: Partial<UpdateScreenInput> = {}) =>
@@ -623,10 +623,10 @@ describe("a rollback walks the same steps in its own words", () => {
     });
     expect(view.phase).toBe("ready");
     expect(view.heading).toBe(`Roll back to ${FROM}`);
-    expect(view.subtitle).toBe("bluefin switches back to the build it ran before. Nothing is downloaded or built.");
+    expect(view.subtitle).toBe("lodge switches back to the build it ran before. Nothing is downloaded or built.");
     expect(view.rows.map((r) => [r.key, r.status, r.word, r.versions])).toEqual([
       ["lead", "queued", "switches back, then restarts", `${TO} → ${FROM}`],
-      ["peer:minibuch", "queued", "goes back next", `${TO} → ${FROM}`],
+      ["peer:workshop", "queued", "goes back next", `${TO} → ${FROM}`],
       ["peer:cellar", "queued", "goes back next", `${TO} → ${FROM}`],
       ["phone", "queued", "reloads at the end", `${TO} → ${FROM}`],
     ]);
@@ -635,7 +635,7 @@ describe("a rollback walks the same steps in its own words", () => {
   it("nothing is built: the staging step switches back", () => {
     const view = readBack({ run: back("staging") });
     expect(view.phase).toBe("build");
-    expect(view.heading).toBe(`Switching bluefin back to ${FROM}`);
+    expect(view.heading).toBe(`Switching lodge back to ${FROM}`);
     expect(view.rows[0]?.word).toBe(`switching back to ${FROM}`);
     // The members follow their lead down (ADR 0110): above the target is not level on a way down.
     expect(view.rows.filter((r) => r.key.startsWith("peer:")).map((r) => r.status)).toEqual(["queued", "queued"]);
@@ -653,14 +653,14 @@ describe("a rollback walks the same steps in its own words", () => {
     const view = readBack({ run: back("done"), crew: crewBack, bundle: { id: "bundle-b", version: FROM } });
     expect(view.phase).toBe("done");
     expect(view.heading).toBe("Rollback finished");
-    expect(view.subtitle).toBe(`bluefin and this phone run ${FROM} again. The other machines went back with it.`);
+    expect(view.subtitle).toBe(`lodge and this phone run ${FROM} again. The other machines went back with it.`);
   });
 
   it("a rollback that fails its check says this machine stays on the build it left", () => {
     const view = readBack({ run: back("rolled-back") });
     expect(view.phase).toBe("rolled-back");
-    expect(view.heading).toBe(`bluefin stays on ${TO}`);
-    expect(view.subtitle).toBe(`${FROM} failed its check, so bluefin went back to ${TO}. It works normally.`);
+    expect(view.heading).toBe(`lodge stays on ${TO}`);
+    expect(view.subtitle).toBe(`${FROM} failed its check, so lodge went back to ${TO}. It works normally.`);
   });
 
   it("Go back now: Ready to start names the Stable release, and the members follow", () => {
@@ -672,10 +672,10 @@ describe("a rollback walks the same steps in its own words", () => {
       bundle: { id: "bundle-a", version: TO },
     });
     expect(view.heading).toBe(`Go back to Stable ${FROM}`);
-    expect(view.subtitle).toBe("bluefin installs the Stable release, then restarts. The other machines follow.");
+    expect(view.subtitle).toBe("lodge installs the Stable release, then restarts. The other machines follow.");
     expect(view.rows.map((r) => [r.key, r.status, r.word])).toEqual([
       ["lead", "queued", "goes back, then restarts"],
-      ["peer:minibuch", "queued", "goes back next"],
+      ["peer:workshop", "queued", "goes back next"],
       ["peer:cellar", "queued", "goes back next"],
       ["phone", "queued", "reloads at the end"],
     ]);
@@ -692,6 +692,6 @@ describe("a rollback walks the same steps in its own words", () => {
 
   it("before the run's record lands, the claim's words are a rollback's too", () => {
     const view = readBack({ run: undefined, answered: false });
-    expect(view.heading).toBe(`Switching bluefin back to ${FROM}`);
+    expect(view.heading).toBe(`Switching lodge back to ${FROM}`);
   });
 });

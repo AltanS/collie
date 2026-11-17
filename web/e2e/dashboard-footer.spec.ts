@@ -134,7 +134,7 @@ test("the Crew tab starts with the machine cards, and Dashboard and Changes keep
   await expect(summary(page)).toHaveCount(0);
   // The first machine card sits right under the header, with no 44px controls row above it.
   const main = await box(page.getByRole("main"));
-  const card = await box(page.getByRole("button", { name: "bluefin", exact: true }));
+  const card = await box(page.getByRole("button", { name: "lodge", exact: true }));
   expect(card.y - main.y).toBeLessThan(40);
 });
 

@@ -643,7 +643,7 @@ describe("ChangesRoute — re-reading while open", () => {
 describe("ChangesRoute — batch diff comments", () => {
   it("accumulates comments across two files in two repos (including on a crew lead pane), keeps the open sheet snapshot across a diff poll, and stages the batch into the asking pane's draft", async () => {
     const user = userEvent.setup();
-    loaderAgents = [{ ...fixtureAgents[0]!, host: "bluefin" }, ...fixtureAgents.slice(1)];
+    loaderAgents = [{ ...fixtureAgents[0]!, host: "lodge" }, ...fixtureAgents.slice(1)];
     loaderServers = fixtureServers;
     let mutatedCart = false;
     server.use(
@@ -760,7 +760,7 @@ describe("ChangesRoute, batch diff comments: the agent row and the kept batch", 
     // The peer's twin comes FIRST: a lookup by the bare pane id would take it for the lead's pane.
     loaderAgents = [
       { ...fixtureAgents[0]!, host: "workshop", agent: "codex" },
-      { ...fixtureAgents[0]!, host: "bluefin", agent: "claude" },
+      { ...fixtureAgents[0]!, host: "lodge", agent: "claude" },
     ];
     renderAt("/pane/w1%3Ap1/changes?repo=.&path=src%2Flib%2Fcart.ts");
     await commentOnCart(user, "Name the lead's agent.");

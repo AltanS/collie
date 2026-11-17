@@ -101,8 +101,8 @@
         "agent": "claude",
         "kind": "agent",
         "paneLabel": "release notes",
-        "sessionName": "migrate bluefin",
-        "agentTitle": "Bluefin Silverblue to NixOS migration",
+        "sessionName": "migrate lodge",
+        "agentTitle": "Lodge Silverblue to NixOS migration",
         "soleTabName": "work",
         "terminalTitle": "Reviewing the diff"
       },
@@ -113,12 +113,12 @@
       "pane": {
         "agent": "claude",
         "kind": "agent",
-        "sessionName": "migrate bluefin",
-        "agentTitle": "Bluefin Silverblue to NixOS migration",
+        "sessionName": "migrate lodge",
+        "agentTitle": "Lodge Silverblue to NixOS migration",
         "soleTabName": "work",
         "terminalTitle": "Reviewing the diff"
       },
-      "name": "migrate bluefin"
+      "name": "migrate lodge"
     },
     {
       "case": "precedence 3: the agent's own title outranks a one-pane tab's name",

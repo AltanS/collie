@@ -99,9 +99,9 @@ describe("signalTrouble once per kind, pane and UTC day", () => {
 
   it("posts for the same kind and pane id on two crew hosts", async () => {
     const posted = capture();
-    await signalTrouble({ kind: "dialog", paneId: "w1:p1", scope: { host: "bluefin-hc" }, agent: "claude" });
-    await signalTrouble({ kind: "dialog", paneId: "w1:p1", scope: { host: "minibuch-hc" }, agent: "claude" });
-    await signalTrouble({ kind: "dialog", paneId: "w1:p1", scope: { host: "minibuch-hc" }, agent: "claude" });
+    await signalTrouble({ kind: "dialog", paneId: "w1:p1", scope: { host: "lodge-hc" }, agent: "claude" });
+    await signalTrouble({ kind: "dialog", paneId: "w1:p1", scope: { host: "workshop-hc" }, agent: "claude" });
+    await signalTrouble({ kind: "dialog", paneId: "w1:p1", scope: { host: "workshop-hc" }, agent: "claude" });
     expect(posted).toHaveLength(2);
   });
 

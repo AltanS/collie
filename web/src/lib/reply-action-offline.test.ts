@@ -56,7 +56,7 @@ describe("sendText when the pane is not live", () => {
 
   it("is per scope: a live pane on another machine does not open this one", async () => {
     const calls = watchNetwork();
-    markLive("w1:p1", Date.now(), { host: "minibuch" });
+    markLive("w1:p1", Date.now(), { host: "workshop" });
     const out = await sendText({ paneId: "w1:p1", text: "continue", held: null });
     expect(out).toMatchObject({ status: "refused", reason: "offline" });
     expect(calls).toEqual([]);

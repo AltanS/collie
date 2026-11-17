@@ -36,11 +36,24 @@ const SHELL_ARGS = [
   ["fish", ["--no-config", "-c"]],
   ["ksh", ["-c"]],
 ] as const;
-const installed = (shell: string): boolean => spawnSync("sh", ["-c", `command -v ${shell}`]).status === 0;
+const argsOf = (shell: string): readonly string[] => SHELL_ARGS.find(([name]) => name === shell)?.[1] ?? ["-c"];
+// A shell counts as installed when THIS process can spawn it by its bare name and it can run `touch`,
+// the canary every test below relies on. The older probe asked `sh -c "command -v <shell>"`. On Windows
+// that `sh` is the one of Git for Windows, and it can find a `dash` in Git's own `usr/bin` that a process
+// spawning "dash" itself cannot start, or that starts with no `touch` on its PATH. The shell then ran
+// nothing, and the dash canary test read false. A shell that fails the probe gets no test, as a missing one does.
+function installed(shell: string): boolean {
+  const root = mkdtempSync(join(tmpdir(), "walky-line-probe-"));
+  try {
+    spawnSync(shell, [...argsOf(shell), "touch probe"], { cwd: root, env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: root }, timeout: 10_000 });
+    return readdirSync(root).includes("probe");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
 const SHELLS: readonly string[] = SHELL_ARGS.map(([shell]) => shell).filter(installed);
 /** The shells the Linux CI job must have (COLLIE_REQUIRE_SHELLS=1). ksh is optional everywhere. */
 const REQUIRED_SHELLS = ["bash", "dash", "zsh", "fish"] as const;
-const argsOf = (shell: string): readonly string[] => SHELL_ARGS.find(([name]) => name === shell)?.[1] ?? ["-c"];
 
 /** What the canary run left behind: every path under the temp root that is not the empty work folder or HOME's own files. */
 async function run(shell: string, line: string): Promise<{ canary: boolean; workLeft: string[] }> {
@@ -119,7 +132,7 @@ function linesFor(payload: string) {
 
 describe("the typed line at a shell prompt runs nothing (fix/walky-line-fields)", () => {
   // A shell this machine lacks gets no test at all rather than a skipped one, so the Windows skip budget
-  // (scripts/windows-suites.ps1) is untouched: on Windows `sh` is missing and only this first test runs.
+  // (scripts/windows-suites.ps1) is untouched: on Windows only the shells that start there (Git's bash) get tests.
   // With COLLIE_REQUIRE_SHELLS=1 (the Linux bridge job of ci.yml, which installs zsh and fish) a missing
   // bash, dash, zsh or fish FAILS here instead of leaving its tests out, so CI always runs the real shells.
   // Not keyed on CI: release, windows, webkit and packaging runs set CI too and lack these shells.

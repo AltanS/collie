@@ -23,7 +23,7 @@ describe("one confirm per device", () => {
     rememberNoPromptsConfirm("", danger.command, 1);
     expect(needsNoPromptsConfirm(danger, "")).toBe(false);
     // Another machine, or another line, asks again.
-    expect(needsNoPromptsConfirm(danger, "minibuch")).toBe(true);
+    expect(needsNoPromptsConfirm(danger, "workshop")).toBe(true);
     expect(needsNoPromptsConfirm({ noPrompts: true, command: "codex --yolo" }, "")).toBe(true);
   });
 

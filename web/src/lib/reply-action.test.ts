@@ -155,7 +155,7 @@ describe("sendText", () => {
         }),
       ),
     );
-    const out = await sendText({ paneId: "w1:p1", text: "/model", scope: { host: "minibuch" }, held: null, mint });
+    const out = await sendText({ paneId: "w1:p1", text: "/model", scope: { host: "workshop" }, held: null, mint });
     expect(out).toMatchObject({ status: "answered", reading: { clear: false, note: "refused", detail } });
   });
 
@@ -165,7 +165,7 @@ describe("sendText", () => {
         HttpResponse.json({ ok: false, textDelivered: false, error: "nope", code: "reply.send_failed", detail: { reason: "update the lead" } }),
       ),
     );
-    const out = await sendText({ paneId: "w1:p1", text: "/model", scope: { host: "minibuch" }, held: null, mint });
+    const out = await sendText({ paneId: "w1:p1", text: "/model", scope: { host: "workshop" }, held: null, mint });
     expect(out).toMatchObject({ status: "noAnswer", error: "The message couldn't be sent: update the lead" });
   });
 });

@@ -114,7 +114,7 @@ describe("parse — refusing beats repairing", () => {
   test("an old-shape store (no `contactedAt`) parses, and its member is NOT provisional", () => {
     // The live-crew back-compat rule: a member serialised before this field existed comes back with
     // `contactedAt` absent (undefined), which is STRICTLY NOT `null` — so it never reads as provisional.
-    const old = leadStore({ peers: [member({ memberId: "minibuch" })] });
+    const old = leadStore({ peers: [member({ memberId: "workshop" })] });
     const serialized = serializeTrustStore(old);
     expect(serialized).not.toContain("contactedAt");
     const parsed = parseTrustStore(serialized)!;

@@ -287,7 +287,7 @@ describe("the header — a quiet crew member is not the phone's connection", () 
 
   it("stays at rest with an unreachable peer in the roster and a healthy lead", () => {
     const roster: ServerSummary[] = [
-      { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
+      { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
       { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 1_000 },
     ];
     renderHeader(
@@ -433,7 +433,7 @@ describe("the header — the stacked identity", () => {
   });
 
   // THE BRAND NEVER GIVES WAY (2026-10-07). On a Pixel in airplane mode the dashboard row held the
-  // mark, the identity, a saved-copy badge, the "bluefin" and "default" chips and the gear, and the
+  // mark, the identity, a saved-copy badge, the "lodge" and "default" chips and the gear, and the
   // identity was the one thing allowed to shrink: it came out ~20px wide, "C." over "o". The row now
   // gives the shrink to the RIGHT cluster. jsdom lays nothing out, so a 390px viewport cannot be
   // measured here; what is pinned is the full right cluster at that width and the classes that
@@ -453,7 +453,7 @@ describe("the header — the stacked identity", () => {
         ),
       );
       const roster: ServerSummary[] = [
-        { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
+        { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
         { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 100_000 },
       ];
       const { container } = renderHeader(
@@ -477,7 +477,7 @@ describe("the header — the stacked identity", () => {
 
       // The right cluster is FULL: both chips and the gear are in it.
       const right = container.querySelector<HTMLElement>('[data-slot="header-right"]');
-      const host = screen.getByRole("button", { name: /bluefin/ });
+      const host = screen.getByRole("button", { name: /lodge/ });
       const session = screen.getByRole("button", { name: /default/ });
       const gear = screen.getByRole("button", { name: "Settings" });
       for (const el of [host, session, gear]) expect(right?.contains(el)).toBe(true);

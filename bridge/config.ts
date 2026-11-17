@@ -481,7 +481,7 @@ export interface Config {
   walky: boolean;
   /**
    * The walky talky pair cap (`COLLIE_WALKY_PAIR_LIMIT`): messages in ten minutes between the same two
-   * panes, either direction, counted by this bridge alone. 6 by default, 1 to 100; a value outside that
+   * panes, either direction, counted by this bridge alone. 12 by default, 1 to 100; a value outside that
    * range, or one that is not an integer, warns and takes the default.
    */
   walkyPairLimit: number;

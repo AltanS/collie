@@ -559,7 +559,7 @@ const FIRST_GAP_MS = 80;
 /**
  * The least time the probe's Backspace half gets: its first gap and one read's share of the probe's
  * bound, so it always reads once. At {@link FIRST_GAP_MS} alone the poll slept its gap and found no
- * time left to read, and the probe ended "could not confirm" (minibuch, herdr-core, 2026-10-30).
+ * time left to read, and the probe ended "could not confirm" (workshop, herdr-core, 2026-10-30).
  */
 const PROBE_BACK_FLOOR_MS = FIRST_GAP_MS + BOUNDS.probe.ms / BOUNDS.probe.reads;
 /** The gap between the two S0 reads. */
@@ -6064,7 +6064,7 @@ export class SendProtocol {
   /**
    * One of the probe's two writes, timed apart from its reads. The multiplexer's write cost is no part
    * of the probe's read bound: on herdr-core 0.1.14 a key press right after a raw write is answered
-   * about three seconds after that write (measured on a private hc session, 2026-10-30), and the minibuch
+   * about three seconds after that write (measured on a private hc session, 2026-10-30), and the workshop
    * receipt of that day ended "could not confirm" for it. It is `gapsMs.probeWrite`, and the request's
    * bound grows by a write that went in, so S1 and S2 keep theirs.
    */

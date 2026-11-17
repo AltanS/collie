@@ -55,24 +55,24 @@ describe("the version order is the same on both sides", () => {
 
 describe("memberBehind: strictly lower by semver, known, and not packaged", () => {
   const CASES: readonly { case: string; member: CrewUpdateRow; behind: boolean }[] = [
-    { case: "a member a release back", member: member("minibuch", "1.9.0"), behind: true },
-    { case: "a member on the lead's own version", member: member("minibuch", LEAD), behind: false },
-    { case: "a member that levelled itself PAST the lead", member: member("minibuch", "1.10.0"), behind: false },
-    { case: "a member whose version nobody could learn", member: member("minibuch", null), behind: false },
+    { case: "a member a release back", member: member("workshop", "1.9.0"), behind: true },
+    { case: "a member on the lead's own version", member: member("workshop", LEAD), behind: false },
+    { case: "a member that levelled itself PAST the lead", member: member("workshop", "1.10.0"), behind: false },
+    { case: "a member whose version nobody could learn", member: member("workshop", null), behind: false },
     {
       case: "a packaged member a release back",
-      member: member("minibuch", "1.9.0", { installKind: "packaged" }),
+      member: member("workshop", "1.9.0", { installKind: "packaged" }),
       behind: false,
     },
-    { case: "a member on a prerelease of the lead's version", member: member("minibuch", "1.9.1-rc.1"), behind: true },
+    { case: "a member on a prerelease of the lead's version", member: member("workshop", "1.9.1-rc.1"), behind: true },
     // A DEVELOPMENT BUILD IS LEVELLED BY ITS BASE (2026-11-09): the lead's own release plus commits.
-    { case: "a development build of the lead's version", member: member("minibuch", "1.9.1-dev+b178eb63f2"), behind: false },
-    { case: "a development build with no sha", member: member("minibuch", "1.9.1-dev"), behind: false },
-    { case: "a development build of an OLDER version", member: member("minibuch", "1.9.0-dev+b178eb63f2"), behind: true },
-    { case: "a development build of a NEWER version", member: member("minibuch", "1.10.0-dev+b178eb63f2"), behind: false },
+    { case: "a development build of the lead's version", member: member("workshop", "1.9.1-dev+b178eb63f2"), behind: false },
+    { case: "a development build with no sha", member: member("workshop", "1.9.1-dev"), behind: false },
+    { case: "a development build of an OLDER version", member: member("workshop", "1.9.0-dev+b178eb63f2"), behind: true },
+    { case: "a development build of a NEWER version", member: member("workshop", "1.10.0-dev+b178eb63f2"), behind: false },
     {
       case: "a development build of an older Edge build",
-      member: member("minibuch", "1.9.1-edge.1-dev+b178eb63f2"),
+      member: member("workshop", "1.9.1-edge.1-dev+b178eb63f2"),
       behind: true,
     },
   ];
@@ -93,38 +93,38 @@ describe("legStillFailed: a failed leg counts until the census shows its member 
   }[] = [
     {
       case: "a rolled-back leg whose member is still behind",
-      leg: { name: "minibuch", state: "rolled-back" },
-      crew: [member("minibuch", "1.9.0")],
+      leg: { name: "workshop", state: "rolled-back" },
+      crew: [member("workshop", "1.9.0")],
       counts: true,
     },
     {
       case: "a STALE rolled-back leg whose member has since levelled itself",
-      leg: { name: "minibuch", state: "rolled-back" },
-      crew: [member("minibuch", LEAD)],
+      leg: { name: "workshop", state: "rolled-back" },
+      crew: [member("workshop", LEAD)],
       counts: false,
     },
     {
       case: "a stale unreachable leg whose member is now ahead of the lead",
-      leg: { name: "minibuch", state: "unreachable" },
-      crew: [member("minibuch", "1.10.0")],
+      leg: { name: "workshop", state: "unreachable" },
+      crew: [member("workshop", "1.10.0")],
       counts: false,
     },
     {
       case: "a failed leg whose member's version is UNKNOWN",
-      leg: { name: "minibuch", state: "rolled-back" },
-      crew: [member("minibuch", null)],
+      leg: { name: "workshop", state: "rolled-back" },
+      crew: [member("workshop", null)],
       counts: true,
     },
     {
       case: "a failed leg with no census row at all",
       leg: { name: "attic", state: "unreachable" },
-      crew: [member("minibuch", LEAD)],
+      crew: [member("workshop", LEAD)],
       counts: true,
     },
     {
       case: "a leg from an older bridge that ended stuck",
-      leg: { name: "minibuch", state: "stuck" },
-      crew: [member("minibuch", "1.9.0")],
+      leg: { name: "workshop", state: "stuck" },
+      crew: [member("workshop", "1.9.0")],
       counts: true,
     },
     {
@@ -132,26 +132,26 @@ describe("legStillFailed: a failed leg counts until the census shows its member 
       // crew/follow.ts), and nothing the phone can start would ever clear it. A sleeping laptop must
       // not leave "Retry crew update" standing for good.
       case: "a failed leg on a PACKAGED member, whose version no run from here can move",
-      leg: { name: "minibuch", state: "unreachable" },
-      crew: [member("minibuch", "1.9.0", { installKind: "packaged" })],
+      leg: { name: "workshop", state: "unreachable" },
+      crew: [member("workshop", "1.9.0", { installKind: "packaged" })],
       counts: false,
     },
     {
       case: "an unreachable leg whose member runs a development build of the lead's version",
-      leg: { name: "minibuch", state: "unreachable" },
-      crew: [member("minibuch", "1.9.1-dev+b178eb63f2")],
+      leg: { name: "workshop", state: "unreachable" },
+      crew: [member("workshop", "1.9.1-dev+b178eb63f2")],
       counts: false,
     },
     {
       case: "an unreachable leg whose member runs a development build of an older version",
-      leg: { name: "minibuch", state: "unreachable" },
-      crew: [member("minibuch", "1.9.0-dev+b178eb63f2")],
+      leg: { name: "workshop", state: "unreachable" },
+      crew: [member("workshop", "1.9.0-dev+b178eb63f2")],
       counts: true,
     },
     {
       case: "a leg that arrived is not a failed leg",
-      leg: { name: "minibuch", state: "done" },
-      crew: [member("minibuch", "1.9.0")],
+      leg: { name: "workshop", state: "done" },
+      crew: [member("workshop", "1.9.0")],
       counts: false,
     },
   ];

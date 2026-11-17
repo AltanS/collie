@@ -1,12 +1,12 @@
 // The crew, as a real bridge with a real deputy reports it.
 //
 // This is the family Tier 1 cannot answer honestly. Its census is a fixture, and a fixture agrees
-// with itself by construction. Here the census comes from the lead's own cached sweep of minibuch,
+// with itself by construction. Here the census comes from the lead's own cached sweep of workshop,
 // and the case reads that census over HTTP in the same run it reads the screen — so the two can
 // disagree, which is the whole point.
 //
 // Replaces the hand check first run on 2026-09-09: open /crew on the dev lane, confirm two machines
-// and two reachable, confirm the crown on bluefin and the shield on minibuch.
+// and two reachable, confirm the crown on lodge and the shield on workshop.
 import { message, plural, readCrew, test, expect } from "./live";
 
 test("the crew page shows every machine reachable", async ({ page, request }) => {

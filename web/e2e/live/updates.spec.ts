@@ -3,7 +3,7 @@
 // The card reads `/api/update/check` and the snapshot; the case reads `/api/health` in the same run
 // and compares. A fixture can make those two agree; only a live bridge can prove they do.
 //
-// NO CONFIRM IS EVER TAPPED. Starting a real update restarts the lane, and the deputy on minibuch
+// NO CONFIRM IS EVER TAPPED. Starting a real update restarts the lane, and the deputy on workshop
 // cannot receive a dev build anyway (M22's dev-crew checkpoint). This case reads and leaves.
 //
 // Replaces the hand check first run on 2026-09-09: open /settings/updates on the dev lane, confirm

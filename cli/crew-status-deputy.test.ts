@@ -78,7 +78,7 @@ describe("the lead's deputy line reads the DESIGNATION, never the warrant", () =
   // ── THE LIVE DRILL, BUG 2 ─────────────────────────────────────────────────
   // A takeover KEEPS the warrant — it carries the generation counter and it is the proof for §9's
   // reconciliation — and that warrant names the machine that took over. A surface reading the deputy
-  // off it printed `deputy minibuch` on minibuch's own lead status.
+  // off it printed `deputy workshop` on workshop's own lead status.
   test("after a takeover the new lead names NOBODY, and says the takeover spent it", () => {
     const after = tookOver();
     const rendered = text(leadDeputyLines(after, T0 + 1000));
@@ -216,7 +216,7 @@ describe("the peer's own warrant line names what THIS machine's restart activate
 
 // ── THE LIVE DRILL, BUG 5 (§18.17) ──────────────────────────────────────────
 // The deputy's own `crew status` said `deputy role ACTIVE at this boot` while the LEAD's said
-// `warrant stored, anchor INACTIVE — restart minibuch … a takeover from there is impossible`, about
+// `warrant stored, anchor INACTIVE — restart workshop … a takeover from there is impossible`, about
 // the same machine at the same minute. The lead's only anchor evidence was `crew-ops.json`, which
 // moves when `crew deputy`'s own restart leg completes and at no other time — so a restart done by an
 // update, by the unit, or by a hand on a keyboard left an armed crew rendered as un-armed forever.

@@ -159,7 +159,7 @@ describe("a member's space view through the lead", () => {
     const body = parsePeerSnapshot({ sessions: [], agents: [], shellPanes: [], workspaces: [memberView()], tabs: [] });
     const peer: PeerContribution = {
       state: {
-        memberId: "bluefin-hc",
+        memberId: "lodge-hc",
         health: "reachable",
         lastSeenAt: 1,
         reason: null,
@@ -167,7 +167,7 @@ describe("a member's space view through the lead", () => {
         conflict: null,
         preflight: null,
       },
-      name: "bluefin-hc",
+      name: "lodge-hc",
       body,
     };
     const local: SnapshotResponse = {
@@ -194,7 +194,7 @@ describe("a member's space view through the lead", () => {
       },
       ts: 1,
     };
-    const merged = mergeSnapshot(local, { self: { id: "bluefin", name: "bluefin" }, peers: [peer], now: 1 });
-    expect(merged.workspaces).toEqual([{ ...memberView(), host: "bluefin-hc" }]);
+    const merged = mergeSnapshot(local, { self: { id: "lodge", name: "lodge" }, peers: [peer], now: 1 });
+    expect(merged.workspaces).toEqual([{ ...memberView(), host: "lodge-hc" }]);
   });
 });

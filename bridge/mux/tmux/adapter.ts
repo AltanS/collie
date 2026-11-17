@@ -45,7 +45,7 @@
 // visible, less prominent, and never a claim about who wrote it.
 //
 // tmux's own default for the slot is the host name, which is why {@link programTitle} drops a title
-// equal to it: an untouched pane says nothing, and reporting "bluefin" would be noise.
+// equal to it: an untouched pane says nothing, and reporting "lodge" would be noise.
 
 import { declareCapabilities } from "../capabilities.ts";
 import { TMUX_LOGO_SVG } from "./logo.ts";
@@ -1023,7 +1023,7 @@ function toMuxPane(
 /**
  * What the pane's program printed into the title slot, or null when the slot says nothing.
  *
- * tmux seeds `pane_title` with the host name (probed: `bluefin` on an untouched pane), so a title
+ * tmux seeds `pane_title` with the host name (probed: `lodge` on an untouched pane), so a title
  * equal to the host is tmux's own default and not anybody's statement. Everything else is reported,
  * verbatim: the glyphs an agent puts in its own title (`✳ …`) are that agent's text, and trimming
  * them here would be Collie editing what a program said about itself.
@@ -1066,8 +1066,8 @@ function windowLabel(window: TmuxWindow, panes: readonly TmuxPaneRecord[]): stri
 }
 
 /**
- * The last path segment of a pane's current directory — `/var/home/altan/playground/herdr-pouch` →
- * `herdr-pouch`, `/var/home/altan` → `altan`, `/` → `/`. `null` when tmux reported no path at all
+ * The last path segment of a pane's current directory — `/home/dev/playground/herdr-pouch` →
+ * `herdr-pouch`, `/home/dev` → `dev`, `/` → `/`. `null` when tmux reported no path at all
  * (an empty `#{pane_current_path}`, tmux's honest "I don't know").
  */
 function lastFolder(cwd: string): string | null {

@@ -114,7 +114,7 @@ describe("hostHealth — three states and no more", () => {
 
 describe("hostHealth — the lead is tier 1's answer, never this module's", () => {
   it("is always live and always writable, whatever its own fields say", () => {
-    const h = hostHealth(member({ id: "bluefin", isLead: true, lastSeenAt: 0 }), HOT);
+    const h = hostHealth(member({ id: "lodge", isLead: true, lastSeenAt: 0 }), HOT);
     expect(h.state).toBe("live");
     expect(h.writable).toBe(true);
     expect(writeRefusal(h)).toBeUndefined();

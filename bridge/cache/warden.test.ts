@@ -149,8 +149,8 @@ describe("CacheWarden", () => {
 
   test("a peer's pane warns from here, which is where the subscriptions are", () => {
     const { warden, sent } = makeWarden({ globalOn: () => true });
-    warden.tick([pane({ host: "minibuch", paneId: "w2:p1" })]);
-    expect(sent[0]).toMatchObject({ host: "minibuch", paneId: "w2:p1" });
+    warden.tick([pane({ host: "workshop", paneId: "w2:p1" })]);
+    expect(sent[0]).toMatchObject({ host: "workshop", paneId: "w2:p1" });
   });
 
   test("an empty tick is a no-op, which is every poll on an instance with no agent panes", () => {

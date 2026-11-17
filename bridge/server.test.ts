@@ -279,7 +279,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     inside: false,
     sendProtocol: false,
     walky: true,
-    walkyPairLimit: 6,
+    walkyPairLimit: 12,
     skipServe: false,
     basePath: "/",
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
@@ -5982,17 +5982,17 @@ describe("pair attempt rate limit", () => {
   test("the 11th attempt inside a minute is refused, and the burst is flagged once", () => {
     const limiter = createPairLimiter();
     for (let i = 0; i < PAIR_ATTEMPTS_PER_WINDOW; i++) {
-      expect(limiter.hit("100.64.0.2", 1_000 + i).allowed).toBe(true);
+      expect(limiter.hit("100.64.10.2", 1_000 + i).allowed).toBe(true);
     }
     // `retryAfterMs` is how long until the oldest attempt (at 1_000) leaves the window.
-    expect(limiter.hit("100.64.0.2", 2_000)).toEqual({ allowed: false, first: true, retryAfterMs: 59_000 });
-    expect(limiter.hit("100.64.0.2", 2_001)).toEqual({ allowed: false, first: false, retryAfterMs: 58_999 });
+    expect(limiter.hit("100.64.10.2", 2_000)).toEqual({ allowed: false, first: true, retryAfterMs: 59_000 });
+    expect(limiter.hit("100.64.10.2", 2_001)).toEqual({ allowed: false, first: false, retryAfterMs: 58_999 });
   });
 
   test("another address is not affected by the first one's burst", () => {
     const limiter = createPairLimiter();
-    for (let i = 0; i < PAIR_ATTEMPTS_PER_WINDOW + 2; i++) limiter.hit("100.64.0.2", 1_000);
-    expect(limiter.hit("100.64.0.10", 1_001).allowed).toBe(true);
+    for (let i = 0; i < PAIR_ATTEMPTS_PER_WINDOW + 2; i++) limiter.hit("100.64.10.2", 1_000);
+    expect(limiter.hit("100.64.10.10", 1_001).allowed).toBe(true);
   });
 
   test("the window slides: attempts older than a minute stop counting", () => {
@@ -6013,26 +6013,26 @@ describe("pair attempt rate limit", () => {
 
 describe("pair source key (forwarded header trust)", () => {
   test("a non-loopback peer is keyed by its socket address; an untrusted x-forwarded-for does not change it", () => {
-    const a = pairSourceKey("100.64.0.2", false, "1.1.1.1");
-    const b = pairSourceKey("100.64.0.2", false, "2.2.2.2");
-    expect(a).toBe("100.64.0.2");
+    const a = pairSourceKey("100.64.10.2", false, "1.1.1.1");
+    const b = pairSourceKey("100.64.10.2", false, "2.2.2.2");
+    expect(a).toBe("100.64.10.2");
     expect(b).toBe(a);
   });
 
   test("a loopback peer (the front door) is keyed by the RIGHTMOST x-forwarded-for entry, the one the proxy appended", () => {
     expect(pairSourceKey("127.0.0.1", true, "203.0.113.7, 10.0.0.1")).toBe("10.0.0.1");
-    expect(pairSourceKey("127.0.0.1", true, "100.64.0.2")).toBe("100.64.0.2");
+    expect(pairSourceKey("127.0.0.1", true, "100.64.10.2")).toBe("100.64.10.2");
   });
 
   test("entries a client wrote to the left of the proxy's own cannot rotate the key", () => {
-    const a = pairSourceKey("127.0.0.1", true, "1.1.1.1, 100.64.0.2");
-    const b = pairSourceKey("127.0.0.1", true, "2.2.2.2, 3.3.3.3, 100.64.0.2");
-    expect(a).toBe("100.64.0.2");
+    const a = pairSourceKey("127.0.0.1", true, "1.1.1.1, 100.64.10.2");
+    const b = pairSourceKey("127.0.0.1", true, "2.2.2.2, 3.3.3.3, 100.64.10.2");
+    expect(a).toBe("100.64.10.2");
     expect(b).toBe(a);
   });
 
   test("blank entries are skipped, so a trailing comma is not an address", () => {
-    expect(pairSourceKey("127.0.0.1", true, "100.64.0.2, ")).toBe("100.64.0.2");
+    expect(pairSourceKey("127.0.0.1", true, "100.64.10.2, ")).toBe("100.64.10.2");
     expect(pairSourceKey("127.0.0.1", true, " , ")).toBe("loopback");
   });
 

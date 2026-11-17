@@ -246,7 +246,7 @@ describe("PaneActionsSheet — read-only", () => {
 // a half-known "did the close land?" on a real terminal is the worst outcome to hand somebody.
 describe("PaneActionsSheet — a pane on an unreachable machine", () => {
   const roster: ServerSummary[] = [
-    { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 9_000 },
+    { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 9_000 },
     { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 1_000 },
   ];
   const crew = ({ children }: { children: React.ReactNode }) => (
@@ -265,7 +265,7 @@ describe("PaneActionsSheet — a pane on an unreachable machine", () => {
   });
 
   it("leaves a pane on a reachable member of the same crew exactly as it was", () => {
-    render(<PaneActionsSheet {...renderProps({ pane: { ...agent, host: "bluefin" } })} />, {
+    render(<PaneActionsSheet {...renderProps({ pane: { ...agent, host: "lodge" } })} />, {
       wrapper: crew,
     });
     expect(screen.getByRole("button", { name: /rename/i })).toBeInTheDocument();
@@ -381,7 +381,7 @@ describe("PaneActionsSheet — the read rows", () => {
 //     hand-authored produces that join).
 describe("PaneActionsSheet — title row names the machine", () => {
   const roster: ServerSummary[] = [
-    { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 9_000 },
+    { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 9_000 },
     { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 9_000 },
   ];
   const crew = ({ children }: { children: React.ReactNode }) => (
@@ -501,7 +501,7 @@ describe("PaneActionsSheet — pin", () => {
   it("survives an unreachable machine: a pane on a quiet peer can still be pinned", async () => {
     const user = userEvent.setup();
     const roster: ServerSummary[] = [
-      { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 9_000 },
+      { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 9_000 },
       { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 1_000 },
     ];
     const quiet = { ...agent, host: "workshop" };

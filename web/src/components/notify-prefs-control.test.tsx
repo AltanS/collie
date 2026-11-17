@@ -111,7 +111,7 @@ describe("NotifyPrefsControl", () => {
 describe("NotifyPrefsControl — the fourth switch and the panes it watches", () => {
   const ENTRIES: CacheWatchListEntry[] = [
     { id: "e1", label: "web-worker" },
-    { id: "e2", label: "backend", host: "minibuch" },
+    { id: "e2", label: "backend", host: "workshop" },
   ];
 
   beforeEach(() => {
@@ -187,7 +187,7 @@ describe("NotifyPrefsControl — the fourth switch and the panes it watches", ()
 
     expect(await screen.findByText("web-worker")).toBeInTheDocument();
     expect(screen.getByText("backend")).toBeInTheDocument();
-    expect(screen.getByText("minibuch")).toBeInTheDocument();
+    expect(screen.getByText("workshop")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /stop watching/i })).toHaveLength(2);
   });
 

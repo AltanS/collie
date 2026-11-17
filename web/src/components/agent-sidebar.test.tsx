@@ -185,7 +185,7 @@ describe("ThreadSidebar", () => {
   });
 
   it("keeps only the CURRENT HOST's row current, when two machines share a paneId", () => {
-    // fixtureCrewAgents holds bluefin's own w1:p1 and workshop's w1:p1 — an id collision, on
+    // fixtureCrewAgents holds lodge's own w1:p1 and workshop's w1:p1 — an id collision, on
     // purpose (test/handlers.ts). Comparing `paneId` alone would mark BOTH as current.
     render(
       <ThreadSidebar
@@ -197,7 +197,7 @@ describe("ThreadSidebar", () => {
     );
     const current = screen.getAllByRole("button", { current: "page" });
     expect(current).toHaveLength(1);
-    // bluefin's own w1:p1 sits in "webapp"; workshop's identically-numbered pane sits in
+    // lodge's own w1:p1 sits in "webapp"; workshop's identically-numbered pane sits in
     // "moonward" and must stay unmarked.
     expect(current[0]).toHaveTextContent("claude");
     expect(screen.getByRole("heading", { name: /moonward/ }).closest("section")).not.toContainElement(
@@ -207,7 +207,7 @@ describe("ThreadSidebar", () => {
 
   it("fires onSelect with the tapped HOST's own pane, not the id alone, when a paneId is shared", async () => {
     // The unforgivable failure this exists to catch: tapping workshop's row must hand back
-    // workshop's pane, never bluefin's identically-numbered one (home.tsx's dashboard `open`
+    // workshop's pane, never lodge's identically-numbered one (home.tsx's dashboard `open`
     // guards the same failure the same way).
     const user = userEvent.setup();
     const onSelect = vi.fn();
@@ -830,7 +830,7 @@ describe("ThreadSidebar: which machine, as a glyph on the row (2026-10-21)", () 
     const marks = screen.getAllByLabelText(/^host: /i);
     expect(marks).toHaveLength(fixtureCrewAgents.length);
     expect(marks.map((m) => m.getAttribute("aria-label"))).toEqual(
-      expect.arrayContaining([expect.stringMatching(/^host: bluefin/i), expect.stringMatching(/^host: workshop/i)]),
+      expect.arrayContaining([expect.stringMatching(/^host: lodge/i), expect.stringMatching(/^host: workshop/i)]),
     );
     for (const m of marks) {
       expect(m.textContent).toBe("");

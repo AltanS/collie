@@ -41,7 +41,7 @@ const run: UpdateRun = {
   attempt: 0,
 };
 
-const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "unreachable", reason: PEER_REASON }];
+const peers: UpdatePeerLeg[] = [{ name: "workshop", state: "unreachable", reason: PEER_REASON }];
 
 const update: UpdateInfo = {
   current: "1.11.0",
@@ -74,7 +74,7 @@ test("the peer-failed band stays inside a 375px phone, truncated, and the whole 
 }) => {
   await page.goto("/");
 
-  const full = `Could not update minibuch: ${PEER_REASON}. See Updates.`;
+  const full = `Could not update workshop: ${PEER_REASON}. See Updates.`;
   // The whole-surface overlay button `ui/notice.tsx` renders for this state (see
   // `components/update-ribbon.tsx`) — its accessible name is the row's full, untruncated copy.
   const band = page.getByRole("button", { name: full });

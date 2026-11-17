@@ -3893,7 +3893,7 @@ lead's release dials, and the lead's 401 reads as `signature`, as before.
    machine included (see "Workspace scopes", added 2026-10-30).
 
 The lead counts the caps again, as every delivering bridge does (`bridge/walky/rate.ts`): 30 tokens
-per sender in 10 minutes, keyed by `kind`, `from.memberId` and `from.address` and never the label; 6
+per sender in 10 minutes, keyed by `kind`, `from.memberId` and `from.address` and never the label; 12
 messages in 10 minutes between the same two addresses, either direction (`pair limit`); and one outer
 bucket per dialling member, 60 tokens in 10 minutes, all its panes together. An operator's broadcast
 takes one token per pane and per member leg. A refusal is a receipt (`refused`, `rate limit` or

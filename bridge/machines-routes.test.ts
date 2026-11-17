@@ -107,8 +107,8 @@ describe("a row's id is the crew member id", () => {
   });
 
   test("a solo collie that never enrolled is one row, `local`, and it is the lead", () => {
-    expect(machineRosterOf(null, { id: SOLO_MACHINE_ID, name: "bluefin" })).toEqual([
-      { id: "local", name: "bluefin", isLead: true, health: "reachable" },
+    expect(machineRosterOf(null, { id: SOLO_MACHINE_ID, name: "lodge" })).toEqual([
+      { id: "local", name: "lodge", isLead: true, health: "reachable" },
     ]);
   });
 });

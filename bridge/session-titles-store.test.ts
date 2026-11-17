@@ -30,8 +30,8 @@ describe("SessionTitleStore", () => {
     const stateDir = await tempDir();
     const store = new SessionTitleStore({ stateDir });
     expect((await store.load()).size).toBe(0);
-    await store.save(new Map([["s1", kept("migrate bluefin", "Bluefin migration", 1)]]));
-    expect((await new SessionTitleStore({ stateDir }).load()).get("s1")).toEqual(kept("migrate bluefin", "Bluefin migration", 1));
+    await store.save(new Map([["s1", kept("migrate lodge", "Lodge migration", 1)]]));
+    expect((await new SessionTitleStore({ stateDir }).load()).get("s1")).toEqual(kept("migrate lodge", "Lodge migration", 1));
     if (process.platform !== "win32") expect((await stat(join(stateDir, SESSION_TITLES_FILE))).mode & 0o777).toBe(0o600);
     expect(await readdir(stateDir)).toEqual([SESSION_TITLES_FILE]);
   });

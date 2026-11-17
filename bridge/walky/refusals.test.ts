@@ -124,7 +124,7 @@ describe("the refusals of a workspace scope (M75 spec 02)", () => {
   const phone = { kind: "operator" as const, label: "phone" };
 
   test("each text opens with a fixed key, so the counter keeps one line per kind, never one per word", () => {
-    expect(scopeIsMember("bluefin")).toBe("member word: `bluefin` is a member; write `bluefin/all` for its panes");
+    expect(scopeIsMember("lodge")).toBe("member word: `lodge` is a member; write `lodge/all` for its panes");
     expect(scopeEmpty("collie-workspace")).toBe("no panes in scope: none in `collie-workspace`, `collie walky who` shows the labels");
     expect(scopeTooWide(63, 50)).toBe("scope too wide: 63 panes, the most is 50");
     expect(HERE_FROM_PHONE).toBe("here from a phone: a phone has no workspace, name the folder");

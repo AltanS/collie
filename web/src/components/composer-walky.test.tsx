@@ -209,12 +209,12 @@ describe("a reply handed in by the Messages sheet", () => {
     const user = userEvent.setup();
     const plain = watchPlainSends();
     const handle = renderComposer();
-    act(() => handle.current?.startMessage({ to: "bluefin/w6:p3", replyTo: "wt_k3f9x2m8q1a0", label: "collie-workspace#fix-465" }));
+    act(() => handle.current?.startMessage({ to: "lodge/w6:p3", replyTo: "wt_k3f9x2m8q1a0", label: "collie-workspace#fix-465" }));
     expect(await screen.findByText("Reply to collie-workspace#fix-465")).toBeInTheDocument();
     await user.type(screen.getByRole("textbox"), "Merge it");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
-    expect(recordedWalkyPosts()[0]).toMatchObject({ to: "bluefin/w6:p3", body: "Merge it", replyTo: "wt_k3f9x2m8q1a0" });
+    expect(recordedWalkyPosts()[0]).toMatchObject({ to: "lodge/w6:p3", body: "Merge it", replyTo: "wt_k3f9x2m8q1a0" });
     expect(plain).toEqual([]);
     // The reply went, so the target is spent and the next Send is the ordinary one.
     await waitFor(() => expect(screen.queryByText("Reply to collie-workspace#fix-465")).toBeNull());
@@ -223,17 +223,17 @@ describe("a reply handed in by the Messages sheet", () => {
   it("keeps the token of the sender's address, and does not put the pane's own instance on a reply", async () => {
     const user = userEvent.setup();
     const handle = renderComposer(createRef<ComposerHandle>(), { instance: "zz99" });
-    act(() => handle.current?.startMessage({ to: "bluefin/w6:p3#k3f9", replyTo: "wt_k3f9x2m8q1a0", label: "peer" }));
+    act(() => handle.current?.startMessage({ to: "lodge/w6:p3#k3f9", replyTo: "wt_k3f9x2m8q1a0", label: "peer" }));
     await user.type(await screen.findByRole("textbox"), "Merge it");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
-    expect(recordedWalkyPosts()[0]).toMatchObject({ to: "bluefin/w6:p3#k3f9", replyTo: "wt_k3f9x2m8q1a0" });
+    expect(recordedWalkyPosts()[0]).toMatchObject({ to: "lodge/w6:p3#k3f9", replyTo: "wt_k3f9x2m8q1a0" });
   });
 
   it("turns back into a plain reply when the strip is dismissed", async () => {
     const user = userEvent.setup();
     const handle = renderComposer();
-    act(() => handle.current?.startMessage({ to: "bluefin/w6:p3", replyTo: "wt_k3f9x2m8q1a0", label: "peer" }));
+    act(() => handle.current?.startMessage({ to: "lodge/w6:p3", replyTo: "wt_k3f9x2m8q1a0", label: "peer" }));
     await user.click(await screen.findByRole("button", { name: "Send as a plain reply again" }));
     await waitFor(() => expect(screen.queryByText("Reply to peer")).toBeNull());
   });

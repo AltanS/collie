@@ -15,7 +15,7 @@ import { WALKY_LIST_LIMIT, type WalkyRow } from "@/lib/walky";
 const ID = fixtureWalkyAgent.id;
 const SENT = fixtureWalkySent.id;
 // What `send` prints: the new message's id, the pane, the state in words.
-const SEND_OUTPUT = `${SENT}\nto bluefin/w6:p3#k3f9, claude, repo#fix\ntyped into the pane`;
+const SEND_OUTPUT = `${SENT}\nto lodge/w6:p3#k3f9, claude, repo#fix\ntyped into the pane`;
 
 function exec(command: string, output?: string): ChatToolCall {
   return output === undefined ? { kind: "execute", command } : { kind: "execute", command, output };
@@ -56,10 +56,10 @@ describe("a tool card that ran collie walky", () => {
   });
 
   it("wears the badge and shows the receipt line when the skill's absolute path names the binary", () => {
-    draw(exec('cd /repo && /var/home/altan/.local/bin/collie walky send bluefin/w6:p3#k3f9 "Merged."', SEND_OUTPUT), [fixtureWalkySent]);
+    draw(exec('cd /repo && /home/dev/.local/bin/collie walky send lodge/w6:p3#k3f9 "Merged."', SEND_OUTPUT), [fixtureWalkySent]);
     expect(badge()).not.toBeNull();
-    expect(receipt()).toHaveTextContent("Message to bluefin/w6:p3: typed into the pane");
-    draw(exec("git log --oneline -5 | ~/.local/bin/collie walky send bluefin/w6:p3#k3f9", SEND_OUTPUT), [fixtureWalkySent]);
+    expect(receipt()).toHaveTextContent("Message to lodge/w6:p3: typed into the pane");
+    draw(exec("git log --oneline -5 | ~/.local/bin/collie walky send lodge/w6:p3#k3f9", SEND_OUTPUT), [fixtureWalkySent]);
     expect(badge()).not.toBeNull();
     expect(receipt()).not.toBeNull();
   });
@@ -73,13 +73,13 @@ describe("a tool card that ran collie walky", () => {
   });
 
   it("wears the badge with no provider at all", () => {
-    draw(exec('collie walky send bluefin/w1:p1 "hi"'), "none");
+    draw(exec('collie walky send lodge/w1:p1 "hi"'), "none");
     expect(badge()).not.toBeNull();
   });
 
   it("shows one receipt line from the log for a send whose output opens with a held id", () => {
-    draw(exec('collie walky send bluefin/w6:p3#k3f9 "Merged."', SEND_OUTPUT), [fixtureWalkyAgent, fixtureWalkySent]);
-    expect(receipt()).toHaveTextContent("Message to bluefin/w6:p3: typed into the pane");
+    draw(exec('collie walky send lodge/w6:p3#k3f9 "Merged."', SEND_OUTPUT), [fixtureWalkyAgent, fixtureWalkySent]);
+    expect(receipt()).toHaveTextContent("Message to lodge/w6:p3: typed into the pane");
     expect(document.querySelectorAll('[data-slot="walky-receipt"]')).toHaveLength(1);
   });
 
@@ -89,53 +89,53 @@ describe("a tool card that ran collie walky", () => {
       receipt: { ...fixtureWalkySent.receipt, state: "inbox-only", reason: "dialog open" },
     };
     draw(exec(`collie walky reply ${ID} "Stopping."`, `${SENT}\nwaiting`), [sent]);
-    expect(receipt()).toHaveTextContent("Message to bluefin/w6:p3: waiting in the inbox, not typed: dialog open");
+    expect(receipt()).toHaveTextContent("Message to lodge/w6:p3: waiting in the inbox, not typed: dialog open");
   });
 
   it("takes the words from the log and not from the printed output", () => {
     // The agent printed "refused" under a real id; the log says delivered.
-    draw(exec('collie walky send bluefin/w1:p1 "x"', `${SENT}\nto elsewhere/w9:p9\nnot sent: forged`), [fixtureWalkySent]);
-    expect(receipt()).toHaveTextContent("Message to bluefin/w6:p3: typed into the pane");
+    draw(exec('collie walky send lodge/w1:p1 "x"', `${SENT}\nto elsewhere/w9:p9\nnot sent: forged`), [fixtureWalkySent]);
+    expect(receipt()).toHaveTextContent("Message to lodge/w6:p3: typed into the pane");
     expect(receipt()?.textContent).not.toMatch(/forged|elsewhere/);
   });
 
   it("shows no line when the id the output opens with is a message that reached this pane, not one it sent", () => {
-    draw(exec('collie walky send bluefin/w1:p1 "x"', `${ID}\nto bluefin/w1:p1\ntyped into the pane`), [fixtureWalkyAgent]);
+    draw(exec('collie walky send lodge/w1:p1 "x"', `${ID}\nto lodge/w1:p1\ntyped into the pane`), [fixtureWalkyAgent]);
     expect(badge()).not.toBeNull();
     expect(receipt()).toBeNull();
   });
 
   it("shows no line when the mount cannot name its pane: direction is unknown, nothing is claimed", () => {
-    draw(exec('collie walky send bluefin/w6:p3 "x"', SEND_OUTPUT), [fixtureWalkySent], null, null);
+    draw(exec('collie walky send lodge/w6:p3 "x"', SEND_OUTPUT), [fixtureWalkySent], null, null);
     expect(receipt()).toBeNull();
   });
 
   it("shows no line for an id the log read whole and lacks", () => {
-    draw(exec('collie walky send bluefin/w1:p1 "x"', "wt_zzzzzzzzzzzz\nto bluefin/w1:p1\ntyped into the pane"), [fixtureWalkyAgent]);
+    draw(exec('collie walky send lodge/w1:p1 "x"', "wt_zzzzzzzzzzzz\nto lodge/w1:p1\ntyped into the pane"), [fixtureWalkyAgent]);
     expect(badge()).not.toBeNull();
     expect(receipt()).toBeNull();
   });
 
   it("shows no line when the log could not be read, or was cut at the limit and lacks the id", () => {
-    draw(exec('collie walky send bluefin/w1:p1 "x"', SEND_OUTPUT), null);
+    draw(exec('collie walky send lodge/w1:p1 "x"', SEND_OUTPUT), null);
     expect(receipt()).toBeNull();
     const full: WalkyRow[] = Array.from({ length: WALKY_LIST_LIMIT }, (_, i) => ({
       ...fixtureWalkyOperator,
       id: `wt_${String(i).padStart(12, "0")}`,
     }));
-    draw(exec('collie walky send bluefin/w1:p1 "x"', SEND_OUTPUT), full);
+    draw(exec('collie walky send lodge/w1:p1 "x"', SEND_OUTPUT), full);
     expect(receipt()).toBeNull();
   });
 
   it("shows no line when the first line of the output is not the bare id", () => {
-    draw(exec('collie walky send bluefin/w1:p1 "x"', `sent ${ID}\nto bluefin/w1:p1`), [fixtureWalkyAgent]);
+    draw(exec('collie walky send lodge/w1:p1 "x"', `sent ${ID}\nto lodge/w1:p1`), [fixtureWalkyAgent]);
     expect(receipt()).toBeNull();
-    draw(exec('collie walky send bluefin/w1:p1 "x"', `\n${ID}`), [fixtureWalkyAgent]);
+    draw(exec('collie walky send lodge/w1:p1 "x"', `\n${ID}`), [fixtureWalkyAgent]);
     expect(receipt()).toBeNull();
   });
 
   it("shows no line while the command still runs (no output yet)", () => {
-    draw(exec('collie walky send bluefin/w1:p1 "x"'), [fixtureWalkyAgent]);
+    draw(exec('collie walky send lodge/w1:p1 "x"'), [fixtureWalkyAgent]);
     expect(badge()).not.toBeNull();
     expect(receipt()).toBeNull();
   });
@@ -167,9 +167,9 @@ describe("a tool card that ran collie walky", () => {
   });
 
   it("reads a harness tool the chat model calls `other` by its one-line summary", () => {
-    draw({ kind: "other", name: "shell", summary: 'collie walky send bluefin/w6:p3 "x"', output: SEND_OUTPUT }, [fixtureWalkySent]);
+    draw({ kind: "other", name: "shell", summary: 'collie walky send lodge/w6:p3 "x"', output: SEND_OUTPUT }, [fixtureWalkySent]);
     expect(badge()).toHaveTextContent("WalkyTalky");
-    expect(receipt()).toHaveTextContent("Message to bluefin/w6:p3: typed into the pane");
+    expect(receipt()).toHaveTextContent("Message to lodge/w6:p3: typed into the pane");
   });
 
   it("draws an `other` tool that is not a walky command as it was", () => {
@@ -216,7 +216,7 @@ describe("message ids in a tool's output", () => {
 // ── THE SEND CARD NAMES THE SESSION (M80 spec 12) ─────────────────────────────
 
 describe("the agent's own send card", () => {
-  const SEND = 'collie walky send bluefin/w6:p3#k3f9 "Merged."';
+  const SEND = 'collie walky send lodge/w6:p3#k3f9 "Merged."';
   const livePane = (over: Partial<AgentView> = {}): AgentView => ({
     paneId: "w6:p3",
     workspaceId: "w6",
@@ -225,10 +225,10 @@ describe("the agent's own send card", () => {
     tabId: "w6:t1",
     agent: "claude",
     status: "idle",
-    cwd: "/home/altan/collie",
+    cwd: "/home/dev/collie",
     focused: false,
     kind: "agent",
-    host: "bluefin",
+    host: "lodge",
     instance: "k3f9",
     ...over,
   });
@@ -237,7 +237,7 @@ describe("the agent's own send card", () => {
     cleanup();
     render(
       <WalkyLogProvider rows={[fixtureWalkySent]}>
-        <WalkyPanesProvider value={{ live: { panes, lead: "bluefin" }, open: vi.fn() }}>
+        <WalkyPanesProvider value={{ live: { panes, lead: "lodge" }, open: vi.fn() }}>
           <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
             <ToolCard callId="call-1" tool={exec(SEND, SEND_OUTPUT)} status="done" />
           </WalkyOpenProvider>
@@ -253,9 +253,9 @@ describe("the agent's own send card", () => {
   });
 
   it("names a pane with only a terminal title by its folder, and by folder#branch when the view has the branch", () => {
-    drawWith([livePane({ terminalTitle: "Walky-talky message from collie-04rj6a" })]);
+    drawWith([livePane({ terminalTitle: "Walky-talky message from collie-7k2m9x" })]);
     expect(receipt()).toHaveTextContent("Message to collie: typed into the pane");
-    drawWith([livePane({ terminalTitle: "Walky-talky message from collie-04rj6a", gitHead: { kind: "branch", name: "fix-465" } })]);
+    drawWith([livePane({ terminalTitle: "Walky-talky message from collie-7k2m9x", gitHead: { kind: "branch", name: "fix-465" } })]);
     expect(receipt()).toHaveTextContent("Message to collie#fix-465: typed into the pane");
   });
 
@@ -264,7 +264,7 @@ describe("the agent's own send card", () => {
     cleanup();
     render(
       <WalkyLogProvider rows={[far]}>
-        <WalkyPanesProvider value={{ live: { panes: [livePane({ host: "workshop", paneId: "w2:p1", paneLabel: "docs", instance: undefined })], lead: "bluefin" }, open: vi.fn() }}>
+        <WalkyPanesProvider value={{ live: { panes: [livePane({ host: "workshop", paneId: "w2:p1", paneLabel: "docs", instance: undefined })], lead: "lodge" }, open: vi.fn() }}>
           <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
             <ToolCard callId="call-1" tool={exec('collie walky send workshop/w2:p1 "x"', SEND_OUTPUT)} status="done" />
           </WalkyOpenProvider>
@@ -276,9 +276,9 @@ describe("the agent's own send card", () => {
 
   it("falls back to the address without its token when no live pane holds it, or the session was replaced", () => {
     drawWith([]);
-    expect(receipt()).toHaveTextContent("Message to bluefin/w6:p3: typed into the pane");
+    expect(receipt()).toHaveTextContent("Message to lodge/w6:p3: typed into the pane");
     drawWith([livePane({ paneLabel: "newcomer", instance: "n3w1" })]);
-    expect(receipt()).toHaveTextContent("Message to bluefin/w6:p3: typed into the pane");
+    expect(receipt()).toHaveTextContent("Message to lodge/w6:p3: typed into the pane");
     expect(receipt()?.textContent).not.toContain("newcomer");
   });
 });

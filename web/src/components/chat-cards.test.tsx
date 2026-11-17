@@ -81,7 +81,7 @@ describe("groupRuns", () => {
   it("never folds the agent's own walky talky send or reply, but folds who, status and inbox", () => {
     const x = (id: string): ChatItem => tool({ kind: "execute", command: "ls" }, { id });
     const walky = (id: string, command: string): ChatItem => tool({ kind: "execute", command }, { id });
-    const send = walky("send", 'collie walky send bluefin/w6:p3 "Merged."');
+    const send = walky("send", 'collie walky send lodge/w6:p3 "Merged."');
     const items = [x("a"), x("b"), send, x("c"), x("d")];
     expect(groupRuns(items, 2).map((g) => g.map((i) => i.id).join(""))).toEqual(["ab", "send", "cd"]);
     expect(groupRuns([x("a"), x("b"), walky("reply", "collie walky reply wt_k3f9x2m8q1a0 ok"), x("c")], 1).map((g) => g.length)).toEqual([2, 1, 1]);
@@ -143,8 +143,8 @@ describe("stepLine", () => {
 
 describe("shortPath", () => {
   it("shortens a home directory under either root, and leaves anything else alone", () => {
-    expect(shortPath("/var/home/altan/x/a.ts")).toBe("~/x/a.ts");
-    expect(shortPath("/home/altan/x/a.ts")).toBe("~/x/a.ts");
+    expect(shortPath("/var/home/dev/x/a.ts")).toBe("~/x/a.ts");
+    expect(shortPath("/home/dev/x/a.ts")).toBe("~/x/a.ts");
     expect(shortPath("/etc/hosts")).toBe("/etc/hosts");
   });
 });

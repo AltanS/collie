@@ -311,23 +311,23 @@ describe("Durable agents section: one row per program session, apart from the Sp
     declares(TERMINAL_CAPS);
     server.use(http.get("/api/durable/conversations", () => HttpResponse.json({ available: true, items: [] })));
     const servers: ServerSummary[] = [
-      { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
-      { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
+      { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
+      { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
     ];
     const sessions = [
-      ...TERMINAL_CARDS.map((s) => ({ ...s, host: "bluefin" })),
-      { ...DESK, host: "bluefin" },
-      { ...DESK, name: "support", host: "minibuch" },
+      ...TERMINAL_CARDS.map((s) => ({ ...s, host: "lodge" })),
+      { ...DESK, host: "lodge" },
+      { ...DESK, name: "support", host: "workshop" },
     ];
     const { router } = renderHome({ ...homeData(sessions), servers });
     await spacesShown();
     const rows = programRows();
     expect(rows.map((r) => r.querySelector('[data-slot="program-space-line"]')?.textContent)).toEqual([
       "pi-durable, local",
-      "pi-durable, local, minibuch",
+      "pi-durable, local, workshop",
     ]);
     await userEvent.click(rows[1]!);
-    await waitFor(() => expect(router.state.location.search).toBe("?h=minibuch&s=support"));
+    await waitFor(() => expect(router.state.location.search).toBe("?h=workshop&s=support"));
   });
 
   it("a starting session says so on its row", async () => {

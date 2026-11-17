@@ -62,11 +62,11 @@ const status = (over: Partial<UpdateInfo> = {}): UpdateInfo => ({
   ...over,
 });
 
-const MOVING: UpdatePeerLeg[] = [{ name: "minibuch", state: "updating", version: "1.9.0", updatedAt: Date.now() }];
+const MOVING: UpdatePeerLeg[] = [{ name: "workshop", state: "updating", version: "1.9.0", updatedAt: Date.now() }];
 const FAILED: UpdatePeerLeg[] = [
-  { name: "minibuch", state: "rolled-back", version: "1.9.0", reason: "health gate timed out", updatedAt: Date.now() },
+  { name: "workshop", state: "rolled-back", version: "1.9.0", reason: "health gate timed out", updatedAt: Date.now() },
 ];
-const DONE: UpdatePeerLeg[] = [{ name: "minibuch", state: "done", version: "1.9.1", updatedAt: Date.now() }];
+const DONE: UpdatePeerLeg[] = [{ name: "workshop", state: "done", version: "1.9.1", updatedAt: Date.now() }];
 
 /** Is the app behind the sheet inert? Asked of the DOM, as the e2e case asks it. */
 function appIsInert(container: HTMLElement): boolean {
@@ -79,13 +79,13 @@ beforeEach(() => {
   clearUpdateStarted();
   clearStatus();
   localStorage.clear();
-  // The store's first read. The census says minibuch is a release behind, which is why the retry ran.
+  // The store's first read. The census says workshop is a release behind, which is why the retry ran.
   server.use(
     http.get("/api/update/check", () =>
       HttpResponse.json({
         ...status(),
         preflight: { schema: 1, verdict: "green", checks: [] },
-        crew: [{ name: "minibuch", version: "1.9.0", verdict: "green", reasons: [], asOf: Date.now() }],
+        crew: [{ name: "workshop", version: "1.9.0", verdict: "green", reasons: [], asOf: Date.now() }],
       } satisfies UpdateCheckResponse),
     ),
   );
@@ -116,14 +116,14 @@ describe("a crew-only run, on the device that tapped it", () => {
 
     // The first sweep folds the run: the member is moving, and the app stays locked.
     act(() => noteSnapshotCrew(status({ peers: MOVING, peersTo: "1.9.1" })));
-    expect(within(screen.getByRole("dialog")).getByText("minibuch")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByText("workshop")).toBeInTheDocument();
     expect(isReloadHeldBy(UPDATE_MODE_HOLD)).toBe(true);
 
     // It ends badly. The mode ends on Done, never on a toast, and names who is left behind.
     act(() => noteSnapshotCrew(status({ peers: FAILED, settledAt: Date.now(), peersTo: "1.9.1" })));
     const done = screen.getByRole("dialog", { name: "Update finished" });
-    expect(within(done).getByText("minibuch did not update.", { exact: false })).toBeInTheDocument();
-    expect(within(done).getByRole("button", { name: "Try minibuch again" })).toBeInTheDocument();
+    expect(within(done).getByText("workshop did not update.", { exact: false })).toBeInTheDocument();
+    expect(within(done).getByRole("button", { name: "Try workshop again" })).toBeInTheDocument();
     expect(screen.queryByText(/Members updated/)).toBeNull();
     expect(isReloadHeldBy(UPDATE_MODE_HOLD)).toBe(false);
 
@@ -144,7 +144,7 @@ describe("a crew-only run, on the device that tapped it", () => {
     act(() => noteSnapshotCrew(status({ peers: MOVING, peersTo: "1.9.1" })));
     act(() => noteSnapshotCrew(status({ peers: DONE, settledAt: Date.now(), peersTo: "1.9.1" })));
     const done = screen.getByRole("dialog", { name: "Update finished" });
-    expect(within(done).getByText(/minibuch and this phone run 1\.9\.1\./)).toBeInTheDocument();
+    expect(within(done).getByText(/workshop and this phone run 1\.9\.1\./)).toBeInTheDocument();
     await user.click(within(done).getByRole("button", { name: "Back to the app" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -156,10 +156,10 @@ describe("a crew-only run, on the device that tapped it", () => {
       noteUpdateStarted(Date.now(), null, { target: "1.9.1", peersOnly: true, bundleAtStart: "x" });
       noteCrewRunBegun("1.9.1");
     });
-    const quiet: UpdatePeerLeg[] = [{ name: "minibuch", state: "waiting", version: "1.9.0", updatedAt: Date.now() - 90_000 }];
+    const quiet: UpdatePeerLeg[] = [{ name: "workshop", state: "waiting", version: "1.9.0", updatedAt: Date.now() - 90_000 }];
     act(() => noteSnapshotCrew(status({ peers: quiet, peersTo: "1.9.1" })));
-    await user.click(screen.getByRole("button", { name: "Skip minibuch" }));
-    expect(getUpdateClaim()?.skipped).toEqual(["minibuch"]);
+    await user.click(screen.getByRole("button", { name: "Skip workshop" }));
+    expect(getUpdateClaim()?.skipped).toEqual(["workshop"]);
     expect(screen.getByRole("dialog", { name: "Update finished" })).toBeInTheDocument();
   });
 });

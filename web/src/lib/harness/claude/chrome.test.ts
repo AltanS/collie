@@ -244,7 +244,7 @@ describe("extractStatusLines — recovers the stripped statusline run", () => {
   it("a real 3-row statusline surfaces every row, in TUI order", () => {
     const REAL_ROWS = [
       "  CTX:20% CACHE:100% LIMITS 5h:22%/1h:20m 7d:26%/5d:03h",
-      "  [Opus·medium] ~/projects/workspace-sprqvntrs/argo-sprqvntrs on main*",
+      "  [Opus·medium] ~/projects/workspace-example/argo-example on main*",
       "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 4 agents",
     ];
     // U+00A0 after the marker, as Claude renders it — never a plain space.

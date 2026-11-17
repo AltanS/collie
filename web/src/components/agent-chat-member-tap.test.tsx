@@ -29,7 +29,7 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
   useLive: () => true,
 }));
 
-const HOST = "minibuch";
+const HOST = "workshop";
 const DETECTED = 12972;
 const BASE = readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "claude-lab--permission-bash-subagent--w82.txt"), "utf8");
 // eslint-disable-next-line no-control-regex -- the fixture is a raw pane read, ANSI and all

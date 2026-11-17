@@ -156,10 +156,10 @@ describe("durable: starters on GET /api/launchers", () => {
   });
 
   test("two machines with one starter id get two row keys, so a phone merging both lists never confuses them", () => {
-    const lead = starterItems({ hostName: "bluefin", starters: [{ id: STARTER, label: "Notes" }], reachable: true });
-    const peer = starterItems({ hostName: "minibuch", starters: [{ id: STARTER, label: "Notes" }], reachable: true });
-    expect(lead[0]?.key).toBe(`starter:bluefin:${STARTER}`);
-    expect(peer[0]?.key).toBe(`starter:minibuch:${STARTER}`);
+    const lead = starterItems({ hostName: "lodge", starters: [{ id: STARTER, label: "Notes" }], reachable: true });
+    const peer = starterItems({ hostName: "workshop", starters: [{ id: STARTER, label: "Notes" }], reachable: true });
+    expect(lead[0]?.key).toBe(`starter:lodge:${STARTER}`);
+    expect(peer[0]?.key).toBe(`starter:workshop:${STARTER}`);
     expect(lead[0]?.key).not.toBe(peer[0]?.key);
     // A program that gave its machine no name still gets a stable key.
     expect(starterItems({ hostName: "", starters: [{ id: STARTER, label: "" }], reachable: true })[0]).toMatchObject({ key: `starter:program:${STARTER}`, label: STARTER });

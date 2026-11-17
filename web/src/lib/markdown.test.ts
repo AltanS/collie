@@ -144,9 +144,9 @@ describe("parseInline", () => {
   });
 
   it("links a bare URL an agent wrote as itself", () => {
-    expect(parseInline("live on http://bluefin:8788 now")).toEqual([
+    expect(parseInline("live on http://lodge:8788 now")).toEqual([
       { kind: "text", text: "live on " },
-      { kind: "link", href: "http://bluefin:8788", spans: [{ kind: "text", text: "http://bluefin:8788" }] },
+      { kind: "link", href: "http://lodge:8788", spans: [{ kind: "text", text: "http://lodge:8788" }] },
       { kind: "text", text: " now" },
     ]);
   });
@@ -781,18 +781,18 @@ describe("image spans, for a screen that asks for them (ADR 0090)", () => {
 
 describe("findBareUrls", () => {
   it("finds an address by the prose rule: a dotless host counts, closing punctuation does not", () => {
-    expect(findBareUrls("go http://bluefin:8788, then (https://a.dev/x).")).toEqual([
-      { start: 3, end: 22, href: "http://bluefin:8788" },
-      { start: 30, end: 45, href: "https://a.dev/x" },
+    expect(findBareUrls("go http://lodge:8788, then (https://a.dev/x).")).toEqual([
+      { start: 3, end: 20, href: "http://lodge:8788" },
+      { start: 28, end: 43, href: "https://a.dev/x" },
     ]);
   });
 
   it("finds nothing in text with no scheme, and no second match inside a word", () => {
-    expect(findBareUrls("www.example.com bluefin:8788 xhttp://a.b")).toEqual([]);
+    expect(findBareUrls("www.example.com lodge:8788 xhttp://a.b")).toEqual([]);
   });
 
   it("agrees with the parser on what prose links", () => {
-    const prose = "see http://bluefin:8788/a?b=1.";
+    const prose = "see http://lodge:8788/a?b=1.";
     const linked = parseInline(prose).find((s) => s.kind === "link");
     expect(linked?.kind === "link" && linked.href).toBe(findBareUrls(prose)[0]!.href);
   });

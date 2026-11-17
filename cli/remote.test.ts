@@ -119,7 +119,7 @@ const PROBE_DEFAULTS = {
   dirty: "",
   dirtyfiles: "",
   version: "",
-  address: "100.64.0.9",
+  address: "100.64.10.9",
   port: "free",
   curl: "/usr/bin/curl",
   tar: "/usr/bin/tar",
@@ -328,7 +328,7 @@ function harness(opts: HarnessOptions = {}): Harness {
       if (each !== undefined) return Promise.resolve(each[Math.min(reloads++, each.length - 1)] ?? null);
       return Promise.resolve(
         opts.after === undefined
-          ? leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] })
+          ? leadStore({ peers: [member({ memberId: "nas", address: "100.64.10.9:8787" })] })
           : opts.after,
       );
     },
@@ -773,14 +773,14 @@ describe("collie crew add", () => {
 
   test("a candidate already in the crew is marked with its member id rather than dropped", async () => {
     const h = harness({
-      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.10.9:8787" })] }),
       ops: { nas: { sshHost: "nas-box", path: REMOTE_CHECKOUT, port: 8787, recordedAt: T0 } },
       sshConfig: "Host nas-box\nHost attic",
       prompt: "1",
       after: leadStore({
         peers: [
-          member({ memberId: "nas", address: "100.64.0.9:8787" }),
-          member({ memberId: "attic", address: "100.64.0.9:8787" }),
+          member({ memberId: "nas", address: "100.64.10.9:8787" }),
+          member({ memberId: "attic", address: "100.64.10.9:8787" }),
         ],
       }),
     });
@@ -800,7 +800,7 @@ describe("collie crew add", () => {
       store: leadStore({
         peers: [
           member({ memberId: "member", address: "192.168.77.2:8787" }),
-          member({ memberId: "attic", address: "100.64.0.20:8787" }),
+          member({ memberId: "attic", address: "100.64.10.20:8787" }),
         ],
       }),
       coreMachines: '{"machines":[{"target":"op@192.168.77.2","name":"box"},{"target":"op@attic"},{"target":"op@vps"}]}',
@@ -832,7 +832,7 @@ describe("collie crew add", () => {
 
   test("every candidate already enrolled is a refusal, and it says which", async () => {
     const h = harness({
-      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.10.9:8787" })] }),
       ops: { nas: { sshHost: "nas-box", path: REMOTE_CHECKOUT, port: 8787, recordedAt: T0 } },
       sshConfig: "Host nas-box",
     });
@@ -883,9 +883,9 @@ describe("collie crew add", () => {
     const h = harness({
       coreMachines: JSON.stringify({
         machines: [
-          { target: "altan@minibuch", name: "minibuch", via: false, temporary: false },
+          { target: "dev@workshop", name: "workshop", via: false, temporary: false },
           { target: "sbx-1", name: "sandbox", temporary: true },
-          { target: "altan@vps", name: "vps", via: true, temporary: false },
+          { target: "dev@vps", name: "vps", via: true, temporary: false },
         ],
       }),
       prompt: "1",
@@ -894,30 +894,30 @@ describe("collie crew add", () => {
     expect(h.io.stdout.slice(0, 5)).toEqual([
       "Candidate hosts on this machine:",
       "",
-      "   1  altan@minibuch  herdr-core",
-      "      altan@vps       herdr-core  cannot be added: reached through a command of its own, not plain ssh; type an address ssh can reach, or add it to ~/.ssh/config",
+      "   1  dev@workshop  herdr-core",
+      "      dev@vps       herdr-core  cannot be added: reached through a command of its own, not plain ssh; type an address ssh can reach, or add it to ~/.ssh/config",
       "",
     ]);
-    expect(text(h.io)).toContain("probing altan@minibuch…");
+    expect(text(h.io)).toContain("probing dev@workshop…");
     expect(text(h.io)).not.toContain("warn:");
   });
 
   test("a greyed via row reached through an ssh hop says to add the hop first, or type its address", async () => {
     const h = harness({
       coreMachines: JSON.stringify({
-        machines: [{ target: "altan@minibuch" }, { target: "ssh -p 2222 altan@10.0.0.7", name: "box", via: true }],
+        machines: [{ target: "dev@workshop" }, { target: "ssh -p 2222 dev@10.0.0.7", name: "box", via: true }],
       }),
       prompt: "1",
     });
     expect(await run(h, [])).toBe(EXIT.OK);
     expect(h.io.stdout[3]).toBe(
-      "      ssh -p 2222 altan@10.0.0.7  herdr-core  cannot be added: reached through altan@10.0.0.7; add altan@10.0.0.7 first, or type its address",
+      "      ssh -p 2222 dev@10.0.0.7  herdr-core  cannot be added: reached through dev@10.0.0.7; add dev@10.0.0.7 first, or type its address",
     );
   });
 
   test("typing a blocked machine's name is refused with its reason, and nothing runs", async () => {
     const h = harness({
-      coreMachines: '{"machines":[{"target":"altan@minibuch"},{"target":"vps","via":true}]}',
+      coreMachines: '{"machines":[{"target":"dev@workshop"},{"target":"vps","via":true}]}',
       prompt: "vps",
     });
     expect(await run(h, [])).toBe(EXIT.USAGE);
@@ -1022,8 +1022,8 @@ describe("collie crew add", () => {
 
   // ── Several hosts in one answer (M84/02) ────────────────────────────────────
 
-  const NAS = member({ memberId: "nas", address: "100.64.0.9:8787" });
-  const BUILD_BOX = member({ memberId: "build-box", address: "100.64.0.10:8787" });
+  const NAS = member({ memberId: "nas", address: "100.64.10.9:8787" });
+  const BUILD_BOX = member({ memberId: "build-box", address: "100.64.10.10:8787" });
 
   test("two picks run two four-leg runs, one confirm each, and end with a summary", async () => {
     const h = harness({
@@ -1200,12 +1200,12 @@ describe("collie crew add", () => {
   });
 
   test("the question names the address ssh really dials, so a name that maps elsewhere is visible", async () => {
-    // Herdr calls the machine `minibuch`; the address behind that name is not minibuch's.
-    const mapped = harness({ coreMachines: '{"machines":[{"target":"op@198.51.100.7","name":"minibuch"}]}', prompt: "1" });
+    // Herdr calls the machine `workshop`; the address behind that name is not workshop's.
+    const mapped = harness({ coreMachines: '{"machines":[{"target":"op@198.51.100.7","name":"workshop"}]}', prompt: "1" });
     const mappedAsked = recordQuestions(mapped, () => true);
     expect(await run(mapped, [])).toBe(EXIT.OK);
     expect(mappedAsked.map((a) => a.question)).toEqual([
-      'Add minibuch (op@198.51.100.7) to this crew as "minibuch"? It installs Collie on op@198.51.100.7 over ssh and joins it.',
+      'Add workshop (op@198.51.100.7) to this crew as "workshop"? It installs Collie on op@198.51.100.7 over ssh and joins it.',
     ]);
 
     // An ssh config alias shows the user, host and port ssh resolves it to (22 is left unsaid).
@@ -1444,7 +1444,7 @@ describe("collie crew add", () => {
 
   test("a blocked name inside a list is refused with its reason, and nothing runs", async () => {
     const h = harness({
-      coreMachines: '{"machines":[{"target":"altan@minibuch"},{"target":"vps","via":true}]}',
+      coreMachines: '{"machines":[{"target":"dev@workshop"},{"target":"vps","via":true}]}',
       prompt: "1 vps",
     });
     expect(await run(h, [])).toBe(EXIT.USAGE);
@@ -1454,30 +1454,30 @@ describe("collie crew add", () => {
 
   test("a row's name reaches the join as --label, is printed as a fact, and the ops record keeps its source", async () => {
     const h = harness({
-      coreMachines: '{"machines":[{"target":"altan@minibuch","name":"minibuch"}]}',
+      coreMachines: '{"machines":[{"target":"dev@workshop","name":"workshop"}]}',
       prompt: "1",
     });
     expect(await run(h, [])).toBe(EXIT.OK);
-    expect(h.calls.find((c) => c.leg === "enroll")!.script).toContain("'--label' 'minibuch'");
-    expect(h.io.stdout.some((l) => /^✓ label {6}minibuch \(from herdr-core\)$/u.test(l))).toBe(true);
+    expect(h.calls.find((c) => c.leg === "enroll")!.script).toContain("'--label' 'workshop'");
+    expect(h.io.stdout.some((l) => /^✓ label {6}workshop \(from herdr-core\)$/u.test(l))).toBe(true);
     expect(JSON.parse(h.ops.contents()!).members.nas.source).toBe("herdr-core");
   });
 
   test("--label beats a row's name, and says nothing about it", async () => {
     const h = harness({
-      coreMachines: '{"machines":[{"target":"altan@minibuch","name":"minibuch"}]}',
+      coreMachines: '{"machines":[{"target":"dev@workshop","name":"workshop"}]}',
       prompt: "1",
     });
     expect(await run(h, ["--label", "desk"])).toBe(EXIT.OK);
     const script = h.calls.find((c) => c.leg === "enroll")!.script;
     expect(script).toContain("'--label' 'desk'");
-    expect(script).not.toContain("minibuch'");
+    expect(script).not.toContain("workshop'");
     expect(h.io.stdout.some((l) => l.includes("(from"))).toBe(false);
   });
 
   test("a row name the join cannot use is dropped with one line, and the hostname default applies", async () => {
     const h = harness({
-      coreMachines: '{"machines":[{"target":"altan@minibuch","name":"🖥️ !!"}]}',
+      coreMachines: '{"machines":[{"target":"dev@workshop","name":"🖥️ !!"}]}',
       prompt: "1",
     });
     expect(await run(h, [])).toBe(EXIT.OK);
@@ -1553,8 +1553,8 @@ describe("collie crew add", () => {
     expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install", "configure", "membership", "enroll"]);
     expect(text(h.io)).toContain('✓ "nas" is a member of "the herd"');
     // The bind the lead will dial, written from a value READ off the remote (ADR 0015).
-    expect(h.calls[2]!.script).toContain("printf 'COLLIE_HOST=%s\\n' '100.64.0.9'");
-    expect(h.calls[4]!.script).toContain("'--address' '100.64.0.9:8787'");
+    expect(h.calls[2]!.script).toContain("printf 'COLLIE_HOST=%s\\n' '100.64.10.9'");
+    expect(h.calls[4]!.script).toContain("'--address' '100.64.10.9:8787'");
   });
 
   // Q2: the probe is one `ss -ltn` at one instant. Over a unit that crash-loops on a five-second
@@ -1863,16 +1863,16 @@ describe("prompts", () => {
     test("the predicate, case by case", () => {
       const probe = (over: Record<string, string>) => parseProbe(probed(over))!;
       // Nothing there to preserve — the post-leave state, and a fresh machine's.
-      expect(bindOverwriteConfirmation(probe({ envport: "8787" }), "100.64.0.9", 8787)).toBeNull();
-      expect(bindOverwriteConfirmation(probe({}), "100.64.0.9", 8787)).toBeNull();
+      expect(bindOverwriteConfirmation(probe({ envport: "8787" }), "100.64.10.9", 8787)).toBeNull();
+      expect(bindOverwriteConfirmation(probe({}), "100.64.10.9", 8787)).toBeNull();
       // Already where this run would put it: nothing changes, so nothing is asked.
-      expect(bindOverwriteConfirmation(probe({ envhost: "100.64.0.9" }), "100.64.0.9", 8787)).toBeNull();
+      expect(bindOverwriteConfirmation(probe({ envhost: "100.64.10.9" }), "100.64.10.9", 8787)).toBeNull();
       // A value somebody chose, about to be replaced by a different one.
-      expect(bindOverwriteConfirmation(probe({ envhost: "127.0.0.1", envport: "8787" }), "100.64.0.9", 8787)).toBe(
+      expect(bindOverwriteConfirmation(probe({ envhost: "127.0.0.1", envport: "8787" }), "100.64.10.9", 8787)).toBe(
         "127.0.0.1:8787",
       );
       // The port is a decision too, and it is named without a placeholder for the host.
-      expect(bindOverwriteConfirmation(probe({ envport: "9000" }), "100.64.0.9", 8787)).toBe("100.64.0.9:9000");
+      expect(bindOverwriteConfirmation(probe({ envport: "9000" }), "100.64.10.9", 8787)).toBe("100.64.10.9:9000");
     });
   });
 
@@ -2055,7 +2055,7 @@ describe("the mux decision", () => {
     const h = harness({
       answers: {
         probe: {
-          stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.0.9", envport: "8787" }),
+          stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.10.9", envport: "8787" }),
         },
       },
     });
@@ -2085,7 +2085,7 @@ describe("re-running against the same host", () => {
           stdout: probeOut({
             checkout: REMOTE_CHECKOUT,
             commit: COMMIT,
-            envhost: "100.64.0.9",
+            envhost: "100.64.10.9",
             envport: "8787",
           }),
         },
@@ -2093,14 +2093,14 @@ describe("re-running against the same host", () => {
     });
     expect(await run(h)).toBe(EXIT.OK);
     expect(h.calls.map((c) => c.leg)).toEqual(["probe", "membership", "enroll"]);
-    expect(text(h.io)).toContain("✓ bind       already 100.64.0.9:8787");
+    expect(text(h.io)).toContain("✓ bind       already 100.64.10.9:8787");
   });
 
   test("a busy port is this collie's OWN listener when a checkout is already configured for it", async () => {
     const h = harness({
       answers: {
         probe: {
-          stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.0.9", port: "busy" }),
+          stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.10.9", port: "busy" }),
         },
       },
     });
@@ -2112,7 +2112,7 @@ describe("re-running against the same host", () => {
 
   test("already a member of THIS crew is a ✓ and exit OK — nothing is minted", async () => {
     const h = harness({
-      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.10.9:8787" })] }),
       answers: {
         probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT }) },
         membership: { stdout: ["crew   the herd  (crew-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
@@ -2133,14 +2133,14 @@ describe("re-running against the same host", () => {
     const h = harness({
       // The peer is in this lead's roster already — which is what makes the `hello` below the lead's
       // own view of the machine it just rebuilt.
-      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.10.9:8787" })] }),
       answers: {
         probe: {
           stdout: probeOut({
             checkout: REMOTE_CHECKOUT,
             commit: "0000feed0000feed0000feed0000feed0000feed",
             version: "1.2.2",
-            envhost: "100.64.0.9",
+            envhost: "100.64.10.9",
             dirty: "no",
           }),
         },
@@ -2162,7 +2162,7 @@ describe("re-running against the same host", () => {
   // `crew remove` is local, so the far machine keeps answering with the crew id. Green needs THIS
   // lead's pin.
   const STALE_ANSWERS = {
-    probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.0.9" }) },
+    probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.10.9" }) },
     membership: { stdout: ["crew   the herd  (crew-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
   } satisfies LegAnswers;
 
@@ -2198,7 +2198,7 @@ describe("re-running against the same host", () => {
 
   test("with a pin the green line stays exactly as it was", async () => {
     const h = harness({
-      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.10.9:8787" })] }),
       answers: STALE_ANSWERS,
     });
     expect(await run(h)).toBe(EXIT.OK);
@@ -2208,13 +2208,13 @@ describe("re-running against the same host", () => {
 
   test("a restart that fails there is a FAILURE, and says which machine still runs the old build", async () => {
     const h = harness({
-      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.10.9:8787" })] }),
       answers: {
         probe: {
           stdout: probeOut({
             checkout: REMOTE_CHECKOUT,
             commit: "0000feed0000feed0000feed0000feed0000feed",
-            envhost: "100.64.0.9",
+            envhost: "100.64.10.9",
             dirty: "no",
           }),
         },
@@ -2239,9 +2239,9 @@ describe("re-running against the same host", () => {
 
   test("an unchanged re-run restarts nothing — a no-op stays a no-op", async () => {
     const h = harness({
-      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.10.9:8787" })] }),
       answers: {
-        probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.0.9" }) },
+        probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.10.9" }) },
         membership: { stdout: ["crew   the herd  (crew-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
       },
     });
@@ -2813,7 +2813,7 @@ describe("a member with the Herdr core and no Herdr TUI", () => {
     const configure = h.calls.find((c) => c.leg === "configure")!.script;
     expect(configure).toContain(`CFG='${OWN_CONFIG}'`);
     expect(configure).not.toContain("COLLIE_MUX");
-    expect(said).toContain('"nas" is a member of "the herd" and answered at 100.64.0.9:8787, and runs on herdr-core');
+    expect(said).toContain('"nas" is a member of "the herd" and answered at 100.64.10.9:8787, and runs on herdr-core');
     expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install", "mux-probe", "configure", "membership", "enroll"]);
   });
 
@@ -2835,7 +2835,7 @@ describe("a member with the Herdr core and no Herdr TUI", () => {
     expect(said).toMatch(new RegExp(`hc +${HC} \\(0\\.1\\.14, core not running\\)`));
     expect(said).toContain("warn: no multiplexer is running on nas.example.");
     // No multiplexer runs there, so the last line names none.
-    expect(said).toContain('"nas" is a member of "the herd" and answered at 100.64.0.9:8787');
+    expect(said).toContain('"nas" is a member of "the herd" and answered at 100.64.10.9:8787');
     expect(said).not.toContain("runs on");
   });
 

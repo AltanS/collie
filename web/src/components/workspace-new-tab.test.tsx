@@ -13,7 +13,7 @@ import { WorkspaceNewTab } from "./workspace-new-tab";
 // whole target, the workspace, its machine and the pane to open the tab beside, which the caller's
 // `useNewTabOrSheet` turns into the New tab sheet or the shell.
 
-const LEAD = "bluefin";
+const LEAD = "lodge";
 const PEER = "workshop";
 const BESIDE = { paneId: "w1:p1", workspaceId: "w1", cwd: "/home/you/moonward" };
 
