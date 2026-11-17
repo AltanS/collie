@@ -8,6 +8,7 @@ import { PromptPin } from "@/components/prompt-pin";
 import { StatusDot } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { QUEUED_BLOCK, QUEUED_BUTTON, QUEUED_HEAD, QUEUED_LABEL, QUEUED_TEXT } from "@/components/queued-block";
+import { ChatPending } from "@/components/chat-pending";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { DividedLine } from "@/components/ui/divided-line";
 import { useLocale } from "@/hooks/use-locale";
@@ -1177,6 +1178,11 @@ export function SessionStream({
       {empty && explain === null && reading && !working && drawnLines.length === 0 && (
         <div className="py-16 text-center text-sm text-muted-foreground">{t("chat.stream.empty")}</div>
       )}
+      {/* Nothing has been asked yet, which is not the same as nothing said (above): the first read of this
+          pane is on its way. After a short wait, a few muted bars stand where the lines will be, so a pane
+          whose page is slow to come is never a bare box. A held window and the loader's first page
+          (lib/chat-held.ts) mean this is rarely drawn at all. */}
+      {empty && status.kind === "empty" && !feed.tried && !starting && drawnLines.length === 0 && <ChatPending />}
       {tail}
     </ChatMessageList>
   );

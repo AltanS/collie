@@ -3,7 +3,9 @@ import { http, HttpResponse } from "msw";
 
 import { useChatWindow } from "./use-chat-window";
 import { latchLost, markWake, NETWORK_LATCH_MS, noteNetworkFailure } from "@/lib/connection-health";
+import { holdChat } from "@/lib/chat-held";
 import { loadChatTail, saveChatTail } from "@/lib/chat-tail";
+import { EMPTY_CHAT_WINDOW, mergeChat } from "@/lib/chat-window";
 import { paneScopeKey } from "@/lib/scope";
 import { __resetStore, getRecord } from "@/lib/store";
 import { wipeDevice } from "@/lib/wipe";
@@ -217,6 +219,36 @@ describe("useChatWindow", () => {
     rerender({ paneId: "w2:p1" });
     expect(result.current.window.entries).toEqual([]);
     expect(result.current.window.status.kind).toBe("empty");
+  });
+
+  // A SWITCH HAS NO EMPTY FRAME (lib/chat-held.ts). A pane the phone has read draws its thread in the render
+  // that mounts it, and the read that follows asks only for what changed since.
+  it("draws the thread a pane held in its first render, and asks for the delta", async () => {
+    const seen = recordChat([firstPage]);
+    const first = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    await waitFor(() => expect(first.result.current.window.entries).toHaveLength(1));
+    first.unmount();
+
+    const again = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    expect(again.result.current.window.entries.map((e) => e.uuid)).toEqual(["a"]);
+    expect(again.result.current.window.status.kind).toBe("live");
+    expect(again.result.current.window.savedAt).toBeNull();
+    await waitFor(() => expect(seen).toHaveLength(2));
+    expect(seen[1]).toBe(`?after=${GEN}%3A4`);
+  });
+
+  it("draws the first page the loader held for a pane it has never mounted", () => {
+    recordChat([firstPage]);
+    holdChat(paneScopeKey(undefined, "w1:p1"), undefined, mergeChat(EMPTY_CHAT_WINDOW, { outcome: "body", body: firstPage }));
+    const { result } = renderHook(() => useChatWindow({ paneId: "w1:p1", enabled: true }));
+    expect(result.current.window.entries.map((e) => e.uuid)).toEqual(["a"]);
+  });
+
+  it("does not carry a held thread into a session that took the pane id", () => {
+    recordChat([firstPage]);
+    holdChat(paneScopeKey(undefined, "w1:p1"), "aaaa", mergeChat(EMPTY_CHAT_WINDOW, { outcome: "body", body: firstPage }));
+    const { result } = renderHook(() => useChatWindow({ paneId: "w1:p1", instance: "bbbb", enabled: true }));
+    expect(result.current.window.entries).toEqual([]);
   });
 });
 

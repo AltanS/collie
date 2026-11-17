@@ -6,6 +6,7 @@ import { server } from "./msw";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 import { __resetPairing } from "@/lib/pairing";
 import { __resetDraftPrune } from "@/lib/drafts";
+import { __resetHeldChat } from "@/lib/chat-held";
 import { __resetPins } from "@/lib/pins";
 import { __resetPinHint } from "@/lib/pin-hint";
 import { __resetHiddenMachines } from "@/lib/hidden-machines";
@@ -56,6 +57,8 @@ beforeEach(() => {
   // open (lib/store.ts, ADR 0087). The Chat tail's password holds sit beside it (lib/chat-tail.ts).
   __resetStore();
   __resetChatTail();
+  // The last live window of each pane, in memory (lib/chat-held.ts): one case's thread would open the next one's pane.
+  __resetHeldChat();
 });
 // `server.resetHandlers()` and the typed-draft reset went with the server to `./msw.ts`, so both
 // projects get them. This one keeps the half that needs a document.

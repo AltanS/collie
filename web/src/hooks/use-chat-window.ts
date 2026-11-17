@@ -3,6 +3,7 @@ import { useRevalidator } from "react-router";
 
 import { keepChatOf, loadDisplayPrefs } from "@/hooks/use-display-prefs";
 import { fetchChat, isPairingRefusal, isRefusalStatus, readFailureKind } from "@/lib/api";
+import { heldChat, holdChat } from "@/lib/chat-held";
 import { loadChatTail, saveChatTail } from "@/lib/chat-tail";
 import {
   EMPTY_CHAT_WINDOW,
@@ -138,13 +139,16 @@ export function useChatWindow({
   seen?: boolean;
 }): ChatFeed {
   const revalidator = useRevalidator();
-  const [held, setHeld] = useState<ChatWindow>(EMPTY_CHAT_WINDOW);
+  // A pane switched to starts from the window it last held, or the first page the loader read while the
+  // switch was pending (lib/chat-held.ts), so its thread is in its first frame and not after the read.
+  const paneAddress = paneScopeKey(scope, paneId);
+  const [held, setHeld] = useState<ChatWindow>(() => heldChat(paneAddress, instance) ?? EMPTY_CHAT_WINDOW);
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   // The window as the NEXT answer must merge into it. A ref beside the state because the poll reads
   // it from inside an async callback: reading the state there would close over whatever it was when
   // the effect ran, and merging an answer into a stale window replaces turns that never moved.
-  const window = useRef<ChatWindow>(EMPTY_CHAT_WINDOW);
+  const window = useRef<ChatWindow>(held);
   // One request at a time. A slow answer must not have a second one started on top of it: both
   // would carry the same cursor and the later one would merge an answer the first already merged.
   const busy = useRef(false);
@@ -167,7 +171,8 @@ export function useChatWindow({
   // A window belongs to the pane it was read from. Keyed on the ADDRESS, not the pane id: `w1:p1`
   // is a different terminal in every session and on every machine, and merging one machine's turns
   // into another's is the one mistake this whole module exists to avoid. Reset during render rather
-  // than in an effect, so the first paint after a switch is empty rather than the previous pane's.
+  // than in an effect, so the first paint after a switch is the new pane's own (the window it held, or
+  // empty) and never the previous pane's.
   //
   // The pane's session instance is part of that identity, but only once it is known on both sides.
   // A live pane can go from no instance to one: a pane the phone just opened is drawn from the
@@ -176,7 +181,6 @@ export function useChatWindow({
   // held window stays and the instance is adopted. Only two known instances that differ (a new
   // session took the pane id) reset it. The saved copy is stricter: it is read under the exact
   // instance the pane carries now (lib/chat-tail.ts).
-  const paneAddress = paneScopeKey(scope, paneId);
   const [shown, setShown] = useState<{ pane: string; instance: string | undefined; epoch: number }>({
     pane: paneAddress,
     instance,
@@ -197,9 +201,10 @@ export function useChatWindow({
   if (switched) {
     setShown({ pane: paneAddress, instance, epoch });
     addressNow.current = address;
-    window.current = EMPTY_CHAT_WINDOW;
+    const carried = heldChat(paneAddress, instance) ?? EMPTY_CHAT_WINDOW;
+    window.current = carried;
     busy.current = false;
-    setHeld(EMPTY_CHAT_WINDOW);
+    setHeld(carried);
     setLoadingOlder(false);
   } else if (instance !== undefined && shown.instance !== instance) {
     setShown({ pane: paneAddress, instance, epoch });
@@ -232,6 +237,8 @@ export function useChatWindow({
   /** Write the held window through to the store (see the header). Live windows with turns only. */
   const writeThrough = useCallback(() => {
     const current = window.current;
+    // Kept in memory for the next visit to this pane, before the store's own rules (lib/chat-held.ts).
+    holdChat(paneScopeKey(scope, paneId), knownInstance, current);
     if (current.status.kind !== "live" || current.savedAt !== null || current.entries.length === 0) return;
     const at = Date.now();
     const last = lastSaved.current;

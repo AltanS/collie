@@ -14,6 +14,7 @@
 // even while a poll's doomed fetch is still hanging.
 
 import {
+  fetchChat,
   fetchDevices,
   fetchHistory,
   fetchCrew,
@@ -27,6 +28,9 @@ import {
   readFailureKind,
 } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
+import { loadPaneViewPref } from "@/hooks/use-dash-prefs";
+import { heldChat, holdChat } from "@/lib/chat-held";
+import { EMPTY_CHAT_WINDOW, mergeChat } from "@/lib/chat-window";
 import { splitTrickSessions } from "@/lib/tricks/places";
 import { syncTricks } from "@/lib/tricks/store";
 import { noteUpdateRun } from "./self-update";
@@ -677,7 +681,7 @@ export function askOlderRows(paneId: string, scope?: Scope): void {
  * `w1:p1` of one session is never taken for the `w1:p1` of another. `findPane` then matches within
  * the pane's address, as the live lookup does.
  */
-async function savedPaneRow(paneId: string, scope: Scope): Promise<AgentView | undefined> {
+async function savedPaneRow(paneId: string, scope: Scope, memoryOnly = false): Promise<AgentView | undefined> {
   const homeHost = internScope({ host: scope.host });
   const lead = internScope({});
   const sources: { scope: Scope; all: boolean; needsSession: boolean; needsHost: boolean }[] = [
@@ -700,6 +704,7 @@ async function savedPaneRow(paneId: string, scope: Scope): Promise<AgentView | u
     const row = held === undefined ? undefined : pick(held, source);
     if (row !== undefined) return row;
   }
+  if (memoryOnly) return undefined;
   for (const source of sources) {
     const kept = await loadLastSnapshot(source.scope, source.all);
     const row = kept === null ? undefined : pick(kept.value, source);
@@ -844,6 +849,48 @@ export async function readPins(paneId: string, scope: Scope | undefined, signal?
   }
 }
 
+/**
+ * How long a switch waits for the new pane's first page of Chat, at most. The read starts with the pane's own
+ * and the two run side by side, so on a healthy link this adds nothing; past it the pane opens without the
+ * page and the Chat body asks for it itself, with its pending bars after their own short delay.
+ */
+export const CHAT_WARM_WAIT_MS = 600;
+
+/**
+ * Read the first page of a pane's Chat while a switch to it is still pending, and keep it (lib/chat-held.ts).
+ * The router leaves the old screen up until the loader answers, so the new pane's Chat body is built with
+ * its thread in hand and the first frame draws it; a switch has no frame with an empty reading area.
+ *
+ * Only for a pane the phone knows has a thread (the snapshot said it holds a session), only while Chat is the
+ * device's choice, and only when no window is held for it already: a revisit starts from the held one and the
+ * Chat body's own read asks what changed since. It reads nothing for a pane the snapshot does not name (a
+ * pane just created has no thread yet) and never throws.
+ */
+async function warmChat(paneId: string, scope: Scope, signal: AbortSignal | undefined): Promise<void> {
+  if (loadPaneViewPref() !== "chat") return;
+  const row = await savedPaneRow(paneId, scope, true);
+  if (row === undefined || row.kind === "shell" || row.hasSession !== true) return;
+  const address = paneKey(paneId, scope);
+  if (heldChat(address, row.instance) !== null) return;
+  try {
+    const answer = await fetchChat(paneId, {}, scope, signal, { seen: false });
+    holdChat(address, row.instance, mergeChat(EMPTY_CHAT_WINDOW, answer));
+  } catch {
+    // The Chat body asks again on its own and says what it finds; a failed warm-up draws nothing.
+  }
+}
+
+/** Wait for a warm-up, but never past {@link CHAT_WARM_WAIT_MS}. */
+async function waitForWarm(warming: Promise<void> | undefined): Promise<void> {
+  if (warming === undefined) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, CHAT_WARM_WAIT_MS);
+  });
+  await Promise.race([warming, limit]);
+  clearTimeout(timer);
+}
+
 export async function paneLoader({
   params,
   request,
@@ -878,9 +925,13 @@ export async function paneLoader({
   // controls ask. Decided by the machine's own declaration, so a bridge that has not said no is read.
   // A cold open in a named session can run before the root loader filed that session's card.
   if (isNavigation) await settleSessionCapabilities(scope);
+  // The pane's first page of Chat, read beside the mirror (see warmChat).
+  const chatWarm = isNavigation ? warmChat(paneId, scope, request?.signal) : undefined;
   if (!paneGridOf(scope)) {
     markPaneLive(paneId, Date.now(), scope);
     markPollResult(false);
+    const walky = await readWalky(paneId, scope, request?.signal);
+    await waitForWarm(chatWarm);
     return {
       paneId,
       scope,
@@ -891,7 +942,7 @@ export async function paneLoader({
       error: false,
       authError: false,
       stale: false,
-      walky: await readWalky(paneId, scope, request?.signal),
+      walky,
       walkyReads: walkyReadCounts.get(key) ?? 0,
     };
   }
@@ -940,6 +991,7 @@ export async function paneLoader({
     // The cadence consumes it (hooks/use-polling.ts): a mirror that keeps moving is one the operator
     // is watching move.
     markPollResult(read.notModified !== true && text !== lastPaneText.get(key));
+    await waitForWarm(chatWarm);
     rememberPaneText(key, text);
     // Write-through, EXCEPT while the pane is asking for a secret — see holdsNoEchoPrompt (ADR 0017).
     // The drop is the wipe's session-text subset for this one pane (lib/wipe.ts, M46 spec 02): its
