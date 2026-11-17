@@ -201,7 +201,7 @@ describe("discovery and the switch", () => {
     await tickAt(r, T0);
     const reply = await r.service.reply(undefined);
     expect(reply.tricks).toEqual([
-      { host: HOST, id: "legs", name: "Browser leg", icon: "plug", on: false, state: "off", places: ["belt", "session"], provenance: { via: "folder" }, approves: expect.stringMatching(/^[0-9a-f]{64}$/u) },
+      { host: HOST, id: "legs", name: "Browser leg", icon: "plug", on: false, state: "off", places: ["belt", "session"], provenance: { via: "folder" }, approves: expect.stringMatching(/^[0-9a-f]{64}$/u), run: "./legs.sh", everyMs: 30_000 },
     ]);
     expect(r.specs).toEqual([]);
   });

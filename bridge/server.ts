@@ -249,7 +249,7 @@ import { modeForWire } from "./crew/mode.ts";
 import type { CrewRuntime } from "./crew/config.ts";
 import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
-import { asksBound, TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksMediaRoute, tricksOfficialRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./tricks/routes.ts";
+import { asksBound, TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksCodeRoute, tricksMediaRoute, tricksOfficialRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./tricks/routes.ts";
 import type { OfficialTricksSurface } from "./tricks/official-install.ts";
 import { placeTrickSessions } from "./tricks/panes.ts";
 import type { TricksSurface } from "./tricks/service.ts";
@@ -659,6 +659,9 @@ const TRICKS_UNDO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/;
 // And a picture of the trick's own `media/` folder (M94 review 11), read-gated like the list. Group 3 is
 // `media/` and the file; bridge/tricks/media.ts checks it before any path is built.
 const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
+// And a trick's code for the About sheet's folds (package F), read-gated like the list: the approved copy's
+// bytes, masked, marked by the text search. Group 1 the host, group 2 the trick id; `?file=` names one file.
+const TRICKS_CODE_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/code$/;
 // The official list (bridge/tricks/official.ts): add or update one entry. Group 1 the trick id, group 2 the verb.
 const TRICKS_OFFICIAL_ROUTE = /^\/api\/tricks\/official\/([^/]+)\/(add|update)$/;
 
@@ -3409,6 +3412,15 @@ export function startServer(opts: {
           body = undefined;
         }
         const answer = auto ? await tricksAutoRoute(tricks, tricksVersion, body) : await tricksUndoRoute(tricks, tricksVersion, body);
+        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+      }
+      const tricksCode = TRICKS_CODE_ROUTE.exec(pathname);
+      if (tricksCode !== null && req.method === "GET") {
+        const denied = guard(req, cfg, TRICKS_ROUTE_RIGHTS.code, pairingGate);
+        if (denied) return denied;
+        const tricks = opts.tricks;
+        if (tricks === undefined) return jsonError({ error: "not found" }, 404, null);
+        const answer = await tricksCodeRoute(tricks, tricksCode, url.searchParams);
         return json(answer.body, req.headers.get("accept-encoding"), answer.status);
       }
       const tricksMedia = TRICKS_MEDIA_ROUTE.exec(pathname);

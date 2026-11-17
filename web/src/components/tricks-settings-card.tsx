@@ -12,7 +12,7 @@ import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-abo
 import { TokenUseChip } from "@/components/token-use-label";
 import { useArm } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
-import { addOfficialTrick, apiErrorFields, fetchOfficialTricks, setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
+import { addOfficialTrick, apiErrorFields, fetchOfficialTricks, fetchTrickCodeFile, fetchTrickCodeIndex, setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import { useBridgeNow } from "@/lib/tricks/clock";
@@ -810,6 +810,7 @@ function TricksList({
             auto={heldAuto.get(trickKey(aboutTrick)) ?? aboutTrick.auto === true}
             canWrite={canWrite}
             onAuto={(on) => void flipAuto(aboutTrick, on)}
+            readCode={{ index: () => fetchTrickCodeIndex(aboutTrick.host, aboutTrick.id), file: (file) => fetchTrickCodeFile(aboutTrick.host, aboutTrick.id, file) }}
           />
         </TrickBoundary>
       )}

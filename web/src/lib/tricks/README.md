@@ -1113,6 +1113,7 @@ trick rows by whole groups in trick id order. The agent view switches live in th
 | ------------ | ------------------------------------ | ------------------------------------- |
 | a phone      | read the parts (`GET /api/tricks`)   | a device key with `read`              |
 | a phone      | read a picture of a trick's `media/` | a device key with `read`              |
+| a phone      | read a trick's code in the About sheet | a device key with `read`            |
 | a phone      | tap an intent, answer a decision     | a device key with `write`             |
 | a phone      | switch a trick on or off             | a device key with `write`             |
 | the trick    | redraw its parts, post a decision    | its own run, from the bridge          |
@@ -1134,6 +1135,24 @@ hill's checks (`readPostedImage`): the trick folder's real path, no symlink anyw
 regular file of at most 2 MB, opened without following a link, and PNG, JPEG or WebP by its first
 bytes, never its name. Every miss is the same 404, and the answer carries `no-store` and a sandboxed
 CSP. Until the bytes arrive, and when they fail, the box keeps its size and says its `alt`.
+
+## Reading the code
+
+The About sheet of every trick, also one that is on, has one fold for each code file, "Read the code". The
+phone asks `GET /api/tricks/<memberId>/<id>/code` for the index (each file's name, its size and how many lines
+the text search flags) when the sheet opens, and `GET .../code?file=<name>` for one file when its fold opens
+(`bridge/tricks/code-view.ts`, `web/src/lib/tricks/code-wire.ts`). Both are reads for a device key with
+`read`, and there is no write route. The code is the APPROVED copy's bytes while a copy runs, never the
+working folder; a trick with no approved copy shows what a switch on would approve (the waiting snapshot, else
+the folder as it is now), and the index says which (`copy`). The bridge reads every code file once into memory,
+checks that the bytes hash to the code hash they are filed under (else `409 moved`), runs the text search over
+those same bytes, and masks each text file as a screen read is masked (`redactText` over the whole text, then
+the card's line reader: a tab as two spaces, a hidden character as `?`). A file over `CODE_VIEW_BYTES_MAX`
+shows its first part, cut at a line end, and says how many bytes are left out; a binary file sends its name and
+size only. Each line the search flagged carries the kinds it was flagged for, drawn as a word with a warning
+glyph, and the sheet says once that this is a text search and that code can hide more. The row of a trick
+carries its `run` line (masked) and `everyMs`; the sheet says the timer as the runner works: once at start,
+then `every` after the last run, only while a phone has looked in the last `WATCH_WINDOW_MS`.
 
 ## Agent views
 

@@ -19,6 +19,11 @@ export const STDERR_CAP_BYTES = 8 * 1024;
 export const RUNS_MAX = 4;
 /** The most decision answers waiting for one trick. One more is refused as busy. */
 export const HILL_QUEUE_MAX = 32;
+/**
+ * How long after a phone looked the timers keep running (`GET /api/snapshot` or `/api/tricks` from a paired
+ * phone). With no look in this span no trick runs on a clock, and the About sheet says so in this number.
+ */
+export const WATCH_WINDOW_MS = 5 * 60_000;
 /** The wait after the first, second and third failure in a row. The fourth stops the trick. */
 export const BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000] as const;
 
@@ -41,6 +46,15 @@ export const BASE_ENV_NAMES = [
   "NVM_DIR",
   "BUN_INSTALL",
 ] as const;
+
+// ── Reading a trick's code on the phone (bridge/tricks/code-view.ts) ─────────────────────────
+
+/**
+ * The most bytes of one code file the About sheet's "Read the code" fold carries. A longer text file shows
+ * its first part, cut at a line end, and says how much is left out. The text search still reads
+ * `SOURCE_READ_MAX` (bridge/tricks/scan.ts) bytes, so a flag can sit in the part not shown; the fold says so.
+ */
+export const CODE_VIEW_BYTES_MAX = 32 * 1024;
 
 // ── The approved copy and the skill file (bridge/tricks/approved.ts, cli/trick.ts) ──────────
 

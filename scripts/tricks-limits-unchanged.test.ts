@@ -51,6 +51,10 @@ const PINNED: ReadonlyArray<readonly [name: string, value: unknown, was: string]
   ["GROUP_CARD_CODE_BYTES", 6_144, "bridge/tricks/card-group.ts"],
   ["GROUP_CODE_BYTES", 43_008, "bridge/tricks/card-group.ts"],
   ["GROUP_FILES_MAX", 64, "bridge/tricks/card-group.ts"],
+  // bridge/tricks/service.ts (moved here 2026-11-17 so the About sheet names it; the same five minutes)
+  ["WATCH_WINDOW_MS", 300_000, "bridge/tricks/service.ts"],
+  // new 2026-11-17 (package F): the most bytes of one code file the About sheet's fold carries
+  ["CODE_VIEW_BYTES_MAX", 32_768, "bridge/tricks/code-view.ts"],
   // bridge/hill/service.ts
   ["HILL_DEFAULT_EXPIRY_DAYS", 14, "bridge/hill/service.ts"],
   ["HILL_DEFAULT_EXPIRY_MS", 14 * DAY_MS, "bridge/hill/service.ts"],

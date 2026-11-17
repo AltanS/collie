@@ -382,7 +382,7 @@ export interface FolderScan {
  * The scan of a trick folder whose code walk is `entries`: the sources, the helper, the warnings. The
  * run line itself is graded as a shell command line, whatever it names. Reads only.
  */
-export async function scanTrickFolder(folder: string, manifest: TrickManifest, entries: readonly CodeEntry[], fs: TrickFs = diskTrickFs): Promise<FolderScan> {
+export async function scanTrickFolder(folder: string, manifest: Pick<TrickManifest, "run" | "everyMs">, entries: readonly CodeEntry[], fs: TrickFs = diskTrickFs): Promise<FolderScan> {
   const all = await folderSources(folder, entries, fs);
   // A `trick.ts` whose bytes are a helper this Collie ships is Collie's code, not the trick's: it is named,
   // not grepped. A file that names itself a helper but differs is grepped as code, and flagged.
@@ -417,6 +417,11 @@ export async function scanTrickFolder(folder: string, manifest: TrickManifest, e
   const imports = manifest.run === undefined || runtimeScript(manifest.run) === null ? [] : importWarnings(out.sources);
   out.warnings = [...unreadTargets(manifest.run, targets, all, runLineOf(all)), ...checkWarnings(graded, manifest.everyMs !== undefined), ...imports].slice(0, WARNINGS_MAX);
   return out;
+}
+
+/** The order the kinds of a warning are named in: {@link KIND_ORDER}, for a reader that marks lines. */
+export function kindRank(kind: CheckWarningKind): number {
+  return KIND_ORDER.indexOf(kind);
 }
 
 /** The line of `run =` in `trick.toml`, or 1. */

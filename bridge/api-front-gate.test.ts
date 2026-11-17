@@ -719,3 +719,22 @@ describe("isSameHostPeer: loopback, or this host's own addresses on a concrete b
     }
   });
 });
+
+// ── A trick's code for the About sheet's folds (package F) ──────────────────────────────────
+
+describe("the trick code route needs a paired device's token", () => {
+  const path = "/api/tricks/lodge/legs/code";
+
+  test("a request with no token is refused at the front gate; a paired device's token passes it; the level is read", async () => {
+    const { store } = await storeWith(true);
+    expect(TRICKS_ROUTE_RIGHTS.code).toBe("read");
+    expect(apiFrontGate(request("GET", path), path, config(), store)?.status).toBe(403);
+    expect(apiFrontGate(request("GET", `${path}?file=trick.toml`), path, config(), store)?.status).toBe(403);
+    expect(apiFrontGate(request("GET", path, { authorization: `Bearer ${TOKEN}` }), path, config(), store)).toBeNull();
+  });
+
+  test("with no device paired at all, the same request is refused too", async () => {
+    const { store } = await storeWith(false);
+    expect(apiFrontGate(request("GET", path), path, config(), store)?.status).toBe(403);
+  });
+});
