@@ -23,19 +23,26 @@ export interface KnownRed {
   readonly what: string;
 }
 
-export const KNOWN_RED = {
-} as const satisfies Record<string, KnownRed>;
+// Typed as a plain record, not `as const`: an empty list has no literal keys, and `keyof {}` is `never`,
+// which would make every reader of an entry fail to compile. The release gate is this list being empty.
+export const KNOWN_RED: Readonly<Record<string, KnownRed>> = {};
 
-export type KnownRedId = keyof typeof KNOWN_RED;
+export type KnownRedId = string;
 
 /** One entry by its id. The id is the tag a red test carries. */
 export function knownRed(id: KnownRedId): KnownRed & { readonly id: KnownRedId } {
-  return { id, ...KNOWN_RED[id] };
+  return { id, ...entryOf(id) };
+}
+
+function entryOf(id: KnownRedId): KnownRed {
+  const entry = KNOWN_RED[id];
+  if (entry === undefined) throw new Error(`known-red: no entry named ${id}`);
+  return entry;
 }
 
 /** The title suffix of a red test: the spec that fixes it, so a runner's list shows it. */
 export function redTitle(id: KnownRedId): string {
-  const entry = KNOWN_RED[id];
+  const entry = entryOf(id);
   return `[RED ${entry.invariant} FIXED_BY ${entry.fixedBy}: ${id}]`;
 }
 

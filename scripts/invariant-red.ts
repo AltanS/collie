@@ -11,7 +11,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
-import { countBySpec, KNOWN_RED, type KnownRedId } from "../web/src/test/invariants/known-red.ts";
+import { countBySpec, KNOWN_RED, knownRed, type KnownRedId } from "../web/src/test/invariants/known-red.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 const DIRS = ["bridge", "web/src"];
@@ -52,7 +52,7 @@ for (const [spec, count] of Object.entries(countBySpec())) console.log(`  ${spec
 console.log(`  total    ${String(known.length)}`);
 console.log("");
 for (const id of known) {
-  const entry = KNOWN_RED[id];
+  const entry = knownRed(id);
   console.log(`${entry.fixedBy}  ${entry.invariant}  ${id}`);
   console.log(`    ${entry.what}`);
   console.log(`    at ${entry.where}`);
