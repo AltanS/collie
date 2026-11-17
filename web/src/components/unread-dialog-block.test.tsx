@@ -201,15 +201,24 @@ describe("UnreadDialogBlock", () => {
     expect(onAction).toHaveBeenCalledExactlyOnceWith("Escape");
   });
 
-  it("resets the arm when the dialog changes, so a tap on the new dialog only arms", () => {
+  it("keeps the arm while the rows change, because the arm belongs to the pane and the key, not the rows (the M102 review 2)", () => {
     const block = cardBlock();
     const onAction = vi.fn();
-    const props = { cancel: block.cancel, onAction };
+    const props = { cancel: block.cancel, onAction, paneId: "w1:p1" };
     const { rerender } = render(<UnreadDialogBlock {...props} lines={block.lines} />);
     fireEvent.click(screen.getByRole("button", { name: "Esc" }));
-    expect(screen.getByRole("button", { name: "Tap again to send Esc" })).toBeInTheDocument();
     rerender(<UnreadDialogBlock {...props} lines={block.lines.slice(1)} />);
-    expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tap again to send Esc" }));
+    expect(onAction).toHaveBeenCalledExactlyOnceWith("Escape");
+  });
+
+  it("resets the arm when the pane changes, so a tap on the other pane's card only arms", () => {
+    const block = cardBlock();
+    const onAction = vi.fn();
+    const props = { cancel: block.cancel, onAction, lines: block.lines };
+    const { rerender } = render(<UnreadDialogBlock {...props} paneId="w1:p1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Esc" }));
+    rerender(<UnreadDialogBlock {...props} paneId="w1:p2" />);
     fireEvent.click(screen.getByRole("button", { name: "Esc" }));
     expect(onAction).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Tap again to send Esc" })).toBeInTheDocument();
@@ -404,18 +413,63 @@ describe("unread card: your Keys pad (M102 spec 03)", () => {
     expect(onPadKeys).toHaveBeenCalledExactlyOnceWith(["Enter"]);
   });
 
-  it("unread card: a screen whose words changed between the two taps only arms again, and Enter does not go", async () => {
+  /** Rows that change every tick in ways that are not digits: a progress bar, a dot cycle, streaming text. */
+  const movingRows = (tick: number) =>
+    splitLines(parseAnsi([`[${"#".repeat(tick)}${" ".repeat(6 - tick)}]`, `Working${".".repeat((tick % 3) + 1)}`, "The agent writes: " + "lorem ipsum dolor sit amet".slice(0, tick * 4)].join("\n")));
+
+  function mountMoving(paneId = "w1:p1") {
     let board = DEFAULT_BOARD;
     for (let cell = 0; cell < board.cells.length; cell++) board = setCell(board, cell, null);
     setKeyBoard(board);
     const block = cardBlock();
     const onPadKeys = vi.fn(() => Promise.resolve(true));
-    const props = { cancel: block.cancel, onAction: vi.fn(), onPadKeys, onTypeAnyway: vi.fn() };
-    const { rerender } = render(<UnreadDialogBlock {...props} lines={block.lines} />);
-    const user = userEvent.setup();
-    await user.click(caps().find((b) => b.getAttribute("aria-label") === "Enter")!);
-    rerender(<UnreadDialogBlock {...props} lines={block.lines.slice(1)} />);
-    await user.click(caps().find((b) => b.getAttribute("aria-label") === "Enter")!);
+    const props = { cancel: block.cancel, onAction: vi.fn(), onPadKeys, onTypeAnyway: vi.fn(), paneId };
+    const view = render(<UnreadDialogBlock {...props} lines={[...block.lines, ...movingRows(1)]} />);
+    const tick = (n: number) => view.rerender(<UnreadDialogBlock {...props} lines={[...block.lines, ...movingRows(n)]} />);
+    const enterCap = () => caps().find((b) => b.getAttribute("aria-label") === "Enter")!;
+    return { onPadKeys, tick, enterCap, view, props, block };
+  }
+
+  it("unread card: rows that change every tick (a progress bar, a dot cycle, streaming text) keep the Enter cap armed for five seconds (the M102 review 2, J)", () => {
+    vi.useFakeTimers();
+    try {
+      const { onPadKeys, tick, enterCap } = mountMoving();
+      fireEvent.click(enterCap());
+      expect(onPadKeys).not.toHaveBeenCalled();
+      for (let n = 2; n <= 5; n++) {
+        act(() => vi.advanceTimersByTime(1000));
+        tick(n);
+      }
+      // 4 s after the first tap, with every row moved: the second tap presses Enter.
+      fireEvent.click(screen.getByRole("button", { name: /^Tap again to send / }));
+      expect(onPadKeys).toHaveBeenCalledExactlyOnceWith(["Enter"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("unread card: after five seconds the Enter cap's arm has lapsed, and the next tap only arms again", () => {
+    vi.useFakeTimers();
+    try {
+      const { onPadKeys, tick, enterCap } = mountMoving();
+      fireEvent.click(enterCap());
+      act(() => vi.advanceTimersByTime(4999));
+      tick(2);
+      expect(screen.getByRole("button", { name: /^Tap again to send / })).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(2));
+      fireEvent.click(enterCap());
+      expect(onPadKeys).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: /^Tap again to send / })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("unread card: the Enter cap's arm belongs to its pane, so a card on another pane only arms", () => {
+    const { onPadKeys, enterCap, view, props, block } = mountMoving("w1:p1");
+    fireEvent.click(enterCap());
+    view.rerender(<UnreadDialogBlock {...props} paneId="w1:p2" lines={[...block.lines, ...movingRows(1)]} />);
+    fireEvent.click(enterCap());
     expect(onPadKeys).not.toHaveBeenCalled();
   });
 

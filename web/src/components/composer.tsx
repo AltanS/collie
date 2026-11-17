@@ -484,8 +484,12 @@ interface ComposerProps {
    * the phase, the refusal's own words for a send that failed, and the exact line the bridge typed.
    */
   onViewRequest?: ((note: ViewRequestNote) => void) | undefined;
-  /** The identity of the unread card on screen, or null: the Keys drawer opens once per identity. */
-  unreadIdentity?: string | null | undefined;
+  /**
+   * The pane's unread state, or null when it has none: a word for the state ("unread", or the answer exit's own), never
+   * the screen's rows. The Keys drawer opens once when the pane goes into a state, and not again until it ends
+   * (the M102 review 2, I). It also asks Enter on the Keys pad for a second tap.
+   */
+  unreadState?: string | null | undefined;
   /** A send was refused on a screen Collie cannot read: the pane opens the unread card (M102 spec 03). */
   onScreenUnread?: (() => void) | undefined;
   /**
@@ -692,7 +696,7 @@ function lockWordsFor(slot: SendSlot, unreachableWords: string): string | null {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest, unreadIdentity = null, onScreenUnread, onAnswerUnseen, onCannotTell, onCannotTellRing, cannotTellInView, heldScreen },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest, unreadState = null, onScreenUnread, onAnswerUnseen, onCannotTell, onCannotTellRing, cannotTellInView, heldScreen },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1058,17 +1062,22 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setDrawer(next);
   }
   const closeDrawer = () => requestDrawer(null);
-  // THE UNREAD CARD'S KEYS ARE THE PERSON'S OWN PAD (M102 spec 03, option "Your Keys pad"): when a card
-  // for a screen Collie cannot read first shows, the Keys drawer opens, once per screen identity and
-  // only when no drawer is open. A drawer the person opened or closed for that screen is left as it is.
-  // The pad's "123" chip stays as the person left it: a digit is the person's own tap, never an offer.
+  // THE UNREAD CARD'S KEYS ARE THE PERSON'S OWN PAD (M102 spec 03, option "Your Keys pad"): when a pane goes into
+  // an unread state, the Keys drawer opens, once, and only when no drawer is open. A drawer the person opened or
+  // closed while the state lasts is left as it is, whatever the rows do; the state's end lets the next one open it
+  // again (the M102 review 2, I). The pad's "123" chip stays as the person left it: a digit is never an offer.
   const unreadOpened = useRef<string | null>(null);
   useEffect(() => {
-    if (unreadIdentity === null || unreadOpened.current === unreadIdentity) return;
-    unreadOpened.current = unreadIdentity;
+    if (unreadState === null) {
+      unreadOpened.current = null;
+      return;
+    }
+    const state = `${paneId}\n${unreadState}`;
+    if (unreadOpened.current === state) return;
+    unreadOpened.current = state;
     if (drawer === null && !locked) setDrawer("keys");
-    // A later change of the drawer or the lock finds the same identity and does nothing.
-  }, [unreadIdentity, drawer, locked]);
+    // A later change of the drawer or the lock finds the same state and does nothing.
+  }, [unreadState, paneId, drawer, locked]);
   // Two-tap guard for destructive commands (rm -rf, force-push, …): the first tap arms a "Really
   // send?" state on the Send button (auto-disarms after 3 s), the second actually sends. Same shared
   // confirm the command palette uses for /clear.
@@ -3699,7 +3708,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               clearBox={{ available: clearOffered, unavailable: shownSurface.modal === "none" || shownSurface.modal === "unknown" ? "empty" : "dialog", onClear: clearBox }}
               onQueueChange={setQueuedKeys}
               // While the card of a screen Collie cannot read is open, Enter asks a second tap (M102 spec 03).
-              confirmEnter={unreadIdentity !== null}
+              confirmEnter={unreadState !== null}
               disabled={!way.keysSendable}
             />
           </ComposerDock>

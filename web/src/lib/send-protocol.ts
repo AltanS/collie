@@ -338,6 +338,16 @@ export function surfaceNote(surface: Surface): SurfaceNote {
   return "unknown";
 }
 
+/**
+ * Whether a Surface reads as a screen Collie cannot read, the pane's unread state (the M102 review 2, H): an
+ * unreadable modal, an unreachable box, a stale, torn or contested read, or no word for it at all. A free box, a
+ * running turn, a draft and an ask Collie read are states it can read.
+ */
+export function readsUnread(surface: Surface): boolean {
+  const note = surfaceNote(surface);
+  return note === "unreadable" || note === "unreachable" || note === "unknown" || note === "stale" || note === "torn" || note === "contested";
+}
+
 /** What an answer means for the composer. */
 export interface SendReading {
   /** The text went out: clear the draft and show the sent pill. */

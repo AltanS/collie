@@ -2,12 +2,11 @@ import { Icon } from "@/components/icons/icon";
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
-import { ARM_MS } from "@/lib/arm";
+import { ARM_MS, ENTER_ARM_MS } from "@/lib/arm";
 import { CORE_KEYS, missingCore } from "@/lib/key-board";
 import { useKeyBoard } from "@/lib/key-board-store";
 import type { IconKey } from "@/components/icons/keys";
 import { lineText, type StyledLine, type UnreadDialogModel } from "@/lib/blocks";
-import { steadyScreenRow } from "@/lib/harness/prompt-model";
 import { keyLabel } from "@/lib/key-queue";
 import { OptionGroupCaption, PromptPanel } from "@/components/option-button";
 import { RawMirror } from "@/components/raw-mirror";
@@ -100,15 +99,6 @@ const CORE_FACE: ReadonlyMap<string, IconKey> = new Map<string, IconKey>([
 // the screen's own rows print `esc dismiss`; otherwise it names the key, never a verb.
 const NAMES_A_DISMISS = /\besc\s+dismiss\b/i;
 
-/**
- * The identity of one unread screen: its declared key and its rows, with every ticking part held still
- * (`steadyScreenRow`: a clock, a spinner, a timer). The arm, the shown signal, the composer's once-per-screen
- * Keys drawer and the unread card a refusal opens key on it, never on the pane revision (the M102 review, H, I, J).
- */
-export function unreadIdentity(cancel: UnreadDialogModel | null, lines: readonly StyledLine[]): string {
-  return `${cancel?.key ?? ""}\n${lines.map((line) => steadyScreenRow(lineText(line))).join("\n")}`;
-}
-
 export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onReport, onShown, paneId, onPadKeys, onTypeAnyway, secret = false, caption: said, onClose }: UnreadDialogBlockProps) {
   useLocale();
   const [sending, setSending] = useState(false);
@@ -117,9 +107,11 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
   // draws a cap only for a core key that board lacks, with the pad's face and the key's name. Never a
   // digit, a letter or a word that guesses what the key means here.
   const lost = missingCore(useKeyBoard());
-  // The arm belongs to ONE dialog: it records the identity it was armed for, so a new dialog (other
-  // key, other rows, or another pane reusing this instance) is never armed by the old one's tap.
-  const identity = unreadIdentity(cancel, lines);
+  // The arm belongs to ONE card on ONE pane: its pane and its declared key, never its rows. A screen Collie cannot
+  // read moves all the time (a progress bar, a dot cycle, streaming text), the live screen is in view, and the
+  // person's own Keys pad carries no rows guard either (the M102 review 2, J). Another pane reusing this instance,
+  // or another declared key, is never armed by the old one's tap.
+  const identity = `${paneId ?? ""}\n${cancel?.key ?? ""}`;
   const [armedFor, setArmedFor] = useState<string | null>(null);
   const armed = armedFor === identity;
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -138,9 +130,9 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
     },
     [],
   );
-  // The trouble signal (M86 spec 05): once per instance for each pane and dialog identity, the same
-  // identity the arm keys on. A poll that re-renders the same dialog calls nothing.
-  const shownKey = `${paneId ?? ""}\n${identity}`;
+  // The trouble signal (M86 spec 05): once per instance for each pane and card, the same identity the arm keys
+  // on. A poll that re-renders the card, with any rows, calls nothing.
+  const shownKey = identity;
   const shownFor = useRef<string | null>(null);
   useEffect(() => {
     if (onShown === undefined || shownFor.current === shownKey) return;
@@ -161,7 +153,7 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
     if (step === "Enter" && !enterArmed) {
       setEnterArmedFor(identity);
       clearTimeout(enterTimer.current);
-      enterTimer.current = setTimeout(() => setEnterArmedFor(null), ARM_MS);
+      enterTimer.current = setTimeout(() => setEnterArmedFor(null), ENTER_ARM_MS);
       return;
     }
     clearTimeout(enterTimer.current);

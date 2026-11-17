@@ -6239,7 +6239,7 @@ describe("the unread card (M102 spec 03)", () => {
             prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
             display={{ open: false, onToggle: vi.fn() }}
             onSent={vi.fn()}
-            unreadIdentity={identity}
+            unreadState={identity}
             {...over}
           />
         </CrewProvider>
