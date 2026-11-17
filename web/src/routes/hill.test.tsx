@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider, type InitialEntry } from "react-router";
 import { vi } from "vitest";
 
+import { CALM_HOLD_MS } from "@/hooks/use-bounded-hold";
 import { ARM_DWELL_MS } from "@/lib/arm";
 import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import { clearStatus, currentStatus } from "@/lib/status";
@@ -130,6 +131,7 @@ describe("the hill route", () => {
   });
 
   it("shows the clear hill, and All clear in the count line, when nothing is open", async () => {
+    await hillHolds([]);
     renderHill();
     await screen.findByRole("heading", { name: "Hill" });
     expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("All clear");
@@ -181,6 +183,103 @@ describe("the hill route", () => {
     await screen.findAllByRole("heading", { name: "Hill" });
     expect(scrolled).not.toHaveBeenCalled();
     scrolled.mockRestore();
+  });
+});
+
+describe("the hill route on a cold open (calm load, row 4)", () => {
+  /** Hold the bridge's list until `release()`: the store is memory only, so a cold open waits for it. */
+  function heldList(open: ReturnType<typeof hillDecision>[], closed: ReturnType<typeof hillDecision>[] = []) {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.get("/api/hill", async () => {
+        await gate;
+        return HttpResponse.json({ v: 1, rev: 1, open, closed, crewState: { state: "here", at: null, by: null, told: null } });
+      }),
+    );
+    return release;
+  }
+
+  /** Every frame in which the calm ridge or the words "All clear" were put on the page. */
+  function watchForClear() {
+    const frames: string[] = [];
+    const mentionsClear = (node: Node): boolean => {
+      const el = node instanceof Element ? node : node.parentElement;
+      return el !== null && (el.matches('[data-slot="hill-empty"]') || el.querySelector('[data-slot="hill-empty"]') !== null || (el.textContent ?? "").includes("All clear"));
+    };
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        const nodes = [...record.addedNodes, ...(record.type === "characterData" ? [record.target] : [])];
+        if (nodes.some(mentionsClear)) frames.push(record.type);
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    const seen = (): string[] => [...frames, ...observer.takeRecords().filter((r) => [...r.addedNodes].some(mentionsClear)).map((r) => r.type)];
+    return { seen, stop: () => observer.disconnect() };
+  }
+
+  it("never draws the clear hill while Decisions wait: the bar's box is held, then bar and cards land together", async () => {
+    const release = heldList([hillDecision({ priority: "now" }), hillDecision()], [hillDecision({ state: "expired" })]);
+    await act(async () => syncHill(1));
+    const watch = watchForClear();
+    renderHill();
+    await screen.findByRole("heading", { name: "Hill" });
+    const scroller = document.querySelector('[data-slot="hill-scroll"]')!;
+    // First frame: the crew bar's own box, invisible; no ridge, no cards, no claim in the count line.
+    expect([...scroller.firstElementChild!.querySelectorAll("[data-slot]")].map((el) => el.getAttribute("data-slot"))).toContain("hill-crew-state");
+    expect(scroller.firstElementChild).toHaveAttribute("data-slot", "hill-crew-state-hold");
+    expect(scroller.firstElementChild).toHaveClass("invisible");
+    expect(scroller.firstElementChild).toHaveAttribute("aria-hidden", "true");
+    expect(scroller.children).toHaveLength(1);
+    expect(document.querySelector('[data-slot="hill-empty"]')).toBeNull();
+    expect(document.querySelector('[data-slot="hill-count"]')).not.toHaveTextContent("All clear");
+    expect(document.querySelector('[data-slot="decision-card"]')).toBeNull();
+
+    release();
+    await act(() => __settleHill());
+    await waitFor(() => expect(document.querySelectorAll('[data-slot="decision-card"]')).toHaveLength(2));
+    // The neighbours did not move: the bar is still first in the scroller, the cards follow it, the hold is gone.
+    expect(scroller.firstElementChild).toHaveAttribute("data-slot", "hill-crew-state");
+    expect(document.querySelector('[data-slot="hill-crew-state-hold"]')).toBeNull();
+    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("2 open · 1 now");
+    // The fold is chosen from the real list: closed while Decisions are open.
+    expect(document.querySelector('[data-slot="hill-answered"] button[aria-expanded]')).toHaveAttribute("aria-expanded", "false");
+    expect(watch.seen()).toEqual([]);
+    watch.stop();
+  });
+
+  it("draws the clear hill once the list says it is clear, not before", async () => {
+    const release = heldList([]);
+    await act(async () => syncHill(1));
+    renderHill();
+    await screen.findByRole("heading", { name: "Hill" });
+    expect(document.querySelector('[data-slot="hill-empty"]')).toBeNull();
+    release();
+    await act(() => __settleHill());
+    await waitFor(() => expect(document.querySelector('[data-slot="hill-empty"]')).toHaveTextContent("The hill is clear."));
+    expect(document.querySelector('[data-slot="hill-count"]')).toHaveTextContent("All clear");
+  });
+
+  it("waits no longer than the bound for a list that does not come, and takes the fold's state from the list that does", async () => {
+    const release = heldList([hillDecision()], [hillDecision({ state: "expired" })]);
+    await act(async () => syncHill(1));
+    renderHill();
+    await screen.findByRole("heading", { name: "Hill" });
+    expect(document.querySelector('[data-slot="hill-empty"]')).toBeNull();
+    // Past the bound the route draws as it did: the ridge, with the fold open on the empty stand-in.
+    await waitFor(() => expect(document.querySelector('[data-slot="hill-empty"]')).not.toBeNull(), { timeout: CALM_HOLD_MS * 4 });
+    release();
+    await act(() => __settleHill());
+    await waitFor(() => expect(document.querySelectorAll('[data-slot="decision-card"]')).toHaveLength(1));
+    // The fold was opened by the empty list; the real list has a Decision open, so it is closed now.
+    expect(document.querySelector('[data-slot="hill-answered"] button[aria-expanded]')).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("holds nothing where the snapshot says there is no Hill", async () => {
+    renderHill(undefined, home({ hill: false }));
+    await screen.findByRole("heading", { name: "Hill" });
+    expect(document.querySelector('[data-slot="hill-crew-state-hold"]')).toBeNull();
+    expect(document.querySelector('[data-slot="hill-empty"]')).not.toBeNull();
   });
 });
 
