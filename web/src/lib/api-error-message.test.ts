@@ -108,6 +108,20 @@ describe("describeThrownError", () => {
     expect(describeThrownError(thrown)).toContain("herdr down");
   });
 
+  it("says a proxy's HTML page as a short sentence with its status, never the markup or the route (M102 spec 11)", async () => {
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/reply$/, () => new HttpResponse("<html><head><title>502 Bad Gateway</title></head></html>", { status: 502 })),
+    );
+    const thrown = await sendReply("w1:p1", "hi").catch(<TThrown,>(e: TThrown) => e);
+    expect(describeThrownError(thrown)).toBe("The server answered with error 502. Try again.");
+  });
+
+  it("drops the route path from a plain refusal and keeps its sentence (M102 spec 11)", async () => {
+    server.use(http.post(/\/api\/pane\/[^/]+\/reply$/, () => new HttpResponse("herdr down", { status: 502 })));
+    const thrown = await sendReply("w1:p1", "hi").catch(<TThrown,>(e: TThrown) => e);
+    expect(describeThrownError(thrown)).toBe("herdr down");
+  });
+
   it("keeps an ordinary Error's message", () => {
     expect(describeThrownError(new Error("Failed to fetch"))).toBe("Failed to fetch");
   });

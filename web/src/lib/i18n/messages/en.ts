@@ -879,6 +879,12 @@ export const en = {
   "chat.hold.void": "The hook stopped. Answer the dialog on the screen.",
   "chat.hold.timeout": "The hold timed out. Answer the dialog on the screen.",
   "chat.hold.mismatch": "The request changed. Collie let the hook go.",
+  "chat.hold.justShown": "This request just arrived. Tap again to answer it.",
+  "chat.hold.answerFailed": "The answer did not go through. Tap again to try once more.",
+  "chat.hold.disabled": "This card cannot be answered from here. Answer it at the desk.",
+  "chat.hold.readOnly": "This device may only read. Answer it at the desk.",
+  "chat.hold.gone": "The pane is gone, so nothing can answer this request.",
+  "chat.hold.oldBridge": "This pane's bridge cannot take an answer from the card. Answer it at the desk.",
   "chat.hold.cardMismatch": "This card is not the held request. Collie sent nothing.",
   "chat.status.sendFailed": "Send failed",
   "chat.status.wizardChanged": "Wizard changed, refreshing",
@@ -2085,6 +2091,7 @@ export const en = {
   // `{reason}` is NEVER Collie's text: it is the multiplexer's own refusal, passed through byte for
   // byte (bridge/error-codes.ts). Those messages are a translated FRAME around a raw remainder —
   // translate the frame, leave the slot where the sentence reads naturally in your language.
+  "apiError.statusOnly": "The server answered with error {status}. Try again.",
   "apiError.unknown": "Something went wrong. Try again.",
   "apiError.reply.not_submitted":
     "Your message was typed into the pane but not sent. Check the pane before sending it again.",
@@ -3939,6 +3946,13 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "chat.hold.justShown",
+  "chat.hold.answerFailed",
+  "chat.hold.disabled",
+  "chat.hold.readOnly",
+  "chat.hold.gone",
+  "chat.hold.oldBridge",
+  "apiError.statusOnly",
   "composer.tap.sending",
   "composer.tap.noCard",
   "composer.tap.typeBusy",

@@ -3269,6 +3269,7 @@ export function AgentChat({
             <HookHoldCard
               note={agent.hold}
               disabled={readOnly || gone || !holdsAnswered}
+              disabledReason={t(gone ? "chat.hold.gone" : readOnly ? "chat.hold.readOnly" : "chat.hold.oldBridge")}
               onAnswer={handleHoldAnswer}
             />
           )}
