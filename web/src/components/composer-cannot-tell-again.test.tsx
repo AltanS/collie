@@ -92,3 +92,35 @@ describe("C: the card's Send again sends the send it is about", () => {
     expect(field()).toHaveValue("half typed");
   });
 });
+
+describe("E: the notice's Send again waits as the card does", () => {
+  const WAITING = "Collie is waiting for the agent's own word that it arrived. Send again turns on when the wait ends.";
+
+  it("while the agent's own word may still come, the notice's Send again sends nothing and says why", async () => {
+    const user = userEvent.setup();
+    unknownThenSent({ awaitingEventUntil: Date.now() + 60_000 });
+    mount();
+    await user.type(field(), "first message");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    const again = await screen.findByRole("button", { name: "Send again" });
+    await user.click(again);
+    expect(screen.getByText(WAITING)).toBeInTheDocument();
+    expect(recordedSends()).toHaveLength(1);
+  });
+
+  it("once the wait is over, the notice's Send again sends the kept text", async () => {
+    const user = userEvent.setup();
+    unknownThenSent({ awaitingEventUntil: Date.now() + 400 });
+    mount();
+    await user.type(field(), "first message");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    const again = await screen.findByRole("button", { name: "Send again" });
+    await waitFor(() => expect(again).toBeEnabled(), { timeout: 2_000 });
+    expect(screen.queryByText(WAITING)).toBeNull();
+    await user.click(again);
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(recordedSends()[1]?.text).toBe("first message");
+  });
+});

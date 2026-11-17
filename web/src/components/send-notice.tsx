@@ -142,11 +142,18 @@ export function clearNotice(receipt: ClearReceipt): SendRefusal {
   return phoneRefusal(translate(CLEAR_REFUSALS[reason]), reason === "dialog_open");
 }
 
+const WAIT_WORDS = {
+  waits: "composer.step.sendAgainWaits",
+  ready: "composer.step.sendAgainReady",
+  awaiting: "cannotTell.waiting",
+} as const satisfies Record<"waits" | "ready" | "awaiting", MessageKey>;
+
 interface RefusalActionsProps {
   /** The step's own button (M102 spec 02), first: the action that changes the situation. */
   readonly step: { readonly word: string; readonly disabled: boolean; readonly onPress: () => void } | null;
-  /** A Send again that waits for another send: its reason while it is off, then that it turned on. */
-  readonly wait: "waits" | "ready" | null;
+  /** A Send again that waits for another send: its reason while it is off, then that it turned on.
+   *  `awaiting`: it waits for the agent's own word on an `unknown` send, in the "cannot tell" card's words. */
+  readonly wait: "waits" | "ready" | "awaiting" | null;
   readonly onCard: (() => void) | null;
   readonly onScreen: (() => void) | null;
   readonly onKeys: (() => void) | null;
@@ -184,7 +191,7 @@ export function RefusalActions({ step, wait, onCard, onScreen, onKeys }: Refusal
       )}
       {wait !== null && (
         <span className="basis-full text-right text-[11px] text-muted-foreground" aria-live="polite">
-          {translate(wait === "waits" ? "composer.step.sendAgainWaits" : "composer.step.sendAgainReady")}
+          {translate(WAIT_WORDS[wait])}
         </span>
       )}
     </span>

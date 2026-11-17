@@ -938,6 +938,22 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [unknownAnswer, setUnknownAnswer] = useState<{ requestId: string; secret: boolean; awaitingUntil: number | null; noticeKey: string } | null>(null);
   const unknownAnswerRef = useRef(unknownAnswer);
   unknownAnswerRef.current = unknownAnswer;
+  // THE WAIT OF AN `unknown` SEND (spec 13), for every Send again of it, the card's and the notice's alike
+  // (the M102 review, E): while the agent's own word may still come, Send again sends nothing. A clock
+  // that turns Send again on when the wait ends; it never sends.
+  const awaitingUntil = unknownAnswer?.awaitingUntil ?? null;
+  const [awaitNow, setAwaitNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (awaitingUntil === null) return;
+    const left = awaitingUntil - Date.now();
+    if (left <= 0) {
+      if (awaitNow < awaitingUntil) setAwaitNow(Date.now());
+      return;
+    }
+    const timer = setTimeout(() => setAwaitNow(Date.now()), Math.min(left, 60_000));
+    return () => clearTimeout(timer);
+  }, [awaitingUntil, awaitNow]);
+  const awaitingWord = awaitingUntil !== null && awaitNow < awaitingUntil;
   const onCannotTellRef = useRef(onCannotTell);
   onCannotTellRef.current = onCannotTell;
   const cannotTellFacts = useMemo<CannotTellFacts | null>(
@@ -2480,11 +2496,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const refusalStep = sendRefusal?.step ?? null;
   // Send again after a refusal for another running send waits until a later read differs and the box
   // holds no text (the other send went or was taken back). It never sends by itself.
-  const stepWaiting =
+  const otherSendWaiting =
     refusalStep === "sendAgain" &&
     sendRefusal?.waits === true &&
     sendRefusal.atRevision !== undefined &&
     (shownSurface.revision === sendRefusal.atRevision || shownSurface.composer === "draft");
+  // A Send again of an `unknown` send also waits for the agent's own word, as the card's does (spec 13).
+  const stepWaiting = otherSendWaiting || (refusalStep === "sendAgain" && awaitingWord);
   const stepButton =
     refusalStep === "sendAgain"
       ? !locked && lastSendRef.current !== null && (!lastSendRef.current.secret || secretField)
@@ -2528,6 +2546,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function sendAgainNow(): void {
     const last = lastSendRef.current;
     if (last === null) return;
+    // The one wait guard for both buttons: while the agent's own word may still come, nothing goes (spec 13).
+    const until = unknownAnswerRef.current?.awaitingUntil ?? null;
+    if (until !== null && Date.now() < until) return;
     // A code has no text kept to send again: the field opens empty, while the screen still asks for one.
     if (last.secret) {
       if (secretFieldRef.current) enterSecretAgain();
@@ -3972,7 +3993,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                           ? { word: stepWord, disabled: sending || stepWaiting, onPress: onRefusalStep }
                           : null
                     }
-                    wait={!refusalSecret && stepButton && refusalStep === "sendAgain" && sendRefusal.waits === true ? (stepWaiting ? "waits" : "ready") : null}
+                    wait={!refusalSecret && stepButton && refusalStep === "sendAgain" ? (awaitingWord ? "awaiting" : sendRefusal.waits === true ? (otherSendWaiting ? "waits" : "ready") : null) : null}
                     onCard={refusalCard ? answerDialog : null}
                     onScreen={refusalScreen && !refusalCard && refusalStep !== "screen" ? () => screen?.onToggle() : null}
                     onKeys={refusalKeys ? () => requestDrawer("keys") : null}
