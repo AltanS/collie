@@ -148,12 +148,12 @@ describe("the dashboard across machines", () => {
     // Three buttons now, not two — "All sessions" leads the list. It is not a session and does not
     // pretend to be one: it answers "do I have to choose at all", which is why it stands above the
     // rows rather than among them.
-    const sessionTrigger = screen.getByRole("button", { name: /switch session/i });
+    const sessionTrigger = screen.getByRole("button", { name: /switch space/i });
     await userEvent.click(sessionTrigger);
     const sheet = screen.getByRole("list");
     const rows = within(sheet).getAllByRole("button");
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toHaveTextContent("All sessions");
+    expect(rows[0]).toHaveTextContent("All spaces");
   });
 
   it("labels each row with its machine — a label, never a split", async () => {
@@ -337,9 +337,9 @@ describe("the dashboard across sessions", () => {
   it("marks the row that is NOT in the primary session, and only that one", async () => {
     renderHome(widened(), "/?all=1");
     await settled();
-    expect(screen.getByLabelText("In session: work")).toBeInTheDocument();
+    expect(screen.getByLabelText("In space: work")).toBeInTheDocument();
     // The primary needs no mark: an absent `?s=` already means it.
-    expect(screen.queryByLabelText("In session: default")).toBeNull();
+    expect(screen.queryByLabelText("In space: default")).toBeNull();
   });
 
   it("opens each row in its OWN session", async () => {

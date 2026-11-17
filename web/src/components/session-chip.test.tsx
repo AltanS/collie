@@ -45,12 +45,12 @@ describe("SessionChip — with no registry to compare against", () => {
   // widened body always carries the registry that produced it. This is the harness case.
   it("mounts outside a provider without throwing, and names the session", () => {
     render(<SessionChip session="work" />);
-    expect(screen.getByLabelText("In session: work")).toBeInTheDocument();
+    expect(screen.getByLabelText("In space: work")).toBeInTheDocument();
   });
 
   it("does the same with an empty registry", () => {
     mount("work", []);
-    expect(screen.getByLabelText("In session: work")).toBeInTheDocument();
+    expect(screen.getByLabelText("In space: work")).toBeInTheDocument();
   });
 
   it("still says nothing when there is no session to name", () => {
@@ -64,7 +64,7 @@ describe("SessionChip — when it does", () => {
     mount("work");
     // The inner text is aria-hidden, so the whole tag carries one label. A bare session name would
     // reach a screen reader as a noun with no verb.
-    expect(screen.getByLabelText("In session: work")).toHaveTextContent("work");
+    expect(screen.getByLabelText("In space: work")).toHaveTextContent("work");
   });
 
   it("is not a control — a mis-tap here means typing into the wrong terminal", () => {
@@ -77,7 +77,7 @@ describe("SessionChip — when it does", () => {
 describe("SessionChip — an operator label", () => {
   it("prints the label from spaces.toml instead of the registry name", () => {
     mount("work", [registry[0]!, { ...registry[1]!, label: "Клиентский кабинет" }]);
-    expect(screen.getByLabelText("In session: Клиентский кабинет")).toHaveTextContent("Клиентский кабинет");
+    expect(screen.getByLabelText("In space: Клиентский кабинет")).toHaveTextContent("Клиентский кабинет");
   });
 
   it("on a crew, takes the label of the session on the pane's own machine", () => {
@@ -92,7 +92,7 @@ describe("SessionChip — an operator label", () => {
         <SessionChip session="work" host="box" />
       </CrewProvider>,
     );
-    expect(screen.getByLabelText("In session: Box work")).toBeInTheDocument();
+    expect(screen.getByLabelText("In space: Box work")).toBeInTheDocument();
   });
 
   it("never borrows another machine's label when the pane's machine lists no such session", () => {
@@ -105,6 +105,6 @@ describe("SessionChip — an operator label", () => {
         <SessionChip session="work" host="box" />
       </CrewProvider>,
     );
-    expect(screen.getByLabelText("In session: work")).toBeInTheDocument();
+    expect(screen.getByLabelText("In space: work")).toBeInTheDocument();
   });
 });
