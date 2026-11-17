@@ -126,7 +126,7 @@ describe("B7: TricksSettingsCard on a machine that runs no tricks", () => {
 });
 
 describe("TricksSettingsCard: a gated bridge", () => {
-  it("windows gate: the card shows the one line, no Hill row, and no switch", async () => {
+  it("windows gate: the card draws nothing (the switch card says the line once), and reads no list", async () => {
     const reply: TricksReply = { rev: 5, tricks: [], parts: [], present: [], gate: "windows" };
     const store = createTricksStore({ fetchTricks: async () => reply, tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
     await store.syncTricks(5);
@@ -135,13 +135,9 @@ describe("TricksSettingsCard: a gated bridge", () => {
       [{ id: ROOT_ROUTE_ID, path: "/", element: <TricksSettingsCard store={store} now={NOW} onOfficialList={official} /> }],
       { initialEntries: ["/"] },
     );
-    render(<RouterProvider router={router} />);
-    const card = await screen.findByTestId("tricks-settings");
-    expect(card.querySelector('[data-line="windows-gate"]')?.textContent).toBe(TRICKS_WINDOWS_LINE);
-    expect(card.querySelector('[data-slot="hill-entry"]')).toBeNull();
-    expect(within(card).queryByRole("switch")).toBeNull();
-    expect(card.querySelector('[data-section="official"]')).toBeNull();
-    expect(within(card).queryByText("No tricks yet")).toBeNull();
+    const { container } = render(<RouterProvider router={router} />);
+    expect(screen.queryByTestId("tricks-settings")).toBeNull();
+    expect(container.textContent).not.toContain(TRICKS_WINDOWS_LINE);
     expect(official).not.toHaveBeenCalled();
   });
 });

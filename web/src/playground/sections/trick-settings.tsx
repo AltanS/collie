@@ -569,9 +569,9 @@ export function TrickSettingsSection(): ReactNode {
           </div>
         </Card>
       </Group>
-      {/* A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): one line, no rows, no switches. */}
+      {/* A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): the list card draws nothing; the switch card (case 50) says the line once. */}
       <Group title="A Windows bridge">
-        <ListCard n={36} state="trick-settings-windows-gate" label="a Windows bridge: tricks are gated, one line" tricks={[]} gate="windows" />
+        <ListCard n={36} state="trick-settings-windows-gate" label="a Windows bridge: no list card, the switch card (50) says the line once" tricks={[]} gate="windows" />
       </Group>
       {/* Fault B: a trick whose approval did not hold a right its copy asks for stops; its switch shows off and its row says so. */}
       <Group title="A trick stopped because its rights changed">
