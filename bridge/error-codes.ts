@@ -402,6 +402,8 @@ export const ERROR_CODES = {
   "api.session_replaced": "that session has ended and its pane now holds another one; send sessions for the ids of now",
   /** Too many `events` waits are open, on this connection or in all. */
   "api.too_many_waits": "too many waits are open (at most {perConnection} on one connection and {total} in all); let one end, or ask without wait",
+  /** Too many requests are in flight on one connection, waits included. */
+  "api.too_many_requests": "too many requests are in flight on this connection (at most {max}); wait for an answer before you send more",
   /** Too many programs hold a connection to the local API. */
   "api.too_many_connections": "too many programs are connected to the local API (at most {max}); close one and connect again",
   /** One answer would be larger than the cap. */

@@ -12,7 +12,7 @@ import { EventBus } from "../events/bus.ts";
 import { encodeSessionId } from "../events/session-id.ts";
 import type { JsonObject } from "../json.ts";
 import { asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
-import { CONNECTIONS_MAX, REQUEST_LINE_MAX, REQUEST_LINE_MS, WAITS_PER_CONNECTION, WAITS_TOTAL } from "./limits.ts";
+import { CONNECTIONS_MAX, IDLE_MS, REQUEST_LINE_MAX, REQUEST_LINE_MS, REQUESTS_PER_CONNECTION, WAITS_PER_CONNECTION, WAITS_TOTAL } from "./limits.ts";
 import { buildTable, LOCAL_TIER_RIGHTS, type OpResult, type ReadHandlers } from "./operations.ts";
 import { ApiSocket, apiSocketPath } from "./socket.ts";
 
@@ -56,6 +56,7 @@ interface Rig {
 interface RigOptions {
   readonly platform?: NodeJS.Platform;
   readonly lineMs?: number;
+  readonly idleMs?: number;
   readonly sessions?: () => Promise<OpResult>;
 }
 
@@ -86,6 +87,7 @@ function rig(opts: RigOptions = {}): Rig {
     log: (line) => logs.push(line),
     platform: opts.platform ?? process.platform,
     lineMs: opts.lineMs ?? REQUEST_LINE_MS,
+    idleMs: opts.idleMs ?? IDLE_MS,
   });
   sockets.push(api);
   return { path, dir: join(stateDir, "api"), bus, api, logs, briefGate };
@@ -530,6 +532,61 @@ describe("the waits", () => {
     unlinkSync(r.path);
     r.bus.publish({ type: "turn.end", session: SESSION });
     expect(await client.next()).toMatchObject({ id: "w", ok: false, error: { code: "api.closing" } });
+  });
+});
+
+describe("requests in flight and idle connections", () => {
+  test("the ninth request in flight on one connection, waits included, is refused at once; answers free the places", async () => {
+    const r = rig();
+    await r.api.start();
+    const client = await Client.open(r.path);
+    for (let i = 0; i < WAITS_PER_CONNECTION; i += 1) client.send({ id: `w${String(i)}`, op: "events", args: { wait: 25 } });
+    for (let i = WAITS_PER_CONNECTION; i < REQUESTS_PER_CONNECTION; i += 1) client.send({ id: `b${String(i)}`, op: "brief", args: { session: SESSION } });
+    expect(await client.ask({ id: "ninth", op: "hello" })).toEqual({
+      id: "ninth",
+      ok: false,
+      error: { code: "api.too_many_requests", message: "too many requests are in flight on this connection (at most 8); wait for an answer before you send more" },
+    });
+    // Another connection is not counted against this one.
+    const other = await Client.open(r.path);
+    expect(await other.ask({ op: "hello" })).toMatchObject({ ok: true });
+    r.briefGate.open();
+    const answered = [];
+    for (let i = WAITS_PER_CONNECTION; i < REQUESTS_PER_CONNECTION; i += 1) answered.push((await client.next()).id);
+    expect(answered.toSorted()).toEqual(["b4", "b5", "b6", "b7"]);
+    expect(await client.ask({ id: "after", op: "hello" })).toMatchObject({ id: "after", ok: true });
+  });
+
+  test("an idle connection is closed with no line; one with a request in flight or a partial line stays", async () => {
+    const r = rig({ idleMs: 100, lineMs: 2000 });
+    await r.api.start();
+    const idle = await Client.open(r.path);
+    const busy = await Client.open(r.path);
+    const typing = await Client.open(r.path);
+    busy.send({ id: "b", op: "brief", args: { session: SESSION } });
+    typing.sendRaw('{"id":"t",');
+    await idle.ended;
+    await Bun.sleep(250);
+    expect([busy.socket.destroyed, typing.socket.destroyed]).toEqual([false, false]);
+    expect(r.api.counts().connections).toBe(2);
+    typing.sendRaw('"op":"hello"}\n');
+    expect(await typing.next()).toMatchObject({ id: "t", ok: true });
+    r.briefGate.open();
+    expect(await busy.next()).toMatchObject({ id: "b", ok: true });
+    // Answered and quiet again: the idle clock runs once more.
+    await Promise.all([busy.ended, typing.ended]);
+    expect(r.api.counts().connections).toBe(0);
+  });
+
+  test("a connection that keeps asking is not idle", async () => {
+    const r = rig({ idleMs: 150 });
+    await r.api.start();
+    const client = await Client.open(r.path);
+    for (let i = 0; i < 4; i += 1) {
+      await Bun.sleep(80);
+      expect(await client.ask({ op: "hello" })).toMatchObject({ ok: true });
+    }
+    expect(client.socket.destroyed).toBe(false);
   });
 });
 

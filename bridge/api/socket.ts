@@ -34,7 +34,14 @@
 // time, answers `api.bad_request` and the connection closes (the framing is lost). At most 32
 // connections are open; one more gets one `api.too_many_connections` line and is closed. One answer is
 // at most 1 MiB serialized; a larger one becomes `api.answer_too_large`. At most 4 `events` waits are
-// open per connection and 16 in all; one more answers `api.too_many_waits` at once.
+// open per connection and 16 in all; one more answers `api.too_many_waits` at once. At most 8 requests
+// are in flight on one connection, waits included; one more answers `api.too_many_requests` at once. A
+// connection with no request in flight and no partial line for 5 minutes is closed, with no line, so
+// an idle program does not hold one of the 32 places.
+//
+// THE STATED MEMORY BOUND. An answer is written without waiting for the reader to drain it (no
+// backpressure), so a caller that does not read lets answers pile up in the bridge. The caps bound
+// that: at most 8 answers of at most 1 MiB per connection, times 32 connections, about 256 MiB.
 
 import { once } from "node:events";
 import { chmodSync, lstatSync, mkdirSync, unlinkSync, type Stats } from "node:fs";
@@ -44,7 +51,7 @@ import { dirname, join } from "node:path";
 import { apiError, type ApiErrorDetail, type ErrorCode } from "../error-codes.ts";
 import type { JsonObject } from "../json.ts";
 import { asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
-import { ANSWER_MAX_BYTES, CONNECTIONS_MAX, REQUEST_ID_MAX, REQUEST_LINE_MAX, REQUEST_LINE_MS, WAITS_PER_CONNECTION, WAITS_TOTAL } from "./limits.ts";
+import { ANSWER_MAX_BYTES, CONNECTIONS_MAX, IDLE_MS, REQUEST_ID_MAX, REQUEST_LINE_MAX, REQUEST_LINE_MS, REQUESTS_PER_CONNECTION, WAITS_PER_CONNECTION, WAITS_TOTAL } from "./limits.ts";
 import { admit, offeredOf, type OperationContext, type OperationTable, type OpResult, type Right, type TableRow } from "./operations.ts";
 
 /** The local API socket of one state dir. */
@@ -62,6 +69,8 @@ export interface ApiSocketDeps {
   readonly log?: (line: string) => void;
   /** How long one request line may take. Default {@link REQUEST_LINE_MS}; a test shortens it. */
   readonly lineMs?: number;
+  /** How long an idle connection stays open. Default {@link IDLE_MS}; a test shortens it. */
+  readonly idleMs?: number;
 }
 
 /** How many connections and waits are open. */
@@ -90,6 +99,7 @@ interface Conn {
   readonly pending: Set<Pending>;
   buffer: Buffer;
   timer: ReturnType<typeof setTimeout> | undefined;
+  idle: ReturnType<typeof setTimeout> | undefined;
   waits: number;
   closed: boolean;
 }
@@ -229,10 +239,11 @@ export class ApiSocket {
       endWith(socket, `${JSON.stringify({ ok: false, error: errorBody(code, detail) })}\n`);
       return;
     }
-    const conn: Conn = { socket, live, controller: new AbortController(), pending: new Set(), buffer: Buffer.alloc(0), timer: undefined, waits: 0, closed: false };
+    const conn: Conn = { socket, live, controller: new AbortController(), pending: new Set(), buffer: Buffer.alloc(0), timer: undefined, idle: undefined, waits: 0, closed: false };
     this.connections.add(conn);
     socket.on("close", () => this.forget(conn));
     socket.on("data", (chunk: Buffer) => this.receive(conn, chunk));
+    this.idleCheck(conn);
   }
 
   /** The connection is gone: its waits abort, its answers are dropped. */
@@ -240,6 +251,7 @@ export class ApiSocket {
     if (!this.connections.delete(conn)) return;
     conn.closed = true;
     clearTimeout(conn.timer);
+    clearTimeout(conn.idle);
     for (const pending of conn.pending) pending.answered = true;
     conn.pending.clear();
     conn.controller.abort();
@@ -251,8 +263,22 @@ export class ApiSocket {
     endWith(conn.socket, "");
   }
 
+  /** Arm the idle close when nothing is in flight and no line is partial; else disarm it. */
+  private idleCheck(conn: Conn): void {
+    clearTimeout(conn.idle);
+    conn.idle = undefined;
+    if (conn.closed || conn.pending.size > 0 || conn.buffer.length > 0) return;
+    conn.idle = setTimeout(() => this.drop(conn), this.deps.idleMs ?? IDLE_MS);
+    conn.idle.unref?.();
+  }
+
   private receive(conn: Conn, chunk: Buffer): void {
     if (conn.closed) return;
+    this.receiveLines(conn, chunk);
+    this.idleCheck(conn);
+  }
+
+  private receiveLines(conn: Conn, chunk: Buffer): void {
     conn.buffer = conn.buffer.length === 0 ? chunk : Buffer.concat([conn.buffer, chunk]);
     let ended = false;
     for (let at = conn.buffer.indexOf(NEWLINE); at >= 0 && !conn.closed; at = conn.buffer.indexOf(NEWLINE)) {
@@ -306,6 +332,7 @@ export class ApiSocket {
     if (args === undefined) return this.answer(conn, read, badRequest("args must be a JSON object"));
     const admitted = admit(this.deps.table, op, this.granted);
     if (!admitted.ok) return this.answer(conn, read, { ok: false, code: admitted.code });
+    if (conn.pending.size >= REQUESTS_PER_CONNECTION) return this.answer(conn, read, { ok: false, code: "api.too_many_requests", detail: { max: REQUESTS_PER_CONNECTION } });
     conn.pending.add(read);
     const ctx: OperationContext = {
       signal: conn.controller.signal,
@@ -344,7 +371,7 @@ export class ApiSocket {
 
   /** Answer one request once, capped. A request already answered, or on a closed connection, is dropped. */
   private answer(conn: Conn, pending: Pending, result: OpResult): void {
-    conn.pending.delete(pending);
+    if (conn.pending.delete(pending)) this.idleCheck(conn);
     if (pending.answered || conn.closed) return;
     pending.answered = true;
     const line: JsonObject = {};

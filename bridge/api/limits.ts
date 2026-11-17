@@ -22,3 +22,7 @@ export const ANSWER_MAX_BYTES = 1024 * 1024;
 /** The longest request `id` and the longest cursor a request may carry. */
 export const REQUEST_ID_MAX = 64;
 export const CURSOR_MAX = 64;
+/** The most requests in flight on one connection, waits included; one more answers `api.too_many_requests` at once. */
+export const REQUESTS_PER_CONNECTION = 8;
+/** How long a connection with no request in flight and no partial line stays open. */
+export const IDLE_MS = 5 * 60 * 1000;
