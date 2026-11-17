@@ -419,6 +419,62 @@ apiSocketDescribe("the framing", () => {
     expect(r.logs.filter((line) => line.startsWith("[api] read failed:"))).toHaveLength(1);
   });
 
+  describe("the log line of a read", () => {
+    const SCREEN_TEXT = "please deploy the vault";
+    const readLines = (r: Rig): string[] => r.logs.filter((line) => line.startsWith("[api] read client="));
+
+    test("a read that succeeds logs one line: the client, the session id and ok, and none of the screen", async () => {
+      const r = rig({ read: async () => ({ ok: true, answer: { session: SESSION, text: SCREEN_TEXT, lines: 10, truncated: false } }) });
+      await r.api.start();
+      const client = await Client.open(r.path);
+      await client.ask({ op: "hello", args: { client: "trick:cpu-load" } });
+      expect(await client.ask({ op: "read", args: { session: SESSION } })).toMatchObject({ ok: true });
+      expect(readLines(r)).toEqual([`[api] read client=trick:cpu-load session=${SESSION} result=ok`]);
+      expect(r.logs.join("\n")).not.toContain(SCREEN_TEXT);
+    });
+
+    test("a caller that never named itself is unnamed", async () => {
+      const r = rig({ read: async () => ({ ok: true, answer: { session: SESSION, text: SCREEN_TEXT, lines: 10, truncated: false } }) });
+      await r.api.start();
+      const client = await Client.open(r.path);
+      await client.ask({ op: "read", args: { session: SESSION, lines: 5 } });
+      expect(readLines(r)).toEqual([`[api] read client=unnamed session=${SESSION} result=ok`]);
+    });
+
+    test("a refused read logs the error code", async () => {
+      const r = rig({ read: async () => ({ ok: false, code: "api.session_unknown" }) });
+      await r.api.start();
+      const client = await Client.open(r.path);
+      await client.ask({ op: "read", args: { session: SESSION } });
+      expect(readLines(r)).toEqual([`[api] read client=unnamed session=${SESSION} result=api.session_unknown`]);
+    });
+
+    test("a read the table refuses for its arguments logs bad_request, and a session that is no id's shape is `invalid`", async () => {
+      const r = rig();
+      await r.api.start();
+      const client = await Client.open(r.path);
+      await client.ask({ op: "read", args: { session: "ses_x\n[api] forged line", lines: 0 } });
+      await client.ask({ op: "read", args: { session: 7 } });
+      await client.ask({ op: "read", args: "text" });
+      expect(readLines(r)).toEqual([
+        "[api] read client=unnamed session=invalid result=api.bad_request",
+        "[api] read client=unnamed session=invalid result=api.bad_request",
+        "[api] read client=unnamed session=invalid result=api.bad_request",
+      ]);
+      expect(r.logs.some((line) => line.startsWith("[api] forged"))).toBe(false);
+    });
+
+    test("only a read logs: the other operations leave no such line", async () => {
+      const r = rig();
+      await r.api.start();
+      const client = await Client.open(r.path);
+      await client.ask({ op: "sessions" });
+      await client.ask({ op: "accounts" });
+      await client.ask({ op: "hello" });
+      expect(readLines(r)).toEqual([]);
+    });
+  });
+
   test("hello's client of a bad shape is a bad request and is not logged", async () => {
     const r = rig();
     await r.api.start();

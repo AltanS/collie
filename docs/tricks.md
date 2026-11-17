@@ -339,7 +339,7 @@ fence it in. So Collie does what it can do well: it checks everything the trick 
 every yes for you, and it tells you plainly what it found in the code.
 
 - **Collie checks** the manifest and every part against the closed list, holds each run to 10 seconds
-  and 64 KiB, runs only the code you said yes to, and searches the code for five risky things.
+  and 64 KiB, runs only the code you said yes to, and searches the code for six risky things.
 - **Your tap decides** Add, and the switch: a trick is off until you switch it on. It also decides
   each new version, each Decision and each view.
 - **Your job** is to read the code, or to ask a session to read it for you.
@@ -502,10 +502,11 @@ sessions, so it needs no new yes. Collie's own text also calls a power a right.
 A trick lists any more by name, and the About sheet shows each name. Collie never passes a `COLLIE_`
 or `HERDR_` variable, or any name that ends in `_SOCK` or `_SOCKET`, even when a trick lists it.
 
-**The warnings.** Before you switch a trick on, Collie searches its code for five things: starting
-another program, reaching the network, writing a file outside the trick's own state folder, calling an
-agent or a model on a timer, and importing a package Collie does not install. The search is not a
-proof. A program can do any of this in a way no pattern sees.
+**The warnings.** Before you switch a trick on, Collie searches its code for six things: calling an
+agent or a model on a timer, using Collie's local API socket without its helper, reaching the
+network, starting another program, writing a file outside the trick's own state folder, and
+importing a package Collie does not install. The search is not a proof. A program can do any of this
+in a way no pattern sees.
 
 **After a failed run** Collie waits 1 minute, then 5, then 30, and then stops the trick. A new
 version, a change to `config.toml`, switching it on again, or a tap starts it again.
@@ -553,7 +554,7 @@ collie trick on disk-space
 pane it makes the folder in the agent's own work folder instead, as a draft, and nothing is added to this
 machine's tricks before your yes. `dev` runs
 it once and prints what the phone would draw, and sends nothing to the phone. `check` searches the
-code for the five risky things. And `on` refuses in a pane where an agent works, so the yes stays
+code for the six risky things. And `on` refuses in a pane where an agent works, so the yes stays
 yours.
 
 Or ask one of your agents for the trick you want. It reads `collie trick guide`, writes the folder,
@@ -565,8 +566,8 @@ collie trick propose ~/work/disk-space
 
 A card appears with the whole code on it: on your Hill, or in Settings → Tricks under **Waiting for
 your yes** while the Hill is off. Collie never recommends "Switch it on": your
-own reading is the check. Nothing of the trick runs before your yes, and an agent cannot switch a
-trick on itself.
+own reading is the check. Nothing of the trick runs before your yes. Collie offers an agent no way to
+switch a trick on. A program that runs as you can still do it.
 
 An agent can propose a program trick. It cannot propose a trick that carries a view or rules: an
 agent must not write instructions for your other agents and get them in with one tap. You add such a

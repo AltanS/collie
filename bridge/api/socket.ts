@@ -12,6 +12,9 @@
 // Every caller is the same user, so the socket cannot tell two callers apart; a connection is the unit
 // its caps count by. A connection may name itself in `hello` (`client`, such as `trick:<id>`): the name
 // goes into the bridge's log lines for that connection and is trusted for nothing (spec 04, decision 5).
+// Every `read` call leaves one log line: `[api] read client=<name or unnamed> session=<id> result=<ok or
+// the error code>`. It holds no screen text, label or path; the session id is logged only in its own
+// `ses_` alphabet (anything else is `invalid`), so a caller cannot put a line break into the log.
 //
 // WHEN IT EXISTS (decision 14). While tricks are switched on, on a bridge where tricks run:
 // bridge/index.ts calls `start` and `stop` as its one function `localApiWanted` says, and a
@@ -122,6 +125,8 @@ interface Live {
 interface Pending {
   readonly id: string | undefined;
   answered: boolean;
+  /** Set for a `read` call: the session the caller asked for, as it may be logged. It is logged once, with the answer. */
+  readSession?: string;
 }
 
 /** One open connection. */
@@ -153,6 +158,15 @@ const NEWLINE = 0x0a;
 const NOTHING = Buffer.alloc(0);
 /** The operation that reads a screen: the one the socket-wide cap counts. */
 const SCREEN_READ_OP = "read";
+
+/** A session id as `ses_` and base64url characters, the only shape a log line may carry. */
+const LOGGABLE_SESSION = /^ses_[A-Za-z0-9_-]{1,508}$/u;
+
+/** The session a `read` asked for, for the log: the id when it has an id's alphabet, else `invalid`. */
+function sessionForLog(args: JsonObject | undefined): string {
+  const session = asJsonString(args?.session);
+  return session !== undefined && LOGGABLE_SESSION.test(session) ? session : "invalid";
+}
 
 /** The error answer line's body. The message is the catalogue's sentence. */
 function errorBody(code: ErrorCode, detail: ApiErrorDetail | undefined): JsonObject {
@@ -434,6 +448,7 @@ export class ApiSocket {
     const op = asJsonString(body.op);
     if (op === undefined || op === "") return this.answer(conn, read, badRequest("op must be the name of an operation"));
     const args = body.args === undefined ? {} : asJsonObject(body.args);
+    if (op === SCREEN_READ_OP) read.readSession = sessionForLog(args);
     if (args === undefined) return this.answer(conn, read, badRequest("args must be a JSON object"));
     const admitted = admit(this.deps.table, op, this.granted);
     if (!admitted.ok) return this.answer(conn, read, { ok: false, code: admitted.code });
@@ -477,6 +492,14 @@ export class ApiSocket {
     this.log(`[api] a connection names itself ${client}`);
   }
 
+  /** The one log line of a `read` call, written with its first answer: client, session id and outcome, never the screen. */
+  private logRead(conn: Conn, pending: Pending, result: OpResult): void {
+    const session = pending.readSession;
+    if (session === undefined) return;
+    pending.readSession = undefined;
+    this.log(`[api] read client=${conn.client ?? "unnamed"} session=${session} result=${result.ok ? "ok" : result.code}`);
+  }
+
   /** One wait slot, or null at the cap. The release gives it back once. */
   private claimWait(conn: Conn): (() => void) | null {
     if (conn.waits >= WAITS_PER_CONNECTION || this.waitsOpen >= WAITS_TOTAL) return null;
@@ -494,6 +517,7 @@ export class ApiSocket {
   /** Answer one request once, capped. A request already answered, or on a closed connection, is dropped. */
   private answer(conn: Conn, pending: Pending, result: OpResult): void {
     if (conn.pending.delete(pending)) this.idleCheck(conn);
+    this.logRead(conn, pending, result);
     if (pending.answered || conn.closed) return;
     pending.answered = true;
     const line: JsonObject = {};

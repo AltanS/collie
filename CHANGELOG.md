@@ -83,6 +83,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Change login lists the sessions it reaches.** Under the count, each session that runs in the profile shows its name and its space, and a tap opens it. For an agent whose sessions follow, a line adds that sessions outside Collie that use the profile follow too. With no session running, no list and no line show.
 - **The Profiles list shows how many sessions run.** A profile row says "1 session" or "3 sessions" where it said "In use now". A profile where only a sign-in session runs keeps "In use now".
 - **Two profiles with the same login say so.** When two profiles of one agent are signed in with the same email, in any letter case, each shows "Same login as" and the other's name, on the Profiles list and on its own page.
+- **The bridge logs each screen read on the local API.** One line per `read` call names the caller's own `client` from `hello` (or `unnamed`), the session id it asked for and `ok` or the error code, as `[api] read client=trick:cpu-load session=ses_... result=ok`. The line holds no screen text, pane name or path, and journald stamps the time.
 
 ### Fixed
 

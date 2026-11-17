@@ -317,7 +317,8 @@ of the agent's may say Collie's own words, such as "From Collie" or "Tap again t
 
 ## Propose a trick to the person
 
-An agent that wrote a program trick hands it to the person. It never switches it on itself.
+An agent that wrote a program trick hands it to the person. Collie offers an agent no way to switch
+a trick on. A program that runs as you can still do it, so an agent hands the trick over and stops.
 
 ```sh
 collie trick propose ~/work/idle-watch
