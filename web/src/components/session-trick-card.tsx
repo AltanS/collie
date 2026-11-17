@@ -38,6 +38,11 @@ import { cn } from "@/lib/utils";
 // without code stand with the facts, and its cards of code stand one under the other in the fold, each
 // under its "Card N" label, because the facts table and the seam lines name cards by number.
 //
+// ── ITS OWN SURFACE (the operator, 2026-11-17: "a different color background so it clearly stands out") ──
+// The panel wears the warm tint the card's own amber chips come from (`--status-working`, at the strength
+// chat-cards.tsx and prompt-pin.tsx already use for a tinted well), with a uniform border on all four sides,
+// so it stands apart from the chat's bubbles and tool cards in every theme.
+//
 // ── THE GUARDS (ADR 0156, the operator's decision of 2026-11-17) ─────────────────────────────────────
 //   * The yes is a HOLD of three seconds (components/hold-to-approve.tsx): the finger stays down while a
 //     fill grows across the button, and the yes goes out once at the end. A lift, a scroll, the page
@@ -216,7 +221,7 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
 
   return (
     <div data-slot="chat-approval" data-id={decision.id} data-ready={ready ? "" : undefined}>
-      <PromptPanel ariaLabel={t("hill.card.aria", { title: decision.title })}>
+      <PromptPanel ariaLabel={t("hill.card.aria", { title: decision.title })} className="border-status-working/25 bg-status-working/8">
         <div className="flex flex-col gap-3 px-1.5 pt-1 pb-0.5">
           <OptionGroupCaption>{decision.from.label}</OptionGroupCaption>
           <div className="flex flex-col gap-1">

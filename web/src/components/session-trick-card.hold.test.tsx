@@ -118,3 +118,11 @@ describe.each(["chat", "agent-view"] as const)("the card's yes, in the %s's scro
     expect(no()).toBeEnabled();
   });
 });
+
+it("the card stands on its own surface: the warm tint of its amber chips and a uniform border, no left accent", () => {
+  const { box } = draw("chat");
+  const panel = box.querySelector<HTMLElement>('[data-slot="chat-approval"] [role="group"]')!;
+  expect(panel.className).toContain("bg-status-working/8");
+  expect(panel.className).toContain("border-status-working/25");
+  expect(panel.className).not.toMatch(/\bbg-card\b|\bborder-border\b|border-l-/u);
+});
