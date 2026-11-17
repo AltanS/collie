@@ -148,11 +148,12 @@ describe("AgentChat: the queued card's Send again (M102 spec 04)", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(posted).toEqual(["other words"]));
     releaseDiscard();
-    // The composer cannot start the card's send now: it says why, and the card's text waits in the box.
+    // The composer cannot start the card's send now: it says why, and the card's text waits in the box. The running
+    // send let go of the box at its tap (M104), so the card's text lands in an empty box, alone, merged with nothing.
     expect(await screen.findByText("Another send from this phone is still running. Wait for it to end.")).toBeInTheDocument();
-    await waitFor(() => expect(box).toHaveValue(`other words\n${LOST_TEXT}`));
+    await waitFor(() => expect(box).toHaveValue(LOST_TEXT));
     expect(posted).toEqual(["other words"]);
-    // The running send lands: its words leave the box, the card's text stays.
+    // The running send lands: the card's text stays in the box.
     releaseSend();
     await waitFor(() => expect(box).toHaveValue(LOST_TEXT));
     expect(posted).toEqual(["other words"]);
