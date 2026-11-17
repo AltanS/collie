@@ -471,8 +471,9 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
  * (`sendReceipts.outcome.steered`), as its other outcomes do.
  */
 export type NoteKey =
-  | `composer.protocol.${Exclude<SendNote, "steered" | "steerUnsupported" | "steerNotAllowed" | "unconfirmed" | "noticeKey">}`
+  | `composer.protocol.${Exclude<SendNote, "steered" | "steerUnsupported" | "steerNotAllowed" | "unconfirmed" | "noticeKey" | "capConfirm">}`
   | "composer.protocol.unconfirmedPast"
+  | "composer.protocol.capConfirmPast"
   | "composer.protocol.noticeKeyPast"
   | "composer.steer.unsupported"
   | "composer.steer.notAllowed"
@@ -492,6 +493,9 @@ export function noteKey(note: SendNote): NoteKey {
       return "composer.protocol.unconfirmedPast";
     case "noticeKey":
       return "composer.protocol.noticeKeyPast";
+    // The cap's sentence names its confirm as it reads, Confirm and send anyway (the M102 review 3).
+    case "capConfirm":
+      return "composer.protocol.capConfirmPast";
     default:
       return `composer.protocol.${note}`;
   }
@@ -535,7 +539,7 @@ export function receiptSentence(
   if (row.queued === true) return say("sendReceipts.queued");
   if (row.reason === undefined) return null;
   if (row.outcome === "refused" && row.reason === "unconfirmed" && row.cap !== undefined) {
-    return capSentence(row.cap, (vars) => say("composer.protocol.capConfirm", vars));
+    return capSentence(row.cap, (vars) => say("composer.protocol.capConfirmPast", vars));
   }
   // A steered row wears its one word, like Sent; the sentence is the status line's under the box.
   if (row.outcome === "steered") return null;

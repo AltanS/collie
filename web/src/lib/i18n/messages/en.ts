@@ -711,7 +711,7 @@ export const en = {
   "composer.protocol.noSecretField": "The sign-in field is not on the screen any more. Nothing was typed. Look at the screen.",
   "composer.protocol.menuOpen": "A menu or a question is on the screen, so nothing was typed. Answer it with the Keys pad.",
   "composer.protocol.overrideTypedDraft": "Your text is in the agent's box, after words that were already there. Collie pressed no Enter. Check the box, then press Enter on the Keys pad.",
-  "composer.protocol.overrideMoved": "The screen changed before your text went in, so nothing was typed. Look at the screen now, then tap Send to type it anyway.",
+  "composer.protocol.overrideMoved": "The screen changed before your text went in, so nothing was typed. Look at the screen now, then tap Send to send past this screen again.",
   "composer.protocol.overrideTyped": "Your text is in the agent's box. Collie pressed no Enter. Check the screen, then press Enter on the Keys pad.",
   "composer.protocol.draftUnseen": "The input box holds a draft that Collie cannot read whole, so nothing was typed. Empty the box deletes that draft. Then send again.",
   "composer.step.sendAgain": "Send again",
@@ -747,6 +747,11 @@ export const en = {
   // The cap (M56 spec 09): after N manual sends on one harness version in a day, one more confirm.
   "composer.protocol.capConfirm": "Collie could not read this screen on {harness} {version} {count} times today. Check the screen, then tap Confirm and type.",
   "composer.protocol.commitCap": "Confirm and type",
+  // The cap's confirm leads to the same send past the screen as Send anyway, which may press Enter or not:
+  // the words say what the tap asks for, never whether Enter goes (the M102 review 3). Replace commitCap
+  // and capConfirm, whose "type" read as no Enter.
+  "composer.protocol.commitCapPast": "Confirm and send anyway",
+  "composer.protocol.capConfirmPast": "Collie could not read this screen on {harness} {version} {count} times today. Check the screen, then tap Confirm and send anyway.",
   // The last ten sends for a pane, from the receipts (M56 spec 09). No text, no screen rows.
   "sendReceipts.title": "Recent sends",
   "sendReceipts.empty": "No sends to this pane yet.",
@@ -4101,6 +4106,8 @@ export const PENDING_TRANSLATION = [
   "answerExit.closeAria",
   "chat.status.askMoved",
   "app.apiSkew",
+  "composer.protocol.commitCapPast",
+  "composer.protocol.capConfirmPast",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
