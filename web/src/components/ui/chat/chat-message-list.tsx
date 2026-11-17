@@ -32,10 +32,11 @@ const CARD_AIR = 12;
  * above the tag in z-order (agent-chat.tsx), so a card covers the tag's corner instead of stacking on it:
  * what is on screen is one covered strip as tall as the taller of the two. The cards get {@link CARD_AIR}
  * on top of their height, the tag's room already has its own air (`MODEL_TAG_ROOM`). With neither,
- * 0: the list ends as it always did.
+ * 0: the list ends as it always did. A caller's `holdRoom` is a third part of the same room: the place a row that just
+ * left the tail held, kept so the tail does not drop (M104, components/session-stream.tsx).
  */
-export function bottomRoom(tagRoom: number, clearBottom: number): number {
-  return Math.max(tagRoom, cardsRoom(clearBottom));
+export function bottomRoom(tagRoom: number, clearBottom: number, holdRoom = 0): number {
+  return Math.max(tagRoom, cardsRoom(clearBottom), holdRoom);
 }
 
 /** What the floating cards alone take from the tail, air included; 0 with no card. */
@@ -93,6 +94,12 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
    * above the cards, and "jump to latest" sits over them. A caller that passes it keeps that padding class.
    */
   clearBottom?: number;
+  /**
+   * Room in px the caller holds below the last line for a moment (M104): a row at the tail went, and the room it
+   * took stays until the next row or the reader's own scroll, so the tail does not drop. It is a third part of the
+   * one tail room ({@link bottomRoom}), never a spacer of its own. 0, the default, holds nothing.
+   */
+  holdRoom?: number;
 }
 
 // Scrollable conversation container that auto-follows new messages and shows a "jump to latest"
@@ -100,11 +107,11 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
 // after an action, and reports at-bottom changes so the parent can freeze content while you read.
 const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListProps>(
   function ChatMessageList(
-    { className, children, dep, onAtBottomChange, hasNew, clearBand, overlay, overlayClassName, overlayStyle, clearBottom = 0, style, ...props },
+    { className, children, dep, onAtBottomChange, hasNew, clearBand, overlay, overlayClassName, overlayStyle, clearBottom = 0, holdRoom = 0, style, ...props },
     ref,
   ) {
     useLocale();
-    const room = bottomRoom(React.useContext(TailRoomContext), clearBottom);
+    const room = bottomRoom(React.useContext(TailRoomContext), clearBottom, holdRoom);
     const { scrollRef, isAtBottom, scrollToBottom, scrollToChild, onScroll } =
       useAutoScroll<HTMLDivElement>({
         dep,

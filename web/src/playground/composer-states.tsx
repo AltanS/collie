@@ -16,12 +16,16 @@
 //
 // DEV-ONLY, unreachable from the app entry.
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { CannotTellCard } from "@/components/cannot-tell-card";
 import { Composer } from "@/components/composer";
-import { ReceiptQueueCards } from "@/components/session-stream";
+import { ReceiptQueueCards, SessionStream } from "@/components/session-stream";
+import type { ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
+import type { ChatFeed } from "@/hooks/use-chat-window";
+import { EMPTY_CHAT_WINDOW } from "@/lib/chat-window";
+import { addPending, dropPending } from "@/lib/durable-pending";
 import { readingRefusal, RefusalActions, SendRefusalNotice, stepLabel } from "@/components/send-notice";
 import { readSend, type SendReply } from "@/lib/send-protocol";
 import { SecretField } from "@/components/secret-field";
@@ -699,6 +703,40 @@ function UnconfirmedQueuedPhone() {
   );
 }
 
+/** The thread of a terminal pane a moment after Send (M104): an earlier turn, then the person's line as it stands from the tap. Invented text. */
+const CALM_ADDRESS = "pg-calm:p1";
+const CALM_FEED: ChatFeed = {
+  window: {
+    ...EMPTY_CHAT_WINDOW,
+    status: { kind: "live" },
+    entries: [
+      { uuid: "pg-calm-u1", seq: 1, ts: new Date().toISOString(), role: "user", parts: [{ kind: "text", text: "Which of the sample tests is slowest?" }] },
+      { uuid: "pg-calm-a1", seq: 2, ts: new Date().toISOString(), role: "assistant", parts: [{ kind: "text", text: "The parser test, at about four seconds. The others finish under one." }] },
+    ],
+  },
+  loadOlder: () => undefined,
+  loadingOlder: false,
+  asked: 1,
+  answered: 1,
+  tried: true,
+};
+
+/** The real thread with the person's line in it, put there the way the composer puts it at the tap (lib/durable-pending.ts). */
+function CalmSendPhone() {
+  const listRef = useRef<ChatMessageListHandle>(null);
+  useEffect(() => {
+    addPending(CALM_ADDRESS, { requestId: "pg-calm-1", text: "Make the parser test faster, then run it again.", at: Date.now(), state: "sending", seen: new Set(["pg-calm-u1", "pg-calm-a1"]) });
+    return () => dropPending(CALM_ADDRESS, ["pg-calm-1"]);
+  }, []);
+  return (
+    <PhoneMock>
+      <div className="h-72">
+        <SessionStream feed={CALM_FEED} address={CALM_ADDRESS} working={false} showToolCalls showCompactions={false} fontSize={14} listRef={listRef} agent="claude" />
+      </div>
+    </PhoneMock>
+  );
+}
+
 /** The field itself with a code in it, shown or masked: the real component, started where a paste leaves it. */
 function SignInTyped({ shown }: { shown: boolean }) {
   return (
@@ -991,6 +1029,11 @@ export function wayOutGroups(): ReactNode[] {
       </SignInCase>
       <SignInCase n={46} state="cannot-tell-queued" title="Queued card, not confirmed" reach="A queued message Collie cannot place. Discard drops the card and sends nothing; Send again, on its right, drops the card and then sends the text as a new message.">
         <UnconfirmedQueuedPhone />
+      </SignInCase>
+    </Group>,
+    <Group key="calm-send" title="A calm send">
+      <SignInCase n={52} state="calm-send-pending-terminal" title="Your line at the tap, on a terminal pane" reach="Send a line from Chat on a pane with a screen. It stands in the thread at once, in the user well at a lower weight with a small clock, the same line a durable pane draws; the agent's own copy takes its place at the same height. Under it, unseen, the room Still working will take.">
+        <CalmSendPhone />
       </SignInCase>
     </Group>,
   ];
