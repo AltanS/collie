@@ -1086,9 +1086,16 @@ export function AgentChat({
   const cardDockRef = useRef<HTMLDivElement>(null);
   // This chat's own root: the way to a program's question card looks inside it and nowhere else.
   const chatRootRef = useRef<HTMLDivElement>(null);
-  const answerDialog = useCallback(() => {
+  /** Why the docked card's buttons are off, in the composer placeholder's own words; undefined when they are on. */
+  function cardOffWords(): string | undefined {
+    if (gone) return t("composer.placeholder.gone");
+    if (readOnly) return t("composer.placeholder.readOnly");
+    return undefined;
+  }
+  const answerDialog = useCallback((): boolean => {
     // A program's question card sits in the thread, not in the dock: the first open one in THIS chat takes the focus.
-    focusQuestionCard(cardDockRef.current, chatRootRef.current);
+    // The answer says whether one did, so a tap that found no card is told so (M102 spec 11).
+    return focusQuestionCard(cardDockRef.current, chatRootRef.current);
   }, []);
 
   // Both are threaded to the composer: the RAW value (live) plus a stabilised one. extractInputDraft
@@ -3274,6 +3281,8 @@ export function AgentChat({
                 actsDisabledByCache ? undefined : (cancel) => void signalTrouble({ kind: "dialog", paneId, scope, agent: cancel.agent, screen: unreadDialogScreen(cancel) })
               }
               promptDisabled={readOnly || gone}
+              // Why the card's buttons are off, as a line on the card (M102 spec 11): the placeholder's words.
+              promptDisabledReason={cardOffWords()}
               paneId={paneId}
               scope={scope}
               stale={actsDisabledByCache}

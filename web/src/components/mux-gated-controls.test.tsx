@@ -355,15 +355,16 @@ describe("The Keys tray — sendKeys and unsupportedKeys", () => {
   it("greys exactly the buttons whose chord this multiplexer refuses", async () => {
     declares({ sendKeys: true }, {}, ["Enter"]);
     render(<NavTray onSend={vi.fn(async () => true)} unsupportedKeys={["Enter"]} />);
-    expect(screen.getByRole("button", { name: "Enter" })).toBeDisabled();
+    // Greyed in place with `aria-disabled`, the tap kept: it says why (M102 spec 11).
+    expect(screen.getByRole("button", { name: "Enter" })).toHaveAttribute("aria-disabled", "true");
     // …and nothing else: the door is open, one key is simply not behind it.
-    expect(screen.getByRole("button", { name: "Tab" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Esc" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Tab" })).not.toHaveAttribute("aria-disabled");
+    expect(screen.getByRole("button", { name: "Esc" })).not.toHaveAttribute("aria-disabled");
   });
 
   it("greys a chord whose BASE key is refused, modifier and all", () => {
     render(<NavTray onSend={vi.fn(async () => true)} unsupportedKeys={["c"]} />);
-    expect(screen.getByRole("button", { name: "Ctrl+C" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ctrl+C" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("leaves every key live when the multiplexer refuses none", () => {

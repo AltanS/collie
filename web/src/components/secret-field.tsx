@@ -7,7 +7,9 @@
 // THE TEXT IS ITS OWN. The frame holds what is typed in its own state, never in the composer's draft,
 // so the person's normal draft stays apart and is there again after Close or a send. Nothing here
 // writes a store: no draft, no request-id intent, no hold (the Send Protocol's secret path, M101 and
-// M102 spec 05). A send empties the frame: the text goes once and is not kept.
+// M102 spec 05). The frame empties after a send that went, and only then: when the send did not go the
+// text stays in the frame's own state (memory of the field only, never stored), so the person can send it
+// again or replace it (M102 spec 11).
 //
 // SHOWN BY DEFAULT. A one-time code is pasted and checked, so it is shown; Show or Hide masks it. Paste
 // takes the slot Show takes once text is typed, so nothing moves. A pasted code is trimmed (a copy from a
@@ -24,6 +26,7 @@ import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react
 
 import { Icon } from "@/components/icons/icon";
 import { Button } from "@/components/ui/button";
+import { Collapse } from "@/components/ui/collapse";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
 import { useLocale } from "@/hooks/use-locale";
@@ -37,6 +40,11 @@ export interface SecretFieldProps {
   onClose: () => void;
   /** A send runs, or the pane cannot be written: the field and its buttons wait. */
   disabled: boolean;
+  /** A send runs: Send shows a busy state, so the wait has a mark of its own. */
+  sending?: boolean;
+  /** Why the field is disabled when it is not a running send (the lock, a launch): said in a line under the
+   *  frame, since the frame's own placeholder is fixed. Null or absent: no line. */
+  reason?: string | null;
   /** Where a send starts from, for the design reference only: the text and whether it is shown. */
   start?: { readonly value: string; readonly shown: boolean };
 }
@@ -49,7 +57,7 @@ export function cleanPaste(text: string): string {
 /** One icon control in the field's row: drawn 36px, reaching 44px. */
 const ICON_BUTTON = cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full");
 
-export function SecretField({ onSend, onClose, disabled, start }: SecretFieldProps) {
+export function SecretField({ onSend, onClose, disabled, sending = false, reason = null, start }: SecretFieldProps) {
   useLocale();
   const [value, setValue] = useState(start?.value ?? "");
   const [shown, setShown] = useState(start?.shown ?? true);
@@ -59,9 +67,9 @@ export function SecretField({ onSend, onClose, disabled, start }: SecretFieldPro
   async function send(): Promise<void> {
     const text = value.trim();
     if (text === "" || disabled) return;
-    // The text goes once and is not kept, whatever the answer: a new try is a new paste.
-    setValue("");
-    await onSend(text);
+    // The text leaves the frame only when the send went. A send that did not go keeps it, so the person
+    // can send it again or replace it. It is state of this frame alone and is never written anywhere.
+    if (await onSend(text)) setValue("");
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -100,6 +108,7 @@ export function SecretField({ onSend, onClose, disabled, start }: SecretFieldPro
   }
 
   return (
+    <>
     <div role="group" aria-label={label} data-slot="secret-field" className="relative mt-6 rounded-xl border-2 border-primary bg-card p-1.5 pt-9">
       {/* The edge row is 40px tall and hangs 20px over the top edge, so the label and the cross stand
           on the frame's own fill and the edge reads as cut behind them. */}
@@ -159,10 +168,19 @@ export function SecretField({ onSend, onClose, disabled, start }: SecretFieldPro
             <Icon name={shown ? "masked" : "show-ignored"} className="size-4" />
           </Button>
         )}
-        <Button type="button" size="icon" data-slot="secret-send" aria-label={t("composer.secret.send")} disabled={disabled || value.trim() === ""} className={ICON_BUTTON} onClick={() => void send()}>
-          <Icon name="send-ready" className="size-4" />
+        <Button type="button" size="icon" data-slot="secret-send" aria-label={t("composer.secret.send")} aria-busy={sending} disabled={disabled || value.trim() === ""} className={ICON_BUTTON} onClick={() => void send()}>
+          {sending ? <Icon name="busy" className="size-4 animate-spin" /> : <Icon name="send-ready" className="size-4" />}
         </Button>
       </div>
     </div>
+    {/* Why the frame waits, when it is the lock or a launch and not a running send (M102 spec 11). */}
+    <Collapse open={reason !== null}>
+      {reason !== null && (
+        <p data-slot="secret-reason" role="status" className="px-1 pt-1 text-xs leading-snug text-muted-foreground">
+          {reason}
+        </p>
+      )}
+    </Collapse>
+    </>
   );
 }

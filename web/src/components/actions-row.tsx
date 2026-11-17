@@ -402,6 +402,9 @@ export interface GeneralAction {
   /** Set for a control that toggles a mode — it becomes `aria-pressed`. */
   pressed?: boolean;
   disabled?: boolean;
+  /** Dimmed with `aria-disabled`, the tap kept (M102 spec 11): the handler says why it cannot act. A native
+   *  `disabled` takes the tap and says nothing. */
+  inert?: boolean;
   onSelect: () => void;
 }
 
@@ -530,6 +533,8 @@ export interface ActionsRowProps {
      *  Not `disabled`: a disabled button takes no `mousedown`, so a tap on it would blur the field
      *  and drop the keyboard. */
     inert?: boolean;
+    /** The words for a tap on the inert X (M102 spec 11): it says why it did nothing. */
+    onInert?: () => void;
   };
   /**
    * THE AGENTS MARK (Altan, from the lane, 2026-10-19: "it should be subtle and show up next to files
@@ -775,11 +780,12 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     variant="ghost"
                     size="sm"
                     disabled={action.disabled}
+                    aria-disabled={action.inert === true ? true : undefined}
                     aria-label={action.label}
                     aria-expanded={action.expanded}
                     aria-pressed={action.pressed}
                     onClick={action.onSelect}
-                    className={cn(`${STRIP_ROW_PILL} gap-1.5`, action.on === true ? ON : OFF, left && "[direction:ltr]")}
+                    className={cn(`${STRIP_ROW_PILL} gap-1.5`, action.on === true ? ON : OFF, action.inert === true && "opacity-50", left && "[direction:ltr]")}
                   >
                     <Icon name={action.icon} className={BELT_ICON} />
                     {action.word ?? action.label}
@@ -935,7 +941,8 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                     aria-disabled={clear.inert === true ? true : undefined}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
-                      if (clear.inert !== true) clear.onClick();
+                      if (clear.inert === true) clear.onInert?.();
+                      else clear.onClick();
                     }}
                     className={cn(
                       `${STRIP_ROW_PILL} ${PINNED_PILL}`,

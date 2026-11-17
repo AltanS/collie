@@ -45,6 +45,8 @@ export interface SendRefusal {
   readonly waits?: boolean;
   /** The Surface revision the answer read; a waiting Send again turns on at a later one. */
   readonly atRevision?: number;
+  /** A Stop's receipt, not a refused send (M102 spec 11): it stands under the password notice and in Type mode. */
+  readonly isReceipt?: boolean;
 }
 
 /** The words of each step that draws its own button (M102 spec 02). */

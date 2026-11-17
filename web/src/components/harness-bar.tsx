@@ -17,6 +17,7 @@ import { useHarnessBarEnabled } from "@/lib/harness-bar-pref";
 import { useMuxDeclared } from "@/lib/mux-capability";
 import { canonicalAgent } from "@/lib/operator-scope";
 import type { Scope } from "@/lib/scope";
+import { setStatus } from "@/lib/status";
 import { PANE_ACTION_ICONS, type OperatorCommand, type PaneAction, type PaneActionIcon } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -476,8 +477,13 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
   }, [paneId, disarm]);
 
   async function tap() {
-    // An idle turn has nothing to stop: no arm, no request. The bridge would only answer `turn_idle`.
-    if (disabled === true || !running || flying.current) return;
+    if (disabled === true || flying.current) return;
+    // An idle turn has nothing to stop: no arm, no request. The bridge would only answer `turn_idle`. The
+    // tap says so (M102 spec 11), and names the Esc key on the Keys pad for a turn Collie does not see.
+    if (!running) {
+      setStatus(translate("belt.stop.notRunning"), "info");
+      return;
+    }
     // The first tap arms; a tap inside the dwell is the same touch landing twice (lib/arm.ts).
     if (arm("stop") !== "fire") return;
     flying.current = true;

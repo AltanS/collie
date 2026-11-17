@@ -293,9 +293,8 @@ export function sttTimeoutFor(bytes: number, type: string = ""): number {
 /**
  * Compose the caller's abort signal (a loader's `request.signal`, used to supersede a stale poll)
  * with a fresh timeout signal, so a fetch aborts on EITHER cause. Returns the timeout signal alone
- * when there's no caller signal. Runtime-guarded: on an older WebView missing `AbortSignal.timeout`
- * or `AbortSignal.any` we return the caller's signal unchanged rather than crash — degrading to the
- * old no-timeout behaviour instead of taking the app down.
+ * when there's no caller signal. On an older WebView missing `AbortSignal.timeout` or `AbortSignal.any`
+ * the helpers in `lib/env.ts` build both by hand, so the time limit holds there too (M102 spec 11).
  *
  * Exported for unit tests (the timeout wiring is otherwise unobservable).
  */

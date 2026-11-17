@@ -842,6 +842,15 @@ export function wayOutGroups(): ReactNode[] {
       <SignInCase n={35} state="secret-framed-field-masked" title="Code hidden" reach="Tap Hide: the code is masked. Tap Show to see it again.">
         <SignInTyped shown={false} />
       </SignInCase>
+      <SignInCase n={41} state="secret-framed-field-waits" title="Sign-in field waits" reach="The sign-in field on a pane this device may only read. The frame stays, and the line under it says why it waits.">
+        <PhoneMock>
+          <ChromeBlock>
+            <div className="px-3 pb-3">
+              <SecretField onSend={nothing} onClose={stay} disabled reason={t("composer.placeholder.readOnly")} />
+            </div>
+          </ChromeBlock>
+        </PhoneMock>
+      </SignInCase>
     </Group>,
     <Group key="unread-card" title="Unread card">
       <SignInCase n={36} state="unread-card" title="Screen Collie cannot read" reach="A screen Collie has no grammar for. The card shows its rows and the agent's own Esc; the Keys pad opens once under it, and Type it anyway arms one send past the card.">

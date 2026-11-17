@@ -944,15 +944,15 @@ describe("NavTray — operator preset rows", () => {
     expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+c"]);
   });
 
-  it("a key the multiplexer refuses is disabled, as on the fixed pad", () => {
+  it("a key the multiplexer refuses is greyed in its place and sends nothing", () => {
     render(<NavTray onSend={vi.fn()} board={custom} unsupportedKeys={["Home"]} />);
-    expect(screen.getByRole("button", { name: "Home" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("button", { name: "Ctrl+B, then C" })).toBeEnabled();
   });
 
   it("a refused key anywhere in a sequence greys the whole key", () => {
     render(<NavTray onSend={vi.fn()} board={boardOf(1, [[0, key("ctrl+b", "End")]])} unsupportedKeys={["End"]} />);
-    expect(screen.getByRole("button", { name: "Ctrl+B, then End" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ctrl+B, then End" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("a sticky modifier key still composes onto the next chord key and stages it", async () => {
@@ -1001,7 +1001,7 @@ describe("NavTray — operator preset rows", () => {
     const user = userEvent.setup();
     const onClear = vi.fn(() => Promise.resolve());
     const { rerender } = render(<NavTray onSend={vi.fn()} clearBox={{ available: false, onClear }} />);
-    expect(screen.getByRole("button", { name: "Clear the input box" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Clear the input box" })).toHaveAttribute("aria-disabled", "true");
     rerender(<NavTray onSend={vi.fn()} disabled clearBox={{ available: true, onClear }} />);
     await user.click(screen.getByRole("button", { name: "Clear the input box" }));
     expect(onClear).not.toHaveBeenCalled();

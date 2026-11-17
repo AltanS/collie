@@ -1,5 +1,6 @@
 import { useImperativeHandle, useLayoutEffect, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
 
+import { Collapse } from "@/components/ui/collapse";
 import { hasResizeObserver } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import type {
@@ -96,6 +97,9 @@ export interface CardDockProps {
   onUnreadDialogShown?: (cancel: UnreadDialogModel) => void;
   /** Disable every card's controls (read-only device, gone pane). */
   promptDisabled?: boolean;
+  /** Why the controls are off, drawn as one line under a dialog card (M102 spec 11): a button with no
+   *  words beside it is a dead tap. The composer placeholder's own sentence. Absent, no line. */
+  promptDisabledReason?: string;
   /** The pane the card answers for, and its scope. The prompt card enables only while the bridge has
    *  answered a read for it lately (lib/liveness.ts, M46 spec 11). */
   paneId?: string;
@@ -173,7 +177,8 @@ export function fitSize(dock: HTMLElement): FitSize | null {
   const d = getComputedStyle(dock);
   const c = getComputedStyle(card);
   const rows = [...card.children];
-  let fixed = 0;
+  // Whatever else the dock holds beside the card (the line that says why the card is off) takes its own height.
+  let fixed = [...dock.children].reduce((sum, child) => (child === card ? sum : sum + child.getBoundingClientRect().height), 0);
   let least = 0;
   let most = 0;
   for (const row of rows) {
@@ -427,6 +432,7 @@ export function CardDock(props: CardDockProps) {
   const size = useFitSize(dock, fits);
   const card = liftedCard(props);
   if (card === null) return null;
+  const offWords = props.promptDisabled === true && hasDialogCard(props.blocks) ? props.promptDisabledReason : undefined;
   const cap = props.composing ? "40dvh" : "55dvh";
   return (
     // `role="presentation"`, the mirror wrapper's own reading: a layout box whose click adds nothing
@@ -447,6 +453,13 @@ export function CardDock(props: CardDockProps) {
       onClick={props.onClick}
     >
       {card}
+      <Collapse open={offWords !== undefined}>
+        {offWords !== undefined && (
+          <p data-slot="card-off" role="status" className="pt-1.5 text-xs leading-snug text-muted-foreground">
+            {offWords}
+          </p>
+        )}
+      </Collapse>
     </div>
   );
 }
