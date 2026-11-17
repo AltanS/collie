@@ -136,6 +136,19 @@ export const WARN_VERBS = {
 /** The chip of the right `decides = "reply"`: its Decisions may type your answer into a session. */
 export const DECIDES_REPLY_CHIP = "answers go to a session";
 
+/**
+ * The card's honest line (Altan, 2026-11-17): a trick with a program (a `run` line) runs unsandboxed as
+ * the person, so the proposal card and the version card say so before the list of what Collie does for
+ * it. A trick that is only an agent view runs no program and gets no such line. Bridge-built English, as
+ * every word of these cards is.
+ */
+export const RUNS_AS_YOU = "This trick runs as you on this machine. It can do there what you can do.";
+
+/** The honest line as the head's first paragraph, for a manifest with a program; nothing for one without. */
+export function runsAsYou(manifest: Pick<TrickManifest, "run"> | undefined): ViewNode[] {
+  return manifest?.run === undefined ? [] : [{ kind: "para", text: RUNS_AS_YOU }];
+}
+
 /** The chip of the right `on` (M105 step one): the trick runs when a session's state changes. */
 export const ON_CHIP = "runs when a session changes state";
 
@@ -256,18 +269,29 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   // The head of the view: the rights as chips (the new instructions as one more), then each new right in
   // the words a person reads, then the inputs and the warnings.
   const lines = [...(viewNew ? [AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS] : []), ...(newRules ? [RULES_WORDS] : [])];
-  const facts = [...rightsHead("New rights", newRules ? [...rights, RULES_CHIP] : rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null), ...maskedNotes(diff.files), ...lines.map((text): ViewNode => ({ kind: "para", text }))];
+  const plainFacts = [...rightsHead("New rights", newRules ? [...rights, RULES_CHIP] : rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null), ...maskedNotes(diff.files), ...lines.map((text): ViewNode => ({ kind: "para", text }))];
   // The code the card shows beside the rules: every changed file but the rules file, which shows whole on its own.
   const code = rules === null ? diff : { ...diff, files: diff.files.filter((file) => file.rel !== rules.rel) };
   const rulesNodes = rules === null ? [] : rulesView(rules);
+  // The honest line opens every head this card builds: the single view, the group's first card and the
+  // rules fallbacks below.
+  const honest = runsAsYou(next);
+  const facts = [...honest, ...plainFacts];
   const oneHead = [...facts, ...rulesNodes];
   const rulesFit = rules === null || (oneHead.length <= VIEW_LIMITS.root.max && bytesOf(oneHead) <= DECISION_VIEW_LIMITS.bytes && checked(oneHead) !== undefined);
   // The view is what the person reads before the yes: how much of the change it holds decides the rest.
-  const shown = rulesFit ? fitView(oneHead, code) : fitView([...facts, rulesNote(1)], code);
-  const shownFiles = shown.shown + (rules !== null && rulesFit && shown.view !== null ? 1 : 0);
+  // It is fitted twice. Without the honest line, as before it existed: when that fit is no view, the
+  // change is "not shown". With the line first, for the view itself, so its bytes count. The honest line
+  // is never left out: when no view fits, the card's view is the line alone and the summary says to read
+  // the change on the machine.
+  const bare = rulesFit ? fitView([...plainFacts, ...rulesNodes], code) : fitView([...plainFacts, rulesNote(1)], code);
+  const withLine = rulesFit ? fitView(oneHead, code) : fitView([...facts, rulesNote(1)], code);
+  const notShown = bare.view === null || withLine.view === null;
+  const shown: VersionViewShown = notShown ? { view: honest.length > 0 ? honest : null, shown: 0, headFits: withLine.headFits } : withLine;
+  const shownFiles = notShown ? 0 : shown.shown + (rules !== null && rulesFit ? 1 : 0);
   const total = Math.max(fileCount, diff.files.length);
-  const whole = shown.view !== null && shownFiles >= total;
-  const tail = shown.view === null ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shownFiles, total)}`;
+  const whole = !notShown && shownFiles >= total;
+  const tail = notShown ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shownFiles, total)}`;
   // A long list of new rights is cut to its gist so the summary stays within the Hill's cap; the view lists every one.
   const short = rights.length > 0 || newRules ? "It asks for new rights, listed below." : "It does something new, listed below.";
   const full = `${filesSentence(fileCount)} ${fact}${tail}`;

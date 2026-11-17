@@ -15,7 +15,7 @@ import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
 import { GROUP_MASKED_NOTE, GROUP_WRAP } from "./card-group.ts";
-import { RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VersionCards, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
+import { RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VersionCards, RUNS_AS_YOU, newInputs, versionCard, versionRequestId, versionTitle, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
 import { singleCodeCard, viewHasCode } from "../../web/src/lib/hill/code-card.ts";
 
@@ -247,7 +247,8 @@ describe("the card's words and view", () => {
     ]);
     const view = card?.view ?? [];
     // Every changed file's whole hunk fits, so all three are shown (B6: no fixed cap of two).
-    expect(view.map((node) => node.kind)).toEqual(["table", "diff", "diff", "diff"]);
+    expect(view[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
+    expect(view.map((node) => node.kind)).toEqual(["para", "table", "diff", "diff", "diff"]);
     expect(parseDecisionView(parseJson(JSON.stringify(view))).refusals).toEqual([]);
   });
 
@@ -258,10 +259,11 @@ describe("the card's words and view", () => {
       { counted: true, files: [{ rel: "evil\u202egnp.ts", change: "changed", plus: 1, minus: 1, hunk: ["@@ -1 +1 @@", "-a", "+b"] }] },
     );
     expect(card?.view).toBeDefined();
-    const table = card?.view?.[0];
+    expect(card?.view?.[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
+    const table = card?.view?.[1];
     expect(table?.kind).toBe("table");
     expect(table !== undefined && "kids" in table ? table.kids?.[4] : undefined).toEqual({ kind: "cell", text: "evil?gnp.ts" });
-    expect(card?.view?.[1]).toMatchObject({ kind: "diff", attrs: { file: "evil?gnp.ts" } });
+    expect(card?.view?.[2]).toMatchObject({ kind: "diff", attrs: { file: "evil?gnp.ts" } });
   });
 
   test("F1: fourteen new environment names of 64 characters all show in full, none cut, none dropped", () => {
@@ -278,7 +280,8 @@ describe("the card's words and view", () => {
 
   test("B2: a card whose view could not be made carries no recommendation and says to read the change on the machine", () => {
     const card = versionCard(subject(), { counted: false, files: [] });
-    expect(card?.view).toBeUndefined();
+    // The honest line is never left out: with no view of the change, it is the view alone.
+    expect(card?.view).toEqual([{ kind: "para", text: RUNS_AS_YOU }]);
     expect(card?.recommends).toBeNull();
     expect(card?.summary).toBe(`3 files changed. It asks for no new rights. ${VERSION_NOT_SHOWN}`);
     expect(VERSION_NOT_SHOWN).toBe("The change is too large to show here. Read it on the machine before you say yes.");
@@ -323,6 +326,7 @@ describe("the card's words and view", () => {
     expect(card?.recommends).toBeNull();
     expect(card?.options?.map((option) => option.intent)).toEqual(["use", "keep"]);
     const view = card?.view ?? [];
+    expect(view.shift()).toEqual({ kind: "para", text: RUNS_AS_YOU });
     expect(view[0]).toEqual({ kind: "bar", attrs: { label: "New rights" }, kids: [{ kind: "chip", text: "GITHUB_TOKEN", attrs: { tone: "warn" } }, { kind: "chip", text: "the status line", attrs: { tone: "warn" } }] });
     expect(view[1]).toEqual({ kind: "para", text: "This trick reaches the network." });
   });
@@ -335,10 +339,11 @@ describe("the card's words and view", () => {
     expect(crew?.summary).toBe("3 files changed. It now also reads files in your agent sessions' folders on every machine of the crew.");
     expect(crew?.options?.map((option) => option.intent)).toEqual(["use", "keep"]);
     expect(crew?.recommends).toBeNull();
-    expect(crew?.view?.[0]).toEqual({ kind: "para", text: "Reads TODO.md, notes/*.md in your agent sessions' folders on every machine of the crew." });
+    expect(crew?.view?.[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
+    expect(crew?.view?.[1]).toEqual({ kind: "para", text: "Reads TODO.md, notes/*.md in your agent sessions' folders on every machine of the crew." });
     const solo = versionCard(next, DIFF);
     expect(solo?.summary).toBe("3 files changed. It now also reads files in your agent sessions' folders.");
-    expect(solo?.view?.[0]).toEqual({ kind: "para", text: "Reads TODO.md, notes/*.md in your agent sessions' folders." });
+    expect(solo?.view?.[1]).toEqual({ kind: "para", text: "Reads TODO.md, notes/*.md in your agent sessions' folders." });
     // A glob the approved version already read is no new right.
     const same: TrickVersionSubject = { ...next, base: { dir: "/y", manifest: { ...base.base!.manifest!, contract: 2, inputs: ["notes/*.md", "TODO.md"] } } };
     expect(newInputs(same.base?.manifest, same.pending?.manifest)).toEqual([]);
@@ -353,7 +358,8 @@ describe("the card's words and view", () => {
     expect(card?.summary).toBe("3 files changed. It now also reads files in your agent sessions' folders.");
     expect(card?.options?.map((option) => option.intent)).toEqual(["use", "keep"]);
     expect(card?.recommends).toBeNull();
-    expect(card?.view?.[0]).toEqual({ kind: "para", text: "Reads TODO.md in your agent sessions' folders." });
+    expect(card?.view?.[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
+    expect(card?.view?.[1]).toEqual({ kind: "para", text: "Reads TODO.md in your agent sessions' folders." });
   });
 
   test("a long name is cut so the title stays a short question; a big change fits 8 KiB, with 'and N more files'", () => {

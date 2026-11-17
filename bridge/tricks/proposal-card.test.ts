@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { MANIFEST_KEYS, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { addedDiff } from "./card-group.ts";
 import { PROPOSAL_KEY_RIGHTS, proposalCard, type ProposerFacts } from "./proposal-card.ts";
-import { DECIDES_REPLY_CHIP } from "./version-card.ts";
+import { DECIDES_REPLY_CHIP, RUNS_AS_YOU, runsAsYou } from "./version-card.ts";
 
 // EVERY RIGHT HAS A LINE ON THE CARD (the first full trick run, 2026-11-16, decision 1). A trick with
 // `decides = "reply"` once got "It asks for no rights." This walks every key the table calls a right and
@@ -50,5 +50,21 @@ describe("every right a trick asks for has a line on the proposal card", () => {
     expect(bare.summary).toContain("It asks for no rights.");
     const card = cardOf({ ...BARE, decides: "reply" });
     expect(card.summary).toContain(`It asks for ${DECIDES_REPLY_CHIP}.`);
+  });
+});
+
+// THE CARD'S HONEST LINE (Altan, 2026-11-17): a trick with a program says, first, that it runs as you.
+describe("the honest line", () => {
+  test("a trick with a program: the card's view opens with it, word for word", () => {
+    expect(RUNS_AS_YOU).toBe("This trick runs as you on this machine. It can do there what you can do.");
+    const view = cardOf(BARE).view ?? [];
+    expect(view[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
+  });
+
+  test("a trick with no program (an agent view only) gets no such line", () => {
+    const { run: _run, ...rest } = BARE;
+    const noProgram: TrickManifest = rest;
+    expect(runsAsYou(noProgram)).toEqual([]);
+    expect(runsAsYou(undefined)).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@ import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type MANIFEST_KEYS, typ
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import { addedDiff, codeGroup, changeCells, filesOnCards, GROUP_WIDE_GAP, groupOrder, helperNote, notesChangedNote, placesTables, shippedHelpers, shippedNotesDiff, sizeWords, type GroupRefusal, type ShippedFile } from "./card-group.ts";
-import { bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, listWords, newInputs, newRights, ON_CHIP, placeWords, rightsHead, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
+import { bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, listWords, newInputs, newRights, ON_CHIP, placeWords, rightsHead, runsAsYou, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
 import { PROPOSAL_SETTINGS_LEFT, type ProposedFile } from "./propose-wire.ts";
 import type { VersionDiff } from "./version-diff.ts";
 
@@ -260,7 +260,7 @@ export function proposalCard(input: ProposalCardInput): ProposalCardResult {
   const reads = manifest.inputs ?? [];
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It ${alsoWords}.` : "It asks for no rights.";
-  const head = [...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...settingsLines(input.settingsLeft)];
+  const head = [...runsAsYou(manifest), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...settingsLines(input.settingsLeft)];
   const words = authorWords(manifest);
   const author: ViewNode[] = words.length > 0 ? [{ kind: "group", attrs: { label: PROPOSAL_AUTHOR_WORDS }, kids: words }] : [];
   const helpers = input.helpers ?? new Map<string, ShippedFile>();
@@ -339,7 +339,7 @@ export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCa
   const reads = newInputs(input.baseManifest, input.manifest);
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It now also ${alsoWords}.` : "It asks for no new rights.";
-  const head = [...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...settingsLines(input.settingsLeft)];
+  const head = [...runsAsYou(input.manifest), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...settingsLines(input.settingsLeft)];
   const shown = fitView(head, input.diff);
   if (!shown.headFits) return TOO_LARGE_FACTS;
   const total = input.diff.files.length;
