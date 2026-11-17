@@ -97,6 +97,12 @@ const EMPTY: Switches = { on: new Map(), version: 0 };
 
 /** How long a writer waits for the lock before it gives up. */
 export const SWITCH_LOCK_WAIT_MS = 6000;
+/**
+ * A lock or door file that is empty or holds no pid, older than this, is read as dead. This code never shows a half
+ * written file (it links a whole one onto the path), but an older build created the file and wrote it after, and a
+ * crash between the two left an empty lock that nothing else would ever clear.
+ */
+export const SWITCH_LOCK_BLANK_MS = 30_000;
 
 /** The switch file read: the switches, and why it read as all off when it did. */
 export interface ParsedSwitches {
@@ -286,13 +292,18 @@ function pidAlive(pid: number): boolean {
   }
 }
 
-/** Read a lock or door file. Empty or without a pid, it is read as alive: never half written by this code, so it is somebody else's. */
-async function readHolder(path: string): Promise<Holder> {
+/**
+ * Read a lock or door file. A pid that runs is alive, one that does not is dead. A file that is empty or holds no
+ * pid is somebody else's being written: alive while it is younger than {@link SWITCH_LOCK_BLANK_MS}, dead after.
+ */
+async function readHolder(path: string, now: () => number): Promise<Holder> {
   const text = await readText(path);
   if (text === null) return { kind: "none" };
   const pid = /^([1-9]\d{0,9})\n/u.exec(text)?.[1];
-  if (pid === undefined || pidAlive(Number(pid))) return { kind: "live" };
-  return { kind: "dead", text };
+  if (pid !== undefined) return pidAlive(Number(pid)) ? { kind: "live" } : { kind: "dead", text };
+  const held = await stat(path).catch(() => null);
+  if (held === null) return { kind: "none" };
+  return now() - held.mtimeMs > SWITCH_LOCK_BLANK_MS ? { kind: "dead", text } : { kind: "live" };
 }
 
 /** A file of this process's lock text under a unique name in the same folder, ready to be linked or renamed onto a lock path. */
@@ -333,8 +344,9 @@ async function removeIfOwn(path: string, nonce: string): Promise<void> {
  * lock only while it still does. Throws after {@link SWITCH_LOCK_WAIT_MS}.
  *
  * A LIVE HOLDER IS NEVER TAKEN OVER (counsel A1, third pass). The work inside the lock is renames and one small
- * write, so a holder is quick or dead; there is no age rule. A lock whose pid is alive, or that does not read as
- * a lock, is waited for. A lock whose pid is dead goes through one door, {@link replaceDead}.
+ * write, so a holder is quick or dead; there is no age rule for a lock with a pid. A lock whose pid is alive, or an
+ * empty or pid-less one younger than {@link SWITCH_LOCK_BLANK_MS}, is waited for. A dead one goes through one door,
+ * {@link replaceDead}.
  */
 async function takeLock(lock: string, now: () => number): Promise<string> {
   const until = now() + SWITCH_LOCK_WAIT_MS;
@@ -342,9 +354,9 @@ async function takeLock(lock: string, now: () => number): Promise<string> {
   // Bounded by the wait: a pass that does not take the lock sleeps 20 ms, except right after the lock went.
   for (let pass = 0; pass < SWITCH_LOCK_WAIT_MS; pass += 1) {
     if (await createExclusive(lock, nonce)) return nonce;
-    const held = await readHolder(lock);
+    const held = await readHolder(lock, now);
     if (held.kind === "none") continue;
-    if (held.kind === "dead" && (await replaceDead({ path: lock, seen: held.text, nonce, depth: 0 }))) return nonce;
+    if (held.kind === "dead" && (await replaceDead({ path: lock, seen: held.text, nonce, depth: 0, now }))) return nonce;
     if (now() >= until) break;
     await Bun.sleep(20);
   }
@@ -353,25 +365,25 @@ async function takeLock(lock: string, now: () => number): Promise<string> {
 
 /**
  * The one door to a dead holder's file: `<path>.takeover`, created exclusive. Only its holder may replace `path`.
- * It reads `path` again, and only while it is the same file (`seen`, the nonce with it) and that pid is still
- * dead, renames its own prepared file OVER it: an atomic replace, so the lock path is never missing and no
+ * It reads `path` again, and only while it is the same file (`seen`, the nonce with it) and still dead (its pid
+ * gone, or empty and still older than {@link SWITCH_LOCK_BLANK_MS}), renames its own prepared file OVER it: an atomic replace, so the lock path is never missing and no
  * other waiter can create a lock in between. At depth 0 the replacement is this waiter's lock (answers true);
  * at depth 1 `path` is a dead waiter's door and is only removed.
  *
  * A door whose own pid is dead is cleared the same way, through the door's door (depth 1). A dead depth 1 door is
- * removed after its pid read dead: two waiters can race only there, after two holders died at the wrong moment.
+ * removed after it read dead: two waiters can race only there, after two holders died at the wrong moment.
  */
-async function replaceDead(opts: { path: string; seen: string; nonce: string; depth: number }): Promise<boolean> {
+async function replaceDead(opts: { path: string; seen: string; nonce: string; depth: number; now: () => number }): Promise<boolean> {
   const door = `${opts.path}.takeover`;
   if (!(await createExclusive(door, opts.nonce))) {
-    const blocking = await readHolder(door);
+    const blocking = await readHolder(door, opts.now);
     if (blocking.kind !== "dead") return false;
     if (opts.depth > 0) await unlink(door).catch(() => {});
-    else await replaceDead({ path: door, seen: blocking.text, nonce: opts.nonce, depth: 1 });
+    else await replaceDead({ path: door, seen: blocking.text, nonce: opts.nonce, depth: 1, now: opts.now });
     return false;
   }
   try {
-    const again = await readHolder(opts.path);
+    const again = await readHolder(opts.path, opts.now);
     if (again.kind !== "dead" || again.text !== opts.seen) return false;
     if (opts.depth > 0) {
       await unlink(opts.path).catch(() => {});
