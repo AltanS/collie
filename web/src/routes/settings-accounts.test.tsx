@@ -506,6 +506,38 @@ describe("Accounts: Add", () => {
   });
 });
 
+describe("Accounts: the same login twice", () => {
+  const ME = { signedIn: true, email: "me@example.com", plan: "max" };
+
+  it("each of two profiles with one login names the other, on the list and on the profile's page", async () => {
+    serveAccounts(body({ accounts: [defaultRow({ identity: ME }), workRow({ identity: { ...ME, email: "Me@Example.com" } })] }));
+    const router = mount("/settings/accounts");
+    expect(await screen.findByText("Same login as Work.")).toBeInTheDocument();
+    expect(screen.getByText("Same login as Default.")).toBeInTheDocument();
+    await router.navigate("/settings/accounts/acc-work");
+    expect(await screen.findByText("Signed in as")).toBeInTheDocument();
+    expect(screen.getByText("Same login as Default.")).toBeInTheDocument();
+    expect(screen.queryByText("Same login as Work.")).toBeNull();
+  });
+
+  it("is not said for different logins, another agent's profile, or a profile not signed in", async () => {
+    serveAccounts(
+      body({
+        harnesses: [HARNESS_CLAUDE, HARNESS_CODEX],
+        accounts: [
+          defaultRow({ identity: ME }),
+          workRow({ identity: { signedIn: true, email: "other@example.com" } }),
+          defaultRow({ id: "codex:default", harness: "codex", folder: "~/.codex", identity: ME }),
+          workRow({ id: "acc-spare", label: "Spare", folder: "~/.claude-spare", identity: { signedIn: false, email: "me@example.com" } }),
+        ],
+      }),
+    );
+    mount("/settings/accounts");
+    expect(await screen.findByText("Spare")).toBeInTheDocument();
+    expect(screen.queryByText(/Same login as/)).toBeNull();
+  });
+});
+
 describe("Accounts: who is signed in", () => {
   it("the list shows the email under the name, 'Not signed in', or nothing when the agent cannot tell", async () => {
     serveAccounts(

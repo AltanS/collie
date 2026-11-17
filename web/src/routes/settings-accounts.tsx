@@ -28,6 +28,7 @@ import {
   nameFromFolder,
   newFolderFor,
   rememberStartError,
+  sameLoginLine,
   seenLine,
   signedInText,
   startLineFor,
@@ -156,7 +157,7 @@ export function SettingsAccountsRoute() {
               <ListGroup as="ul" className="divide-y divide-border">
                 {group.rows.map((row) => (
                   <li key={row.id}>
-                    <AccountListRow row={row} onOpen={() => nav.down(accountPath(row.id, scope))} />
+                    <AccountListRow row={row} sameLogin={sameLoginLine(body.accounts, row)} onOpen={() => nav.down(accountPath(row.id, scope))} />
                   </li>
                 ))}
               </ListGroup>
@@ -191,7 +192,7 @@ export function SettingsAccountsRoute() {
  * One account in the list: its name, who is signed in on the line under it, its windows and its foot.
  * Exported for the design reference (playground/sections/accounts.tsx), which mounts this row as it ships.
  */
-export function AccountListRow({ row, onOpen }: { row: AccountRow; onOpen: () => void }) {
+export function AccountListRow({ row, sameLogin = null, onOpen }: { row: AccountRow; /** "Same login as Work.", when another profile of the agent shares the login. */ sameLogin?: string | null; onOpen: () => void }) {
   useLocale();
   return (
     <button
@@ -202,6 +203,7 @@ export function AccountListRow({ row, onOpen }: { row: AccountRow; onOpen: () =>
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate font-medium">{accountName(row)}</span>
         <IdentityLine identity={row.identity} />
+        {sameLogin !== null && <span className="text-xs text-muted-foreground">{sameLogin}</span>}
       </span>
       <Bars windows={row.windows} />
       <Foot row={row} />
@@ -221,7 +223,7 @@ function IdentityLine({ identity }: { identity: AccountIdentity | undefined }) {
  * The details row: "Signed in as" with the full email and the plan, or "Not signed in". Unknown draws
  * nothing. Exported for the design reference, as {@link AccountListRow} is.
  */
-export function SignedInRow({ identity }: { identity: AccountIdentity | undefined }) {
+export function SignedInRow({ identity, sameLogin = null }: { identity: AccountIdentity | undefined; /** "Same login as Work.", under the address. */ sameLogin?: string | null }) {
   useLocale();
   if (identity === undefined) return null;
   if (!identity.signedIn) return <p className="text-sm text-muted-foreground">{t("accounts.identity.notSignedIn")}</p>;
@@ -231,6 +233,7 @@ export function SignedInRow({ identity }: { identity: AccountIdentity | undefine
     <div className="flex flex-col gap-1">
       <p className="text-xs font-medium text-muted-foreground">{t("accounts.identity.signedInAs")}</p>
       <p className="break-all text-sm">{text}</p>
+      {sameLogin !== null && <Hint>{sameLogin}</Hint>}
     </div>
   );
 }
@@ -555,7 +558,7 @@ export function SettingsAccountRoute() {
           <p className="text-xs text-muted-foreground">{[harnessLabel(body, row.harness), seen].filter((x) => x !== null).join(" · ")}</p>
         </div>
       </div>
-      <SignedInRow identity={row.identity} />
+      <SignedInRow identity={row.identity} sameLogin={sameLoginLine(body?.accounts ?? [], row)} />
       <div className="flex flex-col gap-0.5">
         <p className="text-sm font-medium">{t(`accounts.kind.${row.kind}.title`)}</p>
         <Hint>{t(`accounts.kind.${row.kind}.body`)}</Hint>
