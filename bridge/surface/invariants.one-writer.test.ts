@@ -138,20 +138,27 @@ describe("I6 across two bridges on one pane (M102 spec 16, chaos C3)", () => {
 });
 
 describe("I6 across a crash between the text and Enter (M102 spec 16, chaos C1)", () => {
-  /** A bridge (pid 101) that stops right before Enter, with the text written; then pid 101 is gone. */
-  async function crashBeforeEnter(draw: PaneDraw, kind: Pick<RigOptions, "harness" | "pinVersions" | "version">, text: string): Promise<{ pane: LogPane; clock: { now: number }; storeDir: string; id: string }> {
+  /** Where the dying bridge stops: right after its text landed (before the submit mark), or at or after Enter. */
+  type Stop = "after-text" | "at-enter" | "after-enter";
+
+  /** A bridge (pid 101) that stops at `stop`, with the text written; then pid 101 is gone. */
+  async function crashBeforeEnter(draw: PaneDraw, kind: Pick<RigOptions, "harness" | "pinVersions" | "version">, text: string, stop: Stop = "after-text"): Promise<{ pane: LogPane; clock: { now: number }; storeDir: string; id: string }> {
     const pane = new LogPane(draw);
     const clock = { now: 1_000_000 };
     const storeDir = join(root, "sends");
     const dying = bridgeOn(pane, clock, 101, kind, storeDir);
-    pane.stopAt = (write) => write.kind === "keys" && write.value === "Enter";
+    const isEnter = (write: Write): boolean => write.kind === "keys" && write.value === "Enter";
+    if (stop === "after-text") pane.stopAfter = (write) => write.kind !== "keys" && write.value.includes(text);
+    if (stop === "at-enter") pane.stopAt = isEnter;
+    if (stop === "after-enter") pane.stopAfter = isEnter;
     const id = nextId();
     void dying.handle({ id, text, mode: "send", fromPhone: true });
-    await settleLoop(() => textWritesOf(pane.log, text) > 0);
+    await settleLoop(() => (stop === "after-text" ? textWritesOf(pane.log, text) > 0 : new RequestStore(storeDir, () => clock.now).get(id)?.submitSentAt !== undefined && (stop === "at-enter" || pane.log.some(isEnter))));
     expect(textWritesOf(pane.log, text)).toBe(1);
     // The process is killed: its pid is gone, its lock file stays, its run never ends.
     living.delete(101);
     pane.stopAt = null;
+    pane.stopAfter = null;
     return { pane, clock, storeDir, id };
   }
 
@@ -185,6 +192,29 @@ describe("I6 across a crash between the text and Enter (M102 spec 16, chaos C1)"
     expect(answer.receipt?.reason).toBe("interrupted");
   });
 
+  for (const stop of ["at-enter", "after-enter"] as const) {
+    test(`a crash ${stop === "at-enter" ? "as Enter was handed to the multiplexer" : "after Enter landed"} carries the submit mark: unknown/crash after the restart, nothing typed again`, async () => {
+      const text = `echo chaos-${stop}`;
+      const { pane, clock, storeDir, id } = await crashBeforeEnter({ kind: "bare" }, SHELL, text, stop);
+      const fresh = restart(pane, clock, storeDir, SHELL);
+      const from = pane.log.length;
+      const answer = await fresh.handle({ id, text, mode: "send", fromPhone: true });
+      expect(pane.log.slice(from)).toEqual([]);
+      expect(answer.receipt?.outcome).toBe("unknown");
+      expect(answer.receipt?.reason).toBe("crash");
+    });
+
+    test(`a crash ${stop} with no restart recovery yet (the replay settles it) answers crash too`, async () => {
+      const text = `echo chaos-replay-${stop}`;
+      const { pane, clock, storeDir, id } = await crashBeforeEnter({ kind: "bare" }, SHELL, text, stop);
+      const fresh = bridgeOn(pane, clock, 202, SHELL, storeDir);
+      const from = pane.log.length;
+      const answer = await fresh.handle({ id, text, mode: "send", fromPhone: true });
+      expect(pane.log.slice(from)).toEqual([]);
+      expect(answer.receipt?.reason).toBe("crash");
+    });
+  }
+
   test("the dead bridge's pane lock is taken over: the new bridge's next send on that pane is not refused busy", async () => {
     const { pane, clock, storeDir } = await crashBeforeEnter({ kind: "bare" }, SHELL, "echo left-in-the-line");
     const fresh = restart(pane, clock, storeDir, SHELL);
@@ -212,6 +242,6 @@ describe("I6 across a crash between the text and Enter (M102 spec 16, chaos C1)"
     const { storeDir, id, clock } = await crashBeforeEnter({ kind: "bare" }, SHELL, text);
     const record = new RequestStore(storeDir, () => clock.now).get(id);
     expect(record?.startedAt).toBeNumber();
-    expect(Object.keys(record ?? {}).toSorted()).toEqual(["acceptedAt", "id", "line", "mode", "paneGeneration", "paneId", "phase", "session", "startedAt", "submitSentAt", "surfaceRevision", "textHash", "textLength"]);
+    expect(Object.keys(record ?? {}).toSorted()).toEqual(["acceptedAt", "id", "line", "mode", "paneGeneration", "paneId", "phase", "session", "startedAt", "surfaceRevision", "textHash", "textLength"]);
   });
 });

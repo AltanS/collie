@@ -274,10 +274,12 @@ describe("D, pass 2: a code whose answer was lost goes again under the same requ
 describe("D, pass 2: a code the bridge found no sign-in field for", () => {
   it("no_secret_field says the field is gone and nothing was typed", async () => {
     const user = userEvent.setup();
-    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "no_secret_field", { offers: ["keys"], surface: FREE })));
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "no_secret_field", { offers: ["keys"], surface: FREE, detail: "The sign-in field is not on the screen any more. Nothing was typed." })));
     mount();
     await sendCode(user);
     await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/The sign-in field is not on the screen any more\. Nothing was typed\./u));
+    // The bridge's English line says the same as the phone's sentence: it is said once.
+    expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent?.split("The sign-in field is not on the screen").length).toBe(2);
     codeNeverPlain();
   });
 });

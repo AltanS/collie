@@ -662,7 +662,7 @@ export function nextStep(reply: SendReply, verdict: Verdict, toCard: boolean, su
 /**
  * Whether the phone's own sentence already says what the bridge's English detail says (the
  * 2026-10-16 field case, "Collie cannot read this screen" twice). Only for a refusal, and only for
- * the reasons whose bridge line repeats the phone's sentence: `unconfirmed`, `stale_surface`, `busy`,
+ * the reasons whose bridge line repeats the phone's sentence: `unconfirmed`, `stale_surface`, `no_secret_field`, `busy`,
  * `pane_gone`, `draft_present`, and `not_free` when the line is the plain one. Every other reason,
  * and every outcome that is no refusal, keeps the line: it says what the phone's sentence does not
  * (a `not_free` that names what is open, a dialog that Enter may have answered). An `unconfirmed`
@@ -670,7 +670,7 @@ export function nextStep(reply: SendReply, verdict: Verdict, toCard: boolean, su
  * `probe_failed` with the `late_keys` cause keeps it as every `probe_failed` does: the line says the
  * agent showed Collie's keys late and to wait, which the phone's sentence does not (#623).
  */
-const REPEATS_THE_NOTE: ReadonlySet<SendReason> = new Set(["unconfirmed", "stale_surface", "pane_gone", "draft_present", "bad_head", "stale_view"]);
+const REPEATS_THE_NOTE: ReadonlySet<SendReason> = new Set(["unconfirmed", "stale_surface", "pane_gone", "draft_present", "bad_head", "stale_view", "no_secret_field"]);
 const PLAIN_NOT_FREE = "The input box is not free.";
 
 function ownSentence(reply: SendReply): boolean {
