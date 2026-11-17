@@ -3,7 +3,9 @@ import { join } from "node:path";
 import { HOST } from "../host.ts";
 import { redactText } from "../redact.ts";
 import { isEmbedded } from "../root.ts";
+import { windowsTreeKill, type KillSpawn } from "../tree-kill.ts";
 import { RUN_TIMEOUT_MS, STDERR_CAP_BYTES, STDOUT_CAP_BYTES } from "../../web/src/lib/tricks/limits.ts";
+import { TRICKS_WINDOWS_SHELL_LINE } from "../../web/src/lib/tricks/schema.ts";
 
 // ONE RUN OF A TRICK'S PROGRAM (M94 slice 01): spawn, feed the facts, read with caps, kill on time.
 //
@@ -38,7 +40,32 @@ export interface RunSpec {
   platform?: NodeJS.Platform;
   /** The runtime a script line runs with. Default this process's own ({@link ownRuntime}). For a test. */
   runtime?: Runtime;
+  /**
+   * The Windows kill's seams (bridge/tree-kill.ts): how its two programs start, and the environment its
+   * absolute paths read `SystemRoot` from. Default `Bun.spawn` and the bridge's own `process.env`, never
+   * the program's. For a test.
+   */
+  winKill?: { readonly spawn?: KillSpawn; readonly env?: Readonly<Record<string, string | undefined>> };
+  /**
+   * How the program is started. Default `Bun.spawn` with three pipes. A test passes a stand-in child, so a
+   * state such as "exited, its pipe still held" does not depend on how the host's pipes behave.
+   */
+  spawnChild?: (argv: string[], opts: { cwd: string; env: Record<string, string>; detached: boolean }) => RunChild;
 }
+
+/** The part of a spawned program the runner uses: what `Bun.spawn` with three pipes returns. */
+export interface RunChild {
+  readonly pid: number;
+  readonly stdin: { write(text: string): number | Promise<number>; end(): number | Promise<number> };
+  readonly stdout: ReadableStream<Uint8Array>;
+  readonly stderr: ReadableStream<Uint8Array>;
+  readonly exited: Promise<number>;
+  readonly exitCode: number | null;
+  kill(signal?: number): void;
+}
+
+const bunSpawnChild: NonNullable<RunSpec["spawnChild"]> = (argv, opts) =>
+  Bun.spawn(argv, { cwd: opts.cwd, env: opts.env, stdin: "pipe", stdout: "pipe", stderr: "pipe", detached: opts.detached });
 
 // ── THE TWO FORMS OF A RUN LINE (M94 review 4) ──────────────────────────────────────────────────
 // `run = "program.ts"` (or `.js`, `.mjs`, `.mts`): one relative path to a script inside the trick
@@ -66,6 +93,16 @@ export const BUN_BE_BUN = "BUN_BE_BUN";
 export function runtimeScript(command: string): string | null {
   if (!RUNTIME_SCRIPT.test(command)) return null;
   return command.startsWith("./") ? command.slice(2) : command;
+}
+
+/**
+ * Why a `run` line cannot run on `platform`, or null. On Windows only the script form runs (fault d): a
+ * shell line is refused with {@link TRICKS_WINDOWS_SHELL_LINE}, never translated for `cmd.exe`. A trick
+ * with no run line (only an agent view) is never refused here.
+ */
+export function windowsRunProblem(command: string | undefined, platform: NodeJS.Platform | undefined): string | null {
+  if (platform !== "win32" || command === undefined) return null;
+  return runtimeScript(command) === null ? TRICKS_WINDOWS_SHELL_LINE : null;
 }
 
 /** The executable a script line runs with, and whether it is a compiled Collie (which needs `BUN_BE_BUN`). */
@@ -104,19 +141,32 @@ export type RunOutcome =
   | { kind: "overflow"; stderr: string; ms: number }
   | { kind: "spawn-failed"; message: string; ms: number };
 
-/** The argv that runs a `run` line: the shell, so `./legs.sh` and `bun program.ts` both work. */
+/**
+ * The argv that runs a `run` line: the shell, so `./legs.sh` and `bun program.ts` both work. On Windows
+ * {@link runProgram} refuses a shell line before this ({@link windowsRunProblem}); the `cmd.exe` form stays
+ * for `launchOf`'s own callers and tests.
+ */
 export function shellArgv(command: string, platform: NodeJS.Platform): string[] {
   return platform === "win32" ? ["cmd.exe", "/d", "/s", "/c", command] : ["/bin/sh", "-c", command];
 }
 
-/** Kill the whole group the program leads. A group that is gone already is not an error. */
-function killGroup(pid: number, platform: NodeJS.Platform): void {
+/**
+ * Kill the whole group the program leads. A group that is gone already is not an error.
+ *
+ * On Windows there is no group: the tree kill of bridge/tree-kill.ts ends the program's tree by the
+ * absolute `%SystemRoot%\System32\taskkill.exe` (never a bare `taskkill`, which the trick's folder,
+ * the run's cwd, could supply), in the background with a time limit, then the program itself, then
+ * one pass for what it left behind, found by parent pid inside the run's window.
+ */
+function killGroup(target: { pid: number; startedAt: number; leader: () => void; exited: boolean }, platform: NodeJS.Platform, winKill: RunSpec["winKill"]): void {
+  if (platform === "win32") {
+    // A program that exited already (the timer or the cap fired in the pipe drain) gets no taskkill and no
+    // leader kill: its pid may be another process's now. Only the orphan pass runs (lead's review D, item 1).
+    void windowsTreeKill(target.pid, { startedAt: target.startedAt, env: winKill?.env ?? process.env, leader: target.leader, spawn: winKill?.spawn, exited: target.exited });
+    return;
+  }
   try {
-    if (platform === "win32") {
-      Bun.spawnSync(["taskkill", "/pid", String(pid), "/t", "/f"], { stdout: "ignore", stderr: "ignore" });
-      return;
-    }
-    process.kill(-pid, "SIGKILL");
+    process.kill(-target.pid, "SIGKILL");
   } catch {
     // ESRCH: the group exited between the decision and the kill.
   }
@@ -201,18 +251,15 @@ export async function runProgram(spec: RunSpec): Promise<RunOutcome> {
   const timeoutMs = spec.timeoutMs ?? RUN_TIMEOUT_MS;
   const started = performance.now();
   const elapsed = (): number => Math.round(performance.now() - started);
-  let child: ReturnType<typeof Bun.spawn<"pipe", "pipe", "pipe">>;
+  // Fault d: on Windows a shell line never starts, whoever asked (the bridge, check --run, trick dev).
+  const refused = windowsRunProblem(spec.command, platform);
+  if (refused !== null) return { kind: "spawn-failed", message: refused, ms: 0 };
+  let child: RunChild;
+  const startedAt = Date.now();
   try {
     const launch = launchOf(spec.command, spec.env, { cwd: spec.cwd, platform, runtime: spec.runtime ?? ownRuntime() });
-    child = Bun.spawn(launch.argv, {
-      cwd: spec.cwd,
-      env: launch.env,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-      // A group of its own, so the kill below reaches every process the program started.
-      detached: platform !== "win32",
-    });
+    // A group of its own on POSIX, so the kill below reaches every process the program started.
+    child = (spec.spawnChild ?? bunSpawnChild)(launch.argv, { cwd: spec.cwd, env: launch.env, detached: platform !== "win32" });
   } catch (err) {
     return { kind: "spawn-failed", message: redactText(err instanceof Error ? err.message : String(err)), ms: elapsed() };
   }
@@ -223,7 +270,15 @@ export async function runProgram(spec: RunSpec): Promise<RunOutcome> {
   function stop(why: "timeout" | "overflow"): void {
     if (ended !== null) return;
     ended = why;
-    killGroup(pid, platform);
+    const leader = (): void => {
+      try {
+        child.kill(9);
+      } catch {
+        // Gone already.
+      }
+    };
+    // POSIX keeps the group kill after an exit: a group id stays the group's while one member lives.
+    killGroup({ pid, startedAt, leader, exited: child.exitCode !== null }, platform, spec.winKill);
     // A process outside the group (one that called setsid) may still hold a pipe: let go of both.
     out.cancel();
     err.cancel();

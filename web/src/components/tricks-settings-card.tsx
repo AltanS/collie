@@ -416,6 +416,8 @@ export function officialFailureLine<TThrown>(thrown: TThrown, mode: "add" | "upd
   if (code === "unreachable") return t(add ? "settings.tricks.official.unreachable" : "settings.tricks.official.updateUnreachable");
   // A repository that sent more than a listed commit can be is the same class of refusal as a mismatch.
   if (code === "mismatch" || code === "too-large") return t(add ? "settings.tricks.official.mismatch" : "settings.tricks.official.updateMismatch");
+  // A POSIX trick (a shell run line) on a Windows machine (fault d): the same words as the switch's refusal.
+  if (code === "windows-shell") return t("settings.tricks.switchShellOnWindows");
   if (code === "busy") return t("settings.tricks.official.busy");
   if (code === "taken") return t("settings.tricks.official.taken");
   // The new code needs a name the person's own files hold in the trick's folder: nothing was changed.
@@ -685,8 +687,10 @@ function TricksList({
     } catch (thrown) {
       hold(key, null);
       // The trick changed after the person read it (review 8 V-N1): read it again, nothing was approved.
-      const moved = apiErrorFields(thrown)?.error === "moved";
-      setStatus(moved ? t("settings.tricks.switchMoved") : t("settings.tricks.switchFailed", { name: trick.name }), "error");
+      const code = apiErrorFields(thrown)?.error;
+      // A Windows machine refuses a shell run line (fault d); the bridge's message is `TRICKS_WINDOWS_SHELL_LINE`.
+      const line = code === "moved" ? t("settings.tricks.switchMoved") : code === "windows-shell" ? t("settings.tricks.switchShellOnWindows") : t("settings.tricks.switchFailed", { name: trick.name });
+      setStatus(line, "error");
     } finally {
       flying.current.delete(key);
     }

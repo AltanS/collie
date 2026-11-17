@@ -1392,12 +1392,13 @@ describe("taps, answers and slots", () => {
 describe("real programs", () => {
   test("an sh program and a bun program run through the real runner", async () => {
     const r = await rig(null);
-    // A shell line runs under `cmd.exe` on Windows (run.ts `shellArgv`), so a `#!/bin/sh` program is a POSIX one: there the bun program runs alone.
+    // A shell line does not run on Windows (fault d, run.ts `windowsRunProblem`), so a `#!/bin/sh` program is a POSIX one: there the bun program runs alone.
     const posix = process.platform !== "win32";
     if (posix) await makeTrick(r.configDir, "hello", 'id = "hello"\nname = "Hello"\nrun = "./program.sh"\nplaces = ["belt"]\n', {
       "program.sh": `#!/bin/sh\nfacts=$(cat)\nn=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')\nprintf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"%s"}}]}' "$n"\n`,
     });
-    await makeTrick(r.configDir, "bunny", 'id = "bunny"\nname = "Bunny"\nrun = "bun program.ts"\nplaces = ["belt"]\n', {
+    // The script form: a shell line such as `bun program.ts` does not run on Windows (fault d).
+    await makeTrick(r.configDir, "bunny", 'id = "bunny"\nname = "Bunny"\nrun = "program.ts"\nplaces = ["belt"]\n', {
       "program.ts": [
         'import { appendFileSync } from "node:fs";',
         "const facts = JSON.parse(await Bun.stdin.text());",
