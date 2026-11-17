@@ -78,14 +78,14 @@ export const KNOWN_RED = {
   },
   "i2-words-raw": {
     invariant: "I2",
-    fixedBy: "NONE",
+    fixedBy: "M102-11",
     where: "web/src/lib/api.ts:1601-1606 (plainFailureMessage: `HTTP <status>: <first body line>`), api.ts:560 (ApiError message `<path> → <status> <body>`), web/src/lib/api-error-message.ts:66 (describeThrownError falls back to it)",
-    what: "A 4xx or 5xx whose body is a proxy's HTML page reaches the thumb as `HTTP 502: <html><head><title>...`, on send, ask, hold card, keys, Stop and Clear. Spec 11 asks for words, not readable words.",
+    what: "A 4xx or 5xx whose body is a proxy's HTML page reaches the thumb as `HTTP 502: <html><head><title>...`, on send, ask, hold card, keys, Stop and Clear.",
   },
   // ── I7, no accident on a menu ──
   "i7-blind-road": {
     invariant: "I7",
-    fixedBy: "NONE",
+    fixedBy: "M102-12",
     where: "bridge/surface/protocol.ts:5010-5060 (blindSend: one read for a password prompt and blindRoadSign, then the text and Enter), protocol.ts:385 (blindRoadSign reads only frames, cues and footers a profile names)",
     what: "On a pane whose agent has no profile, a person's send types the text and presses Enter onto a menu the blind-road check does not see.",
   },
