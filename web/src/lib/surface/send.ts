@@ -87,13 +87,6 @@ export const SEND_REASONS = [
   // agent's own error row says it did not take it (the profile's `idle.signInErrors`). The one refusal
   // after the submit key: the agent refused it, not Collie, and the detail is the agent's words.
   "code_rejected",
-  // refused (M102 spec 12): the person's override met a menu or a yes/no prompt on the screen (the
-  // generic menu sign, menu-sign.ts): a pasted "1" or "y", or the Enter after it, would pick an option.
-  // Nothing was typed; the answer carries the rows now and their hash, and the key pad is the offer.
-  "menu_open",
-  // typed_not_submitted (M102 spec 12): the person's override on a screen Collie could not read: the
-  // text went in as one piece and Collie pressed no key at all. The person presses Enter on the key pad.
-  "override",
 ] as const;
 export type SendReason = (typeof SEND_REASONS)[number];
 
