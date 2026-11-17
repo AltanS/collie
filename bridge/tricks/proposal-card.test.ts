@@ -113,7 +113,7 @@ describe("access on the proposal cards", () => {
     const see = cardOf({ ...BARE, access: "see" });
     expect(see.view?.[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
     expect(see.view?.[1]).toEqual({ kind: "para", text: ACCESS_LINES.see });
-    expect(JSON.stringify(see.view)).toContain("reads machines, sessions, usage");
+    expect(JSON.stringify(see.view)).toContain("the state of your machines and sessions");
     const read = cardOf({ ...BARE, access: "read" });
     expect(read.view?.[1]).toEqual({ kind: "para", text: ACCESS_LINES.read });
     expect(JSON.stringify(cardOf(BARE).view)).not.toContain("It reads your machines");
@@ -139,7 +139,8 @@ describe("access on the proposal cards", () => {
   test("a version that raises the level shows the line and the right; one that keeps or lowers it does not", () => {
     const raised = versionOf(BARE, { ...BARE, access: "read" });
     expect(raised.view?.[1]).toEqual({ kind: "para", text: ACCESS_LINES.read });
-    expect(raised.summary).toContain("It now also asks for reads screens.");
+    expect(raised.summary).toContain("It now also asks for your sessions' screens.");
+    expect(versionOf(BARE, { ...BARE, access: "see" }).summary).toContain("It now also asks for the state of your machines and sessions.");
     for (const card of [versionOf({ ...BARE, access: "see" }, { ...BARE, access: "see" }), versionOf({ ...BARE, access: "read" }, { ...BARE, access: "see" })]) {
       expect(JSON.stringify(card.view)).not.toContain("It reads your machines");
       expect(card.summary).toContain("It asks for no new rights.");

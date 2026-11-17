@@ -153,8 +153,8 @@ export const DECIDES_REPLY_CHIP = "answers go to a session";
  * follow "asks for", as `ON_CHIP` does.
  */
 export const ACCESS_CHIPS = {
-  see: "reads machines, sessions, usage",
-  read: "reads screens",
+  see: "the state of your machines and sessions",
+  read: "your sessions' screens",
 } as const satisfies Readonly<Record<TrickAccess, string>>;
 
 /**
