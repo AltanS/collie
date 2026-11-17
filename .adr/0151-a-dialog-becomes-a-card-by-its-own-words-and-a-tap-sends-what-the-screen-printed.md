@@ -4,10 +4,10 @@
 - **Date:** 2026-11-16
 - **Supersedes:** ADR 0054, ADR 0055, ADR 0056, ADR 0058, ADR 0059, ADR 0061, ADR 0076, ADR 0077, ADR 0078, ADR 0079, ADR 0098, ADR 0108, ADR 0133
 - **Retires:** ADR 0072 (rule in `web/src/lib/table-run.ts`)
-- **Trail:** the `/model` digit probe of ADR 0009, the owner's `/effort` slider of 2026-09-21, the
-  owner's asks to put a card down and to dock it in one place, the counsel on ADR 0078 (a six-row cut
-  of a write), issue #354 (bind the ticking rows), PR 397 and issues 412, 416, 455 (a grammar per pi
-  extension), issue #372, PR 336, the trouble tally of 2026-11-07. Files: `web/src/lib/harness/`
+- **Trail:** the `/model` digit probe of ADR 0009, the owner's `/effort` slider of 2026-09-21 and asks
+  to put a card down and dock it in one place, the counsel on ADR 0078 (a six-row cut of a write),
+  issue #354 (bind the ticking rows), PR 397, issues 412, 416, 455 (a grammar per pi extension), issue
+  #372, PR 336, the trouble tally of 2026-11-07. Files: `web/src/lib/harness/`
   (`menu-hints.ts`, `prompt-model.ts`, `conformance.ts`, `claude/`, `omp/`, `pi/`),
   `web/src/lib/prompt-action.ts`, `bridge/prompt-binding.ts`, `web/src/components/card-dock.tsx`
 
@@ -76,11 +76,10 @@ ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) sta
   through `menuKeyFor` and none is a digit; a notice card's keys are exactly the digits (letters under
   a `letters` head) its key block printed, in order; a walk is arrows of one direction then Enter, at
   most one row on `["Enter"]`; every key is a valid Herdr key (`isValidHerdrKey`). Since M102 spec 03
-  it also checks that every key a lifted block can emit (`emittableKeySends`: the plans, a walk's
-  commit, the sticky arrow, the clears, the declared key) is printed on its screen (`printedKeys`), is
-  an arrow its pointer licenses, or matches an entry of `UNPRINTED_KEY_EXCEPTIONS` for that harness.
-  A key that is none of these and waits for a decision is an `unprintedKeyFindings` line, run as an
-  expected failure.
+  every key a lifted block can emit (`emittableKeySends`: plans, a walk's commit, the sticky arrow,
+  the clears, the declared key) is printed on its screen (`printedKeys`), an arrow its pointer
+  licenses, or an `UNPRINTED_KEY_EXCEPTIONS` entry for that harness; else it is an
+  `unprintedKeyFindings` line, run as an expected failure while it waits for a decision.
 - Rule 3: the closed list `UNPRINTED_KEY_EXCEPTIONS` (`harness/conformance.ts`), pinned at seven.
   a. `harness/claude/resume.ts`. b. `harness/claude/switch-model.ts`. c. `submitPromptFeedback`
   (`web/src/lib/prompt-action.ts`, `grammar/PLAN_FEEDBACK_NOTES.md`). d. `harness/agy/artifact.ts`.
@@ -102,18 +101,15 @@ ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) sta
   32768 (`bridge/server.ts`); `tailLinesFor`, `MAX_TAIL_LINES` = 12 (`web/src/lib/tail-lines.ts`).
 - Rule 10: `CardDock` (55dvh, 40dvh with the keyboard up); `PromptPanel`, `rawMode`; `HeldCard`; `useFloatingClear`, `bottomRoom`.
 
-## Recorded, not found in the code
-
-- ADR 0058 asked a record for each new unprinted key; 3b, 3c and 3d have none, so rule 3 is that list.
-- ADR 0053: a ritual re-runs the capture lab per Claude Code version. It is a ritual, not code.
-
 ## Consequences
+
+- Not in the code: ADR 0058 asked a record per new unprinted key; 3b, 3c and 3d have none, so rule 3
+  is that list. ADR 0053's capture lab re-run per Claude Code version is a ritual, not code.
 
 - A walked tap costs one more read and can leave the pointer moved with nothing committed. A gap of
   milliseconds stays between the bridge's read and its send, except on a clamped edge row.
-- Uncaptured shapes (new presets, clipped footers) decline to ADR 0142's unread screen.
-- Revisit when a multiplexer gains a conditional send, or when a harness offers a structured answer
-  path (ADR 0024 decides whether Collie may take it).
+- Uncaptured shapes (new presets, clipped footers) decline to ADR 0142's unread screen. Revisit when
+  a multiplexer gains a conditional send, or a harness a structured answer path (ADR 0024 decides).
 
 ## What we tried before
 
