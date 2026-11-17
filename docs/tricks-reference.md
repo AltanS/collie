@@ -1658,7 +1658,7 @@ Every verb of `collie trick`.
 | `helper` | `collie trick helper <id\|folder>` | Rewrites a trick's `trick.ts` with the helper this Collie carries. |
 | `skill` | `collie trick skill [<id>]` | Prints what a trick that is on asks of an agent. With no id, prints how to write a trick. |
 | `guide` | `collie trick guide [--json]` | Prints how to write a trick and hand it to the person, as plain text for an agent. |
-| `propose` | `collie trick propose <folder> [--request-id <uuid>] [--json]` | Hands a trick folder to the person as a card of Collie's own on the lead: on the Hill, or in Settings, Tricks, while the Hill is off. Nothing runs before their yes. |
+| `propose` | `collie trick propose <folder> [--request-id <uuid>] [--json]` | Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on the Hill while it is on. Nothing runs before their yes. |
 | `view` | `collie trick view <trick> <verb> [args]` | Runs one verb of an agent view, from the agent's pane. The verbs are the `trick view` commands below. |
 
 | Verb | Flag | What it does |

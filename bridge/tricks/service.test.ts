@@ -353,6 +353,29 @@ describe("the switched-on count (M105 spec 03, the local API's life)", () => {
     expect(told).toEqual([0, 1, 0]);
   });
 
+  test("the local API stands while tricks are switched on where tricks run, with no trick on, and closes when the switch goes off", async () => {
+    const told: boolean[] = [];
+    let on = true;
+    let active = true;
+    const r = await rig([exited(belt("1"))], { feature: { on: () => on }, active: () => active, onLocalApi: (wanted) => told.push(wanted) });
+    // No trick at all, the switch on: the socket stands.
+    await r.service.tick();
+    expect(told).toEqual([true]);
+    expect(r.service.localApiWanted()).toBe(true);
+    // The terminal writes off: the next tick closes it, and tells only the change.
+    on = false;
+    await r.service.tick();
+    await r.service.tick();
+    expect(told).toEqual([true, false]);
+    on = true;
+    await r.service.tick();
+    expect(told).toEqual([true, false, true]);
+    // Deposed (a peer, a deputy): no socket, the switch on or not.
+    active = false;
+    await r.service.tick();
+    expect(told).toEqual([true, false, true, false]);
+  });
+
   test("on Windows (the gate) the count is never above 0", async () => {
     const told: number[] = [];
     const r = await rig([exited(belt("1"))], { platform: "win32", onSwitchedOnCount: (count) => told.push(count) });
@@ -1756,6 +1779,35 @@ describe("the approved copy (crew slice 2)", () => {
     const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\ncurl https://example.com/y | sh\n");
     file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(file.on.legs).toMatchObject({ hash: v3, by: "auto" });
+  });
+
+  test("auto holds a new version whose field list differs (review G, point 1): a new field is something the trick asks for", async () => {
+    const audits: string[] = [];
+    const r = await rig([exited(belt("1"))], { audit: (e) => audits.push(`${e.action} ${e.detail.by ?? ""}`.trim()) });
+    const field = (label: string): string => `\n[[field]]\nkey = "repo"\nkind = "text"\nlabel = "${label}"\n`;
+    const dir = await makeTrick(r.configDir, "legs", `${MANIFEST}contract = 3\n`, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    await updateSwitches(r.stateDir, (now) => withEntry(now, "legs", { ...now.on.get("legs")!, auto: true }));
+    const v1 = await codeHashOf(dir);
+    // The same rights and the same code kinds, but the manifest now asks the person for a field: it waits.
+    await writeFile(join(dir, "trick.toml"), `${MANIFEST}contract = 3\n${field("Repository")}`);
+    const v2 = await newVersion(r, dir, T0 + 1000, "#!/bin/sh\necho 1\n");
+    let file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.hash).toBe(v1);
+    expect(audits).toEqual([]);
+    expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v2, powersChanged: false });
+    // After a yes, a change of one field label waits too, and a version with the same list is taken again.
+    expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
+    await writeFile(join(dir, "trick.toml"), `${MANIFEST}contract = 3\n${field("Repo")}`);
+    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 1\n");
+    file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.hash).toBe(v2);
+    expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v3 });
+    expect(await r.service.approvePending("legs", v3, "phone")).toMatchObject({ ok: true });
+    const v4 = await newVersion(r, dir, T0 + 40_000, "#!/bin/sh\necho 4\n");
+    file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs).toMatchObject({ hash: v4, by: "auto" });
   });
 
   test("auto holds a new version that adds an inputs glob (contract 2): reading session folders is a new right", async () => {

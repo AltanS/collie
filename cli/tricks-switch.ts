@@ -1,6 +1,9 @@
 import { readTricksFeature, tricksFeaturePath, writeTricksFeature } from "../bridge/tricks/feature-switch.ts";
 import { TRICKS_OFF_LINE, TRICKS_WINDOWS_LINE, tricksGated } from "../web/src/lib/tricks/schema.ts";
+import { readEnvMarkers } from "./beacon.ts";
 import type { CliContext } from "./context.ts";
+import { personOnlyRefusal } from "./hill.ts";
+import type { PaneKind } from "./walky.ts";
 import { EXIT, type Io } from "./io.ts";
 
 // `collie tricks on|off|status`: the switch for tricks as a whole on this machine (bridge/tricks/
@@ -66,6 +69,25 @@ export function cmdTricksSwitch(deps: TricksSwitchDeps, verb: "on" | "off", args
   if (json) deps.io.out(JSON.stringify({ on }));
   else deps.io.out(on ? TRICKS_ON_WORDS : TRICKS_OFF_WORDS);
   return EXIT.OK;
+}
+
+/** What `collie tricks on` needs to know where it runs: the pane markers and the bridge's answer. */
+export interface TricksOnDeps extends TricksSwitchDeps {
+  readonly ctx: Pick<CliContext, "stateDir" | "env">;
+  readonly paneKind?: (() => Promise<PaneKind>) | undefined;
+}
+
+/**
+ * `collie tricks on`: switching tricks on is the person's choice, so it is refused in an agent's pane, with
+ * the sentence the other person-only verbs use (cli/hill.ts `personOnlyRefusal`), the same speed bump as
+ * `collie trick on` (cli/trick.ts `agentPaneRefusal`). `off` needs no check: a person can always switch off.
+ */
+export async function cmdTricksOn(deps: TricksOnDeps, args: readonly string[]): Promise<number> {
+  if (readEnvMarkers(deps.ctx.env).length > 0 && deps.paneKind !== undefined && (await deps.paneKind().catch(() => "unknown" as const)) === "agent") {
+    for (const line of personOnlyRefusal("collie tricks on", "in Settings, Tricks")) deps.io.err(line);
+    return EXIT.REFUSED;
+  }
+  return cmdTricksSwitch(deps, "on", args);
 }
 
 /** `collie tricks status`: on or off, and `unset` when no switch was ever written (that reads as off). */

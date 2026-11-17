@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -12,7 +12,7 @@ import { asksForChange, asksForLines } from "./version-card.ts";
 import { TRICKS_DIR, trickStateDir } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { TRICKS_ROUTE_RIGHTS, tricksValueRoute } from "./routes.ts";
-import { TRICKS_OFF_LINE } from "../../web/src/lib/tricks/schema.ts";
+import { TRICKS_OFF_LINE, TRICKS_WINDOWS_LINE } from "../../web/src/lib/tricks/schema.ts";
 import { TricksService, VALUES_ON_LEAD, type TricksServiceDeps, type ValueAnswer } from "./service.ts";
 import { withSwitch, writeSwitches, type Switches } from "./switches.ts";
 import { stateEntries } from "../crew/standby-tricks-lead.ts";
@@ -161,6 +161,57 @@ describe("values.json", () => {
     }
   });
 
+  test("review G point 3: a .collie that is a symlink is refused, read and written; the target is never touched", async () => {
+    const stateDir = await tempDir();
+    const target = await tempDir();
+    const folder = dirname(valuesPath(stateDir, "legs"));
+    await mkdir(dirname(folder), { recursive: true });
+    await chmod(target, 0o755);
+    await symlink(target, folder);
+    const store = new TrickValues(stateDir);
+    expect(() => store.write("legs", { repo: SECRET })).toThrow(/not a real folder/u);
+    expect(await readdir(target)).toEqual([]);
+    expect((await stat(target)).mode & 0o777).toBe(0o755);
+    // A values file the link holds is not read either.
+    await writeFile(join(target, "values.json"), JSON.stringify({ v: 1, values: { repo: SECRET } }));
+    expect(store.read("legs")).toEqual({ values: {}, unread: true });
+  });
+
+  test("review G point 3: through the route a symlinked .collie answers write-failed and the value is nowhere", async () => {
+    const r = await rig();
+    const target = await tempDir();
+    const folder = dirname(valuesPath(r.stateDir, "legs"));
+    await mkdir(dirname(folder), { recursive: true });
+    await symlink(target, folder);
+    const answer = await r.service.setValue(HOST, "legs", { rid: R1, key: "repo", value: SECRET });
+    expect(answer).toMatchObject({ status: 409, body: { error: "write-failed" } });
+    expect(JSON.stringify(answer)).not.toContain(SECRET);
+    expect(await readdir(target)).toEqual([]);
+    expect(r.audit).toEqual([]);
+  });
+
+  test("review G point 7: a hand-edited file that breaks a field's rule reads that field as unset, and the row says Needs setup", async () => {
+    const stateDir = await tempDir();
+    await mkdir(dirname(valuesPath(stateDir, "legs")), { recursive: true });
+    const manifest = manifestOf(MANIFEST);
+    // A number past its max, and a text with a line break: each reads as unset for its own field.
+    await writeFile(valuesPath(stateDir, "legs"), JSON.stringify({ v: 1, values: { repo: "one\ntwo", rows: 99 } }));
+    const stored = new TrickValues(stateDir).read("legs");
+    expect(fieldsWire(manifest, stored)).toEqual({ fields: manifest.fields, needsSetup: true });
+    expect(withValues({ contract: 3, trigger: { kind: "timer" }, trick: { id: "legs", dir: "/d", state: "/s" }, host: HOST, memberId: HOST, sessions: [], spaces: [] }, manifest, stored).values).toEqual({ rows: 10 });
+    // A good field beside a bad one stays.
+    await writeFile(valuesPath(stateDir, "legs"), JSON.stringify({ v: 1, values: { repo: "lodge/workshop", rows: 99 } }));
+    expect(fieldsWire(manifest, new TrickValues(stateDir).read("legs"))).toEqual({ fields: manifest.fields, values: { repo: "lodge/workshop" } });
+  });
+
+  test("review G point 7: __proto__ as a key is refused by the file reader and by the route", async () => {
+    expect(parseValuesFile('{"v":1,"values":{"__proto__":"x"}}')).toBeNull();
+    const r = await rig();
+    expect(await r.service.setValue(HOST, "legs", { rid: R1, key: "__proto__", value: "x" })).toEqual({ status: 400, body: { error: "value-invalid" } });
+    expect(await Bun.file(valuesPath(r.stateDir, "legs")).exists()).toBe(false);
+    expect("x" in {}).toBe(false);
+  });
+
   test("the row carries the fields, the values kept, Needs setup, and the unread flag", () => {
     const manifest = manifestOf(MANIFEST);
     expect(fieldsWire(manifest, { values: {}, unread: false })).toEqual({ fields: manifest.fields, needsSetup: true });
@@ -263,6 +314,41 @@ describe("the write route", () => {
     expect(r.specs.length).toBe(before + 1);
     // Clearing (null, or an empty text) goes back to Needs setup.
     expect(receipt(await r.service.setValue(HOST, "legs", { rid: R3, key: "repo", value: "" })).info.needsSetup).toBe(true);
+  });
+
+  test("review G point 7: a value write while the trick is off stores the value and starts no run", async () => {
+    const r = await rig({}, false);
+    await tick(r);
+    const before = r.specs.length;
+    expect(receipt(await r.service.setValue(HOST, "legs", { rid: R1, key: "repo", value: "lodge/workshop" })).changed).toBe(true);
+    await tick(r);
+    await tick(r);
+    expect(r.specs.length).toBe(before);
+    expect(r.specs).toEqual([]);
+  });
+
+  test("review G point 7: a value write while tricks are off as a whole starts no run and stores nothing", async () => {
+    let featureOn = true;
+    const r = await rig({ feature: { on: () => featureOn } });
+    await tick(r);
+    const before = r.specs.length;
+    featureOn = false;
+    expect(await r.service.setValue(HOST, "legs", { rid: R1, key: "repo", value: SECRET })).toEqual({ status: 409, body: { error: "tricks-off", message: TRICKS_OFF_LINE } });
+    await tick(r);
+    expect(r.specs.length).toBe(before);
+    expect(await Bun.file(valuesPath(r.stateDir, "legs")).exists()).toBe(false);
+  });
+
+  test("review G point 7: a value write while the Windows gate is closed answers windows, writes nothing and starts no run", async () => {
+    const r = await rig({ platform: "win32" });
+    await tick(r);
+    const answer = await r.service.setValue(HOST, "legs", { rid: R1, key: "repo", value: SECRET });
+    expect(answer).toEqual({ status: 409, body: { error: "windows", message: TRICKS_WINDOWS_LINE } });
+    expect(JSON.stringify(answer)).not.toContain(SECRET);
+    await tick(r);
+    expect(r.specs).toEqual([]);
+    expect(await Bun.file(valuesPath(r.stateDir, "legs")).exists()).toBe(false);
+    expect(r.audit).toEqual([]);
   });
 
   test("on a crew member the values live on the lead: refused, nothing written", async () => {

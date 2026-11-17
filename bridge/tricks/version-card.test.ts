@@ -491,6 +491,21 @@ describe("the card's words and view", () => {
     expect(versionCard(next, { counted: false, files: [] })?.options?.map((option) => option.intent)).toEqual(["keep"]);
   });
 
+  test("review G point 2: a changed field list is something new, so a card that cannot show it whole offers Keep only", () => {
+    const base = subject();
+    const pending = base.pending!;
+    const fields: NonNullable<TrickManifest["fields"]> = [{ key: "repo", kind: "text", label: "Repository" }];
+    // More masked notes than one view holds: the head does not fit, whatever the change is.
+    const files: VersionDiff["files"] = Array.from({ length: 30 }, (_, i) => ({ rel: `f${String(i)}.sh`, change: "changed", plus: 1, minus: 1, hunk: ["@@ -1 +1 @@", "-a", "+b"], masked: 1 }));
+    const diff: VersionDiff = { counted: true, files };
+    const withFields = versionCard({ ...base, pending: { ...pending, manifest: { ...pending.manifest!, fields } } }, diff);
+    expect(withFields?.options).toEqual([{ intent: "keep", label: "Keep the old version" }]);
+    expect(withFields?.summary).toContain(VERSION_TOO_MUCH_START);
+    // The same diff with the field list unchanged is not held back by the rule: "Use" is offered.
+    const same = versionCard({ ...base, pending: { ...pending, manifest: { ...pending.manifest! } } }, diff);
+    expect(same?.options?.map((option) => option.intent)).toContain("use");
+  });
+
   test("a request id is a canonical UUID that moves with the trick, the hash and the count", () => {
     const one = versionRequestId("legs", "a".repeat(64), 0);
     expect(one).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);

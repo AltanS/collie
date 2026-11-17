@@ -33,7 +33,6 @@ const MUX_SAID = ["yes", "no", "unsaid"] as const;
 /** The facts. A kind is `"flag"` (a boolean), `"count"` (0 to 99) or a fixed list of short words. */
 export const ANSWERS = {
   "settings-accounts-row": "flag",
-  "settings-tricks-row": "flag",
   "settings-install-card": "flag",
   // Package mux-config (lib/remembered-mux.ts): what the front machine's /api/config said last time.
   // One word per declared capability, `unsaid` when the bridge did not mention it, so a capability a

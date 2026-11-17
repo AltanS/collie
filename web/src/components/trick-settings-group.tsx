@@ -49,6 +49,9 @@ export function TrickSettingsGroup({ trick, canWrite, onLead = false, onValue }:
   return (
     <section data-section="settings" className="pt-4">
       <SectionLabel className="mb-1.5 block">{t("settings.tricks.about.settings")}</SectionLabel>
+      <p data-line="settings-no-secrets" className="pb-1 text-xs text-muted-foreground">
+        {t("settings.tricks.fields.noSecrets")}
+      </p>
       {onLead && (
         <p data-line="settings-on-lead" className="pb-1 text-xs text-muted-foreground">
           {t("settings.tricks.fields.onLead")}

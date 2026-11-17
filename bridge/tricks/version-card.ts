@@ -341,7 +341,8 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   // fit one view, the card offers "Keep" only, its view is the honest line, and its summary sends the person
   // to the machine. The same holds for every right the head lists: environment names, places, `decides`,
   // `on`, `watch`, the `inputs` sentence, new instructions and the warnings.
-  const somethingNew = rights.length > 0 || newRules || viewNew || reads.length > 0 || warnings.length > 0;
+  // A changed field list is something new too: it changes what the trick asks the person for (review G, point 2).
+  const somethingNew = rights.length > 0 || newRules || viewNew || reads.length > 0 || warnings.length > 0 || fieldsChanged(base, next);
   if (somethingNew && !fitsWhole(facts)) {
     const tooMuch: Omit<HillPostInput, "requestId"> = {
       title: versionTitle(subject.name),
@@ -552,9 +553,14 @@ export function asksForLines(manifest: Pick<TrickManifest, "fields"> | undefined
   return fields.length === 0 ? [] : factParas(asksForSentence(fields)).map((text): ViewNode => ({ kind: "para", text }));
 }
 
+/** Whether the new version's field list differs from the approved copy's (a new, changed or removed field). */
+export function fieldsChanged(base: Pick<TrickManifest, "fields"> | undefined, next: Pick<TrickManifest, "fields"> | undefined): boolean {
+  return JSON.stringify(base?.fields ?? []) !== JSON.stringify(next?.fields ?? []);
+}
+
 /** The version card's line: the new version's fields, when they are new or changed against the approved copy's. */
 export function asksForChange(base: Pick<TrickManifest, "fields"> | undefined, next: Pick<TrickManifest, "fields"> | undefined): ViewNode[] {
-  return JSON.stringify(base?.fields ?? []) === JSON.stringify(next?.fields ?? []) ? [] : asksForLines(next);
+  return fieldsChanged(base, next) ? asksForLines(next) : [];
 }
 
 /**

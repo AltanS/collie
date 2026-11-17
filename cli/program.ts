@@ -137,9 +137,9 @@ import {
   type WalkyDeps,
 } from "./walky.ts";
 import { apiHelp, cmdApi, declaredOperations, type ApiDeps } from "./api.ts";
-import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillState, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
+import { cmdHill, cmdHillClear, cmdHillList, cmdHillPost, cmdHillState, cmdHillOn, cmdHillStatus, cmdHillSwitch, cmdHillWithdraw, HILL_SUBCOMMANDS, hillPostHelp, type HillDeps } from "./hill.ts";
 import { cmdTrickView, viewTopLines, type ViewDeps } from "./trick-view.ts";
-import { cmdTricks, cmdTricksStatus, cmdTricksSwitch, TRICKS_SUBCOMMANDS } from "./tricks-switch.ts";
+import { cmdTricks, cmdTricksOn, cmdTricksStatus, cmdTricksSwitch, TRICKS_SUBCOMMANDS } from "./tricks-switch.ts";
 import { cmdUpdateCheck, updateCheckDeps, wantsCheck } from "./update-check.ts";
 import { cmdTheme, cmdThemeCheck, realThemeFiles, THEME_SUBCOMMANDS } from "./theme-check.ts";
 import { cmdThemeSkill } from "./theme-skill.ts";
@@ -417,7 +417,7 @@ const HILL_TREE: readonly Subcommand[] = [
   {
     name: "on",
     summary: "switch the Hill on for this Collie (it is off until switched on)",
-    run: (args, s) => cmdHillSwitch({ ...hillDeps(s.io), followSkill: (on) => skillFollowsSwitch(skillDeps(s.io))(on) }, "on", args),
+    run: (args, s) => cmdHillOn({ ...hillDeps(s.io), followSkill: (on) => skillFollowsSwitch(skillDeps(s.io))(on) }, args),
   },
   {
     name: "off",
@@ -1172,7 +1172,7 @@ export const COMMANDS: readonly Command[] = [
       {
         name: "on",
         summary: "switch tricks on for this machine; each trick still has its own switch",
-        run: (args, s) => cmdTricksSwitch(trickVerbDeps(s.io), "on", args),
+        run: (args, s) => cmdTricksOn(trickVerbDeps(s.io), args),
       },
       {
         name: "off",
