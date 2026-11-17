@@ -4126,6 +4126,8 @@ export const PENDING_TRANSLATION = [
   "composer.heldBack.putBack",
   "composer.heldBack.boxFull",
   "composer.heldBack.count",
+  "harnessBar.plan",
+  "harnessBar.history",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
