@@ -4,11 +4,13 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider, type InitialEntry } from "react-router";
 
 import { firstSentence, TrickCardsLine, TrickCardsWaiting, TrickCardsWaitingList } from "@/components/trick-cards";
-import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
+import { ARM_DWELL_MS } from "@/lib/arm";
+import { __resetHill, __settleHill, noteHillAnswer, syncHill } from "@/lib/hill/store";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { TrickCardRoute } from "@/routes/trick-card";
 import { withHeaderHost } from "@/test/header-host";
-import { collieCard, HILL_T0, hillDecision } from "@/test/hill-fixtures";
+import type { HillDecision } from "@/lib/hill/wire";
+import { collieCard, HILL_T0, hillDecision, hillReceipt } from "@/test/hill-fixtures";
 import { server } from "@/test/setup";
 
 // A TRICK'S CARD NEEDS NO HILL (M96 spec 14): the group in Settings, Tricks, the Dashboard's line while the
@@ -114,6 +116,55 @@ describe("the card's page", () => {
     expect(screen.queryByText(/hill/iu)).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(router.state.location.pathname).toBe("/settings/tricks");
+  });
+
+  // Altan's phone, 2026-11-17: Dismiss on an old proposal showed "Dismissed" and the card stayed, with Back,
+  // Next and Dismiss, because the bridge keeps a dismissed card in its closed list and the store keeps this
+  // phone's receipt for every closed card it serves, so the page held it for as long as the page was open.
+  it("leaves once the bridge closed the card on this phone's Dismiss, and the other card still waits", async () => {
+    const card = collieCard("proposal", "idle-sessions", { at: HILL_T0 + 1 });
+    const other = collieCard("proposal", "turn-log", { at: HILL_T0 + 2 });
+    const none: HillDecision[] = [];
+    let served = { v: 1, rev: 1, open: [card, other], closed: none };
+    server.use(
+      http.get("/api/hill", () => HttpResponse.json(served)),
+      http.post("/api/hill/answer", async ({ request }) => {
+        // SAFETY: `postHillAnswer` in lib/api.ts is the only caller and posts a `HillAnswerRequest` (a string rid and intent).
+        const body = (await request.json()) as { rid: string; intent: string };
+        expect(body.intent).toBe("dismiss");
+        served = { v: 1, rev: 2, open: [other], closed: [{ ...card, state: "dismissed", closedAt: HILL_T0 + 5 }] };
+        return HttpResponse.json(hillReceipt({ rid: body.rid, state: "dismissed", delivery: "none" }));
+      }),
+    );
+    await act(async () => {
+      syncHill(1, "tricks");
+      await __settleHill();
+    });
+    const router = renderApp(["/", "/settings/tricks", { pathname: `/trick-card/${card.id}`, state: { from: "/settings/tricks" } }], { hillOff: true, trickCards: true });
+    expect(await screen.findByText("Switch on the trick idle-sessions?")).toBeInTheDocument();
+    const dismiss = document.querySelector<HTMLButtonElement>('[data-slot="decision-dismiss"]')!;
+    await userEvent.click(dismiss);
+    await act(() => new Promise((done) => setTimeout(done, ARM_DWELL_MS + 10)));
+    await userEvent.click(dismiss);
+    // The bridge took it: the receipt says Dismissed, and the list now serves the card as closed.
+    await vi.waitFor(() => expect(served.rev).toBe(2));
+    await vi.waitFor(() => expect(router.state.location.pathname).not.toBe(`/trick-card/${card.id}`), { timeout: 2000 });
+    expect(screen.queryByText("Switch on the trick idle-sessions?")).toBeNull();
+  });
+
+  it("leaves once the card closed on this phone's yes, as on a dismiss", async () => {
+    const card = collieCard("proposal", "legs");
+    await holds([card]);
+    const router = renderApp(["/", "/settings/tricks", { pathname: `/trick-card/${card.id}`, state: { from: "/settings/tricks" } }], { hillOff: true, trickCards: true });
+    expect(await screen.findByText("Switch on the trick legs?")).toBeInTheDocument();
+    // The yes went (its receipt is held), then the list serves the card closed: the page goes, it does not hold the card.
+    act(() => noteHillAnswer(card.id, { receipt: hillReceipt({ state: "answered" }), intent: "on", text: null }));
+    server.use(http.get("/api/hill", () => HttpResponse.json({ v: 1, rev: 2, open: [], closed: [{ ...card, state: "answered", closedAt: HILL_T0 + 5 }] })));
+    await act(async () => {
+      syncHill(2, "tricks");
+      await __settleHill();
+    });
+    await vi.waitFor(() => expect(router.state.location.pathname).not.toBe(`/trick-card/${card.id}`));
   });
 
   it("shows no agent's card by its id", async () => {

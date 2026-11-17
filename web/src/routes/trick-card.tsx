@@ -4,7 +4,7 @@ import { useParams } from "react-router";
 import { LiveDecisionCard } from "@/components/hill-view";
 import { SettingsPage } from "@/components/settings-page";
 import { useNav } from "@/hooks/use-nav";
-import { useHillAnswerHeld, useHillClosed, useHillHeld, useHillOpen } from "@/lib/hill/store";
+import { useHillHeld, useHillOpen } from "@/lib/hill/store";
 import { isTrickCard, type HillDecision } from "@/lib/hill/wire";
 import { homePath } from "@/lib/nav";
 import { useOptionalRootData } from "@/lib/route-data";
@@ -18,14 +18,20 @@ import { useScope } from "@/lib/session";
 // to the Dashboard, whichever opened it, else lands on the Dashboard (lib/nav.ts `ancestorsOf`).
 //
 // The card comes from the hill's store, which the root loader keeps current: with the Hill on from
-// `hillRev`, with it off from `trickCardsRev`, under which the bridge serves only these cards. An answered
-// card stays on the page with what its answer did while the store holds its receipt. A card that is gone
-// (answered elsewhere, expired, another phone) leaves the page, as any screen closed under the person does.
+// `hillRev`, with it off from `trickCardsRev`, under which the bridge serves only these cards. The page
+// shows the card only while the store serves it OPEN. An answer that closed it (a yes, the decline, a
+// dismiss) shows its receipt on the card until the list read that follows the tap (`readHillNow`, at
+// HILL_LIST_READ_AFTER_MS) serves the card closed; then the page leaves, as the card leaves the Hill's open
+// list at that moment. It never holds a closed card: the bridge keeps an answered or dismissed card in its
+// closed list for good, and the store keeps this phone's receipt for as long as it serves it, so a page that
+// held such a card kept it, its pager and its Dismiss on screen until the person left (Altan's phone,
+// 2026-11-17). A card that is gone for another reason (answered elsewhere, expired, another phone) leaves
+// the same way.
 
-/** The card the page shows: open, or closed with this phone's receipt held. Only Collie's own about a trick. */
-function cardOf(id: string | undefined, open: readonly HillDecision[], closed: readonly HillDecision[]): HillDecision | undefined {
+/** The card the page shows: open, and only Collie's own about a trick. */
+function cardOf(id: string | undefined, open: readonly HillDecision[]): HillDecision | undefined {
   if (id === undefined) return undefined;
-  return open.find((d) => d.id === id && isTrickCard(d.from)) ?? closed.find((d) => d.id === id && isTrickCard(d.from));
+  return open.find((d) => d.id === id && isTrickCard(d.from));
 }
 
 export function TrickCardRoute() {
@@ -34,13 +40,9 @@ export function TrickCardRoute() {
   const scope = useScope();
   const root = useOptionalRootData();
   const open = useHillOpen();
-  const closed = useHillClosed();
   const held = useHillHeld();
-  const answer = useHillAnswerHeld(decisionId ?? "");
-  const found = cardOf(decisionId, open, closed);
-  // A closed card stays only while this phone holds what its own answer did.
-  const decision = found !== undefined && found.state !== "open" && answer === null ? undefined : found;
-  // Nothing to wait for: the store read its list and the card is not in it, or the bridge serves no list.
+  const decision = cardOf(decisionId, open);
+  // Nothing to wait for: the store read its list and the card is not open in it, or the bridge serves no list.
   const gone = decision === undefined && (held || root?.trickCards === false);
   useEffect(() => {
     if (gone) nav.up(homePath(scope));

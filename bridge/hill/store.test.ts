@@ -6,6 +6,9 @@ import { join } from "node:path";
 import { HOST } from "../host.ts";
 import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { decision } from "./fixtures.ts";
+import { HILL_MAX_EXPIRY_MS } from "../../web/src/lib/tricks/limits.ts";
+import { memoryHillReceipts } from "./receipts.ts";
+import { HillService } from "./service.ts";
 import { DECISIONS_FILE, HILL_CLOSED_KEPT, hillDir, HillStore, pruned } from "./store.ts";
 
 const roots: string[] = [];
@@ -238,5 +241,77 @@ describe("forgetting closed decisions", () => {
     const list = store.list();
     expect(list.closed).toHaveLength(20);
     expect(list.closedTotal).toBe(25);
+  });
+});
+
+// An older build stored an open decision with `expiresAt: null`, and the sweep closes only a decision past a
+// time, so it waited for ever (16 trick Decisions eight days old on a dev bridge, 2026-11-17).
+describe("an open decision stored with no expiry", () => {
+  const DAY = 86_400_000;
+  const TRICK = { kind: "trick", address: null, trickId: "look", trickKey: "k1", memberId: null, harness: null, label: "look", host: "desk", trickHost: "desk" } as const;
+  const PROPOSAL = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: null, harness: null, label: "Collie", host: "desk", trickHost: null, ref: { type: "proposal", id: "legs", hash: "a".repeat(64) } } as const;
+
+  function seeded(entries: readonly ReturnType<typeof decision>[]): string {
+    const dir = hillDir(stateDir());
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, DECISIONS_FILE), JSON.stringify({ v: 1, decisions: entries }));
+    return dir;
+  }
+
+  function sweeper(store: HillStore, now: number): HillService {
+    return new HillService({
+      store,
+      receipts: memoryHillReceipts(),
+      place: () => null,
+      send: async () => {
+        throw new Error("nothing may be typed");
+      },
+      crewMode: () => "solo",
+      walkyOn: () => true,
+      memberId: "m_aaaaaaaaaa",
+      machine: "desk",
+      now: () => now,
+    });
+  }
+
+  test("gets posted at plus the longest expiry on load, written to the file; one with an expiry and a closed one are read as they were", () => {
+    const dir = seeded([
+      decision("dc_inside000001", { from: TRICK, target: null, at: 1000 }),
+      decision("dc_proposal0001", { from: PROPOSAL, target: null, at: 2000 }),
+      decision("dc_hasend000001", { at: 1000, expiresAt: 1000 + DAY }),
+      decision("dc_closed000001", { at: 1000, state: "dismissed", closedAt: 1500 }),
+    ]);
+    const store = new HillStore(dir, () => 5000);
+    expect(store.get("dc_inside000001")?.expiresAt).toBe(1000 + HILL_MAX_EXPIRY_MS);
+    // A proposal of Collie's own follows the same rule.
+    expect(store.get("dc_proposal0001")?.expiresAt).toBe(2000 + HILL_MAX_EXPIRY_MS);
+    expect(store.get("dc_hasend000001")?.expiresAt).toBe(1000 + DAY);
+    expect(store.get("dc_closed000001")?.expiresAt).toBeNull();
+    // Persisted: the file holds the new ends, and a restart reads the same ones.
+    const file = JSON.parse(readFileSync(join(dir, DECISIONS_FILE), "utf8"));
+    expect(file.decisions.map((d: { id: string; expiresAt: number | null }) => [d.id, d.expiresAt])).toEqual([
+      ["dc_inside000001", 1000 + HILL_MAX_EXPIRY_MS],
+      ["dc_proposal0001", 2000 + HILL_MAX_EXPIRY_MS],
+      ["dc_hasend000001", 1000 + DAY],
+      ["dc_closed000001", null],
+    ]);
+    expect(new HillStore(dir, () => 9000).get("dc_inside000001")?.expiresAt).toBe(1000 + HILL_MAX_EXPIRY_MS);
+  });
+
+  test("an old one past that end closes as expired on the first sweep; one inside it stays open with its new end", () => {
+    const now = 1000 + HILL_MAX_EXPIRY_MS + DAY;
+    const dir = seeded([
+      decision("dc_old000000001", { from: TRICK, target: null, at: 1000 }),
+      decision("dc_oldprop00001", { from: PROPOSAL, target: null, at: 1000 }),
+      decision("dc_young0000001", { from: TRICK, target: null, at: now - DAY }),
+      decision("dc_hasend000001", { from: TRICK, target: null, at: 1000, expiresAt: now + DAY }),
+    ]);
+    const store = new HillStore(dir, () => now);
+    expect(sweeper(store, now).sweep(now)).toBe(2);
+    for (const id of ["dc_old000000001", "dc_oldprop00001"]) expect(store.get(id)).toMatchObject({ state: "expired", closedAt: now, expiresAt: 1000 + HILL_MAX_EXPIRY_MS });
+    expect(store.get("dc_young0000001")).toMatchObject({ state: "open", expiresAt: now - DAY + HILL_MAX_EXPIRY_MS });
+    expect(store.get("dc_hasend000001")).toMatchObject({ state: "open", expiresAt: now + DAY });
+    // Closed records, never a delete.
+    expect(store.all()).toHaveLength(4);
   });
 });
