@@ -1,0 +1,6 @@
+dev@devbox:~/src/app$ grep -n TODO src/*.ts
+src/api.ts:12:  // TODO: retry on 503
+src/api.ts:48:  // TODO: drop the old header
+src/ui.ts:3:// TODO: move to a theme file
+src/ui.ts:91:    // TODO: a11y label
+dev@devbox:~/src/app$ 

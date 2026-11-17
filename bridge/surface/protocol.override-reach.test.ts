@@ -23,6 +23,7 @@ import { GENERIC_PROBE, looseRow, RowRing, SendProtocol, SessionLocks, type Send
 import { RequestStore } from "./requests.ts";
 import { HoldStore } from "./holds.ts";
 import { maskedAnswer } from "../server.ts";
+import type { PaneForeground } from "../pane-binary.ts";
 
 const FIXTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures");
 const pane = (name: string): string => readFileSync(join(FIXTURES, "panes", name), "utf8");
@@ -109,6 +110,10 @@ interface RigOptions {
   /** What the multiplexer can write: typed keys only, a bracketed paste (tmux), or a whole-text paste (Herdr). */
   readonly write?: "type" | "paste" | "block";
   readonly holds?: HoldStore;
+  /** What the multiplexer's foreground read answers for the pane (`SendDeps.paneForeground`); absent: no read. */
+  readonly foreground?: PaneForeground;
+  /** The foreground read throws. */
+  readonly foregroundThrows?: true;
 }
 
 function rig(screen: ScreenPane, options: RigOptions = {}) {
@@ -130,6 +135,7 @@ function rig(screen: ScreenPane, options: RigOptions = {}) {
     locks: new SessionLocks(),
     ring: new RowRing(),
     holds: options.holds,
+    paneForeground: options.foregroundThrows === true ? () => Promise.reject(new Error("gone")) : options.foreground === undefined ? undefined : () => options.foreground!,
     profile: (name: string) => {
       if (name === NO_PROFILE) return Promise.resolve(null);
       const base = name === FRAMELESS ? framelessProfile() : loadProfiles().get(name);
@@ -306,15 +312,18 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
     expect(harnesses.size).toBeGreaterThanOrEqual(11);
   });
 
-  test("the same dialogs on a pane with no profile (the blind road): refused menu_open, nothing typed, no key", async () => {
-    const typed: string[] = [];
-    for (const [name] of dialogs) {
-      const screen = new ScreenPane(pane(name));
-      const answer = await rig(screen, { harness: NO_PROFILE }).override("y");
-      if (answer.receipt?.reason !== "menu_open" || screen.writes.length > 0 || screen.keys.length > 0) typed.push(`${name}: ${answer.receipt?.outcome ?? "-"}(${answer.receipt?.reason ?? "-"})`);
-    }
-    expect(typed).toEqual([]);
-  });
+  for (const foreground of [undefined, "unknown", "program"] as const) {
+    test(`the same dialogs on a pane with no profile (the blind road, foreground ${foreground ?? "not read"}): refused menu_open, nothing typed, no key`, async () => {
+      const typed: string[] = [];
+      for (const [name] of dialogs) {
+        const screen = new ScreenPane(pane(name));
+        const answer = await rig(screen, { harness: NO_PROFILE, foreground }).override("y");
+        if (answer.receipt?.reason !== "menu_open" || screen.writes.length > 0 || screen.keys.length > 0) typed.push(`${name}: ${answer.receipt?.outcome ?? "-"}(${answer.receipt?.reason ?? "-"})`);
+        else expect(answer.receipt?.menuSign).toBeDefined();
+      }
+      expect(typed).toEqual([]);
+    });
+  }
 
   const MENUS: readonly (readonly [string, readonly string[]])[] = [
     ["a (y/n) prompt", ["Overwrite config.toml? (y/n)"]],
@@ -509,4 +518,65 @@ describe("5. a send Collie makes alone is the same with or without the word (M10
       });
     }
   }
+});
+
+describe("6. the blind road reads the menu sign by what stands in the foreground (M102 spec 12)", () => {
+  /** A shell screen: a numbered list printed by an earlier command, and the prompt under it. */
+  const OLD_LIST = ["$ cat -n todo.txt", "     1  fix the login redirect", "     2  write the release notes", "     3  ask about the logo", "$ "].join("\n");
+  /** A program that asks, its `[Y/n]` live on the last row. */
+  const LIVE_YN = ["$ sudo apt upgrade", "4 upgraded, 0 newly installed, 0 to remove.", "Do you want to continue? [Y/n] "].join("\n");
+
+  for (const who of ["Collie's own send", "the person's send"] as const) {
+    const go = (r: ReturnType<typeof rig>, text: string): Promise<SendAnswer> => (who === "the person's send" ? r.send(text, { fromPhone: true }) : r.send(text));
+
+    test(`${who}, shell foreground, a numbered list above the prompt: the text and Enter go in`, async () => {
+      const screen = new ScreenPane(OLD_LIST);
+      const answer = await go(rig(screen, { harness: NO_PROFILE, foreground: "shell" }), "ls");
+      expect(answer.receipt?.reason).not.toBe("menu_open");
+      expect(screen.writes.map((w) => w.text)).toEqual(["ls"]);
+      expect(screen.keys).toEqual(["Enter"]);
+    });
+
+    test(`${who}, shell foreground, a live [Y/n] on the last row reads no menu sign; the profiles' own cue still holds it (not_free)`, async () => {
+      const screen = new ScreenPane(LIVE_YN);
+      const answer = await go(rig(screen, { harness: NO_PROFILE, foreground: "shell" }), "ls");
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+      expect(answer.receipt?.menuSign).toBeUndefined();
+    });
+
+    test(`${who}, program foreground, a live [Y/n] on the last row: refused menu_open, nothing typed, the sign on the receipt`, async () => {
+      const screen = new ScreenPane(LIVE_YN);
+      const answer = await go(rig(screen, { harness: NO_PROFILE, foreground: "program" }), "y");
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "menu_open", keys: [], menuSign: { kind: "yes-no", row: 2 } });
+      expect(answer.menuSign).toEqual({ kind: "yes-no", row: 2 });
+      expect(screen.writes).toEqual([]);
+      expect(screen.keys).toEqual([]);
+    });
+
+    for (const foreground of ["program", "unknown", undefined] as const) {
+      test(`${who}, foreground ${foreground ?? "not read"}, old numbered output above a prompt: the anchored sign reads no menu, the send goes`, async () => {
+        const screen = new ScreenPane(OLD_LIST);
+        const answer = await go(rig(screen, { harness: NO_PROFILE, foreground }), "ls");
+        expect(answer.receipt?.reason).not.toBe("menu_open");
+        expect(screen.keys).toEqual(["Enter"]);
+      });
+    }
+  }
+
+  test("the sign on the receipt names its kind and row, never the row's text, and the receipt list carries it", async () => {
+    const screen = new ScreenPane(LIVE_YN);
+    const r = rig(screen, { harness: NO_PROFILE, foreground: "unknown" });
+    const answer = await r.send("y");
+    expect(answer.receipt?.menuSign).toEqual({ kind: "yes-no", row: 2 });
+    expect(JSON.stringify(answer.receipt?.menuSign)).not.toContain("continue");
+    expect(r.protocol.recent("%1", 1)[0]?.menuSign).toEqual({ kind: "yes-no", row: 2 });
+    const stored = r.store.list().at(-1)?.receipt;
+    expect(stored?.menuSign).toEqual({ kind: "yes-no", row: 2 });
+  });
+
+  test("a foreground read that throws reads as unknown: the anchored sign still refuses a live [Y/n]", async () => {
+    const screen = new ScreenPane(LIVE_YN);
+    const answer = await rig(screen, { harness: NO_PROFILE, foregroundThrows: true }).send("y");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "menu_open" });
+  });
 });

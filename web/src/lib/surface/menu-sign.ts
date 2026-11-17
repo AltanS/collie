@@ -21,6 +21,12 @@
 // not a menu), and the transcript above it is read only for {@link ABOVE_BOX_ROWS} rows: a dialog drawn
 // over a live box stands right on it, a list further up is the agent's answer.
 //
+// The anchored reading (`anchor`, the blind road on a pane whose foreground is a program or not known;
+// a shell gets no sign at all): with no box, a sign counts only where it stands live at the bottom. A
+// yes/no form on the last or second-last row; any other sign when no prompt row is the bottom row under
+// it and at most {@link ANCHOR_ROWS} rows that are no part of a menu stand under it. A numbered `cat -n`,
+// a git log or an answered `[Y/n]` above a shell prompt is old output, not a question.
+//
 // Pure, and it names no harness (no-harness-names.test.ts holds this folder to that).
 
 import { isSingleKeyRow } from "./key-row";
@@ -29,8 +35,17 @@ import { isSingleKeyRow } from "./key-row";
 export const MENU_WINDOW_ROWS = 24;
 /** The rows over a found box the sign reads. */
 export const ABOVE_BOX_ROWS = 1;
+/**
+ * The anchored reading's K (see {@link anchored}): the most rows that are not a part of a menu that may
+ * stand under a sign. The smallest K that keeps 98 % of the dialog fixtures with no box (menu-sign.corpus.test.ts,
+ * measured 2026-11-17: K 3 reads 97.9 %, K 4 99.0 %); an agent draws its status, its box and a
+ * task list under a dialog. Old output above a shell prompt is caught by the prompt row, not by K.
+ */
+export const ANCHOR_ROWS = 4;
 
-export type MenuSignKind = "pointer" | "pointed-list" | "numbered" | "choices" | "yes-no" | "single-key" | "hint" | "position" | "dismiss" | "commands" | "search";
+/** Every kind of sign, the list a stored receipt's `menuSign.kind` is checked against. */
+export const MENU_SIGN_KINDS = ["pointer", "pointed-list", "numbered", "choices", "yes-no", "single-key", "hint", "position", "dismiss", "commands", "search"] as const;
+export type MenuSignKind = (typeof MENU_SIGN_KINDS)[number];
 
 export interface MenuSign {
   readonly kind: MenuSignKind;
@@ -86,10 +101,15 @@ const ITEMS = /\s{2,}|\s*[|│·]\s*/u;
 const MARK_LEAD = new RegExp(`^[✔✓●${BOX_GLYPHS}]\\s+`, "u");
 /** A row that only continues the one above it in a tree: a tool's result, a nested line. */
 const TREE_LEAD = /^\s*[⎿└├│]/u;
+/** A list item behind a bullet: a row of a picker's list. */
+const BULLET_LEAD = /^\s*[•◦▪]\s+\S/u;
 
 const hint = (verb: string, flags: string): RegExp => new RegExp(`(?:^|[^\\w+])(?:press\\s+)?${KEY}\\s*(?:to\\s+|:\\s*|=\\s*|\\s+)${verb}s?\\b`, flags);
 const MENU_HINT = hint(MENU_VERB, "iu");
 const ANY_HINTS = hint(ANY_VERB, "giu");
+const ANY_HINT = hint(ANY_VERB, "iu");
+/** A prompt waiting for a line: a row that ends in a prompt glyph (`$`, `#`, `%` but no percentage, `>`, `❯`, `»`, `➜`, `λ`). */
+const PROMPT_END = /(?:[$#>❯»➜λ]|(?<!\d)%)\s*$/u;
 
 function isBlank(text: string): boolean {
   return text.trim().length === 0;
@@ -131,62 +151,136 @@ export function menuWindow(texts: readonly string[], box: MenuBox | null): Map<n
 }
 
 /**
+ * How the sign reads a window with no box. `anchor` set: a sign counts only where it stands live at the
+ * bottom (see {@link anchored}), the reading for a pane whose foreground is a program or not known. A
+ * found box is read as it is, whatever this says.
+ */
+export interface MenuSignOptions {
+  readonly anchor?: number;
+}
+
+/**
  * The menu sign on a screen, or null. `texts` are the screen's plain rows; `box` the input box the
  * reader found, or null.
  */
-export function menuSign(texts: readonly string[], box: MenuBox | null = null): MenuSign | null {
+export function menuSign(texts: readonly string[], box: MenuBox | null = null, options: MenuSignOptions = {}): MenuSign | null {
   const rows = menuWindow(texts, box);
+  const anchor = box === null ? options.anchor : undefined;
+  for (const found of candidates(rows)) {
+    if (anchor === undefined || anchored(rows, found, anchor)) return { kind: found.kind, row: found.row };
+  }
+  return null;
+}
+
+/** A sign found on the window: its kind, the row it names, and the lowest row of its parts. */
+interface Candidate extends MenuSign {
+  readonly last: number;
+}
+
+/** A sign of one row. */
+function one(kind: MenuSignKind, row: number): Candidate {
+  return { kind, row, last: row };
+}
+
+/** Every sign on the window, in the order the plain reading takes the first of. */
+function* candidates(rows: ReadonlyMap<number, string>): Generator<Candidate> {
   const order = [...rows.keys()];
   const width = Math.max(0, ...[...rows.values()].map((text) => text.length));
   const numbered: { i: number; n: number }[] = [];
   const choices: number[] = [];
   const commands = new Map<number, number[]>();
+  const hintRows: number[] = [];
   let hints = 0;
-  let firstHint = -1;
   for (const i of order) {
     const text = rows.get(i)!;
     if (isBlank(text)) continue;
-    if (YES_NO_FORM.test(text)) return { kind: "yes-no", row: i };
-    if (MENU_HINT.test(text)) return { kind: "hint", row: i };
-    if (isSingleKeyRow(text)) return { kind: "single-key", row: i };
-    if (POSITION.test(text)) return { kind: "position", row: i };
-    if (DISMISS_HEADER.test(text) && /\p{L}{2}/u.test(text.replace(/(?:esc|escape)\s*$/iu, ""))) return { kind: "dismiss", row: i };
-    if (SEARCH.test(text)) return { kind: "search", row: i };
+    if (YES_NO_FORM.test(text)) yield one("yes-no", i);
+    if (MENU_HINT.test(text)) yield one("hint", i);
+    if (isSingleKeyRow(text)) yield one("single-key", i);
+    if (POSITION.test(text)) yield one("position", i);
+    if (DISMISS_HEADER.test(text) && /\p{L}{2}/u.test(text.replace(/(?:esc|escape)\s*$/iu, ""))) yield one("dismiss", i);
+    if (SEARCH.test(text)) yield one("search", i);
     const found = text.match(ANY_HINTS)?.length ?? 0;
-    if (found > 0 && firstHint < 0) firstHint = i;
+    if (found > 0) hintRows.push(i);
     hints += found;
     const items = text.trim().split(ITEMS).filter((item) => item.length > 0);
-    if (items.length >= 2 && items.every((item) => CHOICE.test(item))) return { kind: "choices", row: i };
+    if (items.length >= 2 && items.every((item) => CHOICE.test(item))) yield one("choices", i);
     const command = COMMAND_ENTRY.exec(text);
     if (command !== null) commands.set(command[1]!.length, [...(commands.get(command[1]!.length) ?? []), i]);
-    if (COMMAND_QUERY.test(text) && choiceNear(rows, i)) return { kind: "commands", row: i };
+    if (COMMAND_QUERY.test(text) && choiceNear(rows, i)) yield one("commands", i);
     const pointer = POINTER_ROW.exec(text);
     const body = pointer === null ? text : pointer[4]!;
     if (pointer !== null) {
-      if (numberOf(body) !== null || isChoice(body)) return { kind: "pointer", row: i };
-      if (pointedList(rows, i, pointer, width)) return { kind: "pointed-list", row: i };
+      if (numberOf(body) !== null || isChoice(body)) yield one("pointer", i);
+      const list = pointedList(rows, i, pointer, width);
+      if (list !== null) yield { kind: "pointed-list", row: i, last: Math.max(...list) };
     }
     const n = numberOf(body);
     if (n !== null) numbered.push({ i, n });
     if (isChoice(body)) choices.push(i);
   }
-  if (hints >= 2) return { kind: "hint", row: firstHint };
-  const run = numbered.find((a) => numbered.some((b) => b.n === a.n + 1 && b.i > a.i && b.i - a.i <= 4));
-  if (run !== undefined) return { kind: "numbered", row: run.i };
-  if (choices.length >= 2) return { kind: "choices", row: choices[0]! };
-  const list = [...commands.values()].find((at) => at.length >= 3);
-  if (list !== undefined) return { kind: "commands", row: list[0]! };
-  return null;
+  if (hints >= 2) yield { kind: "hint", row: hintRows[0]!, last: hintRows.at(-1)! };
+  for (const a of numbered) {
+    let at = a;
+    for (let next = nextIn(numbered, at); next !== undefined; next = nextIn(numbered, at)) at = next;
+    if (at !== a) yield { kind: "numbered", row: a.i, last: at.i };
+  }
+  if (choices.length >= 2) yield { kind: "choices", row: choices[0]!, last: choices.at(-1)! };
+  for (const at of commands.values()) if (at.length >= 3) yield { kind: "commands", row: at[0]!, last: at.at(-1)! };
+}
+
+/** The item that follows `a` in a numbered run: the next number, below it and at most four rows down. */
+function nextIn(numbered: readonly { i: number; n: number }[], a: { i: number; n: number }): { i: number; n: number } | undefined {
+  return numbered.find((b) => b.n === a.n + 1 && b.i > a.i && b.i - a.i <= 4);
 }
 
 /**
- * Whether a pointer row heads a pointed list: two rows or more next to it start where its option text
+ * Whether a sign stands live at the bottom of the window (M102 spec 12, the blind road on a program or
+ * an unknown foreground). A yes/no form counts on the last or the second-last row that is not blank; any
+ * other sign when at most `k` rows that are not blank and not a part of a menu (an option, a hint, a
+ * rule, a row of a panel between two rules, a wrapped hint's next two rows) stand below its lowest part. Old output above a prompt is no menu: the prompt stands under it.
+ */
+function anchored(rows: ReadonlyMap<number, string>, sign: Candidate, k: number): boolean {
+  if (sign.kind === "yes-no") return [...rows.entries()].filter(([i, text]) => i > sign.last && !isBlank(text)).length <= 1;
+  // The menu ends at its lowest part or at the lowest row that names a key for a menu verb under it.
+  const tail = Math.max(sign.last, ...[...rows.entries()].filter(([i, text]) => i > sign.row && MENU_HINT.test(text)).map(([i]) => i));
+  const below = [...rows.entries()].filter(([i, text]) => i > tail && !isBlank(text));
+  const bottom = below.at(-1);
+  if (bottom !== undefined && PROMPT_END.test(bottom[1])) return false;
+  // A block between two rules under the menu is the program's own panel (a preview, a status): no old output.
+  const rules = below.filter(([, text]) => isRule(text)).map(([i]) => i);
+  const panel = (i: number): boolean => rules.length >= 2 && i > rules[0]! && i < rules.at(-1)!;
+  // A hint row a narrow pane wrapped goes on in the next two rows.
+  const wrapped = (i: number): boolean => [1, 2].some((up) => MENU_HINT.test(rows.get(i - up) ?? "") && [...Array(up).keys()].every((j) => !isBlank(rows.get(i - j) ?? "")));
+  return below.filter(([i, text]) => !isMenuPart(text) && !panel(i) && !wrapped(i)).length <= k;
+}
+
+/** Whether a row is a part of a menu: an option, a hint, a key row, a position or a rule. */
+function isMenuPart(text: string): boolean {
+  const body = POINTER_ROW.exec(text)?.[4] ?? text;
+  return (
+    POINTER_ROW.test(text) ||
+    numberOf(body) !== null ||
+    CHECKBOX_LEAD.test(text) ||
+    BULLET_LEAD.test(text) ||
+    isChoice(body) ||
+    MENU_HINT.test(text) ||
+    ANY_HINT.test(text) ||
+    isSingleKeyRow(text) ||
+    POSITION.test(text) ||
+    isRule(text) ||
+    COMMAND_ENTRY.test(text)
+  );
+}
+
+/**
+ * The rows of the pointed list a pointer row heads, or null when it heads none: two rows or more next to it start where its option text
  * starts (a tick or a radio after the pointer passed over), or one such row with a rule over and under
  * the list; under a radio list each sibling may carry its own radio. A long prompt echoed behind the same glyph wraps into rows that line up the same way: a
  * pointer row that fills the window's width, in a list with no wide gap inside any row (a menu's
  * description column has one), is a wrapped paragraph. A row that continues a tree (`⎿`) is no option.
  */
-function pointedList(rows: ReadonlyMap<number, string>, at: number, pointer: RegExpExecArray, width: number): boolean {
+function pointedList(rows: ReadonlyMap<number, string>, at: number, pointer: RegExpExecArray, width: number): number[] | null {
   const mark = MARK_LEAD.exec(pointer[4]!);
   const col = pointer[1]!.length + pointer[2]!.length + pointer[3]!.length + (mark === null ? 0 : mark[0].length);
   const list = [at];
@@ -202,13 +296,13 @@ function pointedList(rows: ReadonlyMap<number, string>, at: number, pointer: Reg
     }
   }
   const siblings = list.length - 1;
-  if (siblings === 0) return false;
+  if (siblings === 0) return null;
   const paragraph = rows.get(at)!.length >= width - 4 && width >= 40 && list.every((j) => !/\S\s{2,}\S/u.test(rows.get(j)!.trim()));
-  if (paragraph) return false;
-  if (siblings >= 2) return true;
+  if (paragraph) return null;
+  if (siblings >= 2) return list;
   const top = Math.min(...list);
   const bottom = Math.max(...list);
-  return isRule(rows.get(top - 1)) && isRule(rows.get(bottom + 1));
+  return isRule(rows.get(top - 1)) && isRule(rows.get(bottom + 1)) ? list : null;
 }
 
 /** Whether a row is a horizontal rule of eight glyphs or more, maybe with one short label inside (`────2─`). */

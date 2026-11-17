@@ -257,7 +257,11 @@
 // could submit it. An override is never held, joins no hold queue, and one id writes at most once. A held
 // row says `heldLong` once it waited HELD_LONG_MS (two minutes). A send Collie makes alone (a held release,
 // a queued send, WalkyTalky, a hook, a steer) never takes this road and is unchanged, with one stricter
-// rule: on the blind road (no profile) the menu sign refuses EVERY send `menu_open`, before any key. The
+// rule: on the blind road (no profile) the menu sign refuses EVERY send `menu_open`, before any key, by
+// what stands in the pane's foreground (`SendDeps.paneForeground`, pane-binary.ts): a shell reads no sign;
+// a program or an unknown one (no foreground read: tmux, zellij) the sign anchored at the bottom
+// (menu-sign.ts `anchor`), or the whole window where a profile's rows show; the receipt names it
+// (`menuSign: { kind, row }`, never the text). The
 // manual Send's turn rule (`steeringTurn`) refuses no override: a turn that does not queue it is typed
 // with no key too. An override typed after a draft says so on its receipt (`draftSeen`).
 //
@@ -286,7 +290,8 @@ import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts
 import { BAD_HEAD, hasViewHead, VIEW_NO_PROFILE } from "../../web/src/lib/agent-view/wire.ts";
 import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
-import { menuSign, type MenuBox, type MenuSign } from "../../web/src/lib/surface/menu-sign.ts";
+import { ANCHOR_ROWS, menuSign, type MenuBox, type MenuSign } from "../../web/src/lib/surface/menu-sign.ts";
+import type { PaneForeground } from "../pane-binary.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
@@ -697,6 +702,12 @@ export interface SendDeps {
    * hand gets pi's profile instead of the blind road. A throw reads as null. Absent: no pane is named so.
    */
   readonly paneHarness?: ((paneId: string) => Promise<string | null> | string | null) | undefined;
+  /**
+   * What stands in the pane's foreground, for the blind road's menu sign (M102 spec 12, pane-binary.ts
+   * `paneForegroundOf`): `shell` reads no sign, `program` and `unknown` the anchored one. A throw, or
+   * absent (a multiplexer with no foreground read), reads as `unknown`.
+   */
+  readonly paneForeground?: ((paneId: string) => Promise<PaneForeground> | PaneForeground) | undefined;
   /** The box of `harness` took a key on the pane while it was starting: its window ends. Never throws into a send. */
   readonly framed?: ((paneId: string, harness: string) => void) | undefined;
   /**
@@ -2011,9 +2022,12 @@ function overrideAsked(request: SendRequest): boolean {
 }
 
 /** The refusal of an override (`stale_surface`, `menu_open`): nothing typed, the rows now and their hash, the key pad offered. */
-function overrideRefusal(reason: "stale_surface" | "menu_open", snap: Snap, detail: string): Ended {
+function overrideRefusal(reason: "stale_surface" | "menu_open", snap: Snap, detail: string, sign?: MenuSign): Ended {
   const win = bottomWindow(snap.texts);
-  return new Ended("refused", reason, { surface: snap.surface, framed: snap.frame !== null, rowsHash: snap.rowsHash, rows: snap.texts.slice(win.first, win.end), offers: ["keys"], detail });
+  const note: EndNote = { surface: snap.surface, framed: snap.frame !== null, rowsHash: snap.rowsHash, rows: snap.texts.slice(win.first, win.end), offers: ["keys"], detail };
+  // The blind road names which sign it read and where (never the row's text): the receipt keeps it.
+  if (sign !== undefined) note.menuSign = { kind: sign.kind, row: sign.row };
+  return new Ended("refused", reason, note);
 }
 
 /**
@@ -3092,6 +3106,8 @@ interface EndNote {
   keepDetail?: true;
   /** The rows the hash covers, on a refused override (M102 spec 12); the answer only, never the receipt. */
   rows?: readonly string[];
+  /** The sign a blind-road `menu_open` read (M102 spec 12): its kind and row, on the answer and the receipt. */
+  menuSign?: MenuSign;
 }
 
 /** The most requests {@link SendProtocol} keeps on the screen road after a dropped data try. */
@@ -3146,6 +3162,7 @@ function answerWith(draft: AnswerDraft, note: EndNote): SendAnswer {
   if (note.cap !== undefined) draft.cap = note.cap;
   if (note.cause !== undefined) draft.cause = note.cause;
   if (note.rows !== undefined) draft.rows = note.rows;
+  if (note.menuSign !== undefined) draft.menuSign = note.menuSign;
   return draft;
 }
 
@@ -3369,6 +3386,7 @@ export class SendProtocol {
       if (receipt.word !== undefined) row.word = receipt.word;
       if (receipt.awaitingEventUntil !== undefined) row.awaitingEventUntil = receipt.awaitingEventUntil;
       if (receipt.draftSeen === true) row.draftSeen = true;
+      if (receipt.menuSign !== undefined) row.menuSign = receipt.menuSign;
       // A refusal's line and the Surface words are stored to be read later: the list carries them.
       if (receipt.detail !== undefined) row.detail = receipt.detail;
       if (receipt.saw !== undefined) row.saw = receipt.saw;
@@ -4379,6 +4397,7 @@ export class SendProtocol {
     // The person's word, beside what Collie saw: the outcome stays whatever the run ended as (M102 spec 01).
     if (state.overrode) receipt.word = "override";
     if (state.draftSeen === true) receipt.draftSeen = true;
+    if (outcome === "refused" && note?.menuSign !== undefined) receipt.menuSign = note.menuSign;
     // The agent's own word may still settle an `unknown` (M102 spec 13): its window, when one is open.
     if (outcome === "unknown") {
       const until = this.awaitingEventUntil(state);
@@ -5224,9 +5243,14 @@ export class SendProtocol {
     // A pane whose last rows look like an agent's (an input box, a dialog, a footer a profile names) is
     // no shell to type into blind: the agent may be starting, or one Collie has no name for here.
     // No text and no Enter where a menu shows (M102 spec 12; the invariant suite's blind-road case): for
-    // the person's override and for every other send on this road, which the menu sign only makes stricter.
-    if (menuSignOf(snap) !== null) throw overrideRefusal("menu_open", snap, MENU_OPEN);
-    if (blindRoadSign(snap.rows, snap.surface) !== null) {
+    // the person's override and for every other send on this road. By what stands in the foreground: a
+    // shell reads no sign (it waits at its prompt, nothing asks), a program or an unknown one the anchored
+    // sign (live at the bottom, not old output above a prompt), or the whole window where an agent's rows
+    // show (a full-screen program draws its status under a dialog). The refusal names the sign, never its text.
+    const road = blindRoadSign(snap.rows, snap.surface);
+    const sign = await this.blindMenuSign(state, snap, road !== null);
+    if (sign !== null) throw overrideRefusal("menu_open", snap, MENU_OPEN, sign);
+    if (road !== null) {
       // The person's override: on the rows they saw, the text with no key.
       if (overrideAsked(state.request)) {
         if (!this.rowsSeen(state, snap)) throw overrideRefusal("stale_surface", snap, OVERRIDE_MOVED);
@@ -5557,6 +5581,28 @@ export class SendProtocol {
     }
     // The phone's tap gets the rows hash with it: the person's override binds to it (M102 spec 12).
     throw new Ended("refused", "not_free", state.request.fromPhone === true ? { surface, rowsHash: s0.rowsHash, detail: "The input box is not free." } : { surface, detail: "The input box is not free." });
+  }
+
+  /**
+   * The blind road's menu sign on `snap`, by the pane's foreground ({@link SendDeps.paneForeground}):
+   * none on a shell; on a program or an unknown foreground the anchored sign, or the whole window when
+   * `agentRows` (blindRoadSign: a profile's frame, cue or footer shows, so a full-screen program draws there).
+   */
+  private async blindMenuSign(state: RunState, snap: Snap, agentRows: boolean): Promise<MenuSign | null> {
+    const foreground = await this.foregroundOf(state.target.paneId);
+    if (foreground === "shell") return null;
+    return agentRows ? menuSignOf(snap) : menuSign(snap.texts, menuBoxOf(snap), { anchor: ANCHOR_ROWS });
+  }
+
+  /** What stands in the pane's foreground ({@link SendDeps.paneForeground}); absent or a throw: `unknown`. */
+  private async foregroundOf(paneId: string): Promise<PaneForeground> {
+    if (this.deps.paneForeground === undefined) return "unknown";
+    try {
+      return await this.deps.paneForeground(paneId);
+    } catch (err) {
+      console.warn(`[send] the pane's foreground read failed: ${err instanceof Error ? err.message : String(err)}`);
+      return "unknown";
+    }
   }
 
   /**

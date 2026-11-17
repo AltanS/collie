@@ -1,0 +1,8 @@
+dev@devbox:~/src/app$ git add -p
+diff --git a/src/ui.ts b/src/ui.ts
+@@ -3,7 +3,7 @@
+-const size = 12;
++const size = 14;
+(1/1) Stage this hunk [y,n,q,a,d,e,?]? y
+
+dev@devbox:~/src/app$ 

@@ -24,6 +24,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync
 import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { ASK_ID, ASK_OUTCOMES, ASK_REASONS, type AskReceipt } from "../../web/src/lib/surface/ask.ts";
+import { MENU_SIGN_KINDS, type MenuSign } from "../../web/src/lib/surface/menu-sign.ts";
 import { ASK_CHANNELS } from "../../web/src/lib/surface/surface.ts";
 import { readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SEND_LATES, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, SEND_WORDS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
 import { SENT_MAX_LINE, sentLineOf } from "../secret-line.ts";
@@ -225,10 +226,22 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   const awaiting = asJsonNumber(node.awaitingEventUntil);
   if (awaiting !== undefined && Number.isSafeInteger(awaiting) && awaiting > 0) whole.awaitingEventUntil = awaiting;
   if (node.draftSeen === true) whole.draftSeen = true;
+  // `menuSign` is lenient like `late`: a kind this module did not write, or a row that is no index, drops it.
+  const menu = menuSignOf(node.menuSign);
+  if (menu !== undefined) whole.menuSign = menu;
   if (acknowledged !== undefined) whole.acknowledged = acknowledged;
   if (detail !== undefined) whole.detail = detail;
   if (saw !== undefined) whole.saw = saw;
   return whole;
+}
+
+/** A stored `menuSign` ({@link SendReceipt.menuSign}): a known kind and a row index, else undefined. */
+function menuSignOf(value: JsonValue | undefined): MenuSign | undefined {
+  const node = value === undefined ? undefined : asJsonObject(value);
+  if (node === undefined) return undefined;
+  const kind = node.kind === undefined ? undefined : pick(node.kind, MENU_SIGN_KINDS);
+  const row = asJsonNumber(node.row);
+  return kind === undefined || row === undefined || !Number.isSafeInteger(row) || row < 0 ? undefined : { kind, row };
 }
 
 /**

@@ -1,0 +1,9 @@
+dev@devbox:~/src/app$ ./pick-env.sh
+1) dev
+2) staging
+3) production
+4) quit
+#? 1
+Using dev
+Connecting to dev ... done
+dev@devbox:~/src/app$ 

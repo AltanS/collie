@@ -1,0 +1,10 @@
+dev@devbox:~/src/tool$ pytest -q
+..F.F.....                                                       [100%]
+=================================== FAILURES ===================================
+1. test_parse_date
+2. test_round_trip
+=========================== short test summary info ============================
+FAILED tests/test_dates.py::test_parse_date - ValueError: bad month
+FAILED tests/test_io.py::test_round_trip - AssertionError
+2 failed, 8 passed in 0.42s
+dev@devbox:~/src/tool$ 

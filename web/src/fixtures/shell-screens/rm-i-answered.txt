@@ -1,0 +1,3 @@
+dev@devbox:~/src/app$ rm -i notes.bak
+rm: remove regular file 'notes.bak'? y
+dev@devbox:~/src/app$ 

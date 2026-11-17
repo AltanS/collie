@@ -7,6 +7,7 @@
 
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../json";
 import type { ProfileStatus } from "./profile";
+import type { MenuSign } from "./menu-sign";
 import { modalWord, type Surface, type SurfaceReason } from "./surface";
 
 /**
@@ -284,6 +285,11 @@ export interface SendReceipt {
    */
   readonly draftSeen?: true;
   /**
+   * Set on a blind-road `menu_open` (M102 spec 12): which sign the generic menu sign read and on which
+   * screen row. Never the row's text.
+   */
+  readonly menuSign?: MenuSign;
+  /**
    * Set on a send a program session took (M56 spec 14): the request id the program acknowledged.
    * The driver passes the request id to the program unchanged, so it equals `requestId`. Absent on
    * every send into a screen.
@@ -397,6 +403,8 @@ export interface SendReceiptRow {
   readonly awaitingEventUntil?: number;
   /** The override typed after a draft (see {@link SendReceipt.draftSeen}). */
   readonly draftSeen?: true;
+  /** The sign a blind-road `menu_open` read (see {@link SendReceipt.menuSign}). */
+  readonly menuSign?: MenuSign;
   /** The line of a refusal or a `typed_not_submitted` (see {@link SendReceipt.detail}). */
   readonly detail?: string;
   /** What the bridge saw at that end, four words (see {@link SendReceipt.saw}). */
@@ -508,6 +516,8 @@ export interface SendAnswer {
    * answer; a receipt never keeps a row, so a replay has none.
    */
   readonly rows?: readonly string[];
+  /** The sign a blind-road `menu_open` read (see {@link SendReceipt.menuSign}). */
+  readonly menuSign?: MenuSign;
 }
 
 /**

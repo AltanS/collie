@@ -1,0 +1,12 @@
+dev@devbox:~/src/app$ cat NOTES.md
+# Release checklist
+
+1. Bump the version in package.json
+2. Update the changelog
+3. Tag the release
+4. Push the tag
+5. Announce it
+
+- check the CI badge
+- check the docs build
+dev@devbox:~/src/app$ 

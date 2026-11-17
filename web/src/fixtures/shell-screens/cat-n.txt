@@ -1,0 +1,14 @@
+dev@devbox:~/src/app$ cat -n src/main.py
+     1  import sys
+     2  from app import server
+     3
+     4
+     5  def main() -> int:
+     6      port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+     7      server.run(port=port)
+     8      return 0
+     9
+    10
+    11  if __name__ == "__main__":
+    12      sys.exit(main())
+dev@devbox:~/src/app$ 

@@ -7,7 +7,9 @@
 //
 // The assertions never say "the reader read it right". They say:
 //   I7  on a screen that shows a menu sign (the test's own profile-free oracle below), no road of
-//       Collie's writes Enter, a digit or a letter. Only the person's key from the pad may.
+//       Collie's writes Enter, a digit or a letter. Only the person's key from the pad may. Text with
+//       no key in a box the reader found, and the blind road on a shell prompt or a capture labeled with
+//       no open dialog, are the oracle's lookalikes (textIntoFoundBox, noMenuForBlind).
 //   I4  on a screen with no menu sign, the person's override is not refused before a write, except for
 //       a read question or permission, a known secret, stale_surface, menu_open or pane_gone.
 //       (probe_failed is left to the gates suite: this pane takes no keys, so a probe never shows here.)
@@ -20,6 +22,7 @@ import { join } from "node:path";
 
 import { askOf } from "../../web/src/lib/surface/surface.ts";
 import { replayHint, rngOf, runSeeds, sample, type Rng } from "../../web/src/test/invariants/seed.ts";
+import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { collieOwn, invariantRig, menuBytes, personOverride, personTap, type Write , type RigOptions } from "./invariants-rig.ts";
 
 const FIXTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures");
@@ -55,6 +58,34 @@ export function menuSign(screen: string): boolean {
   return rows.some((row) => YN_FORM.test(row) || HINT.test(row));
 }
 
+/**
+ * The one case the oracle reads too wide (M102 spec 12, the lead's call of 2026-11-17): text written with
+ * no key at all into the input box the reader FOUND (modal none, composer empty or draft). The sign the
+ * oracle saw is then the agent's own answer above its box (a numbered list, a quoted dialog), and the text
+ * sits in the box and picks nothing. For the person's override that is the whole rule; for Collie's own
+ * send and the first tap the capture's label must say no dialog is open (idle, draft, running) too. Any
+ * key, or a box not found, stays I7.
+ */
+function textIntoFoundBox(label: Label | null, answer: SendAnswer, before: SendAnswer | undefined, writes: readonly Write[]): boolean {
+  if (label !== null && label.state !== "idle" && label.state !== "draft" && label.state !== "running") return false;
+  if (writes.some((w) => w.kind === "keys")) return false;
+  const seen = answer.surface ?? before?.surface;
+  return seen !== undefined && seen.modal === "none" && (seen.composer === "empty" || seen.composer === "draft");
+}
+
+/**
+ * The blind road's side of the same call (M102 spec 12, decision 3): no dialog is open where the label
+ * says idle, draft or running, and a shell waits at its prompt where the bottom row is a bare `$`, `#` or
+ * `%` prompt (old output above it is no menu), and a capture named `quoted` shows a dialog quoted in the
+ * agent's prose, not an open one. Every other capture stays I7 for the blind road.
+ */
+function noMenuForBlind(name: string, label: Label, screen: string): boolean {
+  if (label.state === "idle" || label.state === "draft" || label.state === "running") return true;
+  if (label.state === "other" && name.includes("quoted")) return true;
+  const bottom = screen.split("\n").map(plain).findLast((row) => row.trim() !== "") ?? "";
+  return /^\s*\S*[$#%]\s*$/u.test(bottom.replace(/\r/gu, ""));
+}
+
 // ── the mutations ──
 
 type Mutation = "insert-row" | "warning-under-command" | "right-clock" | "ansi-noise" | "rewrap" | "cut-top";
@@ -83,8 +114,11 @@ export function mutate(raw: string, mutation: Mutation, rng: Rng): string {
     case "right-clock": {
       const at = bottomIndex(rows, rng, 10);
       const row = rows[at] ?? "";
-      const width = Math.max(80, plain(row).length + 4);
-      rows[at] = `${row}${" ".repeat(Math.max(1, width - plain(row).length - 8))}12:34:56`;
+      // Before a row's trailing CR, as ansi-noise does: a clock after a bare CR is a byte order no grid read carries.
+      const cr = row.endsWith("\r") ? "\r" : "";
+      const body = row.slice(0, row.length - cr.length);
+      const width = Math.max(80, plain(body).length + 4);
+      rows[at] = `${body}${" ".repeat(Math.max(1, width - plain(body).length - 8))}12:34:56${cr}`;
       return rows.join("\n");
     }
     case "ansi-noise":
@@ -185,11 +219,16 @@ async function run(): Promise<Found> {
       const over = await personOverride(overRig, TEXT);
       const blind = await personTap(blindRig, TEXT);
       if (c.menu) {
-        for (const [road, writes] of [["Collie's own send", own.writes], ["the person's first tap", tap.writes], ["the person's override", over.writes]] as const) {
+        const roads = [
+          ["Collie's own send", textIntoFoundBox(c.label, own.answer, undefined, own.writes) ? [] : own.writes],
+          ["the person's first tap", textIntoFoundBox(c.label, tap.answer, undefined, tap.writes) ? [] : tap.writes],
+          ["the person's override", textIntoFoundBox(null, over.commit, over.prepare, over.writes) ? [] : over.writes],
+        ] as const;
+        for (const [road, writes] of roads) {
           const bad = menuBytes(writes);
           if (bad.length > 0) found.i7.push(`${road} wrote ${describeWrites(bad)} onto a menu: ${hint}`);
         }
-        const badBlind = menuBytes(blind.writes);
+        const badBlind = noMenuForBlind(c.name, c.label, c.screen) ? [] : menuBytes(blind.writes);
         if (badBlind.length > 0) found.i7Blind.push(`the blind road wrote ${describeWrites(badBlind)} onto a menu: ${hint}`);
       } else {
         const r = over.commit.receipt;
@@ -244,7 +283,7 @@ describe("M102-15 part 1c, mutated captures of the corpus", () => {
     expect((await results()).i4.get("other") ?? []).toEqual([]);
   }, 120_000);
 
-  // Red on the base; since M102 spec 12 the generic menu sign gates the blind road for every send.
+  // Red on the base; since M102 spec 12 the generic menu sign gates the blind road for every send, by the pane's foreground.
   test("I7: the blind road (an agent with no profile) writes no Enter, digit or letter onto a menu", async () => {
     const hits = (await results()).i7Blind;
     console.info(`[invariants.mutation] blind road: ${String(hits.length)} hits; first: ${hits[0] ?? "-"}`);

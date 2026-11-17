@@ -1,0 +1,17 @@
+dev@devbox:~/src/app$ sudo apt upgrade
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+Calculating upgrade... Done
+The following packages will be upgraded:
+  curl libcurl4 openssl tzdata
+4 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+Need to get 3,412 kB of archives.
+After this operation, 12.3 kB of additional disk space will be used.
+Do you want to continue? [Y/n] y
+Get:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 curl amd64 8.5.0-2ubuntu10.6 [227 kB]
+Get:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libcurl4 amd64 8.5.0-2ubuntu10.6 [341 kB]
+Fetched 3,412 kB in 1s (2,980 kB/s)
+Setting up curl (8.5.0-2ubuntu10.6) ...
+Processing triggers for man-db (2.12.0-4build2) ...
+dev@devbox:~/src/app$ 

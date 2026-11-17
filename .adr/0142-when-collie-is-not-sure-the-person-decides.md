@@ -114,7 +114,7 @@ These wait for the milestone "No block without an exit"; until then the old rule
 
 An override (`override` plus the rows hash seen) is typed on any reading but five: no pane or grant, a
 sign-in field (6b), a question the reader read (6a), a moved screen (`stale_surface`) and the generic
-menu sign (`menu_open`, `menu-sign.ts`); both refusals carry the rows now. Where the steps would refuse,
-it goes in one piece, no probe, no key: `typed_not_submitted(override)`. Details: `protocol.ts` header.
+menu sign (`menu_open`, `menu-sign.ts`; on the blind road none for a shell foreground, else live at the
+bottom). Where the steps refuse, it goes in one piece, no probe, no key: `typed_not_submitted(override)`.
 Spec 13: an `unknown` whose submit went out waits `awaitingEventUntil` for the agent's prompt event, on
 the data road too; a match settles it `effective`, a miss costs only the wait (profile data, `edges`).

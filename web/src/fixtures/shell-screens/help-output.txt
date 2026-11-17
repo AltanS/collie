@@ -1,0 +1,14 @@
+dev@devbox:~/src/app$ ./tool --help
+Usage: tool [options] <command>
+
+Commands:
+  init     create a config file
+  run      run the job
+  status   show the last run
+  help     show this help
+
+Options:
+  -v, --verbose   more output
+  -q, --quiet     less output
+  -h, --help      show help
+dev@devbox:~/src/app$ 

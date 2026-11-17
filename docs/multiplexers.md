@@ -715,7 +715,10 @@ as before, and on a turn the agent queues into, it goes in as any send does. Col
 message you typed this way, and one tap types it at most once.
 
 On an agent Collie has no profile for, no message goes into a screen that shows a menu or a yes/no
-prompt, whether you sent it or Collie did; answer the menu with the keys.
+prompt at its bottom, whether you sent it or Collie did; answer the menu with the keys. On Herdr and
+the Herdr core, Collie also asks which program runs in the pane: a plain shell at its prompt takes every
+message, also with a numbered list or an answered `[Y/n]` above the prompt. On tmux, zellij, tuios and
+Tern Collie cannot ask, so it reads only the bottom of the screen: output above a shell prompt is no menu.
 
 A held send that waits two minutes or longer is marked as waiting long, so the phone can show the
 screen with a way to send it now or cancel it.

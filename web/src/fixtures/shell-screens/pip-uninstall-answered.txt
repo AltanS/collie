@@ -1,0 +1,9 @@
+dev@devbox:~$ pip uninstall requests
+Found existing installation: requests 2.32.3
+Uninstalling requests-2.32.3:
+  Would remove:
+    /home/dev/.local/lib/python3.12/site-packages/requests-2.32.3.dist-info/*
+    /home/dev/.local/lib/python3.12/site-packages/requests/*
+Proceed (Y/n)? y
+  Successfully uninstalled requests-2.32.3
+dev@devbox:~$ 
