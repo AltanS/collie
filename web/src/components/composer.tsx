@@ -189,6 +189,11 @@ export interface ComposerHandle {
    * through the Send Protocol, never a draft, so the box keeps whatever the person is typing. Resolves true when it went.
    */
   sendLine: (line: string) => Promise<boolean>;
+  /**
+   * Whether a `sendLine` could start now (the M102 review, G): false raises the composer's notice with the reason and
+   * sends nothing, so a caller that would drop something first (the queued card) keeps it.
+   */
+  lineCanStart: () => boolean;
 }
 
 /** A tap in an agent view: the screen's rev and the control path the bridge reads, and the words it names (display only). */
@@ -1525,6 +1530,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const markArrivedRef = useRef<() => Promise<boolean>>(() => Promise.resolve(false));
   const answerAgainRef = useRef<() => void>(() => undefined);
   const sendLineRef = useRef<(line: string) => Promise<boolean>>(() => Promise.resolve(false));
+  const lineCanStartRef = useRef<() => boolean>(() => false);
   useImperativeHandle(
     ref,
     () => ({
@@ -1539,6 +1545,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       markArrived: () => markArrivedRef.current(),
       answerAgain: () => answerAgainRef.current(),
       sendLine: (line) => sendLineRef.current(line),
+      lineCanStart: () => lineCanStartRef.current(),
     }),
     [startMessage],
   );
@@ -2053,6 +2060,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const went = await send(code, false, undefined, undefined, true);
     return went || secretSpentRef.current;
   }
+  /**
+   * Why a text from elsewhere (not the code field, not a view tap) cannot start now, in the order `send` asks: a
+   * launch or a running send, a sign-in field, a link that is down, a dialog that owns the keys. Null: it can.
+   */
+  function lineRefusal(): SendRefusal | null {
+    const tapWords = refusedTapWords();
+    if (tapWords !== null) return phoneRefusal(tapWords);
+    const notTheField = secretRefusal(false);
+    if (notTheField !== null) return notTheField;
+    if (offlineRef.current) return phoneRefusal(translate("composer.send.reconnect"));
+    if (slot === "answer") return phoneRefusal(translate("composer.status.dialogWaiting"), true);
+    return null;
+  }
   /** Why a send that did not come from the code field cannot go now (the M102 review, B), or null. */
   function secretRefusal(fromSecret: boolean): SendRefusal | null {
     return secretFieldRef.current && !fromSecret ? phoneRefusal(translate("composer.secret.onlyField")) : null;
@@ -2163,6 +2183,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   markArrivedRef.current = markUnknownArrived;
   answerAgainRef.current = answerCannotTellAgain;
   sendLineRef.current = (line) => send(line, false);
+  lineCanStartRef.current = () => {
+    const refusal = lineRefusal();
+    if (refusal !== null) setSendRefusal(refusal);
+    return refusal === null;
+  };
   sendViewTapRef.current = async (tap) => {
     const sent = await send(tap.words, false, undefined, tap);
     return { sent, ...viewAnswerRef.current };

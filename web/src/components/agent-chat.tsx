@@ -2151,12 +2151,15 @@ export function AgentChat({
       // Discard, and only when the bridge says it dropped THAT card is its text sent again, as a new send from the
       // composer (a new id, the whole protocol). A card that is no longer waiting, answered by a refusal or by
       // "no such send", sends nothing, so a stale card can never send twice. Any other failure sends nothing either.
+      // The composer is asked first whether it can send now (a send still running, a dialog, a sign-in field, a
+      // launch): when it cannot, its notice says why, and the card stays with nothing dropped (the M102 review, G).
       if (action === "sendAgain") {
         const composer = composerRef.current;
         if (composer === null) {
           setStatus(t("chat.status.sendFailed"), "error");
           return false;
         }
+        if (!composer.lineCanStart()) return false;
         try {
           const answer = await cancelHeldSend(requestId, paneId, scope);
           revalidator.revalidate();
