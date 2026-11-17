@@ -29,10 +29,13 @@ export interface Arm<K extends string> {
  * an act nor a disarm. ONE key is armed at a time: a tap on another key moves the arm there, so a card
  * with several confirmable buttons never holds two of them armed.
  *
+ * `windowMs` sets how long an arm lasts; it defaults to {@link ARM_MS}. Enter on a screen Collie cannot
+ * read passes `ENTER_ARM_MS`, the one length the unread card's Enter cap and the Keys pad's Enter share.
+ *
  * The hook owns the timer and nothing else. The caller decides what a key is, what `fire` runs, and
  * when an arm stops making sense (`disarm`): a button that goes dim, a pane that changes.
  */
-export function useArm<K extends string>(): Arm<K> {
+export function useArm<K extends string>(windowMs: number = ARM_MS): Arm<K> {
   const [armed, setArmed] = useState<K | null>(null);
   const armedKey = useRef<K | null>(null);
   const armedAt = useRef(0);
@@ -56,7 +59,7 @@ export function useArm<K extends string>(): Arm<K> {
         timer.current = setTimeout(() => {
           armedKey.current = null;
           setArmed(null);
-        }, ARM_MS);
+        }, windowMs);
         return "armed";
       }
       // Inside the dwell the tap is the same touch landing twice, not a second decision.
@@ -64,7 +67,7 @@ export function useArm<K extends string>(): Arm<K> {
       disarm();
       return "fire";
     },
-    [disarm],
+    [disarm, windowMs],
   );
 
   return { armed, tap, disarm };

@@ -1,6 +1,8 @@
 import { Icon } from "@/components/icons/icon";
 import { useEffect, useRef, useState } from "react";
 
+import { useArm } from "@/hooks/use-arm";
+
 import { cn } from "@/lib/utils";
 import { ARM_MS, ENTER_ARM_MS } from "@/lib/arm";
 import { CORE_KEYS, missingCore } from "@/lib/key-board";
@@ -116,20 +118,16 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
   const armed = armedFor === identity;
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Enter on this card asks the same second tap as the declared key (the review of 2026-11-16, point
-  // 3): the screen may hold a menu whose highlighted default is "Yes", and Enter would confirm it.
-  const [enterArmedFor, setEnterArmedFor] = useState<string | null>(null);
-  const enterArmed = enterArmedFor === identity;
-  const enterTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // 3): the screen may hold a menu whose highlighted default is "Yes", and Enter would confirm it. The
+  // arm is `useArm`'s, keyed by the card's identity: a second tap inside ARM_DWELL_MS is the same touch
+  // landing twice and keeps the arm, and the arm lasts ENTER_ARM_MS, as the Keys pad's Enter does.
+  const enterArm = useArm<string>(ENTER_ARM_MS);
+  const enterArmed = enterArm.armed === identity;
+  const disarmEnter = enterArm.disarm;
   const caption = said ?? t("unreadDialog.caption");
   const dismissWording = lines.some((l) => NAMES_A_DISMISS.test(lineText(l)));
 
-  useEffect(
-    () => () => {
-      clearTimeout(timer.current);
-      clearTimeout(enterTimer.current);
-    },
-    [],
-  );
+  useEffect(() => () => clearTimeout(timer.current), []);
   // The trouble signal (M86 spec 05): once per instance for each pane and card, the same identity the arm keys
   // on. A poll that re-renders the card, with any rows, calls nothing.
   const shownKey = identity;
@@ -143,21 +141,19 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
   useEffect(() => {
     if (!disabled) return;
     clearTimeout(timer.current);
-    clearTimeout(enterTimer.current);
     setArmedFor(null);
-    setEnterArmedFor(null);
-  }, [disabled]);
+    disarmEnter();
+  }, [disabled, disarmEnter]);
 
   function pressCap(step: string) {
     if (disabled || onPadKeys === undefined) return;
-    if (step === "Enter" && !enterArmed) {
-      setEnterArmedFor(identity);
-      clearTimeout(enterTimer.current);
-      enterTimer.current = setTimeout(() => setEnterArmedFor(null), ENTER_ARM_MS);
+    if (step === "Enter") {
+      // "armed" and "dwell" both send nothing; only a second tap after the dwell presses Enter.
+      if (enterArm.tap(identity) !== "fire") return;
+      void onPadKeys([step]);
       return;
     }
-    clearTimeout(enterTimer.current);
-    setEnterArmedFor(null);
+    disarmEnter();
     void onPadKeys([step]);
   }
 

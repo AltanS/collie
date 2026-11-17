@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { buildBlocks } from "@/lib/harness";
-import { ARM_MS } from "@/lib/arm";
+import { ARM_DWELL_MS, ARM_MS } from "@/lib/arm";
 import { __resetReport, openReport, unreadDialogReport, useReportTarget } from "@/lib/report/store";
 import type { ComponentProps } from "react";
 import { DEFAULT_BOARD, setCell } from "@/lib/key-board";
@@ -395,6 +395,9 @@ describe("unread card: your Keys pad (M102 spec 03)", () => {
     }
   });
 
+  /** A second tap counts only ARM_DWELL_MS after the arm (lib/arm.ts): wait it out, as a thumb does. */
+  const pastTheDwell = () => new Promise<void>((resolve) => setTimeout(resolve, ARM_DWELL_MS));
+
   /** A spinner row whose timer and token count tick: the same row, a second later. */
   const spinnerRow = (seconds: number) => splitLines(parseAnsi(`\u2733 Wibbling\u2026 (${seconds}s \u00b7 \u2193 ${seconds * 10} tokens) lab clock 12:15:0${seconds}`))[0]!;
 
@@ -409,6 +412,7 @@ describe("unread card: your Keys pad (M102 spec 03)", () => {
     const user = userEvent.setup();
     await user.click(caps().find((b) => b.getAttribute("aria-label") === "Enter")!);
     rerender(<UnreadDialogBlock {...props} lines={[...block.lines, spinnerRow(5)]} />);
+    await pastTheDwell();
     await user.click(screen.getByRole("button", { name: /^Tap again to send / }));
     expect(onPadKeys).toHaveBeenCalledExactlyOnceWith(["Enter"]);
   });
@@ -465,6 +469,24 @@ describe("unread card: your Keys pad (M102 spec 03)", () => {
     }
   });
 
+  it("unread card: a second tap on the Enter cap 100 ms after the first sends nothing and keeps the arm; one after 450 ms sends Enter once (the M102 review 3)", () => {
+    vi.useFakeTimers();
+    try {
+      const { onPadKeys, enterCap } = mountMoving();
+      fireEvent.click(enterCap());
+      act(() => vi.advanceTimersByTime(100));
+      fireEvent.click(screen.getByRole("button", { name: /^Tap again to send / }));
+      expect(onPadKeys).not.toHaveBeenCalled();
+      // The armed look stays: the tap inside the dwell is the same touch landing twice.
+      expect(screen.getByRole("button", { name: /^Tap again to send / })).toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(350));
+      fireEvent.click(screen.getByRole("button", { name: /^Tap again to send / }));
+      expect(onPadKeys).toHaveBeenCalledExactlyOnceWith(["Enter"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("unread card: the Enter cap's arm belongs to its pane, so a card on another pane only arms", () => {
     const { onPadKeys, enterCap, view, props, block } = mountMoving("w1:p1");
     fireEvent.click(enterCap());
@@ -481,6 +503,7 @@ describe("unread card: your Keys pad (M102 spec 03)", () => {
     const user = userEvent.setup();
     await user.click(caps().find((b) => b.getAttribute("aria-label") === "Enter")!);
     expect(onPadKeys).not.toHaveBeenCalled();
+    await pastTheDwell();
     await user.click(screen.getByRole("button", { name: /^Tap again to send / }));
     expect(onPadKeys).toHaveBeenCalledExactlyOnceWith(["Enter"]);
     await user.click(caps().find((b) => b.getAttribute("aria-label") === "Down")!);
