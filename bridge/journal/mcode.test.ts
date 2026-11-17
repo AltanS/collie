@@ -2,8 +2,7 @@ import { readFileSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import * as cp from "node:child_process";
+import { afterEach, describe, expect, test } from "bun:test";
 
 import {
   createMcodeReducer,
@@ -13,6 +12,7 @@ import {
   parseMcodeArgv,
   parseMcodeTranscript,
 } from "./mcode.ts";
+import { createOpenFiles, MAX_OPEN_FILES_PIDS, type LsofRunner, type OpenFiles } from "./open-files.ts";
 
 const SID = "mvs_eeeea151d98844409cc358330f9e61bd";
 const OTHER = "mvs_abcdefabcdefabcdefabcdefabcdefab";
@@ -226,46 +226,56 @@ describe("McodeTranscriptSource", () => {
   test("binds to the session file the pane's process holds open (lsof)", async () => {
     const root = await sessionRoot(SID);
     // A stale index row would be the old answer; the live process decides now.
-    const lsof = spyOn(cp, "execFile").mockImplementation(
-      // SAFETY: test mock casting — the mock only answers the one lsof call discovery makes.
-      ((_file: string, _args: readonly string[], _opts: { timeout: number }, cb: (e: Error | null, r: { stdout: string }) => void) => {
-        // `lsof` is a POSIX tool and prints POSIX spellings, so the mock answers with `/` paths
-        // even on Windows — the production regexes match what lsof itself would print.
-        const log = [root, "2026", "11", "03", `12-00-00-000-session_${Buffer.from(SID).toString("base64url")}`, "messages.jsonl"].join("/");
-        const observability = `/Users/x/.minimax/v2/observability/logs/sessions/${OTHER}/events.jsonl`;
-        cb(null, { stdout: ["p10", "f3", `n${log}`, `n${observability}`].join("\n") });
-        // SAFETY: test mock casting
-        return undefined as never;
-      }) as never,
-    );
-    try {
-      const src = new McodeTranscriptSource(root);
-      const ref = await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] });
-      expect(ref).toEqual({ kind: "id", value: SID });
-      expect(await src.resolve(ref!)).not.toBeNull();
-    } finally {
-      lsof.mockRestore();
-    }
+    // `lsof` is a POSIX tool and prints POSIX spellings, so the runner answers with `/` paths
+    // even on Windows: the production regexes match what lsof itself would print.
+    const log = [root, "2026", "11", "03", `12-00-00-000-session_${Buffer.from(SID).toString("base64url")}`, "messages.jsonl"].join("/");
+    const observability = `/home/dev/.minimax/v2/observability/logs/sessions/${OTHER}/events.jsonl`;
+    const asked: string[][] = [];
+    const run: LsofRunner = async (args) => {
+      asked.push([...args]);
+      return ["p10", "f3", `n${log}`, `n${observability}`].join("\n");
+    };
+    const src = new McodeTranscriptSource(root, undefined, createOpenFiles(run));
+    const ref = await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] });
+    expect(ref).toEqual({ kind: "id", value: SID });
+    expect(await src.resolve(ref!)).not.toBeNull();
+    // The shared reader's question: the union of the pid's files and its group's (see open-files.ts).
+    expect(asked).toEqual([["-nP", "-p", "10", "-g", "10", "-Fn"]]);
   });
 
-  test("a process with no session file open means no session — never a past one", async () => {
+  test("a process with no session file open means no session, never a past one", async () => {
     const root = await sessionRoot(SID);
-    const lsof = spyOn(cp, "execFile").mockImplementation(
-      // SAFETY: test mock casting
-      ((_file: string, _args: readonly string[], _opts: { timeout: number }, cb: (e: Error | null, r: { stdout: string }) => void) => {
-        cb(null, { stdout: ["p10", "f1", "n/etc/hosts"].join("\n") });
-        // SAFETY: test mock casting
-        return undefined as never;
-      }) as never,
-    );
-    try {
-      const src = new McodeTranscriptSource(root);
-      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] })).toBeNull();
-      // No pid at all falls to the index, which holds only a stale row: still null.
-      expect(await src.discoverSession(CWD)).toBeNull();
-    } finally {
-      lsof.mockRestore();
-    }
+    const run: LsofRunner = async () => ["p10", "f1", "n/etc/hosts"].join("\n");
+    const src = new McodeTranscriptSource(root, undefined, createOpenFiles(run));
+    expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] })).toBeNull();
+    // No pid at all falls to the index, which holds only a stale row: still null.
+    expect(await src.discoverSession(CWD)).toBeNull();
+  });
+
+  test("an lsof that fails answers no files, and a burst of requests forks it once per pid", async () => {
+    const root = await sessionRoot(SID);
+    let forks = 0;
+    const run: LsofRunner = async () => {
+      forks += 1;
+      throw new Error("spawn lsof ENOENT");
+    };
+    const src = new McodeTranscriptSource(root, undefined, createOpenFiles(run));
+    const hints = { processes: [{ argv: ["mcode"], pid: 10 }] };
+    expect(await Promise.all([src.discoverSession(CWD, hints), src.discoverSession(CWD, hints), src.discoverSession(CWD, hints)])).toEqual([null, null, null]);
+    expect(forks).toBe(1);
+  });
+
+  test("asks about at most MAX_OPEN_FILES_PIDS pids in one run", async () => {
+    const root = await sessionRoot(SID);
+    const asked: string[] = [];
+    const run: LsofRunner = async (args) => {
+      asked.push(args[2] ?? "");
+      return "";
+    };
+    const src = new McodeTranscriptSource(root, undefined, createOpenFiles(run));
+    const processes = Array.from({ length: MAX_OPEN_FILES_PIDS + 20 }, (_, i) => ({ argv: ["mcode"], pid: 100 + i }));
+    await src.discoverSession(CWD, { processes });
+    expect(asked).toHaveLength(MAX_OPEN_FILES_PIDS);
   });
 
   test("without pid hints only a recent started session in the index answers", async () => {
@@ -303,22 +313,8 @@ describe("discoverSession pipeline", () => {
     return root;
   }
 
-  /** Silence lsof (no open files) for the test's duration. */
-  async function withLsofEmpty(run: () => Promise<void>): Promise<void> {
-    const lsof = spyOn(cp, "execFile").mockImplementation(
-      // SAFETY: test mock casting
-      ((_f: string, _a: readonly string[], _o: { timeout: number }, cb: (e: Error | null, r: { stdout: string }) => void) => {
-        cb(null, { stdout: "" });
-        // SAFETY: test mock casting
-        return undefined as never;
-      }) as never,
-    );
-    try {
-      await run();
-    } finally {
-      lsof.mockRestore();
-    }
-  }
+  /** A reader whose lsof finds no open files, with a cache of its own. */
+  const noFiles = (): OpenFiles => createOpenFiles(async () => "");
 
   test("parseMcodeArgv reads the start intent off the argv", () => {
     expect(parseMcodeArgv(["mcode"])).toEqual({ kind: "fresh" });
@@ -338,58 +334,48 @@ describe("discoverSession pipeline", () => {
     const past = Date.now() - 45 * 60_000;
     const root = await indexedRoot({ updatedAtMs: past });
     const startMs = past + 60_000; // process started after the session was last touched
-    await withLsofEmpty(async () => {
-      const src = new McodeTranscriptSource(root, async () => startMs);
-      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] })).toBeNull();
-      // An unreadable start time fails closed too.
-      const blind = new McodeTranscriptSource(root, async () => null);
-      expect(await blind.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] })).toBeNull();
-    });
+    const src = new McodeTranscriptSource(root, async () => startMs, noFiles());
+    expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] })).toBeNull();
+    // An unreadable start time fails closed too.
+    const blind = new McodeTranscriptSource(root, async () => null, noFiles());
+    expect(await blind.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] })).toBeNull();
   });
 
   test("--continue binds to the past session in the index", async () => {
     const past = Date.now() - 45 * 60_000;
     const root = await indexedRoot({ updatedAtMs: past });
     const startMs = past + 60_000;
-    await withLsofEmpty(async () => {
-      const src = new McodeTranscriptSource(root, async () => startMs);
-      for (const argv of [["mcode", "-c"], ["mcode", "--continue"]]) {
-        expect(await src.discoverSession(CWD, { processes: [{ argv, pid: 10 }] })).toEqual({ kind: "id", value: SID });
-      }
-    });
+    const src = new McodeTranscriptSource(root, async () => startMs, noFiles());
+    for (const argv of [["mcode", "-c"], ["mcode", "--continue"]]) {
+      expect(await src.discoverSession(CWD, { processes: [{ argv, pid: 10 }] })).toEqual({ kind: "id", value: SID });
+    }
   });
 
   test("--session <id> binds to that session directly", async () => {
     const root = await indexedRoot();
-    await withLsofEmpty(async () => {
-      const src = new McodeTranscriptSource(root, async () => null);
-      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode", "--session", SID], pid: 10 }] })).toEqual({
-        kind: "id",
-        value: SID,
-      });
-      expect(await src.discoverSession(CWD, { processes: [{ argv: [`--resume=${SID}`], pid: 10 }] })).toEqual({
-        kind: "id",
-        value: SID,
-      });
+    const src = new McodeTranscriptSource(root, async () => null, noFiles());
+    expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode", "--session", SID], pid: 10 }] })).toEqual({
+      kind: "id",
+      value: SID,
+    });
+    expect(await src.discoverSession(CWD, { processes: [{ argv: [`--resume=${SID}`], pid: 10 }] })).toEqual({
+      kind: "id",
+      value: SID,
     });
   });
 
   test("a bare --session (picker) answers null", async () => {
     const root = await indexedRoot();
-    await withLsofEmpty(async () => {
-      const src = new McodeTranscriptSource(root, async () => null);
-      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode", "--session"], pid: 10 }] })).toBeNull();
-    });
+    const src = new McodeTranscriptSource(root, async () => null, noFiles());
+    expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode", "--session"], pid: 10 }] })).toBeNull();
   });
 
   test("a session updated after the process start stays bound between turns", async () => {
     const startMs = Date.now() - 10 * 60_000;
     // The index row was touched after the process started.
     const root = await indexedRoot({ updatedAtMs: startMs + 30_000 });
-    await withLsofEmpty(async () => {
-      const src = new McodeTranscriptSource(root, async () => startMs);
-      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] })).toEqual({ kind: "id", value: SID });
-    });
+    const src = new McodeTranscriptSource(root, async () => startMs, noFiles());
+    expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }] })).toEqual({ kind: "id", value: SID });
   });
 
   test("shared-folder hints answer null without process hints", async () => {
@@ -402,17 +388,15 @@ describe("discoverSession pipeline", () => {
     const root = await indexedRoot();
     expect(await new McodeTranscriptSource(root).discoverSession(CWD)).toEqual({ kind: "id", value: SID });
     expect(await new McodeTranscriptSource(root).discoverSession(CWD, { shared: true })).toBeNull();
-    await withLsofEmpty(async () => {
-      const src = new McodeTranscriptSource(root, async () => Date.now() - 60_000);
-      // A fresh process: the index window since its start is the folder's answer, so it is withheld.
-      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }], shared: true })).toBeNull();
-      // --continue means the folder's newest session, shared by every pane in it.
-      expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode", "-c"], pid: 10 }], shared: true })).toBeNull();
-      // The argv itself naming the session is this pane's own answer, so it stands.
-      expect(
-        await src.discoverSession(CWD, { processes: [{ argv: ["mcode", "--session", SID], pid: 10 }], shared: true }),
-      ).toEqual({ kind: "id", value: SID });
-    });
+    const src = new McodeTranscriptSource(root, async () => Date.now() - 60_000, noFiles());
+    // A fresh process: the index window since its start is the folder's answer, so it is withheld.
+    expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode"], pid: 10 }], shared: true })).toBeNull();
+    // --continue means the folder's newest session, shared by every pane in it.
+    expect(await src.discoverSession(CWD, { processes: [{ argv: ["mcode", "-c"], pid: 10 }], shared: true })).toBeNull();
+    // The argv itself naming the session is this pane's own answer, so it stands.
+    expect(
+      await src.discoverSession(CWD, { processes: [{ argv: ["mcode", "--session", SID], pid: 10 }], shared: true }),
+    ).toEqual({ kind: "id", value: SID });
   });
 
   test("a cleanly closed WAL index is still read, through readSqlite", async () => {

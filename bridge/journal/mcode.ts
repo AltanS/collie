@@ -29,7 +29,6 @@
 // the folder alone is a guess about WHICH pane, so it answers null in a shared folder (#508); the
 // disk walk cannot tell two panes in one folder apart and is never used.
 
-import { execFile } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -48,6 +47,7 @@ import {
   rememberPending,
   type RowReducer,
 } from "./reduce.ts";import { containedRealpath, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
+import { MAX_OPEN_FILES_PIDS, openFiles as defaultOpenFiles, type OpenFiles } from "./open-files.ts";
 import { readSqlite } from "./sqlite-read.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
@@ -59,30 +59,6 @@ import type {
   TranscriptPart,
   TranscriptSource,
 } from "./types.ts";
-
-/**
- * execFile as a promise, typed for the one call this file makes (no overloads) so tests can spy on
- * node:child_process. Bound at each call so a spy on the module is the one that runs.
- */
-const runLsof = (
-  file: string,
-  args: readonly string[],
-  options?: { timeout?: number; maxBuffer?: number; windowsHide?: boolean },
-): Promise<{ stdout: string; stderr: string }> =>
-  new Promise((resolve, reject) => {
-    // SAFETY: runLsof takes readonly so callers can pass frozen arrays; execFile's type wants string[].
-    execFile(file, args as string[], options ?? {}, (err, stdout, stderr) => {
-      if (err) reject(err);
-      else {
-        // SAFETY: the mock in tests passes { stdout } objects; a real lsof passes a Buffer.
-        const out =
-          typeof stdout === "object" && stdout !== null && "stdout" in stdout
-            ? String((stdout as { stdout: unknown }).stdout ?? "")
-            : String(stdout ?? "");
-        resolve({ stdout: out, stderr: String(stderr ?? "") });
-      }
-    });
-  });
 
 /** The log files a live mcode process may hold open, each naming the session it is writing. */
 const OPEN_SESSION_PATHS: readonly { pattern: RegExp; decode?: boolean }[] = [
@@ -356,9 +332,17 @@ export class McodeTranscriptSource implements TranscriptSource {
 
   private readonly startMsReader: (pid: number) => Promise<number | null>;
 
-  constructor(roots: string | readonly string[], startMsReader?: (pid: number) => Promise<number | null>) {
+  /** The files a pid holds open: the shared reader (open-files.ts), with its cache and its limits. */
+  private readonly openFiles: OpenFiles;
+
+  constructor(
+    roots: string | readonly string[],
+    startMsReader?: (pid: number) => Promise<number | null>,
+    openFiles: OpenFiles = defaultOpenFiles,
+  ) {
     this.roots = rootList(roots);
     this.startMsReader = startMsReader ?? processStartMs;
+    this.openFiles = openFiles;
   }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
@@ -426,17 +410,8 @@ export class McodeTranscriptSource implements TranscriptSource {
       .filter((pid): pid is number => pid !== undefined && Number.isSafeInteger(pid) && pid > 0);
     if (pids.length > 0) {
       // Tier 1: a session file a target process holds open names the session outright.
-      for (const pid of pids) {
-        const { stdout } = await runLsof("lsof", ["-nP", "-p", String(pid), "-g", String(pid), "-Fn"], {
-          timeout: 1000,
-          maxBuffer: 1024 * 1024,
-          windowsHide: true,
-        }).catch(() => ({ stdout: "" }));
-        const paths = stdout
-          .split("\n")
-          .filter((line) => line.startsWith("n"))
-          .map((line) => line.slice(1));
-        for (const id of sessionIdsOfPaths(paths)) {
+      for (const pid of pids.slice(0, MAX_OPEN_FILES_PIDS)) {
+        for (const id of sessionIdsOfPaths(await this.openFiles(pid))) {
           const ref: AgentSessionRef = { kind: "id", value: id };
           if ((await this.resolve(ref)) !== null) return ref;
         }
