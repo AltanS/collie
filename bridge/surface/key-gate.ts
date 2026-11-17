@@ -29,6 +29,10 @@ export const TOKEN_LIFETIME_MS = 150;
 
 /** How long a person's press may hold the machine-wide pane lock (pane-lock.ts): one key call's bound. */
 export const PRESS_SPAN_MS = 10_000;
+/** How long a person's tap waits for a pane another bridge writes into (M102 spec 16): then refused, or a Stop goes anyway. */
+export const LOCK_WAIT_MS = 1_500;
+/** The pause between two tries at that pane's lock. */
+export const LOCK_POLL_MS = 50;
 
 /** Who is sending. `protocol` is the Send Protocol; the other two never meet a revision check. */
 export type KeyOrigin = "person_tap" | "legacy_reply" | "protocol";
@@ -75,6 +79,8 @@ export class KeyGate {
   constructor(
     private readonly mux: KeyWriter,
     private readonly now: () => number = () => Date.now(),
+    /** The pause between two tries at a pane another bridge holds ({@link hold}); a test hands in its own. */
+    private readonly pause: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   ) {}
 
   /**
@@ -87,19 +93,46 @@ export class KeyGate {
   }
 
   /**
-   * Run `work` holding the pane's machine-wide lock for at most `spanMs`, or answer `busy()` with no write
-   * at all when another bridge holds it. With no shared lock, `work` runs as before.
+   * Run `work` holding the pane's machine-wide lock for at most `spanMs`. While another bridge holds it,
+   * wait up to {@link LOCK_WAIT_MS} (tries {@link LOCK_POLL_MS} apart), then answer `busy()` with no write
+   * at all. A free pane, or one this bridge already holds, costs no wait. With no shared lock, `work` runs as before.
    */
   async hold<T>(paneId: string, spanMs: number, work: () => Promise<T>, busy: () => T): Promise<T> {
-    const lock = this.paneLock;
-    if (lock === null) return work();
-    const owner = `gate-${String(this.nextHold++)}`;
-    if (!lock.take(paneId, owner, this.now() + spanMs)) return busy();
+    const owner = await this.takeWaiting(paneId, spanMs);
+    if (owner === false) return busy();
     try {
       return await work();
     } finally {
-      lock.release(paneId, owner);
+      if (owner !== null) this.paneLock?.release(paneId, owner);
     }
+  }
+
+  /**
+   * A person's Stop (M102 spec 16, ADR 0116 addendum): the safety control is never refused for the shared
+   * lock. It waits for it as {@link hold} does; when another bridge still holds the pane after the wait, the
+   * key goes out anyway and `bypassed` says so, for the route's record. Inside this bridge it is a press, as before.
+   */
+  async pressAlways(paneId: string, keys: readonly string[]): Promise<{ readonly ack: MuxAck; readonly bypassed: boolean }> {
+    const owner = await this.takeWaiting(paneId, PRESS_SPAN_MS);
+    try {
+      this.bump(paneId);
+      this.sends.person_tap++;
+      return { ack: await this.mux.writeKeys(paneId, keys), bypassed: owner === false };
+    } finally {
+      if (owner !== null && owner !== false) this.paneLock?.release(paneId, owner);
+    }
+  }
+
+  /** The lock taken for a new owner (its name), null with no shared lock, false when another bridge kept it through the wait. */
+  private async takeWaiting(paneId: string, spanMs: number): Promise<string | null | false> {
+    const lock = this.paneLock;
+    if (lock === null) return null;
+    const owner = `gate-${String(this.nextHold++)}`;
+    for (let attempt = 0; attempt <= LOCK_WAIT_MS / LOCK_POLL_MS; attempt++) {
+      if (attempt > 0) await this.pause(LOCK_POLL_MS);
+      if (lock.take(paneId, owner, this.now() + spanMs)) return owner;
+    }
+    return false;
   }
 
   /** The pane's newest revision as the gate counts it. */

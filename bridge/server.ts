@@ -10160,6 +10160,8 @@ export async function stopRoute(
   const detail: AuditDetail = { requestId, outcome: receipt.outcome, replayed: answer.replayed };
   if (receipt.reason !== undefined) detail.reason = receipt.reason;
   if (receipt.keys !== undefined) detail.keys = [...receipt.keys];
+  // The key went out while another bridge still wrote into the pane (M102 spec 16): the record says so.
+  if (answer.bypassed === true) detail.lock = "bypassed";
   context.audit.record({ action: "abort", paneId, session: context.session, device: context.device, detail });
   // A replay pressed nothing this time; a first tap that pressed makes the engine look again soon.
   if (receipt.keys !== undefined && !answer.replayed) {
@@ -10209,6 +10211,8 @@ export async function clearRoute(
     rt.engine.noteInput();
     rt.engine.pokeNow();
   }
+  // Another bridge writes into the pane (M102 spec 16): the phone also reads the code off the header.
+  if (receipt.reason === "pane_busy") return withRefusal(json(receipt, context.acceptEncoding), "bridge", "pane_busy");
   return json(receipt, context.acceptEncoding);
 }
 

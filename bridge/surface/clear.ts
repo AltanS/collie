@@ -38,7 +38,8 @@
 // never pressed twice. The receipts live in memory: a bridge restart forgets them, and a Clear is a
 // tap, not a message, so nothing is lost but the replay. A Clear takes no pane lock, as a Stop takes none:
 // it must not wait behind a send of this bridge. Another bridge's writes are kept out by the key gate's
-// machine-wide hold (M102 spec 16), and another bridge's send refuses the Clear `press_failed`. It never presses Escape (the profile's clear key is a key that deletes).
+// machine-wide hold (M102 spec 16): while another bridge writes into the pane, the Clear waits up to
+// 1.5 s, then is refused `pane_busy` with nothing pressed. It never presses Escape (the profile's clear key is a key that deletes).
 // The audit line is the route's: request id, pane, outcome, never the box's text.
 //
 // RESTORE. A one-tap Clear can lose a long draft, so a `cleared` receipt carries the text the first read
@@ -195,7 +196,7 @@ export class ClearService {
     // bridge writes into the pane, nothing is typed and the Clear is refused `press_failed`. A send of this
     // bridge does not refuse it, as before: the gate's hold joins it.
     const hold = this.deps.gate.hold?.bind(this.deps.gate);
-    const work = hold === undefined ? this.run(requestId, paneId, harness) : hold(paneId, CLEAR_SPAN_MS, () => this.run(requestId, paneId, harness), () => refusal(requestId, "press_failed", false));
+    const work = hold === undefined ? this.run(requestId, paneId, harness) : hold(paneId, CLEAR_SPAN_MS, () => this.run(requestId, paneId, harness), () => refusal(requestId, "pane_busy", false));
     this.running.set(requestId, { paneId, work });
     try {
       const done = await work;

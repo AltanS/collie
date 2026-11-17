@@ -42,7 +42,7 @@ describe("the key gate shares the pane lock", () => {
     const other = lockOf(202);
     expect(other.take("%1", "their-send", Date.now() + 30_000)).toBe(true);
     const { keys, writer } = keyLog();
-    const gate = new KeyGate(writer);
+    const gate = new KeyGate(writer, Date.now, () => Promise.resolve());
     gate.share(lockOf(101));
     const ack = await gate.press("%1", ["Enter"], "person_tap");
     expect(isPaneBusy(ack)).toBe(true);
@@ -75,6 +75,8 @@ describe("the key gate shares the pane lock", () => {
     const gate = new KeyGate(writer);
     gate.share(lockOf(101));
     const pressing = gate.press("%1", ["Enter"], "person_tap");
+    // The press takes the lock, then calls the multiplexer on a later turn.
+    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
     expect(new SessionLocks(lockOf(202)).acquire("other\u0000%1", "req", Date.now() + 30_000, Date.now())).toBe(false);
     release();
     await pressing;

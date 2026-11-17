@@ -89,6 +89,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A ticking timer above a question no longer blocks your answer.** On a question or menu with no frame of its own, such as a Claude Code question or its first-run sign-in list, a tap was refused while a row above it ticked: a tool's timer, a spinner or a clock. The phone now holds those running rows still when it checks the screen, so the tap goes through. Any other change above the question, such as another command or file, still refuses it.
 - **Two Collie bridges on one machine never type into the same pane at once.** With a release lane and a dev lane on one multiplexer, two taps at the same moment gave one garbled line. Now every bridge takes one shared lock per pane before any key, kept in the user's runtime folder, and the second tap gets "Another send on this pane is still running", as a second phone on one bridge does. A lock left by a bridge that died is taken over.
 - **A send cut short by a crash is never typed again, and says so.** When a bridge stops after a send's first key and before its end, the send now answers that it was interrupted, with the rows on the screen now: its text may be in the box and Enter may not have been pressed. Tapping Send again types nothing.
+- **Stop always goes, even while another Collie bridge types into the pane.** It waits at most 1.5 seconds for the other bridge, then presses its key anyway. Clear and the Keys pad wait as long, then say the pane is busy and press nothing.
 
 ### Docs
 

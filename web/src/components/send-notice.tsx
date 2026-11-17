@@ -128,6 +128,8 @@ const CLEAR_REFUSALS = {
   pane_gone: "keys.clear.receipt.refused.paneGone",
   stale_screen: "keys.clear.receipt.refused.staleScreen",
   unsupported_build: "keys.clear.receipt.refused.unsupportedBuild",
+  // Another bridge writes into the pane (M102 spec 16): the send's own busy words, until the cards session gives Clear its own line.
+  pane_busy: "composer.protocol.busy",
 } as const satisfies Record<ClearReason, MessageKey>;
 
 /**
