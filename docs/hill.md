@@ -432,8 +432,8 @@ text search, the author's words under "Its author's words. Collie did not check 
 every file of its code, as a group of cards.
 
 - **Hold to switch on**: keep a finger on it for three seconds. A fill grows across the button, and the
-  yes goes out when it is full. Lift early, move off the button, scroll, or leave the page, and nothing
-  is sent. With a keyboard or a switch device, press it twice. Collie reads the stored files again and
+  yes goes out when it is full. Lift early, slide off the button, or leave the page, and nothing
+  is sent. While you hold, the chat stays still under your finger. With a keyboard or a switch device, press it twice. Collie reads the stored files again and
   installs them only when their hash matches the card. The trick is then on, approved as exactly that
   code.
 - **Not now** drops the stored copy. So do Dismiss, an expiry, and a newer proposal from the same

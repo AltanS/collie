@@ -209,8 +209,8 @@ describe("a trick proposal in its session's chat view", () => {
     expect(answers).toEqual([]);
     await hold(yes());
     await waitFor(() => expect(answers).toHaveLength(1));
-    expect(answers[0]).toMatchObject({ intent: "on", group: { digest: HASH } });
-    expect(answers[0]).toEqual(expect.objectContaining({ group: { digest: HASH } }));
+    expect(answers[0]).toMatchObject({ intent: "on", group: { digest: HASH, opened: [1] } });
+    expect(answers[0]).toEqual(expect.objectContaining({ group: { digest: HASH, opened: [1] } }));
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
   });
 
@@ -320,7 +320,7 @@ describe("a trick proposal in its session's chat view", () => {
     expect(chat().querySelector('[data-slot="decision-retry"]')).toBeNull();
     await hold(yes());
     expect(onSend).toHaveBeenCalledTimes(2);
-    expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: HASH });
+    expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: HASH, opened: [1] });
   });
 
   it("a waiting proposal sets the jump-to-latest dot of its own session only, and Not now clears it", async () => {

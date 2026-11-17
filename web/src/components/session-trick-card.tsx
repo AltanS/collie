@@ -8,7 +8,7 @@ import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/opti
 import { FoldPanel } from "@/components/ui/fold-toggle";
 import { useHillAnswer, type HillAnswerState } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
-import { singleCodeCard, trickCardDecline, viewHasCode } from "@/lib/hill/code-card";
+import { singleCodeCard, trickCardDecline, trickYesAnswer, viewHasCode } from "@/lib/hill/code-card";
 import { linkHost, isWebLink } from "@/lib/hill/reader";
 import { closeInSession, useSessionLater } from "@/lib/hill/session-later";
 import { useHillAnswerHeld, useHillClosed, useHillOpen } from "@/lib/hill/store";
@@ -45,8 +45,9 @@ import { cn } from "@/lib/utils";
 //
 // ── THE GUARDS (ADR 0156, the operator's decision of 2026-11-17) ─────────────────────────────────────
 //   * The yes is a HOLD of three seconds (components/hold-to-approve.tsx): the finger stays down while a
-//     fill grows across the button, and the yes goes out once at the end. A lift, a scroll, the page
-//     hidden, the button moving under the finger, or a changed card ends the hold with no yes. A key
+//     fill grows across the button, and the yes goes out once at the end. A lift, a move off the button,
+//     the page hidden, or a changed card ends the hold with no yes; the chat's own scroll does not, and the
+//     chat does not follow its tail while a finger holds (lib/hold-flag.ts). A key
 //     presses twice. A hold starts only with a press on the rendered, enabled button, so a touch that began
 //     before the yes was there is no yes.
 //   * Reading is offered, not required: "Read the code" opens in place and brings its row to the top of the
@@ -199,9 +200,8 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
   const noCode = group === undefined && single === null;
   const blocked = unshown || noCode;
   const ready = !locked && !blocked;
-  // The yes names the digest of the code this card showed, so it approves exactly that code.
-  const digest = group?.digest ?? single?.digest;
-  const groupAnswer: HillGroupAnswer | undefined = digest === undefined ? undefined : { digest };
+  // The yes names the digest of the code this card showed, so it approves exactly that code (plus the legacy `opened`).
+  const groupAnswer = trickYesAnswer(decision);
 
   const pictures = useMemo(() => viewPictures(decision.id, decision.media, mediaSource), [decision.id, decision.media, mediaSource]);
   const ctx: RenderCtx = { partKey: `hill/${decision.id}`, stale: false, onTap: NO_TAP, onLink: openViewLink, hostOf: linkHost, wrap: true, pictures };

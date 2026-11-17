@@ -32,17 +32,20 @@ of is that the yes is meant and that it approves the code the card showed.
    Tricks, through one control (`HoldToApprove`). A fill grows across the button; at `APPROVE_HOLD_MS`
    (3000) the yes goes out once, with the finger still down.
 2. **A hold ends with no yes** when the finger lifts early, leaves the button or moves past a thumb's
-   jitter, on `pointercancel`, on any scroll, when the page is hidden or loses focus, when the button moves
-   on screen under the finger by more than a few pixels, when the card's digest changes, and when the card
-   leaves. A second finger, and any press while an answer is in flight, does nothing. A hold starts only
-   with a press on the rendered, enabled button, so a touch that began before the yes was there is no yes.
+   jitter, on `pointercancel`, when the page is hidden, when the card's digest changes, when an answer goes
+   in flight, and when the card leaves. A scroll, a layout shift and the window's focus do not end it: in a
+   live chat they came from the chat following its tail, and the first build, which ended a hold on them,
+   could not be approved on an Android phone (2026-11-17). While a finger holds, the chat does not follow its
+   tail, and the button takes no pan (`touch-action: none`). A second finger, and any press while an answer
+   is in flight, does nothing. A hold starts only with a press on the rendered, enabled button.
 3. **A key or a switch device presses twice**, as the belt's Stop does: the first press arms for `ARM_MS`,
    a second one at least `ARM_DWELL_MS` later approves.
 4. **Reading is offered, not required.** "Read the code" stays on every card and opens as before. No card
    has to be opened, scrolled to its end, or held still before the yes.
 5. **The bridge asks for the digest, not for what was seen.** A yes to a group or a single card of code
    needs the digest the phone was given, a request id and a paired phone with the write level; it no
-   longer needs `opened`. An older phone bundle still sends `opened`; the bridge reads it and ignores it.
+   longer needs `opened`, and reads and ignores it. The phone still sends `opened` with every card number, a
+   legacy field for a bridge of 1.29.0-edge.1 to edge.4 in a crew, which refuses a yes without it.
 
 ## What stays
 

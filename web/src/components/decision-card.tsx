@@ -26,7 +26,7 @@ import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
 import { hasResizeObserver, pageFonts } from "@/lib/env";
 import { HILL_ACK_MS } from "@/lib/hill/motion";
 import { linkHost } from "@/lib/hill/reader";
-import { singleCodeCard, trickCardDecline } from "@/lib/hill/code-card";
+import { singleCodeCard, trickCardDecline, trickYesAnswer } from "@/lib/hill/code-card";
 import type { HillDecision, HillGroupAnswer, HillOption, HillReceipt } from "@/lib/hill/wire";
 import { HILL_ANSWER_TEXT_MAX } from "@/lib/hill/wire";
 import { ageWords, collieOkWords, receiptWords, targetLabel, targetLine } from "@/lib/hill/words";
@@ -425,7 +425,7 @@ export function DecisionCard({
   const shownOptions = noCode ? decision.options.filter((option) => option.intent === trickDecline) : decision.options;
   // A yes to Collie's own code names the digest the card showed: the group's, or a single card's hash (C-A2).
   const digest = group?.digest ?? single?.digest;
-  const groupAnswer: HillGroupAnswer | undefined = digest === undefined ? undefined : { digest };
+  const groupAnswer = trickYesAnswer(decision);
   const declineOption = group === undefined ? undefined : decision.options.find((option) => option.intent === group.decline);
   // An image the view places among its facts is drawn there, not again in the row above it.
   const stripMedia = useMemo(() => {
@@ -457,7 +457,7 @@ export function DecisionCard({
   const target = decision.target;
   const goesTo = targetLine(decision);
 
-  // An answer to a group carries its digest and the cards opened; any other answer is as it was.
+  // An answer to Collie's own code carries its digest and the legacy `opened` (code-card.ts trickYesAnswer).
   function answerWith(intent: string, answerText: string | null) {
     if (groupAnswer === undefined) onSend(intent, answerText);
     else onSend(intent, answerText, groupAnswer);

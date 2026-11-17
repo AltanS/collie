@@ -892,10 +892,10 @@ describe("the Decision card, with a group of cards", () => {
     expect(onSend).not.toHaveBeenCalled();
     // The decline is one tap, and carries the digest.
     fireEvent.click(view.container.querySelector<HTMLButtonElement>('[data-slot="decision-option"][data-intent="later"]')!);
-    expect(onSend).toHaveBeenLastCalledWith("later", null, { digest: "d".repeat(64) });
+    expect(onSend).toHaveBeenLastCalledWith("later", null, { digest: "d".repeat(64), opened: [1, 2, 3] });
     holdYes(yes());
     expect(onSend).toHaveBeenCalledTimes(2);
-    expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: "d".repeat(64) });
+    expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: "d".repeat(64), opened: [1, 2, 3] });
   });
 
   it("a card of a group never folds (review 7 R1)", () => {
@@ -989,7 +989,7 @@ describe("the Decision card, a single card of Collie's own with code", () => {
     expect(onSend).not.toHaveBeenCalled();
     holdYes(option("on"));
     expect(onSend).toHaveBeenCalledTimes(1);
-    expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: "a".repeat(64) });
+    expect(onSend).toHaveBeenLastCalledWith("on", null, { digest: "a".repeat(64), opened: [1] });
   });
 
   it("a version card that shows agent instructions is a single code card too: no fold, Use is a hold, Keep a tap", () => {

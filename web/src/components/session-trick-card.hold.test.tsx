@@ -10,8 +10,8 @@ import { collieCard } from "@/test/hill-fixtures";
 
 // THE CHAT CARD'S YES IS A HOLD OF THREE SECONDS (ADR 0156), in the chat's own scroll and in an agent view's own
 // scroll, where the card stands while the view stands in for the chat. The fold is never opened in these cases:
-// reading is offered, not required. A scroll of the box the card flows in, while a finger holds the yes, ends the
-// hold; the decline stays one tap.
+// reading is offered, not required. A scroll of the box the card flows in does not end a hold (fix/hold-works); the
+// decline stays one tap.
 
 const HASH = "a".repeat(64);
 const decision: HillDecision = collieCard("proposal", "legs", {
@@ -68,7 +68,7 @@ describe.each(["chat", "agent-view"] as const)("the card's yes, in the %s's scro
     expect(onSend).not.toHaveBeenCalled();
     wait(1);
     expect(onSend).toHaveBeenCalledTimes(1);
-    expect(onSend).toHaveBeenCalledWith("on", null, { digest: HASH });
+    expect(onSend).toHaveBeenCalledWith("on", null, { digest: HASH, opened: [1] });
     up(yes()!);
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
@@ -85,13 +85,13 @@ describe.each(["chat", "agent-view"] as const)("the card's yes, in the %s's scro
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("a scroll of the box the card flows in, while the finger holds, ends the hold", () => {
+  it("a scroll of the box the card flows in, while the finger holds, does not end the hold (the chat's own follow scrolls it)", () => {
     const { onSend, yes, box } = draw(host);
     down(yes()!);
     wait(1500);
     fireEvent.scroll(box);
-    wait(5000);
-    expect(onSend).not.toHaveBeenCalled();
+    wait(1500);
+    expect(onSend).toHaveBeenCalledTimes(1);
   });
 
   it("a key presses twice", () => {
@@ -100,7 +100,7 @@ describe.each(["chat", "agent-view"] as const)("the card's yes, in the %s's scro
     expect(yes()).toHaveTextContent("Press again to confirm");
     wait(500);
     fireEvent.click(yes()!, { detail: 0 });
-    expect(onSend).toHaveBeenCalledWith("on", null, { digest: HASH });
+    expect(onSend).toHaveBeenCalledWith("on", null, { digest: HASH, opened: [1] });
   });
 
   it("Not now stays one tap and sends nothing", () => {

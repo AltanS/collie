@@ -146,9 +146,8 @@ export const HILL_COLLIE_REF_HASH_RE = /^[0-9a-f]{64}$/;
 /**
  * A GROUP OF CARDS (crew slice 8): one Decision of Collie's own whose code does not fit one card shows as
  * 2 to 8 cards in a fixed order. Card 1 is Collie's facts, never code; cards 2 to n hold the code. The
- * answer that switches on carries the group's digest the phone was given and which cards the phone
- * opened. The opened list is the phone's DISPLAY check: it says what this phone showed, it proves
- * nothing about what the person read.
+ * answer that switches on carries the group's digest the phone was given (ADR 0156); its `opened` field is
+ * a legacy field for an older bridge ({@link HillGroupAnswer}).
  */
 export const HILL_GROUP_PARTS = { min: 2, max: 8 } as const;
 /** A group's digest and a card's hash: SHA-256, hex. */
@@ -172,12 +171,15 @@ export interface HillGroup {
 
 /**
  * What a phone sends with a yes to Collie's own card of code (a group, or a single card): the digest it was
- * given, so the yes approves exactly the code it showed. Since ADR 0156 the phone sends no `opened`; a phone
- * bundle from before still sends the cards it marked opened, and the bridge reads them and ignores them.
+ * given, so the yes approves exactly the code it showed. Since ADR 0156 this bridge asks only for the digest.
  */
 export interface HillGroupAnswer {
   digest: string;
-  /** From an older phone bundle only: the cards it marked opened (1-based). Read and ignored. */
+  /**
+   * LEGACY FIELD (ADR 0156): every card number, 1 to n. A bridge of 1.29.0-edge.1 to edge.4 (a crew member, or a
+   * lead not yet updated) still refuses a yes that does not name every card here, so the phone always sends it
+   * whole. This bridge reads it and ignores it. Drop it once no supported bridge asks for it.
+   */
   opened?: number[];
 }
 
