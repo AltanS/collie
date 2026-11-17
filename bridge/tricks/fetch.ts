@@ -510,3 +510,29 @@ export async function writeCandidateFiles(dir: string, files: readonly TrickFile
   }
   if (extra !== undefined) await writeFile(join(dir, extra.name), extra.text, { flag: "wx", mode: 0o600 });
 }
+
+// ── one fetch at a time ──────────────────────────────────────────────────────
+
+/**
+ * The one fetch a bridge runs at a time from a phone's tap: the official add (official-install.ts) and a
+ * repository's index or an add from it (repo-index.ts) take the same slot, so a second tap while one fetch
+ * runs is refused with a sentence instead of starting another git run.
+ */
+export class FetchSlot {
+  private held = false;
+
+  /** Take the slot: true when it was free, false while another fetch holds it. */
+  take(): boolean {
+    if (this.held) return false;
+    this.held = true;
+    return true;
+  }
+
+  free(): void {
+    this.held = false;
+  }
+
+  get busy(): boolean {
+    return this.held;
+  }
+}

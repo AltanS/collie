@@ -391,7 +391,7 @@ describe.if(posix)("collie trick add", () => {
     const none = await fixtureRepo([{ "program.sh": PROGRAM }]);
     const o = await rig();
     expect(await cmdTrickAdd(o, [none.bare])).toBe(EXIT.FAIL);
-    expect(o.err.join("\n")).toContain("there is no trick.toml");
+    expect(o.err.join("\n")).toContain("no collie-tricks.json and no trick.toml at its top");
     await expectNoLeftovers(o);
   });
 
@@ -543,5 +543,53 @@ describe.if(posix)("collie trick remove", () => {
     expect(await stat(trickStateDir(r.stateDir, "legs")).catch(() => null)).toBeNull();
     expect(await stat(approvedTrickDir(r.configDir, "legs")).catch(() => null)).toBeNull();
     expect(await cmdTrickRemove(r, ["legs"])).toBe(EXIT.FAIL);
+  });
+});
+
+describe.if(posix)("collie trick add <url> with no folder: the repository's index (package J)", () => {
+  const INDEX = JSON.stringify({
+    contract: 1,
+    tricks: [
+      { folder: "idle-watch", name: "Idle Watch", about: "Marks a session that waits for you." },
+      { folder: "lodge-board", name: "Lodge Board", about: "Shows the workshop's open jobs." },
+    ],
+  });
+
+  test("prints folder, name, about and the commit, and adds nothing, with tricks on or off", async () => {
+    // The index wins over a trick.toml at the top: a repository with an index is a list.
+    const repo = await fixtureRepo([{ "collie-tricks.json": txt(INDEX), "trick.toml": txt(MANIFEST("top")), "idle-watch/trick.toml": txt(MANIFEST("idle-watch")), "idle-watch/program.sh": PROGRAM }]);
+    const r = await rig();
+    const code = await cmdTrickAdd(r, [repo.bare]);
+    expect(r.err).toEqual([]);
+    expect(code).toBe(EXIT.OK);
+    expect(r.out[0]).toBe(`Tricks listed in ${repo.bare} at commit ${repo.shas[0] ?? ""} (its collie-tricks.json, in the repository's own words):`);
+    expect(r.out[1]).toBe("  idle-watch   Idle Watch   Marks a session that waits for you.");
+    expect(r.out.join("\n")).toContain("lodge-board");
+    expect(r.out.join("\n")).not.toContain("\u202E");
+    expect(r.out.at(-1)).toBe(`Nothing was added. Add one with: collie trick add ${repo.bare}//<folder>. It is copied into your tricks folder, off.`);
+    expect(await readdir(join(r.configDir, "tricks")).catch(() => [])).toEqual([]);
+    await expectNoLeftovers(r);
+    // With tricks off the list still reads, and still adds nothing.
+    writeTricksFeature(r.stateDir, false);
+    expect(await cmdTrickAdd(r, [`${repo.bare}#main`])).toBe(EXIT.OK);
+    expect(r.out.at(-1)).toContain("//<folder>#main.");
+    expect(await readdir(join(r.configDir, "tricks")).catch(() => [])).toEqual([]);
+  });
+
+  test("a repository with no index and no trick at its top says so and names the folder form", async () => {
+    const repo = await fixtureRepo([{ "idle-watch/trick.toml": txt(MANIFEST("idle-watch")), "idle-watch/program.sh": PROGRAM }]);
+    const r = await rig();
+    expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.FAIL);
+    expect(r.err.join("\n")).toBe(`error: ${repo.bare} has no collie-tricks.json and no trick.toml at its top. Name the trick's folder: collie trick add ${repo.bare}//<folder>`);
+    await expectNoLeftovers(r);
+  });
+
+  test("a refused index adds nothing and says why; a folder named still adds as before", async () => {
+    const repo = await fixtureRepo([{ "collie-tricks.json": txt(JSON.stringify({ contract: 2, tricks: [] })), "idle-watch/trick.toml": txt(MANIFEST("idle-watch")), "idle-watch/program.sh": PROGRAM }]);
+    const r = await rig();
+    expect(await cmdTrickAdd(r, [repo.bare])).toBe(EXIT.FAIL);
+    expect(r.err.join("\n")).toBe("error: collie-tricks.json is written for contract 2, and this Collie reads contract 1; update Collie to read it. Nothing was added.");
+    expect(await cmdTrickAdd(r, [`${repo.bare}//idle-watch`])).toBe(EXIT.OK);
+    expect(r.out.at(-1)).toBe("The trick is off. Read it, then: collie trick on idle-watch");
   });
 });

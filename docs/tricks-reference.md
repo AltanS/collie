@@ -1518,12 +1518,12 @@ if (!machines.ok) throw new Error(machines.error.message);
 | `access` | What the trick gets | Operations |
 | --- | --- | --- |
 | `none` | The default, also when `access` is left out. No `api` in the facts, and `t.api` answers an error. | none |
-| `see` | Lists and states: your machines, your sessions and their states, your usage and the Hill. Never the text of a screen. | `hello`, `sessions`, `brief`, `accounts`, `hill.list`, `events`, `machines` |
+| `see` | Lists and states: your machines, your sessions and their states, your usage and the Hill. Never the text of a screen. One field is text an agent wrote: the title of each card in `hill.list`. | `hello`, `sessions`, `brief`, `accounts`, `hill.list`, `events`, `machines` |
 | `read` | Everything in `see`, and the text of a session's screen, masked as the phone's own read is. | all of `see`, and `read` |
 
 > **Experimental.** `access` and `t.api` are new, and their words may still change.
 
-> **Note.** A level is what the trick declares and what Collie's helper gives it. It is not a wall. A trick's program runs as you, and the local socket is open to every program of your user while tricks are on, so a program of yours can reach the socket without the helper. Collie's text search of the code flags a trick that names the socket or runs `collie api` itself, and the card shows that line like the other findings. A real wall needs the fence for tricks, which comes later.
+> **Note.** A level is what the trick declares and what Collie's helper gives it. It is not a wall. A trick's program runs as you, and the local socket is open to every program of your user while tricks are on, so a program of yours can reach the socket without the helper. Collie's text search of the code flags a trick that names the socket, reads its path from the facts, opens a socket of its own (`createConnection`, `Bun.connect`, a `unix:` option) or runs `collie api` itself, and the card shows that line like the other findings. A real wall needs the fence for tricks, which comes later.
 
 The socket stands while tricks are switched on, on a machine where tricks run. Where it does not (a crew peer, a deputy, Windows), the facts carry no `api`, `t.api` answers `Collie's local API is off here.`, and the trick's row says so once.
 
@@ -1630,6 +1630,17 @@ Tricks do not run on a Windows machine yet. [Collie on Windows](windows.md) says
 | Per hour | 6 per session, 12 per machine |
 | The card closes by itself after | 3 days |
 
+### A repository's index, `collie-tricks.json`
+
+| Limit | Value |
+| --- | --- |
+| The file | at most 32 KiB of JSON at the top of the repository, `contract` 1, no other key |
+| Tricks listed | at most 50, each `folder`, `name` and `about` and nothing else |
+| `folder` | spelled as a trick id: one folder at the top, no `/`, no `..`, no leading dot |
+| `name`, `about` | one line each of at most 40 and 160 characters, no control or invisible character |
+| Hosts the phone reads from | `github.com`, `gitlab.com`, `codeberg.org`, https, written exactly. Any other host: `collie trick add <url>` at the terminal |
+| A read or an add on the phone | one at a time per machine, at most 2 minutes, the size cap of the official list, no redirect, no git config of yours |
+
 ### Card groups
 
 | Limit | Value |
@@ -1646,7 +1657,7 @@ Every verb of `collie trick`.
 | Verb | Usage | What it does |
 | --- | --- | --- |
 | `list` | `collie trick list [--json] [--official]` | Lists every trick folder with its switch, state, last run and last error. |
-| `add` | `collie trick add [<name> \| <https-url>[//<folder>][#<ref>]]` | Copies a trick from a git repository into the tricks folder, off. With no source it lists the official tricks and adds nothing. |
+| `add` | `collie trick add [<name> \| <https-url>[//<folder>][#<ref>]]` | Copies a trick from a git repository into the tricks folder, off. With no source, or a repository's `collie-tricks.json` and no `//<folder>`, it lists and adds nothing. |
 | `update` | `collie trick update <id> [--ref <branch\|tag\|commit>] [--dry-run]` | Fetches an added trick again and replaces its code, keeping `config.toml`. |
 | `remove` | `collie trick remove <id>` | Deletes a trick that is off, with its state folder. |
 | `on` | `collie trick on <id>` | Switches a trick on, approving its code as it is now. It refuses inside an agent's pane. |

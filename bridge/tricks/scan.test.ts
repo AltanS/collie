@@ -150,6 +150,27 @@ describe("the local API's own warning kind", () => {
     expect(kinds(joined)).toContain("api");
   });
 
+  // Review 3, item 1: the socket's path is in the facts, so a program can dial it with no `api/sock` in its text.
+  test("a dial of the facts' socket, createConnection, Bun.connect and a unix: option", async () => {
+    const program = 'import { createConnection } from "node:net";\nimport { run } from "./trick.ts";\nrun(async (t) => {\n  const s = createConnection(t.facts.api.socket);\n  s.write("{}\\n");\n});\n';
+    const found = await warningsOf("program.ts", { "program.ts": program, "trick.ts": TRICK_HELPER });
+    expect(found.filter((w) => w.kind === "api").map((w) => [w.file, w.text])).toEqual([
+      ["program.ts", 'import { createConnection } from "node:net";'],
+      ["program.ts", "const s = createConnection(t.facts.api.socket);"],
+    ]);
+    expect(found.filter((w) => w.file === "trick.ts")).toEqual([]);
+    expect(kinds(await warningsOf("program.ts", { "program.ts": "const path = facts.api?.socket;\n" }))).toContain("api");
+    expect(kinds(await warningsOf("program.ts", { "program.ts": "const s = await Bun.connect({ unix: path, socket: { data() {} } });\n" }))).toContain("api");
+    expect(kinds(await warningsOf("program.ts", { "program.ts": 'const r = await fetch("http://localhost/x", { unix: path });\n' }))).toContain("api");
+    // A TCP dial is flagged too: a grep cannot tell which socket a variable names.
+    expect(kinds(await warningsOf("program.ts", { "program.ts": 'const s = net.createConnection({ host: "example.invalid", port: 80 });\n' }))).toContain("api");
+  });
+
+  test("plain code near those words is not flagged", async () => {
+    const plain = 'const socket = openSocket();\nconst api = { base: "x" };\nconsole.log(api.base, socket);\nconst connection = makeConnection();\n';
+    expect(kinds(await warningsOf("program.ts", { "program.ts": plain }))).not.toContain("api");
+  });
+
   test("`collie api` in a shell run line, in a shell file and as a spawn of a program", async () => {
     expect(kinds(await warningsOf("collie api machines --json", {}))).toContain("api");
     expect(kinds(await warningsOf("./run.sh", { "run.sh": "#!/bin/sh\ncollie api sessions\n" }))).toContain("api");

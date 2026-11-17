@@ -10,6 +10,7 @@ import { ROW_OPEN_BUTTON, ROW_OPEN_CONTROL, ROW_OPEN_ROW, ROW_OPEN_SWITCH } from
 import { Switch } from "@/components/ui/switch";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
 import { TokenUseChip } from "@/components/token-use-label";
+import { RepoAddRow, type RepoAddCall, type RepoListCall } from "@/components/tricks-repo-sheet";
 import { useArm } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
 import { addOfficialTrick, apiErrorFields, fetchOfficialTricks, fetchTrickCodeFile, fetchTrickCodeIndex, setTrickAuto, setTrickValue, switchTrick, undoTrick } from "@/lib/api";
@@ -19,7 +20,7 @@ import { TrickBoundary } from "@/lib/tricks/boundary";
 import { useBridgeNow } from "@/lib/tricks/clock";
 import { trickListRows, type TrickOrigin } from "@/lib/tricks/list-order";
 import { placesLine, readsLine, runsOnLine, warningLines, type WarningLine } from "@/lib/tricks/row-words";
-import type { FieldValue, OfficialState, OfficialTricksReply, TricksRunsOn, WireOfficialTrick, WireTrickInfo } from "@/lib/tricks/schema";
+import { ACCESS_UNKNOWN, type FieldValue, type OfficialState, type OfficialTricksReply, type TricksRunsOn, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, type TricksStore } from "@/lib/tricks/store";
 import { trickTimeText } from "@/lib/tricks/time";
 import { trickTokenUse } from "@/lib/tricks/token-use";
@@ -211,6 +212,10 @@ export interface TricksSettingsCardProps {
   onOfficialList?: (signal?: AbortSignal) => Promise<OfficialTricksReply>;
   /** The add or update from that list. The real route by default. */
   onOfficialAdd?: (id: string, mode: "add" | "update") => Promise<{ id: string; state: OfficialState }>;
+  /** The read of a repository's trick list ("Add from a repository"). The real route by default. */
+  onRepoList?: RepoListCall;
+  /** The add of one trick of that list. The real route by default. */
+  onRepoAdd?: RepoAddCall;
 }
 
 /** The Tricks card, or nothing while the phone holds no tricks reply. */
@@ -511,6 +516,11 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
               {t("settings.tricks.about.rulesUnshown")}
             </p>
           )}
+          {trick.access === ACCESS_UNKNOWN && (
+            <p data-line="access-unknown" className="break-words text-xs text-muted-foreground">
+              {t("settings.tricks.about.access.unknown")}
+            </p>
+          )}
           {trick.inputs !== undefined && (
             <p data-line="reads" className="break-words text-xs text-muted-foreground">
               {readsLine(trick.inputs)}
@@ -532,8 +542,9 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
           )}
           <Collapse open={showWarnings}>{showWarnings ? <TrickWarnings lines={warnings} /> : null}</Collapse>
         </div>
-        {/* Rules this phone cannot show (review 8 V-N5): no yes from here; a trick that is on can still go off. */}
-        <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite || (trick.rulesUnshown === true && !checked)} aria-label={trick.name} className={ROW_OPEN_SWITCH} />
+        {/* Rules this phone cannot show (review 8 V-N5), or a level of access it does not know (review 3, item 4): no
+            yes from here; a trick that is on can still go off. */}
+        <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite || ((trick.rulesUnshown === true || trick.access === ACCESS_UNKNOWN) && !checked)} aria-label={trick.name} className={ROW_OPEN_SWITCH} />
       </div>
       {trick.on && changed !== null && <TrickChanges trick={trick} line={changed} canWrite={canWrite} undoing={undoing} onUndo={onUndo} />}
       {update !== undefined && <OfficialUpdateLine name={trick.name} busy={update.busy} canWrite={canWrite} onUpdate={update.onUpdate} />}
@@ -564,6 +575,8 @@ function TricksList({
   onSetValue = setTrickValue,
   onOfficialList = fetchOfficialTricks,
   onOfficialAdd = addOfficialTrick,
+  onRepoList,
+  onRepoAdd,
   now,
   readOnly,
   hillOff,
@@ -850,6 +863,8 @@ function TricksList({
                 </TrickBoundary>
               );
             })}
+          {/* A crew member runs no trick, so it adds none (runsOn). */}
+          {official.settled && runsOn === undefined && <RepoAddRow tricksOff={off} readOnly={!mayWrite} onList={onRepoList} onAdd={onRepoAdd} />}
         </div>
         <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t("settings.tricks.foot")}</p>
       </Card>

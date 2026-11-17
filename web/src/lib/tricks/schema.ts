@@ -1683,9 +1683,11 @@ export interface WireTrickInfo {
   watchPollSeconds?: number;
   /**
    * The manifest's `access` (M105 spec 04): `see` or `read`. A right: the About sheet says one line for it.
-   * Absent: `none`, or an older bridge.
+   * `unknown` is the phone's own word (wire.ts) for a level word a newer bridge sent that this phone does not
+   * know: the row then says one fixed line and offers no switch on (review 3, item 4). The bridge never sends
+   * it. Absent: `none`, or an older bridge.
    */
-  access?: TrickAccess;
+  access?: TrickAccess | typeof ACCESS_UNKNOWN;
   /**
    * Set when the trick declares `access` and Collie's local API does not stand on this bridge, so `t.api` answers
    * a plain error. A note, never a refusal: the row says it once, in the phone's words. Absent: it stands, no
@@ -4292,9 +4294,11 @@ export const ACCESS_WORDS = ["none", ...ACCESS_LEVELS] as const;
 export type TrickAccess = (typeof ACCESS_LEVELS)[number];
 /** The card's one line for each level, in the card's own English (and the About sheet's, in the phone's words). */
 export const ACCESS_LINES = {
-  see: "It sees your machines, your sessions and their states, your usage and the Hill. It does not see what is on a screen.",
-  read: "It reads what is on your sessions' screens.",
+  see: "It asks to see your machines, your sessions and their states, your usage and the Hill, not what is on a screen.",
+  read: "It asks to read what is on your sessions' screens.",
 } as const satisfies Readonly<Record<TrickAccess, string>>;
+/** The phone's word for a level word it does not know (wire.ts): kept, so the row can say so, never dropped. */
+export const ACCESS_UNKNOWN = "unknown";
 /** The line a contract 1 or 2 trick that names `access` is refused with. */
 export const ACCESS_NEEDS_CONTRACT = `"access" needs contract = ${String(ACCESS_CONTRACT)}. Add contract = ${String(ACCESS_CONTRACT)} to trick.toml to read Collie through the local API.`;
 

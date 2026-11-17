@@ -16,6 +16,7 @@ import {
   spawnGit,
   writeCandidateFiles,
   type Candidate,
+  type Fetched,
   type FetchOptions,
   type GitResult,
   type GitRunner,
@@ -23,15 +24,20 @@ import {
 } from "../bridge/tricks/fetch.ts";
 import { ORIGIN_FILE, readOrigin, renderOrigin, sameRepo, type TrickOrigin } from "../bridge/tricks/origin.ts";
 import { removeTrickCopies } from "../bridge/tricks/approved.ts";
-import { switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "../bridge/tricks/paths.ts";
+import { MANIFEST_FILE, switchesPath, trickStateDir, tricksConfigDir, tricksStateDir } from "../bridge/tricks/paths.ts";
 import { trickWarnings, warningLines, WARNINGS_HONESTY, type CheckWarning } from "../bridge/tricks/scan.ts";
 import { parseSwitches } from "../bridge/tricks/switches.ts";
 import { isTrickId } from "../web/src/lib/tricks/schema.ts";
+import { REPO_INDEX_ABOUT_MAX, REPO_INDEX_BYTES_MAX, REPO_INDEX_NAME_MAX } from "../web/src/lib/tricks/limits.ts";
+import { parseRepoIndex, REPO_INDEX_FILE, shownIndexText } from "../web/src/lib/tricks/repo-index.ts";
 import { checkStatic, leadsCrewOnDisk, refuseTricksOnWindows, refuseWhileTricksOff, type TrickDeps } from "./trick.ts";
 import { EXIT } from "./io.ts";
 
 // `collie trick add`, `update` and `remove` (M94 review 15): a trick from a git repository, copied into
 // the tricks folder OFF. No trick ships in the binary and none is installed by default; the person picks.
+//
+// `collie trick add <url>` with no `//<folder>` reads the repository's `collie-tricks.json` and prints it,
+// adding nothing (`addOrList`; the index rules are web/src/lib/tricks/repo-index.ts).
 //
 // The fetch itself, its hardening and the checks of the folder fetched live in bridge/tricks/fetch.ts,
 // shared with the official list (bridge/tricks/official-install.ts): that file's header has the git
@@ -254,40 +260,90 @@ export async function cmdTrickAdd(deps: TrickAddDeps, args: readonly string[]): 
   }
   const raw = words[0];
   if (raw === undefined) return await listOfficial(deps);
-  // The list reads with tricks off; bringing code in waits for the switch.
-  if (refuseWhileTricksOff(deps)) return EXIT.FAIL;
   const source = parseTrickSource(raw, deps.seam);
   if ("error" in source) {
+    // The list reads with tricks off; bringing code in waits for the switch, and says so first.
+    if (refuseWhileTricksOff(deps)) return EXIT.FAIL;
     deps.io.err(`error: ${source.error}`);
     deps.io.err(ADD_USAGE);
     return EXIT.USAGE;
   }
-  const root = tricksConfigDir(deps.ctx.configDir);
+  // A repository with no folder named: its index is read and printed, and nothing is added (see addOrList).
+  if (source.subdir === null) return await addOrList(deps, source);
+  if (refuseWhileTricksOff(deps)) return EXIT.FAIL;
   try {
-    return await withCandidate(deps, source, async (candidate) => {
-      const dir = join(root, candidate.id);
-      if ((await lstat(dir).catch(() => null)) !== null) {
-        return refuse(deps, `a trick ${candidate.id} is already in ${root}. To fetch it again: collie trick update ${candidate.id}`);
-      }
-      await mkdir(root, { recursive: true, mode: 0o700 });
-      const staged = sideName(root, "add", candidate.id);
-      try {
-        await writeCandidate(staged, candidate, originOf(source, candidate.commit, deps.now()));
-        await rename(staged, dir);
-      } finally {
-        await rm(staged, { recursive: true, force: true });
-      }
-      deps.io.out(`Added ${candidate.id} (${candidate.manifest.name}) to ${dir}`);
-      deps.io.out(`From ${sourceWords(source)} at commit ${candidate.commit}.`);
-      deps.io.out(`${String(candidate.files.length)} files copied${candidate.skipped > 0 ? `; ${String(candidate.skipped)} dot files, dot folders and node_modules files left out` : ""}.`);
-      await printCheck(deps, dir);
-      deps.io.out(`The trick is off. Read it, then: collie trick on ${candidate.id}`);
-      return EXIT.OK;
-    });
+    return await withCandidate(deps, source, async (candidate) => await installCandidate(deps, source, candidate));
   } catch (err) {
     if (err instanceof FetchRefused) return refuse(deps, `${err.message.replace(/\.$/u, "")}. Nothing was added.`);
     throw err;
   }
+}
+
+/** Copy a checked candidate into the tricks folder, off, by one rename, and say what landed. */
+async function installCandidate(deps: TrickAddDeps, source: TrickSource, candidate: Candidate): Promise<number> {
+  const root = tricksConfigDir(deps.ctx.configDir);
+  const dir = join(root, candidate.id);
+  if ((await lstat(dir).catch(() => null)) !== null) {
+    return refuse(deps, `a trick ${candidate.id} is already in ${root}. To fetch it again: collie trick update ${candidate.id}`);
+  }
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  const staged = sideName(root, "add", candidate.id);
+  try {
+    await writeCandidate(staged, candidate, originOf(source, candidate.commit, deps.now()));
+    await rename(staged, dir);
+  } finally {
+    await rm(staged, { recursive: true, force: true });
+  }
+  deps.io.out(`Added ${candidate.id} (${candidate.manifest.name}) to ${dir}`);
+  deps.io.out(`From ${sourceWords(source)} at commit ${candidate.commit}.`);
+  deps.io.out(`${String(candidate.files.length)} files copied${candidate.skipped > 0 ? `; ${String(candidate.skipped)} dot files, dot folders and node_modules files left out` : ""}.`);
+  await printCheck(deps, dir);
+  deps.io.out(`The trick is off. Read it, then: collie trick on ${candidate.id}`);
+  return EXIT.OK;
+}
+
+/**
+ * `collie trick add <url>` with no `//<folder>` (package J): one fetch, then
+ *   * the repository holds `collie-tricks.json` at its top: its list is printed (folder, name, about, the
+ *     commit read) and NOTHING is added, with tricks on or off;
+ *   * no index, but a `trick.toml` at its top: that one trick is added, as before the index existed;
+ *   * neither: it says the repository has no index, and names the `//<folder>` form.
+ * The terminal keeps its wider reach: any https host, the operator's own git config (fetch.ts header).
+ */
+async function addOrList(deps: TrickAddDeps, source: TrickSource): Promise<number> {
+  const fetchDir = await fetchFolder(deps);
+  try {
+    const fetched = await fetchSource(source, fetchDir, fetchOptions(deps));
+    const index = fetched.tree.find((e) => e.path === REPO_INDEX_FILE);
+    if (index !== undefined) return await printIndex(deps, source, fetched, index);
+    if (!fetched.tree.some((e) => e.path === MANIFEST_FILE)) {
+      return refuse(deps, `${sourceWords(source)} has no ${REPO_INDEX_FILE} and no ${MANIFEST_FILE} at its top. Name the trick's folder: collie trick add ${source.url}//<folder>`);
+    }
+    if (refuseWhileTricksOff(deps)) return EXIT.FAIL;
+    return await installCandidate(deps, source, await readCandidate(fetched, null));
+  } catch (err) {
+    if (err instanceof FetchRefused) return refuse(deps, `${err.message.replace(/\.$/u, "")}. Nothing was added.`);
+    throw err;
+  } finally {
+    await rm(fetchDir, { recursive: true, force: true });
+  }
+}
+
+/** Print a repository's index: its words are the repository's, cleaned and cut, never run. Adds nothing. */
+async function printIndex(deps: TrickAddDeps, source: TrickSource, fetched: Fetched, entry: Fetched["tree"][number]): Promise<number> {
+  if (entry.mode !== "100644" && entry.mode !== "100755") return refuse(deps, `${REPO_INDEX_FILE} is not a regular file. Nothing was added.`);
+  if (entry.size > REPO_INDEX_BYTES_MAX) return refuse(deps, `${REPO_INDEX_FILE} is larger than ${String(REPO_INDEX_BYTES_MAX / 1024)} KiB. Nothing was added.`);
+  const bytes = (await fetched.blobs([entry.oid])).get(entry.oid) ?? new Uint8Array(0);
+  const read = parseRepoIndex(bytes);
+  if (!read.ok) return refuse(deps, `${read.reason} Nothing was added.`);
+  deps.io.out(`Tricks listed in ${sourceWords(source)} at commit ${fetched.commit} (its ${REPO_INDEX_FILE}, in the repository's own words):`);
+  const rows = read.index.tricks.map((t) => [t.folder, shownIndexText(t.name, REPO_INDEX_NAME_MAX), shownIndexText(t.about, REPO_INDEX_ABOUT_MAX)]);
+  if (rows.length === 0) deps.io.out("  none");
+  const widths = [0, 1].map((i) => Math.max(2, ...rows.map((r) => (r[i] ?? "").length)));
+  for (const r of rows) deps.io.out(`  ${(r[0] ?? "").padEnd(widths[0] ?? 0)}  ${(r[1] ?? "").padEnd(widths[1] ?? 0)}  ${r[2] ?? ""}`);
+  const ref = source.ref === null ? "" : `#${source.ref}`;
+  deps.io.out(`Nothing was added. Add one with: collie trick add ${source.url}//<folder>${ref}. It is copied into your tricks folder, off.`);
+  return EXIT.OK;
 }
 
 /** The first comment line of a `trick.toml`: its one-line description in the list. */

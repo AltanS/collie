@@ -23,6 +23,10 @@ import type { CodeAnswer, TricksSurface, SwitchAnswer, TapAnswer, ValueAnswer, V
 //   GET  /api/tricks/official             → OfficialTricksReply: the official list with each entry's state
 //   POST /api/tricks/official/<id>/add    → body `{}`; fetch the listed commit, check its hash, install it
 //   POST /api/tricks/official/<id>/update   off (official-install.ts); `{ id, state }`, or a refusal
+//   POST /api/tricks/repo/list            → body `{ rid, url }`: a repository's `collie-tricks.json` at the commit
+//                                         read (repo-index.ts), a receipt with `rid`; github.com, gitlab.com and
+//                                         codeberg.org only. 400 `repo-invalid`, 409/422/502 `{ error, message }`
+//   POST /api/tricks/repo/add             → body `{ rid, url, folder, commit }`: one trick of that list, added off
 //   POST /api/tricks/<host>/<id>/value    → body `{ rid, key, value }` (contract 3, values.ts): one field's
 //                                         value, null to clear it; a receipt `{ rid, code: "ok", key,
 //                                         changed, info }`, or 400 `value-invalid` / `value-refused` (with
@@ -51,12 +55,16 @@ export const TRICKS_ROUTE_RIGHTS = {
   // machine on a tap: a write, like the switch, so only a paired phone with the write right reaches it.
   official: "read",
   officialAdd: "write",
+  // A repository's index (repo-index.ts): reading it and adding from it both make the bridge fetch from a
+  // host the person pasted, so both need the write right, the official add's level.
+  repoList: "write",
+  repoAdd: "write",
   // The switch for tricks as a whole (feature-switch.ts): it decides whether any program runs, so the write
   // right, the Hill switch's level. Its read is the list's level.
   feature: "write",
   // A trick's settings (contract 3): what a person keeps for it, so the switch's level. A value starts a run.
   value: "write",
-} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "code" | "auto" | "undo" | "official" | "officialAdd" | "feature" | "value", GateLevel>>;
+} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "code" | "auto" | "undo" | "official" | "officialAdd" | "repoList" | "repoAdd" | "feature" | "value", GateLevel>>;
 
 /** `since` as a rev, or undefined (every part) when absent or not a whole number at or above 0. */
 export function parseSince(raw: string | null): number | undefined {

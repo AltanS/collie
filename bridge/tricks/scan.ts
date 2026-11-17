@@ -67,9 +67,13 @@ const WARN_PATTERNS = {
   network: /\bfetch\s*\(|\bWebSocket\b|\bXMLHttpRequest\b|\bnet\.connect\b|\bhttps?\.(?:request|get)\s*\(|\brequests\.(?:get|post|put|delete)\b|\burllib\b|(["'`])(?:gh|curl|wget|ssh)\1/,
   write: /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|copyFile|copyFileSync|rename|renameSync|rm|rmSync|unlink|unlinkSync|mkdir|mkdirSync)\s*\(|\bBun\.write\s*\((?!\s*Bun\.std(?:out|err)\b)/,
   model: new RegExp(`\\b(?:anthropic|openai|openrouter)\\b|\\[\\s*["'\`](?:${AGENT_NAMES})["'\`]|\\b(?:which|findTool|tool|Bun\\.which)\\s*\\(\\s*["'\`](?:${AGENT_NAMES})["'\`]`, "i"),
-  // Collie's local socket named by its path (`api/sock`, or `"api", "sock"` joined) or `collie api` itself, in a
-  // line or as the program and first word of an argument list: the trick talks past its helper (M105 spec 04).
-  api: /\bapi\/sock\b|(["'`])api\1\s*,\s*(["'`])sock\2|\bcollie\s+api\b|(["'`])collie\3\s*,\s*\[?\s*(["'`])api\4/,
+  // Collie's local socket named by its path (`api/sock`, or `"api", "sock"` joined), by the facts that carry it
+  // (`facts.api.socket`, `api?.socket`), a socket dialed by hand (`createConnection`, `Bun.connect`, a `unix:`
+  // option), or `collie api` itself, in a line or as the program and first word of an argument list: the trick
+  // talks past its helper (M105 spec 04; review 3, item 1). The shipped helper dials this way itself, and is
+  // never grepped (scanTrickFolder). `createConnection` and `Bun.connect` are flagged for any target, a TCP
+  // host too: a grep cannot tell which socket a variable names.
+  api: /\bapi\/sock\b|(["'`])api\1\s*,\s*(["'`])sock\2|\bapi\s*\??\.\s*socket\b|\bcreateConnection\b|\bBun\.connect\b|\bunix\s*:|\bcollie\s+api\b|(["'`])collie\3\s*,\s*\[?\s*(["'`])api\4/,
 } satisfies Record<Exclude<CheckWarningKind, "import">, RegExp>;
 /** In a shell file: a subshell, a tool that reaches the network by its bare name, a redirect into a file, and an agent program in command position. */
 const SHELL_SPAWN = /\$\(/;
@@ -86,7 +90,7 @@ export const WARN_TEXT = {
   write: "writes a file outside the trick's state folder, as far as a grep can tell",
   model: "calls an agent program or a model API; a timer run should only read; a timer that calls a model spends your subscription with no session to show for it",
   import: "imports a package; a script Collie's runtime runs gets no install, so it may import only files in its own folder and node: or bun: built-ins",
-  api: "names Collie's local API socket or runs collie api itself, past the helper that holds the level the trick declares",
+  api: "names or dials Collie's local API socket, opens a socket of its own, or runs collie api itself, past the helper that holds the level the trick declares",
 } satisfies Record<CheckWarningKind, string>;
 
 /**

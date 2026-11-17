@@ -313,8 +313,8 @@ describe("TricksSettingsCard: the warnings before the switch (review 15)", () =>
     expect(onSwitch).toHaveBeenCalledTimes(1);
     expect(onSwitch).toHaveBeenCalledWith("lodge", "tracker", true);
     expect(screen.getByRole("switch", { name: "Tracker" })).toBeChecked();
-    // The buttons on the card are the names, which open an About sheet. The Hill has no row here any more.
-    expect(screen.getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about"]);
+    // The buttons on the card are the names, which open an About sheet, and the last row's "Add from a repository". The Hill has no row here any more.
+    expect(screen.getAllByRole("button").map((b) => b.getAttribute("data-slot"))).toEqual(["trick-about", "repo-add-open"]);
   });
 
   it("shows them for a changed trick that is on, and the bridge's own words for a kind it does not know", async () => {
@@ -962,6 +962,24 @@ describe("review 8 V-N5: rules the phone cannot show", () => {
     expect(row.querySelector('[data-line="rules-unshown"]')).toHaveTextContent(UNSHOWN);
     expect(within(row).getByRole("switch", { name: "Morph" })).toBeDisabled();
     expect(within(rowOf("view-on")).getByRole("switch", { name: "View on" })).toBeEnabled();
+  });
+});
+
+// REVIEW 3, ITEM 4: a level word a newer bridge sends that this phone does not know is kept as `unknown`. The row
+// says one fixed line and offers no switch on; a trick that is on can still go off.
+describe("review 3 item 4: a level of access the phone does not know", () => {
+  const LINE = "It asks for access this app does not know yet. Update the app before you say yes.";
+  const OFF: WireTrickInfo = { host: "lodge", id: "gauge", name: "Gauge", icon: "eye", on: false, state: "off", places: ["belt"], provenance: { via: "folder" }, access: "unknown" };
+
+  it("the row says the one line and its switch cannot switch the trick on; one that is on can still be switched off", async () => {
+    const store = await storeWith([OFF, { ...OFF, id: "gauge-on", name: "Gauge on", on: true, state: "ok" }, { ...OFF, id: "plain", name: "Plain", access: "see" }]);
+    renderCard(store);
+    const row = await findRow("gauge");
+    expect(row.querySelector('[data-line="access-unknown"]')).toHaveTextContent(LINE);
+    expect(within(row).getByRole("switch", { name: "Gauge" })).toBeDisabled();
+    expect(within(rowOf("gauge-on")).getByRole("switch", { name: "Gauge on" })).toBeEnabled();
+    expect(rowOf("plain").querySelector('[data-line="access-unknown"]')).toBeNull();
+    expect(within(rowOf("plain")).getByRole("switch", { name: "Plain" })).toBeEnabled();
   });
 });
 

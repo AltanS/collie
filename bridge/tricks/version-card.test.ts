@@ -257,8 +257,8 @@ describe("access: the level a version raises (M105 spec 04)", () => {
   });
 
   test("the words of each level, exactly, and none for `none`", () => {
-    expect(ACCESS_LINES.see).toBe("It sees your machines, your sessions and their states, your usage and the Hill. It does not see what is on a screen.");
-    expect(ACCESS_LINES.read).toBe("It reads what is on your sessions' screens.");
+    expect(ACCESS_LINES.see).toBe("It asks to see your machines, your sessions and their states, your usage and the Hill, not what is on a screen.");
+    expect(ACCESS_LINES.read).toBe("It asks to read what is on your sessions' screens.");
     expect(accessLine(undefined)).toEqual([]);
     for (const text of [ACCESS_LINES.see, ACCESS_LINES.read, ACCESS_CHIPS.see, ACCESS_CHIPS.read]) expect(text).not.toMatch(/permission|can only/iu);
   });
@@ -287,8 +287,8 @@ describe("access: the level a version raises (M105 spec 04)", () => {
 
   test("a version that keeps or lowers the level carries no access line and no new right", () => {
     for (const card of [withAccess("see", "see"), withAccess("see", "read"), withAccess(undefined, "read")]) {
-      expect(JSON.stringify(card?.view)).not.toContain("It sees your machines");
-      expect(JSON.stringify(card?.view)).not.toContain("It reads what is on");
+      expect(JSON.stringify(card?.view)).not.toContain("It asks to see your machines");
+      expect(JSON.stringify(card?.view)).not.toContain("It asks to read what is on");
       expect(card?.view?.[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
     }
     expect(withAccess("see", "see")?.summary).toContain("It asks for no new rights.");
