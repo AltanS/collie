@@ -1102,6 +1102,8 @@ export function AgentChat({
   const signInScreen = composerSurface.field === "secret" && blocks.some((b) => b.kind === "box-text");
   const signInAccounts = useAccounts(scope, signInScreen);
   const signInHosts = signInScreen ? signInAccounts.body?.harnesses.find((h) => h.id === agent?.agent)?.signInHosts : undefined;
+  // The card is a sign-in card from its first frame, so its button's row is held while that read is in flight.
+  const signInPending = signInScreen && signInAccounts.status === "loading";
   // Ask v1 (M56 spec 08): a tap on a dialog card answers the ask the bridge's Surface carries, by its
   // single-use id. A refusal for a changed dialog hands back the bridge's ask for the screen now; the
   // next tap uses it while the snapshot still names the id that was refused, and the snapshot's own
@@ -3438,6 +3440,7 @@ export function AgentChat({
               paneId={paneId}
               scope={scope}
               signInHosts={signInHosts}
+              signInPending={signInPending}
               stale={actsDisabledByCache}
               composing={composing}
               wrap={prefs.wrap}

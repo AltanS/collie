@@ -205,6 +205,13 @@ afterEach(() => {
   __resetOperatorCommands();
 });
 
+/** The Again row, once the launcher read made it tappable: the row is drawn from the device's own record before that. */
+async function againRow(name: RegExp): Promise<HTMLElement> {
+  const row = await screen.findByRole("button", { name });
+  await waitFor(() => expect(row).toBeEnabled());
+  return row;
+}
+
 describe("the New page: the route", () => {
   it("is a full page: the app header with a 44px back arrow, a New title, and Start in the bottom bar", async () => {
     serveLaunchers();
@@ -550,7 +557,7 @@ describe("the New page: Start", () => {
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
     await router.navigate("/new");
-    await userEvent.click(await screen.findByRole("button", { name: /Again: Codex/ }));
+    await userEvent.click(await againRow(/Again: Codex/));
     await waitFor(() => expect(bodies).toHaveLength(2));
     expect(bodies[1]).toMatchObject({ harness: "codex" });
     await waitFor(() => expect(readAgentLaunch(router.state.location.state, "w9:p1")?.harness).toBe("codex"));
@@ -1109,7 +1116,7 @@ describe("the New page: Start without prompts?", () => {
     // Forget the confirm (another day, another phone): Again must ask like Start does.
     localStorage.removeItem(NO_PROMPTS_KEY);
     await router.navigate("/new");
-    await userEvent.click(await screen.findByRole("button", { name: /Again: Claude, no prompts/ }));
+    await userEvent.click(await againRow(/Again: Claude, no prompts/));
     const sheet = await screen.findByRole("dialog", { name: "Start without prompts?" });
     expect(bodies).toHaveLength(1);
     await userEvent.click(within(sheet).getByRole("button", { name: "Cancel" }));
@@ -1627,7 +1634,7 @@ describe("the New page: Again repeats a one-off run", () => {
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
     await router.navigate("/new");
-    await userEvent.click(await screen.findByRole("button", { name: /Again: make deploy/ }));
+    await userEvent.click(await againRow(/Again: make deploy/));
     await waitFor(() => expect(bodies).toHaveLength(2));
     expect(bodies[1]).toMatchObject({ run: "make deploy", cwd: "/home/op/app" });
     expect(bridge.checks).toEqual([]);
@@ -1643,7 +1650,7 @@ describe("the New page: Again repeats a one-off run", () => {
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
     await router.navigate("/new");
-    await userEvent.click(await screen.findByRole("button", { name: /Again: htop/ }));
+    await userEvent.click(await againRow(/Again: htop/));
     await waitFor(() => expect(bodies).toHaveLength(2));
     expect(bridge.checks).toEqual(["htop", "htop"]);
     expect(bodies[1]).toMatchObject({ run: "htop" });
@@ -1661,7 +1668,7 @@ describe("the New page: Again repeats a one-off run", () => {
     // Another day, another phone: Again must ask.
     localStorage.removeItem(NO_PROMPTS_KEY);
     await router.navigate("/new");
-    await userEvent.click(await screen.findByRole("button", { name: /Again: codex --yolo/ }));
+    await userEvent.click(await againRow(/Again: codex --yolo/));
     const sheet = await noPromptsSheet();
     expect(bodies).toHaveLength(1);
     await userEvent.click(within(sheet).getByRole("button", { name: "Cancel" }));
@@ -1679,7 +1686,8 @@ describe("the New page: Again repeats a one-off run", () => {
     serveRuns({ run: false });
     mount();
     await openShell(false);
-    expect(screen.queryByRole("button", { name: /Again:/ })).toBeNull();
+    // The record paints the row on the first frame; the read that finds runs off closes it, through Collapse.
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Again:/ })).toBeNull());
   });
 });
 

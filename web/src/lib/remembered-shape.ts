@@ -70,6 +70,8 @@ export const ANSWERS = {
   "settings-math-pack": ["absent", "ready", "bundled", "unavailable"],
   // calm-first-frame: whether the operator's commands.toml had `bar = true` rows (the belt's harness section waits for them).
   "belt-operator-bar": "flag",
+  // calm-load accounts: whether the last New read on the front machine showed the profile pick for the agent chosen.
+  "new-profile-pick": "flag",
 } as const satisfies Record<string, AnswerKind>;
 
 export type AnswerName = keyof typeof ANSWERS;
