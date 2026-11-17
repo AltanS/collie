@@ -14,8 +14,8 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 623 in all, each one named, with its reason:
-#              bridge 386: 174 from before 1.29.0 and 212 new: 143 listed in the next sentence, then 2 more of the trick-leftovers merge (one agent view picture, one official add test), 51 of the local API and the `watch` manifests ("The local API, bridge" below) and 16 the budget did not list ("Not listed before" below). The 143: (the data path 54 and the inside socket 17, then the Herdr and Tuios
+#              Today, 633 in all, each one named, with its reason:
+#              bridge 406: 174 from before 1.29.0 and 232 new: 143 listed in the next sentence, then 2 more of the trick-leftovers merge (one agent view picture, one official add test), 69 of the local API, its run token and the `watch` manifests ("The local API, bridge" below) and 18 the budget did not list ("Not listed before" below). The 143: (the data path 54 and the inside socket 17, then the Herdr and Tuios
 #                adapters 10, then Accounts 47, then 11 more of the data path for a dropped or failed data send and a shadowed part, then 1 for the pane's program environment read of pi (#793); see below). Of the 174, 15 (16 with the trick-leftovers merge, counted in the 2 above) are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 6 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
@@ -135,23 +135,24 @@
 #                "updating an added trick to the list's commit" and "a git run killed at its time cap", and its 4 `test.if(posix)`
 #                cases. The fixture repository is reached as `file://` plus a temp path, which is no file URL on Windows; its
 #                programs are `#!/bin/sh` with an executable bit; the time cap kills a POSIX process group.
-#              The local API, bridge (42 + 9). The local API does not stand on Windows in this release: tricks are gated there
+#              The local API, bridge (60 + 9). The local API does not stand on Windows in this release: tricks are gated there
 #                (`TricksService.gated`), the socket follows "tricks run here", so `ApiSocket.start()` is a no-op that logs once and
 #                `localApiWanted` is false. A test that starts the server and dials it has no socket to dial. The one reason for all of them
 #                is NO_API_ON_WINDOWS in bridge/api/skip.ts: "the local API does not stand on Windows before the Windows gate for tricks opens".
 #                Each is `apiSocketTest` or `apiSocketDescribe` (bridge/api/skip.ts), a skip on win32; the Windows answer (no socket, said once;
 #                never told true by the gate) runs everywhere with an injected platform:
 #                - 9 in bridge/api/socket.test.ts, "the socket's life" (all but "no socket until started" and "Windows: no socket, said once")
-#                - 33 in bridge/api/socket.test.ts, every test of "the framing" (13), "the waits" (7), "requests in flight and idle connections" (3),
-#                  "the api folder is the user's own" (4), "the write budget" (3), "the screen reads of the whole socket" (2) and "hello over the socket" (1)
+#                - 51 in bridge/api/socket.test.ts, every test of "the framing" (17, with the 5 of "the log line of a read"), "the waits" (7), "requests in flight and idle connections" (3),
+#                  "the api folder is the user's own" (4), "the write budget" (3), "the screen reads of the whole socket" (2), "hello over the socket" (1)
+#                  and "the run token" (14, M105 spec 05: every one opens a connection with `hello` and a run token)
 #                The 9 are in bridge/tricks/triggers.test.ts (`watchTest`): a manifest's `watch` path starts with `/` or `~/`, so the temp-folder path of a
 #                  real file on Windows (`C:\...`) is refused ("A watched path starts with / or ~/.") and the trick never watches. This is a real Windows
 #                  fault of the schema, to be settled when the gate for tricks opens; the watcher itself runs on Windows in bridge/tricks/watch.test.ts.
-#              Not listed before, bridge (16). The VM run of e5c645d2e counted bridge 331 against 317. These skip on win32 and were in no list above:
+#              Not listed before, bridge (18). The VM run of e5c645d2e counted bridge 331 against 317. These skip on win32 and were in no list above:
 #                bridge/tricks/repo-index.test.ts (13: reading an index, adding from an index, the empty home of a fetch, a git that hangs, the .git
 #                link; real git and `#!/bin/sh` programs, `describe.if(posix)` and one `test.if(posix)`; 12 of them were there at e5c645d2e),
-#                bridge/api/trick-end-to-end.test.ts (2: it dials the local API socket), and bridge/tricks/approved.test.ts (1: a symbolic link at the
-#                state folder, new with the trick-leftovers merge). 12 + 2 = the 14 of the VM run. The count of the VM decides: if it is not 386,
+#                bridge/api/trick-end-to-end.test.ts (4: it dials the local API socket; 2 of spec 04 and 2 more of the run token, spec 05), and bridge/tricks/approved.test.ts (1: a symbolic link at the
+#                state folder, new with the trick-leftovers merge). 12 + 2 = the 14 of the VM run, and the 2 run-token ones came after it. The count of the VM decides: if it is not 406,
 #                the next run says by how much, and this paragraph names the files again.
 #              The data path, bridge (63 + 19). The part (the local socket of bridge/inside/, ADR 0140) is OFF on Windows in 1.29.0
 #                (decision 15: Windows keeps the screen path). `InsideServer.start()` answers false there, so `dataRig` cannot start
@@ -185,7 +186,7 @@
 #                - 4 in bridge/accounts-store.test.ts, a good row, the duplicate row, the store add and the listener
 #                - 3 in bridge/launch-by-id.test.ts, a launch with an account, and Change login's start on a signed-in account
 #                - 1 in bridge/worktree-from-folder.test.ts, a worktree with an account
-#              cli 202 in all: 11 are new with the local API ("The local API, cli" below), 2 are the trick-add ones the trick-leftovers merges added to the 22 below, and of the other 189, 21 are new since 1.29.0: 3 of the hold card, 8 of the harness verbs, 3 of the first full trick run, 5 of the
+#              cli 192 in all: 1 is new with the local API ("The local API, cli" below), 2 are the trick-add ones the trick-leftovers merges added to the 22 below, and of the other 189, 21 are new since 1.29.0: 3 of the hold card, 8 of the harness verbs, 3 of the first full trick run, 5 of the
 #                repository index and 2 of the proposal card in the session (all
 #                of the Hill verbs and the tricks), below. The other 168: 21 in the next paragraph, then 3 of the statusLine wrapper, 54 of walky talky, 21 of the agent view,
 #                and 69 of the Hill verbs and the tricks (72 with the 3 above; see "The Hill verbs and the tricks, cli" below). The 18 of
@@ -206,9 +207,9 @@
 #                (M84: the stand-in `hc` and the probe are POSIX `sh`), and the 2 tests of
 #                "the probe's dirty check, run for real" in cli/remote.test.ts (the probe again, run
 #                with /bin/sh against a real git checkout).
-#              The local API, cli (10 + 1). The same reason as the bridge's (NO_API_ON_WINDOWS): the tests of cli/api.test.ts that dial a scratch Unix
-#                socket are `apiSocketTest` (6 "a scratch socket answering", 3 "an error answer", 1 "a socket in a folder others can write is not
-#                dialled"); the table tests run on Windows through a seam, and the Windows line of `collie api` has its own test. One more in
+#              The local API, cli (0 + 1). cli/api.test.ts has no skip any more: since M105 spec 05 `collie api` run by hand prints one line and reads
+#                nothing, so no test of it dials a scratch Unix socket (the 10 `apiSocketTest` of the bridge's reason, NO_API_ON_WINDOWS, are gone with
+#                the dial); the table tests run on Windows through a seam, and the Windows line of `collie api` has its own test. One in
 #                cli/tricks-switch.test.ts, "check --run is a developer's tool: it runs a folder once in the terminal with tricks off": the `--sh`
 #                sample is a `#!/bin/sh` program, which does not run on Windows.
 #              The statusLine wrapper, cli (3). The "runShell stops the whole command" block in cli/statusline.test.ts is
@@ -266,8 +267,8 @@
 #                executable bit and reads it through `file://`, as the add from the list does (bridge 33 above).
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 386,
-  [int]$MaxSkipsCli = 202,
+  [int]$MaxSkipsBridge = 406,
+  [int]$MaxSkipsCli = 192,
   [int]$MaxSkipsScripts = 35
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }
