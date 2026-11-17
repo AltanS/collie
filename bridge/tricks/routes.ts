@@ -4,7 +4,7 @@ import type { GateLevel } from "../crew/peer-gate.ts";
 import type { JsonValue } from "../json.ts";
 import type { TrickMediaFile } from "./media.ts";
 import type { OfficialAnswer, OfficialTricksSurface } from "./official-install.ts";
-import type { TricksSurface, SwitchAnswer, TapAnswer, ValueAnswer, VersionRouteAnswer } from "./service.ts";
+import type { CodeAnswer, TricksSurface, SwitchAnswer, TapAnswer, ValueAnswer, VersionRouteAnswer } from "./service.ts";
 
 // The tricks routes' request halves (M94 slices 01 and 04), kept out of server.ts so that file only
 // dispatches. The gate, the watch stamp and the response are server.ts's.
@@ -18,6 +18,8 @@ import type { TricksSurface, SwitchAnswer, TapAnswer, ValueAnswer, VersionRouteA
 //                                         reads, or 400 `switch-invalid`, 404 `unknown-host` / `unknown-trick`
 //   GET  /api/tricks/<host>/<id>/media/<file> → one picture of the trick's `media/` folder (media.ts), or
 //                                         404 "no such image" for every miss
+//   GET  /api/tricks/<host>/<id>/code[?file=<rel>] → the index of the trick's code, or one file of it, masked and
+//                                         marked (code-view.ts): the About sheet's "Read the code" folds
 //   GET  /api/tricks/official             → OfficialTricksReply: the official list with each entry's state
 //   POST /api/tricks/official/<id>/add    → body `{}`; fetch the listed commit, check its hash, install it
 //   POST /api/tricks/official/<id>/update   off (official-install.ts); `{ id, state }`, or a refusal
@@ -39,6 +41,9 @@ export const TRICKS_ROUTE_RIGHTS = {
   tap: "write",
   switch: "write",
   media: "read",
+  // A trick's code for the About sheet's folds: the approved copy's bytes, masked. It changes nothing and
+  // shows what the list and a Hill proposal card already show a paired phone, so it is a read like them.
+  code: "read",
   // Take changes without asking, and go back a version (crew slice 3): both change what code runs.
   auto: "write",
   undo: "write",
@@ -51,7 +56,7 @@ export const TRICKS_ROUTE_RIGHTS = {
   feature: "write",
   // A trick's settings (contract 3): what a person keeps for it, so the switch's level. A value starts a run.
   value: "write",
-} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "auto" | "undo" | "official" | "officialAdd" | "feature" | "value", GateLevel>>;
+} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "code" | "auto" | "undo" | "official" | "officialAdd" | "feature" | "value", GateLevel>>;
 
 /** `since` as a rev, or undefined (every part) when absent or not a whole number at or above 0. */
 export function parseSince(raw: string | null): number | undefined {
@@ -171,4 +176,22 @@ export async function tricksMediaRoute(tricks: TricksSurface, match: RegExpExecA
   const rel = segment(match[3] ?? "");
   if (host === null || id === null || rel === null) return null;
   return await tricks.media(host, id, rel);
+}
+
+/** The longest file path the code route takes: the proposal limit on one path, so no real file name is refused. */
+const CODE_FILE_PARAM_MAX = 512;
+
+/**
+ * Read the code of a trick whose path matched server.ts's `TRICKS_CODE_ROUTE`: group 1 the host, group 2 the
+ * trick id. No `file` is the index; `file=<rel>` one file, a name code-view.ts checks against the walk of the
+ * code, never a path that is joined to anything first. An empty or very long name is a miss.
+ */
+export async function tricksCodeRoute(tricks: TricksSurface, match: RegExpExecArray, query: URLSearchParams): Promise<CodeAnswer> {
+  const host = segment(match[1] ?? "");
+  const id = segment(match[2] ?? "");
+  if (host === null) return { status: 404, body: { error: "unknown-host" } };
+  if (id === null) return { status: 404, body: { error: "unknown-trick" } };
+  const file = query.get("file");
+  if (file !== null && (file === "" || file.length > CODE_FILE_PARAM_MAX)) return { status: 404, body: { error: "no-file" } };
+  return await tricks.code(host, id, file);
 }

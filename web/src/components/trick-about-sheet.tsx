@@ -10,11 +10,13 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { tokenUseWhy, useTokenUseShown } from "@/components/token-use-label";
+import { TrickCodeFolds, type TrickCodeReader } from "@/components/trick-code-folds";
 import { TrickSettingsGroup } from "@/components/trick-settings-group";
 import { useLocale } from "@/hooks/use-locale";
 import { dateOnly, wholeNumber } from "@/lib/format";
 import { isWebLink, linkHost } from "@/lib/hill/reader";
 import { t, tn } from "@/lib/i18n";
+import { timerLine } from "@/lib/tricks/code-words";
 import { HostWords } from "@/lib/tricks/render";
 import { originLine, placesLine, readsLine, runsOnLine, warningLines } from "@/lib/tricks/row-words";
 import { isSourceUrl, type FieldValue, type TricksRunsOn, type WireOfficialTrick, type WireRepoFacts, type WireTrickInfo, type WireTrickRules } from "@/lib/tricks/schema";
@@ -51,6 +53,10 @@ import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 //      write state (`flipAuto`): it flips at once, holds its position until the list agrees, and says a failed
 //      write in the status line, as the trick's own switch does. Never for a trick with `rules`: it never
 //      takes changes without asking (the bridge refuses the write too).
+//   6. "Read the code" (package F, 2026-11-17): one fold for each code file of the trick, for every trick, also one
+//      that is on (components/trick-code-folds.tsx). Only when the card hands the sheet a `readCode`. The code is
+//      the approved copy's, masked; the sheet says once that the marks are a text search. "What it does" also
+//      carries the `run` line and the timer in plain words (lib/tricks/code-words.ts `timerLine`).
 //
 // NOT ADDED YET (`OfficialTrickAboutSheet`, Official tricks): the same sheet for an entry of the official list
 // that is not on this machine. Only what the list knows: the name, its one line, and "Where it comes from"
@@ -147,6 +153,25 @@ function tokenRows(subject: TrickTokenFacts): FactRow[] {
   return [{ key: "tokens", node: <span data-line="tokens">{tokenUseWhy(reason)}</span> }];
 }
 
+/** How the program starts and when: the run line, whole and wrapped, and the timer in plain words. A trick with no program has neither. */
+function runRows(trick: Pick<WireTrickInfo, "run" | "everyMs">): FactRow[] {
+  if (trick.run === undefined) return [];
+  return [
+    {
+      key: "run",
+      node: (
+        <span className="block">
+          <span className="block">{t("settings.tricks.about.run")}</span>
+          <code data-line="run" className="mt-1 block font-mono text-xs break-all whitespace-pre-wrap">
+            {trick.run}
+          </code>
+        </span>
+      ),
+    },
+    { key: "timer", node: <span data-line="timer">{timerLine(trick.everyMs)}</span> },
+  ];
+}
+
 function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
   const rows: FactRow[] = tokens ? tokenRows(trick) : [];
   const places = Array.isArray(trick.places) ? trick.places : [];
@@ -159,6 +184,7 @@ function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
   // Contract 2: rows in a session's settings. What a tap there does is said beside it (MENU_WORDS, MENU_TAP_WORDS).
   if (places.includes("menu")) rows.push(...menuRows());
   if (trick.rules !== undefined) rows.push({ key: "rules", node: t("settings.tricks.about.rules") });
+  rows.push(...runRows(trick));
   if (trick.inputs !== undefined) rows.push({ key: "reads", node: readsLine(trick.inputs) });
   if (trick.env !== undefined && trick.env.length > 0) rows.push({ key: "env", node: t("settings.tricks.about.env", { names: trick.env.join(", ") }) });
   // `on` and `watch` are rights (M105 step one): the same two lines as the proposal card's chips.
@@ -253,10 +279,12 @@ export interface TrickAboutSheetProps {
   onValue?: (key: string, value: FieldValue | null) => Promise<string | null>;
   /** The zone the last commit's date is written in. Tests pin it; the app leaves it to the device. */
   timeZone?: string;
+  /** The reads behind the "Read the code" folds, bound to this trick. Without it the section is not drawn. */
+  readCode?: TrickCodeReader;
 }
 
 /** The About sheet of one trick. Closes as every sheet does: the close button, the scrim, Escape, a pull down. */
-export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite = true, onAuto, onValue, timeZone }: TrickAboutSheetProps) {
+export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite = true, onAuto, onValue, timeZone, readCode }: TrickAboutSheetProps) {
   useLocale();
   const paragraphs = trick.about === undefined ? [] : aboutParagraphs(trick.about);
   const tokens = useTokenUseShown();
@@ -305,6 +333,8 @@ export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite =
         <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
         {/* A trick that gives agents instructions never takes changes without asking: no switch to offer. */}
         {trick.on && runsOn === undefined && onAuto !== undefined && trick.rules === undefined && trick.rulesUnshown !== true && trick.agentView !== true && <UpdatesGroup auto={auto ?? trick.auto === true} canWrite={canWrite} onAuto={onAuto} />}
+        {/* The version a read shows moves with the row: the switch (the copy that runs, or the folder) and the hash a switch on approves. */}
+        {readCode !== undefined && <TrickCodeFolds reader={readCode} scope={`${trick.host}/${trick.id}/${String(trick.on)}/${trick.approves ?? ""}`} />}
       </div>
     </BottomSheet>
   );

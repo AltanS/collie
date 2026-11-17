@@ -24,6 +24,9 @@ import { VIEW_TRICK } from "../fixtures/agent-view";
 import { proposalGroup, versionGroup } from "../fixtures/hill/decisions";
 import { ABOUT_MAX, type FieldValue, type OfficialState, type OfficialTricksReply, type TricksGate, type TricksReply, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
+import { CodeFailure, type TrickCodeReader } from "@/components/trick-code-folds";
+
+import { CODE_INDEX, CODE_INDEX_LONG, CODE_INDEX_NEXT, codeFileOf } from "../fixtures/trick-code";
 
 import { RootRouter } from "../harness";
 import { Card, Group, Section, type SectionDef } from "../layout";
@@ -202,7 +205,7 @@ const FIELDS_TRICK: WireTrickInfo = trick("gates", "Release Gates", {
   needsSetup: true,
 });
 
-function SheetBox({ n, state, label, trick: info, updates = false, values = false }: { n: number; state: string; label: string; trick: WireTrickInfo; updates?: boolean; values?: boolean }) {
+function SheetBox({ n, state, label, trick: info, updates = false, values = false, readCode }: { n: number; state: string; label: string; trick: WireTrickInfo; updates?: boolean; values?: boolean; readCode?: TrickCodeReader }) {
   const [open, setOpen] = useState(true);
   // The Updates switch of a trick that is on: flips at once, as the card holds it.
   const [auto, setAuto] = useState(info.auto === true);
@@ -213,11 +216,38 @@ function SheetBox({ n, state, label, trick: info, updates = false, values = fals
         <button type="button" className="m-4 min-h-11 text-sm underline" onClick={() => setOpen(true)}>
           About {info.name}
         </button>
-        <TrickAboutSheet trick={info} open={open} onClose={() => setOpen(false)} auto={auto} onAuto={updates ? setAuto : undefined} onValue={values ? valueSaver : undefined} />
+        <TrickAboutSheet trick={info} open={open} onClose={() => setOpen(false)} auto={auto} onAuto={updates ? setAuto : undefined} onValue={values ? valueSaver : undefined} readCode={readCode} />
       </div>
     </Card>
   );
 }
+
+const wait = async (): Promise<void> => await new Promise((resolve) => setTimeout(resolve, 300));
+
+/** The reads of the folds for the playground: the fixtures, after a moment, as a bridge answers. */
+function codeReader(index = CODE_INDEX, long = false): TrickCodeReader {
+  return {
+    index: async () => {
+      await wait();
+      return index;
+    },
+    file: async (file) => {
+      await wait();
+      return codeFileOf(file, long);
+    },
+  };
+}
+
+/** A trick with a program on a timer, the rows "What it does" gains with package F. */
+const LEGS_RUNS: WireTrickInfo = trick("legs", "Browser leg", {
+  places: ["belt"],
+  description: "How many release checks are green for this branch.",
+  run: "bun legs.ts",
+  everyMs: 5 * 60_000,
+  env: ["CHECKS_TOKEN"],
+  approves: "c3a91f0d7e42b8561a09d4e7f23c85b1a6d0e94f7c21b83a5d60e19f4a7c2b85",
+  provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "9c41d07e2b6a" },
+});
 
 // Official tricks (M94; one list since 2026-11-12): the official tricks this release can add and the installed ones
 // as one list, official first in the list's order, then the community's by name. Each card has a list
@@ -547,6 +577,37 @@ export function TrickSettingsSection(): ReactNode {
           trick={{ ...GATES, provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "owner/gates-trick", sha: "9c41d07e2b6a", url: "https://git.workshop.example/owner/gates-trick" } }}
         />
         <OfficialSheetBox n={42} state="trick-settings-official-about-facts" label="before the add, with the facts" entry={MORPH} />
+      </Group>
+      <Group title="Read the code (2026-11-17)">
+        <SheetBox
+          n={52}
+          state="trick-settings-code-approved"
+          label="a trick that is on: the run line and the timer, then a fold for each file (scroll down; tap legs.ts, three lines are marked)"
+          updates
+          trick={LEGS_RUNS}
+          readCode={codeReader()}
+        />
+        <SheetBox
+          n={53}
+          state="trick-settings-code-next"
+          label="a trick that is off and was never approved: the folder as it is now, the copy a switch on approves"
+          trick={{ ...LEGS_RUNS, on: false, state: "off", warnings: [{ kind: "network", text: "This trick reaches the network." }] }}
+          readCode={codeReader(CODE_INDEX_NEXT)}
+        />
+        <SheetBox
+          n={54}
+          state="trick-settings-code-long"
+          label="a long file: its first part, how much is left out, and the flags in the part not shown (tap legs.ts)"
+          trick={LEGS_RUNS}
+          readCode={codeReader(CODE_INDEX_LONG, true)}
+        />
+        <SheetBox
+          n={55}
+          state="trick-settings-code-no-timer"
+          label="no timer, and a trick of another machine: the line says it runs once and on a tap; the code is not shown"
+          trick={{ ...LEGS_RUNS, everyMs: undefined, id: "remote", name: "Remote leg" }}
+          readCode={{ index: async () => await Promise.reject(new CodeFailure("otherMachine")), file: async () => await Promise.reject(new CodeFailure("otherMachine")) }}
+        />
       </Group>
       <Group title="Nothing to list">
         <ListCard n={6} state="trick-settings-empty" label="folder, no trick" tricks={[]} />

@@ -889,6 +889,9 @@ describe("solo zero-tax — routes", () => {
       // the hill image's checks and headers, this bridge's own host and a trick that is on only.
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/(media\\/.+)$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/auto$/",
+      // And a trick's code for the About sheet's folds (package F): a read, gated like the list, this
+      // bridge's own host only; the approved copy's bytes, masked.
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/code$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/undo$/",

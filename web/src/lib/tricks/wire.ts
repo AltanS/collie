@@ -14,6 +14,8 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObjec
 import {
   ABOUT_MAX,
   DESCRIPTION_MAX,
+  EVERY_MAX_MS,
+  EVERY_MIN_MS,
   INPUTS_MAX,
   INPUT_GLOB_MAX,
   BOUND_SESSIONS_MAX,
@@ -28,6 +30,7 @@ import {
   NAME_MAX,
   OFFICIAL_STATES,
   PLACE_KINDS,
+  RUN_MAX,
   rulesNameProblem,
   rulesTextProblems,
   TAP_CODES,
@@ -342,6 +345,8 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const versioned = body.version;
   const known = body.repoFacts;
   const replying = body.decidesReply;
+  const running = body.run;
+  const ticking = body.everyMs;
   const asked = body.fields;
   const kept = body.values;
   const setup = asJsonBoolean(body.needsSetup) === true ? true : undefined;
@@ -350,7 +355,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const watching = body.watch;
   if (!isTrickValue(body)) return undefined;
   if (body.provenance !== undefined) body.provenance = readProvenance(body.provenance);
-  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined && reacting === undefined && watching === undefined && asked === undefined && kept === undefined && setup === undefined && unread === undefined) return body;
+  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined && running === undefined && ticking === undefined && reacting === undefined && watching === undefined && asked === undefined && kept === undefined && setup === undefined && unread === undefined) return body;
   // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
   // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
@@ -359,7 +364,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const description = readTrickText(described, "description");
   const about = readTrickText(told, "about");
   const rules = readTrickRules(ruled);
-  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, events: _reacting, watch: _watching, fields: _asked, values: _kept, needsSetup: _setup, valuesUnread: _unread, ...rest } = body;
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, run: _running, everyMs: _ticking, events: _reacting, watch: _watching, fields: _asked, values: _kept, needsSetup: _setup, valuesUnread: _unread, ...rest } = body;
   const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
   if (pending !== undefined) out.pending = pending;
   if (inputs !== undefined) out.inputs = inputs;
@@ -381,6 +386,12 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   if (version !== undefined && VERSION_RE.test(version)) out.version = version;
   const facts = readRepoFacts(known);
   if (facts !== undefined) out.repoFacts = facts;
+  // The run line and the timer, read as the manifest holds them: one line of printable text within RUN_MAX,
+  // and a whole number of milliseconds within the timer's bounds. Anything else is left out, as from an older bridge.
+  const run = asJsonString(running);
+  if (run !== undefined && isTrickText(run, { max: RUN_MAX })) out.run = run;
+  const every = asJsonNumber(ticking);
+  if (every !== undefined && Number.isSafeInteger(every) && every >= EVERY_MIN_MS && every <= EVERY_MAX_MS) out.everyMs = every;
   Object.assign(out, readTrickFields(asked, kept, setup, unread));
   // Review 8 V-N5: rules that were sent but do not read, or an agent view that came without them, are kept
   // as a state of their own, never dropped: the trick cannot be switched on from this phone.

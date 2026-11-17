@@ -1721,6 +1721,13 @@ export interface WireTrickInfo {
    */
   repoFacts?: WireRepoFacts;
   /**
+   * The program's command line, masked as a screen read is (bridge/tricks/service.ts), for the About sheet's
+   * "Starts with" row. Absent: the trick has no program (an agent view alone), or an older bridge.
+   */
+  run?: string;
+  /** The timer, `every` in milliseconds, {@link EVERY_MIN_MS} to {@link EVERY_MAX_MS}. Absent: no timer, or an older bridge. */
+  everyMs?: number;
+  /**
    * Contract 3: the fields of the manifest of what runs (the approved copy while on, else the folder), as the
    * bridge read them. The About sheet draws one row per field. Absent: none, or an older bridge.
    */

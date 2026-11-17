@@ -47,6 +47,7 @@ import { envPath, scrubEnv, type ProgramEnv } from "./env.ts";
 import { HOST, hostFor, type Host } from "../host.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import type { TrickInputs } from "./inputs.ts";
+import { codeFile, codeIndex, codeSource, type CodeFile, type CodeIndex } from "./code-view.ts";
 import { readTrickMedia, type TrickMediaFile } from "./media.ts";
 import { isUnlistedOfficialOrigin, shippedOfficialList, type OfficialEntry } from "./official.ts";
 import { originRepoName, type ProposalOrigin } from "./origin.ts";
@@ -65,14 +66,14 @@ import { TricksFeatureSwitch, type TricksFeaturePort } from "./feature-switch.ts
 import { createSwitchReader, MIGRATED, updateSwitches, withApproval, withEntry, withFreshApproval, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 import { fieldsWire, SeenWrites, TrickValues, withValues } from "./values.ts";
 import { fieldValueProblem, isRequestId, isTrickId, type FieldRefusal, type FieldValue } from "../../web/src/lib/tricks/schema.ts";
-import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX } from "../../web/src/lib/tricks/limits.ts";
+import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX, WATCH_WINDOW_MS } from "../../web/src/lib/tricks/limits.ts";
 import { menuMessageLine } from "../../web/src/lib/tricks/menu-message.ts";
 import type { EventBus } from "../events/bus.ts";
 import { TrickReactions, type Admit, type FloorTimers, type ReactionCounts, type ReactTrigger } from "./triggers.ts";
 import { WATCH_POLL_MS, type WatchOptions } from "./watch.ts";
 
 // The run caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
-export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX };
+export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX, WATCH_WINDOW_MS };
 
 // THE TRICKS RUNNER (M94 slice 01): which trick runs when, and what its run leaves behind.
 //
@@ -173,8 +174,7 @@ export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX };
 // of the version the person saw. The phone's tap route refuses a `hill/` node: a decision is answered
 // on the Hill.
 
-/** How long a phone's look keeps timers running. */
-export const WATCH_WINDOW_MS = 5 * 60_000;
+// How long a phone's look keeps timers running: WATCH_WINDOW_MS, in limits.ts so the About sheet names it.
 /** The scheduler's tick. A timer of 5 s therefore runs within a second of its due time. */
 export const TICK_MS = 1000;
 /** The least time between two scans of the tricks folder. */
@@ -251,6 +251,11 @@ export interface TricksSurface {
    * (media.ts), or null for every miss. Only a trick of this bridge that is switched on.
    */
   media(host: string, id: string, rel: string): Promise<TrickMediaFile | null>;
+  /**
+   * `GET /api/tricks/<host>/<id>/code[?file=<rel>]`: the index of a trick's code, or one file of it, as the
+   * About sheet's "Read the code" folds read them (code-view.ts). A read only; no right beyond the list's.
+   */
+  code(host: string, id: string, file: string | null): Promise<CodeAnswer>;
   /** The switch for tricks as a whole (feature-switch.ts): whether tricks run here as far as the switches go. */
   switchedOn(): boolean;
   /** Move it from the phone (`POST /api/tricks/switch`): whether tricks are on now, or null when it could not be written. */
@@ -263,6 +268,12 @@ export interface TricksSurface {
    */
   setValue?(host: string, id: string, request: ValueRequest): Promise<ValueAnswer>;
 }
+
+/** The answer of the code route. */
+export type CodeAnswer =
+  | { status: 200; body: CodeIndex | CodeFile }
+  | { status: 404; body: { error: "unknown-host" | "unknown-trick" | "no-file"; message?: string } }
+  | { status: 409; body: { error: "windows" | "no-code" | "moved"; message: string } };
 
 /** One value write: the request id, the field's key, the value (null clears it). */
 export interface ValueRequest {
@@ -290,7 +301,7 @@ export type ValueAnswer =
   | { status: 400; body: { error: "value-refused"; rid: string; code: ValueRefusalCode; message: string } }
   | { status: 404; body: { error: "unknown-host" | "unknown-trick" } }
   | { status: 409; body: { error: "request-id-reused"; rid: string } }
-  | { status: 409; body: { error: "windows" | "not-here" | "write-failed"; message: string } };
+  | { status: 409; body: { error: "windows" | "not-here" | "write-failed" | "tricks-off"; message: string } };
 
 /** The words of a value write on a bridge that runs no tricks: the values live where the tricks run, on the lead. */
 export const VALUES_ON_LEAD = "Tricks run on the lead of this crew, and their settings live there. Set the value on the lead, or on the phone.";
@@ -1659,6 +1670,10 @@ export class TricksService implements TricksSurface {
     if (m?.description !== undefined) info.description = m.description;
     if (m?.about !== undefined) info.about = m.about;
     if (m?.version !== undefined) info.version = m.version;
+    // How the program starts and how often: the run line, masked as a screen read is, and the timer. The
+    // About sheet says both in plain words; a trick with no run line (an agent view alone) has neither.
+    if (m?.run !== undefined) info.run = redactText(m.run);
+    if (m?.run !== undefined && m.everyMs !== undefined) info.everyMs = m.everyMs;
     // Contract 2: an agent view and its rules, whole, for the About sheet; this build draws no view yet.
     const approves = approvesOf(rt);
     if (approves !== undefined) info.approves = approves;
@@ -2228,6 +2243,20 @@ export class TricksService implements TricksSurface {
     return readTrickMedia(rt.approved.dir, rel);
   }
 
+  async code(host: string, id: string, file: string | null): Promise<CodeAnswer> {
+    if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
+    if (this.gated()) return { status: 409, body: { error: "windows", message: TRICKS_WINDOWS_LINE } };
+    await this.refresh();
+    const rt = this.runtimes.get(id);
+    if (rt === undefined) return { status: 404, body: { error: "unknown-trick" } };
+    // The approved copy while one runs, else what a switch on would approve; code-view.ts says why and checks the bytes.
+    const source = codeSource(rt);
+    if (source === null) return { status: 409, body: { error: "no-code", message: "This trick has no code that can be read." } };
+    const read = file === null ? await codeIndex(source) : await codeFile(source, file);
+    if (read.ok) return { status: 200, body: read.body };
+    return read.code === "no-file" ? { status: 404, body: { error: "no-file", message: read.message } } : { status: 409, body: { error: read.code, message: read.message } };
+  }
+
   /**
    * Switch a trick on or off: the same file `collie trick on|off` writes, through the one locked writer
    * (switches.ts). On approves a version: the one waiting when there is one, else the folder as it is
@@ -2421,6 +2450,8 @@ export class TricksService implements TricksSurface {
     const { rid, key, value: asked } = request;
     if (!this.isOwn(host)) return { status: 404, body: { error: "unknown-host" } };
     if (this.gated()) return { status: 409, body: { error: "windows", message: TRICKS_WINDOWS_LINE } };
+    // A value waits for the switch of tricks as a whole, as a trick's own switch does (the lead, 2026-11-17).
+    if (this.switchedOff()) return { status: 409, body: { error: "tricks-off", message: TRICKS_OFF_LINE } };
     // In a crew the values live on the lead, where the tricks run: a member keeps none.
     if ((this.deps.runsOn?.() ?? null) !== null) return { status: 409, body: { error: "not-here", message: VALUES_ON_LEAD } };
     if (!isRequestId(rid) || !isTrickId(id) || !isTrickId(key)) return { status: 400, body: { error: "value-invalid" } };

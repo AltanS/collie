@@ -31,6 +31,7 @@ import { mintRequestId } from "./worktree-name";
 import type { AccountRow, AccountsBody, AddAccountAsk } from "./accounts";
 import type { FieldValue, OfficialState, OfficialTricksReply, TrickTapReply, TricksReply, TapBody, WireTrickInfo } from "./tricks/schema";
 import { readTapReplyTolerant, readTricksReplyTolerant } from "./tricks/read";
+import { readCodeFile, readCodeIndex, type WireCodeFile, type WireCodeIndex } from "./tricks/code-wire";
 import { readOfficialAddReply, readOfficialTricksReply, readTrick } from "./tricks/wire";
 import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
@@ -3510,6 +3511,27 @@ export async function switchTrick(host: string, trick: string, on: boolean, hash
   const info = readTrick(raw);
   if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
   return info;
+}
+
+/**
+ * The index of a trick's code (`GET /api/tricks/<host>/<id>/code`): every code file's name, size and how many
+ * lines the text search flags, and which copy it is. A read only, asked when a person opens the sheet's
+ * "Read the code" part. A refusal throws with its status and `error` (`unknown-host` for a trick of another
+ * machine, `moved`, `no-code`); a body of another shape throws too.
+ */
+export async function fetchTrickCodeIndex(host: string, trick: string, signal?: AbortSignal): Promise<WireCodeIndex> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/code`;
+  const index = readCodeIndex(await req<JsonValue>(path, { signal, timeoutMs: GET_TIMEOUT_MS }));
+  if (index === undefined) throw new Error(`${path} answered with a body that is not a code index`);
+  return index;
+}
+
+/** One file of a trick's code (`GET .../code?file=<rel>`): its lines masked and marked, or its name and size when it is binary. Asked when a fold opens. */
+export async function fetchTrickCodeFile(host: string, trick: string, file: string, signal?: AbortSignal): Promise<WireCodeFile> {
+  const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/code?file=${encodeURIComponent(file)}`;
+  const body = readCodeFile(await req<JsonValue>(path, { signal, timeoutMs: GET_TIMEOUT_MS }));
+  if (body === undefined) throw new Error(`${path} answered with a body that is not a code file`);
+  return body;
 }
 
 /** How long the phone waits for an add from the official list: the bridge's own two-minute cap, and a margin. */

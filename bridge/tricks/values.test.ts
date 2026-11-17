@@ -12,6 +12,7 @@ import { asksForChange, asksForLines } from "./version-card.ts";
 import { TRICKS_DIR, trickStateDir } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { TRICKS_ROUTE_RIGHTS, tricksValueRoute } from "./routes.ts";
+import { TRICKS_OFF_LINE } from "../../web/src/lib/tricks/schema.ts";
 import { TricksService, VALUES_ON_LEAD, type TricksServiceDeps, type ValueAnswer } from "./service.ts";
 import { withSwitch, writeSwitches, type Switches } from "./switches.ts";
 import { stateEntries } from "../crew/standby-tricks-lead.ts";
@@ -202,6 +203,15 @@ describe("the write route", () => {
     expect((await stat(valuesPath(r.stateDir, "legs"))).mtimeMs).toBe(mtime);
     expect(r.audit).toHaveLength(1);
     expect(await r.service.setValue(HOST, "legs", { rid: R1, key: "repo", value: "lodge/other" })).toEqual({ status: 409, body: { error: "request-id-reused", rid: R1 } });
+  });
+
+  test("a value write while tricks are off as a whole answers 409 tricks-off and writes nothing", async () => {
+    const r = await rig({ feature: { on: () => false } });
+    const answer = await r.service.setValue(HOST, "legs", { rid: R1, key: "repo", value: SECRET });
+    expect(answer).toEqual({ status: 409, body: { error: "tricks-off", message: TRICKS_OFF_LINE } });
+    expect(JSON.stringify(answer)).not.toContain(SECRET);
+    expect(await Bun.file(valuesPath(r.stateDir, "legs")).exists()).toBe(false);
+    expect(r.audit).toEqual([]);
   });
 
   test("refuses a bad value with a code and a sentence, an unknown field, a bad shape, an unknown trick", async () => {
