@@ -12,6 +12,11 @@ export interface StatusMessage {
   id: number;
   text: string;
   tone: StatusTone;
+  /**
+   * A word that stands beside what the slot shows instead of in its place (M104): the pane header keeps the
+   * session's name and time, and "Sent" rides in the free room of their line. Absent: the status takes the slot.
+   */
+  beside?: boolean;
 }
 
 let current: StatusMessage | null = null;
@@ -31,10 +36,10 @@ function emit() {
  * this channel is the app's one definition of "worth telling the operator about". A second, narrower
  * channel was built and removed — see that file for what was tried.
  */
-export function setStatus(text: string, tone: StatusTone = "info", ttlMs?: number | null): void {
+export function setStatus(text: string, tone: StatusTone = "info", ttlMs?: number | null, beside = false): void {
   if (timer) clearTimeout(timer);
   timer = null;
-  current = { id: nextId++, text, tone };
+  current = beside ? { id: nextId++, text, tone, beside } : { id: nextId++, text, tone };
   emit();
   const ttl = ttlMs === undefined ? (tone === "error" ? null : 2500) : ttlMs;
   if (ttl != null) {

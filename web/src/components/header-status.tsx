@@ -58,7 +58,32 @@ export function HeaderStatus({ children }: { children: ReactNode }) {
   useEffect(() => {
     setDetail(false);
   }, [statusId]);
-  if (!status) return <>{children}</>;
+  // A word that stands BESIDE the identity (M104, `beside`): "Sent" after a send. The name and the time stay where
+  // they are, in the same place in the tree (no wrapper, so nothing remounts and no box changes size); the word rides
+  // at the right end of the name's line, in its free room, over the header's own ground (`header-center` is its
+  // containing block), and leaves no box behind, so the header's height and every line in it stay as they were.
+  if (!status || status.beside === true) {
+    return (
+      <>
+        {children}
+        {status && (
+          <output
+            key={status.id}
+            aria-live="polite"
+            data-slot="header-status"
+            data-beside=""
+            className={cn(
+              "pointer-events-none absolute right-0 top-1 flex h-5 items-center gap-1.5 bg-band-ground pl-2 text-sm font-semibold",
+              TONE[status.tone],
+            )}
+          >
+            <Icon name={ICONS[status.tone]} className="size-4 shrink-0" />
+            <span className="whitespace-nowrap">{status.text}</span>
+          </output>
+        )}
+      </>
+    );
+  }
   // Errors persist (lib/status.ts's own default ttl) until dismissed. The row used to be ONE target
   // that dismissed them outright, which was the only thing you could do with a sentence the row had
   // cut in half. It is now two: the text opens the whole message, and the ✕ beside it still clears

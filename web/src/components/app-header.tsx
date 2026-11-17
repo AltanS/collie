@@ -532,7 +532,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
                 <div
                   data-slot="header-center"
                   ref={setCenter}
-                  className="flex min-w-0 flex-1 items-center"
+                  className="relative flex min-w-0 flex-1 items-center"
                 />
                 {/* gap-1, not gap-3: the icon buttons now carry their own 12px of padding to reach 44px,
                     so a 12px gap on top of that reads as a gulf. 4px keeps the apparent spacing between

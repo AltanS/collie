@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import type { RefObject } from "react";
+import type { MutableRefObject, RefObject } from "react";
 
 // FLIP (First, Last, Invert, Play) for the composer box's two shapes (`layout="box"`), and the way a
 // button enters in either layout. The box changes shape by moving its buttons between grid cells, so
@@ -29,7 +29,9 @@ import type { RefObject } from "react";
 // shows the new layout un-animated.
 //
 // `grows` false (the field layout, which has one shape) plays the entrances only: no height, no
-// rows, no moves. Under `prefers-reduced-motion: reduce`, or where the browser has no
+// rows, no moves. `instant`, when the caller has set it, plays nothing for the next change of key and
+// stops what is still playing (M104: a box that let go of a sent text takes its closed shape in the
+// frame of the tap); the hook sets it back to false after every commit. Under `prefers-reduced-motion: reduce`, or where the browser has no
 // `element.animate`, nothing is played and the change is instant.
 
 /** How long the shape change takes, in ms. */
@@ -137,20 +139,33 @@ function reducedMotion(): boolean {
 export function useFlip(
   container: RefObject<HTMLElement | null>,
   key: boolean | string,
-  options: { readonly enabled: boolean; readonly grows: boolean },
+  options: { readonly enabled: boolean; readonly grows: boolean; readonly instant?: MutableRefObject<boolean> },
 ): void {
-  const { enabled, grows } = options;
+  const { enabled, grows, instant } = options;
   const seen = useRef(key);
   const before = useRef<Snapshot | null>(null);
   const running = useRef<Animation[]>([]);
+  // The change of key this render saw is to land at once (`instant`).
+  const stop = useRef(false);
 
   // Render phase, on purpose and read-only: this render is the first to see the new key, and the DOM
   // still shows the old shape. A render that never commits leaves a snapshot nothing consumes.
   if (seen.current !== key) {
     seen.current = key;
     const element = container.current;
-    before.current = enabled && element !== null ? take(element) : null;
+    stop.current = instant?.current === true;
+    before.current = enabled && element !== null && !stop.current ? take(element) : null;
   }
+
+  // After every commit: a change that was to land at once has landed, and the request ends with it.
+  useLayoutEffect(() => {
+    if (stop.current) {
+      stop.current = false;
+      for (const animation of running.current) animation.cancel();
+      running.current = [];
+    }
+    if (instant !== undefined) instant.current = false;
+  });
 
   useLayoutEffect(() => {
     const was = before.current;

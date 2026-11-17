@@ -26,6 +26,7 @@ stuck and that no input vanishes in silence. They assert the invariants, never a
 | `key-tap.invariants.test.ts` | the guarded key tap on real dialogs: a ticking row outside, a successor dialog (I2, I4, I7) |
 | `stop-hold.invariants.test.tsx` | press sequences on the hold-to-stop button (I2) |
 | `change-login.invariants.test.tsx` | the Change login page's buttons under every bridge answer (I2) |
+| `calm-send.invariants.test.tsx` | a box send that let go of the box at the tap (M104): after every send outcome, a lost answer and an old bridge, the sent text stands in exactly one place, the chat, the box or the Put back card, and words typed meanwhile stay as typed (I2) |
 | `known-red.ts` | the red list: every break the base still has, with its fixing spec |
 
 The shared helpers are `seed.ts` (the PRNG, the seed list, sampling), `surfaces.ts` (the Surface

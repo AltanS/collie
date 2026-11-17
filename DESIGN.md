@@ -927,6 +927,14 @@ losing fact is not lost — the update offer keeps its footer line and its setti
    Its two siblings in `ui/presence.tsx` follow the same rule for the cases one Collapse cannot
    reach: `PresenceList` for keyed items of a list, `HeightSwap` for one band whose content is
    replaced (2026-11-10, the Hill).
+   **One move lands at once: the person's own send** (M104, 2026-11-17). At the tap the box empties
+   and takes its closed shape, and the person's line stands in Chat with the working row's room under
+   it, all in the frame of the tap and with no animation, so the page moves once, under the finger
+   that moved it, rather than easing half a second later when the receipt comes. After the tap
+   nothing on the screen moves until the answer is added at the end: the log's line takes the
+   pending line's place at the same height, "Still working" fills the room kept for it, and when it
+   goes its room stays in the list's one tail room (`--tail-room`). Every other open and close of
+   the box still plays. The belt's X leaves by opacity and keeps its width until the next key press.
 2. **A dismissible standing condition needs a permanent second surface.** Dismissal must not be
    able to leave the operator misinformed. The update strip may be dismissed because the same fact
    also sits in the footer and in Settings. The connection and auth strips may not: the remedy

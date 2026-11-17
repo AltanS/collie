@@ -43,7 +43,24 @@ export interface PendingLine {
   /** Milliseconds since the epoch, when the person tapped Send. */
   at: number;
   state: PendingState;
+  /**
+   * A line from a pane with a screen (M104): the ids of the user turns the thread held at the tap. Such a pane's log
+   * carries no request id, and its text can differ from what was sent (a chip's path, a paste), so when no turn has
+   * the same text the first user turn that is NEW since the tap is this line's. Never two rows for one message.
+   */
+  seen?: ReadonlySet<string>;
+  /**
+   * The bridge held or queued the send (M104): the line waits for the row that shows it there, the queue card in the
+   * thread or the held row above the box, and goes in the frame that row arrives. At most {@link HANDOVER_KEEP_MS}.
+   */
+  handover?: boolean;
 }
+
+/** A line handed over to a held or queued row goes after this long, whether or not that row came. */
+export const HANDOVER_KEEP_MS = 20_000;
+
+/** How far before the tap a NEW user turn's time may lie and still be this line's (clocks of two machines). */
+const NEW_TURN_SLACK_MS = 5_000;
 
 const EMPTY: readonly PendingLine[] = [];
 const store = new Map<string, readonly PendingLine[]>();
@@ -89,7 +106,22 @@ export function setPendingState(key: string, requestId: string, state: PendingSt
 
 /** The same line in another state. */
 function inState(line: PendingLine, state: PendingState): PendingLine {
-  return { requestId: line.requestId, text: line.text, at: line.at, state };
+  return { ...line, state };
+}
+
+/** The same line, taken by the bridge into a held or queued row it now waits for. */
+function handedOver(line: PendingLine): PendingLine {
+  return { ...line, state: "sent", handover: true };
+}
+
+/** The bridge held or queued the send: the line waits for that row ({@link PendingLine.handover}). */
+export function handOverPending(key: string, requestId: string): void {
+  const lines = pendingLines(key);
+  if (!lines.some((line) => line.requestId === requestId && line.handover !== true)) return;
+  publish(
+    key,
+    lines.map((line) => (line.requestId === requestId ? handedOver(line) : line)),
+  );
 }
 
 export function dropPending(key: string, requestIds: readonly string[]): void {
@@ -135,22 +167,27 @@ export interface PendingSplit {
  * Which pending lines the thread has not caught up with, and which request ids it has.
  *
  * PURE: the clock is a parameter. `open` keeps the order of `pending`. A line older than {@link PENDING_KEEP_MS} is
- * neither: it is dropped from the view, and `done` names it so the store can forget it.
+ * neither: it is dropped from the view, and `done` names it so the store can forget it. A line handed over
+ * ({@link PendingLine.handover}) is done once `queued` (the texts the thread's queue cards show) holds its text, or
+ * after {@link HANDOVER_KEEP_MS}.
  */
 export function unmatched(
   pending: readonly PendingLine[],
   entries: readonly TranscriptEntry[],
   now: number,
+  queued: readonly string[] = [],
 ): PendingSplit {
   const users = entries.filter((entry) => entry.role === "user" && entry.abandoned !== true);
   const taken = new Set<TranscriptEntry>();
-  const open: PendingLine[] = [];
+  const matched = new Map<PendingLine, TranscriptEntry>();
+  const live: PendingLine[] = [];
   const done: string[] = [];
   for (const line of pending) {
-    if (now - line.at > PENDING_KEEP_MS) {
+    if (now - line.at > PENDING_KEEP_MS || (line.handover === true && (now - line.at > HANDOVER_KEEP_MS || queued.some((text) => text.trim() === line.text.trim())))) {
       done.push(line.requestId);
       continue;
     }
+    live.push(line);
     const byId = users.find((entry) => entry.requestId === line.requestId && !taken.has(entry));
     const byText =
       byId ??
@@ -159,12 +196,34 @@ export function unmatched(
         const sent = Date.parse(entry.ts);
         return Number.isNaN(sent) || Math.abs(sent - line.at) <= PENDING_MATCH_MS;
       });
-    if (byText === undefined) {
-      open.push(line);
-      continue;
-    }
+    if (byText === undefined) continue;
     taken.add(byText);
-    done.push(line.requestId);
+    matched.set(line, byText);
+  }
+  // A second pass, so a turn that matches a later line by its words is never taken by an earlier line's new-turn rule.
+  for (const line of live) {
+    if (matched.has(line)) continue;
+    const fresh = newTurn(line, users, taken);
+    if (fresh === undefined) continue;
+    taken.add(fresh);
+    matched.set(line, fresh);
+  }
+  const open: PendingLine[] = [];
+  for (const line of live) {
+    if (matched.has(line)) done.push(line.requestId);
+    else open.push(line);
   }
   return { open, done };
+}
+
+/** The first user turn that is new since the tap of a line from a pane with a screen ({@link PendingLine.seen}). */
+function newTurn(line: PendingLine, users: readonly TranscriptEntry[], taken: ReadonlySet<TranscriptEntry>): TranscriptEntry | undefined {
+  const seen = line.seen;
+  if (seen === undefined) return undefined;
+  return users.find((entry) => {
+    if (taken.has(entry) || entry.requestId !== undefined || seen.has(entry.uuid)) return false;
+    // A turn with no time cannot say it is new: only a text match takes it.
+    const sent = Date.parse(entry.ts);
+    return !Number.isNaN(sent) && sent >= line.at - NEW_TURN_SLACK_MS;
+  });
 }
