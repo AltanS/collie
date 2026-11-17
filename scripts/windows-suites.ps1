@@ -14,7 +14,7 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 622 in all, each one named, with its reason:
+#              Today, 623 in all, each one named, with its reason:
 #              bridge 386: 174 from before 1.29.0 and 212 new: 143 listed in the next sentence, then 2 more of the trick-leftovers merge (one agent view picture, one official add test), 51 of the local API and the `watch` manifests ("The local API, bridge" below) and 16 the budget did not list ("Not listed before" below). The 143: (the data path 54 and the inside socket 17, then the Herdr and Tuios
 #                adapters 10, then Accounts 47, then 11 more of the data path for a dropped or failed data send and a shadowed part, then 1 for the pane's program environment read of pi (#793); see below). Of the 174, 15 (16 with the trick-leftovers merge, counted in the 2 above) are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 6 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
@@ -185,7 +185,7 @@
 #                - 4 in bridge/accounts-store.test.ts, a good row, the duplicate row, the store add and the listener
 #                - 3 in bridge/launch-by-id.test.ts, a launch with an account, and Change login's start on a signed-in account
 #                - 1 in bridge/worktree-from-folder.test.ts, a worktree with an account
-#              cli 201 in all: 11 are new with the local API ("The local API, cli" below), 1 is the trick-add one the trick-leftovers merge added to the 22 below, and of the other 189, 21 are new since 1.29.0: 3 of the hold card, 8 of the harness verbs, 3 of the first full trick run, 5 of the
+#              cli 202 in all: 11 are new with the local API ("The local API, cli" below), 2 are the trick-add ones the trick-leftovers merges added to the 22 below, and of the other 189, 21 are new since 1.29.0: 3 of the hold card, 8 of the harness verbs, 3 of the first full trick run, 5 of the
 #                repository index and 2 of the proposal card in the session (all
 #                of the Hill verbs and the tricks), below. The other 168: 21 in the next paragraph, then 3 of the statusLine wrapper, 54 of walky talky, 21 of the agent view,
 #                and 69 of the Hill verbs and the tricks (72 with the 3 above; see "The Hill verbs and the tricks, cli" below). The 18 of
@@ -267,7 +267,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$Out,
   [int]$MaxSkipsBridge = 386,
-  [int]$MaxSkipsCli = 201,
+  [int]$MaxSkipsCli = 202,
   [int]$MaxSkipsScripts = 35
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }
