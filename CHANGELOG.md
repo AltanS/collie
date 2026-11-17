@@ -88,6 +88,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A proposed version that removes a trick's agent instructions shows them on its card.** The card now carries the rules line and every line the approved rules held, as the runner's own version card does, so a yes never takes an agent's instructions away unseen. A proposed version that adds or changes rules is still refused like a new trick's, and tests hold both.
 - **A run of settings changes restarts a trick once.** The trick starts again one second after the last change, not after each one, and a change reads only that trick's folder instead of every trick's. The seen request ids stay bounded, the oldest forgotten first, and a test holds it.
 - **A trick that dials a socket of its own reads as reaching the network.** In the text search of a trick's code, `createConnection` and `Bun.connect` to any target count as the network kind. The kind for Collie's local API names only what names Collie's socket: its path, the socket in the facts, a `unix:` option or `collie api`.
 - **The yes of a card waits a whole second again when you come back to the page.** The one-second wait before a card's yes can be tapped now starts over when the page returns from the background or the window takes focus, so a card drawn behind a locked screen is not tappable at the first touch.
