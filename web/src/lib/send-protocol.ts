@@ -457,7 +457,13 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
  * live with their feature. `steered` is a sentence here; Recent sends wears the one word
  * (`sendReceipts.outcome.steered`), as its other outcomes do.
  */
-export type NoteKey = `composer.protocol.${Exclude<SendNote, "steered" | "steerUnsupported" | "steerNotAllowed">}` | "composer.steer.unsupported" | "composer.steer.notAllowed" | "composer.steer.steered";
+export type NoteKey =
+  | `composer.protocol.${Exclude<SendNote, "steered" | "steerUnsupported" | "steerNotAllowed" | "unconfirmed" | "noticeKey">}`
+  | "composer.protocol.unconfirmedPast"
+  | "composer.protocol.noticeKeyPast"
+  | "composer.steer.unsupported"
+  | "composer.steer.notAllowed"
+  | "composer.steer.steered";
 
 export function noteKey(note: SendNote): NoteKey {
   switch (note) {
@@ -467,6 +473,12 @@ export function noteKey(note: SendNote): NoteKey {
       return "composer.steer.unsupported";
     case "steerNotAllowed":
       return "composer.steer.notAllowed";
+    // The two sentences that name the commit offer name it as it reads, Send anyway, and promise nothing
+    // about Enter: the phone's read can differ from the bridge's (the M102 review, pass 2).
+    case "unconfirmed":
+      return "composer.protocol.unconfirmedPast";
+    case "noticeKey":
+      return "composer.protocol.noticeKeyPast";
     default:
       return `composer.protocol.${note}`;
   }

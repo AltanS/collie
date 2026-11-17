@@ -180,7 +180,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     renderComposer();
     await user.type(screen.getByPlaceholderText(/type a reply/i), "go ahead");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await user.click(await screen.findByRole("button", { name: "Send anyway" }));
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends[1]).toMatchObject({ text: "go ahead", mode: "send", rowsHash: "0abc12" });
     // The commit is the person's tap through the stop, so it says override (M102 spec 01); the first tap and the other offers do not.
@@ -226,7 +226,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     renderComposer();
     await user.type(screen.getByPlaceholderText(/type a reply/i), "/compact");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await user.click(await screen.findByRole("button", { name: "Send anyway" }));
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends.map((s) => s.mode)).toEqual(["command", "command"]);
     expect(paneCalls).toEqual([]);

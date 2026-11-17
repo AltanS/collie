@@ -44,7 +44,6 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type StyledLine } from "@/lib/blocks";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
 import type { HeldRow, SendMode, SendOffer, SendRequestBody, SendWhen } from "@/lib/surface/send";
-import { takesManualSend } from "@/lib/surface/send";
 import { Notice } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
@@ -143,35 +142,15 @@ const STATUS_KEY = {
  */
 function refusalSentence(
   sentence: string,
-  facts: { returnedDraft: boolean; note: SendNote; draftSeen: boolean; overrideMoved: boolean; alreadyTyped: boolean; manualSends: boolean },
+  facts: { returnedDraft: boolean; note: SendNote; draftSeen: boolean; overrideMoved: boolean; alreadyTyped: boolean },
 ): string {
   if (facts.returnedDraft && facts.note === "draft") return translate("composer.protocol.draftIsReturned");
   // The box already held this text: nothing typed again, no key (spec 12, the lead's decision 2026-11-17).
   if (facts.alreadyTyped) return translate("composer.protocol.alreadyTyped");
   if (facts.note === "overrideTyped" && facts.draftSeen) return translate("composer.protocol.overrideTypedDraft");
   if (facts.overrideMoved) return translate("composer.protocol.overrideMoved");
-  // Where the manual Send is open, the next tap types AND submits: the button reads Send here, so a sentence
-  // that names the button names it so. Only the plain sentences: a cause's own words stay as they are.
-  if (facts.manualSends) return sendsForm(sentence);
   return sentence;
 }
-
-/**
- * The Send form of a sentence that ends on "Type here", for a screen whose manual Send submits; else as
- * it is. The note is the sentence's END: `answerSentence` puts what Collie saw on the screen before it.
- */
-function sendsForm(sentence: string): string {
-  for (const [plain, sends] of SENDS_FORMS) {
-    const ending = translate(plain);
-    if (sentence.endsWith(ending)) return sentence.slice(0, sentence.length - ending.length) + translate(sends);
-  }
-  return sentence;
-}
-
-const SENDS_FORMS = [
-  ["composer.protocol.unconfirmed", "composer.protocol.unconfirmedSends"],
-  ["composer.protocol.noticeKey", "composer.protocol.noticeKeySends"],
-] as const;
 
 function verifiedNote(note: SendNote, when: SendWhen | undefined): keyof typeof STATUS_KEY {
   if (note === "steered" || note === "held") return note;
@@ -2212,7 +2191,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     try {
       const reply = await api.postSend({ id: mintRequestId(), pane: paneId, text: "", mode: "prepare" }, scope);
       if (reply.rowsHash === null) {
-        setSendRefusal(phoneRefusal(translate(takesManualSend(shownSurface) ? "unreadDialog.typeAnywayFailedSends" : "unreadDialog.typeAnywayFailed")));
+        setSendRefusal(phoneRefusal(translate("unreadDialog.typeAnywayFailed")));
         return;
       }
       setOverrideHash(reply.rowsHash);
@@ -2350,7 +2329,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
       if (override && typeAnywaySendRef.current && reply.outcome === "refused" && reply.cap === null && reply.rowsHash !== null) setOverrideHash(reply.rowsHash);
       const noticeOn = reply.surface ?? shownSurface;
-      const notice: SendRefusal = { ...refusal, sentence: refusalSentence(refusal.sentence, { returnedDraft, note: reading.note, draftSeen: reply.draftSeen === true, alreadyTyped: reply.textAlreadyTyped === true, manualSends: takesManualSend(reply.surface ?? shownSurface), overrideMoved: override && reply.outcome === "refused" && (reply.reason === "stale_surface" || reply.reason === "stale_view") && reply.rowsHash !== null }) };
+      const notice: SendRefusal = { ...refusal, sentence: refusalSentence(refusal.sentence, { returnedDraft, note: reading.note, draftSeen: reply.draftSeen === true, alreadyTyped: reply.textAlreadyTyped === true, overrideMoved: override && reply.outcome === "refused" && (reply.reason === "stale_surface" || reply.reason === "stale_view") && reply.rowsHash !== null }) };
       setSendRefusal(notice, noticeOn, offered);
       // An `unknown` outcome is an open question the journal can still answer (#511): remember the
       // send, so its text landing as a user turn retires this notice and the kept draft. A resend
@@ -2430,7 +2409,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (currentStatus()?.text === reading) clearStatus();
     }
     if (hash === null) {
-      setSendRefusal(phoneRefusal(translate(takesManualSend(shownSurface) ? "unreadDialog.typeAnywayFailedSends" : "unreadDialog.typeAnywayFailed")));
+      setSendRefusal(phoneRefusal(translate("unreadDialog.typeAnywayFailed")));
       return false;
     }
     try {
@@ -2715,7 +2694,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           : secretField
             ? translate("composer.secret.hint")
             : overrideHash !== null
-              ? translate(takesManualSend(shownSurface) ? "unreadDialog.typeAnywayHintSends" : "unreadDialog.typeAnywayHint")
+              ? translate("unreadDialog.typeAnywayHint")
               : staleWords
                 ? translate("composer.stale.hint")
                 : steerWords
@@ -4007,7 +3986,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {protocolOffer !== null && (
             <SendOfferStrip
               offers={protocolOffer.offers}
-              sends={takesManualSend(shownSurface)}
               disabled={starting || sending || locked}
               onOffer={onProtocolOffer}
               // The ✕ drops the strip and hides the notice over it: a notice that still says "tap Type

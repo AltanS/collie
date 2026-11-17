@@ -435,13 +435,13 @@ describe("unread card: your Keys pad (M102 spec 03)", () => {
 
   it("unread card: Type it anyway opens the composer's one send; the declared key keeps its second tap", async () => {
     const { onTypeAnyway } = mount();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Type it anyway" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Send past this screen" }));
     expect(onTypeAnyway).toHaveBeenCalledTimes(1);
   });
 
   it("unread card: a screen that asks for a secret has no Type it anyway, and points at Type mode", () => {
     mount({ secret: true });
-    expect(screen.queryByRole("button", { name: "Type it anyway" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send past this screen" })).toBeNull();
     expect(screen.getByText(/asks for a secret\. Use Type/u)).toBeInTheDocument();
   });
 
@@ -449,7 +449,7 @@ describe("unread card: your Keys pad (M102 spec 03)", () => {
     const block = cardBlock();
     render(<UnreadDialogBlock cancel={null} lines={block.lines} onAction={vi.fn()} onTypeAnyway={vi.fn()} />);
     expect(screen.getByText("Collie cannot read this screen. You can.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Type it anyway" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send past this screen" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Esc" })).toBeNull();
   });
 });

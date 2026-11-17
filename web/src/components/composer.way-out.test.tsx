@@ -177,11 +177,11 @@ describe("the way out", () => {
     await user.type(screen.getByPlaceholderText("Type a reply…"), "carry on please");
     await user.click(screen.getByRole("button", { name: "Send" }));
     // The first tap typed nothing and says why at the thumb, with the second tap and the way out beside it.
-    await screen.findByRole("button", { name: "Send here" });
+    await screen.findByRole("button", { name: "Send anyway" });
     expect(screen.getByRole("button", { name: "Open Keys" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Screen" })).toBeEnabled();
     expect(statusLine()).toBe("");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Send here" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Send anyway" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(2));
     expect(recordedSends()[1]).toMatchObject({ text: "carry on please", rowsHash: "0f00ba" });
     await wayOutIs(user, onToggle, "sends");

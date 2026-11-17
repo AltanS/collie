@@ -173,7 +173,7 @@ describe("L: an armed Type it anyway never goes out with a code", () => {
     await act(async () => {
       m.handle.current?.typeAnyway();
     });
-    await waitFor(() => expect(screen.getByPlaceholderText(/typed past this screen/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByPlaceholderText(/goes past this screen/)).toBeInTheDocument());
     m.update({ surface: SECRET });
     await user.type(codeField(), CODE);
     await user.click(screen.getByRole("button", { name: "Send the code" }));

@@ -74,7 +74,7 @@ describe("AgentChat: the unread card a refusal opens (the M102 review, H)", () =
     m.show(screenAt(5, "12:15:04"), 8);
     m.show(screenAt(6, "12:15:05"), 9);
     expect(screen.getByText(CAPTION)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Type it anyway" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send past this screen" })).toBeInTheDocument();
   });
 
   it("goes when the screen really moves on", async () => {
