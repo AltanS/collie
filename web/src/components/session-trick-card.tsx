@@ -38,10 +38,12 @@ import { cn } from "@/lib/utils";
 // without code stand with the facts, and its cards of code stand one under the other in the fold, each
 // under its "Card N" label, because the facts table and the seam lines name cards by number.
 //
-// ── ITS OWN SURFACE (the operator, 2026-11-17: "a different color background so it clearly stands out") ──
-// The panel wears the warm tint the card's own amber chips come from (`--status-working`, at the strength
-// chat-cards.tsx and prompt-pin.tsx already use for a tinted well), with a uniform border on all four sides,
-// so it stands apart from the chat's bubbles and tool cards in every theme.
+// ── ITS OWN SURFACE (Altan, 2026-11-17) ───────────────────────────────────────────────────────────────
+// The card's colour says where it stands, with a uniform border on all four sides and a low tint of the same
+// hue, never a left accent: while it WAITS for the person, the "needs you" red-orange (`--status-blocked`, the
+// tint an agent card that needs you wears); once APPROVED, a quiet green (`--status-done`); once DECLINED or
+// DISMISSED, red (`--destructive`). The first build's amber tint read as the person's own message bubbles and
+// was dropped. See {@link approvalTone}.
 //
 // ── THE GUARDS (ADR 0156, the operator's decision of 2026-11-17) ─────────────────────────────────────
 //   * The yes is a HOLD of three seconds (components/hold-to-approve.tsx): the finger stays down while a
@@ -168,6 +170,30 @@ export interface ChatApprovalCardProps {
   mediaSource?: HillMediaSource;
 }
 
+/** Where a trick's approval card stands, for its colour: waiting for the person, approved, or declined. */
+export type ApprovalTone = "waiting" | "approved" | "declined";
+
+/**
+ * The card's standing: an `ok` receipt for the decline or a Dismiss is declined, for any other option approved;
+ * a card dismissed elsewhere is declined; everything else (no answer yet, one in flight, one refused or lost)
+ * still waits for the person.
+ */
+export function approvalTone(decision: HillDecision, answer: HillAnswerState): ApprovalTone {
+  if (answer.phase === "answered" && answer.receipt.code === "ok") {
+    const decline = trickCardDecline(decision) ?? PROPOSAL_DECLINE;
+    return answer.intent === decline || answer.intent === "dismiss" ? "declined" : "approved";
+  }
+  if (decision.state === "dismissed") return "declined";
+  return "waiting";
+}
+
+/** The panel's surface for each standing: a uniform border and a low tint of one semantic hue. */
+const TONE_SURFACE = {
+  waiting: "border-status-blocked/50 bg-status-blocked/8",
+  approved: "border-status-done/35 bg-status-done/6",
+  declined: "border-destructive/40 bg-destructive/6",
+} as const satisfies Record<ApprovalTone, string>;
+
 /** The key a card and its fold are kept under: another digest is another card. */
 function cardKey(decision: HillDecision): string {
   return `${decision.id}:${decision.group?.digest ?? singleCodeCard(decision)?.key ?? ""}`;
@@ -218,10 +244,11 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
   }
 
   const sendingIntent = answer.phase === "sending" ? answer.intent : null;
+  const tone = approvalTone(decision, answer);
 
   return (
-    <div data-slot="chat-approval" data-id={decision.id} data-ready={ready ? "" : undefined}>
-      <PromptPanel ariaLabel={t("hill.card.aria", { title: decision.title })} className="border-status-working/25 bg-status-working/8">
+    <div data-slot="chat-approval" data-id={decision.id} data-ready={ready ? "" : undefined} data-tone={tone}>
+      <PromptPanel ariaLabel={t("hill.card.aria", { title: decision.title })} className={TONE_SURFACE[tone]}>
         <div className="flex flex-col gap-3 px-1.5 pt-1 pb-0.5">
           <OptionGroupCaption>{decision.from.label}</OptionGroupCaption>
           <div className="flex flex-col gap-1">

@@ -172,7 +172,7 @@ function PagedCard({ decision, to }: { decision: HillDecision; to: number }) {
  * A trick proposal as the session's chat draws it (session-trick-card.tsx): last in a phone-high thread that
  * scrolls as one, never a box of its own. `open` taps "Read the code" once mounted, as a person does.
  */
-function ChatCard({ decision, open = false }: { decision: HillDecision; open?: boolean }) {
+function ChatCard({ decision, open = false, answer = HILL_IDLE }: { decision: HillDecision; open?: boolean; answer?: HillAnswerState }) {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (open) root.current?.querySelector<HTMLButtonElement>('[data-slot="chat-approval-code-toggle"]')?.click();
@@ -181,7 +181,7 @@ function ChatCard({ decision, open = false }: { decision: HillDecision; open?: b
     <Phone height={640}>
       <div ref={root} className="h-full overflow-y-auto px-3 py-4">
         <p className="font-content mb-3 text-sm text-foreground">I wrote the trick and proposed it. Read it and switch it on when it looks right.</p>
-        <ChatApprovalCard decision={decision} answer={HILL_IDLE} onSend={noSend} onLater={noSend} mediaSource={playgroundMedia} />
+        <ChatApprovalCard decision={decision} answer={answer} onSend={noSend} onLater={noSend} mediaSource={playgroundMedia} />
       </div>
     </Phone>
   );
@@ -1003,7 +1003,7 @@ export function HillSection() {
 
       <Group title="In the session's chat">
         <Card state="hill-chat-proposal" label="71: a proposal in its session's chat">
-          <CardHead n={71} title="A trick a session proposed, in that chat: one card on its own warm surface, the code in a fold, Hold to switch on" />
+          <CardHead n={71} title="A trick a session proposed, in that chat: one card with a red-orange border while it waits, the code in a fold, Hold to switch on" />
           <ChatCard decision={chatProposal} />
         </Card>
         <Card state="hill-chat-version" label="72: a proposed new version in its session's chat">
@@ -1013,6 +1013,14 @@ export function HillSection() {
         <Card state="hill-chat-group" label="73: a proposal on 3 cards in the chat, the code open">
           <CardHead n={73} title="A proposal on 3 cards in the chat: one card, its code cards stacked in the open fold" />
           <ChatCard decision={GROUP_CHAT} open />
+        </Card>
+        <Card state="hill-chat-approved" label="74: a proposal in the chat, switched on">
+          <CardHead n={74} title="Switched on: the card turns a quiet green and says what happened" />
+          <ChatCard decision={chatProposal} answer={answered(receipts.typed, "on")} />
+        </Card>
+        <Card state="hill-chat-declined" label="75: a proposal in the chat, declined">
+          <CardHead n={75} title="Declined with Not now, or dismissed: the card turns red and says nothing was installed" />
+          <ChatCard decision={chatProposal} answer={answered(receipts.typed, "later")} />
         </Card>
       </Group>
 

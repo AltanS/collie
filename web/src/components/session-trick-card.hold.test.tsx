@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentViewScreen } from "@/components/agent-view-screen";
 import { ChatApprovalCard } from "@/components/session-trick-card";
-import { HILL_IDLE } from "@/hooks/use-hill-answer";
+import { HILL_IDLE, type HillAnswerState } from "@/hooks/use-hill-answer";
 import { APPROVE_HOLD_MS } from "@/lib/arm";
 import type { HillDecision, HillGroupAnswer } from "@/lib/hill/wire";
 import { collieCard } from "@/test/hill-fixtures";
@@ -119,10 +119,38 @@ describe.each(["chat", "agent-view"] as const)("the card's yes, in the %s's scro
   });
 });
 
-it("the card stands on its own surface: the warm tint of its amber chips and a uniform border, no left accent", () => {
-  const { box } = draw("chat");
-  const panel = box.querySelector<HTMLElement>('[data-slot="chat-approval"] [role="group"]')!;
-  expect(panel.className).toContain("bg-status-working/8");
-  expect(panel.className).toContain("border-status-working/25");
-  expect(panel.className).not.toMatch(/\bbg-card\b|\bborder-border\b|border-l-/u);
+const ok = (intent: string): HillAnswerState => ({
+  phase: "answered",
+  intent,
+  text: null,
+  receipt: { rid: "r", code: "ok", reason: null, state: "answered", delivery: "typed", trick: null, at: 0 },
+});
+
+describe.each(["chat", "agent-view"] as const)("the card's colour says where it stands, in the %s", (host) => {
+  const cases: [string, HillAnswerState, HillDecision, string, RegExp][] = [
+    ["waits for the person: the needs-you red-orange", HILL_IDLE, decision, "waiting", /border-status-blocked\/50 bg-status-blocked\/8/u],
+    ["a yes in flight still waits", { phase: "sending", intent: "on", text: null }, decision, "waiting", /border-status-blocked\//u],
+    ["approved: a quiet green", ok("on"), decision, "approved", /border-status-done\/35 bg-status-done\/6/u],
+    ["declined with Not now: red", ok("later"), decision, "declined", /border-destructive\/40 bg-destructive\/6/u],
+    ["dismissed: red", ok("dismiss"), decision, "declined", /border-destructive\//u],
+    ["dismissed elsewhere: red", HILL_IDLE, { ...decision, state: "dismissed" }, "declined", /border-destructive\//u],
+  ];
+  for (const [what, answer, shown, tone, surface] of cases) {
+    it(what, () => {
+      const card = <ChatApprovalCard decision={shown} answer={answer} onSend={vi.fn()} onLater={vi.fn()} />;
+      const view = render(
+        host === "chat" ? (
+          card
+        ) : (
+          <AgentViewScreen name="Morph" session="lodge/%3#abcd" view={undefined} working={false} entries={[]} canAct onTap={vi.fn()} onLink={vi.fn()} now={Date.parse("2026-11-17T10:00:00.000Z")} settleMs={0} tail={card} />
+        ),
+      );
+      const root = view.container.querySelector<HTMLElement>('[data-slot="chat-approval"]')!;
+      expect(root.dataset.tone).toBe(tone);
+      const panel = root.querySelector<HTMLElement>('[role="group"]')!;
+      expect(panel.className).toMatch(surface);
+      // A uniform border on all four sides and no left accent; the old amber tint is gone.
+      expect(panel.className).not.toMatch(/border-l-|status-working|\bbg-card\b|\bborder-border\b/u);
+    });
+  }
 });
