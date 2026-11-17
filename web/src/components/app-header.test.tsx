@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider, useLocation } from "react-router";
-import type { ComponentProps, ReactElement } from "react";
+import { useState, type ComponentProps, type ReactElement } from "react";
 
 import { server } from "@/test/setup";
 import { collieMark, markIsLive, markPaper, markState } from "@/test/collie-mark";
@@ -208,6 +208,35 @@ describe("the header — the one shared shell", () => {
 // The header mark agrees with the ConnectionBanner by construction — it reads the SAME shared-clock
 // signals: it gallops only once trouble is sustained (≥4s, the flicker fix), and rests muted once lost
 // (≥15s). Fake timers drive the wall-clock hooks (Vitest advances Date.now with them).
+// A ROUTE CAN SAY AN AGENT IS STARTING (`RouteHeader`'s `starting`, a claim like the others): the one
+// mark turns at the loading pace with three beads in four in the info colour, and rests again when the
+// route stops saying it.
+describe("the header — a route's starting claim", () => {
+  beforeEach(() => __resetConnectionHealth());
+
+  it("turns the mark with most of its beads in the info colour, and lets go when the claim does", async () => {
+    const user = userEvent.setup();
+    function Route() {
+      const [starting, setStarting] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setStarting((on) => !on)}>flip</button>
+          <Header bridge="connected" error={false} starting={starting} onHome={() => {}} />
+        </>
+      );
+    }
+    const { container } = renderHeader(<Route />);
+    expect(markState(container)).toBe("rest");
+    await user.click(screen.getByRole("button", { name: "flip" }));
+    expect(markState(container)).toBe("loading");
+    expect(collieMark(container)?.style.getPropertyValue("--mark-bead-1")).toBe("var(--status-info)");
+    expect(screen.getByRole("button", { name: "Starting…" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "flip" }));
+    expect(markState(container)).toBe("rest");
+    expect(collieMark(container)?.style.getPropertyValue("--mark-bead-1")).toBe("");
+  });
+});
+
 describe("the header — the dog keys on trouble/lost, not the first not-live frame", () => {
   beforeEach(() => {
     vi.useFakeTimers();

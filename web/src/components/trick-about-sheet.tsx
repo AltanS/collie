@@ -10,13 +10,14 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { tokenUseWhy, useTokenUseShown } from "@/components/token-use-label";
+import { TrickSettingsGroup } from "@/components/trick-settings-group";
 import { useLocale } from "@/hooks/use-locale";
 import { dateOnly, wholeNumber } from "@/lib/format";
 import { isWebLink, linkHost } from "@/lib/hill/reader";
 import { t, tn } from "@/lib/i18n";
 import { HostWords } from "@/lib/tricks/render";
 import { originLine, placesLine, readsLine, runsOnLine, warningLines } from "@/lib/tricks/row-words";
-import { isSourceUrl, type TricksRunsOn, type WireOfficialTrick, type WireRepoFacts, type WireTrickInfo, type WireTrickRules } from "@/lib/tricks/schema";
+import { isSourceUrl, type FieldValue, type TricksRunsOn, type WireOfficialTrick, type WireRepoFacts, type WireTrickInfo, type WireTrickRules } from "@/lib/tricks/schema";
 import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 
 // A trick's About sheet: what a person reads before they switch a trick on. Opened by a tap on the trick's
@@ -43,6 +44,7 @@ import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 //   3b. "Read the instructions": for a trick with `rules` (contract 2), a fold with the rules file's text
 //      whole, monospace, wrapped, never markdown (`RulesFold`). "What it does" names the agent view's two
 //      rights lines and the rules line;
+//   4b. "Settings" (contract 3): a trick's `[[field]]` values, one 44 px row each (trick-settings-group.tsx);
 //   5. "Updates": the "Take changes without asking" switch with its hint, for a trick that is switched on
 //      and only on a bridge that runs tricks (a crew member runs none, so it has nothing to take). It is the
 //      same field `collie trick auto` writes. The switch shows only here, not on the card; the card owns the
@@ -249,12 +251,14 @@ export interface TrickAboutSheetProps {
   canWrite?: boolean;
   /** The write. Without it the Updates group is not drawn. */
   onAuto?: (on: boolean) => void;
+  /** Save one of the trick's settings (contract 3); answers a failure's words or null. Without it no Settings group. */
+  onValue?: (key: string, value: FieldValue | null) => Promise<string | null>;
   /** The zone the last commit's date is written in. Tests pin it; the app leaves it to the device. */
   timeZone?: string;
 }
 
 /** The About sheet of one trick. Closes as every sheet does: the close button, the scrim, Escape, a pull down. */
-export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite = true, onAuto, timeZone }: TrickAboutSheetProps) {
+export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite = true, onAuto, onValue, timeZone }: TrickAboutSheetProps) {
   useLocale();
   const paragraphs = trick.about === undefined ? [] : aboutParagraphs(trick.about);
   const tokens = useTokenUseShown();
@@ -298,6 +302,8 @@ export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite =
             {t("settings.tricks.about.rulesUnshown")}
           </p>
         )}
+        {/* Contract 3: the settings the person keeps (trick-settings-group.tsx). */}
+        {onValue !== undefined && <TrickSettingsGroup trick={trick} canWrite={canWrite} onLead={runsOn !== undefined} onValue={onValue} />}
         <FactGroup slot="from" label={t("settings.tricks.about.from")} rows={comes} />
         {/* A trick that gives agents instructions never takes changes without asking: no switch to offer. */}
         {trick.on && runsOn === undefined && onAuto !== undefined && trick.rules === undefined && trick.rulesUnshown !== true && trick.agentView !== true && <UpdatesGroup auto={auto ?? trick.auto === true} canWrite={canWrite} onAuto={onAuto} />}

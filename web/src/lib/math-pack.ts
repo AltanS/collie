@@ -45,6 +45,8 @@ const RELOAD_KEY = "collie:math-reload:v1";
 
 let current: MathPackView = null;
 let wanted: Engine | null = null;
+/** The host has answered at least once, even if only to say it has no pack (a 404). */
+let asked = false;
 const listeners = new Set<() => void>();
 let reload: () => void = () => window.location.reload();
 
@@ -110,13 +112,28 @@ export async function refreshMathPack(signal?: AbortSignal): Promise<MathPackVie
   try {
     noteMathPack(await fetchMathPack(signal));
   } catch (error) {
-    if (signal?.aborted === true || apiErrorStatus(error) === 404) return current;
+    if (signal?.aborted === true) return current;
+    if (apiErrorStatus(error) === 404) {
+      // An answer, though a bare one: the card stops expecting a row from a bridge that has none.
+      asked = true;
+      notify();
+      return current;
+    }
     if (current === null) {
       current = { state: "unreachable" };
       notify();
     }
   }
   return current;
+}
+
+/** Whether the host has answered the read: a status, or a 404 from a bridge older than the pack. A page holds a place until then. */
+export function useMathPackAnswered(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => current !== null || asked,
+    () => false,
+  );
 }
 
 /** Whether an engine can be chosen: the host serves the engines, or this bridge cannot say. */
@@ -180,5 +197,6 @@ export function useMathPack(): MathPackView {
 export function __resetMathPack(fn?: () => void): void {
   current = null;
   wanted = null;
+  asked = false;
   reload = fn ?? (() => window.location.reload());
 }

@@ -1469,6 +1469,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const steerRow = canSteer === true && shownSurface.turn === "running" && walky.aim === null;
   // The Send button when it cannot act: it stays focusable and under the finger instead of `disabled`.
   const sendInert = locked || sending || ((starting || offline) && !direct.active);
+  // THE BOX IS OFF WHILE A LAUNCH STARTS (Altan, 2026-11-17): a launch this phone started refuses every send until
+  // the bridge has read the agent's first screen (`starting`, hooks/use-startup-readiness.ts: at most
+  // STARTUP_GATE_MS, 2 minutes, then it ends by itself), so the field is off for exactly that time, in the look of a
+  // locked one, and its placeholder says "Starting…". Type mode is not held (it sends keys, `sendInert` above lets it
+  // through), and a real lock keeps its own words. The draft is not touched: it comes back editable with the box.
+  const startHeld = starting && !locked && !direct.active;
   const sendHold = useLongPress(canMessage ? () => setSendMenu(true) : undefined);
 
   // ── THE VOICE TAKEOVER (design 3.3) ───────────────────────────────────────────────────────────
@@ -2773,10 +2779,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // disabled button with its reason only there is a dead one. Only a running send or a clip on its way to
   // the provider disables it, and the spinner beside it is that state's word.
   const micBusy = sending || recorder.phase === "transcribing";
-  const micInert = !micAvailable || locked || offline;
+  const micInert = !micAvailable || locked || startHeld || offline;
   function micOffWords(): string {
     if (!micAvailable) return stt?.reason ?? translate("composer.mic.unavailable");
     if (locked) return lockWords ?? unreachableWords;
+    if (startHeld) return translate("newPage.starting");
     return translate("composer.send.reconnect");
   }
   function onMicClick(e: MouseEvent, opener: "primary" | "draft") {
@@ -2908,6 +2915,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       ? lockWords
       : way.state === "unreachable"
         ? unreachableWords
+        : startHeld
+        ? translate("newPage.starting")
         : direct.active
         ? translate("composer.placeholder.direct")
         : isShell
@@ -3769,7 +3778,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           "size-9 shrink-0 rounded-full bg-secondary text-foreground",
           (pressed || picking) && "scale-95 bg-primary text-primary-foreground duration-0",
         )}
-        disabled={uploading || locked || direct.active}
+        disabled={uploading || locked || startHeld || direct.active}
         onPointerDown={(e) => e.preventDefault()}
         onClick={onAttachClick}
         aria-label={translate("composer.attach.aria")}
@@ -4199,11 +4208,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             reason and shares that place, one notice at a time, and so does the held-send card
             (amended 2026-10-18), above the notice. See `floating` above; it renders here. */}
         {draftNoticeSlot ? createPortal(floating, draftNoticeSlot) : floating}
-        {/* A launch this phone started, before the bridge has read its first screen: Send waits, and
-            this says why for as long as it is true. */}
-        <Collapse open={starting && !locked && !direct.active}>
-          <Notice variant="box" tone="info" announce="status">{translate("newPage.starting")}</Notice>
-        </Collapse>
+        {/* A launch this phone started, before the bridge has read its first screen: Send stays inert
+            (`starting`). The reason is not said here: the header's title and mark say it (agent-chat's
+            `HeaderStatus` condition and `RouteHeader`'s `starting`), where it costs this footer no row. */}
         {/* The Send Protocol's offers (M56 spec 05), at the thumb: Add / Replace / Cancel on a draft,
             Submit / Discard on text that was typed and not sent, and the second tap on a screen
             Collie cannot read. Each is a new request; the ✕ drops the strip and sends nothing. */}
@@ -4523,7 +4530,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             !box && attachments.length > 0 && "flex-wrap",
             // A composer nobody may write to says so as a surface, not just as a placeholder:
             // the fill recedes and both buttons in the box are disabled anyway.
-            locked && "bg-muted/40",
+            (locked || startHeld) && "bg-muted/40",
             // Armed "Type into terminal". The tint was on the field while the field wore the
             // frame; it follows the frame.
             direct.active && (box ? "border-primary focus-within:border-primary" : "border-primary focus-within:border-primary focus-within:ring-primary"),
@@ -4674,7 +4681,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             )}
             // Built above, where the two halves and their reasons sit together.
             style={draftStyle}
-            disabled={locked}
+            disabled={locked || startHeld}
             rows={1}
           />
           <Button
@@ -4705,7 +4712,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // and a trigger that went dark under its own open menu would waste that.
               (pressed || picking) && "scale-95 bg-primary text-primary-foreground duration-0",
             )}
-            disabled={uploading || locked || direct.active}
+            disabled={uploading || locked || startHeld || direct.active}
             onPointerDown={(e) => e.preventDefault()}
             onClick={onAttachClick}
             aria-label={translate("composer.attach.aria")}
@@ -4733,7 +4740,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 "size-9 rounded-full bg-secondary text-foreground",
                 "col-start-3 row-start-3",
               )}
-              disabled={locked}
+              disabled={locked || startHeld}
               onPointerDown={(e) => e.preventDefault()}
               onClick={openExpanded}
               aria-label={translate("composer.expand")}

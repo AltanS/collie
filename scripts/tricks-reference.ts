@@ -328,6 +328,7 @@ function programSection(): string[] {
     program.access.intro,
     "",
     "```toml",
+    'contract = 3',
     'access = "see"',
     "```",
     "",

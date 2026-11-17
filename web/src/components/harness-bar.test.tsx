@@ -1,8 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CALM_HOLD_MS } from "@/hooks/use-bounded-hold";
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
+import { __resetOperatorCommands } from "@/lib/operator-config";
+import { server } from "@/test/setup";
 import type { OperatorCommand } from "@/lib/types";
 import { ARM_DWELL_MS, ARM_MS, STOP_HINT_MS, STOP_HOLD_MS } from "@/lib/arm";
 import { accentFor, DurableBar, HarnessBar, ScreenStop } from "./harness-bar";
@@ -187,6 +191,69 @@ describe("HarnessBar", () => {
     render(<HarnessBar agent="claude" mine={mine} onRun={took()} />);
     expect(screen.getByRole("button", { name: "Status" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Model" })).not.toBeInTheDocument();
+  });
+});
+
+// CALM LOAD (row 11): an operator who had `bar = true` rows waits for the config read, so the belt draws its
+// harness section once, with their rows, instead of the shipped bar first.
+describe("HarnessBar, the operator's rows on the first frame", () => {
+  const KEY = "collie:shape:/:belt-operator-bar";
+  const mine = [op({ command: "/standup", bar: true, barLabel: "Stand" })];
+
+  beforeEach(() => {
+    localStorage.clear();
+    __resetOperatorCommands();
+  });
+  afterEach(() => localStorage.clear());
+
+  /** The config read waits until `release()`. */
+  function slowConfig() {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.get("/api/config", async () => {
+        await gate;
+        return HttpResponse.json({ push: false, vapidPublicKey: "" });
+      }),
+    );
+    return release;
+  }
+
+  it("holds the section while the read runs, then draws the operator's rows and never the shipped bar", async () => {
+    localStorage.setItem(KEY, "1");
+    const release = slowConfig();
+    const seen: string[] = [];
+    const watch = new MutationObserver(() => seen.push(screen.queryByRole("button", { name: "Compact" }) === null ? "-" : "shipped"));
+    const { container } = render(<HarnessBar agent="claude" mine={mine} onRun={took()} />);
+    watch.observe(document.body, { childList: true, subtree: true });
+    expect(container).toBeEmptyDOMElement();
+    release();
+    expect(await screen.findByRole("button", { name: "Stand" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Compact" })).toBeNull();
+    expect(seen).not.toContain("shipped");
+    expect(localStorage.getItem(KEY)).toBe("1");
+    watch.disconnect();
+  });
+
+  it("draws the shipped bar at once for an operator with no memory of rows", () => {
+    slowConfig();
+    render(<HarnessBar agent="claude" onRun={took()} />);
+    expect(screen.getByRole("button", { name: "Compact" })).toBeInTheDocument();
+  });
+
+  it("waits no longer than the bound, then draws the shipped bar", async () => {
+    localStorage.setItem(KEY, "1");
+    slowConfig();
+    const { container } = render(<HarnessBar agent="claude" onRun={took()} />);
+    expect(container).toBeEmptyDOMElement();
+    expect(await screen.findByRole("button", { name: "Compact" }, { timeout: CALM_HOLD_MS * 4 })).toBeInTheDocument();
+  });
+
+  it("remembers that there were no rows once the read says so", async () => {
+    localStorage.setItem(KEY, "1");
+    render(<HarnessBar agent="claude" mine={[]} onRun={took()} />);
+    expect(await screen.findByRole("button", { name: "Compact" })).toBeInTheDocument();
+    await waitFor(() => expect(localStorage.getItem(KEY)).toBe("0"));
   });
 });
 

@@ -610,12 +610,32 @@ describe("helper v5: session settings rows and bound parts", () => {
     // v5, the helper before `t.api`: still Collie's own code to the scan.
     const v5 = await Bun.$`git show 36e3ea0ec:cli/trick-kit/trick.ts`.quiet().nothrow();
     if (v5.exitCode === 0) expect(shippedHelperVersion(v5.stdout.toString())).toBe(5);
-    // v6, the helper of tricks package D (the end of a run after the pipe took the output).
-    const v6 = await Bun.$`git show ec6770f4e:cli/trick-kit/trick.ts`.quiet().nothrow();
-    if (v6.exitCode === 0) expect(shippedHelperVersion(v6.stdout.toString())).toBe(6);
+    // v6, stage's helper with `t.values` (contract 3), the helper before `t.api`.
+    const v6 = await Bun.$`git show 7dab244f3:cli/trick-kit/trick.ts`.quiet().nothrow();
+    if (v6.exitCode === 0) {
+      expect(v6.stdout.toString().startsWith("// collie trick helper v6\n")).toBe(true);
+      expect(shippedHelperVersion(v6.stdout.toString())).toBe(6);
+    }
     const v4 = await Bun.$`git show v1.29.0-edge.1:cli/trick-kit/trick.ts`.quiet().nothrow();
     if (v4.exitCode !== 0) return;
     expect(shippedHelperVersion(v4.stdout.toString())).toBe(4);
+  });
+
+  test("the v5 helper (before contract 3) is still Collie's own code to the scan", async () => {
+    const { shippedHelperVersion } = await import("../../bridge/tricks/scan.ts");
+    const v5 = await Bun.$`git show f6d8746ea:cli/trick-kit/trick.ts`.quiet().nothrow();
+    if (v5.exitCode !== 0) return;
+    expect(v5.stdout.toString().startsWith("// collie trick helper v5\n")).toBe(true);
+    expect(shippedHelperVersion(v5.stdout.toString())).toBe(5);
+  });
+});
+
+describe("helper v6: the settings a person keeps (contract 3)", () => {
+  test("t.values reads the facts' values, and is {} without them", () => {
+    const base = { contract: 3, trigger: { kind: "start" as const }, trick: { id: "demo", dir: "/home/dev/tricks/demo", state: "/home/dev/state/demo" }, host: "lodge", memberId: "m_abcdefghij", sessions: [], spaces: [] };
+    expect(new Trick({ ...base, values: { repo: "lodge/workshop", rows: 10, notify: true } }).values).toEqual({ repo: "lodge/workshop", rows: 10, notify: true });
+    expect(new Trick(base).values).toEqual({});
+    expect(CONTRACT).toBe(3);
   });
 });
 

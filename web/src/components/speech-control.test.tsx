@@ -1116,6 +1116,44 @@ beforeEach(() => {
   vi.mocked(sttModel.downloadModel).mockReset();
 });
 
+describe("SpeechControl, first frame", () => {
+  it("holds the whole hub until the config, the host's option and this phone's copy have answered, then draws it once", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      config(READY, STT_WHISTLE),
+      http.get("/api/stt/host", async () => {
+        await gate;
+        return HttpResponse.json(HOST_WHISTLE);
+      }),
+    );
+    const frames: string[][] = [];
+    const watch = new MutationObserver(() => {
+      frames.push([...document.querySelectorAll("section, h2")].map((el) => el.tagName));
+    });
+    renderControl();
+    watch.observe(document.body, { childList: true, subtree: true });
+    // The config has answered (nothing else waits on it), yet no card is on the page: the host has not.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.queryByRole("button", { name: "Change how speech works" })).toBeNull();
+    expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+    expect(frames).toEqual([]);
+    release();
+    expect(await screen.findByRole("button", { name: "Change how speech works" })).toBeInTheDocument();
+    // Every card of the hub was in the first frame that drew any: the in-use card, hands-free and the fold.
+    expect(screen.getByRole("heading", { level: 2, name: "Whistle by Cactus Compute" })).toBeInTheDocument();
+    expect(screen.getByText(/hands-free/i)).toBeInTheDocument();
+    watch.disconnect();
+  });
+
+  it("waits no longer than the bound for a host that does not answer", async () => {
+    server.use(config(READY, STT_WHISTLE), http.get("/api/stt/host", () => new Promise<never>(() => undefined)));
+    renderControl();
+    expect(screen.queryByRole("button", { name: "Change how speech works" })).toBeNull();
+    expect(await screen.findByRole("button", { name: "Change how speech works" }, { timeout: 2000 })).toBeInTheDocument();
+  });
+});
+
 describe("SpeechControl", () => {
   it("draws the hub from /api/config, and says why it is empty on a host that offers nothing", async () => {
     server.use(config(ABSENT));

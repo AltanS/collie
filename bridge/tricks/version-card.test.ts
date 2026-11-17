@@ -15,7 +15,7 @@ import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
 import { GROUP_MASKED_NOTE, GROUP_WRAP } from "./card-group.ts";
-import { ACCESS_CHIPS, accessLine, ON_CHIP, newRights, raisedAccess, RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VERSION_TOO_MUCH_START, VersionCards, RUNS_AS_YOU, newInputs, versionCard, versionRequestId, versionTitle, versionTooMuch, versionView } from "./version-card.ts";
+import { ACCESS_CHIPS, accessLine, asksForSentence, ON_CHIP, newRights, raisedAccess, RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VERSION_TOO_MUCH_START, VersionCards, RUNS_AS_YOU, newInputs, versionCard, versionRequestId, versionTitle, versionTooMuch, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
 import { singleCodeCard, viewHasCode } from "../../web/src/lib/hill/code-card.ts";
 
@@ -232,7 +232,7 @@ const DIFF: VersionDiff = {
 
 describe("access: the level a version raises (M105 spec 04)", () => {
   const manifest = (access?: "see" | "read"): TrickManifest => {
-    const out: TrickManifest = { id: "legs", name: "Browser leg", run: "./legs.sh", mode: "once", contract: 1, icon: "plug", places: ["belt"] };
+    const out: TrickManifest = { id: "legs", name: "Browser leg", run: "./legs.sh", mode: "once", contract: 3, icon: "plug", places: ["belt"] };
     if (access !== undefined) out.access = access;
     return out;
   };
@@ -271,6 +271,18 @@ describe("access: the level a version raises (M105 spec 04)", () => {
     expect(card?.recommends).toBeNull();
     expect(card?.options?.map((option) => option.intent)).toEqual(["use", "keep"]);
     expect(JSON.stringify(withAccess("read", "see")?.view)).toContain(ACCESS_LINES.read);
+  });
+
+  test("with a new setting too: the honest line, then the level's line, then the settings line", () => {
+    const fields: NonNullable<TrickManifest["fields"]> = [{ key: "repo", kind: "text", label: "Repository" }];
+    const base = subject();
+    const pending = base.pending;
+    if (pending === null) throw new Error("no pending");
+    const card = versionCard({ ...base, base: { dir: "/y", manifest: manifest() }, pending: { ...pending, manifest: { ...manifest("see"), fields } } }, DIFF);
+    const texts = (card?.view ?? []).map((node) => ("text" in node ? node.text : undefined));
+    expect(texts[0]).toBe(RUNS_AS_YOU);
+    expect(texts[1]).toBe(ACCESS_LINES.see);
+    expect(texts.indexOf(asksForSentence(fields))).toBeGreaterThan(1);
   });
 
   test("a version that keeps or lowers the level carries no access line and no new right", () => {

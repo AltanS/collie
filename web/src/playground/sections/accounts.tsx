@@ -1,4 +1,4 @@
-// Accounts section of the design reference (M101 spec 04): who is signed in on an account, as the list
+// Profiles section of the design reference (M101 spec 04): who is signed in on a profile, as the list
 // row's second line and as the details row; and Change login (M101): its three screens, the session
 // sheet's row, and the sign-in card's one button. Every card mounts the REAL pieces the Settings pages draw
 // (`AccountListRow`, `SignedInRow` in routes/settings-accounts.tsx) over fixtures, so the reference shows
@@ -23,9 +23,9 @@ import { Card, Group, Section, type SectionDef } from "../layout";
 
 export const DEF: SectionDef = {
   id: "accounts",
-  title: "Accounts",
+  title: "Profiles",
   intent:
-    "Who is signed in on each account, from the agent's own status command: the email under the account's name in the list, its middle given up when it does not fit, and one row on the account's page with the full address and the plan. An account that is not signed in says so; an agent that cannot tell shows what it showed before.",
+    "Who is signed in on each profile, from the agent's own status command: the email under the profile's name in the list, its middle given up when it does not fit, and one row on the profile's page with the full address and the plan. A profile that is not signed in says so; an agent that cannot tell shows what it showed before.",
 };
 
 const NOW = Date.parse("2026-11-16T09:41:00Z");
@@ -136,7 +136,7 @@ export function AccountsSection() {
           <ListOf rows={[CODEX_ROW]} />
         </Card>
       </Group>
-      <Group title="The account's page">
+      <Group title="The profile's page">
         <Card state="accounts-detail-signed-in" label="3 Signed in, with the plan">
           <Column>
             <SignedInRow identity={WORK_ROW.identity} />
@@ -174,7 +174,7 @@ export function AccountsSection() {
             <ChangeLoginResultView result={{ kind: "changed", email: "spare@example.com", plan: "max" }} reach={{ kind: "running", count: 3 }} stillOpen={false} backTo="session" onBack={() => {}} />
           </Screen>
         </Card>
-        <Card state="accounts-change-login-same" label="10 Still the same account">
+        <Card state="accounts-change-login-same" label="10 Still the same login">
           <Screen>
             <ChangeLoginResultView result={{ kind: "same", email: "someone@example.com", plan: "max" }} reach={{ kind: "running", count: 3 }} stillOpen={false} backTo="account" onBack={() => {}} />
           </Screen>

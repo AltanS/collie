@@ -61,6 +61,8 @@ export interface AccountRow {
   live: boolean;
   /** How many agent panes of this account run now, a sign-in session left out. Absent: none, or an older bridge. */
   running?: number;
+  /** Ids of the panes on this machine that run in this row's folder, a sign-in session left out. Absent: none, or an older bridge. */
+  panes?: string[];
   /** Shared only: entries that should be links and are not. */
   unlinked?: string[];
   /** Only where the adapter can tell. */

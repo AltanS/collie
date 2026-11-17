@@ -73,20 +73,24 @@ interface HeaderClaim {
    *  Keeping the inset is deliberate: the notch is not screen a mirror could use anyway, and a route
    *  that took the inset over would double it against the header's own the moment the row came back. */
   hidden: boolean;
+  /** An agent is starting on this screen: the mark turns with most of its beads in the info colour
+   *  (`CollieHome`'s `starting`). A claim, not a prop on the mark, because the shell owns the mark. */
+  starting: boolean;
 }
 
 // What a route gets when no route has claimed the row: the bare shell. This is the FORGOT case, and
 // it is deliberately benign rather than empty — the mark, the strip, the rule and the 60px floor are
 // all the shell's own, so a route that renders no <RouteHeader/> at all still gets a real header of
 // the right height. The one thing it cannot get wrong is the thing the operator was looking at.
-const UNCLAIMED: HeaderClaim = { wordmark: false, width: "full", override: false, hidden: false };
+const UNCLAIMED: HeaderClaim = { wordmark: false, width: "full", override: false, hidden: false, starting: false };
 
 function sameClaim(a: HeaderClaim, b: HeaderClaim): boolean {
   return (
     a.wordmark === b.wordmark &&
     a.width === b.width &&
     a.override === b.override &&
-    a.hidden === b.hidden
+    a.hidden === b.hidden &&
+    a.starting === b.starting
   );
 }
 
@@ -310,6 +314,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
       lost={lost}
       applying={applying}
       reconnected={reconnected}
+      starting={claim.starting}
       online={online}
       lastSeenAt={lastSeenAt}
       {...(paper === undefined ? {} : { paper })}
@@ -614,6 +619,10 @@ interface RouteHeaderProps {
   /** Take the header row off the screen entirely — the pane's zen mode, and nothing else today. See
    *  `HeaderClaim.hidden` for what survives (the element, its inset, its reserved rule) and why. */
   hidden?: boolean;
+
+  /** An agent is starting on this screen (the bridge has not read its first screen yet). The mark
+   *  turns at the loading pace with three beads in four in the info colour. See `HeaderClaim.starting`. */
+  starting?: boolean;
 }
 
 /**
@@ -650,6 +659,7 @@ export function RouteHeader({
   rightTrail,
   override,
   hidden = false,
+  starting = false,
 }: RouteHeaderProps) {
   const slots = useContext(HeaderSlotContext);
   // Loud, not lenient. A <RouteHeader/> outside the host means a route was mounted with no header
@@ -664,9 +674,9 @@ export function RouteHeader({
   // effect, not a passive one: it lands in the same commit the portal's children do, before the
   // browser paints, so there is no frame in which the row's shape and its contents disagree.
   useLayoutEffect(() => {
-    claim(owner, { wordmark, width, override: overridden, hidden });
+    claim(owner, { wordmark, width, override: overridden, hidden, starting });
     return () => release(owner);
-  }, [claim, release, owner, wordmark, width, overridden, hidden]);
+  }, [claim, release, owner, wordmark, width, overridden, hidden, starting]);
 
   // The mark's tap. No deps: `onHome` is a new closure on every render and the shell reads this
   // through a ref at click time, so keeping it current costs one assignment and re-renders nothing.

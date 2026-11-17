@@ -232,13 +232,14 @@ The rule today: Chat is the default view of an agent pane (0082). A live session
 
 ### Layout and navigation
 
-The rule today: [0147](./0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md) states the pane lists and the dashboard's footer: no list is ordered by status, the operator may ask for Activity or Cache order with the clock read once, a pin is a place the operator chose, and the footer reads Crew, Dashboard, Files and the Hill, with Needs you a switch. It replaced 0063, 0066, 0068, 0070, 0071 and 0085, now stubs, and retired 0069: the rule of the glide lives in the header of `web/src/lib/glide.ts`. This section holds five topics, and the rest stay apart as they are. Back goes up one level (0067). On a large screen the pane screen is a sidebar beside a strip of panes, and two fingers move between panes (0120, 0121, which wait for one record of their own). "Seen" is one shared bridge-side fact (0003), and the app stays on React Router in library mode (0051).
+The rule today: [0147](./0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md) states the pane lists and the dashboard's footer: no list is ordered by status, the operator may ask for Activity or Cache order with the clock read once, a pin is a place the operator chose, and the footer reads Crew, Dashboard, Files and the Hill, with Needs you a switch. It replaced 0063, 0066, 0068, 0070, 0071 and 0085, now stubs, and retired 0069: the rule of the glide lives in the header of `web/src/lib/glide.ts`. This section holds five topics, and the rest stay apart as they are. Back goes up one level (0067). On a large screen the pane screen is a sidebar beside a strip of panes, and two fingers move between panes (0120, 0121, which wait for one record of their own). "Seen" is one shared bridge-side fact (0003), and the app stays on React Router in library mode (0051). The first frame paints from a remembered shape: a flag, a small number or a fixed word per mount, wiped with the device, replaced by every real read, and a late part waits at most 400 ms or comes at the end (0153, proposed).
 
 | # | Decision | Status |
 | --- | --- | --- |
 | [0147](./0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md) | No pane list is ordered by status; Activity and Cache order read the clock once; pins lead; the footer holds Crew, Dashboard, Files and the Hill, and Needs you is a switch. | Accepted |
 | [0003](./0003-one-shared-seen.md) | "Seen" is one shared bridge-side fact, and only reads inside Collie count. | Accepted |
 | [0051](./0051-the-phone-app-runs-react-router-in-library-mode.md) | The phone app stays on React Router in library mode, and Collie owns its Vite build. | Accepted |
+| [0153](./0153-the-first-frame-paints-from-a-remembered-shape.md) | The first frame paints from a remembered shape (flag, count or fixed word); a real read wins; a late part never enters mid-page. | Proposed |
 | [0063](./0063-a-pane-keeps-its-place-when-its-state-changes.md) | No pane list is ordered by status; a pane's place is machine, space, tab and position. | Superseded by 0147 |
 | [0066](./0066-the-dashboard-has-a-footer-panes-needs-you-changes.md) | The dashboard has a footer of tabs, and its filter never sorts (the tab names have changed since). | Superseded by 0147 |
 | [0067](./0067-back-goes-up-one-level.md) | Back goes up one level: the history stack is the level tree. | Accepted |
@@ -329,11 +330,12 @@ The rule today: Speech to text is a provider seam Collie owns, off by default an
 
 ### Tricks and the Hill
 
-The rule today: Tricks that react and the local API stand on one internal event bus, and the API is read only, on a Unix socket that exists only while tricks are switched on, where tricks run (0152). Trick code may cross the crew link as inert data and runs only on a tap on the machine that runs it (0144 rule 3, which took the addendum of 2026-11-10 to 0016), and the footer's Hill item and trick items are in 0147 (rules 7 and 12). No record decides the rest of tricks or the Hill on its own yet.
+The rule today: Tricks that react and the local API stand on one internal event bus, and the API is read only, on a Unix socket that exists only while tricks are switched on, where tricks run (0152). The API's rights are one ordered vocabulary, `see` < `read` < `send` < `control`, which replaced 0152's word `look` (the local grant is `read`); a trick declares its level with `access`, which the helper holds and which is not a wall, and it carries no pairing token and no per-surface list (0154). Trick code may cross the crew link as inert data and runs only on a tap on the machine that runs it (0144 rule 3, which took the addendum of 2026-11-10 to 0016), and the footer's Hill item and trick items are in 0147 (rules 7 and 12). No record decides the rest of tricks or the Hill on its own yet.
 
 | # | Decision | Status |
 | --- | --- | --- |
 | [0152](./0152-one-event-bus-and-a-local-read-only-api-that-exists-where-a-trick-runs.md) | One internal event bus; a read-only local API on a Unix socket that exists only while tricks are switched on. | Accepted |
+| [0154](./0154-the-api-rights-are-one-ordered-vocabulary-and-a-trick-declares-its-level.md) | The API's rights are `see` < `read` < `send` < `control`; a trick declares `access`, no token, no per-surface list. | Accepted |
 
 ### Process, lint and tests
 

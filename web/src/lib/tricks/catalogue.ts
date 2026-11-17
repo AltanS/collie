@@ -60,7 +60,7 @@ import {
   VIEW_TITLE_MAX,
   VIEW_WRITES_PER_MINUTE,
 } from "../agent-view/wire";
-import { AGENT_VIEW_CONTRACT, INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
+import { ACCESS_CONTRACT, AGENT_VIEW_CONTRACT, FIELDS_CONTRACT, INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
 import {
   ABOUT_MAX,
   ACTION_ICONS,
@@ -99,6 +99,7 @@ import {
   FACT_SPACES_MAX,
   FACE_MAX,
   FACTS_KEYS,
+  FIELD_KINDS,
   FOCUS_LIMITS,
   FRESH_MAX_MS,
   FRESH_MIN_MS,
@@ -181,6 +182,14 @@ import {
 import {
   BACKOFF_MS,
   BASE_ENV_NAMES,
+  FIELD_HINT_MAX,
+  FIELD_LABEL_MAX,
+  FIELD_NUMBER_ABS_MAX,
+  FIELD_OPTION_MAX,
+  FIELD_OPTIONS_MAX,
+  FIELD_OPTIONS_MIN,
+  FIELD_TEXT_MAX,
+  FIELDS_MAX,
   GROUP_CARD_CODE_BYTES,
   GROUP_CODE_BYTES,
   GROUP_CODE_CARDS,
@@ -1046,6 +1055,7 @@ const FACTS_WORDS = {
   sessions: { present: "always", what: `The agent and shell sessions, at most ${String(FACT_SESSIONS_MAX)}. On a crew's lead they are every member's, the lead's own first.` },
   spaces: { present: "always", what: `Each space as ${codeList(SPACE_FACT_KEYS)} (\`folder\` is left out when there is none), at most ${String(FACT_SPACES_MAX)}.` },
   sessionsOmitted: { present: "only when some are left out", what: "How many sessions the caps left out. Only a crew's lead counts them: a solo machine past the cap leaves the rest out with no count. Absent when none." },
+  values: { present: `contract ${String(FIELDS_CONTRACT)}, a trick with \`[[field]]\``, what: "Each field's value by its key: the person's own, else the field's `default`. A field with neither is left out. A value is the person's data and untrusted for the program: show it, never run it." },
   api: { present: "only with `access`, while the local API stands", what: `${codeList(API_FACT_KEYS)}: the path of Collie's local API socket, and the level \`access\` declares (\`see\` or \`read\`). \`t.api\` dials it. Nothing of it is in the environment. Absent when the trick declares no \`access\`, and when the socket does not stand.` },
 } as const satisfies { readonly [K in (typeof FACTS_KEYS)[number]]: Omit<FieldRow, "field"> };
 
@@ -1204,7 +1214,7 @@ function reactingOf(n: ProgramNumbers): ReactingEntry {
 
 function accessOf(): AccessEntry {
   return {
-    intro: "A trick reads live facts of Collie (its machines, its sessions, your usage, the Hill) through Collie's local API, with no token and no list of surfaces in its manifest. Your yes to the trick is the grant. The manifest says how much with `access`, and the program calls `t.api`.",
+    intro: `A trick reads live facts of Collie (its machines, its sessions, your usage, the Hill) through Collie's local API, with no token and no list of surfaces in its manifest. Your yes to the trick is the grant. The manifest says how much with \`access\`, which needs \`contract = ${String(ACCESS_CONTRACT)}\`, and the program calls \`t.api\`.`,
     levels: [
       { level: "`none`", what: "The default, also when `access` is left out. No `api` in the facts, and `t.api` answers an error.", operations: "none" },
       { level: "`see`", what: "Lists and states: your machines, your sessions and their states, your usage and the Hill. Never the text of a screen.", operations: "`hello`, `sessions`, `brief`, `accounts`, `hill.list`, `events`, `machines`" },
@@ -1238,7 +1248,7 @@ export function programOf(n: ProgramNumbers): ProgramEntry {
       { case: "A node of a kind this Collie does not know", result: "Left out, with a `dropped` note. The rest of the view draws." },
       { case: "A part in a place this Collie does not know", result: "Left out whole, with a `dropped` note. The other parts draw." },
       { case: `A key or an attribute this Collie does not know, inside a part, at contract ${String(TRICK_CONTRACT_DEFAULT)}`, result: "Ignored, with an `ignored` note. A node with only such attributes draws as if it had none." },
-      { case: `A key or an attribute this Collie does not know, at any depth of a part, at contract ${String(TRICK_CONTRACT)}`, result: `That part is refused alone, with an \`unknown-key\` refusal that names the key and ends: "${CLOSED_KEY_LINE}" Collie keeps no last good version of it.` },
+      { case: `A key or an attribute this Collie does not know, at any depth of a part, at contract 2 or newer`, result: `That part is refused alone, with an \`unknown-key\` refusal that names the key and ends: "${CLOSED_KEY_LINE}" Collie keeps no last good version of it.` },
       { case: "A key this Collie does not know at the top of the document, beside `v`, `parts`, `asOf`, `fresh` and `decisions`", result: "Ignored, with an `ignored` note, at every contract. Every part draws. A key that changes how a part draws or what a tap does goes in the part, never at the top." },
       { case: "A bad value of a known field", result: "That part is refused alone, and the other parts draw. The last good version of the part stays on the phone, marked old." },
       { case: "A bad Decision", result: "That Decision is refused alone. Its open card stays as it is." },
@@ -1331,7 +1341,7 @@ const MANIFEST_WORDS = {
   watch: { type: "list of paths", required: "no", limit: `at most ${String(WATCH_MAX)} paths of at most ${String(WATCH_PATH_MAX)} characters, each an absolute path, or a path under the home folder written with a leading tilde`, contract: TRICK_CONTRACT_DEFAULT, what: "Run when one of these files changes. A right: the card names the paths. See [When a trick reacts](#when-a-trick-reacts)." },
   on: { type: "list of words", required: "no", limit: `${codeList(TRICK_EVENTS)}`, contract: TRICK_CONTRACT_DEFAULT, what: "Run when a session of an agent changes in one of these ways. A right: the card says it. See [When a trick reacts](#when-a-trick-reacts)." },
   mode: { type: "word", required: "no", limit: `${orList(TRICK_MODES)}. Default \`${TRICK_MODES[0]}\``, contract: TRICK_CONTRACT_DEFAULT, what: `\`${TRICK_MODES[0]}\` runs once per trigger and prints one document. \`${TRICK_MODES[1]}\` is kept for a later Collie.` },
-  contract: { type: "whole number", required: "no", limit: `1 to ${String(CONTRACT_MAX)}. Default ${String(TRICK_CONTRACT_DEFAULT)}. This Collie speaks 1 to ${String(TRICK_CONTRACT)}`, contract: TRICK_CONTRACT_DEFAULT, what: `The contract the trick is written for. Write ${String(INPUTS_CONTRACT)} to read files with \`inputs\` or to add an agent view. A higher number than this Collie knows is refused with one line.` },
+  contract: { type: "whole number", required: "no", limit: `1 to ${String(CONTRACT_MAX)}. Default ${String(TRICK_CONTRACT_DEFAULT)}. This Collie speaks 1 to ${String(TRICK_CONTRACT)}`, contract: TRICK_CONTRACT_DEFAULT, what: `The contract the trick is written for. Write ${String(INPUTS_CONTRACT)} to read files with \`inputs\` or to add an agent view, ${String(FIELDS_CONTRACT)} to keep settings with \`[[field]]\` or to read Collie with \`access\`. A higher number than this Collie knows is refused with one line.` },
   icon: { type: "word", required: "no", limit: `one of the icon words in Shared values. Default \`${DEFAULT_TRICK_ICON}\``, contract: TRICK_CONTRACT_DEFAULT, what: "The trick's icon. `collie trick check` names a wrong one." },
   places: { type: "list of words", required: "yes", limit: `1 to ${String(PLACES_LISTED_MAX)} of ${PLACE_WORDS_LIST}. Each once`, contract: TRICK_CONTRACT_DEFAULT, what: `Where its parts draw. Each place a part uses must be listed. \`${AGENT_VIEW_PLACE}\` adds an agent view and needs contract ${String(AGENT_VIEW_CONTRACT)}.` },
   env: { type: "list of names", required: "no", limit: `at most ${String(ENV_NAMES_MAX)} names of at most ${String(ENV_NAME_MAX)} characters: letters, digits and \`_\`, not starting with a digit`, contract: TRICK_CONTRACT_DEFAULT, what: "Environment names the program gets beyond the base list, such as `GH_TOKEN`. The person sees each one." },
@@ -1340,8 +1350,9 @@ const MANIFEST_WORDS = {
   about: { type: "text", required: "no", limit: `at most ${String(ABOUT_MAX)} characters, plain text, a blank line splits paragraphs`, contract: TRICK_CONTRACT_DEFAULT, what: "The text of the About sheet." },
   version: { type: "text", required: "no", limit: `1 to ${String(VERSION_MAX)} characters: letters, digits, \`.\`, \`+\` and \`-\`, such as \`1.2.0\``, contract: TRICK_CONTRACT_DEFAULT, what: "The trick's own version. The About sheet shows it. Collie never compares it and reads no tag." },
   rules: { type: "file name", required: `yes, with \`${AGENT_VIEW_PLACE}\`; refused without it`, limit: `a file in the trick's folder of at most ${String(RULES_NAME_MAX)} characters ending in \`.md\`, such as \`rules.md\``, contract: AGENT_VIEW_CONTRACT, what: "The instructions the agent of a session reads. The person reads them whole before they switch the trick on." },
-  access: { type: "word", required: "no", limit: `${orList(ACCESS_WORDS)}. Default \`${ACCESS_WORDS[0]}\``, contract: TRICK_CONTRACT_DEFAULT, what: "How much of Collie's local API the trick reads through `t.api`. `see` reads lists and states, `read` adds the text of a screen. A right: a version that raises it asks again. See [Reading Collie through the local API](#reading-collie-through-the-local-api). Experimental." },
+  access: { type: "word", required: "no", limit: `${orList(ACCESS_WORDS)}. Default \`${ACCESS_WORDS[0]}\``, contract: ACCESS_CONTRACT, what: "How much of Collie's local API the trick reads through `t.api`. `see` reads lists and states, `read` adds the text of a screen. A right: a version that raises it asks again. See [Reading Collie through the local API](#reading-collie-through-the-local-api). Experimental." },
   decides: { type: "word", required: "no", limit: `${orList(DECIDES_WORDS)}. Refused on a trick that is only an agent view`, contract: TRICK_CONTRACT_DEFAULT, what: "Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again." },
+  field: { type: "list of tables", required: "no", limit: `at most ${String(FIELDS_MAX)} \`[[field]]\` tables. Each has \`key\` (spelled like a trick id, each once), \`kind\` (${orList(FIELD_KINDS)}), \`label\` (at most ${String(FIELD_LABEL_MAX)} characters) and may have \`hint\` (at most ${String(FIELD_HINT_MAX)}), \`default\` and \`required\`. A \`choice\` lists ${String(FIELD_OPTIONS_MIN)} to ${String(FIELD_OPTIONS_MAX)} \`options\` of at most ${String(FIELD_OPTION_MAX)} characters; a \`number\` names whole \`min\` and \`max\` within ${String(FIELD_NUMBER_ABS_MAX)} either way; a \`text\` value is one line of at most ${String(FIELD_TEXT_MAX)} characters; a \`switch\` is never \`required\`` , contract: FIELDS_CONTRACT, what: "Settings the person keeps for the trick, set in its About sheet on the phone. The program reads them in its facts as `values`. A value is the person's data and untrusted for the program: show it, never run it. A setting is never a secret: a key comes through `env`. A new or changed field is a new version and asks again; a changed value does not ask, and runs the trick once." },
 } as const satisfies { readonly [K in (typeof MANIFEST_KEYS)[number]]: Omit<ManifestEntry, "key"> };
 
 /** A whole `trick.toml` of a program trick, in the smallest useful shape. */
@@ -1436,6 +1447,16 @@ export const LIMITS: readonly LimitGroup[] = [
       { what: "A picture", value: `at most ${sizeWords(INPUT_IMAGE_MAX_BYTES)}` },
       { what: "One answer of one machine", value: `at most ${sizeWords(INPUT_ANSWER_MAX_BYTES)}` },
       { what: "One run", value: `at most ${sizeWords(INPUT_RUN_MAX_BYTES)}` },
+    ],
+  },
+  {
+    group: `Fields, contract ${String(FIELDS_CONTRACT)}`,
+    limits: [
+      { what: "Fields of one trick", value: `at most ${String(FIELDS_MAX)}` },
+      { what: "A label, a hint", value: `at most ${String(FIELD_LABEL_MAX)} and ${String(FIELD_HINT_MAX)} characters` },
+      { what: "A text value", value: `one line of at most ${String(FIELD_TEXT_MAX)} characters, no control character` },
+      { what: "A choice", value: `${String(FIELD_OPTIONS_MIN)} to ${String(FIELD_OPTIONS_MAX)} options of at most ${String(FIELD_OPTION_MAX)} characters` },
+      { what: "A number", value: `a whole number from \`min\` to \`max\`, each within ${String(FIELD_NUMBER_ABS_MAX)} either way` },
     ],
   },
   {

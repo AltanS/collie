@@ -16,10 +16,12 @@ import {
   refreshMathPack,
   setWantedMathEngine,
   useMathPack,
+  useMathPackAnswered,
   type MathPackView,
 } from "@/lib/math-pack";
 import { formatDownloadSize } from "@/lib/machine-units";
 import { usePairing } from "@/lib/pairing";
+import { useRememberedAnswer, type AnswerValue } from "@/lib/remembered-shape";
 import { useOptionalRootData } from "@/lib/route-data";
 import { isReadOnly, type MathPackStatus } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
@@ -49,10 +51,33 @@ import { t, type MessageKey } from "@/lib/i18n";
 // back by itself once the pack is downloaded again: it is the person's own earlier choice, and the
 // update did not ask them to make it twice (review 2, item 8).
 //
+// CALM LOAD. The host's pack is read after the first paint, and the row under the select (the download
+// button, the status line, or Remove) used to enter then and push every card below it down. The device
+// remembers where the pack stood (lib/remembered-shape.ts: one word, never a version or a size), and until
+// the host answers the card holds that row's place with the row itself, unseen, at its real height. No
+// memory (a first visit) or a bridge with no pack draws nothing there, as before. The select needs no
+// such hold: with no answer yet it already shows the stored engine, so it does not change when the pack
+// turns out to be ready.
+//
 // ENGINE NAMES ARE PROPER NOUNS and are not translated; "Off" and the notes are phrases and go
 // through the dictionary.
 
 type Engine = Exclude<MathEngine, "off">;
+
+/** The word that stands for a status in the device's memory, or undefined for one that says nothing lasting. */
+function packWord(pack: MathPackView): AnswerValue<"settings-math-pack"> | undefined {
+  if (pack?.state === "absent" || pack?.state === "unavailable") return pack.state;
+  if (pack?.state === "ready") return pack.source === "store" ? "ready" : "bundled";
+  return undefined;
+}
+
+/** A status the row is drawn from, unseen, while the host has not answered; `null` where the row draws nothing. */
+function heldPack(word: AnswerValue<"settings-math-pack"> | undefined): MathPackStatus | null {
+  if (word === "absent") return { state: "absent" };
+  if (word === "ready") return { state: "ready", version: "", source: "store", bytes: null };
+  if (word === "unavailable") return { state: "unavailable", reason: "no-pack" };
+  return null;
+}
 
 const ENGINE_LABELS = { katex: "KaTeX", mathjax: "MathJax" } satisfies Record<Engine, string>;
 
@@ -86,6 +111,9 @@ export function MathControl() {
   useLocale();
   const engine = mathEngineOf(useDesignPrefs());
   const pack = useMathPack();
+  const answered = useMathPackAnswered();
+  const remembered = useRememberedAnswer("settings-math-pack", packWord(pack));
+  const held = pack === null && !answered ? heldPack(remembered) : null;
   const root = useOptionalRootData();
   const { refused } = usePairing();
   const canWrite = !isReadOnly(root?.device) && !refused;
@@ -191,6 +219,7 @@ export function MathControl() {
           }))}
         />
         <PackRow
+          held={held}
           pack={pack}
           canWrite={canWrite}
           busy={busy}
@@ -212,6 +241,8 @@ export function MathControl() {
 
 interface PackRowProps {
   pack: MathPackView;
+  /** The status the row stands in for, unseen, until the host answers (see the header); null for none. */
+  held?: MathPackStatus | null;
   canWrite: boolean;
   busy: boolean;
   confirmingRemove: boolean;
@@ -234,6 +265,13 @@ function PackRow(props: PackRowProps) {
   useEffect(() => {
     if (confirmingRemove) cancel.current?.focus();
   }, [confirmingRemove]);
+  if (pack === null && props.held != null) {
+    return (
+      <div data-slot="math-pack-hold" aria-hidden="true" className="invisible">
+        <PackRow {...props} pack={props.held} held={null} />
+      </div>
+    );
+  }
   if (pack === null) return null;
 
   switch (pack.state) {

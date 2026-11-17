@@ -32,6 +32,11 @@ interface CollieHomeProps {
    *  old green "Connected" strip moved onto the mark (2026-11-07). `lost` and `applying` outrank it;
    *  it outranks the bloom, a round and busy work. */
   reconnected?: boolean;
+  /** The phone started an agent and the bridge has not read its first screen yet
+   *  (`hooks/use-startup-readiness.ts`). The orbit turns at the loading pace and three beads in
+   *  four draw in the info colour, the fourth keeping the mark's own. Below `lost` and `applying`,
+   *  above the link coming back, the bloom, a round and busy work. */
+  starting?: boolean;
   /** `navigator.onLine`, read by the host (the mark never calls the hook). Only picks which icon the
    *  lost badge wears, the same two the connection strip uses so the two agree: false is the phone's
    *  own fact (WifiOff), anything else is a bridge that does not answer (CloudOff). */
@@ -146,24 +151,45 @@ export function spinRate(elapsedMs: number, totalMs = ORBIT_TURN_MS): number {
  */
 export type MarkTarget = "home" | "update-line";
 
+/**
+ * The beads of an agent that is starting, in bead order, repeated: one bead in the mark's own colour,
+ * then three in the info colour, so six of the Collie mark's eight are blue (Altan, 2026-11-10: half
+ * was not blue enough). `initial` is the contract's way to say "the mark's own colour" here: a custom property set
+ * to `initial` is the guaranteed-invalid value, so `beadFill`'s `var(--mark-bead-<i>, var(--mark-bead,
+ * own))` falls through to the bead's own fill, which is exactly what `loading` draws. It is first, so
+ * `--mark-bead` (the list's first entry) is invalid too and a bead on the blue entry is the only one
+ * that reads a colour. No contract change: the entry is plain CSS, and every mark reads it the same.
+ */
+export const STARTING_BEADS = ["initial", "var(--status-info)", "var(--status-info)", "var(--status-info)"] as const;
+
 /** What the mark shows and where its tap goes, decided together. */
 export interface MarkReading {
   state: MarkState;
   target: MarkTarget;
+  /** The bead colours the host forces over the state's own, or null for the state's. */
+  beads: readonly string[] | null;
 }
 
 /**
- * THE MARK'S ONE READING: its state and its tap, from the same inputs in one pass, so the look and
- * the tap cannot disagree. By precedence: a dead link outranks everything (dimmed, held), then the app
- * updating, then the link coming back, then any loading input, else rest. Only a state that is ABOUT
- * a place points there; the link coming back, loading and a dead link keep the ordinary tap, and the
- * mark carries no machine or crew health of its own.
+ * THE MARK'S ONE READING: its state, its beads and its tap, from the same inputs in one pass, so the
+ * look and the tap cannot disagree. By precedence: a dead link outranks everything (dimmed, held),
+ * then the app updating, then an agent starting (the loading pace, three beads in four in the info
+ * colour), then the link coming back, then any loading input, else rest. Only a state that is ABOUT
+ * a place points there; the link coming back, loading, starting and a dead link keep the ordinary
+ * tap, and the mark carries no machine or crew health of its own.
  */
-export function markReading(input: { lost: boolean; applying: boolean; reconnected: boolean; loading: boolean }): MarkReading {
-  if (input.lost) return { state: "idle", target: "home" };
-  if (input.applying) return { state: "applying", target: "update-line" };
-  if (input.reconnected) return { state: "reconnected", target: "home" };
-  return { state: input.loading ? "loading" : "rest", target: "home" };
+export function markReading(input: {
+  lost: boolean;
+  applying: boolean;
+  starting: boolean;
+  reconnected: boolean;
+  loading: boolean;
+}): MarkReading {
+  if (input.lost) return { state: "idle", target: "home", beads: null };
+  if (input.applying) return { state: "applying", target: "update-line", beads: null };
+  if (input.starting) return { state: "loading", target: "home", beads: STARTING_BEADS };
+  if (input.reconnected) return { state: "reconnected", target: "home", beads: null };
+  return { state: input.loading ? "loading" : "rest", target: "home", beads: null };
 }
 
 export function CollieHome({
@@ -172,6 +198,7 @@ export function CollieHome({
   lost = false,
   applying = false,
   reconnected = false,
+  starting = false,
   online = true,
   lastSeenAt,
   paper = "var(--band-ground)",
@@ -186,6 +213,8 @@ export function CollieHome({
   // The green turn, below both. The strip already declines to fire it while the app updates, and this
   // guard covers an update that starts inside the turn: the update colour takes over at once.
   const greets = reconnected && !lost && !applies;
+  // An agent starting, below a dead link and an update like the green turn is, and above it.
+  const starts = starting && !lost && !applies;
   const lostIcon = online ? "bridge-unreachable" : "offline";
 
   // ONE FULL ROUND OF THE ORBIT whenever the app publishes a status — a send landing, an agent
@@ -284,10 +313,10 @@ export function CollieHome({
   // Whether a STATE is turning the mark right now, read by the ramp at the round's first frame. A ref
   // and not a dependency, because the round's effect must not re-run when it changes.
   const steady = useRef(false);
-  steady.current = bloom || applies || greets;
+  steady.current = bloom || applies || starts || greets;
 
   // The handle to ramp, or null where the ramp must not run. A state already turns the mark steadily
-  // (the bloom, the app updating, the link coming back): a wheel-throw over it would read as an event
+  // (the bloom, the app updating, an agent starting, the link coming back): a wheel-throw over it would read as an event
   // that keeps happening, and the round runs on, unseen. Under reduced motion nothing turns, so there
   // is nothing to rate. In each case the round is simply the state change it always was.
   function rampTarget(): MarkHandle | null {
@@ -342,14 +371,20 @@ export function CollieHome({
     },
     [],
   );
-  const { state, target } = markReading({ lost, applying: applies, reconnected: greets, loading: bloom || round || busy });
+  const { state, target, beads } = markReading({
+    lost,
+    applying: applies,
+    starting: starts,
+    reconnected: greets,
+    loading: bloom || round || busy,
+  });
   return (
     <button
       type="button"
       onClick={() => onHome?.(target)}
       // The bloom conveys connection state visually; fold it into the button's accessible name too,
       // so screen-reader users get it (inside a pane there's no other cue).
-      aria-label={homeLabel({ trouble, lost, applying: applies, reconnected: greets, lastSeenAt })}
+      aria-label={homeLabel({ trouble, lost, applying: applies, starting: starts, reconnected: greets, lastSeenAt })}
       className={cn(
         "-mx-1 flex items-center rounded px-1 transition-opacity active:opacity-70",
         className,
@@ -384,6 +419,7 @@ export function CollieHome({
           weight="header"
           ref={markHandle}
           state={state}
+          {...(beads === null ? {} : { beads })}
           paper={paper}
           className="transition-opacity"
         />
@@ -411,19 +447,21 @@ export function CollieHome({
 
 /**
  * The button's accessible name: what the mark is showing, folded into the name, because inside a pane
- * there is no other cue for a screen reader. `lost` first, then the app updating, then the link
- * coming back, then the bloom.
+ * there is no other cue for a screen reader. `lost` first, then the app updating, then an agent
+ * starting, then the link coming back, then the bloom.
  */
 function homeLabel({
   trouble,
   lost,
   applying,
+  starting,
   reconnected,
   lastSeenAt,
 }: {
   trouble: boolean;
   lost: boolean;
   applying: boolean;
+  starting: boolean;
   reconnected: boolean;
   lastSeenAt: number | undefined;
 }): string {
@@ -434,6 +472,7 @@ function homeLabel({
       : t("nav.home.aria.lostAt", { time: savedAtLabel(lastSeenAt) });
   }
   if (applying) return t("nav.home.aria.updating");
+  if (starting) return t("newPage.starting");
   if (reconnected) return t("nav.home.aria.reconnected");
   if (trouble) return t("nav.home.aria.reconnecting");
   return t("nav.home.aria.default");

@@ -5,7 +5,7 @@ import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type MANIFEST_KEYS, typ
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import { addedDiff, codeGroup, changeCells, filesOnCards, GROUP_WIDE_GAP, groupOrder, helperNote, notesChangedNote, placesTables, shippedHelpers, shippedNotesDiff, sizeWords, type GroupRefusal, type ShippedFile } from "./card-group.ts";
-import { ACCESS_CHIPS, accessLine, bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, listWords, newInputs, newRights, ON_CHIP, placeWords, raisedAccess, rightsHead, runsAsYou, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
+import { ACCESS_CHIPS, accessLine, asksForChange, asksForLines, bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, listWords, newInputs, newRights, ON_CHIP, placeWords, raisedAccess, rightsHead, runsAsYou, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
 import { PROPOSAL_SETTINGS_LEFT, type ProposedFile } from "./propose-wire.ts";
 import type { VersionDiff } from "./version-diff.ts";
 
@@ -155,6 +155,7 @@ export const PROPOSAL_KEY_RIGHTS = {
   access: "chip",
   inputs: "reads",
   rules: "refused",
+  field: "text",
 } as const satisfies { readonly [K in (typeof MANIFEST_KEYS)[number]]: "chip" | "reads" | "refused" | "text" };
 
 /**
@@ -262,6 +263,8 @@ export function proposalCard(input: ProposalCardInput): ProposalCardResult {
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It ${alsoWords}.` : "It asks for no rights.";
   const head = [...runsAsYou(manifest), ...accessLine(manifest.access), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...settingsLines(input.settingsLeft)];
+  // Contract 3: what the trick will ask the person for, its fields by label.
+  head.push(...asksForLines(manifest));
   const words = authorWords(manifest);
   const author: ViewNode[] = words.length > 0 ? [{ kind: "group", attrs: { label: PROPOSAL_AUTHOR_WORDS }, kids: words }] : [];
   const helpers = input.helpers ?? new Map<string, ShippedFile>();
@@ -341,6 +344,8 @@ export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCa
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It now also ${alsoWords}.` : "It asks for no new rights.";
   const head = [...runsAsYou(input.manifest), ...accessLine(raisedAccess(input.baseManifest, input.manifest)), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...settingsLines(input.settingsLeft)];
+  // Contract 3: a new or changed field is named, as on the runner's own version card.
+  head.push(...asksForChange(input.baseManifest, input.manifest));
   const shown = fitView(head, input.diff);
   if (!shown.headFits) return TOO_LARGE_FACTS;
   const total = input.diff.files.length;

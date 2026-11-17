@@ -33,9 +33,21 @@
 // `CLOSED_KEY_LINE`): a part with `sessions` is refused alone there, never drawn in every session, and a
 // part at `menu` is left out with its note, as at any place it does not draw. A contract 1 trick gets
 // neither: `menu` stays a later word in its `places`, and a part of it with `sessions` is refused alone.
+//
+// Contract 3 (2026-11-17) adds the manifest table list `[[field]]`: the settings a person keeps for a trick,
+// set from the phone, and handed to the program in its facts as `values`. A NEW
+// NUMBER, not an addition inside 2: contract 2 has shipped (v1.29.0-edge.1), and a contract 2 build reads
+// `trick.toml` strictly, so it would refuse a `field` key as a typo, a confusing line. At contract 3 it says
+// "This trick needs a newer Collie" instead. Everything of contract 2 holds at 3 unchanged (the closed part
+// read included); a contract 2 trick that lists `[[field]]` is refused with `FIELDS_NEED_CONTRACT`.
+//
+// Contract 3 also takes the manifest key `access` (M105 spec 04, 2026-11-17): how much of Collie's local API
+// the trick reads through the helper's `t.api`. Inside 3, not a number of its own, by the rule above: no
+// build that speaks 3 has shipped, and a shipped contract 2 build would refuse `access` as a typo, as it
+// would `field`. A trick that names `access` at contract 1 or 2 is refused with `ACCESS_NEEDS_CONTRACT`.
 
 /** The newest trick contract this Collie speaks. */
-export const TRICK_CONTRACT = 2;
+export const TRICK_CONTRACT = 3;
 
 /** The contract of a `trick.toml` that names none, and the one `collie trick init` writes. */
 export const TRICK_CONTRACT_DEFAULT = 1;
@@ -48,3 +60,9 @@ export const AGENT_VIEW_CONTRACT = 2;
 
 /** The first contract that takes the place `menu` and the part key `sessions`. */
 export const MENU_CONTRACT = 2;
+
+/** The first contract that takes the manifest table list `[[field]]` (the settings a person keeps for a trick). */
+export const FIELDS_CONTRACT = 3;
+
+/** The first contract that takes the manifest key `access` (how much of Collie's local API a trick reads). */
+export const ACCESS_CONTRACT = 3;

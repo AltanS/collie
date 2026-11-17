@@ -2637,7 +2637,7 @@ describe("the menu place and bound parts (contract 2)", () => {
 // environment. With no socket it gets no `api`, and its row says so once.
 describe("access and the local API in the facts", () => {
   const SOCKET = "/home/dev/.local/state/collie/api/sock";
-  const accessManifest = (access: string): string => `${MANIFEST}access = ${JSON.stringify(access)}\n`;
+  const accessManifest = (access: string): string => `${MANIFEST}contract = 3\naccess = ${JSON.stringify(access)}\n`;
 
   test("access = see with the socket standing: the facts carry the path and the level, the environment carries nothing", async () => {
     const r = await rig([exited(belt("x"))], { localApi: () => SOCKET });

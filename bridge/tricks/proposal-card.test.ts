@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { ACCESS_LINES, MANIFEST_KEYS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
+import { ACCESS_LINES, MANIFEST_KEYS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { addedDiff } from "./card-group.ts";
 import { PROPOSAL_KEY_RIGHTS, PROPOSAL_TOO_LARGE, proposalCard, proposalVersionCard, type ProposerFacts } from "./proposal-card.ts";
-import { DECIDES_REPLY_CHIP, RUNS_AS_YOU, runsAsYou } from "./version-card.ts";
+import { asksForSentence, DECIDES_REPLY_CHIP, RUNS_AS_YOU, runsAsYou } from "./version-card.ts";
 
 // EVERY RIGHT HAS A LINE ON THE CARD (the first full trick run, 2026-11-16, decision 1). A trick with
 // `decides = "reply"` once got "It asks for no rights." This walks every key the table calls a right and
@@ -117,6 +117,23 @@ describe("access on the proposal cards", () => {
     const read = cardOf({ ...BARE, access: "read" });
     expect(read.view?.[1]).toEqual({ kind: "para", text: ACCESS_LINES.read });
     expect(JSON.stringify(cardOf(BARE).view)).not.toContain("It sees your machines");
+  });
+
+  test("with settings too: the honest line, then the level's line, then the settings line, on both cards", () => {
+    const fields: NonNullable<TrickManifest["fields"]> = [{ key: "repo", kind: "text", label: "Repository" }];
+    const asks = asksForSentence(fields);
+    const order = (view: readonly ViewNode[] | undefined): number[] => {
+      const texts = (view ?? []).map((node) => ("text" in node ? node.text : undefined));
+      return [RUNS_AS_YOU, ACCESS_LINES.see, asks].map((text) => texts.indexOf(text));
+    };
+    const fresh = order(cardOf({ ...BARE, contract: 3, access: "see", fields }).view);
+    expect(fresh[0]).toBe(0);
+    expect(fresh[1]).toBe(1);
+    expect(fresh[2]).toBeGreaterThan(fresh[1] ?? 0);
+    const raised = order(versionOf({ ...BARE, contract: 3 }, { ...BARE, contract: 3, access: "see", fields }).view);
+    expect(raised[0]).toBe(0);
+    expect(raised[1]).toBe(1);
+    expect(raised[2]).toBeGreaterThan(raised[1] ?? 0);
   });
 
   test("a version that raises the level shows the line and the right; one that keeps or lowers it does not", () => {
