@@ -6,7 +6,7 @@
 > The protocol says "part"; text a person reads says "plugin".
 
 The inside wire is the one local protocol between an **inside part** (a small piece that runs inside an
-agent program through the vendor's own extension point: a Claude Code mod, a pi extension) and the
+agent program through the vendor's own extension point; today the only part is the Claude Code mod) and the
 Collie bridge on the same machine. The bridge listens; the part dials. It is HTTP/1.1 with JSON bodies
 over a Unix socket. The parser is `wire.ts`, the socket `server.ts`, the binding `registry.ts` and
 `place.ts`, the command queue `queue.ts`, and `hub.ts` joins them for the rest of the bridge.

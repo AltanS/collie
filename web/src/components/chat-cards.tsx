@@ -56,7 +56,7 @@ import type { ChatItem, ChatToolCall, ChatToolStatus } from "@/lib/chat-items";
 import { useChatLook, type ChatLook } from "@/lib/chat-look";
 import { findFilePaths } from "@/lib/file-paths";
 import type { PendingState } from "@/lib/durable-pending";
-import { clockTimeOf } from "@/lib/format";
+import { clockTime, clockTimeOf } from "@/lib/format";
 import { t, tn, type PluralKey } from "@/lib/i18n";
 import { useViewTurnText } from "@/lib/agent-view/store";
 import { useScope } from "@/lib/session";
@@ -567,11 +567,11 @@ function ViewUserTurn({ text, ts }: { text: string; ts?: string }) {
  * on a ground of its own hue and had only its edge left to separate it. Two colours, two jobs: the
  * blue is "this is literal", the orange is "this is yours".
  */
-export function UserTurn({ text, ts, pending, notInLog = false, clamp = false }: { text: string; ts?: string; pending?: PendingState; notInLog?: boolean; clamp?: boolean }) {
+export function UserTurn({ text, ts, pending, pendingAt, notInLog = false, clamp = false }: { text: string; ts?: string; pending?: PendingState; pendingAt?: number; notInLog?: boolean; clamp?: boolean }) {
   const look = useChatLook().userTurn;
   const time = ts && pending === undefined ? clockTimeOf(ts) : "";
   if (look === "time-end" || look === "hug") {
-    return <BareUserTurn text={text} time={time} pending={pending} notInLog={notInLog} hug={look === "hug"} clamp={clamp} />;
+    return <BareUserTurn text={text} time={time} pending={pending} pendingAt={pendingAt} notInLog={notInLog} hug={look === "hug"} clamp={clamp} />;
   }
   // Chat look B3 (lib/chat-look.ts): the well on the neutral ground, the orange left on the icon alone.
   const neutral = look === "neutral";
@@ -659,6 +659,7 @@ function BareUserTurn({
   text,
   time,
   pending,
+  pendingAt,
   notInLog,
   hug,
   clamp,
@@ -666,6 +667,8 @@ function BareUserTurn({
   text: string;
   time: string;
   pending?: PendingState;
+  /** When the person tapped Send: the clock takes the width the time will take, so the turn that replaces it keeps its lines (M104). */
+  pendingAt?: number;
   notInLog: boolean;
   hug: boolean;
   /** At most four lines, the agent view's request block's (components/agent-view-screen.tsx). */
@@ -696,7 +699,19 @@ function BareUserTurn({
             )}
             {pending !== undefined && (
               <span className="flex items-center gap-1 opacity-80">
-                <Icon name="queued" className="size-3" aria-hidden="true" />
+                {(pending === "sending" || pending === "sent") && pendingAt !== undefined ? (
+                  // One cell, as wide as the time that comes in its place, the clock at its right: unseen width only.
+                  <span className="grid">
+                    <span aria-hidden="true" className="invisible col-start-1 row-start-1">
+                      {clockTime(pendingAt)}
+                    </span>
+                    <span className="col-start-1 row-start-1 flex items-center justify-end">
+                      <Icon name="queued" className="size-3" aria-hidden="true" />
+                    </span>
+                  </span>
+                ) : (
+                  <Icon name="queued" className="size-3" aria-hidden="true" />
+                )}
                 {pending === "sending" || pending === "sent" ? (
                   <span className="sr-only">{t("durable.pending.sending")}</span>
                 ) : (
@@ -712,9 +727,9 @@ function BareUserTurn({
 }
 
 /** The person's own line, put in the thread when they sent it and not yet written back by the program (lib/durable-pending.ts). */
-export function PendingTurn({ text, state }: { text: string; state: PendingState }) {
+export function PendingTurn({ text, state, at }: { text: string; state: PendingState; at?: number }) {
   useLocale();
-  return <UserTurn text={text} pending={state} />;
+  return <UserTurn text={text} pending={state} pendingAt={at} />;
 }
 
 /**

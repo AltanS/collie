@@ -50,6 +50,7 @@ import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import { WalkyAimStrip, WalkyHeldStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
 import { WalkyIcon } from "@/components/walky-icon";
 import { slideOut, useFlip } from "@/hooks/use-flip";
+import { addPending, dropPending, handOverPending, setPendingState } from "@/lib/durable-pending";
 import { ExpandedEditor } from "@/components/composer-expanded";
 import { useVisibleHeight } from "@/hooks/use-visible-height";
 import { DRAFT_LINE_HEIGHT, draftCapPx, pastDraftCap } from "@/lib/draft-cap";
@@ -234,6 +235,25 @@ export interface ViewSendResult {
 /** The last send from this composer, for Send again. A sign-in code names no text: it is never kept. */
 type LastSend = { readonly secret: false; readonly value: string; readonly isDraft: boolean } | { readonly secret: true };
 const SECRET_SEND: LastSend = { secret: true };
+
+/**
+ * A sent text the box let go of at the tap (M104): what the box held (text and chips) and whose box it was. It goes
+ * back into that box on any end that is not a success, or waits beside the notice (`heldBack`) when the box holds a
+ * new text by then. `intent` is the request id a lost answer left, so a text put back sends again under that id.
+ */
+interface SentBack {
+  readonly draft: string;
+  readonly chips: readonly ComposerAttachment[];
+  readonly pane: string;
+  readonly scope: Scope | undefined;
+  readonly line: string;
+  readonly intent?: IntentId;
+}
+
+/** A box send in flight (M104): its text, and its line in Chat (`row`), which a pane with no thread does not get. */
+interface CalmSend extends SentBack {
+  readonly row: { readonly key: string; readonly id: string } | null;
+}
 
 interface ComposerProps {
   paneId: string;
@@ -1131,6 +1151,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // A sign-in code is never kept (the M102 review, A): its entry names no text, and its Send again is
   // "Enter it again", the code field opened empty.
   const lastSendRef = useRef<LastSend | null>(null);
+  // ── ONE MOVE AT THE TAP (M104) ──────────────────────────────────────────────
+  // A send of the box lets go of the box at the tap: the box empties and takes its closed shape in that frame with no
+  // animation, and the person's line stands in Chat at once (lib/durable-pending.ts, the line a durable pane draws).
+  // The text is held here until the send has an end. A success leaves it in Chat. Any other end takes the line out of
+  // Chat in the frame its notice shows and puts the text back into the box when the box is still empty; when the person
+  // has typed since, it waits beside the notice with Put back, and two texts are never merged. The store of drafts keeps
+  // the sent text until the end, so a reload in between loses nothing. A sign-in code, a text typed while a sign-in
+  // field is up and a text for a prompt that does not echo never take this road: they are never held or shown.
+  const calmRef = useRef<CalmSend | null>(null);
+  const [calmHeld, setCalmHeld] = useState(false);
+  const flipInstantRef = useRef(false);
+  const [heldBack, setHeldBack] = useState<SentBack | null>(null);
+  const [heldBackFull, setHeldBackFull] = useState(false);
+  // A line the bridge held: it waits for the held row above the box and goes in the frame that row arrives.
+  const handoverRef = useRef<{ readonly key: string; readonly id: string; readonly requestId: string } | null>(null);
   // Set when a code send ended `unknown`: the code may have gone, so the code field empties (`sendSecret`).
   const secretSpentRef = useRef(false);
   // The request of a code send whose answer was lost (the M102 review 2, D): the next tap on the same code asks with
@@ -1631,6 +1666,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   useHoldReload(
     `composer:${paneId}`,
     hasDraft ||
+      calmHeld ||
+      heldBack !== null ||
       clearedDraft !== null ||
       direct.active ||
       direct.value !== "" ||
@@ -1743,6 +1780,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // row, so an empty queue leaves nothing in the slot.
   // A WalkyTalky message's row is left out (`drawnHeldRows`): its mark and the Messages sheet carry it.
   const drawnHeld = heldRows === undefined ? undefined : drawnHeldRows(heldRows);
+  // A line the bridge held leaves Chat in the frame its held row arrives above the box (M104), before the paint.
+  useLayoutEffect(() => {
+    const handover = handoverRef.current;
+    if (handover === null || heldRows === undefined || !heldRows.some((row) => row.requestId === handover.requestId)) return;
+    handoverRef.current = null;
+    dropPending(handover.key, [handover.id]);
+  }, [heldRows]);
   const heldCard =
     drawnHeld !== undefined && drawnHeld.length > 0 ? (
       <HeldCard
@@ -2009,7 +2053,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // Phone-owned input, cleared once the reply is on its way. Via updateInput, so the stored
     // draft goes with it (an empty value removes the key).
     // The chips go with the text: their paths were in the line that just went out.
-    if (isDraft) clearSentDraft(sent);
+    // A box that let go of the text at the tap (M104) holds only what was typed since: nothing of it goes.
+    if (isDraft && calmRef.current === null) clearSentDraft(sent);
     // Remember what/when we sent, so the next few polls recognise this text echoing on the "❯"
     // line as our own in-flight reply rather than a stranded draft (suppressEcho above).
     if (note !== "held") lastSentRef.current = { text: t, at: Date.now() };
@@ -2033,7 +2078,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // in the place "Sent" stands, never as a refusal.
     // A steer (M69) has two more words: `steered`, and `queuedInstead` when the harness queued the text
     // the person asked to steer with. A steer never leaves a plain "Sent" behind that says neither.
-    setStatus(translate(STATUS_KEY[note]), "success");
+    // Beside the session's name and time in the header, never in their place (M104).
+    setStatus(translate(STATUS_KEY[note]), "success", undefined, true);
     if (note !== "held") {
       const preview = secret ? "••••••" : t.length > 60 ? `${t.slice(0, 57)}…` : t;
       setLastSent(preview);
@@ -2259,6 +2305,91 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     return { sent, ...viewAnswerRef.current };
   };
 
+  /** This composer shows the box of `back`'s pane now. */
+  function boxOf(back: SentBack): boolean {
+    return draftPaneRef.current.paneId === back.pane && scopeKey(draftPaneRef.current.scope) === scopeKey(back.scope);
+  }
+  /** The box holds nothing: no text, no chip. */
+  function boxEmpty(): boolean {
+    return inputValueRef.current.trim() === "" && attachmentsRef.current.length === 0;
+  }
+  /** Write `back` into its box, or into the stored draft of its pane when another pane is shown. The stored intent stays. */
+  function writeBack(back: SentBack): void {
+    if (boxOf(back)) {
+      // Not through updateInput: its intent check would drop the request id a lost answer left with this very text.
+      inputValueRef.current = back.draft;
+      attachmentsRef.current = [...back.chips];
+      setInput(back.draft);
+      setAttachments(attachmentsRef.current);
+      persistDraft();
+    } else {
+      const next = back.chips.reduce((n, chip) => Math.max(n, chip.n + 1), 1);
+      saveDraft(back.scope, back.pane, back.draft, back.chips, next);
+    }
+    if (back.intent !== undefined) saveIntent(back.scope, back.pane, back.intent, back.line);
+  }
+  /** Whether `back`'s box (shown, or stored for another pane) is free for it. */
+  function roomFor(back: SentBack): boolean {
+    if (boxOf(back)) return boxEmpty();
+    const stored = loadDraftEntry(back.scope, back.pane);
+    return stored === null || (stored.text.trim() === "" && stored.attachments.length === 0);
+  }
+  /** The tap of a box send that may go (M104): the box lets go, and the line stands in Chat. */
+  function startCalm(sent: ComposerDraftNow, t: string, mode: SendMode, seen: ReadonlySet<string>, at: number): CalmSend {
+    const row = !isShell && mode === "send" ? { key: paneScopeKey(scope, paneId), id: `calm-${mintRequestId()}` } : null;
+    if (row !== null) addPending(row.key, { requestId: row.id, text: t, at, state: "sending", seen });
+    const calm: CalmSend = { draft: sent.text, chips: sent.chips, pane: paneId, scope, line: t, row };
+    calmRef.current = calm;
+    setCalmHeld(true);
+    flipInstantRef.current = true;
+    inputValueRef.current = "";
+    attachmentsRef.current = [];
+    setInput("");
+    setAttachments([]);
+    return calm;
+  }
+  /**
+   * The end of a box send that let go of the box (M104). `sent`: the line stays in Chat until the log has it.
+   * `handover`: the bridge held or queued it, and the line waits for that row. `failed`: every other end; the line
+   * goes now, in the frame the notice shows, and the text goes back (`writeBack`) or waits beside the notice.
+   */
+  function settleCalm(calm: CalmSend, end: "sent" | "handover" | "failed", requestId: string | null, intent?: IntentId): void {
+    if (calmRef.current === calm) {
+      calmRef.current = null;
+      setCalmHeld(false);
+    }
+    if (end === "failed") {
+      if (calm.row !== null) dropPending(calm.row.key, [calm.row.id]);
+      const back: SentBack = intent === undefined ? calm : { ...calm, intent };
+      if (roomFor(back)) writeBack(back);
+      else {
+        setHeldBack(back);
+        setHeldBackFull(false);
+      }
+      return;
+    }
+    if (calm.row !== null && end === "sent") setPendingState(calm.row.key, calm.row.id, "sent");
+    if (calm.row !== null && end === "handover") {
+      handOverPending(calm.row.key, calm.row.id);
+      if (requestId !== null) handoverRef.current = { key: calm.row.key, id: calm.row.id, requestId };
+    }
+    // The chips went out with the line: their previews go, and the stored draft is the box as it is now.
+    for (const chip of calm.chips) if (!attachmentsRef.current.includes(chip)) revokePreview(chip);
+    if (boxOf(calm)) persistDraft();
+  }
+  /** Put back, beside the notice: the kept text goes into its box once that box is empty. Never merged, never over a text. */
+  function putBack(): void {
+    const back = heldBack;
+    if (back === null) return;
+    if (!roomFor(back)) {
+      setHeldBackFull(true);
+      return;
+    }
+    setHeldBack(null);
+    setHeldBackFull(false);
+    writeBack(back);
+  }
+
   // One Send Protocol request (lib/reply-action.ts). The id is kept for a retry of the same intent
   // (mode, rows hash, text) until an answer arrives, so a lost answer never sends twice; an answer
   // ends the intent, and every offer it makes is a new one with a new id. Resolves true only on
@@ -2293,6 +2424,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     endUndoWindow();
     // The operator has just acted on this pane, so the poller should watch it land, from the tap on.
     stampSend(paneId);
+    // The box send that let go of the box at the tap (M104), and how it ended: `failed` unless an answer says otherwise.
+    let calm: CalmSend | null = null;
+    let calmEnd: "sent" | "handover" | "failed" = "failed";
+    let calmRequest: string | null = null;
+    let calmIntent: IntentId | undefined;
     try {
       // A text for a sign-in field says so (`secret`): the bridge writes no `line` of it, only its hash and length.
       // Only the code field's own send is one, so a text from anywhere else is never typed into that field.
@@ -2300,8 +2436,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const where = paneScopeKey(scope, paneId);
       const secretHeld = secret && secretIntentRef.current?.where === where ? secretIntentRef.current.intent : null;
       const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: secret ? secretHeld : loadIntent(scope, paneId), secret, override };
+      // The box lets go here, after the stored intent of this text was read for the request (M104).
+      if (isDraft && !secret && resend === undefined && view === undefined && t.trim() !== "" && composeLine(draftAtSend, sentFrom.chips, isShell).trim() === t.trim() && !secretDraftRef.current && noEchoRef.current === null) {
+        calm = startCalm(sentFrom, t, mode, seenUserUuids, sentAt);
+      }
       const res = await sendText(view === undefined ? base : { ...base, view });
       if (res.status === "noAnswer") {
+        calmIntent = res.intent;
         // No answer: the id stays, so the next tap on the same text asks for the same request. A sign-in code's
         // intent is never stored: it stays in memory, bound to the field's text until that changes (the M102 review 2, D).
         if (secret) secretIntentRef.current = { where, intent: res.intent };
@@ -2347,7 +2488,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (reading.note !== "unknown" && t !== "") forgetUnknownSend(scope, paneId, t, isShell);
       if (reading.clear) {
         setProtocolOffer(null);
-        afterVerifiedSend(resend?.shown ?? shown ?? t, isDraft, verifiedNote(reading.note, when), sentFrom);
+        const note = verifiedNote(reading.note, when);
+        calmEnd = note === "held" || note === "queued" || note === "queuedInstead" ? "handover" : "sent";
+        calmRequest = res.requestId;
+        afterVerifiedSend(resend?.shown ?? shown ?? t, isDraft, note, sentFrom);
         return true;
       }
       // Text the bridge typed and left in the box (`typed_not_submitted`) is this send's own, not a draft
@@ -2402,6 +2546,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // A discard the bridge took clears nothing of the draft, but the request went through: a held row's Discard dismisses on it.
       return reading.note === "discarded";
     } finally {
+      if (calm !== null) settleCalm(calm, calmEnd, calmRequest, calmIntent);
       setSending(false);
     }
   }
@@ -3543,13 +3688,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     onSendClick();
   }
 
+  // The kept text of this pane's last send that did not land, while the box holds a new one (M104).
+  const heldBackHere = heldBack !== null && heldBack.pane === paneId && scopeKey(heldBack.scope) === scopeKey(scope) ? heldBack : null;
+
   // The change of shape is played (hooks/use-flip.ts): the box's height, with every row held still,
   // and a button that appears slides in sideways from its own edge, never from above (Altan,
   // 2026-11-07). The key changes with the shape and with the set of buttons, never per keystroke. The
   // field layout has one shape, so there only the entrances play: Send taking the microphone's place
   // and the small microphone beside it.
   const flipKey = `${boxOpen ? "open" : "rest"}:${micIsPrimary ? "mic" : "send"}:${draftMicShown ? "draft-mic" : ""}:${expandShown ? "expand" : ""}`;
-  useFlip(boxRef, flipKey, { enabled: true, grows: box });
+  // A box that let go of a sent text at the tap takes its closed shape at once (M104): `instant` plays nothing for it.
+  useFlip(boxRef, flipKey, { enabled: true, grows: box, instant: flipInstantRef });
 
   // Attach's tap and its picker's two rows, drawn by the box and by the fullscreen editor's row alike:
   // one behaviour in two places, never two.
@@ -4159,6 +4308,33 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ) : undefined
               }
             />
+          )}
+        </Collapse>
+        {/* A SENT TEXT THAT COULD NOT GO BACK INTO THE BOX (M104): the send did not land and the person had typed a new
+            text meanwhile. The text waits here, never merged into the new one; Put back writes it into the box once
+            that box is empty, and says so when it is not. Under the notice that says what became of the send. */}
+        <Collapse open={heldBackHere !== null}>
+          {heldBackHere !== null && (
+            <Notice
+              tone="neutral"
+              variant="box"
+              className="mb-2"
+              icon={<Icon name="undo" />}
+              action={
+                <Button type="button" variant="outline" size="sm" data-slot="composer-put-back" className="h-6" onClick={putBack}>
+                  {translate("composer.heldBack.putBack")}
+                </Button>
+              }
+            >
+              <span data-slot="composer-held-back" className="line-clamp-2 whitespace-pre-wrap break-words">
+                {translate("composer.heldBack.kept", { text: heldBackHere.draft })}
+              </span>
+              {heldBackFull && (
+                <span data-slot="composer-held-back-full" role="status" className="text-muted-foreground">
+                  {translate("composer.heldBack.boxFull")}
+                </span>
+              )}
+            </Notice>
           )}
         </Collapse>
         {/* Why a destructive line waits for a second tap: said here, beside the "Really send?" word, and

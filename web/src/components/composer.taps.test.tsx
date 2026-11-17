@@ -506,6 +506,8 @@ describe("composer taps: the belt X while a send runs (fix 11)", () => {
     const release = holdSends();
     mount();
     await startSend(user);
+    // The box let go of the sent text at the tap (M104): the X a tap can meet is over words typed since.
+    await user.type(field(), "a new line");
     const clear = screen.getByRole("button", { name: "Clear message" });
     expect(clear).toHaveAttribute("aria-disabled", "true");
     await expectTapAnswers(() => user.click(clear));

@@ -252,7 +252,7 @@ describe("harness verbs for the data path (M99 spec 09)", () => {
     expect(filePartPath(r.deps.ctx, "opencode")).toBe(join(r.home, ".config", "opencode", "plugin", "collie-inside.js"));
     const none = lab();
     expect(cmdHarnessLink(none.deps, "pi")).toBe(EXIT.FAIL);
-    expect(none.io.stderr.join("\n")).toContain("no plugin for pi yet");
+    expect(none.io.stderr.join("\n")).toContain("no plugin for pi");
   });
 
   claudeTest("update: harness sync rewrites an older linked part with this build's", () => {

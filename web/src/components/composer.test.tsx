@@ -4263,7 +4263,7 @@ describe("Composer — the belt's clear control (M40 spec 04, #291)", () => {
   });
 
   describe("when the X is inert, and when it is not", () => {
-    it("is inert while a send is in flight: aria-disabled, and a tap clears nothing", async () => {
+    it("has nothing to clear while a send is in flight: the box let go at the tap and the X slot is held unseen (M104)", async () => {
       const user = userEvent.setup();
       let release: () => void = () => {};
       const held = new Promise<void>((resolve) => {
@@ -4280,11 +4280,12 @@ describe("Composer — the belt's clear control (M40 spec 04, #291)", () => {
       fireEvent.change(field(), { target: { value: "looks good" } });
       await user.click(screen.getByRole("button", { name: "Send" }));
 
-      const x = xButton()!;
-      await waitFor(() => expect(x).toHaveAttribute("aria-disabled", "true"));
-      await user.click(x);
-      expect(field()).toHaveValue("looks good");
+      // The box is empty from the tap on, so no X is offered and no Undo can bring the sent text back twice.
+      await waitFor(() => expect(field()).toHaveValue(""));
+      expect(xButton()).not.toBeInTheDocument();
       expect(undoButton()).not.toBeInTheDocument();
+      // The X's slot keeps its width, unseen and out of reach, so nothing on the belt slides.
+      expect(document.querySelector("[data-belt-clear-slot='held']")).not.toBeNull();
 
       release();
       await waitFor(() => expect(props.onSent).toHaveBeenCalled());

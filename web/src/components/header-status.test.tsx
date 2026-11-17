@@ -25,6 +25,24 @@ describe("HeaderStatus — swaps the title for a live status, in place", () => {
     expect(screen.getByText("webapp › main")).toBeInTheDocument();
   });
 
+  it("keeps the title and shows a status published `beside` next to it, announced, for its time (M104)", () => {
+    render(
+      <HeaderStatus>
+        <span>webapp › main</span>
+      </HeaderStatus>,
+    );
+    act(() => setStatus("Sent", "success", undefined, true));
+    expect(screen.getByText("webapp › main")).toBeInTheDocument();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Sent");
+    expect(status).toHaveAttribute("aria-live", "polite");
+    // It lies over the line's free room: no box of its own in the flow, so the header keeps its height.
+    expect(status).toHaveClass("absolute");
+    act(() => vi.advanceTimersByTime(2600));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByText("webapp › main")).toBeInTheDocument();
+  });
+
   it("replaces the title with the status text, announced, while one is live", () => {
     render(
       <HeaderStatus>

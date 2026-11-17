@@ -11,8 +11,8 @@ import { clearStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 import { Composer } from "./composer";
 
-// M100 spec 02, items 1 and 6: a send that lands clears the box only while the box still holds what went
-// out (words typed while it was on its way stay, with the chips the person added since), and the
+// M100 spec 02, items 1 and 6, as M104 left them: a send of the box empties the box at the tap, so words typed
+// while it was on its way are a new text and stay as typed, with the chips the person added since; and the
 // destructive confirm is armed on the line that goes, so an edited line asks again.
 
 beforeAll(() => {
@@ -71,7 +71,7 @@ describe("a send that lands keeps the words typed while it was on its way (M100 
     expect(loadDraft(undefined, "w1:p1") ?? "").toBe("");
   });
 
-  it("keeps only the words typed after the sent text, and stores them as the draft, not as an empty one", async () => {
+  it("keeps the words typed after the tap as typed, and stores them as the draft, not as an empty one", async () => {
     const user = userEvent.setup();
     const held = gate();
     const posted: string[] = [];
@@ -87,21 +87,22 @@ describe("a send that lands keeps the words typed while it was on its way (M100 
     await user.type(field(), "first message");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(posted).toEqual(["first message"]));
-    await user.type(field(), " and the next one");
+    // The box let go of the sent text at the tap (M104).
+    expect(field().value).toBe("");
+    await user.type(field(), "and the next one");
     held.open();
     await screen.findByText("You sent:");
     expect(field().value).toBe("and the next one");
     expect(loadDraft(undefined, "w1:p1")).toBe("and the next one");
   });
 
-  // The field is changed while the send is on its way, the way typing or a mic transcript appended after the sent text does.
+  // The field is changed while the send is on its way, the way typing or a mic transcript does. The box let go of the
+  // sent text at the tap (M104), so whatever it holds now is new, and nothing of it goes, also the same words again.
   it.each([
-    ["A B", "B", "typed after it"],
-    ["A\nB", "B", "after a newline"],
-    ["A\n\nB", "B", "after a blank line"],
-    ["A transcript of the mic", "transcript of the mic", "a transcript appended"],
-    ["xA", "xA", "edited inside the sent text: everything stays"],
-    ["A", "", "unchanged: the box goes"],
+    ["A B", "A B", "a new text that starts like the sent one"],
+    ["B", "B", "typed after the tap"],
+    ["transcript of the mic", "transcript of the mic", "a transcript"],
+    ["A", "A", "the same words again: a new message, never cleared"],
   ])("the box %j after a send of A keeps %j (%s)", async (typed, kept) => {
     const user = userEvent.setup();
     const held = gate();
@@ -118,6 +119,7 @@ describe("a send that lands keeps the words typed while it was on its way (M100 
     await user.type(field(), "A");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(posted).toEqual(["A"]));
+    expect(field().value).toBe("");
     fireEvent.change(field(), { target: { value: typed } });
     held.open();
     await screen.findByText("You sent:");
@@ -140,11 +142,13 @@ describe("a send that lands keeps the words typed while it was on its way (M100 
     fireEvent.change(screen.getByTestId("attach-photos"), { target: { files: [new File(["a"], "a.png", { type: "image/png" })] } });
     await waitFor(() => expect(loadDraftEntry(undefined, "w1:p1")?.attachments).toHaveLength(1));
     await user.click(screen.getByRole("button", { name: "Send" }));
+    // The box let go of the sent chip at the tap (M104): the new chip is the box's only one, stored as such.
     fireEvent.change(screen.getByTestId("attach-photos"), { target: { files: [new File(["b"], "b.png", { type: "image/png" })] } });
-    await waitFor(() => expect(loadDraftEntry(undefined, "w1:p1")?.attachments).toHaveLength(2));
+    await waitFor(() => expect(loadDraftEntry(undefined, "w1:p1")?.attachments.map((a) => a.path)).toEqual(["/tmp/shot-2.png"]));
     held.open();
-    await waitFor(() => expect(loadDraftEntry(undefined, "w1:p1")?.attachments).toHaveLength(1));
+    await screen.findByText("You sent:");
     const left = loadDraftEntry(undefined, "w1:p1");
+    expect(left?.attachments).toHaveLength(1);
     expect(left?.attachments[0]?.path).toBe("/tmp/shot-2.png");
     // The sent chip's marker is gone from the text; the new chip's marker stays with its chip.
     expect(left?.text).toContain("#2");

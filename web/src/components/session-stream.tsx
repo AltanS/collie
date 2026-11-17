@@ -16,7 +16,7 @@ import { ASKS_SHOWN, asksAt, shownAsks } from "@/lib/ask";
 import { finished, itemsOf, type ChatItem } from "@/lib/chat-items";
 import { useChatLook, type ChatLook } from "@/lib/chat-look";
 import type { ChatStatus } from "@/lib/chat-window";
-import { dropPending, unmatched, usePending } from "@/lib/durable-pending";
+import { HANDOVER_KEEP_MS, dropPending, unmatched, usePending } from "@/lib/durable-pending";
 import { clockTime } from "@/lib/format";
 import { t, type MessageKey } from "@/lib/i18n";
 import { holdsMask } from "@/lib/masked-text";
@@ -62,6 +62,22 @@ import { cn } from "@/lib/utils";
  */
 const STREAM_BLOCK = "flex min-w-0 flex-col [content-visibility:auto] [contain-intrinsic-size:auto_64px] -m-3 p-3";
 
+/**
+ * A block near the tail (M104): the same box with no `content-visibility`, so a row that arrives there is drawn once,
+ * at its own height, and never first at the 64px placeholder and one frame later at its size. It keeps the intrinsic
+ * size's `auto`, which records the drawn height, so a block that later moves far up and turns `content-visibility:
+ * auto` keeps that height while it is skipped.
+ */
+const NEAR_BLOCK = "flex min-w-0 flex-col [contain-intrinsic-size:auto_64px] -m-3 p-3";
+
+/** How many blocks at the tail are {@link NEAR_BLOCK}s: more than a phone screen holds of new rows. */
+const NEAR_TAIL_BLOCKS = 8;
+
+/** The box of the block at `index` of `count`: skipped while off screen only far above the tail. */
+function blockBox(index: number, count: number): string {
+  return index < count - NEAR_TAIL_BLOCKS ? STREAM_BLOCK : NEAR_BLOCK;
+}
+
 /** A group that is the person's own turn. */
 function isUserGroup(group: readonly ChatItem[] | undefined): boolean {
   return group !== undefined && group.length === 1 && group[0]!.kind === "user";
@@ -77,12 +93,16 @@ function isUserGroup(group: readonly ChatItem[] | undefined): boolean {
  */
 function rhythmClass(rhythm: ChatLook["rhythm"], blocks: readonly (readonly ChatItem[])[], index: number): string {
   if (rhythm === "today" || index === 0) return "";
-  if (isUserGroup(blocks[index])) {
-    return rhythm === "rule"
-      ? "relative mt-3 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-rule"
-      : "mt-2";
-  }
+  if (isUserGroup(blocks[index])) return userRhythm(rhythm, index);
   return isUserGroup(blocks[index - 1]) ? "" : "-mt-4";
+}
+
+/** The margin of a user turn at `index`, so a pending line stands where the person's turn will stand (M104). */
+function userRhythm(rhythm: ChatLook["rhythm"], index: number): string {
+  if (rhythm === "today" || index === 0) return "";
+  return rhythm === "rule"
+    ? "relative mt-3 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-rule"
+    : "mt-2";
 }
 
 /**
@@ -390,6 +410,8 @@ const PIN_SEEK_PAGES = 10;
 const JUMP_SETTLE_MS = [100, 250, 500] as const;
 /** The reader's own moves, on the scroller's parent, which end a jump or a walk to a prompt. */
 const JUMP_STOP_INPUTS = ["pointerdown", "click", "wheel", "touchstart", "keydown"] as const;
+/** The reader's own moves on the list that end the room a working row left behind (M104). */
+const ROOM_DROP_INPUTS = ["pointerdown", "wheel", "touchstart"] as const;
 
 /**
  * The topmost block the reader can see, or -1 while the stream's top edge is on screen.
@@ -662,10 +684,26 @@ export function SessionStream({
   // THE PERSON'S OWN LINES THE PROGRAM HAS NOT WRITTEN BACK YET (lib/durable-pending.ts). Only a durable pane's composer
   // puts any, so every other pane has none and draws nothing here. A line goes when an item of the program's matches it.
   const pending = usePending(address);
-  const { open: lines, done: answered } = useMemo(
-    () => unmatched(pending, window.entries, Date.now()),
-    [pending, window.entries],
+  // The texts the queue cards show: a line the bridge queued goes in the frame its card arrives (M104).
+  const queuedTexts = useMemo(
+    () => (window.status.kind === "live" ? [...window.queued, ...window.queuedSends.map((row) => row.text)] : []),
+    [window.status.kind, window.queued, window.queuedSends],
   );
+  // A line handed over goes at the latest after HANDOVER_KEEP_MS, also when no answer comes in between.
+  const [handoverTick, setHandoverTick] = useState(0);
+  const { open: lines, done: answered } = useMemo(
+    () => {
+      void handoverTick;
+      return unmatched(pending, window.entries, Date.now(), queuedTexts);
+    },
+    [pending, window.entries, queuedTexts, handoverTick],
+  );
+  const handoverAt = lines.find((line) => line.handover === true)?.at;
+  useEffect(() => {
+    if (handoverAt === undefined) return;
+    const timer = setTimeout(() => setHandoverTick((n) => n + 1), Math.max(0, handoverAt + HANDOVER_KEEP_MS - Date.now()) + 50);
+    return () => clearTimeout(timer);
+  }, [handoverAt]);
   const answeredKey = answered.join("\n");
   useEffect(() => {
     if (answeredKey !== "") dropPending(address, answeredKey.split("\n"));
@@ -904,6 +942,50 @@ export function SessionStream({
   // what the stream draws is the thread, and the thread may be running or empty.
   const reading = status.kind === "live" || (starting && (status.kind === "empty" || missing));
 
+  // ── ONE MOVE AT THE TAP (M104) ──────────────────────────────────────────────
+  // A line the composer of a pane with a screen put here (`seen`) is drawn only where the thread is read: a pane whose
+  // journal cannot be read has no thread to put it in. Under it, from the same frame, the working row's room: empty
+  // until the pane works, then "Still working" in the same box, so neither the line's arrival from the log nor the
+  // turn's start moves the tail. The room stays until the answer has landed and the turn has ended.
+  const drawnLines = lines.filter((line) => line.seen === undefined || reading);
+  const composerLines = drawnLines.filter((line) => line.seen !== undefined && line.handover !== true).length;
+  const [roomHeld, setRoomHeld] = useState(false);
+  if (composerLines > 0 && !roomHeld) setRoomHeld(true);
+  if (roomHeld && composerLines === 0 && !working && newest?.kind !== "user") setRoomHeld(false);
+  const liveShown = staticRow && reading;
+  const roomShown = !liveShown && roomHeld && !durable && reading && !questionPending;
+  const slotOn = liveShown || roomShown;
+  // WHEN THE ROW GOES, THE TAIL DOES NOT DROP: its height joins the list's one tail room (`holdRoom`) until the next
+  // row arrives or the reader moves the list.
+  const slotRef = useRef<HTMLDivElement>(null);
+  const slotPx = useRef(0);
+  const wasSlotOn = useRef(slotOn);
+  const [linger, setLinger] = useState<{ px: number; blocks: number; lines: number } | null>(null);
+  if (linger !== null && (slotOn || blocks.length !== linger.blocks || drawnLines.length > linger.lines)) setLinger(null);
+  useLayoutEffect(() => {
+    const was = wasSlotOn.current;
+    wasSlotOn.current = slotOn;
+    const el = slotRef.current;
+    if (slotOn && el !== null) {
+      slotPx.current = el.offsetHeight + (Number.parseFloat(getComputedStyle(el).marginTop) || 0);
+      return;
+    }
+    if (!was || slotOn || slotPx.current <= 0) return;
+    const scroller = listRef.current?.getScrollElement();
+    const pad = scroller ? Number.parseFloat(getComputedStyle(scroller).paddingBottom) || 0 : 0;
+    setLinger({ px: slotPx.current + pad, blocks: blocks.length, lines: drawnLines.length });
+  }, [slotOn, blocks.length, drawnLines.length, listRef]);
+  const lingering = linger !== null;
+  useEffect(() => {
+    const area = listRef.current?.getScrollElement()?.parentElement;
+    if (!lingering || area === null || area === undefined) return;
+    const drop = () => setLinger(null);
+    for (const type of ROOM_DROP_INPUTS) area.addEventListener(type, drop, { passive: true });
+    return () => {
+      for (const type of ROOM_DROP_INPUTS) area.removeEventListener(type, drop);
+    };
+  }, [lingering, listRef]);
+
   return (
     <ChatMessageList
       ref={listRef}
@@ -920,6 +1002,7 @@ export function SessionStream({
       // older turns is an ordinary act in this body and a rare one in that one.
       className={look.gutter === "16" ? "px-4 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]" : "px-3 pt-0 pb-[max(0.75rem,var(--tail-room,0px))]"}
       clearBottom={clearBottom}
+      holdRoom={linger?.px ?? 0}
       style={textTokens(fontSize)}
       // The pin sits beside the scrollport, so it takes the gutter and the chat font size from here. Only the
       // hugging look does: the look before it keeps the overlay as it was.
@@ -974,7 +1057,7 @@ export function SessionStream({
             item={pinnable ? item : null}
             pinned={item !== null && pins?.pinned.has(item.id) === true}
             onActions={pinnable ? pins?.onActions : undefined}
-            className={rhythm === "" ? STREAM_BLOCK : `${STREAM_BLOCK} ${rhythm}`}
+            className={rhythm === "" ? blockBox(index, blocks.length) : `${blockBox(index, blocks.length)} ${rhythm}`}
           >
             {opensRun && <AgentHead agent={agent} ts={first.ts} />}
             {drawn ? <ItemView item={group[0]!} /> : <ToolGroup items={group} liveOpens={showToolCalls} />}
@@ -1009,9 +1092,9 @@ export function SessionStream({
 
       {/* THE LINES THE PERSON SENT THAT THE PROGRAM HAS NOT WRITTEN BACK (durable panes only), after the program's own
           items and before the working row. Each is replaced in place by the program's item (lib/durable-pending.ts). */}
-      {lines.map((line) => (
-        <div key={line.requestId} data-slot="stream-pending" className={STREAM_BLOCK}>
-          <PendingTurn text={line.text} state={line.state} />
+      {drawnLines.map((line, i) => (
+        <div key={line.requestId} data-slot="stream-pending" className={cn(NEAR_BLOCK, userRhythm(look.rhythm, blocks.length + i))}>
+          <PendingTurn text={line.text} state={line.state} at={line.at} />
         </div>
       ))}
 
@@ -1021,15 +1104,22 @@ export function SessionStream({
       {/* A turn is running. Last of the thread, because that is where its answer will arrive. Drawn
           only where the window is actually being read: a pane whose journal cannot be read is busy
           in the chrome, and saying so HERE would promise a turn this body will never show. */}
-      {staticRow && reading && (
-        <div data-slot="stream-live" className={LIVE_ROW}>
+      {liveShown ? (
+        <div ref={slotRef} data-slot="stream-live" className={LIVE_ROW}>
           {/* The same mark a running step wears inside a card (`chat-cards.tsx` § StepStatus), so
               "still going" looks the same wherever the stream says it. UNNAMED: it leads the word,
               and a name here is the state announced twice (status-badge.tsx § label). */}
           <StatusDot status="working" live className="size-2.5" />
           <span>{t("chat.stream.working")}</span>
         </div>
-      )}
+      ) : roomShown ? (
+        // The working row's room before the pane works (M104): the same box and the same contents, unseen and unread,
+        // so the row that comes in its place moves nothing. It never says "Still working" before the agent works.
+        <div ref={slotRef} data-slot="stream-live-room" aria-hidden className={cn(LIVE_ROW, "invisible")}>
+          <StatusDot status="working" className="size-2.5" />
+          <span>{t("chat.stream.working")}</span>
+        </div>
+      ) : null}
 
       {/* A question waits in the terminal and no card answers it (OmO's banner). One line, the
           needs-you mark and the words, no control: the banner prints no keys a card could send, and
@@ -1080,7 +1170,7 @@ export function SessionStream({
           was wrong for one frame. A NEW pane is the exception, because there nothing was expected:
           Codex has no session before its first prompt, and pi writes no log before its first reply.
           A running turn says so on the row above instead, so the two never stand together. */}
-      {empty && explain === null && reading && !working && lines.length === 0 && (
+      {empty && explain === null && reading && !working && drawnLines.length === 0 && (
         <div className="py-16 text-center text-sm text-muted-foreground">{t("chat.stream.empty")}</div>
       )}
     </ChatMessageList>
