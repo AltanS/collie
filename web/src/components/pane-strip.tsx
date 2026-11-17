@@ -80,7 +80,8 @@ export function PaneStrip({
   // pills stay plain tap-to-switch — long-press is inert.
   const actionsEnabled = !!onRenamed && !!onClosed;
   const scrollerRef = useRef<HTMLDivElement>(null);
-  useRevealActive(scrollerRef, currentPaneId);
+  // The pane screen remounts for every pane it opens: the memory key keeps this row where it stood.
+  useRevealActive(scrollerRef, currentPaneId, `panes:${panes[0]?.host ?? ""}:${panes[0]?.workspaceId ?? ""}:${panes[0]?.tabId ?? ""}`);
 
   if (panes.length < 2) return null;
 

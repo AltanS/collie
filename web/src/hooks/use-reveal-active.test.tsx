@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 
 import { useRevealActive } from "./use-reveal-active";
 
@@ -18,7 +18,8 @@ function Harness({
   scrollerRect,
   activeRect,
   clientWidth,
-  scrollLeft = 0,
+  scrollLeft,
+  memoryKey,
   scrollToSpy,
 }: {
   activeKey: string;
@@ -26,6 +27,7 @@ function Harness({
   activeRect: Rect;
   clientWidth: number;
   scrollLeft?: number;
+  memoryKey?: string;
   scrollToSpy: (opts: { left: number; behavior?: ScrollBehavior }) => void;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -34,7 +36,7 @@ function Harness({
     const scroller = scrollerRef.current;
     if (!scroller) return;
     Object.defineProperty(scroller, "clientWidth", { value: clientWidth, configurable: true });
-    scroller.scrollLeft = scrollLeft;
+    if (scrollLeft !== undefined) scroller.scrollLeft = scrollLeft;
     scroller.getBoundingClientRect = (): DOMRect => ({
       ...scrollerRect,
       top: 0,
@@ -64,7 +66,7 @@ function Harness({
     }
   });
 
-  useRevealActive(scrollerRef, activeKey);
+  useRevealActive(scrollerRef, activeKey, memoryKey);
 
   return (
     <div ref={scrollerRef}>
@@ -181,6 +183,72 @@ describe("useRevealActive", () => {
       />,
     );
     expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: "auto" }));
+  });
+
+  it("scrolls an active element that is off the LEFT edge to that edge", () => {
+    const scrollTo = vi.fn();
+    render(
+      <Harness
+        activeKey="a"
+        scrollerRect={SCROLLER}
+        activeRect={{ left: -90, right: 10 }}
+        clientWidth={346}
+        scrollLeft={300}
+        scrollToSpy={scrollTo}
+      />,
+    );
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    // nearest: scrollLeft(300) + (activeRect.left - scrollerRect.left) - margin
+    expect(scrollTo.mock.calls[0]![0].left).toBeCloseTo(300 + -90 - 12);
+  });
+
+  it("never moves an item that is fully visible, even one flush with the edge", () => {
+    const scrollTo = vi.fn();
+    render(
+      <Harness
+        activeKey="a"
+        scrollerRect={SCROLLER}
+        activeRect={{ left: 250, right: SCROLLER.right }}
+        clientWidth={346}
+        scrollToSpy={scrollTo}
+      />,
+    );
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("a tap on an item does not scroll the strip, even when the item is partly out of view", () => {
+    const scrollTo = vi.fn();
+    const props = { scrollerRect: SCROLLER, clientWidth: 346, scrollToSpy: scrollTo };
+    const { container, rerender } = render(<Harness activeKey="a" activeRect={VISIBLE} {...props} />);
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    // The operator taps "b", which sits half under the right edge; the selection then moves to it.
+    fireEvent.click(container.querySelectorAll("button")[1]!);
+    rerender(<Harness activeKey="b" activeRect={{ left: 300, right: 400 }} {...props} />);
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    // The tap's claim is spent: a later change made elsewhere is scrolled in again.
+    rerender(<Harness activeKey="a" activeRect={HIDDEN_RIGHT} {...props} />);
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+  });
+
+  it("a remounted strip gets its scroll position back and a tap leaves it there", () => {
+    const scrollTo = vi.fn();
+    const props = { scrollerRect: SCROLLER, clientWidth: 346, scrollToSpy: scrollTo, memoryKey: "test-strip" };
+    const first = render(<Harness activeKey="a" activeRect={VISIBLE} scrollLeft={240} {...props} />);
+    // SAFETY: the Harness renders one <div> scroller as its root, so the first child is that element.
+    const before = first.container.firstElementChild as HTMLElement;
+    before.scrollLeft = 240;
+    fireEvent.scroll(before);
+    fireEvent.click(first.container.querySelectorAll("button")[1]!);
+    first.unmount();
+
+    // The new scroller starts at 0 (a fresh DOM node) and the tapped item is partly out of view.
+    const second = render(<Harness activeKey="b" activeRect={{ left: 300, right: 400 }} {...props} />);
+    // SAFETY: same root <div> scroller as above.
+    const after = second.container.firstElementChild as HTMLElement;
+    expect(after.scrollLeft).toBe(240);
+    expect(scrollTo).not.toHaveBeenCalled();
   });
 
   it("does nothing when the scroller has no layout (clientWidth 0, unstubbed jsdom)", () => {
