@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { apiErrorStatus, fetchAccounts } from "@/lib/api";
 import { savedAtLabel, timeAgo } from "@/lib/format";
-import { t } from "@/lib/i18n";
+import { t, tn } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
 
 // ACCOUNTS (M101): a second login for an agent, kept as a folder the agent already understands. The
@@ -61,6 +61,8 @@ export interface AccountRow {
   live: boolean;
   /** How many agent panes of this account run now, a sign-in session left out. Absent: none, or an older bridge. */
   running?: number;
+  /** Ids of the panes on this machine that run in this row's folder, a sign-in session left out. Absent: none, or an older bridge. */
+  panes?: string[];
   /** Shared only: entries that should be links and are not. */
   unlinked?: string[];
   /** Only where the adapter can tell. */
@@ -215,6 +217,24 @@ export function signedInText(identity: AccountIdentity): string | null {
   return plan === undefined || plan === "" ? null : plan;
 }
 
+/**
+ * The first OTHER profile of the same agent that is signed in with the same email, else undefined. The
+ * emails compare in any letter case. A row that is not signed in, or whose agent named no email, has none.
+ */
+export function sameLoginAs(rows: readonly AccountRow[], row: AccountRow): AccountRow | undefined {
+  const email = row.identity?.signedIn === true ? row.identity.email?.toLowerCase() : undefined;
+  if (email === undefined) return undefined;
+  return rows.find(
+    (other) => other.id !== row.id && other.harness === row.harness && other.identity?.signedIn === true && other.identity.email?.toLowerCase() === email,
+  );
+}
+
+/** "Same login as Work.", naming the first other profile that shares the login; null when none does. */
+export function sameLoginLine(rows: readonly AccountRow[], row: AccountRow): string | null {
+  const other = sameLoginAs(rows, row);
+  return other === undefined ? null : t("accounts.sameLogin", { name: accountName(other) });
+}
+
 // ── Windows ───────────────────────────────────────────────────────────────────────────────────────
 
 /** The app's own word for a window key it knows by name and that carries no label of its own, else null. */
@@ -258,6 +278,16 @@ export function seenLine(row: AccountRow, now: number = Date.now()): string | nu
   if (row.live) return t("accounts.seen.live");
   if (row.seenAt === null) return null;
   return t("accounts.seen.ago", { when: timeAgo(row.seenAt, now) });
+}
+
+/**
+ * The list row's first foot word: how many sessions run in the profile ("2 sessions"), else
+ * {@link seenLine}. A profile that is live with no counted session (only a sign-in session runs) keeps
+ * "In use now", as one the bridge does not count for.
+ */
+export function listSeenLine(row: AccountRow, now: number = Date.now()): string | null {
+  if (row.running !== undefined && row.running > 0) return tn("accounts.sessions", row.running);
+  return seenLine(row, now);
 }
 
 // ── Add ───────────────────────────────────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import { AgentIcon } from "@/components/agent-icon";
 import { SettingsPage } from "@/components/settings-page";
 import { BottomBar } from "@/components/ui/bottom-bar";
 import { Button } from "@/components/ui/button";
+import { ListGroup, LIST_ROW_CORNERS } from "@/components/ui/list-group";
 import { Notice } from "@/components/ui/notice";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
@@ -15,18 +16,23 @@ import {
   cameFromSession,
   flowOf,
   forgetFlow,
+  hasOtherProfiles,
   loginChanged,
   reachOf,
+  reachedSessions,
   rememberFlow,
   resultOf,
   type ChangeLoginFlow,
   type ChangeLoginResult,
   type Reach,
+  type ReachedSession,
 } from "@/lib/change-login";
 import { t, tn } from "@/lib/i18n";
 import type { JsonValue } from "@/lib/json";
 import { accountPath, panePath, readFrom } from "@/lib/nav";
+import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
+import { cn } from "@/lib/utils";
 import { mintRequestId } from "@/lib/worktree-name";
 
 import { SignedInRow } from "./settings-accounts";
@@ -70,6 +76,8 @@ export function SettingsChangeLoginRoute() {
   const location = useLocation();
   const accounts = useAccounts();
   const { start } = useSpaceActions();
+  // The names of the sessions come from the snapshot the app already reads (the root route's data).
+  const root = useOptionalRootData();
   const body = accounts.body;
   const row = body?.accounts.find((a) => a.id === id);
   const harness = body?.harnesses.find((h) => h.id === row?.harness);
@@ -213,10 +221,21 @@ export function SettingsChangeLoginRoute() {
         </BottomBar>
       }
     >
-      <ChangeLoginBeforeView row={row} harness={harness} agentLabel={harnessLabel(body, row.harness)} error={startError} />
+      <ChangeLoginBeforeView
+        row={row}
+        harness={harness}
+        agentLabel={harnessLabel(body, row.harness)}
+        others={hasOtherProfiles(body?.accounts ?? [], row)}
+        sessions={root === undefined ? [] : reachedSessions(row, root)}
+        onOpenSession={(paneId) => nav.down(panePath(paneId))}
+        error={startError}
+      />
     </SettingsPage>
   );
 }
+
+const NO_SESSIONS: readonly ReachedSession[] = [];
+const NO_OPEN = (): void => {};
 
 /** The account's icon, name and agent, as the account's page draws them. */
 function AccountLine({ row, agentLabel }: { row: AccountRow; agentLabel: string }) {
@@ -235,16 +254,49 @@ function Hint({ text }: { text: string }) {
   return <p className="text-xs leading-5 text-muted-foreground">{text}</p>;
 }
 
-/** What happens to the sessions that run: they follow (with their count when some run), or only new ones. */
-function ReachLines({ reach }: { reach: Reach }) {
-  if (reach.kind === "newOnly") return <p className="text-sm">{t("accounts.changeLogin.newOnly")}</p>;
+/**
+ * What happens to the sessions that run: they follow (with their count when some run), or only new ones.
+ * For an agent whose sessions follow, under the count: one row per session that runs in the profile, and
+ * the line for the sessions Collie does not list. An agent whose sessions do not follow lists none.
+ */
+function ReachLines({ reach, sessions, onOpenSession }: { reach: Reach; sessions: readonly ReachedSession[]; onOpenSession: (paneId: string) => void }) {
+  const follows = reach.kind === "running";
   return (
-    <div className="flex flex-col gap-0.5">
-      <p className="text-sm">{t("accounts.changeLogin.reach")}</p>
-      {reach.count > 0 && (
-        <Hint text={tn("accounts.changeLogin.running", reach.count)} />
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-0.5">
+        <p className="text-sm">{follows ? t("accounts.changeLogin.reach") : t("accounts.changeLogin.newOnly")}</p>
+        {follows && reach.count > 0 && <Hint text={tn("accounts.changeLogin.running", reach.count)} />}
+      </div>
+      {follows && sessions.length > 0 && (
+        <>
+          <SessionList sessions={sessions} onOpen={onOpenSession} />
+          <Hint text={t("accounts.changeLogin.outside")} />
+        </>
       )}
     </div>
+  );
+}
+
+/** The sessions of the profile: name on line 1, the space under it, a tap goes to the session. */
+function SessionList({ sessions, onOpen }: { sessions: readonly ReachedSession[]; onOpen: (paneId: string) => void }) {
+  return (
+    <ListGroup as="ul" className="divide-y divide-border">
+      {sessions.map((session) => (
+        <li key={session.paneId}>
+          <button
+            type="button"
+            onClick={() => onOpen(session.paneId)}
+            className={cn(
+              "flex min-h-11 w-full min-w-0 flex-col justify-center px-3.5 py-2 text-left active:bg-muted/60 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
+              LIST_ROW_CORNERS,
+            )}
+          >
+            <span className="truncate text-sm font-medium">{session.name}</span>
+            <span className="truncate text-[11px] leading-4 text-muted-foreground">{session.space}</span>
+          </button>
+        </li>
+      ))}
+    </ListGroup>
   );
 }
 
@@ -252,13 +304,36 @@ function ReachLines({ reach }: { reach: Reach }) {
  * Screen 1, before the start: who is signed in now and what happens to the sessions that run. The
  * button is the page's foot. Exported for the design reference (playground/sections/accounts.tsx).
  */
-export function ChangeLoginBeforeView({ row, harness, agentLabel, error = null }: { row: AccountRow; harness: AccountHarness | undefined; agentLabel: string; error?: string | null }) {
+export function ChangeLoginBeforeView({
+  row,
+  harness,
+  agentLabel,
+  others = false,
+  sessions = NO_SESSIONS,
+  onOpenSession = NO_OPEN,
+  error = null,
+}: {
+  row: AccountRow;
+  harness: AccountHarness | undefined;
+  agentLabel: string;
+  /** Another profile of this agent exists ({@link hasOtherProfiles}), so the page says they keep their login. */
+  others?: boolean;
+  /** The sessions that run in the profile ({@link reachedSessions}); none draws no list. */
+  sessions?: readonly ReachedSession[];
+  onOpenSession?: (paneId: string) => void;
+  error?: string | null;
+}) {
   useLocale();
   return (
     <div className="flex flex-col gap-4" data-slot="change-login-before">
       <AccountLine row={row} agentLabel={agentLabel} />
       <SignedInRow identity={row.identity} />
-      <ReachLines reach={reachOf(harness, row)} />
+      {/* The page's first sentence, under who is signed in: what this page changes. */}
+      <p className="text-sm" data-slot="change-login-what">
+        {t("accounts.changeLogin.what")}
+      </p>
+      <ReachLines reach={reachOf(harness, row)} sessions={sessions} onOpenSession={onOpenSession} />
+      {others && <Hint text={t("accounts.changeLogin.othersKeep")} />}
       <Hint text={t("accounts.changeLogin.oldStays")} />
       {error !== null && (
         <Notice tone="danger" variant="box" announce="alert">

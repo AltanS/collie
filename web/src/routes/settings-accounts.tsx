@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router";
 
 import { Bars, Foot } from "@/components/accounts-meter";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { CopyableBlock } from "@/components/ui/copyable-block";
 import { Fab } from "@/components/ui/fab";
+import { FoldPanel, MoreToggle } from "@/components/ui/fold-toggle";
 import { ListGroup } from "@/components/ui/list-group";
 import { Notice } from "@/components/ui/notice";
 import { Segmented } from "@/components/ui/segmented";
@@ -27,6 +28,7 @@ import {
   nameFromFolder,
   newFolderFor,
   rememberStartError,
+  sameLoginLine,
   seenLine,
   signedInText,
   startLineFor,
@@ -76,6 +78,37 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/**
+ * The page's first words: one line, and a More that opens the rest in place. Closed on every visit,
+ * nothing of it stored. The toggle takes the line's left edge back (`-ml-3`) so its words, not its
+ * padding, sit on the page's gutter. `startOpen` is for the design reference's open card only.
+ * Exported for the design reference (playground/sections/accounts.tsx).
+ */
+export function IntroLines({ startOpen = false }: { startOpen?: boolean }) {
+  useLocale();
+  const [open, setOpen] = useState(startOpen);
+  const id = useId();
+  return (
+    <div className="flex flex-col" data-slot="accounts-intro">
+      <Hint>{t("accounts.intro")}</Hint>
+      <div>
+        <MoreToggle
+          open={open}
+          onToggle={() => setOpen((was) => !was)}
+          controls={id}
+          data-slot="accounts-intro-toggle"
+          className="-ml-3"
+          more={t("accounts.intro.moreToggle")}
+          less={t("accounts.intro.lessToggle")}
+        />
+      </div>
+      <FoldPanel id={id} open={open}>
+        <Hint>{t("accounts.intro.more")}</Hint>
+      </FoldPanel>
+    </div>
+  );
+}
+
 /** What a page says while it has no list: nothing, a machine without accounts, or a failed read. */
 function Unavailable({ status }: { status: "loading" | "ready" | "unavailable" | "failed" }) {
   if (status === "unavailable") {
@@ -110,7 +143,7 @@ export function SettingsAccountsRoute() {
 
   return (
     <SettingsPage title="accounts.title" onScroll={(e) => setCollapsed(e.currentTarget.scrollTop > 24)}>
-      <Hint>{t("accounts.intro")}</Hint>
+      <IntroLines />
       <Unavailable status={accounts.status} />
       {body !== null && (
         // The last row clears the floating button.
@@ -124,7 +157,7 @@ export function SettingsAccountsRoute() {
               <ListGroup as="ul" className="divide-y divide-border">
                 {group.rows.map((row) => (
                   <li key={row.id}>
-                    <AccountListRow row={row} onOpen={() => nav.down(accountPath(row.id, scope))} />
+                    <AccountListRow row={row} sameLogin={sameLoginLine(body.accounts, row)} onOpen={() => nav.down(accountPath(row.id, scope))} />
                   </li>
                 ))}
               </ListGroup>
@@ -159,7 +192,7 @@ export function SettingsAccountsRoute() {
  * One account in the list: its name, who is signed in on the line under it, its windows and its foot.
  * Exported for the design reference (playground/sections/accounts.tsx), which mounts this row as it ships.
  */
-export function AccountListRow({ row, onOpen }: { row: AccountRow; onOpen: () => void }) {
+export function AccountListRow({ row, sameLogin = null, onOpen }: { row: AccountRow; /** "Same login as Work.", when another profile of the agent shares the login. */ sameLogin?: string | null; onOpen: () => void }) {
   useLocale();
   return (
     <button
@@ -170,6 +203,7 @@ export function AccountListRow({ row, onOpen }: { row: AccountRow; onOpen: () =>
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate font-medium">{accountName(row)}</span>
         <IdentityLine identity={row.identity} />
+        {sameLogin !== null && <span className="text-xs text-muted-foreground">{sameLogin}</span>}
       </span>
       <Bars windows={row.windows} />
       <Foot row={row} />
@@ -189,7 +223,7 @@ function IdentityLine({ identity }: { identity: AccountIdentity | undefined }) {
  * The details row: "Signed in as" with the full email and the plan, or "Not signed in". Unknown draws
  * nothing. Exported for the design reference, as {@link AccountListRow} is.
  */
-export function SignedInRow({ identity }: { identity: AccountIdentity | undefined }) {
+export function SignedInRow({ identity, sameLogin = null }: { identity: AccountIdentity | undefined; /** "Same login as Work.", under the address. */ sameLogin?: string | null }) {
   useLocale();
   if (identity === undefined) return null;
   if (!identity.signedIn) return <p className="text-sm text-muted-foreground">{t("accounts.identity.notSignedIn")}</p>;
@@ -199,6 +233,7 @@ export function SignedInRow({ identity }: { identity: AccountIdentity | undefine
     <div className="flex flex-col gap-1">
       <p className="text-xs font-medium text-muted-foreground">{t("accounts.identity.signedInAs")}</p>
       <p className="break-all text-sm">{text}</p>
+      {sameLogin !== null && <Hint>{sameLogin}</Hint>}
     </div>
   );
 }
@@ -523,7 +558,7 @@ export function SettingsAccountRoute() {
           <p className="text-xs text-muted-foreground">{[harnessLabel(body, row.harness), seen].filter((x) => x !== null).join(" · ")}</p>
         </div>
       </div>
-      <SignedInRow identity={row.identity} />
+      <SignedInRow identity={row.identity} sameLogin={sameLoginLine(body?.accounts ?? [], row)} />
       <div className="flex flex-col gap-0.5">
         <p className="text-sm font-medium">{t(`accounts.kind.${row.kind}.title`)}</p>
         <Hint>{t(`accounts.kind.${row.kind}.body`)}</Hint>

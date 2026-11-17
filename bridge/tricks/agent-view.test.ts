@@ -50,8 +50,8 @@ async function folder(files: Record<string, string>): Promise<string> {
 const TOML = 'id = "morph"\nname = "Morph"\ncontract = 2\nplaces = ["agent-view"]\nrules = "rules.md"\n';
 
 describe("the contract number", () => {
-  test("the keys ride inside contract 2: this Collie speaks 2, and a contract 1 trick may not use them", () => {
-    expect(TRICK_CONTRACT).toBe(2);
+  test("the keys ride inside contract 2: this Collie speaks 2 and newer, and a contract 1 trick may not use them", () => {
+    expect(TRICK_CONTRACT).toBeGreaterThanOrEqual(2);
     expect(codes({ ...VIEW, contract: 1 })).toEqual([
       ["version", "/places/0"],
       ["version", "/rules"],

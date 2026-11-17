@@ -296,6 +296,8 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   // rules fallbacks below.
   const honest = runsAsYou(next);
   const facts = [...honest, ...plainFacts];
+  // Contract 3: a new or changed field is named, so the yes covers what the trick will ask the person for.
+  facts.push(...asksForChange(base, next));
   // Every new right and power shows, or there is no "Use" (security read 2, item 1): when the facts do not
   // fit one view, the card offers "Keep" only, its view is the honest line, and its summary sends the person
   // to the machine. The same holds for every right the head lists: environment names, places, `decides`,
@@ -498,6 +500,22 @@ export interface VersionViewShown {
 /** The view, and how many changed files it shows whole: a row in the table and its whole hunk. */
 export function versionViewShown(rights: readonly string[], warnings: readonly (keyof typeof WARN_PLAIN)[], diff: VersionDiff, reads: string | null = null): VersionViewShown {
   return fitView(rightsHead("New rights", rights, warnings, reads), diff);
+}
+
+/** The words a card names a trick's fields with (contract 3): "Asks you for: Repository, Branch." */
+export function asksForSentence(fields: NonNullable<TrickManifest["fields"]>): string {
+  return `Asks you for: ${fields.map((field) => field.label).join(", ")}.`;
+}
+
+/** The line "Asks you for: <labels>" of a trick with `[[field]]`, as paragraphs, or none. The proposal card's line. */
+export function asksForLines(manifest: Pick<TrickManifest, "fields"> | undefined): ViewNode[] {
+  const fields = manifest?.fields ?? [];
+  return fields.length === 0 ? [] : factParas(asksForSentence(fields)).map((text): ViewNode => ({ kind: "para", text }));
+}
+
+/** The version card's line: the new version's fields, when they are new or changed against the approved copy's. */
+export function asksForChange(base: Pick<TrickManifest, "fields"> | undefined, next: Pick<TrickManifest, "fields"> | undefined): ViewNode[] {
+  return JSON.stringify(base?.fields ?? []) === JSON.stringify(next?.fields ?? []) ? [] : asksForLines(next);
 }
 
 /**

@@ -17,11 +17,11 @@ with no DOM and no `@/` alias.
 Everything a trick and Collie exchange has one version number, the trick contract, `TRICK_CONTRACT`
 in `contract.ts`. The bridge (through `schema.ts`), the CLI and the helper's tests read it there; the
 helper (`cli/trick-kit/trick.ts`, a file a trick folder copies) carries the same literal as
-`CONTRACT`, held to it by a test. This Collie speaks contracts 1 and 2. A trick that names none is a
+`CONTRACT`, held to it by a test. This Collie speaks contracts 1 to 3. A trick that names none is a
 contract 1 trick (`TRICK_CONTRACT_DEFAULT`), and `collie trick init` writes `contract = 1`.
 
 **The manifest**, `trick.toml`: `id`, `name`, `run`, `every`, `icon`, `places`, `env`, `contract`,
-`inputs` (contract 2), `decides` (see "Decisions"), `watch` and `on` (a trick that reacts: bridge/tricks/triggers.ts, watch.ts; both are rights), the later `mode = "serve"`, and two texts for a person, `description` (one
+`inputs` (contract 2), `field` (contract 3, see "Settings a person keeps"), `decides` (see "Decisions"), `watch` and `on` (a trick that reacts: bridge/tricks/triggers.ts, watch.ts; both are rights), the later `mode = "serve"`, and two texts for a person, `description` (one
 line, at most 140 characters, shown under the name in Settings → Tricks) and `about` (at most 1200
 characters, paragraphs split by a blank line, shown in the trick's About sheet). Both are plain text, with
 no markdown, HTML or link drawn, and both are allowed in contract 1 and 2. An optional `version` (1 to 24
@@ -31,8 +31,8 @@ stay out of `powersOf` and are part of the code hash like any manifest change. A
 with a control or direction character, refuses the manifest like a long `name`; `collie trick check` gives
 a soft note when `about` is missing. `contract` is the number the trick is
 written for, a whole number, 1 when left out. A trick that names a higher number than this Collie knows
-is refused with one line, "This trick needs a newer Collie: it is written for trick contract 3, and
-this Collie knows contract 2. Update Collie to run it.", and nothing else is checked. At the same number an unknown key is
+is refused with one line, "This trick needs a newer Collie: it is written for trick contract 4, and
+this Collie knows contract 3. Update Collie to run it.", and nothing else is checked. At the same number an unknown key is
 refused, so a typo shows. A place word this Collie does not know is left out with a `later` note.
 
 **The facts**, one JSON document on stdin: `contract`, `trigger` (`start`, `timer`, or `tap` with
@@ -155,6 +155,25 @@ a node kind, a place, an attribute. A change a trick must answer is contract 2: 
 renamed or made required, a meaning changed, a cap made smaller. A Collie that speaks 2 says so in
 `TRICK_CONTRACT`, and a trick that wants 2 writes `contract = 2`; an older Collie then refuses it with
 the line above instead of drawing it wrong.
+
+**Contract 3** (2026-11-17) adds `[[field]]`, the settings a person keeps for a trick ("Settings a person
+keeps" below). Contract 2 had shipped, so a key an older Collie refuses with a list of unknown keys moved to
+the next number: a contract 2 Collie refuses a trick with fields by its number, in the one line above.
+
+**Settings a person keeps** (contract 3). `[[field]]`, at most 12 (`FIELDS_MAX`, limits.ts): `key` spelled as
+a trick id, `kind` (`text`, `choice`, `switch`, `number`), `label` (at most 40 characters), an optional `hint`
+(120), `default` and `required` (not on a switch). A `choice` has 2 to 8 `options` of at most 40 characters;
+a `number` has `min` and `max`, whole steps. A text value is one line of at most 200 characters with no
+control or invisible character. A field is text, not a power: it stays out of `powersOf`, and like any
+manifest change it moves the code hash, so a new or changed field asks again; proposal-card.ts and
+version-card.ts say "Asks you for: <labels>". The values live in `<state>/tricks/<id>/.collie/values.json`
+(bridge/tricks/values.ts), mode 0600, written whole; a file that does not read reads as empty and the row
+says `valuesUnread`. They reach the program only in its facts as `values` (each field's value or default),
+never on a command line, in the environment, in a log line, a Hill card or a push. One write route,
+`POST /api/tricks/<host>/<id>/value` at the write level, with a request id and a receipt; the phone is the only writer (no terminal verb
+in this version). A changed value asks nothing and runs
+the trick once. In a crew the values live on the lead: a member refuses the write (`not-here`), and the
+deputy carry skips the dot folder. A required field with no value puts `needsSetup` on the row.
 
 **Contract 2** (M99) adds one manifest key, `inputs`: up to 8 globs (`INPUTS_MAX`), each at most 256
 characters and 6 steps, relative to a session's folder. `*` matches inside one step and never a
@@ -1113,6 +1132,7 @@ trick rows by whole groups in trick id order. The agent view switches live in th
 | ------------ | ------------------------------------ | ------------------------------------- |
 | a phone      | read the parts (`GET /api/tricks`)   | a device key with `read`              |
 | a phone      | read a picture of a trick's `media/` | a device key with `read`              |
+| a phone      | read a trick's code in the About sheet | a device key with `read`            |
 | a phone      | tap an intent, answer a decision     | a device key with `write`             |
 | a phone      | switch a trick on or off             | a device key with `write`             |
 | the trick    | redraw its parts, post a decision    | its own run, from the bridge          |
@@ -1134,6 +1154,24 @@ hill's checks (`readPostedImage`): the trick folder's real path, no symlink anyw
 regular file of at most 2 MB, opened without following a link, and PNG, JPEG or WebP by its first
 bytes, never its name. Every miss is the same 404, and the answer carries `no-store` and a sandboxed
 CSP. Until the bytes arrive, and when they fail, the box keeps its size and says its `alt`.
+
+## Reading the code
+
+The About sheet of every trick, also one that is on, has one fold for each code file, "Read the code". The
+phone asks `GET /api/tricks/<memberId>/<id>/code` for the index (each file's name, its size and how many lines
+the text search flags) when the sheet opens, and `GET .../code?file=<name>` for one file when its fold opens
+(`bridge/tricks/code-view.ts`, `web/src/lib/tricks/code-wire.ts`). Both are reads for a device key with
+`read`, and there is no write route. The code is the APPROVED copy's bytes while a copy runs, never the
+working folder; a trick with no approved copy shows what a switch on would approve (the waiting snapshot, else
+the folder as it is now), and the index says which (`copy`). The bridge reads every code file once into memory,
+checks that the bytes hash to the code hash they are filed under (else `409 moved`), runs the text search over
+those same bytes, and masks each text file as a screen read is masked (`redactText` over the whole text, then
+the card's line reader: a tab as two spaces, a hidden character as `?`). A file over `CODE_VIEW_BYTES_MAX`
+shows its first part, cut at a line end, and says how many bytes are left out; a binary file sends its name and
+size only. Each line the search flagged carries the kinds it was flagged for, drawn as a word with a warning
+glyph, and the sheet says once that this is a text search and that code can hide more. The row of a trick
+carries its `run` line (masked) and `everyMs`; the sheet says the timer as the runner works: once at start,
+then `every` after the last run, only while a phone has looked in the last `WATCH_WINDOW_MS`.
 
 ## Agent views
 

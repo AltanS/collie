@@ -889,9 +889,13 @@ describe("solo zero-tax — routes", () => {
       // the hill image's checks and headers, this bridge's own host and a trick that is on only.
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/(media\\/.+)$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/auto$/",
+      // And a trick's code for the About sheet's folds (package F): a read, gated like the list, this
+      // bridge's own host only; the approved copy's bytes, masked.
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/code$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/undo$/",
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/value$/",
       // Official tricks (M94): add or update a trick on the list this release carries. A SOLO route that
       // legitimately extends this list, named here rather than exempted: write-gated like the switch,
       // this bridge's own tricks folder only, and a crew member answers `runs-on` and fetches nothing.
