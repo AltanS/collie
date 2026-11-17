@@ -66,7 +66,7 @@ describe("the flow in memory", () => {
 
   it("knows a session it came from", () => {
     expect(cameFromSession("/pane/w1%3Ap3")).toBe(true);
-    expect(cameFromSession("/pane/w1%3Ap3?h=minibuch")).toBe(true);
+    expect(cameFromSession("/pane/w1%3Ap3?h=workshop")).toBe(true);
     expect(cameFromSession("/pane/w1%3Ap3/history")).toBe(false);
     expect(cameFromSession("/settings/accounts/acc-work")).toBe(false);
     expect(cameFromSession(null)).toBe(false);
