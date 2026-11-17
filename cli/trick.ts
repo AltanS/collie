@@ -472,6 +472,9 @@ async function refusedInPane(deps: TrickDeps): Promise<boolean> {
   return await paneNotProvenShell(deps.ctx.env, deps.paneKind);
 }
 
+/** The one line `collie trick on` prints when a person switched on code the phone cannot show whole (A5). */
+export const SWITCHED_ON_NOT_WHOLE = "The phone cannot show all of this trick's code. You switched it on at this machine.";
+
 export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], on: boolean): Promise<number> {
   // Off still writes on Windows: a person can always turn a trick off.
   if (on && refuseTricksOnWindows(deps)) return EXIT.FAIL;
@@ -527,12 +530,13 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
     deps.io.out(`${id} is already on, with this code approved (sha256 ${code.hash}).`);
     return EXIT.OK;
   }
-  // A5: the terminal is held to the phone's rule. Code the phone cannot show whole and as it is (a key, a
-  // hidden character, a file over its size, a file that is not text) is not switched on here either.
+  // A5: the phone's switch refuses code it cannot show whole and as it is (a key, a hidden character, a file over
+  // its size, a file that is not text). A person at this machine may still switch it on, in a plain terminal or in a
+  // pane the bridge proves a shell: an agent's pane was refused above, and never gets here. The verb says so in one
+  // line (the lead, 2026-11-18). Any other refusal of the check (a folder that moved) still stops the verb.
   const whole = await codeShowsWhole({ dir, hash: code.hash }, id);
-  if (!whole.ok) {
+  if (!whole.ok && whole.code !== "not-whole") {
     deps.io.err(`error: ${whole.message}`);
-    if (whole.code === "not-whole") deps.io.err("error: Collie switches on only code that every person who reads it on the phone can see as it is.");
     return EXIT.FAIL;
   }
   // The copy is what is approved: its hash, and the warnings of its code, read at the moment of consent.
@@ -549,6 +553,7 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
     deps.io.out(WARNINGS_HONESTY);
   }
   deps.io.out(`${id} is on. The bridge picks it up within seconds; its timer runs while a phone watches.`);
+  if (!whole.ok) deps.io.out(SWITCHED_ON_NOT_WHOLE);
   // Its own switch is written; tricks as a whole decide whether it runs at all.
   if (!readTricksFeature(deps.ctx.stateDir).on) deps.io.out("Tricks are switched off on this machine, so it runs only after collie tricks on.");
   deps.io.out(`Approved the code of ${id} as it is now: sha256 ${approved.hash}. The bridge runs this copy; an edit of the folder waits for your yes.`);

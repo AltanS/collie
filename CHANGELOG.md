@@ -88,6 +88,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A person at the machine can switch on a trick whose code the phone cannot show whole.** `collie trick on` in a plain terminal or a pane Collie proves a shell now switches it on and prints one line saying the phone cannot show all of its code. An agent's pane is still refused, and the phone's own switch still refuses such code.
 - **A run of settings changes restarts a trick once.** The trick starts again one second after the last change, not after each one, and a change reads only that trick's folder instead of every trick's. The seen request ids stay bounded, the oldest forgotten first, and a test holds it.
 - **A trick that dials a socket of its own reads as reaching the network.** In the text search of a trick's code, `createConnection` and `Bun.connect` to any target count as the network kind. The kind for Collie's local API names only what names Collie's socket: its path, the socket in the facts, a `unix:` option or `collie api`.
 - **The yes of a card waits a whole second again when you come back to the page.** The one-second wait before a card's yes can be tapped now starts over when the page returns from the background or the window takes focus, so a card drawn behind a locked screen is not tappable at the first touch.
