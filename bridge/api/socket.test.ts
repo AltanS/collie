@@ -2,7 +2,7 @@
 // socket in its own temp folder under the system's temp dir and removes it; no TCP port is opened.
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, lstatSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, lstatSync, existsSync, readFileSync } from "node:fs";
 import { once } from "node:events";
 import { createConnection, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -12,7 +12,20 @@ import { EventBus } from "../events/bus.ts";
 import { encodeSessionId } from "../events/session-id.ts";
 import type { JsonObject } from "../json.ts";
 import { asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
-import { CONNECTIONS_MAX, IDLE_MS, REQUEST_LINE_MAX, REQUEST_LINE_MS, REQUESTS_PER_CONNECTION, WAITS_PER_CONNECTION, WAITS_TOTAL } from "./limits.ts";
+import {
+  ANSWER_MAX_BYTES,
+  BUSY_RETRY_MS,
+  CONNECTIONS_MAX,
+  IDLE_MS,
+  REQUEST_LINE_MAX,
+  REQUEST_LINE_MS,
+  REQUESTS_PER_CONNECTION,
+  SCREEN_READS_MAX,
+  WAITS_PER_CONNECTION,
+  WAITS_TOTAL,
+  WRITE_BUFFER_MAX,
+  WRITE_STALL_MS,
+} from "./limits.ts";
 import { buildTable, LOCAL_TIER_RIGHTS, type OpResult, type ReadHandlers } from "./operations.ts";
 import { ApiSocket, apiSocketPath } from "./socket.ts";
 
@@ -58,6 +71,9 @@ interface RigOptions {
   readonly lineMs?: number;
   readonly idleMs?: number;
   readonly sessions?: () => Promise<OpResult>;
+  readonly read?: ReadHandlers["read"];
+  readonly stallMs?: number;
+  readonly uid?: number;
 }
 
 function rig(opts: RigOptions = {}): Rig {
@@ -73,9 +89,11 @@ function rig(opts: RigOptions = {}): Rig {
       await briefGate.wait;
       return { ok: true, answer: { session: args.session, state: "idle" } };
     },
-    read: async () => {
-      throw new Error("a stub that fails");
-    },
+    read:
+      opts.read ??
+      (async () => {
+        throw new Error("a stub that fails");
+      }),
     accounts: async () => ({ ok: true, answer: { accounts: [] } }),
     "hill.list": async () => ({ ok: true, answer: { decisions: [] } }),
   };
@@ -88,6 +106,8 @@ function rig(opts: RigOptions = {}): Rig {
     platform: opts.platform ?? process.platform,
     lineMs: opts.lineMs ?? REQUEST_LINE_MS,
     idleMs: opts.idleMs ?? IDLE_MS,
+    stallMs: opts.stallMs ?? WRITE_STALL_MS,
+    uid: opts.uid ?? process.getuid?.() ?? 0,
   });
   sockets.push(api);
   return { path, dir: join(stateDir, "api"), bus, api, logs, briefGate };
@@ -587,6 +607,174 @@ describe("requests in flight and idle connections", () => {
       expect(await client.ask({ op: "hello" })).toMatchObject({ ok: true });
     }
     expect(client.socket.destroyed).toBe(false);
+  });
+});
+
+describe("the api folder is the user's own (security read 1, item 6)", () => {
+  test("a symlinked api folder is refused, and nothing is made through it", async () => {
+    const r = rig();
+    const elsewhere = join(r.dir, "..", "..", "elsewhere");
+    mkdirSync(elsewhere, { recursive: true, mode: 0o755 });
+    mkdirSync(join(r.dir, ".."), { recursive: true });
+    symlinkSync(elsewhere, r.dir);
+    expect(await r.api.start()).toBe(false);
+    expect(r.api.running()).toBe(false);
+    expect(readdirSync(elsewhere)).toEqual([]);
+    expect(modeOf(elsewhere)).toBe(0o755);
+    expect(lstatSync(r.dir).isSymbolicLink()).toBe(true);
+    expect(r.logs.some((line) => line.includes("is a symbolic link"))).toBe(true);
+  });
+
+  test("a file where the folder should be is refused", async () => {
+    const r = rig();
+    mkdirSync(join(r.dir, ".."), { recursive: true });
+    writeFileSync(r.dir, "not a folder");
+    expect(await r.api.start()).toBe(false);
+    expect(readFileSync(r.dir, "utf8")).toBe("not a folder");
+    expect(r.logs.some((line) => line.includes("is not a folder"))).toBe(true);
+  });
+
+  test("a folder another uid owns is refused, its mode left alone", async () => {
+    const r = rig({ uid: (process.getuid?.() ?? 0) + 1 });
+    mkdirSync(r.dir, { recursive: true, mode: 0o755 });
+    expect(await r.api.start()).toBe(false);
+    expect(existsSync(r.path)).toBe(false);
+    expect(modeOf(r.dir)).toBe(0o755);
+    expect(r.logs.some((line) => line.includes("not owned by this user"))).toBe(true);
+  });
+
+  test("an absent folder is made with mode 0700", async () => {
+    const r = rig();
+    expect(existsSync(r.dir)).toBe(false);
+    expect(await r.api.start()).toBe(true);
+    expect(lstatSync(r.dir).isDirectory()).toBe(true);
+    expect(modeOf(r.dir)).toBe(0o700);
+  });
+});
+
+/** A `read` stub whose answer is about `kib` KiB of text; counts its calls. */
+function bigRead(kib: number, calls: { n: number }): ReadHandlers["read"] {
+  const text = "x".repeat(kib * 1024);
+  return async (args) => {
+    calls.n += 1;
+    return { ok: true, answer: { session: args.session, text, lines: 1, truncated: false } };
+  };
+}
+
+describe("the write budget (security read 1, item 1)", () => {
+  test("1,000 reads never read: the bytes held stay bounded, the connection is dropped, another connection is served", async () => {
+    const calls = { n: 0 };
+    const r = rig({ read: bigRead(900, calls), stallMs: 600 });
+    await r.api.start();
+    const greedy = await Client.open(r.path);
+    // The caller never reads: its socket takes nothing in.
+    greedy.socket.pause();
+    const line = `${JSON.stringify({ op: "read", args: { session: SESSION } })}\n`;
+    greedy.sendRaw(line.repeat(1000));
+    const bound = WRITE_BUFFER_MAX + REQUESTS_PER_CONNECTION * ANSWER_MAX_BYTES;
+    let most = 0;
+    const until = Date.now() + 3000;
+    while (Date.now() < until && r.api.counts().connections > 0) {
+      most = Math.max(most, r.api.bufferedMax());
+      await Bun.sleep(20);
+    }
+    // Above the budget, then held there: no new request was taken.
+    expect(most).toBeGreaterThan(WRITE_BUFFER_MAX);
+    expect(most).toBeLessThanOrEqual(bound);
+    expect(calls.n).toBeLessThanOrEqual(REQUESTS_PER_CONNECTION);
+    // Above the budget for the stall time: dropped.
+    expect(r.api.counts().connections).toBe(0);
+    expect(r.logs.some((one) => one.includes("did not read its answers"))).toBe(true);
+    // The bridge still answers another connection.
+    const other = await Client.open(r.path);
+    expect(await other.ask({ op: "hello" })).toMatchObject({ ok: true });
+  });
+
+  test("the other connection is answered while a greedy one is paused", async () => {
+    const r = rig({ read: bigRead(900, { n: 0 }), stallMs: 60_000 });
+    await r.api.start();
+    const greedy = await Client.open(r.path);
+    greedy.socket.pause();
+    greedy.sendRaw(`${JSON.stringify({ op: "read", args: { session: SESSION } })}\n`.repeat(1000));
+    for (let i = 0; i < 100 && r.api.bufferedMax() <= WRITE_BUFFER_MAX; i += 1) await Bun.sleep(10);
+    expect(r.api.bufferedMax()).toBeGreaterThan(WRITE_BUFFER_MAX);
+    const other = await Client.open(r.path);
+    expect(await other.ask({ op: "sessions" })).toMatchObject({ ok: true });
+  });
+
+  test("a caller that reads late is served in full: the lines sent while paused wait, then each gets its answer", async () => {
+    const sessions = { n: 0 };
+    const r = rig({
+      read: bigRead(900, { n: 0 }),
+      stallMs: 60_000,
+      sessions: async () => {
+        sessions.n += 1;
+        return { ok: true, answer: { sessions: [] } };
+      },
+    });
+    await r.api.start();
+    const late = await Client.open(r.path);
+    late.socket.pause();
+    let text = "";
+    for (let i = 0; i < SCREEN_READS_MAX; i += 1) text += `${JSON.stringify({ id: `r${String(i)}`, op: "read", args: { session: SESSION } })}\n`;
+    late.sendRaw(text);
+    for (let i = 0; i < 100 && r.api.bufferedMax() <= WRITE_BUFFER_MAX; i += 1) await Bun.sleep(10);
+    expect(r.api.bufferedMax()).toBeGreaterThan(WRITE_BUFFER_MAX);
+    // Sent while the bridge does not read: not one is taken.
+    for (let i = 0; i < 6; i += 1) late.send({ id: `s${String(i)}`, op: "sessions" });
+    await Bun.sleep(100);
+    expect(sessions.n).toBe(0);
+    late.socket.resume();
+    const ids = new Set<string>();
+    for (let i = 0; i < SCREEN_READS_MAX + 6; i += 1) ids.add(asJsonString((await late.next(5000)).id) ?? "");
+    expect(ids.size).toBe(SCREEN_READS_MAX + 6);
+    expect(sessions.n).toBe(6);
+  });
+});
+
+describe("the screen reads of the whole socket (security read 1, item 5)", () => {
+  test("at most 4 reads in progress across connections; one more answers api.busy with a retry hint", async () => {
+    const held = gate();
+    let running = 0;
+    let most = 0;
+    const r = rig({
+      read: async (args) => {
+        running += 1;
+        most = Math.max(most, running);
+        await held.wait;
+        running -= 1;
+        return { ok: true, answer: { session: args.session, text: "", lines: 1, truncated: false } };
+      },
+    });
+    await r.api.start();
+    const a = await Client.open(r.path);
+    const b = await Client.open(r.path);
+    for (let i = 0; i < 2; i += 1) a.send({ id: `a${String(i)}`, op: "read", args: { session: SESSION } });
+    for (let i = 0; i < 2; i += 1) b.send({ id: `b${String(i)}`, op: "read", args: { session: SESSION } });
+    for (let i = 0; i < 50; i += 1) {
+      if (running >= SCREEN_READS_MAX) break;
+      await Bun.sleep(5);
+    }
+    expect(running).toBe(SCREEN_READS_MAX);
+    const c = await Client.open(r.path);
+    const busy = await c.ask({ id: "c", op: "read", args: { session: SESSION } });
+    expect(codeOf(busy)).toBe("api.busy");
+    expect(messageOf(busy)).toContain(String(BUSY_RETRY_MS));
+    // Other operations are not held by the cap.
+    expect(await c.ask({ op: "sessions" })).toMatchObject({ ok: true });
+    held.open();
+    for (let i = 0; i < 2; i += 1) expect(await a.next()).toMatchObject({ ok: true });
+    for (let i = 0; i < 2; i += 1) expect(await b.next()).toMatchObject({ ok: true });
+    expect(most).toBe(SCREEN_READS_MAX);
+    // The places are given back.
+    expect(await c.ask({ id: "c2", op: "read", args: { session: SESSION } })).toMatchObject({ id: "c2", ok: true });
+  });
+
+  test("a read that fails gives its place back", async () => {
+    const r = rig();
+    await r.api.start();
+    const client = await Client.open(r.path);
+    for (let i = 0; i < SCREEN_READS_MAX + 2; i += 1) expect(codeOf(await client.ask({ op: "read", args: { session: SESSION } }))).toBe("api.failed");
   });
 });
 

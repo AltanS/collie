@@ -404,6 +404,8 @@ export const ERROR_CODES = {
   "api.too_many_waits": "too many waits are open (at most {perConnection} on one connection and {total} in all); let one end, or ask without wait",
   /** Too many requests are in flight on one connection, waits included. */
   "api.too_many_requests": "too many requests are in flight on this connection (at most {max}); wait for an answer before you send more",
+  /** Too many screen reads are in progress on the whole socket; `retryMs` is how long to wait first. */
+  "api.busy": "too many screens are being read now (at most {max} at once on this machine); try again in {retryMs} ms",
   /** Too many programs hold a connection to the local API. */
   "api.too_many_connections": "too many programs are connected to the local API (at most {max}); close one and connect again",
   /** One answer would be larger than the cap. */

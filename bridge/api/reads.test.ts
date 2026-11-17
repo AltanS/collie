@@ -4,7 +4,7 @@ import { decodeSessionId } from "../events/session-id.ts";
 import { MAX_READ_LINES } from "../read-limits.ts";
 import { idOf } from "./ids.ts";
 import { buildTable, type OperationContext, type OperationTable, type OpResult } from "./operations.ts";
-import { buildReads, capText, folderName, READ_TEXT_MAX_BYTES } from "./reads.ts";
+import { buildReads, capText, folderName, NAME_MAX, READ_TEXT_MAX_BYTES, SENDER_AGENT, SENDER_COLLIE } from "./reads.ts";
 import type { JsonValue } from "../json.ts";
 import { answeredDecision, accountRow, decision, depsOf, keyOf, MACHINE, pane, world, type World } from "./fixtures/reads-world.ts";
 
@@ -268,6 +268,12 @@ describe("accounts", () => {
     ]);
   });
 
+  test("an account label is cut to 120 characters, as sessions.account is", async () => {
+    const w = world();
+    w.accounts = [accountRow({ label: "w".repeat(300) })];
+    expect(wire<{ label: string }[]>((await answerOf(w, "accounts")).accounts)[0]!.label).toBe("w".repeat(NAME_MAX));
+  });
+
   test("signedIn is false when the agent says so, null when it does not know", async () => {
     const w = world();
     w.accounts = [accountRow({ identity: { signedIn: false } })];
@@ -288,7 +294,7 @@ describe("hill.list", () => {
     const cards = wire<Record<string, JsonValue>[]>(answer.cards);
     expect(cards).toHaveLength(1);
     expect(Object.keys(cards[0]!)).toEqual(["id", "machine", "sender", "title", "urgency", "date"]);
-    expect(cards[0]).toEqual({ id: "dc_fixture00001", machine: "inst-fixture-a1", sender: { kind: "agent", label: "build box" }, title: "Deploy window", urgency: "today", date: "2026-11-17T09:30:00.000Z" });
+    expect(cards[0]).toEqual({ id: "dc_fixture00001", machine: "inst-fixture-a1", sender: { kind: "agent", label: "claude" }, title: "Deploy window", urgency: "today", date: "2026-11-17T09:30:00.000Z" });
     expect(Object.keys(wire<Record<string, string>>(cards[0]!.sender))).toEqual(["kind", "label"]);
   });
 
@@ -304,6 +310,59 @@ describe("hill.list", () => {
       ["dc_a", "trick"],
       ["dc_b", "collie"],
     ]);
+  });
+
+  test("an agent sender's label is labelOf its pane here, as sessions.label: a person's name wins, the stored label never shows", async () => {
+    const w = world();
+    w.panes[0] = { muxSession: "main", pane: pane("w1:p1", { paneLabel: "lodge desk" }) };
+    w.hill = [decision({ from: { ...decision().from, label: "stored words" } })];
+    const label = (cards: Parameters<typeof wire>[0]): string => wire<{ sender: { label: string } }[]>(cards)[0]!.sender.label;
+    expect(label((await answerOf(w, "hill.list")).cards)).toBe("lodge desk");
+    const sessions = wire<{ label: string }[]>((await answerOf(w, "sessions")).sessions);
+    expect(sessions[0]!.label).toBe("lodge desk");
+  });
+
+  test("an agent that is no session here gets the fixed word: another machine, a gone pane, a replaced instance, no address", async () => {
+    const w = world();
+    const base = decision().from;
+    w.hill = [
+      decision({ id: "dc_other", from: { ...base, memberId: "inst-workshop-b2", address: "inst-workshop-b2/w1:p1#k3f9", label: "stored one" } }),
+      decision({ id: "dc_gone", from: { ...base, address: `${MACHINE}/w9:p9#k3f9`, label: "stored two" } }),
+      decision({ id: "dc_replaced", from: { ...base, address: `${MACHINE}/w1:p1#zz99`, label: "stored three" } }),
+      decision({ id: "dc_none", from: { ...base, address: null, label: "stored four" } }),
+      decision({ id: "dc_shell", from: { ...base, address: `${MACHINE}/w2:p2#q7r2`, label: "stored five" } }),
+    ];
+    const cards = wire<{ id: string; sender: { label: string } }[]>((await answerOf(w, "hill.list")).cards);
+    expect(cards.map((card) => [card.id, card.sender.label])).toEqual([
+      ["dc_other", SENDER_AGENT],
+      ["dc_gone", SENDER_AGENT],
+      ["dc_replaced", SENDER_AGENT],
+      ["dc_none", SENDER_AGENT],
+      ["dc_shell", SENDER_AGENT],
+    ]);
+  });
+
+  test("a trick's card carries the trick's name; Collie's own card the fixed word, whatever its stored label", async () => {
+    const w = world();
+    const base = decision().from;
+    w.hill = [
+      decision({ id: "dc_t", from: { ...base, kind: "trick", address: null, label: "daily check" } }),
+      decision({ id: "dc_c", from: { ...base, kind: "collie", address: null, label: "anything stored" } }),
+    ];
+    const cards = wire<{ id: string; sender: { label: string } }[]>((await answerOf(w, "hill.list")).cards);
+    expect(cards.map((card) => card.sender.label)).toEqual(["daily check", SENDER_COLLIE]);
+  });
+
+  test("one bad date leaves that card's date out and keeps the list", async () => {
+    const w = world();
+    w.hill = [decision({ id: "dc_bad", at: Number.NaN }), decision({ id: "dc_huge", at: 9e15 }), decision({ id: "dc_good" })];
+    const cards = wire<Record<string, JsonValue>[]>((await answerOf(w, "hill.list")).cards);
+    expect(cards.map((card) => [card.id, card.date ?? null])).toEqual([
+      ["dc_bad", null],
+      ["dc_huge", null],
+      ["dc_good", "2026-11-17T09:30:00.000Z"],
+    ]);
+    expect(Object.keys(cards[0]!)).toEqual(["id", "machine", "sender", "title", "urgency"]);
   });
 
   test("no Hill on this bridge: an empty list", async () => {

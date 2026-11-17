@@ -35,13 +35,20 @@
 // connections are open; one more gets one `api.too_many_connections` line and is closed. One answer is
 // at most 1 MiB serialized; a larger one becomes `api.answer_too_large`. At most 4 `events` waits are
 // open per connection and 16 in all; one more answers `api.too_many_waits` at once. At most 8 requests
-// are in flight on one connection, waits included; one more answers `api.too_many_requests` at once. A
+// are in flight on one connection, waits included; one more answers `api.too_many_requests` at once. At
+// most 4 `read` operations (a screen read each; on tmux each starts a process the phone also needs) are
+// in progress on the whole socket; one more answers `api.busy` at once, with a retry hint. A
 // connection with no request in flight and no partial line for 5 minutes is closed, with no line, so
 // an idle program does not hold one of the 32 places.
 //
-// THE STATED MEMORY BOUND. An answer is written without waiting for the reader to drain it (no
-// backpressure), so a caller that does not read lets answers pile up in the bridge. The caps bound
-// that: at most 8 answers of at most 1 MiB per connection, times 32 connections, about 256 MiB.
+// THE STATED MEMORY BOUND (security read 1, item 1). A caller that sends and never reads must not make
+// the bridge buffer without end. Each connection has a write budget of 2 MiB: the bytes the socket holds
+// for it (`writableLength`). Above the budget the bridge stops reading that connection (`socket.pause()`,
+// and no line already received is taken), so no new request starts there; it reads again once the
+// caller has drained the socket below the budget. A connection that stays above the budget for 10 s is
+// dropped. What one connection can hold is therefore the budget plus the answers of the at most 8
+// requests already in flight when it paused (each at most 1 MiB, and at most 4 screen reads on the whole
+// socket), and only for 10 s.
 
 import { once } from "node:events";
 import { chmodSync, lstatSync, mkdirSync, unlinkSync, type Stats } from "node:fs";
@@ -51,7 +58,21 @@ import { dirname, join } from "node:path";
 import { apiError, type ApiErrorDetail, type ErrorCode } from "../error-codes.ts";
 import type { JsonObject } from "../json.ts";
 import { asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
-import { ANSWER_MAX_BYTES, CONNECTIONS_MAX, IDLE_MS, REQUEST_ID_MAX, REQUEST_LINE_MAX, REQUEST_LINE_MS, REQUESTS_PER_CONNECTION, WAITS_PER_CONNECTION, WAITS_TOTAL } from "./limits.ts";
+import {
+  ANSWER_MAX_BYTES,
+  BUSY_RETRY_MS,
+  CONNECTIONS_MAX,
+  IDLE_MS,
+  REQUEST_ID_MAX,
+  REQUEST_LINE_MAX,
+  REQUEST_LINE_MS,
+  REQUESTS_PER_CONNECTION,
+  SCREEN_READS_MAX,
+  WAITS_PER_CONNECTION,
+  WAITS_TOTAL,
+  WRITE_BUFFER_MAX,
+  WRITE_STALL_MS,
+} from "./limits.ts";
 import { admit, offeredOf, type OperationContext, type OperationTable, type OpResult, type Right, type TableRow } from "./operations.ts";
 
 /** The local API socket of one state dir. */
@@ -71,6 +92,10 @@ export interface ApiSocketDeps {
   readonly lineMs?: number;
   /** How long an idle connection stays open. Default {@link IDLE_MS}; a test shortens it. */
   readonly idleMs?: number;
+  /** How long a connection may stay above its write budget. Default {@link WRITE_STALL_MS}; a test shortens it. */
+  readonly stallMs?: number;
+  /** The uid that must own `<stateDir>/api`. Default `process.getuid()`; a test passes another to see the refusal. */
+  readonly uid?: number;
 }
 
 /** How many connections and waits are open. */
@@ -102,11 +127,22 @@ interface Conn {
   idle: ReturnType<typeof setTimeout> | undefined;
   waits: number;
   closed: boolean;
+  /** Above its write budget: reading is paused (header, the memory bound). */
+  paused: boolean;
+  /** While paused: the check that resumes or, after the stall time, drops. */
+  stall: ReturnType<typeof setInterval> | undefined;
+  /** When the connection went above its budget. */
+  overSince: number;
+  /** While paused: the `drain` listener that resumes. */
+  onDrain: (() => void) | undefined;
 }
 
 const RESERVED = new Set(["id", "ok", "error"]);
 const UTF8 = new TextDecoder("utf-8", { fatal: true });
 const NEWLINE = 0x0a;
+const NOTHING = Buffer.alloc(0);
+/** The operation that reads a screen: the one the socket-wide cap counts. */
+const SCREEN_READ_OP = "read";
 
 /** The error answer line's body. The message is the catalogue's sentence. */
 function errorBody(code: ErrorCode, detail: ApiErrorDetail | undefined): JsonObject {
@@ -118,6 +154,7 @@ export class ApiSocket {
   private chain: Promise<unknown> = Promise.resolve();
   private readonly connections = new Set<Conn>();
   private waitsOpen = 0;
+  private screenReads = 0;
   private windowsLogged = false;
   private readonly log: (line: string) => void;
   private readonly granted: ReadonlySet<Right>;
@@ -149,6 +186,13 @@ export class ApiSocket {
     return { connections: this.connections.size, waits: this.waitsOpen };
   }
 
+  /** The bytes waiting to be written, on the fullest connection: for a test. */
+  bufferedMax(): number {
+    let most = 0;
+    for (const conn of this.connections) most = Math.max(most, conn.socket.writableLength);
+    return most;
+  }
+
   private serial<T>(step: () => Promise<T>): Promise<T> {
     const next = this.chain.then(step, step);
     this.chain = next.catch(() => undefined);
@@ -164,9 +208,11 @@ export class ApiSocket {
       return false;
     }
     try {
-      const dir = dirname(path);
-      mkdirSync(dir, { recursive: true, mode: 0o700 });
-      chmodSync(dir, 0o700);
+      const refused = this.ownFolder(dirname(path));
+      if (refused !== null) {
+        this.log(`[api] no socket: ${refused}`);
+        return false;
+      }
       const held = lstatOrNull(path);
       if (held !== null) {
         if (!held.isSocket()) {
@@ -196,6 +242,28 @@ export class ApiSocket {
       this.log(`[api] no socket: ${err instanceof Error ? err.message : String(err)}`);
       return false;
     }
+  }
+
+  /**
+   * Make sure `<stateDir>/api` is this user's own folder, never followed through a link: created with mode
+   * 0700 when absent; refused when it is a symlink, not a folder, or owned by another uid. Null when it is
+   * fine, else why not.
+   */
+  private ownFolder(dir: string): string | null {
+    const uid = this.deps.uid ?? process.getuid?.();
+    let held = lstatOrNull(dir);
+    if (held === null) {
+      mkdirSync(dirname(dir), { recursive: true, mode: 0o700 });
+      // Not recursive: a folder (or a link) that appeared since the lstat fails here, never followed.
+      mkdirSync(dir, { mode: 0o700 });
+      held = lstatOrNull(dir);
+    }
+    if (held === null) return `${dir} could not be made`;
+    if (held.isSymbolicLink()) return `${dir} is a symbolic link`;
+    if (!held.isDirectory()) return `${dir} is not a folder`;
+    if (uid !== undefined && held.uid !== uid) return `${dir} is not owned by this user`;
+    chmodSync(dir, 0o700);
+    return null;
   }
 
   private async close(): Promise<void> {
@@ -239,7 +307,21 @@ export class ApiSocket {
       endWith(socket, `${JSON.stringify({ ok: false, error: errorBody(code, detail) })}\n`);
       return;
     }
-    const conn: Conn = { socket, live, controller: new AbortController(), pending: new Set(), buffer: Buffer.alloc(0), timer: undefined, idle: undefined, waits: 0, closed: false };
+    const conn: Conn = {
+      socket,
+      live,
+      controller: new AbortController(),
+      pending: new Set(),
+      buffer: Buffer.alloc(0),
+      timer: undefined,
+      idle: undefined,
+      waits: 0,
+      closed: false,
+      paused: false,
+      stall: undefined,
+      overSince: 0,
+      onDrain: undefined,
+    };
     this.connections.add(conn);
     socket.on("close", () => this.forget(conn));
     socket.on("data", (chunk: Buffer) => this.receive(conn, chunk));
@@ -252,6 +334,7 @@ export class ApiSocket {
     conn.closed = true;
     clearTimeout(conn.timer);
     clearTimeout(conn.idle);
+    clearInterval(conn.stall);
     for (const pending of conn.pending) pending.answered = true;
     conn.pending.clear();
     conn.controller.abort();
@@ -281,7 +364,8 @@ export class ApiSocket {
   private receiveLines(conn: Conn, chunk: Buffer): void {
     conn.buffer = conn.buffer.length === 0 ? chunk : Buffer.concat([conn.buffer, chunk]);
     let ended = false;
-    for (let at = conn.buffer.indexOf(NEWLINE); at >= 0 && !conn.closed; at = conn.buffer.indexOf(NEWLINE)) {
+    // Over the write budget, no further line is taken: it waits in the buffer until the caller reads.
+    for (let at = conn.buffer.indexOf(NEWLINE); at >= 0 && !conn.closed && !conn.paused; at = conn.buffer.indexOf(NEWLINE)) {
       const line = conn.buffer.subarray(0, at);
       conn.buffer = conn.buffer.subarray(at + 1);
       ended = true;
@@ -289,6 +373,12 @@ export class ApiSocket {
       this.request(conn, line);
     }
     if (conn.closed) return;
+    if (conn.paused) {
+      // The line clock is the caller's, and it is the bridge that stopped reading: no clock while paused.
+      clearTimeout(conn.timer);
+      conn.timer = undefined;
+      return;
+    }
     if (conn.buffer.length > REQUEST_LINE_MAX) return this.refuseFraming(conn, "the line is longer than 16 KiB");
     if (conn.buffer.length === 0) {
       clearTimeout(conn.timer);
@@ -333,6 +423,8 @@ export class ApiSocket {
     const admitted = admit(this.deps.table, op, this.granted);
     if (!admitted.ok) return this.answer(conn, read, { ok: false, code: admitted.code });
     if (conn.pending.size >= REQUESTS_PER_CONNECTION) return this.answer(conn, read, { ok: false, code: "api.too_many_requests", detail: { max: REQUESTS_PER_CONNECTION } });
+    const screen = admitted.row.name === SCREEN_READ_OP;
+    if (screen && this.screenReads >= SCREEN_READS_MAX) return this.answer(conn, read, { ok: false, code: "api.busy", detail: { max: SCREEN_READS_MAX, retryMs: BUSY_RETRY_MS } });
     conn.pending.add(read);
     const ctx: OperationContext = {
       signal: conn.controller.signal,
@@ -340,17 +432,20 @@ export class ApiSocket {
       standing: () => this.standing(conn.live),
       claimWait: () => (admitted.row.waits ? this.claimWait(conn) : null),
     };
-    void this.run(conn, read, admitted.row, args, ctx);
+    void this.run(conn, read, admitted.row, args, ctx, screen);
   }
 
-  /** Run one admitted row and answer it; a handler that throws answers `api.failed`. */
-  private async run(conn: Conn, pending: Pending, row: TableRow, args: JsonObject, ctx: OperationContext): Promise<void> {
+  /** Run one admitted row and answer it; a handler that throws answers `api.failed`. A screen read holds one of the socket's places while it runs. */
+  private async run(conn: Conn, pending: Pending, row: TableRow, args: JsonObject, ctx: OperationContext, screen: boolean): Promise<void> {
     let result: OpResult;
+    if (screen) this.screenReads += 1;
     try {
       result = await row.run(args, ctx);
     } catch (err) {
       this.log(`[api] ${row.name} failed: ${err instanceof Error ? err.message : String(err)}`);
       result = { ok: false, code: "api.failed" };
+    } finally {
+      if (screen) this.screenReads -= 1;
     }
     this.answer(conn, pending, result);
   }
@@ -400,21 +495,54 @@ export class ApiSocket {
       this.write(conn, refused);
       return;
     }
-    writeLine(conn.socket, text);
+    this.send(conn, text);
   }
 
   private write(conn: Conn, line: JsonObject): void {
-    writeLine(conn.socket, JSON.stringify(line));
+    this.send(conn, JSON.stringify(line));
+  }
+
+  /** Write one line, then hold the connection to its write budget (header, the memory bound). */
+  private send(conn: Conn, text: string): void {
+    const socket = conn.socket;
+    if (socket.destroyed || !socket.writable) return;
+    socket.write(`${text}\n`);
+    if (conn.closed || conn.paused || socket.writableLength <= WRITE_BUFFER_MAX) return;
+    conn.paused = true;
+    conn.overSince = Date.now();
+    clearTimeout(conn.timer);
+    conn.timer = undefined;
+    socket.pause();
+    conn.onDrain = () => this.budgetCheck(conn);
+    socket.on("drain", conn.onDrain);
+    const stallMs = this.deps.stallMs ?? WRITE_STALL_MS;
+    conn.stall = setInterval(() => this.budgetCheck(conn), Math.max(10, Math.min(1000, Math.floor(stallMs / 10))));
+    conn.stall.unref?.();
+  }
+
+  /** While paused: below the budget, read again; above it for the stall time, drop the connection. */
+  private budgetCheck(conn: Conn): void {
+    if (conn.closed || !conn.paused) return;
+    if (conn.socket.writableLength > WRITE_BUFFER_MAX) {
+      if (Date.now() - conn.overSince < (this.deps.stallMs ?? WRITE_STALL_MS)) return;
+      this.log("[api] a connection did not read its answers for too long; it is dropped");
+      this.forget(conn);
+      conn.socket.destroy();
+      return;
+    }
+    conn.paused = false;
+    clearInterval(conn.stall);
+    conn.stall = undefined;
+    if (conn.onDrain !== undefined) conn.socket.off("drain", conn.onDrain);
+    conn.onDrain = undefined;
+    conn.socket.resume();
+    // The lines that came while paused are taken now, in order.
+    this.receive(conn, NOTHING);
   }
 }
 
 function badRequest(reason: string): OpResult {
   return { ok: false, code: "api.bad_request", detail: { reason } };
-}
-
-function writeLine(socket: Socket, text: string): void {
-  if (socket.destroyed || !socket.writable) return;
-  socket.write(`${text}\n`);
 }
 
 /** Write `text`, end, and destroy once flushed, or after a moment when the peer does not read. */

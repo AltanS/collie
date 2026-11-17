@@ -12,6 +12,13 @@
 //   malformed text, another machine's id, no pane with that pane id   -> api.session_unknown
 //   a pane with that pane id, but its token now differs (or it has none) -> api.session_replaced
 //
+// THE 30 SECOND GRACE (security read 1, note 1). `session_replaced` is answered once Collie has SEEN the
+// pane gone: the registry drops a token only after the pane was out of sight for 30 s
+// (bridge/walky/instances.ts, INSTANCE_GRACE_MS). So when the multiplexer reuses a pane id inside that
+// time, the new pane may still hold the old token, and an old session id reads the new session's screen
+// for up to 30 s. For a read by the same Unix user this is accepted (decision 16: such a program can read
+// the screen through the multiplexer anyway). It is NOT accepted for a send (step two) or the remote tier.
+//
 // Another machine's id is unknown here, never forwarded: the local tier answers for this bridge only.
 // A crew member's id that the lead lists (later) is resolved by its own bridge, not by this one.
 //

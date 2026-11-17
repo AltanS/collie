@@ -877,10 +877,16 @@ export class TricksService implements TricksSurface {
     this.tellSwitchedOn();
   }
 
-  /** Tell `onSwitchedOnCount` the count of switched-on tricks, when it moved. Never throws. */
+  /**
+   * Tell `onSwitchedOnCount` the count of switched-on tricks, when it moved. Never throws. The count is 0
+   * where tricks do not run (the Windows gate; `deps.active` false: a crew peer, a deputy, a deposed lead),
+   * so the local API opens only where a trick is on AND tricks run. A trick switched on but stopped (its
+   * rights, the backoff) still counts.
+   */
   private tellSwitchedOn(): void {
     let count = 0;
-    for (const rt of this.runtimes.values()) if (rt.on) count += 1;
+    const runsHere = !this.gated() && this.deps.active?.() !== false;
+    if (runsHere) for (const rt of this.runtimes.values()) if (rt.on) count += 1;
     if (count === this.switchedOnTold) return;
     this.switchedOnTold = count;
     try {
@@ -1513,6 +1519,9 @@ export class TricksService implements TricksSurface {
    * run started. Resolves when the runs it started are done, which is what a test waits on.
    */
   async tick(): Promise<void> {
+    // First, before every gate: `deps.active` can change while the bridge runs (a lead deposed, a deputy
+    // crowned), and the local API's count reads it. `tellSwitchedOn` tells only a change.
+    this.tellSwitchedOn();
     // A peer, a deputy and a deposed lead schedule nothing (`deps.active`), so no trick runs twice in a crew.
     if (!this.watched() || this.deps.active?.() === false || this.gated()) return;
     await this.refresh();

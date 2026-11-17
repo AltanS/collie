@@ -26,3 +26,17 @@ export const CURSOR_MAX = 64;
 export const REQUESTS_PER_CONNECTION = 8;
 /** How long a connection with no request in flight and no partial line stays open. */
 export const IDLE_MS = 5 * 60 * 1000;
+/**
+ * The most bytes waiting to be written to one connection: what the socket holds (`writableLength`). Above
+ * it the bridge stops reading that connection's requests until the caller reads; a connection that stays
+ * above it for {@link WRITE_STALL_MS} is dropped (security read 1, item 1).
+ */
+export const WRITE_BUFFER_MAX = 2 * 1024 * 1024;
+/** How long a connection may stay above {@link WRITE_BUFFER_MAX} before it is dropped. */
+export const WRITE_STALL_MS = 10_000;
+/** The most `read` operations (a screen read each) in progress on the whole socket; one more answers `api.busy`. */
+export const SCREEN_READS_MAX = 4;
+/** The wait an `api.busy` answer suggests before the caller tries again, in ms. */
+export const BUSY_RETRY_MS = 500;
+/** The most events one `events` answer carries, a `gap` or `reset` marker counted; `next` pages on. */
+export const EVENTS_PER_ANSWER = 256;

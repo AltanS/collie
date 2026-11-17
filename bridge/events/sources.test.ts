@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
 import type { AgentStatus } from "../types.ts";
+import { WalkyInstances } from "../walky/instances.ts";
 import { EventBus, type LiveEvent } from "./bus.ts";
 import { decodeSessionId } from "./session-id.ts";
 import { attachSessionSource, endsTurn, type TransitionFeed } from "./sources.ts";
@@ -176,5 +178,58 @@ describe("the source's edges", () => {
     for (const step of stepsOf("herdr")) engine.fire("w1:p1", step.from, step.to);
     const types = sub.take().events.map((e: LiveEvent) => (e.type === "session.status" ? `status:${e.data.state}` : e.type));
     expect(types).toEqual(["ask.open", "turn.end", "status:idle"]);
+  });
+});
+
+describe("the source mints no token (security read 1, item 4)", () => {
+  test("driven through a whole turn with a peek that finds no token: nothing published, nothing minted, no file written", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-sources-"));
+    try {
+      const instances = new WalkyInstances(dir, () => 1_000);
+      const minted: string[] = [];
+      const tokenOf = instances.tokenOf.bind(instances);
+      instances.tokenOf = (session, paneId, at) => {
+        minted.push(`${session}/${paneId}`);
+        return tokenOf(session, paneId, at);
+      };
+      const { engine, emitted, errors } = rig((muxSession, paneId) => instances.peek(muxSession, paneId));
+      for (const step of stepsOf("herdr")) engine.fire("w1:p1", step.from, step.to);
+      engine.fire("w1:p2", "idle", "working");
+      engine.fire("w1:p2", "working", "blocked");
+      engine.remove("w1:p1");
+      expect(emitted()).toEqual([]);
+      expect(errors).toEqual([]);
+      expect(minted).toEqual([]);
+      expect(instances.all()).toEqual([]);
+      expect(readdirSync(dir)).toEqual([]);
+      expect(existsSync(join(dir, "instances.json"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a pane a token was minted for elsewhere (walky's own tick) publishes, and the peek still writes nothing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-sources-"));
+    try {
+      const instances = new WalkyInstances(dir, () => 1_000);
+      instances.observe([{ session: "default", paneId: "w1:p1" }]);
+      const before = readFileSync(join(dir, "instances.json"), "utf8");
+      const { engine, emitted } = rig((muxSession, paneId) => instances.peek(muxSession, paneId));
+      engine.fire("w1:p1", "idle", "working");
+      engine.fire("w1:p2", "idle", "working");
+      expect(emitted()).toEqual(["status:working"]);
+      expect(readFileSync(join(dir, "instances.json"), "utf8")).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("bridge/index.ts wires the source to the peek, never to tokenOf", () => {
+    const index = readFileSync(join(import.meta.dir, "..", "index.ts"), "utf8");
+    const start = index.indexOf("attachSessionSource({");
+    expect(start).toBeGreaterThan(-1);
+    const block = index.slice(start, index.indexOf("});", start));
+    expect(block).toContain("walkyInstances.peek(");
+    expect(block).not.toContain("tokenOf");
   });
 });

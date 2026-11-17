@@ -21,13 +21,13 @@
 // the context a handler gets carries no way to type, answer an ask, or change a session.
 
 import type { ApiErrorDetail, ErrorCode } from "../error-codes.ts";
-import type { EventBus } from "../events/bus.ts";
+import type { EventBus, SinceAnswer } from "../events/bus.ts";
 import { SESSION_ID_MAX } from "../events/session-id.ts";
 import type { JsonObject } from "../json.ts";
 import { asJsonNumber, asJsonString } from "../../web/src/lib/json.ts";
 import { MAX_READ_LINES } from "../read-limits.ts";
 import { wireEvent } from "./event-wire.ts";
-import { CURSOR_MAX, WAIT_MAX_SECONDS, WAITS_PER_CONNECTION, WAITS_TOTAL } from "./limits.ts";
+import { CURSOR_MAX, EVENTS_PER_ANSWER, WAIT_MAX_SECONDS, WAITS_PER_CONNECTION, WAITS_TOTAL } from "./limits.ts";
 
 /** What a caller may be granted. */
 export type Right = "look" | "send" | "control";
@@ -253,6 +253,19 @@ function hello(deps: TableDeps): Handlers["hello"] {
 }
 
 /**
+ * One page of a pull: at most {@link EVENTS_PER_ANSWER} events, a `gap` or `reset` marker counted, so an
+ * answer after a reset (every buffered event, up to 2048) never passes the socket's 1 MiB cap. When events
+ * are left, `next` is the cursor of the last event answered, and the caller pages on from there; a marker's
+ * own cursor sits just before the oldest kept event, so a page that ends on it loses nothing.
+ */
+function page(answer: SinceAnswer): OpResult {
+  const kept = answer.events.slice(0, EVENTS_PER_ANSWER);
+  const last = kept.at(-1);
+  const next = answer.events.length > kept.length && last !== undefined ? last.cursor : answer.next;
+  return { ok: true, answer: { events: kept.map(wireEvent), next } };
+}
+
+/**
  * `events` (decision 17): the events after `after`; with none and `wait` > 0, one wait on the bus for
  * the next, then the events again. The wait takes a slot (decision 18), ends early on the connection's
  * close or the socket's stop, and checks at its wake that the socket still stands.
@@ -260,7 +273,7 @@ function hello(deps: TableDeps): Handlers["hello"] {
 function events(deps: TableDeps): Handlers["events"] {
   return async (args, ctx) => {
     const first = deps.bus.since(args.after);
-    if (first.events.length > 0 || args.wait === 0) return { ok: true, answer: { events: first.events.map(wireEvent), next: first.next } };
+    if (first.events.length > 0 || args.wait === 0) return page(first);
     const release = ctx.claimWait();
     if (release === null) return { ok: false, code: "api.too_many_waits", detail: { perConnection: WAITS_PER_CONNECTION, total: WAITS_TOTAL } };
     const from = args.after ?? first.next;
@@ -271,8 +284,7 @@ function events(deps: TableDeps): Handlers["events"] {
       release();
     }
     if (outcome === "aborted" || !ctx.standing()) return { ok: false, code: "api.closing" };
-    const after = deps.bus.since(from);
-    return { ok: true, answer: { events: after.events.map(wireEvent), next: after.next } };
+    return page(deps.bus.since(from));
   };
 }
 

@@ -26,7 +26,11 @@
 // bridge's id, the pane id and the pane's WalkyTalky instance token. The mux session's name only looks
 // the token up; it is never encoded (a person chose it, decision 4). A pane with no
 // token, or a moment the id cannot be read (the bridge still starting), publishes nothing: an event is
-// never invented with a made-up id.
+// never invented with a made-up id. The token is PEEKED, never minted (`WalkyInstances.peek`): minting
+// touches `lastSeen` and can write `instances.json`, on every transition and with no trick on. Walky's
+// own tick observes every pane of the bridge every INSTANCE_TICK_MS (10 s) and mints the tokens, and so
+// does the snapshot; so a pane's events flow from its first tick on, and a transition in the first
+// seconds of a new pane's life, before any token, is not published.
 //
 // The source never throws into the engine's poll: the engine calls its listeners inline, so a failure
 // here is caught and the event is skipped.
@@ -48,7 +52,7 @@ export interface SessionSourceOptions {
   readonly muxSession: string;
   /** This bridge's stable id (bridge/bridge-id.ts). */
   readonly machine: () => string;
-  /** The pane's WalkyTalky instance token, or null when it has none. */
+  /** The pane's WalkyTalky instance token, or null when it has none. Must mint nothing (`WalkyInstances.peek`). */
   readonly instanceOf: (muxSession: string, paneId: string) => string | null;
   /** Where the events go: the bus's `publish`. */
   readonly publish: (input: PublishInput) => void;

@@ -19,7 +19,12 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { memoryHillReceipts } from "../hill/receipts.ts";
+import { HillService, type HillAgentSender, type HillPlace } from "../hill/service.ts";
+import { HillStore } from "../hill/store.ts";
+import { hillSessionName } from "../hill/walky.ts";
 import type { JsonObject } from "../json.ts";
+import { asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
 import { idOf } from "./ids.ts";
 import { buildTable, type OperationContext, type OperationTable } from "./operations.ts";
 import { buildReads } from "./reads.ts";
@@ -145,5 +150,83 @@ describe("no needle in any answer of the local API", () => {
     const text = await serialized(tableOf(w), "sessions");
     expect(text).toContain('"label":"claude"');
     expectClean(text);
+  });
+});
+
+describe("hill.list through the real HillService list road (security read 1, item 2)", () => {
+  // The Hill's own list renames an open card's sender with `paneName`, which falls back to the title the
+  // agent wrote and to the terminal title. The secrets sit in exactly those two places and in the stored
+  // `from.label`; the road is checked live (the list really carries each secret), and no answer may.
+  const TITLE_SECRET = `${NEEDLES.message} for ${NEEDLES.email}`;
+  const TERMINAL_SECRET = `${NEEDLES.pairing} ${NEEDLES.signIn}`;
+  const STORED_SECRET = `stored ${NEEDLES.message} ${NEEDLES.pairing}`;
+
+  function hillWorld() {
+    const w = world();
+    w.panes = [
+      // No name of a person's: `paneName` falls to the agent's own title.
+      { muxSession: "main", pane: pane("w1:p1", { paneLabel: undefined, agentTitle: TITLE_SECRET, terminalTitle: undefined }) },
+      // No title of the agent's: `paneName` falls to the terminal title.
+      { muxSession: "main", pane: pane("w3:p1", { paneLabel: undefined, agentTitle: undefined, terminalTitle: TERMINAL_SECRET }) },
+    ];
+    w.instances = new Map([
+      [keyOf("main", "w1:p1"), "k3f9"],
+      [keyOf("main", "w3:p1"), "p5s6"],
+    ]);
+    const live: HillPlace[] = [
+      { address: "local/w1:p1#k3f9", label: "lodge#main", host: "lodge", unattended: false },
+      { address: "local/w3:p1#p5s6", label: "lodge#main", host: "lodge", unattended: false },
+      // Live for walky, but no pane of this bridge's views: the stored `from.label` stays on the card.
+      { address: "local/w9:p9#abcd", label: "lodge#main", host: "lodge", unattended: false },
+    ];
+    const place = (address: string): HillPlace | null => live.find((one) => one.address === address) ?? null;
+    let n = 0;
+    const hill = new HillService({
+      store: new HillStore(null, () => 1000),
+      receipts: memoryHillReceipts(),
+      place,
+      send: async () => "typed",
+      crewMode: () => "solo",
+      walkyOn: () => true,
+      memberId: MACHINE,
+      machine: "lodge",
+      now: () => 1000,
+      mintId: () => {
+        n += 1;
+        return `dc_leak${String(n).padStart(8, "0")}`;
+      },
+      sessionName: hillSessionName({ place, views: () => w.panes.map((source) => source.pane), memberId: null, redact: false }),
+    });
+    const sender = (address: string): HillAgentSender => ({ kind: "agent", address, memberId: MACHINE, harness: "claude", label: STORED_SECRET, host: "lodge" });
+    for (const [i, address] of ["local/w1:p1#k3f9", "local/w3:p1#p5s6", "local/w9:p9#abcd"].entries()) {
+      const posted = hill.post(sender(address), {
+        requestId: `00000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`,
+        title: "Deploy window",
+        summary: NEEDLES.message,
+        options: [{ intent: "go", label: "Go" }],
+      });
+      if (!posted.ok) throw new Error(posted.error);
+    }
+    w.hill = null;
+    return { w, hill };
+  }
+
+  test("the road is live: the Hill's own list carries each secret in the sender's label", () => {
+    const { hill } = hillWorld();
+    const labels = hill.list().open.map((card) => card.from.label);
+    expect(labels.some((label) => label.includes(NEEDLES.message) && label.includes(NEEDLES.email))).toBe(true);
+    expect(labels.some((label) => label.includes(NEEDLES.pairing))).toBe(true);
+    expect(labels.some((label) => label.includes("stored"))).toBe(true);
+  });
+
+  test("no secret reaches hill.list: the labels are labelOf the pane, or the fixed word for a pane not here", async () => {
+    const { w, hill } = hillWorld();
+    const deps = { ...depsOf(w), hillOpen: () => hill.list().open };
+    const table = buildTable({ version: () => "9.9.9-test", bus: w.bus, reads: buildReads(deps) });
+    const text = await serialized(table, "hill.list");
+    for (const needle of [NEEDLES.email, NEEDLES.pairing, NEEDLES.signIn, NEEDLES.message, "stored", "QWERTY", "example.invalid"]) expect(text).not.toContain(needle);
+    const cards = parseJsonObject(text)?.cards;
+    const labels = (Array.isArray(cards) ? cards : []).map((card) => asJsonString(asJsonObject(asJsonObject(card)?.sender)?.label));
+    expect(labels).toEqual(["claude", "claude", "agent"]);
   });
 });

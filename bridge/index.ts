@@ -374,8 +374,8 @@ import { WalkyService } from "./walky/service.ts";
 import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
 import { ApiSocket, apiSocketPath } from "./api/socket.ts";
-import { buildTable, LOCAL_TIER_RIGHTS } from "./api/operations.ts";
-import { buildReads } from "./api/reads.ts";
+import { LOCAL_TIER_RIGHTS } from "./api/operations.ts";
+import { apiTable, narrowWorld, type ApiWorld } from "./api/world.ts";
 import { deniedFoldersSync, HillMediaStore } from "./hill/media.ts";
 import { HillPush } from "./hill/push.ts";
 import { HillReceiptStore } from "./hill/receipts.ts";
@@ -1975,7 +1975,9 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
     engine,
     muxSession: name,
     machine: () => bridgeId.id,
-    instanceOf: (session, paneId) => walkyInstances.tokenOf(session, paneId),
+    // Peek, never mint (security read 1, item 4): a pane with no token yet publishes nothing. Walky's own
+    // tick (`walkyInstanceTimer`, every INSTANCE_TICK_MS) and the snapshot mint every pane's token.
+    instanceOf: (session, paneId) => walkyInstances.peek(session, paneId),
     publish: (input) => {
       eventBus.publish(input);
     },
@@ -4123,22 +4125,25 @@ const repoFacts =
         warn: (line) => console.warn(`[tricks] ${line}`),
       });
 // The local API (M105 spec 03): a read-only Unix socket at `<stateDir>/api/sock`, open only while at
-// least one trick is switched on (TricksService tells the count). No tricks folder, no socket ever.
-// The five reads beyond `hello` and `events` (bridge/api/reads.ts) see the bridge through getters only.
+// least one trick is switched on AND tricks run on this bridge (TricksService tells the count, 0 on a crew
+// peer, a deputy, a deposed lead and Windows). No tricks folder, no socket ever. Every operation sees the
+// bridge through `ApiWorld` (bridge/api/world.ts) alone: reads only.
 const localApi =
   cfg.tricksDir === undefined
     ? undefined
     : new ApiSocket({
         socketPath: apiSocketPath(cfg.stateDir),
-        table: buildTable({
-          version: () => collieVersion(rootDir),
-          bus: eventBus,
-          reads: buildReads({
+        // Exactly the API's world (bridge/api/world.ts): `satisfies` refuses a key the interface lacks, and
+        // `narrowWorld` copies only its keys and wraps the bus down to its two reads.
+        table: apiTable(
+          narrowWorld({
+            version: () => collieVersion(rootDir),
             machine: () => bridgeId.id,
-            panes: () => registry.all().flatMap((rt) => rt.engine.current().agents.map((pane) => ({ muxSession: rt.name, pane }))),
+            // The one filter for real panes (review row 30): no trick session reaches an operation.
+            panes: () => registry.all().flatMap((rt) => realAgentPanes(rt.engine.current().agents).map((pane) => ({ muxSession: rt.name, pane }))),
             // Peek, never mint: a pane with no token is left out of `sessions`.
             instanceOf: (muxSession, paneId) => walkyInstances.peek(muxSession, paneId),
-            bus: eventBus,
+            bus: { since: (cursor) => eventBus.since(cursor), waitFor: (after, ms, signal) => eventBus.waitFor(after, ms, signal) },
             paneAccount: (muxSession, pane) => accounts.paneAccount(muxSession, pane),
             accountsBody: () => accounts.body(),
             draftState: (muxSession, paneId) => insideHub?.draftOf({ session: muxSession, paneId }) ?? null,
@@ -4149,10 +4154,12 @@ const localApi =
               const grid = await rt.herdr.readGrid(paneId, recentRead(lines, paneReadHint(rt.engine, paneId)));
               return grid.ok ? { ok: true, text: grid.value.text, truncated: grid.value.truncated } : { ok: false };
             },
+            // The Hill's list: an agent card's sender label is NOT read from it (reads.ts builds it with
+            // `labelOf` from the pane), so its `named()` rename never reaches an answer.
             hillOpen: () => hill.list().open,
             defaultLines: cfg.readLines,
-          }),
-        }),
+          } satisfies ApiWorld),
+        ),
         granted: LOCAL_TIER_RIGHTS,
         platform: HOST.platform,
       });

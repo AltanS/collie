@@ -2,10 +2,12 @@
 // `read`, `accounts` and `hill.list`. They fill the five rows of the operation table that
 // operations.ts declares and leaves to a handler (`TableDeps.reads`).
 //
-// READ ONLY, BY CONSTRUCTION. A handler gets the bridge only through {@link ReadsDeps}, an interface of
-// seven getters. None of them types, answers, presses a key or writes: reads.ts imports no module that
-// does (ask-reach.test.ts walks the import graph and reads the names on this interface). A handler built
-// here cannot answer an ask, because nothing it holds can.
+// READ ONLY, BY CONSTRUCTION. A handler gets the bridge only through `ApiWorld` (world.ts), the one
+// narrow interface of getters the operations see, and bridge/index.ts builds an object of exactly that
+// type. None of its members types, answers, presses a key or writes. ask-reach.test.ts holds this three
+// ways: the import walk (no module here reaches one that writes), the key test (the world has exactly
+// the interface's keys), and the spy test (every operation run against a world whose write methods all
+// throw calls none of them).
 //
 // AN EXPLICIT ALLOW-LIST PER ANSWER. Every answer below is built field by field from a bridge object and
 // never by a spread, so a field the bridge adds later reaches no caller until a person adds it here.
@@ -42,14 +44,15 @@
 // below the socket's answer cap (a line boundary, the newest lines kept) and `truncated` says so.
 
 import { maskPaneRead } from "../answer-mask.ts";
-import type { BusEvent, EventBus } from "../events/bus.ts";
+import type { BusEvent } from "../events/bus.ts";
 import { stripAnsi } from "../journal/text.ts";
 import type { JsonObject } from "../json.ts";
 import { personName } from "../pane-name.ts";
-import type { AccountRow, AccountsBody, AgentStatus, AgentView, PaneAccount } from "../types.ts";
+import type { AccountRow, AgentStatus, AgentView } from "../types.ts";
 import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
 import { idOf, resolveSession, type PaneSighting, type SessionView } from "./ids.ts";
 import type { OpResult, ReadHandlers } from "./operations.ts";
+import type { ApiWorld } from "./world.ts";
 
 /** One agent or shell pane of this bridge and the multiplexer session it sits in. */
 export interface PaneSource {
@@ -60,32 +63,8 @@ export interface PaneSource {
 /** A screen read: the text as the multiplexer renders it (escapes kept), or that it could not be read. */
 export type ScreenRead = { readonly ok: true; readonly text: string; readonly truncated: boolean } | { readonly ok: false };
 
-/**
- * Everything the five reads see of the bridge. Getters only: no method here sends, answers, presses a
- * key or writes (ask-reach.test.ts pins the names). Each is read at the moment of a call.
- */
-export interface ReadsDeps {
-  /** This bridge's stable id (bridge/bridge-id.ts). */
-  machine(): string;
-  /** Every pane of every multiplexer session of this bridge now. Agent panes are picked here. */
-  panes(): readonly PaneSource[];
-  /** The instance token a pane holds now, or null. Must mint nothing (`WalkyInstances.peek`). */
-  instanceOf(muxSession: string, paneId: string): string | null;
-  /** The bus, for the end of the newest turn. Read only. */
-  bus: Pick<EventBus, "since">;
-  /** The added account a pane runs under, from memory (`Accounts.paneAccount`). */
-  paneAccount(muxSession: string, pane: AgentView): PaneAccount | undefined;
-  /** The accounts of this machine, as `GET /api/accounts` has them; null when this machine offers none. */
-  accountsBody(): Promise<Pick<AccountsBody, "accounts"> | null>;
-  /** Whether the pane's box holds a draft, when a data link knows; null when none does. */
-  draftState(muxSession: string, paneId: string): boolean | null;
-  /** The screen of one pane, `lines` rows (`MuxAdapter.readGrid`, the phone's own read). */
-  readScreen(muxSession: string, paneId: string, lines: number): Promise<ScreenRead>;
-  /** The Hill's open decisions, or null when this bridge has no Hill. */
-  hillOpen(): readonly HillDecision[] | null;
-  /** The lines a `read` takes when the caller names none (`COLLIE_READ_LINES`). */
-  defaultLines: number;
-}
+/** What the five reads see of the bridge: the API's world (world.ts), less the version `hello` reads. */
+export type ReadsDeps = Omit<ApiWorld, "version">;
 
 /** The text of a `read` answer is cut to this many bytes of the serialized JSON, below the socket's 1 MiB cap. */
 export const READ_TEXT_MAX_BYTES = 900 * 1024;
@@ -114,6 +93,20 @@ export function labelOf(pane: AgentView): string {
   return clip(named ?? pane.agent) || pane.agent;
 }
 
+/** The sender label of Collie's own card on the Hill. */
+export const SENDER_COLLIE = "Collie";
+/** The sender label of an agent that is no session on this bridge (another machine, or gone). */
+export const SENDER_AGENT = "agent";
+/** The sender label of a trick's card whose name is empty. */
+export const SENDER_TRICK = "trick";
+
+/** An epoch-ms time as an ISO date, or undefined when it is no date. */
+function isoDate(at: number): string | undefined {
+  if (!Number.isFinite(at)) return undefined;
+  const date = new Date(at);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
 /** FNV-1a, 32 bit, over the text's UTF-8 bytes. */
 function fnv1a(text: string): number {
   let hash = 0x811c9dc5;
@@ -124,9 +117,14 @@ function fnv1a(text: string): number {
   return hash;
 }
 
-/** The pane is an agent's, not a bare shell and not a trick's own session. */
-function isAgentPane(pane: AgentView): boolean {
-  return pane.kind !== "shell" && pane.kind !== "trick";
+/**
+ * The agent panes of a list, by an allow-list: a pane of kind `agent` (or of no kind, as older panes
+ * report), so a bare shell and any kind added later are left out. A trick's own session is not even in the
+ * list: the world hands its panes over through `realAgentPanes` (bridge/tricks/panes.ts, the one filter of
+ * review row 30) in bridge/index.ts, since bridge/api/ may not import bridge/tricks/ (events/seam.test.ts).
+ */
+function agentPanesOf(sources: readonly PaneSource[]): PaneSource[] {
+  return sources.filter((source) => source.pane.kind === undefined || source.pane.kind === "agent");
 }
 
 interface SessionRow {
@@ -182,7 +180,7 @@ export function capText(text: string, maxBytes: number): CappedText {
 
 /** The five handlers, over the bridge's getters. */
 export function buildReads(deps: ReadsDeps): ReadHandlers {
-  const agentPanes = (): PaneSource[] => deps.panes().filter((source) => isAgentPane(source.pane));
+  const agentPanes = (): PaneSource[] => agentPanesOf(deps.panes());
 
   // Resolves a session id as ids.ts says, over the agent panes only: a shell pane's id is unknown here.
   const view: SessionView = {
@@ -252,12 +250,17 @@ export function buildReads(deps: ReadsDeps): ReadHandlers {
     return { ok: true, answer: { session: found.id, text: capped.text, lines, truncated: screen.truncated || capped.cut } };
   };
 
+  // HOUSEKEEPING (security read 1, note 2). `accounts` and `hill.list` read through the same getters the
+  // phone's routes read through, and those getters do the bookkeeping the phone's reads do: the walky token
+  // stamp of the Hill's look (at most every 10 s) and the agent's own status command behind the accounts
+  // cache. No operation changes what a person sees or types; these two reads do the same housekeeping as
+  // the phone's reads.
   const accounts = async (): Promise<OpResult> => {
     const body = await deps.accountsBody();
     const rows: JsonObject[] = (body?.accounts ?? []).map((account: AccountRow) => ({
       id: account.id,
       agent: account.harness,
-      label: account.label,
+      label: clip(account.label),
       kind: account.kind,
       signedIn: account.identity?.signedIn ?? null,
       running: account.running ?? 0,
@@ -265,21 +268,65 @@ export function buildReads(deps: ReadsDeps): ReadHandlers {
     return { ok: true, answer: { accounts: rows } };
   };
 
+  // The pane of this bridge an agent card's sender stands for, or undefined: the card was posted on another
+  // machine, or the pane is gone or holds another session now. The address is the poster's walky address,
+  // `<member>/<pane id>` with `#<token>` when it names one instance (bridge/walky/address.ts, which this
+  // module may not import: bridge/walky/ writes). An address that does not read that way names no pane here.
+  const senderPane = (from: HillDecision["from"]): AgentView | undefined => {
+    if (from.address === null || from.memberId !== deps.machine()) return undefined;
+    const slash = from.address.indexOf("/");
+    if (slash <= 0) return undefined;
+    const rest = from.address.slice(slash + 1);
+    const hash = rest.indexOf("#");
+    const paneId = hash < 0 ? rest : rest.slice(0, hash);
+    const instance = hash < 0 ? null : rest.slice(hash + 1);
+    const found = agentPanes().filter((source) => source.pane.paneId === paneId && (instance === null || deps.instanceOf(source.muxSession, paneId) === instance));
+    return found.length === 1 ? found[0]!.pane : undefined;
+  };
+
+  // The sender's label (security read 1, item 2): built by `labelOf`, the SAME function as `sessions.label`,
+  // from the sender's pane where it is a session on this bridge. Never the stored `from.label` of an agent:
+  // the Hill's list renames an open card's sender with `paneName`, which falls back to the title the agent
+  // wrote and the terminal title. A trick's card carries the trick's name, stamped by the bridge from its
+  // manifest (bridge/tricks/hill.ts); Collie's own card a fixed word; an agent that is no session here (on
+  // another machine, or gone) a fixed neutral word.
+  const senderLabel = (from: HillDecision["from"]): string => {
+    switch (from.kind) {
+      case "collie":
+        return SENDER_COLLIE;
+      case "trick":
+        return clip(from.label) || SENDER_TRICK;
+      case "agent": {
+        const pane = senderPane(from);
+        return pane === undefined ? SENDER_AGENT : labelOf(pane);
+      }
+      default: {
+        const never: never = from.kind;
+        throw new TypeError(`api: an unknown sender kind ${String(never)}`);
+      }
+    }
+  };
+
   const hillList = async (): Promise<OpResult> => {
     const open = deps.hillOpen() ?? [];
     const cards: JsonObject[] = open
       .filter((decision) => decision.state === "open")
-      .map((decision) => ({
-        id: decision.id,
-        // The bridge the poster runs on (bridge/bridge-id.ts), so a caller on a crew's lead, which lists
-        // the whole Hill as the person sees it there, can keep only one machine's cards. Null only on a
-        // card stored before every bridge had an id.
-        machine: decision.from.memberId,
-        sender: { kind: decision.from.kind, label: clip(decision.from.label) },
-        title: clip(decision.title),
-        urgency: decision.priority,
-        date: new Date(decision.at).toISOString(),
-      }));
+      .map((decision) => {
+        const card: JsonObject = {
+          id: decision.id,
+          // The bridge the poster runs on (bridge/bridge-id.ts), spelled as `sessions.machine` is, so a caller
+          // on a crew's lead, which lists the whole Hill as the person sees it there, can keep only one
+          // machine's cards. Null only on a card stored before every bridge had an id.
+          machine: decision.from.memberId,
+          sender: { kind: decision.from.kind, label: senderLabel(decision.from) },
+          title: clip(decision.title),
+          urgency: decision.priority,
+        };
+        // One bad date leaves that card's date out, never the list.
+        const date = isoDate(decision.at);
+        if (date !== undefined) card.date = date;
+        return card;
+      });
     return { ok: true, answer: { cards } };
   };
 

@@ -1,6 +1,9 @@
-// THE ASK CANNOT BE REACHED (M105 spec 03, task 6; decision 15). The local API is read only: no
-// operation of its table may be able to answer an ask, type into a session or press a key. This test
-// proves it statically, in three ways, so a change that adds a path fails here and not in a review:
+// THE ASK CANNOT BE REACHED (M105 spec 03, task 6; decision 15; security read 1, item 7). The local API
+// is read only: no operation of its table may be able to answer an ask, type into a session or press a
+// key. The claim rests on two things, both held here: (a) the operations get the bridge through ONE
+// narrow interface, `ApiWorld` (world.ts), and bridge/index.ts builds an object of exactly that type (the
+// key test, below); (b) every operation, run against a world whose write methods all throw, calls none
+// of them (the spy test, below). The import walk stays beside them, and guards the imports:
 //
 //  1. IMPORT REACH. Every non-test module in bridge/api/ is a root. Following every relative import
 //     (value imports, re-exports and dynamic `import()`), no module reached may be one of
@@ -9,20 +12,28 @@
 //     erased, so it cannot put code on a path (it still has to name a type, and bus.ts, a type import of
 //     operations.ts, imports nothing that writes anyway). The scan reads the real files, and a planted
 //     import in an in-memory file is caught, so the test is not vacuous.
-//  2. THE DEPS' NAMES. The handlers get the bridge only through `ReadsDeps` (reads.ts). Its members, and
-//     the members of the one object it passes through (`bus`), must carry no name that sends, answers,
-//     presses a key, types or writes. Checked twice: by the compiler (a type that is `never` when one
-//     exists, so `bun run typecheck` fails) and by reading the declaration's text.
+//  2. THE WORLD'S NAMES. The members of `ApiWorld`, and of the one object it passes through (`bus`), carry
+//     no name that sends, answers, presses a key, types or writes: by the compiler and by the text.
 //  3. THE TABLE IS READ ONLY. Every row is a `read` that needs `look`, and the local tier grants `look`.
+//  4. THE KEYS. `API_WORLD_KEYS` and the interface agree both ways (the compiler), `narrowWorld` keeps
+//     exactly those keys and a bus of two reads (at run time), and bridge/index.ts builds the table only
+//     through `apiTable(narrowWorld({ ... } satisfies ApiWorld))`.
+//  5. THE SPIES. Every operation of the table runs, with valid arguments, against a world whose every
+//     member is a spy, carrying extra write methods (typing, answering, start, stop, close, settings, a
+//     Hill answer, mark seen) on itself and on the objects it hands out; each write throws, none is called.
+//     It runs once on that world as it is (the write methods reachable at run time) and once narrowed.
 
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 import { EventBus } from "../events/bus.ts";
-import { buildTable, LOCAL_TIER_RIGHTS, OPERATION_NAMES } from "./operations.ts";
-import { buildReads, type ReadsDeps } from "./reads.ts";
-import { depsOf, world } from "./fixtures/reads-world.ts";
+import type { JsonObject } from "../json.ts";
+import { idOf } from "./ids.ts";
+import { buildTable, LOCAL_TIER_RIGHTS, OPERATION_NAMES, type OperationContext, type OperationName } from "./operations.ts";
+import { buildReads, type PaneSource } from "./reads.ts";
+import { API_WORLD_KEYS, apiTable, EVERY_KEY_LISTED, narrowWorld, NO_KEY_EXTRA, type ApiWorld } from "./world.ts";
+import { depsOf, keyOf, MACHINE, world } from "./fixtures/reads-world.ts";
 
 const BRIDGE = resolve(import.meta.dir, "..");
 const REPO = resolve(BRIDGE, "..");
@@ -154,26 +165,26 @@ describe("import reach: no operation can reach the code that answers an ask", ()
 // The compiler's half of the names rule: a key of the deps (or of the bus it passes) that contains one of
 // these words makes `Offending` a union, and the line below fails to compile.
 type Banned = `${string}${"send" | "answer" | "key" | "type" | "write" | "steer" | "prompt" | "reply" | "press" | "enqueue" | "submit" | "post" | "paste" | "input" | "deliver" | "tell" | "publish" | "subscribe"}${string}`;
-type KeysOfDeps = Extract<keyof ReadsDeps, string> | Extract<keyof ReadsDeps["bus"], string>;
+type KeysOfDeps = Extract<keyof ApiWorld, string> | Extract<keyof ApiWorld["bus"], string>;
 type Offending = Extract<Lowercase<KeysOfDeps>, Banned>;
 const NO_OFFENDING_NAME: [Offending] extends [never] ? true : never = true;
 
 const BANNED_WORDS = /send|answer|key|type|write|steer|prompt|reply|press|enqueue|submit|post|paste|input|deliver|tell|publish|subscribe/iu;
 
-describe("the deps of the reads name no way to write", () => {
-  test("by the compiler: no member name of ReadsDeps or of its bus carries a writing word", () => {
+describe("the world of the operations names no way to write", () => {
+  test("by the compiler: no member name of ApiWorld or of its bus carries a writing word", () => {
     expect(NO_OFFENDING_NAME).toBe(true);
   });
 
-  test("by the declaration's text: every member of ReadsDeps, and every key the bus is picked down to", () => {
-    const source = readFileSync(join(BRIDGE, "api", "reads.ts"), "utf8");
-    const start = source.indexOf("export interface ReadsDeps {");
+  test("by the declaration's text: every member of ApiWorld, and every key the bus is picked down to", () => {
+    const source = readFileSync(join(BRIDGE, "api", "world.ts"), "utf8");
+    const start = source.indexOf("export interface ApiWorld {");
     expect(start).toBeGreaterThan(-1);
     const body = source.slice(start, source.indexOf("\n}\n", start));
     const members = [...body.matchAll(/^ {2}(?:readonly )?([A-Za-z_]\w*)\s*[(:?]/gmu)].map((match) => match[1]!);
-    expect(members).toEqual(["machine", "panes", "instanceOf", "bus", "paneAccount", "accountsBody", "draftState", "readScreen", "hillOpen", "defaultLines"]);
+    expect(members).toEqual([...API_WORLD_KEYS]);
     const picked = [...body.matchAll(/\bbus:\s*Pick<EventBus,\s*([^>]+)>/gu)].flatMap((match) => [...match[1]!.matchAll(/"([^"]+)"/gu)].map((one) => one[1]!));
-    expect(picked).toEqual(["since"]);
+    expect(picked).toEqual(["since", "waitFor"]);
     for (const name of [...members, ...picked]) expect(name).not.toMatch(BANNED_WORDS);
   });
 
@@ -192,5 +203,199 @@ describe("the table is read only", () => {
       expect(row.right).toBe("look");
     }
     expect(LOCAL_TIER_RIGHTS).toEqual(["look"]);
+  });
+});
+
+describe("the keys: the operations hold exactly the world's interface", () => {
+  test("by the compiler: API_WORLD_KEYS and ApiWorld agree both ways", () => {
+    expect(EVERY_KEY_LISTED).toBe(true);
+    expect(NO_KEY_EXTRA).toBe(true);
+  });
+
+  test("narrowWorld keeps exactly the interface's keys, and a bus of its two reads, whatever the object carried", () => {
+    const wide = Object.assign(spyWorld().world, { sendKeys: () => undefined, answer: () => undefined });
+    const narrow = narrowWorld(wide);
+    expect(Object.keys(narrow).toSorted()).toEqual([...API_WORLD_KEYS].toSorted());
+    expect(Object.keys(narrow.bus).toSorted()).toEqual(["since", "waitFor"]);
+    expect("publish" in narrow.bus).toBe(false);
+  });
+
+  test("bridge/index.ts builds the table only through apiTable(narrowWorld({ ... } satisfies ApiWorld))", () => {
+    const index = readFileSync(join(BRIDGE, "index.ts"), "utf8");
+    expect(index).not.toMatch(/\bbuildTable\(|\bbuildReads\(/u);
+    const start = index.indexOf("table: apiTable(");
+    expect(start).toBeGreaterThan(-1);
+    const block = index.slice(start, index.indexOf("granted: LOCAL_TIER_RIGHTS", start));
+    expect(block).toMatch(/^table: apiTable\(\s*narrowWorld\(\{/u);
+    expect(block).toMatch(/\} satisfies ApiWorld\),\s*\),\s*$/u);
+    // The bus goes in as its two reads, never the bus itself.
+    expect(block).toContain("bus: { since: (cursor) => eventBus.since(cursor), waitFor: (after, ms, signal) => eventBus.waitFor(after, ms, signal) }");
+  });
+});
+
+/** The write names a spy world carries, on itself and on the objects it hands out. Each throws. */
+type WriteName = "sendKeys" | "sendText" | "typeInto" | "answer" | "answerAsk" | "start" | "stop" | "close" | "setSettings" | "settings" | "markSeen" | "post" | "publish" | "subscribe" | "enqueue" | "remove";
+type Writers = Readonly<Record<WriteName, () => never>>;
+
+interface SpyWorld {
+  readonly world: ApiWorld & Writers;
+  /** The bus the world hands out, with its write methods. */
+  readonly bus: ApiWorld["bus"] & Writers;
+  /** Every pane source the world handed out, with its write methods. */
+  readonly handed: (PaneSource & Writers)[];
+  /** Every read call, by member name. */
+  readonly reads: string[];
+  /** Every write call, as `<object>.<name>`: must stay empty. */
+  readonly writes: string[];
+  /** The test's own publish on the bus behind the world, to end a wait. */
+  readonly emit: () => void;
+}
+
+/** A world over the fixture: every member a spy; write methods hung on it and on what it hands out, each throwing. */
+function spyWorld(): SpyWorld {
+  const reads: string[] = [];
+  const writes: string[] = [];
+  const writers = (owner: string) => {
+    const make =
+      (name: WriteName) =>
+      (): never => {
+        writes.push(`${owner}.${name}`);
+        throw new Error(`a write was called: ${owner}.${name}`);
+      };
+    return {
+      sendKeys: make("sendKeys"),
+      sendText: make("sendText"),
+      typeInto: make("typeInto"),
+      answer: make("answer"),
+      answerAsk: make("answerAsk"),
+      start: make("start"),
+      stop: make("stop"),
+      close: make("close"),
+      setSettings: make("setSettings"),
+      settings: make("settings"),
+      markSeen: make("markSeen"),
+      post: make("post"),
+      publish: make("publish"),
+      subscribe: make("subscribe"),
+      enqueue: make("enqueue"),
+      remove: make("remove"),
+    } satisfies Writers;
+  };
+  const w = world();
+  w.screens.set(keyOf("main", "w1:p1"), { ok: true, text: "$ ls\nREADME.md", truncated: false });
+  w.bus.publish({ type: "turn.end", session: idOf(MACHINE, "w1:p1", "k3f9") });
+  const base = depsOf(w);
+  const realBus = w.bus;
+  const handed: (PaneSource & Writers)[] = [];
+  const bus = Object.assign(
+    {
+      since: (cursor: string | undefined) => {
+        reads.push("bus.since");
+        return realBus.since(cursor);
+      },
+      waitFor: (after: string | undefined, ms: number, signal?: AbortSignal) => {
+        reads.push("bus.waitFor");
+        return realBus.waitFor(after, ms, signal);
+      },
+    },
+    writers("bus"),
+  );
+  const hill = Object.assign({ list: () => ({ open: base.hillOpen() ?? [] }) }, writers("hill"));
+  const accounts = Object.assign({ body: () => base.accountsBody() }, writers("accounts"));
+  const mux = Object.assign({ readGrid: (muxSession: string, paneId: string, lines: number) => base.readScreen(muxSession, paneId, lines) }, writers("mux"));
+  const spied: ApiWorld = {
+    version: () => {
+      reads.push("version");
+      return "9.9.9-test";
+    },
+    machine: () => {
+      reads.push("machine");
+      return base.machine();
+    },
+    panes: () => {
+      reads.push("panes");
+      const out = base.panes().map((source) => Object.assign({ muxSession: source.muxSession, pane: Object.assign({}, source.pane, writers("pane")) }, writers("source")));
+      handed.push(...out);
+      return out;
+    },
+    instanceOf: (muxSession, paneId) => {
+      reads.push("instanceOf");
+      return base.instanceOf(muxSession, paneId);
+    },
+    bus,
+    paneAccount: (muxSession, pane) => {
+      reads.push("paneAccount");
+      return base.paneAccount(muxSession, pane);
+    },
+    accountsBody: () => {
+      reads.push("accountsBody");
+      return accounts.body();
+    },
+    draftState: (muxSession, paneId) => {
+      reads.push("draftState");
+      return base.draftState(muxSession, paneId);
+    },
+    readScreen: (muxSession, paneId, lines) => {
+      reads.push("readScreen");
+      return mux.readGrid(muxSession, paneId, lines);
+    },
+    hillOpen: () => {
+      reads.push("hillOpen");
+      return hill.list().open;
+    },
+    defaultLines: base.defaultLines,
+  };
+  const emit = (): void => {
+    realBus.publish({ type: "session.status", session: idOf(MACHINE, "w1:p1", "k3f9"), data: { state: "working" } });
+  };
+  return { world: Object.assign(spied, writers("world")), bus, handed, reads, writes, emit };
+}
+
+/** Valid arguments for every operation: the compiler makes this list every name. */
+function validArgs() {
+  const session = idOf(MACHINE, "w1:p1", "k3f9");
+  return { hello: {}, sessions: {}, brief: { session }, read: { session, lines: 10 }, accounts: {}, "hill.list": {}, events: { after: "-", wait: 0 } } satisfies Record<OperationName, JsonObject>;
+}
+
+function spyCtx(): OperationContext {
+  return { signal: new AbortController().signal, offered: [...OPERATION_NAMES], standing: () => true, claimWait: () => () => undefined };
+}
+
+describe("the spies: no operation calls a write, even one reachable at run time", () => {
+  for (const [how, narrowed] of [
+    ["the world as passed, its write methods reachable", false],
+    ["the world narrowed, as bridge/index.ts passes it", true],
+  ] as const) {
+    test(`every operation, with valid arguments, on ${how}`, async () => {
+      const spy = spyWorld();
+      const table = apiTable(narrowed ? narrowWorld(spy.world) : spy.world);
+      expect([...table.keys()]).toEqual([...OPERATION_NAMES]);
+      const args = validArgs();
+      for (const name of OPERATION_NAMES) {
+        const result = await table.get(name)!.run(args[name], spyCtx());
+        expect({ name, ok: result.ok }).toEqual({ name, ok: true });
+      }
+      // An events wait that ends on an event, too.
+      const head = spy.world.bus.since(undefined).next;
+      const waiting = table.get("events")!.run({ after: head, wait: 5 }, spyCtx());
+      setTimeout(spy.emit, 10);
+      const ended = await waiting;
+      const events = ended.ok ? ended.answer.events : undefined;
+      expect(Array.isArray(events) ? events.length : -1).toBe(1);
+      expect(spy.writes).toEqual([]);
+      // The operations held objects with write methods on them, and called none.
+      expect(spy.handed.length).toBeGreaterThan(0);
+      // Not vacuous: the operations did read the world.
+      for (const member of ["version", "machine", "panes", "instanceOf", "bus.since", "bus.waitFor", "paneAccount", "accountsBody", "draftState", "readScreen", "hillOpen"]) expect(spy.reads).toContain(member);
+    });
+  }
+
+  test("the spies are armed: a write method on the world or on an object it hands out throws and is recorded", () => {
+    const spy = spyWorld();
+    expect(() => spy.world.sendKeys()).toThrow("a write was called: world.sendKeys");
+    spy.world.panes();
+    expect(() => spy.handed[0]!.markSeen()).toThrow("source.markSeen");
+    expect(() => spy.bus.publish()).toThrow("bus.publish");
+    expect(spy.writes).toEqual(["world.sendKeys", "source.markSeen", "bus.publish"]);
   });
 });

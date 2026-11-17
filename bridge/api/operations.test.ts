@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import { EventBus } from "../events/bus.ts";
 import { encodeSessionId } from "../events/session-id.ts";
+import type { JsonObject } from "../json.ts";
+import { asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
+import { ANSWER_MAX_BYTES, EVENTS_PER_ANSWER } from "./limits.ts";
 import {
   admit,
   buildTable,
@@ -201,5 +204,45 @@ describe("events", () => {
     controller.abort();
     expect(await waiting).toEqual({ ok: false, code: "api.closing" });
     expect(bus.listeners().waits).toBe(0);
+  });
+});
+
+describe("events pages (security read 1, item 6)", () => {
+  test("after a reset with 2048 events kept: pages of at most 256, the reset counted, each under 1 MiB, nothing lost or repeated", async () => {
+    const bus = newBus();
+    for (let i = 0; i < 2048; i += 1) bus.publish({ type: "session.status", session: SESSION, data: { state: i % 2 === 0 ? "working" : "idle" } });
+    const table = fullTable(bus);
+    const seen: string[] = [];
+    let resets = 0;
+    let cursor = "boot0.5";
+    let pages = 0;
+    for (; pages < 20; pages += 1) {
+      const result = await table.get("events")!.run({ after: cursor }, ctx());
+      if (!result.ok) throw new Error(result.code);
+      expect(Buffer.byteLength(JSON.stringify({ ok: true, ...result.answer }))).toBeLessThan(ANSWER_MAX_BYTES);
+      const raw = result.answer.events;
+      const events: JsonObject[] = (Array.isArray(raw) ? raw : []).map((one) => asJsonObject(one) ?? {});
+      expect(events.length).toBeLessThanOrEqual(EVENTS_PER_ANSWER);
+      for (const event of events) {
+        if (event.type === "reset") resets += 1;
+        else seen.push(asJsonString(event.id) ?? "");
+      }
+      cursor = String(result.answer.next);
+      if (events.length === 0) break;
+    }
+    expect(resets).toBe(1);
+    expect(seen.length).toBe(2048);
+    expect(new Set(seen).size).toBe(2048);
+    // 2049 events with the marker: eight full pages, one of one event, one empty at the head.
+    expect(pages).toBe(9);
+    expect(cursor).toBe(bus.head());
+  });
+
+  test("a page of fewer than 256 answers the head as next, as before", async () => {
+    const bus = newBus();
+    const from = bus.head();
+    for (let i = 0; i < 3; i += 1) bus.publish({ type: "turn.end", session: SESSION });
+    const result = await fullTable(bus).get("events")!.run({ after: from }, ctx());
+    expect(result).toMatchObject({ ok: true, answer: { next: bus.head() } });
   });
 });

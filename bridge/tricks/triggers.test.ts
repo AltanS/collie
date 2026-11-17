@@ -820,14 +820,14 @@ describe("`on` and `watch` are rights", () => {
   });
 
   test("the card words: exactly the two sentences, the paths joined by a comma and a space", () => {
-    expect(ON_CHIP).toBe("Runs when a session changes state");
-    expect(watchChip(["~/notes/todo.md", "/etc/hosts"])).toBe("Runs when these files change: ~/notes/todo.md, /etc/hosts");
+    expect(ON_CHIP).toBe("runs when a session changes state");
+    expect(watchChip(["~/notes/todo.md", "/etc/hosts"])).toBe("runs when these files change: ~/notes/todo.md, /etc/hosts");
     const base = readManifestText(V1, "react").manifest;
     const both = readManifestText(`${V1}on = ["turn.end", "ask.open"]\nwatch = ["~/a.md", "/etc/hosts"]\n`, "react").manifest;
-    expect(newRights(base, both)).toEqual(["Runs when a session changes state", "Runs when these files change: ~/a.md, /etc/hosts"]);
+    expect(newRights(base, both)).toEqual(["runs when a session changes state", "runs when these files change: ~/a.md, /etc/hosts"]);
     // A version that names one more event or path shows the right again; one that changes nothing shows nothing.
     const more = readManifestText(`${V1}on = ["turn.end", "ask.open", "session.status"]\nwatch = ["~/a.md", "/etc/hosts", "/tmp/x"]\n`, "react").manifest;
-    expect(newRights(both, more)).toEqual(["Runs when a session changes state", "Runs when these files change: /tmp/x"]);
+    expect(newRights(both, more)).toEqual(["runs when a session changes state", "runs when these files change: /tmp/x"]);
     expect(newRights(both, both)).toEqual([]);
   });
 

@@ -197,6 +197,7 @@ export const API_ERROR_CODES = [
   "api.session_replaced",
   "api.too_many_waits",
   "api.too_many_requests",
+  "api.busy",
   "api.too_many_connections",
   "api.answer_too_large",
   "api.closing",
