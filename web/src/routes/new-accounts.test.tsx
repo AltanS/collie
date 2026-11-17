@@ -150,14 +150,14 @@ describe("the New page: the account pick", () => {
     expect(within(pick).getAllByRole("option").map((o) => o.textContent)).toEqual(["Default", "Work"]);
     expect(pick).toHaveValue("claude:default");
     const caption = document.querySelector<HTMLElement>("[data-slot=account-caption]")!;
-    expect(within(caption).getByText("Session")).toBeInTheDocument();
+    expect(within(caption).getByText("5 hours")).toBeInTheDocument();
     expect(within(caption).getByText("42% used")).toBeInTheDocument();
     await userEvent.selectOptions(pick, "Work");
     const after = document.querySelector<HTMLElement>("[data-slot=account-caption]")!;
     // The lead window is the first one the harness lists.
     expect(within(after).getByText("Week")).toBeInTheDocument();
     expect(within(after).getByText("91% used")).toHaveClass("text-status-blocked");
-    expect(within(after).queryByText("Session")).toBeNull();
+    expect(within(after).queryByText("5 hours")).toBeNull();
     expect(within(after).getByText(/^Last seen /)).toBeInTheDocument();
     expect(summary()).toHaveTextContent("Claude Code as Work in");
   });

@@ -450,13 +450,13 @@ describe("preflight red — the button is disabled with the red's own reason", (
 });
 
 describe("the button opens update mode, and Start update there is the confirm (ADR 0064)", () => {
-  it("opens Ready to start: the version, the 30 second drop, and the terminal sessions that keep running", async () => {
+  it("opens Ready to start: the version, the 30 second drop, and the terminal and agents that keep running", async () => {
     const user = userEvent.setup();
     renderCard(info());
     await user.click(await screen.findByRole("button", { name: "Update to 1.4.0" }));
     const panel = screen.getByRole("dialog", { name: "Update to 1.4.0" });
     expect(within(panel).getByText("The connection drops for up to 30 seconds.")).toBeInTheDocument();
-    expect(within(panel).getByText(/Terminal sessions and agents keep running/)).toBeInTheDocument();
+    expect(within(panel).getByText(/Your terminal and agents keep running/)).toBeInTheDocument();
   });
 
   it("does not grow the card: no confirm appears inside it", async () => {
@@ -593,7 +593,7 @@ describe("state rendering — progress is not failure", () => {
     renderCard(info({ run: runAt("restarting") }));
     const line = await screen.findByText("Restarting. This is not an outage.");
     expect(line).toBeInTheDocument();
-    expect(screen.getByText(/Your terminal session is untouched/)).toBeInTheDocument();
+    expect(screen.getByText(/Your terminal and agents are untouched/)).toBeInTheDocument();
     // Progress is drawn in the working tone, never the blocked one a failure carries.
     expect(line.closest("div")).toHaveClass("text-status-working");
     expect(line.closest("div")).not.toHaveClass("text-status-blocked");

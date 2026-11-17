@@ -121,7 +121,8 @@ describe.if(posix)("scripts/official-tricks.ts", () => {
     expect(run.code).toBe(0);
     expect(run.lines.at(-1)).toBe(`wrote ${file}`);
     const [entry] = await entriesOf(file);
-    expect(entry).toEqual({ ...START, name: "Legs Counter", commit: sha, hash: await hashOf(MANIFEST("Legs Counter"), PROGRAM("one")), extras: emptyExtras(), previous: [{ commit: START.commit, hash: START.hash }] });
+    // `posix`: its run line is a shell line (`./program.sh`), which a Windows bridge does not run (fault d).
+    expect(entry).toEqual({ ...START, name: "Legs Counter", commit: sha, hash: await hashOf(MANIFEST("Legs Counter"), PROGRAM("one")), extras: emptyExtras(), posix: true, previous: [{ commit: START.commit, hash: START.hash }] });
     // The description is the list's own line: the manifest has none.
     expect(entry?.description).toBe("Counts legs.");
     expect(await runOfficial({ repoDir: r.dir, commit: sha, check: true, file })).toEqual({ code: 0, lines: [`ok: ${file} is in step with ${sha.slice(0, 12)}`] });

@@ -3,8 +3,11 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { scrubEnv, scrubReason } from "./env.ts";
-import { BUN_BE_BUN, launchOf, outcomeProblem, runProgram, runtimeScript, shellArgv, STDERR_CAP_BYTES, type RunSpec } from "./run.ts";
+import { hostFor } from "../host.ts";
+import { envPath, isBaseEnvName, neverReason, scrubEnv, scrubReason, WINDOWS_BASE_ENV_NAMES } from "./env.ts";
+import { WINDOWS_KILL_TIMEOUT_MS, type KillSpawn } from "../tree-kill.ts";
+import { BUN_BE_BUN, launchOf, outcomeProblem, runProgram, runtimeScript, shellArgv, STDERR_CAP_BYTES, windowsRunProblem, type RunChild, type RunSpec } from "./run.ts";
+import { TRICKS_WINDOWS_SHELL_LINE } from "../../web/src/lib/tricks/schema.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -18,8 +21,8 @@ afterAll(async () => {
 
 const KEY = "sk-or-v1-0123456789abcdef0123456789abcdef";
 
-/** The shell line that prints the environment: `env` under `sh`, the `set` built-in under `cmd.exe` (run.ts `shellArgv`). */
-const PRINT_ENV = process.platform === "win32" ? "set" : "env";
+/** A script that prints the environment it got, one `NAME=value` per line, on every host. */
+const PRINT_ENV_PROGRAM = 'process.stdout.write(Object.entries(process.env).map(([k, v]) => `${k}=${v ?? ""}`).join("\\n"));\n';
 
 async function run(command: string, extra: Partial<RunSpec> = {}) {
   const cwd = await tempDir();
@@ -98,7 +101,9 @@ describe("the env scrub", () => {
   });
 
   test("a COLLIE_TOKEN and an OPENROUTER_API_KEY never reach the child", async () => {
-    const outcome = await run(PRINT_ENV, { env: scrubEnv({ ...process.env, COLLIE_TOKEN: "tok-must-not-leak", OPENROUTER_API_KEY: KEY }) });
+    // The script form, so it runs on every host (a shell line does not run on Windows, fault d). The child is
+    // a real Bun: on Windows it needs `SystemRoot`, which the scrub now keeps (fault a).
+    const outcome = await script(await tempDir(), PRINT_ENV_PROGRAM, { stdin: "", env: scrubEnv({ ...process.env, COLLIE_TOKEN: "tok-must-not-leak", OPENROUTER_API_KEY: KEY }) });
     expect(outcome).toMatchObject({ kind: "exited", code: 0 });
     if (outcome.kind !== "exited") return;
     expect(outcome.stdout).not.toContain("COLLIE_TOKEN");
@@ -107,6 +112,97 @@ describe("the env scrub", () => {
     expect(outcome.stdout).not.toContain(KEY.slice(4));
     // Windows spells it `Path`, and a name there is one in any case.
     expect(outcome.stdout.toUpperCase()).toContain("PATH=");
+    // The SystemRoot line is a VM-only proof: the lead's Windows VM run is its proof.
+    if (process.platform === "win32") expect(outcome.stdout.toUpperCase()).toContain("SYSTEMROOT=");
+  });
+});
+
+describe("the env scrub on Windows (fault a): names without case, the copy's own spelling, never a secret", () => {
+  const WIN = hostFor("win32");
+  const LINUX = hostFor("linux");
+  // A Windows environment copy, spelled the way Windows spells it, with secrets in odd case beside it.
+  const winEnv = {
+    Path: "C:\\Windows\\system32;C:\\Program Files\\Git\\cmd",
+    PathExt: ".COM;.EXE;.BAT;.CMD",
+    SystemRoot: "C:\\Windows",
+    windir: "C:\\Windows",
+    ComSpec: "C:\\Windows\\system32\\cmd.exe",
+    TEMP: "C:\\Users\\op\\AppData\\Local\\Temp",
+    Tmp: "C:\\Users\\op\\AppData\\Local\\Temp",
+    USERPROFILE: "C:\\Users\\op",
+    APPDATA: "C:\\Users\\op\\AppData\\Roaming",
+    LocalAppData: "C:\\Users\\op\\AppData\\Local",
+    COLLIE_TOKEN: "tok-must-not-leak",
+    collie_token: "tok-must-not-leak",
+    Collie_Token: "tok-must-not-leak",
+    Herdr_Plugin_Config_Dir: "C:\\x",
+    ssh_auth_sock: "\\\\.\\pipe\\ssh",
+    Docker_Socket: "\\\\.\\pipe\\docker",
+    bun_be_bun: "1",
+    trick_now: "1794225600",
+    OpenRouter_Api_Key: KEY,
+    gh_token: "ghp_x",
+    Aws_Secret_Access_Key: "y",
+    db_password: "hunter2",
+    // A base name whose value the mask hides is dropped on Windows too.
+    term: KEY,
+  };
+  const SECRET_VALUES = ["tok-must-not-leak", KEY, "ghp_x", "hunter2", "\\\\.\\pipe\\ssh", "\\\\.\\pipe\\docker"];
+
+  test("keeps Path, PathExt, SystemRoot and the Windows base set, in the spelling the copy carries", () => {
+    expect(scrubEnv(winEnv, [], { host: WIN })).toEqual({
+      Path: winEnv.Path,
+      PathExt: winEnv.PathExt,
+      SystemRoot: winEnv.SystemRoot,
+      windir: winEnv.windir,
+      ComSpec: winEnv.ComSpec,
+      TEMP: winEnv.TEMP,
+      Tmp: winEnv.Tmp,
+      USERPROFILE: winEnv.USERPROFILE,
+      APPDATA: winEnv.APPDATA,
+      LocalAppData: winEnv.LocalAppData,
+    });
+    for (const name of WINDOWS_BASE_ENV_NAMES) {
+      expect(isBaseEnvName(name.toLowerCase(), WIN)).toBe(true);
+      expect(isBaseEnvName(name, LINUX)).toBe(false);
+    }
+  });
+
+  test("the Windows set and the folding stay off POSIX: Linux keeps the exact-case list it had", () => {
+    expect(scrubEnv({ ...winEnv, PATH: "/usr/bin", LC_ALL: "C" }, [], { host: LINUX })).toEqual({ PATH: "/usr/bin", LC_ALL: "C" });
+  });
+
+  test("no secret-like name passes on either platform, in any case, listed or not", () => {
+    // Every never-name, listed in its own odd case: a list cannot open them. The keys stay unlisted.
+    const listedAll = ["COLLIE_TOKEN", "collie_token", "Collie_Token", "Herdr_Plugin_Config_Dir", "ssh_auth_sock", "Docker_Socket", "bun_be_bun", "trick_now"];
+    for (const host of [WIN, LINUX]) {
+      const out = scrubEnv(winEnv, listedAll, { host });
+      const values = Object.values(out).join("\n");
+      for (const secret of SECRET_VALUES) expect(values).not.toContain(secret);
+      for (const name of Object.keys(out)) expect(name.toUpperCase()).not.toMatch(/^(COLLIE_|HERDR_)|_SOCK$|_SOCKET$|^BUN_BE_BUN$/);
+    }
+    // On POSIX a listed `trick_now` is another variable than the hook TRICK_NOW; on Windows it is the hook.
+    expect(Object.keys(scrubEnv(winEnv, listedAll, { host: WIN })).map((n) => n.toUpperCase())).not.toContain("TRICK_NOW");
+    // Listed by name, in another case, a COLLIE_ or socket name is still never passed.
+    expect(scrubEnv(winEnv, ["COLLIE_TOKEN", "SSH_AUTH_SOCK", "BUN_BE_BUN", "TRICK_NOW"], { host: WIN })).not.toHaveProperty("collie_token");
+    expect(neverReason("collie_token", WIN)).toBe("a COLLIE_ variable");
+    expect(neverReason("Collie_Token", LINUX)).toBe("a COLLIE_ variable");
+    // `trick_now` is TRICK_NOW on Windows: a test hook there, never passed in a bridge run even listed.
+    expect(neverReason("trick_now", WIN)).toBe("a test hook, passed only by collie trick dev and check --run");
+    expect(scrubEnv(winEnv, ["trick_now"], { host: WIN })).not.toHaveProperty("trick_now");
+  });
+
+  test("a key the trick lists passes on Windows in the copy's spelling, matched without case", () => {
+    expect(scrubEnv(winEnv, ["GH_TOKEN"], { host: WIN })).toMatchObject({ gh_token: "ghp_x" });
+    expect(scrubEnv(winEnv, ["GH_TOKEN"], { host: LINUX })).not.toHaveProperty("gh_token");
+    expect(scrubReason("OpenRouter_Api_Key", KEY, new Set(), WIN)).toBe("not on the allow-list; a trick lists it in env");
+    expect(scrubReason("term", KEY, new Set(), WIN)).toBe("a value the secret mask hides");
+  });
+
+  test("the PATH reader finds Path on a Windows copy and PATH only on POSIX", () => {
+    expect(envPath(scrubEnv(winEnv, [], { host: WIN }), WIN)).toBe(winEnv.Path);
+    expect(envPath({ Path: "C:\\x" }, LINUX)).toBeUndefined();
+    expect(envPath({ PATH: "/usr/bin" }, LINUX)).toBe("/usr/bin");
   });
 });
 
@@ -141,6 +237,133 @@ describe("one run", () => {
     for (let i = 0; i < 40 && alive(child); i += 1) await Bun.sleep(50);
     expect(alive(child)).toBe(false);
     expect(outcomeProblem(outcome, 200)).toBe("The program ran past 2 s and was stopped");
+  });
+
+  test("the timeout reaches a grandchild under a live child (on Windows: taskkill /T over the live tree)", async () => {
+    const cwd = await tempDir();
+    const pidFile = join(cwd, "grandchild.pid");
+    // program -> middle (alive, sleeping) -> grandchild. POSIX kills the group; Windows walks the tree.
+    // A VM-only proof for Windows: on Linux the group kill answers; the lead's Windows VM run is its proof there.
+    const middle = `const g = Bun.spawn([process.execPath, "-e", "await Bun.sleep(30000)"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }); require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(g.pid)); await Bun.sleep(30000);`;
+    const program = [`Bun.spawn([process.execPath, "-e", ${JSON.stringify(middle)}], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });`, "await Bun.sleep(30000);", ""].join("\n");
+    const outcome = await script(cwd, program, { stdin: "", timeoutMs: 3000 });
+    expect(outcome.kind).toBe("timeout");
+    const grandchild = Number((await readFile(pidFile, "utf8")).trim());
+    for (let i = 0; i < 100 && alive(grandchild); i += 1) await Bun.sleep(50);
+    expect(alive(grandchild)).toBe(false);
+  });
+
+  test("a taskkill the trick ships in its folder never runs at the timeout", async () => {
+    const cwd = await tempDir();
+    const marker = join(cwd, "planted-ran");
+    // A bare `taskkill` would find these first in the run's cwd on Windows. The real kill must not.
+    // A VM-only proof: Linux never runs taskkill, so this passes there by itself. The lead's Windows VM run is its proof.
+    await writeFile(join(cwd, "taskkill.cmd"), `@echo off\r\necho ran> "${marker}"\r\n`);
+    await writeFile(join(cwd, "taskkill.bat"), `@echo off\r\necho ran> "${marker}"\r\n`);
+    const outcome = await script(cwd, "await Bun.sleep(30000);\n", { stdin: "", timeoutMs: 1500 });
+    expect(outcome.kind).toBe("timeout");
+    await Bun.sleep(500);
+    expect(await Bun.file(marker).exists()).toBe(false);
+  });
+
+  test("on Windows the timeout kill is the absolute taskkill, as argv, with a time limit, then the program, then the orphan pass (a seam)", async () => {
+    const cwd = await tempDir();
+    await writeFile(join(cwd, "taskkill.exe"), "MZ planted");
+    await writeFile(join(cwd, "taskkill.cmd"), "@echo planted\r\n");
+    const calls: { argv: string[]; timeoutMs: number }[] = [];
+    const spawn: KillSpawn = (argv, opts) => {
+      calls.push({ argv, timeoutMs: opts.timeoutMs });
+      return { exited: Promise.resolve(0) };
+    };
+    // The program's own env names a SystemRoot in the trick folder: the kill never reads it.
+    const outcome = await script(cwd, "await Bun.sleep(30000);\n", {
+      stdin: "",
+      timeoutMs: 1000,
+      platform: "win32",
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", SystemRoot: cwd },
+      winKill: { spawn, env: { SystemRoot: "D:\\WINNT" } },
+    });
+    // The fake taskkill kills nothing; the program itself is ended right after it (the leader).
+    expect(outcome.kind).toBe("timeout");
+    await Bun.sleep(50);
+    expect(calls).toHaveLength(2);
+    const [taskkill, orphans] = calls;
+    expect(taskkill?.argv[0]).toBe("D:\\WINNT\\System32\\taskkill.exe");
+    expect(taskkill?.argv.slice(1, 2)).toEqual(["/PID"]);
+    expect(taskkill?.argv.slice(3)).toEqual(["/T", "/F"]);
+    const pid = taskkill?.argv[2] ?? "";
+    expect(pid).toMatch(/^\d+$/);
+    expect(orphans?.argv[0]).toBe("D:\\WINNT\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+    expect(orphans?.argv[4]).toContain(`$queue.Enqueue(@(${pid}, $from, $to))`);
+    for (const call of calls) {
+      expect(call.timeoutMs).toBe(WINDOWS_KILL_TIMEOUT_MS);
+      expect(call.argv[0]?.startsWith(cwd)).toBe(false);
+      expect(call.argv[0]).not.toBe("taskkill");
+    }
+    // With no seam env, SystemRoot comes from the bridge's own environment, never the program's.
+    const fallback: string[][] = [];
+    await script(await tempDir(), "await Bun.sleep(30000);\n", {
+      stdin: "",
+      timeoutMs: 500,
+      platform: "win32",
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", SystemRoot: cwd },
+      winKill: { spawn: (argv) => (fallback.push(argv), { exited: Promise.resolve(0) }) },
+    });
+    await Bun.sleep(50);
+    expect(fallback[0]?.[0]).toBe(`${process.env.SystemRoot ?? "C:\\Windows"}\\System32\\taskkill.exe`);
+  });
+
+  test("on Windows a timer that fires after the program exited (its pipe still held) kills no pid: no taskkill, only the orphan pass (a seam)", async () => {
+    // The lead's review D, item 1: after the exit, Windows may have given the pid to a new process, and
+    // `taskkill /PID <pid> /T /F` would end that process's whole tree. The state "exited, stdout still
+    // held" comes from a stand-in child (`spawnChild`), not from a real grandchild: on Windows Bun does not
+    // hand the pipe to a grandchild as POSIX does (VM run 2), so a real one could not build this state there.
+    const calls: string[][] = [];
+    const spawn: KillSpawn = (argv) => {
+      calls.push(argv);
+      return { exited: Promise.resolve(0) };
+    };
+    let kills = 0;
+    const child = (): RunChild => {
+      let closeOut = (): void => {};
+      const stdout = new ReadableStream<Uint8Array>({
+        start(controller) {
+          closeOut = () => controller.close();
+        },
+        cancel() {},
+      });
+      const stderr = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.close();
+        },
+      });
+      let exitCode: number | null = null;
+      // It exits at once; its stdout stays open until the runner lets go of it.
+      const exited = Promise.resolve(0).then((code) => {
+        exitCode = code;
+        return code;
+      });
+      return {
+        pid: 4242,
+        stdin: { write: () => 0, end: () => 0 },
+        stdout,
+        stderr,
+        get exitCode() {
+          return exitCode;
+        },
+        exited,
+        kill: () => {
+          kills += 1;
+          closeOut();
+        },
+      };
+    };
+    // The timer (50 ms) fires inside the pipe drain (PIPE_GRACE_MS, 250 ms) after the exit.
+    const outcome = await runProgram({ command: "program.ts", cwd: await tempDir(), env: {}, stdin: "{}", timeoutMs: 50, platform: "win32", runtime: { execPath: "bun", compiled: false }, spawnChild: child, winKill: { spawn, env: { SystemRoot: "C:\\Windows" } } });
+    await Bun.sleep(20);
+    expect(outcome.kind).toBe("timeout");
+    expect(calls.map((argv) => argv[0])).toEqual(["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"]);
+    expect(kills).toBe(0);
   });
 
   test("stdout past 64 KiB fails the run and stops the program", async () => {
@@ -188,7 +411,7 @@ describe("one run", () => {
   });
 
   test("a clean exit is no problem", async () => {
-    expect(outcomeProblem(await run("echo '{}'"), 200)).toBeNull();
+    expect(outcomeProblem(await script(await tempDir(), 'process.stdout.write("{}");\n'), 200)).toBeNull();
   });
 });
 
@@ -243,8 +466,32 @@ describe("the two forms of a run line", () => {
   });
 
   test("a shell run under a compiled bridge sees no BUN_BE_BUN", async () => {
-    const outcome = await run(PRINT_ENV, { env: scrubEnv({ ...process.env, BUN_BE_BUN: "1" }), runtime: COMPILED });
+    const outcome = await run("env", { env: scrubEnv({ ...process.env, BUN_BE_BUN: "1" }), runtime: COMPILED });
+    // On Windows a shell line does not run at all (fault d): the one sentence, nothing started.
+    if (process.platform === "win32") {
+      expect(outcome).toEqual({ kind: "spawn-failed", message: TRICKS_WINDOWS_SHELL_LINE, ms: 0 });
+      return;
+    }
     expect(outcome).toMatchObject({ kind: "exited", code: 0 });
     if (outcome.kind === "exited") expect(outcome.stdout).not.toContain("BUN_BE_BUN");
+  });
+});
+
+describe("a shell run line on Windows (fault d)", () => {
+  test("the rule: on win32 only the script form runs; a shell line gets the one sentence; POSIX and no run line are never refused", () => {
+    for (const line of ["./legs.sh", "bun program.ts", "darius due --json", 'echo "{}"', "program.sh", "cmd /c x.bat"]) expect(windowsRunProblem(line, "win32")).toBe(TRICKS_WINDOWS_SHELL_LINE);
+    for (const line of ["program.ts", "./program.ts", "lib/main.mjs", "x.js", "x.mts"]) expect(windowsRunProblem(line, "win32")).toBeNull();
+    expect(windowsRunProblem(undefined, "win32")).toBeNull();
+    expect(windowsRunProblem("./legs.sh", "linux")).toBeNull();
+    expect(windowsRunProblem("./legs.sh", "darwin")).toBeNull();
+    expect(windowsRunProblem("./legs.sh", undefined)).toBeNull();
+  });
+
+  test("the runner never starts a shell line on win32: no cmd.exe, the sentence as a spawn failure", async () => {
+    const cwd = await tempDir();
+    const marker = join(cwd, "ran");
+    const outcome = await runProgram({ command: `echo x > ${marker}`, cwd, env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, stdin: "{}", platform: "win32" });
+    expect(outcome).toEqual({ kind: "spawn-failed", message: TRICKS_WINDOWS_SHELL_LINE, ms: 0 });
+    expect(await Bun.file(marker).exists()).toBe(false);
   });
 });

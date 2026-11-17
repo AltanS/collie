@@ -111,8 +111,8 @@ Under that sits the preflight, one line per check: `doctor`, `disk`, `bun`, `tre
   1 GB free for the staged build, no `bun` on the host, or an upstream that cannot be reached. Where
   one command clears it, the card prints that command as `Fix: <command>`.
 
-Tapping **Update to `<version>`** asks once, and the confirm text is literal: your terminal session
-stays alive, and the phone view drops for up to 30 seconds. The restart takes the bridge down, not
+Tapping **Update to `<version>`** asks once, and the confirm text is literal: "Your terminal and agents keep
+running. The phone view drops for up to 30 seconds." The restart takes the bridge down, not
 your multiplexer, so the agents keep running and the phone comes back on the new version. A major
 never rides a routine update: crossing one asks its own confirm, names the version as a new major,
 and tells you to read the release notes first.

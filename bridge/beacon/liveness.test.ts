@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { hasStartTimeProbe, parseLstart, parseProcStartTime, procStatPath, PS_LSTART, startTimeProbe } from "./liveness.ts";
+import { hasStartTimeProbe, parseLstart, parseProcStartTime, procStatPath, PS_LSTART, readStartTimeWith, startTimeProbe } from "./liveness.ts";
 
 // The pid-reuse guard's unit. The emitter stores what this returns and the reader's liveness seam
 // answers with what this returns — a disagreement between the two would make every live beacon read
@@ -75,13 +75,17 @@ describe("parseLstart", () => {
 });
 
 describe("startTimeProbe", () => {
-  test("every host reads the stat file first; only macOS has a command after it", () => {
-    for (const platform of ["linux", "darwin", "win32"] as const) {
-      expect(startTimeProbe(platform).stat.path(7)).toBe("/proc/7/stat");
+  test("Linux and macOS read the stat file first; only macOS has a command after it", () => {
+    for (const platform of ["linux", "darwin"] as const) {
+      expect(startTimeProbe(platform).stat?.path(7)).toBe("/proc/7/stat");
+      expect(startTimeProbe(platform).native).toBe(false);
     }
     expect(startTimeProbe("linux").command).toBeNull();
-    expect(startTimeProbe("win32").command).toBeNull();
     expect(startTimeProbe("darwin").command).toBe(PS_LSTART);
+  });
+
+  test("Windows has the native read alone: no stat file, which anyone may plant under C:\\proc, and no command (#798)", () => {
+    expect(startTimeProbe("win32")).toEqual({ stat: null, native: true, command: null });
   });
 
   test("the macOS command is /bin/ps lstart for one pid, in the C locale and zone UTC", () => {
@@ -91,8 +95,50 @@ describe("startTimeProbe", () => {
     expect(PS_LSTART.parse).toBe(parseLstart);
   });
 
-  test("only Linux and macOS have a probe", () => {
+  test("Linux, macOS and Windows have a probe; FreeBSD has none", () => {
     const platforms: NodeJS.Platform[] = ["linux", "darwin", "win32", "freebsd"];
-    expect(platforms.map((platform) => hasStartTimeProbe(platform))).toEqual([true, true, false, false]);
+    expect(platforms.map((platform) => hasStartTimeProbe(platform))).toEqual([true, true, true, false]);
+  });
+});
+
+describe("readStartTimeWith: one order for every caller", () => {
+  const STAT = `7 (claude) S ${Array.from({ length: 18 }, (_v, i) => i).join(" ")} 987654 0 0`;
+  function seams(over: { stat?: string | null; native?: number | null; ps?: string | null } = {}) {
+    const asked: string[] = [];
+    return {
+      asked,
+      seams: {
+        readText: (path: string) => (asked.push(`read ${path}`), over.stat === undefined ? STAT : over.stat),
+        native: (pid: number) => (asked.push(`native ${String(pid)}`), over.native ?? null),
+        run: (command: { file: string }, pid: number) => (asked.push(`run ${command.file} ${String(pid)}`), over.ps ?? null),
+      },
+    };
+  }
+
+  test("Linux: the stat file answers and nothing else is asked", () => {
+    const s = seams();
+    expect(readStartTimeWith(startTimeProbe("linux"), 7, s.seams)).toBe(987_654);
+    expect(s.asked).toEqual(["read /proc/7/stat"]);
+  });
+
+  test("macOS: no stat file, so ps runs", () => {
+    const s = seams({ stat: null, ps: "Mon Nov  2 10:15:33 2026" });
+    expect(readStartTimeWith(startTimeProbe("darwin"), 7, s.seams)).toBe(parseLstart("Mon Nov  2 10:15:33 2026"));
+    expect(s.asked).toEqual(["read /proc/7/stat", "run /bin/ps 7"]);
+  });
+
+  test("Windows: the native read alone, even with a stat file on disk", () => {
+    const s = seams({ native: 1_794_847_739_081_296 });
+    expect(readStartTimeWith(startTimeProbe("win32"), 7, s.seams)).toBe(1_794_847_739_081_296);
+    expect(s.asked).toEqual(["native 7"]);
+    const gone = seams({ native: null });
+    expect(readStartTimeWith(startTimeProbe("win32"), 7, gone.seams)).toBeNull();
+    expect(gone.asked).toEqual(["native 7"]);
+  });
+
+  test("FreeBSD: no stat file and no command is null, and nothing runs", () => {
+    const s = seams({ stat: null, native: 5, ps: "Mon Nov  2 10:15:33 2026" });
+    expect(readStartTimeWith(startTimeProbe("freebsd"), 7, s.seams)).toBeNull();
+    expect(s.asked).toEqual(["read /proc/7/stat"]);
   });
 });

@@ -114,7 +114,8 @@ describe("the log", () => {
     expect(lines.length).toBe(LOG_ROTATE_TO + 1);
     expect(log.get(message(0).id, "local/w1:p1")).toBeNull();
     expect(log.get(message(LOG_MAX_LINES / 2).id, "local/w1:p1")).not.toBeNull();
-  });
+    // 2,002 appends, each a file append and a tail read: 0.05 s on Linux, 11 s on the Windows VM, against bun's 5 s.
+  }, 60_000);
 });
 
 describe("the inbox", () => {

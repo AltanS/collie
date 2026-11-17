@@ -227,7 +227,7 @@ export function knownWindowName(key: string): string | null {
 }
 
 /**
- * The words for a window. `5h` is Session, `7d` is Week, `7d:<scope>` is Week plus the scope. `spend`
+ * The words for a window. `5h` is 5 hours, `7d` is Week, `7d:<scope>` is Week plus the scope. `spend`
  * and `credits` have words of their own. Any other key reads its label, else the key; a label the
  * agent sent always wins over the app's word.
  */

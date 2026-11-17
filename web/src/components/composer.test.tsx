@@ -6205,7 +6205,7 @@ describe("the next step on a stop card (M102 spec 02)", () => {
     renderWithSurface({ ...FREE, composer: "draft" });
     await user.type(screen.getByRole("textbox"), "my long message");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/cannot read whole.*Empty the box deletes that draft/u));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/cannot read whole.*The button "Empty the box" deletes that draft/u));
     await user.click(screen.getByRole("button", { name: "Empty the box" }));
     await waitFor(() => expect(posted).toHaveLength(1));
     // The person's draft in the phone's field stays: only the agent's box was emptied.
@@ -6444,7 +6444,7 @@ describe("the unread card (M102 spec 03)", () => {
     await waitFor(() => expect(recordedSends()).toHaveLength(1));
     await user.type(screen.getByRole("textbox"), "go on");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toBe("The screen changed before your text went in, so nothing was typed. Look at the screen now, then tap Send to send past this screen again."));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toBe("The screen changed before your text went in, so nothing was typed. Look at the screen now, then tap Send, then Send anyway."));
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(3));
     expect(recordedSends()[2]).toMatchObject({ text: "go on", rowsHash: "0fff07", override: true });

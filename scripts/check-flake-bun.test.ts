@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 546 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 529 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([311, 200, 35]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([312, 182, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 6 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -186,6 +186,9 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(paneBinary).toContain('describe.skipIf(process.platform === "win32")("two copies of one harness');
     expect(script).toContain("procProbe sees a live process's executable and folder");
     expect(script).toContain("two copies of one harness");
+    // The environment read of pi's pane (#793): the same /proc probe, one more Linux-only test, named in the script.
+    expect(paneBinary).toContain('test.skipIf(process.platform !== "linux")("procProbe reads a live process\'s environment, and nothing on another host"');
+    expect(script).toContain("procProbe reads a live process's environment, and nothing on another host");
     // N9 (trouble check 2026-11-08): the off-PATH agent is a `#!/bin/sh` script, so the describe's one test
     // and its hook skip on Windows, as "two copies" does.
     expect(paneBinary).toContain('describe.skipIf(process.platform === "win32")("createPaneVersion — a harness off the login PATH"');
@@ -259,7 +262,7 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(accountSkips).toBe(45);
     expect(script).toContain("bridge/accounts-skip.ts");
     expect(budget("Bridge")).toBe(
-      viewMediaSkips.length + posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips +
+      viewMediaSkips.length + posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips +
         hillSkips.length + legsEndToEnd + officialSkips + dataPathSkips + adapterSkips + accountSkips,
     );
     // The cli allowance adds the three real runs of the POSIX install leg a crew member runs, and the
@@ -301,10 +304,8 @@ describe("the Windows check runs the flake's Bun", () => {
     const helperSkips = namesIn("cli/trick-kit/trick.test.ts", /test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g);
     expect(helperSkips).toHaveLength(2);
     for (const name of helperSkips) expect(script).toContain(name);
-    // Gated on Windows (b): the tests that run a program using the trick helper, `helperTest` in three files.
-    const helperOutputSkips = ["cli/trick.test.ts", "cli/trick-kit/trick.test.ts", "cli/trick-dev.test.ts"].flatMap((file) => readFileSync(join(ROOT, file), "utf8").match(/^ {2}helperTest\(/gm) ?? []);
-    expect(helperOutputSkips).toHaveLength(18);
-    expect(script).toContain("gated on Windows (b)");
+    // Fault b is fixed (helper v6): no test that runs a program using the trick helper skips on Windows any more.
+    for (const file of ["cli/trick.test.ts", "cli/trick-kit/trick.test.ts", "cli/trick-dev.test.ts"]) expect(readFileSync(join(ROOT, file), "utf8")).not.toContain("helperTest");
     // The hold card (cli/hold.test.ts) runs the hook against a real hold socket: 3 tests, `test.skipIf` off Linux.
     const holdCardSkips = (readFileSync(join(ROOT, "cli", "hold.test.ts"), "utf8").match(/^ {2}test\.skipIf\(POSIX_ONLY\)\(/gm) ?? []).length;
     expect(holdCardSkips).toBe(3);
@@ -314,7 +315,7 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(harnessLinkSkips).toBe(8);
     expect(script).toContain("harness verbs for the data path");
     expect(budget("Cli")).toBe(
-      sysSkips.length + 1 + 12 + 3 + walkySocketTests.length + viewSocketTests.length + 3 + 1 + 2 + hillSocketTests.length + stagingSkips.length + addSkips + proposeSkips.length + helperSkips.length + helperOutputSkips.length + holdCardSkips + harnessLinkSkips,
+      sysSkips.length + 1 + 12 + 3 + walkySocketTests.length + viewSocketTests.length + 3 + 1 + 2 + hillSocketTests.length + stagingSkips.length + addSkips + proposeSkips.length + helperSkips.length + holdCardSkips + harnessLinkSkips,
     );
     for (const name of posixOnly) expect(script).toContain(name);
     expect(script).toContain("a 13 s WAV becomes text through a real child of this Collie");

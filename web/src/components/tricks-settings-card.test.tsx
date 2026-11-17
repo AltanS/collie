@@ -5,13 +5,13 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { originLine } from "@/lib/tricks/row-words";
-import { HOLD_MS, TricksSettingsCard, autoLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, versionCardOpener, warningLines } from "@/components/tricks-settings-card";
+import { HOLD_MS, TricksSettingsCard, autoLine, officialFailureLine, placesLine, provenanceLine, readsLine, slotLine, useTricksPresent, versionCardOpener, warningLines } from "@/components/tricks-settings-card";
 import type { HillDecision } from "@/lib/hill/wire";
 import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import { collieCard } from "@/test/hill-fixtures";
-import { setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
+import { addOfficialTrick, setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
-import { ABOUT_MAX, DESCRIPTION_MAX, inputsSentence, TRICKS_WINDOWS_LINE, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
+import { ABOUT_MAX, DESCRIPTION_MAX, inputsSentence, TRICKS_WINDOWS_LINE, TRICKS_WINDOWS_SHELL_LINE, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 import { readTrick, readTrickText } from "@/lib/tricks/wire";
 import type { JsonObject } from "@/lib/json";
@@ -152,11 +152,11 @@ describe("TricksSettingsCard: the rows", () => {
     const legs = await screen.findByText("Browser leg");
     expect(legs).toBeInTheDocument();
     const a = within(rowOf("legs"));
-    expect(a.getByText("belt, session")).toBeInTheDocument();
+    expect(a.getByText("belt, page")).toBeInTheDocument();
     expect(a.getByText("Added by agent · 2 h ago")).toBeInTheDocument();
     expect(a.getByRole("switch", { name: "Browser leg" })).toBeChecked();
     const b = within(rowOf("tracker"));
-    expect(b.getByText("session")).toBeInTheDocument();
+    expect(b.getByText("page")).toBeInTheDocument();
     expect(b.getByText("From owner/tracker-trick @ 3f2a91c · 3 min ago")).toBeInTheDocument();
     expect(b.getByRole("switch", { name: "Tracker" })).not.toBeChecked();
     expect(screen.getByText("A trick runs as you.")).toBeInTheDocument();
@@ -958,6 +958,26 @@ describe("review 8 V-N1: a switch on names the code the person read", () => {
     await vi.waitFor(() => expect(currentStatus()?.text).toBe("The trick changed after you read it. Read it again, then switch it on."));
     expect(bodies).toEqual([{ on: true, hash }]);
     expect(screen.getByRole("switch", { name: "Browser leg" })).not.toBeChecked();
+  });
+
+  it("on Windows a shell run line is refused at switch-on with the one sentence (fault d), and the phone's copy is the bridge's words", async () => {
+    const user = userEvent.setup();
+    server.use(http.post("/api/tricks/lodge/legs/switch", () => HttpResponse.json({ error: "windows-shell", message: TRICKS_WINDOWS_SHELL_LINE }, { status: 409 })));
+    renderCard(await storeWith([{ ...LEGS, on: false, state: "off" }]));
+    await user.click(await screen.findByRole("switch", { name: "Browser leg" }));
+    await vi.waitFor(() => expect(currentStatus()?.text).toBe(TRICKS_WINDOWS_SHELL_LINE));
+    expect(screen.getByRole("switch", { name: "Browser leg" })).not.toBeChecked();
+  });
+
+  it("an official add refused for a POSIX trick on Windows says the same sentence (fault d, review D item 5)", async () => {
+    server.use(http.post("/api/tricks/official/legs/add", () => HttpResponse.json({ error: "windows-shell", message: TRICKS_WINDOWS_SHELL_LINE }, { status: 409 })));
+    let line = "";
+    try {
+      await addOfficialTrick("legs", "add");
+    } catch (thrown) {
+      line = officialFailureLine(thrown, "add", "Legs");
+    }
+    expect(line).toBe(TRICKS_WINDOWS_SHELL_LINE);
   });
 
   it("the wire keeps approves only as 64 hex", () => {
