@@ -20,7 +20,7 @@ export function answerSentence(reading: SendReading): string {
   const note =
     reading.cap === null
       ? translate(noteKey(reading.note))
-      : capSentence(reading.cap, (vars) => translate("composer.protocol.capConfirm", vars));
+      : capSentence(reading.cap, (vars) => translate("composer.protocol.capConfirmPast", vars));
   // A draft refusal already says what the screen held, and "The agent is working" already says the turn runs.
   if (reading.surface === null || reading.note === "draft" || reading.note === "draftCommand" || reading.note === "draftUnseen" || reading.note === "agentBusy") return note;
   // What Collie saw comes first, then the verdict and its next step (M102 spec 02), so the sentence ends

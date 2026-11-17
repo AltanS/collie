@@ -28,7 +28,7 @@ interface NoEchoNoticeProps {
 // be right on every retry, so an operator who does not know WHY is left tapping Send at a screen that
 // can never change. The reporter of #103 gave up and walked to a laptop for three days.
 //
-// It is a NOTICE, not a replacement for the override. The Send slot keeps offering "Type anyway?"
+// It is a NOTICE, not a replacement for the override. The Send slot keeps offering "Send anyway"
 // exactly as before, so a false positive costs a dismissable strip rather than an action; this sits
 // where the terminal-draft preview sits and says the part the status line has no room for.
 //

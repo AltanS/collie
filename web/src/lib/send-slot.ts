@@ -44,7 +44,7 @@ export interface ComposerFacts {
  * - `manual`: every other screen Collie cannot call free (`unknown(no-match)`, a weak cue, `modal
  *   unreadable`, a stale, torn or contested read, a box the read could not reach); Send asks the
  *   bridge, which reads the screen again, and a refusal that carries the rows hash offers the person's
- *   override, Type here (M102 spec 03, invariant I4). A pane with no profile (a bare shell) reads
+ *   override, Send anyway (M102 spec 03, invariant I4). A pane with no profile (a bare shell) reads
  *   `unknown(no-match)` too, but the bridge types its text and presses Enter on the first tap,
  *   unless a password prompt stands on its last rows.
  * - `draft`: the box holds a draft at the desk; Send asks the bridge, which offers Add, Replace, Cancel.

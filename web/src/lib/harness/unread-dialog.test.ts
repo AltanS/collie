@@ -571,7 +571,7 @@ describe("unread card: where it never shows (M102 spec 03, hard stops 6a and 6b)
     expect(cardOf(blocks)).toBeNull();
   });
 
-  // 6b: a screen that asks for a secret drops "Type it anyway". The pane view decides it with the
+  // 6b: a screen that asks for a secret drops "Send past this screen". The pane view decides it with the
   // no-echo reader over the same rows the card shows (agent-chat's `unreadSecret`).
   it("unread card: a password prompt the card shows is read as a secret prompt", () => {
     const lines = linesOf("$ sudo systemctl restart demo\n[sudo] password for demo-user: ");

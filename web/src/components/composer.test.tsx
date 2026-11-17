@@ -578,7 +578,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("a box the read could not reach says so and stays typeable: the bridge reads again, and offers Type here (M102 spec 03, I4)", () => {
+  it("a box the read could not reach says so and stays typeable: the bridge reads again, and offers Send anyway (M102 spec 03, I4)", () => {
     renderComposerWithStatus({ surface: UNREACHABLE });
     expect(screen.getByPlaceholderText("Can't reach the input box")).toBeEnabled();
   });
@@ -5446,7 +5446,7 @@ describe("the cap (M56 spec 09)", () => {
     expect(screen.getByRole("textbox")).toHaveValue("carry on please");
     expect(screen.queryByRole("button", { name: "Send anyway" })).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Confirm and type" }));
+    await user.click(screen.getByRole("button", { name: "Confirm and send anyway" }));
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
     expect(recordedSends().map(({ rowsHash, capAck }) => ({ rowsHash, capAck }))).toEqual([
       { rowsHash: undefined, capAck: undefined },
@@ -5475,7 +5475,7 @@ describe("the cap (M56 spec 09)", () => {
     renderWithContainer({ surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
     await user.click(await screen.findByRole("button", { name: "Send anyway" }));
-    await screen.findByRole("button", { name: "Confirm and type" });
+    await screen.findByRole("button", { name: "Confirm and send anyway" });
     // The field, the Send button and the Keys board are all still there, enabled, with the draft kept.
     expect(screen.getByRole("textbox")).toBeEnabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
@@ -5488,7 +5488,7 @@ describe("the cap (M56 spec 09)", () => {
     renderWithContainer({ surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
     await user.click(await screen.findByRole("button", { name: "Send anyway" }));
-    await screen.findByRole("button", { name: "Confirm and type" });
+    await screen.findByRole("button", { name: "Confirm and send anyway" });
     await user.click(screen.getByRole("button", { name: "Dismiss the send offers" }));
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(3));
@@ -6277,7 +6277,7 @@ describe("the unread card (M102 spec 03)", () => {
     expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("unread card: Type it anyway reads the screen once, then the next send carries its rows hash with override", async () => {
+  it("unread card: Send past this screen reads the screen once, then the next send carries its rows hash with override", async () => {
     server.use(...sendHandler((request) => (request.mode === "prepare" ? sendAnswer(request.id, null, undefined, { rowsHash: "0b0e1f" }) : sendAnswer(request.id, "sent"))));
     const user = userEvent.setup();
     const { handle } = renderUnread(null);
@@ -6444,7 +6444,7 @@ describe("the unread card (M102 spec 03)", () => {
     await waitFor(() => expect(recordedSends()).toHaveLength(1));
     await user.type(screen.getByRole("textbox"), "go on");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/The screen changed before your text went in, so nothing was typed/u));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toBe("The screen changed before your text went in, so nothing was typed. Look at the screen now, then tap Send to send past this screen again."));
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(3));
     expect(recordedSends()[2]).toMatchObject({ text: "go on", rowsHash: "0fff07", override: true });

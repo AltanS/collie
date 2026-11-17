@@ -167,8 +167,8 @@ describe("D: a code that may have gone cannot be sent twice by one tap", () => {
   });
 });
 
-describe("L: an armed Type it anyway never goes out with a code", () => {
-  it("a code sent while Type it anyway is armed carries no rows hash and no override, and the arm is gone after", async () => {
+describe("L: an armed Send past this screen never goes out with a code", () => {
+  it("a code sent while Send past this screen is armed carries no rows hash and no override, and the arm is gone after", async () => {
     const user = userEvent.setup();
     server.use(...sendHandler((request) => (request.mode === "prepare" ? sendAnswer(request.id, null, undefined, { rowsHash: "ab12cd" }) : sendAnswer(request.id, "sent"))));
     const m = mount({ surface: FREE });
@@ -272,14 +272,42 @@ describe("D, pass 2: a code whose answer was lost goes again under the same requ
 });
 
 describe("D, pass 2: a code the bridge found no sign-in field for", () => {
-  it("no_secret_field says the field is gone and nothing was typed", async () => {
+  it("no_secret_field says Collie cannot see the field now, nothing was typed, and offers the Screen and Type (the M102 review 3)", async () => {
     const user = userEvent.setup();
+    const onToggle = vi.fn();
     server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "no_secret_field", { offers: ["keys"], surface: FREE, detail: "The sign-in field is not on the screen any more. Nothing was typed." })));
-    mount();
+    mount({ screen: { on: false, onToggle } });
     await sendCode(user);
-    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/The sign-in field is not on the screen any more\. Nothing was typed\./u));
-    // The bridge's English line says the same as the phone's sentence: it is said once.
-    expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent?.split("The sign-in field is not on the screen").length).toBe(2);
+    const notice = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('[data-slot="composer-refusal"]');
+      expect(found?.textContent).toMatch(/Collie cannot see the sign-in field now\. Nothing was typed\. Look at the screen, or use Type\. Type sends each key at once, with no check\./u);
+      return found!;
+    });
+    // The bridge's English line is not shown: it would claim the field is gone when the bridge may only have failed to read it.
+    expect(notice.textContent).not.toMatch(/not on the screen any more/u);
+    // The ways on the line names: the notice's Screen button, and the Type pill beside Keys.
+    await user.click(screen.getByRole("button", { name: "Screen" }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Type into terminal" })).toBeEnabled();
     codeNeverPlain();
+  });
+});
+
+describe("the M102 review 3: a crew member on an older Collie has no check that the field is still there", () => {
+  it("the sign-in field on such a member's pane says so in one line", () => {
+    mount({ olderMember: "minibox" });
+    expect(codeField()).toBeInTheDocument();
+    expect(screen.getByText("minibox runs an older Collie, so it does not check that the sign-in field is still there before it types.")).toBeInTheDocument();
+  });
+
+  it("a member whose name is unknown is named in a neutral word, never a sentence that starts with a space", () => {
+    mount({ olderMember: "" });
+    expect(screen.getByText("This machine runs an older Collie, so it does not check that the sign-in field is still there before it types.")).toBeInTheDocument();
+  });
+
+  it("the sign-in field on any other pane draws no such line", () => {
+    mount();
+    expect(codeField()).toBeInTheDocument();
+    expect(screen.queryByText(/runs an older Collie/u)).toBeNull();
   });
 });

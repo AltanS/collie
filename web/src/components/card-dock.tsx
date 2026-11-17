@@ -129,9 +129,9 @@ export interface CardDockProps {
   unreadFallback?: StyledLine[] | null;
   /** The Keys pad's road, for the unread card's caps of core keys the person's board lacks. */
   onUnreadPadKeys?: (keys: string[]) => Promise<boolean>;
-  /** "Type it anyway" on the unread card: the composer's one send past this screen. */
+  /** "Send past this screen" on the unread card: the composer's one send past this screen. */
   onUnreadTypeAnyway?: () => void;
-  /** The screen asks for a secret: the unread card offers no "Type it anyway". */
+  /** The screen asks for a secret: the unread card offers no "Send past this screen". */
   unreadSecret?: boolean;
   /**
    * The card of a send Collie cannot tell about (M102 spec 04): the composer's `unknown` send, with the screen
@@ -301,7 +301,7 @@ function liftedCard({
   answerExit,
 }: CardDockProps): ReactNode {
   // The exit of an answer that cannot go (M102 spec 10) stands in for the card whose answer did not go:
-  // the person reads the live screen and presses keys on their own pad. No "Type it anyway": the screen
+  // the person reads the live screen and presses keys on their own pad. No "Send past this screen": the screen
   // holds a question, and a message never goes into one (ADR 0142, hard stop 6a). No declared key: the
   // pad holds Esc, and the card draws a cap for a core key the person's board lacks.
   if (answerExit !== null && answerExit !== undefined) {
@@ -407,7 +407,7 @@ function liftedCard({
     );
   }
   // The same card, opened by a send refused on a screen Collie cannot read (M102 spec 03): no declared
-  // key, so the person's Keys pad and "Type it anyway" are the way on. Only when no other card claims it.
+  // key, so the person's Keys pad and "Send past this screen" are the way on. Only when no other card claims it.
   if (unreadFallback !== null && unreadFallback !== undefined && !hasDialogCard(blocks)) {
     return (
       <UnreadDialogBlock

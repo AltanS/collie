@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { Modifier } from "@/lib/key-queue";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
+import { ignoreHeldEnter, useArm } from "@/hooks/use-arm";
+import { ENTER_ARM_MS } from "@/lib/arm";
 import { useKeyQueue } from "@/hooks/use-key-queue";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useHoldRepeat } from "@/hooks/use-hold-repeat";
@@ -200,6 +202,15 @@ export function NavTray({
   const { queue, mods, activeMods, composing, arm, press, pushBase, removeAt, clear, take, releaseAbsent } =
     useKeyQueue();
   const { pending, confirm, reset } = usePendingConfirm(); // danger ctrl two-tap (immediate path only)
+  // Enter while the unread card is open (`confirmEnter`) arms through `useArm`, as the card's own Enter cap
+  // does (the M102 review 3): one length, ENTER_ARM_MS, and a second tap inside ARM_DWELL_MS keeps the arm and
+  // sends nothing, so one double tap cannot arm and fire Enter.
+  const enterArm = useArm<string>(ENTER_ARM_MS);
+  const disarmEnter = enterArm.disarm;
+  // The arm drops with the card, and when the pad stops being pressable (the link is down), as the card's own arm does.
+  useEffect(() => {
+    if (!confirmEnter || disabled === true) disarmEnter();
+  }, [confirmEnter, disabled, disarmEnter]);
   const echo = useActionEcho();
   // Hold-to-repeat, WHITELISTED to the arrows (see navBtn's `repeat` flag). Deliberately a whitelist
   // rather than a blacklist: Enter/Esc/Space/digits/Ctrl-presets structurally must not repeat, and
@@ -244,6 +255,7 @@ export function NavTray({
   // danger chords (d/z) keep the original two-tap confirm.
   function pressCtrl(item: CtrlDef) {
     if (disabled) return;
+    disarmEnter();
     if (!composing && item.danger && !confirm(item.label)) return; // first tap arms the confirm
     fire(item.keys, item.label);
   }
@@ -257,6 +269,7 @@ export function NavTray({
     if (disabled) return;
     const keys = take();
     reset();
+    disarmEnter();
     if (keys.length > 0) void onSend(keys);
   }
 
@@ -284,8 +297,18 @@ export function NavTray({
     const id = keys.join(" ");
     // A key with a step that can stop a program asks a second tap, but only on the immediate path.
     // While composing, the strip's Send is the review (the same split the Ctrl presets make).
-    const armed = needsConfirm && pending === id;
+    // Enter under the unread card arms through `enterArm` (its dwell and its length); every other confirm
+    // keeps the pending two-tap. One arm at a time: arming one drops the other.
+    const viaEnterArm = needsConfirm && confirmEnter && keys.includes("Enter");
+    const armed = viaEnterArm ? enterArm.armed === id : needsConfirm && pending === id;
     const tap = () => {
+      if (viaEnterArm && !composing) {
+        reset();
+        if (enterArm.tap(id) !== "fire") return; // the first tap arms; a tap inside the dwell keeps the arm
+        fire(keys, id);
+        return;
+      }
+      disarmEnter();
       if (needsConfirm && !composing && !confirm(id)) return; // first tap arms the confirm
       fire(keys, id);
     };
@@ -309,6 +332,7 @@ export function NavTray({
         aria-disabled={refused ? true : undefined}
         style={style}
         {...(refused ? { onClick: refuse } : (bind ?? { onClick: tap }))}
+        onKeyDown={viaEnterArm ? ignoreHeldEnter : undefined}
         aria-label={armed && aria !== undefined ? t("keys.pad.tapAgain", { key: aria }) : aria}
         // A hover title for the icon keys — an icon-only button gives a desktop pointer nothing to
         // read until it commits to a tap. Harmless on the text keys that also pass `aria`.
