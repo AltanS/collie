@@ -15,7 +15,7 @@ import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
 import { GROUP_MASKED_NOTE, GROUP_WRAP } from "./card-group.ts";
-import { ACCESS_CHIPS, accessLine, asksForSentence, ON_CHIP, newRights, raisedAccess, RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VERSION_TOO_MUCH_START, VersionCards, RUNS_AS_YOU, newInputs, versionCard, versionRequestId, versionTitle, versionTooMuch, versionView } from "./version-card.ts";
+import { ACCESS_CHIPS, accessLine, asksForSentence, ON_CHIP, newRights, raisedAccess, RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VERSION_TOO_MUCH_START, VersionCards, KEEPS_RUNNING, RUNS_AS_YOU, newInputs, versionCard, versionRequestId, versionTitle, versionTooMuch, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
 import { singleCodeCard, viewHasCode } from "../../web/src/lib/hill/code-card.ts";
 
@@ -925,5 +925,37 @@ describe("review 8 V-S1: no yes without the rules on screen", () => {
     expect(RULES_ON_MACHINE).toBe("The new agent instructions do not fit on the phone, so this version can only be taken on the machine.");
     expect(JSON.stringify(card?.view)).toContain("Read them there, then take it with: collie trick on morph");
     expect(JSON.stringify(card)).not.toContain("on card 2");
+  });
+});
+
+describe("the line of a trick that keeps running with no phone open (Altan, 2026-11-17)", () => {
+  const manifest = (extra: Partial<TrickManifest> = {}): TrickManifest => ({ id: "legs", name: "Browser leg", run: "./legs.sh", mode: "once", contract: 3, icon: "plug", places: ["belt"], ...extra });
+  const card = (next: TrickManifest, was: TrickManifest = manifest()): NonNullable<ReturnType<typeof versionCard>> => {
+    const base = subject();
+    const pending = base.pending;
+    if (pending === null) throw new Error("no pending");
+    const made = versionCard({ ...base, base: { dir: "/y", manifest: was }, pending: { ...pending, manifest: next } }, DIFF);
+    if (made === null) throw new Error("no card");
+    return made;
+  };
+  const texts = (view: readonly ViewNode[] | undefined): (string | undefined)[] => (view ?? []).map((node) => ("text" in node ? node.text : undefined));
+
+  test("a new version with `on` or `watch` says it, after the rights lines", () => {
+    for (const set of [{ on: ["turn.end" as const] }, { watch: ["~/notes/todo.md"] }]) {
+      const view = card(manifest(set)).view;
+      const at = texts(view).indexOf(KEEPS_RUNNING);
+      expect(at).toBeGreaterThan(0);
+      expect((view ?? []).findIndex((node) => node.kind === "bar")).toBeLessThan(at);
+    }
+  });
+
+  test("a version that keeps the same watch still says it", () => {
+    const watching = manifest({ watch: ["~/notes/todo.md"] });
+    expect(texts(card({ ...watching, access: "see" }, watching).view)).toContain(KEEPS_RUNNING);
+  });
+
+  test("a tap-only trick, and a plain timer, do not", () => {
+    expect(texts(card(manifest({ access: "see" })).view)).not.toContain(KEEPS_RUNNING);
+    expect(texts(card(manifest({ every: "30s", everyMs: 30_000, access: "see" })).view)).not.toContain(KEEPS_RUNNING);
   });
 });

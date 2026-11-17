@@ -18,6 +18,7 @@ import {
   RULES_CHIP,
   RULES_NEVER_AUTO,
   RULES_WORDS,
+  runsWithNoPhone,
   TABLE_LIMITS,
   TEXT_MAX,
   VIEW_LIMITS,
@@ -166,6 +167,14 @@ export const RUNS_AS_YOU = "This trick runs as you on this machine. It can do th
 /** The honest line as the head's first paragraph, for a manifest with a program; nothing for one without. */
 export function runsAsYou(manifest: Pick<TrickManifest, "run"> | undefined): ViewNode[] {
   return manifest?.run === undefined ? [] : [{ kind: "para", text: RUNS_AS_YOU }];
+}
+
+/** The line of a trick that reacts (`on`, `watch`): it starts with no phone open. Bridge-built English, as every word of these cards is (2026-11-17). */
+export const KEEPS_RUNNING = "It keeps running with no phone open.";
+
+/** {@link KEEPS_RUNNING} as one paragraph, for a manifest that has a program and an `on` or `watch`; nothing for one without. */
+export function keepsRunning(manifest: Pick<TrickManifest, "run" | "on" | "watch"> | undefined): ViewNode[] {
+  return manifest !== undefined && runsWithNoPhone(manifest) ? [{ kind: "para", text: KEEPS_RUNNING }] : [];
 }
 
 /**
@@ -329,7 +338,9 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   const lines = [...(viewNew ? [AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS] : []), ...(newRules ? [RULES_WORDS] : [])];
   // The level the version raises, in its one line right after the honest line (M105 spec 04).
   const accessNodes = accessLine(raisedAccess(base, next));
-  const plainFacts = [...accessNodes, ...rightsHead("New rights", newRules ? [...rights, RULES_CHIP] : rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null), ...maskedNotes(diff.files), ...lines.map((text): ViewNode => ({ kind: "para", text }))];
+  // The one line of a trick that reacts, right after the rights lines (Altan, 2026-11-17).
+  const reactNodes = keepsRunning(next);
+  const plainFacts = [...accessNodes, ...rightsHead("New rights", newRules ? [...rights, RULES_CHIP] : rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null), ...reactNodes, ...maskedNotes(diff.files), ...lines.map((text): ViewNode => ({ kind: "para", text }))];
   // The code the card shows beside the rules: every changed file but the rules file, which shows whole on its own.
   const code = rules === null ? diff : { ...diff, files: diff.files.filter((file) => file.rel !== rules.rel) };
   const rulesNodes = rules === null ? [] : rulesView(rules);
@@ -377,7 +388,7 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   const tail = notShown ? ` ${VERSION_NOT_SHOWN}` : whole ? "" : ` ${shownSentence(shownFiles, total)}`;
   // A long list of new rights is cut to its gist so the summary stays within the Hill's cap; the view lists
   // every one (the guard above). "listed below" only when the head lists something.
-  const listed = plainFacts.length > 0;
+  const listed = plainFacts.length > reactNodes.length;
   const short = rights.length > 0 || newRules ? (listed ? "It asks for new rights, listed below." : "It asks for new rights.") : listed ? "It does something new, listed below." : "It does something new.";
   const full = `${filesSentence(fileCount)} ${fact}${tail}`;
   const summary = [...full].length <= HILL_SUMMARY_MAX ? full : `${filesSentence(fileCount)} ${short}${tail}`;

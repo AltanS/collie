@@ -19,7 +19,7 @@ import { t, tn } from "@/lib/i18n";
 import { timerLine } from "@/lib/tricks/code-words";
 import { HostWords } from "@/lib/tricks/render";
 import { originLine, placesLine, readsLine, runsOnLine, warningLines } from "@/lib/tricks/row-words";
-import { isSourceUrl, type FieldValue, type TricksRunsOn, type WireOfficialTrick, type WireRepoFacts, type WireTrickInfo, type WireTrickRules } from "@/lib/tricks/schema";
+import { isSourceUrl, runsWithNoPhone, type FieldValue, type TricksRunsOn, type WireOfficialTrick, type WireRepoFacts, type WireTrickInfo, type WireTrickRules } from "@/lib/tricks/schema";
 import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 
 // A trick's About sheet: what a person reads before they switch a trick on. Opened by a tap on the trick's
@@ -211,6 +211,8 @@ function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
       ),
     });
   }
+  // The one line of a trick that reacts, after the rights lines and the warnings (2026-11-17): it starts with no phone open.
+  if (runsWithNoPhone({ run: trick.run, on: trick.events, watch: trick.watch })) rows.push({ key: "keeps-running", node: <span data-line="keeps-running">{t("settings.tricks.about.keepsRunning")}</span> });
   return rows;
 }
 

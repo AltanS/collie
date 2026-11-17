@@ -113,6 +113,26 @@ describe("TrickAboutSheet", () => {
     expect(rows.slice(-2)).toEqual(["Runs when a session changes state.", "Runs when these files change: ~/notes/todo.md, /etc/hosts."]);
   });
 
+  it("a trick with a program and `on` or `watch` says it keeps running with no phone open, last of the rows", () => {
+    const line = "It keeps running with no phone open.";
+    const rowsOf = (trick: WireTrickInfo): (string | null)[] => {
+      const { unmount } = open(trick);
+      const does = within(screen.getByRole("dialog")).getByRole("list", { name: "What it does" });
+      const rows = within(does).getAllByRole("listitem").map((li) => li.textContent);
+      unmount();
+      return rows;
+    };
+    const reacting: WireTrickInfo = { ...FULL, run: "bun run gates.ts", access: "see" };
+    expect(rowsOf({ ...reacting, events: ["turn.end"] }).at(-1)).toBe(line);
+    expect(rowsOf({ ...reacting, watch: ["~/notes/todo.md"] }).at(-1)).toBe(line);
+    // After the warnings and the level line too, never before them.
+    expect(rowsOf({ ...reacting, events: ["turn.end"] }).at(-2)).toBe("This trick reaches the network.");
+    // A tap-only trick, a plain timer and a trick with no program do not say it.
+    expect(rowsOf(reacting)).not.toContain(line);
+    expect(rowsOf({ ...reacting, everyMs: 30_000 })).not.toContain(line);
+    expect(rowsOf({ ...FULL, events: ["turn.end"] })).not.toContain(line);
+  });
+
   it("says the level of access in its one plain line, none for none, and never calls it a permission", () => {
     const see = "It asks to see your machines, your sessions and their states, your usage and the Hill, not what is on a screen.";
     const read = "It asks to read what is on your sessions' screens.";

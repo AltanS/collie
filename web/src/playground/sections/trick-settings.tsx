@@ -421,12 +421,12 @@ function RepoSheetBox({ n, state, label, initialUrl, readOnMount = false }: { n:
 }
 
 /** The switch card at the top of Settings, Tricks, in a 390px column, with a switch that flips in place. */
-function SwitchCardCase({ n, state, label, initial, waiting = 0, windows = false }: { n: number; state: string; label: string; initial: boolean; waiting?: number; windows?: boolean }) {
+function SwitchCardCase({ n, state, label, initial, waiting = 0, windows = false, startAgain }: { n: number; state: string; label: string; initial: boolean; waiting?: number; windows?: boolean; startAgain?: readonly string[] }) {
   const [on, setOn] = useState(initial);
   return (
     <Card state={state} label={`${n} · ${label}`}>
       <div className="w-[390px] max-w-full bg-background p-4">
-        <TricksSwitchCard on={on} disabled={false} waiting={waiting} windows={windows} onToggle={setOn} />
+        <TricksSwitchCard on={on} disabled={false} waiting={waiting} windows={windows} startAgain={startAgain} onToggle={setOn} />
       </div>
     </Card>
   );
@@ -442,6 +442,8 @@ export function TrickSettingsSection(): ReactNode {
         <SwitchCardCase n={48} state="tricks-switch-off" label="tricks off (the default)" initial={false} />
         <SwitchCardCase n={49} state="tricks-switch-armed" label="3 questions from tricks wait: tap once, it arms; tap again inside four seconds, it goes off" initial waiting={3} />
         <SwitchCardCase n={50} state="tricks-switch-windows" label="a Windows bridge: the line, and the switch cannot move" initial={false} windows />
+        <SwitchCardCase n={64} state="tricks-switch-off-starts" label="tricks off, three tricks on: the line names them; switch on and it goes" initial={false} startAgain={["Release Gates", "Tracker", "Browser leg"]} />
+        <SwitchCardCase n={65} state="tricks-switch-off-starts-many" label="tricks off, seven tricks on: five names, then 'and 2 more'" initial={false} startAgain={["Release Gates", "Tracker", "Browser leg", "Todo list", "Usage line", "Morph", "Notes"]} />
         <ListCard n={51} state="trick-settings-tricks-off" label="tricks off: the list stays readable, every switch is disabled, one line says why" tricks={[HEALTHY[0] ?? trick("x", "x"), { ...(HEALTHY[2] ?? trick("y", "y")), on: false, state: "off" }]} tricksOff />
       </Group>
       <Group title="The list">
@@ -537,6 +539,7 @@ export function TrickSettingsSection(): ReactNode {
             trick("clock", "Clock", { places: ["belt"], provenance: { via: "cli", at: "2026-11-08T09:38:00Z" } }),
           ]}
         />
+        <SheetBox n={66} state="trick-settings-about-keeps-running" label="a trick that runs on a file change: the last row says it keeps running with no phone open" trick={{ ...GATES, run: "bun run gates.ts", watch: ["~/notes/todo.md"] }} />
         <SheetBox n={13} state="trick-settings-about-full" label="description, two paragraphs, inputs, one warning, origin" trick={GATES} />
         <SheetBox
           n={14}
