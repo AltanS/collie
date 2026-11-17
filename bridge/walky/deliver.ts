@@ -313,9 +313,9 @@ export interface DelivererDeps {
   readonly enabled: () => boolean;
   /** The sender cap, 30 per sender per 10 minutes. */
   readonly rate?: RateLimiter;
-  /** The pair cap, 6 per two addresses per 10 minutes. */
+  /** The pair cap, 12 per two addresses per 10 minutes. */
   readonly pairs?: RateLimiter;
-  /** The messages per 10 minutes a pair may exchange (`COLLIE_WALKY_PAIR_LIMIT`). Ignored when `pairs` is given. Default 6. */
+  /** The messages per 10 minutes a pair may exchange (`COLLIE_WALKY_PAIR_LIMIT`). Ignored when `pairs` is given. Default 12. */
   readonly pairLimit?: number;
   /** The lead's outer cap, 60 per member per 10 minutes. */
   readonly members?: RateLimiter;

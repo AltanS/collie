@@ -1647,6 +1647,21 @@ describe("the pair limit is a setting", () => {
   });
 });
 
+describe("the default pair limit", () => {
+  const agentOf = (from: WalkyPane) => ({ kind: "agent" as const, pane: from });
+
+  test("the 12th message between two panes in 10 minutes is accepted and the 13th is `pair limit`", async () => {
+    const panes = [pane("w1:p1"), pane("w1:p2")];
+    const r = rig(panes);
+    const state = async (n: number) => {
+      const answer = await r.service.send(send(`wt_${n.toString().padStart(11, "a")}`, "local/w1:p2"), agentOf(panes[0]!));
+      return answer.ok ? answer.receipts.map((receipt) => `${receipt.state}${receipt.reason === undefined ? "" : ` ${receipt.reason}`}`) : [answer.error];
+    };
+    for (let n = 1; n <= 12; n += 1) expect(await state(n)).toEqual(["accepted"]);
+    expect(await state(13)).toEqual(["refused pair limit"]);
+  });
+});
+
 describe("resting panes (M85 spec 01)", () => {
   const NOW = 1_786_000_000_000;
   const MIN = 60_000;
