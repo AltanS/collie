@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { ARM_DWELL_MS, ARM_MS } from "@/lib/arm";
 
@@ -71,4 +71,13 @@ export function useArm<K extends string>(windowMs: number = ARM_MS): Arm<K> {
   );
 
   return { armed, tap, disarm };
+}
+
+/**
+ * A button's keydown for an armable key (the M102 review 3): a hardware Enter held down on the focused button repeats
+ * its click, and the first repeat comes about 500 ms in, past {@link ARM_DWELL_MS}, so it would fire the arm the first
+ * press set. A repeated Enter makes no click; the first press and every new press still do.
+ */
+export function ignoreHeldEnter(event: KeyboardEvent<HTMLElement>): void {
+  if (event.repeat && event.key === "Enter") event.preventDefault();
 }

@@ -1,7 +1,7 @@
 import { Icon } from "@/components/icons/icon";
 import { useEffect, useRef, useState } from "react";
 
-import { useArm } from "@/hooks/use-arm";
+import { ignoreHeldEnter, useArm } from "@/hooks/use-arm";
 
 import { cn } from "@/lib/utils";
 import { ARM_MS, ENTER_ARM_MS } from "@/lib/arm";
@@ -227,6 +227,7 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
                 disabled={disabled}
                 aria-label={capArmed ? enterArmedLabel : name}
                 onClick={() => pressCap(step)}
+                onKeyDown={step === "Enter" ? ignoreHeldEnter : undefined}
                 className={cn(
                   "flex h-11 shrink-0 items-center justify-center rounded-md border font-mono text-xs text-foreground disabled:opacity-60",
                   capArmed ? "min-w-12 border-primary bg-primary/25 px-2" : "w-12 border-border bg-muted/40 active:bg-muted",

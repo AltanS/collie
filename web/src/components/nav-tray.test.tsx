@@ -910,6 +910,25 @@ describe("NavTray — operator preset rows", () => {
     }
   });
 
+  it("unread card: a held hardware Enter key on the pad's Enter repeats nothing; its first press still counts (the M102 review 3)", () => {
+    render(<NavTray onSend={vi.fn()} confirmEnter />);
+    const enter = screen.getByRole("button", { name: "Enter" });
+    // fireEvent returns false when the handler prevented the default: a repeat keydown makes no click.
+    expect(fireEvent.keyDown(enter, { key: "Enter", repeat: true })).toBe(false);
+    expect(fireEvent.keyDown(enter, { key: "Enter", repeat: false })).toBe(true);
+  });
+
+  it("unread card: the pad's Enter arm drops when the pad is disabled, as the card's arm does (the M102 review 3)", () => {
+    const onSend = vi.fn();
+    const { rerender } = render(<NavTray onSend={onSend} confirmEnter />);
+    fireEvent.click(screen.getByRole("button", { name: "Enter" }));
+    expect(screen.getByRole("button", { name: "Enter, tap again to send" })).toBeInTheDocument();
+    rerender(<NavTray onSend={onSend} confirmEnter disabled />);
+    rerender(<NavTray onSend={onSend} confirmEnter />);
+    expect(screen.getByRole("button", { name: "Enter" })).toBeInTheDocument();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   describe("a modifier key made in the editor", () => {
     // What the builder saves: a plain `{kind:"mod"}`, here two cells wide in a free spot of row 2.
     const withMod = boardOf(2, [

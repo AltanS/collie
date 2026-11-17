@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { Modifier } from "@/lib/key-queue";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
-import { useArm } from "@/hooks/use-arm";
+import { ignoreHeldEnter, useArm } from "@/hooks/use-arm";
 import { ENTER_ARM_MS } from "@/lib/arm";
 import { useKeyQueue } from "@/hooks/use-key-queue";
 import { useActionEcho } from "@/hooks/use-action-echo";
@@ -207,9 +207,10 @@ export function NavTray({
   // sends nothing, so one double tap cannot arm and fire Enter.
   const enterArm = useArm<string>(ENTER_ARM_MS);
   const disarmEnter = enterArm.disarm;
+  // The arm drops with the card, and when the pad stops being pressable (the link is down), as the card's own arm does.
   useEffect(() => {
-    if (!confirmEnter) disarmEnter();
-  }, [confirmEnter, disarmEnter]);
+    if (!confirmEnter || disabled === true) disarmEnter();
+  }, [confirmEnter, disabled, disarmEnter]);
   const echo = useActionEcho();
   // Hold-to-repeat, WHITELISTED to the arrows (see navBtn's `repeat` flag). Deliberately a whitelist
   // rather than a blacklist: Enter/Esc/Space/digits/Ctrl-presets structurally must not repeat, and
@@ -331,6 +332,7 @@ export function NavTray({
         aria-disabled={refused ? true : undefined}
         style={style}
         {...(refused ? { onClick: refuse } : (bind ?? { onClick: tap }))}
+        onKeyDown={viaEnterArm ? ignoreHeldEnter : undefined}
         aria-label={armed && aria !== undefined ? t("keys.pad.tapAgain", { key: aria }) : aria}
         // A hover title for the icon keys — an icon-only button gives a desktop pointer nothing to
         // read until it commits to a tap. Harmless on the text keys that also pass `aria`.

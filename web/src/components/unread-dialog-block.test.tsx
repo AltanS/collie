@@ -487,6 +487,12 @@ describe("unread card: your Keys pad (M102 spec 03)", () => {
     }
   });
 
+  it("unread card: a held hardware Enter key on the Enter cap repeats nothing; its first press still counts (the M102 review 3)", () => {
+    const { enterCap } = mountMoving();
+    expect(fireEvent.keyDown(enterCap(), { key: "Enter", repeat: true })).toBe(false);
+    expect(fireEvent.keyDown(enterCap(), { key: "Enter", repeat: false })).toBe(true);
+  });
+
   it("unread card: the Enter cap's arm belongs to its pane, so a card on another pane only arms", () => {
     const { onPadKeys, enterCap, view, props, block } = mountMoving("w1:p1");
     fireEvent.click(enterCap());
