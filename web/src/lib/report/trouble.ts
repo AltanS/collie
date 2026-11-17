@@ -75,10 +75,6 @@ const REASONS = {
   stale_view: "ignore",
   // the agent's own answer to a code, shown already
   code_rejected: "ignore",
-  // the person's override: a menu showed, so the key pad is the way (M102 spec 12), or the text is in
-  // place and the person presses Enter
-  menu_open: "ignore",
-  override: "ignore",
   // a dialog on screen, shown already
   dialog_open: "ignore",
   dialog_after_enter: "ignore",

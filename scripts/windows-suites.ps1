@@ -14,9 +14,9 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 545 in all, each one named, with its reason:
-#              bridge 310: 173 from before 1.29.0 and 137 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
-#                adapters 10, then Accounts 45, then 11 more of the data path for a dropped or failed data send and a shadowed part; see below). Of the 173, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
+#              Today, 546 in all, each one named, with its reason:
+#              bridge 311: 174 from before 1.29.0 and 137 new (the data path 54 and the inside socket 17, then the Herdr and Tuios
+#                adapters 10, then Accounts 45, then 11 more of the data path for a dropped or failed data send and a shadowed part; see below). Of the 174, 15 are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 6 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
 #                worktree (see "The fake git of a new worktree, bridge" below). 42 are the Hill and the tricks (see
@@ -43,8 +43,8 @@
 #                - "real disk: a symlink to /etc, in a project or in the personal folders, yields no row" (POSIX links to /etc)
 #              The telemetry file mode, bridge (1). A file mode is POSIX, and the rest of bridge/telemetry.test.ts runs on Windows:
 #                - "the file is owner-only" (telemetry.test.ts, "createTelemetry": the 0600 mode of telemetry.json)
-#              The hold socket, bridge (5). Windows builds no hold socket yet, so every permission there stays a
-#                screen ask (CHANGELOG, M56 spec 12). The five tests of the "the hold socket" block in
+#              The hold socket, bridge (6). Windows builds no hold socket yet, so every permission there stays a
+#                screen ask (CHANGELOG, M56 spec 12). The six tests of the "the hold socket" block in
 #                bridge/surface/hook-ask.test.ts are `test.skipIf` on win32:
 #                Each name sits on one line, so the pin test can find it:
 #                - "owner-only: the folder is 0700, the socket 0600; a second bridge on the same path does not take it" (a POSIX socket file with an owner-only mode)
@@ -52,6 +52,7 @@
 #                - "a placed request reaches the session; the decision travels back as one line" (the same)
 #                - "a request from another multiplexer's pane is dropped without a log line, a same-namespace miss is logged" (the same)
 #                - "an unparsed line is dropped" (the same)
+#                - "every request the socket receives leaves exactly one record, a foreign multiplexer's and a skip line's too" (the same)
 #              Walky talky, bridge (7). A file mode and a Unix socket are POSIX. In bridge/walky/ the checks of
 #                0700 and 0600 sit in their own skipped test, and the behaviour beside them runs on Windows:
 #                - "keeps its tokens at 0600 in a 0700 folder" (instances.test.ts, "the instance registry")
@@ -237,7 +238,7 @@
 #                executable bit and reads it through `file://`, as the add from the list does (bridge 33 above).
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 310,
+  [int]$MaxSkipsBridge = 311,
   [int]$MaxSkipsCli = 200,
   [int]$MaxSkipsScripts = 35
 )
