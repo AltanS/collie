@@ -82,12 +82,6 @@ export const KNOWN_RED = {
     where: "web/src/components/hook-hold-card.tsx:90 (void Promise.resolve(onAnswer(index)).finally(...): no catch, no words)",
     what: "When the hold card's answer handler rejects, the rejection is unhandled and the card shows no words; only the busy mark clears.",
   },
-  "i2-change-login-crash": {
-    invariant: "I2",
-    fixedBy: "NONE",
-    where: "web/src/routes/settings-change-login.tsx:74 (`body?.accounts.find`: a body with no accounts field throws in render)",
-    what: "After Finish, a list answer from an older or newer bridge with no accounts field crashes the page to the router's error screen: no result, no way back but the browser.",
-  },
   "i2-words-raw": {
     invariant: "I2",
     fixedBy: "M102-11",

@@ -2463,8 +2463,12 @@ export function fetchLaunchers(scope?: Scope): Promise<LaunchersResponse> {
  * the chosen machine's). A 404 (`accounts.unavailable`) means the machine offers none: the app hides
  * the feature (lib/accounts.ts).
  */
-export function fetchAccounts(scope?: Scope): Promise<AccountsBody> {
-  return req<AccountsBody>(withScope("/api/accounts", scope));
+export async function fetchAccounts(scope?: Scope): Promise<AccountsBody> {
+  const body = await req<Partial<AccountsBody> | null>(withScope("/api/accounts", scope));
+  // A 200 whose body has no usable accounts list (an older or newer bridge, a proxy's page) is a failed read,
+  // never a body: every caller reads `.accounts` and would throw on it. The list's other two parts may be missing.
+  if (body === null || !Array.isArray(body.accounts)) throw new Error("/api/accounts answered without an accounts list");
+  return { harnesses: Array.isArray(body.harnesses) ? body.harnesses : [], accounts: body.accounts, found: Array.isArray(body.found) ? body.found : [] };
 }
 
 /**
