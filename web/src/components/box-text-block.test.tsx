@@ -159,3 +159,38 @@ describe("BoxTextBlock", () => {
     }
   });
 });
+
+describe("BoxTextBlock — a sign-in card (Change login, M101)", () => {
+  const ADDRESS = "https://claude.com/cai/oauth/authorize?code=true&state=XXXX";
+  const SIGN_IN: BoxTextModel = {
+    title: "Login",
+    phase: "filled",
+    text: [[plain("Browser didn't open? Use the url below to sign in (c to copy)")], [], [link(ADDRESS)], [], [plain("Paste code here if prompted >")]],
+  };
+  const HOSTS = ["claude.com", "platform.claude.com"];
+
+  it("opens a listed https address through one primary button, a plain link with no opener and no referrer", () => {
+    render(<BoxTextBlock boxText={SIGN_IN} signInHosts={HOSTS} />);
+    const open = screen.getByRole("link", { name: "Open sign-in page" });
+    expect(open).toHaveAttribute("href", ADDRESS);
+    expect(open).toHaveAttribute("rel", "noopener noreferrer");
+    expect(open).toHaveAttribute("target", "_blank");
+    // The address in the rows is text now: the button is the one way to open it.
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getByText(ADDRESS)).toBeInTheDocument();
+  });
+
+  it("an address on a host the adapter does not list is text to copy, shown once, with no link", () => {
+    const other: BoxTextModel = { ...SIGN_IN, text: [[link("https://example.com/oauth?state=X")]] };
+    render(<BoxTextBlock boxText={other} signInHosts={HOSTS} />);
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("Copy this address into your browser if you trust it.")).toBeInTheDocument();
+    expect(screen.getAllByText("https://example.com/oauth?state=X")).toHaveLength(1);
+  });
+
+  it("without hosts the card is drawn as before, its links live", () => {
+    render(<BoxTextBlock boxText={SIGN_IN} />);
+    expect(screen.queryByRole("link", { name: "Open sign-in page" })).toBeNull();
+    expect(screen.getByRole("link", { name: ADDRESS })).toHaveAttribute("href", ADDRESS);
+  });
+});

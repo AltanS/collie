@@ -38,6 +38,7 @@ import { setFollowing as publishFollowing } from "@/lib/poll-intent";
 import { useHarnessStatusLineShown } from "@/lib/harness-prefs";
 import { stopFor } from "@/lib/harness-bar";
 import { useAutoZenEnabled, useZenEnabled } from "@/lib/zen";
+import { useFloatingClear } from "@/hooks/use-floating-clear";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, TailRoomContext, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
@@ -145,13 +146,14 @@ import { useTabLook } from "@/lib/tab-look";
 import { zoomPillShown } from "@/lib/zoom-pill";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
+import { useAccounts } from "@/lib/accounts";
 import { openReport, signalTrouble, unreadDialogReport } from "@/lib/report/store";
 import { unreadDialogScreen } from "@/lib/report/screen";
 import { answerRouteFor, holdAnswerRouteFor, textRouteFor } from "@/lib/send-path";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
-import { changesPath, filesPath, historyPath, trickSessionPath, newPath, panePath, spacePath } from "@/lib/nav";
+import { changeLoginPath, changesPath, filesPath, historyPath, trickSessionPath, newPath, panePath, spacePath } from "@/lib/nav";
 import { beltMarksOf, beltTapHandlers } from "@/components/belt-trick-mark";
 import { statusItemsOf } from "@/components/trick-status-item";
 import { useTrickParts } from "@/lib/tricks/store";
@@ -682,6 +684,7 @@ export function AgentChat({
   // The box the composer's terminal-draft notice floats in (ADR 0061), at the mirror's bottom edge.
   // State rather than a ref: the composer portals into it, so it must re-render once it exists.
   const [draftNoticeSlot, setDraftNoticeSlot] = useState<HTMLDivElement | null>(null);
+  const floatingClear = useFloatingClear(draftNoticeSlot);
 
   // "GONE" IS A FACT ONLY A LIVE ANSWER CAN STATE (M46 spec 10). With the bridge away the herd on
   // screen is what the phone kept, and a pane missing from it is a pane this phone cannot place, not
@@ -1062,6 +1065,13 @@ export function AgentChat({
     () => paneSurface(agent?.surface, agent?.sendProtocol === true, hostBlock),
     [agent?.surface, agent?.sendProtocol, hostBlock],
   );
+  // Change login (M101): a sign-in card opens its address through one button, only on the hosts the
+  // agent's adapter lists (`signInHosts` on GET /api/accounts of the pane's machine). The list is read
+  // only while the screen holds a sign-in field under a box card. An agent with no hosts listed keeps
+  // the card as it was.
+  const signInScreen = composerSurface.field === "secret" && blocks.some((b) => b.kind === "box-text");
+  const signInAccounts = useAccounts(scope, signInScreen);
+  const signInHosts = signInScreen ? signInAccounts.body?.harnesses.find((h) => h.id === agent?.agent)?.signInHosts : undefined;
   // Ask v1 (M56 spec 08): a tap on a dialog card answers the ask the bridge's Surface carries, by its
   // single-use id. A refusal for a changed dialog hands back the bridge's ask for the screen now; the
   // next tap uses it while the snapshot still names the id that was refused, and the snapshot's own
@@ -2970,6 +2980,7 @@ export function AgentChat({
               <CardWaitingCtx.Provider value={questionNotes}>
                 <SessionStream
                   feed={chatFeed}
+                  clearBottom={floatingClear}
                   address={paneScopeKey(scope, paneId)}
                   // The pane record's own status, the one live fact both bodies share. The mirror gets
                   // this for free — the agent's spinner is in the output it draws — so only this body
@@ -3033,6 +3044,7 @@ export function AgentChat({
             <ChatMessageList
               ref={listRef}
               clearBand={0}
+              clearBottom={floatingClear}
               dep={display}
               onAtBottomChange={setFollowing}
               hasNew={hasNew}
@@ -3261,6 +3273,7 @@ export function AgentChat({
               promptDisabled={readOnly || gone}
               paneId={paneId}
               scope={scope}
+              signInHosts={signInHosts}
               stale={actsDisabledByCache}
               composing={composing}
               wrap={prefs.wrap}
@@ -3916,6 +3929,20 @@ export function AgentChat({
           scope={scope}
           hooks={agent?.hooks}
           program={gridless}
+          // Change login (M101) for the account this session runs under: this machine's panes only, on a
+          // device that may write, never a program. The row itself shows only when the account is listed.
+          changeLogin={
+            agent && agent.kind !== "shell" && !readOnly && !gridless && isLead(scope)
+              ? {
+                  harness: agent.agent,
+                  account: agent.account?.id,
+                  onOpen: (accountId) => {
+                    closeDrawer();
+                    nav.down(changeLoginPath(accountId, scope));
+                  },
+                }
+              : undefined
+          }
           // The header's name tap lands here, so the row that edits the name is here too. It hands
           // over to the ⋮ sheet's rename view in one event. Hidden where that view cannot save: a
           // read-only device, an unreachable machine, a multiplexer with no rename.

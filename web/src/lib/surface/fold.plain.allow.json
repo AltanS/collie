@@ -866,5 +866,12 @@
     "rule": "web/src/lib/surface/frame.ts:838 interiorFrameAt under check, frame.ts:303 paintedFooter (profile pi.json idle.frameAlternates rail layout, underPainted)",
     "propose": "Upstream: per-row dim or fg flag. Text only: an under rule that takes a row opening with a space would also take pi's prose, which pi indents by one space, under the framed echo of a sent prompt, so no wider rule is proposed.",
     "effect": "the pane is never free on a plain read: a send is held or refused, which is safe"
+  },
+  "grok--v1.0.77-slash-ghost--w120.txt": {
+    "why": "Grok Build 1.0.77 paints the rest of the highlighted slash command after the typed text in grey (`/stat` typed, `usline` painted). A plain read cannot tell the ghost letters from typed ones, so the draft shows the completion as typed text. The error is toward 'more text than was sent', which holds a send.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:479 hintStart; web/src/lib/surface/profiles/grok.json idle.inlineHint.fg",
+    "propose": "Upstream: the cursor column in terminal.read (ghost text sits after it). Text only: none.",
+    "effect": "HOTFIX: the draft shows more text than was typed, so a send that verifies the box can end typed_not_submitted"
   }
 }

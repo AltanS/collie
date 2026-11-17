@@ -121,8 +121,11 @@ export function opensBox(text: string): boolean {
 // a Linux Grok does not lose its box the same way.
 //
 // Longer tokens first so `Enter` is not read as `E`.
-const HINT_CHORD = String.raw`(?:(?:Shift|Ctrl|Opt|Alt)\+(?:Tab|Space|Esc|Enter|Up|Down|[A-Za-z.])|Tab|Space|Esc|Enter|Up|Down)`;
-const HINT_SEGMENT = new RegExp(String.raw`^(?:${HINT_CHORD}(?:\/${HINT_CHORD})*|[A-Za-z]):\S`);
+//
+// Grok Build 1.0.77 (harness lab 2026-11-16) adds two more shapes in a turn: `Ctrl+;:queue` (a
+// semicolon key) and `Enter Enter:send now` (one key pressed twice, the chords joined by a space).
+const HINT_CHORD = String.raw`(?:(?:Shift|Ctrl|Opt|Alt)\+(?:Tab|Space|Esc|Enter|Up|Down|[A-Za-z.;])|Tab|Space|Esc|Enter|Up|Down)`;
+const HINT_SEGMENT = new RegExp(String.raw`^(?:${HINT_CHORD}(?:[\/ ]${HINT_CHORD})*|[A-Za-z]):\S`);
 
 /**
  * True when the row is Grok's key-hint bar. Used to refuse a composer whose "hint run" is

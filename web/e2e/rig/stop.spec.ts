@@ -1,12 +1,13 @@
 // Stop in the browser leg (M68 spec 03, case 25, ADR 0116), on the pi session the run started. A long
 // numbered list streams, so the turn runs for tens of seconds. Before the turn the belt already shows Stop,
-// dimmed (aria-disabled="true"); once the turn runs it is live. The first tap
-// only arms it ("Stop?", no request). The second tap posts the abort, the bridge presses pi's interrupt
+// dimmed (aria-disabled="true"); once the turn runs it is live. A short tap
+// stops nothing ("Hold", no request). A hold of two seconds posts the abort, the bridge presses pi's interrupt
 // key as a person's tap, and the receipt says `stopped`. The notice "Stopped." shows under the box and
 // the box reads free within 5 s. One model turn.
 //
 // pi needs a provider key (COLLIE_RIG_KEY_FILE); without one the case reports "not reached".
-import { capture, captureScreen, message, openSession, phoneOn, runScenario, sendFromComposer, spendTurn, tap, tapWords, test, waitIdle, type Session } from "./leg";
+import { STOP_HOLD_MS } from "../../src/lib/arm";
+import { capture, captureScreen, holdFor, message, openSession, phoneOn, runScenario, sendFromComposer, spendTurn, tap, tapWords, test, waitIdle, type Session } from "./leg";
 import { sleep } from "./rig-lib";
 import { PHONE, turnRuns } from "./walky-lib";
 
@@ -21,7 +22,7 @@ test.describe("stop on pi", () => {
     Object.assign(session, await openSession(H));
   });
 
-  test("25 Stop a running pi turn: the first tap arms, the second stops, the receipt says Stopped", async ({ browser, rig }) => {
+  test("25 Stop a running pi turn: a short tap stops nothing, a hold stops, the receipt says Stopped", async ({ browser, rig }) => {
     await runScenario(H, "stop-pi", session, async (pane, trail) => {
       spendTurn(H, "stop: the long reply");
       const { context, page, recorder } = await phoneOn(browser, rig, pane, PHONE);
@@ -51,15 +52,14 @@ test.describe("stop on pi", () => {
           return { verdict: "fail", taps: log.length, minTaps: 3, note: [...notes, shown ? "the belt shows a live Stop" : "the belt shows NO live Stop"].join("; "), taps_log: log, captures: trail.captures };
         }
 
-        // The first tap arms. It posts nothing, and the button says "Stop?".
-        const arm = await tap(recorder, stop, "arm Stop", { expectAnswer: false });
+        // A short tap stops nothing. It posts nothing, and the button says "Hold".
+        const arm = await tap(recorder, stop, "tap Stop too early", { expectAnswer: false });
         log.push(arm);
-        const armedAria = await stop.getAttribute("aria-label");
-        const armed = armedAria === message("belt.stopArmedAria");
-        notes.push(`${tapWords(arm)}; the button ${armed ? "reads Stop?" : "does NOT read Stop?"}`);
+        const armed = ((await stop.textContent()) ?? "").includes(message("belt.stopHold"));
+        notes.push(`${tapWords(arm)}; the button ${armed ? "reads Hold" : "does NOT read Hold"}`);
 
-        // The second tap stops. One abort request, one receipt.
-        const stopTap = await tap(recorder, stop, "Stop");
+        // The hold stops. One abort request, one receipt.
+        const stopTap = await holdFor(page, recorder, stop, "hold Stop", STOP_HOLD_MS + 300);
         log.push(stopTap);
         const answered = stopTap.answers.find((answer) => answer.path.endsWith("/abort"));
         notes.push(tapWords(stopTap));
@@ -70,7 +70,7 @@ test.describe("stop on pi", () => {
           .then(() => true)
           .catch(() => false);
         const free = await waitIdle(rig, pane, 5000);
-        notes.push(`the notice ${notice ? "says Stopped." : "NEVER showed"}, the box ${free ? "reads free" : "is NOT free"} ${String(Math.round((Date.now() - stoppedAt) / 1000))} s after the second tap`);
+        notes.push(`the notice ${notice ? "says Stopped." : "NEVER showed"}, the box ${free ? "reads free" : "is NOT free"} ${String(Math.round((Date.now() - stoppedAt) / 1000))} s after the hold`);
         await sleep(300);
         trail.captures.push(await capture(page, "stop-25-stopped"), await captureScreen(rig, pane, "stop-25-stopped"));
         const verdict = dimBefore && arm.answers.length === 0 && armed && stopTap.worked && answered?.outcome === "stopped" && notice && free && log.length === 3 ? "pass" : "fail";

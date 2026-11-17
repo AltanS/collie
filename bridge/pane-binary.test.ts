@@ -3,9 +3,10 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { hostFor } from "./host.ts";
+import { hostFor, WSL_FLAGS } from "./host.ts";
 import type { ForegroundProcess } from "./journal/types.ts";
-import { argvFromCmdline, createPaneProfile, createPaneVersion, PANE_LAST_GOOD_MS, paneBinaryOf, procProbe, sharedForegroundRead, type ForegroundOutcome, type ProcessProbe } from "./pane-binary.ts";
+import { piProcessOf } from "./journal/pi.ts";
+import { argvFromCmdline, createPaneHarness, createPaneProfile, envFromEnviron, createPaneVersion, PANE_LAST_GOOD_MS, paneBinaryOf, paneHarnessOf, procProbe, profileBinaries, sharedForegroundRead, type ForegroundOutcome, type ProcessProbe } from "./pane-binary.ts";
 import { createVersionReader, VersionCache } from "./surface/binary-version.ts";
 import { findTool } from "./tools.ts";
 import { loadProfiles, type Profile } from "../web/src/lib/surface/profile.ts";
@@ -232,6 +233,80 @@ describe("createPaneProfile — the version of the pane's own program", () => {
   });
 });
 
+// Issues 594 and 797: pi under WSL takes ctrl+q for submit and queue only when WSL_DISTRO_NAME or
+// WSL_INTEROP is in its own environment; without them it takes alt+Enter, kernel or not. The send's
+// profile reads the pane's pi process environment under WSL.
+describe("createPaneProfile — the keys of the pane's agent under WSL", () => {
+  const versions = { programVersion: () => Promise.resolve({ version: "1.3.0", command: undefined }) };
+  const piPid = 4242;
+  const pi = (): ForegroundOutcome => ({ ok: true, value: [ps(["/bin/sh"]), ps(["/opt/pi/bin/pi"], piPid)] });
+  const withEnv = (env: Record<string, string> | null, cmdline?: readonly string[] | null): ProcessProbe => ({
+    ...probe(null, null, cmdline),
+    environOf: (pid, names) => (pid === piPid && env !== null ? Object.fromEntries(Object.entries(env).filter(([name]) => names.includes(name))) : null),
+  });
+  const keysOf = async (platform: string, env: Record<string, string> | null, read: () => Promise<ForegroundOutcome> = () => Promise.resolve(pi()), cmdline?: readonly string[] | null) => {
+    const lookup = createPaneProfile({ versions, binaries: () => binaries, probe: withEnv(env, cmdline), platform, host: linux });
+    const match = await lookup("pi", "p1", read);
+    return { submit: match?.profile.keys.submit, queueKey: match?.profile.keys.queueKey };
+  };
+  const ALT = { submit: ["alt+Enter"], queueKey: "alt+Enter" };
+  const CTRL_Q = { submit: ["ctrl+q"], queueKey: "ctrl+q" };
+
+  test("issue 797: a WSL bridge, a pi started with neither flag: alt+Enter", async () => {
+    expect(await keysOf("wsl", { PATH: "/usr/bin", HOME: "/home/op" })).toEqual(ALT);
+  });
+
+  test("issue 594: a WSL bridge, a pi started with a WSL flag: ctrl+q", async () => {
+    expect(await keysOf("wsl", { WSL_DISTRO_NAME: "Distro", WSL_INTEROP: "/run/WSL/9_interop" })).toEqual(CTRL_Q);
+    expect(await keysOf("wsl", { WSL_INTEROP: "/run/WSL/9_interop" })).toEqual(CTRL_Q);
+  });
+
+  test("no proof of pi's environment keeps the bridge's answer: ctrl+q under WSL", async () => {
+    // An environment that cannot be read, a pid whose argv is not the reported one, a refused read, no read.
+    expect(await keysOf("wsl", null)).toEqual(CTRL_Q);
+    expect(await keysOf("wsl", { PATH: "/usr/bin" }, undefined, ["/usr/bin/other"])).toEqual(CTRL_Q);
+    expect(await keysOf("wsl", { PATH: "/usr/bin" }, () => Promise.resolve<ForegroundOutcome>({ ok: false }))).toEqual(CTRL_Q);
+    const lookup = createPaneProfile({ versions, binaries: () => binaries, probe: withEnv({ PATH: "/usr/bin" }), platform: "wsl", host: linux });
+    expect((await lookup("pi"))?.profile.keys.submit).toEqual(["ctrl+q"]);
+  });
+
+  test("linux, darwin and win32 keep their keys, whatever pi's environment holds", async () => {
+    const envs: Array<Record<string, string> | null> = [{ WSL_DISTRO_NAME: "Distro" }, {}, null];
+    for (const env of envs) {
+      expect(await keysOf("linux", env)).toEqual(ALT);
+      expect(await keysOf("darwin", env)).toEqual(ALT);
+      expect(await keysOf("win32", env)).toEqual(CTRL_Q);
+    }
+  });
+});
+
+test("envFromEnviron reads NUL-separated NAME=value entries, only the named ones", () => {
+  expect(envFromEnviron("A=1\0B=x=y\0EMPTY=\0junk\0", ["A", "B", "EMPTY", "junk"])).toEqual({ A: "1", B: "x=y", EMPTY: "" });
+  expect(envFromEnviron("", ["A"])).toEqual({});
+});
+
+test("envFromEnviron drops every variable it is not asked for, a secret first", () => {
+  const raw = "SOME_API_KEY=value\0WSL_INTEROP=/run/WSL/9_interop\0PATH=/usr/bin\0";
+  const env = envFromEnviron(raw, WSL_FLAGS);
+  expect(env).toEqual({ WSL_INTEROP: "/run/WSL/9_interop" });
+  expect("SOME_API_KEY" in env).toBe(false);
+  expect(JSON.stringify(env)).not.toContain("value");
+  expect(envFromEnviron(raw, [])).toEqual({});
+});
+
+test.skipIf(process.platform !== "linux")("procProbe reads a live process's environment, and nothing on another host", () => {
+  const child = Bun.spawn(["sleep", "30"], { env: { PATH: "/usr/bin:/bin", COLLIE_PROBE_MARK: "seen", SOME_API_KEY: "value" } });
+  try {
+    const real = procProbe(linux);
+    for (let i = 0; i < 100 && real.cmdlineOf(child.pid)?.length === 0; i++) Bun.sleepSync(10);
+    expect(real.environOf?.(child.pid, ["COLLIE_PROBE_MARK", "WSL_INTEROP"])).toEqual({ COLLIE_PROBE_MARK: "seen" });
+    expect(real.environOf?.(2 ** 31 - 2, ["PATH"])).toBeNull();
+    expect(procProbe(hostFor("darwin")).environOf?.(child.pid, ["PATH"])).toBeNull();
+  } finally {
+    child.kill();
+  }
+});
+
 // Two copies of one harness on disk, as in the 1.24.1 live check (W5): the PATH holds one, the pane runs
 // the other. Fake binaries only: scripts that print a version, no agent.
 describe.skipIf(process.platform === "win32")("two copies of one harness: the pane's copy is the one read", () => {
@@ -309,5 +384,99 @@ describe("createPaneVersion — the pane's last answer while its agent is gone f
     await versionOf(omp, "p1", ompRunning);
     expect((await versionOf(omp, "p2", shell)).version).toBe("18.6.1");
     expect((await versionOf(claude, "p1", shell)).command).toBeUndefined();
+  });
+});
+
+// #793: a pane the multiplexer names no agent on (pi started by hand in a shell) was taken for a shell,
+// and a send there took the blind road. The send path now names it by its foreground program, with the
+// profiles' binary table, and the journal asks the same function.
+describe("paneHarnessOf: which harness runs in the pane, by its foreground program (#793)", () => {
+  /** The argv shapes one binary takes in a pane: by name, by path, as an interpreter's script. */
+  const launches = (binary: string): string[][] => [
+    [binary],
+    [`/home/dev/.local/bin/${binary}`, "--continue"],
+    ["node", `/home/dev/.npm-global/bin/${binary}`],
+    ["/usr/bin/node", "--no-warnings", `/home/dev/.nvm/versions/node/v24.0.0/bin/${binary}`],
+    ["bun", `/home/dev/.bun/install/global/node_modules/.bin/${binary}`],
+    ["node", `/home/dev/.cache/npx/0a1b/node_modules/.bin/${binary}`, "--model", "x"],
+  ];
+  let pid = 5_000;
+
+  test("every profile's binary, in every shape, with a proven pid: that harness", () => {
+    expect(profileBinaries()).toEqual(binaries);
+    for (const [binary, harness] of binaries) {
+      for (const argv of launches(binary)) expect([argv, paneHarnessOf([ps(argv, ++pid)], binaries, probe(null))?.harness]).toEqual([argv, harness]);
+    }
+  });
+
+  test("a wrapper and the agent it runs, both in the foreground, name the agent once", () => {
+    const wrapper = ps(["bash", "/home/dev/bin/run-pi.sh"], ++pid);
+    const agent = ps(["node", "/home/dev/.npm-global/bin/pi"], ++pid);
+    expect(paneHarnessOf([wrapper, agent], binaries, probe(null))?.harness).toBe("pi");
+    expect(paneHarnessOf([agent, ps(["pi"], ++pid)], binaries, probe(null))?.harness).toBe("pi");
+  });
+
+  test("a pid whose /proc/<pid>/cmdline is not the reported argv, or a host with no /proc: no name", () => {
+    expect(paneHarnessOf([ps(["pi"], ++pid)], binaries, probe(null, null, ["bash"]))).toBeNull();
+    expect(paneHarnessOf([ps(["pi"], ++pid)], binaries, probe(null, null, null))).toBeNull();
+    // One proven process of the harness is enough; an unproven one beside it adds nothing.
+    const proven = ps(["pi"], ++pid);
+    expect(paneHarnessOf([{ argv: ["node", "/x/pi"], pid: 1 }, proven], binaries, probe(null))?.process).toBe(proven);
+  });
+
+  test("a process the multiplexer reports with no pid counts on its argv alone", () => {
+    expect(paneHarnessOf([ps(["omp"])], binaries, probe(null, null, null))?.harness).toBe("omp");
+  });
+
+  test("two harnesses in the foreground: no name, a wrong profile types the wrong keys", () => {
+    expect(paneHarnessOf([ps(["pi"], ++pid), ps(["omp"], ++pid)], binaries, probe(null))).toBeNull();
+    expect(paneHarnessOf([ps(["claude"], ++pid), ps(["node", "/home/dev/.bun/bin/codex"], ++pid)], binaries, probe(null))).toBeNull();
+  });
+
+  test("a program the table does not name exactly: no name", () => {
+    const unknown = [
+      ["bash"],
+      ["ssh", "dev@box", "pi"],
+      ["docker", "exec", "-it", "box", "pi"],
+      ["distrobox", "enter", "box", "--", "pi"],
+      ["bun", "x", "pi"],
+      ["node", "/home/dev/.local/share/pnpm/global/5/node_modules/pi-agent/dist/cli.js"],
+      ["python3", "pi.py"],
+      ["pi-dev"],
+      ["/home/dev/bin/run-pi.sh"],
+      [],
+    ];
+    for (const argv of unknown) expect([argv, paneHarnessOf([ps(argv, ++pid)], binaries, probe(null))]).toEqual([argv, null]);
+    expect(paneHarnessOf([], binaries, probe(null))).toBeNull();
+  });
+
+  test("createPaneHarness: over the pane's read; a refused read names nothing", async () => {
+    const reads = new Map<string, ForegroundOutcome>([["p1", { ok: true, value: [ps(["pi"], ++pid)] }], ["p2", { ok: false }], ["p3", { ok: true, value: [] }]]);
+    const named = createPaneHarness({ read: (paneId) => Promise.resolve(reads.get(paneId) ?? { ok: false }), binaries: () => binaries, probe: probe(null) });
+    expect(await named("p1")).toBe("pi");
+    expect(await named("p2")).toBeNull();
+    expect(await named("p3")).toBeNull();
+  });
+
+  test("the journal and the send path give the same answer for every case", async () => {
+    const cases: ForegroundProcess[][] = [
+      [ps(["pi"], ++pid)],
+      [ps(["omp", "--resume", "abc"], ++pid)],
+      [ps(["node", "/home/dev/.npm-global/bin/pi", "--session", "/x.jsonl"], ++pid)],
+      [ps(["bun", "/home/dev/.bun/install/global/node_modules/.bin/omp"])],
+      [ps(["bash", "/home/dev/bin/run-pi.sh"], ++pid), ps(["pi"], ++pid)],
+      [ps(["pi"], ++pid), ps(["omp"], ++pid)],
+      [ps(["claude"], ++pid), ps(["pi"], ++pid)],
+      [ps(["claude"], ++pid)],
+      [ps(["bash"], ++pid)],
+      [ps(["ssh", "dev@box"], ++pid)],
+      [],
+    ];
+    for (const processes of cases) {
+      const send = await createPaneHarness({ read: () => Promise.resolve({ ok: true, value: processes }), binaries: profileBinaries, probe: probe(null) })("p1");
+      // The journal reads pi and omp logs only: for any other harness it has no answer, by design.
+      const journal = piProcessOf(processes)?.harness ?? null;
+      expect([processes.map((p) => p.argv.join(" ")), journal]).toEqual([processes.map((p) => p.argv.join(" ")), send === "pi" || send === "omp" ? send : null]);
+    }
   });
 });

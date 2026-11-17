@@ -379,7 +379,7 @@ message never steers, whoever sends it.
 | `claude` | queue | Enter queues it in the harness, and it runs after the turn |
 | `codex` | queue key | Tab queues it; Enter would steer, so Collie never presses it there |
 | `cursor` | queue | Enter queues it in the harness, and it runs after the turn |
-| `grok` | hold | Collie holds it and types it when the pane is free |
+| `grok` | queue | Enter queues it in the harness, and it runs after the turn |
 | `hermes` | hold | Collie holds it and types it when the pane is free |
 | `kiro` | hold | Collie holds it and types it when the pane is free |
 | `muse` | queue key | Tab queues it; Enter would steer, so Collie never presses it there |

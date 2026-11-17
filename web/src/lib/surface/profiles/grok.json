@@ -10,10 +10,10 @@
   },
   "versions": [
     {
-      "range": "1.0.0 - 1.0.41",
+      "range": "1.0.0 - 1.0.77",
       "status": "verified",
-      "verifiedThrough": "1.0.41",
-      "verifiedOn": "2026-09-27"
+      "verifiedThrough": "1.0.77",
+      "verifiedOn": "2026-11-16"
     }
   ],
   "idle": {
@@ -38,7 +38,8 @@
       "continuation": "^ *│ {1,3}(?<text>.*?)\\s*(?:[█▌▐]\\s*)?│?$",
       "continuationIndent": 0,
       "maxDraftRows": 60,
-      "maxTailRows": 4
+      "maxTailRows": 4,
+      "ownPrompt": true
     },
     "placeholders": {
       "texts": [],
@@ -54,12 +55,18 @@
       }
     },
     "runningRows": [
-      "^\\s*(?:[^\\s│❯][^│❯]*│\\s*)*Esc:cancel\\b"
+      "^\\s*(?:[^\\s│❯][^│❯]*│\\s*)*(?:Esc|Ctrl\\+c):cancel\\b",
+      "^\\s*[⠁-⣿]\\s+\\S[^…]*…\\s+\\d+(?:\\.\\d+)?s\\b"
     ],
     "dialogsInBox": true,
     "overlayRows": [
       "\\s•\\s\\d+ tokens\\s*$"
-    ]
+    ],
+    "inlineHint": {
+      "fg": [
+        "rgb(108,108,108)"
+      ]
+    }
   },
   "keys": {
     "submit": [
@@ -81,10 +88,17 @@
       "down": "Down",
       "confirm": "Enter",
       "cancel": "Escape"
+    },
+    "enterWhileRunning": "queues",
+    "queuedRow": {
+      "pattern": "^\\s*#\\d+ (?<text>\\S.*?)\\s*$",
+      "hint": "^\\s*▾ Queued \\d+\\s*$",
+      "hintGap": 0,
+      "hintAbove": true
     }
   },
   "collapse": {
-    "pattern": "\\[Pasted [^\\]]*\\]"
+    "pattern": "\\[Pasted[ :][^\\]]*\\]"
   },
   "reservedLeads": [
     "/",
@@ -94,7 +108,7 @@
   "probe": {
     "char": "⌁",
     "status": "provisional",
-    "note": "No live send has passed on this harness: it is not installed on bluefin, LAB.md has no row for it, and the M56 spec 01 lab did not run it. The box layout comes from the saved screens in web/src/fixtures/panes (grok--*.txt, Grok Build 1.0.46 to 1.0.52). Provisional until a live probed send passes; fallback ¤"
+    "note": "Harness lab 2026-11-16 on Grok Build 1.0.77 over a scratch Herdr: three live probed sends passed, two on an idle box (sent) and one into a running turn (sent, queued); the probe showed once in the box and Backspace took it out. Its inertness in Grok's dialogs (trust, permission, ask, plan) is not measured, so the status stays provisional and every send stays probed. The box layout comes from the saved screens in web/src/fixtures/panes (grok--*.txt, Grok Build 1.0.46 to 1.0.77); fallback ¤"
   },
   "paste": {
     "bracketed": true

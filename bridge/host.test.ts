@@ -10,6 +10,7 @@ import {
   isBelow,
   isInside,
   isSameOrInside,
+  paneSurfacePlatform,
   splitPath,
   surfacePlatform,
 } from "./host.ts";
@@ -157,5 +158,31 @@ describe("surfacePlatform", () => {
     const answer = surfacePlatform({ platform: "linux", env: { WSL_INTEROP: "/run/WSL/1_interop" }, readProcVersion: () => { reads += 1; return null; } });
     expect(answer).toBe("wsl");
     expect(reads).toBe(0);
+  });
+});
+
+// Issues 594 and 797: two WSL machines, two keys. The agent decides by WSL_DISTRO_NAME or WSL_INTEROP in
+// its own environment, not by the kernel, so the pane's agent environment narrows the bridge's answer.
+describe("paneSurfacePlatform", () => {
+  test("issue 797: a WSL kernel, and an agent started with neither flag, is linux", () => {
+    expect(paneSurfacePlatform("wsl", { PATH: "/usr/bin", HOME: "/home/op" })).toBe("linux");
+    expect(paneSurfacePlatform("wsl", { WSL_DISTRO_NAME: "", WSL_INTEROP: "" })).toBe("linux");
+  });
+
+  test("issue 594: an agent started with either flag stays wsl", () => {
+    expect(paneSurfacePlatform("wsl", { WSL_DISTRO_NAME: "Distro" })).toBe("wsl");
+    expect(paneSurfacePlatform("wsl", { WSL_INTEROP: "/run/WSL/9_interop" })).toBe("wsl");
+  });
+
+  test("an environment the bridge cannot read keeps the bridge's answer", () => {
+    expect(paneSurfacePlatform("wsl", null)).toBe("wsl");
+  });
+
+  test("linux, darwin and win32 stay as they are, whatever the agent's environment holds", () => {
+    for (const platform of ["linux", "darwin", "win32"]) {
+      expect(paneSurfacePlatform(platform, { WSL_DISTRO_NAME: "Distro" })).toBe(platform);
+      expect(paneSurfacePlatform(platform, {})).toBe(platform);
+      expect(paneSurfacePlatform(platform, null)).toBe(platform);
+    }
   });
 });

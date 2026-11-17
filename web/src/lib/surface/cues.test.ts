@@ -544,6 +544,8 @@ describe("running signs and the prompt row", () => {
   const plain = (text: string): StyledLine => ({ segments: [{ text, style: {}, muted: false }] });
   const cases = [
     { fixture: "grok--draft-single.txt", harness: "grok", phrase: "Esc:cancel" },
+    { fixture: "grok--draft-single.txt", harness: "grok", phrase: "Ctrl+c:cancel" },
+    { fixture: "grok--draft-single.txt", harness: "grok", phrase: "⠋ Waiting for response… 0.6s" },
     { fixture: "oc--draft-single.txt", harness: "opencode", phrase: "esc interrupt" },
   ];
   for (const { fixture, harness, phrase } of cases) {
@@ -581,6 +583,9 @@ describe("running signs and the prompt row", () => {
 
   it.each([
     ["grok", "grok--working.txt"],
+    ["grok", "grok--v1.0.77-running--w120.txt"],
+    ["grok", "grok--v1.0.77-running-draft--w120.txt"],
+    ["grok", "grok--v1.0.77-queued--w120.txt"],
     ["opencode", "oc--working.txt"],
     ["opencode", "oc--draft-while-working.txt"],
   ])("running: the %s hint in %s, on its real row, is a running turn", (harness, fixture) => {

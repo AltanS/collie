@@ -110,3 +110,13 @@ command runs only in a folder where the agent has run before (one of the adapter
 exists, Claude: `.claude.json`), because elsewhere it would create the agent's state file first. "Sign in
 again" on a signed-in account adds the adapter's `signInAgainArgs` (Claude: `/login`). Codex, pi and Grok
 have no such field: their status commands name no account.
+
+## Addendum (2026-11-16): Change login moves an account to another login with the agent's own sign-in
+
+"Change login" on a signed-in account runs the same sign-in start as "Sign in again" (same launch, gate
+and audit line); only the agent's own sign-in changes a login, and the bridge still opens no login file.
+Two optional adapter fields say what the phone may promise: `reachesRunningSessions` (Claude Code only,
+from its code: a running session reloads a changed login before each request) and `signInHosts`, the
+exact hosts whose `https:` sign-in address the phone opens with one button; any other address is text to
+copy. The list counts each account's running sessions (`running`, a sign-in session left out). The phone
+ends the sign-in session and reads the identity again; the result is what the agent then says.
