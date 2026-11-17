@@ -4,9 +4,10 @@ import { decodeSessionId } from "../events/session-id.ts";
 import { MAX_READ_LINES } from "../read-limits.ts";
 import { idOf } from "./ids.ts";
 import { buildTable, type OperationContext, type OperationTable, type OpResult } from "./operations.ts";
-import { buildReads, capText, folderName, NAME_MAX, READ_TEXT_MAX_BYTES, SENDER_AGENT, SENDER_COLLIE } from "./reads.ts";
+import { buildReads, capText, folderName, machineLabel, NAME_MAX, READ_TEXT_MAX_BYTES, SENDER_AGENT, SENDER_COLLIE } from "./reads.ts";
+import { machineSourcesOf } from "./world.ts";
 import type { JsonValue } from "../json.ts";
-import { answeredDecision, accountRow, decision, depsOf, keyOf, MACHINE, pane, world, type World } from "./fixtures/reads-world.ts";
+import { answeredDecision, accountRow, decision, depsOf, keyOf, MACHINE, machineBodies, pane, VERSION, world, type World } from "./fixtures/reads-world.ts";
 
 const ESC = String.fromCodePoint(0x1b);
 
@@ -372,8 +373,54 @@ describe("hill.list", () => {
   });
 });
 
+interface MachineWire {
+  id: string;
+  label: string;
+  reachable: boolean;
+  version: string | null;
+  load: { cpu: number | null; memory: number | null; sessions: number | null };
+}
+
+describe("machines", () => {
+  test("the contract: exactly these keys per machine, and in load exactly cpu, memory and sessions", async () => {
+    const answer = await answerOf(world(), "machines");
+    expect(Object.keys(answer)).toEqual(["machines"]);
+    const rows = wire<MachineWire[]>(answer.machines);
+    expect(rows.map((row) => Object.keys(row))).toEqual(Array.from({ length: 4 }, () => ["id", "label", "reachable", "version", "load"]));
+    for (const row of rows) expect(Object.keys(row.load)).toEqual(["cpu", "memory", "sessions"]);
+  });
+
+  test("the values: the lead first as this bridge, then each member as the Machines page and the crew overview know it", async () => {
+    const answer = await answerOf(world(), "machines");
+    expect(wire<MachineWire[]>(answer.machines)).toEqual([
+      // This machine: this bridge's id and version, its sessions as `sessions` lists them (two agents, no shell).
+      { id: MACHINE, label: "workshop", reachable: true, version: VERSION, load: { cpu: 0.12, memory: 0.25, sessions: 2 } },
+      // A member named by a full host name: its first part only.
+      { id: "lodge", label: "lodge", reachable: true, version: "1.29.0", load: { cpu: 0.5, memory: 0.75, sessions: 3 } },
+      // Named by an address: the id. Unreachable, no sample, no count, a version that is no version.
+      { id: "attic", label: "attic", reachable: false, version: null, load: { cpu: null, memory: null, sessions: null } },
+      // Named by a user name at a host: the id. No total memory: no fraction.
+      { id: "barn", label: "barn", reachable: true, version: null, load: { cpu: 1, memory: null, sessions: 0 } },
+    ]);
+  });
+
+  test("a solo bridge answers its own machine alone", async () => {
+    const w = world();
+    const { rows } = machineBodies();
+    w.machines = machineSourcesOf([{ ...rows[0]!, id: "local", name: "workshop.example.invalid" }], null);
+    expect(wire<MachineWire[]>((await answerOf(w, "machines")).machines)).toEqual([{ id: MACHINE, label: "workshop", reachable: true, version: VERSION, load: { cpu: 0.12, memory: 0.25, sessions: 2 } }]);
+  });
+
+  test("the label: the first part of a plain name, else the id", () => {
+    expect(machineLabel("workshop", "m1")).toBe("workshop");
+    expect(machineLabel("workshop.lan", "m1")).toBe("workshop");
+    expect(machineLabel(" lodge-2 ", "m1")).toBe("lodge-2");
+    for (const name of ["", "100.64.10.9", "10", "fd7a:115c::1", "[fd7a::1]", "dev-user@lodge", "/home/dev", "my box", ".hidden", "-x", "x".repeat(64)]) expect({ name, label: machineLabel(name, "m1") }).toEqual({ name, label: "m1" });
+  });
+});
+
 describe("the table", () => {
-  test("with the five handlers, all seven names are in the table", () => {
-    expect([...tableOf(world()).keys()]).toEqual(["hello", "sessions", "brief", "read", "accounts", "hill.list", "events"]);
+  test("with the six handlers, all eight names are in the table", () => {
+    expect([...tableOf(world()).keys()]).toEqual(["hello", "sessions", "brief", "read", "accounts", "hill.list", "machines", "events"]);
   });
 });

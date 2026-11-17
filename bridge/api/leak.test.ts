@@ -4,7 +4,9 @@
 // titles and subtitles, the terminal title, the space and tab names, the cwd, the session file, the
 // todos, subagents and jobs, the account's folder, start line, email and plan, and a Hill card's summary,
 // body, options, links, media caption, recommendation, target and answer. Then every operation runs, the
-// answers are serialized, and no needle may be found.
+// answers are serialized, and no needle may be found. `machines` (spec 04) has needles of its own, an
+// address, a host name, a key, a path and a user name, in every field of the Machines page's rows and of
+// the crew overview (fixtures/reads-world.ts `machineBodies`).
 //
 // What is allowed, and why the fixture is built around it:
 //  - `sessions.folder` is the folder NAME (`secret-project`), the last part of the cwd. The path and its
@@ -28,10 +30,11 @@ import { asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/j
 import { idOf } from "./ids.ts";
 import { buildTable, type OperationContext, type OperationTable } from "./operations.ts";
 import { buildReads } from "./reads.ts";
-import { accountRow, decision, depsOf, keyOf, MACHINE, NEEDLES, pane, world, type World } from "./fixtures/reads-world.ts";
+import { machineSourcesOf } from "./world.ts";
+import { accountRow, decision, depsOf, keyOf, MACHINE, MACHINE_NEEDLES, machineBodies, NEEDLES, pane, world, type World } from "./fixtures/reads-world.ts";
 
 function ctx(): OperationContext {
-  return { signal: new AbortController().signal, offered: ["hello", "sessions", "brief", "read", "accounts", "hill.list", "events"], standing: () => true, claimWait: () => () => undefined };
+  return { signal: new AbortController().signal, offered: ["hello", "sessions", "brief", "read", "accounts", "hill.list", "machines", "events"], standing: () => true, claimWait: () => () => undefined };
 }
 
 function tableOf(w: World): OperationTable {
@@ -54,6 +57,11 @@ function leakyWorld(): World {
   w.panes = w.panes.map((source) => ({ ...source, pane: Object.assign({}, source.pane, future) }));
   w.accounts = [Object.assign(accountRow(), future), Object.assign(accountRow({ id: "acc_fixture2", label: "play", folder: NEEDLES.parent }), future)];
   w.hill = [Object.assign(decision(), future)];
+  const bodies = machineBodies();
+  w.machines = machineSourcesOf(
+    bodies.rows.map((row) => Object.assign(row, future)),
+    { ...bodies.crew, members: bodies.crew.members.map((member) => Object.assign(member, future)) },
+  );
   // The screens hold every needle too; the secret-shaped one is the one the mask must take.
   const screen = [`$ cat notes`, `${NEEDLES.message} for ${NEEDLES.email} in ${NEEDLES.path}`, `password=${NEEDLES.pairing}`, `visit ${NEEDLES.signIn}`].join("\n");
   w.screens.set(keyOf("main", "w1:p1"), { ok: true, text: screen, truncated: false });
@@ -117,6 +125,19 @@ describe("no needle in any answer of the local API", () => {
     expectClean(text, [NEEDLES.folderName]);
   });
 
+  test("machines: no address, host name, key, path or user name, whatever field of the census holds it", async () => {
+    const text = await serialized(tableOf(leakyWorld()), "machines");
+    expectClean(text, [NEEDLES.folderName, ...Object.values(MACHINE_NEEDLES), "8443", "@", "/", "crew-a"]);
+    // Not vacuous: the bodies the answer was built from hold every needle, in every text field.
+    const w = leakyWorld();
+    const body = JSON.stringify(w.machines);
+    for (const needle of Object.values(MACHINE_NEEDLES)) expect(body).toContain(needle);
+    const member = w.machines[1]!.member!;
+    for (const field of ["name", "address", "reason", "mux", "host", "conflict"] as const) expect(JSON.stringify(member[field])).toMatch(/100\.64\.10\.9|lodge\.example\.invalid|dev-user|sha256:|\/home\/dev/u);
+    expect(JSON.stringify(w.machines[1]!.row.sample?.disks)).toContain(MACHINE_NEEDLES.path);
+    expect(text).toContain('"label":"lodge"');
+  });
+
   test("read: what the mask guarantees, a secret written as password=<value>, is not in the text", async () => {
     const w = leakyWorld();
     const table = tableOf(w);
@@ -138,6 +159,7 @@ describe("no needle in any answer of the local API", () => {
       serialized(table, "brief", { session: ID_MAIN }),
       serialized(table, "accounts"),
       serialized(table, "hill.list"),
+      serialized(table, "machines"),
       serialized(table, "events", { after: "other.0" }),
     ]);
     const all = answers.join("\n");

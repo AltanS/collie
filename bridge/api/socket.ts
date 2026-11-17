@@ -1,7 +1,7 @@
 // THE LOCAL API SOCKET (M105 spec 03, decisions 13, 14, 16, 18, 20). `<stateDir>/api/sock`, mode 0600
 // in a folder of mode 0700, served by the bridge. A program or a script on this machine lists the
-// sessions, reads a screen and follows the events through it. Read only in this step: the one right it
-// grants is `look` (operations.ts).
+// sessions, reads a screen and follows the events through it. Read only in this step: it grants the
+// level `read`, which holds `see` (operations.ts, spec 04 decision 1).
 //
 // WHAT IT IS, IN HONEST WORDS (decision 16). A convenience for programs of the same Unix user. It is NOT
 // a wall against them: a program running as that user can already read every screen and type into every
@@ -10,7 +10,8 @@
 // pages in a browser (no TCP port, no HTTP: a page can reach loopback HTTP, never a Unix socket). It
 // carries no token, as the WalkyTalky and hold sockets carry none: the file mode is the credential.
 // Every caller is the same user, so the socket cannot tell two callers apart; a connection is the unit
-// its caps count by.
+// its caps count by. A connection may name itself in `hello` (`client`, such as `trick:<id>`): the name
+// goes into the bridge's log lines for that connection and is trusted for nothing (spec 04, decision 5).
 //
 // WHEN IT EXISTS (decision 14). While tricks are switched on, on a bridge where tricks run:
 // bridge/index.ts calls `start` and `stop` as its one function `localApiWanted` says, and a
@@ -76,6 +77,11 @@ import {
 } from "./limits.ts";
 import { admit, offeredOf, type OperationContext, type OperationTable, type OpResult, type Right, type TableRow } from "./operations.ts";
 
+/** ` (client <name>)` for a log line of a connection that named itself, else nothing. */
+function by(conn: Conn): string {
+  return conn.client === null ? "" : ` (client ${conn.client})`;
+}
+
 /** The local API socket of one state dir. */
 export function apiSocketPath(stateDir: string): string {
   return join(stateDir, "api", "sock");
@@ -84,8 +90,8 @@ export function apiSocketPath(stateDir: string): string {
 export interface ApiSocketDeps {
   readonly socketPath: string;
   readonly table: OperationTable;
-  /** The rights every caller of this socket holds: {@link LOCAL_TIER_RIGHTS}. */
-  readonly granted: readonly Right[];
+  /** The grant every caller of this socket holds: {@link LOCAL_TIER_RIGHTS}. */
+  readonly granted: Right;
   /** The host's platform (`HOST.platform` from bridge/host.ts at the edge); a test passes `"win32"` to see the gate. */
   readonly platform: NodeJS.Platform;
   readonly log?: (line: string) => void;
@@ -136,6 +142,8 @@ interface Conn {
   overSince: number;
   /** While paused: the `drain` listener that resumes. */
   onDrain: (() => void) | undefined;
+  /** The name the connection gave itself in `hello`, for the log only; null before it gave one. */
+  client: string | null;
 }
 
 const RESERVED = new Set(["id", "ok", "error"]);
@@ -158,12 +166,12 @@ export class ApiSocket {
   private screenReads = 0;
   private windowsLogged = false;
   private readonly log: (line: string) => void;
-  private readonly granted: ReadonlySet<Right>;
+  private readonly granted: Right;
   private readonly offered: readonly string[];
 
   constructor(private readonly deps: ApiSocketDeps) {
     this.log = deps.log ?? ((line) => console.log(line));
-    this.granted = new Set(deps.granted);
+    this.granted = deps.granted;
     this.offered = offeredOf(deps.table, this.granted);
   }
 
@@ -322,6 +330,7 @@ export class ApiSocket {
       stall: undefined,
       overSince: 0,
       onDrain: undefined,
+      client: null,
     };
     this.connections.add(conn);
     socket.on("close", () => this.forget(conn));
@@ -432,6 +441,7 @@ export class ApiSocket {
       offered: this.offered,
       standing: () => this.standing(conn.live),
       claimWait: () => (admitted.row.waits ? this.claimWait(conn) : null),
+      nameClient: (client) => this.nameClient(conn, client),
     };
     void this.run(conn, read, admitted.row, args, ctx, screen);
   }
@@ -443,12 +453,23 @@ export class ApiSocket {
     try {
       result = await row.run(args, ctx);
     } catch (err) {
-      this.log(`[api] ${row.name} failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.log(`[api] ${row.name} failed${by(conn)}: ${err instanceof Error ? err.message : String(err)}`);
       result = { ok: false, code: "api.failed" };
     } finally {
       if (screen) this.screenReads -= 1;
     }
     this.answer(conn, pending, result);
+  }
+
+  /**
+   * The name a connection gave itself in `hello`: logged once per new name, and kept for this
+   * connection's later log lines. It is the caller's word and is trusted for nothing (decision 5): no
+   * right, cap or answer reads it. The table's parser has already held it to `CLIENT_MAX` safe characters (operations.ts).
+   */
+  private nameClient(conn: Conn, client: string): void {
+    if (conn.client === client) return;
+    conn.client = client;
+    this.log(`[api] a connection names itself ${client}`);
   }
 
   /** One wait slot, or null at the cap. The release gives it back once. */
@@ -526,7 +547,7 @@ export class ApiSocket {
     if (conn.closed || !conn.paused) return;
     if (conn.socket.writableLength > WRITE_BUFFER_MAX) {
       if (Date.now() - conn.overSince < (this.deps.stallMs ?? WRITE_STALL_MS)) return;
-      this.log("[api] a connection did not read its answers for too long; it is dropped");
+      this.log(`[api] a connection${by(conn)} did not read its answers for too long; it is dropped`);
       this.forget(conn);
       conn.socket.destroy();
       return;

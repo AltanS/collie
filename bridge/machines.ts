@@ -202,11 +202,24 @@ export class MachineWatch implements MachineSurface {
     return now - this.askedAt <= MACHINES_WATCH_MS ? SAMPLE_WATCHED_MS : SAMPLE_IDLE_MS;
   }
 
-  /** `GET /api/machines`, with each row's spark when `opts.spark` asks for one. */
+  /** `GET /api/machines`, with each row's spark when `opts.spark` asks for one. A phone's ask: it holds the fast sample rate. */
   rows(opts: { spark?: number } = {}): MachinesResponse {
     const now = this.deps.now();
     this.askedAt = now;
     const spark = opts.spark !== undefined && Number.isInteger(opts.spark) ? Math.min(SPARK_MAX_MINUTES, Math.max(1, opts.spark)) : undefined;
+    return this.answer(now, spark);
+  }
+
+  /**
+   * The same rows, with no spark, read from memory and changing nothing: not the sample rate either.
+   * The local API's `machines` reads this (bridge/api/world.ts), so a program that asks every second
+   * does not keep this machine sampling at the phone's pace.
+   */
+  census(): MachinesResponse {
+    return this.answer(this.deps.now(), undefined);
+  }
+
+  private answer(now: number, spark: number | undefined): MachinesResponse {
     const machines = this.deps.roster().map((entry): MachineRow => {
       const row: MachineRow = {
         id: entry.id,

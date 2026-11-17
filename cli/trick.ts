@@ -41,6 +41,7 @@ import {
   AGENT_VIEW_PLACE,
   AGENT_VIEW_TAP_WORDS,
   AGENT_VIEW_WORDS,
+  ACCESS_LINES,
   DECIDES_REPLY_WORDS,
   isHostName,
   isTrickId,
@@ -385,7 +386,7 @@ export const TRICK_WRITE_BRIEF = [
   "  4. Fix what it reports, and run it again until it is clean.",
   "The draft lives in your own work folder. Nothing is added to this machine's tricks before the person's yes.",
   "Never switch it on yourself: `collie trick on <id>` is the person's approval of the code, and it refuses inside an agent's pane.",
-  "To hand it to the person, run `collie trick propose ./<id>`: they see your code on a card, on the Hill or in Settings, Tricks, and nothing runs before their yes. `collie trick guide` says more.",
+  "To hand it to the person, run `collie trick propose ./<id>`: they see your code on a card in this session on the phone and in Settings, Tricks, and nothing runs before their yes. `collie trick guide` says more.",
   "To teach other agents what the trick asks of them, add a SKILL.md to the folder. `collie trick skill <id>` prints it while the trick is on. SKILL.md is part of the trick's code: the trick runs the copy a person approved, so an edit waits for their yes before agents read it.",
 ] as const;
 
@@ -888,6 +889,7 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     }
     if (m.rules !== undefined) io.out(`  rules:  ${m.rules}. ${RULES_WORDS}`);
     if (m.decides === "reply") io.out(`  decides: reply. ${DECIDES_REPLY_WORDS}`);
+    if (m.access !== undefined) io.out(`  access: ${m.access}. ${ACCESS_LINES[m.access]}`);
   }
   if (report.env.length > 0) {
     const names = report.env.map((e) => (e.reason === undefined ? e.name : `${e.name} (${e.reason})`));

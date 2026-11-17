@@ -49,7 +49,7 @@ import {
   privateRoot,
   type PrivateRoot,
 } from "./owner-only.ts";
-import type { AgentView, CrewMode, CrewStatusResponse, Launcher } from "./types.ts";
+import type { AgentView, CrewMode, CrewStatusResponse, Launcher, MachineRow } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
 import { durableLogDir, moveFlatLogs, sourceLogDir } from "./durable/log.ts";
 import { GitHeads, nodeGitHeadDisk } from "./git-head.ts";
@@ -4139,16 +4139,16 @@ const repoFacts =
         onChange: () => onRepoFacts(),
         warn: (line) => console.warn(`[tricks] ${line}`),
       });
-// The local API (M105 spec 03): a read-only Unix socket at `<stateDir>/api/sock`, open only while at
-// least one trick is switched on AND tricks run on this bridge (TricksService tells the count, 0 on a crew
-// peer, a deputy, a deposed lead and Windows). No tricks folder, no socket ever. Every operation sees the
+// The local API (M105 spec 03): a read-only Unix socket at `<stateDir>/api/sock`, open only while tricks
+// are switched on AND tricks run on this bridge (TricksService tells it: never on a crew peer, a deputy, a
+// deposed lead or Windows). No tricks folder, no socket ever. Every operation sees the
 // bridge through `ApiWorld` (bridge/api/world.ts) alone: reads only.
 // THE ONE CONDITION of the socket (decision 14, as Altan changed it on 2026-11-17): every start and stop
-// of the local API goes through this function and nothing else decides it. Today it asks "does a trick
-// run here": the count the TricksService tells, already 0 where tricks do not run. When the one switch
-// for the whole tricks feature lands, this function reads that switch instead ("the local API is on
-// while tricks are switched on, on a bridge where tricks run").
-const localApiWanted = (switchedOnHere: number): boolean => switchedOnHere > 0;
+// of the local API goes through this function and nothing else decides it. "The local API is on while
+// tricks are switched on, on a bridge where tricks run", with or without a trick on: the TricksService
+// tells it (`onLocalApi`, from `TricksService.localApiWanted`: `switchedOn()` and `deps.active`) when it
+// moves, on a scan and on every tick, so a switch written by the terminal closes the socket within a second.
+const localApiWanted = (wanted: boolean): boolean => wanted;
 const localApi =
   cfg.tricksDir === undefined
     ? undefined
@@ -4174,6 +4174,17 @@ const localApi =
               return grid.ok ? { ok: true, text: grid.value.text, truncated: grid.value.truncated } : { ok: false };
             },
             hill,
+            // `machines` (spec 04, decision 6): the Machines page's rows and the crew overview, from memory.
+            machineWatch: machineWatch ?? null,
+            crewStatus: () => crewStatus?.() ?? null,
+            // A crew peer keeps no watch: its own row, from the sampler it serves its lead from.
+            selfMachine: () => {
+              const self = machineRoster().find((entry) => entry.isLead) ?? { id: bridgeId.id, name: hostname() };
+              const row: MachineRow = { id: self.id, name: self.name, isLead: true, health: "reachable", alerts: {}, firing: [] };
+              const sample = machineSampler.latest();
+              if (sample !== null) row.sample = sample;
+              return row;
+            },
             defaultLines: cfg.readLines,
           }),
         ),
@@ -4279,8 +4290,11 @@ const tricks =
         repoFacts,
         // The switch for tricks as a whole: off, no program runs and no part draws (service.ts `switchedOff`).
         feature: tricksFeature,
-        // The local API stands while `localApiWanted` says so (decision 14); start and stop run one at a time.
-        onSwitchedOnCount: (count) => void (localApiWanted(count) ? localApi?.start() : localApi?.stop()),
+        // The local API stands while `localApiWanted` says so (the tricks switch on, tricks run here); start and
+        // stop run one at a time, and the rows are told after each so a trick's "the local API is off" note follows.
+        onLocalApi: (wanted) => void Promise.resolve(localApiWanted(wanted) ? localApi?.start() : localApi?.stop()).finally(() => tricks?.apiMoved()),
+        // A trick that declares `access` gets the socket's path in its facts while the socket stands (M105 spec 04).
+        localApi: () => (localApi?.running() === true ? apiSocketPath(cfg.stateDir) : null),
         // A trick that lists `on` runs on the bus's events (bridge/tricks/triggers.ts).
         bus: eventBus,
       });

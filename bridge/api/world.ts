@@ -1,5 +1,5 @@
 // THE API'S WORLD (M105 spec 03, decision 15; security read 1, item 7). The ONE interface through which
-// the local API's operations see the bridge: every getter `hello`, `events` and the five reads use, and
+// the local API's operations see the bridge: every getter `hello`, `events` and the six reads use, and
 // nothing else. Reads only: no member types, answers an ask, presses a key, starts, stops or closes a
 // session, changes a setting, answers a Hill card or marks one seen.
 //
@@ -19,11 +19,12 @@ import type { Accounts } from "../accounts-routes.ts";
 import type { EventBus } from "../events/bus.ts";
 import type { HillService } from "../hill/service.ts";
 import type { InsideHub } from "../inside/hub.ts";
-import type { AccountsBody, AgentView, PaneAccount } from "../types.ts";
+import type { MachineWatch } from "../machines.ts";
+import type { AccountsBody, AgentView, CrewStatusResponse, MachineRow, PaneAccount } from "../types.ts";
 import type { WalkyInstances } from "../walky/instances.ts";
 import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
 import { buildTable, type OperationTable } from "./operations.ts";
-import { buildReads, type PaneSource, type ScreenRead } from "./reads.ts";
+import { buildReads, type MachineSource, type PaneSource, type ScreenRead } from "./reads.ts";
 
 /** Everything the operations see of the bridge. Each getter is read at the moment of a call. */
 export interface ApiWorld {
@@ -51,12 +52,17 @@ export interface ApiWorld {
   readScreen(muxSession: string, paneId: string, lines: number): Promise<ScreenRead>;
   /** The Hill's open decisions, or null when this bridge has no Hill. */
   hillOpen(): readonly HillDecision[] | null;
+  /**
+   * The machines as the phone's Machines page knows them, from memory: each row of `GET /api/machines`
+   * with the crew overview's row of the same machine (`GET /api/crew`) on a lead. No call to a member.
+   */
+  machines(): readonly MachineSource[];
   /** The lines a `read` takes when the caller names none (`COLLIE_READ_LINES`). */
   readonly defaultLines: number;
 }
 
 /** The keys of {@link ApiWorld}, every one and no other (the two checks below fail the build otherwise). */
-export const API_WORLD_KEYS = ["version", "machine", "panes", "instanceOf", "bus", "paneAccount", "accountsBody", "draftState", "readScreen", "hillOpen", "defaultLines"] as const;
+export const API_WORLD_KEYS = ["version", "machine", "panes", "instanceOf", "bus", "paneAccount", "accountsBody", "draftState", "readScreen", "hillOpen", "machines", "defaultLines"] as const;
 
 type ListedKey = (typeof API_WORLD_KEYS)[number];
 /** True only while every key of the interface is listed. */
@@ -84,13 +90,23 @@ export function narrowWorld(world: ApiWorld): ApiWorld {
     draftState: (muxSession, paneId) => world.draftState(muxSession, paneId),
     readScreen: (muxSession, paneId, lines) => world.readScreen(muxSession, paneId, lines),
     hillOpen: () => world.hillOpen(),
+    machines: () => world.machines(),
     defaultLines: world.defaultLines,
   };
 }
 
-/** The operation table over one world: `hello`, `events` and the five reads. */
+/** The operation table over one world: `hello`, `events` and the six reads. */
 export function apiTable(world: ApiWorld): OperationTable {
   return buildTable({ version: () => world.version(), bus: world.bus, reads: buildReads(world) });
+}
+
+/**
+ * The machines of {@link ApiWorld.machines}: each row of the watch joined with the crew overview's row of
+ * the same id. A bridge with no watch (a crew peer) answers its own row alone.
+ */
+export function machineSourcesOf(rows: readonly MachineRow[], crew: CrewStatusResponse | null): MachineSource[] {
+  const members = crew?.members ?? [];
+  return rows.map((row) => ({ row, member: members.find((member) => member.id === row.id) }));
 }
 
 /**
@@ -118,6 +134,12 @@ export interface ApiWorldDeps {
   readonly readScreen: ApiWorld["readScreen"];
   /** The Hill: its list. */
   readonly hill: Pick<HillService, "list">;
+  /** The machine watch of a lead or a solo bridge: its quiet read, which moves no sample rate. Null on a crew peer. */
+  readonly machineWatch: Pick<MachineWatch, "census"> | null;
+  /** `GET /api/crew`'s body from memory, on a lead; null elsewhere. Dials nobody. */
+  readonly crewStatus: () => CrewStatusResponse | null;
+  /** This machine's own row, for a bridge with no watch: its id, its name and its last sample. */
+  readonly selfMachine: () => MachineRow;
   /** `COLLIE_READ_LINES`. */
   readonly defaultLines: number;
 }
@@ -139,6 +161,7 @@ export function buildApiWorld(deps: ApiWorldDeps): ApiWorld {
     // The Hill's list: an agent card's sender label is NOT read from it (reads.ts builds it with `labelOf`
     // from the pane), so its `named()` rename never reaches an answer.
     hillOpen: () => deps.hill.list().open,
+    machines: () => machineSourcesOf(deps.machineWatch?.census().machines ?? [deps.selfMachine()], deps.crewStatus()),
     defaultLines: deps.defaultLines,
   } satisfies ApiWorld);
 }

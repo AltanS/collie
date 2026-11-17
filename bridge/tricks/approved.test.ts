@@ -305,6 +305,16 @@ describe("powers", () => {
     expect([...LATER_POWER_KEYS]).toEqual([...LATER_POWER_KEYS].toSorted());
     expect(LATER_POWER_KEYS.every((key) => key > "places")).toBe(true);
   });
+
+  test("access (M105 spec 04) is a power under `through`, hashed only when the manifest has it", () => {
+    const none = powersOf({ places: ["belt"] });
+    // No key is `none`: a trick approved before the key existed hashes as before, so an update asks nothing.
+    expect(none).toBe(new Bun.CryptoHasher("sha256").update('{"env":[],"inputs":[],"places":["belt"]}').digest("hex").slice(0, 16));
+    const see = powersOf({ places: ["belt"], access: "see" });
+    const read = powersOf({ places: ["belt"], access: "read" });
+    expect(see).toBe(new Bun.CryptoHasher("sha256").update('{"env":[],"inputs":[],"places":["belt"],"through":"see"}').digest("hex").slice(0, 16));
+    expect(new Set([none, see, read]).size).toBe(3);
+  });
 });
 
 describe("approveFolder and migration", () => {

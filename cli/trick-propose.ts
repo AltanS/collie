@@ -12,7 +12,7 @@ import { readTrickFolder } from "./trick-folder.ts";
 
 export { PROPOSE_WALK_MAX, readTrickFolder, type FolderRead } from "./trick-folder.ts";
 import { AskLate, NO_SOCKET_TEXT, shown } from "./walky.ts";
-import { asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
+import { asJsonBoolean, asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "../web/src/lib/json.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { PROPOSE_ASK_MS } from "../bridge/tricks/propose-door.ts";
 import { proposalCardCount } from "../bridge/tricks/proposal-card.ts";
@@ -43,9 +43,25 @@ export const PROPOSE_NOT_HERE = "No Collie bridge on this machine knows this pan
 
 /**
  * Where the person finds a proposal's card (M96 spec 14): it needs no Hill, so the words never tell anyone
- * to switch the Hill on.
+ * to switch the Hill on. The words of a bridge that does not say where the card is (before package I).
  */
 export const PROPOSE_WHERE = "on the Hill, or in Settings, Tricks, while the Hill is off";
+
+/**
+ * Where the card really is (package I, 2026-11-17), from the bridge's `where`: in the proposer's session on
+ * the phone while the card is tied to it, on the Hill only while the Hill is on, and always in Settings,
+ * Tricks. No `where` (an older bridge): {@link PROPOSE_WHERE}.
+ */
+export function proposeWhere(where: JsonValue | undefined): string {
+  const row = asJsonObject(where);
+  const session = asJsonBoolean(row?.session);
+  const hill = asJsonBoolean(row?.hill);
+  if (session === undefined || hill === undefined) return PROPOSE_WHERE;
+  if (session && hill) return "in this session on the phone, on the Hill, and in Settings, Tricks";
+  if (session) return "in this session on the phone, and in Settings, Tricks";
+  if (hill) return "on the Hill, and in Settings, Tricks";
+  return "in Settings, Tricks, on the phone";
+}
 
 /** What the CLI says when the folder's config.toml stayed behind. */
 export const PROPOSE_CONFIG_LEFT = "config.toml stays behind: your person sets the trick up on the machine.";
@@ -219,14 +235,15 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   const id = asJsonString(body.id) ?? checked.proposal.manifest.id;
   const decision = asJsonString(body.decision) ?? null;
   const replaced = asJsonString(body.replaced) ?? null;
+  const place = proposeWhere(body.where);
   if (json) {
-    deps.io.out(JSON.stringify({ ok: true, kind, id, hash: checked.proposal.hash, decision, replaced, requestId: rid, files: read.files.length, left: read.left, warnings: report.warnings.map((w) => w.kind), needsConfig: settings }));
+    deps.io.out(JSON.stringify({ ok: true, kind, id, hash: checked.proposal.hash, decision, replaced, requestId: rid, files: read.files.length, left: read.left, warnings: report.warnings.map((w) => w.kind), needsConfig: settings, where: place }));
     return EXIT.OK;
   }
   deps.io.out(`Sent ${String(read.files.length)} files. Left behind: ${String(read.left)} (dot files, node_modules, logs, inputs/, media/, captures/, config.toml).`);
   if (read.config) deps.io.out(PROPOSE_CONFIG_LEFT);
-  if (kind === "version") deps.io.out(`Proposed a new version of ${id}. Your person sees it as ${decision ?? "a card"} ${PROPOSE_WHERE}. Nothing of it is written or runs before their yes.`);
-  else deps.io.out(`Proposed ${id}. Your person sees it as ${decision ?? "a card"} ${PROPOSE_WHERE}. Nothing runs before their yes.`);
+  if (kind === "version") deps.io.out(`Proposed a new version of ${id}. Your person sees it as ${decision ?? "a card"} ${place}. Nothing of it is written or runs before their yes.`);
+  else deps.io.out(`Proposed ${id}. Your person sees it as ${decision ?? "a card"} ${place}. Nothing runs before their yes.`);
   if (replaced !== null) deps.io.out(`It replaces your earlier proposal ${replaced}.`);
   if (decision !== null) deps.io.out(`Read the answer with: collie hill status ${decision}`);
   return EXIT.OK;

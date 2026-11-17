@@ -154,7 +154,7 @@ export interface SlotLine {
  * new version of it; the row opens that card, with the Hill on or off, M96 spec 14), else the one note that
  * the Hill is off for a trick that is on and asks Decisions (`hillOff`, the snapshot's; bridge/tricks/hill.ts:
  * they are not posted, the trick keeps running), else that its file watch checks on a clock
- * (`watchPollSeconds`), else where it came from.
+ * (`watchPollSeconds`), else that the local API it reads through is off here (`accessOff`), else where it came from.
  */
 export function slotLine(trick: WireTrickInfo, now: number, hillOff = false, versionWaits = false): SlotLine {
   if (trick.state === "skipped") {
@@ -182,6 +182,8 @@ export function slotLine(trick: WireTrickInfo, now: number, hillOff = false, ver
   // The file watch could not be set up and the bridge checks on a clock: one plain line of its own, never
   // after the "part is not shown" prefix, because nothing was refused. Only while the trick is on.
   if (trick.on && trick.watchPollSeconds !== undefined) return { text: t("settings.tricks.watchPolled", { seconds: trick.watchPollSeconds }), trouble: false };
+  // The trick declares `access` and Collie's local API is off on this bridge: `t.api` answers an error. Said once.
+  if (trick.on && trick.accessOff === true) return { text: t("settings.tricks.accessOff"), trouble: false };
   return { text: provenanceLine(trick, now), trouble: false };
 }
 
@@ -221,21 +223,10 @@ export function TricksSettingsCard(props: TricksSettingsCardProps) {
   const store = props.store ?? tricksStore;
   const state = useTricksState(store);
   if (state.rev === null) return null;
-  // A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): one line and the Hill, no rows, no list read.
-  if (state.gate === "windows") return <TricksGatedCard />;
+  // A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): no rows and no list read. The switch
+  // card above says the Windows line, once on the page (components/tricks-switch-card.tsx), so this card draws nothing.
+  if (state.gate === "windows") return null;
   return <TricksList {...props} tricks={state.tricks} runsOn={state.runsOn} replyOff={state.off === true} />;
-}
-
-/** The card of a gated bridge: the one line. */
-function TricksGatedCard() {
-  useLocale();
-  return (
-    <Card className="gap-0 py-0" data-testid="tricks-settings">
-      <p data-line="windows-gate" className="px-4 py-3 text-sm text-muted-foreground">
-        {t("settings.tricks.windows")}
-      </p>
-    </Card>
-  );
 }
 
 /** The warnings under a row: one quiet line each, then the line that they are a text search. */

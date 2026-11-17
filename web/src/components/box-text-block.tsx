@@ -1,6 +1,7 @@
 import type { BoxTextModel } from "@/lib/blocks";
 import { OptionGroupCaption, PromptPanel } from "@/components/option-button";
 import { buttonVariants } from "@/components/ui/button";
+import { Collapse } from "@/components/ui/collapse";
 import { CopyableBlock } from "@/components/ui/copyable-block";
 import { t } from "@/lib/i18n";
 import { signInAddress, type SignInAddress } from "@/lib/sign-in-address";
@@ -17,6 +18,12 @@ export interface BoxTextBlockProps {
    * the card is drawn as before, its links live.
    */
   signInHosts?: readonly string[];
+  /**
+   * The box is a sign-in card and the read of its hosts has not ended. The button's row is held open at
+   * the button's own height with nothing live in it, so the card does not grow when the read lands. The
+   * read then fills it with the button (or the copy block) or closes it. Absent or false: as before.
+   */
+  signInPending?: boolean;
 }
 
 const LINK_CLASS = "underline decoration-1 underline-offset-2 break-all cursor-pointer py-[0.35em]";
@@ -39,7 +46,12 @@ const LINK_CLASS = "underline decoration-1 underline-offset-2 break-all cursor-p
 // check in lib/sign-in-address.ts passed (https, a host the adapter lists, no credentials, no port, a
 // length cap). In the rows the address is then plain text. An address that fails the check moves out
 // of the rows into a copy block under them, with one line saying so. The address is drawn and linked, never kept.
-export function BoxTextBlock({ boxText, signInHosts }: BoxTextBlockProps) {
+//
+// CALM LOAD. The hosts come from a read that ends after the card's first frame, and the button row used to
+// enter then and push the card taller above the composer. The card knows it is a sign-in card from its
+// first frame (`signInPending`), so the row is held open at the button's height while the read is in
+// flight, with nothing live in it, and the read fills it or closes it with `Collapse`.
+export function BoxTextBlock({ boxText, signInHosts, signInPending = false }: BoxTextBlockProps) {
   useLocale();
   const address = signInHosts === undefined ? null : signInAddress(boxText, signInHosts);
   return (
@@ -66,7 +78,14 @@ export function BoxTextBlock({ boxText, signInHosts }: BoxTextBlockProps) {
           </div>
         ))}
       </div>
-      {address !== null && <SignInAddressAction address={address} />}
+      <Collapse open={address !== null || signInPending}>
+        {address !== null ? (
+          <SignInAddressAction address={address} />
+        ) : signInPending ? (
+          // The button's 44px and its full width, drawn as nothing: no link, no tap, nothing to read.
+          <div data-slot="sign-in-pending" aria-hidden className="h-11 w-full" />
+        ) : null}
+      </Collapse>
     </PromptPanel>
   );
 }

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { MANIFEST_KEYS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
+import { ACCESS_LINES, MANIFEST_KEYS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { addedDiff } from "./card-group.ts";
 import { PROPOSAL_KEY_RIGHTS, PROPOSAL_TOO_LARGE, proposalCard, proposalVersionCard, type ProposerFacts } from "./proposal-card.ts";
-import { DECIDES_REPLY_CHIP, RUNS_AS_YOU, runsAsYou } from "./version-card.ts";
+import { asksForSentence, DECIDES_REPLY_CHIP, RUNS_AS_YOU, runsAsYou } from "./version-card.ts";
 
 // EVERY RIGHT HAS A LINE ON THE CARD (the first full trick run, 2026-11-16, decision 1). A trick with
 // `decides = "reply"` once got "It asks for no rights." This walks every key the table calls a right and
@@ -20,6 +20,7 @@ const SAMPLES = {
   places: { set: { places: ["status"] }, words: "the status line" },
   env: { set: { env: ["GITHUB_TOKEN"] }, words: "GITHUB_TOKEN" },
   decides: { set: { decides: "reply" }, words: DECIDES_REPLY_CHIP },
+  access: { set: { access: "see" }, words: ACCESS_LINES.see },
   inputs: { set: { inputs: ["TODO.md"] }, words: "TODO.md" },
   on: { set: { on: ["session.status"] }, words: "runs when a session changes state" },
   watch: { set: { watch: ["~/notes/todo.md", "/etc/hosts"] }, words: "runs when these files change: ~/notes/todo.md, /etc/hosts" },
@@ -94,5 +95,54 @@ describe("rights that do not fit a card", () => {
     for (const path of atCap) expect(words).toContain(path);
     expect(fits.card.options?.map((option) => option.intent)).toEqual(["on", "later"]);
     expect(proposalVersionCard({ id: "legs", manifest: { ...BARE, ...tooMuch }, baseManifest: BARE, proposer: WHO, diff, warnings: [], crew: false })).toEqual({ ok: false, code: "card_too_large", error: PROPOSAL_TOO_LARGE });
+  });
+});
+
+// ACCESS ON THE PROPOSAL CARDS (M105 spec 04, decision 3): the one line of the level, right after the honest
+// line, on a new trick's card and on the card of a version that raises the level. A version that keeps or
+// lowers it says nothing new.
+describe("access on the proposal cards", () => {
+  const diff = addedDiff([{ rel: "program.ts", bytes: enc("console.log(1);\n") }]);
+  const versionOf = (base: TrickManifest, next: TrickManifest) => {
+    const made = proposalVersionCard({ id: "legs", manifest: next, baseManifest: base, proposer: WHO, diff, warnings: [], crew: false });
+    if (!made.ok) throw new Error(made.error);
+    return made.card;
+  };
+
+  test("a new trick's card: the honest line, then the level's line, then the chip", () => {
+    const see = cardOf({ ...BARE, access: "see" });
+    expect(see.view?.[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
+    expect(see.view?.[1]).toEqual({ kind: "para", text: ACCESS_LINES.see });
+    expect(JSON.stringify(see.view)).toContain("a look at your machines, sessions and usage");
+    const read = cardOf({ ...BARE, access: "read" });
+    expect(read.view?.[1]).toEqual({ kind: "para", text: ACCESS_LINES.read });
+    expect(JSON.stringify(cardOf(BARE).view)).not.toContain("It sees your machines");
+  });
+
+  test("with settings too: the honest line, then the level's line, then the settings line, on both cards", () => {
+    const fields: NonNullable<TrickManifest["fields"]> = [{ key: "repo", kind: "text", label: "Repository" }];
+    const asks = asksForSentence(fields);
+    const order = (view: readonly ViewNode[] | undefined): number[] => {
+      const texts = (view ?? []).map((node) => ("text" in node ? node.text : undefined));
+      return [RUNS_AS_YOU, ACCESS_LINES.see, asks].map((text) => texts.indexOf(text));
+    };
+    const fresh = order(cardOf({ ...BARE, contract: 3, access: "see", fields }).view);
+    expect(fresh[0]).toBe(0);
+    expect(fresh[1]).toBe(1);
+    expect(fresh[2]).toBeGreaterThan(fresh[1] ?? 0);
+    const raised = order(versionOf({ ...BARE, contract: 3 }, { ...BARE, contract: 3, access: "see", fields }).view);
+    expect(raised[0]).toBe(0);
+    expect(raised[1]).toBe(1);
+    expect(raised[2]).toBeGreaterThan(raised[1] ?? 0);
+  });
+
+  test("a version that raises the level shows the line and the right; one that keeps or lowers it does not", () => {
+    const raised = versionOf(BARE, { ...BARE, access: "read" });
+    expect(raised.view?.[1]).toEqual({ kind: "para", text: ACCESS_LINES.read });
+    expect(raised.summary).toContain("It now also asks for a look at what is on your sessions' screens.");
+    for (const card of [versionOf({ ...BARE, access: "see" }, { ...BARE, access: "see" }), versionOf({ ...BARE, access: "read" }, { ...BARE, access: "see" })]) {
+      expect(JSON.stringify(card.view)).not.toContain("It sees your machines");
+      expect(card.summary).toContain("It asks for no new rights.");
+    }
   });
 });

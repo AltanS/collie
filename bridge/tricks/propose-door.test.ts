@@ -212,7 +212,7 @@ describe("the card", () => {
   });
 
   test("32 environment names of 64 characters and 8 long globs: every name and every glob shows in full", () => {
-    const made = proposalCard({ ...input, manifest: { ...input.manifest, contract: 2, env: ENVS, inputs: GLOBS }, warnings: ["network", "spawn", "write", "model", "import"] });
+    const made = proposalCard({ ...input, manifest: { ...input.manifest, contract: 2, env: ENVS, inputs: GLOBS }, warnings: ["network", "spawn", "write", "model", "import", "api"] });
     if (!made.ok) throw new Error(made.error);
     const card = made.card;
     const words = texts(card.view);

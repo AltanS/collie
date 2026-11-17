@@ -436,6 +436,9 @@ Each trick keeps its own switch. Tricks on does not switch on any trick, and tri
 switch any trick off: a trick that was on runs again once tricks are on. On a Windows machine the
 switch stays off ([Collie on Windows](windows.md)).
 
+In a crew, tricks run on the lead, so the lead's switch is the one that counts. A crew member with no
+switch of its own follows its lead. Switch tricks off on the member itself to stop it answering the lead.
+
 ### Switch a trick on, off, or remove it
 
 ```sh
@@ -457,7 +460,7 @@ A trick with a timer runs only while a paired phone is looking. Collie counts a 
 five minutes after its last request. A trick that calls a paid service every 30 seconds makes no call
 while the phone is in your pocket.
 
-An agent does not approve its own trick. `collie trick on` and `collie trick auto <id> on` refuse in a
+An agent does not approve its own trick. `collie trick on`, `collie trick auto <id> on` and `collie tricks on` refuse in a
 pane where an agent works, and say so. Run them in a shell pane or in a terminal of your own. The check
 is a speed bump, not a lock. Your user account is the real boundary
 ([An agent does not pair a device](security.md#an-agent-does-not-pair-a-device)).

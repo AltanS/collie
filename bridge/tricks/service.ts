@@ -492,6 +492,18 @@ export interface TricksServiceDeps {
    * scan. bridge/index.ts opens the local API socket while it is above zero (M105 spec 03, decision 14).
    */
   onSwitchedOnCount?: (count: number) => void;
+  /**
+   * The local API socket's path while it stands, else null (bridge/index.ts: `apiSocketPath` while the `ApiSocket`
+   * runs). A trick whose approved manifest declares `access` gets it in its facts as `api` (M105 spec 04), and
+   * when it is null the row says so once. Absent: the local API never stands here.
+   */
+  localApi?: () => string | null;
+  /**
+   * Told whether the local API should stand ({@link TricksService.localApiWanted}) when that moved, and once
+   * at the first tell. bridge/index.ts starts and stops the socket on it (decision 14, as the lead wired it
+   * on 2026-11-17: the switch for tricks as a whole, on a bridge where tricks run, with or without a trick on).
+   */
+  onLocalApi?: (wanted: boolean) => void;
   /** The bridge's event bus: a trick that lists `on` runs on its events (triggers.ts). Absent: `on` runs nothing. */
   bus?: EventBus;
   /** The file watch's knobs, for a test (watch.ts). Absent: the production values. */
@@ -742,6 +754,8 @@ export class TricksService implements TricksSurface {
   private readonly feature: NonNullable<TricksServiceDeps["feature"]> & { set?(on: boolean): boolean };
   /** The last scan found tricks switched off as a whole: every runtime is folded in as off, its own switch kept. */
   private suspended = false;
+  /** What `onLocalApi` was last told; null before the first. */
+  private localApiTold: boolean | null = null;
   /** The switched-on count last told to `onSwitchedOnCount`; null before the first. */
   private switchedOnTold: number | null = null;
   /** `on` and `watch`: the bus subscription, the file watches and the waiting requests (triggers.ts). */
@@ -803,6 +817,14 @@ export class TricksService implements TricksSurface {
    */
   switchedOn(): boolean {
     return !this.gated() && this.feature.on();
+  }
+
+  /**
+   * Whether the local API socket should stand: tricks switched on (not gated) AND tricks run on this bridge
+   * (`deps.active`: not a crew peer, a deputy or a deposed lead). No trick need be on.
+   */
+  localApiWanted(): boolean {
+    return this.switchedOn() && this.deps.active?.() !== false;
   }
 
   /** Listen for a move of the switch for tricks as a whole; the answer stops listening. */
@@ -1067,6 +1089,7 @@ export class TricksService implements TricksSurface {
    * rights, the backoff) still counts.
    */
   private tellSwitchedOn(): void {
+    this.tellLocalApi();
     let count = 0;
     const runsHere = !this.gated() && this.deps.active?.() !== false;
     if (runsHere) for (const rt of this.runtimes.values()) if (rt.on) count += 1;
@@ -1076,6 +1099,18 @@ export class TricksService implements TricksSurface {
       this.deps.onSwitchedOnCount?.(count);
     } catch (err) {
       this.warn(`the switched-on count could not be told: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** Tell `onLocalApi` whether the local API should stand, when that moved. Never throws. */
+  private tellLocalApi(): void {
+    const wanted = this.localApiWanted();
+    if (wanted === this.localApiTold) return;
+    this.localApiTold = wanted;
+    try {
+      this.deps.onLocalApi?.(wanted);
+    } catch (err) {
+      this.warn(`the local API could not be told: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -1666,6 +1701,9 @@ export class TricksService implements TricksSurface {
     // `on` and `watch` are rights (M105 step one): the row and the card say them in words.
     if (m?.on !== undefined) info.events = m.on;
     if (m?.watch !== undefined) info.watch = m.watch;
+    // `access` (M105 spec 04) is a right the row names. An ON trick where the socket does not stand says so once.
+    if (m?.access !== undefined) info.access = m.access;
+    if (m?.access !== undefined && info.on && (this.deps.localApi?.() ?? null) === null) info.accessOff = true;
     if (m?.inputs !== undefined && m.inputs.length > 0) info.inputs = { globs: m.inputs, crew: this.deps.crewWide?.() ?? false };
     if (m?.description !== undefined) info.description = m.description;
     if (m?.about !== undefined) info.about = m.about;
@@ -1706,6 +1744,11 @@ export class TricksService implements TricksSurface {
   /** A read of the repository facts changed what they say: every row takes them, and the rev moves once. */
   repoFactsMoved(): void {
     for (const id of this.runtimes.keys()) this.publish(id);
+  }
+
+  /** The local API's socket started or stopped: every row takes the note of a trick that reads through it. */
+  apiMoved(): void {
+    this.repoFactsMoved();
   }
 
   /** Whether the trick may run at all: on, with an approved copy that holds and whose manifest parsed. */
@@ -1958,6 +2001,10 @@ export class TricksService implements TricksSurface {
     }
     // Contract 3: the person's values ride in the facts, and nowhere else (values.ts `withValues`).
     const facts = withValues(buildFacts({ memberId: host, ...world }, { id, dir: run.dir, state }, trigger, manifest.contract), manifest, this.values.read(id));
+    // The local API, for a trick that declares `access`, while its socket stands: the path and the level, never
+    // an environment variable (M105 spec 04). Without the socket there is no `api`, and `t.api` answers an error.
+    const socket = manifest.access === undefined ? null : (this.deps.localApi?.() ?? null);
+    if (manifest.access !== undefined && socket !== null) facts.api = { socket, access: manifest.access };
     const outcome = await (this.deps.run ?? runProgram)({
       command,
       cwd: run.dir,

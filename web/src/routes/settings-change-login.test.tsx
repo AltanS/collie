@@ -4,6 +4,8 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import type { AccountHarness, AccountIdentity, AccountRow } from "@/lib/accounts";
+import type { AgentView } from "@/lib/types";
+import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { flowOf, forgetFlow, rememberFlow } from "@/lib/change-login";
 import { body, defaultRow, HARNESS_CLAUDE, HARNESS_CODEX, serveAccounts, workRow } from "@/test/accounts-fixtures";
 import { withHeaderHost } from "@/test/header-host";
@@ -20,16 +22,33 @@ const OTHER: AccountIdentity = { signedIn: true, email: "other@example.com", pla
 const CLAUDE = { ...HARNESS_CLAUDE, reachesRunningSessions: true as const, signInHosts: ["claude.com", "platform.claude.com"] };
 const PANE = { paneId: "w9:p1", workspaceId: "w9", workspaceLabel: "sign-in", tabId: "w9:t1", cwd: "/home/op/.local/state/collie/sign-in" };
 
-function mount(entries: string[]) {
+/** A running agent pane of the snapshot, named by its session name. */
+function agentPane(paneId: string, over: Partial<AgentView> = {}): AgentView {
+  return { paneId, workspaceId: "w1", workspaceLabel: "lodge", workspaceNumber: 1, tabId: "w1:t1", agent: "claude", status: "working", cwd: "/home/dev/lodge", focused: false, ...over };
+}
+
+/** The page under the root route, whose data is the snapshot the sessions' names come from. */
+function mount(entries: string[], agents: AgentView[] = []) {
   const router = createMemoryRouter(
     [
-      { path: "/", element: <div data-testid="home" /> },
-      { path: "/settings/accounts", element: <div data-testid="list" /> },
-      { path: "/settings/accounts/:id", element: withHeaderHost(<SettingsAccountRoute />) },
-      { path: "/settings/accounts/:id/login", element: withHeaderHost(<SettingsChangeLoginRoute />) },
-      { path: "/pane/:paneId", element: <div data-testid="pane" /> },
+      {
+        id: ROOT_ROUTE_ID,
+        path: "/",
+        loader: () => null,
+        children: [
+          { index: true, element: <div data-testid="home" /> },
+          { path: "settings/accounts", element: <div data-testid="list" /> },
+          { path: "settings/accounts/:id", element: withHeaderHost(<SettingsAccountRoute />) },
+          { path: "settings/accounts/:id/login", element: withHeaderHost(<SettingsChangeLoginRoute />) },
+          { path: "pane/:paneId", element: <div data-testid="pane" /> },
+        ],
+      },
     ],
-    { initialEntries: entries, initialIndex: entries.length - 1 },
+    {
+      initialEntries: entries,
+      initialIndex: entries.length - 1,
+      hydrationData: { loaderData: { [ROOT_ROUTE_ID]: { agents, shellPanes: [], workspaces: [], tabs: [], sessions: [], servers: [] } } },
+    },
   );
   render(<RouterProvider router={router} />);
   return router;
@@ -84,7 +103,7 @@ describe("Change login: before the start", () => {
     serveList([defaultRow(), workRow({ identity: ME, running: 2 })]);
     mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"]);
     expect(await screen.findByText("me@example.com · Max")).toBeInTheDocument();
-    expect(screen.getByText("All running sessions of this profile continue with the new login.")).toBeInTheDocument();
+    expect(screen.getByText("Its sessions follow.")).toBeInTheDocument();
     expect(screen.getByText("2 sessions of this profile are running now.")).toBeInTheDocument();
     expect(screen.getByText("The old login stays until the new sign-in works.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Change login" })).toBeInTheDocument();
@@ -97,8 +116,82 @@ describe("Change login: before the start", () => {
     cleanup();
     serveList([defaultRow(), workRow({ identity: ME })]);
     mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"]);
-    expect(await screen.findByText("All running sessions of this profile continue with the new login.")).toBeInTheDocument();
+    expect(await screen.findByText("Its sessions follow.")).toBeInTheDocument();
     expect(screen.queryByText(/running now/)).toBeNull();
+  });
+
+  it("says what the page does first, under who is signed in and above the reach line", async () => {
+    serveList([defaultRow(), workRow({ identity: ME, running: 2 })]);
+    mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"]);
+    const signedIn = await screen.findByText("me@example.com · Max");
+    const what = screen.getByText("This profile gets another login.");
+    const reach = screen.getByText("Its sessions follow.");
+    expect(signedIn.compareDocumentPosition(what) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(what.compareDocumentPosition(reach) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("says the other profiles keep their login only where the agent has more than one profile", async () => {
+    serveList([defaultRow(), workRow({ identity: ME })]);
+    mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"]);
+    expect(await screen.findByText("Your other profiles keep their login.")).toBeInTheDocument();
+    expect(screen.getByText("The old login stays until the new sign-in works.")).toBeInTheDocument();
+    cleanup();
+    // Default alone for Claude Code, while another agent's profile does not count.
+    const codexOnly = defaultRow({ id: "codex:default", harness: "codex", folder: "~/.codex" });
+    serveList([defaultRow({ identity: ME }), codexOnly], undefined, [CLAUDE, HARNESS_CODEX]);
+    mount(["/settings/accounts/claude%3Adefault", `/settings/accounts/${encodeURIComponent("claude:default")}/login`]);
+    expect(await screen.findByText("This profile gets another login.")).toBeInTheDocument();
+    expect(screen.queryByText("Your other profiles keep their login.")).toBeNull();
+  });
+
+  it("lists the sessions that run in the profile, named from the snapshot, with their space", async () => {
+    const agents = [
+      agentPane("w1:p1", { sessionName: "Fix the build" }),
+      agentPane("w2:p1", { workspaceId: "w2", workspaceLabel: "workshop", tabId: "w2:t1", sessionName: "Write docs" }),
+    ];
+    serveList([defaultRow(), workRow({ identity: ME, running: 2, panes: ["w1:p1", "w2:p1"] })]);
+    mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"], agents);
+    const first = await screen.findByRole("button", { name: /Fix the build/ });
+    expect(first).toHaveTextContent("lodge");
+    expect(screen.getByRole("button", { name: /Write docs/ })).toHaveTextContent("workshop");
+    expect(screen.getByText("Sessions outside Collie that use this profile follow too.")).toBeInTheDocument();
+  });
+
+  it("a tap on a session goes to it", async () => {
+    serveList([defaultRow(), workRow({ identity: ME, running: 1, panes: ["w1:p1"] })]);
+    const router = mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"], [agentPane("w1:p1", { sessionName: "Fix the build" })]);
+    await userEvent.click(await screen.findByRole("button", { name: /Fix the build/ }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w1%3Ap1"));
+  });
+
+  it("skips a pane id the snapshot does not know, and draws no list and no outside line with no pane", async () => {
+    serveList([defaultRow(), workRow({ identity: ME, running: 2, panes: ["w1:p1", "w9:p9"] })]);
+    mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"], [agentPane("w1:p1", { sessionName: "Fix the build" })]);
+    expect(await screen.findByRole("button", { name: /Fix the build/ })).toBeInTheDocument();
+    expect(screen.queryByText(/w9:p9/)).toBeNull();
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    cleanup();
+    serveList([defaultRow(), workRow({ identity: ME, running: 1, panes: ["w9:p9"] })]);
+    mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"], [agentPane("w1:p1")]);
+    expect(await screen.findByText("Its sessions follow.")).toBeInTheDocument();
+    expect(screen.queryByRole("listitem")).toBeNull();
+    expect(screen.queryByText(/outside Collie/)).toBeNull();
+    cleanup();
+    serveList([defaultRow(), workRow({ identity: ME })]);
+    mount(["/settings/accounts/acc-work", "/settings/accounts/acc-work/login"], [agentPane("w1:p1")]);
+    expect(await screen.findByText("Its sessions follow.")).toBeInTheDocument();
+    expect(screen.queryByRole("listitem")).toBeNull();
+    expect(screen.queryByText(/outside Collie/)).toBeNull();
+  });
+
+  it("an agent whose sign-in does not reach running sessions shows no list and no outside line", async () => {
+    const codex = defaultRow({ id: "codex:default", harness: "codex", folder: "~/.codex", identity: ME, running: 1, panes: ["w1:p1"] });
+    serveList([codex], undefined, [HARNESS_CODEX]);
+    mount(["/settings/accounts/codex%3Adefault", `/settings/accounts/${encodeURIComponent("codex:default")}/login`], [agentPane("w1:p1", { sessionName: "Fix the build" })]);
+    expect(await screen.findByText("Sessions you start from now on use the new login.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Fix the build/ })).toBeNull();
+    expect(screen.queryByRole("listitem")).toBeNull();
+    expect(screen.queryByText(/outside Collie/)).toBeNull();
   });
 
   it("an agent whose sign-in is not proven to reach running sessions says only new sessions use it, with no count", async () => {
@@ -106,7 +199,8 @@ describe("Change login: before the start", () => {
     serveList([codex], undefined, [HARNESS_CODEX]);
     mount(["/settings/accounts/codex%3Adefault", `/settings/accounts/${encodeURIComponent("codex:default")}/login`]);
     expect(await screen.findByText("Sessions you start from now on use the new login.")).toBeInTheDocument();
-    expect(screen.queryByText(/continue with the new login/)).toBeNull();
+    expect(screen.getByText("This profile gets another login.")).toBeInTheDocument();
+    expect(screen.queryByText("Its sessions follow.")).toBeNull();
     expect(screen.queryByText(/running now/)).toBeNull();
   });
 });

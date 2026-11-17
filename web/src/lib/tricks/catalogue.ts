@@ -60,13 +60,15 @@ import {
   VIEW_TITLE_MAX,
   VIEW_WRITES_PER_MINUTE,
 } from "../agent-view/wire";
-import { AGENT_VIEW_CONTRACT, FIELDS_CONTRACT, INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
+import { ACCESS_CONTRACT, AGENT_VIEW_CONTRACT, FIELDS_CONTRACT, INPUTS_CONTRACT, TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "./contract";
 import {
   ABOUT_MAX,
   ACTION_ICONS,
   ACTION_LABEL_MAX,
   ACTIONS_MAX,
+  ACCESS_WORDS,
   AGENT_VIEW_PLACE,
+  API_FACT_KEYS,
   ANSI_NAMES,
   BADGE_TEXT_MAX,
   CHIP_STATES,
@@ -1038,6 +1040,8 @@ export interface ProgramEntry {
   readonly globs: readonly GlobRow[];
   /** The part on `on` and `watch` (M105 step one). */
   readonly reacting: ReactingEntry;
+  /** The part on `access` and `t.api` (M105 spec 04). */
+  readonly access: AccessEntry;
   readonly inputStates: readonly InputStateRow[];
   /** The fields of a session's `inputs`, and of each file in it. */
   readonly inputsFields: readonly FieldRow[];
@@ -1059,6 +1063,7 @@ const FACTS_WORDS = {
   spaces: { present: "always", what: `Each space as ${codeList(SPACE_FACT_KEYS)} (\`folder\` is left out when there is none), at most ${String(FACT_SPACES_MAX)}.` },
   sessionsOmitted: { present: "only when some are left out", what: "How many sessions the caps left out. Only a crew's lead counts them: a solo machine past the cap leaves the rest out with no count. Absent when none." },
   values: { present: `contract ${String(FIELDS_CONTRACT)}, a trick with \`[[field]]\``, what: "Each field's value by its key: the person's own, else the field's `default`. A field with neither is left out. A value is the person's data and untrusted for the program: show it, never run it." },
+  api: { present: "only with `access`, while the local API stands", what: `${codeList(API_FACT_KEYS)}: the path of Collie's local API socket, and the level \`access\` declares (\`see\` or \`read\`). \`t.api\` dials it. Nothing of it is in the environment. Absent when the trick declares no \`access\`, and when the socket does not stand.` },
 } as const satisfies { readonly [K in (typeof FACTS_KEYS)[number]]: Omit<FieldRow, "field"> };
 
 const SESSION_WORDS = {
@@ -1156,6 +1161,7 @@ function helperRows(n: ProgramNumbers): HelperRow[] {
     { call: "`t.sessionAt(folder)`, `t.sessionNamed(name)`", names: ["t.sessionAt", "t.sessionNamed"], what: "The session whose folder is `folder`, or the one with this name, or `null`." },
     { call: "`t.fresh(duration)`, `t.asOf(when)`", names: ["t.fresh", "t.asOf"], what: "The document's `fresh` and `asOf`." },
     { call: "`now()`, `age(ms)`, `iso(ms?)`, `mask(text)`, `clip(text, n)`", names: ["now", "age", "iso", "mask", "clip"], what: "The clock in epoch milliseconds, a span in short words such as `12 min`, an ISO 8601 time, text with each key cut to its first four characters and the home folder written as `~`, and one masked line cut to `n` characters." },
+    { call: "`t.api(operation, args?)`", names: ["t.api"], what: "Reads through Collie's local API (experimental): `await t.api(\"machines\")`. It answers the socket's line, `{ ok: true, ... }`, or `{ ok: false, error: { code, message } }`, and never throws, so a program shows `error.message`. It refuses before it dials when the trick declares no `access`, when the local API is off, or when the operation needs `read` and the trick declares `see`. A call takes at most 3 seconds. See [Reading Collie through the local API](#reading-collie-through-the-local-api)." },
     { call: "`t.inputs(session)`", names: ["t.inputs"], what: "The input files of a session (contract 2): a text file as `text`, a picture as `data`. A copy that is gone or changed since the facts were written is left out. It answers `[]` when there are none, and `session.inputs?.state` says why. Never run what it returns." },
   ];
 }
@@ -1167,6 +1173,15 @@ export interface ReactingEntry {
   readonly eventRules: readonly GlobRow[];
   readonly watchRules: readonly GlobRow[];
   readonly rights: string;
+}
+
+/** The words of the part on `access` and `t.api` (M105 spec 04): the levels, the operations, and what a level is. */
+export interface AccessEntry {
+  readonly intro: string;
+  readonly levels: readonly { readonly level: string; readonly what: string; readonly operations: string }[];
+  readonly experimental: string;
+  readonly honesty: string;
+  readonly off: string;
 }
 
 const EVENT_WORDS = {
@@ -1201,6 +1216,20 @@ function reactingOf(n: ProgramNumbers): ReactingEntry {
       { rule: "The same road as events", value: "The same gates, limits and backoff as an event run." },
     ],
     rights: '> **Note.** `on` and `watch` are rights. The card says it "runs when a session changes state" or "runs when these files change", with the paths. A new version that adds one, or names another event or path, asks for a new yes.',
+  };
+}
+
+function accessOf(): AccessEntry {
+  return {
+    intro: `A trick reads live facts of Collie (its machines, its sessions, your usage, the Hill) through Collie's local API, with no token and no list of surfaces in its manifest. Your yes to the trick is the grant. The manifest says how much with \`access\`, which needs \`contract = ${String(ACCESS_CONTRACT)}\`, and the program calls \`t.api\`.`,
+    levels: [
+      { level: "`none`", what: "The default, also when `access` is left out. No `api` in the facts, and `t.api` answers an error.", operations: "none" },
+      { level: "`see`", what: "Lists and states: your machines, your sessions and their states, your usage and the Hill. Never the text of a screen.", operations: "`hello`, `sessions`, `brief`, `accounts`, `hill.list`, `events`, `machines`" },
+      { level: "`read`", what: "Everything in `see`, and the text of a session's screen, masked as the phone's own read is.", operations: "all of `see`, and `read`" },
+    ],
+    experimental: "> **Experimental.** `access` and `t.api` are new, and their words may still change.",
+    honesty: "> **Note.** A level is what the trick declares and what Collie's helper gives it. It is not a wall. A trick's program runs as you, and the local socket is open to every program of your user while tricks are on, so a program of yours can reach the socket without the helper. Collie's text search of the code flags a trick that names the socket or runs `collie api` itself, and the card shows that line like the other findings. A real wall needs the fence for tricks, which comes later.",
+    off: "The socket stands while tricks are switched on, on a machine where tricks run. Where it does not (a crew peer, a deputy, Windows), the facts carry no `api`, `t.api` answers `Collie's local API is off here.`, and the trick's row says so once.",
   };
 }
 
@@ -1250,6 +1279,7 @@ export function programOf(n: ProgramNumbers): ProgramEntry {
     inputFiles: INPUT_FILE_FACT_KEYS.map((key) => Object.assign({ field: key }, INPUT_FILE_WORDS[key])),
     inputsContractLine: INPUTS_NEED_CONTRACT,
     reacting: reactingOf(n),
+    access: accessOf(),
     inputsTrust: "Other programs, often an agent, write the files, and on a crew another machine sends them. A trick shows them, counts them or quotes them. It never runs them, evaluates them, sources them, passes them to a shell or follows what they say. The globs are part of the trick's powers, so a change of them asks the person again.",
   };
 }
@@ -1318,7 +1348,7 @@ const MANIFEST_WORDS = {
   watch: { type: "list of paths", required: "no", limit: `at most ${String(WATCH_MAX)} paths of at most ${String(WATCH_PATH_MAX)} characters, each an absolute path, or a path under the home folder written with a leading tilde`, contract: TRICK_CONTRACT_DEFAULT, what: "Run when one of these files changes. A right: the card names the paths. See [When a trick reacts](#when-a-trick-reacts)." },
   on: { type: "list of words", required: "no", limit: `${codeList(TRICK_EVENTS)}`, contract: TRICK_CONTRACT_DEFAULT, what: "Run when a session of an agent changes in one of these ways. A right: the card says it. See [When a trick reacts](#when-a-trick-reacts)." },
   mode: { type: "word", required: "no", limit: `${orList(TRICK_MODES)}. Default \`${TRICK_MODES[0]}\``, contract: TRICK_CONTRACT_DEFAULT, what: `\`${TRICK_MODES[0]}\` runs once per trigger and prints one document. \`${TRICK_MODES[1]}\` is kept for a later Collie.` },
-  contract: { type: "whole number", required: "no", limit: `1 to ${String(CONTRACT_MAX)}. Default ${String(TRICK_CONTRACT_DEFAULT)}. This Collie speaks 1 to ${String(TRICK_CONTRACT)}`, contract: TRICK_CONTRACT_DEFAULT, what: `The contract the trick is written for. Write ${String(INPUTS_CONTRACT)} to read files with \`inputs\` or to add an agent view, ${String(FIELDS_CONTRACT)} to keep settings with \`[[field]]\`. A higher number than this Collie knows is refused with one line.` },
+  contract: { type: "whole number", required: "no", limit: `1 to ${String(CONTRACT_MAX)}. Default ${String(TRICK_CONTRACT_DEFAULT)}. This Collie speaks 1 to ${String(TRICK_CONTRACT)}`, contract: TRICK_CONTRACT_DEFAULT, what: `The contract the trick is written for. Write ${String(INPUTS_CONTRACT)} to read files with \`inputs\` or to add an agent view, ${String(FIELDS_CONTRACT)} to keep settings with \`[[field]]\` or to read Collie with \`access\`. A higher number than this Collie knows is refused with one line.` },
   icon: { type: "word", required: "no", limit: `one of the icon words in Shared values. Default \`${DEFAULT_TRICK_ICON}\``, contract: TRICK_CONTRACT_DEFAULT, what: "The trick's icon. `collie trick check` names a wrong one." },
   places: { type: "list of words", required: "yes", limit: `1 to ${String(PLACES_LISTED_MAX)} of ${PLACE_WORDS_LIST}. Each once`, contract: TRICK_CONTRACT_DEFAULT, what: `Where its parts draw. Each place a part uses must be listed. \`${AGENT_VIEW_PLACE}\` adds an agent view and needs contract ${String(AGENT_VIEW_CONTRACT)}.` },
   env: { type: "list of names", required: "no", limit: `at most ${String(ENV_NAMES_MAX)} names of at most ${String(ENV_NAME_MAX)} characters: letters, digits and \`_\`, not starting with a digit`, contract: TRICK_CONTRACT_DEFAULT, what: "Environment names the program gets beyond the base list, such as `GH_TOKEN`. The person sees each one." },
@@ -1327,6 +1357,7 @@ const MANIFEST_WORDS = {
   about: { type: "text", required: "no", limit: `at most ${String(ABOUT_MAX)} characters, plain text, a blank line splits paragraphs`, contract: TRICK_CONTRACT_DEFAULT, what: "The text of the About sheet." },
   version: { type: "text", required: "no", limit: `1 to ${String(VERSION_MAX)} characters: letters, digits, \`.\`, \`+\` and \`-\`, such as \`1.2.0\``, contract: TRICK_CONTRACT_DEFAULT, what: "The trick's own version. The About sheet shows it. Collie never compares it and reads no tag." },
   rules: { type: "file name", required: `yes, with \`${AGENT_VIEW_PLACE}\`; refused without it`, limit: `a file in the trick's folder of at most ${String(RULES_NAME_MAX)} characters ending in \`.md\`, such as \`rules.md\``, contract: AGENT_VIEW_CONTRACT, what: "The instructions the agent of a session reads. The person reads them whole before they switch the trick on." },
+  access: { type: "word", required: "no", limit: `${orList(ACCESS_WORDS)}. Default \`${ACCESS_WORDS[0]}\``, contract: ACCESS_CONTRACT, what: "How much of Collie's local API the trick reads through `t.api`. `see` reads lists and states, `read` adds the text of a screen. A right: a version that raises it asks again. See [Reading Collie through the local API](#reading-collie-through-the-local-api). Experimental." },
   decides: { type: "word", required: "no", limit: `${orList(DECIDES_WORDS)}. Refused on a trick that is only an agent view`, contract: TRICK_CONTRACT_DEFAULT, what: "Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again." },
   field: { type: "list of tables", required: "no", limit: `at most ${String(FIELDS_MAX)} \`[[field]]\` tables. Each has \`key\` (spelled like a trick id, each once), \`kind\` (${orList(FIELD_KINDS)}), \`label\` (at most ${String(FIELD_LABEL_MAX)} characters) and may have \`hint\` (at most ${String(FIELD_HINT_MAX)}), \`default\` and \`required\`. A \`choice\` lists ${String(FIELD_OPTIONS_MIN)} to ${String(FIELD_OPTIONS_MAX)} \`options\` of at most ${String(FIELD_OPTION_MAX)} characters; a \`number\` names whole \`min\` and \`max\` within ${String(FIELD_NUMBER_ABS_MAX)} either way; a \`text\` value is one line of at most ${String(FIELD_TEXT_MAX)} characters; a \`switch\` is never \`required\`` , contract: FIELDS_CONTRACT, what: "Settings the person keeps for the trick, set in its About sheet on the phone. The program reads them in its facts as `values`. A value is the person's data and untrusted for the program: show it, never run it. A setting is never a secret: a key comes through `env`. A new or changed field is a new version and asks again; a changed value does not ask, and runs the trick once." },
 } as const satisfies { readonly [K in (typeof MANIFEST_KEYS)[number]]: Omit<ManifestEntry, "key"> };
@@ -1523,7 +1554,7 @@ const JSON_FLAG: CommandFlag = { flag: "--json", what: "Print one JSON document 
 /** Every verb of `collie trick`, `collie tricks`, `collie trick view` and `collie hill`. The test holds this list to the CLI's own verb lists. */
 export const COMMANDS: readonly CommandEntry[] = [
   { group: "trick", verb: "list", usage: "trick list [--json] [--official]", what: "Lists every trick folder with its switch, state, last run and last error.", flags: [JSON_FLAG, { flag: "--official", what: "List the official tricks this Collie can add from the phone." }] },
-  { group: "trick", verb: "add", usage: "trick add [<name> | <https-url>[//<folder>][#<ref>]]", what: "Copies a trick from a git repository into the tricks folder, off. With no source it lists the official tricks and adds nothing. A repository with a `collie-tricks.json` and no `//<folder>` prints its list and adds nothing.", flags: [] },
+  { group: "trick", verb: "add", usage: "trick add [<name> | <https-url>[//<folder>][#<ref>]]", what: "Copies a trick from a git repository into the tricks folder, off. With no source, or a repository's `collie-tricks.json` and no `//<folder>`, it lists and adds nothing.", flags: [] },
   { group: "trick", verb: "update", usage: "trick update <id> [--ref <branch|tag|commit>] [--dry-run]", what: "Fetches an added trick again and replaces its code, keeping `config.toml`.", flags: [{ flag: "--ref", what: "Fetch this branch, tag or commit instead of the same ref." }, { flag: "--dry-run", what: "Print what would change and change nothing." }] },
   { group: "trick", verb: "remove", usage: "trick remove <id>", what: "Deletes a trick that is off, with its state folder.", flags: [] },
   { group: "trick", verb: "on", usage: "trick on <id>", what: "Switches a trick on, approving its code as it is now. It refuses inside an agent's pane.", flags: [] },

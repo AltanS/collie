@@ -10,11 +10,15 @@
 //     {@link ASK_ANSWERING}, nor sit in a folder that only exists to write: the Surface, the inside
 //     hub's command queue, a multiplexer's own adapter folder. A `import type` is not followed: it is
 //     erased, so it cannot put code on a path (it still has to name a type, and bus.ts, a type import of
-//     operations.ts, imports nothing that writes anyway). The scan reads the real files, and a planted
-//     import in an in-memory file is caught, so the test is not vacuous.
+//     operations.ts, imports nothing that writes anyway). The imports are read by Bun's own transpiler
+//     (`Bun.Transpiler.scanImports`), a real tokenizer: an import named in a comment or a string is not
+//     one, and a comment cannot hide a real import (a text scan read comments as code both ways). The
+//     scan reads the real files, and a planted import in an in-memory file is caught, so the test is not
+//     vacuous.
 //  2. THE WORLD'S NAMES. The members of `ApiWorld`, and of the one object it passes through (`bus`), carry
 //     no name that sends, answers, presses a key, types or writes: by the compiler and by the text.
-//  3. THE TABLE IS READ ONLY. Every row is a `read` that needs `look`, and the local tier grants `look`.
+//  3. THE TABLE IS READ ONLY. Every row is a `read` that needs `see` or `read`, and the local tier grants
+//     `read` (which holds `see`), no level above it.
 //  4. THE KEYS. `API_WORLD_KEYS` and the interface agree both ways (the compiler), `narrowWorld` keeps
 //     exactly those keys and a bus of two reads (at run time), and bridge/index.ts builds the table only
 //     through `apiTable(buildApiWorld({ ... }))`, whose one literal is `narrowWorld({ ... } satisfies
@@ -76,18 +80,15 @@ export const ASK_ANSWERING: ReadonlyMap<string, string> = new Map([
 /** Folders whose every module writes or sends: nothing under them may be reached either. */
 const WRITING_FOLDERS: readonly string[] = ["bridge/surface/", "bridge/inside/", "bridge/durable/", "bridge/walky/", "bridge/mux/herdr/", "bridge/mux/herdr-core/", "bridge/mux/tmux/", "bridge/mux/zellij/", "bridge/mux/tern/", "bridge/mux/tuios/", "bridge/mux/durable/"];
 
-// `import ... from "x"`, `export ... from "x"`, `import "x"`, `import("x")`; the capture says whether a statement is `type`-only.
-const STATEMENT = /\b(?:import|export)(\s+type)?\s+[^'";]*?\bfrom\s*["']([^"']+)["']|\bimport\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/gu;
+// Bun's own TypeScript scanner: it tokenizes, so comments and strings are not read as imports, and it
+// leaves out what the compiler erases (`import type`, `export type`, an import of types alone).
+const SCANNER = new Bun.Transpiler({ loader: "ts" });
 
 /** The relative specifiers a source text puts on a runtime path (a `type` import or re-export is erased and left out). */
 export function runtimeSpecifiers(text: string): string[] {
-  const out: string[] = [];
-  for (const match of text.matchAll(STATEMENT)) {
-    if (match[1] !== undefined) continue;
-    const specifier = match[2] ?? match[3] ?? match[4];
-    if (specifier?.startsWith(".")) out.push(specifier);
-  }
-  return out;
+  return SCANNER.scanImports(text)
+    .map((found) => found.path)
+    .filter((specifier) => specifier.startsWith("."));
 }
 
 /** The files a walk from `roots` reaches, each with the file that first led to it. `read` is the file system, or a stand-in. */
@@ -162,6 +163,23 @@ describe("import reach: no operation can reach the code that answers an ask", ()
     expect(writers("folder.ts")).toEqual([expect.stringContaining("a folder that only writes")]);
     expect(writers("typed.ts")).toEqual([]);
   });
+
+  test("a comment or a string that names an import is not one; a real import after such a comment is still seen", () => {
+    const fake = [
+      `// import { a } from "../surface/ask.ts";`,
+      `/* import "../inside/hub.ts"; */`,
+      `/**\n * export { b } from "../server.ts";\n * const m = await import("../walky/deliver.ts");\n */`,
+      `const words = "import { x } from '../surface/protocol.ts'";`,
+      `const tpl = \`export * from "../mux/keys.ts"\`;`,
+    ].join("\n");
+    expect(runtimeSpecifiers(`${fake}\nexport const quiet = 1;`)).toEqual([]);
+    // A comment that reads like the start of a type import must not swallow the real one after it.
+    const hiding = `/* import type { T } from */ import { a } from "../surface/ask.ts";\n// import type\nimport { b } from "../inside/hub.ts";\nconst r = /"/; import { c } from "../server.ts";`;
+    expect(runtimeSpecifiers(hiding)).toEqual(["../surface/ask.ts", "../inside/hub.ts", "../server.ts"]);
+    expect(runtimeSpecifiers(`${fake}\nimport { real } from "./real.ts";`)).toEqual(["./real.ts"]);
+    // A type-only import is erased, whichever way it is spelled; a mixed one is followed.
+    expect(runtimeSpecifiers(`import type { A } from "./a.ts";\nimport { type B } from "./b.ts";\nexport type { C } from "./c.ts";\nimport { type D, e } from "./d.ts";\nconsole.log(e);`)).toEqual(["./d.ts"]);
+  });
 });
 
 // The compiler's half of the names rule: a key of the deps (or of the bus it passes) that contains one of
@@ -192,19 +210,19 @@ describe("the world of the operations names no way to write", () => {
 
   test("the scan sees a bad name: planted members are caught", () => {
     for (const name of ["sendText", "answerAsk", "pressKey", "typeInto", "writeFile", "enqueueCommand", "publishEvent", "keys"]) expect(name).toMatch(BANNED_WORDS);
-    for (const name of ["machine", "panes", "readScreen", "draftState", "hillOpen", "since", "instanceOf", "paneAccount", "accountsBody", "defaultLines", "bus"]) expect(name).not.toMatch(BANNED_WORDS);
+    for (const name of ["machine", "panes", "readScreen", "draftState", "hillOpen", "machines", "since", "instanceOf", "paneAccount", "accountsBody", "defaultLines", "bus"]) expect(name).not.toMatch(BANNED_WORDS);
   });
 });
 
 describe("the table is read only", () => {
-  test("every row is a read that needs look, and the local tier grants look and nothing more", () => {
+  test("every row is a read that needs see, read alone needs read, and the local tier grants read and nothing more", () => {
     const table = buildTable({ version: () => "9.9.9-test", bus: new EventBus({ machine: () => "m", bootId: "boot1" }), reads: buildReads(depsOf(world())) });
     expect([...table.keys()]).toEqual([...OPERATION_NAMES]);
     for (const row of table.values()) {
       expect(row.kind).toBe("read");
-      expect(row.right).toBe("look");
+      expect(row.right).toBe(row.name === "read" ? "read" : "see");
     }
-    expect(LOCAL_TIER_RIGHTS).toEqual(["look"]);
+    expect(LOCAL_TIER_RIGHTS).toBe("read");
   });
 });
 
@@ -308,6 +326,7 @@ function spyWorld(): SpyWorld {
   );
   const hill = Object.assign({ list: () => ({ open: base.hillOpen() ?? [] }) }, writers("hill"));
   const accounts = Object.assign({ body: () => base.accountsBody() }, writers("accounts"));
+  const watch = Object.assign({ census: () => ({ ts: 1000, machines: base.machines().map((source) => source.row) }) }, writers("watch"));
   const mux = Object.assign({ readGrid: (muxSession: string, paneId: string, lines: number) => base.readScreen(muxSession, paneId, lines) }, writers("mux"));
   const spied: ApiWorld = {
     version: () => {
@@ -349,6 +368,10 @@ function spyWorld(): SpyWorld {
       reads.push("hillOpen");
       return hill.list().open;
     },
+    machines: () => {
+      reads.push("machines");
+      return watch.census().machines.map((row) => ({ row: Object.assign({}, row, writers("machine")), member: undefined }));
+    },
     defaultLines: base.defaultLines,
   };
   const emit = (): void => {
@@ -360,7 +383,7 @@ function spyWorld(): SpyWorld {
 /** Valid arguments for every operation: the compiler makes this list every name. */
 function validArgs() {
   const session = idOf(MACHINE, "w1:p1", "k3f9");
-  return { hello: {}, sessions: {}, brief: { session }, read: { session, lines: 10 }, accounts: {}, "hill.list": {}, events: { after: "-", wait: 0 } } satisfies Record<OperationName, JsonObject>;
+  return { hello: { client: "trick:spy" }, sessions: {}, brief: { session }, read: { session, lines: 10 }, accounts: {}, "hill.list": {}, machines: {}, events: { after: "-", wait: 0 } } satisfies Record<OperationName, JsonObject>;
 }
 
 function spyCtx(): OperationContext {
@@ -392,7 +415,7 @@ describe("the spies: no operation calls a write, even one reachable at run time"
       // The operations held objects with write methods on them, and called none.
       expect(spy.handed.length).toBeGreaterThan(0);
       // Not vacuous: the operations did read the world.
-      for (const member of ["version", "machine", "panes", "instanceOf", "bus.since", "bus.waitFor", "paneAccount", "accountsBody", "draftState", "readScreen", "hillOpen"]) expect(spy.reads).toContain(member);
+      for (const member of ["version", "machine", "panes", "instanceOf", "bus.since", "bus.waitFor", "paneAccount", "accountsBody", "draftState", "readScreen", "hillOpen", "machines"]) expect(spy.reads).toContain(member);
     });
   }
 

@@ -1,13 +1,16 @@
-// INVENTED DATA for the five reads' tests (reads.test.ts, leak.test.ts): a bridge with two multiplexer
+// INVENTED DATA for the six reads' tests (reads.test.ts, leak.test.ts): a bridge with two multiplexer
 // sessions, a few panes, accounts and Hill cards. Every name, host, address and path is made up and
 // ends `.invalid` or sits under `/home/ada`. The NEEDLES are the five things no answer may carry (an
 // email, a folder path, a pairing code, a sign-in address, a message text), and `world()` puts them in
-// every field the phone's bodies carry them in.
+// every field the phone's bodies carry them in. The MACHINE_NEEDLES are what no `machines` row may carry
+// (an address, a host name, a key, a path, a user name): `machineBodies()` puts them in every field of the
+// Machines page's rows and the crew overview's.
 
 import { EventBus } from "../../events/bus.ts";
 import type { HillDecision } from "../../../web/src/lib/hill/wire.ts";
-import type { AccountRow, AgentView } from "../../types.ts";
-import type { PaneSource, ReadsDeps, ScreenRead } from "../reads.ts";
+import type { AccountRow, AgentView, CrewMemberStatus, CrewStatusResponse, MachineRow, MachineSample } from "../../types.ts";
+import type { MachineSource, PaneSource, ReadsDeps, ScreenRead } from "../reads.ts";
+import { machineSourcesOf } from "../world.ts";
 
 export const MACHINE = "inst-fixture-a1";
 
@@ -22,6 +25,99 @@ export const NEEDLES = {
   message: "please deploy the vault",
   plan: "enterprise-secret-tier",
 } as const;
+
+/** What no `machines` row may carry. */
+export const MACHINE_NEEDLES = {
+  address: "100.64.10.9",
+  host: "lodge.example.invalid",
+  key: "sha256:4f1c9e0b7a2d6e3f8c5b1a0d9e7f6c3b2a1d0e9f8c7b6a5d4e3f2c1b0a9d8e7f",
+  path: "/home/dev/secret",
+  user: "dev-user",
+} as const;
+
+/** The version this fixture bridge reports. */
+export const VERSION = "9.9.9-test";
+
+function sample(cpu: number, memUsed: number, memTotal: number): MachineSample {
+  return {
+    cpu,
+    cores: 8,
+    memUsed,
+    memTotal,
+    load1: 1.5,
+    rxBps: 100,
+    txBps: 200,
+    disks: [
+      { mount: MACHINE_NEEDLES.path, used: 1, total: 2 },
+      { mount: `/home/${MACHINE_NEEDLES.user}`, used: 1, total: 2 },
+    ],
+  };
+}
+
+/** A machine row as `GET /api/machines` has it. */
+function machineRow(id: string, name: string, isLead: boolean, health: MachineRow["health"], one: MachineSample | undefined): MachineRow {
+  const row: MachineRow = { id, name, isLead, health, alerts: { cpu: { above: 0.9, forMin: 10 } }, firing: ["cpu"], spark: { stepMs: 60000, cpu: [0.1, null], mem: [0.2, null] } };
+  if (one !== undefined) {
+    row.sample = one;
+    row.sampledAt = 1000;
+  }
+  return row;
+}
+
+/** A crew member's row as `GET /api/crew` has it, the needles in every field that holds text. */
+function memberRow(id: string, name: string, isLead: boolean, overrides: Partial<CrewMemberStatus> = {}): CrewMemberStatus {
+  return {
+    id,
+    name,
+    isLead,
+    address: `${MACHINE_NEEDLES.address}:8443`,
+    enrolledAt: 1000,
+    health: "reachable",
+    reason: `${MACHINE_NEEDLES.user} at ${MACHINE_NEEDLES.host} refused ${MACHINE_NEEDLES.key} in ${MACHINE_NEEDLES.path}`,
+    lastSeenAt: 1000,
+    version: "1.29.0",
+    secretBehind: false,
+    provisional: false,
+    conflict: { leadMemberId: MACHINE_NEEDLES.user, warrantGeneration: 2 },
+    linkState: "attention",
+    mux: MACHINE_NEEDLES.user,
+    panes: 3,
+    host: MACHINE_NEEDLES.host,
+    ...overrides,
+  };
+}
+
+/** The two bodies `machines` is built from: `GET /api/machines`'s rows and `GET /api/crew`'s body. */
+export interface MachineBodies {
+  rows: MachineRow[];
+  crew: CrewStatusResponse;
+}
+
+/**
+ * The Machines page's rows and the crew overview of a lead with three members: one named by a full host
+ * name, one by an address, one by a user name at a host; one unreachable with no sample and no count.
+ */
+export function machineBodies(): MachineBodies {
+  const rows = [
+    machineRow("workshop", "workshop", true, "reachable", sample(0.123, 4, 16)),
+    machineRow("lodge", MACHINE_NEEDLES.host, false, "reachable", sample(0.5, 3, 4)),
+    machineRow("attic", MACHINE_NEEDLES.address, false, "unreachable", undefined),
+    machineRow("barn", `${MACHINE_NEEDLES.user}@${MACHINE_NEEDLES.host}`, false, "reachable", sample(1, 0, 0)),
+  ];
+  const crew: CrewStatusResponse = {
+    crew: { id: "crew-a", name: MACHINE_NEEDLES.host, secretGeneration: 2, rotatedAt: 1000 },
+    self: { id: "workshop", name: "workshop", version: "1.29.0" },
+    deputy: { id: "lodge", warrantGeneration: 2 },
+    members: [
+      memberRow("workshop", "workshop", true, { version: "0.0.1-lead" }),
+      memberRow("lodge", MACHINE_NEEDLES.host, false),
+      memberRow("attic", MACHINE_NEEDLES.address, false, { health: "unreachable", version: MACHINE_NEEDLES.address, panes: undefined }),
+      memberRow("barn", `${MACHINE_NEEDLES.user}@${MACHINE_NEEDLES.host}`, false, { version: undefined, panes: 0 }),
+    ],
+    ts: 1000,
+  };
+  return { rows, crew };
+}
 
 /** One pane of the fixture bridge: the needles are in every field but the ones an answer may carry. */
 export function pane(paneId: string, overrides: Partial<AgentView> = {}): AgentView {
@@ -122,6 +218,7 @@ export interface World {
   screens: Map<string, ScreenRead>;
   hill: HillDecision[] | null;
   bus: EventBus;
+  machines: MachineSource[];
   defaultLines: number;
   /** The `(muxSession, paneId, lines)` of every screen read, in order. */
   screenAsks: { muxSession: string; paneId: string; lines: number }[];
@@ -155,6 +252,7 @@ export function world(): World {
     screens: new Map(),
     hill: [decision(), answeredDecision()],
     bus: newBus(),
+    machines: machineSourcesOf(machineBodies().rows, machineBodies().crew),
     defaultLines: 200,
     screenAsks: [],
   };
@@ -164,6 +262,7 @@ export function world(): World {
 /** The deps of a world: getters over its maps, as the bridge's own are over its objects. */
 export function depsOf(w: World): ReadsDeps {
   return {
+    version: () => VERSION,
     machine: () => MACHINE,
     panes: () => w.panes,
     instanceOf: (muxSession, paneId) => w.instances.get(keyOf(muxSession, paneId)) ?? null,
@@ -179,6 +278,7 @@ export function depsOf(w: World): ReadsDeps {
       return w.screens.get(keyOf(muxSession, paneId)) ?? { ok: false };
     },
     hillOpen: () => w.hill,
+    machines: () => w.machines,
     defaultLines: w.defaultLines,
   };
 }

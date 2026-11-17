@@ -1,4 +1,7 @@
 import type { AccountHarness, AccountIdentity, AccountRow } from "@/lib/accounts";
+import { findPane } from "@/lib/hosts";
+import { paneName, panePlaceParts } from "@/lib/pane-name";
+import type { AgentView, ServerSummary, SessionSummary, TabView } from "@/lib/types";
 
 // CHANGE LOGIN (M101): one account's login, changed by the agent's own sign-in while the sessions of
 // that account keep running. The bridge starts the sign-in exactly as "Sign in again" does (the same
@@ -56,6 +59,38 @@ export type Reach = { kind: "running"; count: number } | { kind: "newOnly" };
 export function reachOf(harness: AccountHarness | undefined, row: AccountRow): Reach {
   if (harness?.reachesRunningSessions !== true) return { kind: "newOnly" };
   return { kind: "running", count: row.running ?? 0 };
+}
+
+/** Whether the list holds another profile of the row's agent: Default plus an added one, or two added. */
+export function hasOtherProfiles(rows: readonly AccountRow[], row: AccountRow): boolean {
+  return rows.some((other) => other.harness === row.harness && other.id !== row.id);
+}
+
+/** One session the new login reaches, named as every other list names a session. */
+export interface ReachedSession {
+  paneId: string;
+  /** The session's name ({@link paneName}). */
+  name: string;
+  /** The name of the space it sits in. */
+  space: string;
+}
+
+/**
+ * The sessions that run in the profile, named from the snapshot the app already holds. The ids are the
+ * bridge's (`AccountRow.panes`, this machine's); a pane the snapshot does not know yet is skipped, never
+ * guessed at. The ids are looked up on the lead's own machine, as the Profiles pages read it.
+ */
+export function reachedSessions(
+  row: AccountRow,
+  snapshot: { agents: readonly AgentView[]; tabs?: readonly TabView[]; servers?: readonly ServerSummary[]; sessions?: readonly SessionSummary[] },
+): ReachedSession[] {
+  const found: ReachedSession[] = [];
+  for (const paneId of row.panes ?? []) {
+    const pane = findPane(snapshot.agents, paneId, {}, snapshot.servers, snapshot.sessions);
+    if (pane === undefined) continue;
+    found.push({ paneId, name: paneName(pane), space: panePlaceParts(pane, snapshot.tabs).space });
+  }
+  return found;
 }
 
 /** The result screen: who is signed in after the flow, set against who was before. */

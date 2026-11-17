@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -192,5 +192,66 @@ describe("BoxTextBlock — a sign-in card (Change login, M101)", () => {
     render(<BoxTextBlock boxText={SIGN_IN} />);
     expect(screen.queryByRole("link", { name: "Open sign-in page" })).toBeNull();
     expect(screen.getByRole("link", { name: ADDRESS })).toHaveAttribute("href", ADDRESS);
+  });
+});
+
+// CALM LOAD (row 18): the hosts come from a read that ends after the card's first frame. While it is in
+// flight the button's row is held open at the button's height with nothing live in it; the read then fills
+// it or closes it with `Collapse`.
+describe("BoxTextBlock, a sign-in card while its hosts are read", () => {
+  const ADDRESS = "https://claude.com/cai/oauth/authorize?code=true&state=XXXX";
+  const SIGN_IN: BoxTextModel = {
+    title: "Login",
+    phase: "filled",
+    text: [[plain("Use the url below to sign in")], [link(ADDRESS)], [plain("Paste code here if prompted >")]],
+  };
+  const HOSTS = ["claude.com"];
+  const reserved = () => document.querySelector('[data-slot="sign-in-pending"]');
+  const opener = () => screen.queryByRole("link", { name: "Open sign-in page" });
+
+  it("holds the button's row on the first frame, with no live button in it, and the read fills it", () => {
+    const { rerender } = render(<BoxTextBlock boxText={SIGN_IN} signInPending />);
+    const held = reserved();
+    expect(held).not.toBeNull();
+    expect(held).toHaveClass("h-11", "w-full");
+    expect(held).toHaveAttribute("aria-hidden", "true");
+    expect(opener()).toBeNull();
+    // The box was open on the first frame, so it is part of it and nothing eased in.
+    expect(document.querySelector('[data-slot="collapse"]')).toHaveAttribute("data-state", "open");
+
+    rerender(<BoxTextBlock boxText={SIGN_IN} signInHosts={HOSTS} />);
+    expect(opener()).toHaveAttribute("href", ADDRESS);
+    expect(opener()).toHaveAttribute("rel", "noopener noreferrer");
+    expect(reserved()).toBeNull();
+    expect(document.querySelectorAll('[data-slot="collapse"]')).toHaveLength(1);
+  });
+
+  it("a read that lists no host closes the held row, and the card is as before", async () => {
+    const { rerender } = render(<BoxTextBlock boxText={SIGN_IN} signInPending />);
+    expect(reserved()).not.toBeNull();
+    rerender(<BoxTextBlock boxText={SIGN_IN} />);
+    await waitFor(() => expect(reserved()).toBeNull());
+    expect(opener()).toBeNull();
+    expect(screen.getByRole("link", { name: ADDRESS })).toHaveAttribute("href", ADDRESS);
+  });
+
+  it("a read that lists the host but not this address still fills the row with the copy block", () => {
+    const { rerender } = render(<BoxTextBlock boxText={SIGN_IN} signInPending />);
+    rerender(<BoxTextBlock boxText={SIGN_IN} signInHosts={["example.org"]} />);
+    expect(reserved()).toBeNull();
+    expect(opener()).toBeNull();
+    expect(screen.getByText("Copy this address into your browser if you trust it.")).toBeInTheDocument();
+  });
+
+  it("holds nothing while the card is not waiting on that read, and draws no extra box", () => {
+    render(<BoxTextBlock boxText={SIGN_IN} />);
+    expect(reserved()).toBeNull();
+    expect(document.querySelector('[data-slot="collapse"]')).toBeNull();
+  });
+
+  it("with the hosts already known on the first frame the button is there at once, not eased in", () => {
+    render(<BoxTextBlock boxText={SIGN_IN} signInHosts={HOSTS} />);
+    expect(opener()).toHaveAttribute("href", ADDRESS);
+    expect(document.querySelector('[data-slot="collapse"]')).toHaveAttribute("data-state", "open");
   });
 });

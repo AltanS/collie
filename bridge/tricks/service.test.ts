@@ -353,6 +353,29 @@ describe("the switched-on count (M105 spec 03, the local API's life)", () => {
     expect(told).toEqual([0, 1, 0]);
   });
 
+  test("the local API stands while tricks are switched on where tricks run, with no trick on, and closes when the switch goes off", async () => {
+    const told: boolean[] = [];
+    let on = true;
+    let active = true;
+    const r = await rig([exited(belt("1"))], { feature: { on: () => on }, active: () => active, onLocalApi: (wanted) => told.push(wanted) });
+    // No trick at all, the switch on: the socket stands.
+    await r.service.tick();
+    expect(told).toEqual([true]);
+    expect(r.service.localApiWanted()).toBe(true);
+    // The terminal writes off: the next tick closes it, and tells only the change.
+    on = false;
+    await r.service.tick();
+    await r.service.tick();
+    expect(told).toEqual([true, false]);
+    on = true;
+    await r.service.tick();
+    expect(told).toEqual([true, false, true]);
+    // Deposed (a peer, a deputy): no socket, the switch on or not.
+    active = false;
+    await r.service.tick();
+    expect(told).toEqual([true, false, true, false]);
+  });
+
   test("on Windows (the gate) the count is never above 0", async () => {
     const told: number[] = [];
     const r = await rig([exited(belt("1"))], { platform: "win32", onSwitchedOnCount: (count) => told.push(count) });
@@ -2629,5 +2652,84 @@ describe("the menu place and bound parts (contract 2)", () => {
     await tickAt(r, T0 + 1_000);
     expect(r.specs).toHaveLength(1);
     expect((await r.service.reply(undefined)).parts.map((p) => p.part)).toEqual(["ci"]);
+  });
+});
+
+// ACCESS: THE FACTS CARRY THE SOCKET (M105 spec 04, decisions 5 and 8). A trick whose approved manifest says
+// `access` gets `api: { socket, access }` in its facts while the local API stands, and nothing in the
+// environment. With no socket it gets no `api`, and its row says so once.
+describe("access and the local API in the facts", () => {
+  const SOCKET = "/home/dev/.local/state/collie/api/sock";
+  const accessManifest = (access: string): string => `${MANIFEST}contract = 3\naccess = ${JSON.stringify(access)}\n`;
+
+  test("access = see with the socket standing: the facts carry the path and the level, the environment carries nothing", async () => {
+    const r = await rig([exited(belt("x"))], { localApi: () => SOCKET });
+    await makeTrick(r.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const facts = factsOf(r.specs[0]);
+    expect(facts.api).toEqual({ socket: SOCKET, access: "see" });
+    expect(JSON.stringify(r.specs[0]?.env)).not.toContain("sock");
+    const row = (await r.service.reply(undefined)).tricks[0];
+    expect(row?.access).toBe("see");
+    expect(row?.accessOff).toBeUndefined();
+  });
+
+  test("access = read is carried as read", async () => {
+    const r = await rig([exited(belt("x"))], { localApi: () => SOCKET });
+    await makeTrick(r.configDir, "legs", accessManifest("read"), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(factsOf(r.specs[0]).api).toEqual({ socket: SOCKET, access: "read" });
+  });
+
+  test("access with no socket: no `api` in the facts, and the row carries one note", async () => {
+    const r = await rig([exited(belt("x"))], { localApi: () => null });
+    await makeTrick(r.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(factsOf(r.specs[0]).api).toBeUndefined();
+    expect("api" in JSON.parse(r.specs[0]?.stdin ?? "{}")).toBe(false);
+    const row = (await r.service.reply(undefined)).tricks[0];
+    expect(row).toMatchObject({ access: "see", accessOff: true });
+    // The same with no function wired at all (a bridge that never builds the socket).
+    const bare = await rig([exited(belt("x"))]);
+    await makeTrick(bare.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(bare.stateDir, "legs");
+    await tickAt(bare, T0);
+    expect(factsOf(bare.specs[0]).api).toBeUndefined();
+    expect((await bare.service.reply(undefined)).tricks[0]?.accessOff).toBe(true);
+  });
+
+  test("a trick with no access gets no `api` even while the socket stands, and no note", async () => {
+    const r = await rig([exited(belt("x"))], { localApi: () => SOCKET });
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(factsOf(r.specs[0]).api).toBeUndefined();
+    const row = (await r.service.reply(undefined)).tricks[0];
+    expect(row?.access).toBeUndefined();
+    expect(row?.accessOff).toBeUndefined();
+  });
+
+  test("an off trick carries its level but no note", async () => {
+    const r = await rig([exited(belt("x"))], { localApi: () => null });
+    await makeTrick(r.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await r.service.refresh(true);
+    const row = (await r.service.reply(undefined)).tricks[0];
+    expect(row).toMatchObject({ on: false, access: "see" });
+    expect(row?.accessOff).toBeUndefined();
+  });
+
+  test("apiMoved republishes the rows, so the note goes when the socket comes up", async () => {
+    let socket: string | null = null;
+    const r = await rig([exited(belt("x"))], { localApi: () => socket });
+    await makeTrick(r.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect((await r.service.reply(undefined)).tricks[0]?.accessOff).toBe(true);
+    socket = SOCKET;
+    r.service.apiMoved();
+    expect((await r.service.reply(undefined)).tricks[0]?.accessOff).toBeUndefined();
   });
 });

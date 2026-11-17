@@ -724,16 +724,16 @@ export function TrickSettingsSection(): ReactNode {
           </div>
         </Card>
       </Group>
-      {/* A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): one line, no rows, no switches. */}
+      {/* A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): the list card draws nothing; the switch card (case 50) says the line once. */}
       <Group title="A Windows bridge">
-        <ListCard n={36} state="trick-settings-windows-gate" label="a Windows bridge: tricks are gated, one line" tricks={[]} gate="windows" />
+        <ListCard n={36} state="trick-settings-windows-gate" label="a Windows bridge: no list card, the switch card (50) says the line once" tricks={[]} gate="windows" />
       </Group>
       {/* Add from a repository (2026-11-17): the row is the last of every list above; here is its sheet, and the row with tricks off. */}
       <Group title="Add from a repository">
         <RepoSheetBox n={60} state="trick-settings-repo-empty" label="the sheet, the link field empty" />
         <RepoSheetBox n={61} state="trick-settings-repo-list" label="three tricks, one already here: tap Add" initialUrl={REPO_LIST_URL} readOnMount />
         <RepoSheetBox n={62} state="trick-settings-repo-no-index" label="a repository with no list" initialUrl={REPO_NO_INDEX_URL} readOnMount />
-        <ListCard n={63} state="trick-settings-repo-tricks-off" label="tricks off: the row is disabled and says why" tricks={[HEALTHY[0] ?? trick("x", "x")]} tricksOff />
+        <ListCard n={63} state="trick-settings-repo-tricks-off" label="tricks off: the row is disabled, the card says why" tricks={[HEALTHY[0] ?? trick("x", "x")]} tricksOff />
       </Group>
       {/* Fault B: a trick whose approval did not hold a right its copy asks for stops; its switch shows off and its row says so. */}
       <Group title="A trick stopped because its rights changed">

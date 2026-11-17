@@ -13,6 +13,7 @@
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../json";
 import {
   ABOUT_MAX,
+  ACCESS_LEVELS,
   DESCRIPTION_MAX,
   EVERY_MAX_MS,
   EVERY_MIN_MS,
@@ -353,9 +354,11 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const unread = asJsonBoolean(body.valuesUnread) === true ? true : undefined;
   const reacting = body.events;
   const watching = body.watch;
+  const leveled = body.access;
+  const accessOff = body.accessOff;
   if (!isTrickValue(body)) return undefined;
   if (body.provenance !== undefined) body.provenance = readProvenance(body.provenance);
-  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined && running === undefined && ticking === undefined && reacting === undefined && watching === undefined && asked === undefined && kept === undefined && setup === undefined && unread === undefined) return body;
+  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined && running === undefined && ticking === undefined && reacting === undefined && watching === undefined && leveled === undefined && accessOff === undefined && asked === undefined && kept === undefined && setup === undefined && unread === undefined) return body;
   // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
   // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
@@ -364,7 +367,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const description = readTrickText(described, "description");
   const about = readTrickText(told, "about");
   const rules = readTrickRules(ruled);
-  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, run: _running, everyMs: _ticking, events: _reacting, watch: _watching, fields: _asked, values: _kept, needsSetup: _setup, valuesUnread: _unread, ...rest } = body;
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, run: _running, everyMs: _ticking, events: _reacting, watch: _watching, access: _leveled, accessOff: _accessOff, fields: _asked, values: _kept, needsSetup: _setup, valuesUnread: _unread, ...rest } = body;
   const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
   if (pending !== undefined) out.pending = pending;
   if (inputs !== undefined) out.inputs = inputs;
@@ -372,6 +375,10 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   if (events !== undefined) out.events = events;
   const watch = readWatch(watching);
   if (watch !== undefined) out.watch = watch;
+  // The declared level of the local API (M105 spec 04): one of two words this phone knows, else left out.
+  const level = ACCESS_LEVELS.find((word) => word === leveled);
+  if (level !== undefined) out.access = level;
+  if (accessOff === true && level !== undefined) out.accessOff = true;
   if (description !== undefined) out.description = description;
   if (about !== undefined) out.about = about;
   if (auto !== undefined) out.auto = auto;

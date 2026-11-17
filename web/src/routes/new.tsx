@@ -36,6 +36,7 @@ import { HOST_TEXT_CLASSES, hostSlot, isMultiHost, leadHost, paneScope } from "@
 import { t } from "@/lib/i18n";
 import { launchersKey, useLaunchers } from "@/lib/launchers";
 import { mutate } from "@/lib/mutate";
+import { useRememberedAnswer } from "@/lib/remembered-shape";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { homePath, newAddPath, readNewAt } from "@/lib/nav";
 import {
@@ -184,7 +185,16 @@ function NewPage({ search }: { search: string }) {
   const again = useMemo(() => readAgain(machineKey), [machineKey]);
   // Again counts only while the machine still offers what it started, and (for a worktree) can still make one.
   const usable = again !== null && loaded && offered(offer, again.what) ? again : null;
-  const againOffered = usable !== null && (usable.branch === null || offer.branchBlocked === null);
+  // CALM LOAD (row 3). The device already holds the record (`readAgain`, localStorage), so the row is
+  // drawn open on the FIRST frame from it, before the launcher read ends, and the page below it does not
+  // move when the read lands. The read can only CLOSE it (a start the machine no longer offers, a worktree
+  // it cannot make), through `Collapse`. Until then the row is drawn but cannot be tapped (`readyToUse`):
+  // every check that guards a tap needs the read's offer, and none of them is skipped.
+  const readyToUse = loaded;
+  // The words for what it started: the page's own label once the offer is in, and before that the label
+  // the record kept, so the line does not change when the read lands.
+  const againWhat = again === null ? "" : loaded ? whatLabel(again.what, offer, t("newPage.shell")) : again.label;
+  const againOffered = again !== null && (loaded ? usable !== null : true) && (again.branch === null || offer.branchBlocked === null);
 
   // ── The form ──────────────────────────────────────────────────────────────────────────────────
   // Agent or Command is a segment; each half keeps its own pick, so going back and forth loses neither.
@@ -212,6 +222,23 @@ function NewPage({ search }: { search: string }) {
   const accountDefault = accountsShown && what?.kind === "harness" ? accounts.body?.accounts.find((a) => a.harness === what.id && a.kind === "default") : undefined;
   const accountId = accountRow?.id;
   const accountCaptionRow = accountRow ?? accountDefault;
+  // CALM LOAD (row 17). The profiles are read after the first paint, so the pick used to open in the
+  // middle of the page. This device remembers one flag (lib/remembered-shape.ts): the last read on the
+  // front machine showed the pick for the agent the page had chosen. While the read is in flight and
+  // the flag is true, the pick's box is held open from the first frame for a built-in agent, an agent by
+  // id, which is what could carry profiles; the read then fills the box or closes it. Before the launcher
+  // read the agent is not known yet, so the one the address or Again names stands in for it. The flag is
+  // written only for the agent the page chose itself, never for one the person moved to on this visit,
+  // and only for the front machine: a crew member's profiles are its own, and one flag cannot speak for them.
+  const frontMachine = target.host === undefined && target.session === undefined;
+  const heldWhat: StartWhat | null = what ?? (loaded ? null : (keyToWhat(agentPick ?? at.pick) ?? again?.what ?? null));
+  const couldCarryProfiles = kind === "agent" && !offer.startersOnly && heldWhat?.kind === "harness";
+  const accountsRead = accountsLoaded && (accounts.status === "ready" || accounts.status === "unavailable");
+  const pickMemory = useRememberedAnswer(
+    "new-profile-pick",
+    frontMachine && accountsRead && agentPick === null && kind === "agent" && !offer.startersOnly && what?.kind === "harness" ? accountsShown : undefined,
+  );
+  const accountsReserved = frontMachine && !accountsLoaded && pickMemory === true && couldCarryProfiles;
   // In a space, the folder starts as the space's own pane's: the bridge would take it when none is named.
   const [cwd, setCwd] = useState(() => from?.cwd ?? besidePane?.cwd ?? readAgain(machineKey)?.cwd ?? "");
   // Whether the person changed the Folder field on this visit. A Recent pick fills the folder with the
@@ -589,15 +616,13 @@ function NewPage({ search }: { search: string }) {
             <button
               type="button"
               onClick={useAgain}
-              disabled={busy}
+              disabled={busy || !readyToUse}
               className="flex min-h-14 w-full items-center gap-3 rounded-md border border-border bg-muted px-3 py-2 text-left transition-colors active:bg-muted/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               <Icon name="reuse-last" className="size-5 shrink-0 text-muted-foreground" aria-hidden />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-sm font-medium">
-                  {again.branch === null
-                    ? t("newPage.again", { what: whatLabel(again.what, offer, t("newPage.shell")) })
-                    : t("newPage.againBranch", { what: whatLabel(again.what, offer, t("newPage.shell")) })}
+                  {again.branch === null ? t("newPage.again", { what: againWhat }) : t("newPage.againBranch", { what: againWhat })}
                 </span>
                 <span className="truncate font-mono text-xs text-muted-foreground">
                   {shortenHome(again.cwd ?? (home || "~"), home)}
@@ -648,8 +673,17 @@ function NewPage({ search }: { search: string }) {
                 </option>
               ))}
             </Select>
-            <Collapse open={accountsShown}>
-              {accountsShown ? (
+            <Collapse open={accountsShown || accountsReserved}>
+              {accountsReserved ? (
+                // The box the pick will fill, with nothing live in it: the same 44px select and the caption's
+                // one-line floor (a border, `p-3` and one 16px row), until the read says what to draw.
+                <div data-slot="account-pick-reserved" aria-hidden className="flex flex-col gap-2 pt-2">
+                  <div className="h-11 rounded-lg border border-border" />
+                  <div className="rounded-md border border-border p-3">
+                    <div className="h-4" />
+                  </div>
+                </div>
+              ) : accountsShown ? (
                 <div data-slot="account-pick" className="flex flex-col gap-2 pt-2">
                   <Select
                     aria-label={t("accounts.new.label")}

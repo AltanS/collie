@@ -282,3 +282,94 @@ describe("PaneSettingsSheet — Change login (M101)", () => {
     expect(screen.queryByRole("button", { name: /Change login/ })).toBeNull();
   });
 });
+
+// CALM LOAD (row 19): the row enters when the profiles read lands. The device remembers whether this machine
+// had the profiles feature (the fact the Settings index keeps, `settings-accounts-row`); while the read is in
+// flight and the fact is true, the row's place is held, with nothing live in it.
+describe("PaneSettingsSheet, the Change login row while the profiles are read (calm load)", () => {
+  const FACT = "collie:shape:/:settings-accounts-row";
+  const reserved = () => document.querySelector('[data-slot="pane-change-login-reserved"]');
+  const row = () => screen.queryByRole("button", { name: /Change login/ });
+
+  /** An accounts read the test lets go of by hand. */
+  function gatedAccounts(answer: Parameters<typeof accountsBody>[0]) {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get("/api/accounts", async () => {
+        await gate;
+        return HttpResponse.json(accountsBody(answer));
+      }),
+    );
+    return release;
+  }
+  const withPane = { accounts: [defaultRow({ identity: { signedIn: true, email: "me@example.com" }, panes: ["w1:p1"] })] };
+
+  beforeEach(() => {
+    vi.mocked(getPushState).mockReset().mockResolvedValue({ availability: "ready", subscribed: true, userDisabled: false });
+    server.use(http.get("/api/notifications/cache-watch", () => HttpResponse.json(state())));
+  });
+  afterEach(() => localStorage.clear());
+
+  const mountSheet = () => render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p1" changeLogin={{ harness: "claude", onOpen: vi.fn() }} />);
+
+  test("with the fact remembered the row's place is held on the first frame, with no live row in it, and the read fills it", async () => {
+    localStorage.setItem(FACT, "1");
+    const release = gatedAccounts(withPane);
+    mountSheet();
+    expect(reserved()).not.toBeNull();
+    expect(reserved()).toHaveAttribute("aria-hidden", "true");
+    expect(reserved()?.closest('[data-slot="collapse"]')).toHaveAttribute("data-state", "open");
+    expect(row()).toBeNull();
+    release();
+    const live = await screen.findByRole("button", { name: /Change login/ });
+    expect(live).toHaveTextContent("Default · me@example.com");
+    expect(reserved()).toBeNull();
+    expect(localStorage.getItem(FACT)).toBe("1");
+  });
+
+  test("a read that finds no row for this pane closes the held place", async () => {
+    localStorage.setItem(FACT, "1");
+    const release = gatedAccounts({ accounts: [defaultRow({ panes: ["w1:p9"] })] });
+    mountSheet();
+    expect(reserved()).not.toBeNull();
+    release();
+    await waitFor(() => expect(reserved()).toBeNull());
+    expect(row()).toBeNull();
+  });
+
+  test("a machine that answers no profiles closes it and forgets the fact", async () => {
+    localStorage.setItem(FACT, "1");
+    server.use(http.get("/api/accounts", () => HttpResponse.json({ ok: false, error: "no", code: "accounts.unavailable" }, { status: 404 })));
+    mountSheet();
+    expect(reserved()).not.toBeNull();
+    await waitFor(() => expect(reserved()).toBeNull());
+    expect(localStorage.getItem(FACT)).toBe("0");
+  });
+
+  test("with no memory the sheet holds nothing, and the row comes with the read, as before", async () => {
+    const release = gatedAccounts(withPane);
+    mountSheet();
+    expect(reserved()).toBeNull();
+    expect(row()).toBeNull();
+    release();
+    expect(await screen.findByRole("button", { name: /Change login/ })).toBeInTheDocument();
+    expect(localStorage.getItem(FACT)).toBe("1");
+  });
+
+  test("a remembered no holds nothing", () => {
+    localStorage.setItem(FACT, "0");
+    gatedAccounts(withPane);
+    mountSheet();
+    expect(reserved()).toBeNull();
+  });
+
+  test("a sheet with no Change login (a crew member's pane) holds nothing, even with the fact remembered", () => {
+    localStorage.setItem(FACT, "1");
+    gatedAccounts(withPane);
+    render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p1" />);
+    expect(reserved()).toBeNull();
+  });
+});

@@ -96,6 +96,7 @@ function rig(opts: RigOptions = {}): Rig {
       }),
     accounts: async () => ({ ok: true, answer: { accounts: [] } }),
     "hill.list": async () => ({ ok: true, answer: { decisions: [] } }),
+    machines: async () => ({ ok: true, answer: { machines: [] } }),
   };
   const logs: string[] = [];
   const api = new ApiSocket({
@@ -396,6 +397,35 @@ describe("the framing", () => {
     expect(answer).toMatchObject({ id: "r", ok: false, error: { code: "api.failed" } });
     expect(JSON.stringify(answer)).not.toContain("a stub that fails");
     expect(r.logs.some((line) => line.includes("a stub that fails"))).toBe(true);
+  });
+
+  test("hello's client: the same answer, one log line naming the connection, the name on its later log lines", async () => {
+    const r = rig();
+    await r.api.start();
+    const client = await Client.open(r.path);
+    const plain = await client.ask({ id: "h", op: "hello" });
+    const named = await client.ask({ id: "h", op: "hello", args: { client: "trick:cpu-load" } });
+    expect(named).toEqual(plain);
+    expect(r.logs.filter((line) => line.includes("names itself"))).toEqual(["[api] a connection names itself trick:cpu-load"]);
+    // The same name again is not logged again.
+    await client.ask({ op: "hello", args: { client: "trick:cpu-load" } });
+    expect(r.logs.filter((line) => line.includes("names itself"))).toHaveLength(1);
+    await client.ask({ op: "read", args: { session: SESSION } });
+    expect(r.logs.some((line) => line.includes("read failed (client trick:cpu-load): a stub that fails"))).toBe(true);
+    // Another connection is not named by this one's word.
+    const other = await Client.open(r.path);
+    await other.ask({ op: "read", args: { session: SESSION } });
+    expect(r.logs.filter((line) => line.startsWith("[api] read failed:"))).toHaveLength(1);
+  });
+
+  test("hello's client of a bad shape is a bad request and is not logged", async () => {
+    const r = rig();
+    await r.api.start();
+    const client = await Client.open(r.path);
+    for (const bad of ["trick cpu", "x".repeat(65), "\u001b[2J", ""]) {
+      expect(codeOf(await client.ask({ op: "hello", args: { client: bad } }))).toBe("api.bad_request");
+    }
+    expect(r.logs.some((line) => line.includes("names itself"))).toBe(false);
   });
 
   test("a line past 16 KiB answers bad_request and closes the connection", async () => {
@@ -789,7 +819,7 @@ describe("hello over the socket", () => {
       api: 1,
       collie: "9.9.9-test",
       experimental: true,
-      operations: ["hello", "sessions", "brief", "read", "accounts", "hill.list", "events"],
+      operations: ["hello", "sessions", "brief", "read", "accounts", "hill.list", "machines", "events"],
     });
   });
 });

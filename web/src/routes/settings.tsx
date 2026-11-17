@@ -9,12 +9,10 @@ import { BuildStamp } from "@/components/build-stamp";
 import { Card } from "@/components/ui/card";
 import { SettingsNavRow } from "@/components/settings-nav-row";
 import { InstallControl } from "@/components/install-control";
-import { useTricksPresent } from "@/components/tricks-settings-card";
 import { useUpdatesStatus } from "@/components/updates-settings-card";
 import { addedCount, useAccounts } from "@/lib/accounts";
 import { hasExperiments } from "@/lib/experiments";
 import { useRememberedAnswer } from "@/lib/remembered-shape";
-import { useOptionalRootData } from "@/lib/route-data";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -132,8 +130,8 @@ const ROWS: Row[] = [
     : []),
 ];
 
-// Tricks sits after Machines and before Experiments: it is a standing list like the others, and, like
-// Experiments, it is offered only when it has something to say.
+// Tricks sits after Machines and before Experiments, always there (2026-11-17): it holds the switch for
+// tricks as a whole, so it shows on every bridge, also one with no trick.
 const TRICKS_ROW: Row = {
   id: "tricks",
   to: (scope) => settingsSectionPath("tricks", scope),
@@ -153,9 +151,8 @@ const ACCOUNTS_ROW: Row = {
   blurb: "accounts.row.none",
 };
 
-function rows(withTricks: boolean, withAccounts: boolean): Row[] {
+function rows(withAccounts: boolean): Row[] {
   const base = withAccounts ? withRow(ROWS, ACCOUNTS_ROW, "harnesses") : ROWS;
-  if (!withTricks) return base;
   const at = base.findIndex((row) => row.id === "experiments");
   return at === -1 ? [...base, TRICKS_ROW] : [...base.slice(0, at), TRICKS_ROW, ...base.slice(at)];
 }
@@ -167,7 +164,7 @@ function withRow(list: Row[], row: Row, after: string): Row[] {
 }
 
 /**
- * How long a first visit on a device waits for the two reads (Accounts, Tricks) before it draws the
+ * How long a first visit on a device waits for the Accounts read before it draws the
  * list with whatever it has. Short enough that nobody notices a wait, long enough for a bridge on the
  * same tailnet to answer.
  */
@@ -175,18 +172,18 @@ export const LIST_HOLD_MS = 400;
 
 /**
  * The quiet stand-in for the list card, on a first visit with no remembered answer, until the two
- * reads have landed or {@link LIST_HOLD_MS} has passed. It is the card's own box with the rows that
- * are always there, empty and of their exact height (the Updates row and `ROWS`: 16px padding twice
+ * read has landed or {@link LIST_HOLD_MS} has passed. It is the card's own box with the rows that
+ * are always there, empty and of their exact height (the Updates row, `ROWS` and Tricks: 16px padding twice
  * around the 24px title line and the 20px caption line, so `box-content h-11 p-4`), inside the same
  * list group, so a theme's row edges and gaps come out as they will. No spinner and no words: a state
- * with nothing to say keeps its slot (DESIGN.md §2). The rows that may be added (Accounts, Tricks)
- * are not counted, so the card grows by them if they arrive late, which is the rare, accepted case.
+ * with nothing to say keeps its slot (DESIGN.md §2). The row that may be added (Accounts)
+ * are not counted, so the card grows by it if it arrives late, which is the rare, accepted case.
  */
 function ListHold() {
   return (
     <Card className="gap-0 py-0" data-slot="settings-list-hold" aria-hidden="true">
       <div data-slot="list-group">
-        {[...ROWS.map((row) => row.id), "updates"].map((id) => (
+        {[...ROWS.map((row) => row.id), TRICKS_ROW.id, "updates"].map((id) => (
           <div key={id} className="box-content h-11 p-4" />
         ))}
       </div>
@@ -198,30 +195,22 @@ export function SettingsRoute() {
   const nav = useNav();
   const scope = useScope();
   const updates = useUpdatesStatus();
-  // Tricks (M94): a row only while the phone holds a tricks reply, so an install without tricks is unchanged.
-  const tricks = useTricksPresent();
-  // The store stays empty for ever on a bridge with no tricks, so "none" is read off the snapshot, which
-  // is already here when this route draws (`HomeData.tricks`). A stale or failed snapshot says nothing.
-  const data = useOptionalRootData();
-  const noTricks = data !== undefined && !data.error && data.tricks === false;
   // Accounts (M101): a row only while the machine answers the accounts route, so an older bridge, Windows and an install with no account-capable agent are unchanged.
   const accounts = useAccounts();
   const accountsCount = addedCount(accounts.body);
-  // CALM LOAD. Both rows depend on a read that ends after the first paint, and each sits in the middle of
+  // CALM LOAD. The Accounts row depends on a read that ends after the first paint, and sits in the middle of
   // the list, so a row that arrived late pushed every row after it down. The first frame is drawn from what
   // this device last saw (lib/remembered-shape.ts); the fresh answer replaces it when it lands. A failed
   // accounts read says nothing about whether the feature exists, so it keeps the remembered answer.
   const accountsFresh = accounts.status === "loading" || accounts.status === "failed" ? undefined : accounts.status === "ready";
-  const tricksFresh = tricks ? true : noTricks ? false : undefined;
   const withAccounts = useRememberedAnswer("settings-accounts-row", accountsFresh);
-  const withTricks = useRememberedAnswer("settings-tricks-row", tricksFresh);
   // With no answer at all for a row (a first visit here), the list card waits for it, bounded.
   const [waited, setWaited] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => setWaited(true), LIST_HOLD_MS);
     return () => clearTimeout(timer);
   }, []);
-  const holdList = !waited && (withAccounts === undefined || withTricks === undefined);
+  const holdList = !waited && withAccounts === undefined;
   useLocale();
 
   return (
@@ -282,7 +271,7 @@ export function SettingsRoute() {
                 }
                 onOpen={() => nav.down(updatesPath(scope))}
               />
-              {rows(withTricks === true, withAccounts === true).map((row) => (
+              {rows(withAccounts === true).map((row) => (
                 <SettingsNavRow
                   key={row.id}
                   icon={row.icon}

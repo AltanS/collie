@@ -11,8 +11,8 @@ import { SettingsRoute } from "./settings";
 import { SettingsTricksRoute } from "./settings-sections";
 
 // The Tricks row on the Settings index, and the Tricks section behind it (M94 slice 04). The app's one
-// store is a module singleton, so the order matters: the row is checked absent first, then the store
-// takes a reply and the same render shows it.
+// store is a module singleton, so the order matters: the row shows with no reply, then the store
+// takes a reply and the same render lists it.
 
 function mount(path: string) {
   const router = createMemoryRouter(
@@ -28,10 +28,10 @@ function mount(path: string) {
 }
 
 describe("Settings → Tricks", () => {
-  it("has no row on the index while no tricks reply is held", async () => {
+  it("has the row on the index even while no tricks reply is held (2026-11-17: the row is always there)", async () => {
     mount("/settings");
     await screen.findByRole("button", { name: /Appearance/ });
-    expect(screen.queryByRole("button", { name: /^Tricks/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Tricks/ })).toBeInTheDocument();
   });
 
   it("has no card on the page itself while no tricks reply is held", async () => {

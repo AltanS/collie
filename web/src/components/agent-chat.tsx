@@ -56,6 +56,7 @@ import { AnsiOutput } from "@/components/ansi-output";
 import { OutputZoom } from "@/components/output-zoom";
 import { CardDock, dockFits, hasDialogCard } from "@/components/card-dock";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
+import { SessionTrickCards } from "@/components/session-trick-card";
 import { HookHoldCard } from "@/components/hook-hold-card";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
 import { AgentsFooter } from "@/components/agents-footer";
@@ -1102,6 +1103,8 @@ export function AgentChat({
   const signInScreen = composerSurface.field === "secret" && blocks.some((b) => b.kind === "box-text");
   const signInAccounts = useAccounts(scope, signInScreen);
   const signInHosts = signInScreen ? signInAccounts.body?.harnesses.find((h) => h.id === agent?.agent)?.signInHosts : undefined;
+  // The card is a sign-in card from its first frame, so its button's row is held while that read is in flight.
+  const signInPending = signInScreen && signInAccounts.status === "loading";
   // Ask v1 (M56 spec 08): a tap on a dialog card answers the ask the bridge's Surface carries, by its
   // single-use id. A refusal for a changed dialog hands back the bridge's ask for the screen now; the
   // next tap uses it while the snapshot still names the id that was refused, and the snapshot's own
@@ -3380,6 +3383,9 @@ export function AgentChat({
               onExit={() => raiseExit(holdExitKey(agent.hold?.askId ?? ""), "error")}
             />
           )}
+          {/* A trick this session proposed (package I): Collie's own card, where the docked cards sit, so the
+              person reads it and switches it on where they talk to the agent (session-trick-card.tsx). */}
+          {agent !== undefined && <SessionTrickCards self={walkySelf} />}
           {display && olderMemberCards && hasDialogCard(blocks) && (
             <div className="px-3 pb-1">
               <Notice tone="neutral" variant="box">
@@ -3438,6 +3444,7 @@ export function AgentChat({
               paneId={paneId}
               scope={scope}
               signInHosts={signInHosts}
+              signInPending={signInPending}
               stale={actsDisabledByCache}
               composing={composing}
               wrap={prefs.wrap}

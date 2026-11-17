@@ -16,7 +16,7 @@ import { PROPOSE_LINE_PREFIX, WALKY_LINE_MAX } from "../bridge/walky/parse.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { spaceOf } from "../bridge/walky/space.ts";
 import { PROPOSE_LINE_MS, PROPOSE_LINES_MAX, walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
-import { MANIFEST_KEYS, PLACE_KINDS } from "../web/src/lib/tricks/schema.ts";
+import { MANIFEST_KEYS, PLACE_KINDS, TRICKS_OFF_LINE } from "../web/src/lib/tricks/schema.ts";
 import { asJsonObject, parseJsonObject } from "../web/src/lib/json.ts";
 import { capture, context } from "./fakes.ts";
 import type { HillDeps } from "./hill.ts";
@@ -25,7 +25,7 @@ import { realFiles } from "./sys.ts";
 import { cmdTrickGuide, trickGuide } from "./trick-guide.ts";
 import { GROUP_MASKED, GROUP_TOO_LARGE, groupLineEnds } from "../bridge/tricks/card-group.ts";
 import { TRICK_HELPER } from "../bridge/tricks/scan.ts";
-import { cmdTrickPropose, PROPOSE_ADDED_HERE_HINT, PROPOSE_NEEDS_CONFIG, PROPOSE_UNKNOWN, PROPOSE_WHERE, proposeExit, readTrickFolder } from "./trick-propose.ts";
+import { cmdTrickPropose, PROPOSE_ADDED_HERE_HINT, PROPOSE_NEEDS_CONFIG, PROPOSE_UNKNOWN, PROPOSE_WHERE, proposeExit, proposeWhere, readTrickFolder } from "./trick-propose.ts";
 import { cmdTrickInit } from "./trick.ts";
 import { askSocket } from "./walky.ts";
 
@@ -51,11 +51,22 @@ describe("where the person finds a proposal (M96 spec 14)", () => {
   test("the guide and the propose output name the Hill and Settings, Tricks, and never ask for the Hill to be switched on", () => {
     expect(PROPOSE_WHERE).toBe("on the Hill, or in Settings, Tricks, while the Hill is off");
     const guide = trickGuide().join("\n");
-    expect(guide).toContain("on the Hill, or in Settings, Tricks, while the Hill is off");
+    expect(guide).toContain("in this session on the phone, and in Settings, Tricks (on the Hill too, while it is on)");
     for (const text of [guide, PROPOSE_WHERE]) {
       expect(text).not.toMatch(/switch(es)? the Hill on/iu);
       expect(text).not.toContain("Experiments");
     }
+  });
+});
+
+describe("where the card is, from the bridge's answer (package I)", () => {
+  test("the session first while the card is tied to it, the Hill only while it is on, Settings, Tricks always; no answer of where keeps the old words", () => {
+    expect(proposeWhere({ session: true, hill: false })).toBe("in this session on the phone, and in Settings, Tricks");
+    expect(proposeWhere({ session: true, hill: true })).toBe("in this session on the phone, on the Hill, and in Settings, Tricks");
+    expect(proposeWhere({ session: false, hill: true })).toBe("on the Hill, and in Settings, Tricks");
+    expect(proposeWhere({ session: false, hill: false })).toBe("in Settings, Tricks, on the phone");
+    expect(proposeWhere(undefined)).toBe(PROPOSE_WHERE);
+    for (const where of [{ session: true, hill: false }, { session: false, hill: false }]) expect(proposeWhere(where)).not.toContain("Hill");
   });
 });
 
@@ -322,6 +333,13 @@ describe("collie trick propose, over the walky socket", () => {
     expect(Array.isArray(sent) ? sent.map((f) => asJsonObject(f)?.rel) : []).toContain("trick.toml");
   });
 
+  socketTest("a session's proposal with the Hill off names the session and Settings, Tricks, never the Hill", async () => {
+    const b = await bridge(async () => ({ ok: true, kind: "proposal", id: "legs", hash: "h", decision: "dc_k3m9x2p7q1ab", replaced: null, where: { session: true, hill: false } }));
+    const d = deps([walkySocketPath(b.stateDir)]);
+    expect(await cmdTrickPropose(d, [trickFolder()])).toBe(EXIT.OK);
+    expect(d.io.stdout).toContain("Proposed legs. Your person sees it as dc_k3m9x2p7q1ab in this session on the phone, and in Settings, Tricks. Nothing runs before their yes.");
+  });
+
   socketTest("a config.toml stays behind, and the CLI says so", async () => {
     const b = await bridge();
     const d = deps([walkySocketPath(b.stateDir)]);
@@ -388,6 +406,14 @@ describe("collie trick propose, over the walky socket", () => {
       "propose: request id 0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f",
     ]);
     expect(PROPOSE_ADDED_HERE_HINT).toBe("Copy the folder outside the tricks folder and propose the copy, or ask the person to switch it on.");
+  });
+
+  socketTest("tricks switched off: the bridge's off sentence is printed, nothing is proposed, and it exits STATE", async () => {
+    const b = await bridge(async () => ({ ok: false, code: "no_tricks", error: TRICKS_OFF_LINE }));
+    const d = deps([walkySocketPath(b.stateDir)]);
+    expect(await cmdTrickPropose(d, [trickFolder()])).toBe(EXIT.STATE);
+    expect(d.io.stdout).toEqual([]);
+    expect(d.io.stderr).toEqual([`propose: ${TRICKS_OFF_LINE}`, "propose: request id 0f8b5c1e-5a7d-4b8e-9f00-1a2b3c4d5e6f"]);
   });
 
   socketTest("a bridge without proposals answers unknown, and the CLI says so", async () => {

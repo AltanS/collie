@@ -95,7 +95,7 @@ export function proposalTold(id: string, intent: string, kind: "new" | "version"
 }
 
 /** Every warning kind, for a code search that failed. */
-const ALL_WARNINGS = ["spawn", "network", "write", "model", "import"] as const satisfies readonly (keyof typeof WARN_PLAIN)[];
+const ALL_WARNINGS = ["spawn", "network", "write", "model", "import", "api"] as const satisfies readonly (keyof typeof WARN_PLAIN)[];
 
 /** Who proposes, as this bridge knows them. */
 export interface Proposer extends ProposerFacts {
@@ -106,10 +106,22 @@ export interface Proposer extends ProposerFacts {
 }
 
 /** What a proposal came to. */
-export type ProposeAnswer = { ok: true; kind: "proposal" | "version"; id: string; hash: string; decision: string; replaced: string | null } | { ok: false; code: ProposeRefusalCode; error: string };
+export type ProposeAnswer = { ok: true; kind: "proposal" | "version"; id: string; hash: string; decision: string; replaced: string | null; where?: ProposalWhere } | { ok: false; code: ProposeRefusalCode; error: string };
+
+/**
+ * Where the person finds the card (package I, 2026-11-17), for the proposer's words: `session` while the
+ * card is tied to the proposer's live session (the phone draws it in that session's chat view), `hill`
+ * while the Hill is on (the Hill shows it too). Settings, Tricks always lists it.
+ */
+export interface ProposalWhere {
+  session: boolean;
+  hill: boolean;
+}
 
 /** What proposals need of the Hill: Collie's own door, which no agent and no crew member reaches. */
 export interface ProposalsHill {
+  /** Whether the Hill is on: the card then shows on the Hill too. Read only for the proposer's words. */
+  isOn(): boolean;
   isAnswering(id: string): boolean;
   postCollie(from: HillCollieSender, input: HillPostInput, opts?: Pick<HillPostOptions, "tellOf">): HillPostAnswer;
   withdrawCollie(from: HillCollieSender, id: string, reason: string): HillOneAnswer;
@@ -378,12 +390,12 @@ export class TrickProposals {
     const { hash } = proposal;
     // A request id answers as it did; with other files it is refused.
     const rid = state.rids.find((row) => row.sender === sender && row.requestId === proposal.requestId);
-    if (rid !== undefined) return rid.hash === hash ? rid.answer : refused("request_id_reused", "This request id already proposed other files. Propose with a new request id.");
+    if (rid !== undefined) return rid.hash === hash ? { ...rid.answer, where: { session: this.toldOf(rid.answer.decision), hill: this.deps.hill.isOn() } } : refused("request_id_reused", "This request id already proposed other files. Propose with a new request id.");
     // The open proposals that are still open on the Hill.
     const live = this.liveOpen(state);
     const same = live.find((row) => row.id === id);
     if (same !== undefined && same.sender !== sender) return refused("open_elsewhere", `Somebody else already proposed a trick named ${id}. It waits for your person's answer.`);
-    if (same !== undefined && same.hash === hash) return { ok: true, kind: same.kind === "version" ? "version" : "proposal", id, hash, decision: same.decision, replaced: null };
+    if (same !== undefined && same.hash === hash) return { ok: true, kind: same.kind === "version" ? "version" : "proposal", id, hash, decision: same.decision, replaced: null, where: { session: this.toldOf(same.decision), hill: this.deps.hill.isOn() } };
     // With no session placed, "the same sender" is anybody on that machine: never a silent replace.
     if (same !== undefined && proposer.address === null) return refused("open_elsewhere", `A proposal of ${id} from this machine already waits for your person's answer. Collie cannot confirm which session sent it, so it is not replaced.`);
     if (same !== undefined && this.deps.hill.isAnswering(same.decision)) return refused("answering", "Your person is answering your last proposal of this trick right now. Try again in a moment.");
@@ -462,8 +474,15 @@ export class TrickProposals {
     const answer: ProposeAnswer & { ok: true } = { ok: true, kind: base === null ? "proposal" : "version", id, hash, decision: posted.decision.id, replaced: old?.decision ?? null };
     this.remember(state, senderKey(proposer), proposal.requestId, hash, answer, now);
     await this.save(state);
+    // Where the card is, for the proposer's words only; the replay key keeps the answer without it.
+    const where: ProposalWhere = { session: posted.decision.replyTo !== null, hill: this.deps.hill.isOn() };
     this.deps.audit?.({ action: "trick.proposal", detail: { trick: id, hash: hash.slice(0, 16), kind: base === null ? "proposal" : "version", decisionId: posted.decision.id, from: proposer.memberId } });
-    return answer;
+    return { ...answer, where };
+  }
+
+  /** Whether the open card `decision` is tied to a live session (its `replyTo`, hill/service.ts `postAny`). */
+  private toldOf(decision: string): boolean {
+    return this.deps.hill.collieDecisions("proposal").some((held) => held.id === decision && held.replyTo !== null);
   }
 
   /** Note a proposal for the hour's count and its request id. */

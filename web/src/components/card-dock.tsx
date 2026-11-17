@@ -109,6 +109,8 @@ export interface CardDockProps {
   stale?: boolean;
   /** A sign-in card's address hosts from the agent's adapter (Change login, M101); see BoxTextBlock. */
   signInHosts?: readonly string[];
+  /** The sign-in card's read of those hosts is still in flight; see BoxTextBlock. */
+  signInPending?: boolean;
   /** The soft keyboard is up: the dock's cap drops from 55dvh to 40dvh. */
   composing?: boolean;
   /** The mirror's chosen face (`mirrorFont`), so a card's `font-mono` rows and its Terminal mirror
@@ -298,6 +300,7 @@ function liftedCard({
   unreadSecret,
   cannotTell,
   signInHosts,
+  signInPending,
   answerExit,
 }: CardDockProps): ReactNode {
   // The exit of an answer that cannot go (M102 spec 10) stands in for the card whose answer did not go:
@@ -436,7 +439,13 @@ function liftedCard({
   if (autoBlock) return <AutocompleteBlock autocomplete={autoBlock.autocomplete} />;
   // Keyless like the popup, and for the same reason: the input box is live under the box it shows.
   const boxTextBlock = blocks.find((b): b is BoxBlock => b.kind === "box-text");
-  if (boxTextBlock) return <BoxTextBlock boxText={boxTextBlock.boxText} signInHosts={signInHosts !== undefined && signInHosts.length > 0 ? signInHosts : undefined} />;
+  if (boxTextBlock) return (
+      <BoxTextBlock
+        boxText={boxTextBlock.boxText}
+        signInHosts={signInHosts !== undefined && signInHosts.length > 0 ? signInHosts : undefined}
+        signInPending={signInPending}
+      />
+    );
   return null;
 }
 
