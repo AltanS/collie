@@ -3514,7 +3514,7 @@ export const PART_KEYS = {
 
 const PLACE_WORDS = {
   belt: "a belt part",
-  session: "a session part",
+  session: "a page part",
   dashboard: "a dashboard part",
   status: "a status part",
   tabbar: "a tabbar part",

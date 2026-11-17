@@ -304,7 +304,7 @@ export function TrickPlacesSection(): ReactNode {
             <TrickSpaceSection sessions={[LEGS_RED]} onOpen={IGNORE} />
           </Glass>
         </Card>
-        <Card state="trick-space-switch" label="10 · Switch session rows">
+        <Card state="trick-space-switch" label="10 · Switch space rows">
           <Glass>
             <TrickSessionRow pane={LEGS_PANE} variant="switch" active onOpen={IGNORE} />
             <TrickSessionRow pane={TRACKER_PANE} variant="switch" onOpen={IGNORE} />

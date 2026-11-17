@@ -64,7 +64,7 @@ test("edge taps on the pill, the floating button and a row", async ({ browser })
   const f: Finger = { ...(await finger(page)), radius: 1 };
   const edges: { [key: string]: Json } = {};
   const cases = [
-    { id: "session-pill", sel: 'button[aria-label^="Session: "]', side: "right" },
+    { id: "session-pill", sel: 'button[aria-label^="Space: "]', side: "right" },
     { id: "fab", sel: '[data-slot="fab"]', side: "right" },
     { id: "row-right", sel: '[data-glide-origin="pane"]', side: "right" },
     { id: "row-left", sel: '[data-glide-origin="pane"]', side: "left" },

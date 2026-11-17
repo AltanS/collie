@@ -109,10 +109,10 @@ function moveReason(from: string, to: string): string | null {
     return `scope change: host ${before.host} → ${after.host}, lands on that host's dashboard`;
   }
   if (before.session !== after.session) {
-    return `scope change: session ${before.session} → ${after.session}, lands on that session's dashboard`;
+    return `scope change: space ${before.session} → ${after.session}, lands on that space's dashboard`;
   }
   if (before.all !== after.all) {
-    const breadth = after.all ? "every session" : "this session only";
+    const breadth = after.all ? "every space" : "this space only";
     return `breadth change: ${breadth}, lands on the dashboard`;
   }
   return null;

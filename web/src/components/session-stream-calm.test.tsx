@@ -16,10 +16,17 @@ import type { ChatEntry } from "@/lib/types";
 beforeAll(() => {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
 });
-beforeEach(() => __resetPending());
-
 const ADDRESS = "w1:p1";
 const AT = Date.parse("2026-11-17T10:00:00.000Z");
+
+// The component reads `Date.now()` with no seam (a pending line expires after `PENDING_KEEP_MS`), and every line
+// here is stamped relative to `AT`. So the clock is pinned to `AT`: only `Date` is faked, never the timers.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(AT);
+  __resetPending();
+});
+afterEach(() => vi.useRealTimers());
 
 function entry(uuid: string, seq: number, text: string, over: Partial<ChatEntry> = {}): ChatEntry {
   return { uuid, seq, ts: "2026-11-17T09:59:00.000Z", role: "assistant", parts: [{ kind: "text", text }], ...over };
