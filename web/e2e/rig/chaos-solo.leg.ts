@@ -5,7 +5,7 @@
 // No model turn: every case sends `echo ...` into a shell pane. The cases whose world needs a seam the
 // rig lacks are skipped and name the seam (CHAOS_CASES in chaos-lib.ts).
 import { Rig, phoneOn, test } from "./leg";
-import { accountedFor, arrivals, chaosCase, chaosLine, phoneWords, recordChaos, restartLeadBridge, sendLine, sendLive, settled, shellPane, startLeadBridge, stopLeadBridge, type ChaosId } from "./chaos-lib";
+import { accountedFor, screenNote, arrivals, chaosCase, chaosLine, phoneWords, recordChaos, restartLeadBridge, sendLine, sendLive, settled, shellPane, startLeadBridge, stopLeadBridge, type ChaosId } from "./chaos-lib";
 import { muxOf, resizeDuring, sleep } from "./rig-lib";
 import { PHONE } from "./walky-lib";
 
@@ -55,6 +55,7 @@ test.describe("chaos on the solo rig", () => {
       const live = await sendLive(page);
       notes.push(live ? "Send is live again" : "Send stayed dead");
       const verdict = ok && live ? "pass" : "fail";
+      if (verdict === "fail") notes.push(await screenNote(rig, paneId));
       recordChaos({ id: "bridge-dies-mid-send", verdict, note: notes.join("; "), taps: [tapLog] });
       test.expect(verdict, notes.join("; ")).toBe("pass");
     } finally {
@@ -95,6 +96,7 @@ test.describe("chaos on the solo rig", () => {
       const live = (await sendLive(one.page)) && (await sendLive(two.page));
       notes.push(live ? "both Send buttons are live again" : "a Send button stayed dead");
       const verdict = ok && live ? "pass" : "fail";
+      if (verdict === "fail") notes.push(await screenNote(rig, paneId));
       recordChaos({ id: "two-bridges-one-pane", verdict, note: notes.join("; "), taps: [tapOne, tapTwo] });
       test.expect(verdict, notes.join("; ")).toBe("pass");
     } finally {
@@ -126,6 +128,7 @@ test.describe("chaos on the solo rig", () => {
       const live = await sendLive(page);
       notes.push(live ? "Send is live again" : "Send stayed dead");
       const verdict = ok && live ? "pass" : "fail";
+      if (verdict === "fail") notes.push(await screenNote(rig, paneId));
       recordChaos({ id: "resize-mid-send", verdict, note: notes.join("; "), taps: [ran.result] });
       test.expect(verdict, notes.join("; ")).toBe("pass");
     } finally {
@@ -160,6 +163,7 @@ test.describe("chaos on the solo rig", () => {
       const live = await sendLive(phone.page);
       notes.push(live ? "Send is live again" : "Send stayed dead");
       const verdict = ok && live ? "pass" : "fail";
+      if (verdict === "fail") notes.push(await screenNote(rig, paneId));
       recordChaos({ id: "slow-mux", verdict, note: notes.join("; "), taps: [tapLog] });
       test.expect(verdict, notes.join("; ")).toBe("pass");
     } finally {
@@ -192,6 +196,7 @@ test.describe("chaos on the solo rig", () => {
       const live = (await sendLive(one.page)) && (await sendLive(two.page));
       notes.push(live ? "both Send buttons are live again" : "a Send button stayed dead");
       const verdict = okOne && okTwo && live ? "pass" : "fail";
+      if (verdict === "fail") notes.push(await screenNote(rig, paneId));
       recordChaos({ id: "second-phone", verdict, note: notes.join("; "), taps: [tapOne, tapTwo] });
       test.expect(verdict, notes.join("; ")).toBe("pass");
     } finally {

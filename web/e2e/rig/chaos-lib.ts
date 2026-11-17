@@ -150,11 +150,12 @@ export function arrivals(screen: string, line: string): number {
 }
 
 /**
- * The words the phone shows about the last input: the composer's status area and every notice or
+ * The words the phone shows about the last input: the composer's status area, the send refusal notice
+ * (`SendRefusalNotice` sets no live-region role, so the role selectors alone miss it) and every notice or
  * alert. Empty when it says nothing.
  */
 export async function phoneWords(page: Page): Promise<string> {
-  const parts = await page.locator('[data-slot="status-area"], [role="status"], [role="alert"]').allInnerTexts();
+  const parts = await page.locator('[data-slot="status-area"], [data-slot="composer-refusal"], [data-slot="composer-refusal-detail"], [role="status"], [role="alert"]').allInnerTexts();
   return parts
     .map((part) => part.trim())
     .filter((part) => part !== "")
@@ -188,6 +189,12 @@ export async function settled(rig: Rig, page: Page, paneId: string, host: Host, 
 /** The invariant of the chaos leg for one input: it arrived at most once, and an input that did not arrive has words on the phone. */
 export function accountedFor(arrived: number, words: string): boolean {
   return arrived <= 1 && (arrived === 1 || words !== "");
+}
+
+/** The last rows of a pane's screen, one line, for a failing case's note (what the shell really holds). */
+export async function screenNote(rig: Rig, paneId: string, host?: Host): Promise<string> {
+  const rows = (await rig.screen(paneId, 80, host).catch(() => "")).split("\n").map((row) => row.trim()).filter((row) => row !== "");
+  return `screen: ${rows.slice(-8).join(" / ")}`;
 }
 
 /** The Send button is live again (not disabled, not aria-disabled) once the input ended. */
