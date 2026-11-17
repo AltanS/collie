@@ -320,9 +320,9 @@ machine ([Launchers added from a phone](configure.md#launchers-added-from-a-phon
 permission prompts carries a **No prompts** badge, and the phone asks you once before it first starts
 it.
 
-**Send waits for the agent's first screen.** After a start, the header reads Starting… and Send waits. Your draft stays
-editable. Collie sends nothing on its own, so a dialog such as workspace trust shows before any text
-reaches the agent. Send is ready once Collie reads the agent's first screen, the agent leaves the
+**Send waits for the agent's first screen.** After a start, the header reads Starting…, and the box is off with Starting… as its hint. A
+draft you typed before is kept and is editable again when the box comes back. Collie sends nothing on its own, so a dialog such as workspace trust shows before any text
+reaches the agent. The box and Send are ready once Collie reads the agent's first screen, the agent leaves the
 pane, or two minutes pass.
 
 A refused Start shows its reason in a notice above Start, in your language. A folder that does not

@@ -252,4 +252,15 @@ describe("HeaderStatus — a condition holds the title while it is true", () => 
     act(() => clearStatus());
     expect(screen.getByRole("status")).toHaveTextContent("Starting…");
   });
+
+  it("keeps the condition over a word published beside the title: there is no name for it to stand beside", () => {
+    render(
+      <HeaderStatus condition={starting}>
+        <span>webapp › main</span>
+      </HeaderStatus>,
+    );
+    act(() => setStatus("Sent", "success", undefined, true));
+    expect(screen.getByRole("status")).toHaveTextContent("Starting…");
+    expect(screen.queryByText("Sent")).toBeNull();
+  });
 });

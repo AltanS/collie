@@ -66,12 +66,22 @@ describe("AgentChat: a launch's startup gate", () => {
     const user = userEvent.setup();
     const sent = vi.fn();
     server.use(...sendHandler((request) => { sent(request.text); return sendAnswer(request.id, "sent"); }));
-    const view = mount({ agent: shell, inStrip });
+    // A plain shell takes a command: the box is usable until the launch starts, and a draft typed then is kept.
+    const view = mount({ agent: shell, inStrip, agentLaunch: undefined });
     const box = screen.getByRole("textbox");
     expect(box).not.toBeDisabled();
+    expect(box).toHaveAttribute("placeholder", "Type a shell command…");
     await user.type(box, "draft survives startup");
-    // The header says it, in its title slot and on the mark; the composer carries no notice.
+    expect(startingTitle()).toBeNull();
+    view.update({ agentLaunch: launch });
+    // The header says it, in its title slot and on the mark; the box is off, with "Starting…" as its placeholder, and
+    // no row of the composer carries a notice.
     expect(startingTitle()).toBeInTheDocument();
+    expect(startingTitle()).toHaveTextContent("Starting…");
+    expect(box).toBeDisabled();
+    expect(box).toHaveAttribute("placeholder", "Starting…");
+    expect(box).toHaveValue("draft survives startup");
+    expect(screen.getAllByText("Starting…")).toHaveLength(1);
     expect(startingBeads()).toBe("var(--status-info)");
     expect(screen.getByRole("button", { name: /^Send$/ })).toHaveAttribute("aria-disabled", "true");
     fireEvent.keyDown(box, { key: "Enter", metaKey: true });
@@ -85,7 +95,12 @@ describe("AgentChat: a launch's startup gate", () => {
     expect(view.onReady).toHaveBeenCalledOnce();
     expect(startingTitle()).toBeNull();
     expect(startingBeads()).toBe("");
+    // The box is back, editable, with the kept draft; the placeholder is the pane's own again.
+    expect(box).not.toBeDisabled();
     expect(box).toHaveValue("draft survives startup");
+    await user.type(box, "!");
+    expect(box).toHaveValue("draft survives startup!");
+    await user.type(box, "{Backspace}");
     view.update({ agentLaunch: undefined });
     expect(sent).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: /^Send$/ }));
@@ -94,8 +109,10 @@ describe("AgentChat: a launch's startup gate", () => {
 
   it("opens on a dialog the bridge lifted, and the composer's own answer slot takes it", async () => {
     const user = userEvent.setup();
-    const view = mount({ agent: shell });
+    const view = mount({ agent: shell, agentLaunch: undefined });
     await user.type(screen.getByRole("textbox"), "kept");
+    view.update({ agentLaunch: launch });
+    expect(screen.getByRole("textbox")).toBeDisabled();
     view.update({ text: TRUST, agent: { ...known, surface: ASK } });
     await waitFor(() => expect(screen.getByRole("button", { name: "Answer the dialog" })).toBeInTheDocument());
     expect(view.onReady).toHaveBeenCalledOnce();
@@ -121,6 +138,8 @@ describe("AgentChat: a launch's startup gate", () => {
     server.use(...sendHandler((request) => { sent(request.text); return sendAnswer(request.id, "sent"); }));
     mount({ agentLaunch: undefined, agent });
     await user.type(screen.getByRole("textbox"), "ordinary text");
+    expect(screen.getByRole("textbox")).not.toBeDisabled();
+    expect(screen.getByRole("textbox")).not.toHaveAttribute("placeholder", "Starting…");
     expect(startingTitle()).toBeNull();
     expect(startingBeads()).toBe("");
     await user.click(screen.getByRole("button", { name: /^Send$/ }));
