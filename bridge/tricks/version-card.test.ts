@@ -546,7 +546,8 @@ describe("the card's words and view", () => {
     const same = versionCard({ ...base, pending: { ...pending, manifest: { ...pending.manifest! } } }, diff);
     expect(same?.summary).not.toContain(VERSION_TOO_MUCH_START);
     expect(same?.options?.map((option) => option.intent)).toEqual(["keep"]);
-    const shows = versionCard({ ...base, pending: { ...pending, manifest: { ...pending.manifest! } } }, { counted: true, files: files.slice(0, 1) });
+    // Every changed file whole and as it is (A5: a card that cannot show every byte offers no yes).
+    const shows = versionCard({ ...base, pending: { ...pending, manifest: { ...pending.manifest! } } }, DIFF);
     expect(shows?.options?.map((option) => option.intent)).toContain("use");
   });
 

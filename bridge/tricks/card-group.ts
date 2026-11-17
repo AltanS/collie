@@ -6,7 +6,7 @@ import { HELPER_FILE, shippedHelperVersion } from "./scan.ts";
 import { NOTES_FILE, NOTES_VERSION, shippedNotesTexts, shippedNotesVersion } from "./agents-notes.ts";
 import type { ProposedFile } from "./propose-wire.ts";
 import { bytesOf, cellPath, checked, countCell } from "./version-card.ts";
-import { noLineChange, readViewLine, VIEW_GAP_MAX, type ChangedFile, type VersionDiff } from "./version-diff.ts";
+import { noLineChange, readViewLine, VIEW_GAP_MAX, type ChangedFile, type VersionDiff, type ViewLineRead } from "./version-diff.ts";
 
 // A GROUP OF CARDS (crew slice 8): the code of a trick that does not fit one card, shown whole on up to
 // seven more. Card 1 is Collie's facts (proposal-card.ts, version-card.ts); this module lays out cards 2
@@ -170,7 +170,23 @@ export function shippedNotesDiff(file: Pick<ProposedFile, "rel" | "bytes">, id: 
   }
   const plus = best.filter(([op]) => op === "+").length;
   const minus = best.filter(([op]) => op === "-").length;
-  return { rel: file.rel, change: "changed", plus, minus, hunk };
+  const changed: ChangedFile = { rel: file.rel, change: "changed", plus, minus, hunk };
+  // Held to the rule of any code (A5): a line of the notes the mask changes (a key, a hidden character as `?`)
+  // marks the file cut, so a proposal is refused as it is for code. Every line of the notes counts: a line the
+  // diff leaves out is a line of the shipped notes, which reads as it is anyway.
+  markRead(changed, now.map((line) => readViewLine(line)));
+  return changed;
+}
+
+/** Mark a file whose lines the mask changed (`cut`, `masked`, `strayCr`) or that holds a wide gap, as the diff does. */
+function markRead(file: ChangedFile, read: readonly ViewLineRead[]): void {
+  const masked = read.filter((line) => line.masked);
+  if (masked.length > 0) {
+    file.cut = true;
+    file.masked = masked.length;
+  }
+  if (masked.length > 0 && masked.every((line) => line.strayCr)) file.strayCr = true;
+  if (read.some((line) => line.gap)) file.gap = true;
 }
 
 /** The words at a file's seam between two cards. */
@@ -237,13 +253,7 @@ export function addedFile(file: Pick<ProposedFile, "rel" | "bytes">): ChangedFil
   if (read.length === 0) return { rel: file.rel, change: "added", plus: 0, minus: 0, hunk: [noLineChange(file.rel, "added")] };
   const hunk = [`@@ -0,0 +1,${String(read.length)} @@`, ...read.map((line) => `+${line.line}`)];
   const changed: ChangedFile = { rel: file.rel, change: "added", plus: read.length, minus: 0, hunk };
-  const masked = read.filter((line) => line.masked);
-  if (masked.length > 0) {
-    changed.cut = true;
-    changed.masked = masked.length;
-  }
-  if (masked.length > 0 && masked.every((line) => line.strayCr)) changed.strayCr = true;
-  if (read.some((line) => line.gap)) changed.gap = true;
+  markRead(changed, read);
   return changed;
 }
 
@@ -416,7 +426,8 @@ export function codeGroup(files: readonly ChangedFile[], run: string | null, mas
   const read: GroupFile[] = [];
   for (const file of ordered) {
     const one = groupFile(file);
-    if (one === null) return { ok: false, code: "cannot_show", error: GROUP_NOT_TEXT };
+    // A text file too large for git to count is too large, not a file that is no text (A5).
+    if (one === null) return file.big === true ? { ok: false, code: "too_large", error: GROUP_TOO_LARGE } : { ok: false, code: "cannot_show", error: GROUP_NOT_TEXT };
     read.push(one);
   }
   // Too large first: a cut git output is far past the capacity, and is no masked line.

@@ -48,7 +48,7 @@ import { envPath, scrubEnv, type ProgramEnv } from "./env.ts";
 import { HOST, hostFor, type Host } from "../host.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import type { TrickInputs } from "./inputs.ts";
-import { codeFile, codeIndex, codeSource, type CodeFile, type CodeIndex } from "./code-view.ts";
+import { codeFile, codeIndex, codeShowsWhole, codeSource, type CodeFile, type CodeIndex } from "./code-view.ts";
 import { readTrickMedia, type TrickMediaFile } from "./media.ts";
 import { isUnlistedOfficialOrigin, shippedOfficialList, type OfficialEntry } from "./official.ts";
 import { originRepoName, type ProposalOrigin } from "./origin.ts";
@@ -396,7 +396,7 @@ export type ProposalPlaced = { ok: true; codeHash: string } | { ok: false; messa
 export type SwitchAnswer =
   | { status: 200; body: WireTrickInfo }
   | { status: 400; body: { error: "switch-invalid" } }
-  | { status: 409; body: { error: "moved" | "windows" | "windows-shell" | "tricks-off"; message: string } }
+  | { status: 409; body: { error: "moved" | "windows" | "windows-shell" | "tricks-off" | "not-whole"; message: string } }
   | { status: 404; body: { error: "unknown-host" | "unknown-trick" } };
 
 export interface TricksServiceDeps {
@@ -2494,6 +2494,12 @@ export class TricksService implements TricksSurface {
     // Fault d: on Windows a shell run line is not switched on (behind the gate in `setSwitch` today).
     const shell = on ? windowsRunProblem((rt.pending?.manifest ?? rt.found.manifest)?.run, this.deps.platform) : null;
     if (shell !== null) return { status: 409, body: { error: "windows-shell", message: shell } };
+    // A5: no switch on outside a card of code the About sheet cannot show whole and as it is (code-view.ts).
+    if (on && expect !== undefined) {
+      const whole = await codeShowsWhole({ dir: rt.pending?.dir ?? rt.found.dir, hash: expect }, id);
+      // Bytes that no longer hash to what the row showed read as a move, as above.
+      if (!whole.ok) return { status: 409, body: whole.code === "not-whole" ? { error: "not-whole", message: whole.message } : { error: "moved", message: SWITCH_MOVED } };
+    }
     const at = new Date(this.now()).toISOString();
     if (!on) await updateSwitches(this.deps.stateDir, (switches) => withSwitch(switches, id, false, at));
     // On with a version waiting: that snapshot is what the row showed, so it is what is approved. Else the

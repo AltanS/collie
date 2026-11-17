@@ -11,6 +11,7 @@ import type { AgentView } from "../types.ts";
 import { legacyPowersOf, powersOf, powersOfDir } from "./approved.ts";
 import { factsWorldOf, NO_FACTS_CAPS, type FactsWorldInput } from "./facts.ts";
 import { trickCodeHash } from "./code-hash.ts";
+import { switchMasked } from "./code-view.ts";
 import { approvedCopyDir, pendingCopyDir, TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { payloadDigest } from "../worktree-receipts.ts";
@@ -486,6 +487,15 @@ describe("the switch route", () => {
     const off = await r.service.setSwitch(HOST, "legs", false);
     expect(off).toMatchObject({ status: 200, body: { id: "legs", on: false, state: "off" } });
     expect(JSON.parse(await readFile(join(r.stateDir, "tricks", "switches.json"), "utf8")).on).toEqual({});
+  });
+
+  test("A5: code the About sheet cannot show as it is (a key here) is not switched on, and nothing is approved", async () => {
+    const r = await rig([exited(belt("1"))]);
+    // A placeholder of a key's shape: the secret mask changes the line.
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": '#!/bin/sh\nKEY="sk-or-v1-your-key-here-placeholder00"\n' });
+    await r.service.refresh(true);
+    expect(await r.service.setSwitch(HOST, "legs", true)).toEqual({ status: 409, body: { error: "not-whole", message: switchMasked("legs.sh", "legs") } });
+    expect(await readFile(join(r.stateDir, "tricks", "switches.json"), "utf8").catch(() => null)).toBeNull();
   });
 
   test("a switch keeps the other tricks' switches", async () => {

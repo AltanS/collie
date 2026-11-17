@@ -7,7 +7,7 @@ import { WARN_PLAIN } from "./scan.ts";
 import { addedDiff, codeGroup, changeCells, filesOnCards, GROUP_WIDE_GAP, groupOrder, helperNote, notesChangedNote, placesTables, shippedHelpers, shippedNotesDiff, sizeWords, type GroupRefusal, type ShippedFile } from "./card-group.ts";
 import { ACCESS_CHIPS, accessLine, asksForChange, asksForLines, bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, listWords, newInputs, newRights, ON_CHIP, placeWords, raisedAccess, rightsHead, runsAsYou, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
 import { PROPOSAL_SETTINGS_LEFT, type ProposedFile } from "./propose-wire.ts";
-import type { VersionDiff } from "./version-diff.ts";
+import { canRunLine, type VersionDiff } from "./version-diff.ts";
 
 // THE PROPOSAL CARD (crew slice 8): one Decision of Collie's own on the lead's Hill for each trick an agent
 // or a terminal proposed with `collie trick propose`. Nothing of the trick runs before the person's yes.
@@ -80,6 +80,13 @@ export interface ProposalCardInput {
   notesChanged?: boolean;
   /** The trick needs the settings file it leaves behind (propose-wire.ts `settingsLeft`): card 1 says so. */
   settingsLeft?: boolean;
+  /** The files the proposal marks executable: the card says each can run as a program (A5). */
+  executable?: ReadonlySet<string>;
+}
+
+/** One line for each file a new trick marks executable, in path order (A5). */
+function canRunLines(executable: ReadonlySet<string> | undefined): ViewNode[] {
+  return [...(executable ?? [])].toSorted().map((rel): ViewNode => ({ kind: "para", text: canRunLine(rel) }));
 }
 
 /** The line a card 1 carries for a trick that needs the settings file it leaves behind, or none. */
@@ -267,7 +274,7 @@ export function proposalCard(input: ProposalCardInput): ProposalCardResult {
   const reads = manifest.inputs ?? [];
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It ${alsoWords}.` : "It asks for no rights.";
-  const head = [...runsAsYou(manifest), ...accessLine(manifest.access), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...settingsLines(input.settingsLeft)];
+  const head = [...runsAsYou(manifest), ...accessLine(manifest.access), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...canRunLines(input.executable), ...settingsLines(input.settingsLeft)];
   // Contract 3: what the trick will ask the person for, its fields by label.
   head.push(...asksForLines(manifest));
   const words = authorWords(manifest);
@@ -306,10 +313,11 @@ export type ProposalCardCount = { ok: true; cards: number } | Extract<ProposalCa
  * trick counts, so a version is held to the same rule; the lead counts again on its own diff. The
  * proposer is a stand-in: the lead's sentence names the session, a few words longer.
  */
-export function proposalCardCount(input: Pick<ProposalCardInput, "manifest" | "warnings" | "crew"> & { files: readonly Pick<ProposedFile, "rel" | "bytes">[] }): ProposalCardCount {
+export function proposalCardCount(input: Pick<ProposalCardInput, "manifest" | "warnings" | "crew"> & { files: readonly (Pick<ProposedFile, "rel" | "bytes"> & { executable?: boolean })[] }): ProposalCardCount {
   const sizes = new Map(input.files.map((file) => [file.rel, file.bytes.byteLength]));
   const proposer: ProposerFacts = { by: "agent", host: "this machine", label: null };
-  const made = proposalCard({ id: input.manifest.id, manifest: input.manifest, proposer, warnings: input.warnings, crew: input.crew, sizes, ...proposalDiff(input.manifest.id, input.files) });
+  const executable = new Set(input.files.filter((file) => file.executable === true).map((file) => file.rel));
+  const made = proposalCard({ id: input.manifest.id, manifest: input.manifest, proposer, warnings: input.warnings, crew: input.crew, sizes, executable, ...proposalDiff(input.manifest.id, input.files) });
   if (!made.ok) return made;
   return { ok: true, cards: made.card.group?.parts.length ?? 1 };
 }
