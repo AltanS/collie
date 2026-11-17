@@ -68,6 +68,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The word "session" means an agent session only.** The switcher, its "All spaces" row and the error for an unknown one say "space" for a Herdr, tmux or zellij group. The update texts say that your terminal and agents keep running. A trick's own screen is a "page", and the 5-hour usage window reads "5 hours". The `collie config` text of `multi_session` and a line of `collie crew` follow.
 - **One name for one action: Send anyway.** The unread screen card said "Send past this screen" where the composer said "Send anyway". Both say "Send anyway" now, and the notice that tells you to tap it again names it the same. The notice for a draft Collie cannot read names its button "Empty the box".
 - **Accounts are now called profiles.** The Settings row, its pages, the session's tag, the New page and the docs say profile. A profile holds one login at a time, and Change login changes that login.
+- **The Profiles page explains a profile in one line.** The page opens with "A profile is signed in on its own." and a More that opens an example, Work beside Default, and says you pick the profile when you start a session and the session stays in it. More starts closed on every visit.
+- **Change login says what changes before you tap.** The page opens with "This profile gets another login.", then "Its sessions follow." for an agent whose sessions follow, or the existing line for new sessions only, and "Your other profiles keep their login." when the agent has more than one profile.
+- **Change login lists the sessions it reaches.** Under the count, each session that runs in the profile shows its name and its space, and a tap opens it. For an agent whose sessions follow, a line adds that sessions outside Collie that use the profile follow too. With no session running, no list and no line show.
+- **The Profiles list shows how many sessions run.** A profile row says "1 session" or "3 sessions" where it said "In use now". A profile where only a sign-in session runs keeps "In use now".
+- **Two profiles with the same login say so.** When two profiles of one agent are signed in with the same email, in any letter case, each shows "Same login as" and the other's name, on the Profiles list and on its own page.
 
 ### Fixed
 

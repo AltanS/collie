@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { HARNESS_CLAUDE, HARNESS_CODEX, workRow } from "@/test/accounts-fixtures";
-import { cameFromSession, flowOf, forgetFlow, loginChanged, offersChangeLogin, reachOf, rememberFlow, resultOf } from "./change-login";
+import type { AgentView, ServerSummary } from "@/lib/types";
+import { defaultRow, HARNESS_CLAUDE, HARNESS_CODEX, workRow } from "@/test/accounts-fixtures";
+import { cameFromSession, flowOf, forgetFlow, hasOtherProfiles, loginChanged, offersChangeLogin, reachOf, reachedSessions, rememberFlow, resultOf } from "./change-login";
 
 // Change login's pure rules (M101): who reads signed in, what the sessions that run do, and the result.
 
@@ -23,6 +24,50 @@ describe("reachOf", () => {
     expect(reachOf(claude, workRow())).toEqual({ kind: "running", count: 0 });
     expect(reachOf(HARNESS_CODEX, workRow({ running: 2 }))).toEqual({ kind: "newOnly" });
     expect(reachOf(undefined, workRow({ running: 2 }))).toEqual({ kind: "newOnly" });
+  });
+});
+
+describe("hasOtherProfiles", () => {
+  it("Default alone or an added profile alone has none; two of one agent have, and another agent's does not count", () => {
+    expect(hasOtherProfiles([defaultRow()], defaultRow())).toBe(false);
+    expect(hasOtherProfiles([defaultRow(), workRow()], workRow())).toBe(true);
+    expect(hasOtherProfiles([defaultRow(), workRow()], defaultRow())).toBe(true);
+    const codex = defaultRow({ id: "codex:default", harness: "codex" });
+    expect(hasOtherProfiles([defaultRow(), codex], defaultRow())).toBe(false);
+  });
+});
+
+describe("reachedSessions", () => {
+  const pane = (paneId: string, over: Partial<AgentView> = {}): AgentView => ({
+    paneId,
+    workspaceId: "w1",
+    workspaceLabel: "lodge",
+    workspaceNumber: 1,
+    tabId: "w1:t1",
+    agent: "claude",
+    status: "working",
+    cwd: "/home/dev/lodge",
+    focused: false,
+    ...over,
+  });
+
+  it("names each pane by the app's one name rule and its space, in the row's order, and skips an unknown id", () => {
+    const agents = [pane("w1:p1", { sessionName: "Fix the build" }), pane("w2:p1", { workspaceId: "w2", workspaceLabel: "workshop", agentTitle: "Docs" })];
+    const row = workRow({ panes: ["w2:p1", "w9:p9", "w1:p1"] });
+    expect(reachedSessions(row, { agents })).toEqual([
+      { paneId: "w2:p1", name: "Docs", space: "workshop" },
+      { paneId: "w1:p1", name: "Fix the build", space: "lodge" },
+    ]);
+  });
+
+  it("is empty for a row with no panes, and never reads a pane of another machine", () => {
+    expect(reachedSessions(workRow(), { agents: [pane("w1:p1")] })).toEqual([]);
+    const servers: ServerSummary[] = [
+      { id: "lead", name: "lead", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 0 },
+      { id: "member", name: "member", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 0 },
+    ];
+    const agents = [pane("w1:p1", { host: "member", sessionName: "Theirs" })];
+    expect(reachedSessions(workRow({ panes: ["w1:p1"] }), { agents, servers })).toEqual([]);
   });
 });
 

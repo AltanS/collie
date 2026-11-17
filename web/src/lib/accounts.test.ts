@@ -15,6 +15,9 @@ import {
   newFolderFor,
   planWords,
   rememberStartError,
+  listSeenLine,
+  sameLoginAs,
+  sameLoginLine,
   seenLine,
   signedInText,
   slugOf,
@@ -24,6 +27,7 @@ import {
   windowDetail,
   windowFigure,
   windowName,
+  type AccountRow,
 } from "./accounts";
 
 const NOW = Date.UTC(2026, 10, 15, 12, 0, 0);
@@ -66,6 +70,57 @@ describe("accounts: the windows are the harness's own", () => {
     expect(seenLine(workRow({ live: true, seenAt: NOW }), NOW)).toBe("In use now");
     expect(seenLine(workRow({ seenAt: NOW - 5 * 60_000 }), NOW)).toMatch(/^Last seen 5.*m.* ago$/);
     expect(seenLine(workRow(), NOW)).toBeNull();
+  });
+});
+
+describe("listSeenLine", () => {
+  it("counts the sessions that run, one and many, ahead of 'In use now'", () => {
+    expect(listSeenLine(workRow({ live: true, running: 1 }), NOW)).toBe("1 session");
+    expect(listSeenLine(workRow({ live: true, running: 2 }), NOW)).toBe("2 sessions");
+  });
+
+  it("keeps 'In use now' while only a sign-in session runs, and the age of the reading otherwise", () => {
+    expect(listSeenLine(workRow({ live: true, running: 0 }), NOW)).toBe("In use now");
+    expect(listSeenLine(workRow({ live: true }), NOW)).toBe("In use now");
+    expect(listSeenLine(workRow({ seenAt: NOW - 5 * 60_000 }), NOW)).toMatch(/^Last seen 5.*m.* ago$/);
+    expect(listSeenLine(workRow(), NOW)).toBeNull();
+  });
+});
+
+describe("sameLoginAs", () => {
+  const ME = { signedIn: true, email: "me@example.com" };
+  const rowOf = (id: string, label: string, identity: AccountRow["identity"], over: Partial<AccountRow> = {}) => workRow({ id, label, identity, ...over });
+
+  it("finds another profile of the agent with the same email, in any letter case", () => {
+    const rows = [defaultRow({ identity: ME }), rowOf("acc-work", "Work", { signedIn: true, email: "ME@Example.com" })];
+    expect(sameLoginAs(rows, rows[0]!)?.id).toBe("acc-work");
+    expect(sameLoginAs(rows, rows[1]!)?.id).toBe("claude:default");
+    expect(sameLoginLine(rows, rows[1]!)).toBe("Same login as Default.");
+    expect(sameLoginLine(rows, rows[0]!)).toBe("Same login as Work.");
+  });
+
+  it("gives nothing for a different email, another agent, a profile not signed in, or no email", () => {
+    const base = defaultRow({ identity: ME });
+    expect(sameLoginAs([base, rowOf("a", "A", { signedIn: true, email: "other@example.com" })], base)).toBeUndefined();
+    expect(sameLoginAs([base, rowOf("b", "B", ME, { harness: "codex" })], base)).toBeUndefined();
+    expect(sameLoginAs([base, rowOf("c", "C", { signedIn: false, email: "me@example.com" })], base)).toBeUndefined();
+    expect(sameLoginAs([base, rowOf("d", "D", { signedIn: true })], base)).toBeUndefined();
+    expect(sameLoginAs([{ ...base, identity: { signedIn: false, email: "me@example.com" } }, rowOf("e", "E", ME)], { ...base, identity: { signedIn: false, email: "me@example.com" } })).toBeUndefined();
+    expect(sameLoginAs([base, rowOf("f", "F", undefined)], base)).toBeUndefined();
+    expect(sameLoginAs([base], base)).toBeUndefined();
+    expect(sameLoginLine([base], base)).toBeNull();
+  });
+
+  it("with three rows each names the first OTHER match, and a third with another login has none", () => {
+    const one = defaultRow({ identity: ME });
+    const two = rowOf("acc-work", "Work", ME);
+    const three = rowOf("acc-lodge", "Lodge", ME);
+    const apart = rowOf("acc-shop", "Workshop", { signedIn: true, email: "shop@example.com" });
+    const rows = [one, two, three, apart];
+    expect(sameLoginLine(rows, one)).toBe("Same login as Work.");
+    expect(sameLoginLine(rows, two)).toBe("Same login as Default.");
+    expect(sameLoginLine(rows, three)).toBe("Same login as Default.");
+    expect(sameLoginLine(rows, apart)).toBeNull();
   });
 });
 

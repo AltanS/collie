@@ -68,6 +68,33 @@ describe("Settings: the Accounts row", () => {
   });
 });
 
+describe("Accounts: the intro", () => {
+  it("is one line with a closed More, and More opens the example in place and Less closes it", async () => {
+    serveAccounts(body());
+    mount("/settings/accounts");
+    expect(await screen.findByText("A profile is signed in on its own.")).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "More" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/For example, Work with your work subscription/)).toBeNull();
+    await userEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Less" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/For example, Work with your work subscription beside Default with your personal one\. You pick the profile when you start a session, and the session stays in it\./)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Less" }));
+    await waitFor(() => expect(screen.queryByText(/For example, Work/)).toBeNull());
+  });
+
+  it("starts closed on every visit and stores nothing", async () => {
+    serveAccounts(body());
+    mount("/settings/accounts");
+    await userEvent.click(await screen.findByRole("button", { name: "More" }));
+    cleanup();
+    const before = JSON.stringify({ ...localStorage });
+    mount("/settings/accounts");
+    expect(await screen.findByRole("button", { name: "More" })).toHaveAttribute("aria-expanded", "false");
+    expect(JSON.stringify({ ...localStorage })).toBe(before);
+  });
+});
+
 describe("Accounts: the list", () => {
   it("shows Default alone with the add button and no found block", async () => {
     serveAccounts(body());
@@ -181,6 +208,32 @@ describe("Accounts: the list", () => {
     expect(await screen.findByText("reset")).toBeInTheDocument();
     expect(screen.getByText(/^In use now · /)).toBeInTheDocument();
     expect(screen.getByText(/^Last seen .*ago · ~\/\.claude-work$/)).toBeInTheDocument();
+  });
+
+  it("a row says how many sessions run in place of 'In use now': 1, 2, and live with none counted", async () => {
+    serveAccounts(
+      body({
+        accounts: [
+          defaultRow({ live: true, running: 1 }),
+          workRow({ live: true, running: 2 }),
+          workRow({ id: "acc-spare", label: "Spare", folder: "~/.claude-spare", live: true, running: 0 }),
+          workRow({ id: "acc-idle", label: "Idle", folder: "~/.claude-idle", live: true }),
+        ],
+      }),
+    );
+    mount("/settings/accounts");
+    expect(await screen.findByText(/^1 session · /)).toBeInTheDocument();
+    expect(screen.getByText(/^2 sessions · ~\/\.claude-work$/)).toBeInTheDocument();
+    // Only a sign-in session runs: the old words, whether the count is 0 or absent.
+    expect(screen.getByText(/^In use now · ~\/\.claude-spare$/)).toBeInTheDocument();
+    expect(screen.getByText(/^In use now · ~\/\.claude-idle$/)).toBeInTheDocument();
+    expect(screen.queryByText(/^1 session · .*In use now/)).toBeNull();
+  });
+
+  it("a row with no session and no live pane keeps the age of the reading", async () => {
+    serveAccounts(body({ accounts: [workRow({ seenAt: Date.now() - 2 * 3600_000, running: 0 })] }));
+    mount("/settings/accounts");
+    expect(await screen.findByText(/^Last seen .*ago · ~\/\.claude-work$/)).toBeInTheDocument();
   });
 
   it("a row opens the account's page", async () => {
@@ -450,6 +503,38 @@ describe("Accounts: Add", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create and sign in" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/accounts/acc-work"));
     expect(await screen.findByText(/The sign-in did not start: /)).toBeInTheDocument();
+  });
+});
+
+describe("Accounts: the same login twice", () => {
+  const ME = { signedIn: true, email: "me@example.com", plan: "max" };
+
+  it("each of two profiles with one login names the other, on the list and on the profile's page", async () => {
+    serveAccounts(body({ accounts: [defaultRow({ identity: ME }), workRow({ identity: { ...ME, email: "Me@Example.com" } })] }));
+    const router = mount("/settings/accounts");
+    expect(await screen.findByText("Same login as Work.")).toBeInTheDocument();
+    expect(screen.getByText("Same login as Default.")).toBeInTheDocument();
+    await router.navigate("/settings/accounts/acc-work");
+    expect(await screen.findByText("Signed in as")).toBeInTheDocument();
+    expect(screen.getByText("Same login as Default.")).toBeInTheDocument();
+    expect(screen.queryByText("Same login as Work.")).toBeNull();
+  });
+
+  it("is not said for different logins, another agent's profile, or a profile not signed in", async () => {
+    serveAccounts(
+      body({
+        harnesses: [HARNESS_CLAUDE, HARNESS_CODEX],
+        accounts: [
+          defaultRow({ identity: ME }),
+          workRow({ identity: { signedIn: true, email: "other@example.com" } }),
+          defaultRow({ id: "codex:default", harness: "codex", folder: "~/.codex", identity: ME }),
+          workRow({ id: "acc-spare", label: "Spare", folder: "~/.claude-spare", identity: { signedIn: false, email: "me@example.com" } }),
+        ],
+      }),
+    );
+    mount("/settings/accounts");
+    expect(await screen.findByText("Spare")).toBeInTheDocument();
+    expect(screen.queryByText(/Same login as/)).toBeNull();
   });
 });
 

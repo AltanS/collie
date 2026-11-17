@@ -13,10 +13,10 @@ import { PaneSettingsView } from "@/components/pane-settings-sheet";
 import { BottomBar } from "@/components/ui/bottom-bar";
 import { Button } from "@/components/ui/button";
 import { ListGroup } from "@/components/ui/list-group";
-import type { AccountHarness, AccountRow } from "@/lib/accounts";
+import { sameLoginLine, type AccountHarness, type AccountRow } from "@/lib/accounts";
 import type { BoxTextModel } from "@/lib/blocks";
 import { t } from "@/lib/i18n";
-import { AccountListRow, SignedInRow } from "@/routes/settings-accounts";
+import { AccountListRow, IntroLines, SignedInRow } from "@/routes/settings-accounts";
 import { ChangeLoginBeforeView, ChangeLoginResultView, ChangeLoginRunningView } from "@/routes/settings-change-login";
 
 import { Card, Group, Section, type SectionDef } from "../layout";
@@ -25,7 +25,7 @@ export const DEF: SectionDef = {
   id: "accounts",
   title: "Profiles",
   intent:
-    "Who is signed in on each profile, from the agent's own status command: the email under the profile's name in the list, its middle given up when it does not fit, and one row on the profile's page with the full address and the plan. A profile that is not signed in says so; an agent that cannot tell shows what it showed before.",
+    "Who is signed in on each profile, from the agent's own status command: the email under the profile's name in the list, its middle given up when it does not fit, and one row on the profile's page with the full address and the plan. A profile that is not signed in says so; an agent that cannot tell shows what it showed before. A profile row counts the sessions that run in it, two profiles with one login each name the other, the page opens with one line and a More, and Change login lists the sessions it reaches.",
 };
 
 const NOW = Date.parse("2026-11-16T09:41:00Z");
@@ -71,8 +71,14 @@ const CLAUDE: AccountHarness = {
   signInHosts: ["claude.com", "platform.claude.com"],
 };
 const CODEX: AccountHarness = { id: "codex", label: "Codex", select: "CODEX_HOME", kinds: ["own"], newFolder: "~/.codex-{slug}", binary: "codex" };
+/** Two profiles of one agent signed in with one login, the second spelled in another letter case. */
+const SHARED_LOGIN_ROWS = [DEFAULT_ROW, { ...WORK_ROW, identity: { signedIn: true, email: "Someone@Example.com", plan: "team" } }];
+const SESSIONS = [
+  { paneId: "w1:p1", name: "Fix the build", space: "lodge" },
+  { paneId: "w2:p1", name: "Write the docs", space: "workshop" },
+];
 const CODEX_SIGNED_IN = { ...CODEX_ROW, identity: { signedIn: true, email: "someone@example.com" }, running: 1 };
-const RUNNING_ROW = { ...DEFAULT_ROW, windows: [{ window: "5h", usedPct: 100, resetsAt: NOW + 3_600_000 }], running: 3 };
+const RUNNING_ROW = { ...DEFAULT_ROW, windows: [{ window: "5h", usedPct: 100, resetsAt: NOW + 3_600_000 }], running: 2 };
 
 /** The sign-in card's model as the reader builds it from `/login` (made-up address, masked values). */
 const SIGN_IN_CARD = (address: string): BoxTextModel => ({
@@ -117,7 +123,7 @@ function ListOf({ rows }: { rows: AccountRow[] }) {
       <ListGroup as="ul" className="divide-y divide-border">
         {rows.map((r) => (
           <li key={r.id}>
-            <AccountListRow row={r} onOpen={() => {}} />
+            <AccountListRow row={r} sameLogin={sameLoginLine(rows, r)} onOpen={() => {}} />
           </li>
         ))}
       </ListGroup>
@@ -128,63 +134,86 @@ function ListOf({ rows }: { rows: AccountRow[] }) {
 export function AccountsSection() {
   return (
     <Section def={DEF}>
+      <Group title="The page's first words">
+        <Card state="accounts-intro-closed" label="1 Intro, closed">
+          <Column>
+            <IntroLines />
+          </Column>
+        </Card>
+        <Card state="accounts-intro-open" label="2 Intro, open">
+          <Column>
+            <IntroLines startOpen />
+          </Column>
+        </Card>
+      </Group>
       <Group title="The list">
-        <Card state="accounts-list-identity" label="1 Email under each name">
+        <Card state="accounts-list-identity" label="3 Email under each name">
           <ListOf rows={[DEFAULT_ROW, WORK_ROW, NEW_ROW]} />
         </Card>
-        <Card state="accounts-list-no-status" label="2 An agent that cannot tell">
+        <Card state="accounts-list-sessions" label="4 Session count">
+          <ListOf rows={[{ ...DEFAULT_ROW, running: 1 }, { ...WORK_ROW, live: true, running: 3 }, { ...NEW_ROW, live: true, running: 0 }]} />
+        </Card>
+        <Card state="accounts-list-same-login" label="5 Same login twice">
+          <ListOf rows={SHARED_LOGIN_ROWS} />
+        </Card>
+        <Card state="accounts-list-no-status" label="6 An agent that cannot tell">
           <ListOf rows={[CODEX_ROW]} />
         </Card>
       </Group>
       <Group title="The profile's page">
-        <Card state="accounts-detail-signed-in" label="3 Signed in, with the plan">
+        <Card state="accounts-detail-signed-in" label="7 Signed in, with the plan">
           <Column>
             <SignedInRow identity={WORK_ROW.identity} />
           </Column>
         </Card>
-        <Card state="accounts-detail-signed-out" label="4 Not signed in">
+        <Card state="accounts-detail-same-login" label="8 Same login as another profile">
+          <Column>
+            <SignedInRow identity={SHARED_LOGIN_ROWS[1]!.identity} sameLogin={sameLoginLine(SHARED_LOGIN_ROWS, SHARED_LOGIN_ROWS[1]!)} />
+          </Column>
+        </Card>
+        <Card state="accounts-detail-signed-out" label="9 Not signed in">
           <Column>
             <SignedInRow identity={NEW_ROW.identity} />
           </Column>
         </Card>
       </Group>
       <Group title="Change login">
-        <Card state="accounts-change-login-before" label="5 Before, sessions continue">
+        <Card state="accounts-change-login-before" label="10 Before, two sessions listed">
           <Screen foot>
-            <ChangeLoginBeforeView row={RUNNING_ROW} harness={CLAUDE} agentLabel="Claude Code" />
+            <ChangeLoginBeforeView row={RUNNING_ROW} harness={CLAUDE} agentLabel="Claude Code" others sessions={SESSIONS} />
           </Screen>
         </Card>
-        <Card state="accounts-change-login-before-idle" label="6 Before, no session runs">
+        <Card state="accounts-change-login-before-idle" label="11 Before, no session runs">
           <Screen foot>
-            <ChangeLoginBeforeView row={WORK_ROW} harness={CLAUDE} agentLabel="Claude Code" />
+            <ChangeLoginBeforeView row={WORK_ROW} harness={CLAUDE} agentLabel="Claude Code" others />
           </Screen>
         </Card>
-        <Card state="accounts-change-login-new-only" label="7 Before, new sessions only">
+        <Card state="accounts-change-login-new-only" label="12 Before, new sessions only">
           <Screen foot>
             <ChangeLoginBeforeView row={CODEX_SIGNED_IN} harness={CODEX} agentLabel="Codex" />
           </Screen>
         </Card>
-        <Card state="accounts-change-login-running" label="8 Back while it runs">
+        <Card state="accounts-change-login-running" label="13 Back while it runs">
           <Screen>
             <ChangeLoginRunningView row={RUNNING_ROW} body={CLAUDE} ending={false} onOpen={() => {}} onFinish={() => {}} />
           </Screen>
         </Card>
-        <Card state="accounts-change-login-changed" label="9 Signed in as new">
+        <Card state="accounts-change-login-changed" label="14 Signed in as new">
           <Screen>
             <ChangeLoginResultView result={{ kind: "changed", email: "spare@example.com", plan: "max" }} reach={{ kind: "running", count: 3 }} stillOpen={false} backTo="session" onBack={() => {}} />
           </Screen>
         </Card>
-        <Card state="accounts-change-login-same" label="10 Still the same login">
+        <Card state="accounts-change-login-same" label="15 Still the same login">
           <Screen>
             <ChangeLoginResultView result={{ kind: "same", email: "someone@example.com", plan: "max" }} reach={{ kind: "running", count: 3 }} stillOpen={false} backTo="account" onBack={() => {}} />
           </Screen>
         </Card>
-        <Card state="accounts-change-login-not-finished" label="11 Sign-in did not finish">
+        <Card state="accounts-change-login-not-finished" label="16 Sign-in did not finish">
           <Screen>
             <ChangeLoginResultView result={{ kind: "signedOut" }} reach={{ kind: "running", count: 0 }} stillOpen={false} backTo="account" onBack={() => {}} />
           </Screen>
         </Card>
-        <Card state="accounts-change-login-session-row" label="12 Row in the session sheet">
+        <Card state="accounts-change-login-session-row" label="17 Row in the session sheet">
           <Column>
             <PaneSettingsView
               state={{ on: false, global: false, watchable: true, warnSeconds: 300 }}
@@ -196,12 +225,12 @@ export function AccountsSection() {
             />
           </Column>
         </Card>
-        <Card state="accounts-sign-in-card-open" label="13 Sign-in card, open button">
+        <Card state="accounts-sign-in-card-open" label="18 Sign-in card, open button">
           <Column>
             <BoxTextBlock boxText={SIGN_IN_CARD(CLAUDE_ADDRESS)} signInHosts={CLAUDE.signInHosts} />
           </Column>
         </Card>
-        <Card state="accounts-sign-in-card-copy" label="14 Sign-in card, copy only">
+        <Card state="accounts-sign-in-card-copy" label="19 Sign-in card, copy only">
           <Column>
             <BoxTextBlock boxText={SIGN_IN_CARD("https://example.com/oauth/authorize?state=XXXXXXXX")} signInHosts={CLAUDE.signInHosts} />
           </Column>
