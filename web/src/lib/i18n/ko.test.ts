@@ -17,8 +17,8 @@ describe("Korean operator guidance", () => {
     ["composer.noEcho.liveUntyped", "composer.controls.type"],
     ["composer.protocol.noticeKey", "composer.protocol.commit"],
     ["composer.protocol.unconfirmed", "composer.protocol.commit"],
-    // The cap's pair (capConfirmPast, commitCapPast) waits for its Korean words (PENDING_TRANSLATION); its row
-    // comes back here with them. The old pair, capConfirm and commitCap, is no longer shown.
+    ["composer.protocol.capConfirmPast", "composer.protocol.commitCapPast"],
+    // The old pair, capConfirm and commitCap, is no longer shown.
   ] as const)("%s names its visible control", (guidance, control) => {
     expect(t(guidance, { harness: "Claude", version: "2.1.0", count: 3 })).toContain(
       `‘${t(control)}’`,
