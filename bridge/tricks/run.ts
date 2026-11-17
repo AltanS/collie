@@ -46,7 +46,26 @@ export interface RunSpec {
    * the program's. For a test.
    */
   winKill?: { readonly spawn?: KillSpawn; readonly env?: Readonly<Record<string, string | undefined>> };
+  /**
+   * How the program is started. Default `Bun.spawn` with three pipes. A test passes a stand-in child, so a
+   * state such as "exited, its pipe still held" does not depend on how the host's pipes behave.
+   */
+  spawnChild?: (argv: string[], opts: { cwd: string; env: Record<string, string>; detached: boolean }) => RunChild;
 }
+
+/** The part of a spawned program the runner uses: what `Bun.spawn` with three pipes returns. */
+export interface RunChild {
+  readonly pid: number;
+  readonly stdin: { write(text: string): number | Promise<number>; end(): number | Promise<number> };
+  readonly stdout: ReadableStream<Uint8Array>;
+  readonly stderr: ReadableStream<Uint8Array>;
+  readonly exited: Promise<number>;
+  readonly exitCode: number | null;
+  kill(signal?: number): void;
+}
+
+const bunSpawnChild: NonNullable<RunSpec["spawnChild"]> = (argv, opts) =>
+  Bun.spawn(argv, { cwd: opts.cwd, env: opts.env, stdin: "pipe", stdout: "pipe", stderr: "pipe", detached: opts.detached });
 
 // ── THE TWO FORMS OF A RUN LINE (M94 review 4) ──────────────────────────────────────────────────
 // `run = "program.ts"` (or `.js`, `.mjs`, `.mts`): one relative path to a script inside the trick
@@ -235,19 +254,12 @@ export async function runProgram(spec: RunSpec): Promise<RunOutcome> {
   // Fault d: on Windows a shell line never starts, whoever asked (the bridge, check --run, trick dev).
   const refused = windowsRunProblem(spec.command, platform);
   if (refused !== null) return { kind: "spawn-failed", message: refused, ms: 0 };
-  let child: ReturnType<typeof Bun.spawn<"pipe", "pipe", "pipe">>;
+  let child: RunChild;
   const startedAt = Date.now();
   try {
     const launch = launchOf(spec.command, spec.env, { cwd: spec.cwd, platform, runtime: spec.runtime ?? ownRuntime() });
-    child = Bun.spawn(launch.argv, {
-      cwd: spec.cwd,
-      env: launch.env,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-      // A group of its own, so the kill below reaches every process the program started.
-      detached: platform !== "win32",
-    });
+    // A group of its own on POSIX, so the kill below reaches every process the program started.
+    child = (spec.spawnChild ?? bunSpawnChild)(launch.argv, { cwd: spec.cwd, env: launch.env, detached: platform !== "win32" });
   } catch (err) {
     return { kind: "spawn-failed", message: redactText(err instanceof Error ? err.message : String(err)), ms: elapsed() };
   }

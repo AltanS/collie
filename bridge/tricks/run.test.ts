@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { hostFor } from "../host.ts";
 import { envPath, isBaseEnvName, neverReason, scrubEnv, scrubReason, WINDOWS_BASE_ENV_NAMES } from "./env.ts";
 import { WINDOWS_KILL_TIMEOUT_MS, type KillSpawn } from "../tree-kill.ts";
-import { BUN_BE_BUN, launchOf, outcomeProblem, runProgram, runtimeScript, shellArgv, STDERR_CAP_BYTES, windowsRunProblem, type RunSpec } from "./run.ts";
+import { BUN_BE_BUN, launchOf, outcomeProblem, runProgram, runtimeScript, shellArgv, STDERR_CAP_BYTES, windowsRunProblem, type RunChild, type RunSpec } from "./run.ts";
 import { TRICKS_WINDOWS_SHELL_LINE } from "../../web/src/lib/tricks/schema.ts";
 
 const dirs: string[] = [];
@@ -315,26 +315,55 @@ describe("one run", () => {
 
   test("on Windows a timer that fires after the program exited (its pipe still held) kills no pid: no taskkill, only the orphan pass (a seam)", async () => {
     // The lead's review D, item 1: after the exit, Windows may have given the pid to a new process, and
-    // `taskkill /PID <pid> /T /F` would end that process's whole tree. The program exits shortly before the
-    // timer; a grandchild keeps stdout open, so the runner is still in the pipe drain when the timer fires.
-    const cwd = await tempDir();
+    // `taskkill /PID <pid> /T /F` would end that process's whole tree. The state "exited, stdout still
+    // held" comes from a stand-in child (`spawnChild`), not from a real grandchild: on Windows Bun does not
+    // hand the pipe to a grandchild as POSIX does (VM run 2), so a real one could not build this state there.
     const calls: string[][] = [];
     const spawn: KillSpawn = (argv) => {
       calls.push(argv);
       return { exited: Promise.resolve(0) };
     };
-    const timeoutMs = 1500;
-    const exitAt = Date.now() + timeoutMs - 120;
-    const program = [
-      // unref: the program must not wait for its grandchild, or it never exits before the timer.
-      'Bun.spawn([process.execPath, "-e", "await Bun.sleep(1500)"], { stdin: "ignore", stdout: "inherit", stderr: "ignore" }).unref();',
-      `await Bun.sleep(Math.max(0, ${String(exitAt)} - Date.now()));`,
-      "",
-    ].join("\n");
-    const outcome = await script(cwd, program, { stdin: "", timeoutMs, platform: "win32", winKill: { spawn, env: { SystemRoot: "C:\\Windows" } } });
-    await Bun.sleep(50);
+    let kills = 0;
+    const child = (): RunChild => {
+      let closeOut = (): void => {};
+      const stdout = new ReadableStream<Uint8Array>({
+        start(controller) {
+          closeOut = () => controller.close();
+        },
+        cancel() {},
+      });
+      const stderr = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.close();
+        },
+      });
+      let exitCode: number | null = null;
+      // It exits at once; its stdout stays open until the runner lets go of it.
+      const exited = Promise.resolve(0).then((code) => {
+        exitCode = code;
+        return code;
+      });
+      return {
+        pid: 4242,
+        stdin: { write: () => 0, end: () => 0 },
+        stdout,
+        stderr,
+        get exitCode() {
+          return exitCode;
+        },
+        exited,
+        kill: () => {
+          kills += 1;
+          closeOut();
+        },
+      };
+    };
+    // The timer (50 ms) fires inside the pipe drain (PIPE_GRACE_MS, 250 ms) after the exit.
+    const outcome = await runProgram({ command: "program.ts", cwd: await tempDir(), env: {}, stdin: "{}", timeoutMs: 50, platform: "win32", runtime: { execPath: "bun", compiled: false }, spawnChild: child, winKill: { spawn, env: { SystemRoot: "C:\\Windows" } } });
+    await Bun.sleep(20);
     expect(outcome.kind).toBe("timeout");
     expect(calls.map((argv) => argv[0])).toEqual(["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"]);
+    expect(kills).toBe(0);
   });
 
   test("stdout past 64 KiB fails the run and stops the program", async () => {
