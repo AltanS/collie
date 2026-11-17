@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { apiSocketPath } from "../bridge/api/socket.ts";
 import { DECLARED, OPERATION_NAMES } from "../bridge/api/operations.ts";
 import { asJsonObject, parseJsonObject } from "../web/src/lib/json.ts";
-import { apiHelp, API_ASK_MS, API_WAIT_ASK_MS, cmdApi, declaredOperations, escapeC1, flagOf, NO_LOCAL_API, parseFlags, plainLines, type ApiDeps, type CliOperation } from "./api.ts";
+import { apiHelp, API_ASK_MS, API_WAIT_ASK_MS, cmdApi, declaredOperations, escapeC1, flagOf, NO_LOCAL_API, NO_LOCAL_API_WINDOWS, parseFlags, plainLines, type ApiDeps, type CliOperation } from "./api.ts";
 import { capture } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { run } from "./program.ts";
@@ -200,12 +200,15 @@ describe("no socket", () => {
     expect(d.io.stderr).toEqual([NO_LOCAL_API]);
   });
 
-  test("Windows has no socket and prints the same line without looking", async () => {
+  test("Windows has no local API yet: its own line, the same exit as no socket, and nothing is dialled or looked at", async () => {
     const dir = stateDir();
     const served = await serve(dir, () => "{}");
     const d = deps(dir, { platform: "win32" });
     expect(await cmdApi(d, ["hello"])).toBe(EXIT.STATE);
-    expect(d.io.stderr).toEqual([NO_LOCAL_API]);
+    expect(d.io.stderr).toEqual([NO_LOCAL_API_WINDOWS]);
+    expect(d.io.stdout).toEqual([]);
+    expect(NO_LOCAL_API_WINDOWS).toBe("The local API is not available on a Windows machine yet.");
+    expect(NO_LOCAL_API_WINDOWS).not.toBe(NO_LOCAL_API);
     expect(served.requests).toEqual([]);
   });
 

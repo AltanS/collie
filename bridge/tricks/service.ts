@@ -821,7 +821,8 @@ export class TricksService implements TricksSurface {
 
   /**
    * Whether the local API socket should stand: tricks switched on (not gated) AND tricks run on this bridge
-   * (`deps.active`: not a crew peer, a deputy or a deposed lead). No trick need be on.
+   * (`deps.active`: not a crew peer, a deputy or a deposed lead). No trick need be on. Never true on Windows:
+   * the gate closes tricks there, and the socket follows them (the local API has no Windows transport yet).
    */
   localApiWanted(): boolean {
     return this.switchedOn() && this.deps.active?.() !== false;
