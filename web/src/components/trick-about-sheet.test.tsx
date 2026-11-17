@@ -114,8 +114,8 @@ describe("TrickAboutSheet", () => {
   });
 
   it("says the level of access in its one plain line, none for none, and never calls it a permission", () => {
-    const see = "It sees your machines, your sessions and their states, your usage and the Hill. It does not see what is on a screen.";
-    const read = "It reads what is on your sessions' screens.";
+    const see = "It asks to see your machines, your sessions and their states, your usage and the Hill, not what is on a screen.";
+    const read = "It asks to read what is on your sessions' screens.";
     const rowsFor = (access: WireTrickInfo["access"]): (string | null)[] => {
       const trick: WireTrickInfo = { ...FULL, warnings: undefined };
       if (access !== undefined) trick.access = access;
@@ -127,12 +127,17 @@ describe("TrickAboutSheet", () => {
     };
     expect(rowsFor("see").at(-1)).toBe(see);
     expect(rowsFor("read").at(-1)).toBe(read);
-    expect(rowsFor(undefined).join(" ")).not.toMatch(/It sees your machines|It reads what is on/u);
+    expect(rowsFor(undefined).join(" ")).not.toMatch(/It asks to see your machines|It asks to read what is on/u);
     for (const text of [see, read]) expect(text).not.toMatch(/permission|can only/iu);
-    // The wire reader keeps one of the two words and drops any other.
+    // A level this phone does not know has one fixed line (review 3, item 4).
+    expect(rowsFor("unknown").at(-1)).toBe("It asks for access this app does not know yet. Update the app before you say yes.");
+    // The wire reader keeps one of the two words, keeps any other text as `unknown`, and drops what is not text.
     const wire = { host: "lodge", id: "gates", name: "Release Gates", icon: "flask", on: true, state: "ok", places: ["belt"] };
     expect(readTrick({ ...wire, access: "read" })?.access).toBe("read");
-    expect(readTrick({ ...wire, access: "send" })?.access).toBeUndefined();
+    expect(readTrick({ ...wire, access: "send" })?.access).toBe("unknown");
+    expect(readTrick({ ...wire, access: 3 })?.access).toBeUndefined();
+    expect(readTrick({ ...wire, access: "" })?.access).toBeUndefined();
+    expect(readTrick({ ...wire, access: "send", accessOff: true })).toMatchObject({ access: "unknown", accessOff: true });
     expect(readTrick({ ...wire, access: "see", accessOff: true })).toMatchObject({ access: "see", accessOff: true });
     expect(readTrick({ ...wire, accessOff: true })?.accessOff).toBeUndefined();
   });

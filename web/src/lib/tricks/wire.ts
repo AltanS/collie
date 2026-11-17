@@ -14,6 +14,7 @@ import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonObjec
 import {
   ABOUT_MAX,
   ACCESS_LEVELS,
+  ACCESS_UNKNOWN,
   DESCRIPTION_MAX,
   EVERY_MAX_MS,
   EVERY_MIN_MS,
@@ -375,8 +376,9 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   if (events !== undefined) out.events = events;
   const watch = readWatch(watching);
   if (watch !== undefined) out.watch = watch;
-  // The declared level of the local API (M105 spec 04): one of two words this phone knows, else left out.
-  const level = ACCESS_LEVELS.find((word) => word === leveled);
+  // The declared level of the local API (M105 spec 04): one of two words this phone knows. Any other text is a
+  // level of a newer bridge: kept as `unknown`, so the row says it and offers no switch on (review 3, item 4).
+  const level = ACCESS_LEVELS.find((word) => word === leveled) ?? ((asJsonString(leveled) ?? "") === "" ? undefined : ACCESS_UNKNOWN);
   if (level !== undefined) out.access = level;
   if (accessOff === true && level !== undefined) out.accessOff = true;
   if (description !== undefined) out.description = description;

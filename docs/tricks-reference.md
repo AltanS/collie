@@ -1518,12 +1518,12 @@ if (!machines.ok) throw new Error(machines.error.message);
 | `access` | What the trick gets | Operations |
 | --- | --- | --- |
 | `none` | The default, also when `access` is left out. No `api` in the facts, and `t.api` answers an error. | none |
-| `see` | Lists and states: your machines, your sessions and their states, your usage and the Hill. Never the text of a screen. | `hello`, `sessions`, `brief`, `accounts`, `hill.list`, `events`, `machines` |
+| `see` | Lists and states: your machines, your sessions and their states, your usage and the Hill. Never the text of a screen. One field is text an agent wrote: the title of each card in `hill.list`. | `hello`, `sessions`, `brief`, `accounts`, `hill.list`, `events`, `machines` |
 | `read` | Everything in `see`, and the text of a session's screen, masked as the phone's own read is. | all of `see`, and `read` |
 
 > **Experimental.** `access` and `t.api` are new, and their words may still change.
 
-> **Note.** A level is what the trick declares and what Collie's helper gives it. It is not a wall. A trick's program runs as you, and the local socket is open to every program of your user while tricks are on, so a program of yours can reach the socket without the helper. Collie's text search of the code flags a trick that names the socket or runs `collie api` itself, and the card shows that line like the other findings. A real wall needs the fence for tricks, which comes later.
+> **Note.** A level is what the trick declares and what Collie's helper gives it. It is not a wall. A trick's program runs as you, and the local socket is open to every program of your user while tricks are on, so a program of yours can reach the socket without the helper. Collie's text search of the code flags a trick that names the socket, reads its path from the facts, opens a socket of its own (`createConnection`, `Bun.connect`, a `unix:` option) or runs `collie api` itself, and the card shows that line like the other findings. A real wall needs the fence for tricks, which comes later.
 
 The socket stands while tricks are switched on, on a machine where tricks run. Where it does not (a crew peer, a deputy, Windows), the facts carry no `api`, `t.api` answers `Collie's local API is off here.`, and the trick's row says so once.
 

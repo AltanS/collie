@@ -1703,6 +1703,40 @@ describe("the approved copy (crew slice 2)", () => {
     expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v3, powersChanged: true });
   });
 
+  // Review 3, item 5: `access` is in the powers, so a version that raises it waits for a person, auto or not.
+  test("auto holds a version that raises access, none to see and see to read; one that keeps it is taken", async () => {
+    const audits: string[] = [];
+    const r = await rig([exited(belt("1"))], { audit: (e) => audits.push(`${e.action} ${e.detail.by ?? ""}`.trim()) });
+    const toml = (access?: string): string => `${MANIFEST}contract = 3\n${access === undefined ? "" : `access = "${access}"\n`}`;
+    const dir = await makeTrick(r.configDir, "legs", toml(), { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    await updateSwitches(r.stateDir, (now) => withEntry(now, "legs", { ...now.on.get("legs")!, auto: true }));
+    const v1 = await codeHashOf(dir);
+    const held = async (want: string): Promise<void> => {
+      const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+      expect(file.on.legs.hash).toBe(want);
+    };
+    // none -> see: waits.
+    await writeFile(join(dir, "trick.toml"), toml("see"));
+    const v2 = await newVersion(r, dir, T0 + 1000, "#!/bin/sh\necho 2\n");
+    await held(v1);
+    expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v2, powersChanged: true });
+    expect(audits).toEqual([]);
+    // A person says yes; auto stays on.
+    expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
+    await updateSwitches(r.stateDir, (now) => withEntry(now, "legs", { ...now.on.get("legs")!, auto: true }));
+    // see -> see with new code: taken without asking.
+    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 3\n");
+    await held(v3);
+    expect(audits.at(-1)).toBe("trick.approve auto");
+    // see -> read: waits.
+    await writeFile(join(dir, "trick.toml"), toml("read"));
+    const v4 = await newVersion(r, dir, T0 + 40_000, "#!/bin/sh\necho 4\n");
+    await held(v3);
+    expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v4, powersChanged: true });
+  });
+
   test("B5: auto holds a new version that does something new (a new warning kind), though its rights did not move", async () => {
     const audits: string[] = [];
     const r = await rig([exited(belt("1"))], { audit: (e) => audits.push(`${e.action} ${e.detail.by ?? ""}`.trim()) });
