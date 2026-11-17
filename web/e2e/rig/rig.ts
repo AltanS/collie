@@ -4,6 +4,8 @@
 //                      | pane <cmd...> [--replace] | pane ls | pane close <paneId>... | pane close --all
 //                      | snapshot | read <pane> [lines] [--on member] | crew stop-member
 //                      | crew start-member [--env COLLIE_WALKY=off]
+//                      | bridge stop [--kill] | bridge start [--slow-mux <ms>] | bridge restart [--kill] [--slow-mux <ms>]
+//   up [--second-bridge]  (solo rig only; see THE CHAOS SEAMS)
 //
 // Folded from experiments/collie-rig/rig.ts in the workspace (2026-10-17), with the state moved on
 // disk (rig-lib.ts STATE_ROOT). The Playwright global setup runs
@@ -59,6 +61,19 @@
 // machine and rig, and not atomic across concurrent callers; the scope's TasksMax is the hard guard. `--replace`,
 // `--crew` and `--on <m>` count only before the command's first word (rig-scope.ts splitArgs).
 //
+// THE CHAOS SEAMS (M102 spec 15, chaos-lib.ts). Rig-only: no switch in bridge/, cli/ or web/src/.
+//   `bridge stop|start|restart` (C1) does for the LEAD's bridge what `crew stop-member|start-member` do for the
+//     member's: the CLI writes a request file and signals the daemon (SIGHUP), the daemon stops or starts the
+//     bridge by its recorded pid with the same dirs and port, and the CLI waits until rig.json and the port
+//     agree. `--kill` ends the bridge with SIGKILL, as a crash would. The lead's Herdr, its panes and its
+//     paired device stay; the bridge's state dir is the same, so the phone's token still opens it.
+//   `bridge start|restart --slow-mux <ms>` (C6) starts the lead's bridge with HERDR_SOCKET_PATH pointing at a
+//     delaying proxy (delay-proxy.ts) beside the real socket: every call to Herdr waits <ms> each way. A start
+//     or restart without the flag goes back to the real socket. Herdr mux only.
+//   `up --second-bridge` (C3) starts a second `bun bridge/index.ts` on the same Herdr socket, with a state,
+//     config and HOME of its own (rig-lib.ts SECOND), its own port and its own paired device; its token is
+//     SECOND.token, its port is `second.port` in rig.json. `down` stops it.
+//
 // `crew stop-member` and `crew start-member` ask the daemon (SIGUSR1, SIGUSR2) to stop the member's
 // bridge by its recorded pid and to start it again with the same dirs and port. The member's Herdr
 // and its agents keep running, as on a machine whose Collie was stopped. `start-member --env
@@ -81,6 +96,7 @@ import {
   P,
   PORT_HI,
   PORT_LO,
+  SECOND,
   STATE_ROOT,
   VIEW_LABEL,
   assertPrivateDir,
@@ -143,6 +159,7 @@ import { cassetteRoot, planTiers, readVersions, rigLiterals, tiersFromEnv } from
 import { cassetteLeg, dataBridgeEnv } from "./rig-data";
 import { coreSocketIn } from "./rig-mux";
 import { socketPathProblem, sunPathLimit } from "./sock-path";
+import { startDelayProxy, type DelayProxy } from "./delay-proxy";
 
 const SELF = fileURLToPath(import.meta.url);
 /** This checkout: web/e2e/rig/rig.ts is three levels below it. */
@@ -361,12 +378,12 @@ function halfOf(run: Run, machine: Machine): Half {
 // What `collie pair` does (cli/pairing.ts cmdPair): generateCode + newPending + write
 // <stateDir>/pairing-pending.json at 0600. Done here with the bridge's own module, in the rig's own
 // state dir. The claim then goes over the real POST /api/pair, with the Origin a browser sends.
-async function pairDevice(port: number, label: string): Promise<void> {
+async function pairDevice(port: number, label: string, stateDir: string = P.state, tokenPath: string = P.token): Promise<void> {
   const pairing = await import(join(WORKTREE, "bridge", "pairing.ts"));
   const code: string = pairing.generateCode();
   const pending: unknown = pairing.newPending(code, Date.now());
-  mkdirSync(P.state, { recursive: true, mode: 0o700 });
-  writeFileSync(join(P.state, pairing.PENDING_FILENAME), JSON.stringify(pending, null, 2), { mode: 0o600 });
+  mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+  writeFileSync(join(stateDir, pairing.PENDING_FILENAME), JSON.stringify(pending, null, 2), { mode: 0o600 });
   const origin = `http://127.0.0.1:${port}`;
   const res = await fetch(`${origin}/api/pair`, {
     method: "POST",
@@ -375,8 +392,8 @@ async function pairDevice(port: number, label: string): Promise<void> {
   });
   const token = asJsonString(asJsonObject(parseJson(await res.text()))?.token);
   if (res.status !== 200 || token === undefined) return die(`pairing failed: HTTP ${res.status}`);
-  writeFileSync(P.token, token, { mode: 0o600 });
-  chmodSync(P.token, 0o600);
+  writeFileSync(tokenPath, token, { mode: 0o600 });
+  chmodSync(tokenPath, 0o600);
 }
 
 // ── the daemon ───────────────────────────────────────────────────────────────────────────────────
@@ -399,6 +416,12 @@ const logName = (machine: Machine, what: string): string => join(P.logs, machine
  */
 const MEMBER_ENV_ALLOWED: readonly string[] = ["COLLIE_WALKY"];
 const MEMBER_ENV_FILE = join(P.rig, "member-env.json");
+/** What `bridge stop|start|restart` asks of the daemon (read when SIGHUP comes, removed once read). */
+const BRIDGE_REQUEST_FILE = join(P.rig, "bridge-request.json");
+/** The most delay `bridge start --slow-mux` takes, in ms each way: past this a send would outlast the leg's own waits. */
+const SLOW_MUX_MAX_MS = 3000;
+/** The delay proxy's socket, beside the real one so the bridge derives the same session name and config root from its path. */
+const SLOW_SOCKET_FILE = "herdr-delay.sock";
 
 /**
  * The pane `--replace` closes: the last one `pane` or `start` opened for a key, as { key: paneId }. A file
@@ -431,9 +454,12 @@ function harnessBinDir(home: string): string {
   return dir;
 }
 
-/** The bridge's environment on one machine: only what it needs, every inherited COLLIE_/HERDR_ name dropped. */
-function bridgeEnv(machine: Machine, port: number, socket: string) {
-  const d = machineDirs(machine);
+/**
+ * The bridge's environment on one machine: only what it needs, every inherited COLLIE_/HERDR_ name dropped.
+ * `second` is the lead's SECOND bridge (`up --second-bridge`): the lead's Herdr socket, its own dirs and instance name.
+ */
+function bridgeEnv(machine: Machine, port: number, socket: string, second = false) {
+  const d = second ? { ...machineDirs(machine), state: SECOND.state, config: SECOND.config, bridgeHome: SECOND.bridgeHome, homeCfg: SECOND.homeCfg } : machineDirs(machine);
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
@@ -466,7 +492,7 @@ function bridgeEnv(machine: Machine, port: number, socket: string) {
     COLLIE_SKILL_SYNC: "off",
     HERDR_PLUGIN_CONFIG_DIR: d.config,
     COLLIE_CONFIG: d.homeCfg,
-    COLLIE_INSTANCE: machine === "lead" ? "rig" : "rig-member",
+    COLLIE_INSTANCE: second ? "rig-second" : machine === "lead" ? "rig" : "rig-member",
     // The machine's mux (COLLIE_RIG_MUX): Herdr's API socket, or the scratch core's client socket under
     // the core's endpoint name (bridge/mux/registry.ts muxEndpointVar, spelled out: the web typecheck does not reach bridge/).
     ...(muxOf(machine) === "herdr-core" ? { COLLIE_MUX: "herdr-core", COLLIE_MUX_ENDPOINT_HERDR_CORE: socket } : { COLLIE_MUX: "herdr", HERDR_SOCKET_PATH: socket }),
@@ -508,6 +534,7 @@ async function daemon(): Promise<void> {
     run.leadId = LEAD_ID;
     run.memberId = MEMBER_ID;
   }
+  if (process.env.RIG_SECOND_PORT !== undefined) run.second = { port: Number(process.env.RIG_SECOND_PORT), bridgePid: null };
   writeRun(run);
   const machines: readonly Machine[] = crew ? MACHINES : ["lead"];
 
@@ -516,6 +543,10 @@ async function daemon(): Promise<void> {
   let stub: Stub | null = null;
   /** The bridge child each machine runs now. A child that is not the current one exits quietly: the rig stopped it. */
   const children = new Map<Machine, ChildProcess>();
+  /** The second bridge's child (`up --second-bridge`), when it runs. */
+  let secondChild: ChildProcess | null = null;
+  /** The delay proxy the lead's bridge dials instead of Herdr (`bridge start --slow-mux`), when one is up. */
+  let slow: DelayProxy | null = null;
   let tearing = false;
 
   const teardown = async (why: string) => {
@@ -534,6 +565,8 @@ async function daemon(): Promise<void> {
       writeFileSync(P.stubStats, `${JSON.stringify(stub.stats(), null, 2)}\n`);
       await stub.close();
     }
+    await killPid(run.second?.bridgePid ?? null, BRIDGE_TAG);
+    await slow?.close().catch(() => undefined);
     for (const machine of machines.toReversed()) {
       const half = halfOf(run, machine);
       const session = machineDirs(machine).session;
@@ -640,7 +673,9 @@ async function daemon(): Promise<void> {
   const spawnBridge = (machine: Machine) => {
     const half = halfOf(run, machine);
     const blog = openSync(logName(machine, "bridge"), "a");
-    const bridge = spawn(process.execPath, ["bridge/index.ts"], { cwd: WORKTREE, env: bridgeEnv(machine, half.port, half.socket), stdio: ["ignore", blog, blog] });
+    // The lead's bridge dials the delay proxy while one is up (`bridge start --slow-mux`), the real socket otherwise.
+    const socket = machine === "lead" && slow !== null ? slow.path : half.socket;
+    const bridge = spawn(process.execPath, ["bridge/index.ts"], { cwd: WORKTREE, env: bridgeEnv(machine, half.port, socket), stdio: ["ignore", blog, blog] });
     children.set(machine, bridge);
     half.bridgePid = bridge.pid ?? null;
     writeRun(run);
@@ -692,6 +727,82 @@ async function daemon(): Promise<void> {
     return up ? 0 : 1;
   };
 
+  /** The second bridge (`up --second-bridge`): the lead's Herdr socket, dirs of its own. Its exit is its own: nothing tears down. */
+  const spawnSecond = () => {
+    const second = run.second;
+    if (second === undefined) throw new Error("this rig has no second bridge (run `up --second-bridge`)");
+    const blog = openSync(join(P.logs, "second-bridge.log"), "a");
+    const bridge = spawn(process.execPath, ["bridge/index.ts"], { cwd: WORKTREE, env: bridgeEnv("lead", second.port, run.socket, true), stdio: ["ignore", blog, blog] });
+    secondChild = bridge;
+    second.bridgePid = bridge.pid ?? null;
+    writeRun(run);
+    bridge.on("exit", (code) => {
+      if (tearing || secondChild !== bridge) return;
+      secondChild = null;
+      log(`the second bridge exited with ${String(code)}`);
+      second.bridgePid = null;
+      writeRun(run);
+    });
+  };
+
+  const secondReady = async (): Promise<boolean> => {
+    const port = run.second?.port;
+    if (port === undefined) return false;
+    const end = Date.now() + 30_000;
+    while (Date.now() < end) {
+      const up = await fetch(`http://127.0.0.1:${port}/api/health`)
+        .then((r) => r.ok)
+        .catch(() => false);
+      if (up) return true;
+      await sleep(250);
+    }
+    return false;
+  };
+
+  /**
+   * Stop the lead's bridge. `hard` is a crash: SIGKILL by the recorded pid (after /proc matched), no
+   * graceful shutdown. Either way its exit is the rig's own, so nothing tears down.
+   */
+  const stopLead = async (hard: boolean) => {
+    const pid = run.bridgePid;
+    if (!hard || pid === null || !pidIs(pid, BRIDGE_TAG)) return stopBridge("lead");
+    children.delete("lead");
+    process.kill(pid, "SIGKILL");
+    for (let i = 0; i < 50 && pidAlive(pid); i++) await sleep(100);
+    run.bridgePid = null;
+    writeRun(run);
+  };
+
+  /** Start the lead's bridge, behind a delay proxy of `slowMs` ms each way, or on the real socket when there is none. */
+  const startLead = async (slowMs: number | null) => {
+    if (slow !== null) {
+      await slow.close().catch(() => undefined);
+      slow = null;
+    }
+    if (slowMs !== null) {
+      const path = assertUnderXdg(join(dirname(run.socket), SLOW_SOCKET_FILE));
+      slow = await startDelayProxy(path, run.socket, slowMs);
+      log(`delay proxy: ${path} -> ${run.socket}, ${String(slowMs)} ms each way`);
+    }
+    spawnBridge("lead");
+    const up = await bridgeReady("lead");
+    log(`start (lead${slowMs === null ? "" : `, slow mux ${String(slowMs)} ms`}): ${up ? "back" : "NOT BACK in 30 s"}`);
+  };
+
+  /** `bridge stop|start|restart`: what the request file says, one at a time. */
+  let requests: Promise<void> = Promise.resolve();
+  const bridgeRequest = async () => {
+    const doc = asJsonObject(parseJson(readFileSync(BRIDGE_REQUEST_FILE, "utf8")));
+    rmSync(BRIDGE_REQUEST_FILE, { force: true });
+    const action = asJsonString(doc?.action);
+    const slowMs = asJsonNumber(doc?.slowMuxMs) ?? null;
+    const hard = doc?.kill === true;
+    log(`bridge ${String(action)}${hard ? " --kill" : ""}${slowMs === null ? "" : ` --slow-mux ${String(slowMs)}`}`);
+    if (action === "stop" || action === "restart") await stopLead(hard);
+    if (action === "start" && children.has("lead")) return;
+    if (action === "start" || action === "restart") await startLead(slowMs);
+  };
+
   try {
     // The tiers the global setup chose (COLLIE_RIG_TIERS), or the same rule here for a rig brought up by hand.
     const leg = crew ? "crew" : "solo";
@@ -705,6 +816,23 @@ async function daemon(): Promise<void> {
     for (const machine of machines) {
       if (!(await bridgeReady(machine))) throw new Error(`the ${machine}'s bridge did not answer in 30 s (see logs/${machine === "lead" ? "" : "member-"}bridge.log)`);
     }
+    if (run.second !== undefined) {
+      spawnSecond();
+      if (!(await secondReady())) throw new Error("the second bridge did not answer in 30 s (see logs/second-bridge.log)");
+    }
+    // The lead's bridge, asked for by `bridge stop|start|restart`.
+    process.on("SIGHUP", () => {
+      if (!existsSync(BRIDGE_REQUEST_FILE)) return;
+      const after = requests;
+      requests = (async () => {
+        await after;
+        try {
+          await bridgeRequest();
+        } catch (err) {
+          log(`bridge request FAILED: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      })();
+    });
     if (crew) {
       const member = halfOf(run, "member");
       await enrolMember(
@@ -739,8 +867,9 @@ async function daemon(): Promise<void> {
 /** The last 8 lines of one of the rig's log files, or "" when there is none. */
 const tailOf = (name: string): string => (existsSync(join(P.logs, name)) ? readFileSync(join(P.logs, name), "utf8").trim().split("\n").slice(-8).join("\n") : "");
 
-async function cmdUp(crew: boolean): Promise<void> {
+async function cmdUp(crew: boolean, second: boolean): Promise<void> {
   if (crew && !CREW) die("internal: `up --crew` without the crew state root");
+  if (crew && second) die("`up --second-bridge` is for the solo rig; the crew rig has a member already");
   if (!existsSync(join(WORKTREE, "bridge", "index.ts"))) die(`${WORKTREE} is not a Collie checkout`);
   if (!existsSync(join(WORKTREE, "web", "dist", "index.html"))) die("no web/dist: run `bun run build` in web/ first");
   const existing = readRun();
@@ -760,7 +889,7 @@ async function cmdUp(crew: boolean): Promise<void> {
   // A scratch core keeps its terminals' records in its state home and gives a parked one a shell at its next
   // start, so a core machine starts from an empty one: no terminal of an earlier run comes back.
   const coreHomes = machines.filter((machine) => muxOf(machine) === "herdr-core").map((machine) => join(machineDirs(machine).xdgState, "herdr-core"));
-  const dirs = [...machines.flatMap((machine) => [machineDirs(machine).state, machineDirs(machine).config]), ...coreHomes];
+  const dirs = [...machines.flatMap((machine) => [machineDirs(machine).state, machineDirs(machine).config]), ...coreHomes, SECOND.root];
   for (const dir of [...dirs, P.logs]) rmSync(assertUnderRoot(dir), { recursive: true, force: true });
   for (const machine of machines) {
     const d = machineDirs(machine);
@@ -769,11 +898,16 @@ async function cmdUp(crew: boolean): Promise<void> {
   }
   rmSync(P.token, { force: true });
   rmSync(MEMBER_ENV_FILE, { force: true });
+  rmSync(BRIDGE_REQUEST_FILE, { force: true });
   rmSync(LAST_PANES_FILE, { force: true });
   const port = await freePort();
   const memberPort = crew ? await freePort([port]) : null;
+  const secondPort = second ? await freePort([port]) : null;
+  if (secondPort !== null) for (const dir of [SECOND.root, SECOND.state, SECOND.config]) mkdirSync(dir, { recursive: true, mode: 0o700 });
   const logFd = openSync(join(P.logs, "daemon.out"), "a");
-  const env = memberPort === null ? { ...process.env, RIG_PORT: String(port) } : { ...process.env, RIG_PORT: String(port), RIG_MEMBER_PORT: String(memberPort) };
+  const env: NodeJS.ProcessEnv = { ...process.env, RIG_PORT: String(port) };
+  if (memberPort !== null) env.RIG_MEMBER_PORT = String(memberPort);
+  if (secondPort !== null) env.RIG_SECOND_PORT = String(secondPort);
   const { child, scope, tasksMax } = await spawnDaemon(env, logFd, crew);
   // The crew rig starts twice the processes and restarts each bridge during the enrolment.
   const end = Date.now() + (crew ? 180_000 : 70_000);
@@ -797,6 +931,10 @@ async function cmdUp(crew: boolean): Promise<void> {
   await pairDevice(run!.port, DEVICE_LABEL);
   console.log(`up: bridge http://127.0.0.1:${run!.port}  worktree ${WORKTREE}`);
   console.log(`    ${muxLine("lead")}  socket ${run!.socket}`);
+  if (run!.second !== undefined) {
+    await pairDevice(run!.second.port, `${DEVICE_LABEL}-second`, SECOND.state, SECOND.token);
+    console.log(`    second bridge http://127.0.0.1:${String(run!.second.port)} on the same socket  state ${SECOND.state}`);
+  }
   if (crew) {
     const member = halfOf(run!, "member");
     // The lead learns the member on its own sweep, which rides its poll (bridge/crew/lead.ts): wait for it.
@@ -839,6 +977,7 @@ async function cmdDown(): Promise<void> {
     }
     // The daemon is gone or stuck: its teardown by hand, by recorded pid only.
     await killPid(run.daemonPid, DAEMON_TAG);
+    await killPid(run.second?.bridgePid ?? null, BRIDGE_TAG);
     for (const machine of machines) {
       if (machine === "member" && run.member === undefined) continue;
       await killPid(halfOf(run, machine).bridgePid, BRIDGE_TAG);
@@ -865,7 +1004,9 @@ async function cmdDown(): Promise<void> {
   else for (const scope of leftoverScopes()) stopScope(scope); // rig.json is gone or names none: a kill between its removal and the scope's stop
   rmSync(P.run, { force: true });
   rmSync(P.token, { force: true });
+  rmSync(SECOND.token, { force: true });
   rmSync(MEMBER_ENV_FILE, { force: true });
+  rmSync(BRIDGE_REQUEST_FILE, { force: true });
   rmSync(LAST_PANES_FILE, { force: true });
   const what = machines.map((machine) => (muxOf(machine) === "herdr-core" ? "scratch core" : "scratch Herdr"));
   console.log(machines.length === 1 ? `down: bridge and ${what[0]} stopped` : `down: both bridges, the lead's ${what[0]} and the member's ${what[1]} stopped`);
@@ -911,6 +1052,55 @@ async function cmdCrew(verb: string | undefined, args: readonly string[] = []): 
     return;
   }
   die("usage: crew stop-member | crew start-member");
+}
+
+/** `bridge stop | start | restart`, the lead's bridge: the daemon does it (SIGHUP and a request file), and this waits until rig.json and the port agree. */
+async function cmdBridge(verb: string | undefined, args: readonly string[]): Promise<void> {
+  const usage = "usage: bridge stop [--kill] | bridge start [--slow-mux <ms>] | bridge restart [--kill] [--slow-mux <ms>]";
+  if (verb !== "stop" && verb !== "start" && verb !== "restart") return die(usage);
+  const run = readRun();
+  if (run?.ready !== true) return die("the rig is not up (`up`)");
+  if (!pidIs(run.daemonPid, DAEMON_TAG)) return die("the rig's daemon is gone; run `down`");
+  let kill = false;
+  let slowMs: number | null = null;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--kill" && verb !== "start") kill = true;
+    else if (args[i] === "--slow-mux" && verb !== "stop") {
+      const ms = Number(args[i + 1]);
+      if (!Number.isInteger(ms) || ms < 1 || ms > SLOW_MUX_MAX_MS) return die(`--slow-mux takes a whole number of ms from 1 to ${SLOW_MUX_MAX_MS}`);
+      slowMs = ms;
+      i += 1;
+    } else return die(usage);
+  }
+  if (slowMs !== null && muxOf("lead") !== "herdr") return die("--slow-mux needs the Herdr mux: the delay proxy sits on Herdr's API socket");
+  const port = run.port;
+  const running = pidIs(run.bridgePid, BRIDGE_TAG);
+  if (verb === "start" && running) {
+    console.log("bridge: the lead's bridge already runs (use `bridge restart` to change it)");
+    return;
+  }
+  if (verb === "stop" && !running) {
+    console.log("bridge: the lead's bridge is stopped already");
+    return;
+  }
+  const before = run.bridgePid;
+  writeFileSync(BRIDGE_REQUEST_FILE, JSON.stringify({ action: verb, kill, slowMuxMs: slowMs }), { mode: 0o600 });
+  process.kill(run.daemonPid, "SIGHUP");
+  if (verb === "stop") {
+    const stopped = await until(async () => readRun()?.bridgePid === null && !(await portOpen(port)), 30_000);
+    if (!stopped) die("the lead's bridge did not stop in 30 s");
+    console.log(`bridge: the lead's bridge is stopped${kill ? " (SIGKILL)" : ""} (port ${String(port)} closed); its Herdr and panes run on`);
+    return;
+  }
+  const started = await until(async () => {
+    const pid = readRun()?.bridgePid ?? null;
+    if (pid === null || pid === before || !pidIs(pid, BRIDGE_TAG)) return false;
+    return fetch(`http://127.0.0.1:${port}/api/health`)
+      .then((r) => r.ok)
+      .catch(() => false);
+  }, 60_000);
+  if (!started) die("the lead's bridge did not come back in 60 s (see logs/bridge.log)");
+  console.log(`bridge: the lead's bridge runs again on 127.0.0.1:${String(port)}, pid ${String(readRun()?.bridgePid)}${slowMs === null ? "" : `, behind a delay proxy of ${String(slowMs)} ms each way`}`);
 }
 
 async function until(check: () => Promise<boolean>, ms: number): Promise<boolean> {
@@ -1057,6 +1247,7 @@ interface StatusView extends Run {
   readonly bridgeAlive: boolean;
   memberBridgeAlive?: boolean;
   memberHerdrAlive?: boolean;
+  secondBridgeAlive?: boolean;
 }
 
 const argv = process.argv.slice(2);
@@ -1075,7 +1266,7 @@ switch (cmd) {
     await daemon();
     break;
   case "up":
-    await cmdUp(split.crew);
+    await cmdUp(split.crew, rest.includes("--second-bridge"));
     break;
   case "down":
     await cmdDown();
@@ -1090,6 +1281,7 @@ switch (cmd) {
     const used = run.scope ? readScopeFile(run.scope, "pids.current") : null;
     const cap = run.scope ? readScopeFile(run.scope, "pids.max") : null;
     if (used !== null && cap !== null) shown.tasks = `${used}/${cap}`;
+    if (run.second !== undefined) shown.secondBridgeAlive = pidIs(run.second.bridgePid, BRIDGE_TAG);
     if (run.member !== undefined) {
       shown.memberBridgeAlive = pidIs(run.member.bridgePid, BRIDGE_TAG);
       shown.memberHerdrAlive = pidIs(run.member.herdrPid, "herdr");
@@ -1099,6 +1291,9 @@ switch (cmd) {
   }
   case "crew":
     await cmdCrew(rest[0], rest.slice(1));
+    break;
+  case "bridge":
+    await cmdBridge(rest[0], rest.slice(1));
     break;
   case "pane": {
     // `ls` and `close` are verbs here; to run a shell command of that name in a pane, write `pane sh -c ls`
@@ -1146,7 +1341,8 @@ switch (cmd) {
   }
   default:
     console.log(
-      "usage: bun e2e/rig/rig.ts up [--crew] | down | status | start claude|pi|omp [--on lead|member] [--replace] | pane <cmd...> [--replace] | pane ls | pane close <paneId>... | pane close --all | snapshot | read <pane> [lines] [--on member] | crew stop-member | crew start-member [--env NAME=value]\n" +
+      "usage: bun e2e/rig/rig.ts up [--crew] | down | status | start claude|pi|omp [--on lead|member] [--replace] | pane <cmd...> [--replace] | pane ls | pane close <paneId>... | pane close --all | snapshot | read <pane> [lines] [--on member] | crew stop-member | crew start-member [--env NAME=value] | bridge stop [--kill] | bridge start [--slow-mux <ms>] | bridge restart [--kill] [--slow-mux <ms>]\n" +
+        "       up --second-bridge starts a second bridge on the same Herdr socket (solo rig; the chaos leg's C3)\n" +
         "       add --crew to any command to reach the crew rig's state root (`crew <verb>` implies it)\n" +
         "       pane and start refuse with exit 75 at COLLIE_RIG_MAX_PANES open panes (default 6)",
     );

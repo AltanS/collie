@@ -122,6 +122,20 @@ export function machineDirs(machine: Machine): MachineDirs {
 export const RIG_MUX = rigMuxFrom(process.env.COLLIE_RIG_MUX);
 export const muxOf = (machine: Machine): RigMux => RIG_MUX[machine];
 
+/**
+ * The SECOND bridge of a solo rig (`rig.ts up --second-bridge`, the chaos leg's case C3): a second
+ * `bun bridge/index.ts` on the lead's own Herdr socket, with a state, config and HOME of its own, its
+ * own port and its own paired device. A release lane and a dev lane on one machine are the same shape.
+ */
+export const SECOND = {
+  root: join(RIG, "second"),
+  state: join(RIG, "second", "state"),
+  config: join(RIG, "second", "config"),
+  bridgeHome: join(RIG, "second", "bridge-home"),
+  homeCfg: join(RIG, "second", "config", "home-config.toml"),
+  token: join(RIG, "second", "token"),
+} as const;
+
 /** The member's half of a crew rig: its port, its Herdr socket and the pids the daemon started. */
 export interface MemberRun {
   readonly port: number;
@@ -144,6 +158,8 @@ export interface Run {
   readonly scope?: string | null;
   /** The cgroup `up` ran in (a path under /sys/fs/cgroup), the owner the daemon watches; null when none was recorded. */
   readonly ownerCgroup?: string | null;
+  /** Set on a rig started with `up --second-bridge` only: the second bridge's port and pid. */
+  second?: { readonly port: number; bridgePid: number | null };
   /** Set on a crew rig only: the member, and the ids both sides enrolled under. */
   member?: MemberRun;
   leadId?: string;
@@ -201,6 +217,15 @@ export function writeRun(run: Run): void {
 
 export function readToken(): string {
   return readFileSync(P.token, "utf8").trim();
+}
+
+/** The second bridge's device token (SECOND.token), or null when this rig has no second bridge. */
+export function readSecondToken(): string | null {
+  try {
+    return readFileSync(SECOND.token, "utf8").trim();
+  } catch {
+    return null;
+  }
 }
 
 export const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
@@ -433,6 +458,86 @@ async function coreSpaceLabelsFor(machine: Machine, space: RigSpace): Promise<Re
 export function paneClose(paneId: string, machine: Machine = "lead"): boolean {
   if (muxOf(machine) === "herdr-core") return coreClose(paneId, machine);
   return herdr(["pane", "close", paneId], { machine }).code === 0;
+}
+
+/**
+ * The pane list of the machine's Herdr, as { pane id, tab id } rows. The tab id is what a split shares
+ * with the pane it was cut from.
+ */
+function herdrPaneTabs(machine: Machine): { readonly paneId: string; readonly tabId: string }[] {
+  const panes = herdrJson(["pane", "list"], machine).panes;
+  const out: { readonly paneId: string; readonly tabId: string }[] = [];
+  for (const p of Array.isArray(panes) ? panes : []) {
+    const pane = asJsonObject(p);
+    const paneId = asJsonString(pane?.pane_id);
+    if (paneId !== undefined) out.push({ paneId, tabId: asJsonString(pane?.tab_id) ?? "" });
+  }
+  return out;
+}
+
+/** What {@link resizeDuring} did around the work it was given. */
+export interface ResizeRun<T> {
+  readonly result: T;
+  /** The `pane.resize` calls Herdr answered while the work ran. */
+  readonly resizes: number;
+  /** How many of them moved the split's ratio (`changed`, HERDR_API.md "pane.resize"). */
+  readonly moved: number;
+}
+
+/** One resize step: a small ratio, so the pane stays wider than the longest line a chaos case sends (about 30 cells). */
+const RESIZE_STEP = 0.05;
+/** The pause between two resize steps, in ms. */
+const RESIZE_EVERY_MS = 120;
+
+/**
+ * Run `during` while the pane is resized (the chaos leg's case C4). A rig pane fills its tab, and Herdr's
+ * `pane.resize` moves only a split (HERDR_API.md, "A pane that fills its tab cannot be resized"), so this
+ * first cuts a split beside the pane (`herdr pane split --direction right --no-focus`), then moves the
+ * split's edge left and right in small steps (the same step back, so the pane ends as wide as it began)
+ * until `during` has settled, and closes the split. Every step reaches the pane's program as a SIGWINCH.
+ * The split is closed even when `during` throws.
+ *
+ * Herdr only: the core has no split call the rig knows. Throws on a machine that runs the core.
+ */
+export async function resizeDuring<T>(paneId: string, during: () => Promise<T>, machine: Machine = "lead"): Promise<ResizeRun<T>> {
+  if (muxOf(machine) === "herdr-core") throw new Error("resizeDuring needs the Herdr mux: the rig knows no split call on the core");
+  const before = herdrPaneTabs(machine);
+  const tabId = before.find((row) => row.paneId === paneId)?.tabId;
+  if (tabId === undefined) throw new Error(`resizeDuring: Herdr does not list pane ${paneId}`);
+  const split = herdr(["pane", "split", "--pane", paneId, "--direction", "right", "--no-focus"], { machine });
+  if (split.code !== 0) throw new Error(`herdr pane split: ${(split.err || split.out).trim()}`);
+  const known = new Set(before.map((row) => row.paneId));
+  const beside = herdrPaneTabs(machine).find((row) => row.tabId === tabId && !known.has(row.paneId));
+  if (beside === undefined) throw new Error(`resizeDuring: the split beside ${paneId} is not in Herdr's pane list`);
+  const state = { settled: false };
+  let resizes = 0;
+  let moved = 0;
+  const step = (direction: "left" | "right"): void => {
+    const done = herdr(["pane", "resize", "--pane", beside.paneId, "--direction", direction, "--amount", String(RESIZE_STEP)], { machine });
+    if (done.code !== 0) return;
+    resizes += 1;
+    if (asJsonObject(asJsonObject(asJsonObject(parseJson(done.out))?.result)?.resize)?.changed === true) moved += 1;
+  };
+  try {
+    const running = during().finally(() => {
+      state.settled = true;
+    });
+    // A failure of `during` is awaited below; this branch only keeps it from being reported as unhandled meanwhile.
+    running.catch(() => undefined);
+    // Both directions at least once, even when `during` is quicker than one step.
+    step("left");
+    await sleep(RESIZE_EVERY_MS);
+    step("right");
+    while (!state.settled) {
+      await sleep(RESIZE_EVERY_MS);
+      step("left");
+      await sleep(RESIZE_EVERY_MS);
+      step("right");
+    }
+    return { result: await running, resizes, moved };
+  } finally {
+    paneClose(beside.paneId, machine);
+  }
 }
 
 /** The label of the view workspace the daemon opens first (rig.ts startHerdr): the pane its attached client shows. */
