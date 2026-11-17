@@ -574,9 +574,14 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("composer unreachable with no note says the box cannot be reached", () => {
+  it("a box the read could not reach says so and stays typeable: the bridge reads again, and offers Type here (M102 spec 03, I4)", () => {
     renderComposerWithStatus({ surface: UNREACHABLE });
-    expect(screen.getByPlaceholderText("Can't reach the input box")).toBeDisabled();
+    expect(screen.getByPlaceholderText("Can't reach the input box")).toBeEnabled();
+  });
+
+  it("a box a fact blocks (its note: a machine the lead cannot reach, sending off) stays locked and names why", () => {
+    renderComposerWithStatus({ surface: UNREACHABLE, unreachableNote: "workshop is not answering" });
+    expect(screen.getByPlaceholderText("workshop is not answering")).toBeDisabled();
   });
 
   it("the facts outrank every row: a gone pane and a read-only device lock the field, even over an ask", () => {
@@ -6324,6 +6329,34 @@ describe("the unread card (M102 spec 03)", () => {
     expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
     expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "true");
     expect(recordedSends()).toHaveLength(2);
+  });
+
+  it("unread card: a not_free refusal with the rows hash offers Type here, which sends the override on those rows (I4)", async () => {
+    const stale: Surface = { revision: 3, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale" };
+    server.use(
+      ...sendHandler((request) =>
+        request.rowsHash === undefined ? sendAnswer(request.id, "refused", "not_free", { offers: ["keys"], rowsHash: "0ddd04", surface: stale }) : sendAnswer(request.id, "sent"),
+      ),
+    );
+    const user = userEvent.setup();
+    renderUnread(null, { surface: stale });
+    await user.type(screen.getByRole("textbox"), "carry on please");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: "Type here" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(recordedSends()[1]).toMatchObject({ text: "carry on please", rowsHash: "0ddd04", override: true });
+  });
+
+  it("unread card: a not_free refusal on a sign-in field offers no Type here", async () => {
+    const secret: Surface = { revision: 3, turn: "unknown", modal: "unknown", composer: "unknown", field: "secret" };
+    server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "not_free", { offers: ["keys"], rowsHash: "0eee05", surface: secret })));
+    const user = userEvent.setup();
+    renderUnread(null, { surface: { ...secret, composer: "empty", turn: "idle", modal: "none" } });
+    await user.type(screen.getByRole("textbox", { name: "Sign-in code" }), "123456");
+    await user.click(screen.getByRole("button", { name: "Send the code" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')).not.toBeNull());
+    expect(screen.queryByRole("button", { name: "Type here" })).toBeNull();
   });
 
   it("unread card: a refusal whose step is the screen asks the pane to show the card", async () => {

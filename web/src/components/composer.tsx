@@ -655,12 +655,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // draft stays in the box.
   const live = useLive(paneId, scope);
   const offline = stale === true || !live;
-  const slot = sendSlot(shownSurface, { gone, readOnly, offline });
+  // A fact the phone knows before any read (a host it cannot reach, sending off) arrives with its note;
+  // only that locks a box out of reach. A box the read could not reach takes the override (M102 spec 03).
+  const blocked = unreachableNote !== undefined;
+  const slot = sendSlot(shownSurface, { gone, readOnly, offline, blocked });
   // THE WAY OUT (M56 spec 07, lib/way-out.ts): which state this is, and whether the Keys dock opens and
   // can send. The rule is one function so that no refusal, no flag and no lock can hide the key pad on
   // its own; only a pane that is gone, a device that may not write and a multiplexer that sends no key
   // at all do.
-  const way = wayOut(shownSurface, { gone, readOnly, offline }, { keysCapable: canSendKeys.capable });
+  const way = wayOut(shownSurface, { gone, readOnly, offline, blocked }, { keysCapable: canSendKeys.capable });
   // The field itself is off only when nothing typed here can ever leave for this pane: a gone pane,
   // a read-only device, a box out of reach. Derived from the slot, never passed in.
   const locked = fieldLocked(slot);
@@ -2019,7 +2022,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const refusal = { ...readingRefusal(reading), atRevision: (reply.surface ?? shownSurface).revision };
       // A screen Collie cannot read: the pane opens its card, with the person's Keys pad and "Type it
       // anyway", instead of a sentence only (M102 spec 03).
-      if (reading.step === "screen") onScreenUnread?.();
+      // A not_free refusal now offers Type here (invariant I4), so its step is the offer; the card of a screen
+      // Collie cannot read opens for it all the same.
+      if (reading.step === "screen" || (reading.offers.includes("commit") && (reading.surface === "unknown" || reading.surface === "unreachable" || reading.surface === "unreadable"))) onScreenUnread?.();
       // An override that met a menu, or whose text waits for the person's Enter (M102 spec 12): the Keys
       // pad opens, unless the person has a drawer open. A refused override carries the screen now and
       // its hash, so "Type it anyway" stays armed on the rows the card shows next.

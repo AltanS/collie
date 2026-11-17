@@ -10,7 +10,6 @@
 // tap through.
 
 import { t } from "./i18n";
-import { takesManualSend } from "./surface/send";
 import { askOf, isFree, type Surface } from "./surface/surface";
 
 /** The three facts the composer keeps beside the Surface: the pane, the device and the link. */
@@ -21,29 +20,37 @@ export interface ComposerFacts {
   readonly readOnly: boolean;
   /** The pane has not been read lately, or the page draws a saved copy: nothing is sent from it. */
   readonly offline: boolean;
+  /**
+   * A fact the phone knows before any read stops text for this pane: its machine cannot be reached
+   * (`hostBlock`), or sending text is off there (an unmarked pane). Only then is a box out of reach a
+   * lock. A box the bridge's own read could not reach is no lock: the person may send the override
+   * there (M102 spec 03, invariant I4). Absent: false.
+   */
+  readonly blocked?: boolean;
 }
 
 /**
  * What the Send slot is, one word per row of the table:
  *
  * - `gone`, `readOnly`: the field is locked and says why.
- * - `unreachable`: `composer: unreachable`, the box cannot be reached (a host write refusal, a pane
- *   that cannot be read, sending switched off); the field is locked and names the reason.
+ * - `unreachable`: a fact the phone knows stops text (a host the lead cannot reach, sending switched
+ *   off: `blocked`); the field is locked and names the reason.
  * - `offline`: the field stays typeable, Send waits for a live read.
  * - `answer`: `modal ask`; with a draft the slot is the word "Answer the dialog", which goes to the
  *   card and sends nothing; an empty box keeps its microphone.
  * - `running`: `turn running`; Send asks the bridge, which types the text and presses Enter where the
  *   harness queues a message for after the turn (the answer says `queued`), and refuses where it does
  *   not; the key pad is the way to stop the turn.
- * - `manual`: `unknown(no-match)`, a weak cue, or `modal unreadable`; Send takes two taps, prepare
- *   then commit with the hash of the rows the person saw. A pane with no profile (a bare shell) reads
+ * - `manual`: every other screen Collie cannot call free (`unknown(no-match)`, a weak cue, `modal
+ *   unreadable`, a stale, torn or contested read, a box the read could not reach); Send asks the
+ *   bridge, which reads the screen again, and a refusal that carries the rows hash offers the person's
+ *   override, Type here (M102 spec 03, invariant I4). A pane with no profile (a bare shell) reads
  *   `unknown(no-match)` too, but the bridge types its text and presses Enter on the first tap,
  *   unless a password prompt stands on its last rows.
- * - `wait`: `unknown` from a stale, torn or contested read; Send asks the bridge for a fresh read.
  * - `draft`: the box holds a draft at the desk; Send asks the bridge, which offers Add, Replace, Cancel.
  * - `send`: `free`, the fast path.
  */
-export type SendSlot = "gone" | "readOnly" | "unreachable" | "offline" | "answer" | "running" | "manual" | "wait" | "draft" | "send";
+export type SendSlot = "gone" | "readOnly" | "unreachable" | "offline" | "answer" | "running" | "manual" | "draft" | "send";
 
 /** The Surface of a pane the bridge has not read yet: nothing is known, and the manual Send is open. */
 export const UNREAD_SURFACE: Surface = { revision: 0, turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-match" };
@@ -59,14 +66,15 @@ export function unreachable(surface: Surface): Surface {
 export function sendSlot(surface: Surface, facts: ComposerFacts): SendSlot {
   if (facts.gone) return "gone";
   if (facts.readOnly) return "readOnly";
-  if (surface.composer === "unreachable") return "unreachable";
+  if (facts.blocked === true) return "unreachable";
   if (facts.offline) return "offline";
   if (askOf(surface.modal) !== null) return "answer";
   if (surface.turn === "running") return "running";
   if (isFree(surface)) return "send";
-  if (takesManualSend(surface)) return "manual";
   if (surface.composer === "draft") return "draft";
-  return "wait";
+  // Every screen that is not free, not an ask Collie read and not a draft: the bridge reads again and
+  // decides, and its refusal with the rows hash offers the override (invariant I4).
+  return "manual";
 }
 
 /** Whether the field itself is locked: nothing typed here can ever leave this phone for this pane. */
