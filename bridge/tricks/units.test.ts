@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,7 +14,7 @@ import { buildFacts, crewFactsWorld, factsWorldOf } from "./facts.ts";
 import { switchesPath } from "./paths.ts";
 import { TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksCodeRoute, tricksMediaRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, parseSince } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
-import { createSwitchReader, parseSwitches, renderSwitches, updateSwitches, withApproval, withEntry, withSwitch, withSwitchLock, writeSwitches } from "./switches.ts";
+import { createSwitchReader, parseSwitches, renderSwitches, SWITCH_LOCK_BLANK_MS, updateSwitches, withApproval, withEntry, withSwitch, withSwitchLock, writeSwitches } from "./switches.ts";
 
 const HASH = "a".repeat(64);
 const HASH2 = "b".repeat(64);
@@ -240,6 +240,76 @@ describe("the switch file", () => {
       await expect(withSwitchLock(stateDir, async () => "never", clock)).rejects.toThrow("locked by another writer");
       expect(readFileSync(lock, "utf8")).toBe(text);
     }
+  });
+
+  test("counsel A1, blank locks: a fresh empty or pid-less lock makes every waiter fail and is left alone", async () => {
+    const stateDir = await tempDir();
+    await mkdir(join(stateDir, "tricks"), { recursive: true });
+    const lock = `${switchesPath(stateDir)}.lock`;
+    for (const text of ["", "held"]) {
+      await writeFile(lock, text);
+      let entered = 0;
+      const results = await Promise.allSettled(
+        Array.from({ length: 4 }, () => {
+          // Each waiter's wait ends at once (first reading far in the past); the lock's age reads real time.
+          let reads = 0;
+          const clock = () => (reads++ === 0 ? Date.now() - 100_000 : Date.now());
+          return withSwitchLock(
+            stateDir,
+            async () => {
+              entered += 1;
+            },
+            clock,
+          );
+        }),
+      );
+      expect(entered).toBe(0);
+      expect(results.every((result) => result.status === "rejected" && String(result.reason).includes("locked by another writer"))).toBe(true);
+      expect(readFileSync(lock, "utf8")).toBe(text);
+    }
+  });
+
+  test("counsel A1, blank locks: an empty or pid-less lock older than 30 s is taken over by one waiter at a time", async () => {
+    const old = new Date(Date.now() - SWITCH_LOCK_BLANK_MS - 5000);
+    for (const text of ["", "held"]) {
+      const stateDir = await tempDir();
+      await mkdir(join(stateDir, "tricks"), { recursive: true });
+      const lock = `${switchesPath(stateDir)}.lock`;
+      await writeFile(lock, text);
+      await utimes(lock, old, old);
+      const { most, done } = await race(stateDir, 6);
+      expect(done).toBe(6);
+      expect(most).toBe(1);
+      expect(await leftovers(stateDir)).toEqual([]);
+    }
+  });
+
+  test("counsel A1, blank locks: an old empty door is cleared, a fresh empty door is waited for", async () => {
+    const dead = await deadPid();
+    const stateDir = await tempDir();
+    await mkdir(join(stateDir, "tricks"), { recursive: true });
+    const lock = `${switchesPath(stateDir)}.lock`;
+    const door = `${lock}.takeover`;
+    await writeFile(lock, `${String(dead)}\ndead-holder\n`);
+    await writeFile(door, "");
+    const old = new Date(Date.now() - SWITCH_LOCK_BLANK_MS - 5000);
+    await utimes(door, old, old);
+    await withSwitchLock(stateDir, async () => {});
+    expect(await leftovers(stateDir)).toEqual([]);
+
+    await writeFile(lock, `${String(dead)}\ndead-holder\n`);
+    await writeFile(door, "");
+    let entered = false;
+    const pending = withSwitchLock(stateDir, async () => {
+      entered = true;
+    });
+    await Bun.sleep(200);
+    expect(entered).toBe(false);
+    expect(readFileSync(lock, "utf8")).toBe(`${String(dead)}\ndead-holder\n`);
+    await rm(door);
+    await pending;
+    expect(entered).toBe(true);
+    expect(await leftovers(stateDir)).toEqual([]);
   });
 });
 
