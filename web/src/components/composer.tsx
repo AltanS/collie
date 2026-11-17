@@ -973,7 +973,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // WHAT THE "CANNOT TELL" CARD IS ABOUT (M102 spec 04): the request id of the `unknown` send, whether it was a sign-in
   // code, how long the agent's own word may still come, and which notice the send raised (so the card, while it is
   // on screen, can stand in for exactly that one). It lives and goes with `pendingUnknown`: one open question.
-  const [unknownAnswer, setUnknownAnswer] = useState<{ requestId: string; secret: boolean; awaitingUntil: number | null; noticeKey: string } | null>(null);
+  const [unknownAnswer, setUnknownAnswer] = useState<{ requestId: string; secret: boolean; awaitingUntil: number | null; noticeKey: string; interrupted: boolean } | null>(null);
   const unknownAnswerRef = useRef(unknownAnswer);
   unknownAnswerRef.current = unknownAnswer;
   // THE WAIT OF AN `unknown` SEND (spec 13), for every Send again of it, the card's and the notice's alike
@@ -995,7 +995,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const onCannotTellRef = useRef(onCannotTell);
   onCannotTellRef.current = onCannotTell;
   const cannotTellFacts = useMemo<CannotTellFacts | null>(
-    () => (unknownAnswer === null || !hasCannotTellHost ? null : { requestId: unknownAnswer.requestId, secret: unknownAnswer.secret, readOnly, awaitingUntil: unknownAnswer.awaitingUntil }),
+    () => (unknownAnswer === null || !hasCannotTellHost ? null : { requestId: unknownAnswer.requestId, secret: unknownAnswer.secret, readOnly, awaitingUntil: unknownAnswer.awaitingUntil, interrupted: unknownAnswer.interrupted }),
     [unknownAnswer, hasCannotTellHost, readOnly],
   );
   useEffect(() => {
@@ -2363,7 +2363,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         if (isDraft && t !== "") rememberUnknownSend(scope, paneId, t, Date.now(), isShell);
         // The bridge took the text and could not see it land: the pane's card asks which it was (M102 spec 04). Only
         // an `unknown` receipt has a request to mark; a sign-in code keeps no text, so it awaits nothing to send again.
-        if (reply.outcome === "unknown") setUnknownAnswer({ requestId: res.requestId, secret, awaitingUntil: awaitingOnPhone(reply.awaitingUntil), noticeKey: refusalKey(notice, noticeOn) });
+        if (reply.outcome === "unknown") setUnknownAnswer({ requestId: res.requestId, secret, awaitingUntil: awaitingOnPhone(reply.awaitingUntil), noticeKey: refusalKey(notice, noticeOn), interrupted: reply.reason === "interrupted" });
       }
       // A password prompt on the screen the composer already shows (#103): the bridge could not see
       // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.

@@ -6560,6 +6560,27 @@ describe("the cannot tell card (M102 spec 04)", () => {
     expect(screen.getByRole("textbox")).toHaveValue("run the sample check");
   });
 
+  it("cannot tell: a send the bridge stopped mid-way says the text may be in the box, and a screen reader hears it (M102 spec 16)", async () => {
+    server.use(...sendHandler((request) => sendAnswer(request.id, "unknown", "interrupted", { offers: ["keys"] })));
+    const user = userEvent.setup();
+    renderCannotTell();
+    await user.type(screen.getByRole("textbox"), "run the sample check");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    const words = "Collie stopped while it typed this. Your text may be in the box without Enter. Look at the screen.";
+    expect(await screen.findByRole("group", { name: words })).toBeInTheDocument();
+    expect(card()?.querySelector('[role="status"]')?.textContent).toBe(words);
+    expect(noticeShown()).toBe(false);
+  });
+
+  it("cannot tell: the card's sentence is a live region, so the notice it stands in for is still heard", async () => {
+    bridge();
+    const user = userEvent.setup();
+    renderCannotTell();
+    await sendUnknown(user);
+    const live = card()?.querySelector('[role="status"]');
+    expect(live?.textContent).toBe("Collie cannot tell if this arrived. Look at the screen.");
+  });
+
   it("cannot tell: a host with no card keeps today's notice and its second-tap question", async () => {
     bridge();
     const user = userEvent.setup();

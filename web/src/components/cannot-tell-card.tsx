@@ -42,6 +42,9 @@ export interface CannotTellFacts {
   readonly readOnly: boolean;
   /** Epoch milliseconds until which the agent's own word may still come, or null when nothing is awaited. */
   readonly awaitingUntil: number | null;
+  /** The bridge stopped after the send's first key and before its end (reason `interrupted`, M102 spec 16):
+   *  the text may be in the box and Enter may not have gone. The sentence says so. */
+  readonly interrupted: boolean;
 }
 
 /**
@@ -157,7 +160,7 @@ export function CannotTellCard({ facts, lines, wrap = false, ring = 0, onArrived
     onAgain();
   }
 
-  const sentence = t(waiting ? "cannotTell.waiting" : "cannotTell.sentence");
+  const sentence = t(waiting ? "cannotTell.waiting" : facts.interrupted ? "cannotTell.interrupted" : "cannotTell.sentence");
   return (
     <div
       ref={box}
@@ -166,7 +169,10 @@ export function CannotTellCard({ facts, lines, wrap = false, ring = 0, onArrived
       className={cn("flex min-h-0 shrink flex-col rounded-xl transition-shadow motion-reduce:transition-none", ringed && "ring-2 ring-primary")}
     >
       <PromptPanel ariaLabel={sentence} wrap={wrap} fit>
-        <OptionGroupCaption>{sentence}</OptionGroupCaption>
+        {/* A live region: while the card stands in for the box's notice, a screen reader hears it as it heard the notice. */}
+        <OptionGroupCaption>
+          <span role="status">{sentence}</span>
+        </OptionGroupCaption>
         <Screen lines={lines} wrap={wrap} />
         {!readOnly && (
           <div className="flex gap-2">

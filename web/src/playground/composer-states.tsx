@@ -653,13 +653,25 @@ const CANNOT_TELL_SIGN_IN_LINES = splitLines(parseAnsi("  Sign in to continue\n\
 const WAIT_MS = 600_000;
 
 /** The real "cannot tell" card in the card dock's place: the dock's own rule and padding. Its taps change nothing on this page. */
-function CannotTellPhone({ secret = false, readOnly = false, waits = false, lines }: { secret?: boolean; readOnly?: boolean; waits?: boolean; lines: typeof CANNOT_TELL_LINES }) {
+function CannotTellPhone({
+  secret = false,
+  readOnly = false,
+  waits = false,
+  interrupted = false,
+  lines,
+}: {
+  secret?: boolean;
+  readOnly?: boolean;
+  waits?: boolean;
+  interrupted?: boolean;
+  lines: typeof CANNOT_TELL_LINES;
+}) {
   const [awaitingUntil] = useState(() => (waits ? Date.now() + WAIT_MS : null));
   return (
     <PhoneMock>
       <div className="border-t border-border bg-background px-3 pt-2 pb-2">
         <CannotTellCard
-          facts={{ requestId: "cannot-tell-demo", secret, readOnly, awaitingUntil }}
+          facts={{ requestId: "cannot-tell-demo", secret, readOnly, awaitingUntil, interrupted }}
           lines={lines}
           wrap
           onArrived={() => Promise.resolve("recorded")}
@@ -973,6 +985,9 @@ export function wayOutGroups(): ReactNode[] {
       </SignInCase>
       <SignInCase n={45} state="cannot-tell-waiting" title="Waiting for the agent's word" reach="The receipt says the agent's own word may still come. Send again is off, a tap says why in a line under the buttons, and it turns on by itself when the wait ends. It arrived stays on.">
         <CannotTellPhone waits lines={CANNOT_TELL_LINES} />
+      </SignInCase>
+      <SignInCase n={51} state="cannot-tell-interrupted" title="Bridge stopped mid-send" reach="The bridge stopped after the first key and before Enter. The text may be in the box; Send again on the same send types nothing.">
+        <CannotTellPhone interrupted lines={CANNOT_TELL_LINES} />
       </SignInCase>
       <SignInCase n={46} state="cannot-tell-queued" title="Queued card, not confirmed" reach="A queued message Collie cannot place. Discard drops the card and sends nothing; Send again, on its right, drops the card and then sends the text as a new message.">
         <UnconfirmedQueuedPhone />
