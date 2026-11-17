@@ -76,6 +76,26 @@ export const INPUT_ANSWER_MAX_BYTES = 8 * 1024 * 1024;
 /** The most file bytes one run takes in all. */
 export const INPUT_RUN_MAX_BYTES = 24 * 1024 * 1024;
 
+// ── Fields: the settings a person keeps for a trick (contract 3, schema.ts `readFields`, bridge/tricks/values.ts) ──
+
+/** The most `[[field]]` tables one manifest lists. */
+export const FIELDS_MAX = 12;
+/** The longest label of a field, what its row on the phone says. */
+export const FIELD_LABEL_MAX = 40;
+/** The longest hint of a field, the second line of its row. */
+export const FIELD_HINT_MAX = 120;
+/** The longest value of a `text` field: one line. */
+export const FIELD_TEXT_MAX = 200;
+/** The fewest and the most options of a `choice` field. */
+export const FIELD_OPTIONS_MIN = 2;
+export const FIELD_OPTIONS_MAX = 8;
+/** The longest option of a `choice` field. */
+export const FIELD_OPTION_MAX = 40;
+/** The largest size of a `number` field's `min` and `max`, either sign: a whole number of at most nine digits. */
+export const FIELD_NUMBER_ABS_MAX = 999_999_999;
+/** The request ids of value writes one bridge remembers, so the same id twice writes once. The oldest goes first. */
+export const VALUE_WRITES_SEEN_MAX = 256;
+
 // ── Proposals (bridge/tricks/propose-wire.ts, proposals.ts, card-group.ts) ───────────────────
 
 /** Every cap of a proposal that the person-facing words name. The file and byte caps are `collie trick add`'s. */

@@ -191,7 +191,8 @@ describe("the module", () => {
   it("imports only the JSON helpers and the contract number, so the bridge and the CLI load it without a DOM", () => {
     const source = readRepo("web/src/lib/tricks/schema.ts");
     const imports = [...source.matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1]);
-    expect(imports).toEqual(["../fold", "../hidden-chars", "../json", "./contract", "./sheet-labels"]);
+    // `./limits` holds plain numbers; its one import (`../hill/wire`) takes only types back from here.
+    expect(imports).toEqual(["../fold", "../hidden-chars", "../json", "./contract", "./limits", "./sheet-labels"]);
     // The hidden-character rule is plain code and imports nothing.
     expect(readRepo("web/src/lib/hidden-chars.ts")).not.toMatch(/^import /m);
     // The fold (shared with the agent view) imports only the hidden-character rule; the sheet's labels are generated data.
@@ -1486,16 +1487,17 @@ describe("parseManifest", () => {
 
   it("names one contract number: the default 1, a higher one refused with both numbers, an unknown key still a typo", () => {
     const base = { id: "legs", name: "Legs", run: "./legs.sh", places: ["belt"] };
-    expect(TRICK_CONTRACT).toBe(2);
+    expect(TRICK_CONTRACT).toBe(3);
     expect(parseManifest(base).manifest?.contract).toBe(TRICK_CONTRACT_DEFAULT);
     expect(TRICK_CONTRACT_DEFAULT).toBe(1);
     expect(parseManifest({ ...base, contract: 1 }).manifest?.contract).toBe(1);
     expect(parseManifest({ ...base, contract: 2 }).manifest?.contract).toBe(2);
-    const newer = parseManifest({ ...base, contract: 3, shiny: "a key of contract 3" });
+    expect(parseManifest({ ...base, contract: 3 }).manifest?.contract).toBe(3);
+    const newer = parseManifest({ ...base, contract: 4, shiny: "a key of contract 4" });
     expect(newer.manifest).toBeUndefined();
     // Only the one sentence: a newer contract may hold keys this Collie never heard of.
-    expect(newer.refusals).toEqual([{ code: "version", path: "/contract", reason: newerContractReason(3) }]);
-    expect(newer.refusals[0]?.reason).toBe("This trick needs a newer Collie: it is written for trick contract 3, and this Collie knows contract 2. Update Collie to run it.");
+    expect(newer.refusals).toEqual([{ code: "version", path: "/contract", reason: newerContractReason(4) }]);
+    expect(newer.refusals[0]?.reason).toBe("This trick needs a newer Collie: it is written for trick contract 4, and this Collie knows contract 3. Update Collie to run it.");
     // At the same number an unknown key is a typo, and it refuses.
     expect(parseManifest({ ...base, contract: 1, plcaes: ["belt"] }).refusals.map((r) => [r.code, r.path])).toEqual([["unknown-key", "/plcaes"]]);
     expect(parseManifest({ ...base, contract: 1, plcaes: ["belt"] }).manifest).toBeUndefined();
@@ -1695,8 +1697,8 @@ describe("contract 2: inputs", () => {
 
   it("a document's v may be any contract from 1 to this Collie's", () => {
     const part = { at: "belt", id: "belt", mark: { icon: "flask", label: "1" } };
-    for (const v of [1, 2]) expect(parseTrickDocument({ v, parts: [part] }).refusals, String(v)).toEqual([]);
-    for (const v of [0, 3, 1.5]) expect(parseTrickDocument({ v, parts: [part] }).refusals.map((r) => r.path), String(v)).toEqual(["/v"]);
+    for (const v of [1, 2, 3]) expect(parseTrickDocument({ v, parts: [part] }).refusals, String(v)).toEqual([]);
+    for (const v of [0, 4, 1.5]) expect(parseTrickDocument({ v, parts: [part] }).refusals.map((r) => r.path), String(v)).toEqual(["/v"]);
   });
 });
 
@@ -1716,7 +1718,7 @@ describe("parseFacts", () => {
     expect(read.facts?.contract).toBe(2);
     expect(read.facts?.sessionsOmitted).toBe(3);
     expect(read.facts?.sessions[0]).toMatchObject({ reachable: false, inputs: { state: "ok", files: [file], skipped: 2 } });
-    expect(parseFacts({ ...FACTS.timer, contract: 3 }).refusals.map((r) => r.path)).toEqual(["/contract"]);
+    expect(parseFacts({ ...FACTS.timer, contract: 4 }).refusals.map((r) => r.path)).toEqual(["/contract"]);
     const badState = { ...facts, sessions: [{ ...first, inputs: { state: "maybe", files: [] } }] };
     expect(parseFacts(badState).refusals.length).toBeGreaterThan(0);
     const badKind = { ...facts, sessions: [{ ...first, inputs: { state: "ok", files: [{ ...file, kind: "binary" }] } }] };

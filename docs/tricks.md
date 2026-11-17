@@ -501,6 +501,10 @@ Tricks to open it.
   "Added on this machine." A trick from a repository has a link to it, with the host shown in full.
   For a repository on `github.com`, the link also shows its stars and the date of its last commit,
   once Collie has read them. The version shows when the trick's author wrote one in `trick.toml`.
+- **Settings** holds the values the trick asks you for, one row each, when its `trick.toml` lists
+  `[[field]]` ([Settings a trick asks you for](tricks-authoring.md#settings-a-trick-asks-you-for)).
+  A change saves at once and runs the trick once. It asks for no new yes. While a required setting is
+  empty, the trick's row says "Needs setup".
 - **Updates** holds the "Take changes without asking" switch, for a trick that is on.
 
 The description and the longer text are the author's own words, and nothing checks them against the
@@ -555,6 +559,9 @@ On the lead, a trick sees the sessions of every machine in the crew. It can also
 agent sessions of every machine, if its manifest lists them. Each member decides whether to allow
 that, and the lead asks each member again for each read
 ([Tricks that read files on every machine](crew.md#tricks-that-read-files-on-every-machine)).
+
+A trick's settings live on the lead too. A member shows them and cannot change them. They do not move
+to a deputy: after a takeover the trick says "Needs setup" until you set them again there.
 
 An agent on a member machine can still put a Decision on the lead's Hill
 ([Decisions from any machine](crew.md#decisions-from-any-machine)).

@@ -895,6 +895,7 @@ describe("solo zero-tax — routes", () => {
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/switch$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/tap$/",
       "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/undo$/",
+      "/^\\/api\\/tricks\\/([^/]+)\\/([^/]+)\\/value$/",
       // Official tricks (M94): add or update a trick on the list this release carries. A SOLO route that
       // legitimately extends this list, named here rather than exempted: write-gated like the switch,
       // this bridge's own tricks folder only, and a crew member answers `runs-on` and fetches nothing.

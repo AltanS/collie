@@ -22,7 +22,7 @@ import { clearStatus } from "@/lib/status";
 import { homeSolo } from "../fixtures";
 import { VIEW_TRICK } from "../fixtures/agent-view";
 import { proposalGroup, versionGroup } from "../fixtures/hill/decisions";
-import { ABOUT_MAX, type OfficialState, type OfficialTricksReply, type TricksGate, type TricksReply, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
+import { ABOUT_MAX, type FieldValue, type OfficialState, type OfficialTricksReply, type TricksGate, type TricksReply, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 import { CodeFailure, type TrickCodeReader } from "@/components/trick-code-folds";
 
@@ -133,6 +133,7 @@ function ListCard({ n, state, label, tricks, readOnly, hillOff, tricksOff, gate 
             onSwitch={standIn(tricks)}
             onAuto={autoStandIn(tricks)}
             onUndo={undoStandIn(tricks)}
+            onSetValue={valueStandIn(tricks)}
             onOfficialList={NO_OFFICIAL}
             now={NOW}
             readOnly={readOnly}
@@ -173,7 +174,38 @@ const GATES: WireTrickInfo = trick("gates", "Release Gates", {
   provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "9c41d07e2b6a" },
 });
 
-function SheetBox({ n, state, label, trick: info, updates = false, readCode }: { n: number; state: string; label: string; trick: WireTrickInfo; updates?: boolean; readCode?: TrickCodeReader }) {
+/** The settings write's stand-in (contract 3): answers after a moment with the row and the value set. */
+function valueStandIn(tricks: WireTrickInfo[]) {
+  return async (host: string, id: string, body: { key: string; value: FieldValue | null }): Promise<WireTrickInfo> => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const row = tricks.find((one) => one.host === host && one.id === id) ?? trick(id, id);
+    const values = { ...row.values };
+    if (body.value === null) delete values[body.key];
+    else values[body.key] = body.value;
+    return { ...row, values };
+  };
+}
+
+/** The About sheet's settings write in the playground: takes after a moment. */
+async function valueSaver(): Promise<string | null> {
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  return null;
+}
+
+/** A trick with one field of each kind (contract 3), its required repository still empty. */
+const FIELDS_TRICK: WireTrickInfo = trick("gates", "Release Gates", {
+  places: ["belt"],
+  description: "Which release checks are green for this branch.",
+  fields: [
+    { key: "repo", kind: "text", label: "Repository", hint: "owner/name, as on GitHub", required: true },
+    { key: "branch", kind: "choice", label: "Branch", options: ["main", "edge", "release"], default: "main" },
+    { key: "notify", kind: "switch", label: "Notify me when one turns red" },
+    { key: "rows", kind: "number", label: "Rows", min: 1, max: 50, default: 10 },
+  ],
+  needsSetup: true,
+});
+
+function SheetBox({ n, state, label, trick: info, updates = false, values = false, readCode }: { n: number; state: string; label: string; trick: WireTrickInfo; updates?: boolean; values?: boolean; readCode?: TrickCodeReader }) {
   const [open, setOpen] = useState(true);
   // The Updates switch of a trick that is on: flips at once, as the card holds it.
   const [auto, setAuto] = useState(info.auto === true);
@@ -184,7 +216,7 @@ function SheetBox({ n, state, label, trick: info, updates = false, readCode }: {
         <button type="button" className="m-4 min-h-11 text-sm underline" onClick={() => setOpen(true)}>
           About {info.name}
         </button>
-        <TrickAboutSheet trick={info} open={open} onClose={() => setOpen(false)} auto={auto} onAuto={updates ? setAuto : undefined} readCode={readCode} />
+        <TrickAboutSheet trick={info} open={open} onClose={() => setOpen(false)} auto={auto} onAuto={updates ? setAuto : undefined} onValue={values ? valueSaver : undefined} readCode={readCode} />
       </div>
     </Card>
   );
@@ -473,6 +505,12 @@ export function TrickSettingsSection(): ReactNode {
             provenance: { via: "repo", at: "2026-11-08T09:38:00Z", repo: "AltanS/collie-tricks", sha: "9c41d07e2b6a" },
           })}
         />
+      </Group>
+      <Group title="Settings of a trick (contract 3)">
+        <ListCard n={56} state="trick-settings-fields-needs-setup" label="a required setting is empty: the row says Needs setup (tap the name)" tricks={[FIELDS_TRICK, HEALTHY[2] ?? trick("x", "x")]} />
+        <SheetBox n={57} state="trick-settings-fields" label="the Settings group: one row per field, text, choice, switch, number" values trick={FIELDS_TRICK} />
+        <SheetBox n={58} state="trick-settings-fields-set" label="every setting set" values trick={{ ...FIELDS_TRICK, needsSetup: undefined, values: { repo: "lodge/workshop", branch: "edge", notify: true, rows: 20 } }} />
+        <SheetBox n={59} state="trick-settings-fields-unread" label="the saved settings do not read" values trick={{ ...FIELDS_TRICK, valuesUnread: true }} />
       </Group>
       <Group title="An agent view (contract 2)">
         <ListCard n={26} state="trick-settings-agent-view" label="a view-only trick: agent view as its place, a switch" tricks={[VIEW_TRICK, HEALTHY[2] ?? trick("x", "x")]} />

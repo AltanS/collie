@@ -55,6 +55,16 @@ const PINNED: ReadonlyArray<readonly [name: string, value: unknown, was: string]
   ["WATCH_WINDOW_MS", 300_000, "bridge/tricks/service.ts"],
   // new 2026-11-17 (package F): the most bytes of one code file the About sheet's fold carries
   ["CODE_VIEW_BYTES_MAX", 32_768, "bridge/tricks/code-view.ts"],
+  // contract 3, [[field]] (new in limits.ts, 2026-11-17; no older module held them)
+  ["FIELDS_MAX", 12, "web/src/lib/tricks/limits.ts"],
+  ["FIELD_LABEL_MAX", 40, "web/src/lib/tricks/limits.ts"],
+  ["FIELD_HINT_MAX", 120, "web/src/lib/tricks/limits.ts"],
+  ["FIELD_TEXT_MAX", 200, "web/src/lib/tricks/limits.ts"],
+  ["FIELD_OPTIONS_MIN", 2, "web/src/lib/tricks/limits.ts"],
+  ["FIELD_OPTIONS_MAX", 8, "web/src/lib/tricks/limits.ts"],
+  ["FIELD_OPTION_MAX", 40, "web/src/lib/tricks/limits.ts"],
+  ["FIELD_NUMBER_ABS_MAX", 999_999_999, "web/src/lib/tricks/limits.ts"],
+  ["VALUE_WRITES_SEEN_MAX", 256, "bridge/tricks/values.ts"],
   // bridge/hill/service.ts
   ["HILL_DEFAULT_EXPIRY_DAYS", 14, "bridge/hill/service.ts"],
   ["HILL_DEFAULT_EXPIRY_MS", 14 * DAY_MS, "bridge/hill/service.ts"],
