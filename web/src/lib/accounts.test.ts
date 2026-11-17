@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 
 import { body, defaultRow, HARNESS_CLAUDE, HARNESS_CODEX, serveAccounts, serveAccountsStatus, workRow } from "@/test/accounts-fixtures";
 import { server } from "@/test/setup";
-import { addAccount, createWorktreeAt, removeAccount, startLaunch } from "./api";
+import { addAccount, createWorktreeAt, fetchAccounts, removeAccount, startLaunch } from "./api";
 import {
   accountName,
   addedCount,
@@ -272,5 +272,26 @@ describe("accounts: who is signed in", () => {
     expect(signedInText({ signedIn: true, email: "someone@example.com" })).toBe("someone@example.com");
     expect(signedInText({ signedIn: true, plan: "max" })).toBe("Max");
     expect(signedInText({ signedIn: true })).toBeNull();
+  });
+});
+
+describe("the accounts read, an answer with no usable accounts list", () => {
+  it("is a failed read for every caller, not a body that throws on `.accounts`", async () => {
+    for (const answer of [{ version: 99 }, { accounts: null }, { accounts: {} }, [], null]) {
+      server.use(http.get("/api/accounts", () => HttpResponse.json(answer)));
+      await expect(fetchAccounts()).rejects.toThrow();
+    }
+  });
+
+  it("fills a missing harnesses or found part with an empty list", async () => {
+    server.use(http.get("/api/accounts", () => HttpResponse.json({ accounts: [defaultRow()] })));
+    expect(await fetchAccounts()).toEqual({ harnesses: [], accounts: [defaultRow()], found: [] });
+  });
+
+  it("makes the hook read `failed`, with no body", async () => {
+    server.use(http.get("/api/accounts", () => HttpResponse.json({ version: 99 })));
+    const { result } = renderHook(() => useAccounts());
+    await waitFor(() => expect(result.current.status).toBe("failed"));
+    expect(result.current.body).toBeNull();
   });
 });

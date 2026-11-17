@@ -122,6 +122,7 @@ import {
   type DeposedState,
 } from "./crew/deposed.ts";
 import { LeadContact } from "./crew/lead-contact.ts";
+import { forwardAuditDetail } from "./crew/forward.ts";
 import { deputyAnchorOf, dialTls, peerListenerTls } from "./crew/transport.ts";
 import { commitCrewChange, CREW_PROTOCOL_VERSION } from "./crew/enrollment.ts";
 import { CrewLead } from "./crew/lead.ts";
@@ -313,6 +314,7 @@ import { HoldStore } from "./surface/holds.ts";
 import { SurfaceLedger } from "./surface/counters.ts";
 import { deliverEdge, EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
 import { counterWordOf, HoldBook, HoldServer, takeHold, type Held, type HoldConn, type HoldTarget } from "./surface/hold.ts";
+import { holdAuditEntry } from "./refusal.ts";
 import type { HoldRequest } from "../web/src/lib/surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
 import { PartAsks, type PartAskSession } from "./inside/asks.ts";
@@ -1849,6 +1851,8 @@ const holdServer =
         socketPath: holdSocketPath(cfg.stateDir),
         host: HOST,
         liveness: procBeaconLiveness(),
+        // One audit line per hook request this bridge receives (M102 spec 14): placed, or dropped and why.
+        record: (record) => audit.record(holdAuditEntry(record)),
         targets: () => {
           const live = new Set(registry.ordered().map((runtime) => runtime.name));
           return [...edgeTargets].filter(([name]) => live.has(name)).map(([, target]) => target);
@@ -3462,7 +3466,7 @@ if (crewLead !== undefined && walkyMemberId !== null) {
         const req = new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: payload });
         const res = await lead.forward(req, url, resolved, {
           device: null,
-          audit: (entry) => audit.record({ action: entry.action, host: entry.host, device: null, detail: { forwarded: entry.outcome } }),
+          audit: (entry) => audit.record({ action: entry.action, host: entry.host, device: null, detail: forwardAuditDetail(entry) }),
         });
         const body = await res.json().catch(() => null);
         // SAFETY: `Response.json()` output IS a JsonValue by construction; only `code` and `error` are read here.

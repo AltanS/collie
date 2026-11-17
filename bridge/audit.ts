@@ -40,6 +40,9 @@ export type AuditContent = "preview" | "none";
  * array can carry a body. It gets its own rule, {@link sanitizeKeys}, which keeps only named keys.
  */
 const METADATA_KEYS: ReadonlySet<string> = new Set([
+  // A refusal record (bridge/refusal.ts, M102 spec 14): who refused, an enum the bridge writes
+  // (`lead`, `member`, `bridge`, `hook`), and the outcome beside the reason, an enum as well.
+  "by",
   "checked",
   // The hill (M96): a decision id the bridge mints (`dc_` and 12 characters), never typed by a person.
   "decisionId",
@@ -51,6 +54,8 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
   // The hill's answer: the option's intent, `answer` or `dismiss`. A lowercase word of at most 32
   // characters the poster named for a button (`isHillOptionIntent`), never the person's text.
   "intent",
+  // The outcome of an action: an enum the bridge writes (`sent`, `refused`, `dropped`, `http 404`), never text.
+  "outcome",
   // A pairing (bridge/pair-audit.ts): the pane and session `collie pair` ran in, as the bridge placed
   // them, or `not placed`. A pane id and a session name, the same values the envelope keeps.
   "mintPane",
