@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { Icon } from "@/components/icons/icon";
 
 import { AgentIcon } from "@/components/agent-icon";
@@ -565,6 +565,7 @@ export function SessionStream({
   agent,
   pins,
   clearBottom,
+  tail,
 }: {
   /** The held window plus its one control, from `useChatWindow`. */
   feed: ChatFeed;
@@ -644,6 +645,11 @@ export function SessionStream({
     /** Filled with a function that scrolls to the block a pin came from, and says whether the stream holds it (M90). */
     reveal?: MutableRefObject<((pin: Pick<PinRow, "itemId" | "anchor">) => boolean) | null>;
   };
+  /**
+   * What stands last in the thread, after everything else, in the stream's own scroll: a trick this session
+   * proposed (components/session-trick-card.tsx), so it reads like a message and never takes a band of its own.
+   */
+  tail?: ReactNode;
 }) {
   // The subscription every `t()` caller owes, plus the counter the memo below needs.
   const { revision } = useLocale();
@@ -1167,6 +1173,7 @@ export function SessionStream({
       {empty && explain === null && reading && !working && drawnLines.length === 0 && (
         <div className="py-16 text-center text-sm text-muted-foreground">{t("chat.stream.empty")}</div>
       )}
+      {tail}
     </ChatMessageList>
   );
 }

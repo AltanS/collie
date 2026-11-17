@@ -51,8 +51,8 @@ function inView(el: Element, box: Element | null): boolean {
 
 /**
  * Calls `seen` once the mark after the card's last line (`end`) has been on screen. There is no shortcut
- * for a card that is no taller than the window: a scroll box around the card (the chat's trick card is
- * boxed at 60dvh) can hide part of a short card, so the mark is always watched, with the scroll box as
+ * for a card that is no taller than the window: a scroll box around the card (the Hill list, a sheet)
+ * can hide part of a short card, so the mark is always watched, with the scroll box as
  * the observer's root where there is one (security read of package I, 2026-11-17, point 1). Where there is
  * no IntersectionObserver, every scroll and resize looks again.
  */

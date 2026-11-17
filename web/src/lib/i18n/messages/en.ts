@@ -3942,6 +3942,8 @@ export const en = {
   "hill.group.openAll.other": "Open all {count} cards first.",
   "hill.group.card": "Card {index}",
   "hill.single.readEnd": "Scroll to the end of the code first.",
+  "hill.chat.openCode": "Open the code and read it to its end first.",
+  "hill.chat.unshown": "This phone cannot show all of this card, so the trick cannot be switched on here. Read it and switch it on on the machine.",
   "tricks.compare.before": "Before",
   "tricks.compare.after": "After",
   "tricks.spark.trend": "Trend",
@@ -4374,6 +4376,8 @@ export const PENDING_TRANSLATION = [
   "accounts.sessions.one",
   "accounts.sessions.other",
   "accounts.sameLogin",
+  "hill.chat.openCode",
+  "hill.chat.unshown",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

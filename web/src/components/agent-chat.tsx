@@ -2349,6 +2349,12 @@ export function AgentChat({
     composerRef.current?.focusInput();
   }
 
+  // A trick this session proposed (package I): Collie's own card, last in whichever body is on screen, in that
+  // body's own scroll like a message (session-trick-card.tsx), never a band of its own. Opening its code brings
+  // the fold's row to the top and stops the list following the tail, so the code is read from its start.
+  const trickCards =
+    agent === undefined ? null : <SessionTrickCards self={walkySelf} onReadCode={(row) => void listRef.current?.scrollToChild(row, true)} />;
+
   return (
     // The pane route draws its strips WITHOUT their names. The breadcrumb two rows up already says
     // which space and tab you are in, so TABS and PANES restate it — and here, unlike anywhere else,
@@ -3167,6 +3173,7 @@ export function AgentChat({
                       ? undefined
                       : handleReturned
                   }
+                  tail={trickCards}
                 />
               </CardWaitingCtx.Provider>
               </WalkyOpenProvider>
@@ -3335,6 +3342,7 @@ export function AgentChat({
                   </div>
                 </>
               )}
+              {trickCards}
             </ChatMessageList>
             ))}
             </TailRoomContext.Provider>
@@ -3383,9 +3391,6 @@ export function AgentChat({
               onExit={() => raiseExit(holdExitKey(agent.hold?.askId ?? ""), "error")}
             />
           )}
-          {/* A trick this session proposed (package I): Collie's own card, where the docked cards sit, so the
-              person reads it and switches it on where they talk to the agent (session-trick-card.tsx). */}
-          {agent !== undefined && <SessionTrickCards self={walkySelf} />}
           {display && olderMemberCards && hasDialogCard(blocks) && (
             <div className="px-3 pb-1">
               <Notice tone="neutral" variant="box">
