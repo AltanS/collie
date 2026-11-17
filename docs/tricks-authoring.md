@@ -363,6 +363,30 @@ whole trick, with its own `trick.toml`. A program imports only files in its own 
 share no code: copy a helper into each. `collie trick update <id>` fetches the same folder again, and
 the new code waits for the person's yes.
 
+List the tricks in a `collie-tricks.json` file at the top of the repository, so people can see what
+it holds without knowing the folder names:
+
+```json
+{
+  "contract": 1,
+  "tricks": [
+    { "folder": "idle-watch", "name": "Idle Watch", "about": "Marks a session that waits for you." },
+    { "folder": "triage", "name": "Triage", "about": "Sorts the open issues by label." }
+  ]
+}
+```
+
+The file is a list and nothing more. `folder` is spelled as a trick id and names a folder at the top;
+`name` and `about` are one line each. Collie refuses a key it does not know, more than 50 tricks, a file
+over 32 KiB, and a `contract` it does not read. The other limits are in the
+[reference](tricks-reference.md#a-repositorys-index-collie-tricksjson).
+
+`collie trick add https://github.com/owner/tricks` then prints the list and adds nothing. On the phone,
+Settings → Tricks → "Add from a repository" shows the list and adds one trick per tap, from `github.com`,
+`gitlab.com` and `codeberg.org` only. The list grants nothing: each trick is still fetched, checked and
+added off, and its own `trick.toml` wins over the list's name and line. A repository's list never
+makes a trick Official.
+
 Add the GitHub topic `colliepwa-tricks` to the repository, so people find it. The official tricks are
 kept the same way, in `https://github.com/AltanS/collie-tricks`.
 

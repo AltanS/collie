@@ -206,6 +206,12 @@ import {
   PROPOSALS_SENDER_HOUR_MAX,
   PROPOSALS_SENDER_OPEN_MAX,
   PROPOSE_LIMITS,
+  REPO_INDEX_ABOUT_MAX,
+  REPO_INDEX_BYTES_MAX,
+  REPO_INDEX_CONTRACT,
+  REPO_INDEX_NAME_MAX,
+  REPO_INDEX_TIMEOUT_MS,
+  REPO_INDEX_TRICKS_MAX,
   RUN_TIMEOUT_MS,
   RUNS_MAX,
   SEED_BYTES_MAX,
@@ -214,6 +220,7 @@ import {
   STDERR_CAP_BYTES,
   STDOUT_CAP_BYTES,
 } from "./limits";
+import { REPO_INDEX_FILE, REPO_INDEX_HOSTS } from "./repo-index";
 
 // ── Small helpers that make the words from the numbers ───────────────────────────────────────
 
@@ -1448,6 +1455,17 @@ export const LIMITS: readonly LimitGroup[] = [
     ],
   },
   {
+    group: `A repository's index, \`${REPO_INDEX_FILE}\``,
+    limits: [
+      { what: "The file", value: `at most ${sizeWords(REPO_INDEX_BYTES_MAX)} of JSON at the top of the repository, \`contract\` ${String(REPO_INDEX_CONTRACT)}, no other key` },
+      { what: "Tricks listed", value: `at most ${String(REPO_INDEX_TRICKS_MAX)}, each \`folder\`, \`name\` and \`about\` and nothing else` },
+      { what: "`folder`", value: "spelled as a trick id: one folder at the top, no `/`, no `..`, no leading dot" },
+      { what: "`name`, `about`", value: `one line each of at most ${String(REPO_INDEX_NAME_MAX)} and ${String(REPO_INDEX_ABOUT_MAX)} characters, no control or invisible character` },
+      { what: "Hosts the phone reads from", value: `${REPO_INDEX_HOSTS.map((host) => `\`${host}\``).join(", ")}, https, written exactly. Any other host: \`collie trick add <url>\` at the terminal` },
+      { what: "A read or an add on the phone", value: `one at a time per machine, at most ${spanWords(REPO_INDEX_TIMEOUT_MS)}, the size cap of the official list, no redirect, no git config of yours` },
+    ],
+  },
+  {
     group: "Card groups",
     limits: [
       { what: "Cards", value: `card 1 holds the facts and at most ${String(GROUP_CODE_CARDS)} cards hold the code, ${String(GROUP_CARD_CODE_BYTES / KIB)} KB each` },
@@ -1505,7 +1523,7 @@ const JSON_FLAG: CommandFlag = { flag: "--json", what: "Print one JSON document 
 /** Every verb of `collie trick`, `collie tricks`, `collie trick view` and `collie hill`. The test holds this list to the CLI's own verb lists. */
 export const COMMANDS: readonly CommandEntry[] = [
   { group: "trick", verb: "list", usage: "trick list [--json] [--official]", what: "Lists every trick folder with its switch, state, last run and last error.", flags: [JSON_FLAG, { flag: "--official", what: "List the official tricks this Collie can add from the phone." }] },
-  { group: "trick", verb: "add", usage: "trick add [<name> | <https-url>[//<folder>][#<ref>]]", what: "Copies a trick from a git repository into the tricks folder, off. With no source it lists the official tricks and adds nothing.", flags: [] },
+  { group: "trick", verb: "add", usage: "trick add [<name> | <https-url>[//<folder>][#<ref>]]", what: "Copies a trick from a git repository into the tricks folder, off. With no source it lists the official tricks and adds nothing. A repository with a `collie-tricks.json` and no `//<folder>` prints its list and adds nothing.", flags: [] },
   { group: "trick", verb: "update", usage: "trick update <id> [--ref <branch|tag|commit>] [--dry-run]", what: "Fetches an added trick again and replaces its code, keeping `config.toml`.", flags: [{ flag: "--ref", what: "Fetch this branch, tag or commit instead of the same ref." }, { flag: "--dry-run", what: "Print what would change and change nothing." }] },
   { group: "trick", verb: "remove", usage: "trick remove <id>", what: "Deletes a trick that is off, with its state folder.", flags: [] },
   { group: "trick", verb: "on", usage: "trick on <id>", what: "Switches a trick on, approving its code as it is now. It refuses inside an agent's pane.", flags: [] },

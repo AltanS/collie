@@ -10,6 +10,7 @@ import { ROW_OPEN_BUTTON, ROW_OPEN_CONTROL, ROW_OPEN_ROW, ROW_OPEN_SWITCH } from
 import { Switch } from "@/components/ui/switch";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
 import { TokenUseChip } from "@/components/token-use-label";
+import { RepoAddRow, type RepoAddCall, type RepoListCall } from "@/components/tricks-repo-sheet";
 import { useArm } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
 import { addOfficialTrick, apiErrorFields, fetchOfficialTricks, fetchTrickCodeFile, fetchTrickCodeIndex, setTrickAuto, setTrickValue, switchTrick, undoTrick } from "@/lib/api";
@@ -209,6 +210,10 @@ export interface TricksSettingsCardProps {
   onOfficialList?: (signal?: AbortSignal) => Promise<OfficialTricksReply>;
   /** The add or update from that list. The real route by default. */
   onOfficialAdd?: (id: string, mode: "add" | "update") => Promise<{ id: string; state: OfficialState }>;
+  /** The read of a repository's trick list ("Add from a repository"). The real route by default. */
+  onRepoList?: RepoListCall;
+  /** The add of one trick of that list. The real route by default. */
+  onRepoAdd?: RepoAddCall;
 }
 
 /** The Tricks card, or nothing while the phone holds no tricks reply. */
@@ -573,6 +578,8 @@ function TricksList({
   onSetValue = setTrickValue,
   onOfficialList = fetchOfficialTricks,
   onOfficialAdd = addOfficialTrick,
+  onRepoList,
+  onRepoAdd,
   now,
   readOnly,
   hillOff,
@@ -850,6 +857,8 @@ function TricksList({
                 </TrickBoundary>
               );
             })}
+          {/* A crew member runs no trick, so it adds none (runsOn). */}
+          {official.settled && runsOn === undefined && <RepoAddRow tricksOff={off} readOnly={!mayWrite} onList={onRepoList} onAdd={onRepoAdd} />}
         </div>
         <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t("settings.tricks.foot")}</p>
       </Card>

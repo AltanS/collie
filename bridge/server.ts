@@ -252,6 +252,7 @@ import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
 import { asksBound, TRICKS_ROUTE_RIGHTS, tricksAutoRoute, tricksCodeRoute, tricksMediaRoute, tricksOfficialRoute, tricksSwitchRoute, tricksTapRoute, tricksUndoRoute, tricksValueRoute, parseSince } from "./tricks/routes.ts";
 import type { OfficialTricksSurface } from "./tricks/official-install.ts";
+import type { RepoIndexSurface } from "./tricks/repo-index.ts";
 import { placeTrickSessions } from "./tricks/panes.ts";
 import type { TricksSurface } from "./tricks/service.ts";
 import { TRICKS_OFF_LINE } from "../web/src/lib/tricks/schema.ts";
@@ -668,6 +669,8 @@ const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
 const TRICKS_CODE_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/code$/;
 // The official list (bridge/tricks/official.ts): add or update one entry. Group 1 the trick id, group 2 the verb.
 const TRICKS_OFFICIAL_ROUTE = /^\/api\/tricks\/official\/([^/]+)\/(add|update)$/;
+// A repository's index (bridge/tricks/repo-index.ts): read it, or add one trick it lists. Group 1 the verb.
+const TRICKS_REPO_ROUTE = /^\/api\/tricks\/repo\/(list|add)$/;
 
 /**
  * How long a worktree create may hold its connection open, in seconds (ADR 0089). Bun drops a request
@@ -1638,6 +1641,8 @@ export function startServer(opts: {
    * update writes. Absent: both answer 404.
    */
   officialTricks?: OfficialTricksSurface;
+  /** A repository's index (bridge/tricks/repo-index.ts): `POST /api/tricks/repo/list` and `/add`. 404 when absent. */
+  repoTricks?: RepoIndexSurface;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, crew } = opts;
   // The prompt-cache ledger, built in bridge/index.ts beside the journal registry it probes through,
@@ -3370,6 +3375,24 @@ export function startServer(opts: {
           body = undefined;
         }
         const answer = await tricksOfficialRoute(official, tricksOfficial, body);
+        return json(answer.body, req.headers.get("accept-encoding"), answer.status);
+      }
+      // A repository's index: both verbs make the bridge fetch from a host the person pasted, so both are gated
+      // like the official add. The host rule, the request id and the receipt are repo-index.ts's.
+      const tricksRepo = TRICKS_REPO_ROUTE.exec(pathname);
+      if (tricksRepo !== null && req.method === "POST") {
+        const denied = guard(req, cfg, tricksRepo[1] === "add" ? TRICKS_ROUTE_RIGHTS.repoAdd : TRICKS_ROUTE_RIGHTS.repoList, pairingGate);
+        if (denied) return denied;
+        const repo = opts.repoTricks;
+        if (repo === undefined) return jsonError({ error: "not found" }, 404, null);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; repo-index.ts checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const answer = tricksRepo[1] === "add" ? await repo.add(body) : await repo.list(body);
         return json(answer.body, req.headers.get("accept-encoding"), answer.status);
       }
       const tricksTap = TRICKS_TAP_ROUTE.exec(pathname);

@@ -14,10 +14,12 @@ import { StatusArea } from "@/components/status-area";
 import { TrickCardsLineView, TrickCardsWaitingList } from "@/components/trick-cards";
 import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
+import { RepoAddSheet } from "@/components/tricks-repo-sheet";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
 import { TricksSwitchCard } from "@/components/tricks-switch-card";
-import { addOfficialTrick } from "@/lib/api";
+import { addOfficialTrick, addRepoTrick, listRepoTricks } from "@/lib/api";
 import { syncHill } from "@/lib/hill/store";
+import { asJsonString, parseJsonObject, type JsonValue } from "@/lib/json";
 import { clearStatus } from "@/lib/status";
 import { homeSolo } from "../fixtures";
 import { VIEW_TRICK } from "../fixtures/agent-view";
@@ -365,6 +367,59 @@ function OfficialSheetBox({ n, state, label, entry }: { n: number; state: string
   );
 }
 
+// "Add from a repository" (2026-11-17): the sheet behind the last row of the list. The real api calls run, over a
+// stand-in for the two routes that answers by the pasted link: one link has no index file, the others list three
+// tricks, one of them already here. An Add answers after a moment and lands the trick off.
+
+const REPO_COMMIT = "5c3e9a17d02b48e6a1f7c9b0d4e8a2f61b7c3d90";
+const REPO_NO_INDEX_URL = "https://github.com/lodge/empty-shelf";
+const REPO_LIST_URL = "https://github.com/lodge/workshop";
+
+const REPO_TRICKS = [
+  { folder: "idle-watch", name: "Idle Watch", about: "Marks a session that waits for you.", here: false },
+  { folder: "build-bell", name: "Build Bell", about: "Tells you when a long build in one of your sessions finishes, with the last line it printed and how long it ran.", here: false },
+  { folder: "clock", name: "Clock", about: "A small clock in the belt.", here: true },
+];
+
+function jsonAnswer(status: number, body: JsonValue, after: number): Promise<Response> {
+  return new Promise((resolve) => setTimeout(() => resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } })), after));
+}
+
+/** While the section is mounted, the two repository routes answer from the stand-in; every other request goes on. */
+function useRepoRoutes(): void {
+  useEffect(() => {
+    const real = window.fetch;
+    window.fetch = (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
+      if (url.pathname !== "/api/tricks/repo/list" && url.pathname !== "/api/tricks/repo/add") return real(input, init);
+      const body = parseJsonObject(String(init?.body ?? "{}"));
+      const rid = asJsonString(body?.rid);
+      const link = asJsonString(body?.url);
+      if (url.pathname === "/api/tricks/repo/add") return jsonAnswer(200, { rid, code: "ok", id: asJsonString(body?.folder), hash: "a".repeat(64) }, 900);
+      if (link === REPO_NO_INDEX_URL) return jsonAnswer(422, { error: "no-index", message: "The repository has no collie-tricks.json." }, 500);
+      return jsonAnswer(200, { rid, code: "ok", url: link, host: "github.com", repo: "lodge/workshop", commit: REPO_COMMIT, tricks: REPO_TRICKS }, 500);
+    };
+    return () => {
+      window.fetch = real;
+    };
+  }, []);
+}
+
+function RepoSheetBox({ n, state, label, initialUrl, readOnMount = false }: { n: number; state: string; label: string; initialUrl?: string; readOnMount?: boolean }) {
+  const [open, setOpen] = useState(true);
+  const style: CSSProperties & { "--app-h"?: string } = { width: 390, height: 844, transform: "translate(0)", "--app-h": "844px" };
+  return (
+    <Card state={state} label={`${n} · ${label}`}>
+      <div data-pg-frame="" className="relative isolate overflow-hidden rounded-xl border border-border bg-background" style={style}>
+        <button type="button" className="m-4 min-h-11 text-sm underline" onClick={() => setOpen(true)}>
+          Add from a repository
+        </button>
+        <RepoAddSheet open={open} onClose={() => setOpen(false)} onList={listRepoTricks} onAdd={addRepoTrick} initialUrl={initialUrl} readOnMount={readOnMount} />
+      </div>
+    </Card>
+  );
+}
+
 /** The switch card at the top of Settings, Tricks, in a 390px column, with a switch that flips in place. */
 function SwitchCardCase({ n, state, label, initial, waiting = 0, windows = false }: { n: number; state: string; label: string; initial: boolean; waiting?: number; windows?: boolean }) {
   const [on, setOn] = useState(initial);
@@ -378,6 +433,7 @@ function SwitchCardCase({ n, state, label, initial, waiting = 0, windows = false
 }
 
 export function TrickSettingsSection(): ReactNode {
+  useRepoRoutes();
   return (
     <Section def={DEF}>
       {/* The switch for tricks as a whole (bridge/tricks/feature-switch.ts), first on Settings, Tricks. Off by default. */}
@@ -671,6 +727,13 @@ export function TrickSettingsSection(): ReactNode {
       {/* A Windows bridge runs no trick (bridge/tricks/service.ts `gated`): one line, no rows, no switches. */}
       <Group title="A Windows bridge">
         <ListCard n={36} state="trick-settings-windows-gate" label="a Windows bridge: tricks are gated, one line" tricks={[]} gate="windows" />
+      </Group>
+      {/* Add from a repository (2026-11-17): the row is the last of every list above; here is its sheet, and the row with tricks off. */}
+      <Group title="Add from a repository">
+        <RepoSheetBox n={60} state="trick-settings-repo-empty" label="the sheet, the link field empty" />
+        <RepoSheetBox n={61} state="trick-settings-repo-list" label="three tricks, one already here: tap Add" initialUrl={REPO_LIST_URL} readOnMount />
+        <RepoSheetBox n={62} state="trick-settings-repo-no-index" label="a repository with no list" initialUrl={REPO_NO_INDEX_URL} readOnMount />
+        <ListCard n={63} state="trick-settings-repo-tricks-off" label="tricks off: the row is disabled and says why" tricks={[HEALTHY[0] ?? trick("x", "x")]} tricksOff />
       </Group>
       {/* Fault B: a trick whose approval did not hold a right its copy asks for stops; its switch shows off and its row says so. */}
       <Group title="A trick stopped because its rights changed">

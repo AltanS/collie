@@ -1601,6 +1601,17 @@ Tricks do not run on a Windows machine yet. [Collie on Windows](windows.md) says
 | Per hour | 6 per session, 12 per machine |
 | The card closes by itself after | 3 days |
 
+### A repository's index, `collie-tricks.json`
+
+| Limit | Value |
+| --- | --- |
+| The file | at most 32 KiB of JSON at the top of the repository, `contract` 1, no other key |
+| Tricks listed | at most 50, each `folder`, `name` and `about` and nothing else |
+| `folder` | spelled as a trick id: one folder at the top, no `/`, no `..`, no leading dot |
+| `name`, `about` | one line each of at most 40 and 160 characters, no control or invisible character |
+| Hosts the phone reads from | `github.com`, `gitlab.com`, `codeberg.org`, https, written exactly. Any other host: `collie trick add <url>` at the terminal |
+| A read or an add on the phone | one at a time per machine, at most 2 minutes, the size cap of the official list, no redirect, no git config of yours |
+
 ### Card groups
 
 | Limit | Value |
@@ -1617,7 +1628,7 @@ Every verb of `collie trick`.
 | Verb | Usage | What it does |
 | --- | --- | --- |
 | `list` | `collie trick list [--json] [--official]` | Lists every trick folder with its switch, state, last run and last error. |
-| `add` | `collie trick add [<name> \| <https-url>[//<folder>][#<ref>]]` | Copies a trick from a git repository into the tricks folder, off. With no source it lists the official tricks and adds nothing. |
+| `add` | `collie trick add [<name> \| <https-url>[//<folder>][#<ref>]]` | Copies a trick from a git repository into the tricks folder, off. With no source it lists the official tricks and adds nothing. A repository with a `collie-tricks.json` and no `//<folder>` prints its list and adds nothing. |
 | `update` | `collie trick update <id> [--ref <branch\|tag\|commit>] [--dry-run]` | Fetches an added trick again and replaces its code, keeping `config.toml`. |
 | `remove` | `collie trick remove <id>` | Deletes a trick that is off, with its state folder. |
 | `on` | `collie trick on <id>` | Switches a trick on, approving its code as it is now. It refuses inside an agent's pane. |

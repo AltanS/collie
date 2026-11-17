@@ -376,6 +376,31 @@ what arrived. The added trick stays in the same place, with its switch. Adding a
 changes its row, never its place. The Hill is not a row of that card: it is not a trick, and its
 switch is in Settings → Experiments.
 
+### Add from a repository that lists its tricks
+
+A repository can list its tricks in a `collie-tricks.json` file at its top
+([Several tricks in one repository](tricks-authoring.md#several-tricks-in-one-repository)). Then:
+
+```sh
+collie trick add https://github.com/owner/tricks
+```
+
+prints each folder, its name and its one line, and the commit it read. It adds nothing. Add one with
+`collie trick add https://github.com/owner/tricks//<folder>`. A repository with no such file and no
+`trick.toml` at its top says so and names the `//<folder>` form.
+
+On the phone, Settings → Tricks ends with "Add from a repository". Paste the https link, tap "Read the
+list", then tap Add on one trick. The list shows the repository's own words under "The repository
+says". They are a claim, not a check: the trick's own `trick.toml` wins once it is added. Add makes one
+git fetch, checks the folder as `collie trick add` does, and the trick arrives switched off. Its switch
+then asks you, as for every trick. A repository's list never makes a trick Official.
+
+The phone reads only from `github.com`, `gitlab.com` and `codeberg.org`, over https, with no user name
+or password in the link. For any other host, add the trick at the terminal with
+`collie trick add <url>`, which also uses your own git settings. The phone's fetch reads none of your
+git settings, follows no redirect, and runs one at a time. The row is disabled while tricks are
+switched off. The limits are in the [reference](tricks-reference.md#a-repositorys-index-collie-tricksjson).
+
 `add` copies the trick into `tricks/` in Collie's config folder. That folder is `~/.config/collie` on
 a binary install, and Herdr's plugin config folder on a Herdr-managed install
 ([Configure](configure.md#the-environment-still-wins)). It prints the commit it copied and the same
