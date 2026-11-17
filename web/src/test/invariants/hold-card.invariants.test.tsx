@@ -11,7 +11,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { HOLD_TAP_GUARD_MS, HookHoldCard } from "@/components/hook-hold-card";
 import type { HoldNote } from "@/lib/surface/hold";
 
-import { knownRed, redTitle } from "./known-red";
 
 afterEach(() => {
   cleanup();
@@ -58,8 +57,7 @@ describe("M102-15 part 1b, the hook hold card's taps", () => {
     });
   }
 
-  const reject = knownRed("i2-hold-reject");
-  it.fails(`I2: an answer that rejects is handled and leaves words, and the options are live again ${redTitle(reject.id)}`, async () => {
+  it(`I2: an answer that rejects is handled and leaves words, and the options are live again`, async () => {
     const unhandled: string[] = [];
     const onUnhandled = (reason: Error): void => {
       unhandled.push(reason.message);
@@ -84,8 +82,7 @@ describe("M102-15 part 1b, the hook hold card's taps", () => {
     }
   });
 
-  const guard = knownRed("i2-hold-guard");
-  it.fails(`I2: a tap in the first ${String(HOLD_TAP_GUARD_MS)} ms makes a call, a visible change or words ${redTitle(guard.id)}`, async () => {
+  it(`I2: a tap in the first ${String(HOLD_TAP_GUARD_MS)} ms makes a call, a visible change or words`, async () => {
     vi.useFakeTimers({ now: 2_000_000 });
     const onAnswer = vi.fn(() => Promise.resolve());
     const { container } = render(<HookHoldCard note={NOTE} onAnswer={onAnswer} />);
@@ -98,8 +95,7 @@ describe("M102-15 part 1b, the hook hold card's taps", () => {
     expect({ called: onAnswer.mock.calls.length > 0, changed }).not.toEqual({ called: false, changed: false });
   });
 
-  const disabled = knownRed("i1-hold-disabled");
-  it.fails(`I1: a disabled hold card says why, next to its options ${redTitle(disabled.id)}`, () => {
+  it(`I1: a disabled hold card says why, next to its options`, () => {
     const live = render(<HookHoldCard note={NOTE} onAnswer={vi.fn()} />);
     const liveText = live.container.textContent ?? "";
     cleanup();

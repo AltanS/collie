@@ -195,8 +195,7 @@ describe("M102-15, the Change login page under every bridge answer", () => {
     expect(await finishCase(close, { kind: "status", status: 200, body: json({ surprise: true, version: 99 }), label: "200 unknown fields only" })).toBeNull();
   }, 20_000);
 
-  const raw = knownRed("i2-words-raw");
-  it.fails(`I2: Change login puts no proxy page and no route path at the thumb ${redTitle(raw.id)}`, async () => {
+  it(`I2: Change login puts no proxy page and no route path at the thumb`, async () => {
     expect((await launchBreaks()).filter((line) => line.includes("HTML page") || line.includes("route path") || line.includes("JSON"))).toEqual([]);
   }, 30_000);
 

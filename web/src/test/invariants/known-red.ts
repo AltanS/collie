@@ -57,18 +57,6 @@ export const KNOWN_RED = {
     what: "A person's send held on a screen that is not free waits up to 30 minutes on the reader, and after two minutes nothing on the receipt lets the phone show the screen and Send it now.",
   },
   // ── I2, a tap ends in a request, a change or words ──
-  "i2-hold-guard": {
-    invariant: "I2",
-    fixedBy: "M102-11",
-    where: "web/src/components/hook-hold-card.tsx:89 (the 400 ms guard returns with nothing)",
-    what: "A tap on a hook hold card in its first 400 ms makes no request, no change and no words.",
-  },
-  "i2-hold-reject": {
-    invariant: "I2",
-    fixedBy: "M102-11",
-    where: "web/src/components/hook-hold-card.tsx:90 (void Promise.resolve(onAnswer(index)).finally(...): no catch, no words)",
-    what: "When the hold card's answer handler rejects, the rejection is unhandled and the card shows no words; only the busy mark clears.",
-  },
   "i2-stop-hold-pane": {
     invariant: "I2",
     fixedBy: "M102-11",
@@ -81,25 +69,12 @@ export const KNOWN_RED = {
     where: "web/src/routes/settings-change-login.tsx:74 (`body?.accounts.find`: a body with no accounts field throws in render)",
     what: "After Finish, a list answer from an older or newer bridge with no accounts field crashes the page to the router's error screen: no result, no way back but the browser.",
   },
-  "i2-words-raw": {
-    invariant: "I2",
-    fixedBy: "M102-11",
-    where: "web/src/lib/api.ts:1601-1606 (plainFailureMessage: `HTTP <status>: <first body line>`), api.ts:560 (ApiError message `<path> → <status> <body>`), web/src/lib/api-error-message.ts:66 (describeThrownError falls back to it)",
-    what: "A 4xx or 5xx whose body is a proxy's HTML page reaches the thumb as `HTTP 502: <html><head><title>...`, on send, ask, hold card, keys, Stop and Clear.",
-  },
   // ── I7, no accident on a menu ──
   "i7-blind-road": {
     invariant: "I7",
     fixedBy: "M102-12",
     where: "bridge/surface/protocol.ts:5010-5060 (blindSend: one read for a password prompt and blindRoadSign, then the text and Enter), protocol.ts:385 (blindRoadSign reads only frames, cues and footers a profile names)",
     what: "On a pane whose agent has no profile, a person's send types the text and presses Enter onto a menu the blind-road check does not see.",
-  },
-  // ── I1, an enabled control or words ──
-  "i1-hold-disabled": {
-    invariant: "I1",
-    fixedBy: "M102-11",
-    where: "web/src/components/agent-chat.tsx:3229 (disabled={readOnly || gone || !holdsAnswered}), web/src/components/hook-hold-card.tsx:82-86 (no reason drawn)",
-    what: "A hook hold card on a crew member that does not mark the Send Protocol greys every option and says nothing.",
   },
 } as const satisfies Record<string, KnownRed>;
 
