@@ -674,15 +674,15 @@ export const CREW_STATE_MEANING = {
  * cards answered in the session are the person's choice. A SPEED BUMP, NOT A WALL, as `collie trick on`'s
  * (cli/trick.ts `agentPaneRefusal`): the bridge is asked whether this pane runs an agent, and only a yes refuses.
  */
-export function personOnlyRefusal(command: string): string[] {
+export function personOnlyRefusal(command: string, where = "on the Hill"): string[] {
   return [
     `error: ${command} is your person's choice, and this runs in a pane where an agent works.`,
-    "Tell your operator what you would change and why. They do it on the phone, on the Hill, or with this command in a shell pane or a terminal.",
+    `Tell your operator what you would change and why. They do it on the phone, ${where}, or with this command in a shell pane or a terminal.`,
   ];
 }
 
 /** Whether the bridge says this pane runs an agent. Outside a pane, or with no answer, it is not. */
-async function inAgentPane(deps: HillDeps): Promise<boolean> {
+async function inAgentPane(deps: Pick<HillDeps, "ctx" | "paneKind">): Promise<boolean> {
   if (readEnvMarkers(deps.ctx.env).length === 0 || deps.paneKind === undefined) return false;
   return (await deps.paneKind().catch(() => "unknown" as const)) === "agent";
 }
@@ -829,6 +829,18 @@ export function cmdHillSwitch(
   if (json) deps.io.out(JSON.stringify({ on }));
   else deps.io.out(on ? HILL_ON_WORDS : HILL_OFF_WORDS);
   return EXIT.OK;
+}
+
+/**
+ * `hill on` from the CLI: switching the Hill on is the person's choice, so it is refused in an agent's pane
+ * (the speed bump of {@link personOnlyRefusal}); anywhere else it is {@link cmdHillSwitch}. `off` needs no check.
+ */
+export async function cmdHillOn(deps: Pick<HillDeps, "ctx" | "io" | "now" | "paneKind"> & { readonly followSkill: SwitchFollower | null }, args: readonly string[]): Promise<number> {
+  if (await inAgentPane(deps)) {
+    for (const line of personOnlyRefusal("collie hill on", "in Settings, Experiments")) deps.io.err(line);
+    return EXIT.REFUSED;
+  }
+  return cmdHillSwitch(deps, "on", args);
 }
 
 /** A bare, misspelt or `--help` `collie hill`: the sub-verbs and the rules. `--help` exits 0, the others 2. */

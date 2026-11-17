@@ -14,7 +14,7 @@ import { realFiles } from "./sys.ts";
 import { EXIT, type Io } from "./io.ts";
 import { cmdTrickAdd, cmdTrickUpdate } from "./trick-add.ts";
 import { cmdTrickCheck, cmdTrickInit, cmdTrickList, cmdTrickSwitch, type TrickDeps } from "./trick.ts";
-import { cmdTricks, cmdTricksStatus, cmdTricksSwitch, TRICKS_OFF_WORDS, TRICKS_ON_WORDS } from "./tricks-switch.ts";
+import { cmdTricks, cmdTricksOn, cmdTricksStatus, cmdTricksSwitch, TRICKS_OFF_WORDS, TRICKS_ON_WORDS } from "./tricks-switch.ts";
 
 const dirs: string[] = [];
 afterAll(async () => {
@@ -98,6 +98,19 @@ describe("collie tricks", () => {
     expect(cmdTricks(r, [])).toBe(EXIT.USAGE);
     expect(cmdTricks(r, ["--help"])).toBe(EXIT.OK);
     expect(r.out[0]).toBe("usage: collie tricks <on|off|status> [--json]");
+  });
+
+  test("tricks on in an agent's pane is refused with the person-only sentence and writes nothing; a shell pane and off still write", async () => {
+    const r = await rig();
+    const pane = { ...r, ctx: { ...r.ctx, env: { ...r.ctx.env, HERDR_PANE_ID: "w1:p2", HERDR_SOCKET_PATH: "/run/user/1000/herdr.sock" } } };
+    expect(await cmdTricksOn({ ...pane, paneKind: async () => "agent" as const }, [])).toBe(EXIT.REFUSED);
+    expect(r.err[0]).toBe("error: collie tricks on is your person's choice, and this runs in a pane where an agent works.");
+    expect(r.err[1]).toContain("in Settings, Tricks");
+    expect(readTricksFeature(r.stateDir).reading).toBe("unset");
+    clear(r);
+    expect(cmdTricksSwitch(pane, "off", [])).toBe(EXIT.OK);
+    expect(await cmdTricksOn({ ...pane, paneKind: async () => "shell" as const }, [])).toBe(EXIT.OK);
+    expect(readTricksFeature(r.stateDir).reading).toBe("on");
   });
 
   test("Windows: on says the Windows line and writes nothing; off still writes; status says the line", async () => {

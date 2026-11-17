@@ -26,7 +26,11 @@ function cardText(manifest: TrickManifest, files: Record<string, string>): strin
 describe("the notes init writes", () => {
   test("their text is pinned to NOTES_VERSION: a change to the text bumps the version and this hash", () => {
     const hash = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft)).digest("hex").slice(0, 16);
-    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 3, hash: "7c36b5e6d11f7adb", draft: "48fa76eaec5a41f4" });
+    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 4, hash: "7c36b5e6d11f7adb", draft: "dd553c9f6f186664" });
+    // v3's bytes stay as shipped (contract 3, before package I).
+    const v3 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 3)).digest("hex").slice(0, 16);
+    expect({ hash: v3(false), draft: v3(true) }).toEqual({ hash: "7c36b5e6d11f7adb", draft: "48fa76eaec5a41f4" });
+    expect(shippedNotesVersion("legs", sampleAgents("legs", "ts", true, 3))).toBe(3);
     // v2's bytes stay as shipped, so a draft init wrote before contract 3 is still named, as v2.
     const v2 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 2)).digest("hex").slice(0, 16);
     expect({ hash: v2(false), draft: v2(true) }).toEqual({ hash: "0d345a22caaa582f", draft: "1d39cfe8d79174fe" });
@@ -35,9 +39,9 @@ describe("the notes init writes", () => {
     expect(sampleAgents("legs")).toContain("show it, never run it");
   });
 
-  test("v2 (M96 spec 14): a draft's last step names where the person reads it, and never says the Hill must be on", () => {
+  test("v4 (package I): a draft's last step names where the card is, the session first, and never says the Hill must be on", () => {
     const text = sampleAgents("legs", "sh", true);
-    expect(text).toContain("They read it on the Hill, or in\n   Settings, Tricks, while the Hill is off.");
+    expect(text).toContain("Its card shows in this session on the\n   phone and in Settings, Tricks (on the Hill too, while it is on).");
     expect(text).not.toContain("send this draft to the Hill");
     expect(text).not.toMatch(/switch (the Hill|it) on/iu);
   });

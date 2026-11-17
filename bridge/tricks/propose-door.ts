@@ -79,7 +79,11 @@ function answerOf(body: JsonObject, lead: string): ProposeAnswer {
   const decision = asJsonString(body.decision);
   const replaced = body.replaced === null || body.replaced === undefined ? null : asJsonString(body.replaced);
   if (id === undefined || hash === undefined || decision === undefined || replaced === undefined || (kind !== "proposal" && kind !== "version")) return refusal("failed", `The lead (${lead}) answered without the proposal. Look for its card in Settings, Tricks, on the phone.`);
-  return { ok: true, kind, id, hash, decision, replaced };
+  const where = asJsonObject(body.where);
+  const session = asJsonBoolean(where?.session);
+  const hill = asJsonBoolean(where?.hill);
+  // A lead before package I says nothing of where: the proposer's words fall back on every place.
+  return session === undefined || hill === undefined ? { ok: true, kind, id, hash, decision, replaced } : { ok: true, kind, id, hash, decision, replaced, where: { session, hill } };
 }
 
 export class ProposeDoor {

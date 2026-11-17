@@ -3394,6 +3394,8 @@ export function startServer(opts: {
       if (pathname === TRICKS_FEATURE_ROUTE && (req.method === "GET" || req.method === "POST")) {
         const denied = guard(req, cfg, req.method === "GET" ? TRICKS_ROUTE_RIGHTS.reply : TRICKS_ROUTE_RIGHTS.feature, pairingGate);
         if (denied) return denied;
+        // This machine's switch only, as the Hill's: a `?h=<member>` would read as if it moved the member's.
+        if (host.kind === "member") return text(TRICKS_SWITCH_LOCAL_TEXT, 400);
         let body: JsonValue | undefined;
         if (req.method === "POST") {
           try {
@@ -10325,6 +10327,8 @@ export function walkyOlderMemberAnswer(memberVersion: string | null, ownVersion:
 /** What a hill route answers on a bridge built without it (M96). */
 export const HILL_OFF_TEXT = "the hill is not running on this bridge";
 /** What a hill route answers with `?host=`: the hill is not merged across the crew yet. */
+/** `?h=<member>` on the tricks switch route: the switch is this machine's, set on the member itself. */
+export const TRICKS_SWITCH_LOCAL_TEXT = "the tricks switch is this machine's only; set it on the machine itself";
 export const HILL_LOCAL_TEXT = "the hill reads this machine only for now; ask the machine itself";
 /** What the answer route says of a `rid` already used for another answer. */
 export const HILL_RID_REUSED = "request-id-reused: this rid already answered with another choice";
