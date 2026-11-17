@@ -10751,6 +10751,31 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
     expect(pane.box).toBe("@/tmp/x.png");
   });
 
+  test("Type it anyway onto the text an earlier send left under the popup: nothing typed a second time, textAlreadyTyped (M102 spec 12)", async () => {
+    const { send, pane, protocol } = ompPane("omp--v18-6-1-at-popup-path--w120.txt");
+    const first = await send("@/tmp/x.png", { id: "own-left-first-01", mode: "command" });
+    expect(first.receipt).toMatchObject({ outcome: "typed_not_submitted" });
+    expect(pane.box).toBe("@/tmp/x.png");
+    const prep = await protocol.handle({ id: "own-left-prepare1", text: "", mode: "prepare", fromPhone: true }, { session: "main", paneId: "%1", harness: "omp" });
+    const calls = pane.calls.length;
+    // The phone's commit after the refusal: a new id, the override and the rows hash.
+    const over = await send("@/tmp/x.png", { id: "own-left-override", mode: "command", fromPhone: true, override: true, rowsHash: prep.rowsHash });
+    expect(over.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "override", word: "override", keys: [], textAlreadyTyped: true });
+    expect(pane.calls.slice(calls)).toEqual([]);
+    expect(pane.box).toBe("@/tmp/x.png");
+    expect(protocol.recent("%1", 1)[0]?.textAlreadyTyped).toBe(true);
+  });
+
+  test("Type it anyway onto a draft that is not the text: typed after it, no textAlreadyTyped", async () => {
+    const { send, pane, protocol } = ompPane("omp--v18-6-1-at-popup-path--w120.txt");
+    await send("@/tmp/x.png", { id: "own-other-first-1", mode: "command" });
+    const prep = await protocol.handle({ id: "own-other-prepare", text: "", mode: "prepare", fromPhone: true }, { session: "main", paneId: "%1", harness: "omp" });
+    const over = await send("@/tmp/y.png", { id: "own-other-overrid", mode: "command", fromPhone: true, override: true, rowsHash: prep.rowsHash });
+    expect(over.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "override" });
+    expect(over.receipt?.textAlreadyTyped).toBeUndefined();
+    expect(pane.box).toBe("@/tmp/x.png@/tmp/y.png");
+  });
+
   test("the typed @ path goes out when the person taps Submit: the submit key ignores the popup", async () => {
     const { send, pane } = ompPane("omp--v18-6-1-at-popup-path--w120.txt");
     pane.box = "@/tmp/x.png";

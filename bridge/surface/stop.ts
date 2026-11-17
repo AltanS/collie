@@ -27,7 +27,9 @@
 // The same request id answers the same receipt and presses once; a request id still in flight is
 // joined, never pressed twice. The receipts live in memory: a bridge restart forgets them, and a Stop is
 // a tap, not a message, so nothing is lost but the replay. A Stop takes no pane lock: it must not wait
-// behind a send, and a person's Escape never has. The audit line is the route's: request id, pane,
+// behind a send, and a person's Escape never has. Another bridge writing into the pane makes it wait for
+// that bridge's lock up to 1.5 s, then the key goes anyway and the audit line says `lock: "bypassed"`
+// (M102 spec 16, ADR 0116 addendum). The audit line is the route's: request id, pane,
 // keys, outcome, never a message text.
 
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
@@ -57,7 +59,8 @@ export interface StopMux {
 
 export interface StopDeps {
   readonly mux: StopMux;
-  readonly gate: Pick<KeyGate, "press">;
+  /** The key gate; its `pressAlways` (M102 spec 16) waits for another bridge's write and then presses anyway. */
+  readonly gate: Pick<KeyGate, "press"> & Partial<Pick<KeyGate, "pressAlways">>;
   /** The harness's profile; with `paneId`, at the version of the pane's own program when the bridge can see it (SendDeps.profile). */
   readonly profile: (harness: string, paneId?: string) => Promise<ProfileMatch | null>;
   readonly sleep?: (ms: number) => Promise<void>;
@@ -79,7 +82,8 @@ export interface StopDeps {
 
 /** What a Stop answers: the receipt, and whether it is the stored one of an earlier tap. */
 export type StopAnswer =
-  | { readonly kind: "receipt"; readonly receipt: StopReceipt; readonly replayed: boolean }
+  /** `bypassed`: the key went out while another bridge still held the pane after the wait (M102 spec 16); for the record only. */
+  | { readonly kind: "receipt"; readonly receipt: StopReceipt; readonly replayed: boolean; readonly bypassed?: true }
   /** The request id was used on another pane. Nothing ran. */
   | { readonly kind: "id_reused" };
 
@@ -113,6 +117,8 @@ function readable(match: ProfileMatch | null): match is ProfileMatch {
 export class StopService {
   private readonly settled = new Map<string, Stored>();
   private readonly running = new Map<string, { readonly paneId: string; readonly work: Promise<StopReceipt> }>();
+  /** The requests whose key went out past another bridge's lock, until `handle` puts it on the answer. */
+  private readonly bypassed = new Set<string>();
 
   constructor(private readonly deps: StopDeps) {}
 
@@ -133,10 +139,19 @@ export class StopService {
     try {
       const receipt = await work;
       this.keep(requestId, { paneId, receipt });
-      return { kind: "receipt", receipt, replayed: false };
+      return this.bypassed.delete(requestId) ? { kind: "receipt", receipt, replayed: false, bypassed: true } : { kind: "receipt", receipt, replayed: false };
     } finally {
       this.running.delete(requestId);
     }
+  }
+
+  /** The interrupt key, through the gate. While another bridge holds the pane it waits, then presses anyway (M102 spec 16). */
+  private async pressKey(requestId: string, paneId: string, keys: readonly string[]): Promise<MuxAck> {
+    const always = this.deps.gate.pressAlways?.bind(this.deps.gate);
+    if (always === undefined) return this.deps.gate.press(paneId, keys, "person_tap");
+    const { ack, bypassed } = await always(paneId, keys);
+    if (bypassed) this.bypassed.add(requestId);
+    return ack;
   }
 
   private keep(requestId: string, stored: Stored): void {
@@ -158,7 +173,7 @@ export class StopService {
       if (refused !== null) return refusal(requestId, refused);
     }
     const pressed = [...keys.interrupt];
-    const sent: MuxAck = await this.deps.gate.press(paneId, pressed, "person_tap");
+    const sent: MuxAck = await this.pressKey(requestId, paneId, pressed);
     // A key not confirmed in time may still land (M100 spec 03): it counts as pressed, and the read-backs
     // below decide `stopped` or `pressed`. It is never pressed again.
     if (!sent.ok && sent.reason !== "unconfirmed") return refusal(requestId, "press_failed");

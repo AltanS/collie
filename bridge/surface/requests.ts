@@ -61,6 +61,12 @@ export interface SendRecord {
   readonly collie?: string;
   readonly phase: RequestPhase;
   readonly submitSentAt?: number;
+  /**
+   * When the first key of the request left (M102 spec 16): written before that key, so a restart can tell a
+   * request that may have typed (`interrupted`) from one that typed nothing (`crash`). Absent on records an
+   * older Collie wrote, and on a request that never reached a key.
+   */
+  readonly startedAt?: number;
   /** When a held request's release started (M56 spec 15): its run is bounded from here, not from accept. */
   readonly runAt?: number;
   /**
@@ -229,6 +235,7 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   // `menuSign` is lenient like `late`: a kind this module did not write, or a row that is no index, drops it.
   const menu = menuSignOf(node.menuSign);
   if (menu !== undefined) whole.menuSign = menu;
+  if (node.textAlreadyTyped === true) whole.textAlreadyTyped = true;
   if (acknowledged !== undefined) whole.acknowledged = acknowledged;
   if (detail !== undefined) whole.detail = detail;
   if (saw !== undefined) whole.saw = saw;
@@ -273,6 +280,8 @@ export function parseSendRecord(raw: JsonValue | undefined): SendRecord | null {
   if (collie !== undefined && collie !== "") record = { ...record, collie };
   const submitSentAt = asJsonNumber(node.submitSentAt);
   if (submitSentAt !== undefined) record = { ...record, submitSentAt };
+  const startedAt = asJsonNumber(node.startedAt);
+  if (startedAt !== undefined) record = { ...record, startedAt };
   const runAt = asJsonNumber(node.runAt);
   if (runAt !== undefined) record = { ...record, runAt };
   const path = asJsonString(node.path);
@@ -447,6 +456,17 @@ export class RequestStore {
     this.write({ ...known, path });
   }
 
+  /**
+   * The write-ahead mark (M102 spec 16): written before the first key of a request (a probe, the text, a
+   * clear key or the submit), once per run. It adds a time only: the record keeps its hash and length and
+   * no more text than it had. A held request's release clears it with {@link rearm}.
+   */
+  markStarted(id: string): void {
+    const known = this.get(id);
+    if (known === null || known.phase === "settled" || known.startedAt !== undefined) return;
+    this.write({ ...known, startedAt: this.now() });
+  }
+
   /** Written before the submit key goes out, so a crash after it reads as `unknown`, never as "not sent". */
   markSubmitSent(id: string): void {
     const known = this.get(id);
@@ -528,7 +548,7 @@ export class RequestStore {
   rearm(id: string, paneGeneration?: string): SendRecord | null {
     const known = this.get(id);
     if (known === null || known.phase !== "held") return null;
-    const { receipt: _held, ...rest } = known;
+    const { receipt: _held, startedAt: _ran, ...rest } = known;
     // The pane's generation now, when the caller read one: the release runs against the pane as it is.
     const armed: SendRecord = { ...rest, phase: "accepted", runAt: this.now(), paneGeneration: paneGeneration ?? known.paneGeneration };
     this.write(armed);

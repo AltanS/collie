@@ -308,6 +308,7 @@ import { ClearService } from "./surface/clear.ts";
 import { StopService, type StopDeps } from "./surface/stop.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks, type PaneProfileMatch } from "./surface/protocol.ts";
+import { openPaneLock, paneLockDir, type PaneLockFiles } from "./surface/pane-lock.ts";
 import { ProgramDriver, type ProgramPort } from "./surface/durable-driver.ts";
 import { RequestStore } from "./surface/requests.ts";
 import { HoldStore } from "./surface/holds.ts";
@@ -1783,6 +1784,18 @@ function programAdapter(source: DurableSource): BuiltAdapter {
   return { adapter: program, target, probe: { phase: () => program.phase(), hostName: () => program.hostName(), versionRefusal: () => program.versionRefusal() }, structured: program };
 }
 
+// The machine-wide pane locks (M102 spec 16): one folder for every bridge of this user (pane-lock.ts
+// `paneLockDir`), one lock object per multiplexer scope in this process. No folder: each session keeps
+// its in-memory lock alone, and the start says so once.
+const paneLockFolder = paneLockDir();
+const paneLocks = new Map<string, PaneLockFiles | null>();
+function sharedPaneLock(scope: string): PaneLockFiles | null {
+  if (paneLockFolder === null) return null;
+  if (!paneLocks.has(scope)) paneLocks.set(scope, openPaneLock({ dir: paneLockFolder, scope, log: (line) => console.log(line) }));
+  return paneLocks.get(scope) ?? null;
+}
+if (paneLockFolder === null) console.log("[pane-lock] no runtime folder: each bridge keeps its own pane lock only");
+
 // The Send Protocol's request store (M56 spec 05), one for the bridge, under the state directory.
 // Created only with the flag on, so an instance without it touches no new file. On start every request
 // a previous run left unsettled ends `unknown` (a crash), and settled ones past a week are dropped.
@@ -2155,7 +2168,11 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // One protocol per terminal session: its own locks, the adapter's one key gate, the bridge's one
   // request store. The ask answerer shares the locks, the gate and the store, so a send and an answer
   // never run on one pane at once and every key leaves through the one gate.
-  const locks = new SessionLocks();
+  // The machine-wide pane lock (M102 spec 16), for a session with a screen: every bridge on this machine
+  // that drives the same multiplexer socket shares it, so two lanes never type into one pane at once.
+  const paneLock = endpoint.kind === "terminal" ? sharedPaneLock(`${cfg.mux}\u0000${target.endpoint}`) : null;
+  const locks = new SessionLocks(paneLock ?? undefined);
+  if (paneLock !== null) gateFor(herdr).share(paneLock);
   const ring = new RowRing();
   const foregroundHarness = foregroundHarnessOf(foregroundRead, harnessBinaries);
   const paneProfile = (harness: string, paneId?: string): Promise<PaneProfileMatch | null> => sendProfile(harness, paneId, foregroundRead);

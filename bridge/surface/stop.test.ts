@@ -3,7 +3,8 @@
 // `pressed`, the replay rule (one id, one press), the audit line with no text, and the route's body checks.
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuditLog } from "../audit.ts";
 import type { JsonValue } from "../../web/src/lib/json.ts";
@@ -12,7 +13,8 @@ import { crewRouteFor } from "../crew/forward.ts";
 import { stopRoute, type StopRouteRuntime } from "../server.ts";
 import { loadProfiles, profileFor } from "../../web/src/lib/surface/profile.ts";
 import type { StopReceipt } from "../../web/src/lib/surface/stop.ts";
-import { KeyGate } from "./key-gate.ts";
+import { KeyGate, LOCK_WAIT_MS } from "./key-gate.ts";
+import { PaneLockFiles } from "./pane-lock.ts";
 import { StopService } from "./stop.ts";
 
 const FIXTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "panes");
@@ -65,12 +67,12 @@ interface Rig {
 }
 
 /** Panes: %1 pi, %2 omp, %3 grok, %4 an agent with no profile, %7 a bare shell. */
-function rig(screen: string, told: string[] = []): Rig {
+function rig(screen: string, told: string[] = [], gateOf: (pane: ScriptPane) => KeyGate = (p) => new KeyGate(p)): Rig {
   const pane = new ScriptPane(screen);
   const sleeps: number[] = [];
   const service = new StopService({
     mux: pane,
-    gate: new KeyGate(pane),
+    gate: gateOf(pane),
     profile: (harness) => Promise.resolve(profileFor(harness, "99.0.0", { log: () => undefined })),
     sleep: (ms) => {
       sleeps.push(ms);
@@ -114,6 +116,47 @@ async function receipt(res: Response): Promise<StopReceipt> {
 }
 
 const ID = "stop-req-0001";
+
+describe("a Stop while another bridge writes into the pane (M102 spec 16)", () => {
+  test("it waits for the other bridge's lock, then the key goes out anyway, and the audit line says lock bypassed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "stop-lock-"));
+    try {
+      const lockOf = (pid: number) => new PaneLockFiles({ dir, scope: "s", pid, alive: () => true, startOf: () => null });
+      expect(lockOf(202).take("%1", "their-send", Date.now() + 60_000)).toBe(true);
+      const pauses: number[] = [];
+      const { pane, stop, lines } = rig(PI_RUNNING, [], (p) => {
+        const gate = new KeyGate(p, Date.now, (ms) => (pauses.push(ms), Promise.resolve()));
+        gate.share(lockOf(101));
+        return gate;
+      });
+      pane.onKeys = (_keys, p) => void (p.screen = PI_IDLE);
+      expect(await receipt(await stop("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "stopped", keys: ["Escape"] });
+      expect(pane.keysSeen).toEqual([["Escape"]]);
+      expect(pauses.reduce((a, b) => a + b, 0)).toBe(LOCK_WAIT_MS);
+      expect(JSON.parse(lines[0]!).detail.lock).toBe("bypassed");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a Stop with the pane free records no lock field and waits for nothing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "stop-lock-"));
+    try {
+      const pauses: number[] = [];
+      const { pane, stop, lines } = rig(PI_RUNNING, [], (p) => {
+        const gate = new KeyGate(p, Date.now, (ms) => (pauses.push(ms), Promise.resolve()));
+        gate.share(new PaneLockFiles({ dir, scope: "s", pid: 101, alive: () => true, startOf: () => null }));
+        return gate;
+      });
+      pane.onKeys = (_keys, p) => void (p.screen = PI_IDLE);
+      expect((await receipt(await stop("%1", { requestId: ID }))).outcome).toBe("stopped");
+      expect(pauses).toEqual([]);
+      expect(JSON.parse(lines[0]!).detail.lock).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("a Stop on a pane with a screen", () => {
   test("the turn ends after the press: `stopped`, the profile's own key, one press", async () => {

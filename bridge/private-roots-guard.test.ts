@@ -38,6 +38,7 @@ interface Elsewhere {
 }
 
 const ELSEWHERE: readonly Elsewhere[] = [
+  { file: "bridge/surface/pane-lock.ts", count: 6, why: "the machine-wide pane locks (M102 spec 16) are shared by every bridge of the user, so they cannot sit in one bridge's state folder: the user's runtime folder, else the state home; a lock holds a pid, a start time and two times, nothing private, and its 0600 and 0700 only keep other users from blocking a pane" },
   { file: "bridge/activity.ts", count: 2, why: "`this.dir` is `cfg.stateDir`, set in the constructor" },
   { file: "bridge/audit.ts", count: 1, why: "the appender is handed `<stateDir>/audit.log` by index.ts and cli/crew.ts" },
   { file: "bridge/config.ts", count: 1, why: "the POSIX mode rule tightens a config file in place; Windows reads its access list instead" },

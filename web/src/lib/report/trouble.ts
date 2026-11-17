@@ -59,6 +59,7 @@ const REASONS = {
   unreadable: "count",
   // unknown: Collie lost track of its own send
   crash: "count",
+  interrupted: "count",
   lost_lock: "count",
   no_evidence: "count",
   // the guard did its job, or the state is the person's

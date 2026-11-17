@@ -68,6 +68,10 @@ export const SEND_REASONS = [
   "crash",
   "lost_lock",
   "no_evidence",
+  // unknown (M102 spec 16): the bridge stopped (a crash, a kill) after the request's first key and before
+  // its end. Text may be in the box and Enter may not have been pressed; the same id is never typed again.
+  // A request the bridge stopped before any key keeps `crash`.
+  "interrupted",
   // unknown: a send queued behind a running turn met a dialog as its Enter went out; the dialog may
   // have taken the Enter, so the person checks the card before answering it
   "dialog_after_enter",
@@ -288,6 +292,12 @@ export interface SendReceipt {
    */
   readonly menuSign?: MenuSign;
   /**
+   * Set on a `typed_not_submitted(override)` that found the text in the box already, left there by an
+   * earlier send of it (a Submit refused for a popup, then Type it anyway): nothing was typed a second
+   * time. The person presses Enter on the key pad. Absent otherwise.
+   */
+  readonly textAlreadyTyped?: true;
+  /**
    * Set on a send a program session took (M56 spec 14): the request id the program acknowledged.
    * The driver passes the request id to the program unchanged, so it equals `requestId`. Absent on
    * every send into a screen.
@@ -403,6 +413,8 @@ export interface SendReceiptRow {
   readonly draftSeen?: true;
   /** The sign a blind-road `menu_open` read (see {@link SendReceipt.menuSign}). */
   readonly menuSign?: MenuSign;
+  /** The override found its text in the box already (see {@link SendReceipt.textAlreadyTyped}). */
+  readonly textAlreadyTyped?: true;
   /** The line of a refusal or a `typed_not_submitted` (see {@link SendReceipt.detail}). */
   readonly detail?: string;
   /** What the bridge saw at that end, four words (see {@link SendReceipt.saw}). */
