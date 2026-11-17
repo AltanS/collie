@@ -611,7 +611,8 @@ describe("collie trick check", () => {
   });
 
   test("--run runs the program with the env scrub: no COLLIE_ variable, no key", async () => {
-    const dir = await folder('id = "env"\nname = "Env"\nrun = "bun program.ts"\nplaces = ["belt"]\n', {
+    // The script form, which runs on every host (a shell line does not run on Windows, fault d).
+    const dir = await folder('id = "env"\nname = "Env"\nrun = "program.ts"\nplaces = ["belt"]\n', {
       "program.ts": [
         'const leaked = Object.keys(process.env).filter((k) => k.startsWith("COLLIE_") || k.includes("KEY"));',
         "const facts = JSON.parse(await Bun.stdin.text());",

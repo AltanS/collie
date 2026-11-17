@@ -621,11 +621,36 @@ describe("helper v6: a run ends after the pipe took its output (Windows fault b)
     const main = TRICK_HELPER.slice(TRICK_HELPER.indexOf("export function run("));
     expect(main).not.toContain("process.exit(");
     expect(main).not.toContain("Bun.write(Bun.stdout");
-    expect(main.match(/await written\(process\.stdout, /g)).toHaveLength(2);
+    expect(main.match(/await written\(io, "stdout", /g)).toHaveLength(2);
     // The only process.exit left is the late one, an unref'd timer after the exit code is set.
     const exits = [...TRICK_HELPER.matchAll(/process\.exit\(/g)];
     expect(exits).toHaveLength(1);
     expect(TRICK_HELPER).toContain("process.exitCode = code;\n  setTimeout(() => process.exit(code), END_GRACE_MS).unref();");
+  });
+
+  test("a run holds the process until its output is written, even when neither the read nor the write keeps the loop alive (Windows, the VM run of 4f94aee63)", async () => {
+    // On Windows Bun's stdin read and pipe write hold no ref on the event loop: v5 and the first v6 ended
+    // at once with exit 0 and no output. The injected io stands in for that: its read and its write call
+    // back from unref'd timers, so nothing but the helper's own hold keeps the process alive.
+    const slowIo = (facts: TrickFacts): string =>
+      [
+        `const FACTS = ${JSON.stringify(JSON.stringify(facts))};`,
+        "const slow = {",
+        "  read: () => new Promise((done) => { setTimeout(() => done(FACTS), 150).unref(); }),",
+        '  write: (to, text, done) => { setTimeout(() => { (to === "stdout" ? process.stdout : process.stderr).write(text, () => done()); }, 150).unref(); },',
+        "};",
+      ].join("\n");
+    const ok = await trickFolder("", ["session"]);
+    await writeFile(join(ok.dir, "program.ts"), `import { run, v } from "./trick.ts";\n${slowIo(factsFor(ok.dir, ok.state))}\nrun((t) => { t.session({ id: "held", view: [v.para("x")] }); }, slow);\n`);
+    const ran = await runProgram(ok.dir, factsFor(ok.dir, ok.state));
+    expect(ran.code).toBe(0);
+    expect(JSON.parse(ran.stdout).parts[0].id).toBe("held");
+    // The error path: exit 1 and the stderr line, not an early exit 0.
+    const boom = await trickFolder("", ["belt"]);
+    await writeFile(join(boom.dir, "program.ts"), `import { run } from "./trick.ts";\n${slowIo(factsFor(boom.dir, boom.state))}\nrun(() => { throw new Error("no gh on PATH"); }, slow);\n`);
+    const failed = await runProgram(boom.dir, factsFor(boom.dir, boom.state));
+    expect(failed.code).toBe(1);
+    expect(failed.stderr.trimEnd().split("\n").at(-1)).toBe("error: no gh on PATH");
   });
 
   test("a big document arrives whole, and a timer the trick left open does not hold the run", async () => {
