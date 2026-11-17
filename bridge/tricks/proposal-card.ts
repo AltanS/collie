@@ -5,7 +5,7 @@ import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type MANIFEST_KEYS, typ
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import { addedDiff, codeGroup, changeCells, filesOnCards, GROUP_WIDE_GAP, groupOrder, helperNote, notesChangedNote, placesTables, shippedHelpers, shippedNotesDiff, sizeWords, type GroupRefusal, type ShippedFile } from "./card-group.ts";
-import { ACCESS_CHIPS, accessLine, asksForChange, asksForLines, bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, listWords, newInputs, newRights, ON_CHIP, placeWords, raisedAccess, rightsHead, rulesView, runsAsYou, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
+import { ACCESS_CHIPS, accessLine, asksForChange, asksForLines, bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, keepsRunning, listWords, newInputs, newRights, ON_CHIP, placeWords, raisedAccess, rightsHead, rulesView, runsAsYou, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
 import { PROPOSAL_SETTINGS_LEFT, type ProposedFile } from "./propose-wire.ts";
 import { rulesChange } from "./rules-diff.ts";
 import { canRunLine, type VersionDiff } from "./version-diff.ts";
@@ -83,6 +83,8 @@ export interface ProposalCardInput {
   settingsLeft?: boolean;
   /** The files the proposal marks executable: the card says each can run as a program (A5). */
   executable?: ReadonlySet<string>;
+  /** The machine that will run the trick, set only when the proposal came from another machine of the crew: the card says so under the proposer. */
+  runsOn?: string | null;
 }
 
 /** One line for each file a new trick marks executable, in path order (A5). */
@@ -135,6 +137,21 @@ export function proposerSentence(proposer: ProposerFacts): string {
   // No agent pane placed: the machine is known, the session is not (proposals.ts "WHAT IS CONFIRMED").
   if (proposer.by === "terminal") return `Someone on ${host} proposes it. Collie could not confirm which session.`;
   return `A session on ${host} proposes it.`;
+}
+
+/**
+ * "It will run on lodge." The line under the proposer's sentence when the proposal came from another machine of
+ * the crew than the one that runs tricks (the lead): the person learns where the code will run. Bridge-built
+ * English (Altan, 2026-11-17).
+ */
+export function runsOnSentence(machine: string): string {
+  return `It will run on ${plain(machine, 40)}.`;
+}
+
+/** The proposer's sentence, then the machine line when there is one: the summary's words and card 1's two paragraphs. */
+function whoParts(proposer: ProposerFacts, runsOn: string | null | undefined): string[] {
+  const who = proposerSentence(proposer);
+  return runsOn === undefined || runsOn === null ? [who] : [who, runsOnSentence(runsOn)];
 }
 
 /** The card's title. */
@@ -275,7 +292,7 @@ export function proposalCard(input: ProposalCardInput): ProposalCardResult {
   const reads = manifest.inputs ?? [];
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It ${alsoWords}.` : "It asks for no rights.";
-  const head = [...runsAsYou(manifest), ...accessLine(manifest.access), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...canRunLines(input.executable), ...settingsLines(input.settingsLeft)];
+  const head = [...runsAsYou(manifest), ...accessLine(manifest.access), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...keepsRunning(manifest), ...canRunLines(input.executable), ...settingsLines(input.settingsLeft)];
   // Contract 3: what the trick will ask the person for, its fields by label.
   head.push(...asksForLines(manifest));
   const words = authorWords(manifest);
@@ -289,7 +306,8 @@ export function proposalCard(input: ProposalCardInput): ProposalCardResult {
   if (!shown.headFits) return TOO_LARGE_FACTS;
   const total = input.diff.files.length;
   const files = total === 1 ? "It has 1 file." : `It has ${String(total)} files.`;
-  const who = proposerSentence(input.proposer);
+  const whoNodes = whoParts(input.proposer, input.runsOn);
+  const who = whoNodes.join(" ");
   const base: Omit<HillPostInput, "requestId" | "summary"> = { title: proposalTitle(input.id), options: [{ ...PROPOSAL_ON }, { ...PROPOSAL_LATER }], text: "none", priority: "today", recommends: null };
   if (total === 0 || (shown.view !== null && shown.shown >= visible.files.length)) {
     const card = { ...base, summary: summaryOf(who, input.replaces === true, `${files} ${fact}`, `${files} It asks for rights, listed below.`) };
@@ -298,7 +316,7 @@ export function proposalCard(input: ProposalCardInput): ProposalCardResult {
   const code = codeGroup(input.diff.files, manifest.run ?? null, "refuse", helpers);
   if (!code.ok) return { ok: false, code: code.code, error: code.error };
   const rows = groupOrder(input.diff.files, manifest.run ?? null).map((file) => ({ rel: file.rel, cells: [sizeWords(input.sizes?.get(file.rel) ?? 0)] }));
-  const first = factsCard([{ kind: "para", text: who }, ...head], total, code.cards.length, placesTables(rows, ["Size"], code.places, helpers), author, helpers, input.notesChanged === true);
+  const first = factsCard([...whoNodes.map((text): ViewNode => ({ kind: "para", text })), ...head], total, code.cards.length, placesTables(rows, ["Size"], code.places, helpers), author, helpers, input.notesChanged === true);
   if (first === null) return TOO_LARGE_FACTS;
   const tail = ` ${cardsSentence(code.cards.length + 1)}`;
   const summary = summaryOf(who, input.replaces === true, `${files} ${fact}${tail}`, `${files} It asks for rights, listed below.${tail}`);
@@ -348,6 +366,8 @@ export interface ProposalVersionCardInput {
   helpers?: ReadonlyMap<string, ShippedFile>;
   /** As {@link ProposalCardInput.settingsLeft}. */
   settingsLeft?: boolean;
+  /** As {@link ProposalCardInput.runsOn}. */
+  runsOn?: string | null;
 }
 
 /** The card for a proposed new version of a trick a proposal made: the version card, named and never recommended, one card or a group as {@link proposalCard}. */
@@ -357,7 +377,7 @@ export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCa
   const reads = newInputs(input.baseManifest, input.manifest);
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It now also ${alsoWords}.` : "It asks for no new rights.";
-  const head = [...runsAsYou(input.manifest), ...accessLine(raisedAccess(input.baseManifest, input.manifest)), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...settingsLines(input.settingsLeft)];
+  const head = [...runsAsYou(input.manifest), ...accessLine(raisedAccess(input.baseManifest, input.manifest)), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...keepsRunning(input.manifest), ...settingsLines(input.settingsLeft)];
   // Contract 3: a new or changed field is named, as on the runner's own version card.
   head.push(...asksForChange(input.baseManifest, input.manifest));
   // Contract 2: a proposed version never GIVES agents instructions (proposals.ts refuses that first), but it may
@@ -368,7 +388,8 @@ export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCa
   const shown = fitView(head, input.diff);
   if (!shown.headFits) return TOO_LARGE_FACTS;
   const total = input.diff.files.length;
-  const who = proposerSentence(input.proposer);
+  const whoNodes = whoParts(input.proposer, input.runsOn);
+  const who = whoNodes.join(" ");
   const short = rights.length > 0 ? "It asks for new rights, listed below." : "It does something new, listed below.";
   const base: Omit<HillPostInput, "requestId" | "summary"> = { title: versionTitle(input.id), options: [{ ...PROPOSAL_USE }, { ...PROPOSAL_KEEP }], text: "none", priority: "today", recommends: null };
   if (total === 0 || (shown.view !== null && shown.shown >= total)) {
@@ -380,7 +401,7 @@ export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCa
   const code = codeGroup(input.diff.files, input.manifest.run ?? null, "refuse", helpers);
   if (!code.ok) return { ok: false, code: code.code, error: code.error };
   const rows = groupOrder(input.diff.files, input.manifest.run ?? null).map((file) => ({ rel: file.rel, cells: changeCells(file) }));
-  const first = factsCard([{ kind: "para", text: who }, ...head], total, code.cards.length, placesTables(rows, ["Change", "Lines"], code.places, helpers), [], helpers);
+  const first = factsCard([...whoNodes.map((text): ViewNode => ({ kind: "para", text })), ...head], total, code.cards.length, placesTables(rows, ["Change", "Lines"], code.places, helpers), [], helpers);
   if (first === null) return TOO_LARGE_FACTS;
   const tail = ` ${cardsSentence(code.cards.length + 1)}`;
   const summary = summaryOf(who, input.replaces === true, `${filesSentence(total)} ${fact}${tail}`, `${filesSentence(total)} ${short}${tail}`);

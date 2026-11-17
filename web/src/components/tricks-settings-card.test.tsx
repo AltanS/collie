@@ -1001,6 +1001,22 @@ describe("review 8 V-N1: a switch on names the code the person read", () => {
     expect(screen.getByRole("switch", { name: "Browser leg" })).not.toBeChecked();
   });
 
+  it("a switch-on refused with 409 not-whole says Collie cannot show all of the code, and stays off; another failure keeps the generic line", async () => {
+    const user = userEvent.setup();
+    server.use(http.post("/api/tricks/lodge/legs/switch", () => HttpResponse.json({ error: "not-whole", message: "The bridge's own words." }, { status: 409 })));
+    renderCard(await storeWith([{ ...LEGS, on: false, state: "off" }]));
+    await user.click(await screen.findByRole("switch", { name: "Browser leg" }));
+    await vi.waitFor(() => expect(currentStatus()?.text).toBe("Collie cannot show all of its code as it is, so it stays off."));
+    expect(screen.getByRole("switch", { name: "Browser leg" })).not.toBeChecked();
+    // The same word on another status is not this refusal, and any other failure is the generic line.
+    server.use(http.post("/api/tricks/lodge/legs/switch", () => HttpResponse.json({ error: "not-whole", message: "x" }, { status: 500 })));
+    await user.click(screen.getByRole("switch", { name: "Browser leg" }));
+    await vi.waitFor(() => expect(currentStatus()?.text).toBe("Could not switch Browser leg. Try again."));
+    server.use(http.post("/api/tricks/lodge/legs/switch", () => HttpResponse.json({ error: "busy", message: "x" }, { status: 409 })));
+    await user.click(screen.getByRole("switch", { name: "Browser leg" }));
+    await vi.waitFor(() => expect(currentStatus()?.text).toBe("Could not switch Browser leg. Try again."));
+  });
+
   it("on Windows a shell run line is refused at switch-on with the one sentence (fault d), and the phone's copy is the bridge's words", async () => {
     const user = userEvent.setup();
     server.use(http.post("/api/tricks/lodge/legs/switch", () => HttpResponse.json({ error: "windows-shell", message: TRICKS_WINDOWS_SHELL_LINE }, { status: 409 })));

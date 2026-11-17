@@ -146,6 +146,8 @@ export interface TrickProposalsDeps {
   tricks: () => ProposalsTricks | null;
   /** Whether this bridge leads a crew (a trick's `inputs` then read on every machine). */
   crew?: () => boolean;
+  /** This bridge's own id and machine name. A proposal from another machine of the crew says "It will run on <machine>." */
+  self?: { memberId: string; machine: string };
   /** `nextExec`: the files the proposal marked executable; its stored copy is 0600 (review 7, `+x`). */
   diff?: (base: string | null, next: string, nextExec: ReadonlySet<string>) => Promise<VersionDiff>;
   now?: () => number;
@@ -426,12 +428,14 @@ export class TrickProposals {
   private async cardOf(dir: string, proposal: ProposalRead, proposer: Proposer, base: Extract<ProposalTarget, { kind: "version" }> | null, replaces: boolean): Promise<ProposalCardResult> {
     const id = proposal.manifest.id;
     const crew = this.deps.crew?.() ?? false;
+    // Tricks run on this bridge, so a proposal that came from another machine of the crew runs elsewhere than it was written.
+    const runsOn = this.deps.self === undefined || proposer.memberId === this.deps.self.memberId ? null : clean(this.deps.self.machine);
     const kinds = await this.warningKinds(dir, proposal.manifest);
     if (base === null) {
       // A new trick's code is its files' own bytes, every line added: no git run, nothing left out.
       const sizes = new Map(proposal.files.map((file) => [file.rel, file.bytes.byteLength]));
       const executable = new Set(proposal.files.filter((file) => file.executable).map((file) => file.rel));
-      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), warnings: kinds, crew, replaces, sizes, executable, settingsLeft: proposal.settingsLeft === true, ...proposalDiff(id, proposal.files) });
+      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), warnings: kinds, crew, replaces, runsOn, sizes, executable, settingsLeft: proposal.settingsLeft === true, ...proposalDiff(id, proposal.files) });
     }
     const exec = new Set(proposal.files.filter((file) => file.executable).map((file) => file.rel));
     const diff = await this.diff(base.baseDir, dir, exec).catch((): VersionDiff => ({ files: [], counted: false }));
@@ -442,7 +446,7 @@ export class TrickProposals {
     // The same code as the one that runs: nothing for a yes to approve, so no card at all (the lead's decision, 2026-11-17).
     if (diff.files.length === 0) return { ok: false, code: "exists", error: PROPOSAL_NO_CHANGE };
     const had = new Set(base.baseManifest === undefined ? [] : await this.warningKinds(base.baseDir, base.baseManifest));
-    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces, settingsLeft: proposal.settingsLeft === true, helpers: shippedHelpers(proposal.files, id) });
+    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces, runsOn, settingsLeft: proposal.settingsLeft === true, helpers: shippedHelpers(proposal.files, id) });
   }
 
   private async newProposal(state: ProposalsState, proposal: ProposalRead, proposer: Proposer, old: OpenProposal | null, base: Extract<ProposalTarget, { kind: "version" }> | null, now: number): Promise<ProposeAnswer> {

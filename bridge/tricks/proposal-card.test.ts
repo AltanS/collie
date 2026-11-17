@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { ACCESS_LINES, MANIFEST_KEYS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { addedDiff } from "./card-group.ts";
-import { PROPOSAL_KEY_RIGHTS, PROPOSAL_ON, PROPOSAL_TOO_LARGE, PROPOSAL_USE, proposalCard, proposalVersionCard, type ProposerFacts } from "./proposal-card.ts";
-import { asksForSentence, DECIDES_REPLY_CHIP, RUNS_AS_YOU, runsAsYou } from "./version-card.ts";
+import { PROPOSAL_KEY_RIGHTS, PROPOSAL_ON, PROPOSAL_TOO_LARGE, PROPOSAL_USE, proposalCard, proposalVersionCard, runsOnSentence, type ProposerFacts } from "./proposal-card.ts";
+import { asksForSentence, DECIDES_REPLY_CHIP, KEEPS_RUNNING, keepsRunning, RUNS_AS_YOU, runsAsYou } from "./version-card.ts";
 
 // EVERY RIGHT HAS A LINE ON THE CARD (the first full trick run, 2026-11-16, decision 1). A trick with
 // `decides = "reply"` once got "It asks for no rights." This walks every key the table calls a right and
@@ -161,5 +161,92 @@ describe("no card without code to read (2026-11-17)", () => {
   test("a new trick's empty file shows one line that says so", () => {
     const diff = addedDiff([{ rel: "empty.ts", bytes: new Uint8Array() }]);
     expect(diff.files).toEqual([{ rel: "empty.ts", change: "added", plus: 0, minus: 0, hunk: ["empty.ts: an empty file, added"] }]);
+  });
+});
+
+// THE LINE OF A TRICK THAT REACTS (Altan, 2026-11-17): `on` and `watch` start the program with no phone open, so
+// the card says "It keeps running with no phone open." right after the rights lines. A plain timer waits for a
+// phone's look (service.ts WATCH_WINDOW_MS), so it gets no such line, and neither does a tap-only trick.
+describe("the line of a trick that keeps running with no phone open", () => {
+  const diff = addedDiff([{ rel: "program.ts", bytes: enc("console.log(1);\n") }]);
+  const versionOf = (base: TrickManifest, next: TrickManifest) => {
+    const made = proposalVersionCard({ id: "legs", manifest: next, baseManifest: base, proposer: WHO, diff, warnings: [], crew: false });
+    if (!made.ok) throw new Error(made.error);
+    return made.card;
+  };
+  const textsOf = (view: readonly ViewNode[] | undefined): (string | undefined)[] => (view ?? []).map((node) => ("text" in node ? node.text : undefined));
+  const READS = [
+    ["on", { on: ["session.status"] }],
+    ["watch", { watch: ["~/notes/todo.md"] }],
+  ] as const satisfies readonly (readonly [string, Partial<TrickManifest>])[];
+
+  test("the words, exactly", () => {
+    expect(KEEPS_RUNNING).toBe("It keeps running with no phone open.");
+  });
+
+  for (const [key, set] of READS) {
+    test(`${key}: the proposal card and the version card carry it, after the rights lines and the honest line`, () => {
+      const fresh = cardOf({ ...BARE, ...set });
+      const at = textsOf(fresh.view).indexOf(KEEPS_RUNNING);
+      expect(at).toBeGreaterThan(0);
+      expect(textsOf(fresh.view)[0]).toBe(RUNS_AS_YOU);
+      // The chip bar of the rights comes first, then the line.
+      expect((fresh.view ?? []).findIndex((node) => node.kind === "bar")).toBeLessThan(at);
+      const version = versionOf(BARE, { ...BARE, ...set });
+      expect(textsOf(version.view)).toContain(KEEPS_RUNNING);
+    });
+  }
+
+  test("a tap-only trick, a plain timer and a trick with no program carry none", () => {
+    expect(textsOf(cardOf(BARE).view)).not.toContain(KEEPS_RUNNING);
+    expect(textsOf(cardOf({ ...BARE, every: "30s", everyMs: 30_000 }).view)).not.toContain(KEEPS_RUNNING);
+    expect(textsOf(versionOf(BARE, { ...BARE, access: "see" }).view)).not.toContain(KEEPS_RUNNING);
+    const { run: _run, ...noProgram } = { ...BARE, on: ["session.status" as const] };
+    expect(keepsRunning(noProgram)).toEqual([]);
+    expect(keepsRunning(undefined)).toEqual([]);
+  });
+
+  test("a version that keeps the same watch still says it: the line follows the new version, not the change", () => {
+    const next: TrickManifest = { ...BARE, watch: ["~/notes/todo.md"] };
+    expect(textsOf(versionOf(next, { ...next, access: "see" }).view)).toContain(KEEPS_RUNNING);
+  });
+});
+
+// "It will run on <machine>." (Altan, 2026-11-17): under the proposer's sentence, only when the proposal came from
+// another machine of the crew than the one that runs the trick.
+describe("where it will run", () => {
+  const diff = addedDiff([{ rel: "program.ts", bytes: enc("console.log(1);\n") }]);
+  const proposed = (runsOn: string | null | undefined) => {
+    const input: Parameters<typeof proposalCard>[0] = { id: "legs", manifest: BARE, proposer: WHO, diff, warnings: [], crew: true };
+    if (runsOn !== undefined) input.runsOn = runsOn;
+    const made = proposalCard(input);
+    if (!made.ok) throw new Error(made.error);
+    return made.card;
+  };
+
+  test("the words", () => {
+    expect(runsOnSentence("lodge")).toBe("It will run on lodge.");
+    expect(runsOnSentence("lo\u202edge")).toBe("It will run on lo?dge.");
+  });
+
+  test("a card with a machine says it right after the proposer; one without says nothing", () => {
+    expect(proposed("lodge").summary).toStartWith("A session on workshop proposes it. It will run on lodge. ");
+    expect(proposed(null).summary).not.toContain("It will run on");
+    expect(proposed(undefined).summary).not.toContain("It will run on");
+  });
+
+  test("a version card says it too", () => {
+    const made = proposalVersionCard({ id: "legs", manifest: { ...BARE, access: "see" }, baseManifest: BARE, proposer: WHO, diff, warnings: [], crew: true, runsOn: "lodge" });
+    if (!made.ok) throw new Error(made.error);
+    expect(made.card.summary).toStartWith("A session on workshop proposes it. It will run on lodge. ");
+  });
+
+  test("on a group of cards, card 1 holds the two sentences as two paragraphs, proposer first", () => {
+    const long = Array.from({ length: 400 }, (_, n) => `console.log(${String(n)});`).join("\n");
+    const made = proposalCard({ id: "legs", manifest: BARE, proposer: WHO, diff: addedDiff([{ rel: "program.ts", bytes: enc(long) }]), warnings: [], crew: true, runsOn: "lodge" });
+    if (!made.ok) throw new Error(made.error);
+    const first = made.card.group?.parts[0];
+    expect(first?.[0]).toEqual({ kind: "para", text: "A session on workshop proposes it." });
+    expect(first?.[1]).toEqual({ kind: "para", text: "It will run on lodge." });
   });
 });

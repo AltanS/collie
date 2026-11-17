@@ -95,7 +95,7 @@ interface Lead {
   live: Set<string>;
 }
 
-async function lead(opts: { hillOff?: boolean; diff?: (base: string | null, next: string) => Promise<VersionDiff>; forgetTrick?: (id: string) => void } = {}): Promise<Lead> {
+async function lead(opts: { self?: { memberId: string; machine: string }; hillOff?: boolean; diff?: (base: string | null, next: string) => Promise<VersionDiff>; forgetTrick?: (id: string) => void } = {}): Promise<Lead> {
   const root = await tempDir();
   const configDir = join(root, "config");
   const stateDir = join(root, "state");
@@ -147,6 +147,7 @@ async function lead(opts: { hillOff?: boolean; diff?: (base: string | null, next
   // The real diff: a failed one refuses a new version's card (review 7 R9), so the rig no longer fakes one.
   const deps: ConstructorParameters<typeof TrickProposals>[0] = { configDir, stateDir, hill, tricks: () => service, now: () => clock.t, warn: () => undefined };
   if (opts.diff !== undefined) deps.diff = opts.diff;
+  if (opts.self !== undefined) deps.self = opts.self;
   proposals = new TrickProposals(deps);
   await proposals.start();
   return { root, configDir, stateDir, clock, hill, store, service, cards, proposals, sent, live };
@@ -1270,5 +1271,33 @@ describe("package I: the card in the session that proposed it, switched on with 
       expect(op.kind).toBe("read");
       expect(["see", "read"]).toContain(op.right);
     }
+  });
+});
+
+describe("where a proposal will run", () => {
+  const SELF = { memberId: "lodge", machine: "lodge" };
+
+  test("from another machine of the crew: the card says it will run on this one, under the proposer", async () => {
+    const l = await lead({ self: SELF });
+    expect(await l.proposals.propose(proposal("legs"), AGENT)).toMatchObject({ ok: true });
+    expect(openCards(l)[0]?.summary).toStartWith("A session on workshop proposes it. It will run on lodge. ");
+  });
+
+  test("a terminal on a crew member says it too", async () => {
+    const l = await lead({ self: SELF });
+    expect(await l.proposals.propose(proposal("legs"), { ...TERMINAL, memberId: "workshop", host: "workshop" })).toMatchObject({ ok: true });
+    expect(openCards(l)[0]?.summary).toStartWith("Someone on workshop proposes it. Collie could not confirm which session. It will run on lodge. ");
+  });
+
+  test("from this machine: no such line", async () => {
+    const l = await lead({ self: SELF });
+    expect(await l.proposals.propose(proposal("legs"), TERMINAL)).toMatchObject({ ok: true });
+    expect(openCards(l)[0]?.summary).not.toContain("It will run on");
+  });
+
+  test("a lead that does not know itself says nothing", async () => {
+    const l = await lead();
+    expect(await l.proposals.propose(proposal("legs"), AGENT)).toMatchObject({ ok: true });
+    expect(openCards(l)[0]?.summary).not.toContain("It will run on");
   });
 });
