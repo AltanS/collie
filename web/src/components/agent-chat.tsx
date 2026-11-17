@@ -44,6 +44,7 @@ import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, TailRoomContext, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { StretchTextContext } from "@/components/markdown-text";
 import { FabButton } from "@/components/ui/fab";
+import { Notice } from "@/components/ui/notice";
 import { BottomSheet, SHEET_BODY_STICKY } from "@/components/ui/sheet";
 import { DisplayPrefsContent } from "@/components/display-prefs";
 import { Collapse, CollapseSwap } from "@/components/ui/collapse";
@@ -149,7 +150,7 @@ import { isLead, paneScopeKey } from "@/lib/scope";
 import { useAccounts } from "@/lib/accounts";
 import { openReport, signalTrouble, unreadDialogReport } from "@/lib/report/store";
 import { unreadDialogScreen } from "@/lib/report/screen";
-import { answerRouteFor, holdAnswerRouteFor, textRouteFor } from "@/lib/send-path";
+import { answerRouteFor, cardsOnOlderMember, holdAnswerRouteFor, textRouteFor } from "@/lib/send-path";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
 import { paneFilesDir } from "@/lib/file-paths";
@@ -1082,7 +1083,9 @@ export function AgentChat({
   const paneAsk =
     askReplaced !== null && askReplaced.pane === paneId && (surfaceAsk === null || surfaceAsk.id === askReplaced.refused) ? askReplaced.ask : surfaceAsk;
   // Where a tap and a text go, by the session kind and the crew link (lib/send-path.ts, M56 spec 14).
-  const sendPlace = { program: gridless, crew: !isLead(scope), sendProtocol: agent?.sendProtocol === true };
+  const sendPlace = { program: gridless, crew: !isLead(scope), sendProtocol: agent?.sendProtocol === true, askRoute: agent?.askRoute === true };
+  // A crew member too old to take a card's tap by id: its cards keep the key route, and the dock says why (M102 spec 14).
+  const olderMemberCards = cardsOnOlderMember(sendPlace);
   const asksAnswered = answerRouteFor(sendPlace) === "api-ask";
   // The hook hold card answers its ask on a crew member too, carried by the lead (M56 spec 12).
   const holdsAnswered = holdAnswerRouteFor(sendPlace) === "api-ask";
@@ -1558,6 +1561,13 @@ export function AgentChat({
         case "desk":
           setAskReplaced({ pane: paneId, refused: refusedId, ask: null });
           setStatus(result.detail ?? t("chat.status.askDesk"), "note");
+          revalidator.revalidate();
+          return false;
+        case "moved":
+          // A hold ended under the tap (its limit, a stopped hook): the card becomes the screen
+          // dialog's card in this one step, and the words say the tap did nothing (M102 spec 14).
+          setAskReplaced({ pane: paneId, refused: refusedId, ask: result.ask });
+          setStatus(t("chat.status.askMoved"), "warn");
           revalidator.revalidate();
           return false;
         case "gone":
@@ -3248,6 +3258,13 @@ export function AgentChat({
               disabled={readOnly || gone || !holdsAnswered}
               onAnswer={handleHoldAnswer}
             />
+          )}
+          {display && olderMemberCards && hasDialogCard(blocks) && (
+            <div className="px-3 pb-1">
+              <Notice tone="neutral" variant="box">
+                {t("sent.machine.old", { machine: agent?.host ?? scope?.host ?? "" })}
+              </Notice>
+            </div>
           )}
           {display && (
             <CardDock
