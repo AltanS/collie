@@ -75,7 +75,7 @@ describe("AgentChat: the unread card a refusal opens (the M102 review, H; pass 2
     m.show(screenAt(5, "12:15:04"), 8);
     m.show(screenAt(6, "12:15:05"), 9);
     expect(screen.getByText(CAPTION)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send past this screen" })).toBeInTheDocument();
+    expect(document.querySelector("[data-slot=\"unread-dialog-type-anyway\"]")).toHaveTextContent("Send anyway");
   });
 
   it("goes when the pane is no longer unread: a later read the bridge can read", async () => {
@@ -104,7 +104,7 @@ describe("AgentChat: the unread state, not the rows (the M102 review 2, H and I)
     await sendRefused();
     for (let tick = 1; tick <= 6; tick++) m.show(movingScreen(tick), 7 + tick);
     expect(screen.getByText(CAPTION)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send past this screen" })).toBeInTheDocument();
+    expect(document.querySelector("[data-slot=\"unread-dialog-type-anyway\"]")).toHaveTextContent("Send anyway");
   });
 
   it("the Keys drawer the person closed stays closed while the rows move, until the unread state ends", async () => {

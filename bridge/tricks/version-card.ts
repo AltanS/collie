@@ -108,7 +108,7 @@ export interface VersionCardDeps {
 /** A place a trick draws in, as the card says it. */
 const PLACE_WORDS = {
   belt: "the belt",
-  session: "a session of its own",
+  session: "a page of its own",
   dashboard: "the Dashboard",
   status: "the status line",
   tabbar: "the bottom bar",

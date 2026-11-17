@@ -177,7 +177,7 @@ describe("the trick session screen", () => {
 
   it("says so when the session is gone", async () => {
     mount("/trick/trick%3Alodge%3Agone%3Ax");
-    expect(await screen.findByText("This trick session is not here any more.")).toBeInTheDocument();
+    expect(await screen.findByText("This trick's page is not here any more.")).toBeInTheDocument();
   });
 });
 

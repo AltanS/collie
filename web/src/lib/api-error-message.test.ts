@@ -81,8 +81,8 @@ describe("describeApiError", () => {
       "Es wurde keine Datei übermittelt.",
     );
     expect(
-      describeApiError({ error: "x", code: "session.unknown", detail: { session: "work" } }),
-    ).toBe("Keine Sitzung namens work auf diesem collie vorhanden.");
+      describeApiError({ error: "x", code: "pane.close_failed", detail: { reason: "gone" } }),
+    ).toBe("Pane konnte nicht geschlossen werden: gone");
   });
 });
 
@@ -97,7 +97,7 @@ describe("describeThrownError", () => {
       ),
     );
     const thrown = await sendReply("w1:p1", "hi").catch(<TThrown,>(e: TThrown) => e);
-    expect(describeThrownError(thrown)).toBe("There is no session called work on this collie.");
+    expect(describeThrownError(thrown)).toBe("There is no space called work on this collie.");
   });
 
   it("keeps a non-JSON refusal's own message — a proxy page is not a bridge body", async () => {

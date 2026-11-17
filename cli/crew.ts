@@ -1139,7 +1139,7 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
   // be restarted from here, so the operator is told — it is the one remaining step of the join.
   deps.io.out(`  ONE STEP LEFT, on the lead (${parsed.leadMemberId}): \`collie restart\` there.`);
   deps.io.out("  Its roster now has this machine on disk, but its running process read that roster at");
-  deps.io.out("  boot — until it restarts, this machine's sessions do not appear on the phone.");
+  deps.io.out("  boot — until it restarts, this machine's spaces and agents do not appear on the phone.");
 
   // Clear BEFORE the restart: after it the herd push path is muted (peer mode), and a muted sink
   // drops a `clear` exactly as it drops an alert — so anything already on the phone would be stuck.

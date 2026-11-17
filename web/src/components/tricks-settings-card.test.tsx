@@ -152,11 +152,11 @@ describe("TricksSettingsCard: the rows", () => {
     const legs = await screen.findByText("Browser leg");
     expect(legs).toBeInTheDocument();
     const a = within(rowOf("legs"));
-    expect(a.getByText("belt, session")).toBeInTheDocument();
+    expect(a.getByText("belt, page")).toBeInTheDocument();
     expect(a.getByText("Added by agent · 2 h ago")).toBeInTheDocument();
     expect(a.getByRole("switch", { name: "Browser leg" })).toBeChecked();
     const b = within(rowOf("tracker"));
-    expect(b.getByText("session")).toBeInTheDocument();
+    expect(b.getByText("page")).toBeInTheDocument();
     expect(b.getByText("From owner/tracker-trick @ 3f2a91c · 3 min ago")).toBeInTheDocument();
     expect(b.getByRole("switch", { name: "Tracker" })).not.toBeChecked();
     expect(screen.getByText("A trick runs as you.")).toBeInTheDocument();

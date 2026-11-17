@@ -223,7 +223,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "bridge",
     kind: "bool",
     default: true,
-    doc: "Front every running session this collie discovers, not only the primary one.",
+    doc: "Front every running space this collie discovers, not only the primary one.",
     configField: "multiSession",
   },
   {

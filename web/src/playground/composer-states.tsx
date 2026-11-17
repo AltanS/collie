@@ -620,7 +620,7 @@ function StopCardCase({ n, state, title, reach, c }: { n: number; state: string;
 const UNREAD_LINES = splitLines(parseAnsi("  Pick a colour theme\n\n  > Dusk\n    Dawn\n    Paper\n\n  Arrows move, return picks"));
 const UNREAD_CANCEL: UnreadDialogModel = { key: "Escape", agent: "demo", signature: "demo-picker" };
 
-/** The card itself, the real component: the screen's rows, Esc when the agent declared it, Send past this screen. */
+/** The card itself, the real component: the screen's rows, Esc when the agent declared it, Send anyway. */
 function UnreadCardPhone({ cancel, secret = false }: { cancel: UnreadDialogModel | null; secret?: boolean }) {
   return (
     <PhoneMock>
@@ -978,27 +978,27 @@ export function wayOutGroups(): ReactNode[] {
       </SignInCase>
     </Group>,
     <Group key="unread-card" title="Unread card">
-      <SignInCase n={36} state="unread-card" title="Screen Collie cannot read" reach="A screen Collie has no grammar for. The card shows its rows and the agent's own Esc; the Keys pad opens once under it, and Send past this screen arms one send past the card.">
+      <SignInCase n={36} state="unread-card" title="Screen Collie cannot read" reach="A screen Collie has no grammar for. The card shows its rows and the agent's own Esc; the Keys pad opens once under it, and Send anyway arms one send past the card.">
         <UnreadCardPhone cancel={UNREAD_CANCEL} />
       </SignInCase>
-      <SignInCase n={37} state="unread-card-fallback" title="Card from a refused send" reach="A send refused on a screen Collie cannot read, from an agent that declared no cancel key. The same card opens from the notice, with the pad and Send past this screen.">
+      <SignInCase n={37} state="unread-card-fallback" title="Card from a refused send" reach="A send refused on a screen Collie cannot read, from an agent that declared no cancel key. The same card opens from the notice, with the pad and Send anyway.">
         <UnreadCardPhone cancel={null} />
       </SignInCase>
-      <SignInCase n={38} state="unread-card-secret" title="Unread screen asks a secret" reach="The unread screen asks for a password or a code. Send past this screen is gone, and the card says to use Type, one key at a time.">
+      <SignInCase n={38} state="unread-card-secret" title="Unread screen asks a secret" reach="The unread screen asks for a password or a code. Send anyway is gone, and the card says to use Type, one key at a time.">
         <UnreadCardPhone cancel={UNREAD_CANCEL} secret />
       </SignInCase>
       <StopCardCase
         n={39}
         state="unread-menu-open"
         title="Menu in the way"
-        reach="Send past this screen on a screen that shows a menu or a yes/no prompt. Nothing is typed, and the Keys pad opens."
+        reach="Send anyway on a screen that shows a menu or a yes/no prompt. Nothing is typed, and the Keys pad opens."
         c={{ outcome: "refused", reason: "menu_open", surface: { ...STOP_FREE, modal: "unknown", composer: "unknown" } }}
       />
       <StopCardCase
         n={40}
         state="unread-override-typed"
         title="Text waits for Enter"
-        reach="Send past this screen on a screen Collie cannot read. The text is in the agent's box, no Enter was pressed, and the person presses Enter on the Keys pad."
+        reach="Send anyway on a screen Collie cannot read. The text is in the agent's box, no Enter was pressed, and the person presses Enter on the Keys pad."
         c={{ outcome: "typed_not_submitted", reason: "override", surface: { ...STOP_FREE, modal: "unknown", composer: "unknown" } }}
       />
       <SignInCase n={47} state="answer-exit-no-plan" title="Answer with no plan" reach="Tap an answer on a permission card that Collie cannot carry out from here. The card gives way to this exit: one line, the live screen, and the Keys pad under it. The cross brings the card back.">
