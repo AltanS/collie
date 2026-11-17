@@ -17,6 +17,7 @@ stuck and that no input vanishes in silence. They assert the invariants, never a
 | ---- | -------------- |
 | `bridge/surface/invariants.gates.test.ts` | every Surface on a screen with a box and with none, through the Send Protocol's gates (I4, I5, I6) |
 | `bridge/surface/invariants.mutation.test.ts` | corpus captures with a row, a warning, a clock, ANSI noise, a rewrap or a cut top added, on four send roads (I4, I7) |
+| `bridge/surface/invariants.one-writer.test.ts` | two bridges on one pane, and a crash between the text and Enter, with real pane lock files (I6, M102 spec 16) |
 | `bridge/surface/invariants-rig.ts` | the pane that logs every write, and the protocol wired to it |
 | `send-slot.invariants.test.ts` | the phone's Send slot over all 2880 Surfaces (I1, I4) |
 | `composer.invariants.test.tsx` | the rendered composer: the key pad, offline words, the override button (I1, I4) |

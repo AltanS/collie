@@ -68,6 +68,10 @@ export const SEND_REASONS = [
   "crash",
   "lost_lock",
   "no_evidence",
+  // unknown (M102 spec 16): the bridge stopped (a crash, a kill) after the request's first key and before
+  // its end. Text may be in the box and Enter may not have been pressed; the same id is never typed again.
+  // A request the bridge stopped before any key keeps `crash`.
+  "interrupted",
   // unknown: a send queued behind a running turn met a dialog as its Enter went out; the dialog may
   // have taken the Enter, so the person checks the card before answering it
   "dialog_after_enter",

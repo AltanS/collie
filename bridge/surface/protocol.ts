@@ -293,6 +293,7 @@ import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
 import { ANCHOR_ROWS, menuSign, type MenuBox, type MenuSign } from "../../web/src/lib/surface/menu-sign.ts";
 import type { PaneForeground } from "../pane-binary.ts";
+import type { PaneLockFiles } from "./pane-lock.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
@@ -852,14 +853,22 @@ export const VIEW_AT_DRAFT = "Your draft is in this session's box; send it or cl
 
 // ── The lock and the ring ────────────────────────────────────────────────────────────────────────
 
-/** One lock per pane, held by one request until it settles or its bound passes. */
+/**
+ * One lock per pane, held by one request until it settles or its bound passes. With `shared` (M102 spec
+ * 16, pane-lock.ts) every take also takes the pane's file lock that every bridge on the machine shares,
+ * for the same span: the in-memory check stays the first, cheap gate.
+ */
 export class SessionLocks {
   private readonly held = new Map<string, { owner: string; until: number }>();
 
-  /** Take the lock, or false when another request holds it inside its bound. A lock past its bound is free. */
+  constructor(private readonly shared?: SharedPaneLock) {}
+
+  /** Take the lock, or false when another request holds it inside its bound (here, or on another bridge). A lock past its bound is free. */
   acquire(key: string, owner: string, until: number, now: number): boolean {
     const current = this.held.get(key);
     if (current !== undefined && current.owner !== owner && current.until >= now) return false;
+    if (this.shared !== undefined && !this.shared.take(paneOfLockKey(key), owner, until)) return false;
+    if (current !== undefined && current.owner !== owner) this.shared?.release(paneOfLockKey(key), current.owner);
     this.held.set(key, { owner, until });
     return true;
   }
@@ -877,8 +886,18 @@ export class SessionLocks {
   }
 
   release(key: string, owner: string): void {
-    if (this.held.get(key)?.owner === owner) this.held.delete(key);
+    if (this.held.get(key)?.owner !== owner) return;
+    this.held.delete(key);
+    this.shared?.release(paneOfLockKey(key), owner);
   }
+}
+
+/** What {@link SessionLocks} needs of the machine-wide pane lock (pane-lock.ts `PaneLockFiles`). */
+export type SharedPaneLock = Pick<PaneLockFiles, "take" | "release">;
+
+/** The pane id of a lock key (`<session> NUL <pane>`): the shared lock is keyed by the pane, not by a bridge's session name. */
+function paneOfLockKey(key: string): string {
+  return key.slice(key.lastIndexOf("\u0000") + 1);
 }
 
 /** One read's rows, kept in memory only: they can hold secrets. */
@@ -3180,15 +3199,17 @@ class StepLate extends Error {
 }
 
 /** A crash answer with the pane as it reads now, so the person checks it before sending again. */
-function withLook(answer: SendAnswer, look: Snap | null): SendAnswer {
+function withLook(answer: SendAnswer, look: Snap | null, reason: "crash" | "interrupted" = "crash"): SendAnswer {
   if (look === null) return answer;
-  return {
-    ...answer,
-    surface: look.surface,
-    rowsHash: look.rowsHash,
-    detail: "The bridge restarted during this send, so Collie cannot say whether it went out. Check the screen before you send again.",
-  };
+  const seen: SendAnswer = { ...answer, surface: look.surface, rowsHash: look.rowsHash };
+  if (reason === "crash") return { ...seen, detail: "The bridge restarted during this send, so Collie cannot say whether it went out. Check the screen before you send again." };
+  // Its first key had left (M102 spec 16): the rows now ride along, so the phone can show what the box holds.
+  const win = bottomWindow(look.texts);
+  return { ...seen, rows: look.texts.slice(win.first, win.end), detail: INTERRUPTED };
 }
+
+/** The detail of a send the bridge stopped after its first key (M102 spec 16). */
+export const INTERRUPTED = "The bridge stopped in the middle of this send: its text may be in the box, and Enter may not have been pressed. Collie does not type it again; check the screen.";
 
 class Ended extends Error {
   constructor(
@@ -3221,6 +3242,8 @@ export class SendProtocol {
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly inFlight = new Map<string, Promise<SendAnswer>>();
+  /** The runs whose first key was marked on disk ({@link firstKey}). */
+  private readonly started = new WeakSet<RunState>();
   /** Why a Deliver now went back to its place, for its answer (spec 05): written by its run, read once. */
   private readonly overDraftMisses = new Map<string, OverDraftMiss>();
   /** The hold queue's view of each pane with held requests, by session and pane (M56 spec 15 review). */
@@ -3504,19 +3527,21 @@ export class SendProtocol {
       // A command's draft refusal offers no Add on a replay either: the same rule, read from the same request.
       const command = stored.reason === "draft_present" && draftCommand(request, await this.deps.profile(target.harness, target.paneId));
       const replay: SendAnswer = { receipt: stored, offers: offersFor(stored.outcome, stored.reason, stored.profileId !== null, command), replayed: true };
-      // A send a crash cut short: read the pane now and report it beside the stored receipt.
-      if (stored.outcome !== "unknown" || stored.reason !== "crash") return replay;
-      return withLook(replay, await this.lookAfterCrash(request, record, target));
+      // A send a crash cut short: read the pane now and report it beside the stored receipt. One cut
+      // short after its first key (`interrupted`, M102 spec 16) also carries the rows now: text may be in the box.
+      if (stored.outcome !== "unknown" || (stored.reason !== "crash" && stored.reason !== "interrupted")) return replay;
+      return withLook(replay, await this.lookAfterCrash(request, record, target), stored.reason);
     }
     // Unsettled and not running here: the bridge died while it ran, and the start-up recovery has
     // not seen it. It ends `unknown` now, like recovery would end it, with the pane read as S2.
     const look = await this.lookAfterCrash(request, record, target);
     const state = this.bareState(request, record, target, null);
     state.marks.s2 = look;
-    const receipt = this.receiptOf(state, "unknown", "crash");
+    const reason = record.startedAt === undefined ? "crash" : "interrupted";
+    const receipt = this.receiptOf(state, "unknown", reason);
     this.deps.store.settle(request.id, receipt);
     this.count(state, receipt);
-    return withLook({ receipt, offers: offersFor("unknown", "crash", false), replayed: true }, look);
+    return withLook({ receipt, offers: offersFor("unknown", reason, false), replayed: true }, look, reason);
   }
 
   /**
@@ -4288,7 +4313,24 @@ export class SendProtocol {
     }
   }
 
-  /** The receipt a request that never settled gets after a restart (RequestStore.recover). */
+  /**
+   * The write-ahead mark (M102 spec 16): before the first key of a run, once, the request's file says it
+   * started, so a restart answers it `interrupted`, never types it again. A failed write never stops the key.
+   */
+  private firstKey(state: RunState): void {
+    if (this.started.has(state)) return;
+    this.started.add(state);
+    try {
+      this.deps.store.markStarted(state.record.id);
+    } catch {
+      /* the record keeps `accepted`: a restart answers `crash`, which also never types it again */
+    }
+  }
+
+  /**
+   * The receipt a request that never settled gets after a restart (RequestStore.recover): `interrupted`
+   * when its first key had left (M102 spec 16), else `crash`.
+   */
   static crashReceipt(record: SendRecord): SendReceipt {
     return {
       requestId: record.id,
@@ -4307,7 +4349,7 @@ export class SendProtocol {
       gapsMs: {},
       keys: [],
       outcome: "unknown",
-      reason: "crash",
+      reason: record.startedAt === undefined ? "crash" : "interrupted",
     };
   }
 
@@ -5290,6 +5332,7 @@ export class SendProtocol {
     this.guard(state);
     const { gate, store } = this.deps;
     const { paneId } = state.target;
+    this.firstKey(state);
     store.markSubmitSent(state.record.id);
     const token = gate.mint(paneId, GENERIC_SUBMIT, gate.revision(paneId));
     const result = await this.within(state, gate.commit(token));
@@ -5682,6 +5725,7 @@ export class SendProtocol {
     this.guard(state);
     const { paneId } = state.target;
     const text = lines.join("\n");
+    this.firstKey(state);
     // Called on the mux, never torn off it: an adapter's method reads its own `this`.
     const write = mux.pasteBlock !== undefined ? mux.pasteBlock(paneId, text) : mux.pasteText !== undefined ? mux.pasteText(paneId, text) : mux.typeText(paneId, text);
     const ack = await this.within(state, write);
@@ -6286,6 +6330,7 @@ export class SendProtocol {
     this.guard(state);
     const { mux } = this.deps;
     const paste = allowPaste && state.match?.profile.paste?.bracketed === true && mux.pasteText !== undefined;
+    this.firstKey(state);
     const ack = await this.within(state, paste ? mux.pasteText!(state.target.paneId, text) : mux.typeText(state.target.paneId, text));
     this.deps.gate.noteWrite(state.target.paneId);
     return writeAck(ack);
@@ -6328,6 +6373,7 @@ export class SendProtocol {
   private async keysThroughGate(state: RunState, keys: readonly string[], outcome: "typed_not_submitted" | "refused" | "unknown"): Promise<void> {
     this.guard(state);
     const { gate } = this.deps;
+    this.firstKey(state);
     const token = gate.mint(state.target.paneId, keys, gate.revision(state.target.paneId));
     const result = await this.within(state, gate.commit(token));
     if (result.ok) {
@@ -6567,6 +6613,7 @@ export class SendProtocol {
     const { mux } = this.deps;
     if (state.whole !== null && mux.pasteBlock !== undefined) {
       this.guard(state);
+      this.firstKey(state);
       // Called on the mux, never torn off it: an adapter's method reads its own `this`.
       const ack = await this.within(state, mux.pasteBlock(state.target.paneId, lines.join("\n")));
       this.deps.gate.noteWrite(state.target.paneId);
@@ -6820,6 +6867,7 @@ export class SendProtocol {
     this.guard(state);
     const keys = commitKeys(state);
     const { gate, store } = this.deps;
+    this.firstKey(state);
     store.markSubmitSent(state.record.id);
     this.openSend(state);
     const token = gate.mint(state.target.paneId, keys, s1.gateRevision);

@@ -186,6 +186,18 @@ export async function settled(rig: Rig, page: Page, paneId: string, host: Host, 
   return { arrived, words };
 }
 
+/**
+ * Whether a row of the screen holds the line with more text typed after it on the same input line (M102
+ * spec 16): text a crash left in the line, and a later write appended to it. A shell echoes such a row as
+ * one long command, so the line's own arrival count alone misses it.
+ */
+export function appendedTo(screen: string, line: string): boolean {
+  return screen.split("\n").some((row) => {
+    const at = row.indexOf(line);
+    return at >= 0 && row.slice(at + line.length).trim() !== "";
+  });
+}
+
 /** The invariant of the chaos leg for one input: it arrived at most once, and an input that did not arrive has words on the phone. */
 export function accountedFor(arrived: number, words: string): boolean {
   return arrived <= 1 && (arrived === 1 || words !== "");

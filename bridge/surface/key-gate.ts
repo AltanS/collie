@@ -21,10 +21,18 @@
 //
 // Escape is never cleanup: a protocol token cannot carry it. A person may press it.
 
-import type { MuxAck, MuxAdapter, MuxRefusalOutcome } from "../mux/types.ts";
+import { muxRefused, type MuxAck, type MuxAdapter, type MuxRefusalOutcome } from "../mux/types.ts";
+import { PANE_BUSY, type PaneLockFiles } from "./pane-lock.ts";
 
 /** How long a protocol token lives, in ms. */
 export const TOKEN_LIFETIME_MS = 150;
+
+/** How long a person's press may hold the machine-wide pane lock (pane-lock.ts): one key call's bound. */
+export const PRESS_SPAN_MS = 10_000;
+/** How long a person's tap waits for a pane another bridge writes into (M102 spec 16): then refused, or a Stop goes anyway. */
+export const LOCK_WAIT_MS = 1_500;
+/** The pause between two tries at that pane's lock. */
+export const LOCK_POLL_MS = 50;
 
 /** Who is sending. `protocol` is the Send Protocol; the other two never meet a revision check. */
 export type KeyOrigin = "person_tap" | "legacy_reply" | "protocol";
@@ -64,11 +72,78 @@ export class KeyGate {
   private readonly live = new Map<number, KeyToken>();
   private readonly sends: KeySendCounts = { person_tap: 0, legacy_reply: 0, protocol: 0 };
   private nextId = 1;
+  private nextHold = 1;
+  /** The machine-wide pane lock (M102 spec 16), once the bridge shares one ({@link share}). */
+  private paneLock: Pick<PaneLockFiles, "take" | "release"> | null = null;
 
   constructor(
     private readonly mux: KeyWriter,
     private readonly now: () => number = () => Date.now(),
+    /** The pause between two tries at a pane another bridge holds ({@link hold}); a test hands in its own. */
+    private readonly pause: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   ) {}
+
+  /**
+   * Share the machine-wide pane lock (M102 spec 16): from here on a person's press and every {@link hold}
+   * take it for their span, so another bridge's send on the pane refuses them, and they refuse it. A
+   * press inside this bridge's own send joins that send's hold, as a person's key always could.
+   */
+  share(lock: Pick<PaneLockFiles, "take" | "release">): void {
+    this.paneLock = lock;
+  }
+
+  /**
+   * Run `work` holding the pane's machine-wide lock for at most `spanMs`. While another bridge holds it,
+   * wait up to {@link LOCK_WAIT_MS} (tries {@link LOCK_POLL_MS} apart), then answer `busy()` with no write
+   * at all. A free pane, or one this bridge already holds, costs no wait. With no shared lock, `work` runs as before.
+   */
+  async hold<T>(paneId: string, spanMs: number, work: () => Promise<T>, busy: () => T): Promise<T> {
+    // The first try is synchronous: a free pane writes in the same turn as before (a person's key still
+    // moves the gate's revision at once, so a token minted before it is stale).
+    const now = this.takeNow(paneId, spanMs);
+    const owner = now === false ? await this.takeWaiting(paneId, spanMs) : now;
+    if (owner === false) return busy();
+    try {
+      return await work();
+    } finally {
+      if (owner !== null) this.paneLock?.release(paneId, owner);
+    }
+  }
+
+  /**
+   * A person's Stop (M102 spec 16, ADR 0116 addendum): the safety control is never refused for the shared
+   * lock. It waits for it as {@link hold} does; when another bridge still holds the pane after the wait, the
+   * key goes out anyway and `bypassed` says so, for the route's record. Inside this bridge it is a press, as before.
+   */
+  async pressAlways(paneId: string, keys: readonly string[]): Promise<{ readonly ack: MuxAck; readonly bypassed: boolean }> {
+    const now = this.takeNow(paneId, PRESS_SPAN_MS);
+    const owner = now === false ? await this.takeWaiting(paneId, PRESS_SPAN_MS) : now;
+    try {
+      this.bump(paneId);
+      this.sends.person_tap++;
+      return { ack: await this.mux.writeKeys(paneId, keys), bypassed: owner === false };
+    } finally {
+      if (owner !== null && owner !== false) this.paneLock?.release(paneId, owner);
+    }
+  }
+
+  /** One try, now: the new owner's name, null with no shared lock, false while another bridge holds the pane. */
+  private takeNow(paneId: string, spanMs: number): string | null | false {
+    const lock = this.paneLock;
+    if (lock === null) return null;
+    const owner = `gate-${String(this.nextHold++)}`;
+    return lock.take(paneId, owner, this.now() + spanMs) ? owner : false;
+  }
+
+  /** Further tries {@link LOCK_POLL_MS} apart for {@link LOCK_WAIT_MS}: the owner's name, or false when another bridge kept the pane. */
+  private async takeWaiting(paneId: string, spanMs: number): Promise<string | null | false> {
+    for (let attempt = 0; attempt < LOCK_WAIT_MS / LOCK_POLL_MS; attempt++) {
+      await this.pause(LOCK_POLL_MS);
+      const owner = this.takeNow(paneId, spanMs);
+      if (owner !== false) return owner;
+    }
+    return false;
+  }
 
   /** The pane's newest revision as the gate counts it. */
   revision(paneId: string): number {
@@ -124,15 +199,34 @@ export class KeyGate {
    * returned as it is, so a route that used to call the adapter answers byte for byte as before.
    */
   async press(paneId: string, keys: readonly string[], origin: Exclude<KeyOrigin, "protocol">): Promise<MuxAck> {
-    this.bump(paneId);
-    this.sends[origin]++;
-    return this.mux.writeKeys(paneId, keys);
+    // Another bridge writing into this pane refuses the press before any key (M102 spec 16): `refused`,
+    // with the busy words, so no route counts it as sent.
+    return this.hold(
+      paneId,
+      PRESS_SPAN_MS,
+      () => {
+        this.bump(paneId);
+        this.sends[origin]++;
+        return this.mux.writeKeys(paneId, keys);
+      },
+      () => paneBusy(),
+    );
   }
 
   /** How many key sends each origin made through this gate (for the counters of spec 09). */
   sentBy(): Readonly<KeySendCounts> {
     return { ...this.sends };
   }
+}
+
+/** The refusal a write gets while another bridge holds the pane: `refused`, with {@link PANE_BUSY}. */
+export function paneBusy(): MuxRefusalOutcome {
+  return muxRefused(PANE_BUSY);
+}
+
+/** Whether a refusal is {@link paneBusy}: a route names it `pane_busy` (bridge/refusal.ts). */
+export function isPaneBusy(ack: MuxAck): boolean {
+  return !ack.ok && ack.reason === "refused" && ack.detail === PANE_BUSY;
 }
 
 const gates = new WeakMap<KeyWriter, KeyGate>();

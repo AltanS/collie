@@ -5,7 +5,8 @@
 // route's body checks.
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuditLog } from "../audit.ts";
 import type { JsonValue } from "../../web/src/lib/json.ts";
@@ -14,8 +15,9 @@ import { crewRouteFor } from "../crew/forward.ts";
 import { clearRoute, type ClearRouteRuntime } from "../server.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import { boundedDraft, CLEAR_DRAFT_MAX_BYTES, type ClearReceipt } from "../../web/src/lib/surface/clear.ts";
-import { KeyGate } from "./key-gate.ts";
+import { KeyGate, LOCK_WAIT_MS } from "./key-gate.ts";
 import { ClearService } from "./clear.ts";
+import { PaneLockFiles } from "./pane-lock.ts";
 
 const FIXTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "panes");
 const fx = (name: string): string => readFileSync(join(FIXTURES, name), "utf8");
@@ -131,14 +133,14 @@ interface Rig {
 }
 
 /** Panes: %1 grok, %4 an agent with no profile, %7 a bare shell. */
-function rig(draft: string): Rig {
+function rig(draft: string, gateOf: (pane: ScriptPane) => KeyGate = (p) => new KeyGate(p)): Rig {
   const pane = new ScriptPane(draft);
   const sleeps: number[] = [];
   const stales: string[] = [];
   const service = new ClearService({
     staleFrame: (paneId, frame) => void stales.push(`${paneId}:${frame}`),
     mux: pane,
-    gate: new KeyGate(pane),
+    gate: gateOf(pane),
     profile: (harness) => Promise.resolve(profileFor(harness, "99.0.0", { log: () => undefined })),
     sleep: (ms) => {
       sleeps.push(ms);
@@ -173,6 +175,31 @@ function rig(draft: string): Rig {
     clear: (paneId, body, redact = false) => clearRoute(rt, paneId, body, { audit, device: "phone", session: "main", acceptEncoding: null, redact }),
   };
 }
+
+describe("a Clear while another bridge writes into the pane (M102 spec 16)", () => {
+  test("it waits up to 1.5 s, then is refused pane_busy with nothing typed or pressed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "clear-lock-"));
+    try {
+      const lockOf = (pid: number) => new PaneLockFiles({ dir, scope: "s", pid, alive: () => true, startOf: () => null });
+      expect(lockOf(202).take("%1", "their-send", Date.now() + 60_000)).toBe(true);
+      const pauses: number[] = [];
+      const { pane, clear, lines } = rig(GROK_BOX, (p) => {
+        const gate = new KeyGate(p, Date.now, (ms) => (pauses.push(ms), Promise.resolve()));
+        gate.share(lockOf(101));
+        return gate;
+      });
+      const res = await clear("%1", { requestId: "clear-busy-01" });
+      expect(res.headers.get("x-collie-reason")).toBe("pane_busy");
+      expect(await res.json()).toEqual({ requestId: "clear-busy-01", outcome: "refused", reason: "pane_busy" });
+      expect(pauses.reduce((a, b) => a + b, 0)).toBe(LOCK_WAIT_MS);
+      expect(pane.keysSeen).toEqual([]);
+      expect(pane.typed).toEqual([]);
+      expect(JSON.parse(lines[0]!).detail).toMatchObject({ outcome: "refused", reason: "pane_busy", pressed: false });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 async function receipt(res: Response): Promise<ClearReceipt> {
   expect(res.status).toBe(200);
