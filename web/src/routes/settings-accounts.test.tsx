@@ -163,7 +163,7 @@ describe("Accounts: the list", () => {
     expect(within(rows[0]!).queryAllByRole("progressbar")).toHaveLength(0);
     expect(within(rows[1]!).getAllByRole("progressbar")).toHaveLength(1);
     expect(within(rows[2]!).getAllByRole("progressbar")).toHaveLength(4);
-    for (const label of ["Session", "Week · Sonnet", "Spend"]) expect(within(rows[2]!).getByText(label)).toBeInTheDocument();
+    for (const label of ["5 hours", "Week · Sonnet", "Spend"]) expect(within(rows[2]!).getByText(label)).toBeInTheDocument();
     expect(within(rows[1]!).getByText("91% used")).toHaveClass("text-status-blocked");
     expect(within(rows[2]!).getByText("40% used")).not.toHaveClass("text-status-blocked");
   });

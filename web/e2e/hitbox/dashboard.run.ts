@@ -103,7 +103,7 @@ const TARGETS: TargetDef[] = [
   { id: "row-mid", what: "a pane row in the middle (codex)", find: (p) => p.locator('[data-glide-origin="pane"]').nth(1) },
   { id: "row-last", what: "the last pane row", find: (p) => p.locator('[data-glide-origin="pane"]').last() },
   { id: "mark", what: "header mark (Collie home)", find: (p) => p.getByRole("button", { name: "Collie home" }) },
-  { id: "session-pill", what: "session switcher pill", find: (p) => p.getByRole("button", { name: /^Session: / }) },
+  { id: "session-pill", what: "space switcher pill", find: (p) => p.getByRole("button", { name: /^Space: / }) },
   { id: "gear", what: "Settings gear", find: (p) => p.getByRole("button", { name: "Settings" }) },
   { id: "summary", what: "status summary line", find: (p) => p.getByRole("button", { name: /needs you .* working/ }).first() },
   { id: "needs-switch", what: "needs-you switch", find: (p) => p.getByRole("button", { name: "Show only panes that need you" }) },

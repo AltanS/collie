@@ -1162,7 +1162,7 @@ GitHub token. What the report holds, and how to read it before you send it, is i
 
 ## Multi-session
 
-By default, one Collie instance serves every Herdr session it finds.
+By default, one Collie instance serves every Herdr session it finds. The phone calls each one a space.
 
 `COLLIE_MULTI_SESSION=on` (the default) discovers and serves every named Herdr session under your
 config root, switchable from the header. Setting `COLLIE_MULTI_SESSION=off` serves only the primary
@@ -1181,7 +1181,7 @@ The phone calls a terminal grouping a space. Herdr calls the same thing a sessio
 names one by the folder its socket lives in, so `<config root>/sessions/project-yt/` shows as
 `project-yt`. In Collie's own words a session is one agent conversation, which is why the file is
 called `spaces.toml`. A label replaces the registry name in the space
-switcher, on its trigger, on the space tag of a row in **All sessions**, and on a durable agent's
+switcher, on its trigger, on the space tag of a row in **All spaces**, and on a durable agent's
 row. The switcher keeps the registry name under the label.
 
 ```toml

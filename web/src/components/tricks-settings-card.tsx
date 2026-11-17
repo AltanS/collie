@@ -38,7 +38,7 @@ import type { HillDecision } from "@/lib/hill/wire";
 //
 // A ROW IS THREE LINES, ALWAYS, so nothing moves when a trick changes state:
 //   1. the trick's name;
-//   2. its places, in words ("belt, session"), or "No parts" for a manifest that declares none. The
+//   2. its places, in words ("belt, page"), or "No parts" for a manifest that declares none. The
 //      places are the manifest's declared kinds, not the parts held right now, so a trick that is off or
 //      between runs does not change this line;
 //   3. ONE slot, which reads the provenance (who added it, from where, when) for a healthy trick and the

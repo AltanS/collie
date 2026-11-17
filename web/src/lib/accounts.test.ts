@@ -30,7 +30,7 @@ const NOW = Date.UTC(2026, 10, 15, 12, 0, 0);
 
 describe("accounts: the windows are the harness's own", () => {
   it("names the two known keys, a scoped week, a labelled key, and a bare key", () => {
-    expect(windowName({ window: "5h", usedPct: 1, resetsAt: null })).toBe("Session");
+    expect(windowName({ window: "5h", usedPct: 1, resetsAt: null })).toBe("5 hours");
     expect(windowName({ window: "7d", usedPct: 1, resetsAt: null })).toBe("Week");
     expect(windowName({ window: "7d:sonnet", label: "Sonnet", usedPct: 1, resetsAt: null })).toBe("Week · Sonnet");
     expect(windowName({ window: "7d:opus", usedPct: 1, resetsAt: null })).toBe("Week · opus");
