@@ -4,15 +4,21 @@
 //
 // No model turn: every case sends `echo ...` into a shell pane. The cases whose world needs a seam the
 // rig lacks are skipped and name the seam (CHAOS_CASES in chaos-lib.ts).
-import { phoneOn, test, type Rig } from "./leg";
-import { arrivals, chaosCase, chaosLine, phoneWords, recordChaos, sendLine, sendLive, settled, shellPane, type ChaosId } from "./chaos-lib";
-import { sleep } from "./rig-lib";
+import { Rig, phoneOn, test } from "./leg";
+import { accountedFor, arrivals, chaosCase, chaosLine, phoneWords, recordChaos, restartLeadBridge, sendLine, sendLive, settled, shellPane, startLeadBridge, stopLeadBridge, type ChaosId } from "./chaos-lib";
+import { muxOf, resizeDuring, sleep } from "./rig-lib";
 import { PHONE } from "./walky-lib";
 
 let pane: string | null = null;
 async function chaosPane(rig: Rig): Promise<string> {
   if (pane === null) pane = await shellPane(rig, "lead", undefined, "solo");
   return pane;
+}
+
+/** The rig's bridge lists the pane again (after a restart); throws when it never does. */
+async function paneListed(rig: Rig, paneId: string): Promise<void> {
+  const seen = await rig.until(() => rig.pane(paneId), (row) => row !== null, 60_000, 700);
+  if (seen === null) throw new Error(`the bridge never listed the chaos shell pane ${paneId} after its restart`);
 }
 
 /** A case that waits for a seam: skipped, with a ledger row that names the seam. */
@@ -25,11 +31,143 @@ function seamCase(id: ChaosId): void {
 }
 
 test.describe("chaos on the solo rig", () => {
-  seamCase("bridge-dies-mid-send");
-  seamCase("two-bridges-one-pane");
-  seamCase("resize-mid-send");
-  seamCase("slow-mux");
   seamCase("background-job");
+
+  test(chaosCase("bridge-dies-mid-send").title, async ({ browser, rig }) => {
+    const paneId = await chaosPane(rig);
+    const { context, page, recorder } = await phoneOn(browser, rig, paneId, PHONE);
+    const notes: string[] = [];
+    try {
+      const line = chaosLine("bridge-dies-mid-send", 1);
+      // The tap leaves; the lead's bridge is killed (SIGKILL, a crash) while the request is in flight, then comes back.
+      const sending = sendLine(page, recorder, line, "Send while the bridge dies");
+      await sleep(150);
+      stopLeadBridge(true);
+      const tapLog = await sending;
+      startLeadBridge();
+      await paneListed(rig, paneId);
+      const end = await settled(rig, page, paneId, undefined, line, 60_000);
+      await sleep(1500);
+      const count = arrivals(await rig.screen(paneId, 120).catch(() => ""), line);
+      notes.push(`arrived ${String(count)}x`, `words "${end.words}"`);
+      // The input arrived once, or the phone said in words what became of it; never twice.
+      const ok = accountedFor(count, end.words);
+      const live = await sendLive(page);
+      notes.push(live ? "Send is live again" : "Send stayed dead");
+      const verdict = ok && live ? "pass" : "fail";
+      recordChaos({ id: "bridge-dies-mid-send", verdict, note: notes.join("; "), taps: [tapLog] });
+      test.expect(verdict, notes.join("; ")).toBe("pass");
+    } finally {
+      startLeadBridge(); // a case that threw must not leave the rig without its bridge (a bridge that runs is left alone)
+      await context.close();
+    }
+  });
+
+  test(chaosCase("two-bridges-one-pane").title, async ({ browser, rig }) => {
+    const second = Rig.second();
+    if (second === null) {
+      const why = "this rig runs without a second bridge (a rig kept by COLLIE_RIG_REUSE=1 was not started with `up --second-bridge`)";
+      recordChaos({ id: "two-bridges-one-pane", verdict: "skipped", note: why });
+      test.skip(true, why);
+      return;
+    }
+    const paneId = await chaosPane(rig);
+    const listed = await second.until(() => second.pane(paneId), (row) => row !== null, 30_000, 700);
+    if (listed === null) throw new Error(`the second bridge never listed the chaos shell pane ${paneId}`);
+    // One phone paired with each bridge, both on the one pane.
+    const one = await phoneOn(browser, rig, paneId, PHONE);
+    const two = await phoneOn(browser, second, paneId, PHONE);
+    const notes: string[] = [];
+    try {
+      const lineOne = chaosLine("two-bridges-one-pane", 1);
+      const lineTwo = chaosLine("two-bridges-one-pane", 2);
+      // Both taps leave at the same moment, each through its own bridge: two request ids, two send locks, one terminal.
+      const [tapOne, tapTwo] = await Promise.all([sendLine(one.page, one.recorder, lineOne, "bridge one: Send"), sendLine(two.page, two.recorder, lineTwo, "bridge two: Send")]);
+      const endOne = await settled(rig, one.page, paneId, undefined, lineOne, 25_000);
+      const endTwo = await settled(second, two.page, paneId, undefined, lineTwo, 25_000);
+      await sleep(1500);
+      const screen = await rig.screen(paneId, 120);
+      const countOne = arrivals(screen, lineOne);
+      const countTwo = arrivals(screen, lineTwo);
+      notes.push(`bridge one: arrived ${String(countOne)}x, words "${endOne.words}"`, `bridge two: arrived ${String(countTwo)}x, words "${endTwo.words}"`);
+      // Each input arrived at most once, and an input that did not arrive has words on the phone that sent it.
+      const ok = accountedFor(countOne, endOne.words) && accountedFor(countTwo, endTwo.words);
+      const live = (await sendLive(one.page)) && (await sendLive(two.page));
+      notes.push(live ? "both Send buttons are live again" : "a Send button stayed dead");
+      const verdict = ok && live ? "pass" : "fail";
+      recordChaos({ id: "two-bridges-one-pane", verdict, note: notes.join("; "), taps: [tapOne, tapTwo] });
+      test.expect(verdict, notes.join("; ")).toBe("pass");
+    } finally {
+      await one.context.close();
+      await two.context.close();
+    }
+  });
+
+  test(chaosCase("resize-mid-send").title, async ({ browser, rig }) => {
+    if (muxOf("lead") !== "herdr") {
+      const why = "the rig knows a split and pane.resize on Herdr only (rig-lib.ts resizeDuring), not on the core";
+      recordChaos({ id: "resize-mid-send", verdict: "skipped", note: why });
+      test.skip(true, why);
+      return;
+    }
+    const paneId = await chaosPane(rig);
+    const { context, page, recorder } = await phoneOn(browser, rig, paneId, PHONE);
+    const notes: string[] = [];
+    try {
+      const line = chaosLine("resize-mid-send", 1);
+      // A split beside the pane, whose edge moves left and right while the tap leaves and the send runs.
+      const ran = await resizeDuring(paneId, () => sendLine(page, recorder, line, "Send while the pane resizes"));
+      notes.push(`${String(ran.resizes)} resize steps, ${String(ran.moved)} moved the split`);
+      const end = await settled(rig, page, paneId, undefined, line, 25_000);
+      await sleep(1500);
+      const count = arrivals(await rig.screen(paneId, 120).catch(() => ""), line);
+      notes.push(`arrived ${String(count)}x`, `words "${end.words}"`);
+      const ok = ran.resizes > 0 && accountedFor(count, end.words);
+      const live = await sendLive(page);
+      notes.push(live ? "Send is live again" : "Send stayed dead");
+      const verdict = ok && live ? "pass" : "fail";
+      recordChaos({ id: "resize-mid-send", verdict, note: notes.join("; "), taps: [ran.result] });
+      test.expect(verdict, notes.join("; ")).toBe("pass");
+    } finally {
+      await context.close();
+    }
+  });
+
+  test(chaosCase("slow-mux").title, async ({ browser, rig }) => {
+    if (muxOf("lead") !== "herdr") {
+      const why = "the delay proxy sits on Herdr's API socket (rig.ts bridge start --slow-mux); the core has no such seam";
+      recordChaos({ id: "slow-mux", verdict: "skipped", note: why });
+      test.skip(true, why);
+      return;
+    }
+    const paneId = await chaosPane(rig);
+    // The lead's bridge dials Herdr through a proxy that holds every call (and every answer) for SLOW_MS.
+    const SLOW_MS = 500;
+    restartLeadBridge(false, SLOW_MS);
+    const notes: string[] = [`every Herdr call waits ${String(SLOW_MS)} ms each way`];
+    let context: Awaited<ReturnType<typeof phoneOn>>["context"] | null = null;
+    try {
+      await paneListed(rig, paneId);
+      const phone = await phoneOn(browser, rig, paneId, PHONE);
+      context = phone.context;
+      const line = chaosLine("slow-mux", 1);
+      const tapLog = await sendLine(phone.page, phone.recorder, line, "Send through the slow multiplexer");
+      const end = await settled(rig, phone.page, paneId, undefined, line, 60_000);
+      await sleep(1500);
+      const count = arrivals(await rig.screen(paneId, 120).catch(() => ""), line);
+      notes.push(`arrived ${String(count)}x`, `words "${end.words}"`);
+      const ok = accountedFor(count, end.words);
+      const live = await sendLive(phone.page);
+      notes.push(live ? "Send is live again" : "Send stayed dead");
+      const verdict = ok && live ? "pass" : "fail";
+      recordChaos({ id: "slow-mux", verdict, note: notes.join("; "), taps: [tapLog] });
+      test.expect(verdict, notes.join("; ")).toBe("pass");
+    } finally {
+      await context?.close();
+      restartLeadBridge(false); // back on the real socket, for the cases after this one
+      await paneListed(rig, paneId).catch(() => undefined);
+    }
+  });
 
   test(chaosCase("second-phone").title, async ({ browser, rig }) => {
     const paneId = await chaosPane(rig);

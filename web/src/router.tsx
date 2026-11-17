@@ -33,6 +33,7 @@ import {
   SettingsInstallCountRoute,
 } from "@/routes/settings-sections";
 import { SettingsAccountAddRoute, SettingsAccountRoute, SettingsAccountsRoute } from "@/routes/settings-accounts";
+import { SettingsChangeLoginRoute } from "@/routes/settings-change-login";
 import { CrewRoute } from "@/routes/crew";
 import { MachineRoute } from "@/routes/machine";
 import { MachinesRoute } from "@/routes/machines";
@@ -141,6 +142,7 @@ export const router = createBrowserRouter([
       { path: "settings/accounts", element: <SettingsAccountsRoute /> },
       { path: "settings/accounts/add", element: <SettingsAccountAddRoute /> },
       { path: "settings/accounts/:id", element: <SettingsAccountRoute /> },
+      { path: "settings/accounts/:id/login", element: <SettingsChangeLoginRoute /> },
       { path: "settings/device", element: <SettingsDeviceRoute /> },
       { path: "settings/voice", element: <SettingsVoiceRoute /> },
       // Two pages below Voice: the host's option for every device, and the Whistle model's copies.

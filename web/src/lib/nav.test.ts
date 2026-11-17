@@ -1,5 +1,6 @@
 import {
   accountPath,
+  changeLoginPath,
   accountsAddPath,
   readPreviewAsked,
   ancestorsOf,
@@ -266,6 +267,8 @@ describe("accountsAddPath and accountPath", () => {
     expect(accountPath("acc-work")).toBe("/settings/accounts/acc-work");
     expect(accountPath("claude:default", { host: "badger" })).toBe("/settings/accounts/claude%3Adefault?h=badger");
     expect(settingsSectionPath("accounts")).toBe("/settings/accounts");
+    expect(changeLoginPath("claude:default")).toBe("/settings/accounts/claude%3Adefault/login");
+    expect(changeLoginPath("acc-work", { host: "badger" })).toBe("/settings/accounts/acc-work/login?h=badger");
   });
 });
 
@@ -348,6 +351,10 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/settings/accounts", "/settings/accounts/add", true],
     ["/settings", "/settings/accounts/acc-work", true],
     ["/settings/accounts/acc-work", "/settings/accounts", false],
+    // Change login sits below its account's page, and a session that opened it is a parent too.
+    ["/settings/accounts/acc-work", "/settings/accounts/acc-work/login", true],
+    ["/pane/w1%3Ap1", "/settings/accounts/acc-work/login", true],
+    ["/settings/accounts/other", "/settings/accounts/acc-work/login", false],
     ["/settings/voice/host", "/settings/voice", false],
     ["/settings/voice/host", "/settings/voice/model", false],
     ["/", "/settings", true],
@@ -486,6 +493,7 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ["/settings/accounts", "", ["/", "/settings"]],
     ["/settings/accounts/add", "", ["/", "/settings", "/settings/accounts"]],
     ["/settings/accounts/claude%3Adefault", "?h=badger", ["/?h=badger", "/settings?h=badger", "/settings/accounts?h=badger"]],
+    ["/settings/accounts/claude%3Adefault/login", "", ["/", "/settings", "/settings/accounts", "/settings/accounts/claude%3Adefault"]],
     ["/crew", "", ["/", "/settings", "/settings/system"]],
     // Machines sits under Settings, and one machine under Machines: a cold deep link gets both behind it.
     ["/machines", "", ["/", "/settings"]],

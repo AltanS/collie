@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Change login moves an account to another login while its sessions keep running.** On a signed-in account's page, or from a session's name, Change login shows who is signed in and starts the agent's own sign-in for that folder. Open sign-in page opens the agent's sign-in address in the phone's browser, the code goes into the Sign-in code field, and Finish closes the sign-in session and says who is signed in now. Running Claude Code sessions of the account use the new login from their next message, with no restart; for Codex, pi and Grok, new sessions use it. The old login stays until the new sign-in succeeds.
+
 ### Changed
 
 - **Stop takes a hold of two seconds, not two taps.** The first tap changed the word to "Stop?", and that did not say that a second tap was needed. Now you hold the button: it fills from one edge to the other, and the turn stops when the fill is complete. A finger lifted earlier stops nothing, and the button says "Hold" for a moment. A keyboard and a screen reader keep the two presses, because they cannot hold.
@@ -42,6 +46,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A tap on a plan approval answers only the plan you saw.** When Claude Code shows a revised plan under the same question and options, the phone takes it as a new question and asks for a new tap.
+- **More dialogs take the tap while something else on the screen moves.** Claude Code's questions, with or without a preview, and agy's permissions and questions no longer refuse a tap because a timer, a spinner or a clock ticks above them. A Claude Code permission that counts down to answering itself no longer refuses the tap when the clock moves, and the tap still answers only the request you saw.
 - **The last line of a conversation ends above the floating cards.** The "Draft in terminal" notice, a held send and the offline note float over the bottom of the pane and hid the newest line, which could only be read by closing the card. Chat and the Terminal mirror now end above the cards, a reader at the end keeps the last line in view as a card comes and goes, a reader further up is not moved, and "Jump to latest" sits above the cards. The model tag and the cards share one room, so a list never reserves both. Thanks @SergioGhisler (#646).
 - **An agent the terminal names a shell gets its own profile again.** When Herdr names no agent on a pane where you started pi or another agent by hand, Collie now names the agent from the program that runs in the pane, so a send there goes with that agent's keys. Before, the pane went back to the plain shell send soon after the agent started, and since the shell send refuses a screen with an agent's input box, every send there was refused. The name counts only on an exact match of the program, a process Collie can check, and one agent alone; a pane where any of that fails stays a shell. Thanks @viniciosrab (#793).
 - **pi in WSL gets the send key it reads from its own environment.** pi takes Ctrl+Q under WSL only when `WSL_DISTRO_NAME` or `WSL_INTEROP` is set in its own process, and Alt+Enter without them, for example in a terminal a service started. Collie chose Ctrl+Q from the WSL kernel alone, so a send to such a pi stayed in the box. Under Herdr and the Herdr core, the bridge now reads those two variables, and no other, from the pane's pi process and picks the key pi picks. A pi started from a WSL shell keeps Ctrl+Q, and Linux, macOS and Windows keep their keys. Reported by @rgruenewald (#797).

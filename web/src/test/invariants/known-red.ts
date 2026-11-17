@@ -24,6 +24,13 @@ export interface KnownRed {
 }
 
 export const KNOWN_RED = {
+  // ── I4, the phone: a tap on a dialog ──
+  "i4-tap-tick-unframed": {
+    invariant: "I4",
+    fixedBy: "NONE",
+    where: "web/src/lib/harness/prompt-model.ts:306-309 (sameDialogRows: with no bindRegion it compares the lookback signature), web/src/lib/harness/guard.ts entryGuard (refuses `changed`)",
+    what: "A tap on a dialog with no frame of its own (a Claude ask, the first-run menu, agy and muse asks) is refused `changed` while a row above it ticks: the person cannot answer until the timer stops.",
+  },
   // ── I4, the phone: the composer offers the override ──
   "i4-phone-slot": {
     invariant: "I4",
@@ -50,11 +57,23 @@ export const KNOWN_RED = {
     where: "web/src/components/hook-hold-card.tsx:90 (void Promise.resolve(onAnswer(index)).finally(...): no catch, no words)",
     what: "When the hold card's answer handler rejects, the rejection is unhandled and the card shows no words; only the busy mark clears.",
   },
-  "i2-words-raw": {
+  "i2-stop-hold-pane": {
+    invariant: "I2",
+    fixedBy: "M102-11",
+    where: "web/src/components/harness-bar.tsx:510 (the epoch moves with the pane), harness-bar.tsx:515 (stopHeld returns with nothing on an old stamp)",
+    what: "A finger that holds Stop while the pane changes under it sees the button fill to the end on a running turn, then nothing: no Stop, no word, no dim button.",
+  },
+  "i2-change-login-crash": {
     invariant: "I2",
     fixedBy: "NONE",
+    where: "web/src/routes/settings-change-login.tsx:74 (`body?.accounts.find`: a body with no accounts field throws in render)",
+    what: "After Finish, a list answer from an older or newer bridge with no accounts field crashes the page to the router's error screen: no result, no way back but the browser.",
+  },
+  "i2-words-raw": {
+    invariant: "I2",
+    fixedBy: "M102-11",
     where: "web/src/lib/api.ts:1601-1606 (plainFailureMessage: `HTTP <status>: <first body line>`), api.ts:560 (ApiError message `<path> → <status> <body>`), web/src/lib/api-error-message.ts:66 (describeThrownError falls back to it)",
-    what: "A 4xx or 5xx whose body is a proxy's HTML page reaches the thumb as `HTTP 502: <html><head><title>...`, on send, ask, hold card, keys, Stop and Clear. Spec 11 asks for words, not readable words.",
+    what: "A 4xx or 5xx whose body is a proxy's HTML page reaches the thumb as `HTTP 502: <html><head><title>...`, on send, ask, hold card, keys, Stop and Clear.",
   },
   // ── I1, an enabled control or words ──
   "i1-hold-disabled": {
