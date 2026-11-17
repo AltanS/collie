@@ -146,7 +146,8 @@ export interface SlotLine {
  * from a bridge since crew slice 2, or `versionWaits`: the phone holds an open card of Collie's own about a
  * new version of it; the row opens that card, with the Hill on or off, M96 spec 14), else the one note that
  * the Hill is off for a trick that is on and asks Decisions (`hillOff`, the snapshot's; bridge/tricks/hill.ts:
- * they are not posted, the trick keeps running), else where it came from.
+ * they are not posted, the trick keeps running), else that its file watch checks on a clock
+ * (`watchPollSeconds`), else where it came from.
  */
 export function slotLine(trick: WireTrickInfo, now: number, hillOff = false, versionWaits = false): SlotLine {
   if (trick.state === "skipped") {
@@ -167,6 +168,9 @@ export function slotLine(trick: WireTrickInfo, now: number, hillOff = false, ver
   // The new version's card is Collie's own: it needs no Hill (spec 14), and the row opens it.
   if (trick.on && (trick.pending !== undefined || versionWaits)) return { text: t("settings.tricks.pending"), trouble: false, waits: true };
   if (hillOff && trick.on && trick.decides === true) return { text: t("settings.tricks.hillOff"), trouble: false };
+  // The file watch could not be set up and the bridge checks on a clock: one plain line of its own, never
+  // after the "part is not shown" prefix, because nothing was refused. Only while the trick is on.
+  if (trick.on && trick.watchPollSeconds !== undefined) return { text: t("settings.tricks.watchPolled", { seconds: trick.watchPollSeconds }), trouble: false };
   return { text: provenanceLine(trick, now), trouble: false };
 }
 

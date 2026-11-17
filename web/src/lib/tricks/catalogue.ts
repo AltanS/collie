@@ -937,6 +937,8 @@ export interface ProgramNumbers {
   readonly watchDebounceMs: number;
   readonly watchMaxWaitMs: number;
   readonly watchPollMs: number;
+  /** The least time between the starts of two event or watch runs of one trick: `REACT_FLOOR_MS` (bridge/tricks/triggers.ts). */
+  readonly reactFloorMs: number;
 }
 
 /** A row of a table of fields: the name, whether it is always there, and what it holds. */
@@ -1166,7 +1168,9 @@ function reactingOf(n: ProgramNumbers): ReactingEntry {
       { rule: "Delivery", value: "At least once, on this machine only, in no order across sessions. A program must be safe against a repeated event. A crew's lead does not pass its members' events on." },
       { rule: "One at a time", value: "A trick runs once at a time and has at most one run waiting. Events that arrive meanwhile fold into that run. Its `trigger` names the newest event, and `count` is how many were folded." },
       { rule: "Lost events", value: "When Collie's queue overflows, it adds the events it lost to `count`, because it cannot know their types." },
-      { rule: "The same road as the timer", value: `A run has the same limits of time and size, the same slots and the same backoff. No run starts for a trick that has not had its start run, that is stopped, or that is backing off after a failure, on a machine that does not schedule tricks, or while no phone has looked in the last ${spanWords(n.watchWindowMs)}. Collie drops such a request. It never keeps one.` },
+      { rule: "The same road as the timer", value: `A run has the same limits of time and size, the same slots and the same backoff. No run starts for a trick that has not had its start run, that is stopped, or that is backing off after a failure, or on a machine that does not schedule tricks. Collie drops such a request. It never keeps one.` },
+      { rule: "No phone needed", value: `An event run or a file run happens also when no phone is open, so a trick can ask a Decision while you are away. Only the timer waits for a phone: it runs only while a phone has looked in the last ${spanWords(n.watchWindowMs)}.` },
+      { rule: "Spacing", value: `Two runs of one trick that an event or a file started begin at least ${seconds(n.reactFloorMs)} apart. A request inside that time is the one waiting run, or folds into it, and starts when the time ends. A tap, an answer to a Decision and a timer run neither wait for it nor count toward it.` },
       { rule: "Taps first", value: "A tap, or an answer to a Decision, goes before a waiting run of an event or a file." },
     ],
     watchRules: [

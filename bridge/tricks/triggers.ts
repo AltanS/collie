@@ -22,12 +22,20 @@ import { TrickWatch, type WatchOptions } from "./watch.ts";
 // matching event in the batch, and added to its next request. It is noted once in the log per drain.
 //
 // ADMIT, WAIT, DROP. For each request the runner (the host) says: `now` (the trick is idle and may run),
-// `wait` (it is running or has a tap waiting), or `drop` (a gate is closed: nobody is watching, this
-// machine does not schedule, tricks are gated, the trick is stopped or backing off after a failure, or it
-// has not had its start run). A dropped request is never held. A request that waits goes into the trick's
+// `wait` (it is running or has a tap waiting), or `drop` (a gate is closed: this machine does not
+// schedule, tricks are gated, the trick is stopped or backing off after a failure, or it has not had its
+// start run). No phone has to be watching: an event or a file change runs with nobody there, which is the
+// point (a Decision on the Hill while the person is away). Only the timer waits for a phone. A dropped
+// request is never held. A request that waits goes into the trick's
 // ONE slot per kind and is folded into by every later one (the newest is named, the counts add up). When
 // the running one ends the runner takes the waiting request, behind any tap and any Hill answer, which is
 // why a reaction can never starve either.
+//
+// THE FLOOR. Because no phone gates them, two runs of one trick that an event or a file change started
+// are at least {@link REACT_FLOOR_MS} apart, counted from START to START. A request inside the floor is
+// the trick's one waiting run (or folds into it), and a timer starts it when the floor ends. Taps, Hill
+// answers and timer runs neither count toward the floor nor wait for it. The floor timer is cleared
+// when the trick is switched off, when the runner stops or closes, and when nothing waits any more.
 //
 // AT LEAST ONCE, NO ORDER ACROSS SESSIONS (bus decision 6): written into docs/tricks-reference.md; a
 // program must be safe against a repeated event.
@@ -56,14 +64,52 @@ export interface ReactionHost {
   admit(id: string): Admit;
   /** Start a run for the trigger. Only after `admit` said `now`. */
   start(id: string, trigger: ReactTrigger): void;
-  /** The one-line note for the trick's row, or null to clear it. */
-  note(id: string, note: string | null): void;
+  /** The floor ended for a trick that has a waiting request: start it if the trick is idle (taps first). */
+  due(id: string): void;
+  /** The trick's file watch fell back to a poll (`why`: the system's error code, for the log), or null: it is cleared. */
+  note(id: string, why: string | null): void;
   warn(line: string): void;
+}
+
+/** At least this long between the STARTS of two event or watch runs of one trick. */
+export const REACT_FLOOR_MS = 10_000;
+
+/** The one timer the floor needs. `set` answers a number that `clear` takes back. Default: `setTimeout`, unref'd. A test hands its own. */
+export interface FloorTimers {
+  set(fn: () => void, ms: number): number;
+  clear(handle: number): void;
+}
+
+function systemTimers(): FloorTimers {
+  const open = new Map<number, ReturnType<typeof setTimeout>>();
+  let next = 1;
+  return {
+    set: (fn, ms) => {
+      const handle = next;
+      next += 1;
+      const timer = setTimeout(() => {
+        open.delete(handle);
+        fn();
+      }, ms);
+      timer.unref?.();
+      open.set(handle, timer);
+      return handle;
+    },
+    clear: (handle) => {
+      const timer = open.get(handle);
+      if (timer !== undefined) clearTimeout(timer);
+      open.delete(handle);
+    },
+  };
 }
 
 export interface ReactionOptions {
   bus?: EventBus;
   watch?: WatchOptions;
+  /** The clock the floor is counted on. Default: `Date.now`. */
+  now?: () => number;
+  timers?: FloorTimers;
+  floorMs?: number;
 }
 
 interface Slots {
@@ -76,6 +122,7 @@ export interface ReactionCounts {
   subscribed: boolean;
   watchers: number;
   handles: number;
+  /** Open watch timers and floor timers. */
   timers: number;
   waiting: number;
 }
@@ -96,6 +143,10 @@ export class TrickReactions {
   private readonly slots = new Map<string, Slots>();
   private readonly lost = new Map<string, number>();
   private readonly noted = new Set<string>();
+  /** When an event or watch run of the trick last started, on the floor's clock. */
+  private readonly lastStart = new Map<string, number>();
+  private readonly floorTimers = new Map<string, number>();
+  private readonly clock: FloorTimers;
   private sub: Subscription | null = null;
   private scheduled = false;
   private seq = 0;
@@ -103,7 +154,50 @@ export class TrickReactions {
   constructor(
     private readonly host: ReactionHost,
     private readonly opts: ReactionOptions = {},
-  ) {}
+  ) {
+    this.clock = opts.timers ?? systemTimers();
+  }
+
+  private now(): number {
+    return (this.opts.now ?? Date.now)();
+  }
+
+  /** How long until the trick's floor ends, in ms; 0 when it has ended. */
+  private floorLeft(id: string): number {
+    const last = this.lastStart.get(id);
+    if (last === undefined) return 0;
+    return Math.max(0, (this.opts.floorMs ?? REACT_FLOOR_MS) - (this.now() - last));
+  }
+
+  /** Start the timer that ends the floor, if one is not set. */
+  private armFloor(id: string, ms: number): void {
+    if (this.floorTimers.has(id)) return;
+    const handle = this.clock.set(() => {
+      this.floorTimers.delete(id);
+      this.floorEnded(id);
+    }, Math.max(1, ms));
+    this.floorTimers.set(id, handle);
+  }
+
+  private clearFloor(id: string): void {
+    const handle = this.floorTimers.get(id);
+    if (handle === undefined) return;
+    this.clock.clear(handle);
+    this.floorTimers.delete(id);
+  }
+
+  private floorEnded(id: string): void {
+    try {
+      if (this.hasWaiting(id)) this.host.due(id);
+    } catch (err) {
+      this.host.warn(`a trigger of ${id} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private hasWaiting(id: string): boolean {
+    const slots = this.slots.get(id);
+    return slots !== undefined && (slots.event !== undefined || slots.watch !== undefined);
+  }
 
   /**
    * Make the interests, the bus subscription and the watches the ones these tricks need: the tricks that are
@@ -125,6 +219,9 @@ export class TrickReactions {
       if (target.watch.length === 0) delete slots.watch;
     }
     for (const id of this.lost.keys()) if (!this.interests.has(id)) this.lost.delete(id);
+    // A trick that no longer reacts forgets its floor and its timer; one that still does keeps both.
+    for (const id of this.floorTimers.keys()) if (!this.hasWaiting(id)) this.clearFloor(id);
+    for (const id of this.lastStart.keys()) if (!byId.has(id)) this.lastStart.delete(id);
   }
 
   private syncEvents(byId: ReadonlyMap<string, ReactionTarget>): void {
@@ -152,9 +249,9 @@ export class TrickReactions {
       const watch = new TrickWatch(
         target.watch,
         (fire) => this.request(target.id, { kind: "watch", path: fire.path, count: clampCount(fire.count) }),
-        (note) => {
+        (why) => {
           this.noted.add(target.id);
-          this.host.note(target.id, note);
+          this.host.note(target.id, why);
         },
         this.opts.watch,
       );
@@ -200,13 +297,20 @@ export class TrickReactions {
     this.request(id, { kind: "event", event: newest.type, session, count: clampCount(matched + carried) });
   }
 
-  /** One request to run: now, folded into the waiting one, or dropped. Never throws. */
+  /** One request to run: now, folded into the waiting one (a run, or the floor, is ahead), or dropped. Never throws. */
   private request(id: string, trigger: ReactTrigger): void {
     try {
       const verdict = this.host.admit(id);
       if (verdict === "drop") return;
       if (verdict === "now") {
-        this.host.start(id, trigger);
+        const left = this.floorLeft(id);
+        if (left === 0) {
+          this.lastStart.set(id, this.now());
+          this.host.start(id, trigger);
+          return;
+        }
+        this.fold(id, trigger);
+        this.armFloor(id, left);
         return;
       }
       this.fold(id, trigger);
@@ -229,14 +333,22 @@ export class TrickReactions {
 
   /**
    * The ONE waiting run of a trick, or null: the newest request of either kind, naming its own trigger, the
-   * counts of both added. Both slots are emptied. Taken when the running run ends, after taps.
+   * counts of both added. Both slots are emptied. Taken when the running run ends, after taps, and when the
+   * floor ends. Inside the floor it takes nothing: the request stays and the floor timer starts it.
    */
   takeWaiting(id: string): ReactTrigger | null {
     const slots = this.slots.get(id);
     if (slots === undefined) return null;
+    const left = this.floorLeft(id);
+    if (left > 0) {
+      this.armFloor(id, left);
+      return null;
+    }
     this.slots.delete(id);
     const { event, watch } = slots;
     if (event === undefined && watch === undefined) return null;
+    this.lastStart.set(id, this.now());
+    this.clearFloor(id);
     if (event !== undefined && (watch === undefined || event.seq > watch.seq)) return { ...event.trigger, count: clampCount(event.trigger.count + (watch?.trigger.count ?? 0)) };
     if (watch === undefined) return null;
     return { ...watch.trigger, count: clampCount(watch.trigger.count + (event?.trigger.count ?? 0)) };
@@ -250,12 +362,13 @@ export class TrickReactions {
     this.watches.get(id)?.watch.recordOwn();
     const slots = this.slots.get(id);
     if (slots !== undefined) delete slots.watch;
+    if (!this.hasWaiting(id)) this.clearFloor(id);
   }
 
   /** What is open and what waits, for a test. */
   counts(): ReactionCounts {
     let handles = 0;
-    let timers = 0;
+    let timers = this.floorTimers.size;
     for (const held of this.watches.values()) {
       const open = held.watch.open();
       handles += open.handles;
@@ -275,6 +388,8 @@ export class TrickReactions {
     this.interests.clear();
     this.slots.clear();
     this.lost.clear();
+    this.lastStart.clear();
+    for (const id of this.floorTimers.keys()) this.clearFloor(id);
     for (const id of this.noted) this.clearNote(id);
   }
 }

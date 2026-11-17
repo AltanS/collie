@@ -34,7 +34,8 @@ import { basename, dirname, join } from "node:path";
 //
 // WHEN `fs.watch` CANNOT BE SET UP (ENOSPC and EMFILE are the usual, EPERM and anything else count too):
 // the whole watch falls back to a check of every file's stat each {@link WATCH_POLL_MS}, and the runner is
-// told a one-line note so the trick's row can say it ({@link fallbackNote}).
+// told once, with the system's error code, which only the bridge's log keeps: the trick's row says it in
+// the phone's own words, with no code in them (`watchPollSeconds` on the trick's wire entry).
 
 /** The wait after the last change of a burst. */
 export const WATCH_DEBOUNCE_MS = 300;
@@ -42,11 +43,6 @@ export const WATCH_DEBOUNCE_MS = 300;
 export const WATCH_MAX_WAIT_MS = 2000;
 /** The interval of the check that stands in for a watch, and of the check for a folder that is not there yet. */
 export const WATCH_POLL_MS = 5000;
-
-/** The words of the trick's row when the watch could not be set up. `why` is the system's error code, or a short word. */
-export function fallbackNote(why: string): string {
-  return `Collie could not watch these files for changes (${why}), so it checks them every ${String(WATCH_POLL_MS / 1000)} seconds instead.`;
-}
 
 /** An open `fs.watch`. */
 export interface FsWatchHandle {
@@ -143,7 +139,8 @@ export class TrickWatch {
   constructor(
     paths: readonly string[],
     private readonly onFire: (fire: WatchFire) => void,
-    private readonly onNote: (note: string) => void,
+    /** Told once when the watch falls back to the poll; `why` is the system's error code, or a short word. */
+    private readonly onFallback: (why: string) => void,
     opts: WatchOptions = {},
   ) {
     const home = (opts.home ?? homedir)();
@@ -249,7 +246,7 @@ export class TrickWatch {
     this.fallback = true;
     this.syncHandles();
     this.syncPoll();
-    this.onNote(fallbackNote(why));
+    this.onFallback(why);
   }
 
   private onEvent(dir: string, name: string | null): void {

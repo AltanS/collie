@@ -1472,7 +1472,9 @@ The rules of an event run:
 | Delivery | At least once, on this machine only, in no order across sessions. A program must be safe against a repeated event. A crew's lead does not pass its members' events on. |
 | One at a time | A trick runs once at a time and has at most one run waiting. Events that arrive meanwhile fold into that run. Its `trigger` names the newest event, and `count` is how many were folded. |
 | Lost events | When Collie's queue overflows, it adds the events it lost to `count`, because it cannot know their types. |
-| The same road as the timer | A run has the same limits of time and size, the same slots and the same backoff. No run starts for a trick that has not had its start run, that is stopped, or that is backing off after a failure, on a machine that does not schedule tricks, or while no phone has looked in the last 5 minutes. Collie drops such a request. It never keeps one. |
+| The same road as the timer | A run has the same limits of time and size, the same slots and the same backoff. No run starts for a trick that has not had its start run, that is stopped, or that is backing off after a failure, or on a machine that does not schedule tricks. Collie drops such a request. It never keeps one. |
+| No phone needed | An event run or a file run happens also when no phone is open, so a trick can ask a Decision while you are away. Only the timer waits for a phone: it runs only while a phone has looked in the last 5 minutes. |
+| Spacing | Two runs of one trick that an event or a file started begin at least 10 s apart. A request inside that time is the one waiting run, or folds into it, and starts when the time ends. A tap, an answer to a Decision and a timer run neither wait for it nor count toward it. |
 | Taps first | A tap, or an answer to a Decision, goes before a waiting run of an event or a file. |
 
 The rules of a watched file:

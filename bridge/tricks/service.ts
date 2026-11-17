@@ -63,8 +63,8 @@ import { createSwitchReader, MIGRATED, updateSwitches, withApproval, withEntry, 
 import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX } from "../../web/src/lib/tricks/limits.ts";
 import { menuMessageLine } from "../../web/src/lib/tricks/menu-message.ts";
 import type { EventBus } from "../events/bus.ts";
-import { TrickReactions, type Admit, type ReactionCounts, type ReactTrigger } from "./triggers.ts";
-import type { WatchOptions } from "./watch.ts";
+import { TrickReactions, type Admit, type FloorTimers, type ReactionCounts, type ReactTrigger } from "./triggers.ts";
+import { WATCH_POLL_MS, type WatchOptions } from "./watch.ts";
 
 // The run caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
 export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX };
@@ -88,6 +88,9 @@ export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX };
 //     "watched" is a `/api/snapshot` or `/api/tricks` request from a paired phone (server.ts stamps it).
 //     The host's own CLI and a lead's sweep of this machine do not count. A `gh` trick on `30s` makes no
 //     call while the phone is in a pocket.
+//   * An event (`on`) or a file change (`watch`) runs a trick with NO phone open: only the timer waits for a
+//     look. Those runs keep every other bound here, and at least {@link REACT_FLOOR_MS} separates the
+//     STARTS of two of them (triggers.ts, THE FLOOR). Taps, Hill answers and timer runs are not delayed by it.
 //   * The first run after the trick is loaded, switched on, a new version approved or its `config.toml` changed has the
 //     trigger `start`; later ones `timer`, every `every` (at least 5 s) after the last run. A trick with
 //     no `every` runs once at start and then on taps only. Any other change in its folder (a log it
@@ -426,6 +429,8 @@ export interface TricksServiceDeps {
   bus?: EventBus;
   /** The file watch's knobs, for a test (watch.ts). Absent: the production values. */
   watchOptions?: WatchOptions;
+  /** The timer of the 10 second floor between two event or watch runs, for a test (triggers.ts). Absent: `setTimeout`. */
+  reactionTimers?: FloorTimers;
 }
 
 /** The approved copy a trick runs from, as read and verified. */
@@ -667,8 +672,8 @@ export class TricksService implements TricksSurface {
   private switchedOnTold: number | null = null;
   /** `on` and `watch`: the bus subscription, the file watches and the waiting requests (triggers.ts). */
   private readonly reactions: TrickReactions;
-  /** The one-line note of each trick whose file watch fell back to a stat check (watch.ts `fallbackNote`). */
-  private readonly reactNotes = new Map<string, string>();
+  /** The tricks whose file watch fell back to a stat check (watch.ts): the row says it, from `watchPollSeconds`. */
+  private readonly watchPolled = new Set<string>();
 
   constructor(deps: TricksServiceDeps) {
     this.deps = deps;
@@ -679,8 +684,8 @@ export class TricksService implements TricksSurface {
     this.readSwitches = createSwitchReader(deps.stateDir, this.warn);
     this.receiptFile = deps.receipts ?? new TrickReceiptStore(deps.stateDir, this.warn);
     this.reactions = new TrickReactions(
-      { admit: (id) => this.reactAdmit(id), start: (id, trigger) => this.reactStart(id, trigger), note: (id, note) => this.reactNote(id, note), warn: this.warn },
-      { bus: deps.bus, watch: deps.watchOptions },
+      { admit: (id) => this.reactAdmit(id), start: (id, trigger) => this.reactStart(id, trigger), due: (id) => this.reactDue(id), note: (id, note) => this.reactNote(id, note), warn: this.warn },
+      { bus: deps.bus, watch: deps.watchOptions, now: this.now, timers: deps.reactionTimers },
     );
   }
 
@@ -1449,9 +1454,10 @@ export class TricksService implements TricksSurface {
     const error = m === undefined ? shown.refusals[0]?.reason : blocked ? (rt.copyProblem ?? waiting) : rt.lastError;
     if (error !== undefined) info.error = problemLine(error);
     if (rt.lastRunAt !== undefined) info.lastRunAt = new Date(rt.lastRunAt).toISOString();
-    const watchNote = this.reactNotes.get(id);
-    const refusals = [...shown.refusals, ...rt.docRefusals, ...(watchNote === undefined ? [] : [{ code: "later" as const, path: "/watch", reason: watchNote }])].slice(0, REFUSALS_MAX);
+    const refusals = [...shown.refusals, ...rt.docRefusals].slice(0, REFUSALS_MAX);
     if (refusals.length > 0) info.refusals = refusals;
+    // A note, not a refusal: nothing was refused, the watch only checks on a clock (the row says it alone).
+    if (this.watchPolled.has(id)) info.watchPollSeconds = WATCH_POLL_MS / 1000;
     if (rt.changed) info.changed = true;
     if (rt.pending !== null) info.pending = rt.pending.info;
     if (rt.decides === true) info.decides = true;
@@ -1618,10 +1624,12 @@ export class TricksService implements TricksSurface {
 
   // ── `on` and `watch` (M105 spec 03, decisions 9 to 11): the logic lives in triggers.ts and watch.ts ──────
 
-  /** Whether a request from an event or a watched file may run: the gates of `tick`, and the trick's own state. */
+  /** Whether a request from an event or a watched file may run: the gates of `tick` except the phone, and the trick's own state. */
   private reactAdmit(id: string): Admit {
     const rt = this.runtimes.get(id);
-    if (rt === undefined || !this.watched() || this.deps.active?.() === false || this.gated()) return "drop";
+    // No `watched()` here: an event or a file change runs with no phone open (only the timer waits for one),
+    // and triggers.ts holds the floor between two such starts.
+    if (rt === undefined || this.deps.active?.() === false || this.gated()) return "drop";
     // A trick that has not had its start run, is stopped, or backs off after a failure takes no request: it is dropped, never held.
     if (!this.runnable(rt) || rt.stopped || rt.pendingStart || rt.approved?.found.manifest?.run === undefined) return "drop";
     if (rt.failures > 0 && this.now() < rt.nextAt) return "drop";
@@ -1633,9 +1641,19 @@ export class TricksService implements TricksSurface {
     if (rt !== undefined) void this.begin(rt, trigger, null);
   }
 
-  private reactNote(id: string, note: string | null): void {
-    if (note === null) this.reactNotes.delete(id);
-    else this.reactNotes.set(id, note);
+  /** The floor ended for a trick with a waiting request: start it unless a run or a tap is ahead (`pump` takes those first). */
+  private reactDue(id: string): void {
+    const rt = this.runtimes.get(id);
+    if (rt !== undefined) this.pump(rt);
+  }
+
+  private reactNote(id: string, why: string | null): void {
+    if (why === null) this.watchPolled.delete(id);
+    else {
+      this.watchPolled.add(id);
+      // The system's error code lives in the log only; the row's sentence carries none.
+      this.warn(`${id}: could not watch its files (${why}); checking them every ${String(WATCH_POLL_MS / 1000)} seconds`);
+    }
     this.publish(id);
   }
 

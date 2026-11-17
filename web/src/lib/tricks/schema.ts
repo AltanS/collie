@@ -1647,6 +1647,12 @@ export interface WireTrickInfo {
    */
   watch?: string[];
   /**
+   * Set when the trick's file watch could not be set up, so the bridge checks the files on a clock instead:
+   * the interval in seconds. A note, never a refusal: the row says it alone, in the phone's words, with no
+   * system error in them (that stays in the bridge's log). Absent: the watch works, or an older bridge.
+   */
+  watchPollSeconds?: number;
+  /**
    * Contract 2 (M99): the globs the trick reads from its agent sessions' folders, and whether this bridge
    * leads a crew (the files then come from every machine). The row says it in one sentence
    * ({@link inputsSentence}). Absent: no inputs, or an older bridge.

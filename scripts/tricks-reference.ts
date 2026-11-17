@@ -13,6 +13,7 @@ import { join } from "node:path";
 
 import { REASK_AFTER_MS } from "../bridge/tricks/hill.ts";
 import { WATCH_WINDOW_MS } from "../bridge/tricks/service.ts";
+import { REACT_FLOOR_MS } from "../bridge/tricks/triggers.ts";
 import { WATCH_DEBOUNCE_MS, WATCH_MAX_WAIT_MS, WATCH_POLL_MS } from "../bridge/tricks/watch.ts";
 import { TRICKS_CREW_FIRST_VERSION } from "../bridge/hill/crew.ts";
 import { HILL_SUMMARY_SOFT_MAX, HILL_SUMMARY_SOFT_SENTENCES, HILL_TITLE_SOFT_MAX } from "../cli/hill-rules.ts";
@@ -72,6 +73,7 @@ export function programNumbers(): ProgramNumbers {
     watchDebounceMs: WATCH_DEBOUNCE_MS,
     watchMaxWaitMs: WATCH_MAX_WAIT_MS,
     watchPollMs: WATCH_POLL_MS,
+    reactFloorMs: REACT_FLOOR_MS,
   };
 }
 

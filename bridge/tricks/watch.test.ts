@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rename, rm, symlink, unlink, utimes, writeFile } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { expandWatchPath, fallbackNote, TrickWatch, WATCH_DEBOUNCE_MS, WATCH_MAX_WAIT_MS, WATCH_POLL_MS, type FsWatchHandle, type WatchFactory, type WatchFire, type WatchOptions } from "./watch.ts";
+import { expandWatchPath, TrickWatch, WATCH_DEBOUNCE_MS, WATCH_MAX_WAIT_MS, WATCH_POLL_MS, type FsWatchHandle, type WatchFactory, type WatchFire, type WatchOptions } from "./watch.ts";
 
 // The file watch, against a real folder. The waits are short so the suite stays fast; the production
 // numbers are pinned in the first test.
@@ -67,10 +67,6 @@ describe("the numbers", () => {
     expect(WATCH_DEBOUNCE_MS).toBe(300);
     expect(WATCH_MAX_WAIT_MS).toBe(2000);
     expect(WATCH_POLL_MS).toBe(5000);
-  });
-
-  test("the fallback note is one plain line that names the cause and the 5 seconds", () => {
-    expect(fallbackNote("ENOSPC")).toBe("Collie could not watch these files for changes (ENOSPC), so it checks them every 5 seconds instead.");
   });
 
   test("~/ is the home folder given, and nothing else is rewritten", () => {
@@ -311,7 +307,8 @@ describe("when fs.watch cannot be set up", () => {
     await writeFile(file, "a");
     const p = probe([file], { factory: enospc });
     expect(p.watch.polling).toBe(true);
-    expect(p.notes).toEqual([fallbackNote("ENOSPC")]);
+    // The system's error code is handed on, once, for the log; the row's sentence has none.
+    expect(p.notes).toEqual(["ENOSPC"]);
     expect(p.watch.open()).toEqual({ handles: 0, timers: 1 });
     await writeFile(file, "ab");
     await Bun.sleep(220);
@@ -341,7 +338,7 @@ describe("when fs.watch cannot be set up", () => {
     expect(p.watch.polling).toBe(false);
     fail(new Error("EMFILE: too many open files"));
     expect(p.watch.polling).toBe(true);
-    expect(p.notes).toEqual([fallbackNote("EMFILE")]);
+    expect(p.notes).toEqual(["EMFILE"]);
     p.watch.close();
   });
 });

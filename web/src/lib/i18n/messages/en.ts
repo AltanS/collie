@@ -3614,6 +3614,7 @@ export const en = {
   "settings.tricks.cannotRun": "This trick cannot run. {reason}",
   "settings.tricks.cannotRunBare": "This trick cannot run.",
   "settings.tricks.partNotShown": "Part of this trick is not shown. {reason}",
+  "settings.tricks.watchPolled": "Collie could not watch these files for changes, so it checks them every {seconds} seconds.",
   // Warnings at the switch (M94 review 15).
   "settings.tricks.warn.label": "What a text search of its code found",
   "settings.tricks.warn.spawn": "This trick starts other programs on this machine.",
@@ -4115,6 +4116,7 @@ export const PENDING_TRANSLATION = [
   "settings.tricks.cannotRun",
   "settings.tricks.cannotRunBare",
   "settings.tricks.partNotShown",
+  "settings.tricks.watchPolled",
   "settings.tricks.waiting.title",
   "home.trickWaits.line",
   "home.trickWaits.open",

@@ -12,8 +12,8 @@ import { TRICKS_DIR } from "./paths.ts";
 import type { RunOutcome, RunSpec } from "./run.ts";
 import { PENDING_SETTLE_MS, PENDING_LINE, RIGHTS_LINE, TricksService, type TricksServiceDeps } from "./service.ts";
 import { withSwitch, writeSwitches, type Switches } from "./switches.ts";
-import { TrickReactions, type Admit, type ReactionHost, type ReactionTarget, type ReactTrigger } from "./triggers.ts";
-import { fallbackNote, type FsWatchHandle, type WatchFactory, type WatchOptions } from "./watch.ts";
+import { REACT_FLOOR_MS, TrickReactions, type Admit, type FloorTimers, type ReactionHost, type ReactionTarget, type ReactTrigger } from "./triggers.ts";
+import { type FsWatchHandle, type WatchFactory, type WatchOptions } from "./watch.ts";
 import { newRights, ON_CHIP, watchChip } from "./version-card.ts";
 import { readManifestText } from "./discover.ts";
 import { watch as fsWatch } from "node:fs";
@@ -75,6 +75,7 @@ const FAST: WatchOptions = { debounceMs: 40, maxWaitMs: 160, pollMs: 60 };
 interface FakeHost extends ReactionHost {
   verdict: Admit;
   started: { id: string; trigger: ReactTrigger }[];
+  dues: string[];
   notes: { id: string; note: string | null }[];
   warnings: string[];
 }
@@ -83,10 +84,12 @@ function fakeHost(): FakeHost {
   const host: FakeHost = {
     verdict: "now",
     started: [],
+    dues: [],
     notes: [],
     warnings: [],
     admit: () => host.verdict,
     start: (id, trigger) => void host.started.push({ id, trigger }),
+    due: (id) => void host.dues.push(id),
     note: (id, note) => void host.notes.push({ id, note }),
     warn: (line) => void host.warnings.push(line),
   };
@@ -487,6 +490,8 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     }
     expect(r.service.reactionCounts().waiting).toBe(1);
     expect(r.specs.length).toBe(2);
+    // The run lasted longer than the floor, so its end starts the waiting run at once.
+    r.clock.t = T0 + REACT_FLOOR_MS + 1;
     release();
     await tick(60);
     expect(kinds(r)).toEqual(["start", "event", "event"]);
@@ -513,6 +518,7 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     await tick(20);
     r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
     await tick(20);
+    r.clock.t = T0 + REACT_FLOOR_MS + 1;
     release();
     expect((await tap).status).toBe(200);
     await tick(60);
@@ -560,17 +566,148 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     r.service.stop();
   });
 
-  test("while no phone has looked for five minutes, an event is dropped", async () => {
-    const r = await onRig([OK]);
-    r.clock.t = T0 + 6 * 60_000;
-    r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await tick(50);
+  test("with no phone looking for five minutes, an event still runs, and a timer run still does not", async () => {
+    const r = await onRig([OK], `${ON_MANIFEST()}every = "30s"\n`);
     expect(r.specs.length).toBe(1);
-    r.service.noteWatched();
+    // Six minutes on, nobody has looked since T0: the timer is due and does not run.
+    r.clock.t = T0 + 6 * 60_000;
+    await r.service.tick();
+    expect(r.specs.length).toBe(1);
+    // An event runs all the same.
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
     await tick(50);
-    expect(r.specs.length).toBe(2);
+    expect(kinds(r)).toEqual(["start", "event"]);
     r.service.stop();
+  });
+
+  describe("the floor between two event or watch runs", () => {
+    /** A timer the test fires by hand: it records the delay and the callback. */
+    function fakeTimers(): FloorTimers & { open: Map<number, { fn: () => void; ms: number }>; fire(): void; delays: number[] } {
+      const open = new Map<number, { fn: () => void; ms: number }>();
+      const delays: number[] = [];
+      let next = 1;
+      return {
+        open,
+        delays,
+        set: (fn, ms) => {
+          const handle = next;
+          next += 1;
+          delays.push(ms);
+          open.set(handle, { fn, ms });
+          return handle;
+        },
+        clear: (handle) => void open.delete(handle),
+        fire: () => {
+          for (const [handle, one] of open) {
+            open.delete(handle);
+            one.fn();
+          }
+        },
+      };
+    }
+
+    test("a second event 3 s after the first run's start waits until 10 s, then runs once with the folded count", async () => {
+      const timers = fakeTimers();
+      const r = await onRig([OK, OK, OK], ON_MANIFEST(), { reactionTimers: timers });
+      r.clock.t = T0 + 20_000;
+      r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
+      await tick(50);
+      expect(kinds(r)).toEqual(["start", "event"]);
+      // 3 s after the start of that run: inside the floor, so two events are ONE waiting run.
+      r.clock.t = T0 + 23_000;
+      r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
+      await tick(20);
+      r.bus.publish({ type: "turn.end", session: sessionOf("c:3") });
+      await tick(20);
+      expect(r.specs.length).toBe(2);
+      expect(r.service.reactionCounts()).toMatchObject({ waiting: 1, timers: 1 });
+      expect(timers.delays).toEqual([7000]);
+      // The floor ends at 10 s after the start: the timer starts the one waiting run.
+      r.clock.t = T0 + 30_000;
+      timers.fire();
+      await tick(60);
+      expect(kinds(r)).toEqual(["start", "event", "event"]);
+      expect(factsOf(r.specs[2]).trigger).toEqual({ kind: "event", event: "turn.end", session: scopeOf("c:3"), count: 2 });
+      expect(r.service.reactionCounts()).toMatchObject({ waiting: 0, timers: 0 });
+      r.service.stop();
+    });
+
+    test("the floor timer is cleared when the trick is switched off, and when the runner stops", async () => {
+      const timers = fakeTimers();
+      const r = await onRig([OK, OK], ON_MANIFEST(), { reactionTimers: timers });
+      r.clock.t = T0 + 20_000;
+      r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
+      await tick(50);
+      r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
+      await tick(20);
+      expect(r.service.reactionCounts()).toMatchObject({ waiting: 1, timers: 1 });
+      await r.service.setSwitch(HOST, "react", false);
+      expect(r.service.reactionCounts()).toEqual({ subscribed: false, watchers: 0, handles: 0, timers: 0, waiting: 0 });
+      expect(timers.open.size).toBe(0);
+      r.service.stop();
+
+      const second = await onRig([OK, OK], ON_MANIFEST(), { reactionTimers: timers });
+      second.clock.t = T0 + 20_000;
+      second.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
+      await tick(50);
+      second.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
+      await tick(20);
+      expect(timers.open.size).toBe(1);
+      second.service.stop();
+      expect(timers.open.size).toBe(0);
+      expect(second.service.reactionCounts().timers).toBe(0);
+    });
+
+    test("a tap inside the floor runs at once, and does not move the floor", async () => {
+      const timers = fakeTimers();
+      const drawn = exited(belt("drawn"));
+      const r = await onRig([drawn, drawn, drawn, drawn], ON_MANIFEST(), { reactionTimers: timers });
+      r.clock.t = T0 + 20_000;
+      r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
+      await tick(50);
+      r.clock.t = T0 + 23_000;
+      const rev = (await r.service.reply(undefined)).parts.find((p) => p.part === "belt")?.rev ?? 0;
+      const answer = await r.service.tap(HOST, "react", { rid: "7f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5", node: "belt", intent: "x", rev });
+      expect(answer.status).toBe(200);
+      expect(kinds(r)).toEqual(["start", "event", "tap"]);
+      // The floor is still counted from the event run's start, not from the tap.
+      r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
+      await tick(20);
+      expect(r.specs.length).toBe(3);
+      expect(timers.delays).toEqual([7000]);
+      r.clock.t = T0 + 30_000;
+      timers.fire();
+      await tick(60);
+      expect(kinds(r)).toEqual(["start", "event", "tap", "event"]);
+      r.service.stop();
+    });
+
+    test("a run that ends inside the floor does not start the waiting run: the timer does", async () => {
+      const timers = fakeTimers();
+      let release: () => void = () => {};
+      const slow: Scripted = {
+        later: () =>
+          new Promise((resolve) => {
+            release = () => resolve(OK);
+          }),
+      };
+      const r = await onRig([OK, slow, OK], ON_MANIFEST(), { reactionTimers: timers });
+      r.clock.t = T0 + 20_000;
+      r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
+      await tick(30);
+      r.bus.publish({ type: "turn.end", session: sessionOf("b:2") });
+      await tick(20);
+      r.clock.t = T0 + 24_000;
+      release();
+      await tick(60);
+      expect(r.specs.length).toBe(2);
+      expect(r.service.reactionCounts()).toMatchObject({ waiting: 1, timers: 1 });
+      r.clock.t = T0 + 30_000;
+      timers.fire();
+      await tick(60);
+      expect(kinds(r)).toEqual(["start", "event", "event"]);
+      r.service.stop();
+    });
   });
 
   test("a trick that has not had its start run takes no event", async () => {
@@ -750,8 +887,12 @@ describe("`watch` runs a trick, and never loops on its own writes", () => {
       throw new Error("ENOSPC: System limit for number of file watchers reached");
     };
     const r = await onRig([OK], watchManifest(file), { watchOptions: { ...FAST, factory: enospc } });
-    const note = fallbackNote("ENOSPC");
-    expect((await r.service.reply(undefined)).tricks[0]?.refusals).toEqual([{ code: "later", path: "/watch", reason: note }]);
+    // A note of its own, not a refusal: the wire carries the interval, and the errno stays in the log.
+    const row = (await r.service.reply(undefined)).tricks[0];
+    expect(row?.refusals).toBeUndefined();
+    expect(row?.watchPollSeconds).toBe(5);
+    expect(JSON.stringify(row)).not.toContain("ENOSPC");
+    expect(r.warnings.some((line) => line.includes("react") && line.includes("ENOSPC") && line.includes("5 seconds"))).toBe(true);
     expect(r.service.reactionCounts()).toMatchObject({ watchers: 1, handles: 0, timers: 1 });
     await writeFile(file, "ab");
     await tick(220);
@@ -759,7 +900,7 @@ describe("`watch` runs a trick, and never loops on its own writes", () => {
     // Switched off: the poll and the note go.
     await r.service.setSwitch(HOST, "react", false);
     expect(r.service.reactionCounts().timers).toBe(0);
-    expect((await r.service.reply(undefined)).tricks[0]?.refusals).toBeUndefined();
+    expect((await r.service.reply(undefined)).tricks[0]?.watchPollSeconds).toBeUndefined();
     r.service.stop();
   });
 
