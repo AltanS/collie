@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 
@@ -11,6 +13,8 @@ import { useTricksPresent } from "@/components/tricks-settings-card";
 import { useUpdatesStatus } from "@/components/updates-settings-card";
 import { addedCount, useAccounts } from "@/lib/accounts";
 import { hasExperiments } from "@/lib/experiments";
+import { useRememberedAnswer } from "@/lib/remembered-shape";
+import { useOptionalRootData } from "@/lib/route-data";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { t, type MessageKey } from "@/lib/i18n";
@@ -162,15 +166,62 @@ function withRow(list: Row[], row: Row, after: string): Row[] {
   return at === -1 ? [...list, row] : [...list.slice(0, at + 1), row, ...list.slice(at + 1)];
 }
 
+/**
+ * How long a first visit on a device waits for the two reads (Accounts, Tricks) before it draws the
+ * list with whatever it has. Short enough that nobody notices a wait, long enough for a bridge on the
+ * same tailnet to answer.
+ */
+export const LIST_HOLD_MS = 400;
+
+/**
+ * The quiet stand-in for the list card, on a first visit with no remembered answer, until the two
+ * reads have landed or {@link LIST_HOLD_MS} has passed. It is the card's own box with the rows that
+ * are always there, empty and of their exact height (the Updates row and `ROWS`: 16px padding twice
+ * around the 24px title line and the 20px caption line, so `box-content h-11 p-4`), inside the same
+ * list group, so a theme's row edges and gaps come out as they will. No spinner and no words: a state
+ * with nothing to say keeps its slot (DESIGN.md §2). The rows that may be added (Accounts, Tricks)
+ * are not counted, so the card grows by them if they arrive late, which is the rare, accepted case.
+ */
+function ListHold() {
+  return (
+    <Card className="gap-0 py-0" data-slot="settings-list-hold" aria-hidden="true">
+      <div data-slot="list-group">
+        {[...ROWS.map((row) => row.id), "updates"].map((id) => (
+          <div key={id} className="box-content h-11 p-4" />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export function SettingsRoute() {
   const nav = useNav();
   const scope = useScope();
   const updates = useUpdatesStatus();
   // Tricks (M94): a row only while the phone holds a tricks reply, so an install without tricks is unchanged.
   const tricks = useTricksPresent();
+  // The store stays empty for ever on a bridge with no tricks, so "none" is read off the snapshot, which
+  // is already here when this route draws (`HomeData.tricks`). A stale or failed snapshot says nothing.
+  const data = useOptionalRootData();
+  const noTricks = data !== undefined && !data.error && data.tricks === false;
   // Accounts (M101): a row only while the machine answers the accounts route, so an older bridge, Windows and an install with no account-capable agent are unchanged.
   const accounts = useAccounts();
   const accountsCount = addedCount(accounts.body);
+  // CALM LOAD. Both rows depend on a read that ends after the first paint, and each sits in the middle of
+  // the list, so a row that arrived late pushed every row after it down. The first frame is drawn from what
+  // this device last saw (lib/remembered-shape.ts); the fresh answer replaces it when it lands. A failed
+  // accounts read says nothing about whether the feature exists, so it keeps the remembered answer.
+  const accountsFresh = accounts.status === "loading" || accounts.status === "failed" ? undefined : accounts.status === "ready";
+  const tricksFresh = tricks ? true : noTricks ? false : undefined;
+  const withAccounts = useRememberedAnswer("settings-accounts-row", accountsFresh);
+  const withTricks = useRememberedAnswer("settings-tricks-row", tricksFresh);
+  // With no answer at all for a row (a first visit here), the list card waits for it, bounded.
+  const [waited, setWaited] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setWaited(true), LIST_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  const holdList = !waited && (withAccounts === undefined || withTricks === undefined);
   useLocale();
 
   return (
@@ -205,40 +256,44 @@ export function SettingsRoute() {
             separated cards would say they are unrelated subjects. The rows are a list group (M57 spec
             17): index.css draws the line between two rows, so the last has none, and a theme's
             `rows: cards` makes them cards inside this one card, like every other list. */}
-        <Card className="gap-0 py-0">
-          <div data-slot="list-group">
-            {/* FIRST, because it is the one row whose answer changes without you touching anything: a
-                release lands, a peer falls behind. The caption is the live status (the same words the
-                Updates page opens with); a release waiting leads it with a 6px dot in the primary
-                colour. The row is not in `ROWS`, whose captions are fixed strings. */}
-            <SettingsNavRow
-              icon="update-available"
-              title={t("updates.entry.title")}
-              caption={
-                <>
-                  {updates.available && (
-                    <span
-                      aria-hidden="true"
-                      data-slot="update-dot"
-                      className="mr-1.5 inline-block size-1.5 rounded-full bg-primary align-middle"
-                    />
-                  )}
-                  {updates.line}
-                </>
-              }
-              onOpen={() => nav.down(updatesPath(scope))}
-            />
-            {rows(tricks, accounts.status === "ready").map((row) => (
+        {holdList ? (
+          <ListHold />
+        ) : (
+          <Card className="gap-0 py-0">
+            <div data-slot="list-group">
+              {/* FIRST, because it is the one row whose answer changes without you touching anything: a
+                  release lands, a peer falls behind. The caption is the live status (the same words the
+                  Updates page opens with); a release waiting leads it with a 6px dot in the primary
+                  colour. The row is not in `ROWS`, whose captions are fixed strings. */}
               <SettingsNavRow
-                key={row.id}
-                icon={row.icon}
-                title={t(row.title)}
-                caption={row.id === "accounts" && accountsCount > 0 ? t("accounts.row.added", { n: accountsCount }) : t(row.blurb)}
-                onOpen={() => nav.down(row.to(scope))}
+                icon="update-available"
+                title={t("updates.entry.title")}
+                caption={
+                  <>
+                    {updates.available && (
+                      <span
+                        aria-hidden="true"
+                        data-slot="update-dot"
+                        className="mr-1.5 inline-block size-1.5 rounded-full bg-primary align-middle"
+                      />
+                    )}
+                    {updates.line}
+                  </>
+                }
+                onOpen={() => nav.down(updatesPath(scope))}
               />
-            ))}
-          </div>
-        </Card>
+              {rows(withTricks === true, withAccounts === true).map((row) => (
+                <SettingsNavRow
+                  key={row.id}
+                  icon={row.icon}
+                  title={t(row.title)}
+                  caption={row.id === "accounts" && accountsCount > 0 ? t("accounts.row.added", { n: accountsCount }) : t(row.blurb)}
+                  onOpen={() => nav.down(row.to(scope))}
+                />
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* Pinned to the bottom with `mt-auto`, exactly where it was before the split. */}
         <div className="mt-auto flex flex-col gap-2 pt-4">

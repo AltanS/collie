@@ -107,6 +107,7 @@ async function rig(outcomes: Scripted[] | null, extra: Partial<TricksServiceDeps
   const deps: TricksServiceDeps = {
     configDir,
     stateDir,
+    feature: { on: () => true },
     memberId: HOST,
     world: (memberId) => ({
       machine: "desk",
@@ -307,6 +308,82 @@ describe("discovery and the switch", () => {
     const reply = await r.service.reply(undefined);
     expect(reply.tricks).toEqual([]);
     expect(reply.present).toEqual([]);
+  });
+});
+
+describe("the switched-on count (M105 spec 03, the local API's life)", () => {
+  test("told once after the first scan, then only when it moves: on, a second scan, off, a folder gone", async () => {
+    const told: number[] = [];
+    const r = await rig([exited(belt("1"))], { onSwitchedOnCount: (count) => told.push(count) });
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await r.service.refresh(true);
+    expect(told).toEqual([0]);
+    await r.service.refresh(true);
+    expect(told).toEqual([0]);
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    expect(told).toEqual([0, 1]);
+    await writeSwitches(r.stateDir, { on: new Map() });
+    await r.service.refresh(true);
+    expect(told).toEqual([0, 1, 0]);
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    await rm(dir, { recursive: true });
+    await r.service.refresh(true);
+    expect(told).toEqual([0, 1, 0, 1, 0]);
+  });
+
+  test("where tricks do not run (deps.active false: a peer, a deputy, a deposed lead) the count is 0; a tick tells each change", async () => {
+    const told: number[] = [];
+    let active = false;
+    const r = await rig([exited(belt("1"))], { active: () => active, onSwitchedOnCount: (count) => told.push(count) });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(told).toEqual([0]);
+    // The crown comes: the next tick, with no scan of its own needed, tells the count.
+    active = true;
+    await r.service.tick();
+    expect(told).toEqual([0, 1]);
+    // Deposed: the tick tells 0 before its own gate returns, whether or not a phone watched.
+    active = false;
+    await r.service.tick();
+    expect(told).toEqual([0, 1, 0]);
+    await r.service.tick();
+    expect(told).toEqual([0, 1, 0]);
+  });
+
+  test("on Windows (the gate) the count is never above 0", async () => {
+    const told: number[] = [];
+    const r = await rig([exited(belt("1"))], { platform: "win32", onSwitchedOnCount: (count) => told.push(count) });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    await r.service.refresh(true);
+    expect(told.every((count) => count === 0)).toBe(true);
+  });
+
+  test("a trick switched on but stopped by its backoff still counts", async () => {
+    const told: number[] = [];
+    const r = await rig([exited("", 1)], { onSwitchedOnCount: (count) => told.push(count) });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await switchOn(r.stateDir, "legs");
+    for (const t of [T0, T0 + 60_000, T0 + 360_000, T0 + 360_000 + 1_800_000]) await tickAt(r, t);
+    expect((await r.service.reply(undefined)).tricks[0]?.state).toBe("stopped");
+    await tickAt(r, T0 + 100 * 60 * 60_000);
+    expect(told).toEqual([1]);
+  });
+
+  test("a listener that throws breaks no scan", async () => {
+    const r = await rig([exited(belt("1"))], {
+      onSwitchedOnCount: () => {
+        throw new Error("boom");
+      },
+    });
+    await makeTrick(r.configDir, "legs", MANIFEST);
+    await r.service.refresh(true);
+    expect((await r.service.reply(undefined)).tricks.length).toBe(1);
+    expect(r.warnings.some((line) => line.includes("boom"))).toBe(true);
   });
 });
 
@@ -1392,12 +1469,13 @@ describe("taps, answers and slots", () => {
 describe("real programs", () => {
   test("an sh program and a bun program run through the real runner", async () => {
     const r = await rig(null);
-    // A shell line runs under `cmd.exe` on Windows (run.ts `shellArgv`), so a `#!/bin/sh` program is a POSIX one: there the bun program runs alone.
+    // A shell line does not run on Windows (fault d, run.ts `windowsRunProblem`), so a `#!/bin/sh` program is a POSIX one: there the bun program runs alone.
     const posix = process.platform !== "win32";
     if (posix) await makeTrick(r.configDir, "hello", 'id = "hello"\nname = "Hello"\nrun = "./program.sh"\nplaces = ["belt"]\n', {
       "program.sh": `#!/bin/sh\nfacts=$(cat)\nn=$(printf '%s' "$facts" | grep -o '"paneId"' | wc -l | tr -d ' ')\nprintf '{"v":1,"parts":[{"at":"belt","id":"belt","mark":{"label":"%s"}}]}' "$n"\n`,
     });
-    await makeTrick(r.configDir, "bunny", 'id = "bunny"\nname = "Bunny"\nrun = "bun program.ts"\nplaces = ["belt"]\n', {
+    // The script form: a shell line such as `bun program.ts` does not run on Windows (fault d).
+    await makeTrick(r.configDir, "bunny", 'id = "bunny"\nname = "Bunny"\nrun = "program.ts"\nplaces = ["belt"]\n', {
       "program.ts": [
         'import { appendFileSync } from "node:fs";',
         "const facts = JSON.parse(await Bun.stdin.text());",

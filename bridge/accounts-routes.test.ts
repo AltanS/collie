@@ -369,6 +369,47 @@ describe("a pane's account", () => {
     for (const a of body.accounts) expect(a).not.toHaveProperty("running");
   });
 
+  accountTest("a row lists the panes that run in its folder, a sign-in session and a pane in an unnamed folder left out", async () => {
+    await store.add(row);
+    const folders = new Map<string, string | null>([["w1:p2", "/srv/work"], ["w1:p4", "/srv/work"], ["w1:p8", "/srv/elsewhere"], ["w1:p9", null]]);
+    const accounts = build({
+      reported: { reportedConfigDir: (p) => folders.get(p.paneId), reportedConfigDirs: () => [] },
+      panes: () => [
+        { session: "default", pane: pane({ paneId: "w1:p2" }) },
+        { session: "default", pane: pane({ paneId: "w1:p4" }) },
+        { session: "default", pane: pane({ paneId: "w1:p5" }) },
+        { session: "other", pane: pane({ paneId: "w1:p6" }) },
+        { session: "default", pane: pane({ paneId: "w1:p7", kind: "shell" }) },
+        { session: "default", pane: pane({ paneId: "w1:p8" }) },
+        { session: "default", pane: pane({ paneId: "w1:p9" }) },
+      ],
+    });
+    accounts.noteSignIn("default", "w1:p4", "claude\u0000y");
+    accounts.noteSignIn("other", "w1:p6", "claude\u0000x");
+    const body = await bodyOf(accounts);
+    const panesOf = (id: string) => body.accounts.find((a) => a.id === id)?.panes;
+    // Default holds a pane with no reported folder and one that reported the default; the sign-in pane (p6) is out.
+    expect(panesOf("claude:default")).toEqual(["w1:p5", "w1:p9"]);
+    // The added row holds p2; p4 is a sign-in session.
+    expect(panesOf(ID)).toEqual(["w1:p2"]);
+    expect(panesOf("codex:default")).toBeUndefined();
+    // p8 reported a folder no row names: in no row's list, though a session runs there.
+    for (const a of body.accounts) expect(a.panes ?? []).not.toContain("w1:p8");
+    // The list is exactly what `running` counts.
+    for (const a of body.accounts) expect(a.panes?.length).toBe(a.running);
+    // A shell pane is in no list.
+    for (const a of body.accounts) expect(a.panes ?? []).not.toContain("w1:p7");
+  });
+
+  accountTest("a row lists at most 64 panes, and none when no session runs", async () => {
+    const many = Array.from({ length: 70 }, (_, i) => ({ session: "default", pane: pane({ paneId: `w1:p${i + 20}` }) }));
+    const body = await bodyOf(build({ panes: () => many }));
+    expect(body.accounts[0]?.panes).toHaveLength(64);
+    expect(body.accounts[0]?.running).toBe(70);
+    const idle = await bodyOf(build({ panes: () => [] }));
+    for (const a of idle.accounts) expect(a).not.toHaveProperty("panes");
+  });
+
   accountTest("the journal roots grow with own accounts only", async () => {
     await store.add(row);
     await store.add({ ...row, id: ID2, label: "S", kind: "shared", dir: "/srv/shared" });
@@ -444,7 +485,7 @@ describe("live journal roots", () => {
     await mkdir(join(work, "projects", "-x"), { recursive: true });
     await writeFile(join(work, "projects", "-x", `${sid}.jsonl`), "");
     const registry = buildJournalRegistry(
-      { agy: [], claude: [join(home, ".claude", "projects")], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [], "dsh-tui": [] },
+      { agy: [], claude: [join(home, ".claude", "projects")], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [], "dsh-tui": [], mcode: [] },
       {},
       (agent) => ownJournalRoots(store, agent),
     );

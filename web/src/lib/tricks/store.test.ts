@@ -461,6 +461,21 @@ describe("B7: a bridge that runs no tricks", () => {
     expect(readOfficialTricksReply({ tricks: [], gate: "windows" })?.gate).toBe("windows");
     expect(readOfficialTricksReply({ tricks: [], gate: "linux" })).toEqual({ tricks: [] });
   });
+
+  it("reads `off: true` and leaves a word of another shape out, so an older or odder bridge reads as on", async () => {
+    const base = { rev: 1, parts: [], present: [], tricks: [] };
+    expect(readTricksReply({ ...base, off: true })?.off).toBe(true);
+    expect(readTricksReply({ ...base, off: "yes" })).toEqual(base);
+    expect(readTricksReply({ ...base, off: false })).toEqual(base);
+    // The store keeps it from the last reply and drops it when the next reply carries none.
+    let body: JsonValue = { ...base, rev: 2, off: true };
+    const store = createTricksStore({ fetchTricks: async () => readTricksReply(body)!, tapTrick: async () => Promise.reject(new Error("no")), mintRequestId: () => "r" });
+    await store.syncTricks(2);
+    expect(store.getState().off).toBe(true);
+    body = { ...base, rev: 3 };
+    await store.syncTricks(3);
+    expect(store.getState().off).toBeUndefined();
+  });
 });
 
 describe("the wire readers", () => {
@@ -482,6 +497,18 @@ describe("the wire readers", () => {
     const entry = { id: "pr-inbox", name: "PR Inbox", description: "x", repo: "https://github.com/AltanS/collie-tricks", repoName: "AltanS/collie-tricks", commit: "1".repeat(40), state: "absent" };
     expect(readOfficialTricksReply({ tricks: [{ ...entry, decidesReply: true }] })?.tricks[0]?.decidesReply).toBe(true);
     expect(readOfficialTricksReply({ tricks: [entry] })?.tricks[0]).not.toHaveProperty("decidesReply");
+  });
+
+  it("carry `events` and `watch` only as the lists the manifest allows, and drop a list of another shape", () => {
+    const trick = { host: "lodge", id: "inbox", name: "PR Inbox", icon: "plug", on: true, state: "ok", places: ["belt"] };
+    const read = (extra: JsonObject) => readTricksReply({ rev: 1, parts: [], present: [], tricks: [{ ...trick, ...extra }] })?.tricks[0];
+    expect(read({ events: ["turn.end", "ask.open"], watch: ["~/a.md", "/etc/hosts"] })).toMatchObject({ events: ["turn.end", "ask.open"], watch: ["~/a.md", "/etc/hosts"] });
+    expect(read({})).not.toHaveProperty("events");
+    expect(read({})).not.toHaveProperty("watch");
+    expect(read({ events: ["turn.end", "hologram"] })).not.toHaveProperty("events");
+    expect(read({ events: [] })).not.toHaveProperty("events");
+    expect(read({ watch: ["~/a.md", 3] })).not.toHaveProperty("watch");
+    expect(read({ watch: Array.from({ length: 9 }, (_, i) => `/a${String(i)}`) })).not.toHaveProperty("watch");
   });
 
   it("keep a part of a kind this Collie does not know, for the placeholder to draw", () => {

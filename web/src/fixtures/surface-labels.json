@@ -3555,6 +3555,16 @@
    "version": "2.32.0",
    "state": "dialog"
   },
+  "mcode--v077-idle-w200.txt": {
+    "harness": "mcode",
+    "version": "0.7.7",
+    "state": "idle"
+  },
+  "mcode--v077-turn-suggestion-w200.txt": {
+    "harness": "mcode",
+    "version": "0.7.7",
+    "state": "draft"
+  },
   "muse--approval-date-147.txt": {
    "harness": "muse",
    "version": "1.4.7",

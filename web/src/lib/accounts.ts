@@ -61,6 +61,8 @@ export interface AccountRow {
   live: boolean;
   /** How many agent panes of this account run now, a sign-in session left out. Absent: none, or an older bridge. */
   running?: number;
+  /** Ids of the panes on this machine that run in this row's folder, a sign-in session left out. Absent: none, or an older bridge. */
+  panes?: string[];
   /** Shared only: entries that should be links and are not. */
   unlinked?: string[];
   /** Only where the adapter can tell. */
@@ -225,7 +227,7 @@ export function knownWindowName(key: string): string | null {
 }
 
 /**
- * The words for a window. `5h` is Session, `7d` is Week, `7d:<scope>` is Week plus the scope. `spend`
+ * The words for a window. `5h` is 5 hours, `7d` is Week, `7d:<scope>` is Week plus the scope. `spend`
  * and `credits` have words of their own. Any other key reads its label, else the key; a label the
  * agent sent always wins over the app's word.
  */

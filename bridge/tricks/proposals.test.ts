@@ -129,6 +129,7 @@ async function lead(opts: { hillOff?: boolean; diff?: (base: string | null, next
   const diff = async (): Promise<{ files: []; counted: false }> => ({ files: [], counted: false });
   cards = new VersionCards({ hill, tricks: () => service, diff });
   service = new TricksService({
+    feature: { on: () => true },
     configDir,
     stateDir,
     memberId: "lodge",
@@ -196,7 +197,7 @@ describe("a proposal for a new trick", () => {
     }
     expect(await listed(l)).toEqual([]);
     // A fresh runner on the same folders (a bridge restart) does not see it either.
-    const again = new TricksService({ configDir: l.configDir, stateDir: l.stateDir, memberId: "lodge", world: () => ({ machine: "lodge", sessions: [], spaces: [] }), env: {}, warn: () => undefined, revBase: 1 });
+    const again = new TricksService({ feature: { on: () => true }, configDir: l.configDir, stateDir: l.stateDir, memberId: "lodge", world: () => ({ machine: "lodge", sessions: [], spaces: [] }), env: {}, warn: () => undefined, revBase: 1 });
     expect((await again.reply(undefined)).tricks).toEqual([]);
     const [card] = openCards(l);
     expect(card?.from).toMatchObject({ kind: "collie", label: "Collie", ref: { type: "proposal", id: "legs", hash: p.hash } });
@@ -427,7 +428,8 @@ describe("one open proposal per trick id", () => {
     const [old, now] = proposalCards(l);
     expect(old?.summary).not.toContain("It replaces");
     expect(now?.summary).toStartWith("An agent session (repo#one) on workshop proposes it. It replaces an earlier proposal from the same session.");
-    expect(now?.view?.[0]).toEqual({ kind: "para", text: "It replaces an earlier proposal from the same session." });
+    expect(now?.view?.[0]).toEqual({ kind: "para", text: "This trick runs as you on this machine. It can do there what you can do." });
+    expect(now?.view?.[1]).toEqual({ kind: "para", text: "It replaces an earlier proposal from the same session." });
     const again = await l.proposals.propose(proposal("legs", "2\n"), AGENT);
     expect(again).toMatchObject({ ok: true, decision: two.ok ? two.decision : "", replaced: null });
     expect(openCards(l)).toHaveLength(1);

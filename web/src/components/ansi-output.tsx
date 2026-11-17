@@ -306,29 +306,34 @@ const renderImageCluster = (
   url: string | null,
   key: string,
   onImageError: (url: string) => void,
-): ReactNode =>
-  url === null ? (
+): ReactNode => {
+  const badge = (
     <span
       key={key}
       className="my-1 inline-flex items-center gap-1.5 rounded border border-border/40 bg-muted/30 px-2 py-1 text-xs"
     >
       {t("mirror.imageBadge")}
     </span>
-  ) : (
-    // THE CARD SAYS IT IS A GUESS. The placeholder carries a Kitty image id no journal maps to a
-    // blob, so the picture is matched by ORDER (`lib/mirror-images.ts` § "why the match is by
-    // order"). The operator is told that on the card itself, and pointed at History, which reads
-    // the journal turn by turn and is exact. A load that fails falls back to the badge (see FAILED
-    // IMAGES in the component); the handler reports the URL, not the cluster, because the same blob
-    // can sit under two clusters.
+  );
+  if (url === null) return badge;
+  // THE CARD SAYS IT IS A GUESS. The placeholder carries a Kitty image id no journal maps to a
+  // blob, so the picture is matched by ORDER (`lib/mirror-images.ts` § "why the match is by
+  // order"). The operator is told that on the card itself, and pointed at History, which reads
+  // the journal turn by turn and is exact. A load that fails falls back to the badge (see FAILED
+  // IMAGES in the component); the handler reports the URL, not the cluster, because the same blob
+  // can sit under two clusters. The badge also stands in while the bytes load, so a cluster that
+  // knows its URL does not go badge, nothing, card.
+  return (
     <AuthedImageCard
       key={key}
       src={url}
       alt={t("mirror.imageAlt")}
       caption={t("mirror.imageMatchedByOrder")}
       onError={() => onImageError(url)}
+      pending={badge}
     />
   );
+};
 
 export const AnsiOutput = memo(function AnsiOutput({
   text,

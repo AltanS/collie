@@ -6043,26 +6043,66 @@ describe("Composer command suggestions (#458)", () => {
 
 
 describe("Composer — known launch startup send-lock", () => {
-  it("keeps a local draft editable and blocks button, keyboard and Quick without a request", async () => {
+  it("turns the box off for the start, in the look of a locked one, and has no notice row", async () => {
+    const props = renderComposer({ starting: true });
+    // The placeholder says why, inside the box: the reply words are gone, and no row of its own holds "Starting…".
+    const box = screen.getByPlaceholderText("Starting…");
+    expect(box).toBeDisabled();
+    expect(screen.queryByText("Starting…")).toBeNull();
+    expect(box.closest("[class*='bg-muted/40']")).not.toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("button", { name: /^Send$/ })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: "Attach file" })).toBeDisabled();
+    expect(props.onSent).not.toHaveBeenCalled();
+    // The terminal's own doors stay: Type mode and Keys are not held.
+    expect(screen.getByRole("button", { name: "Type into terminal" })).not.toBeDisabled();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Keys" }));
+    expect(screen.getByRole("button", { name: "Esc" })).not.toBeDisabled();
+  });
+
+  it("keeps a draft typed before the start, sends nothing during it, and gives the box back editable", async () => {
     const user = userEvent.setup();
     const typed = vi.fn();
     server.use(...replyHandler(typed));
-    const props = renderComposer({ starting: true });
+    let start = (_on: boolean) => {};
+    function View() {
+      const [starting, setStarting] = useState(false);
+      start = setStarting;
+      return <Composer paneId="start:p1" agent="kiro" isShell={false} gone={false} readOnly={false} surface={FREE} starting={starting}
+        text="pane output" terminalDraft={null} rawTerminalDraft={null}
+        prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
+        display={{ open: false, onToggle: vi.fn() }} onSent={vi.fn()} />;
+    }
+    const router = createMemoryRouter([{ path: "/", element: <View /> }]);
+    render(<RouterProvider router={router} />);
     const box = screen.getByPlaceholderText(/type a reply/i);
     expect(box).not.toBeDisabled();
     await user.type(box, "keep this draft");
-    expect(screen.getByText("Starting…")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Send$/ })).toHaveAttribute("aria-disabled", "true");
-    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
-    await user.click(screen.getByRole("button", { name: "Quick" }));
-    await user.click(screen.getByRole("button", { name: "continue" }));
-    expect(typed).not.toHaveBeenCalled();
-    expect(props.onSent).not.toHaveBeenCalled();
+    act(() => start(true));
+    expect(box).toBeDisabled();
+    expect(box).toHaveAttribute("placeholder", "Starting…");
     expect(box).toHaveValue("keep this draft");
-    expect(loadDraft(undefined, props.paneId)).toBe("keep this draft");
-    expect(screen.getByRole("button", { name: "Type into terminal" })).not.toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "Keys" }));
-    expect(screen.getByRole("button", { name: "Esc" })).not.toBeDisabled();
+    fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
+    await user.click(screen.getByRole("button", { name: /^Send$/ }));
+    expect(typed).not.toHaveBeenCalled();
+    expect(loadDraft(undefined, "start:p1")).toBe("keep this draft");
+    act(() => start(false));
+    expect(box).not.toBeDisabled();
+    expect(box).toHaveValue("keep this draft");
+    await user.type(box, "!");
+    expect(box).toHaveValue("keep this draft!");
+  });
+
+  it("does not turn a box off for Type mode, where keys still go", async () => {
+    const user = userEvent.setup();
+    renderComposer({ starting: true });
+    await user.click(screen.getByRole("button", { name: "Type into terminal" }));
+    expect(screen.getByPlaceholderText(/type|terminal/i)).not.toBeDisabled();
+  });
+
+  it("does not turn the box off when no launch is starting", () => {
+    renderComposer({ starting: false });
+    expect(screen.getByPlaceholderText(/type a reply/i)).not.toBeDisabled();
   });
 
   it("startup never unlocks a genuine read-only or unreachable composer", () => {
@@ -6205,7 +6245,7 @@ describe("the next step on a stop card (M102 spec 02)", () => {
     renderWithSurface({ ...FREE, composer: "draft" });
     await user.type(screen.getByRole("textbox"), "my long message");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/cannot read whole.*Empty the box deletes that draft/u));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/cannot read whole.*The button "Empty the box" deletes that draft/u));
     await user.click(screen.getByRole("button", { name: "Empty the box" }));
     await waitFor(() => expect(posted).toHaveLength(1));
     // The person's draft in the phone's field stays: only the agent's box was emptied.
@@ -6444,7 +6484,7 @@ describe("the unread card (M102 spec 03)", () => {
     await waitFor(() => expect(recordedSends()).toHaveLength(1));
     await user.type(screen.getByRole("textbox"), "go on");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toBe("The screen changed before your text went in, so nothing was typed. Look at the screen now, then tap Send to send past this screen again."));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toBe("The screen changed before your text went in, so nothing was typed. Look at the screen now, then tap Send, then Send anyway."));
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(3));
     expect(recordedSends()[2]).toMatchObject({ text: "go on", rowsHash: "0fff07", override: true });

@@ -9,6 +9,13 @@
 // via muse.ai/images/landing/brand/muse-logo.svg, the Muse family's mark on the white tile of
 // muse.ai's own app icon. Muse Code itself has none (its page at dev.meta.ai/products/muse-code
 // shows only Meta's, its CLI prints only its name), and dev.meta.ai links muse.ai as Muse's site.
+// mcode (MiniMax Code) has no vector mark to copy: its TUI welcome banner is block art
+// (MiniMax-AI/minimax-code docs/assets/wordmark-light.svg, blue #3DAEFF), and the official logo is a
+// gradient the brand book reserves for the logo shown alone, never inside a product (MiniMax Brand
+// Book, 2026-09-14, § Logo Colors). So the `d` is the block M of that banner drawn as one 24×24
+// silhouette, and #5B50E6 is a flat purple from the product gradient the book lists for product
+// branding (#7A27FF → #1BA4FF), flat because the book allows the gradient only on the logo. Nothing
+// is copied from an asset file: the letter's shape and the brand's own colours are what is taken.
 // To refresh: re-run the fetch in CHANGELOG and replace the `d` strings.
 
 export interface AgentBrand {
@@ -50,6 +57,7 @@ export const AGENT_BRANDS = new Map<string, AgentBrand>([
   ["opencode", { bg: "#080808", fg: "#FFFFFF", mode: "stroke", d: "M8.75 8.75V2.75H21.25V15.25H15.25M15.25 8.75H2.75V21.25H15.25V8.75Z" }],
   ["agy", { bg: "#1A73E8", fg: "#FFFFFF", accent: "#1A73E8", mode: "fill", d: "M12 2L2 22h4.5l2-4.5h7l2 4.5H22L12 2zm0 6.5L14.2 14H9.8L12 8.5z" }],
   ["antigravity", { bg: "#1A73E8", fg: "#FFFFFF", accent: "#1A73E8", mode: "fill", d: "M12 2L2 22h4.5l2-4.5h7l2 4.5H22L12 2zm0 6.5L14.2 14H9.8L12 8.5z" }],
+  ["mcode", { bg: "#5B50E6", fg: "#FFFFFF", accent: "#5B50E6", mode: "fill", d: "M3 4h4.5l4.5 7 4.5-7H21v16h-4V9.5l-5 7.5h-1l-5-7.5V20H3V4z" }],
   // program: the speech bubble of a durable program's own mark (bridge/mux/durable/logo.ts), as one
   // 24×24 silhouette, for the belt section that holds its Steer and Stop. Keyed by what the mark IS,
   // not by the multiplexer's name, which the frontend never spells (scripts/check-mux-names.sh). It is

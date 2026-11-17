@@ -223,7 +223,7 @@ describe("the run line and the timer", () => {
 
   it("says a trick with no timer runs once and on a tap, and a trick with no program has neither row", () => {
     const { unmount } = open({ ...TRICK, everyMs: undefined }, undefined);
-    expect(screen.getByRole("dialog").querySelector('[data-line="timer"]')).toHaveTextContent("Runs once when it starts, then only when you tap it. It has no timer.");
+    expect(screen.getByRole("dialog").querySelector('[data-line="timer"]')).toHaveTextContent("Runs once when it starts, and when you tap it. It has no timer.");
     unmount();
     open({ ...TRICK, run: undefined, everyMs: undefined }, undefined);
     expect(screen.getByRole("dialog").querySelector('[data-line="run"]')).toBeNull();

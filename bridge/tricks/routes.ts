@@ -11,6 +11,8 @@ import type { CodeAnswer, TricksSurface, SwitchAnswer, TapAnswer, VersionRouteAn
 //   GET  /api/tricks?since=<rev>          → TricksReply (web/src/lib/tricks/schema.ts)
 //   POST /api/tricks/<host>/<id>/tap      → TrickTapReply (`rid`, a tree receipt code), or 400 `tap-invalid`,
 //                                         404 `unknown-host` / `unknown-trick`, 409 `request-id-reused`
+//   GET|POST /api/tricks/switch           → the switch for tricks as a whole: `{ on }`, body `{ "on": boolean }`
+//                                         (server.ts `tricksFeatureRoute`)
 //   POST /api/tricks/<host>/<id>/switch   → body `{ "on": boolean }`; the trick's WireTrickInfo as it now
 //                                         reads, or 400 `switch-invalid`, 404 `unknown-host` / `unknown-trick`
 //   GET  /api/tricks/<host>/<id>/media/<file> → one picture of the trick's `media/` folder (media.ts), or
@@ -44,7 +46,10 @@ export const TRICKS_ROUTE_RIGHTS = {
   // machine on a tap: a write, like the switch, so only a paired phone with the write right reaches it.
   official: "read",
   officialAdd: "write",
-} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "code" | "auto" | "undo" | "official" | "officialAdd", GateLevel>>;
+  // The switch for tricks as a whole (feature-switch.ts): it decides whether any program runs, so the write
+  // right, the Hill switch's level. Its read is the list's level.
+  feature: "write",
+} as const satisfies Readonly<Record<"reply" | "tap" | "switch" | "media" | "code" | "auto" | "undo" | "official" | "officialAdd" | "feature", GateLevel>>;
 
 /** `since` as a rev, or undefined (every part) when absent or not a whole number at or above 0. */
 export function parseSince(raw: string | null): number | undefined {

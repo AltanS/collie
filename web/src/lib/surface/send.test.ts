@@ -143,7 +143,7 @@ describe("no dead end: every refusal names its next step (M102 spec 02)", () => 
   // A gone pane: nothing on this pane can change it. Its sentence still says the draft stays and to go back.
   const NO_BUTTON: ReadonlySet<SendReason> = new Set<SendReason>(["pane_gone"]);
   // A next step is a sentence that starts with what the person does.
-  const STEP_WORDS = /(?:^|[.!?] )(?:Send|Answer|Add|Replace|Submit|Look|Read|Check|Change|Stop|Empty|Get|Go|Wait|Try|Use|Tap|Select|Close)\b/u;
+  const STEP_WORDS = /(?:^|[.!?] )(?:Send|Answer|Add|Replace|Submit|Look|Read|Check|Change|Stop|Empty|Get|Go|Wait|Try|Use|Tap|Select|Close|Then send)\b/u;
 
   const pairs = SEND_OUTCOMES.flatMap((outcome) =>
     [null, ...SEND_REASONS].flatMap((reason) =>

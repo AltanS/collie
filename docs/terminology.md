@@ -13,14 +13,18 @@ In a crew, the instances of one host show as one machine
 
 ## Session
 
-One agent conversation. A pane shows it, and Chat reads it from the harness
-([Sessions](sessions.md)). tmux and zellij call their own top-level group a session too. Collie
-shows that group as a [space](#space).
+One run of an agent, with its own history. A pane shows it, and Chat reads it from the harness
+([Sessions](sessions.md)). In the app and in these docs, "session" alone means this and nothing else.
+
+Herdr, tmux and zellij call their own top-level group a session too. Collie shows that group as a
+[space](#space), and older versions of the app said "session" for it. A trick's own screen is a
+[page](#page), never a session.
 
 ## Space
 
 A group of tabs, with a folder. It is the top level on the phone. A Herdr workspace is a space, a
 tmux session is a space, a zellij session is a space, and a [durable agent](#durable-agent) is a space.
+The switcher in the header says **Spaces** and **All spaces**. A space is not a [session](#session).
 
 ## Tab
 
@@ -35,7 +39,8 @@ The sheet a workspace's **+** opens: that machine's agents and command rows, the
 ## Pane
 
 One thing you can open on the phone. In a terminal it is a pane with a screen. In a durable agent it is
-one conversation, and it opens in Chat only.
+one conversation, and it opens in Chat only. A pane holds an agent or a plain shell. When it holds an
+agent, the pane shows that agent's [session](#session).
 
 On a large screen several panes show side by side ([Large screens](configure.md#large-screens)).
 
@@ -54,13 +59,63 @@ command line, and herdr-app is the window that draws its terminals. One Collie d
 An agent that runs as its own process, with its own storage. It attaches to Collie over the durable
 wire. You build one with the Durable SDK, or with any program that serves the wire. It lays out its
 own spaces, tabs and panes. It is experimental, and you attach it with `collie durable attach`
-([Durable agents](durable-agents.md)). A session is either a terminal session or a durable session.
+([Durable agents](durable-agents.md)). Its [conversations](#conversation) are sessions too.
 The API and the code still call the channel `program`.
 
 ## Harness
 
 The agent that runs in a pane: Claude Code, Codex, pi, OmO, or a durable agent
 ([Claude Code on your phone](claude-code-on-your-phone.md)).
+
+## Profile
+
+A profile is signed in on its own, for example Work with your work subscription beside Default with
+your personal one. You pick the profile when you start a session, and the session stays in it. Add
+one in **Settings → Profiles**; with none added, nothing changes. Profiles belong to one machine: a
+crew member's profiles are its own. **Change login** gives a profile another login, and its sessions
+follow ([Profiles](configure.md#profiles)). Edge builds of 1.29 called it an account.
+
+## Default profile
+
+The profile every agent has, shown as **Default**. It is the agent's normal folder, started with
+nothing set. A plain **Claude Code** entry on the New page keeps using it
+([Profiles](configure.md#profiles)).
+
+## Shared profile
+
+A Claude Code profile that Collie makes in a new folder, `~/.claude-<name>`. It links the Default
+profile's setup and history into that folder, so your sessions, `/resume`, skills and settings stay
+one set, and only the login is its own. An **Own** profile is the other kind: a folder you already
+use, taken as it is. The other agents offer Own profiles only ([Profiles](configure.md#profiles)).
+
+## Change login
+
+The button that moves a profile to another login without a new session. It starts the agent's own
+sign-in, and the old login stays until the new sign-in works. After **Finish**, Collie asks the agent
+who is signed in. Claude Code sessions that run go on with the new login from their next message.
+Codex, pi and Grok use it for sessions you start afterwards
+([Change the login of a profile](configure.md#change-the-login-of-a-profile)).
+
+## Sign-in code field
+
+The field where you paste the code that a browser sign-in gives you. The agent's sign-in screens show
+as cards, and the card's button opens only the agent's own sign-in address. The code and the address
+are not stored, logged or sent anywhere else
+([Change the login of a profile](configure.md#change-the-login-of-a-profile)).
+
+## Usage window
+
+One limit that an agent reports, with the share used and the time it resets. For Claude and Codex it
+is usually the 5-hour window, shown as "5 hours", and the 7-day window, shown as "Week". A plan that
+reports one limit shows one ([Usage windows](configure.md#usage-windows)).
+
+## Plugin (Claude Code)
+
+The small Claude Code plugin that `collie harness link claude` installs. It is an experiment and is off
+until you link. A linked Claude Code takes plain messages, WalkyTalky messages and permission answers
+as data, and every other send keeps the screen road. It is not the Herdr plugin `herdr.collie`, which is
+how Collie installs in Herdr
+([Send by data](claude-code-on-your-phone.md#send-by-data-optional-experimental)).
 
 ## Crew
 
@@ -80,6 +135,33 @@ One Collie that joined a crew. The two words mean the same thing. "Member" is th
 "peer" is the word for a Collie that runs beside another one
 ([Crews](crew.md#how-a-crew-is-wired)).
 
+## Deputy
+
+The one member that the lead named ahead of time to take over when the lead goes quiet. You name it with
+`collie crew deputy <member>`. It keeps a read-only copy of the lead's launcher rows, and a copy of each
+trick that is on, so they work after a takeover ([Crews](crew.md#how-a-crew-is-wired)).
+
+## Standby door
+
+The listener that a deputy binds so that your phone can reach it while the lead is gone. It has four
+routes and is never published. The lead's silence arms it, and your own pairing credential spends it. It
+exists only when `COLLIE_STANDBY_PORT` is set on the lead and on the deputy
+([The standby door](deployment.md#the-standby-door--a-crews-failover-path)).
+
+## Release line
+
+The kind of release a machine takes. **Stable** is the default and takes final releases only, for
+example `1.23.0`. **Edge** also takes Edge builds, such as `1.23.0-edge.2`, which are GitHub
+pre-releases cut a few days before the final release. You set the line in **Settings → Updates →
+Release line**, and the switch installs nothing. A crew follows its lead's line
+([Release lines](upgrading.md#release-lines)).
+
+## Urgent line
+
+The one sentence on the update card, under an **Urgent** label, that says why a patch must be taken today.
+It is rare. An urgent patch keeps the daily update cadence, and its version stays an ordinary patch
+([From the phone](upgrading.md#from-the-phone)).
+
 ## Question card (ask)
 
 A question that a durable agent raises. The phone shows it as a card, and one tap answers it
@@ -89,6 +171,51 @@ once. Collie never answers for you ([Durable agents](durable-agents.md#what-the-
 
 The action row above the composer. Its harness section holds the harness's own buttons
 ([Configure](configure.md#one-off-commands-and-their-history)).
+
+## Permission hold
+
+How the phone answers a Claude Code permission. A hook holds the request, and the phone shows a card,
+"Permission: `<tool>`", with the tool and the input shown. Your tap becomes Claude's answer to that one
+permission, and a tap at the desk wins when it comes first. A held request waits up to 290 seconds,
+then Claude shows its own dialog. Collie never allows or denies on its own. It is not a held send,
+which is a message that waits for the turn to end
+([Permissions held for the phone](multiplexers.md#permissions-held-for-the-phone)).
+
+## Stop
+
+The Belt button that presses the agent's own stop key, once. You hold it for two seconds, and it
+fills while you hold. Lift early and nothing is pressed. With a keyboard or a screen reader it takes
+two presses, **Stop?** first. It types nothing and sends no message
+([Stop a turn](configure.md#stop-a-turn)).
+
+## Keys pad
+
+The grid of keys under the composer, opened with **Keys**: Esc, Tab, Ctrl, the arrows and more. You
+rearrange it with the pencil next to **Keys**, and Collie keeps it in this browser. If Esc, Enter or an
+arrow is missing from your pad, a quiet line says so, with **Put back**
+([Your own key pad](configure.md#your-own-key-pad)).
+
+## Send anyway
+
+The button that sends your message although Collie cannot check the screen. It has one name in both
+places: on the card for a screen Collie cannot read, and in the notice under the box. The word does not
+say whether Enter goes. The answer after your tap says what happened. It is not offered on a sign-in
+field, a question or permission Collie read, a screen that changed since you looked, or a menu or
+yes/no prompt ([Send anyway](multiplexers.md#send-anyway)).
+
+## Type mode
+
+The composer mode where each key goes to the terminal as you type. It turns itself off after 60
+seconds with no key, when the pane's agent changes, or when the app goes to the background. Collie
+never writes the characters you type in it to the audit log
+([Security](security.md)).
+
+## Put back
+
+The button on a text that did not go out. Collie keeps such a text above the box as "Not sent, kept
+here". **Put back** writes it into the empty box again and sends nothing. With a draft in the box, it
+tells you to empty the box first. It is not the **Put back** of the Keys pad, which returns a missing
+key.
 
 ## Pins
 
@@ -194,14 +321,30 @@ four characters too. A [WalkyTalky](#walkytalky) address carries it after a `#`,
 pane instance, with a new token and an empty [inbox](#inbox) ([Addresses](walky-talky.md#addresses)).
 It is not a Collie instance: that word means one running bridge ([Collie (an instance)](#collie-an-instance)).
 
+## Pair limit
+
+The most messages that two panes may trade in 10 minutes, in either direction. It is 12 by default.
+`COLLIE_WALKY_PAIR_LIMIT` sets it from 1 to 100, and each machine counts for itself. A message over it
+is refused as `pair limit`. The other [WalkyTalky](#walkytalky) limits are 30 messages per sender in 10
+minutes, a body of at most 4,000 characters, and a reply chain of at most 4 replies
+([Limits and switches](walky-talky.md#limits-and-switches)).
+
 ## Trick
 
 A folder that adds its own parts to Collie: a small program, rules for an agent, or both. Collie draws
-what it shows, in Collie's own look. A trick is off until you switch it on, and its program runs as
-you ([Tricks](tricks.md)). There are two kinds, a [program trick](#program-trick) and an
+what it shows, in Collie's own look. Tricks are an experiment: they run only while the
+[tricks switch](#tricks-switch) is on, a trick is off until you switch it on too, and its program runs
+as you ([Tricks](tricks.md)). There are two kinds, a [program trick](#program-trick) and an
 [agent view](#agent-view). The old word for a trick was "mod". The mods folder of herdr-app is a
 different thing, a panel of that app
 ([The Collie panel for herdr-app](multiplexers.md#the-collie-panel-for-herdr-app)).
+
+## Tricks switch
+
+The one switch for tricks as a whole on a machine, at the top of Settings → Tricks and in
+`collie tricks on|off|status`. Tricks are an experiment, so it is off until you switch it on. While it
+is off no trick runs or draws, and each trick keeps its own switch for when you switch it on
+([Switch tricks on or off](tricks.md#switch-tricks-on-or-off)).
 
 ## Program trick
 
@@ -246,7 +389,8 @@ described in [Places](tricks-reference.md#places).
 
 A trick's own screen: a row on the Dashboard under Tricks, and the screen it opens. A tap on the
 trick's tile, bottom bar item or chip opens it too. It has no reply box, because a trick is not an
-agent you talk to. The code word in `places` is `session`
+agent you talk to. The code word in `places` is `session`, and older versions of the app said
+"session" for a page. A page is not an agent [session](#session)
 ([Where a trick can show](tricks.md#where-a-trick-can-show)).
 
 ## Part
@@ -259,8 +403,8 @@ others ([The parts](tricks.md#the-parts), [Parts](tricks-reference.md#parts)).
 ## Power
 
 What a trick may reach beyond its own code: the environment names it asks for (`env`), the places it
-draws in (`places`), and the files it reads from your agent sessions (`inputs`). The About sheet lists
-them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
+draws in (`places`), the files it reads from your agent sessions (`inputs`), and when it runs on its
+own (`on`, `watch`). The About sheet lists them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
 sometimes say "rights" for the same thing ([What a trick may and may not do](tricks.md#powers-the-environment-and-the-warnings)).
 
 ## About sheet
@@ -277,8 +421,40 @@ tapping an option, and the answer goes back to the session that asked, as your o
 is not a [question card](#question-card-ask): that card is a durable agent's own question
 ([Decisions](hill.md#what-a-decision-is)).
 
+## Proposal card
+
+The card of a trick that an agent wrote for you. It is titled "Switch on the trick `<id>`?", and it
+shows what the trick asks for, the warnings of the text search, and every file of its code. Nothing
+runs before your yes. The yes stays off until every card of the code was on screen, and it asks for a
+second tap ([A trick an agent proposes](hill.md#a-trick-an-agent-proposes)).
+
+## Version card
+
+The card of a new version of a trick that a proposal made. It asks "Use the new version of `<id>`?",
+and the code is replaced only on your yes ([A trick an agent proposes](hill.md#a-trick-an-agent-proposes)).
+
 ## Hill
 
 The page of Decisions that wait for you, grouped Now, Today and Later, with the answered ones below.
 It is the fourth item of the Dashboard's bottom bar. One crew has one Hill, on the lead. "Hill" is the
 view's name and stays the same in every language ([The Hill](hill.md)).
+
+## Event
+
+A short note the bridge makes when an agent session changes state, ends a turn or opens a question:
+`session.status`, `turn.end` or `ask.open`. It holds ids and states, never text. A trick that lists
+`on` runs on events, and the [local API](#local-api) answers them. An event can come twice, so a
+program must be safe against a repeat ([When a trick reacts](tricks-reference.md#when-a-trick-reacts)).
+
+## Watch
+
+The files a trick asks to run on: when one of them changes, the trick runs again. Like `on`, it is a
+[power](#power) the card names, and a new one waits for your yes
+([When a trick reacts](tricks-reference.md#when-a-trick-reacts)).
+
+## Local API
+
+A read-only Unix socket on the machine, for programs of your own user: list the sessions, read a
+screen with secrets masked, follow the [events](#event). It is on while tricks are switched on, and
+`collie api` is its command. It is experimental, and it is closed to other users, other machines and
+browser pages ([The local API](commands.md#the-local-api-experimental)).

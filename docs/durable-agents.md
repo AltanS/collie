@@ -71,7 +71,7 @@ collie restart
 
 Use the path your durable agent printed. Add `--restart` to the first command to restart in the same
 step. `--restart` restarts the Collie bridge: your phone reconnects in a few seconds, and your
-terminal sessions keep running.
+terminal and agents keep running.
 
 Open Collie on your phone. A Durable agents section shows one row, `hello`, with an Experimental badge and
 one question waiting. Tap the row: it opens on the durable agent's conversation list, where the

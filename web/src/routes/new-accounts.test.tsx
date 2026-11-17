@@ -105,7 +105,7 @@ const WORK_AND_DEFAULT = body({
 });
 
 const agentSelect = () => screen.findByRole("combobox", { name: "Agent" });
-const accountSelect = () => screen.findByRole("combobox", { name: "Account" });
+const accountSelect = () => screen.findByRole("combobox", { name: "Profile" });
 /** The sorted keys of a request body, to pin that no `account` key rides a plain start. */
 const keysOf = (value: JsonValue | undefined): string[] => Object.keys(asJsonObject(value) ?? {}).toSorted();
 const summary = () => screen.getByTestId("new-page-summary");
@@ -125,7 +125,7 @@ describe("the New page: the account pick", () => {
     mount();
     await waitFor(async () => expect(await agentSelect()).toHaveValue("harness:claude"));
     await new Promise((r) => setTimeout(r, 30));
-    expect(screen.queryByRole("combobox", { name: "Account" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Profile" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({ harness: "claude", requestId: expect.any(String) });
@@ -138,7 +138,7 @@ describe("the New page: the account pick", () => {
     mount();
     await waitFor(async () => expect(await agentSelect()).toHaveValue("harness:claude"));
     await new Promise((r) => setTimeout(r, 30));
-    expect(screen.queryByRole("combobox", { name: "Account" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Profile" })).toBeNull();
     expect(summary()).toHaveTextContent("Claude Code in");
   });
 
@@ -150,14 +150,14 @@ describe("the New page: the account pick", () => {
     expect(within(pick).getAllByRole("option").map((o) => o.textContent)).toEqual(["Default", "Work"]);
     expect(pick).toHaveValue("claude:default");
     const caption = document.querySelector<HTMLElement>("[data-slot=account-caption]")!;
-    expect(within(caption).getByText("Session")).toBeInTheDocument();
+    expect(within(caption).getByText("5 hours")).toBeInTheDocument();
     expect(within(caption).getByText("42% used")).toBeInTheDocument();
     await userEvent.selectOptions(pick, "Work");
     const after = document.querySelector<HTMLElement>("[data-slot=account-caption]")!;
     // The lead window is the first one the harness lists.
     expect(within(after).getByText("Week")).toBeInTheDocument();
     expect(within(after).getByText("91% used")).toHaveClass("text-status-blocked");
-    expect(within(after).queryByText("Session")).toBeNull();
+    expect(within(after).queryByText("5 hours")).toBeNull();
     expect(within(after).getByText(/^Last seen /)).toBeInTheDocument();
     expect(summary()).toHaveTextContent("Claude Code as Work in");
   });
@@ -194,7 +194,7 @@ describe("the New page: the account pick", () => {
     mount();
     await userEvent.selectOptions(await accountSelect(), "Work");
     await userEvent.selectOptions(await agentSelect(), "Codex");
-    await waitFor(() => expect(screen.queryByRole("combobox", { name: "Account" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("combobox", { name: "Profile" })).toBeNull());
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({ harness: "codex", requestId: expect.any(String) });
@@ -206,7 +206,7 @@ describe("the New page: the account pick", () => {
     mount();
     await accountSelect();
     await userEvent.click(screen.getByRole("radio", { name: "Shell" }));
-    await waitFor(() => expect(screen.queryByRole("combobox", { name: "Account" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("combobox", { name: "Profile" })).toBeNull());
   });
 
   it("a hand-written agent row carries no pick, and neither does its start body", async () => {
@@ -231,7 +231,7 @@ describe("the New page: the account pick", () => {
     mount();
     await accountSelect();
     await userEvent.selectOptions(await agentSelect(), "Claude, my folder");
-    await waitFor(() => expect(screen.queryByRole("combobox", { name: "Account" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("combobox", { name: "Profile" })).toBeNull());
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({ command: line, requestId: expect.any(String) });

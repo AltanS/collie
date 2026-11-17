@@ -401,7 +401,7 @@ describe("local-cli — the whole process tree goes (POSIX process group, Window
   }, 40_000);
 
   test("the Windows kill is two programs by absolute path, as argv, with numbers only in the script", () => {
-    const [taskkill, orphans] = windowsKillCommands(4242, 1_000_000, 2_000_000, { SystemRoot: "D:\\WINNT" });
+    const [taskkill, orphans] = windowsKillCommands(4242, 1_000_000, { SystemRoot: "D:\\WINNT" });
     expect(taskkill).toEqual(["D:\\WINNT\\System32\\taskkill.exe", "/PID", "4242", "/T", "/F"]);
     expect(orphans?.slice(0, 4)).toEqual([
       "D:\\WINNT\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
@@ -410,16 +410,17 @@ describe("local-cli — the whole process tree goes (POSIX process group, Window
       "-Command",
     ]);
     // No SystemRoot: C:\Windows, never a PATH lookup.
-    expect(windowsKillCommands(1, 0, 0, {})[0]?.[0]).toBe("C:\\Windows\\System32\\taskkill.exe");
-    // The window: one second before the spawn to five seconds after the kill, as FILETIME ticks.
+    expect(windowsKillCommands(1, 0, {})[0]?.[0]).toBe("C:\\Windows\\System32\\taskkill.exe");
+    // The window: one second before the spawn, as FILETIME ticks, to the moment of the snapshot.
     const script = orphans?.[4] ?? "";
     expect(script).toContain(`FromFileTimeUtc(${(999_000n + 11_644_473_600_000n) * 10_000n})`);
-    expect(script).toContain(`FromFileTimeUtc(${(2_005_000n + 11_644_473_600_000n) * 10_000n})`);
+    // The upper bound is the snapshot's own time, not a slack past the kill (review D, item 3).
+    expect(script).toContain("$to = [datetime]::UtcNow");
     expect(script).toContain("$queue.Enqueue(@(4242, $from, $to))");
     // Parent pid AND start time decide; then each child's children, started after it.
     expect(script).toContain("$p.Parent -eq $q[0] -and $p.At -ge $q[1] -and $p.At -le $q[2]");
     expect(script).toContain("Stop-Process -Id $id -Force");
-    expect(windowsOrphanScript(7, 0, 0)).toBe(windowsKillCommands(7, 1_000, -5_000, {})[1]?.[4] ?? "");
+    expect(windowsOrphanScript(7, 0)).toBe(windowsKillCommands(7, 1_000, {})[1]?.[4] ?? "");
   });
 
   test("on a Windows host the child is spawned without a group and still killed at the deadline", async () => {

@@ -21,7 +21,7 @@ helper (`cli/trick-kit/trick.ts`, a file a trick folder copies) carries the same
 contract 1 trick (`TRICK_CONTRACT_DEFAULT`), and `collie trick init` writes `contract = 1`.
 
 **The manifest**, `trick.toml`: `id`, `name`, `run`, `every`, `icon`, `places`, `env`, `contract`,
-`inputs` (contract 2), `decides` (see "Decisions"), the later `watch`, `on` and `mode`, and two texts for a person, `description` (one
+`inputs` (contract 2), `decides` (see "Decisions"), `watch` and `on` (a trick that reacts: bridge/tricks/triggers.ts, watch.ts; both are rights), the later `mode = "serve"`, and two texts for a person, `description` (one
 line, at most 140 characters, shown under the name in Settings → Tricks) and `about` (at most 1200
 characters, paragraphs split by a blank line, shown in the trick's About sheet). Both are plain text, with
 no markdown, HTML or link drawn, and both are allowed in contract 1 and 2. An optional `version` (1 to 24
@@ -506,7 +506,7 @@ trick and mismatch, which does not post again after a restart. The card closes i
 withdrawn with the reason as its receipt: switched on again with the rights it asks for, off or removed,
 or other rights again (a new card says so);
 `auto` takes no version while the rights do not hold. The hash's form keeps every stored value: `env`,
-`inputs` and `places` are always hashed, and a key added after them (`rules`, `LATER_POWER_KEYS`) only
+`inputs` and `places` are always hashed, and a key added after them (`reacts` for `on`, `replies`, `rules`, `watches` for `watch`: `LATER_POWER_KEYS`) only
 when it holds something, so an absent key equals its neutral value (absent, or an empty list; the empty
 string is a value). A trick approved by the first build that stored powers, with no new place word,
 reads the same powers today.
@@ -721,7 +721,7 @@ words, since every word there is in command position.
 
 ## The parsers
 
-- `parseManifest(toml)`: `trick.toml` after the TOML parse. A later field (`watch`, `on`, `serve`)
+- `parseManifest(toml)`: `trick.toml` after the TOML parse. A later field (`serve`; `watch` and `on` too, for a caller that leaves them out of `triggers`: the bridge's reader passes `MANIFEST_TRIGGERS`)
   or a later place is skipped with a `later` refusal, and the trick still loads. `env` lists the
   environment names the program needs past the bridge's allow-list (`bridge/tricks/env.ts`); the list
   and `collie trick check` show each one, and a `COLLIE_*`, `HERDR_*`, `*_SOCK` or `*_SOCKET` name is

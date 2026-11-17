@@ -29,7 +29,7 @@ import {
 import { createTrickScanner, readManifestFile, readSmallFile, type FoundTrick } from "../bridge/tricks/discover.ts";
 import { isBaseEnvName, neverReason, scrubEnv } from "../bridge/tricks/env.ts";
 import { MANIFEST_FILE, tricksConfigDir, switchesPath } from "../bridge/tricks/paths.ts";
-import { outcomeProblem, runProgram, runtimeScript, type RunOutcome } from "../bridge/tricks/run.ts";
+import { outcomeProblem, runProgram, runtimeScript, windowsRunProblem, type RunOutcome } from "../bridge/tricks/run.ts";
 import { isChanged } from "../bridge/tricks/service.ts";
 import { parseSwitches, updateSwitches, withEntry, withSwitch } from "../bridge/tricks/switches.ts";
 import type { CrewFetch } from "../bridge/crew/peer-client.ts";
@@ -58,9 +58,12 @@ import {
   type OfficialState,
   type TricksRunsOn,
   type Refusal,
+  TRICKS_OFF_LINE,
   TRICKS_WINDOWS_LINE,
+  TRICKS_WINDOWS_SHELL_LINE,
   tricksGated,
 } from "../web/src/lib/tricks/schema.ts";
+import { readTricksFeature } from "../bridge/tricks/feature-switch.ts";
 import { readEnvMarkers } from "./beacon.ts";
 import { readTrickFolder } from "./trick-folder.ts";
 import type { PaneKind } from "./walky.ts";
@@ -132,6 +135,18 @@ export interface TrickDeps {
 export function refuseTricksOnWindows(deps: { readonly platform?: NodeJS.Platform | undefined; readonly io: Io }): boolean {
   if (!tricksGated(deps.platform)) return false;
   deps.io.err(`error: ${TRICKS_WINDOWS_LINE}`);
+  return true;
+}
+
+/**
+ * The refusal of the verbs that bring code in or teach an agent while tricks as a whole are switched off on
+ * this machine (bridge/tricks/feature-switch.ts; no file is off): one sentence, and where to switch them on.
+ * True when it refused; the caller returns `EXIT.FAIL`. `trick check --run` and `trick dev` do not ask: they
+ * are a developer's tools, run once in their own terminal on a folder they name, and nothing reaches a phone.
+ */
+export function refuseWhileTricksOff(deps: { readonly ctx: Pick<CliContext, "stateDir">; readonly io: Io }): boolean {
+  if (readTricksFeature(deps.ctx.stateDir).on) return false;
+  deps.io.err(`error: ${TRICKS_OFF_LINE}`);
   return true;
 }
 
@@ -343,6 +358,8 @@ export async function cmdTrickList(deps: TrickDeps, args: readonly string[]): Pr
   ]);
   for (const line of lines) deps.io.out(line);
   if (runsOn !== undefined) deps.io.out(runsOnText(runsOn));
+  // Each SWITCH above is the trick's own; while tricks as a whole are off, none of them runs.
+  if (!readTricksFeature(deps.ctx.stateDir).on) deps.io.out(TRICKS_OFF_LINE);
   if (rows.some((r) => r.pending)) deps.io.out("NEW: a new version waits for your yes. Approve it in Settings, Tricks, on the phone, or with collie trick on <id>.");
   if (!bridge) deps.io.out("(the bridge did not answer: state and last run are from the files only)");
   if (rows.some((r) => r.skill && r.on)) deps.io.out("An agent reads what a trick asks of it with: collie trick skill <id>");
@@ -395,6 +412,8 @@ export async function cmdTrickSkill(deps: TrickDeps, args: readonly string[]): P
     deps.io.err("usage: collie trick skill [<id>]   (an id is 1 to 32 of a-z, 0-9 and -)");
     return EXIT.USAGE;
   }
+  // Switched off as a whole, no trick teaches an agent anything (no agent view's rules are handed out).
+  if (refuseWhileTricksOff(deps)) return EXIT.FAIL;
   const found = (await foundTricks(deps)).tricks.find((t) => t.id === id);
   if (found === undefined) return skillRefusal(deps, `no such trick: ${id}`);
   const entry = switchesOf(deps).switches.on.get(id);
@@ -478,6 +497,13 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
     deps.io.err(`error: ${id} stays off until its manifest is fixed. Check it: collie trick check ${dir}`);
     return EXIT.FAIL;
   }
+  // Fault d: on Windows a shell run line stays off, with the one sentence (behind the gate above today).
+  const shell = windowsRunProblem(read.manifest.run, deps.platform);
+  if (shell !== null) {
+    deps.io.err(`error: ${shell}`);
+    deps.io.err(`error: ${id} stays off.`);
+    return EXIT.FAIL;
+  }
   const code = await trickCodeHash(dir);
   if (!code.ok) {
     deps.io.err(`error: ${code.reason}`);
@@ -504,6 +530,8 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
     deps.io.out(WARNINGS_HONESTY);
   }
   deps.io.out(`${id} is on. The bridge picks it up within seconds; its timer runs while a phone watches.`);
+  // Its own switch is written; tricks as a whole decide whether it runs at all.
+  if (!readTricksFeature(deps.ctx.stateDir).on) deps.io.out("Tricks are switched off on this machine, so it runs only after collie tricks on.");
   deps.io.out(`Approved the code of ${id} as it is now: sha256 ${approved.hash}. The bridge runs this copy; an edit of the folder waits for your yes.`);
   // Agent instructions are approved with the code: name the bytes, and where to read them.
   const rules = approved.manifest;
@@ -671,7 +699,7 @@ export function leadsCrewOnDisk(deps: { ctx: Pick<CliContext, "stateDir">; files
 }
 
 /** The static half of `check`. Reads only. `crew` says the machine leads a crew, for the `reads` sentence. */
-export async function checkStatic(folder: string, files: Pick<Files, "read" | "entryType">, opts: { crew?: boolean } = {}): Promise<TrickCheckReport> {
+export async function checkStatic(folder: string, files: Pick<Files, "read" | "entryType">, opts: { crew?: boolean; platform?: NodeJS.Platform } = {}): Promise<TrickCheckReport> {
   const id = basename(folder);
   const read = await readManifestFile(diskTrickFs, folder, id);
   const report: TrickCheckReport = { folder, id, refusals: read.refusals, problems: [], files: [], runs: [], warnings: [], notScanned: [], env: [] };
@@ -680,6 +708,9 @@ export async function checkStatic(folder: string, files: Pick<Files, "read" | "e
   report.env = envNames(read.manifest);
   const globs = read.manifest.inputs ?? [];
   if (globs.length > 0) report.reads = inputsSentence(globs, opts.crew === true);
+  // Fault d: on Windows only the script form runs. A shell line is a problem, so the check fails.
+  const shell = windowsRunProblem(read.manifest.run, opts.platform);
+  if (shell !== null) report.problems.push(shell);
   // A trick that is only an agent view has no run line, so no program file to read.
   const runText = read.manifest.run ?? "";
   const named = programFiles(runText, folder, files);
@@ -929,7 +960,7 @@ export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): P
     return EXIT.USAGE;
   }
   const crew = leadsCrewOnDisk(deps);
-  const report = await checkStatic(folder, deps.files, { crew });
+  const report = await checkStatic(folder, deps.files, { crew, platform: deps.platform });
   if (run && report.manifest !== undefined && report.problems.length === 0) await checkRun(report, deps.ctx.env);
   await countCards(report, crew);
   if (json) deps.io.out(JSON.stringify(report, null, 2));
@@ -1072,6 +1103,12 @@ export async function cmdTrickInit(deps: TrickDeps, args: readonly string[]): Pr
     return EXIT.USAGE;
   }
   const { form, id } = parsed;
+  // Fault d: the shell sample cannot run on Windows, so init does not write it there.
+  if (form === "sh" && deps.platform === "win32") {
+    deps.io.err(`error: ${TRICKS_WINDOWS_SHELL_LINE}`);
+    deps.io.err(`Make the TypeScript form instead: collie trick init ${id}`);
+    return EXIT.FAIL;
+  }
   const root = tricksConfigDir(deps.ctx.configDir);
   const draft = parsed.dir !== null || (await inAgentPane(deps));
   const cwd = deps.cwd ?? process.cwd();

@@ -3428,6 +3428,18 @@ export async function setHillSwitch(on: boolean): Promise<boolean> {
 }
 
 /**
+ * POST /api/tricks/switch: switch tricks as a whole on or off for this bridge (off by default). Answers the
+ * value the switch holds now. The snapshot carries it too (`tricksOff`), so a caller revalidates after a
+ * write and draws from the root data, never from this answer alone.
+ */
+export async function setTricksSwitch(on: boolean): Promise<boolean> {
+  const raw = await req<JsonValue>("/api/tricks/switch", { method: "POST", body: JSON.stringify({ on }) });
+  const held = asJsonBoolean(asJsonObject(raw)?.on);
+  if (held === undefined) throw new Error("/api/tricks/switch answered with a body that is not { on }");
+  return held;
+}
+
+/**
  * POST /api/hill/clear: remove every closed Decision from the Hill. Answers how many went. The lists
  * come back through the snapshot's `hillRev`, as for any change to the Hill; a refusal or a body that is
  * not `{ cleared }` throws, so the caller puts the rows back.

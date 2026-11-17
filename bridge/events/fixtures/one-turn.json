@@ -1,0 +1,18 @@
+{
+  "about": "One Claude turn with a permission ask, as the state engine reports it per poll (bridge/state-engine.ts: a transition fires only when a pane's status differs from its last poll; the first sighting fires none). No recorded status log exists in the repo, so this is built from the code and the tests: Herdr's agent_status set (HERDR_API.md), `working -> blocked` for a permission dialog (and the engine's liftScreenAsks), `blocked -> working` once answered, `working -> done` at the turn end on Herdr <= 0.8, and `done -> idle` after the person looks (state-engine.test.ts 'done -> idle must not bump'). `idleOnly` is the same turn on Herdr 0.9, tmux or zellij, which report the end as idle (notifications.ts, issue #345).",
+  "session": "default",
+  "paneId": "w1:p1",
+  "herdr": [
+    { "from": "idle", "to": "working" },
+    { "from": "working", "to": "blocked" },
+    { "from": "blocked", "to": "working" },
+    { "from": "working", "to": "done" },
+    { "from": "done", "to": "idle" }
+  ],
+  "idleOnly": [
+    { "from": "idle", "to": "working" },
+    { "from": "working", "to": "blocked" },
+    { "from": "blocked", "to": "working" },
+    { "from": "working", "to": "idle" }
+  ]
+}

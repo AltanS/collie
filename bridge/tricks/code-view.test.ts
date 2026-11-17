@@ -36,7 +36,7 @@ async function rig(files: Record<string, string | Uint8Array> = {}, manifest = M
     await mkdir(join(folder, name, ".."), { recursive: true });
     await writeFile(join(folder, name), content, { mode: 0o755 });
   }
-  const service = new TricksService({ configDir, stateDir, memberId: HOST, world: () => ({ machine: "desk", sessions: [], spaces: [] }), env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, now: () => Date.parse("2026-11-17T09:00:00Z"), warn: () => {}, revBase: 1000 });
+  const service = new TricksService({ configDir, stateDir, memberId: HOST, world: () => ({ machine: "desk", sessions: [], spaces: [] }), env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, now: () => Date.parse("2026-11-17T09:00:00Z"), warn: () => {}, revBase: 1000, feature: { on: () => true } });
   await service.refresh(true);
   return { folder, service };
 }

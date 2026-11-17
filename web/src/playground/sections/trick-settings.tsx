@@ -15,6 +15,7 @@ import { TrickCardsLineView, TrickCardsWaitingList } from "@/components/trick-ca
 import { HILL_IDLE } from "@/hooks/use-hill-answer";
 import { OfficialTrickAboutSheet, TrickAboutSheet } from "@/components/trick-about-sheet";
 import { TricksSettingsCard } from "@/components/tricks-settings-card";
+import { TricksSwitchCard } from "@/components/tricks-switch-card";
 import { addOfficialTrick } from "@/lib/api";
 import { syncHill } from "@/lib/hill/store";
 import { clearStatus } from "@/lib/status";
@@ -121,7 +122,7 @@ function WaitingRowCard({ n, state, label, tricks }: { n: number; state: string;
   return <ListCard n={n} state={state} label={label} tricks={tricks} />;
 }
 
-function ListCard({ n, state, label, tricks, readOnly, hillOff, gate }: { n: number; state: string; label: string; tricks: WireTrickInfo[]; readOnly?: boolean; hillOff?: boolean; gate?: TricksGate }) {
+function ListCard({ n, state, label, tricks, readOnly, hillOff, tricksOff, gate }: { n: number; state: string; label: string; tricks: WireTrickInfo[]; readOnly?: boolean; hillOff?: boolean; tricksOff?: boolean; gate?: TricksGate }) {
   const store = useListStore(tricks, gate);
   return (
     <Card state={state} label={`${n} · ${label}`}>
@@ -136,6 +137,7 @@ function ListCard({ n, state, label, tricks, readOnly, hillOff, gate }: { n: num
             now={NOW}
             readOnly={readOnly}
             hillOff={hillOff}
+            tricksOff={tricksOff}
           />
         </RootRouter>
       </div>
@@ -331,9 +333,29 @@ function OfficialSheetBox({ n, state, label, entry }: { n: number; state: string
   );
 }
 
+/** The switch card at the top of Settings, Tricks, in a 390px column, with a switch that flips in place. */
+function SwitchCardCase({ n, state, label, initial, waiting = 0, windows = false }: { n: number; state: string; label: string; initial: boolean; waiting?: number; windows?: boolean }) {
+  const [on, setOn] = useState(initial);
+  return (
+    <Card state={state} label={`${n} · ${label}`}>
+      <div className="w-[390px] max-w-full bg-background p-4">
+        <TricksSwitchCard on={on} disabled={false} waiting={waiting} windows={windows} onToggle={setOn} />
+      </div>
+    </Card>
+  );
+}
+
 export function TrickSettingsSection(): ReactNode {
   return (
     <Section def={DEF}>
+      {/* The switch for tricks as a whole (bridge/tricks/feature-switch.ts), first on Settings, Tricks. Off by default. */}
+      <Group title="The switch for tricks as a whole">
+        <SwitchCardCase n={47} state="tricks-switch-on" label="tricks on" initial />
+        <SwitchCardCase n={48} state="tricks-switch-off" label="tricks off (the default)" initial={false} />
+        <SwitchCardCase n={49} state="tricks-switch-armed" label="3 questions from tricks wait: tap once, it arms; tap again inside four seconds, it goes off" initial waiting={3} />
+        <SwitchCardCase n={50} state="tricks-switch-windows" label="a Windows bridge: the line, and the switch cannot move" initial={false} windows />
+        <ListCard n={51} state="trick-settings-tricks-off" label="tricks off: the list stays readable, every switch is disabled, one line says why" tricks={[HEALTHY[0] ?? trick("x", "x"), { ...(HEALTHY[2] ?? trick("y", "y")), on: false, state: "off" }]} tricksOff />
+      </Group>
       <Group title="The list">
         <ListCard n={1} state="trick-settings-healthy" label="three tricks, three origins" tricks={HEALTHY} />
         <ListCard
@@ -520,7 +542,7 @@ export function TrickSettingsSection(): ReactNode {
       </Group>
       <Group title="Read the code (2026-11-17)">
         <SheetBox
-          n={47}
+          n={52}
           state="trick-settings-code-approved"
           label="a trick that is on: the run line and the timer, then a fold for each file (scroll down; tap legs.ts, three lines are marked)"
           updates
@@ -528,21 +550,21 @@ export function TrickSettingsSection(): ReactNode {
           readCode={codeReader()}
         />
         <SheetBox
-          n={48}
+          n={53}
           state="trick-settings-code-next"
           label="a trick that is off and was never approved: the folder as it is now, the copy a switch on approves"
           trick={{ ...LEGS_RUNS, on: false, state: "off", warnings: [{ kind: "network", text: "This trick reaches the network." }] }}
           readCode={codeReader(CODE_INDEX_NEXT)}
         />
         <SheetBox
-          n={49}
+          n={54}
           state="trick-settings-code-long"
           label="a long file: its first part, how much is left out, and the flags in the part not shown (tap legs.ts)"
           trick={LEGS_RUNS}
           readCode={codeReader(CODE_INDEX_LONG, true)}
         />
         <SheetBox
-          n={50}
+          n={55}
           state="trick-settings-code-no-timer"
           label="no timer, and a trick of another machine: the line says it runs once and on a tap; the code is not shown"
           trick={{ ...LEGS_RUNS, everyMs: undefined, id: "remote", name: "Remote leg" }}

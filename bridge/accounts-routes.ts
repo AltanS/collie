@@ -143,10 +143,23 @@ interface LiveAccounts {
   defaultCounts: Map<string, number>;
   /** Agent panes per added account id, sign-in sessions left out. */
   idCounts: Map<string, number>;
+  /** The ids of the panes counted in `defaultCounts`, per harness. */
+  defaultPanes: Map<string, string[]>;
+  /** The ids of the panes counted in `idCounts`, per added account id. */
+  idPanes: Map<string, string[]>;
 }
 
 function bump(counts: Map<string, number>, key: string): void {
   counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+
+/** The most pane ids one row lists. */
+const MAX_ROW_PANES = 64;
+
+function addPane(panes: Map<string, string[]>, key: string, paneId: string): void {
+  const held = panes.get(key) ?? [];
+  if (held.length < MAX_ROW_PANES) held.push(paneId);
+  panes.set(key, held);
 }
 
 /** How many launch notes are kept at most; the oldest go first. */
@@ -304,19 +317,27 @@ export class Accounts {
     const ids = new Set<string>();
     const defaultCounts = new Map<string, number>();
     const idCounts = new Map<string, number>();
+    const defaultPanes = new Map<string, string[]>();
+    const idPanes = new Map<string, string[]>();
     for (const { session, pane } of this.deps.panes?.() ?? []) {
       if (pane.kind === "shell" || accountAdapter(pane.agent) === undefined) continue;
       const row = this.accountOf(session, pane);
       const signIn = this.signIns.has(`${session}\u0000${pane.paneId}`);
       if (row !== undefined) {
         ids.add(row.id);
-        if (!signIn) bump(idCounts, row.id);
+        if (!signIn) {
+          bump(idCounts, row.id);
+          addPane(idPanes, row.id, pane.paneId);
+        }
       } else if (typeof this.deps.reported?.reportedConfigDir(pane) !== "string") {
         defaults.add(pane.agent);
-        if (!signIn) bump(defaultCounts, pane.agent);
+        if (!signIn) {
+          bump(defaultCounts, pane.agent);
+          addPane(defaultPanes, pane.agent, pane.paneId);
+        }
       }
     }
-    return { defaults, ids, defaultCounts, idCounts };
+    return { defaults, ids, defaultCounts, idCounts, defaultPanes, idPanes };
   }
 
   // ── GET /api/accounts ─────────────────────────────────────────────────────────────────────
@@ -435,6 +456,8 @@ export class Accounts {
       };
       const defaultRunning = live.defaultCounts.get(h.id) ?? 0;
       if (defaultRunning > 0) defaultRow.running = defaultRunning;
+      const defaultPaneIds = live.defaultPanes.get(h.id);
+      if (defaultPaneIds !== undefined && defaultPaneIds.length > 0) defaultRow.panes = defaultPaneIds;
       const defaultHooks = this.hooksOf(h.adapter, defaultDir);
       if (defaultHooks !== undefined) defaultRow.hooks = defaultHooks;
       const defaultWho = who.get(identityKey(h.id, defaultDir));
@@ -444,6 +467,8 @@ export class Accounts {
         const row = await this.rowWire(r, h.binary, h.adapter, live.ids.has(r.id), who.get(identityKey(r.harness, r.dir)));
         const running = live.idCounts.get(r.id) ?? 0;
         if (running > 0) row.running = running;
+        const paneIds = live.idPanes.get(r.id);
+        if (paneIds !== undefined && paneIds.length > 0) row.panes = paneIds;
         accounts.push(row);
       }
     }

@@ -569,6 +569,8 @@ them. An agent that is not on the machine's login `PATH` stays in the list, disa
 installed". For another terminal agent, declare a row for it as above: it shows in the **Command**
 select under **Shell**, starts in a pane like any command, and Collie shows no status for it.
 
+MiniMax Code (`mcode`) is in the list as an experiment: it works where the multiplexer names an `mcode` pane, today the Herdr core.
+
 To verify, reload the dashboard and look under the herd. If a row fails to load,
 `journalctl --user -u collie -n 20` prints the error.
 
@@ -653,20 +655,20 @@ every add, rename and removal.
 > once before it first starts that row, and shows the command, the folder and the machine. Set
 > `adds = false` on the lead to turn off every phone-added row.
 
-### Accounts
+### Profiles
 
 Keep a second login of one agent beside the first, and pick it when you start a session. Open
-**Settings**, then **Accounts**. With no account added, nothing else changes.
+**Settings**, then **Profiles**. With no profile added, nothing else changes.
 
-Each agent has a **Default** account: its normal folder, started with nothing set. Add an account in
-one of two kinds:
+A profile is a named folder that holds one login at a time. Each agent has a **Default** profile: its
+normal folder, started with nothing set. Add a profile in one of two kinds:
 
 - **Shared** (Claude Code only): Collie makes a new folder, `~/.claude-<name>`, and links the default
   folder's setup and history into it. Your sessions, `/resume`, skills, commands, plugins, hooks,
   `settings.json`, `CLAUDE.md` and the prompt history stay one set. Only the login and the agent's
-  per-account state are the account's own.
-  The shared account also reads the Default folder's `settings.json`. A key helper, an environment block
-  or a forced organisation in that file applies to the shared account too. Use an own folder when the
+  per-profile state are the profile's own.
+  The shared profile also reads the Default folder's `settings.json`. A key helper, an environment block
+  or a forced organisation in that file applies to the shared profile too. Use an own folder when the
   two logins must not share settings or history.
 - **Own**: a folder you already use, taken as it is. Collie writes nothing into it. A folder that does
   not exist yet is made empty.
@@ -678,77 +680,77 @@ one of two kinds:
 | pi | `PI_CODING_AGENT_DIR` | Own |
 | Grok | `GROK_HOME` | Own |
 
-To sign in, start a session with the new account. The agent shows its own sign-in in the pane:
+To sign in, start a session with the new profile. The agent shows its own sign-in in the pane:
 Claude Code asks for a theme and then the login method, Codex offers a browser sign-in or a device
 code, pi says to run `/login`, and Grok shows a code to approve in a browser. The first start of a new
-Claude Code account asks for a text style before the sign-in. Open Keys and press Enter to keep the one
+Claude Code profile asks for a text style before the sign-in. Open Keys and press Enter to keep the one
 it suggests. Some sign-ins need a browser on that machine. Claude Code and Grok also try to open that
 page in a browser on the machine that runs the bridge.
 
-A Claude Code account shows who is signed in: the email under the account's name in the list, and on
+A Claude Code profile shows who is signed in: the email under the profile's name in the list, and on
 its page the full address with the plan, for example "Max". The bridge asks Claude Code itself, with
-`claude auth status` run with the account's folder, and reads only the sign-in flag, the email and the
+`claude auth status` run with the profile's folder, and reads only the sign-in flag, the email and the
 plan from its answer. It opens no login file for this. It asks only where Claude Code has run before,
-that is where its state file `.claude.json` exists. Any other account reads "Not signed in" without
-asking, so the command creates no files in an account Claude Code has never started in. The answer is
+that is where its state file `.claude.json` exists. Any other profile reads "Not signed in" without
+asking, so the command creates no files in a profile Claude Code has never started in. The answer is
 kept in memory and shown on the phone only, and it is not written to disk or to the audit log. An
-answer older than a minute is shown at once and checked again in the background. **Sign in again** on an account that is signed in starts
+answer older than a minute is shown at once and checked again in the background. **Sign in again** on a profile that is signed in starts
 `claude /login`, which opens the login menu. Codex, pi and Grok do not say which login they hold, so
-their accounts show no email.
+their profiles show no email.
 
-A sign-in session started from the Accounts page does not start in your home folder. It starts in an
+A sign-in session started from the Profiles page does not start in your home folder. It starts in an
 empty folder of Collie's own, `sign-in` in the instance's state folder (`~/.local/state/collie/sign-in`
 unless `COLLIE_STATE_DIR` moves it). The agent may still ask whether you trust that folder. Either
 answer is fine for a sign-in.
 
-The New page lets you pick the account for an agent and for a row you built from its options. A row
+The New page lets you pick the profile for an agent and for a row you built from its options. A row
 you wrote by hand starts as you wrote it. A Claude Code session started from a desktop terminal with
-the account's line (shown on the account's page) gets the account's tag too, once its hooks report
+the profile's line (shown on the profile's page) gets the profile's tag too, once its hooks report
 the folder.
 
-A shared Claude Code account keeps three things per account, because Claude Code keeps them in the
-account's own `.claude.json`: project trust, MCP servers added with `claude mcp add`, and the theme.
-A link Collie could not make, because the account folder already holds that name, is listed on the
-account's page. Collie never replaces it.
+A shared Claude Code profile keeps three things per profile, because Claude Code keeps them in the
+profile's own `.claude.json`: project trust, MCP servers added with `claude mcp add`, and the theme.
+A link Collie could not make, because the profile folder already holds that name, is listed on the
+profile's page. Collie never replaces it.
 
 The history of an own folder is found with no restart and no `.env` line. An own Claude Code folder
 may have no Collie hooks yet; its page says so and shows the line that installs them.
 
-**Remove** forgets the account's name only. The folder, its links and its login stay.
+**Remove** forgets the profile's name only. The folder, its links and its login stay.
 
-#### Change the login of an account
+#### Change the login of a profile
 
-When one login has run out of usage and another has some left, you can move an account to the other
-login without a new session. Open the account's page and tap **Change login**. In a session, tap the
-session's name and then **Change login**: it opens the same page for the account that session runs
-under. The page shows who is signed in now and, for Claude Code, how many sessions of the account run.
+When one login has run out of usage and another has some left, you can move a profile to the other
+login without a new session. Open the profile's page and tap **Change login**. In a session, tap the
+session's name and then **Change login**: it opens the same page for the profile that session runs
+under. The page shows who is signed in now and, for Claude Code, how many sessions of the profile run.
 
-**Change login** starts the agent's own sign-in for the account's folder, in the same way as **Sign in
+**Change login** starts the agent's own sign-in for the profile's folder, in the same way as **Sign in
 again**. The phone shows the agent's sign-in screens as cards. Pick the login method, tap **Open
-sign-in page** to sign in with the other account in your browser, and paste the code into the
+sign-in page** to sign in with the other login in your browser, and paste the code into the
 **Sign-in code** field. The button opens only the agent's own sign-in address; any other address is
 shown as text to copy. Then go back to the Change login page and tap **Finish**. Collie closes the
 sign-in session, asks the agent who is signed in, and shows the result. When the list already shows a
 new email, the page finishes by itself.
 
-- **Claude Code**: running sessions of the account continue on the new login from their next message.
+- **Claude Code**: running sessions of the profile continue on the new login from their next message.
   Claude Code itself loads a changed login before each request, so no session needs a restart and each
   keeps its conversation.
 - **Codex, pi and Grok**: the new login is used by sessions you start after the change. Start a new
   session to use it.
 
 The old login stays until the new sign-in succeeds. If you cancel, enter a wrong code or leave the
-sign-in, the account stays signed in as before, and the result says "Still signed in as" with the
+sign-in, the profile stays signed in as before, and the result says "Still signed in as" with the
 same email. The sign-in address and the code are not stored, logged or sent anywhere else. The
-agent writes the new login into the account's folder; Collie does not open that file.
+agent writes the new login into the profile's folder; Collie does not open that file.
 
-On a crew member's session there is no **Change login** row, because accounts are per machine. Change
+On a crew member's session there is no **Change login** row, because profiles are per machine. Change
 the login on the member's own Collie.
 
-> **Note.** Accounts are per machine. A crew member's accounts are its own, and the New page reads
-> the accounts of the machine you start on. Windows offers no accounts yet.
+> **Note.** Profiles are per machine. A crew member's profiles are its own, and the New page reads
+> the profiles of the machine you start on. Windows offers no profiles yet.
 >
-> On tmux and zellij, the first start of a new Claude Code account shows the terminal view, not the
+> On tmux and zellij, the first start of a new Claude Code profile shows the terminal view, not the
 > sign-in card, until the agent has signed in. Type the code with the keys there. The phone treats that
 > text as an ordinary message.
 
@@ -1162,7 +1164,7 @@ GitHub token. What the report holds, and how to read it before you send it, is i
 
 ## Multi-session
 
-By default, one Collie instance serves every Herdr session it finds.
+By default, one Collie instance serves every Herdr session it finds. The phone calls each one a space.
 
 `COLLIE_MULTI_SESSION=on` (the default) discovers and serves every named Herdr session under your
 config root, switchable from the header. Setting `COLLIE_MULTI_SESSION=off` serves only the primary
@@ -1181,7 +1183,7 @@ The phone calls a terminal grouping a space. Herdr calls the same thing a sessio
 names one by the folder its socket lives in, so `<config root>/sessions/project-yt/` shows as
 `project-yt`. In Collie's own words a session is one agent conversation, which is why the file is
 called `spaces.toml`. A label replaces the registry name in the space
-switcher, on its trigger, on the space tag of a row in **All sessions**, and on a durable agent's
+switcher, on its trigger, on the space tag of a row in **All spaces**, and on a durable agent's
 row. The switcher keeps the registry name under the label.
 
 ```toml

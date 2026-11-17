@@ -106,6 +106,13 @@ describe("TrickAboutSheet", () => {
     ]);
   });
 
+  it("says `on` and `watch` as rights, in the two lines of the proposal card, after the environment names", () => {
+    open({ ...FULL, warnings: undefined, events: ["turn.end", "ask.open"], watch: ["~/notes/todo.md", "/etc/hosts"] });
+    const does = within(screen.getByRole("dialog")).getByRole("list", { name: "What it does" });
+    const rows = within(does).getAllByRole("listitem").map((li) => li.textContent);
+    expect(rows.slice(-2)).toEqual(["Runs when a session changes state.", "Runs when these files change: ~/notes/todo.md, /etc/hosts."]);
+  });
+
   it("leaves out each row whose fact is absent, and the whole group when none is there", () => {
     open({ ...BASE, places: [] });
     expect(screen.queryByText("What it does")).toBeNull();
