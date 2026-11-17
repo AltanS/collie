@@ -116,6 +116,13 @@ afterEach(() => {
   localStorage.clear();
 });
 
+/** The Again row, once the launcher read made it tappable: the row is drawn from the device's own record before that. */
+async function againRow(name: RegExp): Promise<HTMLElement> {
+  const row = await screen.findByRole("button", { name });
+  await waitFor(() => expect(row).toBeEnabled());
+  return row;
+}
+
 describe("the New page: the account pick", () => {
   it("with the accounts route answering 404 the page has no pick and the body is as before", async () => {
     serveLaunchers();
@@ -248,7 +255,7 @@ describe("the New page: the account pick", () => {
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
     await router.navigate("/new", { state: { from: "/" } });
-    await userEvent.click(await screen.findByRole("button", { name: /Again/ }));
+    await userEvent.click(await againRow(/Again/));
     await waitFor(() => expect(bodies).toHaveLength(2));
     expect(bodies[1]).toMatchObject({ harness: "claude", account: "acc-work" });
   });
@@ -267,7 +274,7 @@ describe("the New page: the account pick", () => {
     serveAccounts(body({ harnesses: [HARNESS_CLAUDE] }));
     const again = mount([], "/");
     await again.navigate("/new", { state: { from: "/" } });
-    await userEvent.click(await screen.findByRole("button", { name: /Again/ }));
+    await userEvent.click(await againRow(/Again/));
     await waitFor(() => expect(bodies).toHaveLength(2));
     expect(keysOf(bodies[1])).toEqual(["harness", "requestId"]);
   });
