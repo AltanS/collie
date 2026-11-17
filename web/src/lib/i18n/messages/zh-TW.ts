@@ -3345,7 +3345,6 @@ export const zhTW: Dictionary = {
   "settings.tricks.about.open": "關於 {name}",
   "settings.tricks.about.none": "這個 Trick 沒有說明。",
   "settings.tricks.about.does": "功能",
-  "settings.tricks.about.draws": "繪製於：{places}。",
   "settings.tricks.about.env": "要求環境變數名稱 {names}。",
   "settings.tricks.about.on": "工作階段狀態變更時執行。",
   "settings.tricks.about.keepsRunning": "即使沒有開啟任何手機，它也會繼續執行。",

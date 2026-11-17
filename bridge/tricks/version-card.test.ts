@@ -7,7 +7,7 @@ import { memoryHillReceipts } from "../hill/receipts.ts";
 import { HillService } from "../hill/service.ts";
 import { HillStore } from "../hill/store.ts";
 import { HILL_SUMMARY_MAX, type HillDecision, type HillReceipt } from "../../web/src/lib/hill/wire.ts";
-import { ACCESS_LINES, DECISION_VIEW_LIMITS, parseDecisionView, RULES_NEVER_AUTO, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
+import { ACCESS_LINES, DECISION_VIEW_LIMITS, parseDecisionView, RULES_NEVER_AUTO, SHOWS_IN_WORDS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { parseJson } from "../../web/src/lib/json.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import { PENDING_SETTLE_MS, TricksService, type TrickVersionSubject } from "./service.ts";
@@ -15,7 +15,7 @@ import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
 import { GROUP_MASKED_NOTE, GROUP_WRAP } from "./card-group.ts";
-import { ACCESS_CHIPS, accessLine, asksForSentence, ON_CHIP, newRights, raisedAccess, RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VERSION_TOO_MUCH_START, VersionCards, KEEPS_RUNNING, RUNS_AS_YOU, newInputs, versionCard, versionRequestId, versionTitle, versionTooMuch, versionView } from "./version-card.ts";
+import { ACCESS_CHIPS, accessLine, showsIn, asksForSentence, ON_CHIP, newRights, raisedAccess, RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VERSION_TOO_MUCH_START, VersionCards, KEEPS_RUNNING, RUNS_AS_YOU, newInputs, versionCard, versionRequestId, versionTitle, versionTooMuch, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
 import { singleCodeCard, viewHasCode } from "../../web/src/lib/hill/code-card.ts";
 
@@ -364,7 +364,7 @@ describe("the card's words and view", () => {
     const view = card?.view ?? [];
     // Every changed file's whole hunk fits, so all three are shown (B6: no fixed cap of two).
     expect(view[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
-    expect(view.map((node) => node.kind)).toEqual(["para", "table", "diff", "diff", "diff"]);
+    expect(view.map((node) => node.kind)).toEqual(["para", "para", "table", "diff", "diff", "diff"]);
     expect(parseDecisionView(parseJson(JSON.stringify(view))).refusals).toEqual([]);
   });
 
@@ -376,10 +376,11 @@ describe("the card's words and view", () => {
     );
     expect(card?.view).toBeDefined();
     expect(card?.view?.[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
-    const table = card?.view?.[1];
+    // The honest line, then where the trick shows, then the table.
+    const table = card?.view?.[2];
     expect(table?.kind).toBe("table");
     expect(table !== undefined && "kids" in table ? table.kids?.[4] : undefined).toEqual({ kind: "cell", text: "evil?gnp.ts" });
-    expect(card?.view?.[2]).toMatchObject({ kind: "diff", attrs: { file: "evil?gnp.ts" } });
+    expect(card?.view?.[3]).toMatchObject({ kind: "diff", attrs: { file: "evil?gnp.ts" } });
   });
 
   test("F1: fourteen new environment names of 64 characters all show in full, none cut, none dropped", () => {
@@ -968,5 +969,39 @@ describe("the line of a trick that keeps running with no phone open (Altan, 2026
   test("a tap-only trick, and a plain timer, do not", () => {
     expect(texts(card(manifest({ access: "see" })).view)).not.toContain(KEEPS_RUNNING);
     expect(texts(card(manifest({ every: "30s", everyMs: 30_000, access: "see" })).view)).not.toContain(KEEPS_RUNNING);
+  });
+});
+
+// WHERE THE TRICK SHOWS (the operator, 2026-11-17: "I want to see where a trick is drawn"): one line on the approval
+// card, built from the manifest's places in the schema's words, after the rights lines. No place, no line.
+describe("the line of where a trick shows", () => {
+  test("the words of each place, exactly, and the agent view last; each place once; none for a trick with neither", () => {
+    expect(SHOWS_IN_WORDS).toEqual({
+      belt: "the end of the Belt in each session",
+      status: "the usage row of each session",
+      session: "a page of its own (a row under Tricks on the Dashboard)",
+      dashboard: "a tile in the strip at the top of the Dashboard",
+      tabbar: "an item in the bottom bar of the Dashboard",
+      menu: "rows in each session's settings",
+    });
+    expect(showsIn({ places: ["status", "tabbar", "status"], agentView: true })).toEqual([
+      { kind: "para", text: "It shows in: the usage row of each session, an item in the bottom bar of the Dashboard, a view of a session, beside Terminal and Chat." },
+    ]);
+    expect(showsIn({ places: [] })).toEqual([]);
+    expect(showsIn(undefined)).toEqual([]);
+  });
+
+  const manifest = (extra: Partial<TrickManifest> = {}): TrickManifest => ({ id: "legs", name: "Browser leg", run: "./legs.sh", mode: "once", contract: 3, icon: "plug", places: ["belt"], ...extra });
+
+  test("the version card carries it for the new version's places, after the rights lines", () => {
+    const base = subject();
+    const pending = base.pending;
+    if (pending === null) throw new Error("no pending");
+    const card = versionCard({ ...base, base: { dir: "/y", manifest: manifest() }, pending: { ...pending, manifest: manifest({ access: "see", places: ["status", "dashboard"] }) } }, DIFF);
+    const texts = (card?.view ?? []).map((node) => ("text" in node ? node.text : undefined));
+    expect(texts).toContain("It shows in: the usage row of each session, a tile in the strip at the top of the Dashboard.");
+    expect(texts.indexOf("It shows in: the usage row of each session, a tile in the strip at the top of the Dashboard.")).toBeGreaterThan(texts.indexOf(ACCESS_LINES.see));
+    const none = versionCard({ ...base, base: { dir: "/y", manifest: manifest() }, pending: { ...pending, manifest: manifest({ access: "see", places: [] }) } }, DIFF);
+    expect(JSON.stringify(none?.view)).not.toContain("It shows in");
   });
 });

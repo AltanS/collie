@@ -3371,7 +3371,6 @@ export const ja: Dictionary = {
   "settings.tricks.about.open": "{name} について",
   "settings.tricks.about.none": "このトリックには説明がありません。",
   "settings.tricks.about.does": "できること",
-  "settings.tricks.about.draws": "描画先: {places}。",
   "settings.tricks.about.env": "環境変数名 {names} を要求します。",
   "settings.tricks.about.on": "セッションの状態が変わると実行されます。",
   "settings.tricks.about.keepsRunning": "どのスマートフォンも開いていなくても、実行され続けます。",

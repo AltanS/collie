@@ -21,7 +21,7 @@ import { t, tn } from "@/lib/i18n";
 import { spanWords } from "@/lib/tricks/code-words";
 import { WATCH_WINDOW_MS } from "@/lib/tricks/limits";
 import { HostWords } from "@/lib/tricks/render";
-import { originLine, placesLine, runsOnLine, warningLines } from "@/lib/tricks/row-words";
+import { originLine, runsOnLine, showsInPlaces, warningLines } from "@/lib/tricks/row-words";
 import { isSourceUrl, runsWithNoPhone, type FieldValue, type TricksRunsOn, type WireOfficialTrick, type WireRepoFacts, type WireTrickInfo, type WireTrickRules } from "@/lib/tricks/schema";
 import { cn } from "@/lib/utils";
 import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
@@ -35,7 +35,7 @@ import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 //      an `about` nor a `description`, one muted line saying so. With an `about` or a `description`, a small muted line under it says the author wrote the
 //      text and Collie did not check it; the rows below are the bridge's own facts. Plain text: no markdown, no HTML and no link is drawn, so React draws it as text and a
 //      line break inside a paragraph is kept as one;
-//   3. "What it does": ONLY facts the bridge already sends for the row. Where it draws, what it reads from
+//   3. "What it does": ONLY facts the bridge already sends for the row. Where it shows, in plain words (`showsInPlaces`), what it reads from
 //      the agent sessions, the environment names it asks for, and the warnings of the text search of its
 //      code (the same words the card shows before the switch). A row is left out when its fact is absent,
 //      and the whole group when every row is;
@@ -198,7 +198,9 @@ function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
   const rows: FactRow[] = tokens ? tokenRows(trick) : [];
   const places = Array.isArray(trick.places) ? trick.places : [];
   const view = trick.agentView === true;
-  if (places.length > 0 || view) rows.push({ key: "draws", node: valueSentence("settings.tricks.about.draws", { places: placesLine(places, view) }) });
+  // Where it shows, in words a person can find on the phone (2026-11-17), the same line as the approval cards'.
+  const shows = showsInPlaces(places, view);
+  if (shows !== null) rows.push({ key: "shows", node: <span data-line="shows">{valueSentence("settings.tricks.about.shows", { places: shows })}</span> });
   if (view) {
     rows.push({ key: "agent-view", node: t("settings.tricks.about.agentView") });
     rows.push({ key: "agent-view-tap", node: t("settings.tricks.about.agentViewTap") });

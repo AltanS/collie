@@ -19,6 +19,7 @@ import {
   RULES_NEVER_AUTO,
   RULES_WORDS,
   runsWithNoPhone,
+  showsInLine,
   TABLE_LIMITS,
   TEXT_MAX,
   VIEW_LIMITS,
@@ -170,6 +171,12 @@ export const RUNS_AS_YOU = "This trick runs as you on this machine. It can do th
 /** The honest line as the head's first paragraph, for a manifest with a program; nothing for one without. */
 export function runsAsYou(manifest: Pick<TrickManifest, "run"> | undefined): ViewNode[] {
   return manifest?.run === undefined ? [] : [{ kind: "para", text: RUNS_AS_YOU }];
+}
+
+/** {@link showsInLine} as one paragraph, for a manifest with a place or an agent view; nothing for one with neither (2026-11-17). */
+export function showsIn(manifest: Pick<TrickManifest, "places" | "agentView"> | undefined): ViewNode[] {
+  const line = manifest === undefined ? null : showsInLine(manifest);
+  return line === null ? [] : [{ kind: "para", text: line }];
 }
 
 /** The line of a trick that reacts (`on`, `watch`): it starts with no phone open. Bridge-built English, as every word of these cards is (2026-11-17). */
@@ -343,14 +350,20 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   const accessNodes = accessLine(raisedAccess(base, next));
   // The one line of a trick that reacts, right after the rights lines (Altan, 2026-11-17).
   const reactNodes = keepsRunning(next);
-  const plainFacts = [...accessNodes, ...rightsHead("New rights", newRules ? [...rights, RULES_CHIP] : rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null), ...reactNodes, ...maskedNotes(diff.files), ...lines.map((text): ViewNode => ({ kind: "para", text }))];
+  // Where the trick shows (the operator, 2026-11-17): the whole list of the version's places, after the rights lines.
+  const showsNodes = showsIn(next);
+  const rightsNodes = [...accessNodes, ...rightsHead("New rights", newRules ? [...rights, RULES_CHIP] : rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null)];
+  const restNodes = [...reactNodes, ...maskedNotes(diff.files), ...lines.map((text): ViewNode => ({ kind: "para", text }))];
+  const plainFacts = [...rightsNodes, ...restNodes];
   // The code the card shows beside the rules: every changed file but the rules file, which shows whole on its own.
   const code = rules === null ? diff : { ...diff, files: diff.files.filter((file) => file.rel !== rules.rel) };
   const rulesNodes = rules === null ? [] : rulesView(rules);
   // The honest line opens every head this card builds: the single view, the group's first card and the
   // rules fallbacks below.
   const honest = runsAsYou(next);
-  const facts = [...honest, ...plainFacts];
+  // The places line stands in the facts the view shows, not in `plainFacts`: that one decides whether the change has
+  // anything to show at all (`bare`), and where a trick shows is no change of the code.
+  const facts = [...honest, ...rightsNodes, ...showsNodes, ...restNodes];
   // Contract 3: a new or changed field is named, so the yes covers what the trick will ask the person for.
   facts.push(...asksForChange(base, next));
   // Every new right and power shows, or there is no "Use" (security read 2, item 1): when the facts do not

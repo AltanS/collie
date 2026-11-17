@@ -15,6 +15,17 @@ export function placesLine(places: readonly PlaceKind[] | undefined, agentView =
   return words.length === 0 ? t("settings.tricks.places.none") : words.join(", ");
 }
 
+/**
+ * Where a trick shows, in words a person can find on the phone: each place once in its own phrase, the agent view
+ * last, or null for a trick with neither (no line then). The English is `SHOWS_IN_WORDS` in schema.ts, held equal by a test.
+ */
+export function showsInPlaces(places: readonly PlaceKind[] | undefined, agentView = false): string | null {
+  const held: readonly PlaceKind[] = Array.isArray(places) ? places : [];
+  const words = [...new Set(held)].map((place) => t(`settings.tricks.about.shows.${place}` satisfies MessageKey));
+  if (agentView) words.push(t("settings.tricks.about.shows.agentView"));
+  return words.length === 0 ? null : words.join(", ");
+}
+
 /** One warning as the row shows it: the phone's own words for a kind it knows, the bridge's for another. */
 export interface WarningLine {
   kind: string;

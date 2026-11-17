@@ -3402,7 +3402,6 @@ export const de: Dictionary = {
   "settings.tricks.about.open": "Über {name}",
   "settings.tricks.about.none": "Dieser Trick hat keine Beschreibung.",
   "settings.tricks.about.does": "Was er tut",
-  "settings.tricks.about.draws": "Zeichnet in: {places}.",
   "settings.tricks.about.env": "Fragt nach den Umgebungsnamen {names}.",
   "settings.tricks.about.on": "Läuft, wenn eine Sitzung den Zustand wechselt.",
   "settings.tricks.about.keepsRunning": "Er läuft weiter, auch wenn kein Telefon offen ist.",

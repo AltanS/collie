@@ -3352,7 +3352,6 @@ export const ru: Dictionary = {
   "settings.tricks.about.open": "О трюке {name}",
   "settings.tricks.about.none": "У этого трюка нет описания.",
   "settings.tricks.about.does": "Что он делает",
-  "settings.tricks.about.draws": "Рисует в: {places}.",
   "settings.tricks.about.env": "Запрашивает имена переменных окружения: {names}.",
   "settings.tricks.about.on": "Запускается, когда сессия меняет состояние.",
   "settings.tricks.about.keepsRunning": "Он продолжает работать, даже когда ни один телефон не открыт.",

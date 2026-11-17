@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { ACCESS_LINES, MANIFEST_KEYS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
+import { ACCESS_LINES, MANIFEST_KEYS, SHOWS_IN_WORDS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { PROPOSAL_USE_LABEL } from "../../web/src/lib/hill/code-card.ts";
 import { addedDiff } from "./card-group.ts";
 import { PROPOSAL_KEY_RIGHTS, PROPOSAL_ON, PROPOSAL_TOO_LARGE, PROPOSAL_USE, proposalCard, proposalVersionCard, runsOnSentence, type ProposerFacts } from "./proposal-card.ts";
@@ -255,5 +255,35 @@ describe("where it will run", () => {
     const first = made.card.group?.parts[0];
     expect(first?.[0]).toEqual({ kind: "para", text: "A session on workshop proposes it." });
     expect(first?.[1]).toEqual({ kind: "para", text: "It will run on lodge." });
+  });
+});
+
+// WHERE THE TRICK SHOWS (the operator, 2026-11-17): the proposal card and the version card of a proposal each carry
+// one line built from the manifest's places, after the rights lines. A trick with no place gets no line.
+describe("the line of where a proposed trick shows", () => {
+  const diff = addedDiff([{ rel: "program.ts", bytes: enc("console.log(1);\n") }]);
+  const textsOf = (view: readonly ViewNode[] | undefined): (string | undefined)[] => (view ?? []).map((node) => ("text" in node ? node.text : undefined));
+  const LINE = "It shows in: the usage row of each session, a page of its own (a row under Tricks on the Dashboard).";
+
+  test("a new trick's card names its places, after the chip bar of its rights", () => {
+    const card = cardOf({ ...BARE, places: ["status", "session"] });
+    const texts = textsOf(card.view);
+    expect(texts).toContain(LINE);
+    expect((card.view ?? []).findIndex((node) => node.kind === "bar")).toBeLessThan(texts.indexOf(LINE));
+    expect(SHOWS_IN_WORDS.status).toBe("the usage row of each session");
+  });
+
+  test("a trick with no place carries no line, on either card", () => {
+    expect(textsOf(cardOf(BARE).view).some((text) => text?.startsWith("It shows in:"))).toBe(false);
+    const made = proposalVersionCard({ id: "legs", manifest: BARE, baseManifest: BARE, proposer: WHO, diff, warnings: [], crew: false });
+    if (!made.ok) throw new Error(made.error);
+    expect(textsOf(made.card.view).some((text) => text?.startsWith("It shows in:"))).toBe(false);
+  });
+
+  test("the version card of a proposal names the new version's places", () => {
+    const next: TrickManifest = { ...BARE, places: ["status", "session"], access: "see" };
+    const made = proposalVersionCard({ id: "legs", manifest: next, baseManifest: BARE, proposer: WHO, diff, warnings: [], crew: false });
+    if (!made.ok) throw new Error(made.error);
+    expect(textsOf(made.card.view)).toContain(LINE);
   });
 });

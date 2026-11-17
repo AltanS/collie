@@ -527,7 +527,7 @@ Tricks to open it.
 
 - **The top** holds the trick's name, its one-line description and its longer text, then "Written by
   the trick's author. Collie did not check it."
-- **What it does** holds only facts Collie knows: "Draws in: ...", the files it reads, the
+- **What it does** holds only facts Collie knows: "It shows in: ...", the files it reads, the
   environment names it asks for, the warnings of the text search, and a view's rules, shown whole.
 - **Where it comes from** says "From owner/repo @ 3f2a91c" for a trick added from a repository, or
   "Added on this machine." A trick from a repository has a link to it, with the host shown in full.

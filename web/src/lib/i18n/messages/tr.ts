@@ -3211,7 +3211,6 @@ export const tr: Dictionary = {
   "settings.tricks.about.open": "{name} hakkında",
   "settings.tricks.about.none": "Bu trick'in açıklaması yok.",
   "settings.tricks.about.does": "Ne yapar",
-  "settings.tricks.about.draws": "Çizdiği yerler: {places}.",
   "settings.tricks.about.env": "{names} ortam adlarını ister.",
   "settings.tricks.about.on": "Bir oturum durum değiştirdiğinde çalışır.",
   "settings.tricks.about.keepsRunning": "Hiçbir telefon açık olmasa da çalışmaya devam eder.",

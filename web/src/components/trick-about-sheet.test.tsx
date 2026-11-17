@@ -7,7 +7,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { OfficialTrickAboutSheet, TrickAboutSheet, aboutParagraphs, repoFactsLine } from "@/components/trick-about-sheet";
 import { readOfficialTricksReply, readTrick } from "@/lib/tricks/wire";
-import { ABOUT_MAX, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, MENU_TAP_WORDS, MENU_WORDS, RULES_WORDS, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
+import { en, type MessageKey } from "@/lib/i18n/messages/en";
+import { ABOUT_MAX, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, MENU_TAP_WORDS, MENU_WORDS, PLACE_KINDS, RULES_WORDS, SHOWS_IN_AGENT_VIEW, SHOWS_IN_LEAD, SHOWS_IN_WORDS, showsInLine, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 
 // A trick's About sheet: the name as the title, the description and the about paragraphs, then two groups
 // built only from what the bridge already sends for the row.
@@ -99,7 +100,7 @@ describe("TrickAboutSheet", () => {
     const does = within(screen.getByRole("dialog")).getByRole("list", { name: "What it does" });
     const rows = within(does).getAllByRole("listitem").map((li) => li.textContent);
     expect(rows).toEqual([
-      "Draws in: belt, Dashboard.",
+      "It shows in: the end of the Belt in each session, a tile in the strip at the top of the Dashboard.",
       "Reads TODO.md in your agent sessions' folders.",
       "Asks for the environment names GH_TOKEN.",
       "This trick reaches the network.",
@@ -276,7 +277,7 @@ describe("an agent view and its rules (contract 2)", () => {
     const does = screen.getByRole("list", { name: "What it does" });
     expect([...does.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
       "Your agent reads this trick's instructions and draws its answers. That uses tokens.",
-      "Draws in: agent view.",
+      "It shows in: a view of a session, beside Terminal and Chat.",
       AGENT_VIEW_WORDS,
       AGENT_VIEW_TAP_WORDS,
       RULES_WORDS,
@@ -361,7 +362,7 @@ describe("the menu place's two lines (contract 2)", () => {
     const trick: WireTrickInfo = { host: "lodge", id: "ci", name: "CI", icon: "flask", on: true, state: "ok", places: ["menu"], provenance: { via: "folder" } };
     render(<TrickAboutSheet trick={trick} open onClose={vi.fn()} />);
     const does = screen.getByRole("list", { name: "What it does" });
-    expect([...does.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["Draws in: session settings.", MENU_WORDS, MENU_TAP_WORDS]);
+    expect([...does.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["It shows in: rows in each session's settings.", MENU_WORDS, MENU_TAP_WORDS]);
     cleanup();
     const entry: WireOfficialTrick = { id: "ci", name: "CI", description: "Reruns CI.", repo: "https://example.com/tricks.git", repoName: "owner/tricks", commit: "a".repeat(40), state: "absent", addsMenu: true };
     render(<OfficialTrickAboutSheet entry={entry} open onClose={vi.fn()} busy={false} canWrite onAdd={vi.fn()} />);
@@ -479,7 +480,7 @@ describe("why a trick uses agent tokens: the first row of What it does (2026-11-
 
   it("says nothing of tokens for a program trick, even one whose last run listed Decisions", () => {
     render(<TrickAboutSheet trick={{ ...PROGRAM, decides: true }} open onClose={vi.fn()} />);
-    expect(firstRow()).toBe("Draws in: belt.");
+    expect(firstRow()).toBe("It shows in: the end of the Belt in each session.");
     expect(screen.getByRole("dialog").textContent).not.toContain("tokens");
   });
 
@@ -500,6 +501,28 @@ describe("why a trick uses agent tokens: the first row of What it does (2026-11-
 
 // THE VALUES STAND ON CHIPS: the label and the plain sentence stay muted, the one thing a row is read for sits on a
 // chip (the foreground at medium weight, `muted`, a uniform hairline). The words around it are the dictionary's.
+describe("TrickAboutSheet where it shows (2026-11-17)", () => {
+  it("says it in the schema's words, the same line the approval cards carry, one phrase per place and the agent view last", () => {
+    const trick: WireTrickInfo = { ...BASE, places: ["belt", "status", "session", "dashboard", "tabbar", "menu"], agentView: true };
+    open(trick);
+    const line = screen.getByRole("dialog").querySelector('[data-line="shows"]')?.textContent;
+    expect(line).toBe(showsInLine({ places: ["belt", "status", "session", "dashboard", "tabbar", "menu"], agentView: true }));
+    expect(line).toContain("the usage row of each session");
+    expect(line).toContain("a page of its own (a row under Tricks on the Dashboard)");
+  });
+
+  it("draws no line for a trick with no place and no agent view", () => {
+    open({ ...BASE, places: [] });
+    expect(screen.getByRole("dialog").querySelector('[data-line="shows"]')).toBeNull();
+  });
+
+  it("keeps every phone phrase equal to the bridge's, in schema.ts", () => {
+    expect(en["settings.tricks.about.shows"]).toBe(`${SHOWS_IN_LEAD} {places}.`);
+    for (const place of PLACE_KINDS) expect(en[`settings.tricks.about.shows.${place}` satisfies MessageKey]).toBe(SHOWS_IN_WORDS[place]);
+    expect(en["settings.tricks.about.shows.agentView"]).toBe(SHOWS_IN_AGENT_VIEW);
+  });
+});
+
 describe("TrickAboutSheet values on chips", () => {
   const WITH_FACTS: WireTrickInfo = {
     ...FULL,
@@ -515,8 +538,8 @@ describe("TrickAboutSheet values on chips", () => {
     open(WITH_FACTS);
     const dialog = screen.getByRole("dialog");
     const rowOf = (text: string) => within(dialog).getByText((_, el) => el?.tagName === "LI" && (el.textContent ?? "").includes(text));
-    expect(chips(rowOf("Draws in:"))).toEqual(["belt, status"]);
-    expect(rowOf("Draws in:")).toHaveTextContent("Draws in: belt, status.");
+    expect(chips(rowOf("It shows in:"))).toEqual(["the end of the Belt in each session, the usage row of each session"]);
+    expect(rowOf("It shows in:")).toHaveTextContent("It shows in: the end of the Belt in each session, the usage row of each session.");
     expect(chips(rowOf("Asks for the environment names"))).toEqual(["GH_TOKEN"]);
     expect(chips(rowOf("Runs when these files change"))).toEqual(["~/notes/todo.md"]);
     expect(chips(rowOf("Reads "))).toEqual(["TODO.md"]);

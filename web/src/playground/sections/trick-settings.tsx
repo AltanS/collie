@@ -543,7 +543,7 @@ export function TrickSettingsSection(): ReactNode {
         <SheetBox
           n={67}
           state="trick-settings-about-values"
-          label="the values stand on chips: the timer, the run line, places, a file path and a version in the facts, and the settings the person set (labels stay muted)"
+          label="the values stand on chips: the timer, the run line, where it shows, a file path and a version in the facts, and the settings the person set (labels stay muted)"
           values
           trick={{
             ...FIELDS_TRICK,
