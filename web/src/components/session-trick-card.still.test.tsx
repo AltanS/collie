@@ -1,6 +1,7 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AgentViewScreen } from "@/components/agent-view-screen";
 import { ChatApprovalCard } from "@/components/session-trick-card";
 import { COLLAPSE_MS } from "@/components/ui/collapse";
 import { HILL_IDLE } from "@/hooks/use-hill-answer";
@@ -12,7 +13,8 @@ import { stubAllSeen } from "@/test/seen-end";
 // THE CHAT CARD'S YES WAITS FOR THE CARD TO STAND STILL (security read of package I, point 2), measured in the
 // chat's own scroll (2026-11-17): the card flows in the thread like a message, so the person scrolling to read
 // is not a move and does not keep the yes off for ever; a row put in above the card is, and waits again. A touch
-// that began before the yes was ready is not a tap on it.
+// that began before the yes was ready is not a tap on it. The same in an agent view's own scroll, where the card
+// stands while the view stands in for the chat.
 
 const HASH = "a".repeat(64);
 const decision: HillDecision = collieCard("proposal", "legs", {
@@ -31,9 +33,11 @@ beforeEach(() => {
   vi.useFakeTimers();
   cardTop = 500;
   scroll = 0;
+  // The opened marks of a card live in sessionStorage (lib/hill/group-opened.ts): each case starts unread.
+  sessionStorage.clear();
   stubAllSeen();
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    if (this.dataset.testid === "chat") return new DOMRect(0, 0, 390, 800);
+    if (this.dataset.testid === "chat" || this.hasAttribute("data-scroll-root")) return new DOMRect(0, 0, 390, 800);
     // The card grows while its fold is open, as it does on a phone.
     return new DOMRect(0, cardTop, 360, this.querySelector('[data-slot="chat-approval-code"]') === null ? 240 : 640);
   });
@@ -44,14 +48,22 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function draw() {
+/** Where the card stands: last in the chat's thread, or last in an agent view's own scroll. */
+type Host = "chat" | "agent-view";
+
+function draw(host: Host = "chat") {
   const onSend = vi.fn<(intent: string, text: string | null, group?: HillGroupAnswer) => void>();
+  const card = <ChatApprovalCard decision={decision} answer={HILL_IDLE} onSend={onSend} onLater={vi.fn()} />;
   const view = render(
-    <div data-testid="chat" style={{ overflowY: "auto" }}>
-      <ChatApprovalCard decision={decision} answer={HILL_IDLE} onSend={onSend} onLater={vi.fn()} />
-    </div>,
+    host === "chat" ? (
+      <div data-testid="chat" style={{ overflowY: "auto" }}>
+        {card}
+      </div>
+    ) : (
+      <AgentViewScreen name="Morph" session="lodge/%3#abcd" view={undefined} working={false} entries={[]} canAct onTap={vi.fn()} onLink={vi.fn()} now={Date.parse("2026-11-17T10:00:00.000Z")} settleMs={0} tail={card} />
+    ),
   );
-  const box = view.getByTestId("chat");
+  const box = host === "chat" ? view.getByTestId("chat") : view.container.querySelector<HTMLElement>("[data-scroll-root]")!;
   Object.defineProperty(box, "scrollTop", { configurable: true, get: () => scroll });
   const option = (intent: string) => view.container.querySelector<HTMLButtonElement>(`[data-slot="chat-approval-option"][data-intent="${intent}"]`)!;
   const toggle = () => view.container.querySelector<HTMLButtonElement>('[data-slot="chat-approval-code-toggle"]')!;
@@ -65,9 +77,9 @@ function readCode(toggle: () => HTMLButtonElement) {
   wait(COLLAPSE_MS + 64);
 }
 
-describe("the chat card's yes", () => {
+describe.each(["chat", "agent-view"] as const)("the card's yes, in the %s's scroll", (host) => {
   it("is off until the code was read AND the card stood still for a second; the decline is never held", () => {
-    const { yes, no, toggle } = draw();
+    const { yes, no, toggle } = draw(host);
     wait(STILL_MS * 2);
     // Still for two seconds, but the code is not read: off.
     expect(yes()).toBeDisabled();
@@ -80,7 +92,7 @@ describe("the chat card's yes", () => {
   });
 
   it("a press that began before the yes was ready sends nothing; a press on the ready yes sends once with the hash", () => {
-    const { onSend, yes, toggle } = draw();
+    const { onSend, yes, toggle } = draw(host);
     readCode(toggle);
     fireEvent.pointerDown(yes());
     wait(STILL_MS + STILL_TICK_MS * 2);
@@ -94,7 +106,7 @@ describe("the chat card's yes", () => {
   });
 
   it("scrolling the chat to read moves the card on the screen but not in the thread: the yes is not kept off", () => {
-    const { yes, toggle } = draw();
+    const { yes, toggle } = draw(host);
     readCode(toggle);
     // The person scrolls down through the code for three seconds, a step every tick.
     for (let i = 0; i < 30; i++) {
@@ -111,7 +123,7 @@ describe("the chat card's yes", () => {
   });
 
   it("a row put in above the card shifts it in the thread: the yes is off again for a whole second", () => {
-    const { yes, toggle } = draw();
+    const { yes, toggle } = draw(host);
     readCode(toggle);
     wait(STILL_MS + STILL_TICK_MS * 2);
     expect(yes()).toBeEnabled();

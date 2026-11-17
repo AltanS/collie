@@ -129,6 +129,11 @@ export interface AgentViewScreenProps {
   now?: number;
   /** The settle window in ms, for a test. Absent: {@link VIEW_SETTLE_MS}. */
   settleMs?: number;
+  /**
+   * What stands last in this view's own scroll, after the screen: a trick this session proposed
+   * (components/session-trick-card.tsx), so the card is answered here too and never needs a trip to Settings.
+   */
+  tail?: ReactNode;
 }
 
 /**
@@ -401,6 +406,7 @@ export function AgentViewScreen({
   onLink,
   now,
   settleMs = VIEW_SETTLE_MS,
+  tail,
 }: AgentViewScreenProps) {
   useLocale();
   const clock = useBridgeNow(now);
@@ -537,7 +543,8 @@ export function AgentViewScreen({
   return (
     <div data-slot="agent-view" data-state={state} data-held={held ? "" : undefined} className="flex h-full w-full min-w-0 flex-col">
       <ViewBand name={name} line={bandLine} age={age} />
-      <div style={tailRoomStyle(tailRoom)} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-3 pb-[max(1rem,var(--tail-room,0px))]">
+      {/* `data-scroll-root`: the box a trick card at the tail watches its code's end in (decision-group.tsx `scrollBoxOf`). */}
+      <div data-scroll-root style={tailRoomStyle(tailRoom)} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-3 pb-[max(1rem,var(--tail-room,0px))]">
         {request !== null && (
           <div data-slot="view-request" key={`${String(request.at)}:${request.text}`} className="mb-3 min-w-0">
             {receipt === null ? <ViewRequestBubble text={request.text} /> : <ViewReceiptCard receipt={receipt} phase={request.phase} reason={request.reason} pictures={pictures} />}
@@ -581,6 +588,7 @@ export function AgentViewScreen({
             {split.isChoiceStale && <ChoicePart view={view} pictures={pictures} pressed={pressed} busy={null} canAct="stale" canTap={canTap} onPick={onPick} />}
           </ViewEarlier>
         )}
+        {tail}
       </div>
     </div>
   );
