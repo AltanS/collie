@@ -1915,7 +1915,7 @@ describe("accounts across the link: only the list crosses (M101 spec 06)", () =>
     // A Windows member: its own accounts route answers `accounts.unavailable`.
     const answers = [
       { body: { error: "not found" }, code: undefined },
-      { body: { ok: false, error: "this machine offers no accounts", code: "accounts.unavailable" }, code: "accounts.unavailable" },
+      { body: { ok: false, error: "this machine offers no profiles", code: "accounts.unavailable" }, code: "accounts.unavailable" },
     ];
     for (const { body, code } of answers) {
       const { transport } = transportOf(() => ok(Response.json(body, { status: 404 })));

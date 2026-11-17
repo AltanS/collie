@@ -205,7 +205,7 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/dashboard-places").then((m) => ({ default: m.DashboardPlacesSection })),
   },
   {
-    def: { id: "accounts", group: "Settings", title: "Accounts", keywords: ["accounts", "login", "sign-in", "email", "plan", "AccountListRow", "SignedInRow", "identity"] },
+    def: { id: "accounts", group: "Settings", title: "Profiles", keywords: ["profiles", "profile", "accounts", "account", "login", "sign-in", "email", "plan", "AccountListRow", "SignedInRow", "identity"] },
     load: () => import("./sections/accounts").then((m) => ({ default: m.AccountsSection })),
   },
 ];

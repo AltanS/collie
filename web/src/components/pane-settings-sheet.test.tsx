@@ -218,33 +218,52 @@ describe("PaneSettingsSheet — Change login (M101)", () => {
     server.use(http.get("/api/notifications/cache-watch", () => HttpResponse.json(state())));
   });
 
+  // Pane `w1:p1` runs in the Default row's folder, `w1:p2` in the Work profile's; `w1:p3` is in no row.
   const listed = () =>
     server.use(
       http.get("/api/accounts", () =>
         HttpResponse.json(
           accountsBody({
-            accounts: [defaultRow({ identity: { signedIn: true, email: "me@example.com" } }), workRow({ identity: { signedIn: true, email: "work@example.com" } })],
+            accounts: [
+              defaultRow({ identity: { signedIn: true, email: "me@example.com" }, panes: ["w1:p1"] }),
+              workRow({ identity: { signedIn: true, email: "work@example.com" }, panes: ["w1:p2"] }),
+            ],
           }),
         ),
       ),
     );
 
-  test("a session of an added account: one row naming the account and its login, which opens that account's Change login", async () => {
+  test("a session in an added profile's folder: one row naming the profile and its login, which opens that profile's Change login", async () => {
     listed();
     const onOpen = vi.fn();
-    render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p1" changeLogin={{ harness: "claude", account: "acc-work", onOpen }} />);
+    render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p2" changeLogin={{ harness: "claude", onOpen }} />);
     const row = await screen.findByRole("button", { name: /Change login/ });
     expect(row).toHaveTextContent("Work · work@example.com");
     await userEvent.click(row);
     expect(onOpen).toHaveBeenCalledWith("acc-work");
   });
 
-  test("a session with no account tag is the Default's", async () => {
+  test("a session in the Default's folder: the row is for Default", async () => {
     listed();
     const onOpen = vi.fn();
-    render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p1" changeLogin={{ harness: "claude", account: undefined, onOpen }} />);
+    render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p1" changeLogin={{ harness: "claude", onOpen }} />);
     await userEvent.click(await screen.findByRole("button", { name: /Change login/ }));
     expect(onOpen).toHaveBeenCalledWith("claude:default");
+  });
+
+  test("a session in a folder no profile names gets no row, and is not offered Default's", async () => {
+    listed();
+    render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p3" changeLogin={{ harness: "claude", onOpen: vi.fn() }} />);
+    await screen.findByRole("switch", { name: /warn me before this pane's cache goes cold/i });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByRole("button", { name: /Change login/ })).toBeNull();
+  });
+
+  test("a bridge that lists no panes shows no row at all", async () => {
+    server.use(http.get("/api/accounts", () => HttpResponse.json(accountsBody({ accounts: [defaultRow({}), workRow({})] }))));
+    render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p1" changeLogin={{ harness: "claude", onOpen: vi.fn() }} />);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByRole("button", { name: /Change login/ })).toBeNull();
   });
 
   test("no row for a crew member's session (no changeLogin), an agent the list does not hold, or a machine with no accounts", async () => {
@@ -253,12 +272,12 @@ describe("PaneSettingsSheet — Change login (M101)", () => {
     await screen.findByRole("switch", { name: /warn me before this pane's cache goes cold/i });
     expect(screen.queryByRole("button", { name: /Change login/ })).toBeNull();
     unmount();
-    const second = render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p1" changeLogin={{ harness: "codex", account: undefined, onOpen: vi.fn() }} />);
+    const second = render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p1" changeLogin={{ harness: "codex", onOpen: vi.fn() }} />);
     await new Promise((r) => setTimeout(r, 30));
     expect(screen.queryByRole("button", { name: /Change login/ })).toBeNull();
     second.unmount();
     server.use(http.get("/api/accounts", () => HttpResponse.json({ ok: false, error: "no", code: "accounts.unavailable" }, { status: 404 })));
-    render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p1" changeLogin={{ harness: "claude", account: undefined, onOpen: vi.fn() }} />);
+    render(<PaneSettingsSheet open onClose={vi.fn()} paneId="w1:p1" changeLogin={{ harness: "claude", onOpen: vi.fn() }} />);
     await new Promise((r) => setTimeout(r, 30));
     expect(screen.queryByRole("button", { name: /Change login/ })).toBeNull();
   });

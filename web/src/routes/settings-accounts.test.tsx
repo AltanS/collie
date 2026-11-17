@@ -40,23 +40,23 @@ describe("Settings: the Accounts row", () => {
   it("is offered, with its quiet caption, while the machine answers the accounts route", async () => {
     serveAccounts(body());
     mount("/settings");
-    const row = await screen.findByRole("button", { name: /Accounts/ });
+    const row = await screen.findByRole("button", { name: /Profiles/ });
     expect(row).toHaveTextContent("One login per agent");
   });
 
   it("counts the added accounts in its caption", async () => {
     serveAccounts(body({ accounts: [defaultRow(), workRow(), workRow({ id: "acc-2", label: "Alt" })] }));
     mount("/settings");
-    expect(await screen.findByRole("button", { name: /Accounts/ })).toHaveTextContent("2 added");
+    expect(await screen.findByRole("button", { name: /Profiles/ })).toHaveTextContent("2 added");
   });
 
   it("sits right after Harness configurations", async () => {
     serveAccounts(body());
     mount("/settings");
-    await screen.findByRole("button", { name: /Accounts/ });
+    await screen.findByRole("button", { name: /Profiles/ });
     const titles = screen.getAllByRole("button").map((b) => b.textContent ?? "");
     const at = (word: string) => titles.findIndex((x) => x.startsWith(word));
-    expect(at("Accounts")).toBe(at("Harness configurations") + 1);
+    expect(at("Profiles")).toBe(at("Harness configurations") + 1);
   });
 
   it("is not drawn when the route answers 404", async () => {
@@ -64,7 +64,7 @@ describe("Settings: the Accounts row", () => {
     mount("/settings");
     await screen.findByRole("button", { name: /Appearance/ });
     await new Promise((r) => setTimeout(r, 30));
-    expect(screen.queryByRole("button", { name: /Accounts/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Profiles/ })).toBeNull();
   });
 });
 
@@ -128,7 +128,7 @@ describe("Accounts: the list", () => {
     await userEvent.click(within(screen.getByText("~/.claude-alt").closest("li")!).getByRole("button", { name: "Add" }));
     await screen.findByRole("textbox", { name: "Name" });
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Add" }));
-    expect(await screen.findByText("Another account of this agent has this name.")).toBeInTheDocument();
+    expect(await screen.findByText("Another profile of this agent has this name.")).toBeInTheDocument();
   });
 
   it("lists two accounts, a remove note, and groups the agents with their labels", async () => {
@@ -200,7 +200,7 @@ describe("Accounts: the list", () => {
   it("on a machine with no accounts the page says so and draws no add button", async () => {
     serveAccountsStatus(404);
     mount("/settings/accounts");
-    expect(await screen.findByText("Accounts are not available on this machine.")).toBeInTheDocument();
+    expect(await screen.findByText("Profiles are not available on this machine.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add" })).toBeNull();
   });
 });
@@ -210,7 +210,7 @@ describe("Accounts: one account", () => {
     serveAccounts(body({ accounts: [defaultRow(), workRow({ windows: [W("5h", 42, { resetsAt: Date.now() + 3600_000 })] })] }));
     mount("/settings/accounts/acc-work");
     expect(await screen.findByText("Shares setup and sessions with Default")).toBeInTheDocument();
-    expect(screen.getByText(/Project trust, MCP servers added with the agent's own command and the theme are also per account\./)).toBeInTheDocument();
+    expect(screen.getByText(/Project trust, MCP servers added with the agent's own command and the theme are also per profile\./)).toBeInTheDocument();
     expect(screen.getByText(/^Resets /)).toBeInTheDocument();
     expect(screen.getByText("CLAUDE_CONFIG_DIR=~/.claude-work claude")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign in again" })).toBeInTheDocument();
@@ -234,7 +234,7 @@ describe("Accounts: one account", () => {
   it("says which entries are not linked, without calling the account broken", async () => {
     serveAccounts(body({ accounts: [defaultRow(), workRow({ unlinked: ["skills", "plugins"] })] }));
     mount("/settings/accounts/acc-work");
-    expect(await screen.findByText("Not linked: skills, plugins. The account still works; these stay separate.")).toBeInTheDocument();
+    expect(await screen.findByText("Not linked: skills, plugins. The profile still works; these stay separate.")).toBeInTheDocument();
   });
 
   it("says when the hooks are missing and shows the line that installs them", async () => {
@@ -307,7 +307,7 @@ describe("Accounts: one account", () => {
     server.use(http.post("/api/launch", () => HttpResponse.json({ ok: false, error: "x", code: "accounts.unknown" }, { status: 400 })));
     mount("/settings/accounts/acc-work");
     await userEvent.click(await screen.findByRole("button", { name: "Sign in again" }));
-    expect(await screen.findByText(/The sign-in did not start: This account does not exist any more/)).toBeInTheDocument();
+    expect(await screen.findByText(/The sign-in did not start: This profile does not exist any more/)).toBeInTheDocument();
   });
 
   it("opens with the reason when the start after Create failed", async () => {
@@ -320,7 +320,7 @@ describe("Accounts: one account", () => {
   it("an id the list does not hold reads as gone", async () => {
     serveAccounts(body());
     mount("/settings/accounts/acc-missing");
-    expect(await screen.findByText("This account is not in the list any more.")).toBeInTheDocument();
+    expect(await screen.findByText("This profile is not in the list any more.")).toBeInTheDocument();
   });
 });
 
@@ -347,13 +347,13 @@ describe("Accounts: Add", () => {
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "Agent" }), "Codex");
     const folder = screen.getByRole("textbox", { name: "Folder" });
     await userEvent.type(folder, "/home/op/ok");
-    expect(screen.getByText("The same account from a desktop terminal")).toBeInTheDocument();
+    expect(screen.getByText("The same profile from a desktop terminal")).toBeInTheDocument();
     await userEvent.type(folder, "$x");
-    expect(screen.queryByText("The same account from a desktop terminal")).toBeNull();
+    expect(screen.queryByText("The same profile from a desktop terminal")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     await userEvent.clear(folder);
     await userEvent.type(folder, "/home/op/ok");
-    expect(screen.getByText("The same account from a desktop terminal")).toBeInTheDocument();
+    expect(screen.getByText("The same profile from a desktop terminal")).toBeInTheDocument();
   });
 
   it("creates a shared account, then starts the sign-in on the same agent and lands on the pane", async () => {
@@ -434,7 +434,7 @@ describe("Accounts: Add", () => {
     const router = mount("/settings/accounts/add");
     await userEvent.type(await screen.findByRole("textbox", { name: "Name" }), "Work");
     await userEvent.click(screen.getByRole("button", { name: "Create and sign in" }));
-    expect(await screen.findByText("Another account already uses this folder.")).toBeInTheDocument();
+    expect(await screen.findByText("Another profile already uses this folder.")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/settings/accounts/add");
     expect(launched).toBe(0);
   });

@@ -42,22 +42,22 @@ interface PaneSettingsSheetProps {
   /** A program's conversation (M56 spec 14): no cache switch, because a program has no prompt cache. The receipts stay. */
   program?: boolean;
   /**
-   * Change login (M101): the session's agent and its added account's id (absent for Default), and where
-   * a tap goes. Absent hides the row: a crew member's pane (accounts are per machine and a sign-in is
-   * not started over the crew link), a read-only device, a program. The row shows only when this
-   * machine's Accounts list has that account.
+   * Change login (M101): the session's agent, and where a tap goes. Absent hides the row: a crew
+   * member's pane (profiles are per machine and a sign-in is not started over the crew link), a
+   * read-only device, a program. The row shows only when a row of this machine's Profiles list names
+   * this pane in its `panes`: a session in a folder no profile names gets no row, never Default's.
    */
-  changeLogin?: { harness: string; account: string | undefined; onOpen: (accountId: string) => void };
+  changeLogin?: { harness: string; onOpen: (accountId: string) => void };
 }
 
 export function PaneSettingsSheet({ open, onClose, paneId, scope, onRename, hooks, program = false, changeLogin }: PaneSettingsSheetProps) {
   useLocale();
   const { state: push } = usePushControl();
   const { state, busy, toggle } = useCacheWatch(paneId, open && !program, scope);
-  // This machine's own accounts, read only while the sheet is open and the row can show.
+  // This machine's own profiles, read only while the sheet is open and the row can show.
   const accounts = useAccounts(undefined, open && changeLogin !== undefined);
-  const accountId = changeLogin === undefined ? undefined : (changeLogin.account ?? `${changeLogin.harness}:default`);
-  const account = accounts.body?.accounts.find((a) => a.id === accountId && a.harness === changeLogin?.harness);
+  const account =
+    paneId === undefined ? undefined : accounts.body?.accounts.find((a) => a.harness === changeLogin?.harness && a.panes?.includes(paneId) === true);
 
   // Push first, because it is the only one of the three that is about this DEVICE rather than this pane,
   // and the remedy is on another screen.

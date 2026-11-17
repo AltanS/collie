@@ -67,39 +67,41 @@ The API and the code still call the channel `program`.
 The agent that runs in a pane: Claude Code, Codex, pi, OmO, or a durable agent
 ([Claude Code on your phone](claude-code-on-your-phone.md)).
 
-## Account
+## Profile
 
-A second login of one agent, kept beside the first. You pick it when you start a session, in
-**Settings → Accounts**. With none added, nothing changes. Accounts belong to one machine: a crew
-member's accounts are its own. Collie does not switch accounts, because the agent keeps the login in
-the folder of the account ([Accounts](configure.md#accounts)).
+A profile is signed in on its own, for example Work with your work subscription beside Default with
+your personal one. You pick the profile when you start a session, and the session stays in it. Add
+one in **Settings → Profiles**; with none added, nothing changes. Profiles belong to one machine: a
+crew member's profiles are its own. **Change login** gives a profile another login, and its sessions
+follow ([Profiles](configure.md#profiles)). Edge builds of 1.29 called it an account.
 
-## Default account
+## Default profile
 
-The account every agent has. It is the agent's normal folder, started with nothing set. A plain
-**Claude Code** entry on the New page keeps using it ([Accounts](configure.md#accounts)).
+The profile every agent has, shown as **Default**. It is the agent's normal folder, started with
+nothing set. A plain **Claude Code** entry on the New page keeps using it
+([Profiles](configure.md#profiles)).
 
-## Shared account
+## Shared profile
 
-A Claude Code account that Collie makes in a new folder, `~/.claude-<name>`. It links the Default
-account's setup and history into that folder, so your sessions, `/resume`, skills and settings stay
-one set, and only the login is its own. An **Own** account is the other kind: a folder you already
-use, taken as it is. The other agents offer Own accounts only ([Accounts](configure.md#accounts)).
+A Claude Code profile that Collie makes in a new folder, `~/.claude-<name>`. It links the Default
+profile's setup and history into that folder, so your sessions, `/resume`, skills and settings stay
+one set, and only the login is its own. An **Own** profile is the other kind: a folder you already
+use, taken as it is. The other agents offer Own profiles only ([Profiles](configure.md#profiles)).
 
 ## Change login
 
-The button that moves an account to another login without a new session. It starts the agent's own
+The button that moves a profile to another login without a new session. It starts the agent's own
 sign-in, and the old login stays until the new sign-in works. After **Finish**, Collie asks the agent
 who is signed in. Claude Code sessions that run go on with the new login from their next message.
 Codex, pi and Grok use it for sessions you start afterwards
-([Change the login of an account](configure.md#change-the-login-of-an-account)).
+([Change the login of a profile](configure.md#change-the-login-of-a-profile)).
 
 ## Sign-in code field
 
 The field where you paste the code that a browser sign-in gives you. The agent's sign-in screens show
 as cards, and the card's button opens only the agent's own sign-in address. The code and the address
 are not stored, logged or sent anywhere else
-([Change the login of an account](configure.md#change-the-login-of-an-account)).
+([Change the login of a profile](configure.md#change-the-login-of-a-profile)).
 
 ## Usage window
 
