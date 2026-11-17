@@ -26,7 +26,7 @@ import { __resetBeltIntents, queueBeltIntent, takeBeltIntent } from "@/lib/belt-
 import { paneScopeKey } from "@/lib/scope";
 import { SubagentSheetCtx, type SubagentSheetHandle, type SubagentTarget } from "./chat-cards";
 import type { Surface } from "@/lib/surface/surface";
-import { asJsonObject, asJsonString, parseJsonObject } from "@/lib/json";
+import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "@/lib/json";
 import { markLive } from "@/lib/liveness";
 import { __forgetSendAgainMemory } from "@/lib/send-again";
 import { beginCatchUp, endCatchUp, setLocked } from "@/lib/idle";
@@ -6706,3 +6706,76 @@ describe("the cannot tell card (M102 spec 04)", () => {
     expect(recordedSends()).toHaveLength(1);
   });
 });
+
+// M102 spec 02: Send it now on a row held for two minutes. The person looked at the screen and tapped: the
+// composer reads the screen for a rows hash, cancels the held row, then sends its text once with override.
+describe("Send it now on a row held for two minutes (M102 spec 02)", () => {
+  const WORDS = "Run the full test suite, then fix whatever fails.";
+  const LONG_ROW = { requestId: "held0001", mode: "send", text: WORDS, heldAt: 1_700_000_000_000, expiresAt: 1_700_000_000_000 + 30 * 60_000, state: "held", heldLong: true, cause: "turn_running" } as const;
+  const SEND_NOW = "Send the queued message now, past the hold";
+  const RUNNING: Surface = { revision: 1, turn: "running", modal: "none", composer: "empty" };
+
+  /** The DELETEs the fake bridge took, each with how many sends it had already seen. */
+  function fakeCancel(status: number, body: JsonObject) {
+    const calls: { id: string; sendsSeen: number }[] = [];
+    server.use(
+      http.delete("/api/send/:id", ({ params }) => {
+        calls.push({ id: String(params.id), sendsSeen: recordedSends().length });
+        return HttpResponse.json(body, { status });
+      }),
+    );
+    return calls;
+  }
+
+  function renderHeld() {
+    return renderComposerWithStatus({ surface: RUNNING, held: [LONG_ROW] });
+  }
+
+  it("reads the screen, cancels the held row, then sends its text once with override and the rows hash", async () => {
+    server.use(...sendHandler((request) => (request.mode === "prepare" ? sendAnswer(request.id, null, undefined, { rowsHash: "0c0ffe" }) : sendAnswer(request.id, "sent"))));
+    const cancels = fakeCancel(200, { result: "cancelled" });
+    const user = userEvent.setup();
+    renderHeld();
+    await user.click(screen.getByRole("button", { name: SEND_NOW }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(recordedSends()[0]).toMatchObject({ text: "", mode: "prepare" });
+    expect(recordedSends()[1]).toMatchObject({ text: WORDS, rowsHash: "0c0ffe", override: true });
+    // The cancel came after the read and before the send.
+    expect(cancels).toEqual([{ id: "held0001", sendsSeen: 1 }]);
+  });
+
+  it("a read that brings back no rows hash cancels nothing, sends nothing and says so", async () => {
+    server.use(...sendHandler((request) => sendAnswer(request.id, null)));
+    const cancels = fakeCancel(200, { result: "cancelled" });
+    const user = userEvent.setup();
+    renderHeld();
+    await user.click(screen.getByRole("button", { name: SEND_NOW }));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent("Collie could not read the screen again. Send, then tap Type here."));
+    expect(cancels).toEqual([]);
+    expect(recordedSends()).toHaveLength(1);
+    // The row stays held, with its button.
+    expect(screen.getByRole("button", { name: SEND_NOW })).toBeInTheDocument();
+  });
+
+  it("a cancel that finds the row already out sends nothing and says it went out", async () => {
+    server.use(...sendHandler((request) => (request.mode === "prepare" ? sendAnswer(request.id, null, undefined, { rowsHash: "0c0ffe" }) : sendAnswer(request.id, "sent"))));
+    fakeCancel(409, { result: "refused", reason: "busy", receipt: { requestId: "held0001", outcome: "sent", keys: [] } });
+    const user = userEvent.setup();
+    renderHeld();
+    await user.click(screen.getByRole("button", { name: SEND_NOW }));
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("It already went out."));
+    expect(recordedSends()).toHaveLength(1);
+    expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+
+  it("a send the bridge refuses gives the words back to the empty box", async () => {
+    server.use(...sendHandler((request) => (request.mode === "prepare" ? sendAnswer(request.id, null, undefined, { rowsHash: "0c0ffe" }) : sendAnswer(request.id, "refused", "not_free"))));
+    fakeCancel(200, { result: "cancelled" });
+    const user = userEvent.setup();
+    renderHeld();
+    await user.click(screen.getByRole("button", { name: SEND_NOW }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(WORDS));
+  });
+});
+

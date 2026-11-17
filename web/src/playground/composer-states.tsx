@@ -171,6 +171,8 @@ const THREE_HELD = [
   heldRow(2, "held", "Then update the changelog line for the queue card."),
   heldRow(3, "held", "After that, open the pull request with a short description of the change and the gates you ran."),
 ];
+/** A row that waited two minutes in the hold (M102 spec 12): the bridge marks it `heldLong`. */
+const LONG_HELD = [heldRow(1, "held", "Run the full test suite when you are done, then fix whatever fails.", { heldLong: true, heldAt: NOW - 120_000, cause: "turn_running" })];
 const MIXED = [
   heldRow(1, "ended", "Run the full test suite when you are done, then fix whatever fails.", { outcome: "expired" }),
   heldRow(2, "held", "Then update the changelog line for the queue card."),
@@ -212,10 +214,13 @@ const MIRROR_LINES = [
  * What the router's element needs and cannot be given as props: the router is built once, so the slot
  * (known after the mirror box mounts) and the rows reach the composer through this context.
  */
-const HeldStageContext = createContext<{ slot: HTMLElement | null; held: readonly HeldRow[] }>({ slot: null, held: [] });
+const HeldStageContext = createContext<{ slot: HTMLElement | null; held: readonly HeldRow[]; screen: boolean }>({ slot: null, held: [], screen: false });
+
+/** The pane's screen as the composer is handed it, for a long row's screen box. */
+const HELD_SCREEN = { lines: splitLines(parseAnsi(["● Bash(bun run build)", "  ⎿  Running…", "", "✻ Working (3m 12s · esc to interrupt)"].join("\n"))), wrap: false };
 
 function HeldComposer({ paneId, draft, scope }: { paneId: string; draft?: string; scope?: Scope }) {
-  const { slot, held } = useContext(HeldStageContext);
+  const { slot, held, screen } = useContext(HeldStageContext);
   return (
     <ChromeBlock>
       <Composer
@@ -232,6 +237,7 @@ function HeldComposer({ paneId, draft, scope }: { paneId: string; draft?: string
         display={{ open: false, onToggle: () => {} }}
         onSent={() => {}}
         held={held}
+        {...(screen ? { heldScreen: HELD_SCREEN } : {})}
         draftNoticeSlot={slot}
         {...(scope === undefined ? {} : { scope })}
       />
@@ -239,7 +245,7 @@ function HeldComposer({ paneId, draft, scope }: { paneId: string; draft?: string
   );
 }
 
-function HeldPhone({ paneId, held, draft, scope, showAll = false }: { paneId: string; held: readonly HeldRow[]; draft?: string; scope?: Scope; showAll?: boolean }) {
+function HeldPhone({ paneId, held, draft, scope, showAll = false, screen = false }: { paneId: string; held: readonly HeldRow[]; draft?: string; scope?: Scope; showAll?: boolean; screen?: boolean }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   // A live stamp, renewed, so the card is not drawn over an "offline" composer.
   useEffect(() => {
@@ -260,7 +266,7 @@ function HeldPhone({ paneId, held, draft, scope, showAll = false }: { paneId: st
     }, 50);
     return () => clearInterval(timer);
   }, [showAll, slot]);
-  const stage = useMemo(() => ({ slot, held }), [slot, held]);
+  const stage = useMemo(() => ({ slot, held, screen }), [slot, held, screen]);
   const [router] = useState(() =>
     createMemoryRouter([{ path: "/", element: <HeldComposer paneId={paneId} {...(draft === undefined ? {} : { draft })} {...(scope === undefined ? {} : { scope })} /> }], { initialEntries: ["/"] }),
   );
@@ -278,7 +284,7 @@ function HeldPhone({ paneId, held, draft, scope, showAll = false }: { paneId: st
   );
 }
 
-function HeldCardCase({ n, state, title, reach, note, paneId, held, draft, scope, showAll }: { n: number; state: string; title: string; reach: string; note?: string; paneId: string; held: readonly HeldRow[]; draft?: string; scope?: Scope; showAll?: boolean }) {
+function HeldCardCase({ n, state, title, reach, note, paneId, held, draft, scope, showAll, screen }: { n: number; state: string; title: string; reach: string; note?: string; paneId: string; held: readonly HeldRow[]; draft?: string; scope?: Scope; showAll?: boolean; screen?: boolean }) {
   return (
     <Card state={state} label={`${String(n)}: ${title}`} reach={reach} {...(note === undefined ? {} : { note })}>
       <CardControls className="flex items-center gap-3">
@@ -287,7 +293,7 @@ function HeldCardCase({ n, state, title, reach, note, paneId, held, draft, scope
           {n}: {title}
         </p>
       </CardControls>
-      <HeldPhone paneId={paneId} held={held} {...(draft === undefined ? {} : { draft })} {...(scope === undefined ? {} : { scope })} {...(showAll === undefined ? {} : { showAll })} />
+      <HeldPhone paneId={paneId} held={held} {...(draft === undefined ? {} : { draft })} {...(scope === undefined ? {} : { scope })} {...(showAll === undefined ? {} : { showAll })} {...(screen === undefined ? {} : { screen })} />
     </Card>
   );
 }
@@ -771,6 +777,15 @@ export function wayOutGroups(): ReactNode[] {
         held={MEMBER}
         scope={MEMBER_SCOPE}
         showAll
+      />
+      <HeldCardCase
+        n={47}
+        state="held-long"
+        title="Held for two minutes"
+        reach="A send waits two minutes in the hold. The card shows the screen, Send it now sends the words once past the hold, and Cancel gives them back."
+        paneId="held:long"
+        held={LONG_HELD}
+        screen
       />
     </Group>,
     <Group key="belt-lists" title="The belt's lists">
