@@ -1236,8 +1236,6 @@ export const tr: Dictionary = {
   "nav.home.aria.reconnected": "Collie ana ekranı, yeniden bağlandı",
   "nav.mux.onPrefix": "açık",
   "nav.prereleaseTitle": "Ön sürüm derlemesi: {version}",
-  "home.trickWaits.line": "Bir trick onayınızı bekliyor.",
-  "home.trickWaits.open": "Okuyun",
   "home.empty.disconnected": "Bağlantı kesildi",
   "home.empty.disconnectedAt": "Bağlantı kesildi, son görülme: {time}",
   "home.empty.noAgents": "Çalışan aracı yok.",

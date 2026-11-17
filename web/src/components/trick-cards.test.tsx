@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider, type InitialEntry } from "react-router";
 
 import { firstSentence, TrickCardsLine, TrickCardsLineView, TrickCardsWaiting, TrickCardsWaitingList, trickLineOf } from "@/components/trick-cards";
+import type { HillDecision } from "@/lib/hill/wire";
 import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { TrickCardRoute } from "@/routes/trick-card";
@@ -79,16 +80,29 @@ describe("Waiting for your yes, in Settings, Tricks", () => {
   });
 });
 
+/** A card of Collie's own with a display name on its `from`, as a current bridge sends it. */
+function named(type: Parameters<typeof collieCard>[0], id: string, name: string, over: Partial<HillDecision> = {}): HillDecision {
+  const card = collieCard(type, id, over);
+  return { ...card, from: { ...card.from, name } };
+}
+
 describe("the Dashboard's line", () => {
   it("names the trick when one proposal waits, and Review opens it", async () => {
-    const card = collieCard("proposal", "idle-sessions", { at: HILL_T0 + 1 });
+    const card = named("proposal", "idle-sessions", "Idle Sessions", { at: HILL_T0 + 1 });
     await holds([card]);
     const router = renderApp(["/"], { hillOff: true, trickCards: true });
     expect(await screen.findByText("An agent proposes a trick:")).toBeInTheDocument();
-    expect(document.querySelector('[data-slot="trick-waits"]')).toHaveTextContent("An agent proposes a trick: idle-sessions.");
-    expect(screen.queryByText("A trick waits for your yes.")).toBeNull();
+    expect(document.querySelector('[data-slot="trick-waits"]')).toHaveTextContent("An agent proposes a trick: Idle Sessions.");
+    expect(screen.queryByText(/waits for your yes/u)).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Review" }));
     expect(router.state.location.pathname).toBe(`/trick-card/${card.id}`);
+  });
+
+  it("falls back to the id when an older bridge sent no name", async () => {
+    await holds([collieCard("proposal", "idle-sessions")]);
+    renderApp(["/"], { hillOff: true, trickCards: true });
+    await screen.findByText("An agent proposes a trick:");
+    expect(document.querySelector('[data-slot="trick-waits"]')).toHaveTextContent("An agent proposes a trick: idle-sessions.");
   });
 
   it("counts them when several proposals wait, and Review opens the oldest", async () => {
@@ -103,17 +117,25 @@ describe("the Dashboard's line", () => {
   });
 
   it("says a new version when the one proposal is a version of an installed trick", async () => {
-    await holds([collieCard("proposal", "legs", { title: "Use the new version of legs?" })]);
+    await holds([named("proposal", "legs", "Browser leg", { title: "Use the new version of legs?" })]);
     renderApp(["/"], { hillOff: true, trickCards: true });
     await screen.findByText("An agent proposes a new version of");
-    expect(document.querySelector('[data-slot="trick-waits"]')).toHaveTextContent("An agent proposes a new version of legs.");
+    expect(document.querySelector('[data-slot="trick-waits"]')).toHaveTextContent("An agent proposes a new version of Browser leg.");
   });
 
-  it("keeps the plain line for a card that is no agent's proposal", async () => {
-    await holds([collieCard("version", "legs"), collieCard("rights", "git", { at: HILL_T0 + 5 })]);
+  it("says a card that is no proposal needs a look, by name when it is alone", async () => {
+    await holds([named("rights", "legs", "Browser leg")]);
     renderApp(["/"], { hillOff: true, trickCards: true });
-    expect(await screen.findByText("A trick waits for your yes.")).toBeInTheDocument();
+    await screen.findByText("needs a look.");
+    expect(document.querySelector('[data-slot="trick-waits"]')).toHaveTextContent("Browser leg needs a look.");
+    expect(screen.queryByText(/waits for your yes/u)).toBeNull();
     expect(screen.getByRole("button", { name: "Review" })).toBeInTheDocument();
+  });
+
+  it("counts the cards when several wait and any is no proposal", async () => {
+    await holds([collieCard("version", "legs"), collieCard("proposal", "git", { at: HILL_T0 + 5 })]);
+    renderApp(["/"], { hillOff: true, trickCards: true });
+    expect(await screen.findByText("2 trick cards need a look.")).toBeInTheDocument();
   });
 
   it("is not drawn with the Hill on: the bar's Hill item is the signal", async () => {
@@ -131,8 +153,8 @@ describe("the Dashboard's line", () => {
   });
 
   it("cuts a long name with an ellipsis on one line and keeps the button in the box", () => {
-    const long = "a".repeat(64);
-    render(<TrickCardsLineView cards={[collieCard("proposal", long)]} onOpen={() => undefined} />);
+    const long = "a".repeat(40);
+    render(<TrickCardsLineView cards={[named("proposal", "legs", long)]} onOpen={() => undefined} />);
     const name = document.querySelector('[data-slot="trick-name"]');
     expect(name).toHaveTextContent(long);
     expect(name?.className).toContain("truncate");
@@ -144,7 +166,7 @@ describe("the Dashboard's line", () => {
   });
 
   it("draws a name with markup characters as text, and drops hidden characters", () => {
-    const card = collieCard("proposal", "<img src=x onerror=alert(1)>\u202E\u0007ok");
+    const card = named("proposal", "legs", "<img src=x onerror=alert(1)>\u202E\u0007ok");
     const { container } = render(<TrickCardsLineView cards={[card]} onOpen={() => undefined} />);
     const name = container.querySelector('[data-slot="trick-name"]');
     expect(name?.textContent).toBe("<img src=x onerror=alert(1)>ok");
@@ -152,12 +174,12 @@ describe("the Dashboard's line", () => {
     expect(name?.children).toHaveLength(0);
   });
 
-  it("trickLineOf: one new, one version, many, or the plain line", () => {
-    expect(trickLineOf([collieCard("proposal", "legs")])).toEqual({ kind: "new", name: "legs" });
+  it("trickLineOf: a proposal, a version, many, one that needs a look, several that need one", () => {
+    expect(trickLineOf([named("proposal", "legs", "Browser leg")])).toEqual({ kind: "new", name: "Browser leg" });
     expect(trickLineOf([collieCard("proposal", "legs", { title: "Use the new version of legs?" })])).toEqual({ kind: "version", name: "legs" });
     expect(trickLineOf([collieCard("proposal", "a"), collieCard("proposal", "b")])).toEqual({ kind: "many", count: 2 });
-    expect(trickLineOf([collieCard("carried", "a")])).toEqual({ kind: "plain" });
-    expect(trickLineOf([collieCard("proposal", "a"), collieCard("version", "b")])).toEqual({ kind: "plain" });
+    expect(trickLineOf([named("carried", "a", "Clock")])).toEqual({ kind: "look", name: "Clock" });
+    expect(trickLineOf([collieCard("proposal", "a"), collieCard("version", "b")])).toEqual({ kind: "looks", count: 2 });
   });
 });
 

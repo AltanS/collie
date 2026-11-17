@@ -23,7 +23,7 @@ import { asJsonString, parseJsonObject, type JsonValue } from "@/lib/json";
 import { clearStatus } from "@/lib/status";
 import { homeSolo } from "../fixtures";
 import { VIEW_TRICK } from "../fixtures/agent-view";
-import { proposalGroup, versionGroup } from "../fixtures/hill/decisions";
+import { proposalGroup, rightsMoved, versionGroup } from "../fixtures/hill/decisions";
 import { ABOUT_MAX, type FieldValue, type OfficialState, type OfficialTricksReply, type TricksGate, type TricksReply, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 import { CodeFailure, type TrickCodeReader } from "@/components/trick-code-folds";
@@ -710,9 +710,14 @@ export function TrickSettingsSection(): ReactNode {
             <TrickCardsWaitingList cards={WAITING_CARDS} onOpen={noop} />
           </div>
         </Card>
-        <Card state="trick-settings-waiting-line" label="44 · the Dashboard's line, only while the Hill is off and a card waits">
+        <Card state="trick-settings-waiting-line" label="44 · the Dashboard's line, only while the Hill is off and a proposal waits: it names the trick">
           <div className="w-[390px] max-w-full bg-background p-4">
             <TrickCardsLineView cards={[proposalGroup()]} onOpen={noop} />
+          </div>
+        </Card>
+        <Card state="trick-settings-waiting-line-look" label="44b · the same line for a card that is no proposal (rights moved): it needs a look">
+          <div className="w-[390px] max-w-full bg-background p-4">
+            <TrickCardsLineView cards={[rightsMoved]} onOpen={noop} />
           </div>
         </Card>
         <Card state="trick-settings-card-page" label="45 · the card's page: the Hill's card, Settings' shell, no Hill words">

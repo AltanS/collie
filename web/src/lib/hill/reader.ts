@@ -35,6 +35,7 @@ import {
   HILL_STATES,
   HILL_TEXT_MODES,
   HILL_TRICK_DELIVERIES,
+  cardName,
   hillCollieRef,
   isHillCrewState,
   type HillCrewStateView,
@@ -188,7 +189,10 @@ function readFrom(value: JsonValue | undefined): HillDecision["from"] | null {
   // Collie's own Decision names what it is about; one without a readable `ref` is not drawn.
   const ref = asJsonObject(o.ref);
   const read = hillCollieRef(asJsonString(ref?.type), asJsonString(ref?.id), asJsonString(ref?.hash));
-  return read === null ? null : { ...from, ref: read };
+  if (read === null) return null;
+  // An older bridge sends no `name`: the card then reads its id.
+  const name = cardName(asJsonString(o.name));
+  return name === undefined ? { ...from, ref: read } : { ...from, ref: read, name };
 }
 
 function readTarget(value: JsonValue | undefined): HillDecision["target"] | undefined {

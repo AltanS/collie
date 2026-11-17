@@ -7,7 +7,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { useTrickCards } from "@/lib/hill/store";
 import type { HillDecision } from "@/lib/hill/wire";
-import { isHiddenChar } from "@/lib/hidden-chars";
+import { cardName } from "@/lib/hill/wire";
 import { t, tn } from "@/lib/i18n";
 import { trickCardPath } from "@/lib/nav";
 import { useOptionalRootData } from "@/lib/route-data";
@@ -77,43 +77,44 @@ export function TrickCardsWaiting() {
 /**
  * What the Dashboard's line says (Altan's words, 2026-11-17). It counts every open card of Collie's own about a
  * trick (the store's `useTrickCards`): a proposed new trick, a proposed new version (both a `proposal` ref, the
- * version one titled "Use the new version of ..."), a new version the runner found, a trick stopped for its
- * rights and a carried trick that did not start. Only the first two are an agent's proposal, so only they get
- * the proposal sentences; any other card in the list keeps the plain old line (`home.trickWaits.line`).
+ * version one titled "Use the new version of ..."), a new version the runner found (`version`), a trick
+ * stopped for its rights (`rights`) and a carried trick that did not start (`carried`). The first two are an
+ * agent's proposal and say so. Any other card says only that it needs a look: one by name, several by count.
  */
 export type TrickLine =
   | { kind: "new"; name: string }
   | { kind: "version"; name: string }
   | { kind: "many"; count: number }
-  | { kind: "plain" };
+  | { kind: "look"; name: string }
+  | { kind: "looks"; count: number };
 
 /** The title the bridge gives a proposed new version (bridge/tricks/version-card.ts `titleFrame`). */
 const VERSION_PROPOSAL_TITLE = "Use the new version of ";
 
 /** The line for the open cards, oldest first. Never called with none. */
 export function trickLineOf(cards: readonly HillDecision[]): TrickLine {
-  const proposals = cards.filter((card) => card.from.ref?.type === "proposal");
-  if (proposals.length !== cards.length || cards.length === 0) return { kind: "plain" };
   const [only] = cards;
-  if (cards.length > 1 || only === undefined) return { kind: "many", count: cards.length };
-  const name = shownName(only.from.ref?.id ?? "");
+  const proposals = cards.every((card) => card.from.ref?.type === "proposal");
+  if (cards.length > 1) return proposals ? { kind: "many", count: cards.length } : { kind: "looks", count: cards.length };
+  const name = trickNameOf(only);
+  if (only?.from.ref?.type !== "proposal") return { kind: "look", name };
   return only.title.startsWith(VERSION_PROPOSAL_TITLE) ? { kind: "version", name } : { kind: "new", name };
 }
 
 /**
- * The trick's name as the card carries it (its `ref.id`, which the reader holds to `[a-z0-9-]` already), with
- * every character that does not show as itself taken out. It is drawn as text, never as markup.
+ * The trick's name on a card: the display name the bridge sent (`from.name`), or the id (`ref.id`) when an older
+ * bridge sent none. Both are cleaned of hidden characters, and the result is only ever drawn as text.
  */
-function shownName(raw: string): string {
-  return [...raw].filter((ch) => !isHiddenChar(ch)).join("");
+export function trickNameOf(card: HillDecision | undefined): string {
+  return cardName(card?.from.name) ?? cardName(card?.from.ref?.id) ?? "";
 }
 
 /** A sentence with a name in it: the words before, the name, the words after, in the language's own order. */
-function aroundName(key: "home.trickWaits.proposes" | "home.trickWaits.proposesVersion", name: string) {
+function aroundName(key: "home.trickWaits.proposes" | "home.trickWaits.proposesVersion" | "home.trickWaits.look", name: string) {
   const slot = "\uE000";
   const [before = "", after = ""] = t(key, { name: slot }).split(slot);
   return (
-    <p data-line="proposal" className="flex min-w-0 items-baseline">
+    <p data-line="name" className="flex min-w-0 items-baseline">
       <span className="shrink-0 whitespace-pre">{before}</span>
       <span data-slot="trick-name" className="min-w-0 truncate" title={name}>{name}</span>
       <span className="shrink-0 whitespace-pre">{after}</span>
@@ -136,7 +137,8 @@ export function TrickCardsLineView({ cards, onOpen, className }: { cards: readon
         {line.kind === "new" && aroundName("home.trickWaits.proposes", line.name)}
         {line.kind === "version" && aroundName("home.trickWaits.proposesVersion", line.name)}
         {line.kind === "many" && <p>{tn("home.trickWaits.proposesMany", line.count)}</p>}
-        {line.kind === "plain" && <p>{t("home.trickWaits.line")}</p>}
+        {line.kind === "look" && aroundName("home.trickWaits.look", line.name)}
+        {line.kind === "looks" && <p>{tn("home.trickWaits.looks", line.count)}</p>}
       </Notice>
     </div>
   );

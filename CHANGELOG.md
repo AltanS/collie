@@ -25,7 +25,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
-- **The Dashboard names the trick an agent proposes.** With the Hill off, the line about a waiting trick now reads "An agent proposes a trick: legs." for one proposal, "An agent proposes a new version of legs." for a proposed new version, and "Agents propose 3 tricks." for several, and its button says Review instead of Read it. It still opens the oldest card. A long name is cut with an ellipsis on one line. Any other waiting card (a version Collie found, a trick stopped for its rights) keeps the plain line.
+- **The Dashboard names the trick an agent proposes.** With the Hill off, the line about a waiting trick now reads "An agent proposes a trick: Idle Sessions." for one proposal, "An agent proposes a new version of Idle Sessions." for a proposed new version, and "Agents propose 3 tricks." for several, and its button says Review instead of Read it. Any other waiting card (a version Collie found, a trick stopped for its rights) reads "Idle Sessions needs a look." or "2 trick cards need a look.". A long name is cut with an ellipsis on one line. The button still opens the oldest card.
+- **Collie's own trick cards carry the trick's display name.** The bridge adds an optional `name` to the proposal, new-version, rights and carried cards, taken from the manifest and cleaned to one plain line of at most 40 characters. A card from an older bridge has none, and the phone shows the trick's id instead.
 
 ## [1.29.0] - 2026-11-12
 

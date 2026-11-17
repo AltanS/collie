@@ -1306,8 +1306,6 @@ export const ja: Dictionary = {
   "nav.home.aria.reconnected": "Collie ホーム (再接続しました)",
   "nav.mux.onPrefix": "オン",
   "nav.prereleaseTitle": "プレリリースビルド: {version}",
-  "home.trickWaits.line": "トリックがあなたの承認を待っています。",
-  "home.trickWaits.open": "読む",
 
   // --- home (dashboard herd list) ---
   "home.empty.disconnected": "切断",

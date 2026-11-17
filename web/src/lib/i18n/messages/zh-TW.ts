@@ -1291,8 +1291,6 @@ export const zhTW: Dictionary = {
   "nav.home.aria.reconnected": "Collie 首頁（已重新連線）",
   "nav.mux.onPrefix": "執行於",
   "nav.prereleaseTitle": "預覽版本：{version}",
-  "home.trickWaits.line": "有一個 Trick 在等你同意。",
-  "home.trickWaits.open": "閱讀",
 
   // --- home (dashboard herd list) ---
   "home.empty.disconnected": "已中斷連線",

@@ -1236,8 +1236,6 @@ export const pt: Dictionary = {
   "nav.home.aria.reconnected": "Início do Collie: reconectado",
   "nav.mux.onPrefix": "ativado",
   "nav.prereleaseTitle": "Versão de pré-lançamento: {version}",
-  "home.trickWaits.line": "Um truque aguarda o seu sim.",
-  "home.trickWaits.open": "Leia",
   "home.empty.disconnected": "Desconectado",
   "home.empty.disconnectedAt": "Desconectado: visto por último às {time}",
   "home.empty.noAgents": "Nenhum agente em execução.",

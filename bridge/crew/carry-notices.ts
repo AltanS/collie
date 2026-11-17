@@ -80,7 +80,7 @@ export function carriedCard(lead: string, at: number, failure: CarryFailure): Hi
 
 /** The sender of the card about one trick. */
 export function carriedSender(failure: CarryFailure): HillCollieSender {
-  return { kind: "collie", ref: { type: "carried", id: failure.id, hash: failure.hash }, label: CARRIED_CARD_SENDER };
+  return { kind: "collie", ref: { type: "carried", id: failure.id, hash: failure.hash }, label: CARRIED_CARD_SENDER, name: failure.name };
 }
 
 /** The answer to a card: OK closes it, and nothing else is an option. */

@@ -155,6 +155,18 @@ describe("the phone's reader reads the bridge's real list", () => {
     expect(phone.open.find((d) => d.id === agent.id)?.from).toMatchObject({ kind: "agent", host: "desk", trickHost: null });
   });
 
+  test("Collie's own card keeps its display name through the wire, and one without a name reads without it", async () => {
+    const r = rig();
+    serve(r);
+    const ref = { type: "proposal", id: "legs", hash: "b".repeat(64) } as const;
+    const named = r.hill.postCollie({ kind: "collie", ref, label: "Collie", name: "Browser leg" }, { ...TEXT_ONLY, requestId: uuid(21) });
+    const bare = r.hill.postCollie({ kind: "collie", ref: { ...ref, id: "clock" }, label: "Collie" }, { ...TEXT_ONLY, requestId: uuid(22) });
+    if (!named.ok || !bare.ok) throw new Error("not posted");
+    const phone = await fetchHill();
+    expect(phone.open.find((d) => d.id === named.decision.id)?.from).toMatchObject({ kind: "collie", name: "Browser leg", ref });
+    expect(phone.open.find((d) => d.id === bare.decision.id)?.from).not.toHaveProperty("name");
+  });
+
   test("a read with the held revision is the bridge's `unchanged`, and the phone reads it as one", async () => {
     const r = rig();
     serve(r);

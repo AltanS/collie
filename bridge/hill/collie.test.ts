@@ -109,6 +109,24 @@ describe("posting Collie's own Decision", () => {
     expect(r.hill.collieDecisions("proposal")).toEqual([]);
   });
 
+  test("its display name is stored cleaned on `from.name`, reads back from disk, and is left out when nothing is left or it is not text", () => {
+    const r = rig();
+    const dirty = posted(r.hill.postCollie({ ...SENDER, name: "  Browser\u202E leg\u0007\n<b>x</b>" + "y".repeat(60) }, card(1)));
+    const name = dirty.from.name ?? "";
+    expect(name.startsWith("Browser leg <b>x</b>y")).toBe(true);
+    expect([...name]).toHaveLength(40);
+    expect(name.endsWith("…")).toBe(true);
+    expect(name.includes("\u202E") || name.includes("\u0007")).toBe(false);
+    const none = posted(r.hill.postCollie({ ...SENDER, name: "\u202E\u0007 " }, card(2)));
+    expect(none.from).not.toHaveProperty("name");
+    const plain = posted(r.hill.postCollie(SENDER, card(3)));
+    expect(plain.from).not.toHaveProperty("name");
+    const raw = JSON.parse(JSON.stringify(dirty));
+    expect(readDecision(raw, { collie: true })?.from.name).toBe(name);
+    const forged = { ...raw, from: { ...raw.from, name: 5 } };
+    expect(readDecision(forged, { collie: true })?.from).not.toHaveProperty("name");
+  });
+
   test("it carries no image, and an agent's post with WalkyTalky off is still refused", () => {
     const r = rig();
     const refused = r.hill.postCollie(SENDER, card(1, { images: [{ path: "/etc/passwd" }] }));

@@ -475,7 +475,7 @@ export class TrickProposals {
     const { card } = made;
     const input: HillPostInput = { ...card, requestId: proposalRequestId(id, hash, proposal.requestId), expiresAt: now + PROPOSAL_EXPIRY_MS };
     if (old !== null) input.supersedes = old.decision;
-    const posted = this.deps.hill.postCollie(senderOf(id, hash), input, proposer.address === null ? {} : { tellOf: proposer.address });
+    const posted = this.deps.hill.postCollie(senderOf(id, hash, proposal.manifest.name), input, proposer.address === null ? {} : { tellOf: proposer.address });
     if (!posted.ok) {
       await rm(dir, { recursive: true, force: true });
       if (posted.code === "bad_supersedes") return refused("answering", "Your person is answering your last proposal of this trick right now. Try again in a moment.");
@@ -659,6 +659,7 @@ function facts(proposer: Proposer): ProposerFacts {
 }
 
 /** The sender of a proposal card. */
-function senderOf(id: string, hash: string): HillCollieSender {
-  return { kind: "collie", ref: { type: "proposal", id, hash }, label: PROPOSAL_CARD_SENDER };
+function senderOf(id: string, hash: string, name?: string): HillCollieSender {
+  const base = { kind: "collie" as const, ref: { type: "proposal" as const, id, hash }, label: PROPOSAL_CARD_SENDER };
+  return name === undefined ? base : { ...base, name };
 }

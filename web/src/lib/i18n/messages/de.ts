@@ -1326,8 +1326,6 @@ export const de: Dictionary = {
   "nav.home.aria.reconnected": "Collie-Startseite: wieder verbunden",
   "nav.mux.onPrefix": "auf",
   "nav.prereleaseTitle": "Vorabversion: {version}",
-  "home.trickWaits.line": "Ein Trick wartet auf dein Ja.",
-  "home.trickWaits.open": "Lesen",
 
   // --- home (dashboard herd list) ---
   "home.empty.disconnected": "Nicht verbunden",

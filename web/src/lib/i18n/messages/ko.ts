@@ -1304,8 +1304,6 @@ export const ko: Dictionary = {
   "nav.home.aria.reconnected": "Collie 홈, 다시 연결됨",
   "nav.mux.onPrefix": "기반:",
   "nav.prereleaseTitle": "프리릴리스 빌드 {version}",
-  "home.trickWaits.line": "트릭이 승인을 기다립니다.",
-  "home.trickWaits.open": "읽어 보기",
 
   // --- home (dashboard herd list) ---
   "home.empty.disconnected": "연결 끊김",

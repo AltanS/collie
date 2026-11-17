@@ -1438,12 +1438,14 @@ export const en = {
   "nav.prereleaseTitle": "Pre-release build {version}",
 
   // --- home (dashboard herd list) ---
-  "home.trickWaits.line": "A trick waits for your yes.",
   "home.trickWaits.open": "Review",
   "home.trickWaits.proposes": "An agent proposes a trick: {name}.",
   "home.trickWaits.proposesVersion": "An agent proposes a new version of {name}.",
   "home.trickWaits.proposesMany.one": "An agent proposes {count} trick.",
   "home.trickWaits.proposesMany.other": "Agents propose {count} tricks.",
+  "home.trickWaits.look": "{name} needs a look.",
+  "home.trickWaits.looks.one": "{count} trick card needs a look.",
+  "home.trickWaits.looks.other": "{count} trick cards need a look.",
   "home.empty.disconnected": "Disconnected",
   "home.empty.disconnectedAt": "Disconnected, last seen {time}",
   "home.empty.noAgents": "No agents running.",
@@ -4129,10 +4131,14 @@ export type Messages = typeof en;
  * key for good: a key stays here only between a feature and its translation pass.
  */
 export const PENDING_TRANSLATION = [
+  "home.trickWaits.open",
   "home.trickWaits.proposes",
   "home.trickWaits.proposesVersion",
   "home.trickWaits.proposesMany.one",
   "home.trickWaits.proposesMany.other",
+  "home.trickWaits.look",
+  "home.trickWaits.looks.one",
+  "home.trickWaits.looks.other",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

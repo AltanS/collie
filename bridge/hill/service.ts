@@ -103,6 +103,7 @@ import {
   HILL_TITLE_MAX,
   HILL_WHY_MAX,
   crewStateLine,
+  cardName,
   crewStateTellLine,
   HILL_TELL_MAX,
   HILL_TELL_RECENT_MS,
@@ -199,6 +200,8 @@ export interface HillCollieSender {
   readonly ref: HillCollieRef;
   /** The name the card shows as its sender, such as the trick's name. Display only. */
   readonly label: string;
+  /** The trick's display name from its manifest (`from.name`); {@link cardName} cleans it as the card is made. Optional. */
+  readonly name?: string;
 }
 
 /** What the answer to a Collie Decision did: done, or refused in plain words (the card then stays open). */
@@ -1351,7 +1354,9 @@ export class HillService {
       return { kind: "trick", address: null, trickId: from.trickId, trickKey: from.trickKey, memberId: from.memberId, harness: null, label: notCollie(headerField(from.label, WALKY_LABEL_MAX), "a trick"), host: this.deps.machine, trickHost: from.memberId };
     }
     const ref = { type: from.ref.type, id: from.ref.id, hash: from.ref.hash };
-    return { kind: "collie", address: null, trickId: null, trickKey: null, memberId: this.deps.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: null, ref };
+    const name = cardName(from.name);
+    const base = { kind: "collie" as const, address: null, trickId: null, trickKey: null, memberId: this.deps.memberId, harness: null, label: headerField(from.label, WALKY_LABEL_MAX), host: this.deps.machine, trickHost: null, ref };
+    return name === undefined ? base : { ...base, name };
   }
 
   /**

@@ -1241,8 +1241,6 @@ export const it: Dictionary = {
   "nav.home.aria.reconnected": "Home Collie, riconnesso",
   "nav.mux.onPrefix": "attivo",
   "nav.prereleaseTitle": "Versione di pre-rilascio: {version}",
-  "home.trickWaits.line": "Un trick attende il tuo sì.",
-  "home.trickWaits.open": "Leggi",
   "home.empty.disconnected": "Disconnesso",
   "home.empty.disconnectedAt": "Disconnesso: ultimo contatto {time}",
   "home.empty.noAgents": "Nessun agent in esecuzione.",
