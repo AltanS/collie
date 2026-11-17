@@ -10,7 +10,8 @@ if (process.env.CI) {
 }
 
 export default defineConfig({
-  globalSetup: "./global-setup.ts",
+  // The solo rig with a second bridge on its Herdr (`up --second-bridge`, case C3).
+  globalSetup: "./chaos-setup.ts",
   globalTeardown: "./global-teardown.ts",
   testDir: ".",
   testMatch: /chaos-solo\.leg\.ts$/,
