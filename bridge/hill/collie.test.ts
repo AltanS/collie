@@ -10,6 +10,7 @@ import { HILL_GROUP_NOT_YOURS, readAnswerRequest, readDecision, readPostFields }
 import { memoryHillReceipts } from "./receipts.ts";
 import { HILL_ANSWER_RUNNING, HILL_CODE_OLD_APP, HILL_CODE_READ_FIRST, HILL_GROUP_CHANGED, HILL_GROUP_OLD_APP, HILL_NO_ANSWER_HANDLER, hillGroupOpenAll, HillService, type HillAgentSender, type HillCollieSender, type HillCollieVerdict, type HillPostAnswer } from "./service.ts";
 import { HillStore } from "./store.ts";
+import { singleCodeCard } from "../../web/src/lib/hill/code-card.ts";
 
 // COLLIE'S OWN DECISION (crew slice 3): kind `collie`, minted only by bridge code. Its answer types
 // nothing and taps nothing: it runs `onCollieAnswer` with the ref, which acts on exactly that hash.
@@ -78,13 +79,21 @@ function card(n: number, over: Partial<HillPostInput> = {}): HillPostInput {
   };
 }
 
+/** Collie's own card about a trick, with a code part: a trick card with none offers no yes (2026-11-17). */
+function codeCard(n: number, over: Partial<HillPostInput> = {}): HillPostInput {
+  return card(n, { view: [{ kind: "diff", text: "@@ -1 +1 @@\n-a\n+b", attrs: { file: "a.ts" } }], ...over });
+}
+
 function posted(answer: HillPostAnswer): HillDecision {
   if (!answer.ok) throw new Error(`refused: ${answer.code ?? "-"} ${answer.error}`);
   return answer.decision;
 }
 
 async function tap(r: Rig, decision: HillDecision, rid: number, intent: string) {
-  const outcome = await r.hill.answer({ rid: uuid(rid), node: `hill/${decision.id}`, intent, value: { text: null } }, decision.id, "Pixel 9");
+  const request = { rid: uuid(rid), node: `hill/${decision.id}`, intent, value: { text: null } };
+  // A phone that showed the card's code to its end names its hash and card 1 (C-A2).
+  const one = singleCodeCard(decision);
+  const outcome = await r.hill.answer(one === null ? request : { ...request, group: { digest: one.digest, opened: [1] } }, decision.id, "Pixel 9");
   if (outcome.kind !== "receipt") throw new Error(outcome.kind);
   return outcome.receipt;
 }
@@ -110,7 +119,7 @@ describe("posting Collie's own Decision", () => {
 
   test("a newer card supersedes the open one of the same ref; an agent cannot withdraw or supersede it", () => {
     const r = rig();
-    const first = posted(r.hill.postCollie(SENDER, card(1)));
+    const first = posted(r.hill.postCollie(SENDER, codeCard(1)));
     const newer = { ...SENDER, ref: { ...REF, hash: "b".repeat(64) } };
     const second = posted(r.hill.postCollie(newer, card(2, { supersedes: first.id })));
     expect(r.store.get(first.id)).toMatchObject({ state: "superseded", supersededBy: second.id });
@@ -124,7 +133,7 @@ describe("posting Collie's own Decision", () => {
 describe("answering Collie's own Decision", () => {
   test("an option runs the handler with the ref and closes answered; nothing is typed and no tap runs", async () => {
     const r = rig();
-    const decision = posted(r.hill.postCollie(SENDER, card(1)));
+    const decision = posted(r.hill.postCollie(SENDER, codeCard(1)));
     const receipt = await tap(r, decision, 10, "use");
     expect(receipt).toMatchObject({ code: "ok", state: "answered", delivery: "none", trick: "none" });
     expect(r.calls).toEqual([{ ref: REF, intent: "use" }]);
@@ -137,7 +146,7 @@ describe("answering Collie's own Decision", () => {
 
   test("a refusal (the code moved) is a rejected receipt in plain words, and the card stays open for another tap", async () => {
     const r = rig();
-    const decision = posted(r.hill.postCollie(SENDER, card(1)));
+    const decision = posted(r.hill.postCollie(SENDER, codeCard(1)));
     r.verdict = { ok: false, reason: "The trick changed again. A new card replaces this one." };
     expect(await tap(r, decision, 10, "use")).toMatchObject({ code: "rejected", reason: "The trick changed again. A new card replaces this one.", state: "open" });
     expect(r.store.get(decision.id)?.state).toBe("open");
@@ -149,22 +158,22 @@ describe("answering Collie's own Decision", () => {
 
   test("a dismiss closes it with no act; no handler wired refuses every option", async () => {
     const r = rig();
-    const decision = posted(r.hill.postCollie(SENDER, card(1)));
+    const decision = posted(r.hill.postCollie(SENDER, codeCard(1)));
     expect(await tap(r, decision, 10, "dismiss")).toMatchObject({ code: "ok", state: "dismissed" });
     expect(r.calls).toEqual([]);
     const bare = rig(null, false);
-    const other = posted(bare.hill.postCollie(SENDER, card(1)));
+    const other = posted(bare.hill.postCollie(SENDER, codeCard(1)));
     expect(await tap(bare, other, 10, "use")).toMatchObject({ code: "rejected", reason: HILL_NO_ANSWER_HANDLER });
     expect(await tap(bare, other, 11, "answer")).toMatchObject({ code: "rejected", state: "open" });
   });
 
   test("while its answer runs, no withdraw or supersede closes it under the answer", async () => {
     const r = rig();
-    const decision = posted(r.hill.postCollie(SENDER, card(1)));
+    const decision = posted(r.hill.postCollie(SENDER, codeCard(1)));
     const seen: unknown[] = [];
     r.during = () => {
       seen.push(r.hill.withdrawCollie(SENDER, decision.id, "approved elsewhere"));
-      seen.push(r.hill.postCollie(SENDER, card(2, { supersedes: decision.id })));
+      seen.push(r.hill.postCollie(SENDER, codeCard(2, { supersedes: decision.id })));
     };
     expect(await tap(r, decision, 10, "use")).toMatchObject({ code: "ok", state: "answered" });
     expect(seen).toEqual([
@@ -179,7 +188,7 @@ describe("answering Collie's own Decision", () => {
 describe("reading Collie's own Decision", () => {
   test("only the bridge's own store reads kind collie; a lead's answer or a socket answer never does", () => {
     const r = rig();
-    const decision = posted(r.hill.postCollie(SENDER, card(1)));
+    const decision = posted(r.hill.postCollie(SENDER, codeCard(1)));
     const raw = JSON.parse(JSON.stringify(decision));
     expect(readDecision(raw)).toBeNull();
     expect(readDecision(raw, { collie: true })?.from.ref).toEqual(REF);
@@ -189,7 +198,7 @@ describe("reading Collie's own Decision", () => {
 
   test("a collie decision with a bad ref, or naming a session or a trick, does not read; an agent's with a ref does not either", () => {
     const r = rig();
-    const decision = JSON.parse(JSON.stringify(posted(r.hill.postCollie(SENDER, card(1)))));
+    const decision = JSON.parse(JSON.stringify(posted(r.hill.postCollie(SENDER, codeCard(1)))));
     const opts = { collie: true };
     expect(readDecision({ ...decision, from: { ...decision.from, ref: undefined } }, opts)).toBeNull();
     expect(readDecision({ ...decision, from: { ...decision.from, ref: { ...REF, hash: "short" } } }, opts)).toBeNull();
@@ -205,7 +214,7 @@ describe("reading Collie's own Decision", () => {
     const dir = mkdtempSync(join(tmpdir(), "hill-collie-"));
     roots.push(dir);
     const r = rig(dir);
-    const decision = posted(r.hill.postCollie(SENDER, card(1)));
+    const decision = posted(r.hill.postCollie(SENDER, codeCard(1)));
     const again = rig(dir);
     expect(again.store.get(decision.id)?.from).toMatchObject({ kind: "collie", ref: REF });
     // What an older build sees: a kind it does not know. Simulated with a broken ref; it is kept raw.
@@ -225,7 +234,7 @@ describe("clearing Collie's own Decision", () => {
     const dir = mkdtempSync(join(tmpdir(), "hill-collie-"));
     roots.push(dir);
     const r = rig(dir);
-    const closed = posted(r.hill.postCollie(SENDER, card(1)));
+    const closed = posted(r.hill.postCollie(SENDER, codeCard(1)));
     await tap(r, closed, 50, "keep");
     const open = posted(r.hill.postCollie({ ...SENDER, ref: { ...REF, id: "other" } }, card(2)));
     expect(r.hill.clear(null)).toEqual({ cleared: [closed.id], skipped: [] });
@@ -236,7 +245,7 @@ describe("clearing Collie's own Decision", () => {
     // The tombstone is on disk: a restarted bridge still refuses the same request id instead of posting twice.
     const again = rig(dir);
     expect(again.hill.clearedState(closed.id)).toBe("answered");
-    const repost = again.hill.postCollie(SENDER, card(1));
+    const repost = again.hill.postCollie(SENDER, codeCard(1));
     expect(repost.ok).toBe(false);
   });
 });
@@ -335,10 +344,11 @@ describe("a group of cards", () => {
     expect(r.calls).toEqual([]);
     expect(await answer(23, "use", { digest: REF.hash, opened: [1] })).toMatchObject({ code: "ok", state: "answered" });
     expect(r.calls).toEqual([{ ref: REF, intent: "use" }]);
-    // Its decline needs nothing opened; a card with no code is answered as before.
+    // Its decline needs nothing opened; a trick card with no code offers no yes (2026-11-17), its decline still goes.
     const kept = posted(r.hill.postCollie({ ...SENDER, ref: { ...REF, id: "kept" } }, card(24, { view: code })));
     expect(await r.hill.answer({ rid: uuid(25), node: `hill/${kept.id}`, intent: "keep", value: { text: null } }, kept.id, "Pixel 9")).toMatchObject({ receipt: { code: "ok" } });
     const words = posted(r.hill.postCollie({ ...SENDER, ref: { ...REF, id: "words" } }, card(26, { view: [{ kind: "para", text: "No code." }] })));
-    expect(await r.hill.answer({ rid: uuid(27), node: `hill/${words.id}`, intent: "use", value: { text: null } }, words.id, "Pixel 9")).toMatchObject({ receipt: { code: "ok" } });
+    expect(await r.hill.answer({ rid: uuid(27), node: `hill/${words.id}`, intent: "use", value: { text: null } }, words.id, "Pixel 9")).toMatchObject({ receipt: { code: "rejected", reason: HILL_CODE_READ_FIRST, state: "open" } });
+    expect(await r.hill.answer({ rid: uuid(29), node: `hill/${words.id}`, intent: "keep", value: { text: null } }, words.id, "Pixel 9")).toMatchObject({ receipt: { code: "ok" } });
   });
 });

@@ -405,8 +405,10 @@ describe("with the Hill off, a card of Collie's own about a trick", () => {
   test("is answered: Collie's handler acts, the card closes, and the told line is typed into the proposing session", async () => {
     const r = rig();
     r.sw.set(false);
-    const id = posted(r.hill.postCollie(collie("proposal"), card(1), { tellOf: "local/%1#aaaa" }));
-    const outcome = await r.hill.answer({ rid: uuid(100), node: `hill/${id}`, intent: "on", value: { text: null } }, id, "Pixel 9");
+    // With its code part, read to its end on the phone: a trick card with none offers no yes (2026-11-17).
+    const withCode: HillPostInput = { ...card(1), view: [{ kind: "diff", text: "@@ -0,0 +1 @@\n+console.log(1);", attrs: { file: "program.ts" } }] };
+    const id = posted(r.hill.postCollie(collie("proposal"), withCode, { tellOf: "local/%1#aaaa" }));
+    const outcome = await r.hill.answer({ rid: uuid(100), node: `hill/${id}`, intent: "on", value: { text: null }, group: { digest: HASH, opened: [1] } }, id, "Pixel 9");
     expect(outcome).toMatchObject({ kind: "receipt", receipt: { code: "ok", state: "answered" } });
     expect(r.acts).toEqual(["proposal:legs:on"]);
     expect(r.sent).toEqual(["local/%1#aaaa"]);

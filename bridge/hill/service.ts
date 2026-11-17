@@ -123,7 +123,7 @@ import {
   type HillRefusalCode,
   type HillState,
 } from "../../web/src/lib/hill/wire.ts";
-import { singleCodeCard } from "../../web/src/lib/hill/code-card.ts";
+import { singleCodeCard, trickCardDecline } from "../../web/src/lib/hill/code-card.ts";
 import { parseAddress } from "../walky/address.ts";
 import { cleanBody } from "../walky/clean.ts";
 import type { WalkyPane } from "../walky/deliver.ts";
@@ -1853,7 +1853,14 @@ export class HillService {
    */
   private singleCodeRule(decision: HillDecision, request: HillAnswerRequest): string | null {
     const single = singleCodeCard(decision);
-    if (single === null || request.intent === "dismiss" || request.intent === single.decline) return null;
+    // A trick card whose stored view holds no code part offers no yes (2026-11-17): the bridge makes none
+    // (version-card.ts `keepOnly`), the phone shows none, and a yes that comes anyway is refused here, so
+    // nothing installs or switches on from a card that showed no code. The decline and a dismiss still go.
+    if (single === null) {
+      const decline = trickCardDecline(decision);
+      return decline === null || request.intent === "dismiss" || request.intent === decline ? null : HILL_CODE_READ_FIRST;
+    }
+    if (request.intent === "dismiss" || request.intent === single.decline) return null;
     const asked = request.group;
     if (asked === undefined) return HILL_CODE_OLD_APP;
     if (asked.digest !== single.digest) return HILL_GROUP_CHANGED;
