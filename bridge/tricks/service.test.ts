@@ -2629,3 +2629,82 @@ describe("the menu place and bound parts (contract 2)", () => {
     expect((await r.service.reply(undefined)).parts.map((p) => p.part)).toEqual(["ci"]);
   });
 });
+
+// ACCESS: THE FACTS CARRY THE SOCKET (M105 spec 04, decisions 5 and 8). A trick whose approved manifest says
+// `access` gets `api: { socket, access }` in its facts while the local API stands, and nothing in the
+// environment. With no socket it gets no `api`, and its row says so once.
+describe("access and the local API in the facts", () => {
+  const SOCKET = "/home/dev/.local/state/collie/api/sock";
+  const accessManifest = (access: string): string => `${MANIFEST}access = ${JSON.stringify(access)}\n`;
+
+  test("access = see with the socket standing: the facts carry the path and the level, the environment carries nothing", async () => {
+    const r = await rig([exited(belt("x"))], { localApi: () => SOCKET });
+    await makeTrick(r.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const facts = factsOf(r.specs[0]);
+    expect(facts.api).toEqual({ socket: SOCKET, access: "see" });
+    expect(JSON.stringify(r.specs[0]?.env)).not.toContain("sock");
+    const row = (await r.service.reply(undefined)).tricks[0];
+    expect(row?.access).toBe("see");
+    expect(row?.accessOff).toBeUndefined();
+  });
+
+  test("access = read is carried as read", async () => {
+    const r = await rig([exited(belt("x"))], { localApi: () => SOCKET });
+    await makeTrick(r.configDir, "legs", accessManifest("read"), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(factsOf(r.specs[0]).api).toEqual({ socket: SOCKET, access: "read" });
+  });
+
+  test("access with no socket: no `api` in the facts, and the row carries one note", async () => {
+    const r = await rig([exited(belt("x"))], { localApi: () => null });
+    await makeTrick(r.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(factsOf(r.specs[0]).api).toBeUndefined();
+    expect("api" in JSON.parse(r.specs[0]?.stdin ?? "{}")).toBe(false);
+    const row = (await r.service.reply(undefined)).tricks[0];
+    expect(row).toMatchObject({ access: "see", accessOff: true });
+    // The same with no function wired at all (a bridge that never builds the socket).
+    const bare = await rig([exited(belt("x"))]);
+    await makeTrick(bare.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(bare.stateDir, "legs");
+    await tickAt(bare, T0);
+    expect(factsOf(bare.specs[0]).api).toBeUndefined();
+    expect((await bare.service.reply(undefined)).tricks[0]?.accessOff).toBe(true);
+  });
+
+  test("a trick with no access gets no `api` even while the socket stands, and no note", async () => {
+    const r = await rig([exited(belt("x"))], { localApi: () => SOCKET });
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(factsOf(r.specs[0]).api).toBeUndefined();
+    const row = (await r.service.reply(undefined)).tricks[0];
+    expect(row?.access).toBeUndefined();
+    expect(row?.accessOff).toBeUndefined();
+  });
+
+  test("an off trick carries its level but no note", async () => {
+    const r = await rig([exited(belt("x"))], { localApi: () => null });
+    await makeTrick(r.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await r.service.refresh(true);
+    const row = (await r.service.reply(undefined)).tricks[0];
+    expect(row).toMatchObject({ on: false, access: "see" });
+    expect(row?.accessOff).toBeUndefined();
+  });
+
+  test("apiMoved republishes the rows, so the note goes when the socket comes up", async () => {
+    let socket: string | null = null;
+    const r = await rig([exited(belt("x"))], { localApi: () => socket });
+    await makeTrick(r.configDir, "legs", accessManifest("see"), { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect((await r.service.reply(undefined)).tricks[0]?.accessOff).toBe(true);
+    socket = SOCKET;
+    r.service.apiMoved();
+    expect((await r.service.reply(undefined)).tricks[0]?.accessOff).toBeUndefined();
+  });
+});

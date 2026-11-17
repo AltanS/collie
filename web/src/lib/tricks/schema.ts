@@ -1345,6 +1345,12 @@ export interface TrickManifest {
    * ({@link DECIDES_REPLY_LINE}). A right: it is in the powers, so a version that adds it asks again.
    */
   decides?: DecidesWord;
+  /**
+   * `access = "see"` or `"read"` (M105 spec 04): how much of Collie's local API the trick reads through the
+   * helper. Absent: `none`. A right: it is in the powers, so a version that raises it asks again; lowering it
+   * does not count as a new right.
+   */
+  access?: TrickAccess;
 }
 
 /**
@@ -1467,6 +1473,17 @@ export interface TrickFacts {
   spaces: FactsSpace[];
   /** How many sessions the facts left out past {@link FACT_SESSIONS_MAX} or {@link FACT_SESSIONS_MAX_BYTES}. Absent when none. */
   sessionsOmitted?: number;
+  /**
+   * Present only when the trick's approved manifest says `access = "see"` or `"read"` AND the local API socket
+   * stands on this bridge (M105 spec 04): the socket's path and the declared level. The helper's `t.api` dials it.
+   * Nothing of it is in the environment. Absent: no access declared, or the socket does not stand.
+   */
+  api?: FactsApi;
+}
+/** The local API as a trick's facts name it. The level is declared, and the helper holds it; it is not a wall. */
+export interface FactsApi {
+  socket: string;
+  access: TrickAccess;
 }
 
 // ── Types: taps and the wire ─────────────────────────────────────────────────────────────────
@@ -1653,6 +1670,17 @@ export interface WireTrickInfo {
    */
   watchPollSeconds?: number;
   /**
+   * The manifest's `access` (M105 spec 04): `see` or `read`. A right: the About sheet says one line for it.
+   * Absent: `none`, or an older bridge.
+   */
+  access?: TrickAccess;
+  /**
+   * Set when the trick declares `access` and Collie's local API does not stand on this bridge, so `t.api` answers
+   * a plain error. A note, never a refusal: the row says it once, in the phone's words. Absent: it stands, no
+   * access is declared, or an older bridge.
+   */
+  accessOff?: true;
+  /**
    * Contract 2 (M99): the globs the trick reads from its agent sessions' folders, and whether this bridge
    * leads a crew (the files then come from every machine). The row says it in one sentence
    * ({@link inputsSentence}). Absent: no inputs, or an older bridge.
@@ -1724,7 +1752,7 @@ export type WireTrickRules = {
 };
 
 /** The kinds of warning the check scan gives. A phone reads a kind it does not know as plain text. */
-export const TRICK_WARNING_KINDS = ["spawn", "network", "write", "model", "import"] as const;
+export const TRICK_WARNING_KINDS = ["spawn", "network", "write", "model", "import", "api"] as const;
 export type TrickWarningKind = (typeof TRICK_WARNING_KINDS)[number];
 /** One warning on a trick's row: its kind and one plain English sentence. */
 export interface WireTrickWarning {
@@ -4187,7 +4215,25 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules", "decides"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules", "decides", "access"] as const;
+
+// ── `access`: how much of Collie's local API a trick reads (M105 spec 04) ───────────────────────────
+
+/**
+ * The words `access` takes. `none` is the default, also when the key is absent. `see` holds the lists and
+ * states (machines, sessions, usage, the Hill), never the text of a screen. `read` holds `see` and adds the text
+ * of a session's screen. A closed list: any other word refuses the manifest. The level is what the trick
+ * declares and what Collie's helper gives it, not a wall (decision 4).
+ */
+export const ACCESS_LEVELS = ["see", "read"] as const;
+export const ACCESS_WORDS = ["none", ...ACCESS_LEVELS] as const;
+/** The levels a manifest keeps: `none` is the absence of the key. */
+export type TrickAccess = (typeof ACCESS_LEVELS)[number];
+/** The card's one line for each level, in the card's own English (and the About sheet's, in the phone's words). */
+export const ACCESS_LINES = {
+  see: "It sees your machines, your sessions and their states, your usage and the Hill. It does not see what is on a screen.",
+  read: "It reads what is on your sessions' screens.",
+} as const satisfies Readonly<Record<TrickAccess, string>>;
 
 // ── `decides`: whether a trick's Decisions answer into a session ────────────────────────────────────
 
@@ -4610,6 +4656,8 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   // Whether its Decisions answer into a session: one closed word, at every contract (an optional key adds
   // inside contract 1). A view-only trick runs no program, so it is refused there with the other program keys.
   const decides = f.word("decides", DECIDES_WORDS);
+  // How much of the local API the trick reads: one closed word. `none` is the default, kept as no key.
+  const access = f.word("access", ACCESS_WORDS);
 
   const fatal = refusals.some((r) => r.code !== "later");
   if (fatal || id === undefined || name === undefined || (run === undefined && !viewOnly) || contract === undefined) return { refusals: capRefusals(refusals) };
@@ -4619,6 +4667,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (agentView) manifest.agentView = true;
   if (rules !== undefined) manifest.rules = rules;
   if (decides !== undefined) manifest.decides = decides;
+  if (access !== undefined && access !== "none") manifest.access = access;
   if (every !== undefined && everyMs !== undefined && everyOk) {
     manifest.every = every;
     manifest.everyMs = everyMs;
@@ -4637,7 +4686,8 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
 // ── The facts ────────────────────────────────────────────────────────────────────────────────
 
 /** Every key of the facts document, of a session in it, of a space, of the trick, and of each trigger. */
-export const FACTS_KEYS = ["contract", "trigger", "trick", "memberId", "host", "sessions", "spaces", "sessionsOmitted"] as const;
+export const FACTS_KEYS = ["contract", "trigger", "trick", "memberId", "host", "sessions", "spaces", "sessionsOmitted", "api"] as const;
+export const API_FACT_KEYS = ["socket", "access"] as const;
 export const SESSION_FACT_KEYS = ["id", "memberId", "sessionId", "paneId", "host", "name", "agent", "status", "cwd", "space", "tab", "lastActiveAt", "reachable", "inputs"] as const;
 export const INPUTS_FACT_KEYS = ["state", "files", "skipped"] as const;
 export const INPUT_FILE_FACT_KEYS = ["rel", "path", "bytes", "sha256", "mtime", "kind"] as const;
@@ -4704,12 +4754,18 @@ export function parseFacts(raw: JsonValue | undefined): ParsedFacts {
   });
 
   const omitted = f.int("sessionsOmitted", { min: 1, max: 1_000_000 });
+  // The local API, for a trick that declares `access` while the socket stands (M105 spec 04).
+  const apiFields = f.object("api", 'an object with "socket" and "access"');
+  apiFields?.keys(API_FACT_KEYS);
+  const socket = apiFields?.text("socket", { max: FACT_TEXT_MAX_BYTES, required: true });
+  const apiAccess = apiFields?.word("access", ACCESS_LEVELS, true);
 
   if (refusals.length > 0 || trigger === undefined || trickId === undefined || dir === undefined || state === undefined || memberId === undefined || host === undefined) {
     return { refusals: capRefusals(refusals) };
   }
   const facts: TrickFacts = { contract: contract ?? TRICK_CONTRACT_DEFAULT, trigger, trick: { id: trickId, dir, state }, memberId, host, sessions, spaces };
   if (omitted !== undefined) facts.sessionsOmitted = omitted;
+  if (socket !== undefined && apiAccess !== undefined) facts.api = { socket, access: apiAccess };
   return { facts, refusals };
 }
 

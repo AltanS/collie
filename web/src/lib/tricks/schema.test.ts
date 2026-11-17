@@ -27,6 +27,7 @@ import {
   BUTTON_LABEL_MAX,
   COUNT_MAX,
   DECIDES_REPLY_LINE,
+  ACCESS_WORDS,
   DECIDES_WORDS,
   DECISIONS_MAX,
   DECISION_KEYS,
@@ -1620,6 +1621,43 @@ describe("the manifest's decides (2026-11-12)", () => {
   it("a Decision without replyTo passes either way, and a reader with no manifest checks nothing", () => {
     expect(parseTrickDocument(doc(asked), { decidesReply: false }).decisions).toHaveLength(1);
     expect(parseTrickDocument(doc({ ...asked, replyTo: "lodge:w1:1" })).decisions).toHaveLength(1);
+  });
+});
+
+describe("the manifest's access (M105 spec 04)", () => {
+  const base = { id: "load", name: "Machine load", run: "./load.ts", places: ["belt"] };
+
+  it("takes none, see or read; none and an absent key keep no field", () => {
+    expect(ACCESS_WORDS).toEqual(["none", "see", "read"]);
+    expect(MANIFEST_KEYS).toContain("access");
+    expect(parseManifest(base).manifest?.access).toBeUndefined();
+    expect(parseManifest({ ...base, access: "none" }).manifest?.access).toBeUndefined();
+    for (const access of ["see", "read"] as const) {
+      const read = parseManifest({ ...base, access });
+      expect(read.refusals).toEqual([]);
+      expect(read.manifest?.access).toBe(access);
+    }
+  });
+
+  it("any other word, or a value that is not text, refuses the manifest", () => {
+    const wrongs: JsonValue[] = ["send", "control", "See", "", true, ["see"], 1];
+    for (const access of wrongs) {
+      const read = parseManifest({ ...base, access });
+      expect(read.manifest, JSON.stringify(access)).toBeUndefined();
+      expect(read.refusals.map((r) => [r.code, r.path])).toEqual([["word", "/access"]]);
+    }
+  });
+});
+
+describe("the facts' api (M105 spec 04)", () => {
+  it("carries the socket and the level; another level, a missing socket or an unknown key refuses", () => {
+    const socket = "/home/dev/.local/state/collie/api/sock";
+    expect(parseFacts({ ...FACTS.timer, api: { socket, access: "read" } }).facts?.api).toEqual({ socket, access: "read" });
+    expect(parseFacts(FACTS.timer).facts?.api).toBeUndefined();
+    const refused: JsonValue[] = [{ socket, access: "none" }, { socket, access: "send" }, { access: "see" }, { socket }, { socket, access: "see", token: "x" }, "sock"];
+    for (const api of refused) {
+      expect(parseFacts({ ...FACTS.timer, api }).facts, JSON.stringify(api)).toBeUndefined();
+    }
   });
 });
 

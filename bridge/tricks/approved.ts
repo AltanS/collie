@@ -308,6 +308,8 @@ export async function syncConfig(src: string, copyDir: string, fs: TrickFs = dis
  * auto, no "Use it and stop asking", the card shows it whole. A manifest read from its text alone, whose
  * rules file was not read, hashes `rules` as the empty string: never equal to a read one.
  *
+ * `access = "see"` or `"read"` (M105 spec 04) is a right too, hashed only when the manifest has it, under `through`.
+ *
  * `decides = "reply"` (2026-11-12) is a right too, hashed only when the manifest has it: a Decision with
  * `replyTo` types the person's answer into a session, so a version that adds it asks again, even with auto.
  *
@@ -319,7 +321,7 @@ export async function syncConfig(src: string, copyDir: string, fs: TrickFs = dis
  * text above. The keys go in sorted order (`env`, `inputs`, `places`, then {@link LATER_POWER_KEYS}), which is
  * the order every stored hash was written in.
  */
-export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "inputs" | "agentView" | "rules" | "rulesSha256" | "decides" | "on" | "watch">): string {
+export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "inputs" | "agentView" | "rules" | "rulesSha256" | "decides" | "on" | "watch" | "access">): string {
   const env = [...new Set(manifest.env ?? [])].toSorted();
   const places = [...new Set<string>([...manifest.places, ...(manifest.agentView === true ? [AGENT_VIEW_PLACE] : [])])].toSorted();
   const inputs = [...new Set(manifest.inputs ?? [])].toSorted();
@@ -331,6 +333,9 @@ export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "input
   // version that adds one, or names another event or path, asks again. Sorted and once; absent hashes as before.
   if (manifest.on !== undefined) later.reacts = [...new Set<string>(manifest.on)].toSorted();
   if (manifest.watch !== undefined) later.watches = [...new Set(manifest.watch)].toSorted();
+  // `access` (M105 spec 04): how much of the local API the trick reads. `none` is the absent key, so a trick
+  // approved before the key existed, or without it, hashes as before and asks nothing on an update.
+  if (manifest.access !== undefined) later.through = manifest.access;
   return powersHash({ env, inputs, places }, later);
 }
 
@@ -371,10 +376,12 @@ export interface LaterPowers {
   rules?: string;
   /** The manifest's `watch` paths as written, sorted and once (M105 step one). */
   watches?: readonly string[];
+  /** The manifest's `access`, `see` or `read`: how much of the local API the trick reads (M105 spec 04). Named so it sorts after `places`. */
+  through?: string;
 }
 
 /** The later keys, in sorted order. */
-export const LATER_POWER_KEYS = ["reacts", "replies", "rules", "watches"] as const satisfies readonly (keyof LaterPowers)[];
+export const LATER_POWER_KEYS = ["reacts", "replies", "rules", "through", "watches"] as const satisfies readonly (keyof LaterPowers)[];
 
 /** Whether a later power key holds nothing, so it hashes as if absent: absent, or an empty list. The empty string holds something. */
 export function neutralPower(value: string | readonly string[] | undefined): boolean {

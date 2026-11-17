@@ -7,7 +7,7 @@ import { memoryHillReceipts } from "../hill/receipts.ts";
 import { HillService } from "../hill/service.ts";
 import { HillStore } from "../hill/store.ts";
 import { HILL_SUMMARY_MAX, type HillDecision, type HillReceipt } from "../../web/src/lib/hill/wire.ts";
-import { DECISION_VIEW_LIMITS, parseDecisionView, RULES_NEVER_AUTO, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
+import { ACCESS_LINES, DECISION_VIEW_LIMITS, parseDecisionView, RULES_NEVER_AUTO, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { parseJson } from "../../web/src/lib/json.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import { PENDING_SETTLE_MS, TricksService, type TrickVersionSubject } from "./service.ts";
@@ -15,7 +15,7 @@ import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
 import { GROUP_MASKED_NOTE, GROUP_WRAP } from "./card-group.ts";
-import { ON_CHIP, RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VERSION_TOO_MUCH_START, VersionCards, RUNS_AS_YOU, newInputs, versionCard, versionRequestId, versionTitle, versionTooMuch, versionView } from "./version-card.ts";
+import { ACCESS_CHIPS, accessLine, ON_CHIP, newRights, raisedAccess, RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VERSION_TOO_MUCH_START, VersionCards, RUNS_AS_YOU, newInputs, versionCard, versionRequestId, versionTitle, versionTooMuch, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
 import { singleCodeCard, viewHasCode } from "../../web/src/lib/hill/code-card.ts";
 
@@ -230,6 +230,59 @@ const DIFF: VersionDiff = {
   ],
 };
 
+describe("access: the level a version raises (M105 spec 04)", () => {
+  const manifest = (access?: "see" | "read"): TrickManifest => {
+    const out: TrickManifest = { id: "legs", name: "Browser leg", run: "./legs.sh", mode: "once", contract: 1, icon: "plug", places: ["belt"] };
+    if (access !== undefined) out.access = access;
+    return out;
+  };
+  const withAccess = (next?: "see" | "read", was?: "see" | "read"): ReturnType<typeof versionCard> => {
+    const base = subject();
+    const pending = base.pending;
+    if (pending === null) throw new Error("no pending");
+    return versionCard({ ...base, base: { dir: "/y", manifest: manifest(was) }, pending: { ...pending, manifest: manifest(next) } }, DIFF);
+  };
+
+  test("raising it is a new right, and a lowering or a keeping is not", () => {
+    expect(newRights(manifest(), manifest("see"))).toEqual([ACCESS_CHIPS.see]);
+    expect(newRights(manifest(), manifest("read"))).toEqual([ACCESS_CHIPS.read]);
+    expect(newRights(manifest("see"), manifest("read"))).toEqual([ACCESS_CHIPS.read]);
+    expect(newRights(manifest("read"), manifest("see"))).toEqual([]);
+    expect(newRights(manifest("see"), manifest("see"))).toEqual([]);
+    expect(newRights(manifest("read"), manifest())).toEqual([]);
+    expect(raisedAccess(manifest(), manifest("see"))).toBe("see");
+    expect(raisedAccess(manifest("see"), manifest("read"))).toBe("read");
+    expect(raisedAccess(manifest("read"), manifest("see"))).toBeUndefined();
+    expect(raisedAccess(undefined, manifest("read"))).toBe("read");
+  });
+
+  test("the words of each level, exactly, and none for `none`", () => {
+    expect(ACCESS_LINES.see).toBe("It sees your machines, your sessions and their states, your usage and the Hill. It does not see what is on a screen.");
+    expect(ACCESS_LINES.read).toBe("It reads what is on your sessions' screens.");
+    expect(accessLine(undefined)).toEqual([]);
+    for (const text of [ACCESS_LINES.see, ACCESS_LINES.read, ACCESS_CHIPS.see, ACCESS_CHIPS.read]) expect(text).not.toMatch(/permission|can only/iu);
+  });
+
+  test("the card puts the line right after the honest line, names the right, and never recommends or offers always", () => {
+    const card = withAccess("see");
+    expect(card?.view?.[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
+    expect(card?.view?.[1]).toEqual({ kind: "para", text: ACCESS_LINES.see });
+    expect(card?.summary).toContain(`It now also asks for ${ACCESS_CHIPS.see}.`);
+    expect(card?.recommends).toBeNull();
+    expect(card?.options?.map((option) => option.intent)).toEqual(["use", "keep"]);
+    expect(JSON.stringify(withAccess("read", "see")?.view)).toContain(ACCESS_LINES.read);
+  });
+
+  test("a version that keeps or lowers the level carries no access line and no new right", () => {
+    for (const card of [withAccess("see", "see"), withAccess("see", "read"), withAccess(undefined, "read")]) {
+      expect(JSON.stringify(card?.view)).not.toContain("It sees your machines");
+      expect(JSON.stringify(card?.view)).not.toContain("It reads what is on");
+      expect(card?.view?.[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
+    }
+    expect(withAccess("see", "see")?.summary).toContain("It asks for no new rights.");
+  });
+});
+
 describe("the card's words and view", () => {
   test("no new rights: three options, Collie recommends use, and the summary says so in two sentences", () => {
     const card = versionCard(subject(), DIFF);
@@ -383,7 +436,7 @@ describe("the card's words and view", () => {
     const pending = base.pending!;
     const env = Array.from({ length: 6 }, (_, i) => `A_VERY_LONG_ENVIRONMENT_VARIABLE_NAME_NUMBER_${String(i)}`);
     const card = versionCard(
-      { ...base, pending: { ...pending, info: { ...pending.info, powersChanged: true, warnings: ["spawn", "network", "write", "model", "import"].map((kind) => ({ kind, text: "x" })) }, manifest: { ...pending.manifest!, env } } },
+      { ...base, pending: { ...pending, info: { ...pending.info, powersChanged: true, warnings: ["spawn", "network", "write", "model", "import", "api"].map((kind) => ({ kind, text: "x" })) }, manifest: { ...pending.manifest!, env } } },
       { counted: false, files: [] },
     );
     expect([...(card?.summary ?? "")].length).toBeLessThanOrEqual(HILL_SUMMARY_MAX);

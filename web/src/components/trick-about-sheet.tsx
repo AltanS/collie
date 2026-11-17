@@ -162,6 +162,8 @@ function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
   // `on` and `watch` are rights (M105 step one): the same two lines as the proposal card's chips.
   if (trick.events !== undefined && trick.events.length > 0) rows.push({ key: "on", node: t("settings.tricks.about.on") });
   if (trick.watch !== undefined && trick.watch.length > 0) rows.push({ key: "watch", node: t("settings.tricks.about.watch", { paths: trick.watch.join(", ") }) });
+  // `access` (M105 spec 04): the one line of the level the trick declares. `none` has no line.
+  if (trick.access !== undefined) rows.push({ key: "access", node: <span data-line="access">{t(trick.access === "read" ? "settings.tricks.about.access.read" : "settings.tricks.about.access.see")}</span> });
   for (const line of warningLines(trick)) {
     rows.push({
       key: `warn:${line.kind}`,

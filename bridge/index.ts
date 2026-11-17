@@ -49,7 +49,7 @@ import {
   privateRoot,
   type PrivateRoot,
 } from "./owner-only.ts";
-import type { AgentView, CrewMode, CrewStatusResponse, Launcher } from "./types.ts";
+import type { AgentView, CrewMode, CrewStatusResponse, Launcher, MachineRow } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
 import { durableLogDir, moveFlatLogs, sourceLogDir } from "./durable/log.ts";
 import { GitHeads, nodeGitHeadDisk } from "./git-head.ts";
@@ -4163,6 +4163,17 @@ const localApi =
               return grid.ok ? { ok: true, text: grid.value.text, truncated: grid.value.truncated } : { ok: false };
             },
             hill,
+            // `machines` (spec 04, decision 6): the Machines page's rows and the crew overview, from memory.
+            machineWatch: machineWatch ?? null,
+            crewStatus: () => crewStatus?.() ?? null,
+            // A crew peer keeps no watch: its own row, from the sampler it serves its lead from.
+            selfMachine: () => {
+              const self = machineRoster().find((entry) => entry.isLead) ?? { id: bridgeId.id, name: hostname() };
+              const row: MachineRow = { id: self.id, name: self.name, isLead: true, health: "reachable", alerts: {}, firing: [] };
+              const sample = machineSampler.latest();
+              if (sample !== null) row.sample = sample;
+              return row;
+            },
             defaultLines: cfg.readLines,
           }),
         ),
@@ -4267,7 +4278,9 @@ const tricks =
         rights: new RightsCards({ hill, warn: (line) => console.warn(`[tricks] ${line}`) }),
         repoFacts,
         // The local API stands while `localApiWanted` says so (decision 14); start and stop run one at a time.
-        onSwitchedOnCount: (count) => void (localApiWanted(count) ? localApi?.start() : localApi?.stop()),
+        onSwitchedOnCount: (count) => void Promise.resolve(localApiWanted(count) ? localApi?.start() : localApi?.stop()).finally(() => tricks?.apiMoved()),
+        // A trick that declares `access` gets the socket's path in its facts while the socket stands (M105 spec 04).
+        localApi: () => (localApi?.running() === true ? apiSocketPath(cfg.stateDir) : null),
         // A trick that lists `on` runs on the bus's events (bridge/tricks/triggers.ts).
         bus: eventBus,
       });

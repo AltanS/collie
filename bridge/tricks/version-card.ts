@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { parseJson } from "../../web/src/lib/json.ts";
 import { HILL_SUMMARY_MAX, type HillCollieRef, type HillDecision, type HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import {
+  ACCESS_LINES,
   AGENT_VIEW_PLACE,
   AGENT_VIEW_TAP_WORDS,
   AGENT_VIEW_WORDS,
@@ -20,6 +21,7 @@ import {
   TEXT_MAX,
   VIEW_LIMITS,
   type PlaceKind,
+  type TrickAccess,
   type TrickManifest,
   type View,
   type ViewNode,
@@ -136,10 +138,20 @@ export const WARN_VERBS = {
   write: "writes files outside its state folder",
   model: "starts an agent or calls a model",
   import: "imports a package Collie does not install",
+  api: "talks to Collie's local API directly, past its helper",
 } as const satisfies Readonly<Record<keyof typeof WARN_PLAIN, string>>;
 
 /** The chip of the right `decides = "reply"`: its Decisions may type your answer into a session. */
 export const DECIDES_REPLY_CHIP = "answers go to a session";
+
+/**
+ * The chips of the right `access` (M105 spec 04), as they follow "asks for": the level the trick declares for
+ * Collie's local API. The level is what the trick declares and the helper gives it, not a wall (decision 4).
+ */
+export const ACCESS_CHIPS = {
+  see: "a look at your machines, sessions and usage",
+  read: "a look at what is on your sessions' screens",
+} as const satisfies Readonly<Record<TrickAccess, string>>;
 
 /**
  * The card's honest line (Altan, 2026-11-17): a trick with a program (a `run` line) runs unsandboxed as
@@ -154,6 +166,25 @@ export function runsAsYou(manifest: Pick<TrickManifest, "run"> | undefined): Vie
   return manifest?.run === undefined ? [] : [{ kind: "para", text: RUNS_AS_YOU }];
 }
 
+/**
+ * The paragraph of the level a trick declares, after the honest line: the one line of decision 3, or nothing
+ * for `none`. Never the words "permission" or "can only": a level is what the trick declares, not a wall.
+ */
+export function accessLine(access: TrickAccess | undefined): ViewNode[] {
+  return access === undefined ? [] : [{ kind: "para", text: ACCESS_LINES[access] }];
+}
+
+/**
+ * The level a version raises, or undefined: `see` when it adds `see` to none, `read` when it adds `read` to none
+ * or to `see`. A version that keeps the level or lowers it raises nothing, so no line and no new right.
+ */
+export function raisedAccess(base: Pick<TrickManifest, "access"> | undefined, next: Pick<TrickManifest, "access"> | undefined): TrickAccess | undefined {
+  const order = { see: 1, read: 2 } as const satisfies Readonly<Record<TrickAccess, number>>;
+  const was = base?.access === undefined ? 0 : order[base.access];
+  const now = next?.access === undefined ? 0 : order[next.access];
+  return now > was ? next?.access : undefined;
+}
+
 /** The chip of the right `on` (M105 step one): the trick runs when a session's state changes. */
 export const ON_CHIP = "runs when a session changes state";
 
@@ -162,7 +193,7 @@ export function watchChip(paths: readonly string[]): string {
   return `runs when these files change: ${paths.join(", ")}`;
 }
 
-type RightsManifest = Pick<TrickManifest, "env" | "places" | "agentView" | "decides" | "on" | "watch">;
+type RightsManifest = Pick<TrickManifest, "env" | "places" | "agentView" | "decides" | "on" | "watch" | "access">;
 
 /**
  * The rights a manifest asks for past the base: its environment names, its places (an agent view among
@@ -173,7 +204,10 @@ function rightsOf(manifest: RightsManifest | undefined): Set<string> {
   if (manifest === undefined) return new Set();
   const places: string[] = [...manifest.places, ...(manifest.agentView === true ? [AGENT_VIEW_PLACE] : [])];
   const decides = manifest.decides === undefined ? [] : [`decides:${manifest.decides}`];
+  // `read` holds `see`: a version that lowers `read` to `see` asks for nothing new.
+  const access = manifest.access === undefined ? [] : manifest.access === "read" ? ["access:see", "access:read"] : ["access:see"];
   return new Set([
+    ...access,
     ...(manifest.env ?? []).map((name) => `env:${name}`),
     ...places.map((place) => `place:${place}`),
     ...decides,
@@ -186,6 +220,7 @@ function rightsOf(manifest: RightsManifest | undefined): Set<string> {
 function rightWords(right: string): string {
   if (right.startsWith("env:")) return right.slice(4);
   if (right.startsWith("decides:")) return DECIDES_REPLY_CHIP;
+  if (right.startsWith("access:")) return right === "access:read" ? ACCESS_CHIPS.read : ACCESS_CHIPS.see;
   return placeWords(right.slice(6));
 }
 
@@ -193,7 +228,9 @@ function rightWords(right: string): string {
 function chipsOf(rights: readonly string[]): string[] {
   const events = rights.some((right) => right.startsWith("event:")) ? [ON_CHIP] : [];
   const paths = rights.filter((right) => right.startsWith("watch:")).map((right) => right.slice(6));
-  const plain = rights.filter((right) => !right.startsWith("event:") && !right.startsWith("watch:")).map(rightWords);
+  // `access:see` beside `access:read` is one right: the higher level says it.
+  const higher = rights.includes("access:read");
+  const plain = rights.filter((right) => !right.startsWith("event:") && !right.startsWith("watch:") && !(higher && right === "access:see")).map(rightWords);
   return [...plain, ...events, ...(paths.length > 0 ? [watchChip(paths)] : [])];
 }
 
@@ -288,7 +325,9 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   // The head of the view: the rights as chips (the new instructions as one more), then each new right in
   // the words a person reads, then the inputs and the warnings.
   const lines = [...(viewNew ? [AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS] : []), ...(newRules ? [RULES_WORDS] : [])];
-  const plainFacts = [...rightsHead("New rights", newRules ? [...rights, RULES_CHIP] : rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null), ...maskedNotes(diff.files), ...lines.map((text): ViewNode => ({ kind: "para", text }))];
+  // The level the version raises, in its one line right after the honest line (M105 spec 04).
+  const accessNodes = accessLine(raisedAccess(base, next));
+  const plainFacts = [...accessNodes, ...rightsHead("New rights", newRules ? [...rights, RULES_CHIP] : rights, warnings, reads.length > 0 ? inputsSentence(reads, crew) : null), ...maskedNotes(diff.files), ...lines.map((text): ViewNode => ({ kind: "para", text }))];
   // The code the card shows beside the rules: every changed file but the rules file, which shows whole on its own.
   const code = rules === null ? diff : { ...diff, files: diff.files.filter((file) => file.rel !== rules.rel) };
   const rulesNodes = rules === null ? [] : rulesView(rules);

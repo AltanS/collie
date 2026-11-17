@@ -109,6 +109,22 @@ describe("generated from the table", () => {
     expect(d.io.stdout).toEqual(["counted: 3"]);
   });
 
+  test("hello takes --client from its declaration and sends it as args.client", async () => {
+    expect(apiHelp(declaredOperations()).join("\n")).toContain("--client <text>");
+    const dir = stateDir();
+    const served = await serve(dir, () => JSON.stringify({ id: "req-1", ok: true, api: 1 }));
+    const d = deps(dir);
+    expect(await cmdApi(d, ["hello", "--client", "trick:cpu-load"])).toBe(EXIT.OK);
+    expect(parseJsonObject(served.requests[0] ?? "")).toEqual({ id: "req-1", op: "hello", args: { client: "trick:cpu-load" } });
+  });
+
+  test("machines is in the generated help, with no flag", () => {
+    const lines = apiHelp(declaredOperations());
+    const at = lines.findIndex((line) => line.trimStart().startsWith("machines "));
+    expect(at).toBeGreaterThan(-1);
+    expect(lines[at + 1]?.trimStart().startsWith("events ")).toBe(true);
+  });
+
   test("bare `collie api` and `collie api --help` print the same generated list and exit 0", async () => {
     const bare = capture();
     expect(await run(["api"], bare)).toBe(EXIT.OK);
@@ -158,7 +174,7 @@ describe("the flags", () => {
     const d = deps(stateDir());
     expect(await cmdApi(d, ["send"])).toBe(EXIT.USAGE);
     expect(d.io.stderr[0]).toBe("error: unknown operation `send`");
-    expect(d.io.stderr[1]).toContain("hello|sessions|brief|read|accounts|hill.list|events");
+    expect(d.io.stderr[1]).toContain("hello|sessions|brief|read|accounts|hill.list|machines|events");
   });
 
   test("through `run`, a usage error exits 2", async () => {

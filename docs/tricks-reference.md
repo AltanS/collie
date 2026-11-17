@@ -1261,6 +1261,7 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 | `version` | text | no | 1 to 24 characters: letters, digits, `.`, `+` and `-`, such as `1.2.0` | 1 | The trick's own version. The About sheet shows it. Collie never compares it and reads no tag. |
 | `rules` | file name | yes, with `agent-view`; refused without it | a file in the trick's folder of at most 64 characters ending in `.md`, such as `rules.md` | 2 | The instructions the agent of a session reads. The person reads them whole before they switch the trick on. |
 | `decides` | word | no | `reply`. Refused on a trick that is only an agent view | 1 | Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again. |
+| `access` | word | no | `none`, `see` or `read`. Default `none` | 1 | How much of Collie's local API the trick reads through `t.api`. `see` reads lists and states, `read` adds the text of a screen. A right: a version that raises it asks again. See [Reading Collie through the local API](#reading-collie-through-the-local-api). Experimental. |
 
 In `trick.toml`:
 
@@ -1292,6 +1293,7 @@ Collie writes the facts on stdin. The program ignores a field it does not know, 
 | `sessions` | always | The agent and shell sessions, at most 256. On a crew's lead they are every member's, the lead's own first. |
 | `spaces` | always | Each space as `name`, `folder` (`folder` is left out when there is none), at most 64. |
 | `sessionsOmitted` | only when some are left out | How many sessions the caps left out. Only a crew's lead counts them: a solo machine past the cap leaves the rest out with no count. Absent when none. |
+| `api` | only with `access`, while the local API stands | `socket`, `access`: the path of Collie's local API socket, and the level `access` declares (`see` or `read`). `t.api` dials it. Nothing of it is in the environment. Absent when the trick declares no `access`, and when the socket does not stand. |
 
 A session in `sessions` has these fields:
 
@@ -1399,6 +1401,7 @@ Collie checks strictly what a person or an agent writes: `trick.toml`, `collie h
 | `t.sessionAt(folder)`, `t.sessionNamed(name)` | The session whose folder is `folder`, or the one with this name, or `null`. |
 | `t.fresh(duration)`, `t.asOf(when)` | The document's `fresh` and `asOf`. |
 | `now()`, `age(ms)`, `iso(ms?)`, `mask(text)`, `clip(text, n)` | The clock in epoch milliseconds, a span in short words such as `12 min`, an ISO 8601 time, text with each key cut to its first four characters and the home folder written as `~`, and one masked line cut to `n` characters. |
+| `t.api(operation, args?)` | Reads through Collie's local API (experimental): `await t.api("machines")`. It answers the socket's line, `{ ok: true, ... }`, or `{ ok: false, error: { code, message } }`, and never throws, so a program shows `error.message`. It refuses before it dials when the trick declares no `access`, when the local API is off, or when the operation needs `read` and the trick declares `see`. A call takes at most 3 seconds. See [Reading Collie through the local API](#reading-collie-through-the-local-api). |
 | `t.inputs(session)` | The input files of a session (contract 2): a text file as `text`, a picture as `data`. A copy that is gone or changed since the facts were written is left out. It answers `[]` when there are none, and `session.inputs?.state` says why. Never run what it returns. |
 
 A run that calls neither `t.decide` nor `t.keepDecisions` prints `"decisions": []`, so it withdraws the open ones.
@@ -1491,6 +1494,31 @@ The rules of a watched file:
 | The same road as events | The same gates, limits and backoff as an event run. |
 
 > **Note.** `on` and `watch` are rights. The card says it "runs when a session changes state" or "runs when these files change", with the paths. A new version that adds one, or names another event or path, asks for a new yes.
+
+### Reading Collie through the local API
+
+A trick reads live facts of Collie (its machines, its sessions, your usage, the Hill) through Collie's local API, with no token and no list of surfaces in its manifest. Your yes to the trick is the grant. The manifest says how much with `access`, and the program calls `t.api`.
+
+```toml
+access = "see"
+```
+
+```ts
+const machines = await t.api("machines");
+if (!machines.ok) throw new Error(machines.error.message);
+```
+
+| `access` | What the trick gets | Operations |
+| --- | --- | --- |
+| `none` | The default, also when `access` is left out. No `api` in the facts, and `t.api` answers an error. | none |
+| `see` | Lists and states: your machines, your sessions and their states, your usage and the Hill. Never the text of a screen. | `hello`, `sessions`, `brief`, `accounts`, `hill.list`, `events`, `machines` |
+| `read` | Everything in `see`, and the text of a session's screen, masked as the phone's own read is. | all of `see`, and `read` |
+
+> **Experimental.** `access` and `t.api` are new, and their words may still change.
+
+> **Note.** A level is what the trick declares and what Collie's helper gives it. It is not a wall. A trick's program runs as you, and the local socket is open to every program of your user while tricks are on, so a program of yours can reach the socket without the helper. Collie's text search of the code flags a trick that names the socket or runs `collie api` itself, and the card shows that line like the other findings. A real wall needs the fence for tricks, which comes later.
+
+The socket stands while tricks are switched on, on a machine where tricks run. Where it does not (a crew peer, a deputy, Windows), the facts carry no `api`, `t.api` answers `Collie's local API is off here.`, and the trick's row says so once.
 
 ## Limits
 

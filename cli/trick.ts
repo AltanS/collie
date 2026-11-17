@@ -41,6 +41,7 @@ import {
   AGENT_VIEW_PLACE,
   AGENT_VIEW_TAP_WORDS,
   AGENT_VIEW_WORDS,
+  ACCESS_LINES,
   DECIDES_REPLY_WORDS,
   isHostName,
   isTrickId,
@@ -857,6 +858,7 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     }
     if (m.rules !== undefined) io.out(`  rules:  ${m.rules}. ${RULES_WORDS}`);
     if (m.decides === "reply") io.out(`  decides: reply. ${DECIDES_REPLY_WORDS}`);
+    if (m.access !== undefined) io.out(`  access: ${m.access}. ${ACCESS_LINES[m.access]}`);
   }
   if (report.env.length > 0) {
     const names = report.env.map((e) => (e.reason === undefined ? e.name : `${e.name} (${e.reason})`));

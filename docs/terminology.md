@@ -394,8 +394,17 @@ others ([The parts](tricks.md#the-parts), [Parts](tricks-reference.md#parts)).
 
 What a trick may reach beyond its own code: the environment names it asks for (`env`), the places it
 draws in (`places`), the files it reads from your agent sessions (`inputs`), and when it runs on its
-own (`on`, `watch`). The About sheet lists them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
+own (`on`, `watch`), and how much of the local API it reads (`access`). The About sheet lists them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
 sometimes say "rights" for the same thing ([What a trick may and may not do](tricks.md#powers-the-environment-and-the-warnings)).
+
+## Access (of a trick)
+
+How much of Collie's [local API](#local-api) a trick reads: `none` (the default), `see` or `read`. `see`
+holds your machines, your sessions and their states, your usage and the Hill, and never the text of a
+screen. `read` adds what is on a session's screen. The trick says it with `access` in `trick.toml`, and it
+is a [power](#power): a version that raises it waits for your yes. The level is what the trick declares and
+what Collie's helper gives it. It is not a wall, because a program of yours can reach the local socket
+without the helper ([Reading Collie through the local API](tricks-reference.md#reading-collie-through-the-local-api)).
 
 ## About sheet
 

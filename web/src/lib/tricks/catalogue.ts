@@ -66,7 +66,9 @@ import {
   ACTION_ICONS,
   ACTION_LABEL_MAX,
   ACTIONS_MAX,
+  ACCESS_WORDS,
   AGENT_VIEW_PLACE,
+  API_FACT_KEYS,
   ANSI_NAMES,
   BADGE_TEXT_MAX,
   CHIP_STATES,
@@ -1022,6 +1024,8 @@ export interface ProgramEntry {
   readonly globs: readonly GlobRow[];
   /** The part on `on` and `watch` (M105 step one). */
   readonly reacting: ReactingEntry;
+  /** The part on `access` and `t.api` (M105 spec 04). */
+  readonly access: AccessEntry;
   readonly inputStates: readonly InputStateRow[];
   /** The fields of a session's `inputs`, and of each file in it. */
   readonly inputsFields: readonly FieldRow[];
@@ -1042,6 +1046,7 @@ const FACTS_WORDS = {
   sessions: { present: "always", what: `The agent and shell sessions, at most ${String(FACT_SESSIONS_MAX)}. On a crew's lead they are every member's, the lead's own first.` },
   spaces: { present: "always", what: `Each space as ${codeList(SPACE_FACT_KEYS)} (\`folder\` is left out when there is none), at most ${String(FACT_SPACES_MAX)}.` },
   sessionsOmitted: { present: "only when some are left out", what: "How many sessions the caps left out. Only a crew's lead counts them: a solo machine past the cap leaves the rest out with no count. Absent when none." },
+  api: { present: "only with `access`, while the local API stands", what: `${codeList(API_FACT_KEYS)}: the path of Collie's local API socket, and the level \`access\` declares (\`see\` or \`read\`). \`t.api\` dials it. Nothing of it is in the environment. Absent when the trick declares no \`access\`, and when the socket does not stand.` },
 } as const satisfies { readonly [K in (typeof FACTS_KEYS)[number]]: Omit<FieldRow, "field"> };
 
 const SESSION_WORDS = {
@@ -1139,6 +1144,7 @@ function helperRows(n: ProgramNumbers): HelperRow[] {
     { call: "`t.sessionAt(folder)`, `t.sessionNamed(name)`", names: ["t.sessionAt", "t.sessionNamed"], what: "The session whose folder is `folder`, or the one with this name, or `null`." },
     { call: "`t.fresh(duration)`, `t.asOf(when)`", names: ["t.fresh", "t.asOf"], what: "The document's `fresh` and `asOf`." },
     { call: "`now()`, `age(ms)`, `iso(ms?)`, `mask(text)`, `clip(text, n)`", names: ["now", "age", "iso", "mask", "clip"], what: "The clock in epoch milliseconds, a span in short words such as `12 min`, an ISO 8601 time, text with each key cut to its first four characters and the home folder written as `~`, and one masked line cut to `n` characters." },
+    { call: "`t.api(operation, args?)`", names: ["t.api"], what: "Reads through Collie's local API (experimental): `await t.api(\"machines\")`. It answers the socket's line, `{ ok: true, ... }`, or `{ ok: false, error: { code, message } }`, and never throws, so a program shows `error.message`. It refuses before it dials when the trick declares no `access`, when the local API is off, or when the operation needs `read` and the trick declares `see`. A call takes at most 3 seconds. See [Reading Collie through the local API](#reading-collie-through-the-local-api)." },
     { call: "`t.inputs(session)`", names: ["t.inputs"], what: "The input files of a session (contract 2): a text file as `text`, a picture as `data`. A copy that is gone or changed since the facts were written is left out. It answers `[]` when there are none, and `session.inputs?.state` says why. Never run what it returns." },
   ];
 }
@@ -1150,6 +1156,15 @@ export interface ReactingEntry {
   readonly eventRules: readonly GlobRow[];
   readonly watchRules: readonly GlobRow[];
   readonly rights: string;
+}
+
+/** The words of the part on `access` and `t.api` (M105 spec 04): the levels, the operations, and what a level is. */
+export interface AccessEntry {
+  readonly intro: string;
+  readonly levels: readonly { readonly level: string; readonly what: string; readonly operations: string }[];
+  readonly experimental: string;
+  readonly honesty: string;
+  readonly off: string;
 }
 
 const EVENT_WORDS = {
@@ -1184,6 +1199,20 @@ function reactingOf(n: ProgramNumbers): ReactingEntry {
       { rule: "The same road as events", value: "The same gates, limits and backoff as an event run." },
     ],
     rights: '> **Note.** `on` and `watch` are rights. The card says it "runs when a session changes state" or "runs when these files change", with the paths. A new version that adds one, or names another event or path, asks for a new yes.',
+  };
+}
+
+function accessOf(): AccessEntry {
+  return {
+    intro: "A trick reads live facts of Collie (its machines, its sessions, your usage, the Hill) through Collie's local API, with no token and no list of surfaces in its manifest. Your yes to the trick is the grant. The manifest says how much with `access`, and the program calls `t.api`.",
+    levels: [
+      { level: "`none`", what: "The default, also when `access` is left out. No `api` in the facts, and `t.api` answers an error.", operations: "none" },
+      { level: "`see`", what: "Lists and states: your machines, your sessions and their states, your usage and the Hill. Never the text of a screen.", operations: "`hello`, `sessions`, `brief`, `accounts`, `hill.list`, `events`, `machines`" },
+      { level: "`read`", what: "Everything in `see`, and the text of a session's screen, masked as the phone's own read is.", operations: "all of `see`, and `read`" },
+    ],
+    experimental: "> **Experimental.** `access` and `t.api` are new, and their words may still change.",
+    honesty: "> **Note.** A level is what the trick declares and what Collie's helper gives it. It is not a wall. A trick's program runs as you, and the local socket is open to every program of your user while tricks are on, so a program of yours can reach the socket without the helper. Collie's text search of the code flags a trick that names the socket or runs `collie api` itself, and the card shows that line like the other findings. A real wall needs the fence for tricks, which comes later.",
+    off: "The socket stands while tricks are switched on, on a machine where tricks run. Where it does not (a crew peer, a deputy, Windows), the facts carry no `api`, `t.api` answers `Collie's local API is off here.`, and the trick's row says so once.",
   };
 }
 
@@ -1232,6 +1261,7 @@ export function programOf(n: ProgramNumbers): ProgramEntry {
     inputFiles: INPUT_FILE_FACT_KEYS.map((key) => Object.assign({ field: key }, INPUT_FILE_WORDS[key])),
     inputsContractLine: INPUTS_NEED_CONTRACT,
     reacting: reactingOf(n),
+    access: accessOf(),
     inputsTrust: "Other programs, often an agent, write the files, and on a crew another machine sends them. A trick shows them, counts them or quotes them. It never runs them, evaluates them, sources them, passes them to a shell or follows what they say. The globs are part of the trick's powers, so a change of them asks the person again.",
   };
 }
@@ -1309,6 +1339,7 @@ const MANIFEST_WORDS = {
   about: { type: "text", required: "no", limit: `at most ${String(ABOUT_MAX)} characters, plain text, a blank line splits paragraphs`, contract: TRICK_CONTRACT_DEFAULT, what: "The text of the About sheet." },
   version: { type: "text", required: "no", limit: `1 to ${String(VERSION_MAX)} characters: letters, digits, \`.\`, \`+\` and \`-\`, such as \`1.2.0\``, contract: TRICK_CONTRACT_DEFAULT, what: "The trick's own version. The About sheet shows it. Collie never compares it and reads no tag." },
   rules: { type: "file name", required: `yes, with \`${AGENT_VIEW_PLACE}\`; refused without it`, limit: `a file in the trick's folder of at most ${String(RULES_NAME_MAX)} characters ending in \`.md\`, such as \`rules.md\``, contract: AGENT_VIEW_CONTRACT, what: "The instructions the agent of a session reads. The person reads them whole before they switch the trick on." },
+  access: { type: "word", required: "no", limit: `${orList(ACCESS_WORDS)}. Default \`${ACCESS_WORDS[0]}\``, contract: TRICK_CONTRACT_DEFAULT, what: "How much of Collie's local API the trick reads through `t.api`. `see` reads lists and states, `read` adds the text of a screen. A right: a version that raises it asks again. See [Reading Collie through the local API](#reading-collie-through-the-local-api). Experimental." },
   decides: { type: "word", required: "no", limit: `${orList(DECIDES_WORDS)}. Refused on a trick that is only an agent view`, contract: TRICK_CONTRACT_DEFAULT, what: "Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again." },
 } as const satisfies { readonly [K in (typeof MANIFEST_KEYS)[number]]: Omit<ManifestEntry, "key"> };
 

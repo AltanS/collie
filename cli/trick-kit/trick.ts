@@ -1,4 +1,4 @@
-// collie trick helper v5
+// collie trick helper v7
 // The helper of a Collie trick: it reads the facts, collects the parts and the Decisions, and prints the
 // one document the bridge reads. `collie trick init` writes it into the trick folder, and
 // `collie trick helper <id>` rewrites it with the newest version. It imports only node: built-ins and
@@ -6,9 +6,11 @@
 //
 // Two test hooks, which only `collie trick dev`, `collie trick check --run` and a test of your own pass
 // (the bridge never passes a TRICK_* variable): TRICK_NOW (epoch seconds) fixes the clock `now()` reads,
-// and TRICK_TOOLS_ONLY_PATH=1 makes `t.tool` look on PATH alone.
+// and TRICK_TOOLS_ONLY_PATH=1 makes `t.tool` look on PATH alone. TRICK_API_MS shortens the limit of one
+// `t.api` call (a test only).
 
 import { appendFileSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { createConnection } from "node:net";
 import { delimiter, dirname, join } from "node:path";
 
 // Collie's runtime switch is for this process only. A program the trick starts must not inherit it.
@@ -276,6 +278,8 @@ export interface Facts {
   host: string; memberId: string; sessions: Session[]; spaces: { name: string; folder?: string }[];
   /** How many sessions the facts left out past their caps. Absent when none. */
   sessionsOmitted?: number;
+  /** Present when the trick declares `access` and Collie's local API stands: the socket `t.api` dials, and the level. */
+  api?: { socket: string; access: "see" | "read" };
 }
 /**
  * The tap that started a run, one shape from every place: a button or an action in the trick's session,
@@ -418,6 +422,76 @@ function writeWhole(path: string, json: string): void {
   renameSync(`${path}.tmp`, path);
 }
 
+// ── Collie's local API (`t.api`) ───────────────────────────────────────────────────────────────────
+/** The level each operation needs; the bridge's table (bridge/api/operations.ts) holds the same list. */
+export const API_LEVELS = {
+  hello: "see", sessions: "see", brief: "see", accounts: "see", "hill.list": "see", events: "see", machines: "see", read: "read",
+} as const satisfies Readonly<Record<string, "see" | "read">>;
+/** The level of an operation, or undefined for a name Collie's local API does not have. */
+function levelOf(op: string): "see" | "read" | undefined {
+  return Object.entries(API_LEVELS).find(([name]) => name === op)?.[1];
+}
+/** What one `t.api` call may take, in milliseconds. */
+export const API_CALL_MS = 3000;
+/** The answer of a call: the socket's own line, or a refusal in the same shape. A call never throws. */
+export type ApiAnswer = { ok: true; [field: string]: Json } | { ok: false; error: { code: string; message: string } };
+
+function apiRefusal(code: string, message: string): ApiAnswer {
+  return { ok: false, error: { code, message } };
+}
+
+/** One call: the refusals first (no dial), then one connection that names the trick, asks once and closes. */
+function apiCall(facts: Facts, op: string, args: Record<string, Json>): Promise<ApiAnswer> {
+  const api = facts.api;
+  if (api === undefined || (api.access !== "see" && api.access !== "read")) return Promise.resolve(apiRefusal("trick.api_off", "Collie's local API is off here."));
+  const need = levelOf(op);
+  if (need === undefined) return Promise.resolve(apiRefusal("trick.api_unknown", `Collie's local API has no operation named ${clip(op, 40)}.`));
+  if (need === "read" && api.access !== "read") return Promise.resolve(apiRefusal("trick.api_level", `${op} needs access "read", and this trick declares "${api.access}".`));
+  const given = Number(process.env.TRICK_API_MS);
+  const ms = Number.isFinite(given) && given > 0 ? given : API_CALL_MS;
+  const { promise, resolve } = Promise.withResolvers<ApiAnswer>();
+  {
+    let done = false;
+    let held = "";
+    const socket = createConnection(api.socket);
+    const finish = (answer: ApiAnswer): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(answer);
+    };
+    const timer = setTimeout(() => finish(apiRefusal("trick.api_timeout", `Collie's local API did not answer within ${String(ms / 1000)} seconds.`)), ms);
+    socket.setEncoding("utf8");
+    socket.on("connect", () => {
+      socket.write(`${JSON.stringify({ id: "h", op: "hello", args: { client: `trick:${facts.trick.id}` } })}\n${JSON.stringify({ id: "r", op, args })}\n`);
+    });
+    socket.on("data", (chunk: string) => {
+      held += chunk;
+      if (held.length > 2 * 1024 * 1024) return finish(apiRefusal("trick.api_failed", "Collie's local API sent an answer that is too large."));
+      for (let end = held.indexOf("\n"); end >= 0; end = held.indexOf("\n")) {
+        const line = held.slice(0, end);
+        held = held.slice(end + 1);
+        try {
+          // SAFETY: the socket answers one JSON object per line; a line that is not one throws and is skipped below.
+          const body = JSON.parse(line) as { [key: string]: Json };
+          if (body.id !== "r") continue;
+          if (body.ok === true) return finish({ ...body, ok: true });
+          const error = body.error;
+          const code = typeof error === "object" && error !== null && !Array.isArray(error) && typeof error.code === "string" ? error.code : "trick.api_failed";
+          const message = typeof error === "object" && error !== null && !Array.isArray(error) && typeof error.message === "string" ? error.message : "Collie's local API refused the call.";
+          return finish(apiRefusal(code, message));
+        } catch {
+          continue;
+        }
+      }
+    });
+    socket.on("error", () => finish(apiRefusal("trick.api_unreachable", "Collie's local API did not answer.")));
+    socket.on("close", () => finish(apiRefusal("trick.api_unreachable", "Collie's local API closed the connection.")));
+  }
+  return promise;
+}
+
 /** One run of the trick: what the program reads, and the places it fills. */
 export class Trick {
   readonly facts: Facts;
@@ -458,6 +532,15 @@ export class Trick {
     };
   }
 
+  /**
+   * Read through Collie's local API: `t.api("machines")`, `t.api("read", { session, lines })`. The answer is the
+   * socket's line (`ok: true` and its fields) or `{ ok: false, error: { code, message } }`; it never throws, and a
+   * program can show `error.message`. It refuses before it dials when the trick declares no `access` ("none"),
+   * or when the operation needs "read" and the trick declares "see". One call takes at most 3 seconds.
+   */
+  api(op: string, args: Record<string, Json> = {}): Promise<ApiAnswer> {
+    return apiCall(this.facts, op, args);
+  }
   /** One chip in the status line above the Belt (1 to 12 characters). */
   status(chip: { text: string; icon?: Icon; tone?: Tone }): void {
     this.parts.push({ at: "status", id: "status", chip });
