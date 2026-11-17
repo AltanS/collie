@@ -573,7 +573,8 @@ phone has Cancel instead, on its row and on the line under the box. Its row then
 `cancelled by sender`. A message that was already typed answers "Already typed. Nothing to take
 back." The line and the buttons go when nothing is held any more.
 
-On a Claude Code session linked with `collie harness link claude`, a message that waits for your text
+On a Claude Code session linked with the experimental `collie harness link claude` (see
+[Send by data](claude-code-on-your-phone.md#send-by-data-optional-experimental)), a message that waits for your text
 also has Deliver now: on the line above the box when it is the only one, with "Your text stays in the
 box.", and on its row in the sheet. A tap hands that message to the agent at once, and your text stays
 in the box as you left it. Its row then reads "Delivered. Your text is still in the box." Deliver now
