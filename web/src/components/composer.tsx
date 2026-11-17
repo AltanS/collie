@@ -2511,8 +2511,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   /**
    * The person's tap on a Send again (the notice's step, or the "cannot tell" card's button): the last send once more, as a
    * new request through the whole Send Protocol. The tap is the decision, so the "Send it again?" second tap is not
-   * asked on top of it. A draft is sent from the field as it reads now; with the box emptied since, the card's own
-   * message is what goes, because that is the send the tap is about.
+   * asked on top of it. A send that ended unknown is sent again by its OWN text (`pendingUnknown.sentText`), never by the
+   * field as it reads now: words typed or edited since are the next message (the M102 review, C). The field is left as
+   * it is, unless it still holds exactly that text, which then goes as the draft it is. Any other draft is sent from the
+   * field as it reads now.
    */
   function sendAgainNow(): void {
     const last = lastSendRef.current;
@@ -2523,7 +2525,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       return;
     }
     const field = composeLine(input, attachments, isShell);
-    const line = last.isDraft ? (field.trim() === "" && pendingUnknown !== null ? pendingUnknown.sentText : field) : last.value;
+    if (pendingUnknown !== null && pendingUnknown.sentText !== "") {
+      const kept = pendingUnknown.sentText;
+      forgetUnknownSend(scope, paneId, kept, isShell);
+      void send(kept, last.isDraft && sentForm(field, isShell) === kept);
+      return;
+    }
+    const line = last.isDraft ? field : last.value;
     forgetUnknownSend(scope, paneId, line, isShell);
     void send(line, last.isDraft);
   }
