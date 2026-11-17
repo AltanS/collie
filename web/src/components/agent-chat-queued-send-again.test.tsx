@@ -114,29 +114,58 @@ describe("AgentChat: the queued card's Send again (M102 spec 04)", () => {
     expect(screen.getByRole("button", { name: "Send again" })).toBeEnabled();
   });
 
-  it("a send that starts while the card is being dropped keeps the card's text: nothing is lost, the words say why (the M102 review 2, G)", async () => {
+  /**
+   * The race of the M102 review 2, G: the person's own send starts while the card's Discard is on its way, so the
+   * composer refuses the card's send once the card is gone. `beforeRelease` runs while both requests still wait.
+   */
+  async function raceTheDrop(beforeRelease: (box: HTMLElement, user: ReturnType<typeof userEvent.setup>) => Promise<void>) {
     let releaseDiscard: () => void = () => undefined;
     const discardWaits = new Promise<void>((resolve) => {
       releaseDiscard = resolve;
     });
     const discards = mountWithLostCard(() => HttpResponse.json({ result: "dismissed" }));
     // The bridge's Discard answers only when the test says so, and the person's own send hangs until then too.
-    let releaseSend: () => void = () => undefined;
+    let openSend: () => void = () => undefined;
     const sendWaits = new Promise<void>((resolve) => {
-      releaseSend = resolve;
+      openSend = resolve;
     });
+    // The person's own send ends `sent`, or refused when the test lets it fail.
+    let firstFails = false;
+    const releaseSend = (fail = false) => {
+      firstFails = fail;
+      openSend();
+    };
     const posted: string[] = [];
+    let dropped = false;
     server.use(
       http.delete(/\/api\/send\/[^/]+$/, async ({ request }) => {
         discards.push(decodeURIComponent(new URL(request.url).pathname.split("/").pop() ?? ""));
         await discardWaits;
+        dropped = true;
         return HttpResponse.json({ result: "dismissed" });
       }),
+      // Once the bridge has dropped the card, its window no longer carries it.
+      http.get(/\/api\/pane\/[^/]+\/chat/, () =>
+        HttpResponse.json({
+          paneId: "w1:p1",
+          available: true,
+          page: "live",
+          gen: FIXTURE_CHAT_GEN,
+          rev: dropped ? 2 : 1,
+          head: FIXTURE_SEQ_BASE + fixtureTranscript.length - 1,
+          oldest: FIXTURE_SEQ_BASE,
+          hasOlder: false,
+          upserts: fixtureTranscript.map((e, i) => Object.assign({}, e, { seq: FIXTURE_SEQ_BASE + i })),
+          queuedSends: dropped ? [] : [{ requestId: LOST_ID, state: "unconfirmed", text: LOST_TEXT }],
+        }),
+      ),
       http.post("/api/send", async ({ request }) => {
         const body = parseJsonObject(await request.text());
         posted.push(asJsonString(body?.text) ?? "");
-        await sendWaits;
-        return HttpResponse.json(sendAnswer(asJsonString(body?.id) ?? "", "sent"));
+        const first = posted.length === 1;
+        if (first) await sendWaits;
+        const id = asJsonString(body?.id) ?? "";
+        return HttpResponse.json(first && firstFails ? sendAnswer(id, "refused", "busy", { offers: ["keys"] }) : sendAnswer(id, "sent"));
       }),
     );
     const user = userEvent.setup();
@@ -147,15 +176,60 @@ describe("AgentChat: the queued card's Send again (M102 spec 04)", () => {
     await user.type(box, "other words");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(posted).toEqual(["other words"]));
+    await beforeRelease(box, user);
     releaseDiscard();
-    // The composer cannot start the card's send now: it says why, and the card's text waits in the box. The running
-    // send let go of the box at its tap (M104), so the card's text lands in an empty box, alone, merged with nothing.
-    expect(await screen.findByText("Another send from this phone is still running. Wait for it to end.")).toBeInTheDocument();
+    // The composer cannot start the card's send now: it says why.
+    expect(await screen.findByText(/Another send from this phone is still running\. Wait for it to end\./u)).toBeInTheDocument();
+    return { box, user, posted, releaseSend };
+  }
+
+  it("a refusal after the drop with an empty box puts the card's text in the box, alone, and nothing sends it (the M102 review 2, G)", async () => {
+    // The running send let go of the box at its tap (M104), so the box is empty when the card's text comes back.
+    const { box, posted, releaseSend } = await raceTheDrop(async () => undefined);
     await waitFor(() => expect(box).toHaveValue(LOST_TEXT));
-    expect(posted).toEqual(["other words"]);
-    // The running send lands: the card's text stays in the box.
+    expect(document.querySelector('[data-slot="composer-held-back"]')).toBeNull();
+    // The running send lands: the card's text stays in the box, and nothing sends it.
     releaseSend();
+    await waitFor(() => expect(posted).toEqual(["other words"]));
+    expect(box).toHaveValue(LOST_TEXT);
+  });
+
+  it("a refusal after the drop with a draft in the box never merges the two: the text waits on Put back, as a calm send's does (the M102 review 3)", async () => {
+    // The person types a new draft while their own send runs.
+    const { box, user, posted, releaseSend } = await raceTheDrop((field, u) => u.type(field, "my new words"));
+    const kept = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>('[data-slot="composer-held-back"]');
+      expect(found).toHaveTextContent(`Not sent, kept here: ${LOST_TEXT}`);
+      return found!;
+    });
+    expect(kept).toBeInTheDocument();
+    expect(box).toHaveValue("my new words");
+    releaseSend();
+    await waitFor(() => expect(posted).toEqual(["other words"]));
+    // Put back over a draft says to empty the box first, and merges nothing.
+    await user.click(screen.getByRole("button", { name: "Put back" }));
+    expect(await screen.findByText("Empty the box first, then tap Put back.")).toBeInTheDocument();
+    expect(box).toHaveValue("my new words");
+    // Once the box is empty, Put back writes the card's text into it, and nothing is sent.
+    await user.clear(box);
+    await user.click(screen.getByRole("button", { name: "Put back" }));
     await waitFor(() => expect(box).toHaveValue(LOST_TEXT));
     expect(posted).toEqual(["other words"]);
   });
+
+  it("a refusal after the drop with a draft in the box, and then the running send FAILS: both texts wait on Put back, none is lost (the M102 review 3)", async () => {
+    const { box, user, posted, releaseSend } = await raceTheDrop((field, u) => u.type(field, "my new words"));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-held-back"]')).toHaveTextContent(`Not sent, kept here: ${LOST_TEXT}`));
+    releaseSend(true);
+    // The failed send's text cannot go into the box, which holds the new draft: it joins the list, the newest.
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-held-back"]')).toHaveTextContent("Not sent, kept here: other words"));
+    expect(screen.getByText("2 texts wait here. This is the newest.")).toBeInTheDocument();
+    expect(box).toHaveValue("my new words");
+    await user.clear(box);
+    await user.click(screen.getByRole("button", { name: "Put back" }));
+    await waitFor(() => expect(box).toHaveValue("other words"));
+    expect(document.querySelector('[data-slot="composer-held-back"]')).toHaveTextContent(`Not sent, kept here: ${LOST_TEXT}`);
+    expect(posted).toEqual(["other words"]);
+  });
 });
+

@@ -7305,7 +7305,7 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
     expect((await r.send("/compact", { id: "probe-00004", mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
   });
 
-  test("a manual send (Type here) whose probe fails clean stays refused, nothing held (review, 2026-10-17)", async () => {
+  test("a manual send (Send anyway) whose probe fails clean stays refused, nothing held (review, 2026-10-17)", async () => {
     const holds = new HoldStore(join(dir, "held"));
     const framed = rig({ holds });
     framed.pane.transcript = Array.from({ length: 12 }, (_, i) => `transcript row ${String(i)}`);
@@ -10751,7 +10751,7 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
     expect(pane.box).toBe("@/tmp/x.png");
   });
 
-  test("Type it anyway onto the text an earlier send left under the popup: nothing typed a second time, textAlreadyTyped (M102 spec 12)", async () => {
+  test("Send anyway onto the text an earlier send left under the popup: nothing typed a second time, textAlreadyTyped (M102 spec 12)", async () => {
     const { send, pane, protocol } = ompPane("omp--v18-6-1-at-popup-path--w120.txt");
     const first = await send("@/tmp/x.png", { id: "own-left-first-01", mode: "command" });
     expect(first.receipt).toMatchObject({ outcome: "typed_not_submitted" });
@@ -10766,7 +10766,7 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
     expect(protocol.recent("%1", 1)[0]?.textAlreadyTyped).toBe(true);
   });
 
-  test("Type it anyway onto a draft that is not the text: typed after it, no textAlreadyTyped", async () => {
+  test("Send anyway onto a draft that is not the text: typed after it, no textAlreadyTyped", async () => {
     const { send, pane, protocol } = ompPane("omp--v18-6-1-at-popup-path--w120.txt");
     await send("@/tmp/x.png", { id: "own-other-first-1", mode: "command" });
     const prep = await protocol.handle({ id: "own-other-prepare", text: "", mode: "prepare", fromPhone: true }, { session: "main", paneId: "%1", harness: "omp" });

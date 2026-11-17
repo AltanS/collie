@@ -11,7 +11,7 @@
 
 export type Invariant = "I1" | "I2" | "I3" | "I4" | "I5" | "I6" | "I7";
 
-/** The spec that fixes a red test. `M102-03` is the phone's "Type it anyway" (rule 3), not on the candidate. */
+/** The spec that fixes a red test. `M102-03` is the phone's "Send past this screen" (rule 3), not on the candidate. */
 export type FixingSpec = "M102-03" | "M102-10" | "M102-11" | "M102-12" | "M102-13" | "M102-14" | "NONE";
 
 export interface KnownRed {

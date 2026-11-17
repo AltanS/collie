@@ -718,7 +718,7 @@ then says your text is in the box, and offers the keys: check the screen, and pr
 it is right. When the box already held a draft, the card can say so: your text went in after it. A message of more than one line goes this way only on Herdr, which pastes it whole;
 elsewhere send it one line at a time. On a turn the agent queues into, it goes in as any send does. Collie never holds a
 message you typed this way, and one tap types it at most once. When the box already holds the same
-text, left there by an earlier send, Collie types nothing again: press Enter on the keys.
+text, left there by an earlier send, Collie types nothing again: press Enter on the Keys pad.
 
 On an agent Collie has no profile for, no message goes into a screen that shows a menu or a yes/no
 prompt at its bottom, whether you sent it or Collie did; answer the menu with the keys. On Herdr and

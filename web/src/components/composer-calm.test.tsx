@@ -1,11 +1,11 @@
-import { useState, type ComponentProps } from "react";
+import { createRef, useState, type ComponentProps, type RefObject } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { loadDraft } from "@/lib/drafts";
+import { __resetDraftPrune, clearAllDrafts, loadDraft, loadPutBack } from "@/lib/drafts";
 import { __resetPending, pendingLines } from "@/lib/durable-pending";
 import { markLive, resetLiveness } from "@/lib/liveness";
 import { paneScopeKey } from "@/lib/scope";
@@ -17,7 +17,7 @@ import type { Surface } from "@/lib/surface/surface";
 import { recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
 import { server } from "@/test/setup";
 import { CrewProvider } from "./crew-provider";
-import { Composer } from "./composer";
+import { Composer, type ComposerHandle } from "./composer";
 
 // M104 spec 01, the composer's half of "one move at the tap": a send of the box lets go of the box at the tap, puts the
 // person's line in Chat at once, and holds the text until the send has an end. The invariant suite walks every end
@@ -32,6 +32,7 @@ beforeEach(() => {
   markLive("w1:p1");
   sessionStorage.clear();
   localStorage.clear();
+  __resetDraftPrune();
   __forgetSendAgainMemory();
   __forgetSendIntentMemory();
   __resetPending();
@@ -55,14 +56,14 @@ const PROPS: ComponentProps<typeof Composer> = {
   onSent: vi.fn(),
 };
 
-function mount(first: Partial<ComponentProps<typeof Composer>> = {}) {
+function mount(first: Partial<ComponentProps<typeof Composer>> = {}, handle: RefObject<ComposerHandle | null> = createRef<ComposerHandle>()) {
   let update: (next: Partial<ComponentProps<typeof Composer>>) => void = () => undefined;
   function Harness() {
     const [over, setOver] = useState(first);
     update = (next) => act(() => setOver((was) => ({ ...was, ...next })));
     return (
       <CrewProvider servers={undefined}>
-        <Composer {...PROPS} {...over} />
+        <Composer ref={handle} {...PROPS} {...over} />
       </CrewProvider>
     );
   }
@@ -218,5 +219,76 @@ describe("a send of the box lets go at the tap (M104)", () => {
     expect(pendingLines(KEY)).toEqual([]);
     expect(document.querySelector("[data-slot='composer-held-back']")).toBeNull();
     expect(loadDraft(undefined, "w1:p1") ?? "").not.toContain("FAKEcode1234");
+    // Nor is it ever stored where Put back keeps its texts (the M102 review 3).
+    expect(loadPutBack(undefined, "w1:p1")).toEqual([]);
+    expect(JSON.stringify({ ...localStorage })).not.toContain("FAKEcode1234");
   });
 });
+
+// The M102 review 3 of the Put back road: it never loses a text. An open Undo window counts as a draft, the notice holds
+// every text that waits (newest first), and the list is stored with the pane's draft.
+describe("Put back never loses a text (the M102 review 3)", () => {
+  const kept = () => document.querySelector("[data-slot='composer-held-back']");
+
+  it("an open Undo window counts as a draft: a text that comes back waits on Put back, and Undo still brings the draft back", async () => {
+    const user = userEvent.setup();
+    const handle = createRef<ComposerHandle>();
+    mount({}, handle);
+    await user.type(field(), "my draft");
+    await user.click(screen.getByRole("button", { name: "Clear message" }));
+    expect(field().value).toBe("");
+    // The queued card's refused text comes back while the Undo window is open.
+    act(() => handle.current?.keepLine("card words"));
+    expect(field().value).toBe("");
+    expect(kept()).toHaveTextContent("Not sent, kept here: card words");
+    await user.click(screen.getByRole("button", { name: "Undo clear" }));
+    expect(field().value).toBe("my draft");
+    expect(kept()).toHaveTextContent("Not sent, kept here: card words");
+  });
+
+  it("two texts that come back while the box holds a draft both wait: the newest shows with the count, and Put back brings the next", async () => {
+    const user = userEvent.setup();
+    const handle = createRef<ComposerHandle>();
+    const bridge = holdBridge((id) => sendAnswer(id, "refused", "busy", { offers: ["keys"] }));
+    mount({}, handle);
+    await user.type(field(), "carry on");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(bridge.ids).toHaveLength(1));
+    fireEvent.change(field(), { target: { value: "a new thought" } });
+    act(() => handle.current?.keepLine("card words"));
+    expect(kept()).toHaveTextContent("Not sent, kept here: card words");
+    // The running send fails too: its text joins the list, and the card's text is still there.
+    await bridge.release();
+    await sendEnded();
+    expect(kept()).toHaveTextContent("Not sent, kept here: carry on");
+    expect(screen.getByText("2 texts wait here. This is the newest.")).toBeInTheDocument();
+    fireEvent.change(field(), { target: { value: "" } });
+    await user.click(screen.getByRole("button", { name: "Put back" }));
+    expect(field().value).toBe("carry on");
+    expect(kept()).toHaveTextContent("Not sent, kept here: card words");
+    expect(screen.queryByText(/texts wait here/u)).toBeNull();
+    fireEvent.change(field(), { target: { value: "" } });
+    await user.click(screen.getByRole("button", { name: "Put back" }));
+    expect(field().value).toBe("card words");
+    await waitFor(() => expect(kept()).toBeNull());
+  });
+
+  it("is stored with the pane's draft: a remount shows it again, another pane never does, and the device wipe takes it", async () => {
+    const user = userEvent.setup();
+    const handle = createRef<ComposerHandle>();
+    mount({}, handle);
+    await user.type(field(), "my draft");
+    act(() => handle.current?.keepLine("card words"));
+    expect(kept()).toHaveTextContent("Not sent, kept here: card words");
+    expect(loadPutBack(undefined, "w1:p1").map((item) => item.draft)).toEqual(["card words"]);
+    cleanup();
+    mount();
+    expect(kept()).toHaveTextContent("Not sent, kept here: card words");
+    cleanup();
+    mount({ paneId: "w1:p2" });
+    expect(kept()).toBeNull();
+    clearAllDrafts();
+    expect(loadPutBack(undefined, "w1:p1")).toEqual([]);
+  });
+});
+

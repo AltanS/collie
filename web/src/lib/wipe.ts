@@ -48,7 +48,7 @@ import { forgetAllDiffComments } from "@/lib/diff-comment-store";
 import { forgetAllCreateIntents } from "@/lib/create-intent";
 import { forgetAllUnknownSends, forgetUnknownSend } from "@/lib/send-again";
 import { clearIntent, forgetAllSendIntents } from "@/lib/send-intent";
-import { clearAllDrafts, clearDraft } from "@/lib/drafts";
+import { clearAllDrafts, clearDraft, clearPutBack } from "@/lib/drafts";
 import { forgetAgain } from "@/lib/new-page";
 import { forgetSlots } from "@/lib/slots";
 import { forgetNoPromptsConfirms } from "@/lib/no-prompts";
@@ -167,8 +167,13 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
   [
     "drafts",
     (context) => {
-      if (context.reason === "password") clearDraft(context.pane.scope, context.pane.paneId);
-      else clearAllDrafts();
+      // Put back's texts are the pane's unsent words too, stored beside its draft (the M102 review 3).
+      if (context.reason !== "password") {
+        clearAllDrafts();
+        return;
+      }
+      clearDraft(context.pane.scope, context.pane.paneId);
+      clearPutBack(context.pane.scope, context.pane.paneId);
     },
   ],
   [

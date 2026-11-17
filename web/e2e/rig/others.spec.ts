@@ -18,6 +18,7 @@ import { join } from "node:path";
 
 import { devices, type Page } from "@playwright/test";
 
+import { ARM_DWELL_MS } from "../../src/lib/arm";
 import { asJsonObject, asJsonString } from "../../src/lib/json";
 import { SETUPS, harnessDirs, type HarnessId } from "./harnesses";
 import {
@@ -402,8 +403,22 @@ async function pickerByKeys(harness: HarnessId, plan: Plan, rig: Rig, page: Page
   const commits: TapLog[] = [];
   for (const key of plan.commitKeys) {
     const was = await rig.tail(pane, 40);
+    // While the unread-dialog card shows, the pad's Enter asks a second tap (0821f50be), and a second tap inside
+    // ARM_DWELL_MS keeps the arm and sends nothing: tap, wait past the dwell, tap the armed key. With no card (pi on
+    // herdr-core reads its screen), Enter is one tap.
+    const cardShows =
+      key === "Enter" &&
+      (await page
+        .getByRole("group", { name: message("unreadDialog.caption") })
+        .isVisible()
+        .catch(() => false));
+    if (cardShows) {
+      log.push(await tap(recorder, page.getByRole("button", { name: key, exact: true }).last(), `Keys: ${key} (arm)`, { expectAnswer: false }));
+      await page.waitForTimeout(ARM_DWELL_MS + 100);
+    }
+    const target = cardShows ? page.getByRole("button", { name: message("keys.pad.tapAgain", { key }), exact: true }).last() : page.getByRole("button", { name: key, exact: true }).last();
     // `.last()`: the unread-dialog card carries an Esc of its own above the Keys board.
-    const t = await tap(recorder, page.getByRole("button", { name: key, exact: true }).last(), `Keys: ${key} (commit)`);
+    const t = await tap(recorder, target, `Keys: ${key} (commit)`);
     log.push(t);
     commits.push(t);
     const moved = (await rig.until(() => rig.tail(pane, 40), (text) => text !== was, 4000)) !== null;

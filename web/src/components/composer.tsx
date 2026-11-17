@@ -86,7 +86,7 @@ import { useKeyBoard } from "@/lib/key-board-store";
 import { isDestructiveInput } from "@/lib/destructive";
 import { asksSendAgain, forgetUnknownSend, rememberUnknownSend, SEND_AGAIN_CONFIRM_DELAY_MS, sendAgainId, sentForm } from "@/lib/send-again";
 import { useHostLabel } from "@/components/crew-provider";
-import { fitsDraftStore, loadDraftEntry, saveDraft } from "@/lib/drafts";
+import { fitsDraftStore, loadDraftEntry, loadPutBack, saveDraft, savePutBack, type PutBackItem } from "@/lib/drafts";
 import { clearIntent, clearIntentIfDraftChanged, loadIntent, saveIntent } from "@/lib/send-intent";
 import type { IntentId } from "@/lib/durable-control";
 import { wipeDevice } from "@/lib/wipe";
@@ -178,7 +178,7 @@ export interface ComposerHandle {
   sendViewTap: (tap: ViewTap) => Promise<ViewSendResult>;
   /** The unread card's caps (M102 spec 03): keys through the Keys pad's own road, with its receipt. */
   padKeys: (keys: string[]) => Promise<boolean>;
-  /** The unread card's "Type it anyway": the Keys drawer goes, the field takes the focus, one send past the screen is armed. */
+  /** The unread card's "Send past this screen": the Keys drawer goes, the field takes the focus, one send past the screen is armed. */
   typeAnyway: () => void;
   /**
    * The "cannot tell" card's "It arrived" (M102 spec 04): marks the unknown send `arrived` on the bridge, then clears the
@@ -205,8 +205,9 @@ export interface ComposerHandle {
   lineCanStart: () => boolean;
   /**
    * Keep a text the composer could not start (the M102 review 2, G): the queued card's Send again dropped its card, and
-   * then the composer refused. The words go into the box, after whatever the person has typed, so nothing is lost and
-   * nothing sends them by itself.
+   * then the composer refused. It takes the calm send's road for a text that did not go (M104): into an empty box, or,
+   * when the box holds a draft, onto the Put back notice, never merged into the draft (the M102 review 3). Nothing
+   * sends it by itself.
    */
   keepLine: (line: string) => void;
 }
@@ -237,8 +238,8 @@ const SECRET_SEND: LastSend = { secret: true };
 
 /**
  * A sent text the box let go of at the tap (M104): what the box held (text and chips) and whose box it was. It goes
- * back into that box on any end that is not a success, or waits beside the notice (`heldBack`) when the box holds a
- * new text by then. `intent` is the request id a lost answer left, so a text put back sends again under that id.
+ * back into that box on any end that is not a success, or waits beside the notice (Put back, stored with the pane's
+ * draft in lib/drafts.ts) when the box holds a new text or an open Undo window by then. `intent` is the request id a lost answer left, so a text put back sends again under that id.
  */
 interface SentBack {
   readonly draft: string;
@@ -247,6 +248,11 @@ interface SentBack {
   readonly scope: Scope | undefined;
   readonly line: string;
   readonly intent?: IntentId;
+}
+
+/** A stored Put back item's request id, as the optional field of a {@link SentBack} (never an `intent: undefined`). */
+function intentOf(item: PutBackItem): { intent?: IntentId } {
+  return item.intent === undefined ? {} : { intent: item.intent };
 }
 
 /** A box send in flight (M104): its text, and its line in Chat (`row`), which a pane with no thread does not get. */
@@ -267,7 +273,7 @@ interface ComposerProps {
   surface: Surface;
   /**
    * A launch this phone started has not shown its first screen to the bridge yet: the draft stays
-   * editable and on the phone, and nothing sends it. The keys and Type here stay as they are.
+   * editable and on the phone, and nothing sends it. The keys and Send anyway stay as they are.
    */
   starting?: boolean;
   /** Why the box cannot be reached, for the placeholder, when `surface.composer` is `unreachable`. */
@@ -467,6 +473,12 @@ interface ComposerProps {
    * the pill would have nothing to show.
    */
   screen?: { on: boolean; onToggle: () => void };
+  /**
+   * The name of the crew member this pane lives on, when that member runs an older Collie (lib/send-path.ts
+   * `cardsOnOlderMember`): its bridge types a code without checking that the sign-in field is still there, and the
+   * field says so in one line (the M102 review 3). Empty when the member's name is not known. Absent on every other pane.
+   */
+  olderMember?: string;
   /** The pane's active todo list, drawn as a belt pill and an in-flow dock when non-empty. */
   todos?: readonly PaneTodo[];
   /**
@@ -716,7 +728,7 @@ function lockWordsFor(slot: SendSlot, unreachableWords: string): string | null {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest, unreadState = null, onScreenUnread, onAnswerUnseen, onCannotTell, onCannotTellRing, cannotTellInView, heldScreen },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest, unreadState = null, onScreenUnread, onAnswerUnseen, onCannotTell, onCannotTellRing, cannotTellInView, heldScreen, olderMember },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -969,6 +981,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     attachmentsRef.current = restored?.attachments ?? [];
     setAttachments(attachmentsRef.current);
     nextAttachmentRef.current = restored?.next ?? 1;
+    // This pane's Put back list, and never the outgoing pane's.
+    setPutBackList(loadPutBack(scope, paneId));
+    setHeldBackFull(false);
     caretRef.current = null;
     setPreviewDismissed(false); // it was about the pane we just left
     noticeNoEchoRef.current(null); // it described the pane we just left
@@ -1155,7 +1170,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const calmRef = useRef<CalmSend | null>(null);
   const [calmHeld, setCalmHeld] = useState(false);
   const flipInstantRef = useRef(false);
-  const [heldBack, setHeldBack] = useState<SentBack | null>(null);
+  // The texts waiting on Put back for the pane on screen, oldest first (the M102 review 3): stored with the pane's draft
+  // (lib/drafts.ts), so a pane switch or a reload keeps them, and never a list with a cap, so none is dropped.
+  const [putBackList, setPutBackList] = useState<readonly PutBackItem[]>(() => loadPutBack(scope, paneId));
   const [heldBackFull, setHeldBackFull] = useState(false);
   // A line the bridge held: it waits for the held row above the box and goes in the frame that row arrives.
   const handoverRef = useRef<{ readonly key: string; readonly id: string; readonly requestId: string } | null>(null);
@@ -1310,7 +1327,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const idleLocked = useLocked();
   const catchingUp = useCatchingUp();
   const directSuspended = locked || idleLocked || catchingUp;
-  // TYPE IT ANYWAY (M102 spec 03, spec 01's override): the rows hash of the screen the card showed at
+  // SEND PAST THIS SCREEN (M102 spec 03, spec 01's override): the rows hash of the screen the card showed at
   // the tap, read fresh by a `prepare`. The next send from the field carries it with `override`, so the
   // bridge types only while the screen still hashes the same. One send; any answer disarms it.
   const [overrideHash, setOverrideHash] = useState<string | null>(null);
@@ -1319,7 +1336,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   useEffect(() => {
     if (secretField) setOverrideHash(null);
   }, [secretField]);
-  // The send in flight is the one "Type it anyway" armed (not a commit tap's override): only its refusal
+  // The send in flight is the one "Send past this screen" armed (not a commit tap's override): only its refusal
   // re-arms on the rows the bridge read now.
   const typeAnywaySendRef = useRef(false);
   const direct = useDirectTyping({
@@ -1660,7 +1677,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     `composer:${paneId}`,
     hasDraft ||
       calmHeld ||
-      heldBack !== null ||
+      putBackList.length > 0 ||
       clearedDraft !== null ||
       direct.active ||
       direct.value !== "" ||
@@ -2122,11 +2139,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     if (starting) sayTap(translate("newPage.starting"));
   }
-  /** The line under the sign-in frame while it waits: the lock's words, else the launch. */
+  /** The line under the sign-in frame while it waits: the launch, else an older crew member's missing check. */
   function secretReason(): string | null {
     // The lock speaks through the field's own placeholder (`lockedWhy`), so only a launch needs this line.
     if (starting && !locked) return translate("newPage.starting");
-    return null;
+    if (olderMember === undefined) return null;
+    // An unknown name gets a neutral word (the M102 review 3), never a sentence that starts with a space.
+    if (olderMember.trim() === "") return translate("composer.secret.olderMachineUnnamed");
+    return translate("composer.secret.olderMachine", { machine: olderMember });
   }
   /** The "Answer the dialog" word and the notice's card button: a tap that found no card says so. */
   function answerDialog(): void {
@@ -2147,7 +2167,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    */
   async function sendSecret(code: string): Promise<boolean> {
     secretSpentRef.current = false;
-    // A code never carries an armed Type it anyway (the M102 review, L): the arm goes with this send.
+    // A code never carries an armed Send past this screen (the M102 review, L): the arm goes with this send.
     setOverrideHash(null);
     const went = await send(code, false, undefined, undefined, true);
     return went || secretSpentRef.current;
@@ -2226,7 +2246,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     tell("sending");
     try {
-      // "Type it anyway" armed one send past the screen the card showed: it carries that screen's rows
+      // "Send past this screen" armed one send past the screen the card showed: it carries that screen's rows
       // hash and the person's word, override, and the armed state goes with this send (M102 spec 03).
       const past = tap === undefined && view === undefined && !fromSecret ? overrideHash : null;
       if (past !== null) setOverrideHash(null);
@@ -2244,7 +2264,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       throw thrown;
     }
   }
-  // "Type it anyway" (M102 spec 03): the Keys drawer goes, the field takes the focus, and a `prepare`
+  // "Send past this screen" (M102 spec 03): the Keys drawer goes, the field takes the focus, and a `prepare`
   // reads the screen fresh for the rows hash the next send carries with `override` (spec 01). Nothing is
   // typed here. A read that brings back no hash says so, and the send stays the ordinary two taps.
   async function typeAnyway(): Promise<void> {
@@ -2281,10 +2301,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (refusal !== null) setSendRefusal(refusal);
     return refusal === null;
   };
-  keepLineRef.current = (line) => {
-    const now = inputValueRef.current;
-    updateInput(now.trim() === "" ? line : `${now}\n${line}`);
-  };
+  keepLineRef.current = (line) => giveBack({ draft: line, chips: [], pane: paneId, scope, line });
   sendViewTapRef.current = async (tap) => {
     const sent = await send(tap.words, false, undefined, tap);
     return { sent, ...viewAnswerRef.current };
@@ -2313,9 +2330,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     if (back.intent !== undefined) saveIntent(back.scope, back.pane, back.intent, back.line);
   }
-  /** Whether `back`'s box (shown, or stored for another pane) is free for it. */
+  /**
+   * Whether `back`'s box (shown, or stored for another pane) is free for it. An open Undo window from the belt's X is not
+   * free (the M102 review 3): its draft is one tap from coming back, and that tap would write over the returned text.
+   */
   function roomFor(back: SentBack): boolean {
-    if (boxOf(back)) return boxEmpty();
+    if (boxOf(back)) return boxEmpty() && clearedDraftRef.current === null;
     const stored = loadDraftEntry(back.scope, back.pane);
     return stored === null || (stored.text.trim() === "" && stored.attachments.length === 0);
   }
@@ -2345,12 +2365,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     if (end === "failed") {
       if (calm.row !== null) dropPending(calm.row.key, [calm.row.id]);
-      const back: SentBack = intent === undefined ? calm : { ...calm, intent };
-      if (roomFor(back)) writeBack(back);
-      else {
-        setHeldBack(back);
-        setHeldBackFull(false);
-      }
+      giveBack(intent === undefined ? calm : { ...calm, intent });
       return;
     }
     if (calm.row !== null && end === "sent") setPendingState(calm.row.key, calm.row.id, "sent");
@@ -2362,15 +2377,43 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     for (const chip of calm.chips) if (!attachmentsRef.current.includes(chip)) revokePreview(chip);
     if (boxOf(calm)) persistDraft();
   }
-  /** Put back, beside the notice: the kept text goes into its box once that box is empty. Never merged, never over a text. */
+  /**
+   * A text that did not go comes back (M104): into its box when that box is empty, else onto the Put back notice, never
+   * merged into a draft. A calm send that did not land and the queued card's text the composer refused (`keepLine`, the
+   * M102 review 3) both take this one road.
+   */
+  function giveBack(back: SentBack): void {
+    if (roomFor(back)) {
+      writeBack(back);
+      return;
+    }
+    // Appended to its pane's stored list, never in place of a text already there (the M102 review 3).
+    const item: PutBackItem = { draft: back.draft, chips: [...back.chips], line: back.line };
+    if (back.intent !== undefined) item.intent = back.intent;
+    const list = [...loadPutBack(back.scope, back.pane), item];
+    savePutBack(back.scope, back.pane, list);
+    // The store keeps no preview; a chip put back later draws its icon tile, as a restored draft's does.
+    for (const chip of back.chips) revokePreview(chip);
+    if (!boxOf(back)) return;
+    setPutBackList(list);
+    setHeldBackFull(false);
+  }
+  /**
+   * Put back, beside the notice: the newest kept text goes into its box once that box is empty, and the next one shows.
+   * Never merged, never over a text or an open Undo window.
+   */
   function putBack(): void {
-    const back = heldBack;
-    if (back === null) return;
+    const list = loadPutBack(scope, paneId);
+    const newest = list[list.length - 1];
+    if (newest === undefined) return;
+    const back: SentBack = { draft: newest.draft, chips: newest.chips, pane: paneId, scope, line: newest.line, ...intentOf(newest) };
     if (!roomFor(back)) {
       setHeldBackFull(true);
       return;
     }
-    setHeldBack(null);
+    const rest = list.slice(0, -1);
+    savePutBack(scope, paneId, rest);
+    setPutBackList(rest);
     setHeldBackFull(false);
     writeBack(back);
   }
@@ -2495,12 +2538,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const refusal = { ...readingRefusal(reading), atRevision: (reply.surface ?? shownSurface).revision };
       // A screen Collie cannot read: the pane opens its card, with the person's Keys pad and "Type it
       // anyway", instead of a sentence only (M102 spec 03).
-      // A not_free refusal now offers Type here (invariant I4), so its step is the offer; the card of a screen
+      // A not_free refusal now offers Send anyway (invariant I4), so its step is the offer; the card of a screen
       // Collie cannot read opens for it all the same.
       if (reading.step === "screen" || (reading.offers.includes("commit") && (reading.surface === "unknown" || reading.surface === "unreachable" || reading.surface === "unreadable"))) onScreenUnread?.();
       // An override that met a menu, or whose text waits for the person's Enter (M102 spec 12): the Keys
       // pad opens, unless the person has a drawer open. A refused override carries the screen now and
-      // its hash, so "Type it anyway" stays armed on the rows the card shows next.
+      // its hash, so "Send past this screen" stays armed on the rows the card shows next.
       if (reply.reason === "menu_open" || reading.note === "overrideTyped" || reply.textAlreadyTyped === true) {
         if (drawerRef.current === null) requestDrawer("keys");
       }
@@ -3673,8 +3716,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     onSendClick();
   }
 
-  // The kept text of this pane's last send that did not land, while the box holds a new one (M104).
-  const heldBackHere = heldBack !== null && heldBack.pane === paneId && scopeKey(heldBack.scope) === scopeKey(scope) ? heldBack : null;
+  // The newest text waiting on Put back for this pane (M104; the M102 review 3), and how many wait.
+  const heldBackHere = putBackList[putBackList.length - 1] ?? null;
 
   // The change of shape is played (hooks/use-flip.ts): the box's height, with every row held still,
   // and a button that appears slides in sideways from its own edge, never from above (Altan,
@@ -4170,8 +4213,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               offers={protocolOffer.offers}
               disabled={starting || sending || locked}
               onOffer={onProtocolOffer}
-              // The ✕ drops the strip and hides the notice over it: a notice that still says "tap Type
-              // here" with no Type here to tap is a sentence about a button that is gone.
+              // The ✕ drops the strip and hides the notice over it: a notice that still says "tap Send
+              // anyway" with no Send anyway to tap is a sentence about a button that is gone.
               onDismiss={() => {
                 setProtocolOffer(null);
                 hideRefusal();
@@ -4182,7 +4225,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         </Collapse>
         {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other
             strips, because that is where the eye already is when a send is refused — and it is a
-            NOTICE beside the unchanged two-tap Send ("Type here"), never a replacement for it. */}
+            NOTICE beside the unchanged two-tap Send ("Send anyway"), never a replacement for it. */}
         <Collapse open={noEcho !== null && !direct.active}>
           {noEcho !== null && !direct.active && (
             <NoEchoNotice
@@ -4314,6 +4357,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               <span data-slot="composer-held-back" className="line-clamp-2 whitespace-pre-wrap break-words">
                 {translate("composer.heldBack.kept", { text: heldBackHere.draft })}
               </span>
+              {putBackList.length > 1 && (
+                <span data-slot="composer-held-back-count" className="text-muted-foreground">
+                  {translate("composer.heldBack.count", { count: putBackList.length })}
+                </span>
+              )}
               {heldBackFull && (
                 <span data-slot="composer-held-back-full" role="status" className="text-muted-foreground">
                   {translate("composer.heldBack.boxFull")}

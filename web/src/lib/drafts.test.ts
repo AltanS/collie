@@ -1,4 +1,4 @@
-import { clearDraft, fitsDraftStore, loadDraft, loadDraftEntry, pruneDrafts, saveDraft, __resetDraftPrune } from "./drafts";
+import { clearDraft, clearPutBack, fitsDraftStore, loadDraft, loadDraftEntry, loadPutBack, pruneDrafts, saveDraft, savePutBack, __resetDraftPrune } from "./drafts";
 
 // The per-pane composer draft store. It is the only reason a reply survives walking over to another
 // tab mid-composition, so the cases below pin the three things that would silently lose one: the
@@ -299,5 +299,30 @@ describe("drafts", () => {
       expect(loadDraft(undefined, "w1:p1")).toBeNull();
       expect(localStorage.getItem(KEY)).toBeNull();
     });
+  });
+});
+
+describe("Put back, stored with the draft (the M102 review 3)", () => {
+  const item = (draft: string) => ({ draft, chips: [], line: draft });
+
+  it("keeps every text in order, per pane, across a reload of the page (the memory tier gone)", () => {
+    savePutBack(undefined, "w1:p1", [item("first"), item("second")]);
+    __resetDraftPrune();
+    expect(loadPutBack(undefined, "w1:p1").map((back) => back.draft)).toEqual(["first", "second"]);
+    expect(loadPutBack(undefined, "w1:p2")).toEqual([]);
+    expect(loadPutBack({ host: "other" }, "w1:p1")).toEqual([]);
+  });
+
+  it("survives the draft prune while young, goes with it at 48 hours, and goes on the password clear", () => {
+    savePutBack(undefined, "w1:p1", [item("first")]);
+    pruneDrafts(Date.now() + 60_000);
+    __resetDraftPrune();
+    expect(loadPutBack(undefined, "w1:p1")).toHaveLength(1);
+    pruneDrafts(Date.now() + 49 * 60 * 60 * 1000);
+    __resetDraftPrune();
+    expect(loadPutBack(undefined, "w1:p1")).toEqual([]);
+    savePutBack(undefined, "w1:p1", [item("again")]);
+    clearPutBack(undefined, "w1:p1");
+    expect(loadPutBack(undefined, "w1:p1")).toEqual([]);
   });
 });

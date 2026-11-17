@@ -88,8 +88,8 @@ describe("SendReceiptsView", () => {
     render(<SendReceiptsView rows={[refused, withVersion, noVersion]} now={NOW} />);
     const [plain, versioned, bare] = screen.getAllByRole("listitem");
     expect(plain).toHaveTextContent("Collie cannot read this screen. Check the pane, then tap Send anyway.");
-    expect(versioned).toHaveTextContent("Collie could not read this screen on codex 0.163.0 5 times today. Check the screen, then tap Confirm and type.");
-    expect(bare).toHaveTextContent("Collie could not read this screen on codex 5 times today. Check the screen, then tap Confirm and type.");
+    expect(versioned).toHaveTextContent("Collie could not read this screen on codex 0.163.0 5 times today. Check the screen, then tap Confirm and send anyway.");
+    expect(bare).toHaveTextContent("Collie could not read this screen on codex 5 times today. Check the screen, then tap Confirm and send anyway.");
     expect(bare.textContent).not.toMatch(/codex -|\s{2}/u);
   });
 

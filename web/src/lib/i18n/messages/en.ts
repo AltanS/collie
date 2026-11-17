@@ -530,6 +530,8 @@ export const en = {
   "composer.heldBack.kept": "Not sent, kept here: {text}",
   "composer.heldBack.putBack": "Put back",
   "composer.heldBack.boxFull": "Empty the box first, then tap Put back.",
+  // More than one text waits on Put back (the M102 review 3): the notice shows the newest and says how many wait.
+  "composer.heldBack.count": "{count} texts wait here. This is the newest.",
   "composer.placeholder.gone": "Pane is gone",
   "composer.placeholder.readOnly": "Read-only, not authorised",
   "composer.placeholder.noMuxSend": "Can't type into this terminal",
@@ -638,6 +640,11 @@ export const en = {
   "composer.secret.send": "Send the code",
   "composer.secret.close": "Close the code field",
   "composer.secret.closed": "The code field is closed. Nothing was sent.",
+  // A crew member that runs an older Collie types a code without the bridge's check that the field is still there
+  // (`no_secret_field`, the M102 review 3): the sign-in field says so, once, under its frame.
+  "composer.secret.olderMachine": "{machine} runs an older Collie, so it does not check that the sign-in field is still there before it types.",
+  // The same line when the member's name is not known: a neutral word, never a sentence that starts with a space.
+  "composer.secret.olderMachineUnnamed": "This machine runs an older Collie, so it does not check that the sign-in field is still there before it types.",
   "composer.secret.reopen": "Open the code field",
   "composer.secret.onlyField": "The screen asks for a sign-in code. Only the code field can send now, so nothing was sent.",
   "composer.steer.queuedInstead": "Queued instead: the agent kept it for after the turn.",
@@ -711,10 +718,10 @@ export const en = {
   "composer.protocol.idReused": "This request was already used for another text. Send again.",
   "composer.protocol.refused": "The send was refused, so nothing was typed. Read the line below, then change the text or send again.",
   "composer.protocol.codeRejected": "The agent did not take the code. Its words are below. Get a new code, then send it.",
-  "composer.protocol.noSecretField": "The sign-in field is not on the screen any more. Nothing was typed. Look at the screen.",
+  "composer.protocol.noSecretField": "Collie cannot see the sign-in field now. Nothing was typed. Look at the screen, or use Type. Type sends each key at once, with no check.",
   "composer.protocol.menuOpen": "A menu or a question is on the screen, so nothing was typed. Answer it with the Keys pad.",
   "composer.protocol.overrideTypedDraft": "Your text is in the agent's box, after words that were already there. Collie pressed no Enter. Check the box, then press Enter on the Keys pad.",
-  "composer.protocol.overrideMoved": "The screen changed before your text went in, so nothing was typed. Look at the screen now, then tap Send to type it anyway.",
+  "composer.protocol.overrideMoved": "The screen changed before your text went in, so nothing was typed. Look at the screen now, then tap Send to send past this screen again.",
   "composer.protocol.overrideTyped": "Your text is in the agent's box. Collie pressed no Enter. Check the screen, then press Enter on the Keys pad.",
   "composer.protocol.draftUnseen": "The input box holds a draft that Collie cannot read whole, so nothing was typed. Empty the box deletes that draft. Then send again.",
   "composer.step.sendAgain": "Send again",
@@ -750,6 +757,11 @@ export const en = {
   // The cap (M56 spec 09): after N manual sends on one harness version in a day, one more confirm.
   "composer.protocol.capConfirm": "Collie could not read this screen on {harness} {version} {count} times today. Check the screen, then tap Confirm and type.",
   "composer.protocol.commitCap": "Confirm and type",
+  // The cap's confirm leads to the same send past the screen as Send anyway, which may press Enter or not:
+  // the words say what the tap asks for, never whether Enter goes (the M102 review 3). Replace commitCap
+  // and capConfirm, whose "type" read as no Enter.
+  "composer.protocol.commitCapPast": "Confirm and send anyway",
+  "composer.protocol.capConfirmPast": "Collie could not read this screen on {harness} {version} {count} times today. Check the screen, then tap Confirm and send anyway.",
   // The last ten sends for a pane, from the receipts (M56 spec 09). No text, no screen rows.
   "sendReceipts.title": "Recent sends",
   "sendReceipts.empty": "No sends to this pane yet.",
@@ -4104,9 +4116,14 @@ export const PENDING_TRANSLATION = [
   "answerExit.closeAria",
   "chat.status.askMoved",
   "app.apiSkew",
+  "composer.protocol.commitCapPast",
+  "composer.protocol.capConfirmPast",
+  "composer.secret.olderMachine",
+  "composer.secret.olderMachineUnnamed",
   "composer.heldBack.kept",
   "composer.heldBack.putBack",
   "composer.heldBack.boxFull",
+  "composer.heldBack.count",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

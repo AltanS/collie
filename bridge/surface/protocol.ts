@@ -4886,7 +4886,7 @@ export class SendProtocol {
    * Whether the box S0 read holds exactly the text an earlier send of this request's text typed and left
    * there ({@link finishesOwnText} without its no-popup, no-notice, no-modal rule): the person's override
    * reads it so it never types the same text a second time after it (a Submit refused for a popup, then
-   * Type it anyway with a new id).
+   * Send anyway with a new id).
    */
   private ownTextInBox(state: RunState, s0: Snap, lines: readonly string[]): boolean {
     const { request } = state;

@@ -1067,7 +1067,7 @@ export function AgentChat({
   // from writing an unbound key into a dialog (below).
   const dialogPresent = useMemo(() => blocks.some(blockOwnsKeyboard), [blocks]);
   const screenLines = useMemo(() => splitLines(parseAnsi(display)), [display]);
-  // Hard stop 6b: a screen that asks for a secret gets no "Type it anyway" on the card.
+  // Hard stop 6b: a screen that asks for a secret gets no "Send past this screen" on the card.
   const unreadSecret = useMemo(() => detectNoEchoPrompt(screenLines) !== null, [screenLines]);
   // The docked card fits the dock (a permission card with subject rows, card-dock.tsx): the reading
   // box's floor turns soft for it, below.
@@ -2180,7 +2180,8 @@ export function AgentChat({
         }
         // The card is gone now. While the Discard was on its way a send may have started, the code field may have
         // appeared, or the link may have dropped: asked again, a composer that refuses says why, and the card's words
-        // wait in the box, so nothing is lost and nothing sends them by itself (the M102 review 2, G).
+        // go back as a calm send's text does: into an empty box, or onto the Put back notice when the box holds a draft,
+        // never merged into it (the M102 review 2, G; review 3). Nothing sends them by itself.
         if (!composer.lineCanStart()) {
           composer.keepLine(cardText);
           return false;
@@ -3397,7 +3398,7 @@ export function AgentChat({
               onMenuAction={handleMenuAction}
               onUnreadDialogAction={handleUnreadDialogAction}
               // The unread card's own ways on (M102 spec 03): a cap for a core key the person's board lacks
-              // goes through the Keys pad's road; "Type it anyway" arms one send past this screen.
+              // goes through the Keys pad's road; "Send past this screen" arms one send past this screen.
               unreadFallback={unreadFallback}
               // The exit of an answer that cannot go (M102 spec 10): its line, the live screen, the Keys pad.
               answerExit={
@@ -3651,6 +3652,9 @@ export function AgentChat({
                   stale={actsDisabledByCache}
                   agent={agent?.agent}
                   canSteer={agent?.canSteer}
+                  // A crew member on an older Collie types a code without checking that the sign-in field is still
+                  // there: the field says so (the M102 review 3). The same mark as the card dock's line.
+                  olderMember={olderMemberCards ? agent?.host || scope?.host || "" : undefined}
                   // A queued message Stop gave back stands in the box: a draft refusal points at its card (ADR 0122).
                   returnedDraft={chatFeed.window.queuedSends.some((row) => row.state === "returned")}
                   isShell={isShell}

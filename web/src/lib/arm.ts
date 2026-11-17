@@ -6,7 +6,8 @@
 export const ARM_MS = 4000;
 
 /**
- * The window the unread card's Enter cap stays armed (the M102 review 2, J): five seconds on that pane and card,
+ * The window Enter stays armed while a screen Collie cannot read is open (the M102 review 2, J; review 3): the
+ * unread card's Enter cap and the Keys pad's Enter read this one value. Five seconds on that pane and card,
  * whatever the screen's rows do. Longer than {@link ARM_MS}, because the person reads a moving screen between taps.
  */
 export const ENTER_ARM_MS = 5000;
@@ -14,7 +15,7 @@ export const ENTER_ARM_MS = 5000;
 /**
  * How long after arming a second tap starts to count (counsel on the Edge 5 candidate). A double tap,
  * or a thumb that lands twice, comes inside this window; a tap there is ignored, neither a Stop nor a
- * disarm. The belt's Stop reads it.
+ * disarm. The belt's Stop reads it, and so does Enter on the unread card and on the Keys pad (`useArm`).
  */
 export const ARM_DWELL_MS = 400;
 
