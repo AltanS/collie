@@ -26,7 +26,8 @@ import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { asRecord, asText, FileSum, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
-import { harnessProcessOf } from "../launch-window.ts";
+import type { HarnessProcess } from "../launch-window.ts";
+import { paneHarnessOf, profileBinaries } from "../pane-binary.ts";
 import { newestOf, probeHeadLine, rowOf, stringField } from "./name-probe.ts";
 import type { NameReading } from "../session-title.ts";
 import { processStartMs } from "./process-start.ts";
@@ -1418,7 +1419,16 @@ const RESUME_FLAGS: ReadonlyMap<string, readonly string[]> = new Map([
   ["pi", ["--session", "--session-id"]],
 ]);
 
-const PI_BINARIES: ReadonlyMap<string, string> = new Map([["pi", "pi"], ["omp", "omp"]]);
+/**
+ * The pi or omp process among the pane's foreground, or null. The send path's own answer
+ * ({@link paneHarnessOf}, the profiles' binary table), so the journal and a send never name the pane's
+ * harness differently (#793). Argv alone, with no pid check: the journal types nothing, and what it
+ * reads by the answer (a resume flag, a label) passes its own checks after.
+ */
+export function piProcessOf(processes: readonly ForegroundProcess[]): HarnessProcess | null {
+  const found = paneHarnessOf(processes, profileBinaries(), null);
+  return found !== null && RESUME_FLAGS.has(found.harness) ? found : null;
+}
 
 /**
  * The value of the pane's resume flag (`omp --resume <v>`, `omp -r <v>`, `--resume=<v>`, `pi --session
@@ -1427,7 +1437,7 @@ const PI_BINARIES: ReadonlyMap<string, string> = new Map([["pi", "pi"], ["omp", 
  */
 export function resumeValueOf(processes: readonly ForegroundProcess[] | undefined): string | null {
   if (processes === undefined) return null;
-  const found = harnessProcessOf(processes, PI_BINARIES);
+  const found = piProcessOf(processes);
   if (found === null) return null;
   const flags = RESUME_FLAGS.get(found.harness) ?? [];
   const argv = found.process.argv;
@@ -1578,7 +1588,7 @@ export class PiTranscriptSource implements TranscriptSource {
    */
   private async labelledSession(discovery: PiDiscoveryContext, hints: DiscoverHints | undefined): Promise<AgentSessionRef | null> {
     if (hints?.labels === undefined || hints.processes === undefined) return null;
-    const harness = harnessProcessOf(hints.processes, PI_BINARIES)?.harness;
+    const harness = piProcessOf(hints.processes)?.harness;
     if (harness === undefined) return null;
     const value = hints.labels[`${harness}.session_file`];
     if (value === undefined || !isAbsolute(value)) return null;
