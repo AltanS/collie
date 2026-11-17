@@ -13,7 +13,10 @@
 // create, and a reader never sees a half-written lock. A file system with no hard links takes
 // `open(lock, "wx")` instead. A process takes the file once per pane and counts its own holders, so a
 // person's key press inside this bridge's own send is not refused (the in-memory lock and the key gate
-// still order those, as before).
+// still order those, as before). Past its `until` that count proves nothing: another bridge may have
+// taken the file over. So a join past `until` reads the file first, and when it no longer holds this
+// process's bytes the join is refused (a send meets the busy answer, a person's key the busy words, Stop its
+// wait and then its bypass); a file that is gone is taken again (2026-11-17, second review).
 //
 // STALE. A lock whose owner is gone (no such pid, or a pid whose start time is not the recorded one: the
 // pid was reused) is stale. So is one past its `until` plus STALE_MARGIN_MS, and one whose `until` lies
@@ -27,7 +30,8 @@
 // aside. A release runs under the same mutex, so it never removes a lock a takeover just wrote.
 //
 // NO FOLDER. With no runtime folder (or none writable) {@link paneLockDir} and {@link openPaneLock}
-// answer null and the bridge keeps the in-memory lock alone. A failing file call never fails a send: it
+// answer null and the bridge keeps the in-memory lock alone. A folder removed while the bridge runs (a
+// cleaner of the runtime folder) is made again on the next take, once per take. A failing file call never fails a send: it
 // is logged once and the pane counts as free here.
 
 import { createHash, randomBytes } from "node:crypto";
@@ -167,6 +171,8 @@ export class PaneLockFiles {
   private readonly startOf: (pid: number) => string | null;
   private readonly alive: (pid: number) => boolean;
   private warned = false;
+  /** The folder was made again during this take ({@link writeTemp}): at most once per take. */
+  private remade = false;
 
   constructor(private readonly options: PaneLockOptions) {
     this.pid = options.pid ?? process.pid;
@@ -188,8 +194,11 @@ export class PaneLockFiles {
    * logs once: the lock must never fail a send that the in-memory lock lets go.
    */
   take(paneId: string, owner: string, until: number): boolean {
+    this.remade = false;
     const mine = this.held.get(paneId);
     if (mine !== undefined) {
+      // Past its `until` another bridge may have taken the file over: join only while it is still ours.
+      if (this.now() > mine.fileUntil && !this.stillMine(paneId, mine, until)) return false;
       mine.owners.set(owner, until);
       if (until > mine.fileUntil) this.extend(paneId, mine, until);
       return true;
@@ -198,6 +207,28 @@ export class PaneLockFiles {
       const raw = this.acquire(paneId, until);
       if (raw === null) return false;
       this.held.set(paneId, { owners: new Map([[owner, until]]), fileUntil: until, raw });
+      return true;
+    } catch (err) {
+      this.warn(err);
+      return true;
+    }
+  }
+
+  /**
+   * Whether the file still holds this process's bytes, for a hold past its `until`. A file that is gone is
+   * taken again (with the later of the hold's ends); one another bridge wrote is not this process's any
+   * more. A failing file call answers true, as every file failure here does.
+   */
+  private stillMine(paneId: string, mine: Held, until: number): boolean {
+    try {
+      const path = this.pathOf(paneId);
+      const now = this.readRaw(path);
+      if (now === mine.raw) return true;
+      if (now !== null) return false;
+      const raw = this.body(Math.max(until, ...mine.owners.values()));
+      if (!this.create(path, raw)) return false;
+      mine.raw = raw;
+      mine.fileUntil = Math.max(until, ...mine.owners.values());
       return true;
     } catch (err) {
       this.warn(err);
@@ -252,7 +283,7 @@ export class PaneLockFiles {
   /** Exclusive create with the whole content. False when the file exists. */
   private create(path: string, raw: string): boolean {
     const temp = `${path}.${this.tag()}`;
-    writeFileSync(temp, raw, { mode: 0o600 });
+    this.writeTemp(temp, raw);
     try {
       linkSync(temp, path);
       return true;
@@ -267,6 +298,19 @@ export class PaneLockFiles {
       } catch {
         /* the temp is ours and harmless */
       }
+    }
+  }
+
+  /** Write a temp file beside the lock; a folder removed at runtime is made again, once per take. */
+  private writeTemp(temp: string, raw: string): void {
+    try {
+      writeFileSync(temp, raw, { mode: 0o600 });
+    } catch (err) {
+      if (codeOf(err) !== "ENOENT" || this.remade) throw err;
+      this.remade = true;
+      mkdirSync(this.options.dir, { recursive: true, mode: 0o700 });
+      this.options.log?.(`[pane-lock] the pane lock folder was gone; made it again (${this.options.dir})`);
+      writeFileSync(temp, raw, { mode: 0o600 });
     }
   }
 

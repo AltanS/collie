@@ -707,7 +707,8 @@ shows a menu or a yes/no prompt. A screen that changed comes back with the rows 
 at them and tap again. On a menu, use the keys to pick an option, because typed text could pick one.
 
 Where Collie can still place and check your text, on a screen that takes the manual Send, your second
-tap sends it, Enter included: you tapped twice with the screen in view. Where it cannot, on a box that
+tap sends it, Enter included: you tapped twice with the screen in view. If only a number on the screen
+changed since you looked, Collie types your text but presses no key, so you check it first. Where it cannot, on a box that
 is not free, a box that already holds a draft, a turn it cannot read or does not queue into, or a stale
 or torn read, Collie pastes your text into the box in one piece and presses no key at all. A menu on
 the screen stops both. The card

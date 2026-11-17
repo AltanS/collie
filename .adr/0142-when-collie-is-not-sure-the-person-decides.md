@@ -115,6 +115,6 @@ These wait for the milestone "No block without an exit"; until then the old rule
 An override (`override` plus the rows hash seen) is typed on any reading but five: no pane or grant, a
 sign-in field (6b), a question the reader read (6a), a moved screen (`stale_surface`) and the generic
 menu sign (`menu_open`, `menu-sign.ts`; on the blind road none for a shell foreground, else live at the
-bottom). On a manual Send it is the commit, submit key included; where the steps refuse, it goes in one
-piece, no probe, no key: `typed_not_submitted(override)`. Spec 13: an `unknown` whose submit went out
+bottom). On a manual Send it is the commit, submit key on the exact hash only (loose match: no key); else
+one piece, no probe, no key: `typed_not_submitted(override)`. Spec 13: an `unknown` whose submit went out
 waits `awaitingEventUntil` for the agent's prompt event (data road too); a match settles it `effective`.

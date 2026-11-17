@@ -253,7 +253,9 @@
 // (menu-sign.ts, `menu_open`), which also guards an override on the manual Send. Both refusals carry the
 // rows now and their hash. The rows compare of an override masks digits and spinner glyphs and, over a
 // found box, reads from the box's top edge down ({@link Snap.looseHash}): a clock or a streaming turn
-// above the box is no screen the person must see again. A text of more than one line takes the road only
+// above the box is no screen the person must see again. That loose compare never lets a key through: a
+// commit on the manual Send presses Enter only on the exact rows hash, and one whose rows match only loosely
+// takes the override road (the text, no key; 2026-11-17). A text of more than one line takes the road only
 // where the multiplexer pastes a whole text (`pasteBlock`), else it is refused `multiline`: a line break
 // could submit it. An override is never held, joins no hold queue, and one id writes at most once. A held
 // row says `heldLong` once it waited HELD_LONG_MS (two minutes). A send Collie makes alone (a held release,
@@ -376,6 +378,8 @@ export const BLIND_SETTLE_MS = 350;
 /** What a blind send's receipt says it saw: nothing was read, because the pane has no profile to read it by. */
 const BLIND_SAW: SurfaceWords = { turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-profile" };
 /** The refusal of a blind send at a password prompt. Never the prompt's row: it may name a user or a key file. */
+/** Why a sign-in code is refused where S0 reads no sign-in field (2026-11-17). */
+export const NO_SECRET_FIELD = "The sign-in field is not on the screen any more. Nothing was typed.";
 const NO_ECHO_REFUSAL = "A password prompt is waiting on the last row. Collie does not type into it from the text box. Use Type to answer it.";
 
 /** The blind road refuses (M100 spec 06, item 1): the pane's last rows look like an agent's, not a shell's. */
@@ -2034,6 +2038,16 @@ const OVERRIDE_ALREADY_TYPED = "The box already held this text, typed by an earl
 const OVERRIDE_ONE_LINE = "On a screen Collie cannot read, only one line goes in at a time here: a line break could submit it. Send one line, or type the rest with the keys.";
 
 /**
+ * Why a send a crash cut short ended `unknown`: `interrupted` when its first key went out (`startedAt`)
+ * and its submit key did not (no `submitSentAt`, written right before that key): text may sit in the box,
+ * Enter was not pressed. `crash` for the rest: nothing typed yet, or the submit key may have gone out
+ * (2026-11-17, second review: a crash after Enter used to answer `interrupted`).
+ */
+export function crashReason(record: Pick<SendRecord, "startedAt" | "submitSentAt">): "crash" | "interrupted" {
+  return record.startedAt !== undefined && record.submitSentAt === undefined ? "interrupted" : "crash";
+}
+
+/**
  * Whether a request is the person's override (M102 spec 12): the phone's own send or command with the
  * rows hash the person saw and `override`. A held request, a walky talky message, a view's send, a
  * steer and a sign-in code never are, whatever they carry.
@@ -3537,7 +3551,7 @@ export class SendProtocol {
     const look = await this.lookAfterCrash(request, record, target);
     const state = this.bareState(request, record, target, null);
     state.marks.s2 = look;
-    const reason = record.startedAt === undefined ? "crash" : "interrupted";
+    const reason = crashReason(record);
     const receipt = this.receiptOf(state, "unknown", reason);
     this.deps.store.settle(request.id, receipt);
     this.count(state, receipt);
@@ -4349,7 +4363,7 @@ export class SendProtocol {
       gapsMs: {},
       keys: [],
       outcome: "unknown",
-      reason: record.startedAt === undefined ? "crash" : "interrupted",
+      reason: crashReason(record),
     };
   }
 
@@ -5298,6 +5312,8 @@ export class SendProtocol {
     if (snap === null) throw this.noRead(state);
     state.marks.s0 = snap;
     this.checkGeneration(state, "refused");
+    // No profile, no sign-in field to read: a sign-in code is never typed blind (2026-11-17).
+    if (state.request.secret === true) throw new Ended("refused", "no_secret_field", { surface: snap.surface, framed: false, detail: NO_SECRET_FIELD });
     if (noEchoPromptIn(snap.texts) !== null) {
       throw new Ended("refused", "not_free", { surface: snap.surface, framed: false, offers: ["keys"], detail: NO_ECHO_REFUSAL });
     }
@@ -5381,6 +5397,10 @@ export class SendProtocol {
       state.secretField = true;
       if (state.request.secret !== true) this.deps.store.forgetLine(state.record.id);
     }
+    // A sign-in code goes only into the sign-in field the reader knows (2026-11-17, second review): with
+    // none on the screen (it closed, or the read is stale) the code would land in the agent's box and reach
+    // the model. Refused before any key; its record keeps no line (the accept took none for a secret).
+    if (state.request.secret === true && state.secretField !== true) throw new Ended("refused", "no_secret_field", { surface: s0.surface, detail: NO_SECRET_FIELD });
     // A box whose line break submits it takes one line: a second line would go out as a second message.
     if (s0.frame?.newlineSubmits === true && sendLines(state.request.text).length > 1) {
       throw new Ended("refused", "multiline", { surface: s0.surface, detail: NEWLINE_SUBMITS });
@@ -5680,7 +5700,9 @@ export class SendProtocol {
     if (state.secretField === true || askOf(s0.surface.modal) !== null) return;
     if (!this.rowsSeen(state, s0)) throw overrideRefusal("stale_surface", s0, OVERRIDE_MOVED);
     if (menuSignOf(s0) !== null) throw overrideRefusal("menu_open", s0, MENU_OPEN);
-    if (!this.reaches(state, s0)) return;
+    // A match by the loose compare alone (a ticking clock or spinner moved, or a digit) presses no key: the
+    // manual Send's commit would press Enter, so the text goes in on the override road instead.
+    if (!this.reaches(state, s0) && !this.looseOnly(state, s0)) return;
     await this.typeOverride(state, s0, lines);
   }
 
@@ -5757,6 +5779,14 @@ export class SendProtocol {
     return overrideAsked(state.request) && this.issued.get(seen) === snap.looseHash;
   }
 
+  /**
+   * Whether the person's hash matches `snap` only by the loose compare (digits and spinner glyphs masked):
+   * then no key may follow (2026-11-17, second review). A road that presses a key needs the exact hash.
+   */
+  private looseOnly(state: RunState, snap: Snap): boolean {
+    return state.request.rowsHash !== snap.rowsHash && this.rowsSeen(state, snap);
+  }
+
   /** The manual Send: the first tap is refused `unconfirmed` with the rows hash, the commit goes ahead
    *  on the same rows, and the cap may ask for one more confirm. */
   private gateManual(state: RunState, s0: Snap, unconfirmed: string, cause?: SendCause): void {
@@ -5766,7 +5796,9 @@ export class SendProtocol {
       if (cause !== undefined) note.cause = cause;
       throw new Ended("refused", "unconfirmed", note);
     }
-    if (!this.rowsSeen(state, s0)) {
+    // The commit presses the submit key, so the rows must be the exact ones the person saw: a dialog that
+    // changed only in its digits ("Delete 3 files?" to "Delete 312 files?") is a moved screen here.
+    if (state.request.rowsHash !== s0.rowsHash) {
       throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, detail: "The screen moved since you looked." });
     }
     // The cap counts sends typed past a screen Collie cannot read; a notice's digit is no such screen.

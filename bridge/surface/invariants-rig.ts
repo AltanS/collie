@@ -55,6 +55,12 @@ export class LogPane {
    * reaches the pane and its call never answers, as a killed process's call never does.
    */
   stopAt: ((write: Write) => boolean) | null = null;
+  /** The bridge stops right after this write: it reaches the pane, and its call never answers (2026-11-17). */
+  stopAfter: ((write: Write) => boolean) | null = null;
+  /** The answer of a write that landed: a call that never answers once {@link stopAfter} names it. */
+  private landed(write: Write): Promise<MuxAck> {
+    return this.stopAfter?.(write) === true ? new Promise<MuxAck>(() => undefined) : Promise.resolve(muxAck());
+  }
   /** Calls that never answer, so a stopped bridge's run stays pending. */
   private stopped(write: Write): Promise<MuxAck> | null {
     return this.stopAt?.(write) === true ? new Promise<MuxAck>(() => undefined) : null;
@@ -91,7 +97,7 @@ export class LogPane {
     if (stop !== null) return stop;
     this.log.push({ kind: "type", value: text });
     this.take(text);
-    return Promise.resolve(muxAck());
+    return this.landed({ kind: "type", value: text });
   };
 
   pasteText = (paneId: string, text: string): Promise<MuxAck> => {
@@ -100,7 +106,7 @@ export class LogPane {
     if (stop !== null) return stop;
     this.log.push({ kind: "paste", value: text });
     this.take(text);
-    return Promise.resolve(muxAck());
+    return this.landed({ kind: "paste", value: text });
   };
 
   writeKeys = (paneId: string, keys: readonly string[]): Promise<MuxAck> => {
@@ -126,7 +132,8 @@ export class LogPane {
       }
       this.revision++;
     }
-    return Promise.resolve(muxAck());
+    const last = keys[keys.length - 1];
+    return last === undefined ? Promise.resolve(muxAck()) : this.landed({ kind: "keys", value: last });
   };
 }
 
