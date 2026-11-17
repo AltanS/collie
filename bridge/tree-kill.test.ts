@@ -13,7 +13,7 @@ describe("windowsTreeKill", () => {
       steps.push(`${argv[0] ?? ""} ${String(opts.timeoutMs)}`);
       return { exited: Promise.resolve(0) };
     };
-    await windowsTreeKill(4242, { startedAt: 1_000, env: { SystemRoot: "C:\\Win" }, leader: () => steps.push("leader"), spawn, now: () => 2_000 });
+    await windowsTreeKill(4242, { startedAt: 1_000, env: { SystemRoot: "C:\\Win" }, leader: () => steps.push("leader"), spawn });
     expect(steps).toEqual([
       `C:\\Win\\System32\\taskkill.exe ${String(WINDOWS_KILL_TIMEOUT_MS)}`,
       "leader",
