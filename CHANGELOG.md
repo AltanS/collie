@@ -30,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **"Sent" shows beside the session's name and time, and the belt's X fades out in place.** The name and time no longer leave the header for the word, and no line in it moves or changes height. When the box empties, the X leaves by fading and keeps its room until your next key press, so the marks beside it do not slide.
 - **Your message stands in Chat the moment you tap Send, on every pane.** A pane with a screen now draws your line at the tap, as a durable agent's pane already did, in the same look, and the agent's own copy takes its place at the same height, with never two lines and never none. The room for "Still working" is kept from the tap, and when that row goes, the end of the chat stays where it is until the next row or your own scroll. Rows near the end of the chat are drawn once, at their own height.
 - **Stop takes a hold of two seconds, not two taps.** The first tap changed the word to "Stop?", and that did not say that a second tap was needed. Now you hold the button: it fills from one edge to the other, and the turn stops when the fill is complete. A finger lifted earlier stops nothing, and the button says "Hold" for a moment. A keyboard and a screen reader keep the two presses, because they cannot hold.
 - **After the update the Hill and every trick are off until you switch them on.** Switch the Hill on in Settings, Experiments, or with `collie hill on`, and each trick in Settings, Tricks. A trick's card works with the Hill off.
