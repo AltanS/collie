@@ -86,7 +86,7 @@ import { useKeyBoard } from "@/lib/key-board-store";
 import { isDestructiveInput } from "@/lib/destructive";
 import { asksSendAgain, forgetUnknownSend, rememberUnknownSend, SEND_AGAIN_CONFIRM_DELAY_MS, sendAgainId, sentForm } from "@/lib/send-again";
 import { useHostLabel } from "@/components/crew-provider";
-import { fitsDraftStore, loadDraftEntry, saveDraft } from "@/lib/drafts";
+import { fitsDraftStore, loadDraftEntry, loadPutBack, saveDraft, savePutBack, type PutBackItem } from "@/lib/drafts";
 import { clearIntent, clearIntentIfDraftChanged, loadIntent, saveIntent } from "@/lib/send-intent";
 import type { IntentId } from "@/lib/durable-control";
 import { wipeDevice } from "@/lib/wipe";
@@ -238,8 +238,8 @@ const SECRET_SEND: LastSend = { secret: true };
 
 /**
  * A sent text the box let go of at the tap (M104): what the box held (text and chips) and whose box it was. It goes
- * back into that box on any end that is not a success, or waits beside the notice (`heldBack`) when the box holds a
- * new text by then. `intent` is the request id a lost answer left, so a text put back sends again under that id.
+ * back into that box on any end that is not a success, or waits beside the notice (Put back, stored with the pane's
+ * draft in lib/drafts.ts) when the box holds a new text or an open Undo window by then. `intent` is the request id a lost answer left, so a text put back sends again under that id.
  */
 interface SentBack {
   readonly draft: string;
@@ -248,6 +248,11 @@ interface SentBack {
   readonly scope: Scope | undefined;
   readonly line: string;
   readonly intent?: IntentId;
+}
+
+/** A stored Put back item's request id, as the optional field of a {@link SentBack} (never an `intent: undefined`). */
+function intentOf(item: PutBackItem): { intent?: IntentId } {
+  return item.intent === undefined ? {} : { intent: item.intent };
 }
 
 /** A box send in flight (M104): its text, and its line in Chat (`row`), which a pane with no thread does not get. */
@@ -976,6 +981,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     attachmentsRef.current = restored?.attachments ?? [];
     setAttachments(attachmentsRef.current);
     nextAttachmentRef.current = restored?.next ?? 1;
+    // This pane's Put back list, and never the outgoing pane's.
+    setPutBackList(loadPutBack(scope, paneId));
+    setHeldBackFull(false);
     caretRef.current = null;
     setPreviewDismissed(false); // it was about the pane we just left
     noticeNoEchoRef.current(null); // it described the pane we just left
@@ -1162,7 +1170,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const calmRef = useRef<CalmSend | null>(null);
   const [calmHeld, setCalmHeld] = useState(false);
   const flipInstantRef = useRef(false);
-  const [heldBack, setHeldBack] = useState<SentBack | null>(null);
+  // The texts waiting on Put back for the pane on screen, oldest first (the M102 review 3): stored with the pane's draft
+  // (lib/drafts.ts), so a pane switch or a reload keeps them, and never a list with a cap, so none is dropped.
+  const [putBackList, setPutBackList] = useState<readonly PutBackItem[]>(() => loadPutBack(scope, paneId));
   const [heldBackFull, setHeldBackFull] = useState(false);
   // A line the bridge held: it waits for the held row above the box and goes in the frame that row arrives.
   const handoverRef = useRef<{ readonly key: string; readonly id: string; readonly requestId: string } | null>(null);
@@ -1667,7 +1677,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     `composer:${paneId}`,
     hasDraft ||
       calmHeld ||
-      heldBack !== null ||
+      putBackList.length > 0 ||
       clearedDraft !== null ||
       direct.active ||
       direct.value !== "" ||
@@ -2318,9 +2328,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     if (back.intent !== undefined) saveIntent(back.scope, back.pane, back.intent, back.line);
   }
-  /** Whether `back`'s box (shown, or stored for another pane) is free for it. */
+  /**
+   * Whether `back`'s box (shown, or stored for another pane) is free for it. An open Undo window from the belt's X is not
+   * free (the M102 review 3): its draft is one tap from coming back, and that tap would write over the returned text.
+   */
   function roomFor(back: SentBack): boolean {
-    if (boxOf(back)) return boxEmpty();
+    if (boxOf(back)) return boxEmpty() && clearedDraftRef.current === null;
     const stored = loadDraftEntry(back.scope, back.pane);
     return stored === null || (stored.text.trim() === "" && stored.attachments.length === 0);
   }
@@ -2372,18 +2385,33 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       writeBack(back);
       return;
     }
-    setHeldBack(back);
+    // Appended to its pane's stored list, never in place of a text already there (the M102 review 3).
+    const item: PutBackItem = { draft: back.draft, chips: [...back.chips], line: back.line };
+    if (back.intent !== undefined) item.intent = back.intent;
+    const list = [...loadPutBack(back.scope, back.pane), item];
+    savePutBack(back.scope, back.pane, list);
+    // The store keeps no preview; a chip put back later draws its icon tile, as a restored draft's does.
+    for (const chip of back.chips) revokePreview(chip);
+    if (!boxOf(back)) return;
+    setPutBackList(list);
     setHeldBackFull(false);
   }
-  /** Put back, beside the notice: the kept text goes into its box once that box is empty. Never merged, never over a text. */
+  /**
+   * Put back, beside the notice: the newest kept text goes into its box once that box is empty, and the next one shows.
+   * Never merged, never over a text or an open Undo window.
+   */
   function putBack(): void {
-    const back = heldBack;
-    if (back === null) return;
+    const list = loadPutBack(scope, paneId);
+    const newest = list[list.length - 1];
+    if (newest === undefined) return;
+    const back: SentBack = { draft: newest.draft, chips: newest.chips, pane: paneId, scope, line: newest.line, ...intentOf(newest) };
     if (!roomFor(back)) {
       setHeldBackFull(true);
       return;
     }
-    setHeldBack(null);
+    const rest = list.slice(0, -1);
+    savePutBack(scope, paneId, rest);
+    setPutBackList(rest);
     setHeldBackFull(false);
     writeBack(back);
   }
@@ -3686,8 +3714,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     onSendClick();
   }
 
-  // The kept text of this pane's last send that did not land, while the box holds a new one (M104).
-  const heldBackHere = heldBack !== null && heldBack.pane === paneId && scopeKey(heldBack.scope) === scopeKey(scope) ? heldBack : null;
+  // The newest text waiting on Put back for this pane (M104; the M102 review 3), and how many wait.
+  const heldBackHere = putBackList[putBackList.length - 1] ?? null;
 
   // The change of shape is played (hooks/use-flip.ts): the box's height, with every row held still,
   // and a button that appears slides in sideways from its own edge, never from above (Altan,
@@ -4327,6 +4355,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               <span data-slot="composer-held-back" className="line-clamp-2 whitespace-pre-wrap break-words">
                 {translate("composer.heldBack.kept", { text: heldBackHere.draft })}
               </span>
+              {putBackList.length > 1 && (
+                <span data-slot="composer-held-back-count" className="text-muted-foreground">
+                  {translate("composer.heldBack.count", { count: putBackList.length })}
+                </span>
+              )}
               {heldBackFull && (
                 <span data-slot="composer-held-back-full" role="status" className="text-muted-foreground">
                   {translate("composer.heldBack.boxFull")}

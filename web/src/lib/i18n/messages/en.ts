@@ -530,6 +530,8 @@ export const en = {
   "composer.heldBack.kept": "Not sent, kept here: {text}",
   "composer.heldBack.putBack": "Put back",
   "composer.heldBack.boxFull": "Empty the box first, then tap Put back.",
+  // More than one text waits on Put back (the M102 review 3): the notice shows the newest and says how many wait.
+  "composer.heldBack.count": "{count} texts wait here. This is the newest.",
   "composer.placeholder.gone": "Pane is gone",
   "composer.placeholder.readOnly": "Read-only, not authorised",
   "composer.placeholder.noMuxSend": "Can't type into this terminal",
@@ -4118,6 +4120,7 @@ export const PENDING_TRANSLATION = [
   "composer.heldBack.kept",
   "composer.heldBack.putBack",
   "composer.heldBack.boxFull",
+  "composer.heldBack.count",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

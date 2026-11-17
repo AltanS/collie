@@ -125,10 +125,16 @@ describe("AgentChat: the queued card's Send again (M102 spec 04)", () => {
     });
     const discards = mountWithLostCard(() => HttpResponse.json({ result: "dismissed" }));
     // The bridge's Discard answers only when the test says so, and the person's own send hangs until then too.
-    let releaseSend: () => void = () => undefined;
+    let openSend: () => void = () => undefined;
     const sendWaits = new Promise<void>((resolve) => {
-      releaseSend = resolve;
+      openSend = resolve;
     });
+    // The person's own send ends `sent`, or refused when the test lets it fail.
+    let firstFails = false;
+    const releaseSend = (fail = false) => {
+      firstFails = fail;
+      openSend();
+    };
     const posted: string[] = [];
     let dropped = false;
     server.use(
@@ -156,8 +162,10 @@ describe("AgentChat: the queued card's Send again (M102 spec 04)", () => {
       http.post("/api/send", async ({ request }) => {
         const body = parseJsonObject(await request.text());
         posted.push(asJsonString(body?.text) ?? "");
-        if (posted.length === 1) await sendWaits;
-        return HttpResponse.json(sendAnswer(asJsonString(body?.id) ?? "", "sent"));
+        const first = posted.length === 1;
+        if (first) await sendWaits;
+        const id = asJsonString(body?.id) ?? "";
+        return HttpResponse.json(first && firstFails ? sendAnswer(id, "refused", "busy", { offers: ["keys"] }) : sendAnswer(id, "sent"));
       }),
     );
     const user = userEvent.setup();
@@ -208,4 +216,20 @@ describe("AgentChat: the queued card's Send again (M102 spec 04)", () => {
     await waitFor(() => expect(box).toHaveValue(LOST_TEXT));
     expect(posted).toEqual(["other words"]);
   });
+
+  it("a refusal after the drop with a draft in the box, and then the running send FAILS: both texts wait on Put back, none is lost (the M102 review 3)", async () => {
+    const { box, user, posted, releaseSend } = await raceTheDrop((field, u) => u.type(field, "my new words"));
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-held-back"]')).toHaveTextContent(`Not sent, kept here: ${LOST_TEXT}`));
+    releaseSend(true);
+    // The failed send's text cannot go into the box, which holds the new draft: it joins the list, the newest.
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-held-back"]')).toHaveTextContent("Not sent, kept here: other words"));
+    expect(screen.getByText("2 texts wait here. This is the newest.")).toBeInTheDocument();
+    expect(box).toHaveValue("my new words");
+    await user.clear(box);
+    await user.click(screen.getByRole("button", { name: "Put back" }));
+    await waitFor(() => expect(box).toHaveValue("other words"));
+    expect(document.querySelector('[data-slot="composer-held-back"]')).toHaveTextContent(`Not sent, kept here: ${LOST_TEXT}`);
+    expect(posted).toEqual(["other words"]);
+  });
 });
+
