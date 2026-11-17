@@ -151,19 +151,42 @@ describe("the local API's own warning kind", () => {
   });
 
   // Review 3, item 1: the socket's path is in the facts, so a program can dial it with no `api/sock` in its text.
-  test("a dial of the facts' socket, createConnection, Bun.connect and a unix: option", async () => {
+  test("a dial of the facts' socket and a unix: option are the api kind; a dial that names no socket is not", async () => {
     const program = 'import { createConnection } from "node:net";\nimport { run } from "./trick.ts";\nrun(async (t) => {\n  const s = createConnection(t.facts.api.socket);\n  s.write("{}\\n");\n});\n';
     const found = await warningsOf("program.ts", { "program.ts": program, "trick.ts": TRICK_HELPER });
-    expect(found.filter((w) => w.kind === "api").map((w) => [w.file, w.text])).toEqual([
-      ["program.ts", 'import { createConnection } from "node:net";'],
-      ["program.ts", "const s = createConnection(t.facts.api.socket);"],
-    ]);
+    expect(found.filter((w) => w.kind === "api").map((w) => [w.file, w.text])).toEqual([["program.ts", "const s = createConnection(t.facts.api.socket);"]]);
     expect(found.filter((w) => w.file === "trick.ts")).toEqual([]);
     expect(kinds(await warningsOf("program.ts", { "program.ts": "const path = facts.api?.socket;\n" }))).toContain("api");
     expect(kinds(await warningsOf("program.ts", { "program.ts": "const s = await Bun.connect({ unix: path, socket: { data() {} } });\n" }))).toContain("api");
     expect(kinds(await warningsOf("program.ts", { "program.ts": 'const r = await fetch("http://localhost/x", { unix: path });\n' }))).toContain("api");
-    // A TCP dial is flagged too: a grep cannot tell which socket a variable names.
-    expect(kinds(await warningsOf("program.ts", { "program.ts": 'const s = net.createConnection({ host: "example.invalid", port: 80 });\n' }))).toContain("api");
+  });
+
+  // Counsel on Edge build 5, A8: `createConnection` and `Bun.connect` to any target are the existing network kind;
+  // the api kind keeps only what names Collie's socket.
+  test("createConnection and Bun.connect to any target are the network kind, and not the api kind", async () => {
+    for (const code of [
+      'const s = net.createConnection({ host: "example.invalid", port: 80 });\n',
+      "const s = createConnection(somewhere);\n",
+      'const s = await Bun.connect({ hostname: "example.invalid", port: 80, socket: { data() {} } });\n',
+      "const s = await Bun.connect(target);\n",
+    ]) {
+      const found = kinds(await warningsOf("program.ts", { "program.ts": code }));
+      expect({ code, network: found.includes("network"), api: found.includes("api") }).toEqual({ code, network: true, api: false });
+    }
+    // A dial that names the socket is both: the network kind for the dial, the api kind for the socket named.
+    const both = kinds(await warningsOf("program.ts", { "program.ts": "const s = createConnection(t.facts.api.socket);\n" }));
+    expect(both).toContain("network");
+    expect(both).toContain("api");
+    const unix = kinds(await warningsOf("program.ts", { "program.ts": "const s = await Bun.connect({ unix: path, socket: { data() {} } });\n" }));
+    expect(unix).toContain("network");
+    expect(unix).toContain("api");
+    // The import of the module alone names no socket.
+    expect(kinds(await warningsOf("program.ts", { "program.ts": 'import { createConnection } from "node:net";\n' }))).not.toContain("api");
+    // The strings, the keys and the order are as they were: no new kind, no new sentence.
+    const { WARN_PLAIN, WARN_TEXT } = await import("./scan.ts");
+    expect(Object.keys(WARN_PLAIN).toSorted()).toEqual(["api", "import", "model", "network", "spawn", "write"]);
+    expect(Object.keys(WARN_TEXT).toSorted()).toEqual(["api", "import", "model", "network", "spawn", "write"]);
+    expect(WARN_PLAIN.network).toBe("This trick reaches the network.");
   });
 
   test("plain code near those words is not flagged", async () => {

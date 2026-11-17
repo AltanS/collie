@@ -64,16 +64,17 @@ const AGENT_NAMES = "claude|codex|pi|opencode|omp";
  */
 const WARN_PATTERNS = {
   spawn: /\.sh\s*\(|\bBun\.spawn(?:Sync)?\b|\bBun\.\$|child_process|\b(?:spawn|spawnSync|execSync|execFile|execFileSync|fork)\s*\(|\bexec\s*\(|\bsubprocess\b|\bos\.system\b/,
-  network: /\bfetch\s*\(|\bWebSocket\b|\bXMLHttpRequest\b|\bnet\.connect\b|\bhttps?\.(?:request|get)\s*\(|\brequests\.(?:get|post|put|delete)\b|\burllib\b|(["'`])(?:gh|curl|wget|ssh)\1/,
+  network: /\bfetch\s*\(|\bWebSocket\b|\bXMLHttpRequest\b|\bnet\.connect\b|\bcreateConnection\b|\bBun\.connect\b|\bhttps?\.(?:request|get)\s*\(|\brequests\.(?:get|post|put|delete)\b|\burllib\b|(["'`])(?:gh|curl|wget|ssh)\1/,
   write: /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|copyFile|copyFileSync|rename|renameSync|rm|rmSync|unlink|unlinkSync|mkdir|mkdirSync)\s*\(|\bBun\.write\s*\((?!\s*Bun\.std(?:out|err)\b)/,
   model: new RegExp(`\\b(?:anthropic|openai|openrouter)\\b|\\[\\s*["'\`](?:${AGENT_NAMES})["'\`]|\\b(?:which|findTool|tool|Bun\\.which)\\s*\\(\\s*["'\`](?:${AGENT_NAMES})["'\`]`, "i"),
   // Collie's local socket named by its path (`api/sock`, or `"api", "sock"` joined), by the facts that carry it
-  // (`facts.api.socket`, `api?.socket`), a socket dialed by hand (`createConnection`, `Bun.connect`, a `unix:`
-  // option), or `collie api` itself, in a line or as the program and first word of an argument list: the trick
-  // talks past its helper (M105 spec 04; review 3, item 1). The shipped helper dials this way itself, and is
-  // never grepped (scanTrickFolder). `createConnection` and `Bun.connect` are flagged for any target, a TCP
-  // host too: a grep cannot tell which socket a variable names.
-  api: /\bapi\/sock\b|(["'`])api\1\s*,\s*(["'`])sock\2|\bapi\s*\??\.\s*socket\b|\bcreateConnection\b|\bBun\.connect\b|\bunix\s*:|\bcollie\s+api\b|(["'`])collie\3\s*,\s*\[?\s*(["'`])api\4/,
+  // (`facts.api.socket`, `api?.socket`), a `unix:` option, or `collie api` itself, in a line or as the program and
+  // first word of an argument list: the trick talks past its helper (M105 spec 04; review 3, item 1). The shipped
+  // helper dials this way itself, and is never grepped (scanTrickFolder). `createConnection` and `Bun.connect` are
+  // the `network` kind for any target, a TCP host or a variable: a grep cannot tell which socket a variable
+  // names, and a dial that names none of the above is a network dial (counsel on Edge build 5, A8). A dial
+  // that also names the socket (`createConnection(t.facts.api.socket)`) is both kinds.
+  api: /\bapi\/sock\b|(["'`])api\1\s*,\s*(["'`])sock\2|\bapi\s*\??\.\s*socket\b|\bunix\s*:|\bcollie\s+api\b|(["'`])collie\3\s*,\s*\[?\s*(["'`])api\4/,
 } satisfies Record<Exclude<CheckWarningKind, "import">, RegExp>;
 /** In a shell file: a subshell, a tool that reaches the network by its bare name, a redirect into a file, and an agent program in command position. */
 const SHELL_SPAWN = /\$\(/;

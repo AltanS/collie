@@ -88,6 +88,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A trick that dials a socket of its own reads as reaching the network.** In the text search of a trick's code, `createConnection` and `Bun.connect` to any target count as the network kind. The kind for Collie's local API names only what names Collie's socket: its path, the socket in the facts, a `unix:` option or `collie api`.
 - **The yes of a card waits a whole second again when you come back to the page.** The one-second wait before a card's yes can be tapped now starts over when the page returns from the background or the window takes focus, so a card drawn behind a locked screen is not tappable at the first touch.
 - **Two writers can no longer both hold the switch lock.** A stale lock is now taken over by renaming it aside and checking the file that moved, and the lock file carries a nonce that its release must match, so a slow writer never removes the lock another writer took over.
 - **A consent verb refuses when it cannot prove the pane a shell.** `collie trick on`, `collie trick auto <id> on`, `collie tricks on`, `collie hill on`, `collie hill clear --spoken` and `collie hill state quiet|away` run in a pane with multiplexer markers only when the bridge says the pane is a shell. A failed check, a bridge that does not answer and an unknown pane refuse with the same person-only sentence; a terminal with no markers is not asked.
