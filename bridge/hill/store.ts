@@ -31,6 +31,13 @@
 // before the clear. The trick map (tricks/hill.ts) reads the state too, so an answered key stays closed.
 // The newest {@link HILL_CLEARED_KEPT} are kept. A build from before Clear reads the file without them.
 //
+// AN OPEN DECISION WITH NO EXPIRY gets one when the file is read: the time it was posted plus
+// HILL_MAX_EXPIRY_MS, written back at once. An older build stored decisions with `expiresAt: null`, and the
+// sweep (service.ts `sweep`) closes only a decision past a time, so such a card waited for ever. With its
+// end in place the sweep closes it as `expired` on its usual path, a closed record like any other, never a
+// delete. A decision with an expiry, a closed one, and an entry this build cannot read (below) are kept as
+// they were.
+//
 // AN ENTRY THIS BUILD CANNOT READ (a newer build wrote it, before a rollback) is kept as the raw value
 // it was, never listed and never served, and written back unchanged on every write, so a build that
 // can read it finds it again after the next update. Its `id`, when it has a string one, stays taken.
@@ -41,6 +48,7 @@ import { join } from "node:path";
 import type { JsonValue } from "../json.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../../web/src/lib/json.ts";
 import { HILL_CLOSED_SERVED, HILL_STATES, type HillDecision, type HillList, type HillState } from "../../web/src/lib/hill/wire.ts";
+import { HILL_MAX_EXPIRY_MS } from "../../web/src/lib/tricks/limits.ts";
 import { readDecision } from "./parse.ts";
 
 /** The hill's folder inside a state dir. */
@@ -93,6 +101,15 @@ export function pruned(decisions: readonly HillDecision[], keep = HILL_CLOSED_KE
   const closed = decisions.filter((decision) => decision.state !== "open").toSorted((a, b) => closedOrder(b) - closedOrder(a));
   const kept = new Set(closed.slice(0, keep).map((decision) => decision.id));
   return decisions.filter((decision) => decision.state === "open" || kept.has(decision.id));
+}
+
+/**
+ * Every open decision with no expiry given one: posted at plus {@link HILL_MAX_EXPIRY_MS}. Answers the same
+ * array when none needed one.
+ */
+export function withEnds(decisions: HillDecision[]): HillDecision[] {
+  if (!decisions.some((decision) => decision.state === "open" && decision.expiresAt === null)) return decisions;
+  return decisions.map((decision) => (decision.state === "open" && decision.expiresAt === null ? { ...decision, expiresAt: decision.at + HILL_MAX_EXPIRY_MS } : decision));
 }
 
 /** The `id` of a raw entry, when it has a string one; null when it has none this build can tell. */
@@ -148,10 +165,14 @@ export class HillStore {
       // A second entry under a held id is a duplicate this build wrote; the first one stands.
       else if (!read.some((held) => held.id === decision.id)) read.push(decision);
     }
-    this.decisions = read;
+    const ended = withEnds(read);
+    this.decisions = ended;
     this.opaque = opaque;
     this.tombstones = Array.isArray(file.cleared) ? file.cleared.flatMap((entry) => readTombstone(entry) ?? []).slice(-HILL_CLEARED_KEPT) : [];
     this.revision = this.now();
+    // Persisted at once, so the end stays the same across restarts. A failed write warns, and memory keeps
+    // the end: the sweep's own write saves it then.
+    if (ended !== read) this.write(ended);
   }
 
   /**

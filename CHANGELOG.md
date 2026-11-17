@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A trick's card leaves its page once you answer it.** Dismiss, Switch it on, Use the new version or Not now on a card opened from Settings, Tricks or the Dashboard shows what happened for a moment, then the page closes. Before, the card stayed on the page with its Back, Next and Dismiss buttons until you left the page, though Collie had already closed it.
+- **A card that an older build saved with no end date now expires.** When the bridge starts, each open card with no end date gets one: 30 days after it was posted. A card older than that closes as expired at once and moves to the closed cards. Before, such a card waited for ever.
 
 ## [1.29.0] - 2026-11-12
 
