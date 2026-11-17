@@ -4255,6 +4255,8 @@ const tricks =
         repoFacts,
         // The local API stands while a trick is on (decision 14); start and stop run one at a time.
         onSwitchedOnCount: (count) => void (count > 0 ? localApi?.start() : localApi?.stop()),
+        // A trick that lists `on` runs on the bus's events (bridge/tricks/triggers.ts).
+        bus: eventBus,
       });
 onRepoFacts = () => tricks?.repoFactsMoved();
 tricks?.start();
@@ -4511,6 +4513,8 @@ const shutdown = async () => {
   stopInsideWatch?.();
   insideServer?.stop();
   walkyServer.stop();
+  // Closes the trick runner's file watches and its bus subscription.
+  tricks?.stop();
   await localApi?.stop();
   registry.disposeAll();
   // The codex speech-to-text provider owns a `codex app-server` child (bridge/stt/codex-auth.ts).

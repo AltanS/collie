@@ -136,25 +136,53 @@ export const WARN_VERBS = {
 /** The chip of the right `decides = "reply"`: its Decisions may type your answer into a session. */
 export const DECIDES_REPLY_CHIP = "answers go to a session";
 
-/** The rights a manifest asks for past the base: its environment names, its places (an agent view among them), and `decides`. */
-function rightsOf(manifest: Pick<TrickManifest, "env" | "places" | "agentView" | "decides"> | undefined): Set<string> {
+/** The chip of the right `on` (M105 step one): the trick runs when a session's state changes. */
+export const ON_CHIP = "runs when a session changes state";
+
+/** The chip of the right `watch` (M105 step one): the trick runs when one of these files changes. */
+export function watchChip(paths: readonly string[]): string {
+  return `runs when these files change: ${paths.join(", ")}`;
+}
+
+type RightsManifest = Pick<TrickManifest, "env" | "places" | "agentView" | "decides" | "on" | "watch">;
+
+/**
+ * The rights a manifest asks for past the base: its environment names, its places (an agent view among
+ * them), `decides`, each event of `on` and each path of `watch`. A key per right, so a version that names
+ * one more event or path shows as new.
+ */
+function rightsOf(manifest: RightsManifest | undefined): Set<string> {
   if (manifest === undefined) return new Set();
   const places: string[] = [...manifest.places, ...(manifest.agentView === true ? [AGENT_VIEW_PLACE] : [])];
   const decides = manifest.decides === undefined ? [] : [`decides:${manifest.decides}`];
-  return new Set([...(manifest.env ?? []).map((name) => `env:${name}`), ...places.map((place) => `place:${place}`), ...decides]);
+  return new Set([
+    ...(manifest.env ?? []).map((name) => `env:${name}`),
+    ...places.map((place) => `place:${place}`),
+    ...decides,
+    ...(manifest.on ?? []).map((event) => `event:${event}`),
+    ...(manifest.watch ?? []).map((path) => `watch:${path}`),
+  ]);
 }
 
-/** One right as its chip says it. */
+/** One right as its chip says it. `event:` and `watch:` rights are grouped by {@link newRights}, never here. */
 function rightWords(right: string): string {
   if (right.startsWith("env:")) return right.slice(4);
   if (right.startsWith("decides:")) return DECIDES_REPLY_CHIP;
   return placeWords(right.slice(6));
 }
 
+/** The chips of a set of rights: the plain ones, then one for the events and one that lists the paths. */
+function chipsOf(rights: readonly string[]): string[] {
+  const events = rights.some((right) => right.startsWith("event:")) ? [ON_CHIP] : [];
+  const paths = rights.filter((right) => right.startsWith("watch:")).map((right) => right.slice(6));
+  const plain = rights.filter((right) => !right.startsWith("event:") && !right.startsWith("watch:")).map(rightWords);
+  return [...plain, ...events, ...(paths.length > 0 ? [watchChip(paths)] : [])];
+}
+
 /** What the new version asks for that the approved one did not, as chip words. */
-export function newRights(base: Pick<TrickManifest, "env" | "places" | "agentView" | "decides"> | undefined, next: Pick<TrickManifest, "env" | "places" | "agentView" | "decides"> | undefined): string[] {
+export function newRights(base: RightsManifest | undefined, next: RightsManifest | undefined): string[] {
   const was = rightsOf(base);
-  return [...rightsOf(next)].filter((right) => !was.has(right)).map(rightWords);
+  return chipsOf([...rightsOf(next)].filter((right) => !was.has(right)));
 }
 
 /** The `inputs` globs the new version reads that the approved one did not (contract 2, M99). */

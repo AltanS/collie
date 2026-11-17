@@ -62,6 +62,9 @@ import { TricksStore, problemLine, type CliTricksExtra } from "./store.ts";
 import { createSwitchReader, MIGRATED, updateSwitches, withApproval, withEntry, withFreshApproval, withSwitch, type SwitchEntry, type Switches } from "./switches.ts";
 import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX } from "../../web/src/lib/tricks/limits.ts";
 import { menuMessageLine } from "../../web/src/lib/tricks/menu-message.ts";
+import type { EventBus } from "../events/bus.ts";
+import { TrickReactions, type Admit, type ReactionCounts, type ReactTrigger } from "./triggers.ts";
+import type { WatchOptions } from "./watch.ts";
 
 // The run caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
 export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX };
@@ -419,6 +422,10 @@ export interface TricksServiceDeps {
    * scan. bridge/index.ts opens the local API socket while it is above zero (M105 spec 03, decision 14).
    */
   onSwitchedOnCount?: (count: number) => void;
+  /** The bridge's event bus: a trick that lists `on` runs on its events (triggers.ts). Absent: `on` runs nothing. */
+  bus?: EventBus;
+  /** The file watch's knobs, for a test (watch.ts). Absent: the production values. */
+  watchOptions?: WatchOptions;
 }
 
 /** The approved copy a trick runs from, as read and verified. */
@@ -658,6 +665,10 @@ export class TricksService implements TricksSurface {
   private prunedAt = -Infinity;
   /** The switched-on count last told to `onSwitchedOnCount`; null before the first. */
   private switchedOnTold: number | null = null;
+  /** `on` and `watch`: the bus subscription, the file watches and the waiting requests (triggers.ts). */
+  private readonly reactions: TrickReactions;
+  /** The one-line note of each trick whose file watch fell back to a stat check (watch.ts `fallbackNote`). */
+  private readonly reactNotes = new Map<string, string>();
 
   constructor(deps: TricksServiceDeps) {
     this.deps = deps;
@@ -667,6 +678,10 @@ export class TricksService implements TricksSurface {
     this.scanner = createTrickScanner(tricksConfigDir(deps.configDir), { warn: this.warn });
     this.readSwitches = createSwitchReader(deps.stateDir, this.warn);
     this.receiptFile = deps.receipts ?? new TrickReceiptStore(deps.stateDir, this.warn);
+    this.reactions = new TrickReactions(
+      { admit: (id) => this.reactAdmit(id), start: (id, trigger) => this.reactStart(id, trigger), note: (id, note) => this.reactNote(id, note), warn: this.warn },
+      { bus: deps.bus, watch: deps.watchOptions },
+    );
   }
 
   // ── The Windows gate ────────────────────────────────────────────────────────────────────────
@@ -698,6 +713,7 @@ export class TricksService implements TricksSurface {
   stop(): void {
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
+    this.reactions.close();
   }
 
   /**
@@ -819,6 +835,7 @@ export class TricksService implements TricksSurface {
         for (const rt of runtimes) await this.notePending(rt);
         this.syncVersions();
         this.syncRights();
+        this.syncReactions();
         await this.readWarnings();
         await this.prune(switches);
       } catch (err) {
@@ -1426,7 +1443,8 @@ export class TricksService implements TricksSurface {
     const error = m === undefined ? shown.refusals[0]?.reason : blocked ? (rt.copyProblem ?? waiting) : rt.lastError;
     if (error !== undefined) info.error = problemLine(error);
     if (rt.lastRunAt !== undefined) info.lastRunAt = new Date(rt.lastRunAt).toISOString();
-    const refusals = [...shown.refusals, ...rt.docRefusals].slice(0, REFUSALS_MAX);
+    const watchNote = this.reactNotes.get(id);
+    const refusals = [...shown.refusals, ...rt.docRefusals, ...(watchNote === undefined ? [] : [{ code: "later" as const, path: "/watch", reason: watchNote }])].slice(0, REFUSALS_MAX);
     if (refusals.length > 0) info.refusals = refusals;
     if (rt.changed) info.changed = true;
     if (rt.pending !== null) info.pending = rt.pending.info;
@@ -1434,6 +1452,9 @@ export class TricksService implements TricksSurface {
     // Fault B: the phone says RIGHTS_LINE in its own words, from this flag.
     if (rightsStop) info.rightsMoved = true;
     if (m?.env !== undefined) info.env = m.env;
+    // `on` and `watch` are rights (M105 step one): the row and the card say them in words.
+    if (m?.on !== undefined) info.events = m.on;
+    if (m?.watch !== undefined) info.watch = m.watch;
     if (m?.inputs !== undefined && m.inputs.length > 0) info.inputs = { globs: m.inputs, crew: this.deps.crewWide?.() ?? false };
     if (m?.description !== undefined) info.description = m.description;
     if (m?.about !== undefined) info.about = m.about;
@@ -1569,6 +1590,9 @@ export class TricksService implements TricksSurface {
     })();
     rt.running = run.finally(() => {
       rt.running = null;
+      // The run's own writes are absorbed by the file watch (watch.ts), then the next waiting request goes.
+      this.syncReactions();
+      this.reactions.ended(rt.found.id);
       this.pump(rt);
     });
     return rt.running;
@@ -1578,9 +1602,54 @@ export class TricksService implements TricksSurface {
   private pump(rt: TrickRuntime): void {
     if (rt.running !== null) return;
     const next = rt.hillQueue.shift() ?? rt.queued;
-    if (next === null) return;
+    if (next === null) return this.pumpReaction(rt);
     if (next === rt.queued) rt.queued = null;
     void this.begin(rt, tapTrigger(next), next);
+  }
+
+  // ── `on` and `watch` (M105 spec 03, decisions 9 to 11): the logic lives in triggers.ts and watch.ts ──────
+
+  /** Whether a request from an event or a watched file may run: the gates of `tick`, and the trick's own state. */
+  private reactAdmit(id: string): Admit {
+    const rt = this.runtimes.get(id);
+    if (rt === undefined || !this.watched() || this.deps.active?.() === false || this.gated()) return "drop";
+    // A trick that has not had its start run, is stopped, or backs off after a failure takes no request: it is dropped, never held.
+    if (!this.runnable(rt) || rt.stopped || rt.pendingStart || rt.approved?.found.manifest?.run === undefined) return "drop";
+    if (rt.failures > 0 && this.now() < rt.nextAt) return "drop";
+    return rt.running !== null || rt.queued !== null || rt.hillQueue.length > 0 ? "wait" : "now";
+  }
+
+  private reactStart(id: string, trigger: ReactTrigger): void {
+    const rt = this.runtimes.get(id);
+    if (rt !== undefined) void this.begin(rt, trigger, null);
+  }
+
+  private reactNote(id: string, note: string | null): void {
+    if (note === null) this.reactNotes.delete(id);
+    else this.reactNotes.set(id, note);
+    this.publish(id);
+  }
+
+  /** What the reactions hold open (bus subscription, watches, timers) and what waits. For a test. */
+  reactionCounts(): ReactionCounts {
+    return this.reactions.counts();
+  }
+
+  /** The waiting event or file request of a trick that runs nothing, after every tap and Hill answer. */
+  private pumpReaction(rt: TrickRuntime): void {
+    const waiting = this.reactions.takeWaiting(rt.found.id);
+    if (waiting !== null && this.reactAdmit(rt.found.id) === "now") void this.begin(rt, waiting, null);
+  }
+
+  /** Tell triggers.ts which tricks react now: on, runnable, with a program, on a bridge that schedules. */
+  private syncReactions(): void {
+    const live = !this.gated() && this.deps.active?.() !== false;
+    const targets = [...this.runtimes.values()].flatMap((rt) => {
+      const manifest = rt.approved?.found.manifest;
+      if (!live || !this.runnable(rt) || rt.approved === null || manifest?.run === undefined || (manifest.on === undefined && manifest.watch === undefined)) return [];
+      return [{ id: rt.found.id, key: `${rt.approved.hash}:${rt.approved.found.configHash ?? ""}`, events: manifest.on ?? [], watch: manifest.watch ?? [] }];
+    });
+    this.reactions.sync(targets);
   }
 
   /**

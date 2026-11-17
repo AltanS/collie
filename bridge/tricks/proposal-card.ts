@@ -5,7 +5,7 @@ import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type MANIFEST_KEYS, typ
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import { addedDiff, codeGroup, changeCells, filesOnCards, GROUP_WIDE_GAP, groupOrder, helperNote, notesChangedNote, placesTables, shippedHelpers, shippedNotesDiff, sizeWords, type GroupRefusal, type ShippedFile } from "./card-group.ts";
-import { bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, listWords, newInputs, newRights, placeWords, rightsHead, versionTitle, WARN_VERBS } from "./version-card.ts";
+import { bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, listWords, newInputs, newRights, ON_CHIP, placeWords, rightsHead, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
 import { PROPOSAL_SETTINGS_LEFT, type ProposedFile } from "./propose-wire.ts";
 import type { VersionDiff } from "./version-diff.ts";
 
@@ -141,8 +141,8 @@ export const PROPOSAL_KEY_RIGHTS = {
   name: "text",
   run: "text",
   every: "text",
-  watch: "text",
-  on: "text",
+  watch: "chip",
+  on: "chip",
   mode: "text",
   contract: "text",
   icon: "text",
@@ -156,9 +156,13 @@ export const PROPOSAL_KEY_RIGHTS = {
   rules: "refused",
 } as const satisfies { readonly [K in (typeof MANIFEST_KEYS)[number]]: "chip" | "reads" | "refused" | "text" };
 
-/** What the trick asks for, as chip words: its environment names, its places, and `decides` (its answers go to a session). */
-export function proposalRights(manifest: Pick<TrickManifest, "env" | "places" | "decides">): string[] {
-  return [...(manifest.env ?? []), ...manifest.places.map((place) => placeWords(place)), ...(manifest.decides === "reply" ? [DECIDES_REPLY_CHIP] : [])];
+/**
+ * What the trick asks for, as chip words: its environment names, its places, `decides` (its answers go to a
+ * session), and when it runs (`on`, `watch`: M105 step one).
+ */
+export function proposalRights(manifest: Pick<TrickManifest, "env" | "places" | "decides" | "on" | "watch">): string[] {
+  const reacts = [...(manifest.on !== undefined && manifest.on.length > 0 ? [ON_CHIP] : []), ...(manifest.watch !== undefined && manifest.watch.length > 0 ? [watchChip([...new Set(manifest.watch)])] : [])];
+  return [...(manifest.env ?? []), ...manifest.places.map((place) => placeWords(place)), ...(manifest.decides === "reply" ? [DECIDES_REPLY_CHIP] : []), ...reacts];
 }
 
 /** The author's words on a card: at most this many paragraphs ... */

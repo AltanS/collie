@@ -394,7 +394,7 @@ describe("the program section", () => {
   test("every trigger kind is a row of the table or is named as one this Collie never sends", () => {
     const sent = PROGRAM.triggers.map((row) => row.kind);
     expect([...sent, ...PROGRAM.triggersLater].toSorted()).toEqual([...TRIGGER_KINDS].toSorted());
-    expect(sent).toEqual(["start", "timer", "tap"]);
+    expect(sent).toEqual(["start", "timer", "tap", "watch", "event"]);
     const receives = sectionOf("### What the program receives");
     for (const row of PROGRAM.triggers) {
       expect(receives, row.kind).toContain(`| \`${row.kind}\` |`);

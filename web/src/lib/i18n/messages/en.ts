@@ -3642,6 +3642,9 @@ export const en = {
   "settings.tricks.about.does": "What it does",
   "settings.tricks.about.draws": "Draws in: {places}.",
   "settings.tricks.about.env": "Asks for the environment names {names}.",
+  // `on` and `watch` are rights (M105 step one): the same words as the proposal card's chips (bridge/tricks/version-card.ts).
+  "settings.tricks.about.on": "Runs when a session changes state.",
+  "settings.tricks.about.watch": "Runs when these files change: {paths}.",
   "settings.tricks.about.from": "Where it comes from",
   "settings.tricks.about.local": "Added on this machine.",
   "settings.tricks.about.proposedAgent": "Proposed by an agent session on {host}.",
@@ -4146,6 +4149,8 @@ export const PENDING_TRANSLATION = [
   "apiError.api.answer_too_large",
   "apiError.api.closing",
   "apiError.api.failed",
+  "settings.tricks.about.on",
+  "settings.tricks.about.watch",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

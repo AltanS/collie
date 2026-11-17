@@ -21,6 +21,8 @@ const SAMPLES = {
   env: { set: { env: ["GITHUB_TOKEN"] }, words: "GITHUB_TOKEN" },
   decides: { set: { decides: "reply" }, words: DECIDES_REPLY_CHIP },
   inputs: { set: { inputs: ["TODO.md"] }, words: "TODO.md" },
+  on: { set: { on: ["session.status"] }, words: "runs when a session changes state" },
+  watch: { set: { watch: ["~/notes/todo.md", "/etc/hosts"] }, words: "runs when these files change: ~/notes/todo.md, /etc/hosts" },
 } as const satisfies { readonly [K in RightKey]: { set: Partial<TrickManifest>; words: string } };
 
 function cardOf(manifest: TrickManifest) {

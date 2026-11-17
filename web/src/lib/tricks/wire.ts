@@ -32,10 +32,14 @@ import {
   rulesTextProblems,
   TAP_CODES,
   TAP_REFUSALS,
+  TRICK_EVENTS,
   TRICK_WARNINGS_MAX,
   VERSION_RE,
+  WATCH_MAX,
+  WATCH_PATH_MAX,
   type OfficialState,
   type PlaceKind,
+  type TrickEvent,
   type TrickProvenance,
   type WireRepoFacts,
   type OfficialTricksReply,
@@ -231,6 +235,33 @@ export function readInputs(raw: JsonValue | undefined): WireTrickInfo["inputs"] 
   return { globs, crew };
 }
 
+/** A trick's `on` events, read tolerantly: 1 to every event word once, each a word this phone knows. Anything else is left out. */
+export function readEvents(raw: JsonValue | undefined): TrickEvent[] | undefined {
+  const list = asJsonArray(raw);
+  if (list === undefined || list.length === 0 || list.length > TRICK_EVENTS.length) return undefined;
+  const events: TrickEvent[] = [];
+  for (const entry of list) {
+    const word = asJsonString(entry);
+    const known = TRICK_EVENTS.find((event) => event === word);
+    if (known === undefined) return undefined;
+    events.push(known);
+  }
+  return events;
+}
+
+/** A trick's `watch` paths, read tolerantly: 1 to `WATCH_MAX` strings of at most `WATCH_PATH_MAX` characters. Anything else is left out. */
+export function readWatch(raw: JsonValue | undefined): string[] | undefined {
+  const list = asJsonArray(raw);
+  if (list === undefined || list.length === 0 || list.length > WATCH_MAX) return undefined;
+  const paths: string[] = [];
+  for (const entry of list) {
+    const path = asJsonString(entry);
+    if (path === undefined || path === "" || [...path].length > WATCH_PATH_MAX) return undefined;
+    paths.push(path);
+  }
+  return paths;
+}
+
 /**
  * A trick's `description` or `about`, read tolerantly: kept only as a string within its cap with no control
  * or invisible character. Anything else is left out, as from an older bridge. `about` may hold line breaks.
@@ -299,9 +330,11 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const versioned = body.version;
   const known = body.repoFacts;
   const replying = body.decidesReply;
+  const reacting = body.events;
+  const watching = body.watch;
   if (!isTrickValue(body)) return undefined;
   if (body.provenance !== undefined) body.provenance = readProvenance(body.provenance);
-  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined) return body;
+  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined && reacting === undefined && watching === undefined) return body;
   // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
   // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
@@ -310,10 +343,14 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const description = readTrickText(described, "description");
   const about = readTrickText(told, "about");
   const rules = readTrickRules(ruled);
-  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, ...rest } = body;
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, events: _reacting, watch: _watching, ...rest } = body;
   const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
   if (pending !== undefined) out.pending = pending;
   if (inputs !== undefined) out.inputs = inputs;
+  const events = readEvents(reacting);
+  if (events !== undefined) out.events = events;
+  const watch = readWatch(watching);
+  if (watch !== undefined) out.watch = watch;
   if (description !== undefined) out.description = description;
   if (about !== undefined) out.about = about;
   if (auto !== undefined) out.auto = auto;
