@@ -451,8 +451,6 @@ export interface HeldRow {
    * profile would take a message in a turn, but not on a version it cannot name. `collie doctor` says why.
    */
   readonly versionUnread?: true;
-  /** Set by the bridge once a held row waited two minutes (M102 spec 12). */
-  readonly heldLong?: true;
   /**
    * Set when the request is the one typed line of a WalkyTalky message: the message's id (`wt_` and 12
    * characters). The message has its own places on the phone (the held mark above the box and the
