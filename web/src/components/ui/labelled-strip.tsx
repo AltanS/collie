@@ -334,7 +334,7 @@ export function LabelledStrip({
       <div
         ref={scrollerRef}
         className={cn(
-          "-mx-4 flex items-center gap-2 overflow-x-auto px-4 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          "-mx-4 flex items-center gap-2 overflow-x-auto overscroll-x-contain px-4 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           scrollerClassName,
         )}
       >

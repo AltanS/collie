@@ -228,7 +228,9 @@ export function TabStrip({
   const scrollerRef = useRef<HTMLDivElement>(null);
   // Keyed on `selected` (not `workspaceId`): a many-tab strip must reveal the active tab on mount
   // AND every time the operator switches tabs, and `selected` is the value that changes on a switch.
-  useRevealActive(scrollerRef, selected);
+  // With `trailing` this is the pane screen's row, which remounts for every pane it opens; the memory
+  // key keeps the row where it stood, so a tapped tab stays under the finger.
+  useRevealActive(scrollerRef, selected, `tabs:${trailing ? "pane" : "space"}:${host ?? ""}:${workspaceId}`);
 
   // Tab status is computed over THIS machine's panes only: tab ids (`w1:t1`) collide across a crew
   // exactly as pane and workspace ids do, so an unfiltered merged list would paint a peer's blocked
@@ -284,7 +286,7 @@ export function TabStrip({
           // The pane row under this one (when the tab holds several panes) is a plain neighbour
           // now, not a rival: the two rows' hit boxes meet on their shared edge and never overlap.
           className={cn(
-            "flex items-center gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "flex items-center gap-3 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             // With a pinned control the right half of the edge-to-edge trick is spent on it: the
             // scroller becomes the flex row's growing child, keeps the LEFT gutter cancellation so
             // the first tab still starts on the route's 16px, and stops at the control instead of at

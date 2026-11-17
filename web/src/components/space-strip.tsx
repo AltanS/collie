@@ -88,7 +88,7 @@ export function SpaceStrip({
   const scrollerRef = useRef<HTMLDivElement>(null);
   // Keyed on `selected`; the drill-in (`onBack` set) has no active chip at all — "Back" isn't one —
   // so there is nothing this strip needs to reveal there, and the hook simply finds no element.
-  useRevealActive(scrollerRef, selected);
+  useRevealActive(scrollerRef, selected, `spaces:${host ?? ""}`);
   // On a one-space multiplexer the tab strip is the top level and this row has nothing to offer —
   // except the way back, which is navigation rather than a space and must not disappear with them.
   // With no back button there is nothing left to render at all.
