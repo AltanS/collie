@@ -41,7 +41,7 @@ import { fieldLocked, sendSlot, unreachable, type SendSlot } from "@/lib/send-sl
 import { wayOut } from "@/lib/way-out";
 import type { Surface } from "@/lib/surface/surface";
 import { parseAnsi } from "@/lib/ansi";
-import { splitLines } from "@/lib/blocks";
+import { splitLines, type StyledLine } from "@/lib/blocks";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
 import type { HeldRow, SendMode, SendOffer, SendRequestBody, SendWhen } from "@/lib/surface/send";
 import { Notice } from "@/components/ui/notice";
@@ -322,6 +322,11 @@ interface ComposerProps {
    * except a WalkyTalky message's row (its `walky` field): the held mark and the Messages sheet carry that.
    */
   held?: readonly HeldRow[] | undefined;
+  /**
+   * The pane's live screen, the rows AgentChat already parsed. A held row that waited two minutes draws it
+   * under its label, so the person can look before tapping Send it now (M102 spec 12). Absent: no screen box.
+   */
+  heldScreen?: { lines: StyledLine[]; wrap: boolean } | undefined;
   /**
    * The Chat window's journal turns, as AgentChat already read them. Their one job here is settling
    * a send that ended `unknown` (#511, `lib/unknown-send.ts`): when the sent text lands as a new
@@ -664,7 +669,7 @@ function lockWordsFor(slot: SendSlot, unreachableWords: string): string | null {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest, unreadIdentity = null, onScreenUnread, onAnswerUnseen, onCannotTell, onCannotTellRing, cannotTellInView },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest, unreadIdentity = null, onScreenUnread, onAnswerUnseen, onCannotTell, onCannotTellRing, cannotTellInView, heldScreen },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1676,6 +1681,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         onSend={resendHeld}
         onChanged={onSent}
         onReturn={(words) => returnHeldWords(words, paneId)}
+        onSendNow={sendHeldNow}
+        {...(heldScreen === undefined ? {} : { screen: heldScreen })}
       />
     ) : null;
 
@@ -2273,6 +2280,55 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (starting || sending || locked) return Promise.resolve(false);
     if (action === "resend") return sendThroughProtocol("", false, row.mode, null, false, { oldId: row.requestId, shown: row.text });
     return sendThroughProtocol(row.text, false, action, null);
+  }
+
+  // Send it now on a held row that waited two minutes (M102 spec 12). The person looked at the screen and
+  // chose: the row is cancelled first (so the bridge never sends it too), then its text goes once with
+  // `override` and a rows hash read fresh. A read that gives no hash, or a cancel that finds the row gone
+  // out, sends nothing and leaves the row as it was. A send that fails gives the words back to the box.
+  // Only the tap runs this; nothing here sends by itself. True when the bridge took the send.
+  async function sendHeldNow(row: HeldRow): Promise<boolean> {
+    if (locked) {
+      sayTap(lockWords ?? unreachableWords);
+      return false;
+    }
+    const tapWords = refusedTapWords();
+    if (tapWords !== null) {
+      sayTap(tapWords);
+      return false;
+    }
+    const reading = translate("unreadDialog.reading");
+    setStatus(reading, "info", null);
+    let hash: string | null;
+    try {
+      hash = (await api.postSend({ id: mintRequestId(), pane: paneId, text: "", mode: "prepare" }, scope)).rowsHash;
+    } catch (e) {
+      setStatus(describeThrownError(e), "error");
+      return false;
+    } finally {
+      if (currentStatus()?.text === reading) clearStatus();
+    }
+    if (hash === null) {
+      setSendRefusal(phoneRefusal(translate("unreadDialog.typeAnywayFailed")));
+      return false;
+    }
+    try {
+      const answer = await api.cancelHeldSend(row.requestId, paneId, scope);
+      if (answer.result !== "cancelled") {
+        setStatus(translate(answer.receipt === undefined ? "composer.held.cancelLate" : "composer.held.wentOut"), "warn");
+        return false;
+      }
+    } catch (e) {
+      // An unknown id is a row another phone already took away.
+      if (!api.isApiErrorStatus(e, 404)) setStatus(describeThrownError(e), "error");
+      return false;
+    }
+    typeAnywaySendRef.current = true;
+    const sent = await sendThroughProtocol(row.text, false, row.mode, hash, false, undefined, undefined, undefined, row.text, true).finally(() => {
+      typeAnywaySendRef.current = false;
+    });
+    if (!sent) returnHeldWords(row.text, paneId);
+    return sent;
   }
 
   // A tap on an offer the last answer made: a new request with a new id, or nothing (`cancel`).
