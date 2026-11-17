@@ -70,7 +70,7 @@ function todaysBridge(surface: Surface) {
   );
 }
 
-const OVERRIDE_BUTTON = /^(type here|type it anyway|send it now)$/i;
+const OVERRIDE_BUTTON = /^(type here|send here|type it anyway|send it now)$/i;
 
 /** The person's road to the override from a fresh mount: type, Send, then the override button. Null when it got through. */
 async function overrideRoad(surface: Surface): Promise<string | null> {
