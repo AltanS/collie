@@ -205,11 +205,11 @@ export interface ComposerHandle {
   lineCanStart: () => boolean;
   /**
    * Keep a text the composer could not start (the M102 review 2, G): the queued card's Send again dropped its card, and
-   * then the composer refused. An empty box takes the words, so nothing is lost and nothing sends them by itself; true.
-   * A box that holds a draft (text or an attachment) takes nothing, because the next Send would send both as one
-   * message (the M102 review 3): the notice adds why, and false tells the caller to keep the card.
+   * then the composer refused. It takes the calm send's road for a text that did not go (M104): into an empty box, or,
+   * when the box holds a draft, onto the Put back notice, never merged into the draft (the M102 review 3). Nothing
+   * sends it by itself.
    */
-  keepLine: (line: string) => boolean;
+  keepLine: (line: string) => void;
 }
 
 /** A tap in an agent view: the screen's rev and the control path the bridge reads, and the words it names (display only). */
@@ -1612,7 +1612,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const answerAgainRef = useRef<() => void>(() => undefined);
   const sendLineRef = useRef<(line: string) => Promise<boolean>>(() => Promise.resolve(false));
   const lineCanStartRef = useRef<() => boolean>(() => false);
-  const keepLineRef = useRef<(line: string) => boolean>(() => false);
+  const keepLineRef = useRef<(line: string) => void>(() => undefined);
   useImperativeHandle(
     ref,
     () => ({
@@ -2289,17 +2289,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (refusal !== null) setSendRefusal(refusal);
     return refusal === null;
   };
-  keepLineRef.current = (line) => {
-    if (inputValueRef.current.trim() === "" && attachmentsRef.current.length === 0) {
-      updateInput(line);
-      return true;
-    }
-    // The reason the send could not start stays first; the kept card is the second sentence.
-    const kept = translate("cannotTell.queuedKept");
-    const reason = lineRefusal();
-    setSendRefusal(reason === null ? phoneRefusal(kept) : { ...reason, sentence: `${reason.sentence} ${kept}` });
-    return false;
-  };
+  keepLineRef.current = (line) => giveBack({ draft: line, chips: [], pane: paneId, scope, line });
   sendViewTapRef.current = async (tap) => {
     const sent = await send(tap.words, false, undefined, tap);
     return { sent, ...viewAnswerRef.current };
@@ -2360,12 +2350,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     if (end === "failed") {
       if (calm.row !== null) dropPending(calm.row.key, [calm.row.id]);
-      const back: SentBack = intent === undefined ? calm : { ...calm, intent };
-      if (roomFor(back)) writeBack(back);
-      else {
-        setHeldBack(back);
-        setHeldBackFull(false);
-      }
+      giveBack(intent === undefined ? calm : { ...calm, intent });
       return;
     }
     if (calm.row !== null && end === "sent") setPendingState(calm.row.key, calm.row.id, "sent");
@@ -2376,6 +2361,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // The chips went out with the line: their previews go, and the stored draft is the box as it is now.
     for (const chip of calm.chips) if (!attachmentsRef.current.includes(chip)) revokePreview(chip);
     if (boxOf(calm)) persistDraft();
+  }
+  /**
+   * A text that did not go comes back (M104): into its box when that box is empty, else onto the Put back notice, never
+   * merged into a draft. A calm send that did not land and the queued card's text the composer refused (`keepLine`, the
+   * M102 review 3) both take this one road.
+   */
+  function giveBack(back: SentBack): void {
+    if (roomFor(back)) {
+      writeBack(back);
+      return;
+    }
+    setHeldBack(back);
+    setHeldBackFull(false);
   }
   /** Put back, beside the notice: the kept text goes into its box once that box is empty. Never merged, never over a text. */
   function putBack(): void {
