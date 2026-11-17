@@ -6401,6 +6401,32 @@ describe("the unread card (M102 spec 03)", () => {
     await expectNeutralWords({ revision: 3, turn: "unknown", modal: "unknown", composer: "unknown", reason: "stale" });
   });
 
+  // WIRE-12, M102 review 2 item 5: a manual commit whose screen changed only in numbers or a spinner is placed with
+  // no key and answered typed_not_submitted/override. The phone says to press Enter on the Keys pad and opens it.
+  it("a manual commit the bridge placed with no key says press Enter on the Keys pad, and opens the pad", async () => {
+    const manual: Surface = { revision: 3, turn: "idle", modal: "unknown", composer: "empty" };
+    server.use(
+      ...sendHandler((request) =>
+        request.override === true
+          ? sendAnswer(request.id, "typed_not_submitted", "override", { offers: ["keys"], surface: manual })
+          : sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0aaa11", surface: manual }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderUnread(null, { surface: manual });
+    await user.type(screen.getByRole("textbox"), "carry on");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    const commit = await screen.findByRole("button", { name: "Send anyway" });
+    // The Keys pad is shut until the receipt says the text waits for Enter.
+    expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "false");
+    await user.click(commit);
+    await waitFor(() => expect(recordedSends()).toHaveLength(2));
+    expect(recordedSends()[1]).toMatchObject({ text: "carry on", rowsHash: "0aaa11", override: true });
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/Collie pressed no Enter\. Check the screen, then press Enter on the Keys pad\./u));
+    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("unread card: an override the screen moved under says so and stays armed on the screen now", async () => {
     server.use(
       ...sendHandler((request) =>
