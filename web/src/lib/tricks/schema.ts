@@ -1766,6 +1766,15 @@ export interface TricksReply {
  */
 export const TRICKS_WINDOWS_LINE = "Tricks do not run on a Windows machine yet.";
 
+/**
+ * What a Windows machine says of a shell `run` line (fault d of the Windows milestone): Windows runs the
+ * script form only (`run = "program.ts"`), never a line for a shell, because `cmd.exe` is not `sh` and a
+ * quoted line could run something other than the author wrote. `collie trick check`, `collie trick on`,
+ * `collie trick init --sh`, a switch on from the phone (the phone's copy is
+ * `settings.tricks.switchShellOnWindows`), the official add and the runner itself refuse with it.
+ */
+export const TRICKS_WINDOWS_SHELL_LINE = 'On Windows a trick runs only a script, such as run = "program.ts"; a shell line does not run there.';
+
 /** Whether tricks are gated on a machine of this platform (`process.platform`, injected as a fact). */
 export function tricksGated(platform: string | undefined): boolean {
   return platform === "win32";

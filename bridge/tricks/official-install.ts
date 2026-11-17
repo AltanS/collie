@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { devNull } from "node:os";
 import { join } from "node:path";
 
-import { rulesTextProblems, type OfficialState, type OfficialTricksReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { rulesTextProblems, TRICKS_WINDOWS_SHELL_LINE, type OfficialState, type OfficialTricksReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import { isCodePath, officialExtrasHash, trickCodeHash } from "./code-hash.ts";
 import { fetchSource, FetchRefused, readCandidate, writeCandidateFiles, type Candidate, type FetchOptions, type GitRunner } from "./fetch.ts";
 import { officialStanding, officialStateOf, officialWire, pinnedPlaces, shippedOfficialList, type OfficialEntry, type OfficialStanding } from "./official.ts";
@@ -114,6 +114,8 @@ export interface OfficialTricksDeps {
   runsOn?: () => TricksRunsOn | null;
   /** The Windows gate's line (service.ts `gateLine`), or null where tricks run: then the list is empty and nothing is fetched. */
   gate?: () => string | null;
+  /** The platform: on Windows an entry marked `posix` (a shell run line) is not added. Default `process.platform`. */
+  platform?: NodeJS.Platform;
   /** Run a write in the tricks runner's serial lane and wait for its next scan (service.ts `officialLane`). Absent: run it as it is. */
   lane?: <T>(work: () => Promise<T>) => Promise<T>;
   /** One audit line per add and update. */
@@ -240,6 +242,8 @@ export class OfficialTricks implements OfficialTricksSurface {
     if (runsOn !== null) return { status: 409, body: { error: "runs-on", message: "This machine runs no tricks: the lead of its crew does." } };
     const entry = this.entries().find((e) => e.id === id);
     if (entry === undefined) return { status: 404, body: { error: "unknown-official" } };
+    // Fault d: a POSIX trick (a shell run line) never runs on Windows, so its add fetches nothing there.
+    if (entry.posix === true && (this.deps.platform ?? process.platform) === "win32") return { status: 409, body: { error: "windows", message: TRICKS_WINDOWS_SHELL_LINE } };
     if (this.busy) return { status: 409, body: { error: "busy", message: OFFICIAL_LINES.busy } };
     this.busy = true;
     let fetchDir: string | null = null;

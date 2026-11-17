@@ -5,6 +5,7 @@ import { redactText } from "../redact.ts";
 import { isEmbedded } from "../root.ts";
 import { windowsTreeKill, type KillSpawn } from "../tree-kill.ts";
 import { RUN_TIMEOUT_MS, STDERR_CAP_BYTES, STDOUT_CAP_BYTES } from "../../web/src/lib/tricks/limits.ts";
+import { TRICKS_WINDOWS_SHELL_LINE } from "../../web/src/lib/tricks/schema.ts";
 
 // ONE RUN OF A TRICK'S PROGRAM (M94 slice 01): spawn, feed the facts, read with caps, kill on time.
 //
@@ -75,6 +76,16 @@ export function runtimeScript(command: string): string | null {
   return command.startsWith("./") ? command.slice(2) : command;
 }
 
+/**
+ * Why a `run` line cannot run on `platform`, or null. On Windows only the script form runs (fault d): a
+ * shell line is refused with {@link TRICKS_WINDOWS_SHELL_LINE}, never translated for `cmd.exe`. A trick
+ * with no run line (only an agent view) is never refused here.
+ */
+export function windowsRunProblem(command: string | undefined, platform: NodeJS.Platform | undefined): string | null {
+  if (platform !== "win32" || command === undefined) return null;
+  return runtimeScript(command) === null ? TRICKS_WINDOWS_SHELL_LINE : null;
+}
+
 /** The executable a script line runs with, and whether it is a compiled Collie (which needs `BUN_BE_BUN`). */
 export interface Runtime {
   execPath: string;
@@ -111,7 +122,11 @@ export type RunOutcome =
   | { kind: "overflow"; stderr: string; ms: number }
   | { kind: "spawn-failed"; message: string; ms: number };
 
-/** The argv that runs a `run` line: the shell, so `./legs.sh` and `bun program.ts` both work. */
+/**
+ * The argv that runs a `run` line: the shell, so `./legs.sh` and `bun program.ts` both work. On Windows
+ * {@link runProgram} refuses a shell line before this ({@link windowsRunProblem}); the `cmd.exe` form stays
+ * for `launchOf`'s own callers and tests.
+ */
 export function shellArgv(command: string, platform: NodeJS.Platform): string[] {
   return platform === "win32" ? ["cmd.exe", "/d", "/s", "/c", command] : ["/bin/sh", "-c", command];
 }
@@ -215,6 +230,9 @@ export async function runProgram(spec: RunSpec): Promise<RunOutcome> {
   const timeoutMs = spec.timeoutMs ?? RUN_TIMEOUT_MS;
   const started = performance.now();
   const elapsed = (): number => Math.round(performance.now() - started);
+  // Fault d: on Windows a shell line never starts, whoever asked (the bridge, check --run, trick dev).
+  const refused = windowsRunProblem(spec.command, platform);
+  if (refused !== null) return { kind: "spawn-failed", message: refused, ms: 0 };
   let child: ReturnType<typeof Bun.spawn<"pipe", "pipe", "pipe">>;
   const startedAt = Date.now();
   try {

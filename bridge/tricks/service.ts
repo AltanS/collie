@@ -56,7 +56,7 @@ import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
 import { approvedCopyDir, approvedTrickDir, pendingTrickDir, tricksConfigDir, trickStateDir } from "./paths.ts";
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
 import { receiptFrame, TrickReceiptStore, type TrickReceiptRecord, type TrickReceiptSurface } from "./receipts.ts";
-import { outcomeProblem, runProgram, type RunOutcome, type RunSpec } from "./run.ts";
+import { outcomeProblem, runProgram, windowsRunProblem, type RunOutcome, type RunSpec } from "./run.ts";
 import type { RepoFactsPort } from "./repo-facts.ts";
 import { trickWarnings, wireWarnings } from "./scan.ts";
 import { TricksStore, problemLine, type CliTricksExtra } from "./store.ts";
@@ -326,7 +326,7 @@ export type ProposalPlaced = { ok: true; codeHash: string } | { ok: false; messa
 export type SwitchAnswer =
   | { status: 200; body: WireTrickInfo }
   | { status: 400; body: { error: "switch-invalid" } }
-  | { status: 409; body: { error: "moved" | "windows"; message: string } }
+  | { status: 409; body: { error: "moved" | "windows" | "windows-shell"; message: string } }
   | { status: 404; body: { error: "unknown-host" | "unknown-trick" } };
 
 export interface TricksServiceDeps {
@@ -2053,6 +2053,9 @@ export class TricksService implements TricksSurface {
     // Another hash, or none while there is code to approve, is refused, and the copy must hash to it.
     const expect = approvesOf(rt);
     if (on && hash !== undefined && expect !== undefined && hash !== expect) return { status: 409, body: { error: "moved", message: SWITCH_MOVED } };
+    // Fault d: on Windows a shell run line is not switched on (behind the gate in `setSwitch` today).
+    const shell = on ? windowsRunProblem((rt.pending?.manifest ?? rt.found.manifest)?.run, this.deps.platform) : null;
+    if (shell !== null) return { status: 409, body: { error: "windows-shell", message: shell } };
     const at = new Date(this.now()).toISOString();
     if (!on) await updateSwitches(this.deps.stateDir, (switches) => withSwitch(switches, id, false, at));
     // On with a version waiting: that snapshot is what the row showed, so it is what is approved. Else the

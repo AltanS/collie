@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { TRICKS_WINDOWS_LINE } from "../../web/src/lib/tricks/schema.ts";
+import { TRICKS_WINDOWS_LINE, TRICKS_WINDOWS_SHELL_LINE } from "../../web/src/lib/tricks/schema.ts";
 import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { OfficialTricks } from "./official-install.ts";
@@ -184,5 +184,15 @@ describe("windows gate", () => {
     const env = { Path: "C:\\Windows\\system32", SystemRoot: "C:\\Windows", collie_token: "tok-must-not-leak" };
     expect((await rig("win32", env)).service.runnerPath()).toBe("C:\\Windows\\system32");
     expect((await rig("linux", env)).service.runnerPath()).toBe("");
+  });
+
+  test("after the gate (lifted here by hand, as Altan may one day), a shell run line is refused at switch-on (fault d)", async () => {
+    const win = await rig("win32");
+    expect(win.service.gated()).toBe(true);
+    // A test-only stand-in for a lifted gate: the real gate stays, and the test above pins it.
+    win.service.gated = () => false;
+    expect(await win.service.setSwitch(HOST, "legs", true)).toEqual({ status: 409, body: { error: "windows-shell", message: TRICKS_WINDOWS_SHELL_LINE } });
+    const linux = await rig("linux");
+    expect((await linux.service.setSwitch(HOST, "legs", true)).status).toBe(200);
   });
 });

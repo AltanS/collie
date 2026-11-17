@@ -685,8 +685,10 @@ function TricksList({
     } catch (thrown) {
       hold(key, null);
       // The trick changed after the person read it (review 8 V-N1): read it again, nothing was approved.
-      const moved = apiErrorFields(thrown)?.error === "moved";
-      setStatus(moved ? t("settings.tricks.switchMoved") : t("settings.tricks.switchFailed", { name: trick.name }), "error");
+      const code = apiErrorFields(thrown)?.error;
+      // A Windows machine refuses a shell run line (fault d); the bridge's message is `TRICKS_WINDOWS_SHELL_LINE`.
+      const line = code === "moved" ? t("settings.tricks.switchMoved") : code === "windows-shell" ? t("settings.tricks.switchShellOnWindows") : t("settings.tricks.switchFailed", { name: trick.name });
+      setStatus(line, "error");
     } finally {
       flying.current.delete(key);
     }

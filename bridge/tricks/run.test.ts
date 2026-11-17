@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { hostFor } from "../host.ts";
 import { envPath, isBaseEnvName, neverReason, scrubEnv, scrubReason, WINDOWS_BASE_ENV_NAMES } from "./env.ts";
 import { WINDOWS_KILL_TIMEOUT_MS, type KillSpawn } from "../tree-kill.ts";
-import { BUN_BE_BUN, launchOf, outcomeProblem, runProgram, runtimeScript, shellArgv, STDERR_CAP_BYTES, type RunSpec } from "./run.ts";
+import { BUN_BE_BUN, launchOf, outcomeProblem, runProgram, runtimeScript, shellArgv, STDERR_CAP_BYTES, windowsRunProblem, type RunSpec } from "./run.ts";
+import { TRICKS_WINDOWS_SHELL_LINE } from "../../web/src/lib/tricks/schema.ts";
 
 const dirs: string[] = [];
 async function tempDir(): Promise<string> {
@@ -20,8 +21,8 @@ afterAll(async () => {
 
 const KEY = "sk-or-v1-0123456789abcdef0123456789abcdef";
 
-/** The shell line that prints the environment: `env` under `sh`, the `set` built-in under `cmd.exe` (run.ts `shellArgv`). */
-const PRINT_ENV = process.platform === "win32" ? "set" : "env";
+/** A script that prints the environment it got, one `NAME=value` per line, on every host. */
+const PRINT_ENV_PROGRAM = 'process.stdout.write(Object.entries(process.env).map(([k, v]) => `${k}=${v ?? ""}`).join("\\n"));\n';
 
 async function run(command: string, extra: Partial<RunSpec> = {}) {
   const cwd = await tempDir();
@@ -100,7 +101,9 @@ describe("the env scrub", () => {
   });
 
   test("a COLLIE_TOKEN and an OPENROUTER_API_KEY never reach the child", async () => {
-    const outcome = await run(PRINT_ENV, { env: scrubEnv({ ...process.env, COLLIE_TOKEN: "tok-must-not-leak", OPENROUTER_API_KEY: KEY }) });
+    // The script form, so it runs on every host (a shell line does not run on Windows, fault d). The child is
+    // a real Bun: on Windows it needs `SystemRoot`, which the scrub now keeps (fault a).
+    const outcome = await script(await tempDir(), PRINT_ENV_PROGRAM, { stdin: "", env: scrubEnv({ ...process.env, COLLIE_TOKEN: "tok-must-not-leak", OPENROUTER_API_KEY: KEY }) });
     expect(outcome).toMatchObject({ kind: "exited", code: 0 });
     if (outcome.kind !== "exited") return;
     expect(outcome.stdout).not.toContain("COLLIE_TOKEN");
@@ -109,6 +112,7 @@ describe("the env scrub", () => {
     expect(outcome.stdout).not.toContain(KEY.slice(4));
     // Windows spells it `Path`, and a name there is one in any case.
     expect(outcome.stdout.toUpperCase()).toContain("PATH=");
+    if (process.platform === "win32") expect(outcome.stdout.toUpperCase()).toContain("SYSTEMROOT=");
   });
 });
 
@@ -351,7 +355,7 @@ describe("one run", () => {
   });
 
   test("a clean exit is no problem", async () => {
-    expect(outcomeProblem(await run("echo '{}'"), 200)).toBeNull();
+    expect(outcomeProblem(await script(await tempDir(), 'process.stdout.write("{}");\n'), 200)).toBeNull();
   });
 });
 
@@ -406,8 +410,32 @@ describe("the two forms of a run line", () => {
   });
 
   test("a shell run under a compiled bridge sees no BUN_BE_BUN", async () => {
-    const outcome = await run(PRINT_ENV, { env: scrubEnv({ ...process.env, BUN_BE_BUN: "1" }), runtime: COMPILED });
+    const outcome = await run("env", { env: scrubEnv({ ...process.env, BUN_BE_BUN: "1" }), runtime: COMPILED });
+    // On Windows a shell line does not run at all (fault d): the one sentence, nothing started.
+    if (process.platform === "win32") {
+      expect(outcome).toEqual({ kind: "spawn-failed", message: TRICKS_WINDOWS_SHELL_LINE, ms: 0 });
+      return;
+    }
     expect(outcome).toMatchObject({ kind: "exited", code: 0 });
     if (outcome.kind === "exited") expect(outcome.stdout).not.toContain("BUN_BE_BUN");
+  });
+});
+
+describe("a shell run line on Windows (fault d)", () => {
+  test("the rule: on win32 only the script form runs; a shell line gets the one sentence; POSIX and no run line are never refused", () => {
+    for (const line of ["./legs.sh", "bun program.ts", "darius due --json", 'echo "{}"', "program.sh", "cmd /c x.bat"]) expect(windowsRunProblem(line, "win32")).toBe(TRICKS_WINDOWS_SHELL_LINE);
+    for (const line of ["program.ts", "./program.ts", "lib/main.mjs", "x.js", "x.mts"]) expect(windowsRunProblem(line, "win32")).toBeNull();
+    expect(windowsRunProblem(undefined, "win32")).toBeNull();
+    expect(windowsRunProblem("./legs.sh", "linux")).toBeNull();
+    expect(windowsRunProblem("./legs.sh", "darwin")).toBeNull();
+    expect(windowsRunProblem("./legs.sh", undefined)).toBeNull();
+  });
+
+  test("the runner never starts a shell line on win32: no cmd.exe, the sentence as a spawn failure", async () => {
+    const cwd = await tempDir();
+    const marker = join(cwd, "ran");
+    const outcome = await runProgram({ command: `echo x > ${marker}`, cwd, env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, stdin: "{}", platform: "win32" });
+    expect(outcome).toEqual({ kind: "spawn-failed", message: TRICKS_WINDOWS_SHELL_LINE, ms: 0 });
+    expect(await Bun.file(marker).exists()).toBe(false);
   });
 });

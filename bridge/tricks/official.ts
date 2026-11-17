@@ -50,7 +50,7 @@ export const OFFICIAL_ENTRIES_MAX = 32;
 /** The most earlier versions an entry keeps. */
 export const OFFICIAL_PREVIOUS_MAX = 8;
 /** The keys of an entry, no other: every one required but `decides`, which an entry writes only when its manifest has it. */
-const ENTRY_KEYS = ["id", "name", "description", "repo", "dir", "commit", "hash", "extras", "rules", "contract", "places", "previous", "decides"] as const;
+const ENTRY_KEYS = ["id", "name", "description", "repo", "dir", "commit", "hash", "extras", "rules", "contract", "places", "previous", "decides", "posix"] as const;
 
 /** One version of an entry: a commit and the code hash its folder has there. */
 export interface OfficialVersion {
@@ -97,6 +97,12 @@ export interface OfficialEntry {
    * and the add refuses a folder whose manifest says otherwise.
    */
   decides?: DecidesWord;
+  /**
+   * `true` when the manifest's `run` at `commit` is a shell line, not one script (fault d of the Windows
+   * milestone): such a trick runs on Linux and macOS only, and a Windows bridge refuses its add. Absent for
+   * a script or an agent view alone. The maintainer script writes it from the manifest.
+   */
+  posix?: true;
 }
 
 export type OfficialList = { ok: true; entries: OfficialEntry[] } | { ok: false; reason: string };
@@ -180,6 +186,8 @@ function readEntry(raw: JsonValue, at: number): EntryRead {
   const previous = readPrevious(doc.previous, commit);
   if (!previous.ok) return refuse(`${id}: ${previous.reason}`);
   const entry: OfficialEntry = { id, name, description, repo, dir, commit, hash, extras, rules, contract, places, previous: previous.versions };
+  if (doc.posix !== undefined && doc.posix !== true) return refuse(`${id}: posix is true or absent`);
+  if (doc.posix === true) entry.posix = true;
   if (doc.decides === undefined) return { ok: true, entry };
   const decides = DECIDES_WORDS.find((word) => word === doc.decides);
   if (decides === undefined) return refuse(`${id}: decides is not one of ${DECIDES_WORDS.join(", ")}`);
@@ -255,9 +263,12 @@ export function renderOfficialList(entries: readonly OfficialEntry[]): string {
   const tricks = entries.map((e) => {
     const head = { id: e.id, name: e.name, description: e.description, repo: e.repo, dir: e.dir, commit: e.commit, hash: e.hash, extras: e.extras, rules: e.rules, contract: e.contract, places: [...e.places] };
     const previous = e.previous.map((v) => ({ commit: v.commit, hash: v.hash }));
-    // `decides` only when the manifest has it, after the places, so every other entry keeps its text.
-    if (e.decides === undefined) return { ...head, previous };
-    return { ...head, decides: e.decides, previous };
+    // `decides` and `posix` only when they are set, after the places, so every other entry keeps its text.
+    const out: typeof head & { decides?: DecidesWord; posix?: true; previous?: OfficialVersion[] } = { ...head };
+    if (e.decides !== undefined) out.decides = e.decides;
+    if (e.posix === true) out.posix = true;
+    out.previous = previous;
+    return out;
   });
   return `${JSON.stringify({ v: 1, tricks }, null, 2)}\n`;
 }
