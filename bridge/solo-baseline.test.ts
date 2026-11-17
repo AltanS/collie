@@ -577,6 +577,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "actions",
       "agent",
       "agentTitle",
+      "askRoute",
       "asks",
       "badge",
       "cache",
