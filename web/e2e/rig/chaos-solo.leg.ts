@@ -5,14 +5,19 @@
 // No model turn: every case sends `echo ...` into a shell pane. The cases whose world needs a seam the
 // rig lacks are skipped and name the seam (CHAOS_CASES in chaos-lib.ts).
 import { Rig, phoneOn, test } from "./leg";
-import { accountedFor, arrivals, chaosCase, chaosLine, phoneWords, recordChaos, restartLeadBridge, sendLine, sendLive, settled, shellPane, startLeadBridge, stopLeadBridge, type ChaosId } from "./chaos-lib";
+import { accountedFor, screenNote, arrivals, chaosCase, chaosLine, phoneWords, recordChaos, restartLeadBridge, sendLine, sendLive, settled, shellPane, startLeadBridge, stopLeadBridge, type ChaosId } from "./chaos-lib";
 import { muxOf, resizeDuring, sleep } from "./rig-lib";
 import { PHONE } from "./walky-lib";
 
-let pane: string | null = null;
-async function chaosPane(rig: Rig): Promise<string> {
-  if (pane === null) pane = await shellPane(rig, "lead", undefined, "solo");
-  return pane;
+// One shell pane per case: a case that leaves text in a shell's input line (C1 does, when the bridge dies between the
+// write and Enter) must not turn the next case's lines into one long command.
+const panes = new Map<string, string>();
+async function chaosPane(rig: Rig, label: string): Promise<string> {
+  const kept = panes.get(label);
+  if (kept !== undefined) return kept;
+  const made = await shellPane(rig, "lead", undefined, `solo-${label}`);
+  panes.set(label, made);
+  return made;
 }
 
 /** The rig's bridge lists the pane again (after a restart); throws when it never does. */
@@ -34,7 +39,7 @@ test.describe("chaos on the solo rig", () => {
   seamCase("background-job");
 
   test(chaosCase("bridge-dies-mid-send").title, async ({ browser, rig }) => {
-    const paneId = await chaosPane(rig);
+    const paneId = await chaosPane(rig, "c1");
     const { context, page, recorder } = await phoneOn(browser, rig, paneId, PHONE);
     const notes: string[] = [];
     try {
@@ -49,12 +54,13 @@ test.describe("chaos on the solo rig", () => {
       const end = await settled(rig, page, paneId, undefined, line, 60_000);
       await sleep(1500);
       const count = arrivals(await rig.screen(paneId, 120).catch(() => ""), line);
-      notes.push(`arrived ${String(count)}x`, `words "${end.words}"`);
+      notes.push(`arrived ${String(count)}x`, `words "${end.words}"`, await screenNote(rig, paneId));
       // The input arrived once, or the phone said in words what became of it; never twice.
       const ok = accountedFor(count, end.words);
       const live = await sendLive(page);
       notes.push(live ? "Send is live again" : "Send stayed dead");
       const verdict = ok && live ? "pass" : "fail";
+      if (verdict === "fail") notes.push(await screenNote(rig, paneId));
       recordChaos({ id: "bridge-dies-mid-send", verdict, note: notes.join("; "), taps: [tapLog] });
       test.expect(verdict, notes.join("; ")).toBe("pass");
     } finally {
@@ -71,7 +77,7 @@ test.describe("chaos on the solo rig", () => {
       test.skip(true, why);
       return;
     }
-    const paneId = await chaosPane(rig);
+    const paneId = await chaosPane(rig, "c3");
     const listed = await second.until(() => second.pane(paneId), (row) => row !== null, 30_000, 700);
     if (listed === null) throw new Error(`the second bridge never listed the chaos shell pane ${paneId}`);
     // One phone paired with each bridge, both on the one pane.
@@ -95,6 +101,7 @@ test.describe("chaos on the solo rig", () => {
       const live = (await sendLive(one.page)) && (await sendLive(two.page));
       notes.push(live ? "both Send buttons are live again" : "a Send button stayed dead");
       const verdict = ok && live ? "pass" : "fail";
+      if (verdict === "fail") notes.push(await screenNote(rig, paneId));
       recordChaos({ id: "two-bridges-one-pane", verdict, note: notes.join("; "), taps: [tapOne, tapTwo] });
       test.expect(verdict, notes.join("; ")).toBe("pass");
     } finally {
@@ -110,7 +117,7 @@ test.describe("chaos on the solo rig", () => {
       test.skip(true, why);
       return;
     }
-    const paneId = await chaosPane(rig);
+    const paneId = await chaosPane(rig, "c4");
     const { context, page, recorder } = await phoneOn(browser, rig, paneId, PHONE);
     const notes: string[] = [];
     try {
@@ -126,6 +133,7 @@ test.describe("chaos on the solo rig", () => {
       const live = await sendLive(page);
       notes.push(live ? "Send is live again" : "Send stayed dead");
       const verdict = ok && live ? "pass" : "fail";
+      if (verdict === "fail") notes.push(await screenNote(rig, paneId));
       recordChaos({ id: "resize-mid-send", verdict, note: notes.join("; "), taps: [ran.result] });
       test.expect(verdict, notes.join("; ")).toBe("pass");
     } finally {
@@ -140,7 +148,7 @@ test.describe("chaos on the solo rig", () => {
       test.skip(true, why);
       return;
     }
-    const paneId = await chaosPane(rig);
+    const paneId = await chaosPane(rig, "c6");
     // The lead's bridge dials Herdr through a proxy that holds every call (and every answer) for SLOW_MS.
     const SLOW_MS = 500;
     restartLeadBridge(false, SLOW_MS);
@@ -160,6 +168,7 @@ test.describe("chaos on the solo rig", () => {
       const live = await sendLive(phone.page);
       notes.push(live ? "Send is live again" : "Send stayed dead");
       const verdict = ok && live ? "pass" : "fail";
+      if (verdict === "fail") notes.push(await screenNote(rig, paneId));
       recordChaos({ id: "slow-mux", verdict, note: notes.join("; "), taps: [tapLog] });
       test.expect(verdict, notes.join("; ")).toBe("pass");
     } finally {
@@ -170,7 +179,7 @@ test.describe("chaos on the solo rig", () => {
   });
 
   test(chaosCase("second-phone").title, async ({ browser, rig }) => {
-    const paneId = await chaosPane(rig);
+    const paneId = await chaosPane(rig, "c5");
     const one = await phoneOn(browser, rig, paneId, PHONE);
     const two = await phoneOn(browser, rig, paneId, PHONE);
     const notes: string[] = [];
@@ -192,6 +201,7 @@ test.describe("chaos on the solo rig", () => {
       const live = (await sendLive(one.page)) && (await sendLive(two.page));
       notes.push(live ? "both Send buttons are live again" : "a Send button stayed dead");
       const verdict = okOne && okTwo && live ? "pass" : "fail";
+      if (verdict === "fail") notes.push(await screenNote(rig, paneId));
       recordChaos({ id: "second-phone", verdict, note: notes.join("; "), taps: [tapOne, tapTwo] });
       test.expect(verdict, notes.join("; ")).toBe("pass");
     } finally {
@@ -201,7 +211,7 @@ test.describe("chaos on the solo rig", () => {
   });
 
   test("C0 a plain send arrives once (the control case for the chaos cases)", async ({ browser, rig }) => {
-    const paneId = await chaosPane(rig);
+    const paneId = await chaosPane(rig, "c0");
     const { context, page, recorder } = await phoneOn(browser, rig, paneId, PHONE);
     try {
       const line = chaosLine("second-phone", 0);
