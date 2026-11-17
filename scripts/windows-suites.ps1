@@ -14,8 +14,8 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 640 in all, each one named, with its reason:
-#              bridge 413: 174 from before 1.29.0 and 239 new: 143 listed in the next sentence, then 2 more of the trick-leftovers merge (one agent view picture, one official add test), 71 of the local API, its run token and the `watch` manifests ("The local API, bridge" below) and 23 the budget did not list ("Not listed before" below). The 143: (the data path 54 and the inside socket 17, then the Herdr and Tuios
+#              Today, 641 in all, each one named, with its reason:
+#              bridge 414: 174 from before 1.29.0 and 240 new: 143 listed in the next sentence, then 2 more of the trick-leftovers merge (one agent view picture, one official add test), 71 of the local API, its run token and the `watch` manifests ("The local API, bridge" below) and 24 the budget did not list ("Not listed before" below). The 143: (the data path 54 and the inside socket 17, then the Herdr and Tuios
 #                adapters 10, then Accounts 47, then 11 more of the data path for a dropped or failed data send and a shadowed part, then 1 for the pane's program environment read of pi (#793); see below). Of the 174, 15 (16 with the trick-leftovers merge, counted in the 2 above) are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 6 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
@@ -148,11 +148,11 @@
 #                The 9 are in bridge/tricks/triggers.test.ts (`watchTest`): a manifest's `watch` path starts with `/` or `~/`, so the temp-folder path of a
 #                  real file on Windows (`C:\...`) is refused ("A watched path starts with / or ~/.") and the trick never watches. This is a real Windows
 #                  fault of the schema, to be settled when the gate for tricks opens; the watcher itself runs on Windows in bridge/tricks/watch.test.ts.
-#              Not listed before, bridge (23). The VM run of e5c645d2e counted bridge 331 against 317. These skip on win32 and were in no list above:
+#              Not listed before, bridge (24). The VM run of e5c645d2e counted bridge 331 against 317. These skip on win32 and were in no list above:
 #                bridge/tricks/repo-index.test.ts (13: reading an index, adding from an index, the empty home of a fetch, a git that hangs, the .git
 #                link; real git and `#!/bin/sh` programs, `describe.if(posix)` and one `test.if(posix)`; 12 of them were there at e5c645d2e),
 #                bridge/api/trick-end-to-end.test.ts (5: it dials the local API socket; 2 of spec 04 and 3 more of the run token, spec 05), and bridge/tricks/approved.test.ts (1: a symbolic link at the
-#                state folder, new with the trick-leftovers merge), bridge/tricks/service.test.ts (3: the run token printed back by a real `#!/bin/sh` program, `describe.skipIf(win32)`) and bridge/tricks/feature-switch.test.ts (1: "off while a program RUNS" kills a real `./legs.sh` child, which the runner refuses on Windows). 12 + 2 = the 14 of the VM run, and the 9 run-token and switch ones came after it. The count of the VM decides: if it is not 413,
+#                state folder, new with the trick-leftovers merge), bridge/tricks/service.test.ts (3: the run token printed back by a real `#!/bin/sh` program, `describe.skipIf(win32)`) and bridge/tricks/feature-switch.test.ts (1: "off while a program RUNS" kills a real `./legs.sh` child, which the runner refuses on Windows) and bridge/tricks/proposals.test.ts (1: a new version whose only change is a file mode, POSIX only). 12 + 2 = the 14 of the VM run, and the 10 run-token, switch and mode ones came after it. The count of the VM decides: if it is not 414,
 #                the next run says by how much, and this paragraph names the files again.
 #              The data path, bridge (63 + 19). The part (the local socket of bridge/inside/, ADR 0140) is OFF on Windows in 1.29.0
 #                (decision 15: Windows keeps the screen path). `InsideServer.start()` answers false there, so `dataRig` cannot start
@@ -267,7 +267,7 @@
 #                executable bit and reads it through `file://`, as the add from the list does (bridge 33 above).
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 413,
+  [int]$MaxSkipsBridge = 414,
   [int]$MaxSkipsCli = 192,
   [int]$MaxSkipsScripts = 35
 )

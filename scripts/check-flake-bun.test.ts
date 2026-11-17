@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 640 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 641 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([413, 192, 35]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([414, 192, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 6 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -289,8 +289,11 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(runTokenPrintSkips).toBe(3);
     const switchKillSkips = (readFileSync(join(ROOT, "bridge", "tricks", "feature-switch.test.ts"), "utf8").match(/^ {2}test\.skipIf\(process\.platform === "win32"\)\(/gm) ?? []).length;
     expect(switchKillSkips).toBe(1);
-    for (const file of ["bridge/tricks/repo-index.test.ts", "bridge/api/trick-end-to-end.test.ts", "bridge/tricks/approved.test.ts", "bridge/tricks/service.test.ts", "bridge/tricks/feature-switch.test.ts"]) expect(script).toContain(file);
-    expect(script).toContain("Not listed before, bridge (23)");
+    // One more: the one test of bridge/tricks/proposals.test.ts that reads a file mode (a mode-only change shows as a line of code), POSIX only.
+    const modeLineSkips = (readFileSync(join(ROOT, "bridge", "tricks", "proposals.test.ts"), "utf8").match(/^ {2}test\.skipIf\(process\.platform === "win32"\)\(/gm) ?? []).length;
+    expect(modeLineSkips).toBe(1);
+    for (const file of ["bridge/tricks/repo-index.test.ts", "bridge/api/trick-end-to-end.test.ts", "bridge/tricks/approved.test.ts", "bridge/tricks/service.test.ts", "bridge/tricks/feature-switch.test.ts", "bridge/tricks/proposals.test.ts"]) expect(script).toContain(file);
+    expect(script).toContain("Not listed before, bridge (24)");
     // Nine tests of bridge/tricks/triggers.test.ts write a real file path into a `watch` manifest, which the schema refuses
     // on Windows (a path starts with / or ~/): `watchTest`, a skip on win32 before the Windows gate for tricks opens.
     const watchSkips = (readFileSync(join(ROOT, "bridge", "tricks", "triggers.test.ts"), "utf8").match(/^ {2}watchTest\(/gm) ?? []).length;
@@ -298,7 +301,7 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(script).toContain("bridge/tricks/triggers.test.ts");
     expect(budget("Bridge")).toBe(
       viewMediaSkips.length + posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + siblingSkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 1 + 2 + rawEnterSkips + fakeGitSkips.length + offPathSkips +
-        hillSkips.length + legsEndToEnd + officialSkips + dataPathSkips + adapterSkips + accountSkips + apiSocketSkips + watchSkips + repoIndexSkips + apiEndToEndSkips + approvedSkips + runTokenPrintSkips + switchKillSkips,
+        hillSkips.length + legsEndToEnd + officialSkips + dataPathSkips + adapterSkips + accountSkips + apiSocketSkips + watchSkips + repoIndexSkips + apiEndToEndSkips + approvedSkips + runTokenPrintSkips + switchKillSkips + modeLineSkips,
     );
     // The cli allowance adds the three real runs of the POSIX install leg a crew member runs, and the
     // 54 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
