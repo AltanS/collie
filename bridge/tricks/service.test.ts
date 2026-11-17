@@ -17,7 +17,7 @@ import { payloadDigest } from "../worktree-receipts.ts";
 import { WalkyInstances } from "../walky/instances.ts";
 import { memoryTrickReceipts, TrickReceiptStore } from "./receipts.ts";
 import { tricksTapRoute } from "./routes.ts";
-import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, SWITCH_MOVED, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, RIGHTS_LINE, TAP_LOST_LINE, TAP_REFUSED_LINES, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
+import { backoffAfter, BACKOFF_MS, LINK_LINE, NO_PROGRAM_LINE, SWITCH_MOVED, NOT_APPROVED_LINE, PENDING_LINE, PENDING_SETTLE_MS, RUNS_MAX, TAMPERED_LINE, RIGHTS_LINE, TAP_LOST_LINE, STALE_CARD_LINE, TAP_REFUSED_LINES, TricksService, WATCH_WINDOW_MS, type TricksServiceDeps, type TapAnswer } from "./service.ts";
 import { updateSwitches, withEntry, withSwitch, writeSwitches, type Switches } from "./switches.ts";
 
 const dirs: string[] = [];
@@ -1251,6 +1251,18 @@ describe("consent tied to the code", () => {
     return { synced, offs, port };
   }
   const ASK = { key: "a", title: "Rerun?", summary: "Case 8 failed." };
+
+  test("point 2 (read of 1bf6c747a): an answer from the hill for a card the map does not hold says one sentence and runs nothing", async () => {
+    const spy = hillSpy();
+    const r = await rig([exited(belt("1"))], { decisions: spy.port });
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const runs = r.specs.length;
+    expect(await r.service.tapFromHill(HOST, "legs", { rid: REQ, node: "hill/a", intent: "rerun", value: { text: null } }, "dc_oldtrick000")).toBe(false);
+    expect(r.warnings.filter((line) => line.includes(STALE_CARD_LINE))).toHaveLength(1);
+    expect(r.specs.length).toBe(runs);
+  });
 
   test("an edited program keeps running its approved copy; a new version waits, and the switch approves it", async () => {
     const spy = hillSpy();

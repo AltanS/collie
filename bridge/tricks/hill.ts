@@ -546,14 +546,19 @@ export class TrickHill {
 
   /**
    * A new trick was added under this id: its open decisions are withdrawn, then the map forgets every key of
-   * it (answered and dismissed ones too, which {@link off} keeps), so nothing an earlier trick's author posted
-   * decides what the new trick's decisions show. The generation only moves up: a request id is made from it,
+   * it (answered and dismissed ones too, which {@link off} keeps; one whose withdraw failed stays), so nothing
+   * an earlier trick's author posted decides what the new trick's decisions show. The generation only moves up: a request id is made from it,
    * and the same content posted again under the old generation would meet the old decision's request id.
    */
   forget(trick: Pick<TrickHillTrick, "id" | "name" | "memberId">): void {
     if (!this.map.has(trick.id)) return;
     this.off(trick);
-    this.map.set(trick.id, { gen: (this.map.get(trick.id)?.gen ?? 0) + 1, keys: {} });
+    // A key `off` kept as OPEN is one whose withdraw failed: its card is still on the Hill. The map keeps
+    // it, so the card stays named and a later forget tries the withdraw again; an answered or dismissed
+    // key goes. (The Hill refuses an answer for a card the map does not hold, service.ts `tapFromHill`.)
+    const kept: Record<string, TrickHillEntry> = {};
+    for (const [key, entry] of Object.entries(this.map.get(trick.id)?.keys ?? {})) if (entry.state === "open") kept[key] = entry;
+    this.map.set(trick.id, { gen: (this.map.get(trick.id)?.gen ?? 0) + 1, keys: kept });
     this.save();
   }
 

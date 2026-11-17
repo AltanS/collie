@@ -748,6 +748,30 @@ describe("switched off", () => {
     expect(open(r).map((held) => held.from.trickKey).toSorted()).toEqual(["a", "b"]);
   });
 
+  test("forget (read of 1bf6c747a, point 2): a key whose withdraw failed stays open in the map; a later forget retries it", async () => {
+    const r = rig();
+    sync(r, [decision("a"), decision("b")]);
+    const a = open(r).find((held) => held.from.trickKey === "a")!;
+    await answer(r, a, 101, "skip");
+    const b = open(r)[0]!;
+    const real = r.hill.withdraw.bind(r.hill);
+    let failing = true;
+    r.hill.withdraw = (sender, id, reason) => (failing ? { ok: false, missing: false, error: "the change could not be saved on this machine; the decision stays open" } : real(sender, id, reason));
+    r.tricks.forget(LEGS);
+    expect(r.store.get(b.id)?.state).toBe("open");
+    expect(Object.keys(r.tricks.entries(LEGS.id))).toEqual(["b"]);
+    expect(r.tricks.seenOf(LEGS.id, b.id)).toBeDefined();
+    expect(r.tricks.seenOf(LEGS.id, a.id)).toBeUndefined();
+    expect(Object.keys(recordOf(r.stateDir, LEGS.id)?.keys ?? {})).toEqual(["b"]);
+    const gen = recordOf(r.stateDir, LEGS.id)?.gen ?? 0;
+    expect(gen).toBeGreaterThan(0);
+    failing = false;
+    r.tricks.forget(LEGS);
+    expect(r.store.get(b.id)).toMatchObject({ state: "withdrawn", closedReason: "the trick is off" });
+    expect(r.tricks.entries(LEGS.id)).toEqual({});
+    expect(recordOf(r.stateDir, LEGS.id)?.gen).toBeGreaterThan(gen);
+  });
+
   test("forgetMapRecord empties one trick's keys in the file, moves its generation up and keeps the others; no file, no change", () => {
     const r = rig();
     forgetMapRecord(r.stateDir, "legs");
@@ -993,6 +1017,19 @@ describe("the runner posts", () => {
     rmSync(join(r.configDir, TRICKS_DIR, "legs"), { recursive: true });
     await r.service.refresh(true);
     expect(open(r)).toEqual([]);
+  });
+
+  test("point 2 (read of 1bf6c747a): an answer for a card the trick's map does not hold is refused, and nothing runs", async () => {
+    const r = await serviceRig();
+    await switches(r.stateDir, true);
+    await runNow(r);
+    const held = open(r)[0]!;
+    // The old trick's card, still open on the Hill, but the new trick's map forgot it.
+    r.tricks.forget(LEGS);
+    const runs = r.specs.length;
+    expect(await r.service.tapFromHill(HOST, "legs", { rid: uuid(11), node: "hill/case-8", intent: "skip", value: { text: "flaky" } }, held.id)).toBe(false);
+    expect(await r.service.tapFromHill(HOST, "legs", { rid: uuid(12), node: "hill/case-8", intent: "skip", value: { text: null } }, "dc_nonexistent1")).toBe(false);
+    expect(r.specs.length).toBe(runs);
   });
 
   test("the hill's tap reaches the program with the answer's rid and seen; the phone's own tap on hill/ is refused", async () => {

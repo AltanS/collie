@@ -309,6 +309,9 @@ export const VALUES_ON_LEAD = "Tricks run on the lead of this crew, and their se
 /** The words of a value write the disk refused. */
 export const VALUES_WRITE_FAILED = "The value could not be saved on this machine. Try again; if it fails again, look at the bridge's log.";
 
+/** Why an answer from the Hill is not given to a trick: the card is not one the trick holds now. One sentence. */
+export const STALE_CARD_LINE = "That card is not one this trick asked, so the answer was not given to it.";
+
 /** What the runner needs of the trick's decisions on the hill (hill.ts `TrickHill`). */
 export interface TricksHillPort {
   /** Make the hill agree with one successful run's decisions; the refusals join the trick's. */
@@ -2188,7 +2191,15 @@ export class TricksService implements TricksSurface {
    */
   async tapFromHill(host: string, id: string, tap: HillTrickTap, decisionId: string): Promise<boolean> {
     const request: TapRequest = { rid: tap.rid, node: tap.node, intent: tap.intent, value: { text: tap.value.text } };
-    const answer = await this.runTap(host, id, request, this.deps.decisions?.seenOf(id, decisionId));
+    const seen = this.deps.decisions?.seenOf(id, decisionId);
+    // The Hill routes an answer by trick id only. A card the CURRENT map of this trick does not hold (an
+    // earlier trick of the id posted it and its withdraw failed, or the map forgot it) never reaches the
+    // program: the new trick did not ask that question. Nothing runs and no receipt is kept.
+    if (this.deps.decisions !== undefined && seen === undefined) {
+      this.warn(`${id}: ${STALE_CARD_LINE}`);
+      return false;
+    }
+    const answer = await this.runTap(host, id, request, seen);
     return answer.status === 200 && answer.body.code === "ok";
   }
 
