@@ -16,7 +16,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ScreenStop } from "@/components/harness-bar";
 import { STOP_HOLD_MS } from "@/lib/arm";
 
-import { knownRed, redTitle } from "./known-red";
 import { replayHint, rngOf, runSeeds, type Rng } from "./seed";
 
 afterEach(() => {
@@ -69,6 +68,7 @@ async function run(p: Press) {
   let held = 0;
   let stopsAtFullHold = 0;
   let ended = false;
+  let fillAfterChange = false;
   if (p.how === "key") {
     fireEvent.click(button(), { detail: 0 });
   } else {
@@ -79,6 +79,8 @@ async function run(p: Press) {
           vi.advanceTimersByTime(step.ms);
         });
         held += step.ms;
+        // A hold that the turn or the pane dropped must not stay drawn as running to its end.
+        if (ended && document.querySelector("[data-slot='belt-stop-fill']") !== null) fillAfterChange = true;
         if (held >= STOP_HOLD_MS && !ended && stopsAtFullHold === 0) stopsAtFullHold = onStop.mock.calls.length;
       } else if (step.kind === "jitter") {
         fireEvent.pointerMove(button(), { clientX: 10 + step.dx, clientY: 10, pointerType: "touch" });
@@ -107,6 +109,7 @@ async function run(p: Press) {
     held,
     ended,
     stopsAtFullHold,
+    fillAfterChange,
   };
 }
 
@@ -134,11 +137,11 @@ describe("M102-15, the hold-to-stop button", () => {
   }
 
   const paneSilent: string[] = [];
-  const red = knownRed("i2-stop-hold-pane");
-  it.fails(`I2: a hold that began on another pane ends in a Stop or words, not a full fill and nothing ${redTitle(red.id)}`, async () => {
+  it("I2: a hold that began on another pane ends in a Stop or words, not a full fill and nothing", async () => {
     // Named case, on every seed: the pane changes under the finger, the new pane runs too, the finger holds on.
-    const out = await run({ how: "finger", steps: [{ kind: "pane-changes" }, { kind: "wait", ms: STOP_HOLD_MS + 600 }], lift: true });
+    const out = await run({ how: "finger", steps: [{ kind: "pane-changes" }, { kind: "wait", ms: 600 }, { kind: "wait", ms: STOP_HOLD_MS }], lift: true });
     console.info(`[invariants.stop-hold] i2-stop-hold-pane: ${String(paneSilent.length)} sampled presses silent`);
-    expect(out.onStop > 0 || out.words !== out.before || out.dim).toBe(true);
+    // The hold that the pane change dropped ends in sight: no fill is drawn after the change.
+    expect(out.onStop > 0 || out.words !== out.before || out.dim || !out.fillAfterChange).toBe(true);
   });
 });

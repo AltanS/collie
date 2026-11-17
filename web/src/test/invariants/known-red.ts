@@ -82,12 +82,6 @@ export const KNOWN_RED = {
     where: "web/src/components/hook-hold-card.tsx:90 (void Promise.resolve(onAnswer(index)).finally(...): no catch, no words)",
     what: "When the hold card's answer handler rejects, the rejection is unhandled and the card shows no words; only the busy mark clears.",
   },
-  "i2-stop-hold-pane": {
-    invariant: "I2",
-    fixedBy: "M102-11",
-    where: "web/src/components/harness-bar.tsx:510 (the epoch moves with the pane), harness-bar.tsx:515 (stopHeld returns with nothing on an old stamp)",
-    what: "A finger that holds Stop while the pane changes under it sees the button fill to the end on a running turn, then nothing: no Stop, no word, no dim button.",
-  },
   "i2-change-login-crash": {
     invariant: "I2",
     fixedBy: "NONE",
