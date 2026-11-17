@@ -311,46 +311,50 @@ describe("discovery and the switch", () => {
   });
 });
 
-describe("the switched-on count (M105 spec 03, the local API's life)", () => {
-  test("told once after the first scan, then only when it moves: on, a second scan, off, a folder gone", async () => {
-    const told: number[] = [];
-    const r = await rig([exited(belt("1"))], { onSwitchedOnCount: (count) => told.push(count) });
+describe("the local API's life (M105 spec 03: `onLocalApi`, told from `localApiWanted`)", () => {
+  test("told once after the first scan, then only when the switch moves: a second scan, off, on, a folder gone, a trick on", async () => {
+    const told: boolean[] = [];
+    let on = true;
+    const r = await rig([exited(belt("1"))], { feature: { on: () => on }, onLocalApi: (wanted) => told.push(wanted) });
     const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
     await r.service.refresh(true);
-    expect(told).toEqual([0]);
+    expect(told).toEqual([true]);
     await r.service.refresh(true);
-    expect(told).toEqual([0]);
+    expect(told).toEqual([true]);
+    // A trick switched on, off and gone moves nothing: the socket follows the switch for tricks as a whole.
     await switchOn(r.stateDir, "legs");
     await r.service.refresh(true);
-    expect(told).toEqual([0, 1]);
     await writeSwitches(r.stateDir, { on: new Map() });
-    await r.service.refresh(true);
-    expect(told).toEqual([0, 1, 0]);
-    await switchOn(r.stateDir, "legs");
     await r.service.refresh(true);
     await rm(dir, { recursive: true });
     await r.service.refresh(true);
-    expect(told).toEqual([0, 1, 0, 1, 0]);
+    expect(told).toEqual([true]);
+    on = false;
+    await r.service.refresh(true);
+    expect(told).toEqual([true, false]);
+    on = true;
+    await r.service.refresh(true);
+    expect(told).toEqual([true, false, true]);
   });
 
-  test("where tricks do not run (deps.active false: a peer, a deputy, a deposed lead) the count is 0; a tick tells each change", async () => {
-    const told: number[] = [];
+  test("where tricks do not run (deps.active false: a peer, a deputy, a deposed lead) it is told false; a tick tells each change", async () => {
+    const told: boolean[] = [];
     let active = false;
-    const r = await rig([exited(belt("1"))], { active: () => active, onSwitchedOnCount: (count) => told.push(count) });
+    const r = await rig([exited(belt("1"))], { active: () => active, onLocalApi: (wanted) => told.push(wanted) });
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
-    expect(told).toEqual([0]);
-    // The crown comes: the next tick, with no scan of its own needed, tells the count.
+    expect(told).toEqual([false]);
+    // The crown comes: the next tick, with no scan of its own needed, tells it.
     active = true;
     await r.service.tick();
-    expect(told).toEqual([0, 1]);
-    // Deposed: the tick tells 0 before its own gate returns, whether or not a phone watched.
+    expect(told).toEqual([false, true]);
+    // Deposed: the tick tells false before its own gate returns, whether or not a phone watched.
     active = false;
     await r.service.tick();
-    expect(told).toEqual([0, 1, 0]);
+    expect(told).toEqual([false, true, false]);
     await r.service.tick();
-    expect(told).toEqual([0, 1, 0]);
+    expect(told).toEqual([false, true, false]);
   });
 
   test("the local API stands while tricks are switched on where tricks run, with no trick on, and closes when the switch goes off", async () => {
@@ -376,30 +380,31 @@ describe("the switched-on count (M105 spec 03, the local API's life)", () => {
     expect(told).toEqual([true, false, true, false]);
   });
 
-  test("on Windows (the gate) the count is never above 0", async () => {
-    const told: number[] = [];
-    const r = await rig([exited(belt("1"))], { platform: "win32", onSwitchedOnCount: (count) => told.push(count) });
+  test("on Windows (the gate) it is never told true", async () => {
+    const told: boolean[] = [];
+    const r = await rig([exited(belt("1"))], { platform: "win32", onLocalApi: (wanted) => told.push(wanted) });
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
     await tickAt(r, T0);
     await r.service.refresh(true);
-    expect(told.every((count) => count === 0)).toBe(true);
+    expect(told.every((wanted) => !wanted)).toBe(true);
+    expect(r.service.localApiWanted()).toBe(false);
   });
 
-  test("a trick switched on but stopped by its backoff still counts", async () => {
-    const told: number[] = [];
-    const r = await rig([exited("", 1)], { onSwitchedOnCount: (count) => told.push(count) });
+  test("a trick stopped by its backoff leaves the socket standing", async () => {
+    const told: boolean[] = [];
+    const r = await rig([exited("", 1)], { onLocalApi: (wanted) => told.push(wanted) });
     await makeTrick(r.configDir, "legs", MANIFEST);
     await switchOn(r.stateDir, "legs");
     for (const t of [T0, T0 + 60_000, T0 + 360_000, T0 + 360_000 + 1_800_000]) await tickAt(r, t);
     expect((await r.service.reply(undefined)).tricks[0]?.state).toBe("stopped");
     await tickAt(r, T0 + 100 * 60 * 60_000);
-    expect(told).toEqual([1]);
+    expect(told).toEqual([true]);
   });
 
   test("a listener that throws breaks no scan", async () => {
     const r = await rig([exited(belt("1"))], {
-      onSwitchedOnCount: () => {
+      onLocalApi: () => {
         throw new Error("boom");
       },
     });

@@ -489,11 +489,6 @@ export interface TricksServiceDeps {
    */
   feature?: TricksFeaturePort & { onChange?(listener: (on: boolean) => void): () => void };
   /**
-   * Told the count of switched-on tricks after a scan or a switch moved it, and once after the first
-   * scan. bridge/index.ts opens the local API socket while it is above zero (M105 spec 03, decision 14).
-   */
-  onSwitchedOnCount?: (count: number) => void;
-  /**
    * The local API socket's path while it stands, else null (bridge/index.ts: `apiSocketPath` while the `ApiSocket`
    * runs). A trick whose approved manifest declares `access` gets it in its facts as `api` (M105 spec 04), and
    * when it is null the row says so once. Absent: the local API never stands here.
@@ -757,8 +752,6 @@ export class TricksService implements TricksSurface {
   private suspended = false;
   /** What `onLocalApi` was last told; null before the first. */
   private localApiTold: boolean | null = null;
-  /** The switched-on count last told to `onSwitchedOnCount`; null before the first. */
-  private switchedOnTold: number | null = null;
   /** `on` and `watch`: the bus subscription, the file watches and the waiting requests (triggers.ts). */
   private readonly reactions: TrickReactions;
   /** The tricks whose file watch fell back to a stat check (watch.ts): the row says it, from `watchPollSeconds`. */
@@ -876,12 +869,13 @@ export class TricksService implements TricksSurface {
   }
 
   /**
-   * ONE SCAN AT BRIDGE START, so a trick that reacts (`on`, `watch`) and the local API stand without a
-   * phone's look (the lead, 2026-11-17). Only where it is needed: never while the Windows gate is closed,
-   * never where tricks do not run (`deps.active` false: a crew peer, a deputy, a deposed lead), and only
-   * when the switch file holds a trick that is on. Then one forced scan (it also tells the switched-on
-   * count, which opens the local API), and the start run of each trick that reacts, since a trick takes
-   * no event before its start run. A trick that only runs on its timer still waits for a phone, as
+   * ONE SCAN AT BRIDGE START, so a trick that reacts (`on`, `watch`) stands without a phone's look (the
+   * lead, 2026-11-17). The local API socket does not follow this scan: it follows the switch for tricks as
+   * a whole ({@link localApiWanted}), which the first tick and each scan tell through `onLocalApi`. The
+   * scan runs only where it is needed: never while the Windows gate is closed, never where tricks do not
+   * run (`deps.active` false: a crew peer, a deputy, a deposed lead), and only when the switch file holds
+   * a trick that is on. Then one forced scan, and the start run of each trick that reacts, since a trick
+   * takes no event before its start run. A trick that only runs on its timer still waits for a phone, as
    * before. One scan, not a loop: a failure is logged once, and the next phone look scans as today.
    * Resolves when the start runs it began are done, which is what a test waits on.
    */
@@ -1080,27 +1074,7 @@ export class TricksService implements TricksSurface {
       this.deps.decisions?.prune(ids, host);
     }
     for (const found of scan.tricks) this.applyOne(found, this.liveEntry(switches, found.id), switches.on.has(found.id));
-    this.tellSwitchedOn();
-  }
-
-  /**
-   * Tell `onSwitchedOnCount` the count of switched-on tricks, when it moved. Never throws. The count is 0
-   * where tricks do not run (the Windows gate; `deps.active` false: a crew peer, a deputy, a deposed lead),
-   * so the local API opens only where a trick is on AND tricks run. A trick switched on but stopped (its
-   * rights, the backoff) still counts.
-   */
-  private tellSwitchedOn(): void {
     this.tellLocalApi();
-    let count = 0;
-    const runsHere = !this.gated() && this.deps.active?.() !== false;
-    if (runsHere) for (const rt of this.runtimes.values()) if (rt.on) count += 1;
-    if (count === this.switchedOnTold) return;
-    this.switchedOnTold = count;
-    try {
-      this.deps.onSwitchedOnCount?.(count);
-    } catch (err) {
-      this.warn(`the switched-on count could not be told: ${err instanceof Error ? err.message : String(err)}`);
-    }
   }
 
   /** Tell `onLocalApi` whether the local API should stand, when that moved. Never throws. */
@@ -1157,7 +1131,7 @@ export class TricksService implements TricksSurface {
       // on while tricks as a whole are off: its Decisions wait, hidden, for the switch.
       if (!own) this.deps.decisions?.off({ id: found.id, name: found.manifest?.name ?? found.id, memberId: host });
       this.publish(found.id);
-      this.tellSwitchedOn();
+      this.tellLocalApi();
       return;
     }
     // A change of the folder restarts nothing: the trick runs its approved copy, and a new version waits
@@ -1182,7 +1156,7 @@ export class TricksService implements TricksSurface {
     if (ownOff) this.deps.decisions?.off(this.hillTrick(old));
     if (switched && on) this.restart(old);
     this.publish(found.id);
-    this.tellSwitchedOn();
+    this.tellLocalApi();
   }
 
   /**
@@ -1776,8 +1750,8 @@ export class TricksService implements TricksSurface {
    */
   async tick(): Promise<void> {
     // First, before every gate: `deps.active` can change while the bridge runs (a lead deposed, a deputy
-    // crowned), and the local API's count reads it. `tellSwitchedOn` tells only a change.
-    this.tellSwitchedOn();
+    // crowned), and `localApiWanted` reads it. `tellLocalApi` tells only a change.
+    this.tellLocalApi();
     if (this.gated()) return;
     // Read the switch for tricks as a whole on every tick, watched or not, so its listeners hear a move
     // written by the terminal within a second. Off starts nothing.
