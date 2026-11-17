@@ -4157,7 +4157,10 @@ const localApi =
         socketPath: apiSocketPath(cfg.stateDir),
         // The run tokens (M105 spec 05): a connection is answered only after its `hello` names the token of a
         // trick's live run. The table is the trick runner's; the socket sees it through this one function.
-        tokens: { resolve: (token: string): RunTokenHolder | null => tricks?.resolveRunToken(token) ?? null },
+        tokens: {
+          resolve: (token: string): RunTokenHolder | null => tricks?.resolveRunToken(token) ?? null,
+          alive: (key: string): boolean => tricks?.runTokenAlive(key) ?? false,
+        },
         // Exactly the API's world (bridge/api/world.ts `buildApiWorld`): the real services by narrow types;
         // the builder holds the one literal, `satisfies ApiWorld`, then `narrowWorld`.
         table: apiTable(
@@ -4311,6 +4314,9 @@ const tricks =
         onLocalApi: (wanted) => void Promise.resolve(localApiWanted(wanted) ? localApi?.start() : localApi?.stop()).finally(() => tricks?.apiMoved()),
         // A trick that declares `access` gets the socket's path in its facts while the socket stands (M105 spec 04).
         localApi: () => (localApi?.running() === true ? apiSocketPath(cfg.stateDir) : null),
+        // A run token that dies ends every local API connection bound to it at once (M105 spec 05): an `events`
+        // wait gives its slot back with the run, not 25 seconds later.
+        runTokenEnded: (key) => localApi?.endToken(key),
         // A trick that lists `on` runs on the bus's events (bridge/tricks/triggers.ts).
         bus: eventBus,
       });

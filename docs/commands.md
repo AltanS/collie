@@ -197,9 +197,14 @@ trick or tricks are switched off, and when the bridge stops. It is never in the 
 command line, on disk or in a log line. The level the trick declares is the token's level, and the
 bridge checks it: a `see` token is refused `read` with `api.denied`.
 
-**What it is, in honest words.** The token keeps out a program that only finds the socket. A
-program that runs as you can still read a pane through the multiplexer itself, and can read another
-program's memory, a trick's token included. Collie does not stop that. The socket is `api/sock` in
+**What it is, in honest words.** The token keeps a program that only finds the socket out of this
+socket, and that is all it does. A program that runs as you can still read your sessions in other
+ways. It can read a pane through the multiplexer itself. It can read another program's memory, a
+trick's token included.
+
+It can also read Collie's local secret, the file `local-secret` in the Collie state directory. With
+that secret it can use the bridge's loopback address, which still answers the routes that return a
+session's text. Collie does not stop any of this. The socket is `api/sock` in
 the Collie state directory, mode 0600 inside a folder of mode 0700. It is closed to other users, to
 other machines and to pages in a browser, because it is a Unix socket and not a web address.
 

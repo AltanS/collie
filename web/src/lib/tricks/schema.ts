@@ -1504,7 +1504,7 @@ export interface TrickFacts {
 /**
  * The local API as a trick's facts name it. The level is declared, and the bridge holds it for the API (M105
  * spec 05). The token is this run's own: the socket answers a connection that names it in `hello`, and only
- * while the run lasts. It keeps a program that only finds the socket out; it is not a wall.
+ * while the run lasts. It keeps a program that only finds the socket out of this socket, and nothing more.
  */
 export interface FactsApi {
   socket: string;

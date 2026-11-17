@@ -144,6 +144,36 @@ export type RunOutcome =
   | { kind: "stopped"; stderr: string; ms: number }
   | { kind: "spawn-failed"; message: string; ms: number };
 
+/** What stands in a run's output where the program printed its own run token (M105 spec 05). */
+export const RUN_TOKEN_MARK = "[run token]";
+
+/** `text` with every copy of `token` replaced by {@link RUN_TOKEN_MARK}; no token, the text as it was. */
+export function maskRunTokenText(text: string, token: string | null): string {
+  return token === null || token === "" ? text : text.replaceAll(token, RUN_TOKEN_MARK);
+}
+
+/**
+ * The outcome with every copy of the run's own token replaced by {@link RUN_TOKEN_MARK}, in stdout, in
+ * stderr and in a start failure's message (security read of spec 05, item 4). The bridge knows the token it
+ * put in the facts, so a program that prints its facts back (on a failure, say) cannot carry it into the
+ * problem line, the warning log, a reply or a part. Applied right after the run, before anything reads the
+ * outcome. No token (a run with no `access`, or no socket): the outcome as it was.
+ */
+export function maskRunToken(outcome: RunOutcome, token: string | null): RunOutcome {
+  if (token === null || token === "") return outcome;
+  const mask = (text: string): string => maskRunTokenText(text, token);
+  switch (outcome.kind) {
+    case "exited":
+      return { ...outcome, stdout: mask(outcome.stdout), stderr: mask(outcome.stderr) };
+    case "timeout":
+    case "overflow":
+    case "stopped":
+      return { ...outcome, stderr: mask(outcome.stderr) };
+    case "spawn-failed":
+      return { ...outcome, message: mask(outcome.message) };
+  }
+}
+
 /**
  * The argv that runs a `run` line: the shell, so `./legs.sh` and `bun program.ts` both work. On Windows
  * {@link runProgram} refuses a shell line before this ({@link windowsRunProblem}); the `cmd.exe` form stays

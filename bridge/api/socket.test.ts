@@ -66,6 +66,11 @@ function gate(): Gate {
   return { wait, open };
 }
 
+/** The rig's key of a token: a stand-in for the table's hash, never the token itself. */
+function keyOf(token: string): string {
+  return `key-of-${token.length}-${token.slice(-4)}`;
+}
+
 interface Rig {
   readonly path: string;
   readonly dir: string;
@@ -73,8 +78,8 @@ interface Rig {
   readonly api: ApiSocket;
   readonly logs: string[];
   readonly briefGate: Gate;
-  /** The rig's run-token table: a test ends a token by deleting it. */
-  readonly tokens: Map<string, RunTokenHolder>;
+  /** The rig's run-token table: a test ends a token by deleting it (and, for an ending the table tells, `api.endToken(keyOf(token))`). */
+  readonly tokens: Map<string, Omit<RunTokenHolder, "key">>;
 }
 
 interface RigOptions {
@@ -110,7 +115,7 @@ function rig(opts: RigOptions = {}): Rig {
     machines: async () => ({ ok: true, answer: { machines: [] } }),
   };
   const logs: string[] = [];
-  const tokens = new Map<string, RunTokenHolder>([
+  const tokens = new Map<string, Omit<RunTokenHolder, "key">>([
     [TOKEN, { trickId: "lodge", level: "read" }],
     [SEE_TOKEN, { trickId: "workshop", level: "see" }],
   ]);
@@ -118,7 +123,13 @@ function rig(opts: RigOptions = {}): Rig {
     socketPath: path,
     table: buildTable({ version: () => "9.9.9-test", bus, reads }),
     granted: LOCAL_TIER_RIGHTS,
-    tokens: { resolve: (token) => tokens.get(token) ?? null },
+    tokens: {
+      resolve: (token) => {
+        const holder = tokens.get(token);
+        return holder === undefined ? null : { ...holder, key: keyOf(token) };
+      },
+      alive: (key) => [...tokens.keys()].some((token) => keyOf(token) === key),
+    },
     log: (line) => logs.push(line),
     platform: opts.platform ?? process.platform,
     lineMs: opts.lineMs ?? REQUEST_LINE_MS,
@@ -983,6 +994,70 @@ apiSocketDescribe("the run token", () => {
     r.briefGate.open();
     expect(await client.next()).toEqual({ id: "slow", ok: false, error: expect.objectContaining({ code: "api.no_run_token" }) });
     await client.ended;
+  });
+
+  test("a token that dies ends its open events wait at once: no_run_token, the close, and the slot back", async () => {
+    const r = rig();
+    await r.api.start();
+    const client = await Client.open(r.path);
+    const other = await Client.open(r.path, SEE_TOKEN);
+    client.send({ id: "wait", op: "events", args: { wait: 25 } });
+    other.send({ id: "stays", op: "events", args: { wait: 25 } });
+    await Bun.sleep(30);
+    expect(r.api.counts().waits).toBe(2);
+    const started = Date.now();
+    // The table drops the token and tells the socket its key (bridge/index.ts wires `endToken`).
+    r.tokens.delete(TOKEN);
+    r.api.endToken(keyOf(TOKEN));
+    expect(await client.next()).toEqual({ id: "wait", ok: false, error: expect.objectContaining({ code: "api.no_run_token" }) });
+    await client.ended;
+    expect(Date.now() - started).toBeLessThan(1000);
+    await Bun.sleep(10);
+    // The other run's wait and connection stay.
+    expect(r.api.counts()).toEqual({ connections: 1, waits: 1 });
+    expect(r.bus.listeners().waits).toBe(1);
+    r.tokens.delete(SEE_TOKEN);
+    r.api.endToken(keyOf(SEE_TOKEN));
+    expect(codeOf(await other.next())).toBe("api.no_run_token");
+    await other.ended;
+    await Bun.sleep(10);
+    expect(r.api.counts()).toEqual({ connections: 0, waits: 0 });
+    expect(r.bus.listeners().waits).toBe(0);
+  });
+
+  test("after hello the connection asks by the token's key only: the raw token is never asked again", async () => {
+    const asked: string[] = [];
+    const aliveAsked: string[] = [];
+    const root = mkdtempSync(join(tmpdir(), "collie-api-"));
+    roots.push(root);
+    const path = apiSocketPath(join(root, "state"));
+    const bus = new EventBus({ machine: () => "inst-test-a1", bootId: "boot1" });
+    const api = new ApiSocket({
+      socketPath: path,
+      table: buildTable({ version: () => "9.9.9-test", bus, reads: { accounts: async () => ({ ok: true, answer: { accounts: [] } }) } }),
+      granted: LOCAL_TIER_RIGHTS,
+      tokens: {
+        resolve: (token) => {
+          asked.push(token);
+          return token === TOKEN ? { trickId: "lodge", level: "read", key: keyOf(TOKEN) } : null;
+        },
+        alive: (key) => {
+          aliveAsked.push(key);
+          return key === keyOf(TOKEN);
+        },
+      },
+      log: () => undefined,
+      platform: process.platform,
+      uid: process.getuid?.() ?? 0,
+    });
+    sockets.push(api);
+    await api.start();
+    const client = await Client.open(path);
+    expect(await client.ask({ op: "accounts" })).toMatchObject({ ok: true });
+    expect(await client.ask({ op: "accounts" })).toMatchObject({ ok: true });
+    expect(asked).toEqual([TOKEN]);
+    expect(aliveAsked.length).toBeGreaterThanOrEqual(4);
+    expect(aliveAsked.every((key) => key === keyOf(TOKEN))).toBe(true);
   });
 
   test("two runs, two tokens, two connections: each is its own trick, at its own level", async () => {

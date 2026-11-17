@@ -61,9 +61,11 @@ point was that Collie should not hand every agent a screen reader with no trick 
 
 ## Consequences
 
-- An agent or a script of the person no longer gets a screen reader by finding a socket. It must
-  take a live trick's token out of that run's memory or stdin, which a program of the same user can
-  do and which the docs say.
+- An agent or a script of the person no longer gets a screen reader by finding THIS socket. That is
+  all the token closes. A program of the same user still reads screens in other ways: through the
+  multiplexer itself, by taking a live trick's token out of that run's memory, or by reading the
+  owner-only `local-secret` file and using it on the bridge's loopback door, whose routes that return
+  a session's text stay open until a later change closes them. The docs say all of this.
 - `collie trick check --run` runs outside the bridge with fixture facts and gets no token, so its
   `t.api` answers "off". Minting a token for it would need a door any program of the user could
   knock on the same way, which is what item 4 closes.

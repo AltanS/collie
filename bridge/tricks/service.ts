@@ -60,7 +60,7 @@ import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
 import { approvedCopyDir, approvedTrickDir, pendingTrickDir, tricksConfigDir, trickStateDir } from "./paths.ts";
 import { trickSessionPanes, type TrickSessionPanes } from "./panes.ts";
 import { receiptFrame, TrickReceiptStore, type TrickReceiptRecord, type TrickReceiptSurface } from "./receipts.ts";
-import { outcomeProblem, runProgram, windowsRunProblem, type RunOutcome, type RunSpec } from "./run.ts";
+import { maskRunToken, maskRunTokenText, outcomeProblem, runProgram, windowsRunProblem, type RunOutcome, type RunSpec } from "./run.ts";
 import { RunTokens, type RunTokenHolder } from "./run-tokens.ts";
 import type { RepoFactsPort } from "./repo-facts.ts";
 import { trickWarnings, wireWarnings } from "./scan.ts";
@@ -116,7 +116,8 @@ export { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX, WATCH_WINDOW_MS };
 //     runs 1,440 times a day against a paid API.
 //
 // ── WHAT A RUN LEAVES ───────────────────────────────────────────────────────────
-// stdout and stderr are masked in run.ts before anything here sees them. The document is parsed with
+// stdout and stderr are masked in run.ts before anything here sees them, and the run's own token is replaced
+// by a mark (`maskRunToken`) right after the run, before anything else reads them. The document is parsed with
 // the schema's one parser, against the manifest's declared places and every node kind, and stored per
 // part with a rev (store.ts). The read is tolerant (schema.ts, "strict at write, tolerant at read"): a
 // node kind or a place this Collie does not draw is left out with a note on the list entry, and the
@@ -508,6 +509,12 @@ export interface TricksServiceDeps {
    */
   localApi?: () => string | null;
   /**
+   * Told the key (the hash hex) of every run token that dies, at once, whatever killed it (run-tokens.ts).
+   * bridge/index.ts hands it to `ApiSocket.endToken`, which ends every connection bound to that token. Absent:
+   * nobody is told, and the socket still refuses the dead token at the connection's next request or answer.
+   */
+  runTokenEnded?: (key: string) => void;
+  /**
    * Told whether the local API should stand ({@link TricksService.localApiWanted}) when that moved, and once
    * at the first tell. bridge/index.ts starts and stops the socket on it (decision 14, as the lead wired it
    * on 2026-11-17: the switch for tricks as a whole, on a bridge where tricks run, with or without a trick on).
@@ -778,7 +785,7 @@ export class TricksService implements TricksSurface {
    * `access`, while the socket stands. Each dies with its run (`runOnce`), its trick's switch or removal
    * (`applyOne`, `apply`), tricks going off as a whole (the feature switch's `onChange`) and `stop`.
    */
-  private readonly runTokens = new RunTokens();
+  private readonly runTokens = new RunTokens((key) => this.deps.runTokenEnded?.(key));
   /** `on` and `watch`: the bus subscription, the file watches and the waiting requests (triggers.ts). */
   private readonly reactions: TrickReactions;
   /** The tricks whose file watch fell back to a stat check (watch.ts): the row says it, from `watchPollSeconds`. */
@@ -862,6 +869,11 @@ export class TricksService implements TricksSurface {
    */
   resolveRunToken(token: string): RunTokenHolder | null {
     return this.runTokens.resolve(token);
+  }
+
+  /** Whether the run token whose hash hex is `key` (from {@link resolveRunToken}) is still live. */
+  runTokenAlive(key: string): boolean {
+    return this.runTokens.alive(key);
   }
 
   /** Listen for a move of the switch for tricks as a whole; the answer stops listening. */
@@ -1881,6 +1893,18 @@ export class TricksService implements TricksSurface {
   }
 
   /**
+   * Why a run that passed {@link recheck} may not start after all, or null: the trick is gone (removed or
+   * replaced), its own switch is off, or tricks are off as a whole. Synchronous, so nothing moves between this
+   * answer and the mint and start that follow it in `runOnce`.
+   */
+  private goneSinceRecheck(rt: TrickRuntime): string | null {
+    if (this.runtimes.get(rt.found.id) !== rt) return "The trick is gone.";
+    if (!rt.on) return "The trick is off.";
+    if (this.switchedOff()) return TRICKS_OFF_LINE;
+    return null;
+  }
+
+  /**
    * Run once: wait for a slot (a tap ahead of a timer), read the trick again, write the tap's marker,
    * run, answer the tap. Then the next waiting tap of this trick. The promise ends when this run (not
    * the next tap) is done.
@@ -2065,15 +2089,22 @@ export class TricksService implements TricksSurface {
     }
     // Contract 3: the person's values ride in the facts, and nowhere else (values.ts `withValues`).
     const facts = withValues(buildFacts({ memberId: host, ...world }, { id, dir: run.dir, state }, trigger, manifest.contract), manifest, this.values.read(id));
+    // Security read of spec 05, item 1: the awaits since `recheck` (the tap's receipt, the state folder, the
+    // inputs fetch) leave a gap in which the trick can be switched off, tricks can go off or the trick can be
+    // removed. Asked again here, synchronously, right before the token and the start: any of the three refuses
+    // the run as `recheck` would, with no token minted and no program started.
+    const gone = this.goneSinceRecheck(rt);
+    if (gone !== null) return { rid, code: "rejected", message: gone };
     // The local API, for a trick that declares `access`, while its socket stands: the path, the level and this
     // run's token, on stdin only, never an environment variable, an argument or a file (M105 specs 04 and 05).
     // Without the socket there is no `api` and no token, and `t.api` answers an error.
     const socket = manifest.access === undefined ? null : (this.deps.localApi?.() ?? null);
     const runId = randomUUID();
-    if (manifest.access !== undefined && socket !== null) facts.api = { socket, access: manifest.access, token: this.runTokens.mint(id, manifest.access, runId) };
+    const token = manifest.access !== undefined && socket !== null ? this.runTokens.mint(id, manifest.access, runId) : null;
+    if (manifest.access !== undefined && socket !== null && token !== null) facts.api = { socket, access: manifest.access, token };
     let outcome: RunOutcome;
     try {
-      outcome = await (this.deps.run ?? runProgram)({
+      const ran = await (this.deps.run ?? runProgram)({
         command,
         cwd: run.dir,
         env: scrubEnv(this.deps.env, manifest.env ?? [], { host: this.host() }),
@@ -2082,6 +2113,13 @@ export class TricksService implements TricksSurface {
         signal: this.runStop.signal,
         ...this.deps.limits,
       });
+      // A program that prints its facts back prints its token: the mark stands in its place before the output
+      // reaches the problem line, the warning log, the parser, a part or the reply (security read, item 4).
+      outcome = maskRunToken(ran, token);
+    } catch (err) {
+      // A runner that throws is logged by `begin`: its words are masked the same way first.
+      if (err instanceof Error) err.message = maskRunTokenText(err.message, token);
+      throw err;
     } finally {
       // The token dies with the run, whatever ended it: an exit, a failure, a timeout, a kill or a throw.
       this.runTokens.end(runId);
