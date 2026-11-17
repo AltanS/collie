@@ -14,6 +14,7 @@ import {
   OPERATION_NAMES,
   row,
   tableOf,
+  type ArgType,
   type OperationContext,
   type OpResult,
   type ReadHandlers,
@@ -76,7 +77,7 @@ describe("the table walk", () => {
   });
 
   test("a planted row that needs a right the local tier does not grant is refused and not offered", () => {
-    const planted = (right: Right): TableRow => row({ name: `planted.${right}`, kind: "read", right, waits: false, summary: "planted", parse: () => ({ ok: true, args: {} }), handle: stub });
+    const planted = (right: Right): TableRow => row({ name: `planted.${right}`, kind: "read", right, waits: false, summary: "planted", args: [], parse: () => ({ ok: true, args: {} }), handle: stub });
     const table = tableOf([...fullTable().values(), planted("send"), planted("control")]);
     expect(admit(table, "planted.send", LOCAL)).toEqual({ ok: false, code: "api.denied" });
     expect(admit(table, "planted.control", LOCAL)).toEqual({ ok: false, code: "api.denied" });
@@ -244,5 +245,47 @@ describe("events pages (security read 1, item 6)", () => {
     for (let i = 0; i < 3; i += 1) bus.publish({ type: "turn.end", session: SESSION });
     const result = await fullTable(bus).get("events")!.run({ after: from }, ctx());
     expect(result).toMatchObject({ ok: true, answer: { next: bus.head() } });
+  });
+});
+
+describe("the declared arguments", () => {
+  // One valid sample per declared type; the parsers' own limits are met by these.
+  const sample = (type: ArgType): string | number => (type === "integer" ? 5 : "ses_sample");
+  const wrong = (type: ArgType): string | number => (type === "integer" ? "abc" : 5);
+
+  test("every operation declares its arguments, and its parser takes exactly those", () => {
+    for (const name of OPERATION_NAMES) {
+      const declared = DECLARED[name];
+      const required = Object.fromEntries(declared.args.filter((arg) => arg.required).map((arg) => [arg.name, sample(arg.type)]));
+      // Only the required ones: accepted (the optional ones are optional).
+      expect(declared.parse(required).ok).toBe(true);
+      for (const arg of declared.args) {
+        // Each declared argument, given with a value of its type, is taken.
+        expect(declared.parse({ ...required, [arg.name]: sample(arg.type) }).ok).toBe(true);
+        // A value of the wrong type is refused.
+        expect(declared.parse({ ...required, [arg.name]: wrong(arg.type) }).ok).toBe(false);
+        // A required argument left out is refused.
+        if (arg.required) {
+          const { [arg.name]: _left, ...rest } = required;
+          expect(declared.parse(rest).ok).toBe(false);
+        }
+        expect(arg.help.length).toBeGreaterThan(0);
+      }
+      // An argument no declaration lists is refused, so the parser takes nothing the CLI cannot name.
+      expect(declared.parse({ ...required, "not-declared": "x" }).ok).toBe(false);
+    }
+  });
+
+  test("an argument name is unique within a row and is one word the command face can spell as a flag", () => {
+    for (const name of OPERATION_NAMES) {
+      const names = DECLARED[name].args.map((arg) => arg.name);
+      expect(new Set(names).size).toBe(names.length);
+      for (const one of names) expect(one).toMatch(/^[a-z]+(?:-[a-z]+)*$|^[a-z][A-Za-z]*$/u);
+    }
+  });
+
+  test("the rows of a built table carry the declarations", () => {
+    const built = fullTable();
+    for (const name of OPERATION_NAMES) expect(built.get(name)?.args).toBe(DECLARED[name].args);
   });
 });

@@ -1,6 +1,6 @@
 // THE OPERATION TABLE (M105 spec 03, decisions 15 and 17). One table, the single source of what the
 // local API can do: the socket admits a request only through it, `hello` lists from it, and the command
-// face (`collie api <operation>`, a later part) is generated from {@link DECLARED}. No operation exists
+// face (`collie api <operation>`, cli/api.ts) is generated from {@link DECLARED}. No operation exists
 // outside this file.
 //
 // Each row names its kind (`read`, the only kind in this step), the RIGHT it needs, whether it may
@@ -42,6 +42,23 @@ export const API_VERSION = 1;
 export const OPERATION_NAMES = ["hello", "sessions", "brief", "read", "accounts", "hill.list", "events"] as const;
 export type OperationName = (typeof OPERATION_NAMES)[number];
 
+/** The type of one declared argument: text, or a whole number. */
+export type ArgType = "string" | "integer";
+
+/**
+ * One argument of a row, declared. The command face (`collie api`, cli/api.ts) builds its flags from
+ * these, spelled in kebab case, and a row's parser must agree with them: operations.test.ts runs every
+ * parser over its own declaration, so an argument a parser takes and no declaration lists, or one a
+ * declaration lists and the parser refuses, fails the build.
+ */
+export interface ArgDecl {
+  readonly name: string;
+  readonly type: ArgType;
+  readonly required: boolean;
+  /** One line for the command face's help. */
+  readonly help: string;
+}
+
 /** A row's arguments, read, or why they could not be. `reason` is a fixed phrase of this file, never the caller's text. */
 export type Parsed<A> = { readonly ok: true; readonly args: A } | { readonly ok: false; readonly reason: string };
 
@@ -69,6 +86,8 @@ export interface OperationRow<A> {
   readonly waits: boolean;
   /** One line for the command face and its help. */
   readonly summary: string;
+  /** The arguments this row takes, for the command face. The row's `parse` takes exactly these. */
+  readonly args: readonly ArgDecl[];
   parse(input: JsonObject): Parsed<A>;
   handle(args: A, ctx: OperationContext): Promise<OpResult>;
 }
@@ -80,6 +99,7 @@ export interface TableRow {
   readonly right: Right;
   readonly waits: boolean;
   readonly summary: string;
+  readonly args: readonly ArgDecl[];
   /** Parse, then handle. A parse failure answers `api.bad_request`. */
   run(input: JsonObject, ctx: OperationContext): Promise<OpResult>;
 }
@@ -95,6 +115,7 @@ export function row<A>(def: OperationRow<A>): TableRow {
     right: def.right,
     waits: def.waits,
     summary: def.summary,
+    args: def.args,
     run: async (input, ctx) => {
       const parsed = def.parse(input);
       if (!parsed.ok) return { ok: false, code: "api.bad_request", detail: { reason: parsed.reason } };
@@ -215,15 +236,36 @@ export type Declaration<A> = Omit<OperationRow<A>, "handle">;
 /** The declaration of each operation, typed by its arguments. */
 export type Declarations = { readonly [K in OperationName]: Declaration<ArgsOf[K]> };
 
+const SESSION_ARG: ArgDecl = { name: "session", type: "string", required: true, help: "A session id, copied from sessions." };
+
 /** Every operation, declared. */
 export const DECLARED: Declarations = {
-  hello: { name: "hello", kind: "read", right: "look", waits: false, summary: "The API version, the Collie version and the operations offered.", parse: parseNone },
-  sessions: { name: "sessions", kind: "read", right: "look", waits: false, summary: "The agent sessions of this machine.", parse: parseNone },
-  brief: { name: "brief", kind: "read", right: "look", waits: false, summary: "The state of one session, with no text.", parse: parseSession },
-  read: { name: "read", kind: "read", right: "look", waits: false, summary: "The screen of one session, secrets masked, capped.", parse: parseRead },
-  accounts: { name: "accounts", kind: "read", right: "look", waits: false, summary: "The agent accounts of this machine.", parse: parseNone },
-  "hill.list": { name: "hill.list", kind: "read", right: "look", waits: false, summary: "The open decisions on the Hill, with no body.", parse: parseNone },
-  events: { name: "events", kind: "read", right: "look", waits: true, summary: "The events after a cursor, waiting up to 25 seconds for one.", parse: parseEvents },
+  hello: { name: "hello", kind: "read", right: "look", waits: false, summary: "The API version, the Collie version and the operations offered.", args: [], parse: parseNone },
+  sessions: { name: "sessions", kind: "read", right: "look", waits: false, summary: "The agent sessions of this machine.", args: [], parse: parseNone },
+  brief: { name: "brief", kind: "read", right: "look", waits: false, summary: "The state of one session, with no text.", args: [SESSION_ARG], parse: parseSession },
+  read: {
+    name: "read",
+    kind: "read",
+    right: "look",
+    waits: false,
+    summary: "The screen of one session, secrets masked, capped.",
+    args: [SESSION_ARG, { name: "lines", type: "integer", required: false, help: `How many lines of the screen, 1 to ${String(MAX_READ_LINES)}. Default: the bridge's own.` }],
+    parse: parseRead,
+  },
+  accounts: { name: "accounts", kind: "read", right: "look", waits: false, summary: "The agent accounts of this machine.", args: [], parse: parseNone },
+  "hill.list": { name: "hill.list", kind: "read", right: "look", waits: false, summary: "The open decisions on the Hill, with no body.", args: [], parse: parseNone },
+  events: {
+    name: "events",
+    kind: "read",
+    right: "look",
+    waits: true,
+    summary: "The events after a cursor, waiting up to 25 seconds for one.",
+    args: [
+      { name: "after", type: "string", required: false, help: "The cursor of an earlier answer. Default: now." },
+      { name: "wait", type: "integer", required: false, help: `Seconds to wait when there is no event, 0 to ${String(WAIT_MAX_SECONDS)}. Default: 0.` },
+    ],
+    parse: parseEvents,
+  },
 };
 
 /** A handler of each operation. */
