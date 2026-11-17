@@ -83,8 +83,8 @@ counters live in memory and reset when the bridge restarts.
 
 `collie pair` refuses in a pane where an agent works. A paired device can read and drive every
 session, approve a trick and answer a Decision. An agent that pairs one for itself skips every tap
-Collie asks of you. So the command asks the running bridge whether its pane runs an agent, the same
-check `collie trick on` makes, and refuses there. `collie pair --json` refuses too. Run it in a
+Collie asks of you. So the command asks the running bridge whether its pane runs an agent, a check
+like the one `collie trick on` makes, and refuses there. `collie pair --json` refuses too. Run it in a
 shell pane or a terminal of your own. With no bridge running, or a bridge that does not know the
 pane, it does not refuse. The check is a speed bump, not a wall
 ([What a program running as you can still do](#what-a-program-running-as-you-can-still-do)).

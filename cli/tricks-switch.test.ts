@@ -113,6 +113,25 @@ describe("collie tricks", () => {
     expect(readTricksFeature(r.stateDir).reading).toBe("on");
   });
 
+  test("counsel A2: tricks on fails closed when pane markers exist and the pane is not proven a shell; no markers still write", async () => {
+    const r = await rig();
+    const pane = { ...r, ctx: { ...r.ctx, env: { ...r.ctx.env, HERDR_PANE_ID: "w1:p2", HERDR_SOCKET_PATH: "/run/user/1000/herdr.sock" } } };
+    // The check throws: refused with the same sentence, nothing written.
+    expect(await cmdTricksOn({ ...pane, paneKind: async () => Promise.reject(new Error("socket gone")) }, [])).toBe(EXIT.REFUSED);
+    expect(r.err[0]).toBe("error: collie tricks on is your person's choice, and this runs in a pane where an agent works.");
+    expect(r.err[1]).toContain("in Settings, Tricks");
+    expect(readTricksFeature(r.stateDir).reading).toBe("unset");
+    // The bridge does not know the pane: refused too.
+    clear(r);
+    expect(await cmdTricksOn({ ...pane, paneKind: async () => "unknown" as const }, [])).toBe(EXIT.REFUSED);
+    expect(r.err[0]).toBe("error: collie tricks on is your person's choice, and this runs in a pane where an agent works.");
+    expect(readTricksFeature(r.stateDir).reading).toBe("unset");
+    // No markers: a person's own terminal. The check is not asked, and a throwing one changes nothing.
+    clear(r);
+    expect(await cmdTricksOn({ ...r, paneKind: async () => Promise.reject(new Error("never asked")) }, [])).toBe(EXIT.OK);
+    expect(readTricksFeature(r.stateDir).reading).toBe("on");
+  });
+
   test("Windows: on says the Windows line and writes nothing; off still writes; status says the line", async () => {
     const r = await rig("win32");
     expect(cmdTricksSwitch(r, "on", [])).toBe(EXIT.FAIL);

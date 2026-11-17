@@ -7,7 +7,7 @@ import { HILL_RULES, HILL_WRITING, hillWordingWarnings } from "./hill-rules.ts";
 import { holdSocketSafe } from "./hold.ts";
 import { stageImagesForBridge } from "./image-stage.ts";
 import { EXIT } from "./io.ts";
-import { AskLate, NO_SOCKET_TEXT, shown, type PaneKind, type WalkyDeps } from "./walky.ts";
+import { AskLate, NO_SOCKET_TEXT, paneNotProvenShell, shown, type PaneKind, type WalkyDeps } from "./walky.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
 import { HILL_POST_ASK_MS } from "../bridge/hill/crew.ts";
@@ -681,10 +681,12 @@ export function personOnlyRefusal(command: string, where = "on the Hill"): strin
   ];
 }
 
-/** Whether the bridge says this pane runs an agent. Outside a pane, or with no answer, it is not. */
+/**
+ * Whether a person-only verb refuses in this pane. Outside a pane it does not. In a pane it refuses unless the
+ * bridge proves the pane a shell: an `unknown` answer or a failed check refuses too (`paneNotProvenShell`).
+ */
 async function inAgentPane(deps: Pick<HillDeps, "ctx" | "paneKind">): Promise<boolean> {
-  if (readEnvMarkers(deps.ctx.env).length === 0 || deps.paneKind === undefined) return false;
-  return (await deps.paneKind().catch(() => "unknown" as const)) === "agent";
+  return await paneNotProvenShell(deps.ctx.env, deps.paneKind);
 }
 
 /** The second line of `collie hill state`: since when, and who set it. */

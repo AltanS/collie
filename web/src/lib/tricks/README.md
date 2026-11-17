@@ -80,9 +80,10 @@ code hash looks (a top-level `media/` or `captures/` link included) refuses the 
 as `collie trick add` refuses one, and a file name with a control or invisible character does too: the
 card could not show it. A copy made before links were refused stops with "The approved copy holds a
 symbolic link". `collie trick on` and `collie trick auto
-<id> on` refuse in a multiplexer pane where the running bridge sees an agent (the walky socket's `pane`
-op): an agent does not approve its own trick. In a shell pane they work. With no bridge, or a bridge
-that does not know the op or the pane, they do not refuse. It is a speed bump, not a lock: the user
+<id> on` refuse in a multiplexer pane unless the running bridge proves it a shell (the walky socket's `pane`
+op): an agent does not approve its own trick. In a shell pane they work. With no bridge, a bridge
+that does not know the op or the pane, or a check that fails, they refuse too, and a person runs them in a
+terminal. A process with no pane markers is a terminal and is not asked. It is a speed bump, not a lock: the user
 account is the real boundary, and the person approves from the phone or a terminal. A `switches.json` from an older Collie (version 1 or 2) is moved to the approved-copy layout at the
 bridge's first look: a trick whose approved copy is still on disk, or whose folder still matches the hash
 a person approved, keeps running from that copy, and any other waits, on, for a new yes. The file is

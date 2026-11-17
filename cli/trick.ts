@@ -67,7 +67,7 @@ import {
 import { readTricksFeature } from "../bridge/tricks/feature-switch.ts";
 import { readEnvMarkers } from "./beacon.ts";
 import { readTrickFolder } from "./trick-folder.ts";
-import type { PaneKind } from "./walky.ts";
+import { paneNotProvenShell, type PaneKind } from "./walky.ts";
 import type { CliContext } from "./context.ts";
 import { hillWordingWarnings } from "./hill-rules.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -89,8 +89,8 @@ import { SKILL_BYTES_MAX } from "../web/src/lib/tricks/limits.ts";
 //                     `<configDir>/tricks/.collie-approved/<id>/<hash16>/` and stores the copy's hash, and the
 //                     bridge runs that copy, so an edit of the folder never stops the trick: the new
 //                     version waits for a yes. On prints the check scan's warnings, and still switches
-//                     on. It refuses in a pane where the running bridge sees an agent (a speed bump,
-//                     not a wall: see cmdTrickSwitch)
+//                     on. It refuses in a pane the running bridge does not prove a shell (a speed
+//                     bump, not a wall: see cmdTrickSwitch)
 //   auto <id> on|off  "take changes without asking": a new version whose powers did not move and
 //                     that does nothing new (no new warning kind) is approved on its own; else it waits
 //   check <folder>    the static check: the manifest, its places, the command lines and the warnings of
@@ -441,12 +441,13 @@ export async function cmdTrickSkill(deps: TrickDeps, args: readonly string[]): P
 // ── on / off / auto ──────────────────────────────────────────────────────────
 
 /**
- * The line `collie trick on` refuses with inside an agent's pane. A SPEED BUMP, NOT A WALL: the CLI asks
- * the local bridge over the walky socket whether the pane its markers name (`readEnvMarkers`,
- * cli/beacon.ts) runs an agent, and refuses only on a yes. A shell pane in the multiplexer is a person's
- * terminal and may approve. No bridge, a bridge that does not know the pane, or one before the question
- * lets the yes through: an agent should ask, not approve its own code, but a process that strips the
- * markers, or writes the switch file itself, gets past any check here. The user account is the real boundary.
+ * The line `collie trick on` refuses with inside an agent's pane. A SPEED BUMP, NOT A WALL, that fails closed:
+ * a pane with markers (`readEnvMarkers`, cli/beacon.ts) passes only when the local bridge proves it a shell
+ * (`paneNotProvenShell`, cli/walky.ts). A shell pane in the multiplexer is a person's terminal and may
+ * approve. An agent pane, no bridge, a bridge that does not know the pane, a bridge before the question and
+ * a check that fails all refuse: a person then opens a terminal. An agent should ask, not approve its own code,
+ * but a process that strips the markers, or writes the switch file itself, gets past any check here. The
+ * user account is the real boundary.
  */
 export function agentPaneRefusal(id: string): string[] {
   return [
@@ -456,10 +457,18 @@ export function agentPaneRefusal(id: string): string[] {
   ];
 }
 
-/** Whether the bridge says this pane runs an agent. Outside a pane, or with no answer, it is not (see above). */
+/** Whether the bridge says this pane runs an agent. Outside a pane, or with no answer, it is not: only the draft decision of `trick init` reads it. */
 async function inAgentPane(deps: TrickDeps): Promise<boolean> {
   if (readEnvMarkers(deps.ctx.env).length === 0 || deps.paneKind === undefined) return false;
   return (await deps.paneKind().catch(() => "unknown" as const)) === "agent";
+}
+
+/**
+ * Whether a verb that is a person's yes (`trick on`, `trick auto on`) refuses in this pane: it fails closed,
+ * so a pane with markers passes only when the bridge proves it a shell (`paneNotProvenShell`).
+ */
+async function refusedInPane(deps: TrickDeps): Promise<boolean> {
+  return await paneNotProvenShell(deps.ctx.env, deps.paneKind);
 }
 
 export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], on: boolean): Promise<number> {
@@ -484,7 +493,7 @@ export async function cmdTrickSwitch(deps: TrickDeps, args: readonly string[], o
     deps.io.out(`${id} is off. The bridge stops running it and its parts go from the phone.`);
     return EXIT.OK;
   }
-  if (await inAgentPane(deps)) {
+  if (await refusedInPane(deps)) {
     for (const line of agentPaneRefusal(id)) deps.io.err(line);
     return EXIT.REFUSED;
   }
@@ -573,7 +582,7 @@ export async function cmdTrickAuto(deps: TrickDeps, args: readonly string[]): Pr
     deps.io.err("usage: collie trick auto <id> on|off   (take a new version whose powers did not change without asking)");
     return EXIT.USAGE;
   }
-  if (word === "on" && (await inAgentPane(deps))) {
+  if (word === "on" && (await refusedInPane(deps))) {
     for (const line of agentPaneRefusal(id)) deps.io.err(line);
     return EXIT.REFUSED;
   }

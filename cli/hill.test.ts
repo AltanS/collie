@@ -483,6 +483,24 @@ describe("the Hill's switch", () => {
     expect(readHillSwitch(stateDir).on).toBe(true);
   });
 
+  test("counsel A2: hill on fails closed in a pane the bridge does not prove a shell; a bare terminal still writes", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "hill-switch-"));
+    cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }));
+    const ctx = context({ HERDR_PANE_ID: "w1:p2", HERDR_SOCKET_PATH: "/run/user/1000/herdr.sock" }, { stateDir });
+    const base = { ctx, now: () => 1000, followSkill: null };
+    const thrown = { ...base, paneKind: async (): Promise<"agent"> => Promise.reject(new Error("socket gone")), io: capture() };
+    expect(await cmdHillOn(thrown, [])).toBe(EXIT.REFUSED);
+    expect(thrown.io.stderr[0]).toBe("error: collie hill on is your person's choice, and this runs in a pane where an agent works.");
+    const unknown = { ...base, paneKind: async () => "unknown" as const, io: capture() };
+    expect(await cmdHillOn(unknown, [])).toBe(EXIT.REFUSED);
+    expect(unknown.io.stderr).toEqual(thrown.io.stderr);
+    expect(readHillSwitch(stateDir).on).toBe(false);
+    // No pane markers: a person's own terminal, the bridge is not asked and the verb writes.
+    const bare = { ...base, ctx: context({}, { stateDir }), paneKind: async (): Promise<"agent"> => Promise.reject(new Error("never asked")), io: capture() };
+    expect(await cmdHillOn(bare, [])).toBe(EXIT.OK);
+    expect(readHillSwitch(stateDir).on).toBe(true);
+  });
+
   test("the WalkyTalky skill follows a real change only, and a sync fault is one line that does not change the exit (M96 spec 12)", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "hill-switch-"));
     cleanups.push(() => rmSync(stateDir, { recursive: true, force: true }));
