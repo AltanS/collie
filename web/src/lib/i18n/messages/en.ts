@@ -4152,7 +4152,6 @@ export const PENDING_TRANSLATION = [
   "composer.heldBack.putBack",
   "composer.heldBack.boxFull",
   "composer.heldBack.count",
-  "settings.tricks.about.repoOpen",
   "settings.tricks.about.run",
   "settings.tricks.about.timer",
   "settings.tricks.about.noTimer",
