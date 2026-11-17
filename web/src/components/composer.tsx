@@ -204,10 +204,11 @@ export interface ComposerHandle {
   lineCanStart: () => boolean;
   /**
    * Keep a text the composer could not start (the M102 review 2, G): the queued card's Send again dropped its card, and
-   * then the composer refused. The words go into the box, after whatever the person has typed, so nothing is lost and
-   * nothing sends them by itself.
+   * then the composer refused. An empty box takes the words, so nothing is lost and nothing sends them by itself; true.
+   * A box that holds a draft (text or an attachment) takes nothing, because the next Send would send both as one
+   * message (the M102 review 3): the notice adds why, and false tells the caller to keep the card.
    */
-  keepLine: (line: string) => void;
+  keepLine: (line: string) => boolean;
 }
 
 /** A tap in an agent view: the screen's rev and the control path the bridge reads, and the words it names (display only). */
@@ -1570,7 +1571,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const answerAgainRef = useRef<() => void>(() => undefined);
   const sendLineRef = useRef<(line: string) => Promise<boolean>>(() => Promise.resolve(false));
   const lineCanStartRef = useRef<() => boolean>(() => false);
-  const keepLineRef = useRef<(line: string) => void>(() => undefined);
+  const keepLineRef = useRef<(line: string) => boolean>(() => false);
   useImperativeHandle(
     ref,
     () => ({
@@ -2236,8 +2237,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     return refusal === null;
   };
   keepLineRef.current = (line) => {
-    const now = inputValueRef.current;
-    updateInput(now.trim() === "" ? line : `${now}\n${line}`);
+    if (inputValueRef.current.trim() === "" && attachmentsRef.current.length === 0) {
+      updateInput(line);
+      return true;
+    }
+    // The reason the send could not start stays first; the kept card is the second sentence.
+    const kept = translate("cannotTell.queuedKept");
+    const reason = lineRefusal();
+    setSendRefusal(reason === null ? phoneRefusal(kept) : { ...reason, sentence: `${reason.sentence} ${kept}` });
+    return false;
   };
   sendViewTapRef.current = async (tap) => {
     const sent = await send(tap.words, false, undefined, tap);

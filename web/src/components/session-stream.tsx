@@ -537,6 +537,7 @@ export function SessionStream({
   savedCopy = null,
   onSendQueuedNow,
   onReturned,
+  queuedSends: sendRows,
   asks,
   durable = false,
   questionPending = false,
@@ -587,6 +588,11 @@ export function SessionStream({
    * and the cards have no buttons. Resolves false when nothing was done.
    */
   onReturned?: (requestId: string, action: QueuedCardAction, text: string) => Promise<QueuedCardResult>;
+  /**
+   * The receipt cards to draw in place of the window's own (`window.queuedSends`): the pane view's list, which swaps
+   * a card the bridge dropped for the card the phone kept (the M102 review 3). Absent, the window's list.
+   */
+  queuedSends?: readonly QueuedSendRow[];
   /**
    * The open asks of a pane that carries them as data (ADR 0100), and the props every card shares. Each card sits
    * under the block that shows its item, or at the tail when that item is not on screen. The list holds
@@ -1046,8 +1052,8 @@ export function SessionStream({
       {window.queued.length > 0 && window.status.kind === "live" && (
         <QueuedCard queued={window.queued} sendNow={sendNow} />
       )}
-      {window.queuedSends.length > 0 && window.status.kind === "live" && (
-        <ReceiptQueueCards rows={window.queuedSends} act={onReturned ?? null} />
+      {(sendRows ?? window.queuedSends).length > 0 && window.status.kind === "live" && (
+        <ReceiptQueueCards rows={sendRows ?? window.queuedSends} act={onReturned ?? null} />
       )}
 
       {/* The reading, when there is one, and only where there is nothing to read under it. A stale

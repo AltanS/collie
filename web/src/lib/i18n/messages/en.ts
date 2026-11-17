@@ -730,6 +730,9 @@ export const en = {
   "cannotTell.arrivedUnknownHere": "This machine cannot record that. Look at the screen to see whether it arrived.",
   "cannotTell.close": "Close",
   "cannotTell.queuedGone": "This message is not waiting any more, so nothing was sent again.",
+  // A queued card whose Send again the composer refused after the drop, while the box held a draft: its words are not
+  // put after the draft, where the next Send would send both as one message (the M102 review 3).
+  "cannotTell.queuedKept": "Your draft is in the box, so the queued message stays as its card.",
   "composer.protocol.retry": "No answer ({error}). Tap Send again: it does not send twice.",
   // A send into a sign-in field that got no answer: its next tap takes a new request id, so the
   // sentence above would not be true.
@@ -4108,6 +4111,7 @@ export const PENDING_TRANSLATION = [
   "app.apiSkew",
   "composer.protocol.commitCapPast",
   "composer.protocol.capConfirmPast",
+  "cannotTell.queuedKept",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

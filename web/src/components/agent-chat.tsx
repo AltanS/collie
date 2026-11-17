@@ -151,6 +151,7 @@ import { useTabLook } from "@/lib/tab-look";
 import { zoomPillShown } from "@/lib/zoom-pill";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
+import { endKeptCard, isKept, keepCard, withKeptCards } from "@/lib/kept-cards";
 import { useAccounts } from "@/lib/accounts";
 import { openReport, signalTrouble, unreadDialogReport } from "@/lib/report/store";
 import { unreadDialogScreen } from "@/lib/report/screen";
@@ -2138,6 +2139,11 @@ export function AgentChat({
   // came keeps its intent, so a second tap asks with the same request id and never sends twice. Discard
   // on an unconfirmed card goes through the held-cancel route, which drops the card and presses nothing.
   const returnedIntents = useRef(new Map<string, IntentId>());
+  // The receipt cards the stream draws: the window's own, with a card the phone kept in place of the one the bridge
+  // dropped (lib/kept-cards.ts). The window's own array when this pane keeps nothing.
+  const queuedSends = withKeptCards(paneScopeKey(scope, paneId), chatFeed.window.queuedSends);
+  // A kept card (lib/kept-cards.ts) lives outside React: this tick redraws the stream when one is kept or ends.
+  const [, setKeptTick] = useState(0);
   const handleReturned = useCallback(
     async (requestId: string, action: QueuedCardAction, cardText: string): Promise<QueuedCardResult> => {
       const refusal = refuseWrite();
@@ -2159,6 +2165,24 @@ export function AgentChat({
       // "no such send", sends nothing, so a stale card can never send twice. Any other failure sends nothing either.
       // The composer is asked first whether it can send now (a send still running, a dialog, a sign-in field, a
       // launch): when it cannot, its notice says why, and the card stays with nothing dropped (the M102 review, G).
+      // A card the phone kept after the drop (the M102 review 3): the bridge holds nothing for it, so nothing is asked
+      // of the bridge. Discard ends it; Send again sends its text alone, once the composer can start, and ends it.
+      if (isKept(requestId)) {
+        const address = paneScopeKey(scope, paneId);
+        if (action === "dismiss") {
+          endKeptCard(address, requestId);
+          setKeptTick((n) => n + 1);
+          return true;
+        }
+        const composer = composerRef.current;
+        if (action !== "sendAgain" || composer === null || !composer.lineCanStart()) return false;
+        const sent = await composer.sendLine(cardText);
+        if (sent) {
+          endKeptCard(address, requestId);
+          setKeptTick((n) => n + 1);
+        }
+        return sent;
+      }
       if (action === "sendAgain") {
         const composer = composerRef.current;
         if (composer === null) {
@@ -2180,9 +2204,13 @@ export function AgentChat({
         }
         // The card is gone now. While the Discard was on its way a send may have started, the code field may have
         // appeared, or the link may have dropped: asked again, a composer that refuses says why, and the card's words
-        // wait in the box, so nothing is lost and nothing sends them by itself (the M102 review 2, G).
+        // wait in an empty box, so nothing is lost and nothing sends them by itself (the M102 review 2, G). A box that
+        // holds a draft takes nothing: the card stays a card, kept by the phone (the M102 review 3).
         if (!composer.lineCanStart()) {
-          composer.keepLine(cardText);
+          if (!composer.keepLine(cardText)) {
+            keepCard(paneScopeKey(scope, paneId), requestId, cardText);
+            setKeptTick((n) => n + 1);
+          }
           return false;
         }
         return composer.sendLine(cardText);
@@ -3161,6 +3189,7 @@ export function AgentChat({
                       ? undefined
                       : handleReturned
                   }
+                  queuedSends={queuedSends}
                 />
               </CardWaitingCtx.Provider>
               </WalkyOpenProvider>
