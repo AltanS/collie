@@ -29,14 +29,15 @@ import { canRunLine, type VersionDiff } from "./version-diff.ts";
 //
 // ── NO RECOMMENDATION ──────────────────────────────────────────────────────────────────────────────
 // DECISION: the card never recommends "Switch it on". A proposal is code from an agent; the person's own
-// reading is the whole check. Options: "Switch it on" (ONE tap, no confirm: the operator decided 2026-11-17 that a tap activates the trick) and "Not now". No "always":
+// judgement is the whole check. Options: "Switch it on" (no confirm of its own: on the phone the yes is a hold of
+// three seconds, ADR 0156, and reading the code is offered, not required) and "Not now". No "always":
 // every proposal asks.
 //
 // ── A NEW VERSION ──────────────────────────────────────────────────────────────────────────────────
 // A proposal for a trick a proposal made gets the same card as a version the runner found
 // (version-card.ts): title "Use the new version of <id>?", the changed files against the approved copy,
 // the new rights and the new warnings, how much is shown. It names the proposer first, never
-// recommends, and has no "Use it and stop asking". Options: "Use the new version" (one tap, no confirm)
+// recommends, and has no "Use it and stop asking". Options: "Use the new version" (a hold on the phone, no confirm)
 // and "Keep the old version". A proposal never carries a config.toml (propose-wire.ts `PROPOSE_NO_CONFIG`).
 
 /** The card's sender name. Display only. */

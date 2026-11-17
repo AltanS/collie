@@ -7,6 +7,8 @@
 //   goto:<path>            open a path of the app
 //   click:<text>           tap the first visible element whose accessible name or text is <text> (exact)
 //   clickre:<regex>        the same, by a case-insensitive pattern on the button's name
+//   hold:<regex>           press the button found as clickre does and keep the finger down for 3.5 s (the yes
+//                          to a trick's code is a hold of three seconds, ADR 0156)
 //   scroll                 scroll every scrollable box to its end (cards of a group come into view)
 //   fill:<text>            type <text> into the first visible text box (the composer on a pane)
 //   wait:<ms>              wait
@@ -20,7 +22,7 @@
 //   trick-phone.ts <out> goto:/pane/w2%3Ap1 "fill:Make me a small Collie trick that shows the current
 //     git branch of this folder on my phone. When it is ready, propose it to me." click:Send
 //   trick-phone.ts <out> goto:/hill scroll click:Next scroll click:Next scroll click:Next scroll \
-//     "clickre:Switch it on" "clickre:Switch it on"                              # every card seen, the yes
+//     "hold:Hold to switch on"                                                   # the yes, a hold since ADR 0156
 //   trick-phone.ts <out> goto:/settings clickre:^Tricks click:git-branch         # its switch, off
 //   (collie trick remove git-branch; the agent proposes again)
 //   trick-phone.ts <out> goto:/hill "clickre:Not now"                            # the no
@@ -28,8 +30,8 @@
 // A permission dialog of the agent is answered with: goto:/pane/w2%3Ap1 "clickre:^1\s*Yes$".
 // SINCE M96 SPEC 14 the Hill-on step is not needed: with the Hill off the card is in Settings, Tricks, under
 // "Waiting for your yes", and the Dashboard's line opens the oldest (not yet run on the rig):
-//   trick-phone.ts <out> goto:/settings clickre:^Tricks "clickre:^Switch on the trick" scroll click:Next \
-//     scroll click:Next scroll click:Next scroll "clickre:Switch it on" "clickre:Switch it on"
+//   trick-phone.ts <out> goto:/settings clickre:^Tricks "clickre:^Switch on the trick" click:Next \
+//     click:Next click:Next "hold:Hold to switch on"
 //   trick-phone.ts <out> goto:/ "click:Read it" "clickre:Not now"                 # the no, from the Dashboard
 import { chmodSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -81,6 +83,17 @@ try {
       const target = await firstVisible(page, [page.getByRole("button", { name: re }), page.getByRole("switch", { name: re }), page.getByRole("link", { name: re }), page.locator("button", { hasText: re })]);
       await target.scrollIntoViewIfNeeded();
       await target.click();
+      await page.waitForTimeout(1200);
+    } else if (verb === "hold") {
+      const re = new RegExp(arg, "i");
+      const target = await firstVisible(page, [page.getByRole("button", { name: re }), page.locator("button", { hasText: re })]);
+      await target.scrollIntoViewIfNeeded();
+      const box = await target.boundingBox();
+      if (box === null) throw new Error("the button has no box");
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.waitForTimeout(3500);
+      await page.mouse.up();
       await page.waitForTimeout(1200);
     } else if (verb === "scroll") {
       for (let i = 0; i < 12; i++) {

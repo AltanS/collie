@@ -92,11 +92,10 @@ const HOST_SLOT: ReadonlyMap<string, number> = new Map([
   ["workshop", 6],
 ]);
 
-/** One proposal group per case: each is its own Decision, so the cards one case opens never count in another. */
+/** One proposal group per case: each is its own Decision, so the page one case turns to stays its own. */
 const GROUP_FIRST = proposalGroup();
 const GROUP_MIDDLE = proposalGroup();
-const GROUP_UNOPENED = proposalGroup();
-const GROUP_OPENED = proposalGroup();
+const GROUP_LAST = proposalGroup();
 const GROUP_LISTED = proposalGroup();
 const GROUP_CHAT = proposalGroup();
 
@@ -104,13 +103,12 @@ const GROUP_CHAT = proposalGroup();
 const TRICK_ICON: ReadonlyMap<string, string> = new Map([["look", "eye"]]);
 
 /** The real card with the playground's images, tints and trick icons. */
-function PlaygroundCard({ decision, answer = HILL_IDLE, card }: { decision: HillDecision; answer?: HillAnswerState; card?: number }) {
+function PlaygroundCard({ decision, answer = HILL_IDLE }: { decision: HillDecision; answer?: HillAnswerState }) {
   const { from } = decision;
   return (
     <DecisionCard
       decision={decision}
       answer={answer}
-      playgroundCard={card}
       onSend={noSend}
       mediaSource={playgroundMedia}
       hostSlot={from.host === null ? null : (HOST_SLOT.get(from.host) ?? null)}
@@ -144,17 +142,17 @@ function CardHead({ n, title }: { n: number; title: string }) {
 }
 
 /** One Decision card at phone width, in a fixed state. Its images are the page's own panels. */
-function OneCard({ decision, answer = HILL_IDLE, card }: { decision: HillDecision; answer?: HillAnswerState; card?: number }) {
+function OneCard({ decision, answer = HILL_IDLE }: { decision: HillDecision; answer?: HillAnswerState }) {
   return (
     <Phone>
       <div className="p-4">
-        <PlaygroundCard decision={decision} answer={answer} card={card} />
+        <PlaygroundCard decision={decision} answer={answer} />
       </div>
     </Phone>
   );
 }
 
-/** A group of cards paged to card `to` by the real Next taps, once mounted: every card on the way is opened. */
+/** A group of cards paged to card `to` by the real Next taps, once mounted. */
 function PagedCard({ decision, to }: { decision: HillDecision; to: number }) {
   const root = useRef<HTMLDivElement>(null);
   // One tap a turn, each after the card before it drew, as a person taps.
@@ -973,13 +971,9 @@ export function HillSection() {
           <CardHead n={53} title="Card 2: a file goes on to the next card" />
           <PagedCard decision={GROUP_MIDDLE} to={2} />
         </Card>
-        <Card state="hill-group-last-closed" label="54: the last card, a card not opened">
-          <CardHead n={54} title="The last card, cards 1 and 2 not opened: the yes waits" />
-          <OneCard decision={GROUP_UNOPENED} card={3} />
-        </Card>
-        <Card state="hill-group-last-open" label="55: the last card, every card opened">
-          <CardHead n={55} title="The last card, every card opened: the yes is on" />
-          <PagedCard decision={GROUP_OPENED} to={3} />
+        <Card state="hill-group-last-open" label="55: the last card, the yes a hold">
+          <CardHead n={55} title="The last card: the yes is a hold of three seconds, nothing has to be read first" />
+          <PagedCard decision={GROUP_LAST} to={3} />
         </Card>
         <Card state="hill-group-list" label="56: the Hill with a group">
           <CardHead n={56} title="The Hill: a group is one entry, with 3 cards" />
@@ -1009,11 +1003,11 @@ export function HillSection() {
 
       <Group title="In the session's chat">
         <Card state="hill-chat-proposal" label="71: a proposal in its session's chat">
-          <CardHead n={71} title="A trick a session proposed, in that chat: one card, the code in a fold" />
+          <CardHead n={71} title="A trick a session proposed, in that chat: one card on its own warm surface, the code in a fold, Hold to switch on" />
           <ChatCard decision={chatProposal} />
         </Card>
         <Card state="hill-chat-version" label="72: a proposed new version in its session's chat">
-          <CardHead n={72} title="A new version in the chat: what changed, Use the new version" />
+          <CardHead n={72} title="A new version in the chat: what changed, Hold to use" />
           <ChatCard decision={chatVersion} />
         </Card>
         <Card state="hill-chat-group" label="73: a proposal on 3 cards in the chat, the code open">

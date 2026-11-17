@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { BrandMark } from "@/components/brand-mark";
@@ -6,6 +6,7 @@ import { DecisionGroupPager, DecisionWholeView, GroupCount } from "@/components/
 import { DecisionView } from "@/components/decision-view";
 import { HillPriorityMark } from "@/components/hill-priority";
 import { HillImageStrip, hillMediaSource, type HillMediaSource } from "@/components/hill-media";
+import { HoldToApprove, holdLabel } from "@/components/hold-to-approve";
 import { Icon } from "@/components/icons/icon";
 import { MarkdownText } from "@/components/markdown-text";
 import { NoPromptsBadge } from "@/components/no-prompts-badge";
@@ -19,7 +20,6 @@ import { Notice, type NoticeTone } from "@/components/ui/notice";
 import { OneOf } from "@/components/ui/one-of";
 import { HeightSwap } from "@/components/ui/presence";
 import { useArm } from "@/hooks/use-arm";
-import { useStill } from "@/hooks/use-still";
 import type { HillAnswerState } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
@@ -27,12 +27,11 @@ import { hasResizeObserver, pageFonts } from "@/lib/env";
 import { HILL_ACK_MS } from "@/lib/hill/motion";
 import { linkHost } from "@/lib/hill/reader";
 import { singleCodeCard, trickCardDecline } from "@/lib/hill/code-card";
-import { useOpenedCards } from "@/lib/hill/group-opened";
 import type { HillDecision, HillGroupAnswer, HillOption, HillReceipt } from "@/lib/hill/wire";
 import { HILL_ANSWER_TEXT_MAX } from "@/lib/hill/wire";
 import { ageWords, collieOkWords, receiptWords, targetLabel, targetLine } from "@/lib/hill/words";
 import { HOST_TEXT_CLASSES } from "@/lib/hosts";
-import { t, tn } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { onBridgeClock } from "@/lib/server-clock";
 import { trickIconOf } from "@/lib/tricks/icons";
 import { viewImageRefs } from "@/lib/tricks/layout";
@@ -104,12 +103,13 @@ import { cn } from "@/lib/utils";
 // card shows its cards one at a time in the view's place, always from card 1: the page is this card's
 // state, never restored, so a link, a push or a second phone cannot open it past the facts. The first
 // line carries "4 cards". The options show on the last card only; the decline ("Not now") shows on
-// every card, quiet. A yes stays off until the end of every card was on screen (review 7 R1: a card of a
-// group never folds, and paging past a long card does not open it), with "Open all 4 cards first." and
-// a "Card 3" tap for each card not yet opened (lib/hill/group-opened.ts keeps the marks). Every answer
-// to a group carries its digest and the cards opened; the bridge refuses a yes without them. A single
-// card of Collie's own with code never folds either, and its yes waits for its end the same way, with
-// "Scroll to the end of the code first." (lib/hill/code-card.ts; the bridge does not check that one).
+// every card, quiet. A card of a group never folds. A yes to a group carries its digest; the bridge
+// refuses a yes without it. A single card of Collie's own with code never folds either.
+//
+// THE YES TO A TRICK'S CODE IS A HOLD (ADR 0156, the operator's decision of 2026-11-17). On a trick's card,
+// a proposal or a version, every option but the decline is `HoldToApprove` (components/hold-to-approve.tsx):
+// three seconds with the finger down, or two presses of a key. Reading is offered, not required: no card
+// needs to be opened or read to its end first. The decline and Dismiss stay as they are.
 
 /** The bridge's clock, ticked once a second by the page's one shared clock (lib/cache-clock.ts). */
 function hillClockNow(): number {
@@ -379,7 +379,6 @@ export function DecisionCard({
   mediaSource = hillMediaSource,
   hostSlot = null,
   trickIcon,
-  playgroundCard,
   initialDraft = "",
   onDraft,
   localDecline,
@@ -390,11 +389,6 @@ export function DecisionCard({
   mediaSource?: HillMediaSource;
   hostSlot?: number | null;
   trickIcon?: string;
-  /**
-   * The playground's way to draw a group on a later card, without the cards before it marked opened.
-   * The live card never passes it: a group always opens on card 1.
-   */
-  playgroundCard?: number;
   /** The words the field starts with: a note this page noted before the card drew again. */
   initialDraft?: string;
   /** Told the field's words on every change, so they outlive the card (lib/hill/store.ts `noteHillDraft`). */
@@ -419,33 +413,19 @@ export function DecisionCard({
   const locked = lockedBy(answer);
   const settled = useSettled(locked);
   const group = decision.group;
-  const [page, setPage] = useState(() => (playgroundCard === undefined ? 0 : playgroundCard - 1));
+  const [page, setPage] = useState(0);
   const single = singleCodeCard(decision);
-  // A card opens when its end was on screen (decision-group.tsx), not when it draws (review 7 R1).
-  const { opened, mark } = useOpenedCards(decision.id, group?.digest ?? single?.key ?? "");
   const cardCount = group?.parts.length ?? 0;
   const lastCard = group === undefined || page >= cardCount - 1;
-  const unopened = group === undefined ? (single === null || opened.has(1) ? [] : [1]) : group.parts.map((_, i) => i + 1).filter((card) => !opened.has(card));
-  const decline = group?.decline ?? single?.decline;
-  // A trick's card (a proposal or a version) holds its yes until the card has stood still for a second as
-  // well as until the end of the code was on screen, and a tap whose touch began before that is ignored
-  // (hooks/use-still.ts; security read of package I, 2026-11-17, point 2).
+  // A trick's card (a proposal or a version): its yes is a hold of three seconds (ADR 0156).
   const trickDecline = trickCardDecline(decision);
-  const [optionsBox, setOptionsBox] = useState<HTMLDivElement | null>(null);
   // A trick card with no code to show (no group, no code in its view) cannot show what a yes would approve: it
   // offers the decline only, with the line that says why (the lead's decision, 2026-11-17).
   const noCode = trickDecline !== null && group === undefined && single === null;
   const shownOptions = noCode ? decision.options.filter((option) => option.intent === trickDecline) : decision.options;
-  const still = useStill(trickDecline === null ? null : optionsBox, `${decision.id}:${group?.digest ?? single?.key ?? ""}:${String(page)}`);
-  const pressedReady = useRef(false);
-  const holdsYes = (intent: string) => trickDecline !== null && intent !== trickDecline && !still;
-  // Whether the yes may be tapped now: ready flips reset what the last touch began as.
-  useEffect(() => {
-    pressedReady.current = false;
-  }, [still]);
-  // A single card of code names its hash and card 1 once its end was on screen; the bridge needs both for its yes (C-A2).
-  const singleAnswer: HillGroupAnswer | undefined = single !== null && opened.has(1) ? { digest: single.digest, opened: [1] } : undefined;
-  const groupAnswer: HillGroupAnswer | undefined = group === undefined ? singleAnswer : { digest: group.digest, opened: [...opened].toSorted((a, b) => a - b) };
+  // A yes to Collie's own code names the digest the card showed: the group's, or a single card's hash (C-A2).
+  const digest = group?.digest ?? single?.digest;
+  const groupAnswer: HillGroupAnswer | undefined = digest === undefined ? undefined : { digest };
   const declineOption = group === undefined ? undefined : decision.options.find((option) => option.intent === group.decline);
   // An image the view places among its facts is drawn there, not again in the row above it.
   const stripMedia = useMemo(() => {
@@ -483,9 +463,7 @@ export function DecisionCard({
     else onSend(intent, answerText, groupAnswer);
   }
 
-  function choose(option: HillOption, event?: MouseEvent<HTMLButtonElement>) {
-    // A touch that began before the yes was ready is not a tap on it (a keyboard or assistive click has no touch, detail 0).
-    if (trickDecline !== null && option.intent !== trickDecline && event !== undefined && event.detail > 0 && !pressedReady.current) return;
+  function choose(option: HillOption) {
     if (localDecline !== undefined && option.intent === localDecline.intent && !locked) {
       disarm();
       localDecline.run();
@@ -514,6 +492,9 @@ export function DecisionCard({
     if (answer.phase !== "failed") return;
     answerWith(answer.intent, answer.text);
   }
+  // A yes to a trick's code that got no answer offers no Try again: the hold is the way to send it again (ADR 0156).
+  const retryYes = trickDecline !== null && answer.phase === "failed" && answer.intent !== trickDecline && answer.intent !== "dismiss";
+  const onRetry = retryYes ? undefined : retry;
 
   const dismissArmed = armed === "dismiss";
   // Dismiss was the answer: it keeps the armed tint, undimmed, as the chosen option keeps its own.
@@ -598,9 +579,9 @@ export function DecisionCard({
       )}
 
       {group !== undefined ? (
-        <DecisionGroupPager decisionId={decision.id} group={group} page={page} onPage={setPage} onOpened={mark} sender={decision.from.label} mediaSource={mediaSource} />
+        <DecisionGroupPager decisionId={decision.id} group={group} page={page} onPage={setPage} sender={decision.from.label} mediaSource={mediaSource} />
       ) : single !== null && decision.view !== undefined ? (
-        <DecisionWholeView decisionId={decision.id} view={decision.view} sender={decision.from.label} media={decision.media} mediaSource={mediaSource} onOpened={mark} />
+        <DecisionWholeView decisionId={decision.id} view={decision.view} sender={decision.from.label} media={decision.media} mediaSource={mediaSource} />
       ) : (
         decision.view !== undefined && <DecisionView decisionId={decision.id} view={decision.view} sender={decision.from.label} media={decision.media} mediaSource={mediaSource} />
       )}
@@ -709,14 +690,7 @@ export function DecisionCard({
                     </div>
                   )}
                   {hasOptions && lastCard && (
-                    <div
-                      ref={setOptionsBox}
-                      data-slot="decision-options"
-                      className="flex flex-col gap-2"
-                      onPointerDownCapture={() => {
-                        pressedReady.current = still;
-                      }}
-                    >
+                    <div data-slot="decision-options" className="flex flex-col gap-2">
                       {noCode && (
                         <p data-slot="decision-code-unshown" className="text-xs text-muted-foreground">
                           {t("hill.chat.unshown")}
@@ -726,6 +700,24 @@ export function DecisionCard({
                         const isArmed = armed === `option:${option.intent}`;
                         const busy = sendingIntent === option.intent;
                         const isRecommended = recommended?.intent === option.intent;
+                        // The yes to a trick's code: a hold of three seconds, or two presses of a key (ADR 0156).
+                        if (trickDecline !== null && option.intent !== trickDecline) {
+                          return (
+                            <HoldToApprove
+                              key={`${i}:${option.intent}`}
+                              data-slot="decision-option"
+                              data-intent={option.intent}
+                              keyLabel={i + 1}
+                              label={holdLabel(decision, option)}
+                              description={option.detail}
+                              enabled={!optionsBlocked}
+                              busy={busy}
+                              resetKey={`${decision.id}:${digest ?? ""}`}
+                              onApprove={() => choose(option)}
+                              className="min-h-12 items-center px-3"
+                            />
+                          );
+                        }
                         return (
                           <OptionButton
                             key={`${i}:${option.intent}`}
@@ -753,8 +745,8 @@ export function DecisionCard({
                             aria-label={isArmed && option.confirm !== undefined ? t("hill.armed", { label: option.confirm }) : undefined}
                             aria-describedby={required ? hintId : undefined}
                             description={option.detail}
-                            disabled={optionsBlocked || (decline !== undefined && option.intent !== decline && unopened.length > 0) || holdsYes(option.intent)}
-                            onClick={(event) => choose(option, event)}
+                            disabled={optionsBlocked}
+                            onClick={() => choose(option)}
                             className="min-h-12 items-center px-3"
                             trailing={
                               // One 16px slot on every option, so the spinner or the mark arriving moves no label.
@@ -772,23 +764,6 @@ export function DecisionCard({
                       })}
                       {/* The mark is decorative; a reader hears which option it is here. */}
                       {recommended !== undefined && <span className="sr-only">{t("hill.recommended", { label: recommended.label })}</span>}
-                      {single !== null && unopened.length > 0 && (
-                        <p data-slot="decision-code-unread" className="text-xs text-muted-foreground">
-                          {t("hill.single.readEnd")}
-                        </p>
-                      )}
-                      {group !== undefined && unopened.length > 0 && (
-                        <div data-slot="decision-group-unopened" className="flex flex-col">
-                          <p className="text-xs text-muted-foreground">{tn("hill.group.openAll", cardCount)}</p>
-                          <div className="-mx-3 flex flex-wrap">
-                            {unopened.map((card) => (
-                              <Button key={card} type="button" variant="ghost" data-slot="decision-group-goto" className="h-11 px-3" onClick={() => setPage(card - 1)}>
-                                {t("hill.group.card", { index: card })}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )}
                   {fieldOpen && (
@@ -805,8 +780,8 @@ export function DecisionCard({
                 </div>
               ),
             },
-            { key: "sending", node: <AnswerStatus decision={decision} answer={answer} onRetry={retry} slot="decision-status" /> },
-            { key: "receipt", node: <AnswerStatus decision={decision} answer={answer} onRetry={retry} slot="decision-status" /> },
+            { key: "sending", node: <AnswerStatus decision={decision} answer={answer} onRetry={onRetry} slot="decision-status" /> },
+            { key: "receipt", node: <AnswerStatus decision={decision} answer={answer} onRetry={onRetry} slot="decision-status" /> },
           ]}
         />
       )}
@@ -816,7 +791,7 @@ export function DecisionCard({
       </span>
 
       <Collapse open={statusBelow}>
-        <AnswerStatus decision={decision} answer={answer} onRetry={retry} slot="decision-status" />
+        <AnswerStatus decision={decision} answer={answer} onRetry={onRetry} slot="decision-status" />
       </Collapse>
 
       <div className="-mb-2 flex min-w-0 items-center gap-2">

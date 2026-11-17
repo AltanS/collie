@@ -12,7 +12,7 @@ const LONG_PRESS_MS = 500;
 // a drag, not a hold. Keeps the strip's horizontal scroll working: a sideways pan cancels the timer.
 // Sized for a thumb: finger jitter during a deliberate hold is easily 10–15px, so a stricter bound
 // cancelled real holds on a phone; a scroll still moves well past this before the timer would fire.
-const MOVE_CANCEL_PX = 16;
+export const MOVE_CANCEL_PX = 16;
 // The press starts to SHOW only after this. A plain tap lifts well before it, so a tap never
 // flashes the hold's look; a finger still down past it is a hold in the making, and from here to the
 // hold's own mark the element eases toward "pressed" (`data-holding`, index.css `THE HOLD, SHOWN`).

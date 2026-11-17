@@ -28,3 +28,17 @@ export const STOP_HOLD_MS = 2000;
 
 /** How long the Stop says "Hold" after a tap that was lifted too early. */
 export const STOP_HINT_MS = 2500;
+
+/**
+ * How long a finger rests on the yes to a trick's code before the yes goes out (ADR 0156, the operator's
+ * decision of 2026-11-17): switching on a proposed trick and taking a new version. The hold is the guard;
+ * reading the code is offered, not required. One value for every card that asks it
+ * (components/hold-to-approve.tsx).
+ */
+export const APPROVE_HOLD_MS = 3000;
+
+/** How far the yes may move on screen under a finger that holds it, in px, before the hold is cancelled. */
+export const APPROVE_SHIFT_PX = 4;
+
+/** How long a cancelled hold's fill takes to run back to empty. */
+export const HOLD_BACK_MS = 200;

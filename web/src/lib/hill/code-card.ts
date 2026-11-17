@@ -3,11 +3,11 @@ import type { View, ViewNode } from "../tricks/schema";
 import type { HillDecision } from "./wire";
 
 // A SINGLE CARD OF CODE (review 7 R1, the single card). Collie's own proposal card or new-version card
-// whose code fits one card is held to the group's rule (components/decision-group.tsx): its view never
-// folds, and its yes waits until the mark after its last line was on screen. Its decline needs nothing
-// opened. The yes carries `{ digest: <the ref's hash>, opened: [1] }`, and the bridge refuses a yes
-// without it, as it does for a group (C-A2, review 8). A Decision with no code in its view (an agent's,
-// a trick's, or Collie's own without code) folds as before.
+// whose code fits one card: its view never folds on the Hill, and its yes is a hold of three seconds
+// (components/hold-to-approve.tsx, ADR 0156). Its decline is a plain tap. The yes carries
+// `{ digest: <the ref's hash> }`, and the bridge refuses a yes without it, as it does for a group (C-A2,
+// review 8). A Decision with no code in its view (an agent's, a trick's, or Collie's own without code)
+// folds as before.
 
 /** The decline of each kind of Collie's own card with code: the option that needs nothing read. */
 const DECLINE = {
@@ -29,12 +29,12 @@ export function viewHasCode(view: View): boolean {
   return view.some(holdsCode);
 }
 
-/** A single card of code: its decline, and the key its opened mark is kept under. */
+/** A single card of code: its decline, and the key its state is kept under. */
 export interface SingleCodeCard {
   decline: string;
   /** The code's hash from the card's ref: a card about other code is a new key. */
   key: string;
-  /** The ref's hash, sent as the answer's `digest` with `opened: [1]`. */
+  /** The ref's hash, sent as the answer's `digest`. */
   digest: string;
 }
 
@@ -49,12 +49,26 @@ export function singleCodeCard(decision: HillDecision): SingleCodeCard | null {
 
 /**
  * The decline of a trick card of Collie's own (a new trick or a new version, with code or without), or null
- * for any other card. Its other options are the yes, which waits for the card to stand still
- * (hooks/use-still.ts) as well as for the end of the code.
+ * for any other card. Its other options are the yes, a hold of three seconds (ADR 0156).
  */
 export function trickCardDecline(decision: HillDecision): string | null {
   const { from } = decision;
   if (from.kind !== "collie" || from.ref === undefined) return null;
   if (from.ref.type !== "proposal" && from.ref.type !== "version") return null;
   return decision.group?.decline ?? DECLINE[from.ref.type];
+}
+
+/**
+ * The label of the yes of a proposal for a new version (bridge/tricks/proposal-card.ts `PROPOSAL_USE`): the
+ * same intent as a new trick's "Switch it on", so the label is what tells the two apart. A bridge test pins it.
+ */
+export const PROPOSAL_USE_LABEL = "Use the new version";
+
+/** What a yes of a trick card does, for its hold's words: switch a new trick on, use a new version, or use it and stop asking. */
+export type TrickYesKind = "on" | "use" | "always";
+
+/** What the yes `option` of the trick card `decision` does. */
+export function trickYesKind(decision: HillDecision, option: { intent: string; label: string }): TrickYesKind {
+  if (decision.from.ref?.type === "version") return option.intent === "always" ? "always" : "use";
+  return option.label === PROPOSAL_USE_LABEL ? "use" : "on";
 }

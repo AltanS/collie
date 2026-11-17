@@ -3946,11 +3946,14 @@ export const en = {
   "hill.group.position": "Card {index} of {count}",
   "hill.group.back": "Back",
   "hill.group.next": "Next",
-  "hill.group.openAll.one": "Open the card first.",
-  "hill.group.openAll.other": "Open all {count} cards first.",
   "hill.group.card": "Card {index}",
-  "hill.single.readEnd": "Scroll to the end of the code first.",
-  "hill.chat.openCode": "Open the code and read it to its end first.",
+  // The yes to a trick's code is a hold of three seconds (ADR 0156, components/hold-to-approve.tsx).
+  "hill.hold.on": "Hold to switch on",
+  "hill.hold.use": "Hold to use",
+  "hill.hold.always": "Hold to use and stop asking",
+  "hill.hold.holding": "Keep holding…",
+  "hill.hold.armed": "Press again to confirm",
+  "hill.hold.hint": "Hold for 3 seconds. With a keyboard, press it twice.",
   "hill.chat.unshown": "This phone cannot show all of this card, so the trick cannot be switched on here. Read it and switch it on on the machine.",
   "tricks.compare.before": "Before",
   "tricks.compare.after": "After",
@@ -4124,7 +4127,7 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = ["hill.hold.on", "hill.hold.use", "hill.hold.always", "hill.hold.holding", "hill.hold.armed", "hill.hold.hint"] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];
