@@ -76,16 +76,27 @@ const ownFixtures = allAgyFixtures.filter((f) => !NEUTRAL.has(f));
 const neutralFixtures = allAgyFixtures.filter((f) => NEUTRAL.has(f));
 const foreignFixtures = allFixtures.filter((f) => !f.startsWith("agy--") && !KNOWN_FOREIGN_CLAIMS.has(f));
 
+// Open unprinted-key finding (ADR 0151 rule 2, M102 spec 03): the trust prompt's rows print no digit
+// (`> Yes, I trust this folder`, footer `↑/↓ Navigate · enter Confirm`), yet each option sends its row's
+// digit (agy/prompt-select.ts). No entry of UNPRINTED_KEY_EXCEPTIONS names it; it goes red the day it is
+// printed, named or no longer sent.
+const UNPRINTED_KEY_FINDINGS = {
+  "agy--trust-prompt.txt":
+    "the trust prompt sends the digits 1 and 2 on rows that print no digit (agy/prompt-select.ts); not one of a to g",
+} satisfies Readonly<Record<string, string>>;
+
 describeAdapterConformance(agyAdapter, {
   ownFixtures,
   foreignFixtures,
   neutralFixtures,
+  unprintedKeyFindings: UNPRINTED_KEY_FINDINGS,
 });
 
 describeAdapterConformance(antigravityAdapter, {
   ownFixtures,
   foreignFixtures,
   neutralFixtures,
+  unprintedKeyFindings: UNPRINTED_KEY_FINDINGS,
 });
 
 describe("agy: the named foreign claims are still claimed (delete the entry when one is not)", () => {

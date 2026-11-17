@@ -3,6 +3,7 @@
 
 import { apiErrorFieldsOf, parseApiErrorFields, type ApiErrorCode, type ApiErrorDetail, type ApiErrorFields } from "./api-error-codes";
 import { trackBusy } from "./busy";
+import { isReadableWords } from "./readable-words";
 import {
   beginLongUpload,
   endLongUpload,
@@ -293,9 +294,8 @@ export function sttTimeoutFor(bytes: number, type: string = ""): number {
 /**
  * Compose the caller's abort signal (a loader's `request.signal`, used to supersede a stale poll)
  * with a fresh timeout signal, so a fetch aborts on EITHER cause. Returns the timeout signal alone
- * when there's no caller signal. Runtime-guarded: on an older WebView missing `AbortSignal.timeout`
- * or `AbortSignal.any` we return the caller's signal unchanged rather than crash — degrading to the
- * old no-timeout behaviour instead of taking the app down.
+ * when there's no caller signal. On an older WebView missing `AbortSignal.timeout` or `AbortSignal.any`
+ * the helpers in `lib/env.ts` build both by hand, so the time limit holds there too (M102 spec 11).
  *
  * Exported for unit tests (the timeout wiring is otherwise unobservable).
  */
@@ -1604,7 +1604,9 @@ const PLAIN_LINE_MAX = 160;
 export function plainFailureMessage(status: number, detail: string): string | null {
   if (parseJsonObject(detail) !== undefined) return null;
   const line = detail.split(/\r?\n/).map((part) => part.trim()).find((part) => part !== "");
-  if (line === undefined) return `HTTP ${status}`;
+  // A proxy's HTML page or a stray JSON body is no sentence: the status alone, and the display layer
+  // says it in words (`describeThrownError`, M102 spec 11).
+  if (line === undefined || !isReadableWords(line)) return `HTTP ${status}`;
   return `HTTP ${status}: ${line.length > PLAIN_LINE_MAX ? `${line.slice(0, PLAIN_LINE_MAX - 1)}…` : line}`;
 }
 

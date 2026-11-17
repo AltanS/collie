@@ -286,6 +286,7 @@ import {
   type HeldCancelAnswer,
   type HeldRow,
   STALE_SCREEN,
+  ANOTHER_SEND,
 } from "../../web/src/lib/surface/send.ts";
 import { askOf, frameImageKey, isFree, shortHash, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import { closingReceipt, normalizePrompt, receiptWindowMs, type OpenReceipt } from "../../web/src/lib/surface/edges.ts";
@@ -4310,7 +4311,7 @@ export class SendProtocol {
     }
     const { locks } = this.deps;
     if (!locks.acquire(state.lockKey, record.id, state.deadline, this.now())) {
-      const busy = new Ended("refused", "busy", { detail: "Another send on this pane is still running." });
+      const busy = new Ended("refused", "busy", { detail: ANOTHER_SEND });
       return release ? this.backToQueue(state, busy) : this.settle(state, busy);
     }
     try {

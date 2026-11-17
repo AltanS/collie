@@ -33,9 +33,10 @@ import {
   type SendStep,
   type SendWord,
   STALE_SCREEN,
+  ANOTHER_SEND,
 } from "./surface/send";
 import type { ProfileStatus } from "./surface/profile";
-import { ASK_CHANNELS, type Ask, type AskOption, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface/surface";
+import { ASK_CHANNELS, askOf, type Ask, type AskOption, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface/surface";
 import { CODE_REJECTED_PLAIN } from "./surface/secret-field";
 
 /** What the composer needs of an answer. The receipt's marks and gaps are for the log. */
@@ -62,6 +63,16 @@ export interface SendReply {
   readonly viewLine?: string;
   /** The person's word on the receipt (M102 spec 01), when it carries one: beside the outcome, never a proof. */
   readonly word?: SendWord;
+  /**
+   * Until when the agent's own word on this send may still come, epoch milliseconds (M102 spec 13): the receipt's
+   * `awaitingEventUntil`. Absent on a bridge that does not say, which reads as "not waiting".
+   */
+  readonly awaitingUntil?: number;
+  /**
+   * The receipt's `draftSeen` (M102 spec 12): an override found words already in the agent's box and
+   * typed its text after them. Absent on any other send, and on a bridge that does not say.
+   */
+  readonly draftSeen?: true;
 }
 
 const PROFILE_STATUSES: readonly ProfileStatus[] = ["verified", "provisional", "revoked"];
@@ -141,10 +152,23 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
     cause: pick(node.cause, SEND_CAUSES),
     ...viewLineOf(node.view),
     ...wordOf(receipt?.word),
+    ...awaitingOf(receipt?.awaitingEventUntil),
+    ...draftSeenOf(receipt?.draftSeen),
   };
 }
 
+/** The receipt's `awaitingEventUntil` as the field to spread: a positive finite number of epoch milliseconds, else nothing. */
+function awaitingOf(value: JsonValue | undefined): { awaitingUntil?: number } {
+  const until = asJsonNumber(value);
+  return until === undefined || !Number.isFinite(until) || until <= 0 ? {} : { awaitingUntil: until };
+}
+
 /** The receipt's `word` as the field to spread: one of {@link SEND_WORDS}, else nothing. */
+/** The receipt's `draftSeen` as the field to spread: only a literal true counts. */
+function draftSeenOf(value: JsonValue | undefined): { draftSeen?: true } {
+  return value === true ? { draftSeen: true } : {};
+}
+
 function wordOf(value: JsonValue | undefined): { word?: SendWord } {
   const word = pick(value, SEND_WORDS);
   return word === null ? {} : { word };
@@ -248,7 +272,10 @@ export type SendNote =
   | "discarded"
   | "draft"
   | "draftCommand"
+  | "draftUnseen"
   | "typed"
+  | "overrideTyped"
+  | "menuOpen"
   | "unconfirmed"
   | "noticeKey"
   | "noticeKeyHeld"
@@ -314,7 +341,26 @@ export interface SendReading {
   readonly toCard: boolean;
   /** Set when the cap asks for one more confirm; its words name the count and the version. */
   readonly cap: SendCap | null;
+  /** The one step that gets the person on (M102 spec 02), or null when the send went or nothing is blocked. */
+  readonly step: NextStep | null;
+  /** The step is Send again, and it waits until the other send on this pane ends (A31). */
+  readonly waits: boolean;
 }
+
+/**
+ * The step a stop card offers beside the card and the Keys pad (M102 spec 02): the action that changes
+ * the situation, so no refusal is a dead end. The composer draws one button for it, first; the card (or,
+ * with no card, the Screen) and Open Keys come after it, so a card holds at most two buttons plus the
+ * card. `offers` and `card` are steps the strip or the card button already draw. `field` is the person's
+ * own field: the text must change before it can go (a reserved lead, a line only Collie writes, line
+ * breaks a one-line box cannot take, a new sign-in code), and the sentence says what to change.
+ * `screen` is the step of a screen Collie cannot read: the person reads it, then uses the Keys pad.
+ */
+export type NextStep = "offers" | "card" | "sendAgain" | "stop" | "emptyBox" | "screen" | "field";
+
+/** The steps that draw a button of their own in the notice. `offers`, `card` and `field` have theirs already. */
+export const STEP_BUTTONS = ["sendAgain", "stop", "emptyBox", "screen"] as const satisfies readonly NextStep[];
+export type StepButton = (typeof STEP_BUTTONS)[number];
 
 /**
  * The sentence a refusal gets, by its reason. `not_free` and `bound` each have their own; `multiline`
@@ -358,6 +404,8 @@ function refusalNote(reason: SendReason | null): SendNote {
       return "moved";
     case "code_rejected":
       return "codeRejected";
+    case "menu_open":
+      return "menuOpen";
     default:
       return "refused";
   }
@@ -384,7 +432,7 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
     case "cancelled":
       return "cancelled";
     case "typed_not_submitted":
-      return "typed";
+      return reason === "override" ? "overrideTyped" : "typed";
     case "refused":
       return refusalNote(reason);
     case "unknown":
@@ -484,6 +532,8 @@ function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict 
   if (note === "expired" || note === "cancelled") return { clear: false, note, offers: [] };
   // A command onto a draft is offered Replace and Cancel, not Add (the bridge's list): the sentence names only those.
   if (note === "draft" && offers.includes("replace") && !offers.includes("append")) return { clear: false, note: "draftCommand", offers };
+  // A draft with no Add, Replace or Cancel (too long, too tall, or no frame to prove it): Empty the box is the way.
+  if (note === "draft" && offers.length === 0) return { clear: false, note: "draftUnseen", offers };
   return { clear: false, note, offers };
 }
 
@@ -497,15 +547,71 @@ function surfaceAfter(reply: SendReply, note: SurfaceNote): SurfaceNote | null {
   return note;
 }
 
+/**
+ * The person's override after a `not_free` refusal (M102 spec 03, invariant I4): when the refusal carries
+ * the rows hash and the screen is no sign-in field and no ask Collie has read, the phone offers the
+ * commit, Type here, which sends the text with `override` bound to those rows (spec 01). The bridge's
+ * own offers stay as they are; this only adds the one the phone may offer by itself.
+ */
+function withOverride(reply: SendReply, offers: readonly SendOffer[]): readonly SendOffer[] {
+  if (reply.outcome !== "refused" || reply.reason !== "not_free" || reply.rowsHash === null || reply.surface === null) return offers;
+  if (reply.surface.field === "secret" || askOf(reply.surface.modal) !== null || offers.includes("commit")) return offers;
+  return [...offers, "commit"];
+}
+
 export function readSend(reply: SendReply): SendReading {
-  const offers = reply.offers.filter((offer) => offer !== "keys");
+  const offers = withOverride(
+    reply,
+    reply.offers.filter((offer) => offer !== "keys"),
+  );
   const base = noteAndOffers(reply, offers);
   const surface = base.clear || reply.surface === null ? null : surfaceAfter(reply, surfaceNote(reply.surface));
   // A queued send whose Enter met a dialog points to the card too, whatever the dialog read as.
   const toCard =
     surface === "askMenu" || surface === "askPermission" || surface === "askQuestion" || surface === "unreadable" || (reply.outcome === "unknown" && reply.reason === "dialog_after_enter");
   const cap = base.note === "capConfirm" ? reply.cap : null;
-  return { ...base, surface, detail: base.clear || cap !== null || ownSentence(reply) ? null : reply.detail, toCard, cap };
+  const step = base.clear ? null : nextStep(reply, base, toCard, surface);
+  const waits = step === "sendAgain" && reply.reason === "busy" && (reply.detail === null || reply.detail === ANOTHER_SEND);
+  return { ...base, surface, detail: base.clear || cap !== null || ownSentence(reply) ? null : reply.detail, toCard, cap, step, waits };
+}
+
+/**
+ * The step of an answer that did not send (M102 spec 02, the table in experiments/m102/refusal-table.md).
+ * Total over every outcome and reason, so a new reason gets a step before it can ship (send.test.ts,
+ * "no dead end"). Null only where nothing is blocked (a discard, an end of a held send) and for a pane
+ * that is gone, where nothing on this pane can change it and the draft is kept.
+ */
+export function nextStep(reply: SendReply, verdict: Verdict, toCard: boolean, surface: SurfaceNote | null): NextStep | null {
+  const { outcome, reason } = reply;
+  if (outcome === "discarded" || outcome === "held" || outcome === "expired" || outcome === "cancelled") return null;
+  // The strip's own buttons are the step: Add, Replace, Cancel; Submit, Discard; Type here.
+  if (verdict.offers.length > 0) return "offers";
+  if (toCard) return "card";
+  if (outcome === "typed_not_submitted") return "screen";
+  if (outcome === "unknown" || outcome === null) return "sendAgain";
+  switch (reason) {
+    case "pane_gone":
+      return null;
+    // A draft Collie cannot read whole (too long, too tall, no frame): the Clear empties it in verified rounds.
+    case "draft_present":
+      return "emptyBox";
+    case "turn_running":
+      return "stop";
+    // A menu or a yes/no prompt stood in the way of an override: the person answers it on the pad.
+    case "menu_open":
+      return "screen";
+    case "reserved_lead":
+    case "multiline":
+    case "bad_head":
+    case "code_rejected":
+      return "field";
+    // Something Collie cannot read holds the box, or no box was found: the person reads the screen.
+    case "not_free":
+    case "unconfirmed":
+      return surface === "unknown" || surface === "unreachable" ? "screen" : "sendAgain";
+    default:
+      return "sendAgain";
+  }
 }
 
 /**
@@ -519,7 +625,7 @@ export function readSend(reply: SendReply): SendReading {
  * `probe_failed` with the `late_keys` cause keeps it as every `probe_failed` does: the line says the
  * agent showed Collie's keys late and to wait, which the phone's sentence does not (#623).
  */
-const REPEATS_THE_NOTE: ReadonlySet<SendReason> = new Set(["unconfirmed", "stale_surface", "busy", "pane_gone", "draft_present", "bad_head", "stale_view"]);
+const REPEATS_THE_NOTE: ReadonlySet<SendReason> = new Set(["unconfirmed", "stale_surface", "pane_gone", "draft_present", "bad_head", "stale_view"]);
 const PLAIN_NOT_FREE = "The input box is not free.";
 
 function ownSentence(reply: SendReply): boolean {
@@ -527,6 +633,8 @@ function ownSentence(reply: SendReply): boolean {
   if (reply.cause === "stale_screen") return true;
   if (reply.cause === "short_pane") return false;
   if (REPEATS_THE_NOTE.has(reply.reason)) return true;
+  // A full hold queue names its count under the sentence; only the plain "still running" repeats it.
+  if (reply.reason === "busy") return reply.detail === null || reply.detail === ANOTHER_SEND;
   // A refused code whose words held the code: the bridge sent only the plain sentence (M102 spec 05).
   if (reply.reason === "code_rejected") return reply.detail === CODE_REJECTED_PLAIN;
   return reply.reason === "not_free" && reply.detail === PLAIN_NOT_FREE;

@@ -21,11 +21,10 @@ describe("wayOutState", () => {
     expect(WAY_OUT_CASES.map((c) => c.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
   });
 
-  it("agrees with the Send slot on which states are the manual Send and which wait for a read", () => {
+  it("agrees with the Send slot: every screen Collie cannot call free is the manual Send, a stale read too (M102 spec 03, I4)", () => {
     for (const c of WAY_OUT_CASES) {
       const slot = sendSlot(c.surface, facts(c));
-      if (c.state === "unreadable" || c.state === "no-match") expect(slot, c.state).toBe("manual");
-      if (c.state === "contested" || c.state === "stale" || c.state === "torn") expect(slot, c.state).toBe("wait");
+      if (c.state === "unreadable" || c.state === "no-match" || c.state === "contested" || c.state === "stale" || c.state === "torn") expect(slot, c.state).toBe("manual");
     }
   });
 
@@ -38,7 +37,7 @@ describe("wayOutState", () => {
     const ask = wayOutCase("ask").surface;
     expect(wayOutState(ask, { gone: true, readOnly: true, offline: true })).toBe("gone");
     expect(wayOutState(ask, { gone: false, readOnly: true, offline: true })).toBe("readOnly");
-    expect(wayOutState(wayOutCase("unreachable").surface, { gone: false, readOnly: false, offline: true })).toBe("unreachable");
+    expect(wayOutState(wayOutCase("unreachable").surface, { gone: false, readOnly: false, offline: true, blocked: true })).toBe("unreachable");
     expect(wayOutState(ask, { gone: false, readOnly: false, offline: true })).toBe("offline");
   });
 });

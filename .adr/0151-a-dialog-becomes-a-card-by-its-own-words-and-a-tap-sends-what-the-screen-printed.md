@@ -75,13 +75,17 @@ ADR 0080 (walk, read back, confirm) and ADR 0113 (the AskUserQuestion field) sta
   (`harness/conformance.ts`) checks over each adapter's own captures: every `menu` key round-trips
   through `menuKeyFor` and none is a digit; a notice card's keys are exactly the digits (letters under
   a `letters` head) its key block printed, in order; a walk is arrows of one direction then Enter, at
-  most one row on `["Enter"]`; every key is a valid Herdr key (`isValidHerdrKey`). It does not check
-  that any key but a notice's was printed: the whitelist passes d, b gets only the key check, the clears,
-  the sticky arrow and the declared key are outside `emittableKeys`. Recipes are reviewed per dialog.
-- Rule 3: a. `harness/claude/resume.ts`. b. `harness/claude/switch-model.ts`. c. `submitPromptFeedback`
+  most one row on `["Enter"]`; every key is a valid Herdr key (`isValidHerdrKey`). Since M102 spec 03
+  it also checks that every key a lifted block can emit (`emittableKeySends`: the plans, a walk's
+  commit, the sticky arrow, the clears, the declared key) is printed on its screen (`printedKeys`), is
+  an arrow its pointer licenses, or matches an entry of `UNPRINTED_KEY_EXCEPTIONS` for that harness.
+  A key that is none of these and waits for a decision is an `unprintedKeyFindings` line, run as an
+  expected failure.
+- Rule 3: the closed list `UNPRINTED_KEY_EXCEPTIONS` (`harness/conformance.ts`), pinned at seven.
+  a. `harness/claude/resume.ts`. b. `harness/claude/switch-model.ts`. c. `submitPromptFeedback`
   (`web/src/lib/prompt-action.ts`, `grammar/PLAN_FEEDBACK_NOTES.md`). d. `harness/agy/artifact.ts`.
-  e. `commitKeysFor` (`harness/prompt-model.ts`), declared in `harness/omp/approval.ts` and
-  `harness/kiro/workspace-trust.ts`. f. `cancelKey` in each adapter's `index.ts`. g. `clearField`
+  e. `commitKeysFor` (`harness/prompt-model.ts`), declared in `harness/omp/approval.ts`,
+  `harness/kiro/workspace-trust.ts` and `harness/claude/first-run-theme.ts`. f. `cancelKey` in each adapter's `index.ts`. g. `clearField`
   (`web/src/lib/answer-field.ts`); the note clear (`web/src/lib/preview-action.ts`).
 - Rule 4: `MenuLeftRight.values`, `menusSameIdentity` (`harness/menu-model.ts`); `menu-block.tsx`.
 - Rule 5: `pointerWalk`; `splitWalk`, `sameKeysModuloWalk`, `identityDiff` (`harness/prompt-model.ts`);

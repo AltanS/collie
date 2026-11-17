@@ -31,6 +31,29 @@ describe("QueuedSends", () => {
     expect(cards.filter((card) => card.state === "queued")).toHaveLength(QUEUED_SENDS_MAX);
   });
 
+  test("cannot tell: Discard on a card that is not unconfirmed answers false, and a second Discard of the same card answers false", () => {
+    // The queued card's Send again drops the card first and sends only on a true answer (M102 spec 04), so a stale card never sends twice.
+    const m = memory();
+    for (let i = 0; i <= QUEUED_SENDS_MAX; i++) {
+      m.add(`queued-gone-${String(i).padStart(4, "0")}`, `message ${String(i)}`);
+      m.clock.now += 10;
+    }
+    const unconfirmed = "queued-gone-0000";
+    const waiting = `queued-gone-${String(QUEUED_SENDS_MAX).padStart(4, "0")}`;
+    expect(m.sends.of("main", "%1").find((card) => card.requestId === unconfirmed)?.state).toBe("unconfirmed");
+    expect(m.sends.of("main", "%1").find((card) => card.requestId === waiting)?.state).toBe("queued");
+    // A card still waiting is not an unconfirmed one: nothing is dropped.
+    expect(m.sends.dismissUnconfirmed("main", "%1", waiting)).toBe(false);
+    expect(m.sends.of("main", "%1").some((card) => card.requestId === waiting)).toBe(true);
+    // A card of another pane or session is nobody's here.
+    expect(m.sends.dismissUnconfirmed("main", "%2", unconfirmed)).toBe(false);
+    expect(m.sends.dismissUnconfirmed("other", "%1", unconfirmed)).toBe(false);
+    // The unconfirmed card goes once. The second Discard of the same card finds nothing.
+    expect(m.sends.dismissUnconfirmed("main", "%1", unconfirmed)).toBe(true);
+    expect(m.sends.dismissUnconfirmed("main", "%1", unconfirmed)).toBe(false);
+    expect(m.sends.of("main", "%1").some((card) => card.requestId === unconfirmed)).toBe(false);
+  });
+
   test("memory has an end: unconfirmed cards past twice the cap go, oldest first", () => {
     const m = memory();
     for (let i = 0; i < 3 * QUEUED_SENDS_MAX; i++) {

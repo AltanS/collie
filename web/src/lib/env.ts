@@ -62,19 +62,33 @@ export function graphemeSegmenter(): Intl.Segmenter | null {
 }
 
 /**
- * An abort signal that fires after `ms`, or `null` on an older WebView without
- * `AbortSignal.timeout` — where the caller degrades to no timeout rather than crashing.
+ * An abort signal that fires after `ms`. On an older WebView without `AbortSignal.timeout` it is built
+ * from an `AbortController` and a timer, with the same `TimeoutError` reason, so a request there ends in
+ * its time limit too: a send with no answer must end in words, never a spinner without an end (M102
+ * spec 11, decision 2). Null only where `AbortController` itself is missing.
  */
 export function abortSignalAfter(ms: number): AbortSignal | null {
-  if (!("timeout" in AbortSignal) || AbortSignal.timeout === undefined) return null;
-  return AbortSignal.timeout(ms);
+  if ("timeout" in AbortSignal && AbortSignal.timeout !== undefined) return AbortSignal.timeout(ms);
+  if (globalThis.AbortController === undefined) return null;
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(new DOMException("The request timed out.", "TimeoutError")), ms);
+  return controller.signal;
 }
 
 /**
- * The composition of several abort signals (aborts when the first of them does), or `null` on an
- * engine without `AbortSignal.any`.
+ * The composition of several abort signals (aborts when the first of them does, with its reason). On an
+ * engine without `AbortSignal.any` it is joined by hand. Null only where `AbortController` is missing.
  */
 export function abortSignalAny(signals: AbortSignal[]): AbortSignal | null {
-  if (!("any" in AbortSignal) || AbortSignal.any === undefined) return null;
-  return AbortSignal.any(signals);
+  if ("any" in AbortSignal && AbortSignal.any !== undefined) return AbortSignal.any(signals);
+  if (globalThis.AbortController === undefined) return null;
+  const controller = new AbortController();
+  for (const signal of signals) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      return controller.signal;
+    }
+    signal.addEventListener("abort", () => controller.abort(signal.reason), { once: true });
+  }
+  return controller.signal;
 }

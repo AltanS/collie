@@ -298,3 +298,74 @@ describe("identityDiff", () => {
     expect(identityDiff(a, b)).toBe('coreSignature line 4: "(none)" vs "line four"');
   });
 });
+
+describe("a ticking row above an unframed dialog", () => {
+  const QUESTION = ["Which colour?", "❯ 1. Red", "  2. Blue", "Enter to select"];
+  // An unframed dialog: no `bindRegion`, so the lookback `signature` above the question is compared.
+  const unframed = (above: string[], dialog: string[] = QUESTION): PromptModel => ({
+    question: "Which colour?",
+    family: "select",
+    options: [
+      { label: "Red", keys: ["1", "Enter"] },
+      { label: "Blue", keys: ["2", "Enter"] },
+    ],
+    coreSignature: dialog.join("\n"),
+    signature: [...above, ...dialog].join("\n"),
+    askRegion: null,
+  });
+  const command = (word: string) => [`  ⎿  Running… (4m 12s · timeout 10m)`, `  $ ${word} 1234`, ""];
+
+  it("compares equal when a timer, a spinner glyph or a clock above it ticks", () => {
+    const ticks: (readonly [string, string])[] = [
+      ["  ⎿  Running… (4m 12s · timeout 10m)", "  ⎿  Running… (4m 13s · timeout 10m)"],
+      ["✻ Waiting for 1 background agent to finish", "✶ Waiting for 1 background agent to finish"],
+      ["✻ Churned for 4s · done 12:15 AM", "✻ Churned for 4s · done 12:16 AM"],
+      ["⠋ working 3s", "⠙ working 4s"],
+      ["✶ Wibbling… (4s · ↓ 304 tokens)", "* Wibbling… (5s · ↓ 1312 tokens)"],
+    ];
+    for (const [seen, now] of ticks) {
+      expect(promptsEqual(unframed(["$ make build", seen]), unframed(["$ make build", now])), seen).toBe(true);
+    }
+  });
+
+  it("does not compare equal when the subject above it names another command", () => {
+    expect(promptsEqual(unframed(command("kill")), unframed(command("pkill")))).toBe(false);
+  });
+
+  it("does not compare equal when only a number in the subject changed", () => {
+    expect(promptsEqual(unframed(["  $ kill 1234"]), unframed(["  $ kill 5678"]))).toBe(false);
+    expect(promptsEqual(unframed(["  $ rm part1.txt"]), unframed(["  $ rm part2.txt"]))).toBe(false);
+  });
+
+  it("does not compare equal when a running row changes its words", () => {
+    expect(promptsEqual(unframed(["✻ Running tests…"]), unframed(["✻ Deleting files…"]))).toBe(false);
+    expect(promptsEqual(unframed(["  ⎿  Running… (4m 12s)"]), unframed(["  ⎿  Removing… (4m 12s)"]))).toBe(false);
+  });
+
+  it("does not compare equal when a row inside the dialog changed, a digit included", () => {
+    const moved = ["Which colour?", "  1. Red", "❯ 2. Blue", "Enter to select"];
+    expect(promptsEqual(unframed(["⠋ working 3s"]), unframed(["⠙ working 4s"], moved))).toBe(false);
+    const renumbered = ["Which colour?", "❯ 1. Red", "  3. Blue", "Enter to select"];
+    expect(promptsEqual(unframed(["⠋ working 3s"]), unframed(["⠋ working 3s"], renumbered))).toBe(false);
+  });
+
+  it("holds the same ticks still in the dialog's askRegion when it has one, and nothing else there", () => {
+    const withAsk = (row: string, subject: string): PromptModel => ({ ...unframed([row]), askRegion: [row, subject, ...QUESTION].join("\n") });
+    expect(promptsEqual(withAsk("⠋ working 3s", "Pick one"), withAsk("⠙ working 4s", "Pick one"))).toBe(true);
+    expect(promptsEqual(withAsk("⠋ working 3s", "Pick one"), withAsk("⠋ working 3s", "Pick two"))).toBe(false);
+    // `null` (no edge) and a string are two readings, never one dialog.
+    expect(promptsEqual(unframed(["⠋ working 3s"]), withAsk("⠋ working 3s", "Pick one"))).toBe(false);
+  });
+
+  it("leaves a framed dialog (bindRegion on both) on its exact askRegion", () => {
+    const framed = (row: string): PromptModel => {
+      const ask = [row, "Bash command", ...QUESTION].join("\n");
+      return { ...unframed([row]), askRegion: ask, bindRegion: ask };
+    };
+    expect(promptsEqual(framed("⠋ working 3s"), framed("⠋ working 3s"))).toBe(true);
+    expect(promptsEqual(framed("⠋ working 3s"), framed("⠙ working 4s"))).toBe(false);
+    // The lookback above a framed dialog's edge is not compared at all.
+    const a = framed("─".repeat(10));
+    expect(promptsEqual(a, { ...a, signature: `  $ other\n${a.signature}` })).toBe(true);
+  });
+});

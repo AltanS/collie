@@ -28,7 +28,6 @@ import type { JsonObject } from "@/lib/json";
 import type { Ask } from "@/lib/surface/surface";
 
 import { commonAnswers, json, type Answer } from "./bridge-answers";
-import { knownRed, redTitle } from "./known-red";
 import { replayHint, rngOf, runSeeds, sample } from "./seed";
 
 const PANE = "inv:p1";
@@ -209,8 +208,7 @@ describe("M102-15 part 1b, every bridge answer through the phone's request layer
   }
 
   // A proxy's error page or the route's path in the words: they reach the thumb as the error sentence.
-  const red = knownRed("i2-words-raw");
-  it.fails(`I2: no ending puts a proxy's HTML page, a route path or raw JSON at the thumb ${redTitle(red.id)}`, async () => {
+  it(`I2: no ending puts a proxy's HTML page, a route path or raw JSON at the thumb`, async () => {
     const found: string[] = [];
     for (const route of ROUTES) {
       for (const answer of route.answers) {

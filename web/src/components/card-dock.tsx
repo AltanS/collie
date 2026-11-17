@@ -1,5 +1,6 @@
 import { useImperativeHandle, useLayoutEffect, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
 
+import { Collapse } from "@/components/ui/collapse";
 import { hasResizeObserver } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import type {
@@ -8,6 +9,7 @@ import type {
   MultiSelectModel,
   PreviewSelectModel,
   PromptModel,
+  StyledLine,
   UnreadDialogModel,
   WizardModel,
 } from "@/lib/blocks";
@@ -21,6 +23,7 @@ import { MenuBlock, type MenuBlockAction } from "@/components/menu-block";
 import { AutocompleteBlock } from "@/components/autocomplete-block";
 import { BoxTextBlock } from "@/components/box-text-block";
 import { UnreadDialogBlock } from "@/components/unread-dialog-block";
+import { CannotTellCard, type CannotTellCardProps } from "@/components/cannot-tell-card";
 
 // ── THE CARD DOCKS IN ONE SLOT (.adr/0059) ─────────────────────────────────────────────────────
 // The lifted card used to render INSIDE the mirror's scroller, after the <pre>, so where its bottom
@@ -95,6 +98,9 @@ export interface CardDockProps {
   onUnreadDialogShown?: (cancel: UnreadDialogModel) => void;
   /** Disable every card's controls (read-only device, gone pane). */
   promptDisabled?: boolean;
+  /** Why the controls are off, drawn as one line under a dialog card (M102 spec 11): a button with no
+   *  words beside it is a dead tap. The composer placeholder's own sentence. Absent, no line. */
+  promptDisabledReason?: string;
   /** The pane the card answers for, and its scope. The prompt card enables only while the bridge has
    *  answered a read for it lately (lib/liveness.ts, M46 spec 11). */
   paneId?: string;
@@ -116,6 +122,38 @@ export interface CardDockProps {
   /** The device's Wrap lines setting, for the unread-dialog card, the one card that mirrors the whole
    *  pane: its mirror wraps or pans as the pane mirror above it does (#372). */
   wrap?: boolean;
+  /**
+   * A send refusal on a screen Collie cannot read opened the unread card with no declared key (M102
+   * spec 03): the pane's rows to show. Only when no lifted card claims the screen; null or absent, none.
+   */
+  unreadFallback?: StyledLine[] | null;
+  /** The Keys pad's road, for the unread card's caps of core keys the person's board lacks. */
+  onUnreadPadKeys?: (keys: string[]) => Promise<boolean>;
+  /** "Type it anyway" on the unread card: the composer's one send past this screen. */
+  onUnreadTypeAnyway?: () => void;
+  /** The screen asks for a secret: the unread card offers no "Type it anyway". */
+  unreadSecret?: boolean;
+  /**
+   * The card of a send Collie cannot tell about (M102 spec 04): the composer's `unknown` send, with the screen
+   * and the person's two answers. It docks only where no dialog card is lifted, and the unread card wins over it.
+   * Null or absent, none.
+   */
+  cannotTell?: CannotTellCardProps | null;
+  /**
+   * The exit of an answer that cannot go (M102 spec 10): the line that says what happened, the live
+   * screen and the person's Keys pad, in spec 03's card. While it is set it stands in for the dialog
+   * card it is about; its cross brings that card back. Null or absent, none.
+   */
+  answerExit?: AnswerExitCard | null;
+}
+
+/** What the dock needs to draw an answer's exit. AgentChat sets it only while the same dialog is on screen. */
+export interface AnswerExitCard {
+  /** The one line: what happened to the answer. */
+  readonly caption: string;
+  /** The live screen. */
+  readonly lines: StyledLine[];
+  readonly onClose: () => void;
 }
 
 /** The block kinds that dock a dialog card: each answers a dialog on the pane. The completion popup
@@ -163,7 +201,8 @@ export function fitSize(dock: HTMLElement): FitSize | null {
   const d = getComputedStyle(dock);
   const c = getComputedStyle(card);
   const rows = [...card.children];
-  let fixed = 0;
+  // Whatever else the dock holds beside the card (the line that says why the card is off) takes its own height.
+  let fixed = [...dock.children].reduce((sum, child) => (child === card ? sum : sum + child.getBoundingClientRect().height), 0);
   let least = 0;
   let most = 0;
   for (const row of rows) {
@@ -253,8 +292,33 @@ function liftedCard({
   scope,
   stale,
   wrap,
+  unreadFallback,
+  onUnreadPadKeys,
+  onUnreadTypeAnyway,
+  unreadSecret,
+  cannotTell,
   signInHosts,
+  answerExit,
 }: CardDockProps): ReactNode {
+  // The exit of an answer that cannot go (M102 spec 10) stands in for the card whose answer did not go:
+  // the person reads the live screen and presses keys on their own pad. No "Type it anyway": the screen
+  // holds a question, and a message never goes into one (ADR 0142, hard stop 6a). No declared key: the
+  // pad holds Esc, and the card draws a cap for a core key the person's board lacks.
+  if (answerExit !== null && answerExit !== undefined) {
+    return (
+      <UnreadDialogBlock
+        cancel={null}
+        lines={answerExit.lines}
+        caption={answerExit.caption}
+        onClose={answerExit.onClose}
+        disabled={promptDisabled}
+        wrap={wrap}
+        onAction={() => undefined}
+        paneId={paneId}
+        onPadKeys={onUnreadPadKeys}
+      />
+    );
+  }
   const promptBlock = blocks.find((b): b is PromptBlock => b.kind === "prompt-select");
   if (promptBlock) {
     return (
@@ -336,8 +400,34 @@ function liftedCard({
         onReport={onUnreadDialogReport === undefined ? undefined : () => onUnreadDialogReport(unreadBlock.cancel)}
         onShown={onUnreadDialogShown === undefined ? undefined : () => onUnreadDialogShown(unreadBlock.cancel)}
         paneId={paneId}
+        onPadKeys={onUnreadPadKeys}
+        onTypeAnyway={onUnreadTypeAnyway}
+        secret={unreadSecret}
       />
     );
+  }
+  // The same card, opened by a send refused on a screen Collie cannot read (M102 spec 03): no declared
+  // key, so the person's Keys pad and "Type it anyway" are the way on. Only when no other card claims it.
+  if (unreadFallback !== null && unreadFallback !== undefined && !hasDialogCard(blocks)) {
+    return (
+      <UnreadDialogBlock
+        cancel={null}
+        lines={unreadFallback}
+        disabled={promptDisabled}
+        wrap={wrap}
+        onAction={() => undefined}
+        paneId={paneId}
+        onPadKeys={onUnreadPadKeys}
+        onTypeAnyway={onUnreadTypeAnyway}
+        secret={unreadSecret}
+      />
+    );
+  }
+  // A send that ended unknown asks the person which it was (M102 spec 04). A dialog on the pane owns the
+  // keys and wins, as the unread card above does; the completion popup and the box text yield to it, since
+  // the person must answer it before the box means anything.
+  if (cannotTell !== null && cannotTell !== undefined && !hasDialogCard(blocks)) {
+    return <CannotTellCard key={cannotTell.facts.requestId} {...cannotTell} />;
   }
   // No handler and no `disabled`: the completion popup emits no keystroke, so there is nothing for a
   // read-only device to be refused. Last only because it is the least specific tail shape; every
@@ -390,10 +480,12 @@ export function CardDock(props: CardDockProps) {
   const [dock, setDock] = useState<HTMLDivElement | null>(null);
   // The caller's ref still reaches the dock's box; ours watches it for the floor.
   useImperativeHandle(props.ref, () => dock!, [dock]);
-  const fits = dockFits(props.blocks);
+  // The exit stands in for the card, and it scrolls as the unread card does: it never fits.
+  const fits = (props.answerExit === null || props.answerExit === undefined) && dockFits(props.blocks);
   const size = useFitSize(dock, fits);
   const card = liftedCard(props);
   if (card === null) return null;
+  const offWords = props.promptDisabled === true && hasDialogCard(props.blocks) ? props.promptDisabledReason : undefined;
   const cap = props.composing ? "40dvh" : "55dvh";
   return (
     // `role="presentation"`, the mirror wrapper's own reading: a layout box whose click adds nothing
@@ -414,6 +506,13 @@ export function CardDock(props: CardDockProps) {
       onClick={props.onClick}
     >
       {card}
+      <Collapse open={offWords !== undefined}>
+        {offWords !== undefined && (
+          <p data-slot="card-off" role="status" className="pt-1.5 text-xs leading-snug text-muted-foreground">
+            {offWords}
+          </p>
+        )}
+      </Collapse>
     </div>
   );
 }

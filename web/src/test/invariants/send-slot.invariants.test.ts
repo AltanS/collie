@@ -14,7 +14,6 @@ import { sendSlot, type ComposerFacts, type SendSlot } from "@/lib/send-slot";
 import { ASK_CHANNELS } from "@/lib/surface/surface";
 import { wayOut } from "@/lib/way-out";
 
-import { knownRed, redTitle } from "./known-red";
 import { allSurfaces, ASK_KINDS, COMPOSERS, MODALS, overrideReaches, REASONS, TURNS } from "./surfaces";
 import { product } from "./seed";
 
@@ -58,8 +57,7 @@ describe("M102-15 part 1a, the phone's send slot over every Surface and every fa
     expect(reach.length).toBeGreaterThan(0);
   });
 
-  const red = knownRed("i4-phone-slot");
-  it.fails(`I4: every Surface that is no secret and no read ask leads to the bridge with a road to the override ${redTitle(red.id)}`, () => {
+  it(`I4: every Surface that is no secret and no read ask leads to the bridge with a road to the override`, () => {
     const nowhere = SURFACES.filter((c) => overrideReaches(c.surface))
       .map((c) => ({ id: c.id, slot: sendSlot(c.surface, ONLINE) }))
       .filter((x) => !REACHES.has(x.slot))

@@ -52,7 +52,9 @@ import { parseAnsi } from "../ansi";
 import { displayWidth } from "../text-width";
 import { lineText, splitLines, type Block, type MultiSelectModel, type StyledLine } from "../blocks";
 import type { HarnessAdapter } from "./types";
+import { withUnreadDialog } from "./index";
 import {
+  commitKeysFor,
   identityDiff,
   promptsEqual,
   promptsSameIdentity,
@@ -459,78 +461,154 @@ export function isValidHerdrKey(key: string): boolean {
 const KEYLESS_FUTURE_KINDS = new Set<string>(["autocomplete", "box-text"]);
 
 /**
- * Every keystroke an interactive block can emit, walked off its model + the family's control
- * constants. `null` = a keyless kind (`raw`, or a future entry in KEYLESS_FUTURE_KINDS) whose keys
- * needn't be validated. An interactive kind with no case here THROWS rather than returning null, so
- * the key-grammar invariant can never go silently vacuous when a new dialog kind ships.
+ * Every keystroke an interactive block's own controls can emit: {@link emittableKeySends} without the
+ * keys an action recipe adds (`recipe`) and without the steps. `null` = a keyless kind (`raw`, or a
+ * future entry in KEYLESS_FUTURE_KINDS) whose keys needn't be validated.
  */
 export function emittableKeys(block: Block): string[] | null {
+  return emittableKeySends(block)?.flatMap((send) => (send.recipe ? [] : [send.key])) ?? null;
+}
+
+/**
+ * What one emittable key does in its recipe, which is what decides whether the screen had to print it
+ * (ADR 0151 rule 2) and which named exception may cover it when it did not (rule 3):
+ *  - `key`: a key the block sends as itself, a row's own key, a footer action, a control constant;
+ *  - `walk`: an arrow of a pointer walk, licensed by the pointer the grammar read (rule 2);
+ *  - `nav`: a menu's arrow, printed as an arrow or licensed by a pointer on the dialog's rows;
+ *  - `commit`: the key that commits a walked row or a typed answer (`splitWalk`'s commit);
+ *  - `edge`: the sticky arrow `commitKeysFor` adds on a list declared `clampedEnds` (rule 6);
+ *  - `feedback-commit`: the Enter that submits Claude's typed plan feedback (`submitPromptFeedback`);
+ *  - `clear`: an edit key that empties a field Collie types into (`clearField`, the note sweep);
+ *  - `cancel`: the unread-dialog card's declared key (`HarnessAdapter.cancelKey`, ADR 0053).
+ */
+export type KeyStep = "key" | "walk" | "nav" | "commit" | "edge" | "feedback-commit" | "clear" | "cancel";
+
+/** One key a lifted block can emit, and the step of its recipe that sends it. `recipe` marks a key an
+ *  action module sends beyond the plans the block's model carries (an edge arrow, the feedback row's
+ *  Enter, an answer field's walk, clear and commit): {@link emittableKeys} leaves those out, so it stays
+ *  the keys the screen's own controls offer, which the capture-lab corpus table pins. */
+export interface KeySend {
+  readonly key: string;
+  readonly step: KeyStep;
+  readonly recipe?: true;
+}
+
+const sends = (step: KeyStep, keys: readonly string[]): KeySend[] => keys.map((key) => ({ key, step }));
+
+/** {@link sends} for keys an action recipe adds beyond the model's own plans. */
+const recipeSends = (step: KeyStep, keys: readonly string[]): KeySend[] =>
+  keys.map((key) => ({ key, step, recipe: true }));
+
+/** A walk-class plan split into its walk and its commit, a plan of any other shape as plain keys. */
+function planSends(keys: readonly string[]): KeySend[] {
+  const plan = splitWalk([...keys]);
+  if (plan === null) return sends("key", keys);
+  return [...sends("walk", plan.walk), ...sends("commit", plan.commit)];
+}
+
+/** The keys of an answer field's recipe (lib/answer-field.ts, ADR 0113): its digit while it is empty,
+ *  the verified `Up`/`Down` walk onto a filled one, the `ctrl+u ctrl+k` clear, and, where the caller
+ *  commits, the `Enter` that answers. */
+function answerFieldSends(key: string, commits: boolean): KeySend[] {
+  return [
+    ...recipeSends("key", [key]),
+    ...recipeSends("walk", ["Up", "Down"]),
+    ...recipeSends("clear", ["ctrl+u", "ctrl+k"]),
+    ...(commits ? recipeSends("commit", ["Enter"]) : []),
+  ];
+}
+
+function promptSends(model: PromptModel): KeySend[] {
+  const options = model.options.flatMap((option, index) => {
+    if (splitWalk(option.keys) === null) return sends("key", option.keys);
+    const commit = commitKeysFor(model, index);
+    return [...planSends(option.keys), ...recipeSends("edge", commit.slice(0, -1))];
+  });
+  const row = model.feedback;
+  if (row === undefined || row.purpose === "free-text") return options;
+  if (row.purpose === "answer") return [...options, ...answerFieldSends(row.key, true)];
+  return [...options, ...recipeSends("key", [row.key]), ...recipeSends("feedback-commit", ["Enter"])];
+}
+
+/**
+ * Every key an interactive block can emit, each with the step of its recipe that sends it, walked off
+ * its model and the family's control constants. `null` = a keyless kind (`raw`, or a future entry in
+ * KEYLESS_FUTURE_KINDS). An interactive kind with no case here THROWS, so neither the key-grammar leg
+ * nor the printed-key leg can go silently vacuous when a new dialog kind ships.
+ */
+export function emittableKeySends(block: Block): KeySend[] | null {
   switch (block.kind) {
     case "raw":
       return null;
     case "prompt-select":
-      return block.prompt.options.flatMap((o) => o.keys);
+      return promptSends(block.prompt);
     case "wizard": {
       // Both phases can navigate steps; the review phase's controls ARE submit/cancel, the plans the
       // model declares or the 1/2 constants.
-      const nav = [...WIZARD_BACK_KEYS, ...WIZARD_NEXT_KEYS];
-      return block.wizard.phase === "question"
-        ? [...block.wizard.options.flatMap((o) => o.keys), ...nav, ...WIZARD_SUBMIT_KEYS, ...WIZARD_CANCEL_KEYS]
-        : [
-            ...nav,
-            ...(block.wizard.submitKeys ?? WIZARD_SUBMIT_KEYS),
-            ...(block.wizard.cancelKeys ?? WIZARD_CANCEL_KEYS),
-          ];
-    }
-    case "preview-select": {
-      // preview-action.ts's recipe: a digit moves the pointer, Enter selects, `n` opens the note
-      // input, ctrl+k/Backspace clear it, Escape blurs; a wizard step navigates with Left/Right.
-      const digits = block.preview.options.map((o) => String(o.n));
-      const controls = [
-        "Enter",
-        "n",
-        "Escape",
-        "ctrl+k",
-        "Backspace",
-        ...WIZARD_BACK_KEYS,
-        ...WIZARD_NEXT_KEYS,
-      ];
-      return [...digits, ...controls];
-    }
-    case "multi-select":
-      // checkbox: a digit toggles each option (and the "Chat about this" escape) in digit mode, or
-      // jumps the pointer there in pointer mode — either way the digits ride plus Up/Down/Enter.
-      // A declared `advanceKeys` plan rides too. review: the confirm screen's `1. Submit answers /
-      // 2. Cancel` in digit mode, a pointer walk + Enter in pointer mode, or the declared plans in
-      // keys mode, plus the declared way back.
-      if (block.multi.phase === "checkbox") {
+      const nav = sends("key", [...WIZARD_BACK_KEYS, ...WIZARD_NEXT_KEYS]);
+      const wizard = block.wizard;
+      if (wizard.phase === "question") {
         return [
-          ...block.multi.options.map((o) => String(o.n)),
-          ...(block.multi.escape ? [String(block.multi.escape.n)] : []),
-          "Up",
-          "Down",
-          "Enter",
-          ...(block.multi.advanceKeys ?? []),
+          ...wizard.options.flatMap((o) => planSends(o.keys)),
+          ...nav,
+          ...sends("key", [...WIZARD_SUBMIT_KEYS, ...WIZARD_CANCEL_KEYS]),
+          ...(wizard.field === undefined ? [] : answerFieldSends(wizard.field.key, true)),
         ];
       }
-      return [...reviewActionKeys(block.multi), ...(block.multi.backKeys ?? [])];
+      return [
+        ...nav,
+        ...sends("key", wizard.submitKeys ?? WIZARD_SUBMIT_KEYS),
+        ...sends("key", wizard.cancelKeys ?? WIZARD_CANCEL_KEYS),
+      ];
+    }
+    case "preview-select":
+      // preview-action.ts's recipe: a digit moves the pointer, Enter selects, `n` opens the note
+      // input, ctrl+k and a Backspace sweep clear it, Escape blurs; a wizard step navigates with
+      // Left/Right.
+      return [
+        ...sends("key", block.preview.options.map((o) => String(o.n))),
+        ...sends("key", ["Enter", "n", "Escape"]),
+        ...(block.preview.steps === null ? [] : sends("key", [...WIZARD_BACK_KEYS, ...WIZARD_NEXT_KEYS])),
+        ...sends("clear", ["ctrl+k", "Backspace"]),
+      ];
+    case "multi-select": {
+      // checkbox: a digit toggles each option (and the "Chat about this" escape) in digit mode, or
+      // jumps the pointer there in pointer mode, plus the pointer's Up/Down and the Enter on the advance
+      // row; a declared `advanceKeys` plan rides too, and a modelled answer field's recipe (no commit:
+      // the filled row stays ticked). review: the confirm screen's `1. Submit answers / 2. Cancel` in
+      // digit mode, a pointer walk + Enter in pointer mode, or the declared plans in keys mode, plus
+      // the declared way back.
+      const multi = block.multi;
+      if (multi.phase === "checkbox") {
+        return [
+          ...sends("key", multi.options.map((o) => String(o.n))),
+          ...(multi.escape ? sends("key", [String(multi.escape.n)]) : []),
+          ...sends("walk", ["Up", "Down"]),
+          ...sends("commit", ["Enter"]),
+          ...sends("key", multi.advanceKeys ?? []),
+          ...(multi.field === undefined ? [] : answerFieldSends(String(multi.field.n), false)),
+        ];
+      }
+      return [...reviewActionSends(multi), ...sends("key", multi.backKeys ?? [])];
+    }
     case "menu":
       // The generic grammar emits ONLY the keys the screen's own footer named, plus the arrows it
       // advertised. Walking `actions` here is what pins .adr/0009's ban in CI: a digit can only
-      // appear in this list if the detector synthesised one, and this suite would still pass it as a
-      // valid Herdr key — so the menu-grammar tests assert the absence directly, and this leg keeps
-      // the plans sendable.
+      // appear in this list if the detector synthesised one, and the key-grammar leg would still pass
+      // it as a valid Herdr key — so the menu-grammar tests assert the absence directly, and the
+      // printed-key leg checks the screen named each one.
       return [
-        ...block.menu.actions.flatMap((a) => a.keys),
-        ...(block.menu.nav.upDown ? [...MENU_UP_KEYS, ...MENU_DOWN_KEYS] : []),
-        ...(block.menu.nav.leftRight !== undefined ? [...MENU_LEFT_KEYS, ...MENU_RIGHT_KEYS] : []),
+        ...sends("key", block.menu.actions.flatMap((a) => a.keys)),
+        ...sends("nav", [
+          ...(block.menu.nav.upDown ? [...MENU_UP_KEYS, ...MENU_DOWN_KEYS] : []),
+          ...(block.menu.nav.leftRight !== undefined ? [...MENU_LEFT_KEYS, ...MENU_RIGHT_KEYS] : []),
+        ]),
       ];
     case "unread-dialog":
       // The card's ONE control, and it is a DECLARATION (HarnessAdapter.cancelKey), not something
-      // read off the screen. No conformance fixture will ever produce one — the pass that emits this
-      // kind runs OUTSIDE the adapter and this suite calls `adapter.buildBlocks` directly — so the
-      // arm exists to keep the walk non-vacuous if that ever changes.
-      return [block.cancel.key];
+      // read off the screen. `adapter.buildBlocks` never emits this kind: the printed-key leg runs the
+      // post-pass (`withUnreadDialog`) over each capture to reach it.
+      return sends("cancel", [block.cancel.key]);
     default: {
       // SAFETY: `block` is `never` here today — every kind is cased above — so widening it back to
       // `Block` cannot be wrong for any value that exists. The assertion is what names the offending
@@ -545,10 +623,258 @@ export function emittableKeys(block: Block): string[] | null {
 }
 
 /** The keys a multi-select review's submit and cancel can send, per its `submit` recipe. */
-function reviewActionKeys(multi: Extract<MultiSelectModel, { phase: "review" }>): string[] {
-  if (multi.submit === "pointer") return ["Up", "Down", "Enter"];
-  if (multi.submit === "keys") return [...multi.submitKeys, ...multi.cancelKeys];
-  return ["1", "2"];
+function reviewActionSends(multi: Extract<MultiSelectModel, { phase: "review" }>): KeySend[] {
+  if (multi.submit === "pointer") return [...sends("walk", ["Up", "Down"]), ...sends("commit", ["Enter"])];
+  if (multi.submit === "keys") return sends("key", [...multi.submitKeys, ...multi.cancelKeys]);
+  return sends("key", ["1", "2"]);
+}
+
+/** A live probe that verified a declared key on one screen of a harness, and where it is recorded. */
+export interface LiveProbe {
+  readonly harness: string;
+  readonly screen: string;
+  readonly record: string;
+}
+
+/**
+ * One named exception of ADR 0151 rule 3: a dialog or an action step that sends a key no screen printed.
+ * `steps` and `title` are what the printed-key leg matches a key against: the step of the recipe that
+ * sends it ({@link KeyStep}), and, for an exception scoped to one dialog, that dialog's own title (a
+ * prompt's caption or question, a menu's title). `probes` names the live probes behind a declared key.
+ */
+export interface UnprintedKeyException {
+  readonly letter: "a" | "b" | "c" | "d" | "e" | "f" | "g";
+  readonly harnesses: readonly string[];
+  readonly dialog: string;
+  readonly steps: readonly KeyStep[];
+  readonly title?: RegExp;
+  readonly keys: readonly string[];
+  readonly files: readonly string[];
+  readonly probes?: readonly LiveProbe[];
+}
+
+/**
+ * THE CLOSED LIST of keys Collie sends that the screen did not print (ADR 0151 rule 3, a to g). A key
+ * a lifted block can emit that is neither printed on its screen nor matched here fails the printed-key
+ * leg. A new exception changes this list, the pinned test in conformance.test.ts and ADR 0151 in one
+ * commit. File paths are from the repository root.
+ */
+export const UNPRINTED_KEY_EXCEPTIONS: readonly UnprintedKeyException[] = [
+  {
+    letter: "a",
+    harnesses: ["claude"],
+    dialog: "the /resume session picker commits the walked row with an Enter its footer never prints",
+    steps: ["commit"],
+    title: /^Resume session\b/u,
+    keys: ["Enter"],
+    files: ["web/src/lib/harness/claude/resume.ts"],
+  },
+  {
+    letter: "b",
+    harnesses: ["claude"],
+    dialog: "the \"Switch model?\" confirmation prints no footer: a tap is the pointer walk, then Enter",
+    steps: ["commit"],
+    title: /^Switch model\?/u,
+    keys: ["Enter"],
+    files: ["web/src/lib/harness/claude/switch-model.ts"],
+  },
+  {
+    letter: "c",
+    harnesses: ["claude"],
+    dialog: "the plan dialog's feedback row: the typed text is submitted with an Enter the footer does not print",
+    steps: ["feedback-commit"],
+    keys: ["Enter"],
+    files: ["web/src/lib/prompt-action.ts"],
+  },
+  {
+    letter: "d",
+    harnesses: ["agy", "antigravity"],
+    dialog: "the /artifact review: Enter on a row, and Tab then Enter for Submit",
+    steps: ["key"],
+    title: /artifact/iu,
+    keys: ["Enter", "Tab"],
+    files: ["web/src/lib/harness/agy/artifact.ts"],
+  },
+  {
+    letter: "e",
+    harnesses: ["omp", "kiro", "claude"],
+    dialog: "an edge row of a list declared clampedEnds commits with one more arrow toward the edge",
+    steps: ["edge"],
+    keys: ["Up", "Down"],
+    files: [
+      "web/src/lib/harness/prompt-model.ts",
+      "web/src/lib/harness/omp/approval.ts",
+      "web/src/lib/harness/kiro/workspace-trust.ts",
+      "web/src/lib/harness/claude/first-run-theme.ts",
+    ],
+  },
+  {
+    letter: "f",
+    harnesses: ["agy", "antigravity", "claude", "codex", "grok", "hermes", "kiro", "muse", "omp", "opencode", "pi"],
+    dialog: "the unread-dialog card offers its adapter's declared cancel key, on the adapter's own modal evidence",
+    steps: ["cancel"],
+    keys: ["Escape", "ctrl+c"],
+    files: [
+      "web/src/lib/harness/index.ts",
+      "web/src/lib/harness/agy/index.ts",
+      "web/src/lib/harness/claude/index.ts",
+      "web/src/lib/harness/codex/index.ts",
+      "web/src/lib/harness/grok/index.ts",
+      "web/src/lib/harness/hermes/index.ts",
+      "web/src/lib/harness/kiro/index.ts",
+      "web/src/lib/harness/muse/index.ts",
+      "web/src/lib/harness/omp/index.ts",
+      "web/src/lib/harness/opencode/index.ts",
+      "web/src/lib/harness/pi/index.ts",
+    ],
+    // Hermes declares ctrl+c. The 2026-10-16 live probe verified it on the clarify and approval
+    // panels, where Hermes binds no Escape. The command palette prints "Esc cancels" and has no probe
+    // listed here: hermes.test.ts holds that case open until the palette is probed live.
+    probes: [
+      { harness: "hermes", screen: "clarify panel", record: "web/src/lib/harness/hermes/CLARIFY_NOTES.md" },
+      { harness: "hermes", screen: "approval panel", record: "web/src/lib/harness/hermes/APPROVAL_NOTES.md" },
+    ],
+  },
+  {
+    letter: "g",
+    harnesses: ["claude"],
+    dialog: "a field Collie types into is cleared with edit keys: AskUserQuestion's ctrl+u ctrl+k, the preview note's ctrl+k and Backspace sweep",
+    steps: ["clear"],
+    keys: ["ctrl+u", "ctrl+k", "Backspace"],
+    files: ["web/src/lib/answer-field.ts", "web/src/lib/preview-action.ts"],
+  },
+];
+
+/** The title a dialog names itself by: a prompt's caption or question, a menu's title, a step's
+ *  question. Empty for the unread card, which reads nothing off the screen. */
+function blockTitle(block: Block): string {
+  switch (block.kind) {
+    case "prompt-select":
+      return block.prompt.caption ?? block.prompt.question;
+    case "menu":
+      return block.menu.title;
+    case "wizard":
+      return block.wizard.phase === "question" ? block.wizard.question : "";
+    case "multi-select":
+      return block.multi.phase === "checkbox" ? block.multi.question : "";
+    default:
+      return "";
+  }
+}
+
+/** The exception of {@link UNPRINTED_KEY_EXCEPTIONS} that covers `send` on `block` of `agent`, or null. */
+export function unprintedKeyException(agent: string, block: Block, send: KeySend): UnprintedKeyException | null {
+  const title = blockTitle(block);
+  return (
+    UNPRINTED_KEY_EXCEPTIONS.find(
+      (entry) =>
+        entry.harnesses.includes(agent) &&
+        entry.steps.includes(send.step) &&
+        entry.keys.includes(send.key) &&
+        (entry.title === undefined || entry.title.test(title)),
+    ) ?? null
+  );
+}
+
+/** Key names a screen prints, each mapped to the Herdr key it names (lower case). The keycap glyphs are
+ *  the ones the harnesses draw: `⎋ ⏎ ⇥`, and omp's Nerd Font caps (`omp/keycaps.ts`). */
+const NAMED_KEYS: readonly [RegExp, readonly string[]][] = [
+  [/\besc(?:ape)?\b|⎋|\u{F12B7}/iu, ["escape"]],
+  [/\b(?:enter|return)\b|[⏎↵\u{F0311}]/iu, ["enter"]],
+  [/\bshift\s*\+?\s*tab\b|⇧\s*(?:tab|⇥)/iu, ["shift+tab"]],
+  [/\btab\b|[⇥\u{F0312}]/iu, ["tab"]],
+  [/\bspace\b|␣/iu, ["space"]],
+  [/\bbackspace\b|⌫/iu, ["backspace"]],
+  [/[↑▲]|\bup\s*\/\s*down\b/iu, ["up"]],
+  [/[↓▼]|\bup\s*\/\s*down\b/iu, ["down"]],
+  [/[←◀]|\bleft\s*\/\s*right\b/iu, ["left"]],
+  [/[→▶]|\bleft\s*\/\s*right\b/iu, ["right"]],
+];
+
+/** A modifier chord a screen prints: `ctrl+c`, `Ctrl-C`, `⌃C`, `^C`. */
+const PRINTED_CHORD = /(?:\bctrl|\bcontrol|⌃)\s*[+-]?\s*([a-z])\b|\^([A-Za-z])\b/giu;
+
+/** A row's own key: a digit or a letter at the row's start or after a space, a pointer, a gutter or a
+ *  bracket, then `.`, `)`, `]`, `:` or a spaced `(` (a numbered option `1.`, a notice's `1:`, a hotkey
+ *  `(y)` or `[n]`, Grok's `1 (○) Red`). */
+const PRINTED_ROW_KEY = /(?:^|[\s❯›>│┃([])([A-Za-z0-9])(?:[.):\]]|\s+\()/gu;
+
+/** A row's own key standing apart from its label by two or more spaces, at the row's head (Muse's
+ *  `> 1  Trust and continue`) or at its end (Grok's `Yes, proceed            y`). */
+const PRINTED_SPACED_KEY = /^[\s❯›>│┃]*([A-Za-z0-9])\s{2,}\S|\S\s{2,}([A-Za-z0-9])\s*$/u;
+
+/** A letter hotkey a hint prints: `y/n`, `p Preview`, `n to add notes`, Muse's `1/2`. The key stands alone after
+ *  the row's start, a space or a separator, and is followed by `/<letter>`, ` to `, ` for `, or a capitalised
+ *  word (the `y/n Approve/reject · p Preview` footer dialect). */
+const PRINTED_HINT_LETTER = /(?:^|[\s·•|│])([a-z])(?=\/[a-z]\b|\s+(?:to|for)\s|\s+[A-Z])|(?<=\b[a-z0-9]\/)([a-z0-9])\b|\b([0-9])(?=\/[0-9]\b)/gu;
+
+/**
+ * The keys `rows` print, as lower-case Herdr keys: the names of special keys (Esc, Enter, Tab, an arrow
+ * glyph), modifier chords, and the digit or letter a row or a hint prints as its own key. This is what
+ * "printed" means in ADR 0151 rule 2; the pointer's arrows are licensed separately (`walk` steps).
+ */
+export function printedKeys(rows: readonly string[]): Set<string> {
+  const keys = new Set<string>();
+  for (const row of rows) {
+    for (const [pattern, named] of NAMED_KEYS) if (pattern.test(row)) named.forEach((k) => keys.add(k));
+    for (const m of row.matchAll(PRINTED_CHORD)) keys.add(`ctrl+${(m[1] ?? m[2]!).toLowerCase()}`);
+    for (const m of row.matchAll(PRINTED_ROW_KEY)) keys.add(m[1]!.toLowerCase());
+    for (const m of row.matchAll(PRINTED_HINT_LETTER)) keys.add((m[1] ?? m[2] ?? m[3]!).toLowerCase());
+    const spaced = PRINTED_SPACED_KEY.exec(row);
+    if (spaced !== null) keys.add((spaced[1] ?? spaced[2]!).toLowerCase());
+  }
+  return keys;
+}
+
+/** A key one of `blocks` can emit that its screen did not print and no exception covers. */
+export interface UnprintedKey {
+  readonly kind: Block["kind"];
+  readonly title: string;
+  readonly step: KeyStep;
+  readonly key: string;
+}
+
+/** The rows a block's model was derived from, as its bound region holds them: a grammar may lift a
+ *  block narrower than the rows it read (Codex's options sit above its region's first row). */
+function regionRows(block: Block): string[] {
+  return DIALOG_KINDS.flatMap((kind) => {
+    const model = dialogModelOf(block, kind);
+    return model === null ? [] : dialogComparators(kind).region(model).split("\n");
+  });
+}
+
+/** A pointer drawn at the head of a row (after any gutter): the mark that licenses a list's arrows. */
+const POINTER_ROW = /^[\s│┃]*[❯›▸►>\u{F054}]\s/u;
+
+/**
+ * Every key `blocks` can emit that is neither printed on the dialog's rows nor licensed by its pointer
+ * (a `walk` arrow, or a menu's `nav` arrow under a pointed row) nor covered by an entry of
+ * {@link UNPRINTED_KEY_EXCEPTIONS} for `agent`. The dialog's rows are its block's lines, every row
+ * below them to the screen's end (a dialog is tail-anchored, and its footer may sit under its block),
+ * and the rows of its bound region.
+ */
+export function unprintedKeys(agent: string, blocks: readonly Block[]): UnprintedKey[] {
+  const out: UnprintedKey[] = [];
+  blocks.forEach((block, at) => {
+    if (block.kind === "raw") return;
+    const rows = [...blocks.slice(at).flatMap((b) => b.lines.map(lineText)), ...regionRows(block)];
+    const printed = printedKeys(rows);
+    const pointed = block.lines.map(lineText).some((row) => POINTER_ROW.test(row));
+    for (const send of emittableKeySends(block) ?? []) {
+      if (send.step === "walk") continue;
+      if (send.step === "nav" && pointed) continue;
+      if (printed.has(send.key.toLowerCase())) continue;
+      if (unprintedKeyException(agent, block, send) !== null) continue;
+      const found = { kind: block.kind, title: blockTitle(block), step: send.step, key: send.key };
+      if (!out.some((u) => u.title === found.title && u.step === found.step && u.key === found.key)) out.push(found);
+    }
+  });
+  return out;
+}
+
+/** The blocks a capture shows: the adapter's own lift, then the unread-dialog post-pass over it. */
+export function shownBlocks(adapter: HarnessAdapter, lines: StyledLine[]): Block[] {
+  return withUnreadDialog(adapter, lines, adapter.buildBlocks(lines));
 }
 
 /**
@@ -632,6 +958,11 @@ export function describeAdapterConformance(
      *  find a row that keeps the lift and moves the signature; instead it checks the stronger fact
      *  that EVERY perturbation either stops the lift or moves the signature, never neither. */
     fixedRegionFixtures?: string[];
+    /** Captures where a lifted block emits a key the screen did not print and no entry of
+     *  UNPRINTED_KEY_EXCEPTIONS names: an OPEN FINDING, fixture to reason. Each runs as an expected
+     *  failure (`it.fails`), so it stays visible in the output, and goes red the day the key is printed,
+     *  named or no longer sent, when its line here must go. Never a way to add an exception. */
+    unprintedKeyFindings?: Readonly<Record<string, string>>;
   },
 ): void {
   const { ownFixtures, foreignFixtures, neutralFixtures } = opts;
@@ -1178,12 +1509,41 @@ export function describeAdapterConformance(
       }
     });
 
+    // ADR 0151 rule 2: Collie sends only keys the screen printed, plus the arrows of a walk, plus the
+    // named exceptions of rule 3 (UNPRINTED_KEY_EXCEPTIONS). Every capture of this adapter, the raw
+    // cohort included, goes through the unread-dialog post-pass too, so its declared key is walked.
+    describe("unprinted key (every key a lifted block can emit is printed or a named exception)", () => {
+      const own = [...ownFixtures, ...neutralFixtures];
+      const findings = opts.unprintedKeyFindings ?? {};
+      if (own.length === 0) it.todo("no own fixtures supplied");
+      for (const name of Object.keys(findings)) {
+        it(`${name}: an open unprinted key finding names one of this adapter's own captures`, () => {
+          expect(own, `${name} is listed in unprintedKeyFindings and is not an own capture`).toContain(name);
+        });
+      }
+      for (const name of own) {
+        const finding = findings[name];
+        const register = finding === undefined ? it : it.fails;
+        const title =
+          finding === undefined
+            ? `${name}: no unprinted key outside the named exceptions`
+            : `${name}: no unprinted key outside the named exceptions (expected to fail, open finding: ${finding})`;
+        register(title, () => {
+          const unnamed = unprintedKeys(adapter.agent, shownBlocks(adapter, loadLines(name)));
+          expect(
+            unnamed.map((u) => `${name}: ${u.kind} "${u.title.split("\n")[0]}" sends ${u.key} (${u.step}), which the screen did not print`),
+            `${name} emits a key its screen did not print and no entry of UNPRINTED_KEY_EXCEPTIONS names it (ADR 0151 rule 3)`,
+          ).toEqual([]);
+        });
+      }
+    });
+
     describe("key-grammar validity (every emittable key is send_keys-valid)", () => {
       if (ownFixtures.length === 0) it.todo("no own dialog fixtures supplied");
       for (const name of ownFixtures) {
         it(`${name}: every keystroke its blocks can emit validates`, () => {
           for (const block of interactiveBlocks(adapter.buildBlocks(loadLines(name)))) {
-            const keys = emittableKeys(block);
+            const keys = emittableKeySends(block)?.map((send) => send.key) ?? null;
             if (keys === null) continue; // a kind not modelled here yet — tolerated
             expect(keys.length, `${name} / ${block.kind} exposes no keys`).toBeGreaterThan(0);
             for (const key of keys) {

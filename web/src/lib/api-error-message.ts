@@ -21,7 +21,8 @@
 // exactly as before; only the words that reach the screen come from here.
 
 import { isApiErrorCode, type ApiErrorFields } from "./api-error-codes";
-import { apiErrorFields } from "./api";
+import { apiErrorFields, apiErrorStatus } from "./api";
+import { isReadableWords } from "./readable-words";
 import { t, type MessageKey } from "./i18n";
 import { asJsonString } from "./json";
 import { en } from "./i18n/messages/en";
@@ -48,7 +49,7 @@ export function describeApiError(fields: ApiErrorFields, fallback?: string): str
     return t(`apiError.${code}`, detail);
   }
   const sentence = fields.error?.trim() ?? "";
-  if (sentence !== "") return sentence;
+  if (sentence !== "" && isReadableWords(sentence)) return sentence;
   // `fallback` is the CALLER'S surface-specific line ("Rename failed") for a body that carried no
   // words at all. It sits below the bridge's own sentence deliberately: an unrecognised code still
   // ships true English prose, and "Rename failed" says strictly less than that.
@@ -66,9 +67,25 @@ export function describeApiError(fields: ApiErrorFields, fallback?: string): str
 export function describeThrownError<TThrown>(thrown: TThrown): string {
   const fields = apiErrorFields(thrown);
   if (fields !== undefined) return describeApiError(fields);
+  // An HTTP failure with no sentence of its own (a proxy's page, the phone's developer line with the
+  // route path, a bare `HTTP 502`): the status in a short sentence, never the raw text (M102 spec 11).
+  const status = apiErrorStatus(thrown);
   if (thrown instanceof Error) {
-    const message = thrown.message.trim();
-    if (message !== "") return message;
+    const message = bodyLineOf(thrown.message.trim());
+    if (isReadableWords(message) && !/^HTTP \d+$/u.test(message)) return message;
+    if (status !== undefined) return t("apiError.statusOnly", { status });
+    if (isReadableWords(message)) return message;
   }
   return t("apiError.unknown");
+}
+
+/**
+ * The body's first line out of the phone's developer message (`<route> → <status> <body>`, api.ts),
+ * so a proxy's plain sentence ("herdr down") still reaches the person without the route in front of
+ * it. Any other message comes back as it is.
+ */
+function bodyLineOf(message: string): string {
+  const dev = /^\S+ → \d+ ?([\s\S]*)$/u.exec(message);
+  if (dev === null) return message;
+  return (dev[1] ?? "").split(/\r?\n/u).map((part) => part.trim()).find((part) => part !== "") ?? "";
 }

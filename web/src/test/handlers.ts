@@ -610,6 +610,10 @@ export interface SendAnswerParts {
   readonly cap?: { readonly count: number; readonly limit: number; readonly harness: string; readonly version: string };
   /** The receipt's `queued`: the send went in while the turn ran and waits for its end. */
   readonly queued?: boolean;
+  /** The receipt's `awaitingEventUntil` (M102 spec 13): epoch milliseconds the agent's own word may still come. */
+  readonly awaitingEventUntil?: number;
+  /** The receipt's `draftSeen` (M102 spec 12): an override typed after words already in the box. */
+  readonly draftSeen?: boolean;
 }
 
 /** An answer body the way the bridge writes one: a receipt with the outcome and reason, then the offers. */
@@ -618,6 +622,8 @@ export function sendAnswer(id: string, outcome: string | null, reason?: string, 
   if (outcome !== null) {
     const receipt: JsonObject = reason === undefined ? { requestId: id, outcome, keys: [] } : { requestId: id, outcome, reason, keys: [] };
     if (parts.queued === true) receipt.queued = true;
+    if (parts.awaitingEventUntil !== undefined) receipt.awaitingEventUntil = parts.awaitingEventUntil;
+    if (parts.draftSeen === true) receipt.draftSeen = true;
     body.receipt = receipt;
   }
   if (parts.rowsHash !== undefined) body.rowsHash = parts.rowsHash;

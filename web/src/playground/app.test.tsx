@@ -162,6 +162,27 @@ describe("the held-send cards", () => {
   );
 });
 
+describe("composer states: the cannot-tell cards (M102 spec 04)", () => {
+  it(
+    "cannot tell: draws the real card for a short message, a sign-in code, a read-only device and the wait, and the queued card with Send again",
+    async () => {
+      const { container } = render(<PlaygroundApp tab="composer-states" />);
+      const card = (state: string) => container.querySelector<HTMLElement>(`[data-state="${state}"]`)!;
+      await waitFor(() => expect(card("cannot-tell-queued")).not.toBeNull(), SLOW);
+      const words = (state: string) => Array.from(card(state).querySelectorAll("button")).map((button) => button.textContent);
+      expect(words("cannot-tell-short")).toEqual(["It arrived", "Send again"]);
+      expect(words("cannot-tell-secret")).toEqual(["It arrived", "Enter it again"]);
+      expect(words("cannot-tell-read-only")).toEqual([]);
+      // The wait: the sentence changes and Send again is off, with It arrived live.
+      expect(card("cannot-tell-waiting").textContent).toContain("Collie is waiting for the agent's own word");
+      expect(within(card("cannot-tell-waiting")).getByRole("button", { name: "Send again" })).toHaveAttribute("aria-disabled", "true");
+      // The queued card's unconfirmed state: Discard, then Send again on its right.
+      expect(words("cannot-tell-queued")).toEqual(["Discard", "Send again"]);
+    },
+    30_000,
+  );
+});
+
 // A card is its label alone. `reach`, `note` and a section's `intent` show only while the page-wide
 // Notes switch is on; the switch is remembered in localStorage.
 describe("the Notes switch", () => {

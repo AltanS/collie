@@ -130,7 +130,7 @@ export const ACK_MANIFEST = {
   },
   postArrived: {
     channel: "silent",
-    why: "The person's \"It arrived\" on a send that ended unknown (M102 spec 01): the row taking the person's word beside its outcome IS the receipt, so a success says nothing more; a refusal lands as a status line. No control calls it yet: M102 spec 04 wires the button and may reclassify this entry.",
+    why: "The person's \"It arrived\" on a send that ended unknown (M102 spec 01): the row taking the person's word beside its outcome IS the receipt, so a success says nothing more; the \"cannot tell\" card leaving and the belt's \"Undo clear\" appearing are what the person sees (M102 spec 04); a failed mark keeps the card and says so in the card's own line, `Collie could not record that. Try again, or clear the draft yourself.`",
   },
   postAskAnswer: {
     channel: "echo",
