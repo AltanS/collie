@@ -363,7 +363,7 @@ function NewAddPage({ search }: { search: string }) {
 }
 
 /** The recipe way: a harness, its option chips, the line they build, and an optional name. */
-function RecipeForm({
+export function RecipeForm({
   recipes,
   recipe,
   picked,
