@@ -4,7 +4,7 @@ import { PROPOSE_LIMITS } from "../bridge/tricks/propose-wire.ts";
 import { PROPOSALS_MACHINE_HOUR_MAX, PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER_OPEN_MAX, PROPOSAL_EXPIRY_MS } from "../bridge/tricks/proposals.ts";
 import { RUN_TIMEOUT_MS, STDOUT_CAP_BYTES } from "../bridge/tricks/run.ts";
 import { MANIFEST, PLACES, type ManifestEntry } from "../web/src/lib/tricks/catalogue.ts";
-import { TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "../web/src/lib/tricks/contract.ts";
+import { TRICK_CONTRACT_DEFAULT } from "../web/src/lib/tricks/contract.ts";
 import {
   AGENT_VIEW_CONTRACT,
   AGENT_VIEW_PLACE,
@@ -81,8 +81,8 @@ export function trickGuide(): string[] {
     "THE KEYS OF A PART",
     "Write only the keys and attributes a part, a node and a button take. collie trick dev lists them.",
     `With contract ${String(TRICK_CONTRACT_DEFAULT)}, Collie ignores a key it does not know, and the part still draws.`,
-    `With contract ${String(TRICK_CONTRACT)}, a key Collie does not know, at any depth of a part, leaves that part out.`,
-    "The other parts still draw, and the trick's row says which key it was.",
+    // One line with the next: `[[field]]` (contract 3) took a line in the manifest list, and the guide stays within 140.
+    "With contract 2, a key Collie does not know, at any depth of a part, leaves that part out. The other parts still draw, and the trick's row says which key it was.",
     "",
     "A TAP",
     "A tap tells your program which part, which control and, when the phone was on one, which session (from.session).",

@@ -400,6 +400,10 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The trick's take-changes-without-asking switch flips on the spot and holds that position until the bridge's list agrees (components/tricks-settings-card.tsx); a refused or lost post puts it back and says so in the status line, because the reason is about that one trick.",
   },
+  setTrickValue: {
+    channel: "inline",
+    why: "A trick's setting (components/trick-settings-group.tsx) holds the value saved on its own row until the bridge's list agrees; a refused or lost post puts the old value back and says why under that row, because the reason is about that one field.",
+  },
   undoTrick: {
     channel: "silent",
     why: "Undo under a trick that took a change without asking (components/tricks-settings-card.tsx): the line itself goes once the bridge's list shows the earlier version, so the row is the receipt; a refused or lost post says so in the status line, because the reason is about that one trick.",

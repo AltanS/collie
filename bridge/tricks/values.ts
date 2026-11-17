@@ -46,7 +46,8 @@ export const VALUES_FILE_VERSION = 1;
 
 /** `<stateDir>/tricks/<id>/.collie/values.json`. */
 export function valuesPath(stateDir: string, id: string): string {
-  return join(trickStateDir(stateDir, id), ".collie", "values.json");
+  const dir = trickStateDir(stateDir, id);
+  return join(dir, ".collie", "values.json");
 }
 
 /** One trick's stored values, and whether the file was there but could not be read. */
