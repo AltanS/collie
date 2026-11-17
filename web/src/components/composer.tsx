@@ -105,6 +105,7 @@ import { useLive } from "@/lib/liveness";
 import { useCatchingUp, useLocked } from "@/lib/idle";
 import { ClearNotice, OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
 import { ReportCard } from "@/components/report-card";
+import { SEND_SLOW_MS, SendToast, useHeldThroughExit, useSendToastFade } from "@/components/send-toast";
 import { textToKeySequence } from "@/lib/key-queue";
 import { isLead, paneScopeKey, scopeKey, type Scope } from "@/lib/scope";
 import { closeTrouble, noteSend, openReport, streakIds, useTroubleOffer } from "@/lib/report/store";
@@ -1042,9 +1043,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [protocolOffer, setProtocolOffer] = useState<{ text: string; isDraft: boolean; rowsHash: string | null; offers: readonly SendOffer[]; capAck: boolean } | null>(null);
   const [uploading, setUploading] = useState(false);
   const activeUploadsRef = useRef(0);
-  // Pending-send preview: set on a successful send, cleared when the mirror catches up (next text
-  // update) or after a 6s safety timeout. Shows "You sent: …" so the user knows the message landed.
+  // Pending-send preview: set when a confirmed send is still not echoed `SEND_SLOW_MS` after the tap, cleared when the
+  // mirror catches up (next text update) or 6s after it showed. Shows "You sent: …" so the user knows the message
+  // landed. A toast over the mirror (`SendToast`), never a row: nothing moves when it comes or goes.
   const [lastSent, setLastSent] = useState<string | null>(null);
+  const sendToast = useHeldThroughExit(lastSent, useSendToastFade());
   const [justSent, setJustSent] = useState(false); // brief ✓ on the send button after a send
   // Terminal-draft preview bookkeeping. The composer input is EXCLUSIVELY phone-owned — a host draft
   // is never written into it implicitly; it only surfaces in a read-only preview the user can
@@ -1583,6 +1586,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const sentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The timer that shows the preview once the send is slow, and the tap it counts from.
+  const lastSentShowRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tapAtRef = useRef(0);
   // What we last sent, and when — so we can recognise our OWN reply momentarily echoing on the "❯"
   // line (between the bridge's type and its Enter) and NOT treat it as a stranded draft. A
   // ref, not state: it feeds a render-time derivation but must not itself trigger re-renders.
@@ -1656,6 +1662,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     () => () => {
       if (sentTimer.current) clearTimeout(sentTimer.current);
       if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
+      if (lastSentShowRef.current) clearTimeout(lastSentShowRef.current);
       if (keyRevalidateTimer.current) clearTimeout(keyRevalidateTimer.current);
       for (const attachment of attachmentsRef.current) revokePreview(attachment);
       // An open Undo window dies with the view, and so do the previews it was holding.
@@ -1671,6 +1678,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (lastSentTimerRef.current) {
       clearTimeout(lastSentTimerRef.current);
       lastSentTimerRef.current = null;
+    }
+    // A send echoed within `SEND_SLOW_MS` never shows the preview: the wait for it ends here too.
+    if (lastSentShowRef.current) {
+      clearTimeout(lastSentShowRef.current);
+      lastSentShowRef.current = null;
     }
   }, [text]);
 
@@ -1849,7 +1861,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       <ClearNotice refusal={clearNote.refusal} onRestore={restoreOpen ? () => void restoreDraft() : null} restoring={restoring} onDismiss={() => setClearNote(null)} />
     ) : null;
   const floating =
-    heldCard !== null || reportCard !== null || floatingNotice !== null || clearCard !== null || (floatingHint !== undefined && floatingHint !== null) ? (
+    sendToast.held !== null || heldCard !== null || reportCard !== null || floatingNotice !== null || clearCard !== null || (floatingHint !== undefined && floatingHint !== null) ? (
       <div
         data-slot="floating-cards"
         className={cn(
@@ -1857,6 +1869,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           draftNoticeSlot ? undefined : "absolute inset-x-3 bottom-full z-20 mb-2",
         )}
       >
+        {/* First, so the column's bottom edge is the belt's and the toast coming or going moves no card under it. */}
+        {sendToast.held !== null && <SendToast text={sendToast.held} open={sendToast.open} />}
         {heldCard}
         {reportCard}
         {floatingNotice}
@@ -2100,9 +2114,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setStatus(translate(STATUS_KEY[note]), "success", undefined, true);
     if (note !== "held") {
       const preview = secret ? "••••••" : t.length > 60 ? `${t.slice(0, 57)}…` : t;
-      setLastSent(preview);
-      if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
-      lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
+      // Only a send still not echoed `SEND_SLOW_MS` after the tap says so, and the clock counts from the tap, not from
+      // the answer: the wait the person sees began when they pressed Send.
+      const show = () => {
+        lastSentShowRef.current = null;
+        setLastSent(preview);
+        if (lastSentTimerRef.current) clearTimeout(lastSentTimerRef.current);
+        lastSentTimerRef.current = setTimeout(() => setLastSent(null), 6000);
+      };
+      if (lastSentShowRef.current) clearTimeout(lastSentShowRef.current);
+      const wait = SEND_SLOW_MS - (Date.now() - tapAtRef.current);
+      if (wait <= 0) show();
+      else lastSentShowRef.current = setTimeout(show, wait);
     }
     setSendRefusal(null); // a clean send answers the last refusal
     noticeNoEcho(null); // whatever prompt it described, the pane has moved past it
@@ -2450,6 +2473,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // which journal turns already stood, and what the field held. Snapshotted before the request,
     // so a turn landing while it is in flight still counts as this send's.
     const sentAt = Date.now();
+    tapAtRef.current = sentAt;
     const seenUserUuids = new Set((chatEntriesRef.current ?? []).map((entry) => entry.uuid));
     const sentFrom = draftNow();
     const draftAtSend = sentFrom.text;
@@ -3857,24 +3881,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         )}
         inert={takeoverOpen}
       >
-        {/* Pending-send preview: visible from send until the mirror echoes back (or 6s). Shows the
-            user what landed so they don't double-tap while waiting for the terminal to update.
-            IT STAYS IN THE FOOTER, AND IT IS NOT A PILL. The "sent" ping already IS one — send()
-            publishes `composer.status.sent` on the same line, and the top pills carry it. What is
-            left here is the other half, and it is a VERIFICATION surface: the ✓ says the text was
-            seen in the input box before the submit key went out (see send()), and this holds the
-            words themselves on screen until the mirror echoes them back, so the operator can check
-            what landed instead of tapping Send a second time. That is a CONDITION with a real
-            duration — the echo gap — and the gap regularly outlives a pill's 2.5s. A pill would also
-            truncate to a line of chrome, which is the one thing this must not do. */}
-        <Collapse open={lastSent !== null}>
-          <div className="mb-2 flex items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
-            <Icon name="busy" className="size-3 shrink-0 animate-spin" />
-            <span className="truncate">
-              <span className="font-medium">{translate("composer.sentPreview.label")}</span> {lastSent}
-            </span>
-          </div>
-        </Collapse>
+        {/* Pending-send preview: "You sent: …", for a send the mirror has not echoed back `SEND_SLOW_MS` after the
+            tap (up to 6s). It floats (`SendToast`, in the floating column above) and is not a row of this
+            footer: as a row it moved the belt, the box and the mirror each time a send went out (DESIGN.md §2:
+            a notice that will not outlive the next interaction floats). A send the pane echoes at once shows
+            nothing. It is not a pill either: the "sent" ping already IS one (`composer.status.sent`, beside the
+            session's name), and this holds the words on screen so the operator can check what landed instead of
+            tapping Send a second time. */}
 
         {/* File input stays mounted here (not inside the keyboard-only key row) so the picker
             callback survives the keyboard collapsing. Attach fires it from the reply-input row

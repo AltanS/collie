@@ -91,7 +91,7 @@ describe("a send that lands keeps the words typed while it was on its way (M100 
     expect(field().value).toBe("");
     await user.type(field(), "and the next one");
     held.open();
-    await screen.findByText("You sent:");
+    await screen.findByText("You sent:", {}, { timeout: 4000 });
     expect(field().value).toBe("and the next one");
     expect(loadDraft(undefined, "w1:p1")).toBe("and the next one");
   });
@@ -122,7 +122,7 @@ describe("a send that lands keeps the words typed while it was on its way (M100 
     expect(field().value).toBe("");
     fireEvent.change(field(), { target: { value: typed } });
     held.open();
-    await screen.findByText("You sent:");
+    await screen.findByText("You sent:", {}, { timeout: 4000 });
     expect(field().value).toBe(kept);
     expect(loadDraft(undefined, "w1:p1") ?? "").toBe(kept);
   });
@@ -146,7 +146,7 @@ describe("a send that lands keeps the words typed while it was on its way (M100 
     fireEvent.change(screen.getByTestId("attach-photos"), { target: { files: [new File(["b"], "b.png", { type: "image/png" })] } });
     await waitFor(() => expect(loadDraftEntry(undefined, "w1:p1")?.attachments.map((a) => a.path)).toEqual(["/tmp/shot-2.png"]));
     held.open();
-    await screen.findByText("You sent:");
+    await screen.findByText("You sent:", {}, { timeout: 4000 });
     const left = loadDraftEntry(undefined, "w1:p1");
     expect(left?.attachments).toHaveLength(1);
     expect(left?.attachments[0]?.path).toBe("/tmp/shot-2.png");
