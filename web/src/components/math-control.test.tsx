@@ -281,3 +281,77 @@ describe("MathControl with no pack on the host", () => {
     expect(state.posts).toBe(0);
   });
 });
+
+// CALM LOAD (row 14): the row under the select holds its place, unseen, while the host has not answered.
+describe("MathControl before the host answers", () => {
+  const KEY = "collie:shape:/:settings-math-pack";
+  const hold = () => document.querySelector('[data-slot="math-pack-hold"]');
+
+  /** The host's read waits until `release()`. */
+  function slowHost(status: MathPackStatus) {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    server.use(
+      http.get("/api/math", async () => {
+        await gate;
+        return HttpResponse.json(status);
+      }),
+    );
+    return release;
+  }
+
+  it("holds the download row's place from the remembered word, then the real row stands where it stood", async () => {
+    localStorage.setItem(KEY, "absent");
+    const release = slowHost(ABSENT);
+    renderCard();
+    expect(hold()).toHaveClass("invisible");
+    expect(hold()).toHaveAttribute("aria-hidden", "true");
+    // The held row is the real row's markup: the same button and note, in the same card, under the select.
+    expect(hold()!.querySelector("button")).not.toBeNull();
+    const group = hold()!.parentElement!;
+    const index = [...group.children].indexOf(hold()!);
+    release();
+    await waitFor(() => expect(hold()).toBeNull());
+    const button = await screen.findByRole("button", { name: /Download/ });
+    expect([...group.children].indexOf(button.closest("div.space-y-2")!)).toBe(index);
+    expect(localStorage.getItem(KEY)).toBe("absent");
+  });
+
+  it("shows the stored engine in the select while the read runs", async () => {
+    setDesignMath("katex");
+    localStorage.setItem(KEY, "ready");
+    const release = slowHost(READY);
+    renderCard();
+    expect(select()).toHaveValue("katex");
+    expect(hold()).not.toBeNull();
+    release();
+    await waitFor(() => expect(hold()).toBeNull());
+    expect(select()).toHaveValue("katex");
+    expect(await screen.findByRole("button", { name: t("settings.appearance.math.remove") })).toBeInTheDocument();
+  });
+
+  it("holds nothing on a first visit", async () => {
+    const release = slowHost(READY);
+    renderCard();
+    expect(hold()).toBeNull();
+    release();
+    await waitFor(() => expect(localStorage.getItem(KEY)).toBe("ready"));
+  });
+
+  it("holds nothing for a bundled pack, which draws no row", async () => {
+    localStorage.setItem(KEY, "bundled");
+    const release = slowHost({ state: "ready", version: "1", source: "build", bytes: null });
+    renderCard();
+    expect(hold()).toBeNull();
+    release();
+    await waitFor(() => expect(localStorage.getItem(KEY)).toBe("bundled"));
+  });
+
+  it("gives the place back when the bridge has no pack to answer with", async () => {
+    localStorage.setItem(KEY, "absent");
+    server.use(http.get("/api/math", () => HttpResponse.json({ error: "none" }, { status: 404 })));
+    renderCard();
+    expect(hold()).not.toBeNull();
+    await waitFor(() => expect(hold()).toBeNull());
+  });
+});

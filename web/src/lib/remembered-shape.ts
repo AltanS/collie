@@ -34,6 +34,9 @@ export const ANSWERS = {
   "settings-install-card": "flag",
   // calm-first-frame: how many launcher rows the front machine had (0 to 99), for the Launch header's count.
   "home-launch-count": "count",
+  // calm-first-frame: where the host's math pack stood, for the Math card's row under the select. `bundled`
+  // is a ready pack the card draws nothing for (a source build's engines, or a read-only device).
+  "settings-math-pack": ["absent", "ready", "bundled", "unavailable"],
 } as const satisfies Record<string, AnswerKind>;
 
 export type AnswerName = keyof typeof ANSWERS;
