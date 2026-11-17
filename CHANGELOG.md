@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **Change login moves an account to another login while its sessions keep running.** On a signed-in account's page, or from a session's name, Change login shows who is signed in and starts the agent's own sign-in for that folder. Open sign-in page opens the agent's sign-in address in the phone's browser, the code goes into the Sign-in code field, and Finish closes the sign-in session and says who is signed in now. Running Claude Code sessions of the account use the new login from their next message, with no restart; for Codex, pi and Grok, new sessions use it. The old login stays until the new sign-in succeeds.
+- **A send held for two minutes shows the screen and Send it now.** The held card says it is still waiting, shows the pane's live screen under the words, and offers Send it now and Cancel. Cancel gives the words back to the box. Send it now cancels the held row and sends its words once past the hold, and gives them back to the box if the send does not go. It is not drawn on a crew member's pane or for a masked text.
 
 ### Changed
 

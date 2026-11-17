@@ -667,6 +667,10 @@ export const en = {
   "composer.held.discard": "Discard",
   "composer.held.discardAria": "Discard the text in the box",
   "composer.held.wentOut": "It already went out.",
+  // A held row that waited two minutes (M102 spec 12): the screen sits under the label, and Send it now sends the words once past the hold.
+  "composer.held.long": "Still waiting after two minutes. Look at the screen, then send it now or cancel.",
+  "composer.held.sendNow": "Send it now",
+  "composer.held.sendNowAria": "Send the queued message now, past the hold",
   // The held-send card (composer-held.tsx) with two or more rows: the head says how many wait, and Show
   // all opens the list. "Show less" is `chat.card.diff.less`. Only two or more reach the count, so the
   // `.one` form never shows in English; the pair exists because `tn()` asks for it by suffix.
@@ -4070,6 +4074,9 @@ export const PENDING_TRANSLATION = [
   "home.trickWaits.line",
   "home.trickWaits.open",
   "belt.stopHold",
+  "composer.held.long",
+  "composer.held.sendNow",
+  "composer.held.sendNowAria",
   "answerExit.noPlan",
   "answerExit.refused",
   "answerExit.unknown",

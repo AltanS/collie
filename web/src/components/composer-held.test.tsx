@@ -5,6 +5,8 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { parseAnsi } from "@/lib/ansi";
+import { splitLines } from "@/lib/blocks";
 import { loadDraft } from "@/lib/drafts";
 import { markLive, resetLiveness } from "@/lib/liveness";
 import { clearStatus, useStatus } from "@/lib/status";
@@ -475,13 +477,13 @@ describe("the held-send card", () => {
     const onReturn = vi.fn();
     const line = "[walky-talky wt_aaaaaaaaaaa1] from agent x. Read it: collie walky inbox wt_aaaaaaaaaaa1";
     const { rerender } = render(
-      <HeldCard paneId="w1:p1" rows={[row("req00001", "held", { text: line, cause: "draft_present", walky: "wt_aaaaaaaaaaa1" })]} canAct sending={false} onSend={async () => true} onChanged={vi.fn()} onReturn={onReturn} />,
+      <HeldCard paneId="w1:p1" rows={[row("req00001", "held", { text: line, cause: "draft_present", walky: "wt_aaaaaaaaaaa1" })]} canAct sending={false} onSend={async () => true} onChanged={vi.fn()} onReturn={onReturn} onSendNow={async () => true} />,
     );
     await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
     await waitFor(() => expect(calls).toEqual(["req00001?pane=w1%3Ap1"]));
     await waitFor(() => expect(screen.getByRole("button", { name: "Cancel the queued message" })).toBeEnabled());
     expect(onReturn).not.toHaveBeenCalled();
-    rerender(<HeldCard paneId="w1:p1" rows={[row("req00002", "held", { text: "the words I queued" })]} canAct sending={false} onSend={async () => true} onChanged={vi.fn()} onReturn={onReturn} />);
+    rerender(<HeldCard paneId="w1:p1" rows={[row("req00002", "held", { text: "the words I queued" })]} canAct sending={false} onSend={async () => true} onChanged={vi.fn()} onReturn={onReturn} onSendNow={async () => true} />);
     await user.click(screen.getByRole("button", { name: "Cancel the queued message" }));
     await waitFor(() => expect(onReturn).toHaveBeenCalledWith("the words I queued"));
   });
@@ -733,5 +735,81 @@ describe("Show all lives in memory, per pane", () => {
 
     setPane("w1:p2");
     expect(document.querySelector('[data-slot="held-card"]')).toHaveAttribute("data-mode", "collapsed");
+  });
+});
+
+// M102 spec 02: a row held for two minutes (`heldLong`) shows the pane's screen under a label that says so,
+// and offers Send it now beside Cancel. The card only draws and calls; the composer's sendHeldNow acts.
+describe("a row held for two minutes", () => {
+  const LONG_LABEL = "Still waiting after two minutes. Look at the screen, then send it now or cancel.";
+  const SCREEN = { lines: splitLines(parseAnsi("  Working on the build.\n  Esc to interrupt")), wrap: false };
+
+  function renderLong(over: Partial<ComponentProps<typeof HeldCard>> = {}, extra: Partial<HeldRow> = {}) {
+    const onSendNow = vi.fn(async () => true);
+    render(<HeldCard paneId="w1:p1" rows={[row("req00001", "held", { heldLong: true, ...extra })]} canAct sending={false} onSend={async () => true} onChanged={vi.fn()} onSendNow={onSendNow} screen={SCREEN} {...over} />);
+    return onSendNow;
+  }
+
+  it("shows the long label, the screen, Send it now and Cancel", () => {
+    renderLong();
+    expect(document.querySelector('[data-slot="held-row"]')).toHaveTextContent(LONG_LABEL);
+    expect(document.querySelector('[data-slot="held-screen"]')).toHaveTextContent("Working on the build.");
+    expect(screen.getByRole("button", { name: "Send the queued message now, past the hold" })).toHaveTextContent("Send it now");
+    expect(screen.getByRole("button", { name: "Cancel the queued message" })).toBeInTheDocument();
+  });
+
+  it("draws no screen box when the card is handed no screen", () => {
+    renderLong({ screen: undefined });
+    expect(document.querySelector('[data-slot="held-screen"]')).toBeNull();
+    expect(screen.getByRole("button", { name: "Send the queued message now, past the hold" })).toBeInTheDocument();
+  });
+
+  it("a row that has not waited two minutes keeps its own label, no screen and no Send it now", () => {
+    render(<HeldCard paneId="w1:p1" rows={[row("req00001", "held")]} canAct sending={false} onSend={async () => true} onChanged={vi.fn()} onSendNow={async () => true} screen={SCREEN} />);
+    expect(document.querySelector('[data-slot="held-row"]')).toHaveTextContent("Queued. Sends when the turn ends.");
+    expect(document.querySelector('[data-slot="held-screen"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send the queued message now, past the hold" })).toBeNull();
+  });
+
+  it("draws no Send it now on a crew member's pane, and keeps Cancel", () => {
+    renderLong({ canSend: false, scope: { host: "badger" } });
+    expect(screen.queryByRole("button", { name: "Send the queued message now, past the hold" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel the queued message" })).toBeInTheDocument();
+  });
+
+  it("draws no Send it now for a text that holds the bridge's mask, and keeps Cancel", () => {
+    renderLong({}, { text: "the code is \u2022\u2022\u2022\u2022\u2022\u2022" });
+    expect(screen.queryByRole("button", { name: "Send the queued message now, past the hold" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel the queued message" })).toBeInTheDocument();
+  });
+
+  it("Send it now calls onSendNow once with the row, then asks the caller to refresh", async () => {
+    const user = userEvent.setup();
+    const onSendNow = vi.fn(async () => true);
+    const onChanged = vi.fn();
+    render(<HeldCard paneId="w1:p1" rows={[row("req00001", "held", { heldLong: true })]} canAct sending={false} onSend={async () => true} onChanged={onChanged} onSendNow={onSendNow} screen={SCREEN} />);
+    await user.click(screen.getByRole("button", { name: "Send the queued message now, past the hold" }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(onSendNow).toHaveBeenCalledTimes(1);
+    expect(onSendNow).toHaveBeenCalledWith(expect.objectContaining({ requestId: "req00001" }));
+  });
+
+  it("collapsed over several rows: no row buttons, the long label in the head, and the screen once", () => {
+    render(
+      <HeldCard
+        paneId="w1:p1"
+        rows={[row("req00001", "held", { heldLong: true }), row("req00002", "held")]}
+        canAct
+        sending={false}
+        onSend={async () => true}
+        onChanged={vi.fn()}
+        onSendNow={async () => true}
+        screen={SCREEN}
+      />,
+    );
+    expect(document.querySelector('[data-slot="held-head"]')).toHaveTextContent(LONG_LABEL);
+    expect(screen.queryByRole("button", { name: "Send the queued message now, past the hold" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel the queued message" })).toBeNull();
+    expect(document.querySelectorAll('[data-slot="held-screen"]')).toHaveLength(1);
   });
 });
