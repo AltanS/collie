@@ -38,6 +38,11 @@ const sessionOf = (pane: string): string => encodeSessionId({ machine: MACHINE, 
 const scopeOf = (pane: string): string => `${MACHINE}:${pane}`;
 const tick = (ms = 0): Promise<void> => Bun.sleep(ms);
 
+/** Wait until `ready()` holds, polling every 20 ms, at most `ms` (a file event lands later on some systems, Windows among them). */
+async function until(ready: () => boolean, ms = 3000): Promise<void> {
+  for (let waited = 0; waited < ms && !ready(); waited += 20) await tick(20);
+}
+
 const realFactory: WatchFactory = (dir, onEvent, onError) => {
   const handle = fsWatch(dir, { persistent: false, encoding: "utf8" }, (_type, name) => onEvent(name === "" || name === null ? null : name));
   handle.on("error", onError);
@@ -290,7 +295,7 @@ describe("the watch of a trick, in the runner", () => {
     reactions.sync([target("w", ["turn.end"], [file])]);
     await writeFile(file, "b");
     bus.publish({ type: "turn.end", session: sessionOf("a:1") });
-    await tick(200);
+    await until(() => reactions.counts().waiting === 2);
     expect(reactions.counts().waiting).toBe(2);
     reactions.ended("w");
     expect(reactions.counts().waiting).toBe(1);
