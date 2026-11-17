@@ -6,7 +6,6 @@ import { createMemoryRouter, Outlet, RouterProvider, type InitialEntry } from "r
 import { firstSentence, TrickCardsLine, TrickCardsLineView, TrickCardsWaiting, TrickCardsWaitingList, trickLineOf } from "@/components/trick-cards";
 import { ARM_DWELL_MS } from "@/lib/arm";
 import { __resetHill, __settleHill, noteHillAnswer, syncHill } from "@/lib/hill/store";
-import type { HillDecision } from "@/lib/hill/wire";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { TrickCardRoute } from "@/routes/trick-card";
 import { withHeaderHost } from "@/test/header-host";
