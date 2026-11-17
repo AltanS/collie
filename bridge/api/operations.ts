@@ -13,9 +13,10 @@
 // RIGHTS (M105 spec 04, decision 1). Four levels, in order: `see` < `read` < `send` < `control`. A grant
 // of a level holds every level below it ({@link holds}). `see` is lists and states, never the text of a
 // screen or a message; `read` adds the text of a session's screen (`read`, always masked); `send` would
-// type into a session, `control` would change one. The local tier grants `read` ({@link
-// LOCAL_TIER_RIGHTS}), so it holds `see` too; no row in this step needs more than `read`, and `send` or
-// `control` needs its own spec, security read and Altan's word. {@link OPERATION_LEVELS} is the level of
+// type into a session, `control` would change one. The local tier grants at most `read` ({@link
+// LOCAL_TIER_RIGHTS}), the ceiling; a connection holds the level of the run token its `hello` named (spec
+// 05, decision 4), never more than the ceiling ({@link lowerOf}). No row in this step needs more than
+// `read`, and `send` or `control` needs its own spec, security read and Altan's word. {@link OPERATION_LEVELS} is the level of
 // each row, and the table takes its rights from it.
 //
 // THE EIGHT NAMES. `hello` and `events` are answered here. The other six (`sessions`, `brief`, `read`,
@@ -44,8 +45,19 @@ export function holds(granted: Right, needed: Right): boolean {
   return RIGHT_ORDER.indexOf(granted) >= RIGHT_ORDER.indexOf(needed);
 }
 
-/** The grant of a caller of the local socket: `read`, which holds `see` (spec 04, decision 1). Read only. */
+/** The ceiling of a caller of the local socket: `read`, which holds `see` (spec 04, decision 1). Read only. */
 export const LOCAL_TIER_RIGHTS: Right = "read";
+
+/** The lower of two levels: what a run token of `level` gets under the ceiling `ceiling`. */
+export function lowerOf(level: Right, ceiling: Right): Right {
+  return holds(ceiling, level) ? level : ceiling;
+}
+
+/**
+ * A run token as `hello` carries it: exactly 43 base64url characters (32 random bytes, spec 05 decision 1).
+ * The socket checks the token against the bridge's table (`ApiSocketDeps.tokens`); this is only how it reads.
+ */
+export const RUN_TOKEN_TEXT = /^[A-Za-z0-9_-]{43}$/u;
 
 /** The version of the API's wire, in `hello`. */
 export const API_VERSION = 1;
@@ -106,11 +118,6 @@ export interface OperationContext {
   standing(): boolean;
   /** Take one wait slot; null when the connection or the whole socket holds the most already. A row that does not wait gets null. */
   claimWait(): (() => void) | null;
-  /**
-   * `hello`'s `client`: the name the caller gives itself, for the socket's own log line of this connection.
-   * Trusted for nothing: it changes no right and no answer (spec 04, decision 5). Absent: not logged.
-   */
-  nameClient?(client: string): void;
 }
 
 /** One row, typed by its arguments. */
@@ -190,15 +197,14 @@ export function offeredOf(table: OperationTable, granted: Right): string[] {
 /** No arguments. */
 export type NoArgs = Readonly<Record<string, never>>;
 
-/** `hello`: the name the caller gives itself, or none (decision 5). */
+/**
+ * `hello`: the run token of the trick's run, from its facts (`api.token`, spec 05 decision 3). The socket
+ * reads it before the row runs and binds the connection to it; the handler never sees it again. `client`,
+ * the caller's own name of spec 04, is gone: the log names the trick the token belongs to (decision 5).
+ */
 export interface HelloArgs {
-  readonly client: string | undefined;
+  readonly token: string;
 }
-
-/** The longest `client` name. */
-export const CLIENT_MAX = 64;
-/** A `client` name: letters, digits and `_ . : -`, such as `trick:<id>`. */
-const CLIENT_NAME = /^[A-Za-z0-9_.:-]+$/u;
 
 /** One session, by its opaque id (ids.ts resolves it). */
 export interface SessionArgs {
@@ -240,13 +246,10 @@ function parseNone(input: JsonObject): Parsed<NoArgs> {
 }
 
 function parseHello(input: JsonObject): Parsed<HelloArgs> {
-  if (!onlyKeys(input, ["client"])) return { ok: false, reason: "an argument this operation does not take" };
-  if (input.client === undefined) return { ok: true, args: { client: undefined } };
-  const client = asJsonString(input.client);
-  if (client === undefined || client.length > CLIENT_MAX || !CLIENT_NAME.test(client)) {
-    return { ok: false, reason: `args.client must be 1 to ${String(CLIENT_MAX)} letters, digits or _ . : -` };
-  }
-  return { ok: true, args: { client } };
+  if (!onlyKeys(input, ["token"])) return { ok: false, reason: "an argument this operation does not take" };
+  const token = asJsonString(input.token);
+  if (token === undefined || !RUN_TOKEN_TEXT.test(token)) return { ok: false, reason: "args.token must be the run token of the trick's facts" };
+  return { ok: true, args: { token } };
 }
 
 function parseSession(input: JsonObject): Parsed<SessionArgs> {
@@ -302,8 +305,8 @@ export const DECLARED: Declarations = {
     kind: "read",
     right: OPERATION_LEVELS.hello,
     waits: false,
-    summary: "The API version, the Collie version and the operations offered.",
-    args: [{ name: "client", type: "string", required: false, help: "A name for this connection in the bridge's log, such as trick:<id>. Trusted for nothing." }],
+    summary: "The API version, the Collie version and the operations offered. First on every connection.",
+    args: [{ name: "token", type: "string", required: true, help: "The run token of a trick's run, from its facts (api.token). Never logged." }],
     parse: parseHello,
   },
   sessions: { name: "sessions", kind: "read", right: OPERATION_LEVELS.sessions, waits: false, summary: "The agent sessions of this machine.", args: [], parse: parseNone },
@@ -356,12 +359,12 @@ function bind<K extends OperationName>(name: K, handler: Handlers[K] | undefined
 }
 
 /**
- * `hello` (decision 17): what this socket is and what the caller may call. A `client` name goes to the
- * socket's log line and nowhere else: the answer is the same with it and without it (spec 04, decision 5).
+ * `hello` (decision 17): what this socket is and what the caller may call at its token's level. The socket
+ * has checked the token and bound the connection before this runs (spec 05, decision 3); the answer never
+ * carries the token.
  */
 function hello(deps: TableDeps): Handlers["hello"] {
-  return async (args, ctx) => {
-    if (args.client !== undefined) ctx.nameClient?.(args.client);
+  return async (_args, ctx) => {
     return { ok: true, answer: { api: API_VERSION, collie: deps.version(), experimental: true, operations: [...ctx.offered] } };
   };
 }

@@ -3474,6 +3474,7 @@ export const en = {
   "apiError.accounts.store_unreadable": "The profiles file could not be read, so nothing was changed.",
   "apiError.api.unknown_op": "The local API has no such operation. Ask it with hello for the list.",
   "apiError.api.denied": "The local API does not allow this operation. Ask it with hello for the list.",
+  "apiError.api.no_run_token": "The local API answers a trick's own run in this release.",
   "apiError.api.bad_request": "The local API cannot read this request. Send one JSON object per line.",
   "apiError.api.session_unknown": "No session on this machine has this id. Ask for the sessions again.",
   "apiError.api.session_replaced": "This session has ended, and another one now uses its pane. Ask for the sessions again.",
@@ -3651,8 +3652,9 @@ export const en = {
   // `on` and `watch` are rights (M105 step one): the same words as the proposal card's chips (bridge/tricks/version-card.ts).
   "settings.tricks.about.on": "Runs when a session changes state.",
   "settings.tricks.about.watch": "Runs when these files change: {paths}.",
-  "settings.tricks.about.access.see": "It asks to see your machines, your sessions and their states, your usage and the Hill, not what is on a screen.",
-  "settings.tricks.about.access.read": "It asks to read what is on your sessions' screens.",
+  "settings.tricks.about.runsAsYou": "This trick runs as you on this machine. It can do there what you can do.",
+  "settings.tricks.about.access.see": "It reads your machines, sessions, usage and the Hill.",
+  "settings.tricks.about.access.read": "It reads your sessions' screens.",
   "settings.tricks.about.access.unknown": "It asks for access this app does not know yet. Update the app before you say yes.",
   "settings.tricks.about.from": "Where it comes from",
   "settings.tricks.about.local": "Added on this machine.",
@@ -4116,7 +4118,7 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = ["apiError.api.no_run_token", "settings.tricks.about.runsAsYou"] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];

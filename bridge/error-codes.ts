@@ -394,6 +394,8 @@ export const ERROR_CODES = {
   "api.unknown_op": "the local API has no such operation here; send hello to see the operations it offers",
   /** The operation needs a level the caller's grant does not hold. The local tier grants `read`, which holds `see`. */
   "api.denied": "the local API does not grant the right this operation needs; send hello to see the operations it offers",
+  /** The connection named no live run token in `hello`: no token, an unknown one, or one whose run ended (M105 spec 05). */
+  "api.no_run_token": "the local API answers a trick's own run in this release; send hello first, with the run token from the trick's facts",
   /** The line is not a request the socket reads; `reason` is one of the socket's own fixed phrases. */
   "api.bad_request": "the request cannot be read ({reason}); send one JSON object per line, as {\"op\": \"hello\"}",
   /** The session id is malformed, of another machine, or names no pane here now. */

@@ -376,7 +376,7 @@ import { WalkySeen } from "./walky/seen.ts";
 import { WalkyService } from "./walky/service.ts";
 import { siblingDirsOf, SiblingLogs } from "./walky/siblings.ts";
 import { walkySocketPath, WalkyServer } from "./walky/socket.ts";
-import { ApiSocket, apiSocketPath } from "./api/socket.ts";
+import { ApiSocket, apiSocketPath, type RunTokenHolder } from "./api/socket.ts";
 import { LOCAL_TIER_RIGHTS } from "./api/operations.ts";
 import { apiListedPane } from "./api/listed.ts";
 import { apiTable, buildApiWorld } from "./api/world.ts";
@@ -4154,6 +4154,9 @@ const localApi =
     ? undefined
     : new ApiSocket({
         socketPath: apiSocketPath(cfg.stateDir),
+        // The run tokens (M105 spec 05): a connection is answered only after its `hello` names the token of a
+        // trick's live run. The table is the trick runner's; the socket sees it through this one function.
+        tokens: { resolve: (token: string): RunTokenHolder | null => tricks?.resolveRunToken(token) ?? null },
         // Exactly the API's world (bridge/api/world.ts `buildApiWorld`): the real services by narrow types;
         // the builder holds the one literal, `satisfies ApiWorld`, then `narrowWorld`.
         table: apiTable(

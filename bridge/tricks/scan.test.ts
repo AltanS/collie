@@ -160,6 +160,8 @@ describe("the local API's own warning kind", () => {
     ]);
     expect(found.filter((w) => w.file === "trick.ts")).toEqual([]);
     expect(kinds(await warningsOf("program.ts", { "program.ts": "const path = facts.api?.socket;\n" }))).toContain("api");
+    // M105 spec 05: a trick that reads its run token to send it itself talks past the helper too.
+    expect(kinds(await warningsOf("program.ts", { "program.ts": "const token = t.facts.api.token;\n" }))).toContain("api");
     expect(kinds(await warningsOf("program.ts", { "program.ts": "const s = await Bun.connect({ unix: path, socket: { data() {} } });\n" }))).toContain("api");
     expect(kinds(await warningsOf("program.ts", { "program.ts": 'const r = await fetch("http://localhost/x", { unix: path });\n' }))).toContain("api");
     // A TCP dial is flagged too: a grep cannot tell which socket a variable names.

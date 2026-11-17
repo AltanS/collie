@@ -145,7 +145,7 @@ describe("buildApiWorld over a real HillService and a real WalkyInstances", () =
     const rate = r.watch.sampleEveryMs();
     const table = apiTable(buildApiWorld(r.deps));
     const session = idOf(MACHINE, "w1:p1", r.token);
-    const args = { hello: { client: "trick:world" }, sessions: {}, brief: { session }, read: { session, lines: 10 }, accounts: {}, "hill.list": {}, machines: {}, events: { after: "-", wait: 0 } } satisfies Record<OperationName, JsonObject>;
+    const args = { hello: { token: "A".repeat(43) }, sessions: {}, brief: { session }, read: { session, lines: 10 }, accounts: {}, "hill.list": {}, machines: {}, events: { after: "-", wait: 0 } } satisfies Record<OperationName, JsonObject>;
     const answers: JsonObject[] = [];
     for (const name of OPERATION_NAMES) {
       const result = await table.get(name)!.run(args[name], ctx());

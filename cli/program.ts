@@ -363,14 +363,7 @@ function walkyDeps(io: Io): WalkyDeps {
 
 /** `api` (M105): the state dir, the files that vouch for the socket, and the socket itself. */
 function apiDeps(io: Io): ApiDeps {
-  return {
-    io,
-    stateDir: loadContext(io.err).stateDir,
-    platform: HOST.platform,
-    files: realFiles,
-    uid: process.getuid?.(),
-    ask: (path, line, ms) => askSocket(path, line, ms),
-  };
+  return { io };
 }
 
 /** `hill` (M96): walky's own deps, since the hill speaks over the walky socket. */
@@ -1288,11 +1281,11 @@ export const COMMANDS: readonly Command[] = [
     run: (args, s) => cmdHill({ io: s.io }, args),
   },
   // ── The local API (M105 spec 03) ───────────────────────────────────────────
-  // EXPERIMENTAL. One verb, generated from the operation table: `collie api <operation> [flags]`. It
-  // reads the running bridge's local socket, which exists only while tricks are switched on (ADR 0152).
+  // EXPERIMENTAL. One verb, its help generated from the operation table. The local API answers a trick's
+  // own run (ADR 0155), so `collie api <operation>` prints one line and reads nothing in this release.
   {
     name: "api",
-    summary: "experimental, read only: ask the local API of this machine (on while tricks are switched on): `api <operation> [flags] [--json]`",
+    summary: "experimental: the operations of the local API a trick reads with t.api; it answers a trick's own run in this release",
     usage: () => apiHelp(declaredOperations()),
     run: (args, s) => cmdApi(apiDeps(s.io), args),
   },

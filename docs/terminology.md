@@ -412,9 +412,17 @@ sometimes say "rights" for the same thing ([What a trick may and may not do](tri
 How much of Collie's [local API](#local-api) a trick reads: `none` (the default), `see` or `read`. `see`
 holds your machines, your sessions and their states, your usage and the Hill, and never the text of a
 screen. `read` adds what is on a session's screen. The trick says it with `access` in `trick.toml`, and it
-is a [power](#power): a version that raises it waits for your yes. The level is what the trick declares and
-what Collie's helper gives it. It is not a wall, because a program of yours can reach the local socket
-without the helper ([Reading Collie through the local API](tricks-reference.md#reading-collie-through-the-local-api)).
+is a [power](#power): a version that raises it waits for your yes. The level is what the trick declares,
+and the bridge checks it for each read through the [run token](#run-token)
+([Reading Collie through the local API](tricks-reference.md#reading-collie-through-the-local-api)).
+
+## Run token
+
+A random token Collie makes for one run of a trick that declares [access](#access-of-a-trick). It is in
+the run's facts and nowhere else, and it dies when the run ends. The [local API](#local-api) answers only
+a connection that names a live one. The token keeps out a program that only finds the socket. A program
+that runs as you can still read a pane through the multiplexer, and can read another program's memory;
+Collie does not stop that ([The local API](commands.md#the-local-api-experimental)).
 
 ## About sheet
 
@@ -470,7 +478,8 @@ The files a trick asks to run on: when one of them changes, the trick runs again
 
 ## Local API
 
-A read-only Unix socket on the machine, for programs of your own user: list the sessions, read a
-screen with secrets masked, follow the [events](#event). It is on while tricks are switched on, and
-`collie api` is its command. It is experimental, and it is closed to other users, other machines and
-browser pages ([The local API](commands.md#the-local-api-experimental)).
+A read-only Unix socket on the machine that a trick's run reads with `t.api`: list the sessions, read a
+screen with secrets masked, follow the [events](#event). It is on while tricks are switched on, and it
+answers only a connection that names a live [run token](#run-token). `collie api` lists its operations.
+It is experimental, and it is closed to other users, other machines and browser pages
+([The local API](commands.md#the-local-api-experimental)).

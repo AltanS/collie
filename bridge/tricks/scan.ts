@@ -68,12 +68,15 @@ const WARN_PATTERNS = {
   write: /\b(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|copyFile|copyFileSync|rename|renameSync|rm|rmSync|unlink|unlinkSync|mkdir|mkdirSync)\s*\(|\bBun\.write\s*\((?!\s*Bun\.std(?:out|err)\b)/,
   model: new RegExp(`\\b(?:anthropic|openai|openrouter)\\b|\\[\\s*["'\`](?:${AGENT_NAMES})["'\`]|\\b(?:which|findTool|tool|Bun\\.which)\\s*\\(\\s*["'\`](?:${AGENT_NAMES})["'\`]`, "i"),
   // Collie's local socket named by its path (`api/sock`, or `"api", "sock"` joined), by the facts that carry it
-  // (`facts.api.socket`, `api?.socket`), a socket dialed by hand (`createConnection`, `Bun.connect`, a `unix:`
-  // option), or `collie api` itself, in a line or as the program and first word of an argument list: the trick
-  // talks past its helper (M105 spec 04; review 3, item 1). The shipped helper dials this way itself, and is
-  // never grepped (scanTrickFolder). `createConnection` and `Bun.connect` are flagged for any target, a TCP
-  // host too: a grep cannot tell which socket a variable names.
-  api: /\bapi\/sock\b|(["'`])api\1\s*,\s*(["'`])sock\2|\bapi\s*\??\.\s*socket\b|\bcreateConnection\b|\bBun\.connect\b|\bunix\s*:|\bcollie\s+api\b|(["'`])collie\3\s*,\s*\[?\s*(["'`])api\4/,
+  // (`facts.api.socket`, `api?.socket`, `api.token`), a socket dialed by hand (`createConnection`, `Bun.connect`,
+  // a `unix:` option), or `collie api` itself, in a line or as the program and first word of an argument list: the
+  // trick talks past its helper (M105 spec 04; review 3, item 1). Since spec 05 the socket answers only a
+  // connection that names its run's token in `hello`, so such a trick would have to read its own token from its
+  // own facts and send it itself; the warning stays, because then the level check is the bridge's alone and the
+  // helper's clear refusal before the dial is gone. The shipped helper dials this way itself, and is never
+  // grepped (scanTrickFolder). `createConnection` and `Bun.connect` are flagged for any target, a TCP host too:
+  // a grep cannot tell which socket a variable names.
+  api: /\bapi\/sock\b|(["'`])api\1\s*,\s*(["'`])sock\2|\bapi\s*\??\.\s*(?:socket|token)\b|\bcreateConnection\b|\bBun\.connect\b|\bunix\s*:|\bcollie\s+api\b|(["'`])collie\3\s*,\s*\[?\s*(["'`])api\4/,
 } satisfies Record<Exclude<CheckWarningKind, "import">, RegExp>;
 /** In a shell file: a subshell, a tool that reaches the network by its bare name, a redirect into a file, and an agent program in command position. */
 const SHELL_SPAWN = /\$\(/;
@@ -326,8 +329,8 @@ export function checkWarnings(sources: readonly { file: string; text: string; sh
 
 /** The helper file a TypeScript trick imports. */
 export const HELPER_FILE = "trick.ts";
-/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v7`. */
-export const HELPER_VERSION = 7;
+/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v8`. */
+export const HELPER_VERSION = 8;
 /** The helper's source (cli/trick-kit/trick.ts), held in the binary as text. */
 export const TRICK_HELPER: string = trickHelperSource();
 
@@ -346,7 +349,8 @@ function sha256(text: string): string {
  * reads contract 2's `inputs` and prints the facts' own contract as `v`), and v4 (v5 adds `t.menu` and a
  * belt mark's `sessions`), and v5 (v6 ends a run after the pipe took the output, not with `process.exit`
  * over a write in flight, which Windows lost; it speaks contract 3 and reads its `values` as `t.values`), and v6
- * (v7 adds `t.api`, Collie's local API through the declared `access`). A trick folder keeps the copy it was
+ * (v7 adds `t.api`, Collie's local API through the declared `access`), and v7 (v8 names the run's token in
+ * `hello`, M105 spec 05: a v7 copy still runs, and its `t.api` hears `api.no_run_token`). A trick folder keeps the copy it was
  * approved with: an older one stays Collie's code, so a new Collie asks for no yes.
  */
 const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
@@ -356,6 +360,7 @@ const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
   ["c25f26e2450c71b92146bf62ca45978978890fa6afc085caf0909b64372a200b", 4],
   ["433bb8cae8929213274ed421f82cc63255a5a763732491a785c61f9f40bd4a1d", 5],
   ["52fed09e380c66a9902731aa111cc299c63bc2fcec83227f4f91963070789dfe", 6],
+  ["647ee21270299c997325d9dcd76f6a3ff9dcaf51cc2e3b7f89aa5e918fab80cd", 7],
 ]);
 
 /** The version of a helper this Collie ships (this one, or one of `older`) whose bytes `text` are, or null for any other text. */

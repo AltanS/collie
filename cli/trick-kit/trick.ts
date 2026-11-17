@@ -1,4 +1,4 @@
-// collie trick helper v7
+// collie trick helper v8
 // The helper of a Collie trick: it reads the facts, collects the parts and the Decisions, and prints the
 // one document the bridge reads. `collie trick init` writes it into the trick folder, and
 // `collie trick helper <id>` rewrites it with the newest version. It imports only node: built-ins and
@@ -284,8 +284,12 @@ export interface Facts {
    * `default`; a field with neither is absent. The person's data, UNTRUSTED for the program: show it, never run it.
    */
   values?: { [key: string]: string | number | boolean };
-  /** Present when the trick declares `access` and Collie's local API stands: the socket `t.api` dials, and the level. */
-  api?: { socket: string; access: "see" | "read" };
+  /**
+   * Present when the trick declares `access` and Collie's local API stands: the socket `t.api` dials, the level,
+   * and this run's token, which `t.api` names in `hello`. The token dies when the run ends. Keep it to this run:
+   * never print it, log it or write it to a file.
+   */
+  api?: { socket: string; access: "see" | "read"; token: string };
 }
 /**
  * The tap that started a run, one shape from every place: a button or an action in the trick's session,
@@ -446,10 +450,10 @@ function apiRefusal(code: string, message: string): ApiAnswer {
   return { ok: false, error: { code, message } };
 }
 
-/** One call: the refusals first (no dial), then one connection that names the trick, asks once and closes. */
+/** One call: the refusals first (no dial), then one connection that names the run's token, asks once and closes. */
 function apiCall(facts: Facts, op: string, args: Record<string, Json>): Promise<ApiAnswer> {
   const api = facts.api;
-  if (api === undefined || (api.access !== "see" && api.access !== "read")) return Promise.resolve(apiRefusal("trick.api_off", "Collie's local API is off here."));
+  if (api === undefined || (api.access !== "see" && api.access !== "read") || typeof api.token !== "string" || api.token === "") return Promise.resolve(apiRefusal("trick.api_off", "Collie's local API is off here."));
   const need = levelOf(op);
   if (need === undefined) return Promise.resolve(apiRefusal("trick.api_unknown", `Collie's local API has no operation named ${clip(op, 40)}.`));
   if (need === "read" && api.access !== "read") return Promise.resolve(apiRefusal("trick.api_level", `${op} needs access "read", and this trick declares "${api.access}".`));
@@ -470,7 +474,7 @@ function apiCall(facts: Facts, op: string, args: Record<string, Json>): Promise<
     const timer = setTimeout(() => finish(apiRefusal("trick.api_timeout", `Collie's local API did not answer within ${String(ms / 1000)} seconds.`)), ms);
     socket.setEncoding("utf8");
     socket.on("connect", () => {
-      socket.write(`${JSON.stringify({ id: "h", op: "hello", args: { client: `trick:${facts.trick.id}` } })}\n${JSON.stringify({ id: "r", op, args })}\n`);
+      socket.write(`${JSON.stringify({ id: "h", op: "hello", args: { token: api.token } })}\n${JSON.stringify({ id: "r", op, args })}\n`);
     });
     socket.on("data", (chunk: string) => {
       held += chunk;
@@ -481,7 +485,9 @@ function apiCall(facts: Facts, op: string, args: Record<string, Json>): Promise<
         try {
           // SAFETY: the socket answers one JSON object per line; a line that is not one throws and is skipped below.
           const body = JSON.parse(line) as { [key: string]: Json };
-          if (body.id !== "r") continue;
+          // A refused hello (a run token that died, say) is the answer: the call after it never ran.
+          if (body.id === "h" && body.ok === true) continue;
+          if (body.id !== "r" && body.id !== "h") continue;
           if (body.ok === true) return finish({ ...body, ok: true });
           const error = body.error;
           const code = typeof error === "object" && error !== null && !Array.isArray(error) && typeof error.code === "string" ? error.code : "trick.api_failed";
@@ -548,8 +554,10 @@ export class Trick {
   /**
    * Read through Collie's local API: `t.api("machines")`, `t.api("read", { session, lines })`. The answer is the
    * socket's line (`ok: true` and its fields) or `{ ok: false, error: { code, message } }`; it never throws, and a
-   * program can show `error.message`. It refuses before it dials when the trick declares no `access` ("none"),
-   * or when the operation needs "read" and the trick declares "see". One call takes at most 3 seconds.
+   * program can show `error.message`. It refuses before it dials when the facts carry no `api` (no `access`, or
+   * the local API is off here), or when the operation needs "read" and the trick declares "see". Each call opens
+   * with `hello` and this run's token; the bridge checks the token and the level again. One call takes at most
+   * 3 seconds.
    */
   api(op: string, args: Record<string, Json> = {}): Promise<ApiAnswer> {
     return apiCall(this.facts, op, args);

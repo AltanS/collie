@@ -383,7 +383,7 @@ function spyWorld(): SpyWorld {
 /** Valid arguments for every operation: the compiler makes this list every name. */
 function validArgs() {
   const session = idOf(MACHINE, "w1:p1", "k3f9");
-  return { hello: { client: "trick:spy" }, sessions: {}, brief: { session }, read: { session, lines: 10 }, accounts: {}, "hill.list": {}, machines: {}, events: { after: "-", wait: 0 } } satisfies Record<OperationName, JsonObject>;
+  return { hello: { token: "A".repeat(43) }, sessions: {}, brief: { session }, read: { session, lines: 10 }, accounts: {}, "hill.list": {}, machines: {}, events: { after: "-", wait: 0 } } satisfies Record<OperationName, JsonObject>;
 }
 
 function spyCtx(): OperationContext {

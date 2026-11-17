@@ -16,8 +16,8 @@ interface Reply {
   error?: { code: string; message: string };
 }
 
-// `t.api` (helper v7, M105 spec 04): the level is checked before any dial, a missing socket is a plain
-// answer, one call takes a short time, and a call against a real Unix socket server in a temp folder works.
+// `t.api` (helper v8, M105 specs 04 and 05): the level is checked before any dial, facts with no run token
+// dial nothing, a missing socket is a plain answer, one call takes a short time, and a call against a real Unix socket server in a temp folder works.
 // The server here is a scratch one of this test; it speaks the local API's wire (one JSON line each way).
 
 const dirs: string[] = [];
@@ -82,6 +82,9 @@ async function hostile(payload: string, end: boolean): Promise<string> {
   return socket;
 }
 
+/** A run token as the bridge puts it in the facts: 43 base64url characters. */
+const TOKEN = "Tk".repeat(21) + "x";
+
 async function trickWith(api: Facts["api"]): Promise<Trick> {
   const dir = await tempDir();
   const facts: Facts = {
@@ -105,20 +108,20 @@ describe("t.api", () => {
 
   test("an operation above the declared level is refused before any dial", async () => {
     const server = await scratch(() => ({ id: "r", ok: true }));
-    const t = await trickWith({ socket: server.socket, access: "see" });
+    const t = await trickWith({ socket: server.socket, access: "see", token: TOKEN });
     const answer = await t.api("read", { session: "lodge:1" });
     expect(answer.ok).toBe(false);
     if (!answer.ok) expect(answer.error.code).toBe("trick.api_level");
     expect(server.connections).toBe(0);
     // `read` is allowed at the level `read`, and `machines` at `see`.
-    const reader = await trickWith({ socket: server.socket, access: "read" });
+    const reader = await trickWith({ socket: server.socket, access: "read", token: TOKEN });
     expect((await reader.api("read", { session: "lodge:1" })).ok).toBe(true);
     expect((await t.api("machines")).ok).toBe(true);
   });
 
   test("a name the local API does not have is refused before any dial", async () => {
     const server = await scratch(() => ({ id: "r", ok: true }));
-    const t = await trickWith({ socket: server.socket, access: "read" });
+    const t = await trickWith({ socket: server.socket, access: "read", token: TOKEN });
     const answer = await t.api("send", { text: "x" });
     expect(answer.ok).toBe(false);
     if (!answer.ok) expect(answer.error.code).toBe("trick.api_unknown");
@@ -127,22 +130,36 @@ describe("t.api", () => {
 
   test("a socket path with nothing behind it is a plain answer", async () => {
     const dir = await tempDir();
-    const t = await trickWith({ socket: join(dir, "gone.sock"), access: "see" });
+    const t = await trickWith({ socket: join(dir, "gone.sock"), access: "see", token: TOKEN });
     const answer = await t.api("sessions");
     expect(answer).toEqual({ ok: false, error: { code: "trick.api_unreachable", message: "Collie's local API did not answer." } });
   });
 
-  test("a call names the trick in hello, then asks once, and returns the socket's answer", async () => {
+  test("facts whose api has no token dial nothing: the local API is off here", async () => {
+    const server = await scratch(() => ({ id: "r", ok: true }));
+    // A copy of facts from before spec 05, read loosely: no token.
+    const t = await trickWith(JSON.parse(JSON.stringify({ socket: server.socket, access: "see" })));
+    expect(await t.api("machines")).toEqual({ ok: false, error: { code: "trick.api_off", message: "Collie's local API is off here." } });
+    expect(server.connections).toBe(0);
+  });
+
+  test("a refused hello is the answer: the bridge's code and message come back", async () => {
+    const server = await scratch((request): Reply => ({ id: request.id ?? null, ok: false, error: { code: "api.no_run_token", message: "the local API answers a trick's own run in this release" } }));
+    const t = await trickWith({ socket: server.socket, access: "see", token: TOKEN });
+    expect(await t.api("machines")).toEqual({ ok: false, error: { code: "api.no_run_token", message: "the local API answers a trick's own run in this release" } });
+  });
+
+  test("a call names the run's token in hello, then asks once, and returns the socket's answer", async () => {
     const server = await scratch((request): Reply => {
       const id = request.id ?? null;
       if (request.op === "hello") return { id, ok: true };
       return { id, ok: true, machines: [{ id: "m_one", label: "workshop" }] };
     });
-    const t = await trickWith({ socket: server.socket, access: "see" });
+    const t = await trickWith({ socket: server.socket, access: "see", token: TOKEN });
     const answer = await t.api("machines", {});
     expect(answer).toEqual({ ok: true, id: "r", machines: [{ id: "m_one", label: "workshop" }] });
     expect(server.lines).toEqual([
-      { id: "h", op: "hello", args: { client: "trick:lodge" } },
+      { id: "h", op: "hello", args: { token: TOKEN } },
       { id: "r", op: "machines", args: {} },
     ]);
   });
@@ -153,14 +170,14 @@ describe("t.api", () => {
       if (request.op === "hello") return { id, ok: true };
       return { id, ok: false, error: { code: "api.session_unknown", message: "No such session." } };
     });
-    const t = await trickWith({ socket: server.socket, access: "read" });
+    const t = await trickWith({ socket: server.socket, access: "read", token: TOKEN });
     expect(await t.api("brief", { session: "lodge:9" })).toEqual({ ok: false, error: { code: "api.session_unknown", message: "No such session." } });
   });
 
   // Review 3, item 5: a hostile answer is a plain error, never a throw.
   test("an answer too large is a plain error, and the call ends at once", async () => {
     const socket = await hostile("x".repeat(3 * 1024 * 1024), false);
-    const t = await trickWith({ socket, access: "see" });
+    const t = await trickWith({ socket, access: "see", token: TOKEN });
     const started = performance.now();
     expect(await t.api("sessions")).toEqual({ ok: false, error: { code: "trick.api_failed", message: "Collie's local API sent an answer that is too large." } });
     expect(performance.now() - started).toBeLessThan(2000);
@@ -168,13 +185,13 @@ describe("t.api", () => {
 
   test("an answer that is not JSON, or JSON that is not an object, is a plain error", async () => {
     const socket = await hostile('not json\nnull\n[1,2]\n"r"\n{"id":"r","ok":tru\n', true);
-    const t = await trickWith({ socket, access: "see" });
+    const t = await trickWith({ socket, access: "see", token: TOKEN });
     expect(await t.api("machines")).toEqual({ ok: false, error: { code: "trick.api_unreachable", message: "Collie's local API closed the connection." } });
   });
 
   test("a server that never answers ends the call at the limit with a plain answer", async () => {
     const server = await scratch(() => null);
-    const t = await trickWith({ socket: server.socket, access: "see" });
+    const t = await trickWith({ socket: server.socket, access: "see", token: TOKEN });
     const before = process.env.TRICK_API_MS;
     process.env.TRICK_API_MS = "150";
     try {

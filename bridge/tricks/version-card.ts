@@ -147,12 +147,13 @@ export const WARN_VERBS = {
 export const DECIDES_REPLY_CHIP = "answers go to a session";
 
 /**
- * The chips of the right `access` (M105 spec 04), as they follow "asks for" ("It now also asks for the right to
- * see ..."): the level the trick declares for Collie's local API, with the verb of its line (see, read). The level is what the trick declares and the helper gives it, not a wall (decision 4).
+ * The chips of the right `access` (M105 spec 04): the level the trick declares for Collie's local API, in the
+ * plain words of spec 05 (decision 10), since the bridge holds the level for the API. In a summary they
+ * follow "asks for", as `ON_CHIP` does.
  */
 export const ACCESS_CHIPS = {
-  see: "the right to see your machines, sessions and usage",
-  read: "the right to read what is on your sessions' screens",
+  see: "reads machines, sessions, usage",
+  read: "reads screens",
 } as const satisfies Readonly<Record<TrickAccess, string>>;
 
 /**

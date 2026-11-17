@@ -198,8 +198,12 @@ function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
   if (trick.events !== undefined && trick.events.length > 0) rows.push({ key: "on", node: t("settings.tricks.about.on") });
   if (trick.watch !== undefined && trick.watch.length > 0) rows.push({ key: "watch", node: t("settings.tricks.about.watch", { paths: trick.watch.join(", ") }) });
   // `access` (M105 spec 04): the one line of the level the trick declares. `none` has no line, and a level this
-  // phone does not know has one fixed line (review 3, item 4).
-  if (trick.access !== undefined) rows.push({ key: "access", node: <span data-line="access">{t(ACCESS_LINE_KEYS[trick.access])}</span> });
+  // phone does not know has one fixed line (review 3, item 4). The card's honest line stands just before it (spec
+  // 05, decision 10): the level says what the trick reads through Collie, and the trick runs as you all the same.
+  if (trick.access !== undefined) {
+    rows.push({ key: "runs-as-you", node: <span data-line="runs-as-you">{t("settings.tricks.about.runsAsYou")}</span> });
+    rows.push({ key: "access", node: <span data-line="access">{t(ACCESS_LINE_KEYS[trick.access])}</span> });
+  }
   for (const line of warningLines(trick)) {
     rows.push({
       key: `warn:${line.kind}`,
