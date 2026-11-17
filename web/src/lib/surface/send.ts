@@ -288,6 +288,12 @@ export interface SendReceipt {
    */
   readonly menuSign?: MenuSign;
   /**
+   * Set on a `typed_not_submitted(override)` that found the text in the box already, left there by an
+   * earlier send of it (a Submit refused for a popup, then Type it anyway): nothing was typed a second
+   * time. The person presses Enter on the key pad. Absent otherwise.
+   */
+  readonly textAlreadyTyped?: true;
+  /**
    * Set on a send a program session took (M56 spec 14): the request id the program acknowledged.
    * The driver passes the request id to the program unchanged, so it equals `requestId`. Absent on
    * every send into a screen.
@@ -403,6 +409,8 @@ export interface SendReceiptRow {
   readonly draftSeen?: true;
   /** The sign a blind-road `menu_open` read (see {@link SendReceipt.menuSign}). */
   readonly menuSign?: MenuSign;
+  /** The override found its text in the box already (see {@link SendReceipt.textAlreadyTyped}). */
+  readonly textAlreadyTyped?: true;
   /** The line of a refusal or a `typed_not_submitted` (see {@link SendReceipt.detail}). */
   readonly detail?: string;
   /** What the bridge saw at that end, four words (see {@link SendReceipt.saw}). */

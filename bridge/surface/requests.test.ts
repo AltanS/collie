@@ -388,6 +388,13 @@ describe("the person's word on a stored receipt (M102 spec 01)", () => {
     }
   });
 
+  test("textAlreadyTyped survives a restart (M102 spec 12)", () => {
+    const store = new RequestStore(dir);
+    const { record } = store.accept(input({ id: "req-text-typed-01" }));
+    store.settle("req-text-typed-01", { ...receiptFor(record, "typed_not_submitted"), reason: "override", word: "override", textAlreadyTyped: true });
+    expect(new RequestStore(dir).get("req-text-typed-01")?.receipt).toMatchObject({ outcome: "typed_not_submitted", textAlreadyTyped: true });
+  });
+
   test("markArrived writes arrived on a settled unknown receipt once, and keeps the outcome", () => {
     const store = new RequestStore(dir);
     unknownReceipt(store, "req-word-mark-01");
