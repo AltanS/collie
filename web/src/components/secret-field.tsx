@@ -42,9 +42,15 @@ export interface SecretFieldProps {
   disabled: boolean;
   /** A send runs: Send shows a busy state, so the wait has a mark of its own. */
   sending?: boolean;
-  /** Why the field is disabled when it is not a running send (the lock, a launch): said in a line under the
-   *  frame, since the frame's own placeholder is fixed. Null or absent: no line. */
+  /** Why the field is disabled while a pane starts: said in a line under the frame. Null or absent: no
+   *  line. The lock speaks through `lockedWhy`, never here. */
   reason?: string | null;
+  /**
+   * Why nothing typed here can leave for this pane (a pane that is gone, a device that may not write, a
+   * box out of reach), in the composer's own words. It stands as the placeholder while it is set, so a
+   * field that waits for good never stands there dead with no reason (no block without an exit).
+   */
+  lockedWhy?: string;
   /** Where a send starts from, for the design reference only: the text and whether it is shown. */
   start?: { readonly value: string; readonly shown: boolean };
 }
@@ -57,7 +63,7 @@ export function cleanPaste(text: string): string {
 /** One icon control in the field's row: drawn 36px, reaching 44px. */
 const ICON_BUTTON = cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full");
 
-export function SecretField({ onSend, onClose, disabled, sending = false, reason = null, start }: SecretFieldProps) {
+export function SecretField({ onSend, onClose, disabled, sending = false, reason = null, lockedWhy, start }: SecretFieldProps) {
   useLocale();
   const [value, setValue] = useState(start?.value ?? "");
   const [shown, setShown] = useState(start?.shown ?? true);
@@ -139,7 +145,7 @@ export function SecretField({ onSend, onClose, disabled, sending = false, reason
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
-            placeholder={t("composer.secret.placeholder")}
+            placeholder={lockedWhy ?? t("composer.secret.placeholder")}
             disabled={disabled}
             autoCorrect="off"
             autoCapitalize="none"

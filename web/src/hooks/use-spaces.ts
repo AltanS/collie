@@ -79,7 +79,8 @@ export interface StartAsk {
  * `unknown`: no answer that says whether it ran (ADR 0091).
  */
 export type StartOutcome =
-  | { kind: "done" }
+  /** `paneId`: the pane the start opened, on a plain start (Change login ends that sign-in session). */
+  | { kind: "done"; paneId?: string }
   | { kind: "refused"; message: string }
   | { kind: "unknown" };
 
@@ -323,7 +324,7 @@ export function useSpaceActions(canWrite?: () => boolean) {
               );
         if (!res.ok) return { kind: "refused", message: describeApiError(res) };
         open(res, beside === undefined ? "space" : "tab", scope, startupHarness(ask.what, ask.rowHarness));
-        return { kind: "done" };
+        return { kind: "done", paneId: res.pane.paneId };
       } catch (e) {
         if (api.outcomeUnknown(e)) return { kind: "unknown" };
         return { kind: "refused", message: describeThrownError(e) };

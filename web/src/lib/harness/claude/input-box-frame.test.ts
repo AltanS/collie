@@ -61,6 +61,8 @@ const SIGN_IN = [
   "claude--v2325-login-console-url--w61.txt",
   "claude--v2325-login-console-url-pasted--w61.txt",
   "claude--v2325-login-url--w61.txt",
+  // `/login` opened inside a running conversation, in a wide pane (2026-11-16): transcript rows above the panel.
+  "claude--v2325-login-url-in-session--w220.txt",
   "claude--v2325-login-url-typed--w120.txt",
   "claude--v2325-login-url-typed--w61.txt",
   // The first run (an empty config folder): the same field with no rule, no title and no footer,

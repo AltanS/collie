@@ -38,7 +38,7 @@ import { readFileSync, readlinkSync } from "node:fs";
 import { findProfile, loadProfiles, profileForPlatform, type Profile } from "../web/src/lib/surface/profile.ts";
 import { HOST, paneSurfacePlatform, WSL_FLAGS, type Host } from "./host.ts";
 import type { ForegroundProcess } from "./journal/types.ts";
-import { FOREGROUND_READ_MS, harnessProcessOf, isInterpreter } from "./launch-window.ts";
+import { FOREGROUND_READ_MS, harnessProcessOf, isInterpreter, type HarnessProcess } from "./launch-window.ts";
 import type { ProgramVersion, VersionCache } from "./surface/binary-version.ts";
 import type { PaneProfileMatch } from "./surface/protocol.ts";
 
@@ -212,6 +212,44 @@ export function paneBinaryOf(
   if (script === null) return null;
   const interpreter = absolute(first, cwd, host) ?? (exe !== null && isInterpreter(exe) ? exe : bare(first, host) ? first : null);
   return interpreter === null ? null : { harness: found.harness, command: [interpreter, script] };
+}
+
+let binariesMemo: ReadonlyMap<string, string> | null = null;
+
+/** Each profile's binary (lower case) to its harness id: the one table a foreground process is matched against. */
+export function profileBinaries(): ReadonlyMap<string, string> {
+  return (binariesMemo ??= new Map([...loadProfiles().values()].map((profile) => [profile.identity.binary.toLowerCase(), profile.id])));
+}
+
+/**
+ * WHICH HARNESS RUNS IN THIS PANE, by its foreground program (#793). The one answer the send path and
+ * the journal share, so the two cannot name a pane differently again.
+ *
+ * A process counts when the binary table names it exactly ({@link harnessProcessOf}: argv[0]'s program
+ * name, or the script an interpreter runs). The answer is that harness, or null when:
+ *  • no process is a known binary (a shell, `ssh`, a container, a wrapper the table does not know);
+ *  • processes name two different harnesses: a wrong name types with the wrong keys, so none is better;
+ *  • with a `probe`, every process of that harness has a pid whose `/proc/<pid>/cmdline` is not the argv
+ *    the multiplexer reported (another pid namespace, a reused pid, a host with no `/proc`). A process
+ *    the multiplexer reports with no pid counts on its argv alone.
+ * `probe` null: argv alone, for a reader that types nothing (the journal picks which log to read by it).
+ */
+export function paneHarnessOf(processes: readonly ForegroundProcess[], binaries: ReadonlyMap<string, string>, probe: ProcessProbe | null): HarnessProcess | null {
+  const found = processes.map((process) => harnessProcessOf([process], binaries)).filter((one): one is HarnessProcess => one !== null);
+  if (new Set(found.map((one) => one.harness)).size !== 1) return null;
+  if (probe === null) return found[0] ?? null;
+  return found.find((one) => one.process.pid === undefined || provenPid(one.process, probe) !== undefined) ?? null;
+}
+
+/**
+ * The send path's {@link paneHarnessOf} over the pane's shared foreground read (`SendDeps.paneHarness`):
+ * the harness id, or null when the read fails or names none.
+ */
+export function createPaneHarness(deps: { readonly read: ForegroundRead; readonly binaries: () => ReadonlyMap<string, string>; readonly probe: ProcessProbe }): (paneId: string) => Promise<string | null> {
+  return async (paneId) => {
+    const read = await deps.read(paneId);
+    return read.ok ? (paneHarnessOf(read.value, deps.binaries(), deps.probe)?.harness ?? null) : null;
+  };
 }
 
 /** The process's pid when `/proc/<pid>/cmdline` is the argv the multiplexer reported, else undefined. */

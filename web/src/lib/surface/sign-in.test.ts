@@ -15,6 +15,7 @@ import { detectSignInCard } from "../harness/sign-in-card";
 import { asJsonObject, parseJsonObject, type JsonObject, type JsonValue } from "../json";
 import { paneSurface, unreachable } from "../send-slot";
 import { foldSurface, type SurfaceInput } from "./fold";
+import { askOf } from "./surface";
 import { parseProfile, ProfileError } from "./profile";
 import { fieldShows, maskedText } from "./secret-field";
 
@@ -517,4 +518,85 @@ describe("a stale read keeps the sign-in field, and only the sign-in field", () 
     expect(paneSurface(secret, false, undefined).surface.field).toBe("secret");
     expect(unreachable({ revision: 4, turn: "idle", modal: "none", composer: "empty" }).field).toBeUndefined();
   });
+});
+
+// `/login` opened INSIDE a running conversation, in a wide pane (field case 2026-11-16: the lead pane on
+// Herdr, Claude Code 2.1.325). The panel stands under the transcript: the conversation's rows, the echoed
+// `❯ /login`, then the rule, `Login`, the address wrapped at the pane's edge, the field and `Esc to cancel`.
+// Captured at 220 columns in a scratch session (claude--v2325-login-url-in-session--w220.txt, the address's
+// client_id, code_challenge and state masked); the other widths are the same rows wrapped as Claude draws
+// them, under a wide transcript with or without a spinner row above the panel.
+describe("the sign-in field opened by /login inside a running conversation", () => {
+  const IN_SESSION = "claude--v2325-login-url-in-session--w220.txt";
+  const SGR_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;:]*m`, "gu");
+  const plain = (name: string): string[] => readFileSync(join(PANES, name), "utf8").replace(SGR_RE, "").split("\n");
+  /** The masked address, joined from the capture's wrapped rows. */
+  const address = (): string => {
+    const rows = plain(IN_SESSION);
+    const from = rows.findIndex((row) => row.startsWith("https://claude.com/"));
+    let to = from;
+    while (to < rows.length && rows[to]!.trim() !== "") to++;
+    return rows.slice(from, to).join("");
+  };
+  /** A wide conversation's rows (the lab's idle pane at 200 columns), its box and footer left out. */
+  const transcript = (): string[] => plain("claude-lab--idle-after-turn--w200.txt").slice(0, 12);
+  /** The panel as Claude draws it at `width` columns, the field holding `typed`. */
+  const panel = (width: number, typed = ""): string[] => {
+    const url = address();
+    const wrapped: string[] = [];
+    for (let at = 0; at < url.length; at += width) wrapped.push(url.slice(at, at + width));
+    const notice = "  Browser didn't open? Use the url below to sign in (c to copy)";
+    const noticeRows = notice.length <= width ? [notice] : [notice.slice(0, width), `  ${notice.slice(width).trimStart()}`];
+    return ["─".repeat(width), "  Login", "", ...noticeRows, "", ...wrapped, "", "", `  Paste code here if prompted >${typed === "" ? "" : ` ${typed}`}`, "", "  Esc to cancel", "", "", ""];
+  };
+  const read = (rows: readonly string[]) => readScreen(rowsOf(rows.join("\n")), "claude", idleFor("claude"));
+
+  it("the capture: a free sign-in field under the transcript, and the sign-in card", () => {
+    const { rows, read: got } = screen(IN_SESSION);
+    expect(got.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty", field: "secret" });
+    expect(detectSignInCard(rows, idleFor("claude")!)?.model.title).toBe("Login");
+  });
+
+  for (const width of [61, 120, 160, 219]) {
+    it(`${String(width)} columns under a wide transcript: the sign-in field, empty and typed`, () => {
+      expect(read([...transcript(), "", "❯ /login", "", ...panel(width)]).surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty", field: "secret" });
+      const typed = read([...transcript(), "", "❯ /login", "", ...panel(width, "***************ESTATE")]);
+      expect(typed.surface).toMatchObject({ composer: "draft", field: "secret" });
+      expect(typed.frame?.interior.text).toBe("***************ESTATE");
+    });
+
+    it(`${String(width)} columns with a spinner or a background task row above the panel: still the sign-in field`, () => {
+      expect(read([...transcript(), "", "✻ Zigzagging… (3m 21s · ↓ 11.6k tokens)", "", ...panel(width)]).surface.field).toBe("secret");
+      expect(read([...transcript(), "", "● Bash(sleep 600) running in background", "", ...panel(width)]).surface).toMatchObject({ modal: "none", field: "secret" });
+    });
+
+    it(`${String(width)} columns: the method list before it is still a card to tap`, () => {
+      const methods = plain("claude--v2325-login-methods--w61.txt");
+      const rule = methods.findIndex((row) => /^─+$/u.test(row));
+      const got = read([...transcript(), "", "❯ /login", "", "─".repeat(width), ...methods.slice(rule + 1)]);
+      expect(got.surface.field).toBeUndefined();
+      const ask = askOf(got.surface.modal);
+      expect(ask?.options.map((option) => option.id)).toEqual(["1", "2", "3"]);
+    });
+  }
+
+  // A wrong `secret` read on an ordinary box would stop its drafts and receipts: only the real panel counts.
+  for (const width of [61, 120, 219]) {
+    it(`${String(width)} columns: a transcript that quotes the panel's words, over an ordinary box, is no sign-in field`, () => {
+      const box = ["─".repeat(width), "❯ ", "─".repeat(width), "  ⏵⏵ auto mode on (shift+tab to cycle)"];
+      const quoted = ["● The panel showed:", "", "─".repeat(width), "  Login", "", "  Paste code here if prompted >", "", "  Esc to cancel", "", "● Done."];
+      expect(read([...transcript(), "", ...quoted, "", ...box]).surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+      expect(read([...transcript(), "", ...quoted, "", ...box]).surface.field).toBeUndefined();
+      expect(read([...transcript(), "", "  Paste code here if prompted >", "", ...box]).surface.field).toBeUndefined();
+      const draft = read([...transcript(), "", "─".repeat(width), "❯ it said Paste code here if prompted >", "─".repeat(width), "  ⏵⏵ auto mode on (shift+tab to cycle)"]);
+      expect(draft.surface).toMatchObject({ composer: "draft" });
+      expect(draft.surface.field).toBeUndefined();
+    });
+  }
+
+  for (const name of ["claude-lab--idle-after-turn--w200.txt", "claude--v2303-titled-edge-idle--w160.txt", "claude--v2303-permission-bash-bg-agent-rm--w160.txt"]) {
+    it(`${name}: an ordinary box or a permission dialog is no sign-in field`, () => {
+      expect(screen(name).read.surface.field).toBeUndefined();
+    });
+  }
 });

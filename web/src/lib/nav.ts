@@ -320,6 +320,11 @@ export function accountPath(id: string, scope?: Scope): string {
   return `/settings/accounts/${encodeURIComponent(id)}${scopeSearch(scope)}`;
 }
 
+/** One account's Change login page, below the account's page (M101). */
+export function changeLoginPath(id: string, scope?: Scope): string {
+  return `/settings/accounts/${encodeURIComponent(id)}/login${scopeSearch(scope)}`;
+}
+
 /**
  * The crew overview — the read-only census of every machine in the crew. Carries the scope like the
  * others so "back" returns you to the machine you were looking at, not to the lead.
@@ -501,7 +506,8 @@ const ANY_TRICK = "/trick/*";
  *   L3 `/settings/accounts/add`, `/settings/accounts/:id`, `/settings/voice/host`, `/settings/voice/model`, `/settings/system/install-count`, `/settings/appearance/character`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
  *      `/space/:id/changes/commit`, `/space/:id/changes/files` (a folder or a file of the tree, with
  *      `?dir=` or `?path=`)
- *   L4 `/pane/:id/changes/commit` (the commit's file view adds `&path=`), `/pane/:id/changes/files`
+ *   L4 `/pane/:id/changes/commit` (the commit's file view adds `&path=`), `/pane/:id/changes/files`,
+ *      `/settings/accounts/:id/login` (Change login; a pane is a parent too)
  *
  * A pane's parent is whichever of the dashboard or a space opened it. `/crew` also accepts
  * `/settings`, because the crew card in Settings opens it, and a step back to Settings is the only
@@ -573,6 +579,11 @@ export function ancestorsOf(pathname: string): string[] {
   // The Add form and one account's page sit one level below Accounts.
   if (head === "settings" && seg.length === 3 && id === "accounts") {
     return ["/settings/accounts", "/settings", "/"];
+  }
+  // Change login sits below its account's page. A session's settings sheet opens it too, so a step back
+  // onto that pane is a step up and not a push.
+  if (head === "settings" && seg.length === 4 && id === "accounts" && seg[3] === "login") {
+    return [`/settings/accounts/${leaf}`, ANY_PANE, "/settings/accounts", "/settings", "/"];
   }
   if (head === "crew" && seg.length === 1) return ["/settings/system", "/settings", "/"];
   // Machines is opened from the Settings index and from the crew card in System, so both are
@@ -827,6 +838,9 @@ export function parentChain(pathname: string, search: string): string[] {
   }
   if (head === "settings" && seg.length === 3 && id === "accounts") {
     return [home, `/settings${q}`, `/settings/accounts${q}`];
+  }
+  if (head === "settings" && seg.length === 4 && id === "accounts" && seg[3] === "login") {
+    return [home, `/settings${q}`, `/settings/accounts${q}`, `/settings/accounts/${leaf}${q}`];
   }
   if (head === "crew" && seg.length === 1) return [home, `/settings${q}`, `/settings/system${q}`];
   if (head === "machines" && seg.length === 1) return [home, `/settings${q}`];

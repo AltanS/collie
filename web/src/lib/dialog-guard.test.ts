@@ -8,7 +8,7 @@ vi.mock("./api", () => ({
   sendKeys: vi.fn(),
 }));
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { fetchPane, sendKeys } from "./api";
@@ -18,6 +18,7 @@ import { dialogDetector, sendBoundKeys, sendGuardedKeys } from "./dialog-guard";
 import { buildBlocks } from "./harness";
 import { DIALOG_CONTRACT, dialogModelOf, type DialogKind, type DialogModels } from "./harness/dialog-contract";
 import { submitPromptOption } from "./prompt-action";
+import { verifyPromptBinding } from "../../../bridge/prompt-binding.ts";
 
 const mockFetchPane = vi.mocked(fetchPane);
 const mockSendKeys = vi.mocked(sendKeys);
@@ -75,7 +76,8 @@ describe("the guard refuses when the fresh screen isn't the tapped dialog", () =
     });
 
     expect(res).toEqual({ status: "sent" });
-    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", p.options[0]!.keys, undefined, p.signature);
+    // A framed dialog binds its own rows (`bindRegion`), the rest of the prompt models `signature`.
+    expect(mockSendKeys).toHaveBeenCalledWith("w1:p1", p.options[0]!.keys, undefined, p.bindRegion ?? p.signature);
   });
 
   it("refuses (and types nothing) when the pane belongs to an agent with no adapter", async () => {
@@ -230,7 +232,7 @@ describe("the guard binds a model's styledSignature as expected_styled", () => {
     const p = dialogDetector("prompt-select", "claude")(lines(fixture("claude--permission-edit.txt")))!;
     expect(p.styledSignature).toBeUndefined();
     await sendGuardedKeys({ ...target(p), agent: "claude" }, p.options[0]!.keys);
-    expect(mockSendKeys.mock.calls[0]).toEqual(["w1:p1", p.options[0]!.keys, undefined, p.signature]);
+    expect(mockSendKeys.mock.calls[0]).toEqual(["w1:p1", p.options[0]!.keys, undefined, p.bindRegion ?? p.signature]);
   });
 });
 
@@ -249,5 +251,150 @@ describe("sendBoundKeys: the bridge's reason on a changed prompt", () => {
   it("is the bare `changed` of old when the body carries no reason (an older bridge)", async () => {
     mockSendKeys.mockResolvedValueOnce({ ok: false, code: "prompt_changed", error: "moved" });
     expect(await sendBoundKeys(target, ["Enter"], "region")).toEqual({ status: "changed" });
+  });
+});
+
+// THE FIELD CASE (2026-11-16): a subagent's Bash permission dialog on a crew member (Claude Code
+// 2.1.325, Herdr 0.9.5), while the main thread's own background Bash ticked a timer in a row ABOVE the
+// dialog. Herdr 0.9.x reports a real pane revision that moves with every repaint, so the old guard's
+// revision check refused every tap, and the old comparator refused it too, because the prompt's
+// `signature` reads 40 rows above the first option. Nothing was sent, so no bridge logged a tap. The
+// guard now refuses when the dialog the person saw is not the dialog on the screen now, and for no
+// other reason.
+describe("a row outside the dialog that ticks does not refuse the tap", () => {
+  const BASE = fixture("claude-lab--permission-bash-subagent--w82.txt");
+  const DETECTED = 12972;
+  // eslint-disable-next-line no-control-regex -- the fixture is a raw pane read, ANSI and all
+  const plain = (row: string) => row.replace(/\x1b\[[0-9;]*m/g, "");
+  const rowsOf = (text: string) => text.split("\r\n");
+
+  /** The screen with `rows` in place of the transcript row that matches `at`. */
+  function withRows(text: string, at: (row: string) => boolean, rows: string[]): string {
+    const all = rowsOf(text);
+    const i = all.findIndex((row) => at(plain(row)));
+    expect(i, "the row to replace is on the screen").toBeGreaterThanOrEqual(0);
+    return [...all.slice(0, i), ...rows, ...all.slice(i + 1)].join("\r\n");
+  }
+  const waitingRow = (row: string) => row.includes("Waiting for 1 background agent");
+
+  function freshRead(text: string, revision: number) {
+    mockFetchPane.mockResolvedValue({ paneId: "w1:p1", text, truncated: false, revision });
+  }
+  const tapped = (text: string) => dialogDetector("prompt-select", "claude")(lines(text))!;
+  const tapYes = (prompt: ReturnType<typeof tapped>, detectedRevision = DETECTED) =>
+    submitPromptOption({ paneId: "w1:p1", requestedLines: 200, detectedRevision, agent: "claude", prompt, option: prompt.options[0]! });
+
+  const TICKING: [string, string[], string[]][] = [
+    [
+      "a tool's timer",
+      ["● Bash(sleep 600)", "  ⎿  Running… (4m 12s · timeout 10m)"],
+      ["● Bash(sleep 600)", "  ⎿  Running… (4m 16s · timeout 10m)"],
+    ],
+    ["a spinner glyph", ["✻ Waiting for 1 background agent to finish"], ["✶ Waiting for 1 background agent to finish"]],
+    ["a clock in a status row", ["✻ Churned for 4s · done 12:15 AM"], ["✻ Churned for 4s · done 12:16 AM"]],
+  ];
+
+  it.each(TICKING)("%s above the dialog, revision N+4: the tap sends the plan's keys once", async (_name, seen, now) => {
+    const shown = withRows(BASE, waitingRow, seen);
+    const fresh = withRows(BASE, waitingRow, now);
+    const prompt = tapped(shown);
+    // The changed row is inside the old comparison: the prompt's lookback signature differs. Before
+    // this fix the tap was refused here even at an equal revision.
+    expect(tapped(fresh).signature).not.toBe(prompt.signature);
+    freshRead(fresh, DETECTED + 4);
+
+    expect(await tapYes(prompt)).toEqual({ status: "sent" });
+    expect(mockSendKeys).toHaveBeenCalledTimes(1);
+    const [paneId, keys, scope, region] = mockSendKeys.mock.calls[0]!;
+    expect([paneId, keys, scope]).toEqual(["w1:p1", ["1"], undefined]);
+    // Bound to the dialog's own rows, so the bridge's re-read cannot fail on the next tick either.
+    expect(region).toBe(tapped(fresh).bindRegion);
+    expect(region).toMatch(/^─+\n Bash command/u);
+    for (const row of [...seen, ...now]) expect(region).not.toContain(row.trim());
+  });
+
+  it("an identical screen at a moved revision sends", async () => {
+    const prompt = tapped(BASE);
+    freshRead(BASE, DETECTED + 4);
+    expect(await tapYes(prompt)).toEqual({ status: "sent" });
+    expect(mockSendKeys).toHaveBeenCalledTimes(1);
+  });
+
+  it("an identical screen at the same revision sends", async () => {
+    const prompt = tapped(BASE);
+    freshRead(BASE, DETECTED);
+    expect(await tapYes(prompt)).toEqual({ status: "sent" });
+  });
+
+  it("another dialog with the same options but another command is refused, even at the same revision", async () => {
+    const prompt = tapped(BASE);
+    const other = withRows(BASE, (row) => row === " touch /tmp/claude-lab/project/sub-one.txt", [" rm -rf /tmp/claude-lab/project"]);
+    const successor = tapped(other);
+    // Same shape: question, labels and keys all match, only the command differs.
+    expect(successor.question).toBe(prompt.question);
+    expect(successor.options).toEqual(prompt.options);
+    freshRead(other, DETECTED);
+    expect(await tapYes(prompt)).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("another subject line (description) with the same command and options is refused", async () => {
+    const prompt = tapped(BASE);
+    const other = withRows(BASE, (row) => row === " Create empty file sub-one.txt", [" Create empty file sub-two.txt"]);
+    freshRead(other, DETECTED + 1);
+    expect(await tapYes(prompt)).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("a moved pointer is refused, as the contract says (the byte-faithful dialog rows carry it)", async () => {
+    const prompt = tapped(BASE);
+    const moved = withRows(
+      withRows(BASE, (row) => row === " ❯ 1. Yes", ["   1. Yes"]),
+      (row) => row.startsWith("   2. Yes, and always allow"),
+      [" ❯ 2. Yes, and always allow access to /tmp/claude-lab/project from this project"],
+    );
+    expect(tapped(moved), "the moved screen still lifts").not.toBeNull();
+    freshRead(moved, DETECTED);
+    expect(await tapYes(prompt)).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("a dialog that is gone is refused", async () => {
+    const prompt = tapped(BASE);
+    const rows = rowsOf(BASE);
+    const edge = rows.findIndex((row) => plain(row).startsWith("────"));
+    freshRead([...rows.slice(0, edge), "● Done."].join("\r\n"), DETECTED + 4);
+    expect(await tapYes(prompt)).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("bindRegion is the last rows of the signature, ending at the same row", () => {
+    // `bindRegion` is a row suffix of `signature`, ending at the same row, so the bridge finds it
+    // wherever it found `signature`.
+    const prompt = tapped(BASE);
+    expect(prompt.bindRegion).toBeDefined();
+    expect(prompt.signature.endsWith(`\n${prompt.bindRegion!}`)).toBe(true);
+  });
+});
+
+// Every Claude capture whose prompt binds its own rows: the bridge's own verifier finds that region in
+// the raw read, so the narrower binding is never a new refusal.
+describe("bindRegion binds on every real Claude capture through the bridge's verifier", () => {
+  const names = readdirSync(PANES_DIR).filter((name) => name.startsWith("claude"));
+  const bound = names.flatMap((name) => {
+    const model = dialogDetector("prompt-select", "claude")(lines(fixture(name)));
+    return model?.bindRegion === undefined ? [] : [[name, model] as const];
+  });
+
+  it("covers captures", () => {
+    expect(bound.length).toBeGreaterThan(20);
+  });
+
+  it.each(bound)("%s", (name, model) => {
+    expect(model.styledSignature).toBeUndefined();
+    expect(model.bindColumns).toBeUndefined();
+    expect(DIALOG_CONTRACT["prompt-select"].region(model)).toBe(model.bindRegion);
+    expect(model.signature === model.bindRegion || model.signature.endsWith(`\n${model.bindRegion!}`)).toBe(true);
+    expect(verifyPromptBinding(fixture(name), model.bindRegion!, undefined, undefined, model.bindTail).ok).toBe(true);
   });
 });

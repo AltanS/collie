@@ -23,7 +23,8 @@ import { asJsonObject, type JsonValue } from "../../src/lib/json";
 import { readSendReceipts } from "../../src/lib/send-protocol";
 import type { SendReceiptRow } from "../../src/lib/surface/send";
 import { SETUPS } from "./harnesses";
-import { NotReached, capture, captureScreen, freeSurface, message, openSession, phoneOn, resetBox, runScenario, sendFromComposer, spendTurn, tap, tapWords, test, waitIdle, type Rig, type Session, type TapLog, type TapRecorder, type Trail } from "./leg";
+import { STOP_HOLD_MS } from "../../src/lib/arm";
+import { NotReached, capture, captureScreen, freeSurface, holdFor, message, openSession, phoneOn, resetBox, runScenario, sendFromComposer, spendTurn, tap, tapWords, test, waitIdle, type Rig, type Session, type TapLog, type TapRecorder, type Trail } from "./leg";
 import { sleep } from "./rig-lib";
 import { PHONE, REPLY_MS, turnRuns } from "./walky-lib";
 
@@ -150,7 +151,7 @@ async function queueThenStop(rig: Rig, pane: string, page: Page, recorder: TapRe
   notes.push(`${tag}: the waiting card ${shown ? `showed ${String(Math.round((Date.now() - settledAt) / 100) / 10)} s after the send, with ${String(buttons)} buttons` : `did NOT show within ${String(CARD_MS / 1000)} s`}`);
   trail.captures.push(await capture(page, `queued-29-${tag}-waiting`));
 
-  // Stop: the first tap arms, the second stops (case 25).
+  // Stop: a short tap stops nothing, a hold of two seconds stops (case 25).
   const stop = page.locator("[data-slot='belt-stop']:not([aria-disabled='true'])");
   const live = await stop
     .waitFor({ state: "visible", timeout: 10_000 })
@@ -160,9 +161,9 @@ async function queueThenStop(rig: Rig, pane: string, page: Page, recorder: TapRe
     notes.push(`${tag}: the belt shows NO live Stop`);
     return { ok: false, requestId, extraTaps, priorPrompts };
   }
-  const arm: TapLog = await tap(recorder, stop, `${tag}: arm Stop`, { expectAnswer: false });
+  const arm: TapLog = await tap(recorder, stop, `${tag}: tap Stop too early`, { expectAnswer: false });
   log.push(arm);
-  const stopTap = await tap(recorder, page.locator("[data-slot='belt-stop']"), `${tag}: Stop`);
+  const stopTap = await holdFor(page, recorder, page.locator("[data-slot='belt-stop']"), `${tag}: hold Stop`, STOP_HOLD_MS + 300);
   log.push(stopTap);
   const stopped = stopTap.answers.find((answer) => answer.path.endsWith("/abort"))?.outcome === "stopped";
   const sentence = await page

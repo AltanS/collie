@@ -1,5 +1,6 @@
 // Accounts section of the design reference (M101 spec 04): who is signed in on an account, as the list
-// row's second line and as the details row. Every card mounts the REAL pieces the Settings pages draw
+// row's second line and as the details row; and Change login (M101): its three screens, the session
+// sheet's row, and the sign-in card's one button. Every card mounts the REAL pieces the Settings pages draw
 // (`AccountListRow`, `SignedInRow` in routes/settings-accounts.tsx) over fixtures, so the reference shows
 // what ships. Made-up addresses only.
 //
@@ -7,9 +8,16 @@
 
 import type { ReactNode } from "react";
 
+import { BoxTextBlock } from "@/components/box-text-block";
+import { PaneSettingsView } from "@/components/pane-settings-sheet";
+import { BottomBar } from "@/components/ui/bottom-bar";
+import { Button } from "@/components/ui/button";
 import { ListGroup } from "@/components/ui/list-group";
-import type { AccountRow } from "@/lib/accounts";
+import type { AccountHarness, AccountRow } from "@/lib/accounts";
+import type { BoxTextModel } from "@/lib/blocks";
+import { t } from "@/lib/i18n";
 import { AccountListRow, SignedInRow } from "@/routes/settings-accounts";
+import { ChangeLoginBeforeView, ChangeLoginResultView, ChangeLoginRunningView } from "@/routes/settings-change-login";
 
 import { Card, Group, Section, type SectionDef } from "../layout";
 
@@ -52,12 +60,54 @@ const WORK_ROW = row({
 const NEW_ROW = row({ id: "acc-new", label: "Spare", kind: "own", folder: "~/.claude-spare", startLine: "CLAUDE_CONFIG_DIR=~/.claude-spare claude", windows: [], seenAt: null, identity: { signedIn: false } });
 const CODEX_ROW = row({ id: "codex:default", harness: "codex", folder: "~/.codex", startLine: "codex", windows: [], seenAt: null });
 
+const CLAUDE: AccountHarness = {
+  id: "claude",
+  label: "Claude Code",
+  select: "CLAUDE_CONFIG_DIR",
+  kinds: ["shared", "own"],
+  newFolder: "~/.claude-{slug}",
+  binary: "claude",
+  reachesRunningSessions: true,
+  signInHosts: ["claude.com", "platform.claude.com"],
+};
+const CODEX: AccountHarness = { id: "codex", label: "Codex", select: "CODEX_HOME", kinds: ["own"], newFolder: "~/.codex-{slug}", binary: "codex" };
+const CODEX_SIGNED_IN = { ...CODEX_ROW, identity: { signedIn: true, email: "someone@example.com" }, running: 1 };
+const RUNNING_ROW = { ...DEFAULT_ROW, windows: [{ window: "5h", usedPct: 100, resetsAt: NOW + 3_600_000 }], running: 3 };
+
+/** The sign-in card's model as the reader builds it from `/login` (made-up address, masked values). */
+const SIGN_IN_CARD = (address: string): BoxTextModel => ({
+  title: "Login",
+  phase: "filled",
+  text: [
+    [{ kind: "plain", text: "Browser didn't open? Use the url below to sign in (c to copy)" }],
+    [],
+    [{ kind: "link", text: address, href: address }],
+    [],
+    [{ kind: "plain", text: "Paste code here if prompted >" }],
+  ],
+});
+const CLAUDE_ADDRESS = "https://claude.com/cai/oauth/authorize?code=true&client_id=00000000-0000-0000-0000-000000000000&response_type=code&state=XXXXXXXX";
+
 /** A phone-wide column on the page ground. */
 function Column({ children }: { children: ReactNode }) {
   return (
     <div className="w-[360px] max-w-full rounded-sm bg-background ring-1 ring-rule">
       <div className="flex flex-col gap-4 p-4">{children}</div>
     </div>
+  );
+}
+
+/** A Settings page's column, with the page's foot button where the screen has one. */
+function Screen({ children, foot = false }: { children: ReactNode; foot?: boolean }) {
+  return (
+    <Column>
+      {children}
+      {foot && (
+        <BottomBar className="px-0">
+          <Button className="h-11 w-full">{t("accounts.changeLogin.action")}</Button>
+        </BottomBar>
+      )}
+    </Column>
   );
 }
 
@@ -95,6 +145,65 @@ export function AccountsSection() {
         <Card state="accounts-detail-signed-out" label="4 Not signed in">
           <Column>
             <SignedInRow identity={NEW_ROW.identity} />
+          </Column>
+        </Card>
+      </Group>
+      <Group title="Change login">
+        <Card state="accounts-change-login-before" label="5 Before, sessions continue">
+          <Screen foot>
+            <ChangeLoginBeforeView row={RUNNING_ROW} harness={CLAUDE} agentLabel="Claude Code" />
+          </Screen>
+        </Card>
+        <Card state="accounts-change-login-before-idle" label="6 Before, no session runs">
+          <Screen foot>
+            <ChangeLoginBeforeView row={WORK_ROW} harness={CLAUDE} agentLabel="Claude Code" />
+          </Screen>
+        </Card>
+        <Card state="accounts-change-login-new-only" label="7 Before, new sessions only">
+          <Screen foot>
+            <ChangeLoginBeforeView row={CODEX_SIGNED_IN} harness={CODEX} agentLabel="Codex" />
+          </Screen>
+        </Card>
+        <Card state="accounts-change-login-running" label="8 Back while it runs">
+          <Screen>
+            <ChangeLoginRunningView row={RUNNING_ROW} body={CLAUDE} ending={false} onOpen={() => {}} onFinish={() => {}} />
+          </Screen>
+        </Card>
+        <Card state="accounts-change-login-changed" label="9 Signed in as new">
+          <Screen>
+            <ChangeLoginResultView result={{ kind: "changed", email: "spare@example.com", plan: "max" }} reach={{ kind: "running", count: 3 }} stillOpen={false} backTo="session" onBack={() => {}} />
+          </Screen>
+        </Card>
+        <Card state="accounts-change-login-same" label="10 Still the same account">
+          <Screen>
+            <ChangeLoginResultView result={{ kind: "same", email: "someone@example.com", plan: "max" }} reach={{ kind: "running", count: 3 }} stillOpen={false} backTo="account" onBack={() => {}} />
+          </Screen>
+        </Card>
+        <Card state="accounts-change-login-not-finished" label="11 Sign-in did not finish">
+          <Screen>
+            <ChangeLoginResultView result={{ kind: "signedOut" }} reach={{ kind: "running", count: 0 }} stillOpen={false} backTo="account" onBack={() => {}} />
+          </Screen>
+        </Card>
+        <Card state="accounts-change-login-session-row" label="12 Row in the session sheet">
+          <Column>
+            <PaneSettingsView
+              state={{ on: false, global: false, watchable: true, warnSeconds: 300 }}
+              busy={false}
+              pushOff={false}
+              onToggle={() => {}}
+              onRename={() => {}}
+              changeLogin={{ account: DEFAULT_ROW, onOpen: () => {} }}
+            />
+          </Column>
+        </Card>
+        <Card state="accounts-sign-in-card-open" label="13 Sign-in card, open button">
+          <Column>
+            <BoxTextBlock boxText={SIGN_IN_CARD(CLAUDE_ADDRESS)} signInHosts={CLAUDE.signInHosts} />
+          </Column>
+        </Card>
+        <Card state="accounts-sign-in-card-copy" label="14 Sign-in card, copy only">
+          <Column>
+            <BoxTextBlock boxText={SIGN_IN_CARD("https://example.com/oauth/authorize?state=XXXXXXXX")} signInHosts={CLAUDE.signInHosts} />
           </Column>
         </Card>
       </Group>

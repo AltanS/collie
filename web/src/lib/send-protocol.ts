@@ -36,7 +36,7 @@ import {
   ANOTHER_SEND,
 } from "./surface/send";
 import type { ProfileStatus } from "./surface/profile";
-import { ASK_CHANNELS, type Ask, type AskOption, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface/surface";
+import { ASK_CHANNELS, askOf, type Ask, type AskOption, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface/surface";
 import { CODE_REJECTED_PLAIN } from "./surface/secret-field";
 
 /** What the composer needs of an answer. The receipt's marks and gaps are for the log. */
@@ -524,8 +524,23 @@ function surfaceAfter(reply: SendReply, note: SurfaceNote): SurfaceNote | null {
   return note;
 }
 
+/**
+ * The person's override after a `not_free` refusal (M102 spec 03, invariant I4): when the refusal carries
+ * the rows hash and the screen is no sign-in field and no ask Collie has read, the phone offers the
+ * commit, Type here, which sends the text with `override` bound to those rows (spec 01). The bridge's
+ * own offers stay as they are; this only adds the one the phone may offer by itself.
+ */
+function withOverride(reply: SendReply, offers: readonly SendOffer[]): readonly SendOffer[] {
+  if (reply.outcome !== "refused" || reply.reason !== "not_free" || reply.rowsHash === null || reply.surface === null) return offers;
+  if (reply.surface.field === "secret" || askOf(reply.surface.modal) !== null || offers.includes("commit")) return offers;
+  return [...offers, "commit"];
+}
+
 export function readSend(reply: SendReply): SendReading {
-  const offers = reply.offers.filter((offer) => offer !== "keys");
+  const offers = withOverride(
+    reply,
+    reply.offers.filter((offer) => offer !== "keys"),
+  );
   const base = noteAndOffers(reply, offers);
   const surface = base.clear || reply.surface === null ? null : surfaceAfter(reply, surfaceNote(reply.surface));
   // A queued send whose Enter met a dialog points to the card too, whatever the dialog read as.
