@@ -753,6 +753,49 @@ describe("the Hill answer route is gated at the write level (a trick proposal's 
   });
 });
 
+describe("the host's local secret at POST /api/hill/answer, through the gates server.ts runs in order", () => {
+  const path = "/api/hill/answer";
+  const secret = mintLocalSecret();
+  const credential = localCredentialOf(secret);
+  const post = (token: string) => request("POST", path, { authorization: `Bearer ${token}`, origin: "http://127.0.0.1:8787", "content-type": "application/json" });
+
+  // The same two calls, in the same order, as the dispatcher: the front gate before any route, then the route's own write gate.
+  async function chain(token: string, peer: string, bind: string, paired: boolean): Promise<number | null> {
+    const { store } = await storeWith(paired);
+    const gate = browserPairingGate(store, credential, () => peer, bind, () => new Set(["100.64.10.2"]));
+    const front = apiFrontGate(post(token), path, config(), gate);
+    if (front) return front.status;
+    return guard(post(token), config(), HILL_ANSWER_RIGHT, gate)?.status ?? null;
+  }
+
+  test("the secret is refused with 403 on a loopback bind and on a tailnet bind, with a device paired or none", async () => {
+    for (const [bind, peer] of [["127.0.0.1", "127.0.0.1"], ["127.0.0.1", "::1"], ["100.64.10.2", "127.0.0.1"], ["100.64.10.2", "100.64.10.2"]] as const) {
+      for (const paired of [true, false]) {
+        expect({ bind, peer, paired, status: await chain(secret, peer, bind, paired) }).toEqual({ bind, peer, paired, status: 403 });
+      }
+    }
+  });
+
+  test("the refusal is the write level, not a gate that refuses every token: the secret still passes the front gate and reads, and a paired device's token writes", async () => {
+    const { store } = await storeWith(true);
+    const gate = browserPairingGate(store, credential, () => "127.0.0.1", "127.0.0.1", () => new Set(["100.64.10.2"]));
+    expect(apiFrontGate(post(secret), path, config(), gate)).toBeNull();
+    expect(guard(request("GET", "/api/hill", { authorization: `Bearer ${secret}` }), config(), "read", gate)).toBeNull();
+    expect(guard(post(secret), config(), HILL_ANSWER_RIGHT, gate)?.status).toBe(403);
+    expect(await chain(TOKEN, "127.0.0.1", "127.0.0.1", true)).toBeNull();
+  });
+
+  test("server.ts runs the front gate before the route and the route's gate before it reads the body", () => {
+    const front = SERVER_CODE.indexOf("apiFrontGate(req, pathname, cfg, pairingGate)");
+    const at = SERVER_CODE.indexOf('pathname === "/api/hill/answer" && req.method === "POST"');
+    expect(front).toBeGreaterThan(0);
+    expect(at).toBeGreaterThan(front);
+    const route = SERVER_CODE.slice(at, at + 600);
+    expect(route.indexOf("browserGate(HILL_ANSWER_RIGHT)")).toBeGreaterThan(0);
+    expect(route.indexOf("if (denied) return denied;")).toBeLessThan(route.indexOf("req.json()"));
+  });
+});
+
 describe("the trick value route is gated at the write level", () => {
   const path = "/api/tricks/lodge/legs/value";
   const headers = { host: "collie.ts.net", origin: "https://collie.ts.net", "x-device-id": "tablet", "content-type": "application/json" };
