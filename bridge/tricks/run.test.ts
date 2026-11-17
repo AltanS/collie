@@ -310,6 +310,30 @@ describe("one run", () => {
     expect(fallback[0]?.[0]).toBe(`${process.env.SystemRoot ?? "C:\\Windows"}\\System32\\taskkill.exe`);
   });
 
+  test("on Windows a timer that fires after the program exited (its pipe still held) kills no pid: no taskkill, only the orphan pass (a seam)", async () => {
+    // The lead's review D, item 1: after the exit, Windows may have given the pid to a new process, and
+    // `taskkill /PID <pid> /T /F` would end that process's whole tree. The program exits shortly before the
+    // timer; a grandchild keeps stdout open, so the runner is still in the pipe drain when the timer fires.
+    const cwd = await tempDir();
+    const calls: string[][] = [];
+    const spawn: KillSpawn = (argv) => {
+      calls.push(argv);
+      return { exited: Promise.resolve(0) };
+    };
+    const timeoutMs = 1500;
+    const exitAt = Date.now() + timeoutMs - 120;
+    const program = [
+      // unref: the program must not wait for its grandchild, or it never exits before the timer.
+      'Bun.spawn([process.execPath, "-e", "await Bun.sleep(1500)"], { stdin: "ignore", stdout: "inherit", stderr: "ignore" }).unref();',
+      `await Bun.sleep(Math.max(0, ${String(exitAt)} - Date.now()));`,
+      "",
+    ].join("\n");
+    const outcome = await script(cwd, program, { stdin: "", timeoutMs, platform: "win32", winKill: { spawn, env: { SystemRoot: "C:\\Windows" } } });
+    await Bun.sleep(50);
+    expect(outcome.kind).toBe("timeout");
+    expect(calls.map((argv) => argv[0])).toEqual(["C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"]);
+  });
+
   test("stdout past 64 KiB fails the run and stops the program", async () => {
     const started = performance.now();
     const outcome = await script(await tempDir(), 'const line = "a".repeat(1023) + "\\n";\nfor (;;) await new Promise((done) => process.stdout.write(line, done));\n');

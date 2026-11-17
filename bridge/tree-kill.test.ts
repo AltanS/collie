@@ -41,4 +41,14 @@ describe("windowsTreeKill", () => {
       }),
     ).toBeUndefined();
   });
+
+  test("a child that exited already gets only the orphan pass: no taskkill on a pid that may be another process's now", async () => {
+    const steps: string[] = [];
+    const spawn: KillSpawn = (argv) => {
+      steps.push(argv[0]?.endsWith("taskkill.exe") === true ? "taskkill" : "orphans");
+      return { exited: Promise.resolve(0) };
+    };
+    await windowsTreeKill(9, { startedAt: 0, env: {}, leader: () => steps.push("leader"), spawn, exited: true });
+    expect(steps).toEqual(["orphans"]);
+  });
 });

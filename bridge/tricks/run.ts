@@ -139,9 +139,11 @@ export function shellArgv(command: string, platform: NodeJS.Platform): string[] 
  * the run's cwd, could supply), in the background with a time limit, then the program itself, then
  * one pass for what it left behind, found by parent pid inside the run's window.
  */
-function killGroup(target: { pid: number; startedAt: number; leader: () => void }, platform: NodeJS.Platform, winKill: RunSpec["winKill"]): void {
+function killGroup(target: { pid: number; startedAt: number; leader: () => void; exited: boolean }, platform: NodeJS.Platform, winKill: RunSpec["winKill"]): void {
   if (platform === "win32") {
-    void windowsTreeKill(target.pid, { startedAt: target.startedAt, env: winKill?.env ?? process.env, leader: target.leader, spawn: winKill?.spawn });
+    // A program that exited already (the timer or the cap fired in the pipe drain) gets no taskkill and no
+    // leader kill: its pid may be another process's now. Only the orphan pass runs (lead's review D, item 1).
+    void windowsTreeKill(target.pid, { startedAt: target.startedAt, env: winKill?.env ?? process.env, leader: target.leader, spawn: winKill?.spawn, exited: target.exited });
     return;
   }
   try {
@@ -263,7 +265,8 @@ export async function runProgram(spec: RunSpec): Promise<RunOutcome> {
         // Gone already.
       }
     };
-    killGroup({ pid, startedAt, leader }, platform, spec.winKill);
+    // POSIX keeps the group kill after an exit: a group id stays the group's while one member lives.
+    killGroup({ pid, startedAt, leader, exited: child.exitCode !== null }, platform, spec.winKill);
     // A process outside the group (one that called setsid) may still hold a pipe: let go of both.
     out.cancel();
     err.cancel();

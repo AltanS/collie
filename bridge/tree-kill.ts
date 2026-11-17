@@ -72,6 +72,12 @@ export interface TreeKillOptions {
   readonly leader: () => void;
   readonly spawn?: KillSpawn;
   readonly now?: () => number;
+  /**
+   * The child has exited already. Then its pid may belong to a new process, and `taskkill /PID <pid> /T`
+   * would end that process's tree: only the orphan pass runs, which takes a process by parent pid AND a
+   * start time inside the child's window, so a new owner of the pid is never taken.
+   */
+  readonly exited?: boolean;
 }
 
 /**
@@ -90,6 +96,7 @@ export function windowsTreeKill(pid: number, opts: TreeKillOptions): Promise<voi
       /* no taskkill or no PowerShell: the child itself is still killed */
     }
   };
+  if (opts.exited === true) return run(orphans).catch(() => {});
   return run(taskkill)
     .then(opts.leader)
     .then(() => run(orphans))
