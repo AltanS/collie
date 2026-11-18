@@ -35,6 +35,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **Opening a session waits for its first page of Chat for at most 600 ms from the tap.** The wait started only after the screen read had answered, so a slow screen read and a slow Chat read added up to 1,000 ms before the new session showed. The two reads now start together and the limit counts from the start.
+- **Renaming a tab from the phone changes the name you see for its session again.** A tab with one session in it showed the title the agent wrote itself and ignored the new tab name since 1.29.0. Collie now gives that one session the same name as the tab. A tab with more than one session keeps each session's own name. (#810)
 
 ### Docs
 
