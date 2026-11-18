@@ -29,7 +29,7 @@ import { TrickBoundary } from "./boundary";
 import { problemOf, readFrame, type FrameLine } from "./frame";
 import { viewForm } from "./layout";
 import { Placeholder, renderView, type LinkTarget, type RenderCtx } from "./render";
-import { parsePartKey, partKey as keyOfPart, trickMediaPath, type TrickPart, type View, type ViewNode, type WireTrickInfo, type WireTrickPart } from "./schema";
+import { mediaVersionOf, parsePartKey, partKey as keyOfPart, trickMediaPath, type TrickPart, type View, type ViewNode, type WireTrickInfo, type WireTrickPart } from "./schema";
 import { tapRefusalLine, trickTapper, tricksStore, useTrickPart, type TricksStore, type TapHandlers, type TapState } from "./store";
 import { trickTimeText, spanText } from "./time";
 
@@ -188,14 +188,14 @@ function imageSrcsOf(nodes: readonly ViewNode[] | undefined, out: string[] = [])
  * The images of a part's view, from the trick's own `media/` folder (bridge/tricks/media.ts). An `<img
  * src>` cannot carry the pairing token (ADR 0086), so each picture is fetched with it
  * (`authedObjectUrl`) and handed to the view as an object URL; until it arrives, and when it fails, the
- * image's reserved box says its `alt`. The part's rev rides in the path, so a new version asks again.
+ * image's reserved box says its `alt`. The part's rev and the picture's content version ride in the path, so a new version of the part, or a picture replaced under the same name, asks again.
  */
-function useTrickImages(key: string, rev: number, view: View | undefined): ((src: string) => string | undefined) | undefined {
+function useTrickImages(key: string, rev: number, view: View | undefined, media: WireTrickInfo["media"]): ((src: string) => string | undefined) | undefined {
   const paths = useMemo(() => {
     const parsed = parsePartKey(key);
     if (parsed === undefined) return new Map<string, string>();
-    return new Map(imageSrcsOf(view).map((src) => [src, trickMediaPath(parsed.host, parsed.trick, src, rev)]));
-  }, [key, rev, view]);
+    return new Map(imageSrcsOf(view).map((src) => [src, trickMediaPath(parsed.host, parsed.trick, src, rev, mediaVersionOf({ media }, src))]));
+  }, [key, rev, view, media]);
   // Object URLs by path: a path names one src at one rev, so a stale answer never lands on a new rev.
   const [urls, setUrls] = useState<ReadonlyMap<string, string>>(new Map());
   useEffect(() => {
@@ -271,7 +271,7 @@ function TrickViewBody({ partKey, part, trick, tap, onLink, imageUrl, from, onDr
   const partRev = part.rev;
   const live = useMemo((): DrawnView => ({ view: viewOf(partValue), rev: partRev }), [partValue, partRev]);
   const { view, rev, onPointerDown } = useHeldView(live);
-  const fetched = useTrickImages(partKey, part.rev, view);
+  const fetched = useTrickImages(partKey, part.rev, view, trick?.media);
   // The right, as the bridge read it from the manifest of what runs: without it no draft button fills a box.
   const drafts = trick?.draftsSession === true;
   const images = imageUrl ?? fetched;

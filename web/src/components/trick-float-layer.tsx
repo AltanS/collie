@@ -47,7 +47,7 @@ import {
   type FloatSpec,
 } from "@/lib/tricks/float";
 import { floatClock } from "@/lib/tricks/float-clock";
-import { FLOAT_ONCE_MOTIONS, parsePartKey, trickMediaPath } from "@/lib/tricks/schema";
+import { FLOAT_ONCE_MOTIONS, mediaVersionOf, parsePartKey, trickMediaPath, type WireTrickInfo } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, useTrickParts, type TricksStore } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -238,6 +238,7 @@ function FloatPet({
   reduced,
   paused,
   trickName,
+  versions,
   onOpen,
   onPlace,
   onHold,
@@ -247,20 +248,22 @@ function FloatPet({
   reduced: boolean;
   paused: boolean;
   trickName: string;
+  /** The trick row's picture versions (`WireTrickInfo.media`): a picture replaced under the same name asks again. */
+  versions: WireTrickInfo["media"];
   onOpen: (() => void) | undefined;
   /** Where the drawn picture is now (a box, or null once it is gone): a once part that says `from` starts there. */
   onPlace: (key: string, drawn: Box | null) => void;
   /** Whether the picture's frames are at their last one (`sprite.loop = false`): a once part with `from` waits for it. */
   onHold: (key: string, held: boolean) => void;
 }) {
-  const media = useAuthedUrl(trickMediaPath(spec.host, spec.trickId, spec.src, spec.rev));
+  const media = useAuthedUrl(trickMediaPath(spec.host, spec.trickId, spec.src, spec.rev, mediaVersionOf({ media: versions }, spec.src)));
   // A re-print moves the rev and so the sheet's address; the sheet on screen stays until the new one is there.
   const lastUrl = useRef<string | null>(null);
   if (media.url !== null) lastUrl.current = media.url;
   const url = media.url ?? lastUrl.current;
   // The second sprite (`sprite.after`), fetched with the first so it is there when its turn comes.
   const after = afterSpecOf(spec);
-  const afterMedia = useAuthedUrl(after === undefined ? null : trickMediaPath(spec.host, spec.trickId, after.src, spec.rev));
+  const afterMedia = useAuthedUrl(after === undefined ? null : trickMediaPath(spec.host, spec.trickId, after.src, spec.rev, mediaVersionOf({ media: versions }, after.src)));
   const lastAfterUrl = useRef<string | null>(null);
   if (afterMedia.url !== null) lastAfterUrl.current = afterMedia.url;
   const afterUrl = after === undefined ? null : (afterMedia.url ?? lastAfterUrl.current);
@@ -431,6 +434,7 @@ function FloatShot({
   waits,
   holding,
   paused,
+  versions,
   onBegin,
   onDone,
 }: {
@@ -440,6 +444,8 @@ function FloatShot({
   waits: boolean;
   holding: boolean;
   paused: boolean;
+  /** The trick row's picture versions (`WireTrickInfo.media`). */
+  versions: WireTrickInfo["media"];
   onBegin: () => void;
   onDone: () => void;
 }) {
@@ -484,7 +490,7 @@ function FloatShot({
   }, [begun]);
   const region = begun?.region ?? asked;
   const origin = begun?.origin;
-  const { url, failed } = useAuthedUrl(trickMediaPath(spec.host, spec.trickId, spec.src, spec.rev));
+  const { url, failed } = useAuthedUrl(trickMediaPath(spec.host, spec.trickId, spec.src, spec.rev, mediaVersionOf({ media: versions }, spec.src)));
   const [natural, setNatural] = useState<Natural | null>(null);
   const loaded = natural !== null;
   const aspect = frameAspect(natural, spec.frames, spec.rows);
@@ -687,13 +693,14 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
       <div aria-hidden ref={probe} className="invisible absolute inset-0 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]" />
       {drawing &&
         stay.map((spec) => {
-          const trickName = state.tricks.find((trick) => trick.host === spec.host && trick.id === spec.trickId)?.name ?? spec.trickId;
+          const row = state.tricks.find((trick) => trick.host === spec.host && trick.id === spec.trickId);
+          const trickName = row?.name ?? spec.trickId;
           const page = spec.opens === "page" && parsePartKey(spec.key) !== undefined ? sessionOfMark(spec.part, trickSessions) : undefined;
           const resting = spec.motion === "perch" || spec.motion === "idle";
           const open = page !== undefined && resting ? () => nav.down(trickSessionPath(page.paneId)) : undefined;
           return (
             <TrickBoundary key={spec.key} fallback="none" resetKey={`${spec.key}@${spec.rev}`}>
-              <FloatPet spec={spec} space={space} reduced={reduced} paused={!visible} trickName={trickName} onOpen={open} onPlace={onPlace} onHold={onHold} />
+              <FloatPet spec={spec} space={space} reduced={reduced} paused={!visible} trickName={trickName} versions={row?.media} onOpen={open} onPlace={onPlace} onHold={onHold} />
             </TrickBoundary>
           );
         })}
@@ -712,6 +719,7 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
                 waits={shot.from !== undefined && stay.some((candidate) => candidate.key === petKeyOf(shot))}
                 holding={stay.some((candidate) => candidate.key === petKeyOf(shot) && !candidate.loop && !held.has(candidate.key))}
                 paused={!visible}
+                versions={state.tricks.find((trick) => trick.host === shot.host && trick.id === shot.trickId)?.media}
                 onBegin={() => queue.current.began(shot.trick)}
                 onDone={finishShot}
               />

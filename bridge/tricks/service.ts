@@ -50,7 +50,7 @@ import { HOST, hostFor, type Host } from "../host.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import type { TrickInputs } from "./inputs.ts";
 import { codeFile, codeIndex, codeShowsWhole, codeSource, type CodeFile, type CodeIndex } from "./code-view.ts";
-import { readTrickMedia, type TrickMediaFile } from "./media.ts";
+import { readTrickMedia, TrickMediaVersions, type TrickMediaFile } from "./media.ts";
 import { isUnlistedOfficialOrigin, shippedOfficialList, type OfficialEntry } from "./official.ts";
 import { originRepoName, type ProposalOrigin } from "./origin.ts";
 import { replaceTrickCode, writeProposedTrick } from "./proposal-install.ts";
@@ -604,6 +604,8 @@ interface TrickRuntime {
   approved: ApprovedRun | null;
   /** Why the approved copy cannot run (it changed on disk, or it is gone), or null. */
   copyProblem: string | null;
+  /** The content version of each picture in the approved copy's `media/` (`WireTrickInfo.media`), as the last scan read it. Absent: none. */
+  media?: Record<string, string>;
   /** The approval (`<hash>@<at>`) whose copy was found changed: not checked again until a new approval. */
   tampered: string | null;
   /**
@@ -808,6 +810,8 @@ export class TricksService implements TricksSurface {
   private readonly watchPolled = new Set<string>();
   /** The values a person keeps for each trick (contract 3, values.ts). */
   private readonly values: TrickValues;
+  /** The versions of the approved copies' pictures, read again only for a file whose size or time moved. */
+  private readonly mediaVersions = new TrickMediaVersions();
   /** The request ids of value writes already taken, with their receipts: the same id twice writes once. */
   private readonly valueWrites = new SeenWrites<ValueAnswer>();
 
@@ -1120,6 +1124,7 @@ export class TricksService implements TricksSurface {
         const runtimes = [...this.runtimes.values()];
         for (const rt of runtimes) await this.ensureApproved(rt);
         for (const rt of runtimes) await this.notePending(rt);
+        this.syncMedia();
         this.syncVersions();
         this.syncRights();
         this.syncReactions();
@@ -1491,6 +1496,30 @@ export class TricksService implements TricksSurface {
       port.sync(subjects, running, new Set(this.runtimes.keys()));
     } catch (err) {
       this.warn(`the rights card could not be updated: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Read the content version of each picture in every runnable trick's approved copy, and publish a row whose
+   * versions moved: a picture replaced under the same name takes a new version, so the phone asks for it again.
+   * The versions are a name for the phone's cache; no approval or hash reads them. Never throws.
+   */
+  private syncMedia(): void {
+    const dirs = new Set<string>();
+    try {
+      for (const rt of this.runtimes.values()) {
+        const approved = rt.approved;
+        const serves = rt.on && approved !== null && rt.copyProblem === null;
+        const next = serves ? this.mediaVersions.of(approved.dir) : {};
+        if (serves) dirs.add(approved.dir);
+        if (JSON.stringify(next) === JSON.stringify(rt.media ?? {})) continue;
+        if (Object.keys(next).length === 0) delete rt.media;
+        else rt.media = next;
+        this.publish(rt.found.id);
+      }
+      this.mediaVersions.retain(dirs);
+    } catch (err) {
+      this.warn(`the picture versions could not be read: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -1880,6 +1909,8 @@ export class TricksService implements TricksSurface {
     if (m?.decides === "reply") info.decidesReply = true;
     // And whether its buttons may put text into a reply box: the About sheet's line, and the phone's own check.
     if (m?.drafts === "session") info.draftsSession = true;
+    // The versions of the pictures the route would serve (media.ts), so the phone asks again for a replaced one.
+    if (rt.media !== undefined && Object.keys(rt.media).length > 0) info.media = rt.media;
     if (m?.rules !== undefined && m.rulesText !== undefined) info.rules = { file: m.rules, text: m.rulesText };
     // A trick with rules never takes a change without asking, whatever an older switch file says.
     if (info.on && rt.entry !== undefined) info.auto = rt.entry.auto && !hasRules(rt);

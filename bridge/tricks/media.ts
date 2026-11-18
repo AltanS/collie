@@ -17,14 +17,22 @@
 //      folder nor a secret's name, opened with O_NOFOLLOW and O_NONBLOCK, the same inode, the kernel's
 //      own name for it, and the leading bytes decide the type: PNG, JPEG or WebP, never SVG, GIF or HTML.
 //
+// A PICTURE'S VERSION. The bytes of a file can change under one name (a program writes its pictures there),
+// and the phone keeps what it fetched for an address, so the bridge names a version for each picture it
+// would serve, `WireTrickInfo.media`: the first 12 hex of a sha256 of the bytes. The phone adds it to the
+// address (`?v=`) and the route ignores it: the name alone picks the file. {@link TrickMediaVersions} reads
+// the bytes of a file once and again only when its size or modified time moves. Pictures stay outside the
+// code hash and every approval rule; the version is only a name for the cache.
+//
 // Every miss is the same 404, so the route tells nothing about what the folder holds. The headers are
 // the hill image's (`HILL_MEDIA_HEADERS`: no-store, a sandboxed CSP, inline) plus `nosniff`.
 
-import { realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { lstatSync, readdirSync, realpathSync, type Dirent } from "node:fs";
 import { join } from "node:path";
 
-import { isImageSrc, TRICK_MEDIA_DIR } from "../../web/src/lib/tricks/schema.ts";
-import type { HillMediaMime } from "../../web/src/lib/hill/wire.ts";
+import { isImageSrc, TRICK_MEDIA_DIR, TRICK_MEDIA_VERSIONS_MAX, type WireTrickInfo } from "../../web/src/lib/tricks/schema.ts";
+import { HILL_MEDIA_BYTES_MAX, type HillMediaMime } from "../../web/src/lib/hill/wire.ts";
 import { readPostedImage } from "../hill/media.ts";
 
 /** One picture of a trick, read and checked. */
@@ -50,4 +58,105 @@ export function readTrickMedia(dir: string, rel: string): TrickMediaFile | null 
   // config folder by design, and the rule above keeps the read inside its `media/`.
   const read = readPostedImage(join(root, rel), []);
   return read.ok ? { mime: read.mime, bytes: new Uint8Array(read.bytes) } : null;
+}
+
+/** How deep below `media/` a picture may sit, and how many directory entries one walk looks at. */
+const WALK_DEPTH_MAX = 4;
+const WALK_ENTRIES_MAX = 400;
+
+/** The version of picture bytes: the first 12 hex of their sha256. */
+export function mediaVersionOfBytes(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex").slice(0, 12);
+}
+
+/** A trick's picture versions by `src`: `WireTrickInfo.media`. */
+export type MediaVersionMap = NonNullable<WireTrickInfo["media"]>;
+
+interface SeenFile {
+  readonly mtimeMs: number;
+  readonly size: number;
+  readonly version: string;
+}
+
+/**
+ * The versions of the pictures in trick folders, by `src`. A file is read once per (path, modified time,
+ * size): a replaced file gets a new version, a file with the same bytes keeps its one. What it lists is what
+ * {@link readTrickMedia} would serve: it reads every file through it, so a symlink, a hidden name, a file over
+ * 2 MB or a file that is not a PNG, JPEG or WebP is left out. At most {@link TRICK_MEDIA_VERSIONS_MAX}
+ * pictures, in name order. Total: no input makes it throw.
+ */
+export class TrickMediaVersions {
+  private readonly seen = new Map<string, Map<string, SeenFile>>();
+
+  /** The `src` to version map of the pictures under `dir`'s `media/`; empty when there are none. */
+  of(dir: string): MediaVersionMap {
+    const out: MediaVersionMap = {};
+    let root: string;
+    try {
+      root = realpathSync(dir);
+    } catch {
+      this.seen.delete(dir);
+      return out;
+    }
+    const before = this.seen.get(dir) ?? new Map<string, SeenFile>();
+    const now = new Map<string, SeenFile>();
+    const budget = { entries: WALK_ENTRIES_MAX };
+    for (const rel of walkMedia(root, TRICK_MEDIA_DIR, 0, budget)) {
+      if (Object.keys(out).length === TRICK_MEDIA_VERSIONS_MAX) break;
+      if (!isImageSrc(rel)) continue;
+      const stat = statOf(join(root, rel));
+      if (stat === null) continue;
+      const known = before.get(rel);
+      const kept = known !== undefined && known.mtimeMs === stat.mtimeMs && known.size === stat.size ? known : null;
+      const version = kept?.version ?? versionOfFile(root, rel);
+      if (version === null) continue;
+      now.set(rel, { mtimeMs: stat.mtimeMs, size: stat.size, version });
+      out[rel] = version;
+    }
+    this.seen.set(dir, now);
+    return out;
+  }
+
+  /** Forget what is held for the folders no longer in `keep`, so a removed trick leaves nothing behind. */
+  retain(keep: ReadonlySet<string>): void {
+    for (const dir of this.seen.keys()) {
+      if (!keep.has(dir)) this.seen.delete(dir);
+    }
+  }
+}
+
+function statOf(path: string): { mtimeMs: number; size: number } | null {
+  try {
+    const stat = lstatSync(path);
+    if (!stat.isFile() || stat.size > HILL_MEDIA_BYTES_MAX) return null;
+    return { mtimeMs: stat.mtimeMs, size: stat.size };
+  } catch {
+    return null;
+  }
+}
+
+function versionOfFile(root: string, rel: string): string | null {
+  const read = readTrickMedia(root, rel);
+  return read === null ? null : mediaVersionOfBytes(read.bytes);
+}
+
+/** The relative paths of the regular files under `base`, in name order. Symlinks and hidden names are not followed or listed. */
+function walkMedia(root: string, base: string, depth: number, budget: { entries: number }): string[] {
+  if (depth > WALK_DEPTH_MAX || budget.entries <= 0) return [];
+  let names: Dirent[];
+  try {
+    names = readdirSync(join(root, base), { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const entry of names.toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    if (budget.entries <= 0) break;
+    budget.entries -= 1;
+    if (entry.name.startsWith(".")) continue;
+    const rel = `${base}/${entry.name}`;
+    if (entry.isFile()) out.push(rel);
+    else if (entry.isDirectory()) out.push(...walkMedia(root, rel, depth + 1, budget));
+  }
+  return out;
 }

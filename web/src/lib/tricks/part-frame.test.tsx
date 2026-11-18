@@ -243,6 +243,29 @@ describe("TrickView", () => {
     await waitFor(() => expect(img()?.getAttribute("src")).toBe("blob:/api/tricks/lodge/deploy/media/shots/a%20b.png?rev=5"));
   });
 
+  it("adds the picture's version from the trick's row to its path as ?v=, and a picture without one keeps the old path", async () => {
+    const picture: TrickPart = {
+      at: "session",
+      id: "deploy",
+      view: [
+        { kind: "image", attrs: { src: "media/chart.png", alt: "the chart", w: "320", h: "200" } },
+        { kind: "image", attrs: { src: "media/other.png", alt: "other", w: "320", h: "200" } },
+      ],
+    };
+    const row = { ...TRICK, media: { "media/chart.png": "0123456789ab" } };
+    const answer = (media: string): TricksReply => ({ rev: 1, tricks: [{ ...row, media: { "media/chart.png": media } }], parts: [stored(picture)], present: ["lodge/deploy/deploy"] });
+    let reply = answer("0123456789ab");
+    const store = createTricksStore({ fetchTricks: () => Promise.resolve(reply), tapTrick: () => Promise.reject(new Error("no taps here")), mintRequestId: () => "r" });
+    await store.syncTricks(1);
+    render(<TrickView partKey="lodge/deploy/deploy" store={store} onLink={vi.fn()} now={T0} />);
+    await waitFor(() => expect(authedObjectUrl).toHaveBeenCalledWith("/api/tricks/lodge/deploy/media/chart.png?rev=1&v=0123456789ab"));
+    expect(authedObjectUrl).toHaveBeenCalledWith("/api/tricks/lodge/deploy/media/other.png?rev=1");
+    // The picture was replaced under the same name: the row names a new version, so the phone asks again though the part's rev stands.
+    reply = { ...answer("ba9876543210"), rev: 2 };
+    await act(() => store.syncTricks(2));
+    await waitFor(() => expect(authedObjectUrl).toHaveBeenCalledWith("/api/tricks/lodge/deploy/media/chart.png?rev=1&v=ba9876543210"));
+  });
+
   it("fetches both sides of a compare with the token, and keeps an image's focus, fit and caption", async () => {
     const side = (src: string, extra: Record<string, string> = {}) => ({ kind: "image" as const, attrs: { src, alt: src, w: "320", h: "200", ...extra } });
     const picture: TrickPart = {
