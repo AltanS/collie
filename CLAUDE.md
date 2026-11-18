@@ -73,7 +73,12 @@ release. 1.14.2 was cut this way on 2026-09-28.
    - **PATCH** (`0.2.0 → 0.2.1`): nothing to learn. Bug fixes, internal refactors, and small
      additions that build on an existing verb or screen and change nothing about how you already
      use Collie: a QR printed beside the pairing code, an extra column in `devices list`, a new
-     flag with a safe default. The phone folds a patch-only delta into its weekly update digest
+     flag with a safe default. **A PATCH also carries additions to a feature that is still
+     experimental**: one that is off until switched on in Settings, Experiments, or that its docs
+     mark as an experiment, such as tricks and the Hill. A new place, part, manifest key or right
+     for such a feature is a patch, and `docs/tricks.md` already tells trick authors that tricks
+     may change in a patch release (Altan, 2026-11-18). A fix still must not break a trick that
+     works today without saying so in the changelog. The phone folds a patch-only delta into its weekly update digest
      (`DIGEST_PATCH_WINDOW_MS` in `bridge/update.ts`); the in-app band shows it at once.
 
      **An urgent patch keeps the daily cadence.** A patch the operator must take today, data loss, a
@@ -96,7 +101,8 @@ release. 1.14.2 was cut this way on 2026-09-28.
 
    - **MINOR** (`0.2.0 → 0.3.0`): something to learn, or worth hearing about today. A new verb,
      a new page, a new crew capability, a changed default, anything that earns its own section
-     in `docs/`. The phone nudges within a day.
+     in `docs/`. An experimental feature becomes a minor when it leaves Experiments, or when an
+     addition to it changes a surface that is not experimental. The phone nudges within a day.
    - **MAJOR** (`0.2.0 → 1.0.0`): the operator must change something. A config key renamed or
      removed, a contract broken, a workflow that used to work and now does not.
 
