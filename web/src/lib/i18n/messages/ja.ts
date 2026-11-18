@@ -3123,6 +3123,7 @@ export const ja: Dictionary = {
   "sent.clear.confirm": "もう一度タップして消去",
   "sent.clear.error": "Sentを消去できませんでした。",
   "sent.suggest.aria": "Sentからの候補",
+  "files.suggest.aria": "ファイル候補",
   "sent.suggest.all": "すべて",
   "sent.suggest.all.aria": "送信済みのすべての行",
   "settings.sentSuggestions.title": "Sentからの候補",

@@ -3116,6 +3116,7 @@ export const ko: Dictionary = {
   "sent.clear.confirm": "지우려면 다시 탭하십시오",
   "sent.clear.error": "Sent를 지울 수 없습니다.",
   "sent.suggest.aria": "Sent의 추천",
+  "files.suggest.aria": "파일 추천",
   "sent.suggest.all": "전체",
   "sent.suggest.all.aria": "전송된 전체 라인",
   "settings.sentSuggestions.title": "Sent의 추천",

@@ -3097,6 +3097,7 @@ export const zhTW: Dictionary = {
   "sent.clear.confirm": "再點選一次以清除",
   "sent.clear.error": "無法清除 Sent。",
   "sent.suggest.aria": "來自 Sent 的建議",
+  "files.suggest.aria": "檔案建議",
   "sent.suggest.all": "全部",
   "sent.suggest.all.aria": "所有已傳送的行",
   "settings.sentSuggestions.title": "來自 Sent 的建議",

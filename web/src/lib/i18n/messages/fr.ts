@@ -2966,6 +2966,7 @@ export const fr: Dictionary = {
   "sent.clear.confirm": "Appuyez à nouveau pour effacer",
   "sent.clear.error": "Impossible d'effacer Sent.",
   "sent.suggest.aria": "Suggestions de Sent",
+  "files.suggest.aria": "Suggestions de fichiers",
   "sent.suggest.all": "Tout",
   "sent.suggest.all.aria": "Toutes les lignes envoyées",
   "settings.sentSuggestions.title": "Suggestions de Sent",

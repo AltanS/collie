@@ -2963,6 +2963,7 @@ export const pt: Dictionary = {
   "sent.clear.confirm": "Toque novamente para limpar",
   "sent.clear.error": "Não foi possível limpar o Sent.",
   "sent.suggest.aria": "Sugestões do Sent",
+  "files.suggest.aria": "Sugestões de arquivos",
   "sent.suggest.all": "Tudo",
   "sent.suggest.all.aria": "Todas as linhas enviadas",
   "settings.sentSuggestions.title": "Sugestões do Sent",

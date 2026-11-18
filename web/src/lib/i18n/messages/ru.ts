@@ -3096,6 +3096,7 @@ export const ru: Dictionary = {
   "sent.times.few": "{count} раза",
   "sent.times.many": "{count} раз",
   "sent.suggest.aria": "Подсказки из Sent",
+  "files.suggest.aria": "Подсказки файлов",
   "sent.suggest.all": "Все",
   "sent.suggest.all.aria": "Все отправленные строки",
   "settings.sentSuggestions.title": "Подсказки из Sent",
