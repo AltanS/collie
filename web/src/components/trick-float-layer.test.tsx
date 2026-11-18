@@ -434,3 +434,199 @@ describe("a once picture from a pet", () => {
     expect(shots()).toEqual([]);
   });
 });
+
+describe("a stay picture appears in place", () => {
+  const TALL = (extra: JsonObject = {}): WireTrickPart => part("pet", STAY({ along: "start", sprite: { src: "media/pet.png", frames: 2, size: "l" }, ...extra }));
+
+  it("is drawn at its rest spot from the first frame, invisible, and fades in: nothing travels", async () => {
+    const { store } = storeWith([TALL()]);
+    await mount(store);
+    const pet = pets()[0]!;
+    // The 72 px frame stands on the landmark below (y 640 - 72), at the start of the edge (x 8).
+    const rest = "translate3d(8px, 568px, 0)";
+    expect(pet.style.transform).toBe(rest);
+    expect(pet.style.opacity).toBe("0");
+    // The keyframes of `animate-in` name translate3d(0, 0, 0) as their first frame: the picture would fly in from the corner.
+    expect(pet.className).not.toContain("animate-in");
+    await loadSheet(pet, 148, 120);
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    });
+    expect(pet.style.transform).toBe(rest);
+    expect(pet.style.opacity).toBe("1");
+    expect(pet.style.transition).toContain("opacity 180ms");
+  });
+
+  it("appears at once, with no fade and no glide, under reduced motion", async () => {
+    reduceMotion(true);
+    const { store } = storeWith([TALL()]);
+    await mount(store);
+    const pet = pets()[0]!;
+    await loadSheet(pet, 148, 120);
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    });
+    expect(pet.style.transform).toBe("translate3d(8px, 568px, 0)");
+    expect(pet.style.opacity).toBe("1");
+    expect(pet.style.transition).toBe("");
+  });
+
+  it("does not appear again when the part is printed again with a new asOf and the same value", async () => {
+    const first = TALL();
+    const { store, replace } = storeWith([first]);
+    await mount(store);
+    const pet = pets()[0]!;
+    await loadSheet(pet, 148, 120);
+    await act(async () => replace([{ ...first, rev: 2, asOf: new Date(Date.now() + 5000).toISOString() }], 2));
+    expect(pets()[0]).toBe(pet);
+  });
+});
+
+describe("a sprite that plays once", () => {
+  const SHEET = { src: "media/pet.png", frames: 4, fps: 2, size: "m" };
+  const ONCEPET = (extra: JsonObject = {}, sprite: JsonObject = {}): WireTrickPart => ({ ...part("spark", STAY({ sprite: { ...SHEET, loop: false, ...sprite }, ...extra })), part: "pet" });
+  const BEAM = (rev = 1): WireTrickPart => ({ ...part("spark", ONCE({ motion: "fly-across", from: "pet" }), rev), part: "beam" });
+  interface Run {
+    options: KeyframeAnimationOptions;
+    currentTime: number;
+    playState: "running" | "paused" | "finished";
+    cancel: () => void;
+    pause: () => void;
+    play: () => void;
+    finished: Promise<unknown>;
+  }
+  const runs: Run[] = [];
+  /** The plays of the sprite (the ones with a finite count or a loop), not the shot's own path. */
+  const plays = () => runs.filter((run) => run.options.easing?.startsWith("steps("));
+  const sprite = () => plays().at(-1)!;
+  beforeEach(() => {
+    runs.length = 0;
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      writable: true,
+      value: (_frames: Keyframe[], options: KeyframeAnimationOptions): Run => {
+        const run: Run = { options, currentTime: 0, playState: "running", cancel: () => undefined, pause: () => undefined, play: () => undefined, finished: new Promise(() => undefined) };
+        runs.push(run);
+        return run;
+      },
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    Reflect.deleteProperty(HTMLElement.prototype, "animate");
+  });
+  const frameX = (el: Element) => /translate3d\(([-\d.]+)px/.exec(el.querySelector("img")?.style.transform ?? "")?.[1];
+  const tick = () => act(async () => vi.advanceTimersByTime(20));
+
+  it("plays the frames once at its fps and holds the last frame", async () => {
+    const { store } = storeWith([ONCEPET()]);
+    await mount(store);
+    await loadSheet(pets()[0]!, 192, 48);
+    expect(plays()).toHaveLength(1);
+    expect(sprite().options).toMatchObject({ iterations: 1, fill: "forwards", duration: 2000, easing: "steps(4, jump-none)" });
+  });
+
+  it("loops by default, and with loop = true", async () => {
+    for (const extra of [{ loop: true }, {}]) {
+      runs.length = 0;
+      const { store } = storeWith([{ ...part("spark", STAY({ sprite: { ...SHEET, ...extra } })), part: "pet" }]);
+      const view = await mount(store);
+      await loadSheet(pets()[0]!, 192, 48);
+      expect(sprite().options.iterations, JSON.stringify(extra)).toBe(Number.POSITIVE_INFINITY);
+      view.unmount();
+    }
+  });
+
+  it("plays again when the part is printed with a changed value, and not for a new asOf alone", async () => {
+    const first = ONCEPET();
+    const { store, replace } = storeWith([first]);
+    await mount(store);
+    await loadSheet(pets()[0]!, 192, 48);
+    expect(plays()).toHaveLength(1);
+    await act(async () => replace([{ ...first, rev: 2, asOf: new Date(Date.now() + 5000).toISOString() }], 2));
+    expect(plays()).toHaveLength(1);
+    await act(async () => replace([{ ...ONCEPET({ mood: "working" }), rev: 3 }], 3));
+    expect(plays()).toHaveLength(2);
+    expect(sprite().options.iterations).toBe(1);
+  });
+
+  it("shows the last frame as a still under reduced motion, and where nothing can animate", async () => {
+    Reflect.deleteProperty(HTMLElement.prototype, "animate");
+    for (const calm of [true, false]) {
+      reduceMotion(calm);
+      const { store } = storeWith([ONCEPET()]);
+      const view = await mount(store);
+      await loadSheet(pets()[0]!, 192, 48);
+      // Four 48 px frames: the last starts 144 px along.
+      expect(frameX(pets()[0]!), `reduced ${String(calm)}`).toBe("-144");
+      view.unmount();
+    }
+    reduceMotion(true);
+    const { store } = storeWith([{ ...part("spark", STAY({ sprite: SHEET })), part: "pet" }]);
+    await mount(store);
+    await loadSheet(pets()[0]!, 192, 48);
+    expect(frameX(pets()[0]!)).toBe("0");
+  });
+
+  describe("and a shot that leaves the pet's hand", () => {
+    const shotRuns = () => runs.filter((run) => run.options.easing === "linear");
+
+    it("waits for the pet's last frame, then starts at once", async () => {
+      vi.useFakeTimers();
+      const { store, replace } = storeWith([ONCEPET()]);
+      await mount(store);
+      await loadSheet(pets()[0]!, 192, 48);
+      // The throw: the pet is printed with a new value and the shot with it, in one run.
+      await act(async () => replace([{ ...ONCEPET({ mood: "working" }), rev: 2 }, BEAM(2)], 2));
+      expect(shots()).toHaveLength(1);
+      await loadSheet(shots()[0]!, 32, 32);
+      await tick();
+      expect(shotRuns()).toHaveLength(0);
+      expect(shots()[0]?.dataset.from).toBeUndefined();
+      // The pet gets to its last frame, 1500 ms into the 2000 ms pass.
+      sprite().currentTime = 1499;
+      await tick();
+      expect(shotRuns()).toHaveLength(0);
+      sprite().currentTime = 1500;
+      await tick();
+      expect(shots()[0]?.dataset.from).toBe("pet");
+      expect(shotRuns()).toHaveLength(1);
+    });
+
+    it("starts anyway 2 s after it arrived when the pet has not got there, and counts the rate from that start", async () => {
+      vi.useFakeTimers();
+      const { store, replace } = storeWith([ONCEPET()]);
+      await mount(store);
+      await loadSheet(pets()[0]!, 192, 48);
+      await act(async () => replace([{ ...ONCEPET({ mood: "working" }), rev: 2 }, BEAM(2)], 2));
+      await loadSheet(shots()[0]!, 32, 32);
+      await act(async () => vi.advanceTimersByTime(1990));
+      expect(shotRuns()).toHaveLength(0);
+      await act(async () => vi.advanceTimersByTime(20));
+      expect(shots()[0]?.dataset.from).toBe("pet");
+      expect(shotRuns()).toHaveLength(1);
+    });
+
+    it("does not wait for a pet whose play is already over", async () => {
+      vi.useFakeTimers();
+      const { store, replace } = storeWith([ONCEPET()]);
+      await mount(store);
+      await loadSheet(pets()[0]!, 192, 48);
+      sprite().currentTime = 2000;
+      await tick();
+      // The shot is printed alone: the pet is unchanged and holds its last frame.
+      await act(async () => replace([ONCEPET(), BEAM(2)], 2));
+      expect(shots()[0]?.dataset.from).toBe("pet");
+    });
+
+    it("does not delay a shot for a pet that loops", async () => {
+      vi.useFakeTimers();
+      const looping = (extra: JsonObject = {}): WireTrickPart => ({ ...part("spark", STAY({ sprite: SHEET, ...extra })), part: "pet" });
+      const { store, replace } = storeWith([looping()]);
+      await mount(store);
+      await loadSheet(pets()[0]!, 192, 48);
+      await act(async () => replace([{ ...looping({ mood: "working" }), rev: 2 }, BEAM(2)], 2));
+      expect(shots()[0]?.dataset.from).toBe("pet");
+    });
+  });
+});

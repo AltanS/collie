@@ -233,3 +233,149 @@ test.describe("a once picture that starts from a pet printed in the same run", (
     });
   }
 });
+
+/** A pet that the phone sees at once, and a run that prints new parts when `state.rev` moves to 2. */
+async function stubRuns(page: Page, parts: (rev: number) => WireTrickPart[], state: { rev: number }, image: Buffer): Promise<void> {
+  await installApiStub(page);
+  await keepPhoneLayout(page);
+  await page.route("**/api/snapshot", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...fixtureSnapshot, tricksRev: state.rev }) }));
+  await page.route("**/api/tricks?*", (route) => {
+    const list = parts(state.rev);
+    const reply: TricksReply = { rev: state.rev, tricks: [PET], parts: list, present: list.map((p) => `${p.host}/${p.trick}/${p.part}`) };
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(reply) });
+  });
+  await page.route("**/api/tricks/lodge/pet/**", (route) => route.fulfill({ contentType: "image/png", body: image }));
+}
+
+// Four 48 px frames side by side.
+const SHEET_4X48 = flatPng(192, 48);
+const THROWER = { src: "media/ryu.png", frames: 4, fps: 2, size: "m", loop: false } as const;
+
+/** One frame's look at a pet: where it is painted and how visible. */
+interface PetSample {
+  x: number;
+  y: number;
+  opacity: number;
+}
+declare global {
+  interface Window {
+    __pets?: PetSample[];
+  }
+}
+
+test.describe("a stay picture appears where it rests", () => {
+  for (const [motion, along] of [["perch", "start"], ["perch", "end"], ["idle", "end"]] as const) {
+    test(`a ${motion} picture (${along}) fades in at its spot and never travels to it`, async ({ page }) => {
+      // Every frame, from the first load: the box of each pet on screen and how visible it is.
+      await page.addInitScript(() => {
+        const log: PetSample[] = [];
+        window.__pets = log;
+        const tick = (): void => {
+          const el = document.querySelector('[data-slot="float-pet"]');
+          if (el !== null) {
+            const r = el.getBoundingClientRect();
+            log.push({ x: r.left, y: r.top, opacity: Number(getComputedStyle(el).opacity) });
+          }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+      await stubPet(page, [pet({}, { mode: "stay", motion, edge: "bottom", along, sprite: { src: "media/pet.png", frames: 2, size: "l" } })], PNG_148X120);
+      await page.goto("/");
+      await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+      await page.waitForTimeout(900);
+      const log = await page.evaluate(() => window.__pets ?? []);
+      const rest = log.at(-1)!;
+      expect(rest.opacity).toBe(1);
+      // An idle picture bobs 3 px either way; a perched one is still.
+      const slack = motion === "idle" ? 4 : 0.5;
+      const seen = log.filter((sample) => sample.opacity > 0.001);
+      expect(seen.length).toBeGreaterThan(0);
+      // The first painted frame is at the rest spot (not at the corner of the layer), and so is every later one.
+      for (const sample of seen) {
+        expect(Math.abs(sample.x - rest.x), `x ${sample.x} of ${rest.x}`).toBeLessThanOrEqual(slack);
+        expect(Math.abs(sample.y - rest.y), `y ${sample.y} of ${rest.y}`).toBeLessThanOrEqual(slack);
+      }
+      // It faded: a frame between invisible and whole was drawn.
+      expect(seen.some((sample) => sample.opacity < 0.99)).toBe(true);
+    });
+  }
+});
+
+/** How far along the sheet the picture is, in frames: 0 for the first, 3 for the last of four. */
+function frameOf(page: Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const img = document.querySelector('[data-slot="float-pet"] img');
+    if (img === null) return null;
+    return -new DOMMatrix(getComputedStyle(img).transform).e / 48;
+  });
+}
+
+test.describe("a sprite that plays once", () => {
+  const throwing = (extra: JsonObject = {}) => pet({ part: "ryu" }, { id: "ryu", mode: "stay", motion: "perch", edge: "bottom", along: "start", sprite: THROWER, ...extra });
+  test("plays its frames once, slower, and holds the last one", async ({ page }) => {
+    await stubPet(page, [throwing()], SHEET_4X48);
+    await page.goto("/");
+    await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+    // 4 frames at 2 fps: 2 s for the pass. Early on it is near the start, and it never goes round again.
+    await page.waitForTimeout(2800);
+    expect(await frameOf(page)).toBeCloseTo(3, 1);
+    await page.waitForTimeout(1200);
+    expect(await frameOf(page)).toBeCloseTo(3, 1);
+  });
+
+  test("loops when it does not say loop = false", async ({ page }) => {
+    await stubPet(page, [throwing({ sprite: { ...THROWER, loop: true } })], SHEET_4X48);
+    await page.goto("/");
+    await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+    const seen = new Set<number>();
+    for (let i = 0; i < 24; i++) {
+      await page.waitForTimeout(250);
+      seen.add(Math.round((await frameOf(page)) ?? -1));
+    }
+    // Six seconds of a two-second loop shows the first frame again after the last.
+    expect([...seen].toSorted((a, b) => a - b)).toEqual([0, 1, 2, 3]);
+  });
+
+  test("shows the last frame still under reduced motion", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await stubPet(page, [throwing()], SHEET_4X48);
+    await page.goto("/");
+    await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+    await page.waitForTimeout(300);
+    expect(await frameOf(page)).toBeCloseTo(3, 1);
+  });
+
+  test("the shot leaves when the throw ends: after the pet's last frame, not before", async ({ page }) => {
+    const state = { rev: 1 };
+    const ryu = (rev: number, mood: string) => pet({ part: "ryu", rev }, { id: "ryu", mode: "stay", motion: "perch", edge: "bottom", along: "start", mood, sprite: THROWER });
+    await stubRuns(
+      page,
+      (rev) => (rev === 1 ? [ryu(1, "idle")] : [ryu(2, "working"), pet({ part: "ball", rev: 2 }, { id: "ball", mode: "once", motion: "fly-across", from: "ryu", sprite: { src: "media/ball.png", frames: 4, size: "s" } })]),
+      state,
+      SHEET_4X48,
+    );
+    await page.goto("/");
+    await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+    // The first play is over; the throw is the new value.
+    await page.waitForTimeout(2600);
+    state.rev = 2;
+    // The pet's own play is the animation of its sheet; the ball's is the one on the shot. When the ball's exists, read the pet's clock.
+    const at = await page.waitForFunction(
+      () => {
+        const shot = document.querySelector('[data-slot="float-shot"]');
+        if (shot === null || shot.getAnimations().length === 0) return null;
+        const play = document.querySelector('[data-slot="float-pet"] img')?.getAnimations()[0];
+        const time = Number(play?.currentTime ?? Number.NaN);
+        return Number.isNaN(time) ? null : time;
+      },
+      undefined,
+      { timeout: 15_000, polling: 16 },
+    );
+    // SAFETY: the page function returns the pet's clock in ms, or never resolves.
+    const clock = (await at.jsonValue()) as number;
+    // 4 frames at 2 fps reach the last frame 1500 ms into the pass; the shot started then, within a few frames.
+    expect(clock).toBeGreaterThanOrEqual(1490);
+    expect(clock).toBeLessThan(1900);
+  });
+});

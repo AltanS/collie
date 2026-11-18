@@ -1144,6 +1144,8 @@ export interface FloatSprite {
   fps?: number;
   /** The drawn height of a frame: `s` (32 px, the default), `m` (48 px) or `l` (72 px). */
   size?: FloatSize;
+  /** `false`: the frames play once, 0 to `frames` - 1 at `fps`, and the last one stays. Absent or `true`: they loop. */
+  loop?: boolean;
 }
 /**
  * A small moving picture over the app (the `float` place). Declarative only: a picture, a motion from a
@@ -3746,7 +3748,7 @@ export const SUB_KEYS = {
   /** One row of a `menu` part (contract 2). */
   row: MENU_ROW_KEYS,
   /** The sprite of a `float` part. */
-  sprite: ["src", "frames", "rows", "fps", "size"],
+  sprite: ["src", "frames", "rows", "fps", "size", "loop"],
 } as const;
 
 export const PART_KEYS = {
@@ -4193,7 +4195,7 @@ function readFloatFrom(f: Fields, mode: FloatMode | undefined): string | undefin
   return raw;
 }
 
-/** A float sprite: `src` (the image rule), `frames` 1 to {@link FLOAT_FRAMES_MAX}, `rows` 1 to {@link FLOAT_ROWS_MAX}, `fps` 1 to {@link FLOAT_FPS_MAX} with frames of 2 or more, `size`. */
+/** A float sprite: `src` (the image rule), `frames` 1 to {@link FLOAT_FRAMES_MAX}, `rows` 1 to {@link FLOAT_ROWS_MAX}, `fps` 1 to {@link FLOAT_FPS_MAX} with frames of 2 or more, `size`, `loop` (true or false). */
 function readFloatSprite(f: Fields): FloatSprite {
   f.keys(SUB_KEYS.sprite);
   const srcRaw = f.text("src", { max: IMAGE_SRC_MAX, required: true });
@@ -4204,11 +4206,13 @@ function readFloatSprite(f: Fields): FloatSprite {
   const fps = f.int("fps", { min: 1, max: FLOAT_FPS_MAX });
   if (fps !== undefined && (frames === undefined || frames < 2)) f.push("target", "fps", '"fps" goes with "frames" of 2 or more: it is how fast the frames of a sprite sheet play.');
   const size = f.word("size", FLOAT_SIZES);
+  const loop = f.bool("loop");
   const sprite: FloatSprite = { src: src ?? "" };
   if (frames !== undefined) sprite.frames = frames;
   if (rows !== undefined) sprite.rows = rows;
   if (fps !== undefined) sprite.fps = fps;
   if (size !== undefined) sprite.size = size;
+  if (loop !== undefined) sprite.loop = loop;
   return sprite;
 }
 

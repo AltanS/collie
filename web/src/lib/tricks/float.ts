@@ -43,7 +43,7 @@ import {
   type FloatSize,
   type WireTrickPart,
 } from "./schema";
-import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "../json";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "../json";
 
 // ── The numbers ──────────────────────────────────────────────────────────────────────────────
 
@@ -80,6 +80,10 @@ export const FLOAT_FROM_HAND = 0.4;
 export const FLOAT_PENDING_MS = 2000;
 /** How long a once part with `from` waits for the stay picture it names to report where it is, before it starts as usual. */
 export const FLOAT_FROM_WAIT_MS = 1500;
+/** How long a once part with `from` waits for the stay picture it names to play its frames to the last one (`sprite.loop = false`), counted from the shot's arrival, before it starts anyway. */
+export const FLOAT_THROW_WAIT_MS = 2000;
+/** The fade of a stay picture that appears: in place, no travel. */
+export const FLOAT_ENTER_MS = 180;
 
 // ── The box maths ────────────────────────────────────────────────────────────────────────────
 
@@ -261,6 +265,8 @@ export interface FloatSpec {
   frames: number;
   rows: number;
   fps: number;
+  /** `false`: the frames play once and the last one stays. `true`: they loop. */
+  loop: boolean;
   size: FloatSize;
   mood: ChipState;
   opens: FloatOpens | undefined;
@@ -300,7 +306,8 @@ export function readFloat(part: WireTrickPart): FloatSpec | null {
   const rows = sprite.rows === undefined ? 1 : whole(sprite.rows, 1, FLOAT_ROWS_MAX);
   const fps = sprite.fps === undefined ? 6 : whole(sprite.fps, 1, FLOAT_FPS_MAX);
   const size = sprite.size === undefined ? "s" : inList(FLOAT_SIZES, asJsonString(sprite.size));
-  if (frames === undefined || rows === undefined || fps === undefined || size === undefined) return null;
+  const loop = sprite.loop === undefined ? true : asJsonBoolean(sprite.loop);
+  if (frames === undefined || rows === undefined || fps === undefined || size === undefined || loop === undefined) return null;
   const mood = value.mood === undefined ? "idle" : inList(CHIP_STATES, asJsonString(value.mood));
   const edge = value.edge === undefined ? "bottom" : inList(FLOAT_EDGES, asJsonString(value.edge));
   if (mood === undefined || edge === undefined) return null;
@@ -326,12 +333,31 @@ export function readFloat(part: WireTrickPart): FloatSpec | null {
     frames,
     rows,
     fps,
+    loop,
     size,
     mood,
     opens,
     stale: part.stale === true,
     part,
   };
+}
+
+/** How long one pass over the frames of a sheet takes, in milliseconds. */
+export function playMs(frames: number, fps: number): number {
+  return (frames / fps) * 1000;
+}
+
+/** How far into a pass the last frame appears, in milliseconds: the frames before it have each been shown for one tick. */
+export function lastFrameAtMs(frames: number, fps: number): number {
+  return ((frames - 1) / fps) * 1000;
+}
+
+/**
+ * What a part draws and where it shows: a change of it (a new value, or a new binding), and not a new `asOf` or a
+ * moved rev, is a re-print that says something. A once part plays again on it, and a sprite that plays once plays again.
+ */
+export function partSignature(part: WireTrickPart): string {
+  return `${JSON.stringify(part.value)}|${JSON.stringify(part.bound ?? null)}`;
 }
 
 /** The row of a sprite sheet a mood draws: its place in the chip states. */
