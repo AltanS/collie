@@ -13,6 +13,7 @@ import { t } from "@/lib/i18n";
 import { trickSessionPath } from "@/lib/nav";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import {
+  FLOAT_FROM_WAIT_MS,
   FLOAT_IDLE_BOB_PX,
   FLOAT_POP_SCALE,
   FLOAT_SETTLE_MS,
@@ -29,12 +30,12 @@ import {
   pathOf,
   readFloat,
   restOf,
+  sameBox,
   rowFor,
   spriteInBox,
   unit,
   type Box,
   type FloatSpec,
-  type Point,
 } from "@/lib/tricks/float";
 import { FLOAT_ONCE_MOTIONS, parsePartKey, trickMediaPath, type WireTrickPart } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, useTrickParts, type TricksStore } from "@/lib/tricks/store";
@@ -212,14 +213,56 @@ function FloatPet({
   );
 }
 
+/** What a shot is laid out from once it begins: the free area, and the drawn box of its pet (none: it starts as usual). */
+interface Begun {
+  region: Box;
+  origin: Box | undefined;
+}
+
 /**
  * A once-shot: one motion along its path in the free area, then it is over. Never takes a pointer. With
- * `origin` (the centre of the stay picture its part names, when that one is on screen) the motion starts there.
+ * `pet` (the drawn box of the stay picture its part names, in the layer's own coordinates, the ones the free area
+ * is in) the motion starts at that picture's hand. A shot whose part says `from` and whose pet is on the way
+ * (`waits`) holds still, loading its sheet, until the pet reports its box, for at most FLOAT_FROM_WAIT_MS; only
+ * then does it begin (`onBegin`, so the queue's rate counts from here), and with no pet by then it starts as usual.
  */
-function FloatShot({ spec, region: asked, origin: from, paused, onDone }: { spec: FloatSpec; region: Box; origin: Point | undefined; paused: boolean; onDone: () => void }) {
+function FloatShot({
+  spec,
+  region: asked,
+  pet,
+  waits,
+  paused,
+  onBegin,
+  onDone,
+}: {
+  spec: FloatSpec;
+  region: Box;
+  pet: Box | undefined;
+  waits: boolean;
+  paused: boolean;
+  onBegin: () => void;
+  onDone: () => void;
+}) {
   // The free area and the start as they were when the shot began: a shot of at most three seconds is not laid out again.
-  const [region] = useState(asked);
-  const [origin] = useState(from);
+  const [begun, setBegun] = useState<Begun | null>(() => (pet !== undefined || !waits ? { region: asked, origin: pet } : null));
+  const latest = useRef({ asked, pet });
+  latest.current = { asked, pet };
+  useEffect(() => {
+    if (begun !== null) return;
+    if (pet !== undefined) {
+      setBegun({ region: latest.current.asked, origin: pet });
+      return;
+    }
+    const timer = setTimeout(() => setBegun({ region: latest.current.asked, origin: latest.current.pet }), FLOAT_FROM_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [begun, pet]);
+  const begin = useRef(onBegin);
+  begin.current = onBegin;
+  useEffect(() => {
+    if (begun !== null) begin.current();
+  }, [begun]);
+  const region = begun?.region ?? asked;
+  const origin = begun?.origin;
   const { url, failed } = useAuthedUrl(trickMediaPath(spec.host, spec.trickId, spec.src, spec.rev));
   const [natural, setNatural] = useState<Natural | null>(null);
   const loaded = natural !== null;
@@ -234,8 +277,8 @@ function FloatShot({ spec, region: asked, origin: from, paused, onDone }: { spec
   const fits = fitsRegion(dims, region, motion === "pop" ? FLOAT_POP_SCALE : 1);
   const size = spec.size;
   const path = useMemo(
-    () => (motion === undefined || !loaded || !fits ? null : pathOf({ motion, key: spec.key, rev: spec.rev, dims: drawnDims({ size }, aspect), region, from: origin })),
-    [motion, loaded, fits, spec.key, spec.rev, size, aspect, region, origin],
+    () => (motion === undefined || !loaded || !fits || begun === null ? null : pathOf({ motion, key: spec.key, rev: spec.rev, dims: drawnDims({ size }, aspect), region, from: origin })),
+    [motion, loaded, fits, begun, spec.key, spec.rev, size, aspect, region, origin],
   );
   // A picture that does not load, or does not fit, is not played: the shot is over.
   useEffect(() => {
@@ -281,6 +324,11 @@ function FloatShot({ spec, region: asked, origin: from, paused, onDone }: { spec
   );
 }
 
+/** The key of the stay part a once part names with `from`. */
+function petKeyOf(spec: FloatSpec): string {
+  return `${spec.host}/${spec.trickId}/${spec.from ?? ""}`;
+}
+
 /** The signature of what a once part draws: a change of it, or the part arriving, plays it again. */
 function onceSignature(part: WireTrickPart): string {
   return `${JSON.stringify(part.value)}|${JSON.stringify(part.bound ?? null)}`;
@@ -303,17 +351,19 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
   const space = useFloatRegion(screen, wanted && !covered, probe);
   const region = space?.region ?? null;
   const drawing = wanted && !covered && space !== null;
-  // Where each stay picture on screen draws now, by key: a once part with `from` starts at the one it names.
-  const placed = useRef(new Map<string, Box>());
+  // Where each stay picture on screen draws now, by key: a once part with `from` starts at the one it names. State, not
+  // a ref: a shot that waits for its pet starts the moment the pet reports.
+  const [placed, setPlaced] = useState<ReadonlyMap<string, Box>>(() => new Map());
   const onPlace = useCallback((key: string, box: Box | null) => {
-    if (box === null) placed.current.delete(key);
-    else placed.current.set(key, box);
+    setPlaced((had) => {
+      const known = had.get(key);
+      if (box === null ? known === undefined : known !== undefined && sameBox(known, box)) return had;
+      const next = new Map(had);
+      if (box === null) next.delete(key);
+      else next.set(key, box);
+      return next;
+    });
   }, []);
-  const originOf = (spec: FloatSpec): Point | undefined => {
-    if (spec.from === undefined) return undefined;
-    const box = placed.current.get(`${spec.host}/${spec.trickId}/${spec.from}`);
-    return box === undefined ? undefined : { x: box.x + box.w / 2, y: box.y + box.h / 2 };
-  };
 
   const here = useMemo(
     () => (screen === "dashboard" ? floatsForScreen(parts, { dashboard: true }) : screen === "session" ? floatsForScreen(parts, { pane }) : []),
@@ -379,7 +429,16 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
         })}
       {drawing && region !== null && shot !== null && (
         <TrickBoundary fallback="none" resetKey={`${shot.key}@${shot.rev}`}>
-          <FloatShot key={`${shot.key}@${shot.rev}`} spec={shot} region={region} origin={originOf(shot)} paused={!visible} onDone={finishShot} />
+          <FloatShot
+            key={`${shot.key}@${shot.rev}`}
+            spec={shot}
+            region={region}
+            pet={shot.from === undefined ? undefined : placed.get(petKeyOf(shot))}
+            waits={shot.from !== undefined && stay.some((candidate) => candidate.key === petKeyOf(shot))}
+            paused={!visible}
+            onBegin={() => queue.current.began(shot.trick)}
+            onDone={finishShot}
+          />
         </TrickBoundary>
       )}
     </div>

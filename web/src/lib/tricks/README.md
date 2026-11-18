@@ -1150,8 +1150,9 @@ JPEG or WebP), `frames` frames side by side, each the sheet's width over `frames
 frame HEIGHT and the width follows the frame's shape. With `rows` of 2 or more, one row per mood in `CHIP_STATES`
 order. `perch` stands ON its edge (its foot on the landmark below it, no gap) and `along` (`start`, `middle`, `end`;
 `end` by default) picks the place along it. A `once` part's `from` names a `stay` part of the same trick: while
-that picture is on screen the motion starts at its centre and flies toward the farther side edge, else it starts
-as usual; `from` naming no stay part of the trick is refused (`refuseUnknownFrom` in `schema.ts`). `opens = "page"`
+that picture is on screen the motion starts at its hand (its front edge, 40% down its height, the shot's centre
+there) and flies toward the farther side edge, else it starts as usual; a stay picture printed in the same run is
+waited for, up to 1.5 s; `from` naming no stay part of the trick is refused (`refuseUnknownFrom` in `schema.ts`). `opens = "page"`
 lets a parked picture (`perch`, `idle`) take a 44 px tap that opens the trick's Page. No view, no
 style, no coordinates and no code reach the phone. `readFloat` (`float.ts`) re-validates every field,
 because the wire carries a part as stored.

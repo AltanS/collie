@@ -284,6 +284,24 @@ describe("the picture's shape and place", () => {
 describe("a once picture from a pet", () => {
   const PET = (extra: JsonObject = {}): WireTrickPart => ({ ...part("spark", STAY({ sprite: { src: "media/pet.png", size: "m" }, ...extra })), part: "pet" });
   const BEAM = (rev = 1, extra: JsonObject = {}): WireTrickPart => ({ ...part("spark", ONCE({ motion: "fly-across", from: "pet", ...extra }), rev), part: "beam" });
+  const MS = 1500;
+
+  /** What the shot's animation was given: the first keyframe's place, and its centre when the sheet is `side` px. */
+  const animate = vi.fn();
+  beforeEach(() => {
+    animate.mockReset();
+    animate.mockImplementation(() => ({ finished: new Promise(() => undefined), cancel: () => undefined, pause: () => undefined, play: () => undefined }));
+    Object.defineProperty(HTMLElement.prototype, "animate", { configurable: true, writable: true, value: animate });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    Reflect.deleteProperty(HTMLElement.prototype, "animate");
+  });
+  const firstFrame = (): { x: number; y: number } | undefined => {
+    const call = animate.mock.calls.find((args) => Array.isArray(args[0]) && args[0][0]?.transform?.includes("scale"));
+    const match = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(call?.[0][0].transform ?? "");
+    return match === null ? undefined : { x: Number(match[1]), y: Number(match[2]) };
+  };
 
   it("starts at the pet when it is on screen", async () => {
     const { store, replace } = storeWith([PET()]);
@@ -293,29 +311,79 @@ describe("a once picture from a pet", () => {
     expect(shots().map((el) => el.dataset.from)).toEqual(["pet"]);
   });
 
-  it("falls back to the normal start when the pet is not drawn yet", async () => {
+  it("waits for a pet printed in the same run, and starts at its hand: the front edge, 40% down", async () => {
+    // Nothing is held when the phone first looks; the pet and the shot arrive together.
+    const { store, replace } = storeWith([]);
+    await mount(store);
+    await act(async () => replace([PET(), BEAM()], 2));
+    // The pet's sheet has not loaded: it has no place, and the shot holds still, not started.
+    expect(shots()).toHaveLength(1);
+    expect(shots()[0]?.dataset.from).toBeUndefined();
+    await loadSheet(shots()[0]!, 32, 32);
+    expect(firstFrame()).toBeUndefined();
+    await loadSheet(pets()[0]!, 48, 48);
+    expect(shots()[0]?.dataset.from).toBe("pet");
+    // The pet is 48 px, perched at the end of the bottom edge: x 334, y 592. It is on the right, so the shot
+    // flies left and starts at the pet's left edge, 40% of 48 down; a 32 px shot has its centre there.
+    expect(firstFrame()).toEqual({ x: 334 - 16, y: 592 + 0.4 * 48 - 16 });
+  });
+
+  it("starts at the pet's right edge when the pet stands on the left half, and flies level to the far side", async () => {
+    const { store, replace } = storeWith([]);
+    await mount(store);
+    await act(async () => replace([PET({ along: "start" }), BEAM()], 2));
+    await loadSheet(pets()[0]!, 48, 48);
+    await loadSheet(shots()[0]!, 32, 32);
+    // Pet at x 8, 48 wide: front edge 56.
+    expect(firstFrame()).toEqual({ x: 56 - 16, y: 592 + 0.4 * 48 - 16 });
+    // SAFETY: the call was found above by its keyframes, which are objects with a transform.
+    const frames = animate.mock.calls.find((args) => Array.isArray(args[0]) && args[0][0]?.transform?.includes("scale"))?.[0] as { transform: string }[];
+    const ys = frames.map((frame) => /, ([-\d.]+)px/.exec(frame.transform)?.[1]);
+    expect(new Set(ys).size).toBe(1);
+  });
+
+  it("falls back to the normal start after the wait when the pet never reports a place", async () => {
+    vi.useFakeTimers();
+    const { store, replace } = storeWith([]);
+    await mount(store);
+    await act(async () => replace([PET(), BEAM()], 2));
+    await loadSheet(shots()[0]!, 32, 32);
+    await act(async () => vi.advanceTimersByTime(MS - 50));
+    expect(firstFrame()).toBeUndefined();
+    await act(async () => vi.advanceTimersByTime(100));
+    expect(shots()).toHaveLength(1);
+    expect(shots()[0]?.dataset.from).toBeUndefined();
+    expect(firstFrame()).toBeDefined();
+  });
+
+  it("falls back to the normal start when the pet is not drawn yet and then never is", async () => {
+    vi.useFakeTimers();
     const { store, replace } = storeWith([PET()]);
     await mount(store);
     // The sheet has not loaded, so the pet has no place yet.
     await act(async () => replace([PET(), BEAM()], 2));
     expect(shots()).toHaveLength(1);
+    await act(async () => vi.advanceTimersByTime(MS + 10));
     expect(shots()[0]?.dataset.from).toBeUndefined();
   });
 
-  it("falls back when the part names no stay part on screen", async () => {
+  it("does not wait when the part names no stay part on screen", async () => {
     const { store, replace } = storeWith([PET()]);
     await mount(store);
     await loadSheet(pets()[0]!, 48, 48);
     await act(async () => replace([PET(), BEAM(1, { from: "ghost" })], 2));
-    expect(shots()).toHaveLength(1);
+    await loadSheet(shots()[0]!, 32, 32);
     expect(shots()[0]?.dataset.from).toBeUndefined();
+    expect(firstFrame()).toBeDefined();
   });
 
-  it("falls back when the only pet on screen is another trick's: a pet of another trick is no origin", async () => {
+  it("does not wait for a pet of another trick: it is no origin", async () => {
     const { store, replace } = storeWith([{ ...part("other", STAY({ sprite: { src: "media/pet.png" } })), part: "pet" }]);
     await mount(store);
     await loadSheet(pets()[0]!, 32, 32);
     await act(async () => replace([{ ...part("other", STAY({ sprite: { src: "media/pet.png" } })), part: "pet" }, BEAM()], 2));
+    await loadSheet(shots()[0]!, 32, 32);
     expect(shots()[0]?.dataset.from).toBeUndefined();
+    expect(firstFrame()).toBeDefined();
   });
 });

@@ -1,3 +1,5 @@
+import { deflateSync, crc32 } from "node:zlib";
+
 import { expect, test, type Page } from "@playwright/test";
 
 import { fixtureSnapshot } from "@/test/handlers";
@@ -145,4 +147,88 @@ test.describe("at 360 px", () => {
     await page.getByPlaceholder(/reply/i).blur();
     await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
   });
+});
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const body = Buffer.concat([Buffer.from(type), data]);
+  const head = Buffer.alloc(4);
+  head.writeUInt32BE(data.length);
+  const tail = Buffer.alloc(4);
+  tail.writeUInt32BE(crc32(body));
+  return Buffer.concat([head, body, tail]);
+}
+
+// A flat-colour 8-bit grey PNG of `w` x `h`, built here so a sheet of any shape is at hand.
+function flatPng(w: number, h: number): Buffer {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8;
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(w, 0x90)]);
+  const raw = Buffer.concat(Array.from({ length: h }, () => row));
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), pngChunk("IHDR", ihdr), pngChunk("IDAT", deflateSync(raw)), pngChunk("IEND", Buffer.alloc(0))]);
+}
+
+/** The place a `translate3d(x, y, 0)` keyframe names. */
+function placeOf(transform: string) {
+  const match = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(transform);
+  return { x: Number(match?.[1]), y: Number(match?.[2]) };
+}
+
+test.describe("a once picture that starts from a pet printed in the same run", () => {
+  for (const [along, flies] of [["start", "right"], ["end", "left"]] as const) {
+    test(`starts at the pet's front edge, 40% down, and flies ${flies} level (pet ${along === "start" ? "bottom left" : "bottom right"})`, async ({ page }) => {
+      const ball = flatPng(400, 200);
+      const state = { rev: 1 };
+      await installApiStub(page);
+      await keepPhoneLayout(page);
+      await page.route("**/api/snapshot", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...fixtureSnapshot, tricksRev: state.rev }) }));
+      await page.route("**/api/tricks?*", (route) => {
+        // The phone first looks at the old run of the pet; the next run prints the pet again and the ball with it.
+        const sheet = { src: "media/ryu.png", frames: 2, size: "l" };
+        const ryu = (rev: number) => pet({ part: "ryu", rev }, { id: "ryu", mode: "stay", motion: "perch", edge: "bottom", along, sprite: sheet });
+        const parts = state.rev === 1 ? [ryu(1)] : [ryu(2), pet({ part: "ball", rev: 2 }, { id: "ball", mode: "once", motion: "fly-across", from: "ryu", sprite: { src: "media/ball.png", frames: 2, size: "m" } })];
+        const reply: TricksReply = { rev: state.rev, tricks: [PET], parts, present: parts.map((p) => `${p.host}/${p.trick}/${p.part}`) };
+        return route.fulfill({ contentType: "application/json", body: JSON.stringify(reply) });
+      });
+      await page.route("**/api/tricks/lodge/pet/media/ryu.png*", async (route) => {
+        // The pet's sheet is slow once the run is new: the ball is ready first and must wait for it.
+        if (state.rev === 2) await new Promise((resolve) => setTimeout(resolve, 400));
+        await route.fulfill({ contentType: "image/png", body: PNG_148X120 });
+      });
+      await page.route("**/api/tricks/lodge/pet/media/ball.png*", (route) => route.fulfill({ contentType: "image/png", body: ball }));
+      await page.goto("/");
+      await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+      // Let the screen settle: a landmark that arrives late moves the pet, and the ball starts from where the pet is.
+      await page.waitForTimeout(2500);
+      state.rev = 2;
+      // The first keyframe of the ball's animation, read in the page the moment it exists.
+      const first = await page.waitForFunction(() => {
+        const node = document.querySelector('[data-slot="float-shot"]');
+        const run = node?.getAnimations()[0];
+        const effect = run?.effect;
+        if (!(effect instanceof KeyframeEffect)) return null;
+        return effect.getKeyframes().map((frame) => String(frame["transform"]));
+      }, undefined, { timeout: 15_000, polling: 16 });
+      // SAFETY: the page function returns the keyframes' transforms as strings, or never resolves.
+      const transforms = (await first.jsonValue()) as string[];
+      // The pet's own glide into its place is 300 ms; its box is read once it rests, as the layer reported it.
+      await page.waitForTimeout(700);
+      const ryu = await page.locator('[data-slot="float-pet"]').boundingBox();
+      expect(ryu).not.toBeNull();
+      const start = placeOf(transforms[0] ?? "");
+      // The ball is 48 px high and, with a 200 x 200 frame, 48 wide: its centre is the start.
+      const centre = { x: start.x + 24, y: start.y + 24 };
+      const front = flies === "right" ? ryu!.x + ryu!.width : ryu!.x;
+      const offset = { x: centre.x - front, y: centre.y - (ryu!.y + 0.4 * ryu!.height) };
+      console.log(`float-from start offset (${flies}): dx ${offset.x.toFixed(2)} dy ${offset.y.toFixed(2)}`);
+      expect(Math.abs(offset.x)).toBeLessThan(1);
+      expect(Math.abs(offset.y)).toBeLessThan(1);
+      // Level to the far side: every later keyframe is at the same height, and it moves the way the pet faces.
+      const ys = new Set(transforms.slice(1).map((transform) => placeOf(transform).y));
+      expect(ys.size).toBe(1);
+      const xs = transforms.map((transform) => placeOf(transform).x);
+      expect(flies === "right" ? xs.at(-1)! > xs[0]! : xs.at(-1)! < xs[0]!).toBe(true);
+    });
+  }
 });

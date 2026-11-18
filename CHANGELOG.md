@@ -36,6 +36,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A floating picture that starts from a trick's resting picture starts at its hand.** When both came in the same run, the shot did not wait for the resting picture and flew from a random height. It now waits up to 1.5 s for it, then starts at the front edge of the picture at 40% of its height and flies level to the far side.
 - **A trick's change shows on the phone at once.** After your yes to a new version, a switch on or a changed setting, the trick runs right away and the phone draws the result within a second or two, with no wait for the trick's timer. An edit of `config.toml` by hand runs it as soon as Collie sees the edit, within a few seconds. Every change of code still needs your yes.
 - **Opening a session waits for its first page of Chat for at most 600 ms from the tap.** The wait started only after the screen read had answered, so a slow screen read and a slow Chat read added up to 1,000 ms before the new session showed. The two reads now start together and the limit counts from the start.
 - **Renaming a tab from the phone changes the name you see for its session again.** A tab with one session in it showed the title the agent wrote itself and ignored the new tab name since 1.29.0. Collie now gives that one session the same name as the tab. A tab with more than one session keeps each session's own name. (#810)
