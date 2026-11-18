@@ -6,6 +6,9 @@ import { CHIP_STATES, FLOAT_ALONG, FLOAT_ONCE_MOTIONS, FLOAT_STAY_MOTIONS, PLACE
 import {
   FLOAT_COVER,
   FLOAT_EDGE_MARGIN_PX,
+  FLOAT_FLY_MAX_MS,
+  FLOAT_FLY_MIN_MS,
+  FLOAT_FLY_REF_PX,
   FLOAT_LANDMARKS,
   FLOAT_ONCE_EVERY_MS,
   FLOAT_ONCE_MAX_MS,
@@ -20,6 +23,7 @@ import {
   fitsRegion,
   floatScreenOf,
   floatsForScreen,
+  flyMs,
   frameAspect,
   freeArea,
   overlaps,
@@ -147,7 +151,9 @@ describe("a picture never meets a landmark", () => {
         const dims: Dims = { w: side * (n % 3 === 0 ? 0.62 : 1), h: side };
         const path = pathOf({ motion, key: `m1/pet/p${String(n)}`, rev: n, dims, region });
         expect(path.durationMs).toBeLessThanOrEqual(FLOAT_ONCE_MAX_MS);
-        for (const step of path.steps) {
+        // A fly-across's last step is past the far edge on purpose (the layer clips it); every other step of every motion stays inside.
+        const inside = motion === "fly-across" ? path.steps.slice(0, -1) : path.steps;
+        for (const step of inside) {
           const box = stepBox(step, dims);
           expect(within(region, box), `${motion} ${String(n)} stays in the region`).toBe(true);
           for (const landmark of landmarks) expect(overlaps(box, landmark), `${motion} ${String(n)} clear of a landmark`).toBe(false);
@@ -190,7 +196,8 @@ describe("a picture never meets a landmark", () => {
         const from: Box = { x: region.x + unit(`fx${String(n)}`, 1) * (region.w - 30), y: region.y + unit(`fy${String(n)}`, 2) * (region.h - 40), w: 30, h: 40 };
         const path = pathOf({ motion, key: `m1/pet/r${String(n)}`, rev: n, dims, region, from });
         // The first step is the hand itself, invisible, and may hang past the region by the pet's own spot.
-        for (const step of path.steps.slice(1)) {
+        // A fly-across's last step is past the far edge on purpose (the layer clips it).
+        for (const step of motion === "fly-across" ? path.steps.slice(1, -1) : path.steps.slice(1)) {
           const box = stepBox(step, dims);
           expect(within(region, box), `${motion} ${String(n)}`).toBe(true);
           for (const landmark of landmarks) expect(overlaps(box, landmark)).toBe(false);
@@ -308,8 +315,19 @@ describe("a picture never meets a landmark", () => {
     expect(fitsRegion(drawnDims({ size: "l" }, 1), { x: 0, y: 0, w: 120, h: 60 })).toBe(false);
   });
 
-  it("keeps every once motion within the 3 s limit", () => {
+  it("keeps every once motion within the 5 s limit, and the rate limit longer than the longest of them", () => {
     for (const motion of FLOAT_ONCE_MOTIONS) expect(FLOAT_ONCE_MS[motion]).toBeLessThanOrEqual(FLOAT_ONCE_MAX_MS);
+    expect(FLOAT_ONCE_MAX_MS).toBe(FLOAT_FLY_MAX_MS);
+    expect(FLOAT_ONCE_EVERY_MS).toBeGreaterThan(FLOAT_ONCE_MAX_MS);
+  });
+
+  it("plays an arc and a pop about a third longer than before (2800 and 1600 ms)", () => {
+    expect(FLOAT_ONCE_MS.arc).toBeGreaterThanOrEqual(2800 * 1.3);
+    expect(FLOAT_ONCE_MS.arc).toBeLessThanOrEqual(2800 * 1.36);
+    expect(FLOAT_ONCE_MS.pop).toBeGreaterThanOrEqual(1600 * 1.3);
+    expect(FLOAT_ONCE_MS.pop).toBeLessThanOrEqual(1600 * 1.36);
+    const free: Box = { x: 0, y: 92, w: 390, h: 544 };
+    for (const motion of ["arc", "pop"] as const) expect(pathOf({ motion, key: "m1/pet/p", rev: 1, dims: { w: 48, h: 48 }, region: free }).durationMs).toBe(FLOAT_ONCE_MS[motion]);
   });
 });
 
@@ -674,8 +692,10 @@ describe("a once motion that starts from a pet", () => {
     const pet = petAt(8);
     const path = pathOf({ ...opts, motion: "fly-across", from: pet });
     expect(centre(stepBox(startOf(path), dims))).toEqual({ x: pet.x + pet.w, y: pet.y + 0.4 * pet.h });
+    // It flies on until it is wholly past the far edge: its box starts at the edge of the region, with no fade at the end.
     const last = stepBox(lastStep(path), dims);
-    expect(last.x + last.w).toBe(region.x + region.w);
+    expect(last.x).toBe(region.x + region.w);
+    expect(lastStep(path).opacity).toBe(1);
     // Level with the hand the whole way, and the first step is the same point as the rest.
     expect(new Set(path.steps.map((step) => step.y)).size).toBe(1);
     expect(path.steps.map((step) => step.x)).toEqual(path.steps.map((step) => step.x).toSorted((a, b) => a - b));
@@ -686,7 +706,8 @@ describe("a once motion that starts from a pet", () => {
     const path = pathOf({ ...opts, motion: "fly-across", from: pet });
     expect(centre(stepBox(startOf(path), dims))).toEqual({ x: pet.x, y: pet.y + 0.4 * pet.h });
     const last = stepBox(lastStep(path), dims);
-    expect(last.x).toBe(region.x);
+    expect(last.x + last.w).toBe(region.x);
+    expect(lastStep(path).opacity).toBe(1);
     expect(new Set(path.steps.map((step) => step.y)).size).toBe(1);
     expect(path.steps.map((step) => step.x)).toEqual(path.steps.map((step) => step.x).toSorted((a, b) => b - a));
   });
@@ -721,9 +742,10 @@ describe("a once motion that starts from a pet", () => {
     const first = stepBox(startOf(path), big);
     expect(centre(first)).toEqual({ x: pet.x + pet.w, y: pet.y + 0.4 * pet.h });
     expect(within(region, first)).toBe(false);
-    // Every step from the end of the fade-in is inside the region, and level.
+    // Every step from the end of the fade-in to the one before the exit is inside the region, and all of them are level.
     const rest = path.steps.slice(1);
-    for (const step of rest) expect(within(region, stepBox(step, big))).toBe(true);
+    for (const step of rest.slice(0, -1)) expect(within(region, stepBox(step, big))).toBe(true);
+    expect(stepBox(lastStep(path), big).x).toBe(region.x + region.w);
     expect(new Set(rest.map((step) => step.y)).size).toBe(1);
     expect(startOf(path).opacity).toBe(0);
   });
@@ -736,6 +758,90 @@ describe("a once motion that starts from a pet", () => {
     // From one side or the other of the region, not from a pet.
     expect([...starts].toSorted((a, b) => a - b)).toEqual([region.x, region.x + region.w - dims.w]);
     expect(stepAt(plain, 0).opacity).toBe(0);
+  });
+});
+
+describe("a fly-across leaves past the far edge, at one speed", () => {
+  const region: Box = { x: 0, y: 92, w: 390, h: 544 };
+  const dims: Dims = { w: 48, h: 48 };
+  const key = (n: number) => `m1/pet/k${String(n)}`;
+  const pet = (x: number): Box => ({ x, y: 640 - 72, w: 44, h: 72 });
+  const fly = (extra: { key?: string; from?: Box; region?: Box; dims?: Dims } = {}) => pathOf({ motion: "fly-across", key: key(1), rev: 1, dims, region, ...extra });
+
+  it("ends with the picture wholly outside the region, in the direction of travel, for a default start in both directions", () => {
+    const ends = new Set<string>();
+    for (let n = 0; n < 40; n++) {
+      const path = fly({ key: key(n) });
+      const first = stepBox(startOf(path), dims);
+      const last = stepBox(lastStep(path), dims);
+      const right = first.x < region.x + region.w / 2;
+      ends.add(right ? "right" : "left");
+      if (right) expect(last.x).toBe(region.x + region.w);
+      else expect(last.x + last.w).toBe(region.x);
+      expect(within(region, last)).toBe(false);
+      expect(overlaps(region, last)).toBe(false);
+    }
+    expect([...ends].toSorted()).toEqual(["left", "right"]);
+  });
+
+  it("ends wholly outside the region for a start at a pet, both ways", () => {
+    const right = stepBox(lastStep(fly({ from: pet(8) })), dims);
+    expect(right.x).toBe(region.x + region.w);
+    const left = stepBox(lastStep(fly({ from: pet(390 - 8 - 44) })), dims);
+    expect(left.x + left.w).toBe(region.x);
+    for (const end of [right, left]) expect(overlaps(region, end)).toBe(false);
+  });
+
+  it("does not fade at the end: the picture is fully visible to the last step, and fades in only at the start", () => {
+    for (const from of [undefined, pet(8), pet(300)]) {
+      const path = fly(from === undefined ? {} : { from });
+      expect(startOf(path).opacity).toBe(0);
+      expect(path.steps.slice(1).map((step) => step.opacity)).toEqual(path.steps.slice(1).map(() => 1));
+    }
+  });
+
+  it("keeps the start as it was: a from-start is exact at the hand, a default start is at the near edge", () => {
+    const p = pet(8);
+    expect(stepBox(startOf(fly({ from: p })), dims)).toMatchObject({ x: p.x + p.w - 24, y: p.y + 0.4 * p.h - 24 });
+    expect([region.x, region.x + region.w - dims.w]).toContain(startOf(fly()).x);
+  });
+
+  it("moves at one even speed from the first step to the last, and at the speed of the reference crossing when it is not held", () => {
+    const path = fly();
+    const [a, b, c] = path.steps;
+    const rate = (one: PathStep, two: PathStep) => Math.abs(two.x - one.x) / ((two.offset - one.offset) * path.durationMs);
+    expect(rate(a!, b!)).toBeCloseTo(rate(b!, c!), 9);
+    expect(rate(a!, c!)).toBeCloseTo(FLOAT_FLY_REF_PX / FLOAT_ONCE_MS["fly-across"], 9);
+    // After the first step of a from-start (the exact hand) the rest is one straight line in time as well.
+    const from = fly({ from: pet(8) });
+    const [, p, q] = from.steps;
+    expect(Math.abs(q!.x - p!.x) / ((1 - 0.12) * from.durationMs)).toBeCloseTo(Math.abs(q!.x - startOf(from).x) / from.durationMs, 0);
+  });
+
+  it("takes its path over one speed: a 390 px crossing is 3200 ms, a longer path longer, a shorter one shorter, held between 2 s and 5 s", () => {
+    expect(FLOAT_FLY_REF_PX).toBe(390);
+    expect(flyMs(390)).toBe(3200);
+    expect(flyMs(-390)).toBe(3200);
+    expect(flyMs(195)).toBe(FLOAT_FLY_MIN_MS);
+    expect(flyMs(0)).toBe(FLOAT_FLY_MIN_MS);
+    expect(flyMs(1000)).toBe(FLOAT_FLY_MAX_MS);
+    expect(flyMs(500)).toBeGreaterThan(flyMs(450));
+    expect(flyMs(500)).toBe(Math.round((500 * 3200) / 390));
+    // A default start crosses the whole width of the region: a 390 px region takes 3200 ms, a 300 px one 2462 ms, a 600 px one 4923 ms.
+    expect(fly().durationMs).toBe(3200);
+    expect(fly({ region: { ...region, w: 300 } }).durationMs).toBe(Math.round((300 * 3200) / 390));
+    expect(fly({ region: { ...region, w: 600 } }).durationMs).toBe(Math.round((600 * 3200) / 390));
+    // A start at a pet near the middle has about half the way and is held at the shortest time.
+    const mid = fly({ from: pet(150) });
+    expect(mid.durationMs).toBeGreaterThanOrEqual(FLOAT_FLY_MIN_MS);
+    expect(mid.durationMs).toBeLessThan(3200);
+    // A path from a pet near an edge to the far side is longer than a default crossing's visible part, and the rate limit outlasts every flight.
+    for (const w of [120, 390, 800, 2000]) {
+      const ms = fly({ region: { ...region, w } }).durationMs;
+      expect(ms).toBeGreaterThanOrEqual(FLOAT_FLY_MIN_MS);
+      expect(ms).toBeLessThanOrEqual(FLOAT_FLY_MAX_MS);
+      expect(ms).toBeLessThan(FLOAT_ONCE_EVERY_MS);
+    }
   });
 });
 

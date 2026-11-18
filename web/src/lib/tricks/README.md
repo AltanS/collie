@@ -1147,7 +1147,7 @@ trick rows by whole groups in trick id order. The agent view switches live in th
 ### Floating pictures
 
 A `float` part is `{ at: "float", id, mode, motion, sprite, edge?, mood?, opens?, sessions? }`.
-`mode` is `once` (one motion, at most 3 s, then gone) or `stay`. `motion` is from a fixed list:
+`mode` is `once` (one motion, at most 5 s, then gone) or `stay`. `motion` is from a fixed list:
 `fly-across`, `arc`, `pop` for `once`; `perch` (with `edge`), `wander`, `idle` for `stay`. `sprite` is
 `{ src, frames?, rows?, fps?, size?, loop?, after? }`: `src` a file of `media/` under the media route's own check (2 MiB, PNG,
 JPEG or WebP), `frames` frames side by side, each the sheet's width over `frames` wide and its height over
@@ -1170,7 +1170,10 @@ because the wire carries a part as stored.
 The phone (`float.ts` pure maths, `hooks/use-float-region.ts`, `hooks/use-float-cover.ts`,
 `components/trick-float-layer.tsx`) computes a safe region: the visual viewport, less the safe-area
 insets and the landmark boxes (`data-slot` elements read with a ResizeObserver), as the largest empty
-rectangle. Every motion path lies inside it, so a picture never touches a landmark; a region too small
+rectangle. Every motion path lies inside it, so a picture never touches a landmark, except the exit of a `fly-across`: it flies on past the
+far edge of the region at full opacity (no fade at the end) and the layer clips the shot to the region's width, so it leaves
+and nothing paints outside it. A `fly-across` is set by speed (`flyMs`): a 390 px crossing takes 3.2 s, the time is its path over that
+speed, held between 2 s and 5 s. An `arc` takes 3.7 s and a `pop` 2.1 s. A region too small
 hides `stay` pictures and skips `once` ones. Pictures are hidden while a sheet, a dialog or a card that
 asks a question is open, while a field has focus and during a hold. At most two `stay` pictures show,
 one per trick; a trick's `once` pictures start 15 s apart, one plays at a time and one waits. A `once`
