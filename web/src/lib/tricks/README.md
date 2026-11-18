@@ -1148,11 +1148,16 @@ trick rows by whole groups in trick id order. The agent view switches live in th
 A `float` part is `{ at: "float", id, mode, motion, sprite, edge?, mood?, opens?, sessions? }`.
 `mode` is `once` (one motion, at most 3 s, then gone) or `stay`. `motion` is from a fixed list:
 `fly-across`, `arc`, `pop` for `once`; `perch` (with `edge`), `wander`, `idle` for `stay`. `sprite` is
-`{ src, frames?, rows?, fps?, size?, loop? }`: `src` a file of `media/` under the media route's own check (2 MiB, PNG,
+`{ src, frames?, rows?, fps?, size?, loop?, after? }`: `src` a file of `media/` under the media route's own check (2 MiB, PNG,
 JPEG or WebP), `frames` frames side by side, each the sheet's width over `frames` wide and its height over
 `rows` (1 by default) high, so a frame need not be square; `size` (`s` 32, `m` 48, `l` 72 px) is the drawn
 frame HEIGHT and the width follows the frame's shape. With `rows` of 2 or more, one row per mood in `CHIP_STATES`
-order. `perch` stands ON its edge (its foot on the landmark below it, no gap) and `along` (`start`, `middle`, `end`;
+order. `after` (only on a `stay` part whose sprite has `loop = false`, one level, `{ src, frames?, fps?, loop? }`, no `rows`, no `size`)
+is a second sprite that starts from its first frame when the first reaches its last: its frames are as high as
+the first sprite's and as wide as its own sheet, so the box takes the new width at once (no glide) on the part's anchor
+(`along` `start` keeps the left side, `end` the right, `middle` the centre; `afterRestOf` in `float.ts`), and its sheet is fetched and decoded
+while the first plays. A changed value plays both from the start; reduced motion shows the second sprite's last frame. A `once` part's
+`from` waits for, and starts from, the FIRST sprite only. `perch` stands ON its edge (its foot on the landmark below it, no gap) and `along` (`start`, `middle`, `end`;
 `end` by default) picks the place along it. A `once` part's `from` names a `stay` part of the same trick: while
 that picture is on screen the motion starts at its hand (its front edge, 40% down its height, the shot's centre
 there) and flies toward the farther side edge, else it starts as usual; a stay picture printed in the same run is

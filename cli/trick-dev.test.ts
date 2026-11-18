@@ -89,6 +89,11 @@ describe("the pictures a run names", () => {
     expect(namedPictures([parts, decisions])).toEqual(["media/a.png", "media/b.png", "captures/c.jpg"]);
     expect(namedPictures("media/a.png")).toEqual([]);
   });
+
+  test("namedPictures counts the picture of a sprite's after like the sprite's own", () => {
+    const parts = [{ part: { sprite: { src: "media/throw.png", loop: false, after: { src: "media/pose.png" } } } }];
+    expect(namedPictures(parts)).toEqual(["media/throw.png", "media/pose.png"]);
+  });
 });
 
 describe("the flags", () => {

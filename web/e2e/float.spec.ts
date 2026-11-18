@@ -379,3 +379,118 @@ test.describe("a sprite that plays once", () => {
     expect(clock).toBeLessThan(1900);
   });
 });
+
+// A SECOND SPRITE AFTER THE FIRST (`sprite.after`): the throw strip, then a wider stance sheet. Three 96 px frames, as high as the throw's 48.
+const POSE_3X96 = flatPng(288, 48);
+const POSE = { src: "media/pose.png", frames: 3, fps: 4, loop: false } as const;
+
+declare global {
+  interface Window {
+    __boxes?: { x: number; w: number }[];
+  }
+}
+
+/** The pet's own box in every frame from the first load. */
+function recordBoxes(page: Page) {
+  return page.addInitScript(() => {
+    const log: { x: number; w: number }[] = [];
+    window.__boxes = log;
+    const tick = (): void => {
+      const el = document.querySelector('[data-slot="float-pet"]');
+      if (el !== null) {
+        const r = el.getBoundingClientRect();
+        log.push({ x: r.left, w: r.width });
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+test.describe("a sprite with a second sprite after it", () => {
+  const throwing = (along: "start" | "middle" | "end", extra: JsonObject = {}) =>
+    pet({ part: "ryu" }, { id: "ryu", mode: "stay", motion: "perch", edge: "bottom", along, sprite: { ...THROWER, after: POSE }, ...extra });
+  const stubAfter = async (page: Page, parts: WireTrickPart[]) => {
+    await stubPet(page, parts, SHEET_4X48);
+    await page.route("**/api/tricks/lodge/pet/media/pose.png*", (route) => route.fulfill({ contentType: "image/png", body: POSE_3X96 }));
+  };
+
+  for (const along of ["start", "middle", "end"] as const) {
+    test(`switches at the throw's last frame to the wider box in one step, keeping its anchor (along ${along})`, async ({ page }) => {
+      await recordBoxes(page);
+      await stubAfter(page, [throwing(along)]);
+      await page.goto("/");
+      await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+      // 4 frames at 2 fps, then 3 frames at 4 fps: the second sprite holds its last frame from about 2.75 s on.
+      await page.waitForTimeout(4200);
+      const log = (await page.evaluate(() => window.__boxes ?? [])).filter((box) => box.w > 0);
+      const widths = [...new Set(log.map((box) => Math.round(box.w)))];
+      // Two widths and nothing between them: the new width comes at once.
+      expect(widths.toSorted((a, b) => a - b)).toEqual([48, 96]);
+      const first = log.find((box) => Math.round(box.w) === 48)!;
+      const last = log.at(-1)!;
+      expect(Math.round(last.w)).toBe(96);
+      const anchor = { start: [first.x, last.x], middle: [first.x + 24, last.x + 48], end: [first.x + 48, last.x + 96] }[along];
+      expect(Math.abs(anchor[0]! - anchor[1]!), `${along}: ${anchor.join(" vs ")}`).toBeLessThan(0.5);
+      // No glide: the left side takes the one new place in a single frame, never a place between the two.
+      const xs = [...new Set(log.map((box) => Math.round(box.x)))];
+      expect(xs.length).toBe(along === "start" ? 1 : 2);
+      // The second sprite played its three frames once and holds the last: 2 x 96 px along.
+      const x = await page.evaluate(() => -new DOMMatrix(getComputedStyle(document.querySelector('[data-slot="float-after"] img')!).transform).e);
+      expect(x).toBeCloseTo(192, 0);
+    });
+  }
+
+  test("shows the second sprite's last frame still under reduced motion", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await stubAfter(page, [throwing("end")]);
+    await page.goto("/");
+    await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+    await page.waitForTimeout(400);
+    expect((await page.locator('[data-slot="float-pet"]').boundingBox())?.width).toBeCloseTo(96, 0);
+    const x = await page.evaluate(() => -new DOMMatrix(getComputedStyle(document.querySelector('[data-slot="float-after"] img')!).transform).e);
+    expect(x).toBeCloseTo(192, 0);
+  });
+
+  test("the shot waits for the throw only, and starts from the throw's own box, not the wider one", async ({ page }) => {
+    const state = { rev: 1 };
+    const ryu = (rev: number, mood: string) => pet({ part: "ryu", rev }, { id: "ryu", mode: "stay", motion: "perch", edge: "bottom", along: "end", mood, sprite: { ...THROWER, after: POSE } });
+    await stubRuns(
+      page,
+      (rev) => (rev === 1 ? [ryu(1, "idle")] : [ryu(2, "working"), pet({ part: "ball", rev: 2 }, { id: "ball", mode: "once", motion: "fly-across", from: "ryu", sprite: { src: "media/ball.png", size: "s" } })]),
+      state,
+      SHEET_4X48,
+    );
+    await page.route("**/api/tricks/lodge/pet/media/pose.png*", (route) => route.fulfill({ contentType: "image/png", body: POSE_3X96 }));
+    await page.route("**/api/tricks/lodge/pet/media/ball.png*", (route) => route.fulfill({ contentType: "image/png", body: flatPng(32, 32) }));
+    await page.goto("/");
+    await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+    // The first play and the second sprite are over: the pet shows the wide stance.
+    await page.waitForTimeout(3600);
+    const wide = await page.locator('[data-slot="float-pet"]').boundingBox();
+    expect(wide?.width).toBeCloseTo(96, 0);
+    // It stands at its end, so the right side is the anchor and the throw's own box is 48 px of it.
+    const throwBox = { x: wide!.x + wide!.width - 48, width: 48 };
+    state.rev = 2;
+    const clock = await page.waitForFunction(
+      () => {
+        const shot = document.querySelector('[data-slot="float-shot"]');
+        if (shot === null || shot.getAnimations().length === 0) return null;
+        const play = document.querySelector('[data-slot="float-pet"] img')?.getAnimations()[0];
+        const time = Number(play?.currentTime ?? Number.NaN);
+        const effect = shot.getAnimations()[0]?.effect;
+        if (Number.isNaN(time) || !(effect instanceof KeyframeEffect)) return null;
+        return { time, transform: String(effect.getKeyframes()[0]?.["transform"]) };
+      },
+      undefined,
+      { timeout: 15_000, polling: 16 },
+    );
+    // SAFETY: the page function returns the pet's clock and the shot's first transform, or never resolves.
+    const seen = (await clock.jsonValue()) as { time: number; transform: string };
+    // The shot left when the first strip reached its last frame, not after the second sprite.
+    expect(seen.time).toBeGreaterThanOrEqual(1490);
+    expect(seen.time).toBeLessThan(1900);
+    // The pet is on the right half, so the hand is the left edge of the THROW's box; the 32 px shot's centre is on it.
+    expect(placeOf(seen.transform).x + 16).toBeCloseTo(throwBox.x, 0);
+  });
+});

@@ -43,7 +43,7 @@ import {
   type FloatSize,
   type WireTrickPart,
 } from "./schema";
-import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "../json";
+import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonObject, type JsonValue } from "../json";
 
 // ── The numbers ──────────────────────────────────────────────────────────────────────────────
 
@@ -267,12 +267,22 @@ export interface FloatSpec {
   fps: number;
   /** `false`: the frames play once and the last one stays. `true`: they loop. */
   loop: boolean;
+  /** A stay part whose sprite plays once: the second sprite that starts when the first reaches its last frame (`sprite.after`). */
+  after: FloatAfterSpec | undefined;
   size: FloatSize;
   mood: ChipState;
   opens: FloatOpens | undefined;
   /** The part is the last good one of a run that failed. */
   stale: boolean;
   part: WireTrickPart;
+}
+
+/** The second sprite of a stay part (`sprite.after`), every field read. Its frames are as high as the first sprite's and as wide as its own sheet says. */
+export interface FloatAfterSpec {
+  src: string;
+  frames: number;
+  fps: number;
+  loop: boolean;
 }
 
 function inList<T extends string>(list: readonly T[], word: string | undefined): T | undefined {
@@ -308,6 +318,8 @@ export function readFloat(part: WireTrickPart): FloatSpec | null {
   const size = sprite.size === undefined ? "s" : inList(FLOAT_SIZES, asJsonString(sprite.size));
   const loop = sprite.loop === undefined ? true : asJsonBoolean(sprite.loop);
   if (frames === undefined || rows === undefined || fps === undefined || size === undefined || loop === undefined) return null;
+  const after = sprite.after === undefined ? undefined : readAfter(asJsonObject(sprite.after), { stay: mode === "stay", outerLoops: loop });
+  if (sprite.after !== undefined && after === undefined) return null;
   const mood = value.mood === undefined ? "idle" : inList(CHIP_STATES, asJsonString(value.mood));
   const edge = value.edge === undefined ? "bottom" : inList(FLOAT_EDGES, asJsonString(value.edge));
   if (mood === undefined || edge === undefined) return null;
@@ -334,12 +346,57 @@ export function readFloat(part: WireTrickPart): FloatSpec | null {
     rows,
     fps,
     loop,
+    after,
     size,
     mood,
     opens,
     stale: part.stale === true,
     part,
   };
+}
+
+/**
+ * The `sprite.after` of a part, or undefined when it does not read: not an object, a key outside `src`, `frames`, `fps` and `loop` (so no
+ * `rows`, no `size`, no `after` of its own), a part that plays once instead of staying, or a first sprite that loops (it never reaches
+ * a last frame for the second to follow).
+ */
+function readAfter(raw: JsonObject | undefined, own: { stay: boolean; outerLoops: boolean }): FloatAfterSpec | undefined {
+  if (raw === undefined || !own.stay || own.outerLoops) return undefined;
+  if (Object.keys(raw).some((key) => !["src", "frames", "fps", "loop"].includes(key))) return undefined;
+  const src = asJsonString(raw.src);
+  if (src === undefined || !isImageSrc(src)) return undefined;
+  const frames = raw.frames === undefined ? 1 : whole(raw.frames, 1, FLOAT_FRAMES_MAX);
+  const fps = raw.fps === undefined ? 6 : whole(raw.fps, 1, FLOAT_FPS_MAX);
+  const loop = raw.loop === undefined ? true : asJsonBoolean(raw.loop);
+  if (frames === undefined || fps === undefined || loop === undefined) return undefined;
+  return { src, frames, fps, loop };
+}
+
+/**
+ * The spec the second sprite draws as: the part's own, with the second sheet's picture, frames, rate and loop, one row, and no `after`.
+ * Its frames are as high as the first sprite's (`size` is kept).
+ */
+export function afterSpecOf(spec: FloatSpec): FloatSpec | undefined {
+  if (spec.after === undefined) return undefined;
+  return { ...spec, src: spec.after.src, frames: spec.after.frames, rows: 1, fps: spec.after.fps, loop: spec.after.loop, after: undefined };
+}
+
+/**
+ * Where a stay picture rests once its second sprite shows. The box takes the second sheet's own width (`afterAspect`) at once, kept on the part's
+ * anchor: a `perch` along its edge keeps the left side fixed for `start`, the right for `end` and the centre for `middle` (the edge it stands on does
+ * not move), as `restOf` places a box of that width. Another motion keeps the first sprite's left side, held inside the region.
+ */
+export function afterRestOf(
+  spec: Pick<FloatSpec, "key" | "motion" | "edge" | "along" | "size" | "opens">,
+  region: Box,
+  step: number,
+  aspects: { first: number; after: number },
+  reach: Box = region,
+): Point {
+  if (spec.motion === "perch") return restOf(spec, region, step, aspects.after, reach);
+  const first = restOf(spec, region, step, aspects.first, reach);
+  const wide = boxDims(spec, aspects.after);
+  return { x: Math.max(region.x, Math.min(first.x, region.x + Math.max(0, region.w - wide.w))), y: first.y };
 }
 
 /** How long one pass over the frames of a sheet takes, in milliseconds. */

@@ -487,6 +487,7 @@ describe("a sprite that plays once", () => {
   const ONCEPET = (extra: JsonObject = {}, sprite: JsonObject = {}): WireTrickPart => ({ ...part("spark", STAY({ sprite: { ...SHEET, loop: false, ...sprite }, ...extra })), part: "pet" });
   const BEAM = (rev = 1): WireTrickPart => ({ ...part("spark", ONCE({ motion: "fly-across", from: "pet" }), rev), part: "beam" });
   interface Run {
+    frames: Keyframe[];
     options: KeyframeAnimationOptions;
     currentTime: number;
     playState: "running" | "paused" | "finished";
@@ -504,8 +505,8 @@ describe("a sprite that plays once", () => {
     Object.defineProperty(HTMLElement.prototype, "animate", {
       configurable: true,
       writable: true,
-      value: (_frames: Keyframe[], options: KeyframeAnimationOptions): Run => {
-        const run: Run = { options, currentTime: 0, playState: "running", cancel: () => undefined, pause: () => undefined, play: () => undefined, finished: new Promise(() => undefined) };
+      value: (frames: Keyframe[], options: KeyframeAnimationOptions): Run => {
+        const run: Run = { frames, options, currentTime: 0, playState: "running", cancel: () => undefined, pause: () => undefined, play: () => undefined, finished: new Promise(() => undefined) };
         runs.push(run);
         return run;
       },
@@ -627,6 +628,198 @@ describe("a sprite that plays once", () => {
       await loadSheet(pets()[0]!, 192, 48);
       await act(async () => replace([{ ...looping({ mood: "working" }), rev: 2 }, BEAM(2)], 2));
       expect(shots()[0]?.dataset.from).toBe("pet");
+    });
+  });
+  describe("and a second sprite after it (after)", () => {
+    const AFTER = { src: "media/pose.png", frames: 3, fps: 4 };
+    const WITH_AFTER = (after: JsonObject = AFTER, extra: JsonObject = {}): WireTrickPart => ONCEPET(extra, { after });
+    /** The second sprite's own sheet: three 96 px frames, as high as the first (48 px), so twice as wide. */
+    const loadBoth = async () => {
+      await loadSheet(pets()[0]!, 192, 48);
+      const img = pets()[0]!.querySelector('[data-slot="float-after"] img');
+      Object.defineProperty(img, "naturalWidth", { configurable: true, value: 288 });
+      Object.defineProperty(img, "naturalHeight", { configurable: true, value: 48 });
+      await act(async () => {
+        fireEvent.load(img!);
+      });
+    };
+    const afterEl = () => pets()[0]!.querySelector<HTMLElement>('[data-slot="float-after"]')!;
+    const firstEl = () => pets()[0]!.querySelector<HTMLElement>('[data-slot="float-first"]')!;
+    const x = (el: HTMLElement) => /translate3d\(([-\d.]+)px/.exec(el.style.transform)?.[1];
+    /** The place the first keyframe of a shot's path names. */
+    const startX = (run: Run) => /translate3d\(([-\d.]+)px/.exec(String(run.frames[0]?.["transform"]))?.[1];
+    const afterX = () => /translate3d\(([-\d.]+)px/.exec(afterEl().querySelector("img")?.style.transform ?? "")?.[1];
+    const reachLast = async () => {
+      sprite().currentTime = 1500;
+      await tick();
+    };
+
+    it("starts the second sprite from its first frame when the first reaches its last, and not before", async () => {
+      vi.useFakeTimers();
+      const { store } = storeWith([WITH_AFTER()]);
+      await mount(store);
+      await loadBoth();
+      await tick();
+      // Only the first strip plays; the second waits, loaded and hidden.
+      expect(plays()).toHaveLength(1);
+      expect(afterEl().style.visibility).toBe("hidden");
+      expect(firstEl().style.visibility).toBe("visible");
+      sprite().currentTime = 1499;
+      await tick();
+      expect(plays()).toHaveLength(1);
+      await reachLast();
+      expect(plays()).toHaveLength(2);
+      expect(sprite().options).toMatchObject({ duration: 750, easing: "steps(3, jump-none)" });
+      expect(afterEl().style.visibility).toBe("visible");
+      expect(firstEl().style.visibility).toBe("hidden");
+      expect(afterX()).toBe("0");
+    });
+
+    it("takes the wider box at once, with no glide, and keeps the anchor (the right side, for a perch that stands at its end)", async () => {
+      vi.useFakeTimers();
+      const { store } = storeWith([WITH_AFTER()]);
+      await mount(store);
+      await loadBoth();
+      await tick();
+      const pet = pets()[0]!;
+      // 48 px frames in a 390 px wide area, 8 px from the right corner.
+      expect(pet.style.width).toBe("48px");
+      expect(x(pet)).toBe("334");
+      expect(pet.style.transition).toContain("transform");
+      await reachLast();
+      expect(pet.style.width).toBe("96px");
+      expect(pet.style.height).toBe("48px");
+      expect(x(pet)).toBe("286");
+      // The render that moved it carries no transition, so the move is one step and not a 300 ms slide.
+      expect(pet.style.transition).toBe("");
+      await tick();
+      await tick();
+      expect(pet.style.transition).toContain("transform");
+    });
+
+    it("keeps the left side for a perch that stands at its start", async () => {
+      vi.useFakeTimers();
+      const { store } = storeWith([WITH_AFTER(AFTER, { along: "start" })]);
+      await mount(store);
+      await loadBoth();
+      await tick();
+      expect(x(pets()[0]!)).toBe("8");
+      await reachLast();
+      expect(pets()[0]!.style.width).toBe("96px");
+      expect(x(pets()[0]!)).toBe("8");
+    });
+
+    it("holds the second sprite's last frame with loop = false, and loops it otherwise", async () => {
+      for (const [after, iterations, fill] of [
+        [{ ...AFTER, loop: false }, 1, "forwards"],
+        [AFTER, Number.POSITIVE_INFINITY, "none"],
+        [{ ...AFTER, loop: true }, Number.POSITIVE_INFINITY, "none"],
+      ] as const) {
+        vi.useFakeTimers();
+        runs.length = 0;
+        const { store } = storeWith([WITH_AFTER(after)]);
+        const view = await mount(store);
+        await loadBoth();
+        await tick();
+        await reachLast();
+        expect(sprite().options, JSON.stringify(after)).toMatchObject({ iterations, fill });
+        view.unmount();
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not switch before the second sheet is there: the first sprite stays on its last frame", async () => {
+      vi.useFakeTimers();
+      const { store } = storeWith([WITH_AFTER()]);
+      await mount(store);
+      await loadSheet(pets()[0]!, 192, 48);
+      await tick();
+      await reachLast();
+      expect(plays()).toHaveLength(1);
+      expect(pets()[0]!.style.width).toBe("48px");
+      expect(firstEl().style.visibility).toBe("visible");
+    });
+
+    it("plays both again from the first sprite for a changed value, and restarts nothing for an unchanged re-print", async () => {
+      vi.useFakeTimers();
+      const first = WITH_AFTER();
+      const { store, replace } = storeWith([first]);
+      await mount(store);
+      await loadBoth();
+      await tick();
+      await reachLast();
+      expect(plays()).toHaveLength(2);
+      expect(pets()[0]!.style.width).toBe("96px");
+      await act(async () => replace([{ ...first, rev: 2, asOf: new Date(Date.now() + 5000).toISOString() }], 2));
+      await tick();
+      expect(plays()).toHaveLength(2);
+      expect(pets()[0]!.style.width).toBe("96px");
+      expect(afterEl().style.visibility).toBe("visible");
+      await act(async () => replace([{ ...WITH_AFTER(AFTER, { mood: "working" }), rev: 3 }], 3));
+      // Back to the first strip, at its first frame, at once.
+      expect(pets()[0]!.style.width).toBe("48px");
+      expect(firstEl().style.visibility).toBe("visible");
+      expect(afterEl().style.visibility).toBe("hidden");
+      await tick();
+      expect(plays()).toHaveLength(3);
+      expect(sprite().options).toMatchObject({ duration: 2000, easing: "steps(4, jump-none)" });
+      await reachLast();
+      expect(plays()).toHaveLength(4);
+      expect(pets()[0]!.style.width).toBe("96px");
+    });
+
+    it("sends a shot after the first strip only, from the first strip's box, whichever sprite shows", async () => {
+      vi.useFakeTimers();
+      const { store, replace } = storeWith([WITH_AFTER()]);
+      await mount(store);
+      await loadBoth();
+      await tick();
+      const shotRuns = () => runs.filter((run) => run.options.easing === "linear");
+      await act(async () => replace([{ ...WITH_AFTER(AFTER, { mood: "working" }), rev: 2 }, BEAM(2)], 2));
+      await loadSheet(shots()[0]!, 32, 32);
+      await tick();
+      expect(shotRuns()).toHaveLength(0);
+      sprite().currentTime = 1499;
+      await tick();
+      expect(shotRuns()).toHaveLength(0);
+      // The throw ends: the shot leaves at once, and does not wait for the second sprite.
+      await reachLast();
+      expect(shots()[0]?.dataset.from).toBe("pet");
+      expect(shotRuns()).toHaveLength(1);
+      expect(pets()[0]!.style.width).toBe("96px");
+      // The pet stands on the right half, so the hand is its LEFT edge: the first box's (334), not the wider second box's (286).
+      // The shot's centre is on that point: 334 minus half of its 32 px.
+      expect(startX(shotRuns()[0]!)).toBe("318");
+    });
+
+    it("starts a shot that arrives while the second sprite plays at once, from the first strip's box", async () => {
+      vi.useFakeTimers();
+      const { store, replace } = storeWith([WITH_AFTER()]);
+      await mount(store);
+      await loadBoth();
+      await tick();
+      await reachLast();
+      await act(async () => replace([WITH_AFTER(), BEAM(2)], 2));
+      expect(shots()[0]?.dataset.from).toBe("pet");
+      await loadSheet(shots()[0]!, 32, 32);
+      await tick();
+      expect(startX(runs.find((run) => run.options.easing === "linear")!)).toBe("318");
+    });
+
+    it("shows the second sprite's last frame as a still under reduced motion, and where nothing can animate", async () => {
+      Reflect.deleteProperty(HTMLElement.prototype, "animate");
+      for (const calm of [true, false]) {
+        reduceMotion(calm);
+        const { store } = storeWith([WITH_AFTER()]);
+        const view = await mount(store);
+        await loadBoth();
+        // Three 96 px frames: the last starts 192 px along.
+        expect(afterEl().style.visibility, `reduced ${String(calm)}`).toBe("visible");
+        expect(afterX(), `reduced ${String(calm)}`).toBe("-192");
+        expect(pets()[0]!.style.width).toBe("96px");
+        expect(plays()).toHaveLength(0);
+        view.unmount();
+      }
     });
   });
 });
