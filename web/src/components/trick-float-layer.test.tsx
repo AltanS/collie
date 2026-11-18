@@ -17,7 +17,13 @@ import { TrickFloatLayer } from "./trick-float-layer";
 
 const nav = { down: vi.fn() };
 vi.mock("@/hooks/use-nav", () => ({ useNav: () => nav }));
-vi.mock("@/lib/authed-url", () => ({ useAuthedUrl: () => ({ url: "blob:pet", failed: false }) }));
+const asked = vi.hoisted(() => ({ paths: new Array<string | null>() }));
+vi.mock("@/lib/authed-url", () => ({
+  useAuthedUrl: (path: string | null) => {
+    asked.paths.push(path);
+    return { url: "blob:pet", failed: false };
+  },
+}));
 /** Whether the free area has been measured: a layer that has just been asked to draw has none for a frame. */
 const measured = vi.hoisted(() => ({ ready: true }));
 vi.mock("@/hooks/use-float-region", () => ({
@@ -53,12 +59,17 @@ interface Rig {
   replace: (next: WireTrickPart[], rev: number) => Promise<void>;
 }
 
-function storeWith(parts: WireTrickPart[], rev = 1): Rig {
+function storeWith(parts: WireTrickPart[], rev = 1, media?: Record<string, string>): Rig {
   let current = parts;
   let at = rev;
+  const info = (id: string): WireTrickInfo => {
+    const row: WireTrickInfo = { host: "lodge", id, name: `Trick ${id}`, icon: "flask", on: true, state: "ok", places: ["float"] };
+    if (media !== undefined) row.media = media;
+    return row;
+  };
   const reply = (): TricksReply => ({
     rev: at,
-    tricks: [...new Set(current.map((p) => p.trick))].map((id): WireTrickInfo => ({ host: "lodge", id, name: `Trick ${id}`, icon: "flask", on: true, state: "ok", places: ["float"] })),
+    tricks: [...new Set(current.map((p) => p.trick))].map(info),
     parts: current,
     present: current.map((p) => `${p.host}/${p.trick}/${p.part}`),
   });
@@ -114,6 +125,21 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   document.body.innerHTML = "";
+});
+
+describe("a picture's address", () => {
+  it("carries the version the trick's row names, for the sheet and the second sprite, and none for an older bridge", async () => {
+    asked.paths.length = 0;
+    const withAfter = part("pet", STAY({ sprite: { src: "media/pet.png", frames: 4, loop: false, after: { src: "media/pet-after.png", frames: 2 } } }));
+    await mount(storeWith([withAfter], 1, { "media/pet.png": "0123456789ab", "media/pet-after.png": "ba9876543210" }).store);
+    expect(asked.paths).toContain("/api/tricks/lodge/pet/media/pet.png?rev=1&v=0123456789ab");
+    expect(asked.paths).toContain("/api/tricks/lodge/pet/media/pet-after.png?rev=1&v=ba9876543210");
+    cleanup();
+    asked.paths.length = 0;
+    await mount(storeWith([part("pet", STAY())]).store);
+    expect(asked.paths).toContain("/api/tricks/lodge/pet/media/pet.png?rev=1");
+    expect(asked.paths.filter((path) => path !== null && /[?&]v=/.test(path))).toEqual([]);
+  });
 });
 
 describe("a stay picture", () => {

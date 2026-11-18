@@ -178,7 +178,7 @@ export async function tricksOfficialRoute(official: OfficialTricksSurface, match
  * trick id, group 3 `media/` and the file. A segment that does not decode is a miss like any other;
  * media.ts checks the file against the image `src` rule before a path is built.
  */
-export async function tricksMediaRoute(tricks: TricksSurface, match: RegExpExecArray): Promise<TrickMediaFile | null> {
+export async function tricksMediaRoute(tricks: Pick<TricksSurface, "media">, match: RegExpExecArray): Promise<TrickMediaFile | null> {
   const host = segment(match[1] ?? "");
   const id = segment(match[2] ?? "");
   const rel = segment(match[3] ?? "");

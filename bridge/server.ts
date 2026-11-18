@@ -665,7 +665,7 @@ const TRICKS_UNDO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/;
 const TRICKS_VALUE_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/value$/;
 // And a picture of the trick's own `media/` folder (M94 review 11), read-gated like the list. Group 3 is
 // `media/` and the file; bridge/tricks/media.ts checks it before any path is built.
-const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
+export const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
 // And a trick's code for the About sheet's folds (package F), read-gated like the list: the approved copy's
 // bytes, masked, marked by the text search. Group 1 the host, group 2 the trick id; `?file=` names one file.
 const TRICKS_CODE_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/code$/;

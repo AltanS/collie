@@ -27,6 +27,7 @@ import {
   MENU_ROW_KINDS,
   TRICK_ICONS,
   isTrickId,
+  isImageSrc,
   isSourceUrl,
   isTrickText,
   NAME_MAX,
@@ -38,6 +39,8 @@ import {
   TAP_CODES,
   TAP_REFUSALS,
   TRICK_EVENTS,
+  TRICK_MEDIA_VERSION,
+  TRICK_MEDIA_VERSIONS_MAX,
   TRICK_WARNINGS_MAX,
   VERSION_RE,
   readWireFields,
@@ -327,6 +330,22 @@ function readTrickFields(asked: JsonValue | undefined, kept: JsonValue | undefin
   return out;
 }
 
+/** A row's `media` map: the entries whose name is an image `src` and whose version is 12 hex, at most `TRICK_MEDIA_VERSIONS_MAX`. Undefined when none is left. */
+export function readMediaVersions(raw: JsonValue | undefined): Record<string, string> | undefined {
+  const body = asJsonObject(raw);
+  if (body === undefined) return undefined;
+  const out: Record<string, string> = {};
+  let count = 0;
+  for (const [src, value] of Object.entries(body)) {
+    const version = asJsonString(value);
+    if (version === undefined || !TRICK_MEDIA_VERSION.test(version) || !isImageSrc(src)) continue;
+    if (count === TRICK_MEDIA_VERSIONS_MAX) break;
+    out[src] = version;
+    count += 1;
+  }
+  return count === 0 ? undefined : out;
+}
+
 /** One trick entry as the list and the switch route give it, or `undefined` for a body of another shape. */
 export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined {
   // The closed words (`icon`, `state`, `places`) were written by the bridge from the schema's lists; the
@@ -348,6 +367,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const known = body.repoFacts;
   const replying = body.decidesReply;
   const drafting = body.draftsSession;
+  const pictured = body.media;
   const running = body.run;
   const ticking = body.everyMs;
   const asked = body.fields;
@@ -360,7 +380,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const accessOff = body.accessOff;
   if (!isTrickValue(body)) return undefined;
   if (body.provenance !== undefined) body.provenance = readProvenance(body.provenance);
-  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined && drafting === undefined && running === undefined && ticking === undefined && reacting === undefined && watching === undefined && leveled === undefined && accessOff === undefined && asked === undefined && kept === undefined && setup === undefined && unread === undefined) return body;
+  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined && drafting === undefined && pictured === undefined && running === undefined && ticking === undefined && reacting === undefined && watching === undefined && leveled === undefined && accessOff === undefined && asked === undefined && kept === undefined && setup === undefined && unread === undefined) return body;
   // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
   // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
@@ -369,7 +389,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const description = readTrickText(described, "description");
   const about = readTrickText(told, "about");
   const rules = readTrickRules(ruled);
-  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, draftsSession: _drafting, run: _running, everyMs: _ticking, events: _reacting, watch: _watching, access: _leveled, accessOff: _accessOff, fields: _asked, values: _kept, needsSetup: _setup, valuesUnread: _unread, ...rest } = body;
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, draftsSession: _drafting, media: _pictured, run: _running, everyMs: _ticking, events: _reacting, watch: _watching, access: _leveled, accessOff: _accessOff, fields: _asked, values: _kept, needsSetup: _setup, valuesUnread: _unread, ...rest } = body;
   const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
   if (pending !== undefined) out.pending = pending;
   if (inputs !== undefined) out.inputs = inputs;
@@ -391,6 +411,9 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   if (replying === true) out.decidesReply = true;
   // Declared in the manifest of what runs: its buttons may put text into a reply box (the About sheet's line, the draft button).
   if (drafting === true) out.draftsSession = true;
+  // The versions of the trick's pictures: only a name the image rule takes with a 12 hex version is kept, so an older or newer bridge reads as none.
+  const media = readMediaVersions(pictured);
+  if (media !== undefined) out.media = media;
   const approves = asJsonString(approving);
   if (approves !== undefined && /^[0-9a-f]{64}$/u.test(approves)) out.approves = approves;
   if (rules !== undefined) out.rules = rules;

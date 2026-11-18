@@ -1792,6 +1792,13 @@ export interface WireTrickInfo {
    */
   draftsSession?: true;
   /**
+   * The content version of each picture in the approved copy's `media/` folder, by its `src` (`media/pet.png`):
+   * the first 12 hex of a sha256 of its bytes. The phone adds it to the picture's address (`?v=`), so a picture
+   * replaced under the same name is fetched again. Pictures stay outside the code hash. Absent: the folder holds
+   * none, or an older bridge; the address then carries no version, as before.
+   */
+  media?: Record<string, string>;
+  /**
    * Fault B: the trick stopped because its approved copy asks for other rights than the person approved, as
    * this bridge reads them. The row says so in the phone's words; `error` carries the bridge's English line.
    * Absent: the rights hold, or an older bridge.
@@ -2344,15 +2351,29 @@ export function isImageSrc(text: string): boolean {
   return text.length <= IMAGE_SRC_MAX && IMAGE_SRC.test(text) && !text.includes("//");
 }
 
+/** A picture's content version on the wire: the first 12 hex of a sha256 of its bytes. */
+export const TRICK_MEDIA_VERSION = /^[0-9a-f]{12}$/;
+
+/** The most pictures one trick's `media` map names. The bridge stops at it; the phone reads no more. */
+export const TRICK_MEDIA_VERSIONS_MAX = 100;
+
+/** The version of the picture `src` in a trick's row, or undefined (no row, an older bridge, a picture not listed). */
+export function mediaVersionOf(info: Pick<WireTrickInfo, "media"> | undefined, src: string): string | undefined {
+  const version = info?.media?.[src];
+  return version !== undefined && TRICK_MEDIA_VERSION.test(version) ? version : undefined;
+}
+
 /**
  * Where the phone reads an image node's bytes: `GET /api/tricks/<host>/<id>/<src>`, `src` being
  * `media/` and the file (bridge/tricks/media.ts). Each step is encoded on its own. `rev`, the part's
- * revision, rides as a query the bridge ignores, so a new version of the part asks again.
+ * revision, and `version`, the picture's content version (`WireTrickInfo.media`), ride as a query the
+ * bridge ignores, so a new version of the part, or a picture replaced under the same name, asks again.
  */
-export function trickMediaPath(host: string, trick: string, src: string, rev?: number): string {
+export function trickMediaPath(host: string, trick: string, src: string, rev?: number, version?: string): string {
   const file = src.split("/").map(encodeURIComponent).join("/");
   const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/${file}`;
-  return rev === undefined ? path : `${path}?rev=${String(rev)}`;
+  const query = [rev === undefined ? null : `rev=${String(rev)}`, version === undefined ? null : `v=${encodeURIComponent(version)}`].filter((part) => part !== null);
+  return query.length === 0 ? path : `${path}?${query.join("&")}`;
 }
 
 /** A decision's media `file`: relative to the trick folder, no `..` or `.` step, a `.png`, `.jpg`, `.jpeg` or `.webp`. */
