@@ -17,6 +17,7 @@ import { REACT_FLOOR_MS } from "../bridge/tricks/triggers.ts";
 import { WATCH_DEBOUNCE_MS, WATCH_MAX_WAIT_MS, WATCH_POLL_MS } from "../bridge/tricks/watch.ts";
 import { TRICKS_CREW_FIRST_VERSION } from "../bridge/hill/crew.ts";
 import { HILL_SUMMARY_SOFT_MAX, HILL_SUMMARY_SOFT_SENTENCES, HILL_TITLE_SOFT_MAX } from "../cli/hill-rules.ts";
+import { OVERVIEW_ALT, PLACE_ALT, PLACE_IDS } from "./docs-places.ts";
 import { runReferenceCli, table, word } from "./reference-kit.ts";
 import {
   COMMANDS,
@@ -130,6 +131,10 @@ function placesSection(): string[] {
     "",
     "A place is a spot on the phone where a trick can show (a surface). A program trick, a program on your machine that prints parts, draws in the first six. An agent view, one screen that the session's own agent draws, is the seventh.",
     "",
+    `![${OVERVIEW_ALT}](images/tricks/places.png)`,
+    "",
+    `In the picture: ${PLACE_IDS.map((id, i) => `${String(i + 1)} ${PLACES[id].name}`).join(", ")}. Each place below has its own picture.`,
+    "",
     ...table(
       ["Place", "Name", "Where it shows", "Drawn by"],
       PLACE_ORDER.map((id) => [word(id), PLACES[id].name, PLACES[id].where, PLACES[id].who === "program" ? "A program" : "A session's agent"]),
@@ -137,7 +142,7 @@ function placesSection(): string[] {
   ];
   for (const id of PLACE_ORDER) {
     const place = PLACES[id];
-    lines.push("", `### ${word(id)}`, "", `**Where.** ${place.where}`, "", `**Shows.** ${place.shows}`, "", `**A tap.** ${place.tap}`, "", ...limitTable(place.limits), ...exampleLines(place.examples));
+    lines.push("", `### ${word(id)}`, "", `![${PLACE_ALT[id]}](images/tricks/place-${id}.png)`, "", `**Where.** ${place.where}`, "", `**Shows.** ${place.shows}`, "", `**A tap.** ${place.tap}`, "", ...limitTable(place.limits), ...exampleLines(place.examples));
   }
   return lines;
 }

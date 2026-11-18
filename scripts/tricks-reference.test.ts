@@ -163,11 +163,16 @@ describe("the page is the generator's output", () => {
     expect(lines[2]).toContain(REFERENCE_COMMAND);
   });
 
-  test("it is plain Markdown: no HTML tag but its one comment, no SVG, no image", () => {
+  test("it is plain Markdown: no HTML tag but its one comment, no SVG, and only the place pictures as images", () => {
     // Code blocks and code spans may hold `<id>` placeholders, which are not tags.
     const prose = PAGE.replace(/<!--[\s\S]*?-->/u, "").replace(/```[\s\S]*?```/gu, "").replace(/`[^`\n]*`/gu, "");
     expect(prose).not.toMatch(/<\/?[a-z][^>]*>/iu);
-    expect(PAGE).not.toMatch(/\.svg|!\[/u);
+    // An SVG under docs/images/ is one the website must draw itself, so the page holds none. The
+    // place pictures are PNGs from scripts/docs-places.ts (Altan, 2026-11-18), and nothing else.
+    expect(PAGE).not.toMatch(/\.svg/u);
+    const images = [...PAGE.matchAll(/!\[[^\]]*\]\(([^)]+)\)/gu)].map((m) => m[1]);
+    expect(images.length).toBeGreaterThan(0);
+    for (const src of images) expect(src).toMatch(/^images\/tricks\/(places|place-[a-z-]+)\.png$/u);
   });
 
   test("it carries no em dash and no private path", () => {

@@ -27,6 +27,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The release page lists what changed and no update commands.** The commands stay in `docs/upgrading.md`, and the in-app update band shows its own.
 
+### Docs
+
+- **The tricks pages show where each place is.** A picture of the phone marks all seven places on the Tricks page and at the top of the reference's Places, and each place in the reference has its own picture.
+
 ## [1.29.0] - 2026-11-18
 
 ### Added
