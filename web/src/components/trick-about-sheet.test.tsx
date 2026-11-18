@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { OfficialTrickAboutSheet, TrickAboutSheet, aboutParagraphs, repoFactsLine } from "@/components/trick-about-sheet";
 import { readOfficialTricksReply, readTrick } from "@/lib/tricks/wire";
 import { en, type MessageKey } from "@/lib/i18n/messages/en";
-import { ABOUT_MAX, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, MENU_TAP_WORDS, MENU_WORDS, PLACE_KINDS, RULES_WORDS, SHOWS_IN_AGENT_VIEW, SHOWS_IN_LEAD, SHOWS_IN_WORDS, showsInLine, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
+import { ABOUT_MAX, AGENT_VIEW_TAP_WORDS, AGENT_VIEW_WORDS, FLOAT_OPENS_WORDS, FLOAT_WORDS, MENU_TAP_WORDS, MENU_WORDS, PLACE_KINDS, RULES_WORDS, SHOWS_IN_AGENT_VIEW, SHOWS_IN_LEAD, SHOWS_IN_WORDS, showsInLine, type WireOfficialTrick, type WireTrickInfo } from "@/lib/tricks/schema";
 
 // A trick's About sheet: the name as the title, the description and the about paragraphs, then two groups
 // built only from what the bridge already sends for the row.
@@ -520,6 +520,16 @@ describe("TrickAboutSheet where it shows (2026-11-17)", () => {
     expect(en["settings.tricks.about.shows"]).toBe(`${SHOWS_IN_LEAD} {places}.`);
     for (const place of PLACE_KINDS) expect(en[`settings.tricks.about.shows.${place}` satisfies MessageKey]).toBe(SHOWS_IN_WORDS[place]);
     expect(en["settings.tricks.about.shows.agentView"]).toBe(SHOWS_IN_AGENT_VIEW);
+  });
+
+  it("says what a floating picture can do and never does, in the schema's words, and the tap line only when a part opens the page", () => {
+    expect(en["settings.tricks.about.float"]).toBe(FLOAT_WORDS);
+    expect(en["settings.tricks.about.floatOpens"]).toBe(FLOAT_OPENS_WORDS);
+    expect(FLOAT_WORDS).toBe("It can draw a small moving picture over the app. It never covers a question and never blocks a tap.");
+    open({ ...BASE, places: ["float"] });
+    const text = screen.getByRole("dialog").textContent;
+    expect(text).toContain(FLOAT_WORDS);
+    expect(text).not.toContain(FLOAT_OPENS_WORDS);
   });
 });
 

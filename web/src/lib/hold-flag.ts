@@ -5,15 +5,30 @@
 // on two cards cannot clear each other's flag.
 
 let holds = 0;
+const listeners = new Set<() => void>();
+
+function changed(): void {
+  for (const listener of listeners) listener();
+}
 
 /** A hold began. Pair each call with one {@link endHold}. */
 export function beginHold(): void {
   holds += 1;
+  changed();
 }
 
 /** A hold ended, with a yes or without. */
 export function endHold(): void {
   holds = Math.max(0, holds - 1);
+  changed();
+}
+
+/** Tell `listener` whenever a hold begins or ends (the floating pictures hide while one is under way). Returns the way to stop. */
+export function subscribeHold(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 /** Whether a finger holds a yes now: the chat's scroller does not follow its tail meanwhile. */

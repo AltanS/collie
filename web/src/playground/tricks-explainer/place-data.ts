@@ -113,6 +113,18 @@ export const PLACE_ENTRIES = {
     // The session scene draws no open sheet, so nothing is lit; the entry names the place.
     find: () => null,
   },
+  float: {
+    n: PLACE_NUMBER["float"],
+    name: PLACES["float"].name,
+    where: PLACES["float"].where,
+    group: "session",
+    good: "A small friend that moves over the app, and never covers a question.",
+    tap: "Nothing, so a tap goes to what is under it. A picture that rests on an edge can open the trick's Page.",
+    trick: "A desk pet: it sits on an edge and shows what your agent is doing.",
+    scene: "session",
+    // The session scene draws no floating picture, so nothing is lit; the entry names the place.
+    find: () => null,
+  },
   "agent-view": {
     n: PLACE_NUMBER["agent-view"],
     name: PLACES["agent-view"].name,

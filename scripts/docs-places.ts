@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// The pictures of a trick's places in the docs: docs/images/tricks/places.png (all seven, numbered)
+// The pictures of a trick's places in the docs: docs/images/tricks/places.png (all eight, numbered)
 // and docs/images/tricks/place-<id>.png (one place each), drawn as phone wireframes.
 //
 //   bun scripts/docs-places.ts          write the PNGs (needs ImageMagick's `magick` with SVG support)
@@ -19,7 +19,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export const PLACE_IDS = ["dashboard", "session", "tabbar", "status", "belt", "agent-view", "menu"] as const;
+export const PLACE_IDS = ["dashboard", "session", "tabbar", "status", "belt", "agent-view", "menu", "float"] as const;
 export type PlaceId = (typeof PLACE_IDS)[number];
 type Screen = "dashboard" | "session" | "menu";
 
@@ -32,6 +32,7 @@ export const PLACE_SCREEN = {
   belt: "session",
   "agent-view": "session",
   menu: "menu",
+  float: "session",
 } as const satisfies Record<PlaceId, Screen>;
 
 /** The alt text of each place picture, one sentence that says what the picture shows. */
@@ -43,10 +44,11 @@ export const PLACE_ALT = {
   belt: "A session, with a trick's mark at the end of the Belt's scrolling strip, before Collie's fixed block.",
   "agent-view": "A session, with the agent view as a third view beside Terminal and Chat.",
   menu: "A session's settings sheet, with a trick's rows in a group of its own after Collie's rows.",
+  float: "A session, with a trick's small moving picture in the free area above the status line, clear of the Belt and the composer.",
 } as const satisfies Record<PlaceId, string>;
 
 /** The alt text of the overview picture. */
-export const OVERVIEW_ALT = "Three phone screens, the Dashboard, a session and a session's settings sheet, with the seven places of a trick numbered.";
+export const OVERVIEW_ALT = "Three phone screens, the Dashboard, a session and a session's settings sheet, with the eight places of a trick numbered.";
 
 const W = 220;
 const H = 440;
@@ -142,6 +144,9 @@ function sessionBody(marks: readonly Mark[]): string {
   out.push(`<circle cx="${24 + 3 * 32}" cy="${H - 78}" r="11" fill="${mark ? ACCENT : "#fff"}" stroke="${mark ? ACCENT : MID}" stroke-width="0.8"/>`);
   out.push(`<rect x="${W - 62}" y="${H - 92}" width="56" height="28" rx="14" fill="${MID}"/>`, `<line x1="${W - 70}" y1="${H - 92}" x2="${W - 70}" y2="${H - 64}" stroke="${MID}" stroke-width="0.8"/>`);
   if (mark) out.push(badge(24 + 3 * 32 + 13, H - 92, mark.n));
+  // A floating picture: a small sprite in the free area, above the status line and clear of every landmark.
+  const pet = hi(marks, "float");
+  if (pet) out.push(`<rect x="${W - 56}" y="${H - 160}" width="32" height="32" rx="9" fill="${ACCENT_SOFT}" stroke="${ACCENT}" stroke-width="1.2"/>`, `<circle cx="${W - 46}" cy="${H - 148}" r="2" fill="${ACCENT}"/>`, `<circle cx="${W - 34}" cy="${H - 148}" r="2" fill="${ACCENT}"/>`, bar(W - 47, H - 140, 14, 3.5, ACCENT, 2), badge(W - 24, H - 160, pet.n));
   // The composer.
   out.push(`<rect x="12" y="${H - 54}" width="${W - 60}" height="38" rx="19" fill="#fff" stroke="${MID}" stroke-width="0.8"/>`, bar(28, H - 38, 70, 4.5, SOFT));
   out.push(`<circle cx="${W - 30}" cy="${H - 35}" r="17" fill="${INK}"/>`);
@@ -194,6 +199,7 @@ const PLACE_CROP = {
   belt: [250, H],
   "agent-view": [0, 150],
   menu: [100, H],
+  float: [190, H],
 } as const satisfies Record<PlaceId, readonly [number, number]>;
 
 /** One place on its own phone, cropped to the part of the screen around it. */

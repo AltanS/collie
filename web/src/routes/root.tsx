@@ -30,14 +30,18 @@ import { ReportDoor } from "@/components/report-door";
 import { CrewProvider } from "@/components/crew-provider";
 import { CollieMark } from "@/components/collie-mark";
 import { TourHost } from "@/components/tour-sheet";
+import { TrickFloatLayer } from "@/components/trick-float-layer";
 import { describeThrownError } from "@/lib/api-error-message";
 import { findPane, paneRowKey } from "@/lib/hosts";
 import { homePath } from "@/lib/nav";
 import { scopeFromUrl } from "@/lib/session";
 import { noteLeadName, noteSnapshotCrew, noteSnapshotRun } from "@/lib/update-run-store";
 import { PANE_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
+import type { AgentView } from "@/lib/types";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
+
+const NO_TRICK_SESSIONS: readonly AgentView[] = [];
 
 /**
  * The "last seen" stamp the ONE connection surface should show — the stamp of the data actually on
@@ -253,6 +257,9 @@ export function RootLayout() {
           </StripHost>
         </AppHeaderHost>
       </div>
+      {/* The floating pictures of the tricks (the `float` place): one layer over the page, under the toast and the
+          sheets, tap-through. It draws on the Dashboard and a session only, and stays out of the way of every card. */}
+      <TrickFloatLayer pane={openPane} trickSessions={data.trickSessions ?? NO_TRICK_SESSIONS} />
     </CrewProvider>
   );
 }

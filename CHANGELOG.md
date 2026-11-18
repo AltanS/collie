@@ -23,13 +23,17 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A trick can draw a small moving picture over the app.** A new place, `float`, shows one picture from the trick's own media folder: it plays one motion and leaves, or it stays and shows what the trick is doing. It stays out of the way of the header, the Belt, the composer and every question, never blocks a tap, and hides while a card asks you something or you type. "Floating things" in Settings, Appearance, turns every picture off on a device, and each trick keeps its own switch. A picture that rests on an edge can open its trick's Page when the trick says so.
+
 ### Changed
 
 - **The release page lists what changed and no update commands.** The commands stay in `docs/upgrading.md`, and the in-app update band shows its own.
 
 ### Docs
 
-- **The tricks pages show where each place is.** A picture of the phone marks all seven places on the Tricks page and at the top of the reference's Places, and each place in the reference has its own picture.
+- **The tricks pages show where each place is.** A picture of the phone marks all eight places on the Tricks page and at the top of the reference's Places, and each place in the reference has its own picture.
 
 ## [1.29.0] - 2026-11-18
 

@@ -151,6 +151,15 @@ export function partSummary(parsed: ParsedPart): string {
       add("view", viewWords(part.view));
       break;
     }
+    case "float": {
+      const { part } = parsed;
+      add("", `${part.mode} ${part.motion}`);
+      add("edge", part.edge);
+      add("src", quoted(part.sprite.src));
+      add("mood", part.mood);
+      add("opens", part.opens);
+      break;
+    }
   }
   return words.join("  ");
 }

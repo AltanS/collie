@@ -983,6 +983,7 @@ describe("the line of where a trick shows", () => {
       dashboard: "a tile in the strip at the top of the Dashboard",
       tabbar: "an item in the bottom bar of the Dashboard",
       menu: "rows in each session's settings",
+      float: "a small moving picture over the app",
     });
     expect(showsIn({ places: ["status", "tabbar", "status"], agentView: true })).toEqual([
       { kind: "para", text: "It shows in: the left end of the usage row of each session, an item in the bottom bar of the Dashboard, a view of a session, beside Terminal and Chat." },

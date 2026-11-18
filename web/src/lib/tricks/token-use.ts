@@ -44,6 +44,7 @@ export const PLACE_REACH = {
   status: "none",
   tabbar: "none",
   menu: "program",
+  float: "none",
   "agent-view": "session",
 } as const satisfies Record<PlaceKind | "agent-view", "program" | "session" | "none">;
 

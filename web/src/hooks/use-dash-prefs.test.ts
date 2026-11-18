@@ -48,6 +48,7 @@ describe("coerceDashPrefs", () => {
       paneView: "chat",
       zoomPill: null,
       pageZoom: true,
+      floatingThings: true,
       usageRow: "percent",
     });
   });
@@ -95,6 +96,7 @@ describe("coerceDashPrefs", () => {
       paneView: "terminal",
       zoomPill: "off",
       pageZoom: true,
+      floatingThings: true,
       usageRow: "percent",
     });
   });
@@ -103,6 +105,12 @@ describe("coerceDashPrefs", () => {
     expect(coerceDashPrefs({}).pageZoom).toBe(true);
     expect(coerceDashPrefs({ pageZoom: "no" }).pageZoom).toBe(true);
     expect(coerceDashPrefs({ pageZoom: false }).pageZoom).toBe(false);
+  });
+
+  it("reads floatingThings as on unless a boolean false is stored", () => {
+    expect(coerceDashPrefs({}).floatingThings).toBe(true);
+    expect(coerceDashPrefs({ floatingThings: "off" }).floatingThings).toBe(true);
+    expect(coerceDashPrefs({ floatingThings: false }).floatingThings).toBe(false);
   });
 
   it("reads the usage row as Percent unless Dots is stored, so an install with no value gets Percent", () => {
@@ -233,6 +241,7 @@ describe("coerceDashPrefs", () => {
       paneView: "chat",
       zoomPill: null,
       pageZoom: true,
+      floatingThings: true,
       usageRow: "percent",
     });
   });
@@ -264,6 +273,7 @@ describe("useDashPrefs", () => {
       paneView: "chat",
       zoomPill: null,
       pageZoom: true,
+      floatingThings: true,
       usageRow: "percent",
     });
   });
@@ -314,6 +324,7 @@ describe("useDashPrefs", () => {
       paneView: "terminal",
       zoomPill: "off",
       pageZoom: true,
+      floatingThings: true,
       usageRow: "dots",
     });
   });

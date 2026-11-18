@@ -116,5 +116,20 @@
         ]
       }
     ]
+  },
+  "float": {
+    "v": 1,
+    "parts": [
+      {
+        "at": "float",
+        "id": "pet",
+        "mode": "stay",
+        "motion": "perch",
+        "edge": "bottom",
+        "sprite": { "src": "media/pet.png", "frames": 4, "fps": 6, "size": "s" },
+        "mood": "working",
+        "opens": "page"
+      }
+    ]
   }
 }
