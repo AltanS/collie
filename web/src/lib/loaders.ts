@@ -850,9 +850,10 @@ export async function readPins(paneId: string, scope: Scope | undefined, signal?
 }
 
 /**
- * How long a switch waits for the new pane's first page of Chat, at most. The read starts with the pane's own
- * and the two run side by side, so on a healthy link this adds nothing; past it the pane opens without the
- * page and the Chat body asks for it itself, with its pending bars after their own short delay.
+ * How long a switch waits for the new pane's first page of Chat, at most, counted from the start of the
+ * switch. The read starts with the pane's own and the two run side by side, so on a healthy link this adds
+ * nothing; past it the pane opens without the page and the Chat body asks for it itself, with its pending
+ * bars after their own short delay.
  */
 export const CHAT_WARM_WAIT_MS = 600;
 
@@ -880,15 +881,17 @@ async function warmChat(paneId: string, scope: Scope, signal: AbortSignal | unde
   }
 }
 
-/** Wait for a warm-up, but never past {@link CHAT_WARM_WAIT_MS}. */
-async function waitForWarm(warming: Promise<void> | undefined): Promise<void> {
-  if (warming === undefined) return;
+/**
+ * A warm-up that is counted as done once it settles or {@link CHAT_WARM_WAIT_MS} after it began, whichever is
+ * first. The limit runs from the start, beside the mirror's read, so a slow mirror and a slow page cost the
+ * slower of the two, and the page never adds its whole wait on top of the mirror's.
+ */
+function warmWithinLimit(warming: Promise<void>): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const limit = new Promise<void>((resolve) => {
     timer = setTimeout(resolve, CHAT_WARM_WAIT_MS);
   });
-  await Promise.race([warming, limit]);
-  clearTimeout(timer);
+  return Promise.race([warming, limit]).finally(() => clearTimeout(timer));
 }
 
 export async function paneLoader({
@@ -926,12 +929,12 @@ export async function paneLoader({
   // A cold open in a named session can run before the root loader filed that session's card.
   if (isNavigation) await settleSessionCapabilities(scope);
   // The pane's first page of Chat, read beside the mirror (see warmChat).
-  const chatWarm = isNavigation ? warmChat(paneId, scope, request?.signal) : undefined;
+  const chatWarm = isNavigation ? warmWithinLimit(warmChat(paneId, scope, request?.signal)) : undefined;
   if (!paneGridOf(scope)) {
     markPaneLive(paneId, Date.now(), scope);
     markPollResult(false);
     const walky = await readWalky(paneId, scope, request?.signal);
-    await waitForWarm(chatWarm);
+    await chatWarm;
     return {
       paneId,
       scope,
@@ -991,7 +994,7 @@ export async function paneLoader({
     // The cadence consumes it (hooks/use-polling.ts): a mirror that keeps moving is one the operator
     // is watching move.
     markPollResult(read.notModified !== true && text !== lastPaneText.get(key));
-    await waitForWarm(chatWarm);
+    await chatWarm;
     rememberPaneText(key, text);
     // Write-through, EXCEPT while the pane is asking for a secret — see holdsNoEchoPrompt (ADR 0017).
     // The drop is the wipe's session-text subset for this one pane (lib/wipe.ts, M46 spec 02): its
