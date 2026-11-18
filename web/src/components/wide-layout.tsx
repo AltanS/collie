@@ -42,6 +42,7 @@ import { useRootData } from "@/lib/route-data";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { shortenHome } from "@/lib/shorten-home";
 import { COLUMN_SNAP_CLASSES, STRIP_SNAP_CLASSES, leftmostWholeColumn, shouldFollowFocus } from "@/lib/strip-snap";
+import { pickTabPane } from "@/lib/tab-pane-memory";
 import { shownStatus } from "@/lib/triage";
 import { isReadOnly, statusLabel, type AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -279,7 +280,10 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   };
   const toTab = (tabId: string) => {
     if (agent === undefined || tabId === agent.tabId) return;
-    const target = herd.find((p) => p.tabId === tabId && p.host === agent.host);
+    const target = pickTabPane(
+      herd.filter((p) => p.tabId === tabId && p.host === agent.host),
+      { host: agent.host, session: agent.session, tabId },
+    );
     if (target !== undefined) goTo(target);
   };
   const onIntent = (pane: AgentView, intent: BeltIntent) => {

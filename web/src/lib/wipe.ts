@@ -46,6 +46,7 @@ import { showBadge } from "@/lib/app-badge";
 import { mounted } from "@/lib/base-path";
 import { forgetAllDiffComments } from "@/lib/diff-comment-store";
 import { forgetAllCreateIntents } from "@/lib/create-intent";
+import { forgetAllTabPanes } from "@/lib/tab-pane-memory";
 import { forgetAllUnknownSends, forgetUnknownSend } from "@/lib/send-again";
 import { clearIntent, forgetAllSendIntents } from "@/lib/send-intent";
 import { clearAllDrafts, clearDraft, clearPutBack } from "@/lib/drafts";
@@ -199,6 +200,13 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     "create-intents",
     () => {
       forgetAllCreateIntents();
+    },
+  ],
+  [
+    // The pane each tab was last open on (lib/tab-pane-memory.ts, sessionStorage): pane ids of this pairing's machines.
+    "tab-panes",
+    () => {
+      forgetAllTabPanes();
     },
   ],
   [

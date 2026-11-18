@@ -40,6 +40,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Opening a session waits for its first page of Chat for at most 600 ms from the tap.** The wait started only after the screen read had answered, so a slow screen read and a slow Chat read added up to 1,000 ms before the new session showed. The two reads now start together and the limit counts from the start.
 - **Renaming a tab from the phone changes the name you see for its session again.** A tab with one session in it showed the title the agent wrote itself and ignored the new tab name since 1.29.0. Collie now gives that one session the same name as the tab. A tab with more than one session keeps each session's own name. (#810)
 - **A trick an agent proposes keeps its pictures.** `collie trick propose` left the folder's `media/` and `captures/` behind, so after your yes the trick showed no picture where it named one. It now brings their PNG, JPEG and WebP pictures, at most 50 of 2 MB each, and the card names every picture it brings before you say yes. Any other file in those folders still stays behind, and `collie trick check --run` and `collie trick dev` warn when the output names a picture the folder lacks.
+- **A tab opens on the pane you last had open in it.** With two panes side by side in one tab, switching to another tab and back opened the tab's first pane, not the one you were on. The phone now remembers the pane per tab and machine, also over a reload. A pane that closed meanwhile falls back to the first one.
 
 ### Docs
 

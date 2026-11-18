@@ -87,6 +87,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:mirror-native:", { area: "local", prefix: true, fate: "kept", why: "a per-pane colour choice" }],
   ["collie:tour:v1", { area: "local", prefix: false, fate: "kept", why: "the tour was seen" }],
   ["collie:diff-comments:v1:", { area: "session", prefix: true, fate: "wiped", why: "the Changes batch of diff comments: quoted lines and the notes on them" }],
+  ["collie:tab-pane:v1:", { area: "session", prefix: true, fate: "wiped", why: "the pane id each tab was last open on, per machine, session and tab (lib/tab-pane-memory.ts)" }],
   ["collie:send-intent:", { area: "session", prefix: true, fate: "wiped", why: "the request id of a send with no answer, and the text of the draft it carried (lib/send-intent.ts)" }],
   ["collie:create-intent:", { area: "session", prefix: true, fate: "wiped", why: "the request id of a quick launch, tab or space create with no answer, kept 30 seconds, and the folder it names (lib/create-intent.ts)" }],
   ["collie:new-sheet:again:v1", { area: "local", prefix: false, fate: "wiped", why: "the last start per machine names its folders" }],

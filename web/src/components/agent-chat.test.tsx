@@ -43,6 +43,7 @@ vi.mock("@/lib/chat-gate", async (importOriginal) => ({
 import { server } from "@/test/setup";
 import { __resetBeltIntents, queueBeltIntent, takeBeltIntent } from "@/lib/belt-intent";
 import { paneScopeKey } from "@/lib/scope";
+import { __forgetTabPaneMemory, rememberTabPane } from "@/lib/tab-pane-memory";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
 import { HarnessPrefsControl } from "@/components/harness-prefs-control";
@@ -2238,6 +2239,57 @@ describe("AgentChat — closing the current tab", () => {
     // were in is gone and you are somewhere else now. A status on only one branch would be silent on
     // the more disorienting of the two.
     expect(await screen.findByText("Tab closed")).toBeInTheDocument();
+  });
+});
+
+// Opening a tab from the in-pane strip returns to the pane the tab was last open on (lib/tab-pane-memory.ts),
+// not its first pane. The route writes the memory when a pane is shown; these cases write it the same way.
+describe("AgentChat \u2014 a tab opens on the pane it was last open on", () => {
+  afterEach(() => {
+    sessionStorage.clear();
+    __forgetTabPaneMemory();
+  });
+
+  const paneIn = (paneId: string, tabId: string): AgentView => ({
+    paneId,
+    workspaceId: "w6",
+    workspaceLabel: "collie",
+    workspaceNumber: 6,
+    tabId,
+    agent: "claude",
+    status: "idle",
+    cwd: "/home/you/collie",
+    focused: false,
+  });
+  const tabsOf = (...ids: string[]): TabView[] =>
+    ids.map((tabId, i) => ({ tabId, workspaceId: "w6", number: i + 1, label: `tab${i + 1}`, focused: false, paneCount: 2 }));
+  const here = paneIn("w6:pA", "w6:t1");
+  const sideBySide = [here, paneIn("w6:pB", "w6:t2"), paneIn("w6:pC", "w6:t2")];
+
+  async function openTab(label: string, onSelect = vi.fn()) {
+    renderChat({ agent: here, agents: sideBySide, shellPanes: [], tabs: tabsOf("w6:t1", "w6:t2"), onSelect });
+    await userEvent.setup().click(screen.getByRole("button", { name: new RegExp(`${label}$`) }));
+    return onSelect;
+  }
+
+  it("returns to the remembered pane of the tab", async () => {
+    rememberTabPane(sideBySide[2]!);
+    expect(await openTab("tab2")).toHaveBeenCalledExactlyOnceWith("w6:pC");
+  });
+
+  it("keeps the memory over a reload (sessionStorage), not only in memory", async () => {
+    rememberTabPane(sideBySide[2]!);
+    __forgetTabPaneMemory();
+    expect(await openTab("tab2")).toHaveBeenCalledExactlyOnceWith("w6:pC");
+  });
+
+  it("opens the first pane when the tab was never visited", async () => {
+    expect(await openTab("tab2")).toHaveBeenCalledExactlyOnceWith("w6:pB");
+  });
+
+  it("falls back to the first pane when the remembered pane is gone", async () => {
+    rememberTabPane(paneIn("w6:pGone", "w6:t2"));
+    expect(await openTab("tab2")).toHaveBeenCalledExactlyOnceWith("w6:pB");
   });
 });
 

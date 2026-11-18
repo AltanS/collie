@@ -18,6 +18,7 @@ import { readAgentLaunch } from "@/lib/agent-startup";
 import { paneScopeKey } from "@/lib/scope";
 import { findPane, paneScope } from "@/lib/hosts";
 import { setStatus } from "@/lib/status";
+import { rememberTabPane } from "@/lib/tab-pane-memory";
 import { useMuxCapability } from "@/lib/mux-capability";
 import type { AgentView } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
@@ -94,6 +95,17 @@ export function DetailRoute() {
     (fresh && fresh.paneId === paneId && !seen ? fresh : undefined) ??
     (root.error ? pane.savedPane : undefined);
   const gone = !agent;
+
+  // This pane is now its tab's pane on this device: the tab strip opens a tab on the pane it was last
+  // open on (lib/tab-pane-memory.ts). Written when the pane is SHOWN, so a pane opened by a push, a
+  // link or a switcher row is remembered the same way as one opened from the strip.
+  const shownTabId = agent?.tabId;
+  const shownHost = agent?.host;
+  const shownSession = agent?.session;
+  useEffect(() => {
+    if (shownTabId === undefined) return;
+    rememberTabPane({ paneId, tabId: shownTabId, host: shownHost, session: shownSession });
+  }, [paneId, shownTabId, shownHost, shownSession]);
 
   // Recover from a closed pane: once a healthy snapshot no longer has it, go up a level instead of
   // leaving you on a dead "agent gone" view. Guarded on a connected, non-stale snapshot so a
