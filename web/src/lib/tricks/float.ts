@@ -90,6 +90,11 @@ export const FLOAT_PENDING_MS = 2000;
 export const FLOAT_FROM_WAIT_MS = 1500;
 /** How long a once part with `from` waits for the stay picture it names to play its frames to the last one (`sprite.loop = false`), counted from the shot's arrival, before it starts anyway. */
 export const FLOAT_THROW_WAIT_MS = 2000;
+/**
+ * How long the layer may be away (a Page open, another screen, a sheet, a hidden page) before a play that it left half way is not resumed:
+ * past this the picture shows its end state and a shot that waited for it is dropped as stale.
+ */
+export const FLOAT_AWAY_CAP_MS = 30_000;
 /** The fade of a stay picture that appears: in place, no travel. */
 export const FLOAT_ENTER_MS = 180;
 
@@ -799,6 +804,16 @@ export class OnceQueue<T extends Shot> {
     if (next === null || this.limited(next.trick)) return null;
     this.start(next);
     return next;
+  }
+
+  /**
+   * A shot the layer was away from comes back: it plays again from its start, whatever the rate says (it was counted when it
+   * first began, and counts again from where it really starts). False when another shot is on screen already.
+   */
+  resume(shot: T): boolean {
+    if (this.playing !== null) return false;
+    this.playing = shot;
+    return true;
   }
 
   /** Everything stops: a sheet opened, the screen changed. The rate stays, a shot that was cut counts as played. */

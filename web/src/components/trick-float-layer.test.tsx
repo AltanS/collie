@@ -1,10 +1,11 @@
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { beginHold, endHold } from "@/lib/hold-flag";
 import type { JsonObject } from "@/lib/json";
-import { FLOAT_COVER } from "@/lib/tricks/float";
+import { FLOAT_AWAY_CAP_MS, FLOAT_COVER } from "@/lib/tricks/float";
+import { floatClock } from "@/lib/tricks/float-clock";
 import type { TricksReply, TrickPart, WireTrickInfo, WireTrickPart } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
@@ -104,6 +105,7 @@ const pets = () => [...document.querySelectorAll<HTMLElement>('[data-slot="float
 const shots = () => [...document.querySelectorAll<HTMLElement>('[data-slot="float-shot"]')];
 
 beforeEach(() => {
+  floatClock.clear();
   measured.ready = true;
   localStorage.clear();
   reduceMotion(false);
@@ -652,6 +654,183 @@ describe("a sprite that plays once", () => {
       expect(shots()[0]?.dataset.from).toBe("pet");
     });
   });
+  describe("and a tap that opens the Page, then Back", () => {
+    const AFTER = { src: "media/pose.png", frames: 3, fps: 4, loop: false };
+    const OPENS = (extra: JsonObject = {}): WireTrickPart => ONCEPET({ opens: "page", ...extra }, { after: AFTER });
+    const shotRuns = () => runs.filter((run) => run.options.easing === "linear");
+    const afterEl = () => pets()[0]!.querySelector<HTMLElement>('[data-slot="float-after"]')!;
+    const firstEl = () => pets()[0]!.querySelector<HTMLElement>('[data-slot="float-first"]')!;
+    let go: (path: string) => void = () => undefined;
+    function Grab() {
+      const navigate = useNavigate();
+      go = (path) => void navigate(path);
+      return null;
+    }
+    async function mountWithNav(store: TricksStore) {
+      render(
+        <MemoryRouter initialEntries={["/"]}>
+          <Grab />
+          <TrickFloatLayer trickSessions={[{ ...PAGE, paneId: "trick:lodge:spark:pet", tabId: "trick:lodge:spark" }]} store={store} />
+        </MemoryRouter>,
+      );
+      await act(async () => {
+        await store.syncTricks(1);
+      });
+    }
+    /** Both sheets of the pet that is on screen now. */
+    const loadBoth = async () => {
+      await loadSheet(pets()[0]!, 192, 48);
+      const img = afterEl().querySelector("img");
+      Object.defineProperty(img, "naturalWidth", { configurable: true, value: 288 });
+      Object.defineProperty(img, "naturalHeight", { configurable: true, value: 48 });
+      await act(async () => {
+        fireEvent.load(img!);
+      });
+    };
+    const away = async (ms: number) => {
+      // The tap, which opens the trick's Page (the route changes), and the time it stays open.
+      fireEvent.click(document.querySelector('[data-slot="float-open"]')!);
+      expect(nav.down).toHaveBeenCalledTimes(1);
+      await act(async () => go("/trick/page"));
+      expect(pets()).toEqual([]);
+      await act(async () => vi.advanceTimersByTime(ms));
+      await act(async () => go("/"));
+      expect(pets()).toHaveLength(1);
+    };
+    /** The throw begins with a shot behind it, half a second in the pet has played 500 ms. */
+    async function throwing() {
+      vi.useFakeTimers();
+      const { store, replace } = storeWith([OPENS()]);
+      await mountWithNav(store);
+      await loadBoth();
+      await act(async () => replace([{ ...OPENS({ mood: "working" }), rev: 2 }, BEAM(2)], 2));
+      await loadSheet(shots()[0]!, 32, 32);
+      await tick();
+      await act(async () => vi.advanceTimersByTime(500));
+      sprite().currentTime = 500;
+      expect(shotRuns()).toHaveLength(0);
+      return { store, replace };
+    }
+
+    it("does not change the play: the tap itself restarts nothing", async () => {
+      await throwing();
+      const before = runs.length;
+      const pet = pets()[0];
+      fireEvent.click(document.querySelector('[data-slot="float-open"]')!);
+      expect(runs).toHaveLength(before);
+      expect(pets()[0]).toBe(pet);
+      expect(shots()).toHaveLength(1);
+    });
+
+    it("takes the throw up where it stopped, fires the shot from the hand when the throw ends, and plays the after strip", async () => {
+      await throwing();
+      await away(5000);
+      await loadBoth();
+      await tick();
+      // The throw carries on from 500 ms, not from its first frame, and the shot that waited for it is back, still waiting.
+      expect(sprite().currentTime).toBeGreaterThanOrEqual(500);
+      expect(sprite().currentTime).toBeLessThan(600);
+      expect(shots()).toHaveLength(1);
+      await loadSheet(shots()[0]!, 32, 32);
+      expect(shotRuns()).toHaveLength(0);
+      expect(afterEl().style.visibility).toBe("hidden");
+      // The throw ends: the shot leaves the hand, and the after strip plays from its first frame.
+      sprite().currentTime = 1500;
+      await tick();
+      expect(shots()[0]?.dataset.from).toBe("pet");
+      expect(shotRuns()).toHaveLength(1);
+      expect(afterEl().style.visibility).toBe("visible");
+      expect(firstEl().style.visibility).toBe("hidden");
+      expect(plays().at(-1)?.options).toMatchObject({ duration: 750, easing: "steps(3, jump-none)" });
+      expect(plays().at(-1)?.currentTime).toBe(0);
+    });
+
+    it("keeps a shot that was on its way, and sends it again from the hand", async () => {
+      vi.useFakeTimers();
+      const { store, replace } = storeWith([OPENS()]);
+      await mountWithNav(store);
+      await loadBoth();
+      await act(async () => replace([OPENS(), BEAM(2)], 2));
+      await loadSheet(shots()[0]!, 32, 32);
+      await tick();
+      // The throw is over, the shot is on its way.
+      await act(async () => vi.advanceTimersByTime(1500));
+      sprite().currentTime = 1500;
+      await tick();
+      expect(shotRuns()).toHaveLength(1);
+      await away(3000);
+      await loadBoth();
+      await loadSheet(shots()[0]!, 32, 32);
+      await tick();
+      expect(shotRuns()).toHaveLength(2);
+      expect(shots()[0]?.dataset.from).toBe("pet");
+    });
+
+    it("shows the end state and drops the shot when the layer was away longer than the cap", async () => {
+      await throwing();
+      await away(FLOAT_AWAY_CAP_MS + 10_000);
+      await loadBoth();
+      await tick();
+      expect(shots()).toEqual([]);
+      expect(shotRuns()).toHaveLength(0);
+      // The first strip is at its end and the second shows, at its last frame.
+      expect(afterEl().style.visibility).toBe("visible");
+      expect(firstEl().style.visibility).toBe("hidden");
+      expect(plays().at(-1)?.currentTime).toBe(750);
+    });
+
+    it("does not play a throw that was over again, and holds the after strip's last frame", async () => {
+      vi.useFakeTimers();
+      const { store } = storeWith([OPENS()]);
+      await mountWithNav(store);
+      await loadBoth();
+      await act(async () => vi.advanceTimersByTime(2500));
+      sprite().currentTime = 1500;
+      await tick();
+      await act(async () => vi.advanceTimersByTime(1000));
+      await away(2000);
+      await loadBoth();
+      await tick();
+      expect(afterEl().style.visibility).toBe("visible");
+      expect(plays().map((run) => run.currentTime).at(-1)).toBe(750);
+    });
+
+    it("plays again from the first frame when the part's value changed while it was away", async () => {
+      const { replace } = await throwing();
+      await away(1000);
+      await loadBoth();
+      await act(async () => replace([{ ...OPENS({ mood: "waiting" }), rev: 3 }], 3));
+      await tick();
+      expect(sprite().currentTime).toBe(0);
+      expect(afterEl().style.visibility).toBe("hidden");
+    });
+
+    it("stops a shot's wait while the page is hidden", async () => {
+      vi.useFakeTimers();
+      const { store, replace } = storeWith([OPENS()]);
+      await mountWithNav(store);
+      await loadBoth();
+      await act(async () => replace([{ ...OPENS({ mood: "working" }), rev: 2 }, BEAM(2)], 2));
+      await loadSheet(shots()[0]!, 32, 32);
+      await act(async () => vi.advanceTimersByTime(1000));
+      const hide = async (state: "hidden" | "visible") => {
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: state });
+        await act(async () => {
+          document.dispatchEvent(new Event("visibilitychange"));
+        });
+      };
+      await hide("hidden");
+      await act(async () => vi.advanceTimersByTime(10_000));
+      expect(shotRuns()).toHaveLength(0);
+      await hide("visible");
+      await act(async () => vi.advanceTimersByTime(900));
+      expect(shotRuns()).toHaveLength(0);
+      await act(async () => vi.advanceTimersByTime(200));
+      expect(shotRuns()).toHaveLength(1);
+      Reflect.deleteProperty(document, "visibilityState");
+    });
+  });
+
   describe("and a second sprite after it (after)", () => {
     const AFTER = { src: "media/pose.png", frames: 3, fps: 4 };
     const WITH_AFTER = (after: JsonObject = AFTER, extra: JsonObject = {}): WireTrickPart => ONCEPET(extra, { after });

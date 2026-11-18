@@ -54,6 +54,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A trick draft written before a helper update can still be proposed.** Every change of the trick helper now moves its version, and Collie knows every helper text it ever served, so an older `trick.ts` is taken as the helper and not refused.
 - **A tab opens on the pane you last had open in it.** With two panes side by side in one tab, switching to another tab and back opened the tab's first pane, not the one you were on. The phone now remembers the pane per tab and machine, also over a reload. A pane that closed meanwhile falls back to the first one.
 - **The app is on React Router 7.18.6, with the security fixes of 18 November.** A crafted link to your Collie address could make the app's page hang while it matched the path. The other advisories of that day are for server rendering, which Collie does not use.
+- **A floating picture keeps its place in the play when you open a trick's page and come back.** Tapping a resting picture and going Back used to start its frames over and lose the shot that waited for it. The play now stops while the picture is away and carries on where it stopped, and the shot leaves its hand when the throw ends. Away for more than 30 seconds, the picture shows its end state and the shot is dropped.
 
 ### Docs
 
