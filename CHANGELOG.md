@@ -32,6 +32,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The release page lists what changed and no update commands.** The commands stay in `docs/upgrading.md`, and the in-app update band shows its own.
 
+### Fixed
+
+- **Opening a session waits for its first page of Chat for at most 600 ms from the tap.** The wait started only after the screen read had answered, so a slow screen read and a slow Chat read added up to 1,000 ms before the new session showed. The two reads now start together and the limit counts from the start.
+
 ### Docs
 
 - **The tricks pages show where each place is.** A picture of the phone marks all eight places on the Tricks page and at the top of the reference's Places, and each place in the reference has its own picture.

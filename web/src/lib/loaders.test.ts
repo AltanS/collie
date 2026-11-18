@@ -275,6 +275,29 @@ describe("paneLoader reads the first page of Chat while a switch is pending (lib
     expect(seen.chats).toBe(1);
   });
 
+  it("starts the Chat read with the mirror's and waits for it at most 600 ms from the tap, not from the mirror's answer", async () => {
+    world(true);
+    // The mirror answers in 400 ms and the page in 3 s. The switch costs the slower read up to the cap,
+    // counted from the start: 600 ms. A cap counted from the mirror's answer would cost 400 + 600 ms.
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, async () => {
+        await delay(400);
+        return HttpResponse.json({ text: "$ ", truncated: false, revision: 1 });
+      }),
+      http.get(/\/api\/pane\/[^/]+\/chat/, async () => {
+        await delay(3000);
+        return HttpResponse.json(page);
+      }),
+    );
+    const { rootLoader, paneLoader, CHAT_WARM_WAIT_MS } = await import("./loaders");
+    await rootLoader();
+    const begun = performance.now();
+    await paneLoader({ params: { paneId: "w1:p1" }, request: open("w1:p1") });
+    const took = performance.now() - begun;
+    expect(took).toBeGreaterThanOrEqual(CHAT_WARM_WAIT_MS - 20);
+    expect(took).toBeLessThan(400 + CHAT_WARM_WAIT_MS - 100);
+  });
+
   it("reads nothing for a pane that holds no session", async () => {
     const seen = world(false);
     const { rootLoader, paneLoader } = await import("./loaders");
