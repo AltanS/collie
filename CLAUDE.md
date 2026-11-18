@@ -52,6 +52,14 @@ answers where one exists (`Thanks @handle (#147).`), and with **no commit hash**
 exist yet, and the release commit adds it. The lead is what the GitHub Release page prints, so
 write it as the sentence an operator reads there. Do not touch the three version files.
 
+**Write every bullet for a person who has not read the code.** Crisp and short, but with context:
+the bold lead says the result a person sees, and the detail says in one or two sentences why it
+matters to them. A new concept gets one plain sentence of what it is and why a person would want it
+the first time it appears (what a trick is, before any bullet that uses the word), and later bullets
+build on it. Never a bare term the reader has not met, never a file, function, wire field, test or
+milestone name. (Altan, 2026-11-18, after the 1.29.0 section shipped at about 410 lines and opened
+with "a trick can let a session's own agent draw one screen", before it said what a trick is.)
+
 **A release needs something to ship.** Before you cut one, read `git log --oneline <last tag>..HEAD`.
 If the range holds only docs, tests and chores, do not release: the docs go out with the next real
 release or on the docs line (below), and the site's docs sync follows either. A docs-only release makes every self-updating lane
@@ -100,6 +108,20 @@ release. 1.14.2 was cut this way on 2026-09-28.
    line's short commit hash** in the link format
    `([abc1234](https://github.com/AltanS/collie/commit/abc1234))`. Clean up the section: merge
    or reorder lines as needed, and delete entries for changes reverted before release.
+
+   **Then rewrite the section for its reader, not for its history.** The Unreleased list is a log in
+   landing order; the release section is a summary. Write it for a person on the previous Stable
+   release: a fix or a reshape of something only an Edge build had folds into that feature's bullet,
+   because a Stable reader never saw the broken state. Merge related bullets into one per feature,
+   put a feature's intro bullet before its details, and lead each group with what matters most to
+   operators. A minor release lands at about 25 to 35 bullets, a patch at a handful. The style rule
+   above holds for every bullet.
+3b. **Show the operator a preview of the release notes, and wait for a yes.** Build the release page
+   body from the new section with `scripts/release-notes.ts` (the same code `release.yml` runs),
+   render it together with the section, serve it where the operator can open it on the phone, and
+   give the URL. The tag waits for the operator's explicit yes to the text. A green CI, a review or
+   a counsel verdict is not that yes. Text fixes go into the release commit, and the preview is
+   built again.
 4. **Re-create an empty `## [Unreleased]` heading above it.**
 5. **Bump `flake.lock` if it is to move at all** — in this commit and no other. The input is
    pinned by revision, so a bump is two edits: the `rev` in `flake.nix`, then `nix flake lock` to
