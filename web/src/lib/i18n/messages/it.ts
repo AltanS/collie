@@ -3474,6 +3474,7 @@ export const it: Dictionary = {
   "hill.delivery.unknown": "non confermato",
   "hill.delivery.mayNotHaveArrived": "La tua risposta potrebbe non essere arrivata. Controlla la sessione.",
   "hill.trick": "trick",
+  "hill.collieTricks": "Trick di Collie",
   "hill.targetTrick": "La tua risposta va al trick {trick}",
   "hill.targetBoth": "La tua risposta va a {label} su {host} e al trick {trick}",
   "hill.targetBothLocal": "La tua risposta va a {label} e al trick {trick}",

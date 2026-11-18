@@ -682,7 +682,7 @@ describe("after the tap", () => {
     expect(slot("decision-receipt")).toHaveTextContent(words);
   });
 
-  it("a trick card of Collie's own says what happened on its buttons alone, wears the app's mark, and says nothing of a trick", () => {
+  it("a trick card of Collie's own says what happened on its buttons alone, wears the tricks glyph, and says nothing of a trick", () => {
     const from: HillDecision["from"] = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "lodge", harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type: "version", id: "legs", hash: "a".repeat(64) } };
     // With code to show: a version card with none offers no yes (2026-11-17).
     const decision = hillDecision({ from, target: null, view: [{ kind: "diff", text: "+console.log(1);", attrs: { file: "program.ts" } }], options: [{ intent: "use", label: "Use the new version" }, { intent: "keep", label: "Keep the old version" }] });
@@ -691,7 +691,8 @@ describe("after the tap", () => {
     expect(used.slot("decision-receipt")).toBeNull();
     expect(used.option("use")?.querySelector('[data-slot="option-chosen-mark"]')).not.toBeNull();
     expect(used.option("keep")).toBeDisabled();
-    expect(used.container.querySelector('[data-slot="decision-collie-mark"]')).not.toBeNull();
+    expect(used.container.querySelector('[data-slot="decision-trick-mark"] [data-icon="tricks"]')).not.toBeNull();
+    expect(used.container.querySelector('[data-slot="decision-collie-mark"]')).toBeNull();
     expect(used.container.querySelector('[data-slot="decision-trick-word"]')).toBeNull();
     used.unmount();
     const kept = renderCard(decision, answered(hillReceipt({ delivery: "none" }), "keep"));
@@ -704,6 +705,26 @@ describe("after the tap", () => {
     expect(moved.option("use")).toHaveAttribute("data-not-sent");
     expect(moved.option("use")).toHaveAttribute("title", "The trick changed again. A new card replaces this one.");
     expect(moved.option("use")).toBeEnabled();
+  });
+
+  it.each<["proposal" | "version", string]>([
+    ["proposal", "Switch on the trick legs?"],
+    ["version", "Use the new version of legs?"],
+  ])("a %s card of Collie's own reads Collie tricks on the tricks glyph, whatever its sender label says", (type, title) => {
+    const from: HillDecision["from"] = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "lodge", harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type, id: "legs", hash: "a".repeat(64) } };
+    const { slot, container } = renderCard(hillDecision({ from, title, target: null }));
+    expect(slot("decision-meta")).toHaveTextContent("Collie tricks");
+    expect(container.querySelector('[data-slot="decision-trick-mark"] [data-icon="tricks"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="decision-collie-mark"]')).toBeNull();
+  });
+
+  it.each<["carried" | "rights"]>([["carried"], ["rights"]])("a %s card of Collie's own keeps the Collie mark and its sender name", (type) => {
+    const from: HillDecision["from"] = { kind: "collie", address: null, trickId: null, trickKey: null, memberId: "lodge", harness: null, label: "Collie", host: "lodge", trickHost: null, ref: { type, id: "legs", hash: "a".repeat(64) } };
+    const { slot, container } = renderCard(hillDecision({ from, target: null }));
+    expect(slot("decision-meta")).toHaveTextContent("Collie");
+    expect(slot("decision-meta")).not.toHaveTextContent("Collie tricks");
+    expect(container.querySelector('[data-slot="decision-collie-mark"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon="tricks"]')).toBeNull();
   });
 
   it("says an answer to a crew machine that is not answering was not sent, and keeps the card answerable", () => {

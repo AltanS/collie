@@ -313,6 +313,7 @@ export const ICONOIR = {
   "tool-search": "search", // a search tool call · lucide Search
   "tool-task": "sparks", // a task or subagent tool call · lucide Bot
   "tour": "compass", // the guided tour · lucide Compass
+  "tricks": "puzzle", // Collie tricks, the small add-ons a person switches on · lucide Puzzle
   "type-into-terminal": "terminal", // type into the terminal · lucide Terminal
   "typeface": "text-size", // the typeface setting · lucide CaseSensitive
   "undo": "undo", // undo · lucide Undo2

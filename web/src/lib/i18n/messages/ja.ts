@@ -3628,6 +3628,7 @@ export const ja: Dictionary = {
   "hill.delivery.unknown": "未確認",
   "hill.delivery.mayNotHaveArrived": "回答が届いていない可能性があります。セッションを確認してください。",
   "hill.trick": "トリック",
+  "hill.collieTricks": "Collie トリック",
   "hill.targetTrick": "回答は {trick} トリックに送られます",
   "hill.targetBoth": "回答は {host} の {label} と {trick} トリックに送られます",
   "hill.targetBothLocal": "回答は {label} と {trick} トリックに送られます",

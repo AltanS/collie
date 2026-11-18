@@ -3608,6 +3608,7 @@ export const zh: Dictionary = {
   "hill.delivery.unknown": "未确认",
   "hill.delivery.mayNotHaveArrived": "你的回答可能没有送达。请检查会话。",
   "hill.trick": "Trick",
+  "hill.collieTricks": "Collie Trick",
   "hill.targetTrick": "你的回答将发送给 Trick {trick}",
   "hill.targetBoth": "你的回答将发送给 {host} 上的 {label}，以及 Trick {trick}",
   "hill.targetBothLocal": "你的回答将发送给 {label}，以及 Trick {trick}",

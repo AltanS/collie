@@ -3946,6 +3946,7 @@ export const en = {
   "hill.delivery.unknown": "not confirmed",
   "hill.delivery.mayNotHaveArrived": "Your answer may not have arrived. Check the session.",
   "hill.trick": "trick",
+  "hill.collieTricks": "Collie tricks",
   "hill.targetTrick": "Your answer goes to the {trick} trick",
   "hill.targetBoth": "Your answer goes to {label} on {host} and to the {trick} trick",
   "hill.targetBothLocal": "Your answer goes to {label} and to the {trick} trick",

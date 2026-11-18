@@ -125,10 +125,26 @@ function Age({ at }: { at: number }) {
 }
 
 /**
+ * Collie's own approval card about a trick: a proposal ("Switch on the trick X?") or a new version ("Use the
+ * new version of X?"). Read from the card's `ref`, never from its words. Its first line shows the tricks
+ * glyph and "Collie tricks"; every other card of Collie's own keeps the Collie mark and its sender name.
+ */
+function isTrickApproval({ from }: HillDecision): boolean {
+  return from.kind === "collie" && (from.ref?.type === "proposal" || from.ref?.type === "version");
+}
+
+/**
  * Who asks, as a 16px mark: the agent's own logo tile, the trick's glyph on a neutral tile of the same
  * size, or the app's own mark for a Decision of Collie's own. Decorative: the name follows.
  */
 function SenderMark({ decision, trickIcon }: { decision: HillDecision; trickIcon: string | undefined }) {
+  if (isTrickApproval(decision)) {
+    return (
+      <span aria-hidden data-slot="decision-trick-mark" className="flex size-4 shrink-0 items-center justify-center rounded-sm border border-border bg-secondary text-foreground">
+        <Icon name="tricks" className="size-[60%]" />
+      </span>
+    );
+  }
   if (decision.from.kind === "collie") {
     return (
       <span aria-hidden data-slot="decision-collie-mark" className="flex shrink-0">
@@ -166,7 +182,7 @@ function MetaLine({ decision, hostSlot, trickIcon }: { decision: HillDecision; h
         |
       </span>
       <SenderMark decision={decision} trickIcon={trickIcon} />
-      <span className="min-w-0 truncate text-foreground">{from.label}</span>
+      <span className="min-w-0 truncate text-foreground">{isTrickApproval(decision) ? t("hill.collieTricks") : from.label}</span>
       {from.kind === "trick" && (
         <span data-slot="decision-trick-word" className="inline-flex min-w-0 shrink items-center gap-1">
           <Icon name="mod-icon-plug" aria-hidden className="size-3 shrink-0" />
