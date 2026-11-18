@@ -31,6 +31,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **The keyboard closes after you send a message from the phone.** The soft keyboard no longer covers the reply, so you see it as it comes in. Tap the reply box to type again. A hardware keyboard, or a wide screen with no soft keyboard, keeps the box focused, so you can type the next message at once.
 - **A session's Chat shows the shape of its own thread while the first page loads.** Instead of five short bars at the top, Chat draws muted rows where your messages, the agent's text, tool runs and cards were the last time you opened that session, filling the screen with the newest row at the bottom. A session this phone has not opened yet shows a typical thread of the same kind. Only the kinds and heights of rows are kept on the phone, never a word, and they go when you unpair.
 - **The cards that ask about a trick read "Collie tricks" on their first line.** The proposal card ("Switch on the trick X?") and the new-version card ("Use the new version of X?") show the tricks glyph where they showed the Collie mark and the word Collie.
 - **An answered trick card shrinks to one line in a session's Chat.** Once you switch a proposed trick on or decline it, the card becomes one small line, "Collie tricks", the trick's name and what happened, for example "hadoken: switched on", and it scrolls away with the conversation.
