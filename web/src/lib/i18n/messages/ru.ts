@@ -3627,6 +3627,7 @@ export const ru: Dictionary = {
   "hill.delivery.unknown": "не подтверждено",
   "hill.delivery.mayNotHaveArrived": "Ваш ответ мог не дойти. Проверьте сессию.",
   "hill.trick": "трюк",
+  "hill.collieTricks": "Трюки Collie",
   "hill.targetTrick": "Ваш ответ уйдет трюку {trick}",
   "hill.targetBoth": "Ваш ответ уйдет в {label} на {host} и трюку {trick}",
   "hill.targetBothLocal": "Ваш ответ уйдет в {label} и трюку {trick}",

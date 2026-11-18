@@ -3621,6 +3621,7 @@ export const ko: Dictionary = {
   "hill.delivery.unknown": "확인되지 않음",
   "hill.delivery.mayNotHaveArrived": "답변이 도착하지 않았을 수 있습니다. 세션을 확인하세요.",
   "hill.trick": "트릭",
+  "hill.collieTricks": "Collie 트릭",
   "hill.targetTrick": "답변은 {trick} 트릭에 전달됩니다",
   "hill.targetBoth": "답변은 {host}의 {label}과(와) {trick} 트릭에 전달됩니다",
   "hill.targetBothLocal": "답변은 {label}과(와) {trick} 트릭에 전달됩니다",

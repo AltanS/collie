@@ -426,7 +426,7 @@ before your yes.
 collie trick propose ~/work/disk-space
 ```
 
-The card's title is "Switch on the trick `<id>`?". Its summary is Collie's own facts: who proposed it,
+The card's first line reads "Collie tricks" with the tricks glyph. Its title is "Switch on the trick `<id>`?". Its summary is Collie's own facts: who proposed it,
 how many files it has, and what it asks for. Below come the powers it asks for, the warnings of the
 text search, the author's words under "Its author's words. Collie did not check them.", and then
 every file of its code, as a group of cards.

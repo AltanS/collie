@@ -31,6 +31,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **The cards that ask about a trick read "Collie tricks" on their first line.** The proposal card ("Switch on the trick X?") and the new-version card ("Use the new version of X?") show the tricks glyph where they showed the Collie mark and the word Collie.
 - **The release page lists what changed and no update commands.** The commands stay in `docs/upgrading.md`, and the in-app update band shows its own.
 
 ### Fixed

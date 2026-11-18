@@ -352,6 +352,7 @@ export const ICON_KEYS = {
   "tool-search": { meaning: "a search tool call", area: "chat", lucide: "Search" },
   "tool-task": { meaning: "a task or subagent tool call", area: "chat", lucide: "Bot" },
   "tour": { meaning: "the guided tour", area: "settings", lucide: "Compass" },
+  "tricks": { meaning: "Collie tricks, the small add-ons a person switches on", area: "navigation", lucide: "Puzzle" },
   "type-into-terminal": { meaning: "type into the terminal", area: "composer", lucide: "Terminal" },
   "typeface": { meaning: "the typeface setting", area: "settings", lucide: "CaseSensitive" },
   "undo": { meaning: "undo", area: "belt", lucide: "Undo2" },

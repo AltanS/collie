@@ -3468,6 +3468,7 @@ export const tr: Dictionary = {
   "hill.delivery.unknown": "onaylanmadı",
   "hill.delivery.mayNotHaveArrived": "Yanıtınız ulaşmamış olabilir. Oturumu kontrol edin.",
   "hill.trick": "trick",
+  "hill.collieTricks": "Collie trick'leri",
   "hill.targetTrick": "Yanıtınız {trick} trick'ine gider",
   "hill.targetBoth": "Yanıtınız {host} üzerindeki {label} tarafına ve {trick} trick'ine gider",
   "hill.targetBothLocal": "Yanıtınız {label} tarafına ve {trick} trick'ine gider",
