@@ -357,7 +357,7 @@ function sha256(text: string): string {
  * over a write in flight, which Windows lost; it speaks contract 3 and reads its `values` as `t.values`), and v6
  * (v7 adds `t.api`, Collie's local API through the declared `access`), and v7 (v8 names the run's token in
  * `hello`, M105 spec 05: a v7 copy still runs, and its `t.api` hears `api.no_run_token`), and v8 (1.29.0, and the
- * released tricks repository's four helpers; v9 adds the float place's types and a draft button's `does`). A trick folder
+ * released tricks repository's four helpers; v9 adds the float place's types, including a sprite's `after`, and a draft button's `does`). A trick folder
  * keeps the copy it was approved with: an older one stays Collie's code, so a new Collie asks for no yes.
  */
 export const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([

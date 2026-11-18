@@ -226,7 +226,7 @@ describe("the local API's own warning kind", () => {
 const sha = (text: string): string => createHash("sha256").update(text).digest("hex");
 
 /** The SHA-256 of the helper text of each version this Collie writes. A new text takes the next number. */
-const HELPER_PINS = new Map<number, string>([[9, "ed3bbcc08f02073fbd345d869e1702bc78437f07089a59bc03df6d5e74c5db8e"]]);
+const HELPER_PINS = new Map<number, string>([[9, "e3d318649b1736a68fc11c253c890ae2809fc15a4f9db82808ef3b9bc1d9234f"]]);
 
 describe("the helper's version moves with its text", () => {
   test("the first line of the helper names HELPER_VERSION", () => {

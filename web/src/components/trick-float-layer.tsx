@@ -39,6 +39,8 @@ import {
   sameBox,
   rowFor,
   spriteInBox,
+  afterRestOf,
+  afterSpecOf,
   unit,
   type Box,
   type FloatSpec,
@@ -73,6 +75,12 @@ import { cn } from "@/lib/utils";
 // A SPRITE PLAYS ONCE WHEN ITS PART SAYS `loop = false`: frames 0 to N - 1 at `fps`, the last one held. A new play
 // starts when the part is printed with a changed value (`partSignature`, the one a once part plays again on), never
 // on a new `asOf` or rev alone. The picture is mounted per part, not per rev, so a re-print does not make it appear again.
+//
+// A SPRITE MAY HAVE A SECOND ONE (`sprite.after`, only after `loop = false`): when the first reaches its last frame the second starts from
+// its first, at once. Its frames are as high as the first's and as wide as its own sheet, so the box takes the new width in one step (no
+// glide), kept on the part's anchor (`afterRestOf`). The second sheet is fetched and decoded while the first plays, so the switch has no blank
+// frame. A changed part value plays both again from the first sprite's first frame. The place a once part with `from` starts at, and the
+// wait for the throw, are those of the FIRST sprite. Reduced motion, or no animation: the second sprite's last frame, still.
 
 interface TrickFloatLayerProps {
   /** The open session, for the pictures bound to it. */
@@ -102,6 +110,8 @@ function Sprite({
   reduced,
   paused,
   playKey,
+  active = true,
+  stillLast = !spec.loop,
   onLoaded,
   onHeld,
 }: {
@@ -111,6 +121,10 @@ function Sprite({
   reduced: boolean;
   paused: boolean;
   playKey: string;
+  /** False: the sheet is loaded and ready but does not play (a second sprite before its turn). */
+  active?: boolean;
+  /** Where nothing animates (reduced motion): the last frame, not the first. */
+  stillLast?: boolean;
   onLoaded?: (natural: Natural) => void;
   onHeld?: (held: boolean) => void;
 }) {
@@ -121,11 +135,11 @@ function Sprite({
   const animation = useRef<Animation | null>(null);
   const held = useRef(onHeld);
   held.current = onHeld;
-  const still = !spec.loop && spec.frames > 1 && (reduced || !canAnimate(HTMLImageElement.prototype));
+  const still = stillLast && spec.frames > 1 && (reduced || !canAnimate(HTMLImageElement.prototype));
   useEffect(() => {
     const el = sheet.current;
     animation.current = null;
-    if (el === null || !loaded) return;
+    if (el === null || !loaded || !active) return;
     if (reduced || spec.frames < 2 || !canAnimate(el)) {
       held.current?.(true);
       return;
@@ -159,14 +173,14 @@ function Sprite({
       cancelAnimationFrame(frame);
       run.cancel();
     };
-  }, [loaded, reduced, spec.frames, spec.fps, spec.loop, row, drawn.w, drawn.h, playKey]);
+  }, [loaded, active, reduced, spec.frames, spec.fps, spec.loop, row, drawn.w, drawn.h, playKey]);
   useEffect(() => {
     const run = animation.current;
     if (run === null) return;
     // A play that is over is left alone: play() on a finished animation would rewind it.
     if (paused && run.playState === "running") run.pause();
     else if (!paused && run.playState === "paused") run.play();
-  }, [paused, loaded, reduced, spec.frames, spec.fps, spec.loop, row, drawn.w, drawn.h, playKey]);
+  }, [paused, loaded, active, reduced, spec.frames, spec.fps, spec.loop, row, drawn.w, drawn.h, playKey]);
   const x = still ? -(spec.frames - 1) * drawn.w : 0;
   return (
     <span aria-hidden data-slot="float-sprite" className="relative block overflow-hidden" style={{ width: drawn.w, height: drawn.h }}>
@@ -177,6 +191,8 @@ function Sprite({
           alt=""
           draggable={false}
           onLoad={(e) => {
+            // Decoded ahead, so the first frame of a sprite that waits for its turn is not blank when the turn comes.
+            if (!active && "decode" in e.currentTarget) void e.currentTarget.decode().catch(() => undefined);
             setLoaded(true);
             onLoaded?.({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight });
           }}
@@ -215,16 +231,58 @@ function FloatPet({
   const lastUrl = useRef<string | null>(null);
   if (media.url !== null) lastUrl.current = media.url;
   const url = media.url ?? lastUrl.current;
+  // The second sprite (`sprite.after`), fetched with the first so it is there when its turn comes.
+  const after = afterSpecOf(spec);
+  const afterMedia = useAuthedUrl(after === undefined ? null : trickMediaPath(spec.host, spec.trickId, after.src, spec.rev));
+  const lastAfterUrl = useRef<string | null>(null);
+  if (afterMedia.url !== null) lastAfterUrl.current = afterMedia.url;
+  const afterUrl = after === undefined ? null : (afterMedia.url ?? lastAfterUrl.current);
   const playKey = partSignature(spec.part);
-  const hold = useCallback((held: boolean) => onHold(spec.key, held), [onHold, spec.key]);
+  // Whether the first sprite has reached its last frame in this play: the second one starts then. A changed value starts over at once.
+  const [heldFirst, setHeldFirst] = useState(false);
+  const [seenKey, setSeenKey] = useState(playKey);
+  if (seenKey !== playKey) {
+    setSeenKey(playKey);
+    setHeldFirst(false);
+  }
+  const hold = useCallback(
+    (now: boolean) => {
+      setHeldFirst(now);
+      onHold(spec.key, now);
+    },
+    [onHold, spec.key],
+  );
   useEffect(() => () => onHold(spec.key, false), [onHold, spec.key]);
   const { region, reach } = space;
   const [natural, setNatural] = useState<Natural | null>(null);
+  const [naturalAfter, setNaturalAfter] = useState<Natural | null>(null);
   const aspect = frameAspect(natural, spec.frames, spec.rows);
-  const box = boxDims(spec, aspect);
-  const drawn = drawnDims(spec, aspect);
+  const aspectAfter = after === undefined ? aspect : frameAspect(naturalAfter, after.frames);
+  // The box of the first sprite is the one a shot with `from` is laid out from, whichever sprite shows.
+  const firstBox = boxDims(spec, aspect);
+  const firstDrawn = drawnDims(spec, aspect);
+  // The second sprite shows once the first has played out (at once under reduced motion, where there is nothing to play) and its sheet is
+  // there and fits the free area. Otherwise the first one stays, on its last frame.
+  const calm = reduced || !canAnimate(HTMLImageElement.prototype);
+  const afterBox = boxDims(spec, aspectAfter);
+  const afterReady = after !== undefined && naturalAfter !== null && fitsRegion(afterBox, region);
+  const showAfter = afterReady && (heldFirst || calm);
+  const drawn = showAfter ? drawnDims(spec, aspectAfter) : firstDrawn;
+  const box = showAfter ? afterBox : firstBox;
   const [step, setStep] = useState(0);
   const [ready, setReady] = useState(false);
+  // A change of box (the second sprite's turn, or a replay) takes its place at once: no glide for that one render.
+  const [snap, setSnap] = useState(false);
+  const [wasAfter, setWasAfter] = useState(showAfter);
+  if (wasAfter !== showAfter) {
+    setWasAfter(showAfter);
+    setSnap(true);
+  }
+  useEffect(() => {
+    if (!snap) return;
+    const frame = requestAnimationFrame(() => setSnap(false));
+    return () => cancelAnimationFrame(frame);
+  }, [snap]);
   const bob = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (natural === null) return;
@@ -249,13 +307,16 @@ function FloatPet({
     return () => run.cancel();
   }, [spec.motion, reduced, paused]);
   // A picture whose box is wider or taller than the free area is not drawn: nothing may spill over a landmark.
-  const fits = fitsRegion(box, region);
-  const at = restOf(spec, region, reduced ? 0 : step, aspect, reach);
-  const inside = spriteInBox(spec, drawn, box);
+  const fits = fitsRegion(firstBox, region);
+  const stepNow = reduced ? 0 : step;
+  const firstAt = restOf(spec, region, stepNow, aspect, reach);
+  const firstInside = spriteInBox(spec, firstDrawn, firstBox);
+  const at = showAfter ? afterRestOf(spec, region, stepNow, { first: aspect, after: aspectAfter }, reach) : firstAt;
+  const inside = showAfter ? spriteInBox(spec, drawn, box) : firstInside;
   const placed = natural !== null && fits;
-  const left = at.x + inside.x;
-  const top = at.y + inside.y;
-  const { w, h } = drawn;
+  const left = firstAt.x + firstInside.x;
+  const top = firstAt.y + firstInside.y;
+  const { w, h } = firstDrawn;
   useEffect(() => {
     if (!placed) return;
     onPlace(spec.key, { x: left, y: top, w, h });
@@ -276,11 +337,28 @@ function FloatPet({
         // In place from the first frame: invisible until its sheet is there and placed, then it fades in. No travel.
         opacity: ready ? 1 : 0,
         transform: `translate3d(${at.x}px, ${at.y}px, 0)`,
-        transition: ready && !reduced ? `transform ${glide}ms ease-in-out, opacity ${FLOAT_ENTER_MS}ms ease-out` : undefined,
+        transition: ready && !reduced && !snap ? `transform ${glide}ms ease-in-out, opacity ${FLOAT_ENTER_MS}ms ease-out` : undefined,
       }}
     >
       <span ref={bob} className="absolute block" style={{ left: inside.x, top: inside.y }}>
-        <Sprite spec={spec} url={url} aspect={aspect} reduced={reduced} paused={paused} playKey={playKey} onLoaded={setNatural} onHeld={hold} />
+        <span data-slot="float-first" className="absolute top-0 left-0 block" style={{ visibility: showAfter ? "hidden" : "visible" }}>
+          <Sprite spec={spec} url={url} aspect={aspect} reduced={reduced} paused={paused} playKey={playKey} onLoaded={setNatural} onHeld={hold} />
+        </span>
+        {after !== undefined && (
+          <span data-slot="float-after" className="absolute top-0 left-0 block" style={{ visibility: showAfter ? "visible" : "hidden" }}>
+            <Sprite
+              spec={after}
+              url={afterUrl}
+              aspect={aspectAfter}
+              reduced={reduced}
+              paused={paused}
+              playKey={playKey}
+              active={showAfter}
+              stillLast
+              onLoaded={setNaturalAfter}
+            />
+          </span>
+        )}
       </span>
       {onOpen !== undefined && (
         <button

@@ -1146,6 +1146,19 @@ export interface FloatSprite {
   size?: FloatSize;
   /** `false`: the frames play once, 0 to `frames` - 1 at `fps`, and the last one stays. Absent or `true`: they loop. */
   loop?: boolean;
+  /**
+   * A stay part only, and only with `loop` set to `false`: one more sprite that starts from its first frame the moment
+   * this one reaches its last. Its frames are as high as this sprite's (`size`) and as wide as its own sheet says.
+   */
+  after?: FloatAfter;
+}
+/** The second sprite of a float part (`sprite.after`): a picture of `media/`, a sheet when `frames` is more than 1. No `size`, no `rows`, no `after` of its own. */
+export interface FloatAfter {
+  src: string;
+  frames?: number;
+  fps?: number;
+  /** `false`: the frames play once and the last one stays. Absent or `true`: they loop. */
+  loop?: boolean;
 }
 /**
  * A small moving picture over the app (the `float` place). Declarative only: a picture, a motion from a
@@ -3748,7 +3761,9 @@ export const SUB_KEYS = {
   /** One row of a `menu` part (contract 2). */
   row: MENU_ROW_KEYS,
   /** The sprite of a `float` part. */
-  sprite: ["src", "frames", "rows", "fps", "size", "loop"],
+  sprite: ["src", "frames", "rows", "fps", "size", "loop", "after"],
+  /** The `after` of a float sprite: a second sheet that plays after the first. */
+  after: ["src", "frames", "fps", "loop"],
 } as const;
 
 export const PART_KEYS = {
@@ -4169,6 +4184,7 @@ function readFloatPart(f: Fields, id: string, contract: number): ParsedPart {
   if (opens !== undefined && motion === "wander") f.push("target", "opens", 'A wandering picture never holds still to be tapped. Use "opens" with "perch" or "idle".');
   const spriteFields = f.object("sprite", "a sprite", true);
   const sprite = spriteFields === undefined ? { src: "" } : readFloatSprite(spriteFields);
+  if (sprite.after !== undefined && mode === "once") spriteFields?.push("target", "after", '"after" goes with a part that stays: a picture that plays once and is gone has nothing to follow it.');
   const sessions = readBoundSessions(f, contract);
   const part: FloatPart = { at: "float", id, mode: mode ?? "stay", motion: motion ?? "idle", sprite };
   if (edge !== undefined) part.edge = edge;
@@ -4207,13 +4223,42 @@ function readFloatSprite(f: Fields): FloatSprite {
   if (fps !== undefined && (frames === undefined || frames < 2)) f.push("target", "fps", '"fps" goes with "frames" of 2 or more: it is how fast the frames of a sprite sheet play.');
   const size = f.word("size", FLOAT_SIZES);
   const loop = f.bool("loop");
+  const after = f.has("after") ? readFloatAfter(f, loop) : undefined;
   const sprite: FloatSprite = { src: src ?? "" };
   if (frames !== undefined) sprite.frames = frames;
   if (rows !== undefined) sprite.rows = rows;
   if (fps !== undefined) sprite.fps = fps;
   if (size !== undefined) sprite.size = size;
   if (loop !== undefined) sprite.loop = loop;
+  if (after !== undefined) sprite.after = after;
   return sprite;
+}
+
+/**
+ * The `after` of a float sprite: `src`, `frames`, `fps` and `loop`, read as the sprite's own. It follows only a sprite that plays once
+ * (`loop` is `false`: a looping sprite never reaches a last frame), it is one level deep, and it has no `rows` (a sheet of moods) and
+ * no `size` (its frames are as high as the sprite's).
+ */
+function readFloatAfter(sprite: Fields, outerLoop: boolean | undefined): FloatAfter | undefined {
+  const f = sprite.object("after", "a second sprite");
+  if (f === undefined) return undefined;
+  if (outerLoop !== false) sprite.push("target", "after", '"after" goes with a sprite whose "loop" is false: a sprite that loops never reaches its last frame, so nothing could follow it.');
+  if (f.has("after")) f.push("target", "after", 'An "after" has no "after" of its own: one more sprite after the first is all there is.');
+  if (f.has("rows")) f.push("target", "rows", 'An "after" has no "rows": it is one row of frames. Name the mood on the part, not on the second sprite.');
+  if (f.has("size")) f.push("target", "size", 'An "after" has no "size": its frames are as high as the first sprite\'s "size", and as wide as its own sheet says.');
+  f.keys([...SUB_KEYS.after, "after", "rows", "size"]);
+  const srcRaw = f.text("src", { max: IMAGE_SRC_MAX, required: true });
+  const src = srcRaw !== undefined && !isImageSrc(srcRaw) ? undefined : srcRaw;
+  if (srcRaw !== undefined && src === undefined) f.push("target", "src", '"src" must name a .png, .jpg, .jpeg or .webp file in the trick\'s "media/" folder, such as "media/pose.png", with no step that starts with a dot.');
+  const frames = f.int("frames", { min: 1, max: FLOAT_FRAMES_MAX });
+  const fps = f.int("fps", { min: 1, max: FLOAT_FPS_MAX });
+  if (fps !== undefined && (frames === undefined || frames < 2)) f.push("target", "fps", '"fps" goes with "frames" of 2 or more: it is how fast the frames of a sprite sheet play.');
+  const loop = f.bool("loop");
+  const after: FloatAfter = { src: src ?? "" };
+  if (frames !== undefined) after.frames = frames;
+  if (fps !== undefined) after.fps = fps;
+  if (loop !== undefined) after.loop = loop;
+  return after;
 }
 
 /**

@@ -34,6 +34,8 @@ import {
   safeRegion,
   spriteInBox,
   stepBox,
+  afterRestOf,
+  afterSpecOf,
   unit,
   visibleBox,
   within,
@@ -80,6 +82,9 @@ function floatPart(value: JsonObject, extra: Partial<WireTrickPart> = {}): WireT
 }
 const STAY: JsonObject = { mode: "stay", motion: "perch", sprite: { src: "media/pet.png" } };
 const ONCE: JsonObject = { mode: "once", motion: "arc", sprite: { src: "media/spark.png" } };
+
+/** A sprite that plays once, with a second sprite after it. */
+const withAfter = (sprite: JsonObject, after: JsonObject | string): JsonObject => ({ ...sprite, after });
 
 describe("the safe region", () => {
   it("is the viewport less the insets when nothing is in the way", () => {
@@ -242,6 +247,37 @@ describe("a picture never meets a landmark", () => {
     expect(y("end", "left")).toBe(region.y + region.h - w - FLOAT_EDGE_MARGIN_PX);
   });
 
+  it("keeps the anchor when the second sprite is wider: start keeps the left side, end the right side, middle the centre, and the edge stays put", () => {
+    const base = { key: "m1/pet/p", motion: "perch", size: "m", opens: undefined } as const;
+    const first = { first: 1, after: 3 };
+    const w1 = FLOAT_SIZE_PX.m;
+    const w2 = 3 * FLOAT_SIZE_PX.m;
+    for (const edge of ["bottom", "top"] as const) {
+      const a = (along: "start" | "middle" | "end", wide: boolean) => (wide ? afterRestOf({ ...base, edge, along }, region, 0, first, reach) : restOf({ ...base, edge, along }, region, 0, 1, reach));
+      expect(a("start", true).x, edge).toBe(a("start", false).x);
+      expect(a("end", true).x + w2, edge).toBe(a("end", false).x + w1);
+      expect(a("middle", true).x + w2 / 2, edge).toBeCloseTo(a("middle", false).x + w1 / 2);
+      for (const along of ["start", "middle", "end"] as const) expect(a(along, true).y, `${edge} ${along}`).toBe(a(along, false).y);
+    }
+    // A wide box on a left or right edge stays on the edge.
+    expect(afterRestOf({ ...base, edge: "left", along: "end" }, region, 0, first, reach).x).toBe(reach.x);
+    expect(afterRestOf({ ...base, edge: "right", along: "end" }, region, 0, first, reach).x + w2).toBe(reach.x + reach.w);
+  });
+
+  it("keeps the left side of a picture that idles or wanders, held inside the region, when its second sprite is wider", () => {
+    const base = { key: "m1/pet/p", edge: "bottom", along: "end", size: "m", opens: undefined } as const;
+    for (const motion of ["idle", "wander"] as const) {
+      const spec = { ...base, motion };
+      const was = restOf(spec, region, 0, 1, reach);
+      const now = afterRestOf(spec, region, 0, { first: 1, after: 3 }, reach);
+      expect(now.y).toBe(was.y);
+      expect(now.x).toBeLessThanOrEqual(was.x);
+      expect(now.x).toBeGreaterThanOrEqual(region.x);
+      expect(now.x + 3 * FLOAT_SIZE_PX.m).toBeLessThanOrEqual(region.x + region.w + 0.01);
+      if (was.x + 3 * FLOAT_SIZE_PX.m <= region.x + region.w) expect(now.x).toBe(was.x);
+    }
+  });
+
   it("does not depend on the key for a perch: the same part always stands in the same place", () => {
     const base = { motion: "perch", edge: "bottom", along: "end", size: "s", opens: undefined } as const;
     expect(restOf({ ...base, key: "m1/a/x" }, region, 0, 1, reach)).toEqual(restOf({ ...base, key: "m2/b/y" }, region, 0, 1, reach));
@@ -345,6 +381,31 @@ describe("reading a part", () => {
     expect(readFloat(floatPart({ ...STAY, sprite: { src: "media/x.png", frames: 4, loop: true } }))?.loop).toBe(true);
     expect(readFloat(floatPart({ ...STAY, sprite: { src: "media/x.png", frames: 4, loop: false } }))?.loop).toBe(false);
     expect(readFloat(floatPart({ ...STAY, sprite: { src: "media/x.png", frames: 4, loop: "no" } }))).toBeNull();
+  });
+
+  it("reads the after of a sprite that plays once, with the first sprite's size and its own sheet, and leaves out one that does not read", () => {
+    const first: JsonObject = { src: "media/throw.png", frames: 4, loop: false };
+    const sprite = (extra: JsonObject): JsonObject => withAfter(first, { src: "media/pose.png", ...extra });
+    const spec = readFloat(floatPart({ ...STAY, sprite: { ...sprite({ frames: 3, fps: 4 }), size: "m" } }));
+    expect(spec?.after).toEqual({ src: "media/pose.png", frames: 3, fps: 4, loop: true });
+    expect(readFloat(floatPart({ ...STAY, sprite: sprite({ loop: false }) }))?.after?.loop).toBe(false);
+    expect(readFloat(floatPart(STAY))?.after).toBeUndefined();
+    expect(afterSpecOf(must(spec))).toMatchObject({ src: "media/pose.png", frames: 3, rows: 1, fps: 4, size: "m", after: undefined });
+    const bad: JsonObject[] = [
+      { ...STAY, sprite: { ...sprite({}), loop: true } },
+      { ...STAY, sprite: withAfter({ src: "media/throw.png", frames: 4 }, { src: "media/pose.png" }) },
+      { ...STAY, sprite: sprite(withAfter({ src: "media/again.png" }, { src: "media/pose.png" })) },
+      { ...STAY, sprite: sprite({ rows: 2 }) },
+      { ...STAY, sprite: sprite({ size: "l" }) },
+      { ...STAY, sprite: sprite({ src: "media/pose.svg" }) },
+      { ...STAY, sprite: sprite({ frames: 17 }) },
+      { ...STAY, sprite: sprite({ fps: 13 }) },
+      { ...STAY, sprite: sprite({ loop: "no" }) },
+      { ...STAY, sprite: sprite({ extra: 1 }) },
+      { ...STAY, sprite: withAfter(first, "media/pose.png") },
+      { ...ONCE, sprite: sprite({}) },
+    ];
+    for (const value of bad) expect(readFloat(floatPart(value)), JSON.stringify(value)).toBeNull();
   });
 
   it("times a play: one pass over the frames, and the moment the last frame appears", () => {
@@ -557,6 +618,35 @@ describe("the float place in a document", () => {
     expect(parse(sprite({ loop: false })).parts).toHaveLength(1);
     expect(parse(sprite({ loop: true, fps: 3 })).parts).toHaveLength(1);
     for (const bad of [{ loop: "yes" }, { loop: 0 }]) expect(parse(sprite(bad)).parts, JSON.stringify(bad)).toEqual([]);
+  });
+
+  it("reads a sprite's after: the keys src, frames, fps and loop, one level, only after loop = false, only on a stay part", () => {
+    const sprite = (outer: JsonObject, after: JsonObject): JsonObject => ({ ...STAY, sprite: withAfter({ src: "media/throw.png", frames: 4, ...outer }, { src: "media/pose.png", ...after }) });
+    const ok = parse(sprite({ loop: false }, { frames: 8, fps: 6, loop: false }));
+    expect(ok.refusals).toEqual([]);
+    expect(ok.parts).toHaveLength(1);
+    const kept = ok.parts[0]?.part;
+    expect(kept?.at === "float" ? kept.sprite.after : undefined).toEqual({ src: "media/pose.png", frames: 8, fps: 6, loop: false });
+    expect(parse(sprite({ loop: false }, {})).parts).toHaveLength(1);
+    const reasons = (value: JsonObject) => parse(value).refusals.map((r) => `${r.path} ${r.reason}`).join(" | ");
+    expect(parse(sprite({}, {})).parts, "outer loop left out").toEqual([]);
+    expect(reasons(sprite({}, {}))).toContain("loop");
+    expect(parse(sprite({ loop: true }, {})).parts, "outer loop true").toEqual([]);
+    const deep = sprite({ loop: false }, withAfter({}, { src: "media/again.png" }));
+    expect(parse(deep).parts, "depth 2").toEqual([]);
+    expect(reasons(deep)).toContain('no "after" of its own');
+    expect(parse(sprite({ loop: false }, { rows: 2 })).parts, "rows").toEqual([]);
+    expect(reasons(sprite({ loop: false }, { rows: 2 }))).toContain("rows");
+    expect(parse(sprite({ loop: false }, { size: "l" })).parts, "size").toEqual([]);
+    for (const bad of [{ src: "media/pose.svg" }, { src: "https://x.test/a.png" }, { frames: 17 }, { fps: 13 }, { fps: 6 }, { loop: "no" }]) {
+      expect(parse(sprite({ loop: false }, bad)).parts, JSON.stringify(bad)).toEqual([]);
+    }
+    // A key it does not know is ignored with a note, as on the sprite itself.
+    const stray = parse(sprite({ loop: false }, { extra: 1 }));
+    expect(stray.parts).toHaveLength(1);
+    expect(stray.notes.map((note) => note.code)).toContain("ignored");
+    expect(parse({ ...STAY, sprite: withAfter({ src: "media/throw.png", frames: 4, loop: false }, "media/pose.png") }).parts, "not an object").toEqual([]);
+    expect(parse({ ...ONCE, sprite: withAfter({ src: "media/spark.png", frames: 4, loop: false }, { src: "media/pose.png" }) }).parts, "once part").toEqual([]);
   });
 
   it("binds a float part to sessions at contract 2, and refuses it at contract 1", () => {
