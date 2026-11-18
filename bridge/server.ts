@@ -7149,6 +7149,36 @@ async function renameSoleTab(
 }
 
 /**
+ * A tab renamed from the phone also sets the label of its pane when the pane is alone in it. The name rule
+ * ranks a pane's own label above the title its agent wrote, and a one-pane tab's name below that title, so
+ * a tab rename alone left a Claude pane reading its own title (#810). With one pane the tab and the pane are
+ * one thing to the person; a tab with two or more panes keeps its panes' names. The reverse of
+ * {@link renameSoleTab}. Returns whether the pane was renamed.
+ */
+async function renameSolePane(
+  herdr: Pick<MuxAdapter, "renamePane" | "capabilities">,
+  engine: Pick<StateEngine, "current">,
+  tabId: string,
+  label: string,
+): Promise<boolean> {
+  if (!supportsCapability(herdr.capabilities, "renamePane")) return false;
+  const snapshot = engine.current();
+  const tab = snapshot.tabs.find((t) => t.tabId === tabId);
+  if (tab === undefined || tab.paneCount !== 1) return false;
+  const panes = [...snapshot.agents, ...snapshot.shellPanes].filter((p) => p.tabId === tabId);
+  const pane = panes.length === 1 ? panes[0] : undefined;
+  if (pane === undefined) return false;
+  // Best effort: a pane left with its old label costs a name, never the tab rename that already landed.
+  try {
+    const renamed = await herdr.renamePane(pane.paneId, label);
+    return renamed.ok;
+  } catch {
+    // Swallowed: the tab is renamed; the pane label only decides which name wins.
+    return false;
+  }
+}
+
+/**
  * Validate an untrusted tab-rename body's `label`. A tab label is a NON-null, NON-empty string:
  * herdr's `tab.rename` rejects `null`, and an empty string is stored literally (a blank tab chip)
  * rather than clearing to the default number — both live-verified 2026-07-19. So, unlike a pane label
@@ -7167,12 +7197,12 @@ export function normalizeTabLabel(
 // Set a tab's label. Structural metadata op — strictly less powerful than the text/keys injection the
 // bridge already allows, so it stays within the existing remote-shell threat model. A tab has no
 // "clear" (see normalizeTabLabel): a blank label is a 400, not a reset to the tab number.
-async function renameTab(
-  herdr: MuxAdapter,
-  engine: StateEngine,
+export async function renameTab(
+  herdr: Pick<MuxAdapter, "renamePane" | "renameTab" | "refresh" | "capabilities">,
+  engine: Pick<StateEngine, "current" | "pokeNow">,
   tabId: string,
   req: Request,
-  audit: AuditLog,
+  audit: Pick<AuditLog, "record">,
   device: string | null,
   session: string,
 ): Promise<Response> {
@@ -7195,7 +7225,8 @@ async function renameTab(
       ae,
     );
   }
-  audit.record({ action: "tab.rename", session, device, detail: { tabId, label: parsed.label } });
+  const paneRenamed = await renameSolePane(herdr, engine, tabId, parsed.label);
+  audit.record({ action: "tab.rename", session, device, detail: { tabId, label: parsed.label, paneRenamed } });
   await settleTopology(herdr, engine);
   return json({ ok: true } satisfies ActionResponse, ae);
 }
