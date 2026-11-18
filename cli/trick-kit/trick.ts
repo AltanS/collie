@@ -349,8 +349,8 @@ export interface Bind { sessions?: string[]; id?: string }
 export interface FloatPart {
   at: "float"; id: string; sessions?: string[];
   mode: "once" | "stay"; motion: "fly-across" | "arc" | "pop" | "perch" | "wander" | "idle";
-  sprite: { src: string; frames?: number; fps?: number; size?: "s" | "m" };
-  edge?: "top" | "bottom" | "left" | "right"; mood?: string; opens?: "page";
+  sprite: { src: string; frames?: number; rows?: number; fps?: number; size?: "s" | "m" | "l" };
+  edge?: "top" | "bottom" | "left" | "right"; along?: "start" | "middle" | "end"; from?: string; mood?: string; opens?: "page";
 }
 export type Part =
   | FloatPart

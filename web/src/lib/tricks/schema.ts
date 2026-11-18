@@ -637,13 +637,18 @@ export const FLOAT_MOTIONS = [...FLOAT_ONCE_MOTIONS, ...FLOAT_STAY_MOTIONS] as c
 export type FloatMotion = (typeof FLOAT_MOTIONS)[number];
 export const FLOAT_EDGES = ["top", "bottom", "left", "right"] as const;
 export type FloatEdge = (typeof FLOAT_EDGES)[number];
-/** `s` is 32 px, `m` is 48 px (lib/tricks/float.ts `FLOAT_SIZE_PX`). */
-export const FLOAT_SIZES = ["s", "m"] as const;
+/** The drawn HEIGHT of a frame: `s` is 32 px, `m` is 48 px, `l` is 72 px (lib/tricks/float.ts `FLOAT_SIZE_PX`). The width follows the frame's own shape. */
+export const FLOAT_SIZES = ["s", "m", "l"] as const;
 export type FloatSize = (typeof FLOAT_SIZES)[number];
+/** With `perch`: where along its edge the picture stands. `start` is the left (top or bottom edge) or the top (left or right edge). */
+export const FLOAT_ALONG = ["start", "middle", "end"] as const;
+export type FloatAlong = (typeof FLOAT_ALONG)[number];
 export const FLOAT_OPENS = ["page"] as const;
 export type FloatOpens = (typeof FLOAT_OPENS)[number];
 /** The columns of a sprite sheet. */
 export const FLOAT_FRAMES_MAX = 16;
+/** The rows of a sprite sheet: one per mood at most (the five chip states). */
+export const FLOAT_ROWS_MAX = 5;
 /** The frame rate of a sprite sheet. */
 export const FLOAT_FPS_MAX = 12;
 /** The words a person reads for the `float` right, the same in the About sheet (`settings.tricks.about.float`, held equal by a test). */
@@ -1128,11 +1133,16 @@ export interface MenuPart {
 export interface FloatSprite {
   /** A file of the trick's `media/` folder (the image rule: PNG, JPEG or WebP by its first bytes, at most 2 MB). */
   src: string;
-  /** The columns of a sprite sheet, 1 to {@link FLOAT_FRAMES_MAX}. The rows are one per mood, in the order of {@link CHIP_STATES}. */
+  /**
+   * The columns of a sprite sheet, 1 to {@link FLOAT_FRAMES_MAX}: `frames` frames side by side. A frame is the
+   * sheet's width over `frames` wide and its height over `rows` high, so a frame need not be square.
+   */
   frames?: number;
+  /** The rows of the sheet, 1 to {@link FLOAT_ROWS_MAX}, one per mood in the order of {@link CHIP_STATES}. Absent: 1. */
+  rows?: number;
   /** Frames per second, 1 to {@link FLOAT_FPS_MAX}, with `frames` of 2 or more. */
   fps?: number;
-  /** `s` (32 px, the default) or `m` (48 px). */
+  /** The drawn height of a frame: `s` (32 px, the default), `m` (48 px) or `l` (72 px). */
   size?: FloatSize;
 }
 /**
@@ -1147,6 +1157,10 @@ export interface FloatPart {
   motion: FloatMotion;
   /** With `perch` only: the edge of the free area it sits on. Absent: `bottom`. */
   edge?: FloatEdge;
+  /** With `perch` only: where along the edge it stands. Absent: `end`. */
+  along?: FloatAlong;
+  /** With a `once` part only: the `id` of a `stay` part of this trick. While that picture is on screen the motion starts at it. */
+  from?: string;
   sprite: FloatSprite;
   /** The sprite sheet's row: a chip state. Absent: `idle`. */
   mood?: ChipState;
@@ -3732,7 +3746,7 @@ export const SUB_KEYS = {
   /** One row of a `menu` part (contract 2). */
   row: MENU_ROW_KEYS,
   /** The sprite of a `float` part. */
-  sprite: ["src", "frames", "fps", "size"],
+  sprite: ["src", "frames", "rows", "fps", "size"],
 } as const;
 
 export const PART_KEYS = {
@@ -3742,7 +3756,7 @@ export const PART_KEYS = {
   status: ["at", "id", "chip"],
   tabbar: ["at", "id", "item"],
   menu: ["at", "id", "sessions", "rows"],
-  float: ["at", "id", "mode", "motion", "edge", "sprite", "mood", "opens", "sessions"],
+  float: ["at", "id", "mode", "motion", "edge", "along", "from", "sprite", "mood", "opens", "sessions"],
 } as const satisfies { readonly [K in PlaceKind]: readonly string[] };
 
 const PLACE_WORDS = {
@@ -3934,11 +3948,47 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
     if (parsed.part.place === "tabbar") tabbar = true;
     result.parts.push(parsed.part);
   });
+  refuseUnknownFrom(result, list);
   readDecisions(top, result, opts);
   readDocumentExtras(top, result);
   result.refusals = capRefusals(refusals);
   result.notes = capRefusals(notes);
   return result;
+}
+
+/**
+ * A `once` float part's `from` must name a `stay` float part of this document, which is of this trick (a
+ * document is one trick's). The check runs when every part has been read, so the stay part may come after
+ * it. A part that names a missing part, a part of another kind or a stay part that was itself refused is
+ * refused alone, with a note that says which of the three it is; the other parts keep drawing.
+ */
+function refuseUnknownFrom(result: ParsedTrickDocument, list: readonly JsonValue[]): void {
+  const stays = new Set<string>();
+  const others = new Set<string>();
+  for (const part of result.parts) {
+    if (part.place === "float" && part.part.mode === "stay") stays.add(part.part.id);
+    else others.add(part.part.id);
+  }
+  const rawIndex = (id: string): number => list.findIndex((value) => asJsonString(asJsonObject(value)?.id) === id);
+  const refused = new Set<string>();
+  for (const part of result.parts) {
+    if (part.place !== "float" || part.part.from === undefined || stays.has(part.part.from)) continue;
+    const from = part.part.from;
+    const why = others.has(from)
+      ? `The part "${from}" is not a float part that stays.`
+      : `This trick has no part with the id "${from}", or that part was refused.`;
+    const at = rawIndex(part.part.id);
+    result.refusals.push({
+      code: "target",
+      path: at < 0 ? pointer("/parts", "from") : pointer(pointer("/parts", at), "from"),
+      reason: `"from" names "${from}". ${why} Name the "id" of a float part of this trick with "mode": "stay".`,
+      part: part.part.id,
+    });
+    result.refusedParts.push(part.part.id);
+    refused.add(part.part.id);
+  }
+  if (refused.size === 0) return;
+  result.parts = result.parts.filter((part) => !(part.place === "float" && refused.has(part.part.id)));
 }
 
 /** The pointer of the first button in a view that says `does = "draft"`, at any depth, or undefined when it holds none. */
@@ -4108,6 +4158,9 @@ function readFloatPart(f: Fields, id: string, contract: number): ParsedPart {
   }
   const edge = f.word("edge", FLOAT_EDGES);
   if (edge !== undefined && motion !== undefined && motion !== "perch") f.push("target", "edge", '"edge" goes with the motion "perch" only.');
+  const along = f.word("along", FLOAT_ALONG);
+  if (along !== undefined && motion !== undefined && motion !== "perch") f.push("target", "along", '"along" goes with the motion "perch" only.');
+  const from = readFloatFrom(f, mode);
   const mood = f.word("mood", CHIP_STATES);
   const opens = f.word("opens", FLOAT_OPENS);
   if (opens !== undefined && mode === "once") f.push("target", "opens", 'A once part never takes a tap, so it cannot open a page. Use "opens" on a stay part.');
@@ -4117,24 +4170,43 @@ function readFloatPart(f: Fields, id: string, contract: number): ParsedPart {
   const sessions = readBoundSessions(f, contract);
   const part: FloatPart = { at: "float", id, mode: mode ?? "stay", motion: motion ?? "idle", sprite };
   if (edge !== undefined) part.edge = edge;
+  if (along !== undefined) part.along = along;
+  if (from !== undefined) part.from = from;
   if (mood !== undefined) part.mood = mood;
   if (opens !== undefined) part.opens = opens;
   if (sessions !== undefined) part.sessions = sessions;
   return { place: "float", part };
 }
 
-/** A float sprite: `src` (the image rule), `frames` 1 to {@link FLOAT_FRAMES_MAX}, `fps` 1 to {@link FLOAT_FPS_MAX} with frames of 2 or more, `size`. */
+/** The `from` of a float part: a part id (the id rule), on a `once` part only. That the id names a `stay` part is checked once the whole document is read ({@link refuseUnknownFrom}). */
+function readFloatFrom(f: Fields, mode: FloatMode | undefined): string | undefined {
+  if (!f.has("from")) return undefined;
+  if (mode !== undefined && mode !== "once") {
+    f.push("target", "from", '"from" goes with a part that plays once: it names the stay picture the motion starts from.');
+    return undefined;
+  }
+  const raw = asJsonString(f.obj.from);
+  if (raw === undefined || !isPartId(raw)) {
+    f.push("id", "from", '"from" must be the "id" of a stay part of this trick: 1 to 32 lower-case letters, digits and hyphens.');
+    return undefined;
+  }
+  return raw;
+}
+
+/** A float sprite: `src` (the image rule), `frames` 1 to {@link FLOAT_FRAMES_MAX}, `rows` 1 to {@link FLOAT_ROWS_MAX}, `fps` 1 to {@link FLOAT_FPS_MAX} with frames of 2 or more, `size`. */
 function readFloatSprite(f: Fields): FloatSprite {
   f.keys(SUB_KEYS.sprite);
   const srcRaw = f.text("src", { max: IMAGE_SRC_MAX, required: true });
   const src = srcRaw !== undefined && !isImageSrc(srcRaw) ? undefined : srcRaw;
   if (srcRaw !== undefined && src === undefined) f.push("target", "src", '"src" must name a .png, .jpg, .jpeg or .webp file in the trick\'s "media/" folder, such as "media/pet.png", with no step that starts with a dot.');
   const frames = f.int("frames", { min: 1, max: FLOAT_FRAMES_MAX });
+  const rows = f.int("rows", { min: 1, max: FLOAT_ROWS_MAX });
   const fps = f.int("fps", { min: 1, max: FLOAT_FPS_MAX });
   if (fps !== undefined && (frames === undefined || frames < 2)) f.push("target", "fps", '"fps" goes with "frames" of 2 or more: it is how fast the frames of a sprite sheet play.');
   const size = f.word("size", FLOAT_SIZES);
   const sprite: FloatSprite = { src: src ?? "" };
   if (frames !== undefined) sprite.frames = frames;
+  if (rows !== undefined) sprite.rows = rows;
   if (fps !== undefined) sprite.fps = fps;
   if (size !== undefined) sprite.size = size;
   return sprite;

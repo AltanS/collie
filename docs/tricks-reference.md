@@ -375,13 +375,16 @@ A program prints:
 | Limit | Value |
 | --- | --- |
 | Parts of this place per trick | one `stay` and one `once` for every session, and up to eight bound ones of each mode with `sessions`. No session is named by two parts of one mode |
-| A part | `id`, `mode` (`once` or `stay`), `motion`, `sprite`, and optionally `edge`, `mood`, `opens` and `sessions`. Nothing else |
+| A part | `id`, `mode` (`once` or `stay`), `motion`, `sprite`, and optionally `edge`, `along`, `from`, `mood`, `opens` and `sessions`. Nothing else |
 | `motion` of `once` | `fly-across`, `arc` or `pop`. Each plays once, in at most 3 s, along a path inside the free area, and the picture fades in and out |
-| `motion` of `stay` | `perch`, `wander` or `idle`. `perch` sits on an edge (`edge`: `top`, `bottom`, `left` or `right`, `bottom` when left out), `idle` sits in place and bobs a little, `wander` moves to a new spot at most every 10 s |
-| `sprite` | `src`, a file of the trick's `media/` folder (a PNG, JPEG or WebP, 2 MiB at most, the same check as an `image` node), and optionally `frames`, `fps` and `size`. Nothing else |
-| `sprite` `size` | `s` or `m`: `s` is 32 px, `m` is 48 px. `s` when left out |
-| `sprite` `frames` and `fps` | `frames` is the columns of a sprite sheet, 1 to 16; the frames are square and side by side. `fps` is 1 to 12 and needs `frames` of 2 or more |
-| `mood` | `working`, `waiting`, `idle`, `done` or `gone`. It picks the row of the sprite sheet, counting from the top in that order. A sheet with fewer rows draws its first row. `idle` when left out |
+| `motion` of `stay` | `perch`, `wander` or `idle`. `perch` stands on an edge (`edge`: `top`, `bottom`, `left` or `right`, `bottom` when left out): its foot touches the Belt, the status line or the composer below it, with no gap, or the edge of the screen where nothing is there. `idle` sits in place and bobs a little, `wander` moves to a new spot at most every 10 s |
+| `sprite` | `src`, a file of the trick's `media/` folder (a PNG, JPEG or WebP, 2 MiB at most, the same check as an `image` node), and optionally `frames`, `rows`, `fps` and `size`. Nothing else |
+| `sprite` `size` | `s`, `m` or `l`: the height a frame is drawn at. `s` is 32 px, `m` is 48 px, `l` is 72 px. The width follows the frame's own shape. `s` when left out. A picture that would not fit the free area is not drawn. With `opens` the tap box is at least 44 px each way and never smaller than the picture |
+| `sprite` `frames` and `fps` | `frames` is the columns of a sprite sheet, 1 to 16: that many frames side by side. A frame is the sheet's width over `frames` wide and its height over `rows` high, so a frame need not be square: a sheet of four 74 by 120 frames is 296 by 120 pixels, and its figure stands at the full height of `size`. `fps` is 1 to 12 and needs `frames` of 2 or more |
+| `sprite` `rows` | The rows of a sprite sheet, 1 to 5. 1 when left out, and the sheet is then one row of frames as high as the picture. Name more only for a sheet with one row per `mood` |
+| `mood` | `working`, `waiting`, `idle`, `done` or `gone`. With `rows` of 2 or more it picks the row of the sprite sheet, counting from the top in that order; a sheet with fewer rows draws its first row. `idle` when left out |
+| `along` | `start`, `middle` or `end`, with `perch` only: where the picture stands along its edge. `start` is the left of a top or bottom edge and the top of a left or right one, `end` the other end. It keeps 8 px from the corner. `end` when left out |
+| `from` | With a `once` part only: the `id` of a `stay` part of the same trick. While that picture is on screen, the motion starts at its centre and flies away from it across the free area, toward the farther side edge. Without that picture on screen (hidden, no room, not drawn yet) it starts as usual. Naming a part that is missing, is not a `stay` float part or belongs to another trick refuses the part |
 | `opens` | `page`, on a `stay` part with `perch` or `idle`. The trick needs a Page for the tap to open |
 | On screen at once | at most 2 `stay` pictures across all tricks, and one `once` picture at a time: one waits and the rest are dropped. A trick's `once` pictures start at least 15 s apart |
 | When a `once` picture plays | when Collie first sees the part, or sees it change, after the phone has loaded the tricks. To play the same picture again, print the part with a new `id` or another `mood`. Parts that were there when the phone opened do not play |
@@ -403,11 +406,12 @@ A program prints:
       "mode": "stay",
       "motion": "perch",
       "edge": "bottom",
+      "along": "end",
       "sprite": {
         "src": "media/pet.png",
         "frames": 4,
         "fps": 6,
-        "size": "s"
+        "size": "l"
       },
       "mood": "working",
       "opens": "page"
@@ -424,12 +428,23 @@ A program prints:
   "parts": [
     {
       "at": "float",
+      "id": "pet",
+      "mode": "stay",
+      "motion": "perch",
+      "sprite": {
+        "src": "media/pet.png",
+        "size": "m"
+      }
+    },
+    {
+      "at": "float",
       "id": "tada",
       "mode": "once",
-      "motion": "arc",
+      "motion": "fly-across",
+      "from": "pet",
       "sprite": {
         "src": "media/spark.png",
-        "size": "m"
+        "size": "s"
       }
     }
   ]
