@@ -10,6 +10,10 @@ Tricks are experimental. They may change, lose settings, or be withdrawn in a pa
 
 A place is a spot on the phone where a trick can show (a surface). A program trick, a program on your machine that prints parts, draws in the first six. An agent view, one screen that the session's own agent draws, is the seventh.
 
+![Three phone screens, the Dashboard, a session and a session's settings sheet, with the seven places of a trick numbered.](images/tricks/places.png)
+
+In the picture: 1 Dashboard tile, 2 Page, 3 Bottom bar item, 4 Status chip, 5 Belt, 6 Agent view, 7 Session settings rows. Each place below has its own picture.
+
 | Place | Name | Where it shows | Drawn by |
 | --- | --- | --- | --- |
 | `belt` | Belt | A mark at the end of the Belt, the scrolling strip of controls. It never takes fixed room. It sits at the end of the scrolling strip, off screen until the person scrolls; the fixed block at the right is Collie's own. | A program |
@@ -21,6 +25,8 @@ A place is a spot on the phone where a trick can show (a surface). A program tri
 | `agent-view` | Agent view | A view of one agent session, beside Terminal and Chat. The session's own agent draws it, and the person switches it on per session. | A session's agent |
 
 ### `belt`
+
+![A session, with a trick's mark at the end of the Belt's scrolling strip, before Collie's fixed block.](images/tricks/place-belt.png)
 
 **Where.** A mark at the end of the Belt, the scrolling strip of controls. It never takes fixed room. It sits at the end of the scrolling strip, off screen until the person scrolls; the fixed block at the right is Collie's own.
 
@@ -91,6 +97,8 @@ A program prints:
 
 ### `session`
 
+![The Dashboard, with a trick's Page as a row under Tricks.](images/tricks/place-session.png)
+
 **Where.** A page of the trick's own: a row on the Dashboard under Tricks, and a screen of its own. The code word is `session`.
 
 **Shows.** A name, an icon, a tone, a subtitle, a badge, a progress meter, up to four action buttons and a `view`: a list of nodes of any kind in the Parts table.
@@ -157,6 +165,8 @@ A program prints:
 
 ### `dashboard`
 
+![The Dashboard, with a trick's tile at the end of the strip of tiles at the top.](images/tricks/place-dashboard.png)
+
 **Where.** A round tile in the strip at the top of the Dashboard. The strip is hidden while no trick has a tile.
 
 **Shows.** One item: an icon over a short name, with a `badge` and a `tone`. It takes no view.
@@ -192,6 +202,8 @@ A program prints:
 
 ### `status`
 
+![A session, with a trick's chip at the left end of the status line, above the Belt.](images/tricks/place-status.png)
+
 **Where.** One chip in the status line above the Belt, at the left end of the row; the model and the usage stay at the right end.
 
 **Shows.** One chip: a short text, an icon, a `tone`, and a live time with `at` and `clock`. It takes no view. It draws in the type and the colour of the usage figures beside it, and the trick sets no size. Only the tones `warn` and `danger` change the colour; every other tone reads as the row.
@@ -224,6 +236,8 @@ A program prints:
 ```
 
 ### `tabbar`
+
+![The Dashboard, with a trick's item at the end of the bottom bar, after the Hill.](images/tricks/place-tabbar.png)
 
 **Where.** An item in the Dashboard's bottom bar, after the Hill.
 
@@ -258,6 +272,8 @@ A program prints:
 ```
 
 ### `menu`
+
+![A session's settings sheet, with a trick's rows in a group of its own after Collie's rows.](images/tricks/place-menu.png)
 
 **Where.** Rows in a session's settings (the sheet of the session's ⋮ button), in a group of the trick's own after Collie's rows and Close, under the heading "From the trick", then the trick's name. Agent sessions only. Adds rows to a session's settings.
 
@@ -346,6 +362,8 @@ A program prints:
 ```
 
 ### `agent-view`
+
+![A session, with the agent view as a third view beside Terminal and Chat.](images/tricks/place-agent-view.png)
 
 **Where.** A view of one agent session, beside Terminal and Chat. The session's own agent draws it, and the person switches it on per session.
 
