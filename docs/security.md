@@ -319,6 +319,14 @@ Key security boundaries and risks:
   shell pane, and each one-off command, in `sent.jsonl` in the state folder (mode 0600). A paired
   device can read it, as it can read the panes. Some secrets are still kept
   ([Sent: the shell lines you sent](#sent-the-shell-lines-you-sent)).
+- **A phone whose reply box sits below its screen reports the screen heights.** The phone sends one
+  record of whole numbers (the heights of the screen and of the box, whether the app is installed,
+  whether the keyboard is open) and three words (what woke the check, what the height fix did, the
+  kind of session). It sends no text, no session name, no pane id and no address, at most one record
+  a minute and twenty in a page's life. The bridge keeps each record, with the time, its version and
+  the device's name, in `diag-composer.jsonl` in the state folder (mode 0600), the newest 500 lines
+  or 256 KB. Nothing leaves the machine, and a paired device can send it, as it can read the panes.
+  Delete the file to forget the records.
 - **A single instance exposes all Herdr sessions.** By default, one Collie process fronts every
   Herdr session discovered under Herdr's configuration root, including sandbox sessions
   ([Multi-session](configure.md#multi-session)).

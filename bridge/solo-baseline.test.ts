@@ -941,6 +941,12 @@ describe("solo zero-tax — routes", () => {
       // It is named here, not exempted: the guard's job is that a route arrives on purpose.
       "/api/devices",
       "/api/devices/revoke",
+      // The composer diagnostic: a SOLO route that legitimately extends this list, named here rather
+      // than exempted. A paired phone whose reply box sits below its screen sends the heights it
+      // measured (numbers and enums only, a fixed key set); this bridge keeps them in
+      // `diag-composer.jsonl`. Read-gated like the notification preferences, never forwarded, nothing
+      // leaves the host. A bridge no phone reports to writes nothing through it.
+      "/api/diag/composer",
       // The new-space sheet's folder list (M40/02, #289) — two SOLO routes that legitimately extend
       // this list, named here rather than exempted. Session-scoped through the same closure
       // `/api/launchers` rides, the read gated as a read and the star as a write, so a `?host=` call
@@ -1420,6 +1426,10 @@ const STATE_DIR_ENTRIES = [
   // The bridge's own log of a durable program's panes (ADR 0099), one file per pane inside this folder.
   // Written only by a bridge that drives `COLLIE_MUX=durable`: the factory that builds the writer is
   // never called for Herdr, tmux or zellij, so every other instance never has this folder.
+  // The composer diagnostic (bridge/diag-composer.ts): the heights a phone measured when its reply box sat
+  // below its screen, one JSON line each, at most 500 lines. Written by use and by nothing else: absent
+  // until a phone reports an off-screen box. Numbers and enums only, no text.
+  "diag-composer.jsonl",
   "durable",
   // The push guard's memory for asks that travel as data (ADR 0100), keyed on (host, toolCallId).
   // Written only when a pane that carries asks opens or closes one: a bridge with no durable pane,

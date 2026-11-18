@@ -20,6 +20,7 @@ import { readRegistryStatus } from "./theme/registry-status";
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import { readReportContext, type ReportContext } from "./report/context";
 import type { TroubleSignal } from "./report/signal";
+import type { ComposerDiagRecord } from "./composer-offscreen";
 import { REQUEST_ID, type HeldCancelAnswer, type SendReceiptRow, type SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
 import { boundedDraft, CLEAR_OUTCOMES, CLEAR_REASONS, type ClearBody, type ClearReceipt } from "./surface/clear";
@@ -2811,6 +2812,20 @@ export async function postTroubleSignal(signal: TroubleSignal, where?: { readonl
   if (where !== undefined) body.pane = where.paneId;
   if (where?.session !== undefined) body.session = where.session;
   await doReq<undefined>("/api/telemetry/trouble", { method: "POST", body: JSON.stringify(body) });
+}
+
+/**
+ * The composer diagnostic: the heights a phone measured when its reply box sat below the screen
+ * (lib/composer-offscreen.ts). Numbers, booleans and enums only; the bridge keeps it in one local file and
+ * refuses anything else. Fire and forget, through the transport below the busy signal, and a failure is
+ * ignored: this is a measurement, not something a person asked for.
+ */
+export async function postComposerDiag(record: ComposerDiagRecord): Promise<void> {
+  try {
+    await doReq<undefined>("/api/diag/composer", { method: "POST", body: JSON.stringify(record) });
+  } catch {
+    // Nothing to do: an older bridge answers 404, an offline phone throws, and neither is a person's problem.
+  }
 }
 
 /**

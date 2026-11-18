@@ -134,6 +134,7 @@ import {
   type SentSurface,
   type SentWriteAnswer,
 } from "./sent.ts";
+import { ComposerDiagStore, DIAG_COMPOSER_BODY_MAX, diagFileIo, parseComposerDiag } from "./diag-composer.ts";
 import {
   clearRecentRuns,
   memoryRecentRuns,
@@ -1744,6 +1745,8 @@ export function startServer(opts: {
   };
   /** Who the requester is, across both device gates — see {@link requestDevice}. */
   const whois = (req: Request): DeviceAuth => requestDevice(req, cfg, pairingGate);
+  // The composer diagnostic's file (bridge/diag-composer.ts): nothing touches the disk until a phone reports one.
+  const composerDiag = new ComposerDiagStore(diagFileIo(cfg.stateDir), { version: opts.version });
   const crewLead = opts.crewLead;
   const crewStatus = opts.crewStatus;
   const peerNotifier = opts.peerNotifier;
@@ -3585,6 +3588,28 @@ export function startServer(opts: {
         const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
         if (rt instanceof Response) return rt;
         return sendReceiptsRoute(rt, url.searchParams.get("pane"), req.headers.get("accept-encoding"));
+      }
+      // The composer diagnostic: a phone whose reply box sits below its screen sends the heights it measured,
+      // once. Numbers, booleans and three small enums, a fixed key set (bridge/diag-composer.ts), kept in
+      // `<stateDir>/diag-composer.jsonl` for a person on this host to read. Read-gated like the notification
+      // preferences: a paired device, with or without the write right, because a read-only phone shows the same
+      // fault. This machine's file only, never forwarded, nothing leaves the host.
+      if (pathname === "/api/diag/composer" && req.method === "POST") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        const raw = await req.text().catch(() => "");
+        if (raw.length > DIAG_COMPOSER_BODY_MAX) return text("bad composer record", 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `JSON.parse` output IS a JsonValue by construction; `parseComposerDiag` checks every key and value.
+          body = JSON.parse(raw) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const diag = parseComposerDiag(body);
+        if (diag === null) return text("bad composer record", 400);
+        if ((await composerDiag.record(diag, pairedLabel(req, pairingGate))) === "unwritable") return text("could not keep the record", 500);
+        return secure(new Response(null, { status: 204 }));
       }
       // Report a problem (ADR 0123): the setup block and, on `screen=1`, the pane's last rows, always
       // masked. A read for a paired device only, since the screen goes to a public issue if the person

@@ -25,6 +25,7 @@ import { useChatReady } from "@/hooks/use-chat-ready";
 import { usePaneStart } from "@/hooks/use-pane-start";
 import { useHandover, useHeldBody } from "@/hooks/use-handover";
 import { useLatestReply } from "@/hooks/use-latest-reply";
+import { useComposerOffscreenWatch } from "@/hooks/use-composer-offscreen";
 import { finishedTurnKey, useMirrorImages } from "@/hooks/use-mirror-images";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { useLocale } from "@/hooks/use-locale";
@@ -873,6 +874,9 @@ export function AgentChat({
   // badge its row wears in the Spaces list. A terminal session's header is untouched.
   const experimental = wearsExperimental(useSessionCard(scope));
   const gridless = !paneGrid.capable;
+  // If the reply box ends up below the screen, the phone sends its heights to the bridge, once, with no content
+  // (lib/composer-offscreen.ts). Draws nothing and changes nothing on screen.
+  useComposerOffscreenWatch({ zen, keyboardOpen: composing, paneKind: gridless ? "durable" : isShell ? "shell" : "agent" });
   const paneLive = useLive(paneId, scope);
   // AGENT VIEWS, the session's third body (components/agent-view-screen.tsx, hooks/use-agent-view-pane.ts):
   // a real agent session with a screen, on the lead (views live on the lead only; a crew member's routes
