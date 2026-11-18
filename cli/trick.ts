@@ -68,7 +68,7 @@ import {
 } from "../web/src/lib/tricks/schema.ts";
 import { readTricksFeature } from "../bridge/tricks/feature-switch.ts";
 import { readEnvMarkers } from "./beacon.ts";
-import { readTrickFolder } from "./trick-folder.ts";
+import { namedPictureWarnings, readTrickFolder } from "./trick-folder.ts";
 import { paneNotProvenShell, type PaneKind } from "./walky.ts";
 import type { CliContext } from "./context.ts";
 import { hillWordingWarnings } from "./hill-rules.ts";
@@ -678,6 +678,8 @@ export interface TrickCheckReport {
     wording: { key: string; text: string }[];
     /** The soft note that a tap on the trick's tile shows nothing new ({@link TAP_SHOWS_NOTHING}), or absent. Never fails the check. */
     tapNote?: string;
+    /** One warning for each `media/` or `captures/` file the output names that a proposal would not bring (trick-folder.ts `namedPictureWarnings`). Never fails the check. */
+    pictures: string[];
     stderr: string;
   };
 }
@@ -874,12 +876,13 @@ export async function checkRun(report: TrickCheckReport, env: CliContext["env"])
   const ran = await runAgainstFixture(manifest, report.folder, env);
   const { outcome, problem } = ran;
   const stderr = outcome.kind === "spawn-failed" ? "" : outcome.stderr;
-  const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], notes: [], wording: [], stderr };
+  const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], notes: [], wording: [], pictures: [], stderr };
   if (ran.parsed !== null) {
     run.parts = ran.parsed.parts.map((p) => `${p.part.at} ${p.part.id}`);
     run.refusals = ran.parsed.refusals;
     run.notes = ran.parsed.notes;
     run.wording = decisionWording(ran.parsed.decisions);
+    run.pictures = await namedPictureWarnings(report.folder, ran.parsed);
     if (problem === null && run.refusals.length === 0 && (await tapShowsNothing(manifest, report.folder, env, ran.parsed))) run.tapNote = TAP_SHOWS_NOTHING;
   }
   report.run = run;
@@ -950,6 +953,7 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     for (const n of run.notes) io.out(`  note: output ${n.path === "" ? "" : `${n.path} `}${n.reason}`);
     // Soft too: how a Decision is worded is the author's call (HILL_WRITING).
     for (const w of run.wording) io.out(`  warn: decision ${w.key}: ${w.text}`);
+    for (const line of run.pictures) io.out(`  warn: ${line}`);
     if (run.tapNote !== undefined) io.out(`  note: ${run.tapNote}`);
     if (run.problem !== null && run.stderr.trim() !== "") {
       io.err("  stderr:");
@@ -970,7 +974,7 @@ async function countCards(report: TrickCheckReport, crew: boolean): Promise<void
   if (report.manifest === undefined) return;
   const read = await readTrickFolder(report.folder);
   if (!read.ok) return;
-  report.cards = proposalCardCount({ manifest: report.manifest, files: read.files, warnings: [...new Set(report.warnings.map((w) => w.kind))], crew });
+  report.cards = proposalCardCount({ manifest: report.manifest, files: [...read.files, ...read.pictures], warnings: [...new Set(report.warnings.map((w) => w.kind))], crew });
 }
 
 export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): Promise<number> {

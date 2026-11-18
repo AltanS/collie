@@ -54,7 +54,7 @@ import { readTrickMedia, type TrickMediaFile } from "./media.ts";
 import { isUnlistedOfficialOrigin, shippedOfficialList, type OfficialEntry } from "./official.ts";
 import { originRepoName, type ProposalOrigin } from "./origin.ts";
 import { replaceTrickCode, writeProposedTrick } from "./proposal-install.ts";
-import { proposalHash, type ProposedFile } from "./propose-wire.ts";
+import { proposalHash, splitPictures, type ProposedFile } from "./propose-wire.ts";
 import { PROPOSAL_CHANGED } from "./proposals.ts";
 import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
 import { approvedCopyDir, approvedTrickDir, pendingTrickDir, tricksConfigDir, trickStateDir } from "./paths.ts";
@@ -2519,7 +2519,8 @@ export class TricksService implements TricksSurface {
       // Nothing is removed while a folder of this name is there; the write below refuses one anyway.
       await forgetLeftovers({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, id, at: new Date(this.now()).toISOString(), forget: this.deps.forgetTrick });
       // ... and the stage on disk must hash to those same bytes right before it is renamed into place.
-      const written = await writeProposedTrick(tricksConfigDir(this.deps.configDir), id, files, origin, { expect: codeHashOfFiles(files) });
+      // The code hash reads no picture the proposal brings (propose-wire.ts `splitPictures`).
+      const written = await writeProposedTrick(tricksConfigDir(this.deps.configDir), id, files, origin, { expect: codeHashOfFiles(splitPictures(files).code) });
       if (!written.ok) return { ok: false, message: written.code === "mismatch" ? PROPOSAL_CHANGED : written.reason };
       const placed = await this.approveWritten(id, written.codeHash, "The trick was written but changed before it could be approved, so it stays off.", { fresh: true });
       await this.freshScan();
@@ -2547,7 +2548,7 @@ export class TricksService implements TricksSurface {
       this.scanning = held;
       let placed: ProposalPlaced;
       try {
-        const written = await replaceTrickCode(tricksConfigDir(this.deps.configDir), id, files, origin, { expect: codeHashOfFiles(files) });
+        const written = await replaceTrickCode(tricksConfigDir(this.deps.configDir), id, files, origin, { expect: codeHashOfFiles(splitPictures(files).code) });
         placed = written.ok ? await this.approveWritten(id, written.codeHash, "The new version was written but changed before it could be approved.") : { ok: false, message: written.reason };
       } finally {
         if (this.scanning === held) this.scanning = null;

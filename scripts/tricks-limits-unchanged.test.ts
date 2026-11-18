@@ -39,6 +39,7 @@ const PINNED: ReadonlyArray<readonly [name: string, value: unknown, was: string]
   ["INPUT_RUN_MAX_BYTES", 25_165_824, "bridge/tricks/inputs.ts"],
   // bridge/tricks/propose-wire.ts
   ["PROPOSE_LIMITS", { files: 300, bytes: 5_242_880, depth: 8, pathChars: 256, stepBytes: 255 }, "bridge/tricks/propose-wire.ts"],
+  ["PROPOSE_PICTURES", { files: 50, bytes: 2_097_152 }, "bridge/tricks/propose-wire.ts"],
   // bridge/tricks/proposals.ts
   ["PROPOSALS_SENDER_OPEN_MAX", 2, "bridge/tricks/proposals.ts"],
   ["PROPOSALS_SENDER_HOUR_MAX", 6, "bridge/tricks/proposals.ts"],

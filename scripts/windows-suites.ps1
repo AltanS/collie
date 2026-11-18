@@ -14,7 +14,7 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 641 in all, each one named, with its reason:
+#              Today, 643 in all, each one named, with its reason:
 #              bridge 414: 174 from before 1.29.0 and 240 new: 143 listed in the next sentence, then 2 more of the trick-leftovers merge (one agent view picture, one official add test), 71 of the local API, its run token and the `watch` manifests ("The local API, bridge" below) and 24 the budget did not list ("Not listed before" below). The 143: (the data path 54 and the inside socket 17, then the Herdr and Tuios
 #                adapters 10, then Accounts 47, then 11 more of the data path for a dropped or failed data send and a shadowed part, then 1 for the pane's program environment read of pi (#793); see below). Of the 174, 15 (16 with the trick-leftovers merge, counted in the 2 above) are the agent view pictures (see "Agent view pictures, bridge" below). 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 6 are the hold socket tests, 7 the walky ones, 6 the walky sibling registry ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
@@ -186,7 +186,7 @@
 #                - 4 in bridge/accounts-store.test.ts, a good row, the duplicate row, the store add and the listener
 #                - 3 in bridge/launch-by-id.test.ts, a launch with an account, and Change login's start on a signed-in account
 #                - 1 in bridge/worktree-from-folder.test.ts, a worktree with an account
-#              cli 192 in all: 1 is new with the local API ("The local API, cli" below), 2 are the trick-add ones the trick-leftovers merges added to the 22 below, and of the other 189, 21 are new since 1.29.0: 3 of the hold card, 8 of the harness verbs, 3 of the first full trick run, 5 of the
+#              cli 194 in all: 1 is new with the local API ("The local API, cli" below), 2 are the trick-add ones the trick-leftovers merges added to the 22 below, 2 are the pictures a proposal brings (2026-11-18, in the 22 of cli/trick-propose.test.ts below), and of the other 189, 21 are new since 1.29.0: 3 of the hold card, 8 of the harness verbs, 3 of the first full trick run, 5 of the
 #                repository index and 2 of the proposal card in the session (all
 #                of the Hill verbs and the tricks), below. The other 168: 21 in the next paragraph, then 3 of the statusLine wrapper, 54 of walky talky, 21 of the agent view,
 #                and 69 of the Hill verbs and the tricks (72 with the 3 above; see "The Hill verbs and the tricks, cli" below). The 18 of
@@ -224,7 +224,7 @@
 #              Agent view, cli (21). cli/trick-view.test.ts drives the `trick view` verbs against a real bridge socket, as
 #                cli/walky.test.ts does, and Windows cannot bind it. Each of those tests is `socketTest`; the parse
 #                and screen-reading tests beside them run on Windows.
-#              The Hill verbs and the tricks, cli (72).
+#              The Hill verbs and the tricks, cli (74).
 #                28 are cli/hill.test.ts: each `socketTest` drives `collie hill` against a real walky socket, as cli/walky.test.ts
 #                does, and Windows cannot bind it (the verbs say so there). Four of them, "a picture under /tmp, for a bridge
 #                with a private /tmp", also stage from /tmp, which systemd's PrivateTmp hides.
@@ -233,10 +233,12 @@
 #                22 are cli/trick-add.test.ts ("collie trick add", "collie trick update", "collie trick remove", and the 5 of
 #                "collie trick add <url> with no folder", the repository's index, package J): the fixture
 #                cases build symlinks, exec bits and sh hooks. The source and hardening cases run on Windows.
-#                20 are cli/trick-propose.test.ts: 19 `socketTest` (the walky socket) and 1 `posixTest` (a symlink). The
+#                22 are cli/trick-propose.test.ts: 20 `socketTest` (the walky socket) and 2 `posixTest` (a symlink each). The
 #                first full trick run (2026-11-16) added 3: two run a proposed trick without its config.toml, one reads
-#                the one warning prefix, all three over the socket:
+#                the one warning prefix, all three over the socket. The pictures a proposal brings (2026-11-18) added 2:
+#                one sends them over the socket, one leaves a picture behind a link:
 #                - "refuses a symbolic link, even to a file inside the folder"
+#                - "a picture through a link stays behind: a linked file, a linked folder, a linked media/; the mode bit never goes"
 #                2 are cli/trick-kit/trick.test.ts, the helper's POSIX tools. Each name sits on one line, so the pin test can find it:
 #                - "t.sh runs without a shell, never throws, caps its output, stops on time, and hides BUN_BE_BUN from the child" (echo, head, sleep, env, /dev/zero)
 #                - "t.tool finds a program on PATH, else in the extra and user folders, PATH only under TRICK_TOOLS_ONLY_PATH=1" (sh on /usr/bin:/bin, a tool found by its executable bit)
@@ -268,7 +270,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$Out,
   [int]$MaxSkipsBridge = 414,
-  [int]$MaxSkipsCli = 192,
+  [int]$MaxSkipsCli = 194,
   [int]$MaxSkipsScripts = 35
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

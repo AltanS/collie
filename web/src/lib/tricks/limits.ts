@@ -5,7 +5,7 @@
 // built-ins, so the numbers live here and the bridge modules re-export them under their old names.
 // Change a number here and every reader, the reference page included, moves with it.
 
-import { HILL_GROUP_PARTS } from "../hill/wire";
+import { HILL_GROUP_PARTS, HILL_MEDIA_BYTES_MAX } from "../hill/wire";
 
 // ── A run (bridge/tricks/run.ts, service.ts) ─────────────────────────────────────────────────
 
@@ -123,6 +123,16 @@ export const PROPOSE_LIMITS = {
   pathChars: 256,
   /** Bytes of one step of a path, the common file system limit. */
   stepBytes: 255,
+} as const;
+
+/**
+ * The pictures a proposal brings from the top `media/` and `captures/` folders (bridge/tricks/propose-wire.ts):
+ * at most this many, each a PNG, JPEG or WebP by its first bytes of at most `bytes`, the most the phone is
+ * served of one picture (`HILL_MEDIA_BYTES_MAX`). They count toward {@link PROPOSE_LIMITS} too.
+ */
+export const PROPOSE_PICTURES = {
+  files: 50,
+  bytes: HILL_MEDIA_BYTES_MAX,
 } as const;
 
 /** Open proposals one sender may have. */

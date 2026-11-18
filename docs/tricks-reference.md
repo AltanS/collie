@@ -1662,7 +1662,7 @@ Tricks do not run on a Windows machine yet. [Collie on Windows](windows.md) says
 
 | Limit | Value |
 | --- | --- |
-| Pictures in `media/` and `captures/`, copied with the approved copy | at most 500 files and 64 MiB in all |
+| Pictures in `media/` and `captures/`, copied with the approved copy, from `collie trick add` and `collie trick propose` alike | at most 500 files and 64 MiB in all |
 | `SKILL.md` | at most 32 KiB. A larger file is refused, never cut |
 
 ### Timers
@@ -1741,6 +1741,7 @@ Tricks do not run on a Windows machine yet. [Collie on Windows](windows.md) says
 | Limit | Value |
 | --- | --- |
 | Files | at most 300, 5 MiB in all, 8 folders deep |
+| Pictures from `media/` and `captures/` | at most 50, a PNG, JPEG or WebP by its first bytes, 2 MiB each, counted in the files above. The card names each one. Any other file there stays behind |
 | Open at once | 2 per session, 4 per crew machine, 8 on the lead |
 | Per hour | 6 per session, 12 per machine |
 | The card closes by itself after | 3 days |
@@ -1784,7 +1785,7 @@ Every verb of `collie trick`.
 | `helper` | `collie trick helper <id\|folder>` | Rewrites a trick's `trick.ts` with the helper this Collie carries. |
 | `skill` | `collie trick skill [<id>]` | Prints what a trick that is on asks of an agent. With no id, prints how to write a trick. |
 | `guide` | `collie trick guide [--json]` | Prints how to write a trick and hand it to the person, as plain text for an agent. |
-| `propose` | `collie trick propose <folder> [--request-id <uuid>] [--json]` | Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on the Hill while it is on. Nothing runs before their yes. |
+| `propose` | `collie trick propose <folder> [--request-id <uuid>] [--json]` | Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on the Hill while it is on. Nothing runs before their yes. It brings the code and the pictures of `media/` and `captures/`; `config.toml` stays behind. |
 | `view` | `collie trick view <trick> <verb> [args]` | Runs one verb of an agent view, from the agent's pane. The verbs are the `trick view` commands below. |
 
 | Verb | Flag | What it does |

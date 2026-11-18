@@ -8,6 +8,7 @@ import { EXIT, type Io } from "./io.ts";
 import { realFiles } from "./sys.ts";
 import { cmdTrickDev, DEV_INPUTS_MARK, devTrigger, parseDevArgs, watchCounts, watchFolder } from "./trick-dev.ts";
 import { cmdTrickInit, type TrickDeps } from "./trick.ts";
+import { namedPictures } from "./trick-folder.ts";
 import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
 
 const dirs: string[] = [];
@@ -52,6 +53,28 @@ async function trickWith(d: Awaited<ReturnType<typeof deps>>, id: string, progra
   d.out.length = 0;
   return dir;
 }
+
+describe("the pictures a run names", () => {
+  test("a float sprite or an image the folder lacks is warned about, and the run still passes", async () => {
+    const d = await deps();
+    const doc = { v: 1, parts: [{ at: "float", id: "pet", mode: "stay", motion: "idle", sprite: { src: "media/fireball.png" } }] };
+    const dir = await trickWith(d, "pet", `console.log(${JSON.stringify(JSON.stringify(doc))});\n`, '["float"]');
+    expect(await cmdTrickDev(d, [dir])).toBe(EXIT.OK);
+    expect(d.out).toContain("  warn  media/fireball.png is named by the output but is not in the folder. The phone shows no picture there.");
+    await mkdir(join(dir, "media"));
+    await writeFile(join(dir, "media", "fireball.png"), new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]));
+    d.out.length = 0;
+    expect(await cmdTrickDev(d, [dir, "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(d.out.join("\n")).pictures).toEqual([]);
+  });
+
+  test("namedPictures finds an image's src, a sprite's src and a Decision picture's file, each once", () => {
+    const parts = [{ part: { view: [{ kind: "image", attrs: { src: "media/a.png" } }], sprite: { src: "media/b.png" } } }, { part: { sprite: { src: "media/a.png" } } }];
+    const decisions = [{ media: [{ file: "captures/c.jpg" }, { file: "notes/x.png" }] }];
+    expect(namedPictures([parts, decisions])).toEqual(["media/a.png", "media/b.png", "captures/c.jpg"]);
+    expect(namedPictures("media/a.png")).toEqual([]);
+  });
+});
 
 describe("the flags", () => {
   test("a folder, --tap with its --text and --node, --json and --watch", () => {

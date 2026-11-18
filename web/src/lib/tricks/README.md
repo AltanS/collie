@@ -565,9 +565,13 @@ bridge checks with. `--json` prints `{ guide, manifestKeys, places }`.
 **Propose** reads the folder as `collie trick check` reads it (a trick it refuses is never sent), then
 reads the files the hardened way (`readTrickFolder`): regular files only, a symbolic link anywhere
 refuses the folder, at most 300 files, 5 MB and 8 folders deep, the caps of `collie trick add`. Dot
-files and dot folders, `node_modules/`, `*.log`, the top `inputs/`, `media/` and `captures/` folders
-and `config.toml` stay behind (a proposal carries code only: the person adds pictures and settings on
-the machine), and the verb says how many. The files go as one line on the walky socket,
+files and dot folders, `node_modules/`, `*.log`, the top `inputs/` folder and `config.toml` stay
+behind (the person writes the settings on the machine), and the verb says how many. The top `media/`
+and `captures/` folders bring their pictures (since 2026-11-18; before, a proposed trick lost them): a
+regular file named `.png`, `.jpg`, `.jpeg` or `.webp` whose first bytes are a PNG, JPEG or WebP, at most
+2 MB each and 50 in all (`PROPOSE_PICTURES`), never through a link, read after the code so a picture
+never pushes code past the caps. Every other file there stays behind, and the verb names each one
+with its reason. The files go as one line on the walky socket,
 `{"op":"trick.propose",...}`, which may be up to 8 MiB because it opens with that op; a line that does
 not is held to the walky cap. The bridge reads at most two such lines at once, each within 30 seconds;
 a line's slot comes back once the line is read, and the answer closes the connection. Before
@@ -582,9 +586,10 @@ member reads every file with the same reader and forwards the proposal to its le
 steps, no `.` or `..` step, no dot step, no `node_modules` or `inputs` step, no backslash or colon, no
 control, bidi or invisible character, NFC only; no two names that fold to one (case and Unicode
 compatibility forms, `NFKC` then lower case), files and folders alike, and the reserved names compared
-folded too; no name used as a file and a folder; nothing in `media/` or `captures/` and no
-`config.toml` ("A proposal cannot carry a config.toml. Your person sets the trick up on the
-machine."); `trick.toml` at most 64 KiB, read by the
+folded too; no name used as a file and a folder; in `media/` and `captures/` (spelled so) only
+pictures, checked by name and by their first bytes, at most 2 MB each, 50 in all, never marked
+executable; no `config.toml` ("A proposal cannot carry a config.toml. Your person sets the trick up on
+the machine."); `trick.toml` at most 64 KiB, read by the
 strict manifest reader; an id Collie does not keep for itself (`collie`, `trick`, `tricks`, `hill`,
 `settings`).
 

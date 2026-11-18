@@ -35,6 +35,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **Opening a session waits for its first page of Chat for at most 600 ms from the tap.** The wait started only after the screen read had answered, so a slow screen read and a slow Chat read added up to 1,000 ms before the new session showed. The two reads now start together and the limit counts from the start.
+- **A trick an agent proposes keeps its pictures.** `collie trick propose` left the folder's `media/` and `captures/` behind, so after your yes the trick showed no picture where it named one. It now brings their PNG, JPEG and WebP pictures, at most 50 of 2 MB each, and the card names every picture it brings before you say yes. Any other file in those folders still stays behind, and `collie trick check --run` and `collie trick dev` warn when the output names a picture the folder lacks.
 
 ### Docs
 

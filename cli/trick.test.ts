@@ -427,6 +427,21 @@ describe("collie trick check", () => {
     expect(f.out.join("\n")).not.toContain(TAP_SHOWS_NOTHING);
   });
 
+  test("--run warns about a picture the output names that the folder lacks or a proposal would leave behind; never a failure", async () => {
+    const image = (src: string) => ({ kind: "image", attrs: { src, alt: "", w: "8", h: "8" } });
+    const doc = { v: 1, parts: [{ at: "session", id: "main", view: [image("media/here.png"), image("media/missing.png"), image("media/fake.png")] }] };
+    const dir = await folder('id = "pics"\nname = "P"\nrun = "program.ts"\nplaces = ["session"]\n', { "program.ts": prints(JSON.stringify(doc)), "media/fake.png": "<svg/>" });
+    await writeFile(join(dir, "media", "here.png"), new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]));
+    const d = await deps();
+    expect(await cmdTrickCheck(d, ["--run", dir])).toBe(EXIT.OK);
+    const warns = d.out.filter((line) => line.startsWith("  warn: media/"));
+    expect(warns).toEqual([
+      "  warn: media/missing.png is named by the output but is not in the folder. The phone shows no picture there.",
+      "  warn: media/fake.png is named by the output but is not a PNG, JPEG or WebP picture by its first bytes, so a proposal leaves it behind. The phone shows no picture there.",
+    ]);
+    expect(d.out.at(-1)).toBe("ok: no problems.");
+  });
+
   test("the checked-in fixture is clean", async () => {
     const d = await deps();
     expect(await cmdTrickCheck(d, [join(import.meta.dir, "..", "bridge", "tricks", "fixtures", "hello")])).toBe(EXIT.OK);

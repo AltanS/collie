@@ -1,4 +1,5 @@
 import { HILL_WRITING } from "../../cli/hill-rules.ts";
+import { PROPOSE_PICTURES } from "../../web/src/lib/tricks/limits.ts";
 import { TRICK_CONTRACT, TRICK_CONTRACT_DEFAULT } from "../../web/src/lib/tricks/schema.ts";
 
 // THE NOTES COLLIE SHIPS: the `AGENTS.md` that `collie trick init` writes. It lives on the bridge side so a
@@ -21,11 +22,13 @@ export const NOTES_FILE = "AGENTS.md";
  * v6 (2026-11-18): two plain facts, for an agent that writes a trick: a belt mark sits at the end of the scrolling
  * strip, off screen until the person scrolls, and `cwd` is the pane's folder, which can hold several repositories.
  * v7 (1.29.1): a button with `does: "draft"` fills an empty reply box and needs `drafts = "session"`.
+ * v8 (1.29.1, 2026-11-18): `collie trick propose` brings the pictures of `media/` and `captures/`, and the card
+ * names them.
  */
-export const NOTES_VERSION = 7;
+export const NOTES_VERSION = 8;
 
 /** Every version of the notes a Collie shipped. A proposal names an older one byte for byte as that version. */
-const NOTES_VERSIONS = [1, 2, 3, 4, 5, 6, 7] as const;
+const NOTES_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 type NotesVersion = (typeof NOTES_VERSIONS)[number];
 
 /**
@@ -109,6 +112,9 @@ const BELT_NOTE = " A belt mark sits at the end of the scrolling strip, off scre
 const DRAFT_NOTE = ` A button with \`does: "draft"\` puts its
 \`value\` into the reply box of the session the trick's page is open for, only when that box is empty, and never
 sends it: write \`drafts = "session"\` in \`trick.toml\`, or Collie refuses the part.`;
+/** v8: a proposal brings the pictures too, said after what the copy takes. */
+const PICTURES_NOTE = ` \`collie trick propose\` brings
+those pictures too, at most ${String(PROPOSE_PICTURES.files)} of ${String(PROPOSE_PICTURES.bytes / (1024 * 1024))} MB each, and its card names each one.`;
 /** v6: what `cwd` is, said after the facts. */
 const CWD_NOTE = " `cwd` is the pane's folder. A workspace folder can hold several repositories; look inside it.";
 
@@ -144,7 +150,7 @@ Not part of the code, so free to change: \`config.toml\` (settings for the progr
 the running copy at once), a top-level \`media/\`, \`captures/\` and \`inputs/\` folder, any \`*.log\`
 file, dot files and dot folders, and \`node_modules/\`. Only the code and \`config.toml\` are copied,
 with the PNG, JPEG and WebP pictures \`media/\` and \`captures/\` held at the moment of the yes. Any
-other file in those two folders is not copied, so code never goes there. \`node_modules/\` and dot
+other file in those two folders is not copied, so code never goes there.${version >= 8 ? PICTURES_NOTE : ""} \`node_modules/\` and dot
 files are not copied either, so the program cannot rely on them. A symbolic link anywhere in the
 folder refuses the trick: a trick holds regular files only. Keep state in \`trick.state\` (see below).
 The program must never write a code file into its own folder: in the approved copy that stops the trick.

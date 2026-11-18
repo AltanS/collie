@@ -26,7 +26,14 @@ function cardText(manifest: TrickManifest, files: Record<string, string>): strin
 describe("the notes init writes", () => {
   test("their text is pinned to NOTES_VERSION: a change to the text bumps the version and this hash", () => {
     const hash = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft)).digest("hex").slice(0, 16);
-    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 7, hash: "aacf3dffd3aabf41", draft: "e708d36c3ce94b50" });
+    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 8, hash: "b69910ed5436b700", draft: "5b6edf4eb83590db" });
+    // v7's bytes stay as written (the 1.29.1 staging), so a draft init wrote at v7 is still named, as v7.
+    const v7 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 7)).digest("hex").slice(0, 16);
+    expect({ hash: v7(false), draft: v7(true) }).toEqual({ hash: "aacf3dffd3aabf41", draft: "e708d36c3ce94b50" });
+    expect(shippedNotesVersion("legs", sampleAgents("legs", "ts", true, 7))).toBe(7);
+    // v8 says that a proposal brings the pictures, and v7 does not.
+    expect(sampleAgents("legs", "ts", true)).toContain("`collie trick propose` brings\nthose pictures too");
+    expect(sampleAgents("legs", "ts", true, 7)).not.toContain("collie trick propose` brings");
     // v6's bytes stay as shipped (1.29.0), so a draft init wrote at v6 is still named, as v6.
     const v6 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 6)).digest("hex").slice(0, 16);
     expect({ hash: v6(false), draft: v6(true) }).toEqual({ hash: "0059a80526fc454a", draft: "75802a20e01ac85b" });
