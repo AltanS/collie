@@ -16,9 +16,11 @@ import { cn } from "@/lib/utils";
 // approves (hooks/use-approve-hold.ts). Its words change with the hold, "Hold to switch on", "Keep holding…",
 // and for a key "Press again to confirm", all three in one slot sized by the widest, so nothing moves
 // (DESIGN.md §2). The fill is the belt Stop's (index.css `hold-fill-layer`), in the primary ink: this is a
-// yes, not a harm. `touch-none`: a finger on the button is a hold, never a pan of the chat, so the browser does not
-// take a thumb that drifts a few px and cancel the hold (hooks/use-approve-hold.ts). The chat scrolls from anywhere
-// else on the card.
+// yes, not a harm. `touch-pan-y` (2026-11-18, was `touch-none`): the button is a full-width row, and `touch-none` made
+// a swipe that began on it pan nothing, so a card taller than the screen could not be scrolled from its buttons. Now a
+// vertical swipe that starts on the button scrolls the chat (the browser takes the pan and fires `pointercancel`, which
+// ends the hold with no yes), and a sideways drift of the thumb is never a pan, so it cannot cancel the hold. A still
+// finger holds as before (hooks/use-approve-hold.ts).
 
 /** The hold's words for each kind of yes to a trick's code. */
 const HOLD_WORD = { on: "hill.hold.on", use: "hill.hold.use", always: "hill.hold.always" } as const;
@@ -83,7 +85,7 @@ export function HoldToApprove({ label, description, keyLabel, enabled, busy = fa
         title={notSent ? problem : undefined}
         {...data}
         {...props}
-        className={cn(optionSurface(tone), "relative touch-none select-none overflow-hidden [-webkit-touch-callout:none]", className)}
+        className={cn(optionSurface(tone), "relative touch-pan-y select-none overflow-hidden [-webkit-touch-callout:none]", className)}
       >
         {phase === "filling" && <span aria-hidden data-slot="hold-fill" style={fillStyle} className="hold-fill-layer pointer-events-none absolute inset-0 rounded-[inherit] bg-primary/20" />}
         {back !== null && (

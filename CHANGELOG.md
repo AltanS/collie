@@ -32,10 +32,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The cards that ask about a trick read "Collie tricks" on their first line.** The proposal card ("Switch on the trick X?") and the new-version card ("Use the new version of X?") show the tricks glyph where they showed the Collie mark and the word Collie.
+- **An answered trick card shrinks to one line in a session's Chat.** Once you switch a proposed trick on or decline it, the card becomes one small line, "Collie tricks", the trick's name and what happened, for example "hadoken: switched on", and it scrolls away with the conversation.
 - **The release page lists what changed and no update commands.** The commands stay in `docs/upgrading.md`, and the in-app update band shows its own.
 
 ### Fixed
 
+- **A trick's approval card no longer blocks scrolling in Chat.** A swipe that started on the Hold button did nothing, so a card taller than the screen could only be scrolled from above it. A vertical swipe on the button now scrolls the conversation, and holding the button still works.
 - **A trick's change shows on the phone at once.** After your yes to a new version, a switch on or a changed setting, the trick runs right away and the phone draws the result within a second or two, with no wait for the trick's timer. An edit of `config.toml` by hand runs it as soon as Collie sees the edit, within a few seconds. Every change of code still needs your yes.
 - **Opening a session waits for its first page of Chat for at most 600 ms from the tap.** The wait started only after the screen read had answered, so a slow screen read and a slow Chat read added up to 1,000 ms before the new session showed. The two reads now start together and the limit counts from the start.
 - **Renaming a tab from the phone changes the name you see for its session again.** A tab with one session in it showed the title the agent wrote itself and ignored the new tab name since 1.29.0. Collie now gives that one session the same name as the tab. A tab with more than one session keeps each session's own name. (#810)

@@ -123,9 +123,10 @@ describe("hold to approve", () => {
     expect(onApprove).toHaveBeenCalledTimes(1);
   });
 
-  it("the button is a hold target, never a pan: touch-action none", () => {
+  it("a swipe that starts on the button still pans the chat: touch-action pan-y, never none", () => {
     draw();
-    expect(button().className).toContain("touch-none");
+    expect(button().className).toContain("touch-pan-y");
+    expect(button().className).not.toContain("touch-none");
   });
 
   it("a hold ended by the page hiding, whose lift never arrives, leaves the button ready for the next press", async () => {

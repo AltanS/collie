@@ -129,8 +129,17 @@ function Age({ at }: { at: number }) {
  * new version of X?"). Read from the card's `ref`, never from its words. Its first line shows the tricks
  * glyph and "Collie tricks"; every other card of Collie's own keeps the Collie mark and its sender name.
  */
-function isTrickApproval({ from }: HillDecision): boolean {
+export function isTrickApproval({ from }: HillDecision): boolean {
   return from.kind === "collie" && (from.ref?.type === "proposal" || from.ref?.type === "version");
+}
+
+/** The tricks glyph on its 16px neutral tile: Collie's own cards about a trick, on the Hill and in a session's chat. Decorative: the name follows. */
+export function TrickApprovalMark() {
+  return (
+    <span aria-hidden data-slot="decision-trick-mark" className="flex size-4 shrink-0 items-center justify-center rounded-sm border border-border bg-secondary text-foreground">
+      <Icon name="tricks" className="size-[60%]" />
+    </span>
+  );
 }
 
 /**
@@ -138,13 +147,7 @@ function isTrickApproval({ from }: HillDecision): boolean {
  * size, or the app's own mark for a Decision of Collie's own. Decorative: the name follows.
  */
 function SenderMark({ decision, trickIcon }: { decision: HillDecision; trickIcon: string | undefined }) {
-  if (isTrickApproval(decision)) {
-    return (
-      <span aria-hidden data-slot="decision-trick-mark" className="flex size-4 shrink-0 items-center justify-center rounded-sm border border-border bg-secondary text-foreground">
-        <Icon name="tricks" className="size-[60%]" />
-      </span>
-    );
-  }
+  if (isTrickApproval(decision)) return <TrickApprovalMark />;
   if (decision.from.kind === "collie") {
     return (
       <span aria-hidden data-slot="decision-collie-mark" className="flex shrink-0">

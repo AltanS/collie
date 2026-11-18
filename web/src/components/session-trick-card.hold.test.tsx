@@ -127,15 +127,11 @@ const ok = (intent: string): HillAnswerState => ({
 });
 
 describe.each(["chat", "agent-view"] as const)("the card's colour says where it stands, in the %s", (host) => {
-  const cases: [string, HillAnswerState, HillDecision, string, RegExp][] = [
-    ["waits for the person: the needs-you red-orange", HILL_IDLE, decision, "waiting", /border-status-blocked\/50 bg-status-blocked\/8/u],
-    ["a yes in flight still waits", { phase: "sending", intent: "on", text: null }, decision, "waiting", /border-status-blocked\//u],
-    ["approved: a quiet green", ok("on"), decision, "approved", /border-status-done\/35 bg-status-done\/6/u],
-    ["declined with Not now: red", ok("later"), decision, "declined", /border-destructive\/40 bg-destructive\/6/u],
-    ["dismissed: red", ok("dismiss"), decision, "declined", /border-destructive\//u],
-    ["dismissed elsewhere: red", HILL_IDLE, { ...decision, state: "dismissed" }, "declined", /border-destructive\//u],
+  const cases: [string, HillAnswerState, HillDecision, RegExp][] = [
+    ["waits for the person: the needs-you red-orange", HILL_IDLE, decision, /border-status-blocked\/50 bg-status-blocked\/8/u],
+    ["a yes in flight still waits", { phase: "sending", intent: "on", text: null }, decision, /border-status-blocked\//u],
   ];
-  for (const [what, answer, shown, tone, surface] of cases) {
+  for (const [what, answer, shown, surface] of cases) {
     it(what, () => {
       const card = <ChatApprovalCard decision={shown} answer={answer} onSend={vi.fn()} onLater={vi.fn()} />;
       const view = render(
@@ -146,7 +142,6 @@ describe.each(["chat", "agent-view"] as const)("the card's colour says where it 
         ),
       );
       const root = view.container.querySelector<HTMLElement>('[data-slot="chat-approval"]')!;
-      expect(root.dataset.tone).toBe(tone);
       const panel = root.querySelector<HTMLElement>('[role="group"]')!;
       expect(panel.className).toMatch(surface);
       // A uniform border on all four sides and no left accent; the old amber tint is gone.
@@ -155,10 +150,10 @@ describe.each(["chat", "agent-view"] as const)("the card's colour says where it 
   }
 });
 
-// THE OPTIONS STAY AFTER AN ANSWER (Altan, 2026-11-17: "the yes option disappears causing a layout switch, it should
-// stay but receive a checkmark"). The same buttons, in the same places, the chosen one with a check mark and the chosen
-// look, the other disabled, and the status under them. jsdom has no layout, so "the same place" is held as the same
-// nodes in the same order with nothing inserted before or between them, plus equal rects where the engine gives any.
+// THE OPTIONS STAY WHILE THE ANSWER IS IN FLIGHT (Altan, 2026-11-17: "the yes option disappears causing a layout switch,
+// it should stay but receive a checkmark"): the same buttons, in the same places, the other disabled. Once the answer
+// landed the card is one line (Altan, 2026-11-18). jsdom has no layout, so "the same place" is held as the same nodes
+// in the same order.
 describe.each(["chat", "agent-view"] as const)("after an answer the options stay, in the %s", (host) => {
   function drawWith(answer: HillAnswerState) {
     const card = (a: HillAnswerState) => <ChatApprovalCard decision={decision} answer={a} onSend={vi.fn()} onLater={vi.fn()} />;
@@ -174,32 +169,15 @@ describe.each(["chat", "agent-view"] as const)("after an answer the options stay
   }
 
   it.each([
-    ["switched on", "on", "later"],
-    ["declined", "later", "on"],
-  ])("%s: the chosen option keeps its place with a check mark, the other is disabled, no row moves", (_, chosen, other) => {
-    const { options, redraw } = drawWith(HILL_IDLE);
-    const before = options();
-    const rects = before.map((b) => JSON.stringify(b.getBoundingClientRect()));
+    ["switched on", "on"],
+    ["declined", "later"],
+  ])("%s: the whole card collapses into one line, which is no card and holds no button", (_, chosen) => {
+    const { view, redraw } = drawWith(HILL_IDLE);
     redraw({ phase: "sending", intent: chosen, text: null });
     redraw(ok(chosen));
-    const after = options();
-    expect(after).toHaveLength(before.length);
-    after.forEach((button, i) => expect(button).toBe(before[i]));
-    expect(after.map((b) => JSON.stringify(b.getBoundingClientRect()))).toEqual(rects);
-    const pick = after.find((b) => b.dataset.intent === chosen)!;
-    const rest = after.find((b) => b.dataset.intent === other)!;
-    expect(pick.querySelector('[data-slot="option-chosen-mark"]')).not.toBeNull();
-    expect(pick).toHaveAttribute("data-chosen");
-    // The chosen look: the primary accent, never dimmed.
-    expect(pick.className).toContain("border-primary");
-    expect(pick.className).not.toContain("disabled:opacity");
-    expect(rest).toBeDisabled();
-    expect(rest.querySelector('[data-slot="option-chosen-mark"]')).toBeNull();
-    expect(rest.className).toContain("disabled:opacity-60");
-    // The status sits after the options, never before or between them.
-    const status = document.querySelector('[data-slot="chat-approval-status"]');
-    const list = document.querySelector('[data-slot="chat-approval-options"]')!;
-    if (status !== null) expect(list.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(view.container.querySelector('[data-slot="chat-approval"]')).toBeNull();
+    expect(view.container.querySelector("button")).toBeNull();
+    expect(view.container.querySelector('[data-slot="chat-approval-line"]')).not.toBeNull();
   });
 
   it("a yes in flight: the spinner on the chosen option, the other disabled, no row moves", () => {
@@ -213,7 +191,7 @@ describe.each(["chat", "agent-view"] as const)("after an answer the options stay
 });
 
 // NO NEW BOXES (Altan, 2026-11-18: "there is an ok row appearing, instead the selection should change, no new boxes").
-// After an answer, whatever it is, the card holds the same elements in the same order as before it. The one thing that
+// After an answer that did not land (or while one is in flight) the card holds the same elements in the same order as before it. The one thing that
 // may come into the page is the mark in an option's own 16px slot (the spinner, the check), an icon in a slot that was
 // there all along, so the list below leaves icons out.
 const elements = (root: Element) => [...root.querySelectorAll("*")].filter((el) => el.closest("svg") === null);
@@ -226,8 +204,7 @@ describe.each(["chat", "agent-view"] as const)("no row, line or box comes or goe
     receipt: { rid: "r", code: "rejected", reason: "These cards changed since this phone showed them.", state: "open", delivery: null, trick: null, at: 0 },
   };
   it.each<[string, HillAnswerState[]]>([
-    ["switched on", [{ phase: "sending", intent: "on", text: null }, ok("on")]],
-    ["declined", [{ phase: "sending", intent: "later", text: null }, ok("later")]],
+    ["a yes in flight", [{ phase: "sending", intent: "on", text: null }]],
     ["no answer came back", [{ phase: "sending", intent: "on", text: null }, { phase: "failed", intent: "on", text: null }]],
     ["refused", [{ phase: "sending", intent: "on", text: null }, refused]],
   ])("%s", (_, steps) => {
