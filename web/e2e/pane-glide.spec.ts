@@ -437,9 +437,11 @@ test("a slow pane read opens the plain way, with the slide, and the screen never
     type: "timing",
     description: `slow read: pointerdown→click ${Math.round(taps.click - taps.down)}ms, click→first pane frame ${Math.round(arrivedAt - taps.click)}ms`,
   });
-  // The tap cost what the read cost, and no more than the wait on top: the pane's first frame comes
-  // within the 500 ms read plus READY_WAIT_MS and a render.
-  expect(arrivedAt - taps.down).toBeLessThan(500 + 120 + 200);
+  // No wall-clock bound on the tap: a shared CI runner 30 to 40% slower failed one at 853 ms with no
+  // fault in the app (2026-11-18). The structure is checked instead: the loader waited on the read
+  // the finger started and made none of its own (the reads above), and the wait for the first Chat
+  // page counts from the start of the switch, pinned with a fake clock in `src/lib/loaders.test.ts`.
+  // The timing stays in the annotation for a person to read.
   await expect(screen(page)).toHaveClass(/slide-in-from-right/u);
   // Frames kept coming the whole time the read was out: the old screen stayed live.
   const gap = await longestFrameGap(page, tapAt, arrivedAt);
