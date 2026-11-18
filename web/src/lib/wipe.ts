@@ -47,6 +47,7 @@ import { mounted } from "@/lib/base-path";
 import { forgetAllDiffComments } from "@/lib/diff-comment-store";
 import { forgetAllCreateIntents } from "@/lib/create-intent";
 import { forgetAllTabPanes } from "@/lib/tab-pane-memory";
+import { forgetAllChatSilhouettes, forgetChatSilhouette } from "@/lib/chat-silhouette";
 import { forgetAllUnknownSends, forgetUnknownSend } from "@/lib/send-again";
 import { clearIntent, forgetAllSendIntents } from "@/lib/send-intent";
 import { clearAllDrafts, clearDraft, clearPutBack } from "@/lib/drafts";
@@ -65,7 +66,7 @@ import {
   NOT_PAIRED_BODY,
 } from "@/lib/pairing";
 import { rememberEndpoint } from "@/lib/push-endpoint";
-import type { Scope } from "@/lib/scope";
+import { paneScopeKey, type Scope } from "@/lib/scope";
 
 /** Why a wipe runs. See the header for who calls each one. */
 export type WipeReason = "unpair" | "revoked" | "expired" | "password";
@@ -207,6 +208,14 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     "tab-panes",
     () => {
       forgetAllTabPanes();
+    },
+  ],
+  [
+    // The silhouette of each pane's Chat page (lib/chat-silhouette.ts, sessionStorage): row kinds and heights, no content, but they key this pairing's machines and panes.
+    "chat-silhouettes",
+    (context) => {
+      if (context.reason === "password") forgetChatSilhouette(paneScopeKey(context.pane.scope, context.pane.paneId));
+      else forgetAllChatSilhouettes();
     },
   ],
   [
