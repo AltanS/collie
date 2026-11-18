@@ -141,8 +141,12 @@ export const v = {
   /** A small label. With `at` and `clock` it is a live time and needs no text. */
   chip: (text: string | undefined, attrs: { tone?: Tone; icon?: Icon; at?: Num; clock?: Clock; state?: "working" | "waiting" | "idle" | "done" | "gone"; current?: boolean; short?: string } = {}): Node =>
     node("chip", text, attrs),
-  /** A button: sends `intent` on a tap, or copies `value` with `does: "copy"`. Not on a Decision's view. */
-  button: (attrs: { label: string; intent?: string; tone?: Tone; disabled?: string; pressed?: "true" | "false" | "mixed"; confirm?: string; badge?: Num; icon?: Icon; hint?: string; does?: "copy"; value?: string }): Node =>
+  /**
+   * A button: sends `intent` on a tap, copies `value` with `does: "copy"`, or puts `value` into the reply box of
+   * the session the page is open for with `does: "draft"` (needs `drafts = "session"` in trick.toml; it never
+   * sends). Not on a Decision's view.
+   */
+  button: (attrs: { label: string; intent?: string; tone?: Tone; disabled?: string; pressed?: "true" | "false" | "mixed"; confirm?: string; badge?: Num; icon?: Icon; hint?: string; does?: "copy" | "draft"; value?: string }): Node =>
     node("button", undefined, attrs),
   /** A paragraph: text, or a list of runs and links. */
   para: (body: string | Node[], attrs: { role?: "heading" | "quote"; bullet?: string; term?: string } = {}): Node => inline("para", body, attrs),

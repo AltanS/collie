@@ -121,6 +121,12 @@ A kind outside the list is never drawn, and neither is a kind only Collie draws,
 questions or its reply box. A trick or an agent can choose what to show. Only Collie decides how it
 looks. The [Parts](tricks-reference.md#parts) section of the reference lists all 22 kinds.
 
+One button reaches the reply box. With `does` set to `draft`, a tap on a trick's page puts the
+button's text into the reply box of the session you opened the page from, and opens that session. It
+fills only an empty box and never sends: you read the text and tap Send. The trick asks for it with
+`drafts = "session"` in `trick.toml`, and its card says so before you switch it on
+([`button`](tricks-reference.md#button)).
+
 ## Example 1: a program trick
 
 A trick prints data. The phone draws it with Collie's own parts.
@@ -502,12 +508,14 @@ before.
 
 ### Powers, the environment and the warnings
 
-A trick cannot type for you, cannot put code on your phone, and asks only through the Hill. Past
-that, it can do what you can do.
+A trick cannot type for you, cannot put code on your phone, and asks only through the Hill. At most,
+a button can put a text into your empty reply box, and you send it yourself. Past that, it can do what
+you can do.
 
 **Powers.** A power is something a trick may reach beyond its own code: the environment names it asks
-for (`env`), the places it draws in (`places`), and the files it reads from your agent sessions
-(`inputs`). The About sheet lists them. A new version that changes one always asks you again. The
+for (`env`), the places it draws in (`places`), the files it reads from your agent sessions
+(`inputs`), and whether its buttons may put text into your reply box (`drafts`). The About sheet
+lists them. A new version that changes one always asks you again. The
 `menu` place is a power like any other place, and a Belt mark that names `sessions` only shows in fewer
 sessions, so it needs no new yes. Collie's own text also calls a power a right.
 

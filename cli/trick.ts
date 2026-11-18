@@ -44,6 +44,7 @@ import {
   AGENT_VIEW_WORDS,
   ACCESS_LINES,
   DECIDES_REPLY_WORDS,
+  DRAFTS_SESSION_LINE,
   isHostName,
   isTrickId,
   parseFacts,
@@ -826,7 +827,7 @@ export async function runAgainstFixture(manifest: TrickManifest, folder: string,
     });
     const problem = outcomeProblem(outcome, 400);
     if (problem !== null || outcome.kind !== "exited") return { outcome, problem, stdoutBytes: 0, parsed: null, decisionsListed: false };
-    const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places, contract: manifest.contract, decidesReply: manifest.decides === "reply" });
+    const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places, contract: manifest.contract, decidesReply: manifest.decides === "reply", draftsSession: manifest.drafts === "session" });
     const decisionsListed = asJsonObject(parseJson(outcome.stdout))?.decisions !== undefined;
     return { outcome, problem, stdoutBytes: new TextEncoder().encode(outcome.stdout).length, parsed, decisionsListed };
   } finally {
@@ -912,6 +913,7 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     }
     if (m.rules !== undefined) io.out(`  rules:  ${m.rules}. ${RULES_WORDS}`);
     if (m.decides === "reply") io.out(`  decides: reply. ${DECIDES_REPLY_WORDS}`);
+    if (m.drafts === "session") io.out(`  drafts: session. ${DRAFTS_SESSION_LINE}`);
     if (m.access !== undefined) io.out(`  access: ${m.access}. ${ACCESS_LINES[m.access]}`);
   }
   if (report.env.length > 0) {

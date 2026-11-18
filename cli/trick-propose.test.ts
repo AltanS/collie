@@ -77,10 +77,11 @@ describe("collie trick guide", () => {
     for (const place of PLACE_KINDS) expect(text).toMatch(new RegExp(`^  ${place} +\\S`, "mu"));
   });
 
-  test("is plain text of 80 to 140 lines: no colour codes, no em dash, no home path", () => {
+  test("is plain text of 80 to 150 lines: no colour codes, no em dash, no home path", () => {
     const lines = trickGuide();
     expect(lines.length).toBeGreaterThanOrEqual(80);
-    expect(lines.length).toBeLessThanOrEqual(140);
+    // 150 since 1.29.1: the guide names every manifest key on its own line, and `drafts` made it 141.
+    expect(lines.length).toBeLessThanOrEqual(150);
     const text = lines.join("\n");
     expect(text).not.toContain("\u001b");
     expect(text).not.toContain("—");

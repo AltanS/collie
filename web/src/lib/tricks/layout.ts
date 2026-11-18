@@ -198,7 +198,9 @@ export function reservedHeight(node: ViewNode): Reserve {
     case "chip":
       return { rem: LEAF_REM.chip, px: 0 };
     case "button":
-      return { rem: node.attrs.hint === undefined ? LEAF_REM.tap : LEAF_REM.tall, px: 0 };
+      // A draft button keeps the second line always: with no session to fill it says "Open a session first",
+      // and the button is the same height wherever it is drawn.
+      return { rem: node.attrs.hint === undefined && node.attrs.does !== "draft" ? LEAF_REM.tap : LEAF_REM.tall, px: 0 };
     case "para":
       return { rem: paraLines(node) * LEAF_REM.paraLine, px: 0 };
     case "line":

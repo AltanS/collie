@@ -20,11 +20,12 @@ export const NOTES_FILE = "AGENTS.md";
  * `collie tricks on` or `collie hill on`.
  * v6 (2026-11-18): two plain facts, for an agent that writes a trick: a belt mark sits at the end of the scrolling
  * strip, off screen until the person scrolls, and `cwd` is the pane's folder, which can hold several repositories.
+ * v7 (1.29.1): a button with `does: "draft"` fills an empty reply box and needs `drafts = "session"`.
  */
-export const NOTES_VERSION = 6;
+export const NOTES_VERSION = 7;
 
 /** Every version of the notes a Collie shipped. A proposal names an older one byte for byte as that version. */
-const NOTES_VERSIONS = [1, 2, 3, 4, 5, 6] as const;
+const NOTES_VERSIONS = [1, 2, 3, 4, 5, 6, 7] as const;
 type NotesVersion = (typeof NOTES_VERSIONS)[number];
 
 /**
@@ -86,7 +87,7 @@ look on PATH alone. \`collie trick dev\` passes every \`TRICK_*\` variable you s
 A Decision may carry a \`view\`: display nodes under its summary (a bar of chips, rows with their
 proof, a code hunk), at most 8 KiB, 100 nodes and 4 deep, with no button, card or image. The options
 are the taps. A Decision with \`replyTo\` types the person's answer into that session: write
-\`decides = "reply"\` in \`trick.toml\`, or Collie refuses it. When neither \`t.decide\` nor \`t.keepDecisions\` is called, the run wants no Decisions and the open ones
+\`decides = "reply"\` in \`trick.toml\`, or Collie refuses it.${version >= 7 ? DRAFT_NOTE : ""} When neither \`t.decide\` nor \`t.keepDecisions\` is called, the run wants no Decisions and the open ones
 are withdrawn. A thrown error shows one warn card in the trick's session, or fails the run when the
 trick has no session.
 `;
@@ -104,6 +105,10 @@ function agentsShLoop(id: string, draft: boolean, version: NotesVersion): string
 
 /** v6: where a belt mark sits, said after the places. */
 const BELT_NOTE = " A belt mark sits at the end of the scrolling strip, off screen until the person scrolls; the fixed block at the right is Collie's own.";
+/** v7 (1.29.1): the draft button and its right, said after `decides`. */
+const DRAFT_NOTE = ` A button with \`does: "draft"\` puts its
+\`value\` into the reply box of the session the trick's page is open for, only when that box is empty, and never
+sends it: write \`drafts = "session"\` in \`trick.toml\`, or Collie refuses the part.`;
 /** v6: what `cwd` is, said after the facts. */
 const CWD_NOTE = " `cwd` is the pane's folder. A workspace folder can hold several repositories; look inside it.";
 

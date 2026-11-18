@@ -670,8 +670,9 @@ export function AgentChat({
   // ring is a tick the composer raises when a tap on Send met the unchanged kept draft.
   const [cannotTell, setCannotTell] = useState<CannotTellFacts | null>(null);
   const [cannotTellRing, setCannotTellRing] = useState(0);
-  // A trick's own session, one level down: the one way a belt mark, a status item and the switcher open it.
-  const openTrickSession = useCallback((pane: AgentView) => nav.down(trickSessionPath(pane.paneId)), [nav]);
+  // A trick's own session, one level down: the one way a belt mark, a status item and the switcher open it. It is
+  // opened FOR this pane's session, so a draft button there fills this pane's reply box (when it is empty).
+  const openTrickSession = useCallback((pane: AgentView) => nav.down(trickSessionPath(pane.paneId), { forSession: true }), [nav]);
   // THE TRICKS' BELT MARKS (M94 slice 03): one per `belt` part, in manifest order, at the end of the belt's
   // scrolling strip after Collie's own pills, never in its pinned block. A tap goes to the trick with this
   // pane as `from`; it never touches this pane's reply box.

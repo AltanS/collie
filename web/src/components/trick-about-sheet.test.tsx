@@ -164,6 +164,23 @@ describe("TrickAboutSheet", () => {
     expect(readTrick({ ...wire, accessOff: true })?.accessOff).toBeUndefined();
   });
 
+  it("says the drafts right in the cards' line, only for a trick that carries it; the wire keeps only true", () => {
+    const line = "Its buttons can put text into the reply box of the session you are in. You read it and send it yourself.";
+    const rowsFor = (trick: WireTrickInfo): (string | null)[] => {
+      const { unmount } = open(trick);
+      const does = within(screen.getByRole("dialog")).getByRole("list", { name: "What it does" });
+      const rows = within(does).getAllByRole("listitem").map((li) => li.textContent);
+      unmount();
+      return rows;
+    };
+    expect(rowsFor({ ...FULL, warnings: undefined, draftsSession: true })).toContain(line);
+    expect(rowsFor({ ...FULL, warnings: undefined })).not.toContain(line);
+    const wire = { host: "lodge", id: "pouch", name: "Pouch", icon: "flask", on: true, state: "ok", places: ["session"] };
+    expect(readTrick({ ...wire, draftsSession: true })?.draftsSession).toBe(true);
+    expect(readTrick({ ...wire, draftsSession: "yes" })?.draftsSession).toBeUndefined();
+    expect(readTrick(wire)?.draftsSession).toBeUndefined();
+  });
+
   it("leaves out each row whose fact is absent, and the whole group when none is there", () => {
     open({ ...BASE, places: [] });
     expect(screen.queryByText("What it does")).toBeNull();

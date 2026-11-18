@@ -221,6 +221,8 @@ function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
     rows.push({ key: "runs-as-you", node: <span data-line="runs-as-you">{t("settings.tricks.about.runsAsYou")}</span> });
     rows.push({ key: "access", node: <span data-line="access">{t(ACCESS_LINE_KEYS[trick.access])}</span> });
   }
+  // `drafts = "session"`: its buttons may fill the reply box of the session you are in, and never send. The cards' line.
+  if (trick.draftsSession === true) rows.push({ key: "drafts", node: <span data-line="drafts">{t("settings.tricks.about.drafts")}</span> });
   for (const line of warningLines(trick)) {
     rows.push({
       key: `warn:${line.kind}`,

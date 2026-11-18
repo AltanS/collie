@@ -346,6 +346,22 @@ function clearStored(store: Storage, key: string): void {
   }
 }
 
+/**
+ * Put `text` into a pane's reply box, ONLY when the box holds nothing: no words (whitespace counts as none, as
+ * {@link saveDraft} reads it) and no chips. True when it was put there, exactly as given. False when the box
+ * holds the person's words: then nothing is written, so a draft is never overwritten and never appended to.
+ *
+ * A trick's `does = "draft"` button is the one caller (routes/trick-session.tsx). It writes through
+ * {@link saveDraft}, so the ADR 0017 gates hold: a pane at a password prompt drops the stored draft when its
+ * composer recognises the prompt. It never sends: the person reads the text in the box and taps Send.
+ */
+export function fillEmptyDraft(scope: Scope | undefined, paneId: string, text: string): boolean {
+  const held = loadDraftEntry(scope, paneId);
+  if (held !== null && (held.text.trim() !== "" || held.attachments.length > 0)) return false;
+  saveDraft(scope, paneId, text);
+  return true;
+}
+
 /** Drop a pane's draft from BOTH tiers. The password-prompt outcome (ADR 0017) calls this, and it is
  *  the reason the memory tier needs no gate of its own — see the note on `memory`. */
 export function clearDraft(scope: Scope | undefined, paneId: string): void {

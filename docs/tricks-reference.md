@@ -103,7 +103,7 @@ A program prints:
 
 **Shows.** A name, an icon, a tone, a subtitle, a badge, a progress meter, up to four action buttons and a `view`: a list of nodes of any kind in the Parts table.
 
-**A tap.** A button, or an action, sends its intent to the trick, which runs once with that tap. A `row` or a `link` with an `href` opens a web page or a session.
+**A tap.** A button, or an action, sends its intent to the trick, which runs once with that tap. A `row` or a `link` with an `href` opens a web page or a session. A button with `does` set to `draft` puts its text into the empty reply box of the session the page was opened from, and opens that session. Opened from the Dashboard or the bottom bar, the page is for no session, and such a button says "Open a session first".
 
 | Limit | Value |
 | --- | --- |
@@ -557,7 +557,7 @@ A part, in this page, is one node of a view: the building block a view is made o
 | `row` | One line: a title, an optional end word, and optionally a second line, chips and one trailing button. | in a group, in a list | yes |
 | `bar` | A strip of buttons, chips and links. With `role` `strip` it scrolls sideways as a band. | the top of a view, in a card, in a group | yes |
 | `chip` | A small label. `state` draws a dot, `current` marks the step, and `at` with `clock` makes it a live time. | in a card, in a row, in a bar | yes |
-| `button` | Sends one intent to the trick on a tap, or copies a text with `does` set to `copy`. | in a card, in a row, in a bar | no |
+| `button` | Sends one intent to the trick on a tap, copies a text with `does` set to `copy`, or puts a text into the reply box with `does` set to `draft`. | in a card, in a row, in a bar | no |
 | `para` | One paragraph of plain text, or of `run` and `link` kids. | the top of a view, in a card, in a group, in a row | yes |
 | `line` | One line of monospace screen text, such as a command or a log line. | the top of a view, in a card, in a group, in a code | yes |
 | `run` | A piece of text inside a `para` or a `line`, with its own style, link or live time. | in a para, in a line | yes |
@@ -779,13 +779,13 @@ A small label. `state` draws a dot, `current` marks the step, and `at` with `clo
 
 ### `button`
 
-Sends one intent to the trick on a tap, or copies a text with `does` set to `copy`.
+Sends one intent to the trick on a tap, copies a text with `does` set to `copy`, or puts a text into the reply box with `does` set to `draft`.
 
 **Sits.** in a card, in a row, in a bar.
 
 | Attribute | Type | Needed | Limit | What it is |
 | --- | --- | --- | --- | --- |
-| `intent` | intent | yes, unless `does` is `copy` | 1 to 48 of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit | The intent a tap sends to the trick. |
+| `intent` | intent | yes, unless `does` is `copy` or `draft` | 1 to 48 of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit | The intent a tap sends to the trick. |
 | `label` | text | yes | at most 24 characters | The words on the button. |
 | `tone` | tone | no | one of `plain`, `accent`, `warn`, `danger`, `ok`, `muted` | The tone of the button. |
 | `disabled` | text | no | at most 120 characters, may be empty | The reason the button cannot be used. An empty text means no reason is given. |
@@ -794,10 +794,10 @@ Sends one intent to the trick on a tap, or copies a text with `does` set to `cop
 | `badge` | count or dot | no | a count from 0 to 9999 as text, or "" for a dot | A count, or a dot, on the button. |
 | `icon` | icon | no | one of the icon words in Shared values | An icon on the button. |
 | `hint` | text | no | at most 120 characters | A short line of help for the button. |
-| `does` | word | no | one of `copy` | `copy` copies `value` to the phone's clipboard instead of sending an intent. |
-| `value` | text | yes, when `does` is `copy` | 1 to 1024 bytes, no control or invisible character | The one fixed text a tap sends with the intent, or the text `copy` copies. |
+| `does` | word | no | one of `copy`, `draft` | `copy` copies `value` to the phone's clipboard instead of sending an intent. `draft` puts `value` into the reply box of the session the page is open for, and opens that session. It never sends: the person reads it and taps Send. `draft` needs `drafts = "session"` in `trick.toml`, and it fills only an empty box. |
+| `value` | text | yes, when `does` is `copy` or `draft` | 1 to 1024 bytes, or with `does` `draft` 1 to 4000 characters; no control or invisible character but a line break and a tab | The one fixed text a tap sends with the intent, the text `copy` copies, or the text `draft` puts into the reply box. A `draft` value is at most 4000 characters, line breaks allowed. |
 
-**In an agent view.** A tap sends the label (and the label of the group it sits in). `value`, `does` and `pressed` are refused: Collie marks the pick, the agent does not. The label is one line of at most 60 characters, and says none of Collie's own words.
+**In an agent view.** A tap sends the label (and the label of the group it sits in). `value`, `does` (`draft` too) and `pressed` are refused: Collie marks the pick, the agent does not. The label is one line of at most 60 characters, and says none of Collie's own words.
 
 ```json
 {
@@ -1281,6 +1281,7 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 | `version` | text | no | 1 to 24 characters: letters, digits, `.`, `+` and `-`, such as `1.2.0` | 1 | The trick's own version. The About sheet shows it. Collie never compares it and reads no tag. |
 | `rules` | file name | yes, with `agent-view`; refused without it | a file in the trick's folder of at most 64 characters ending in `.md`, such as `rules.md` | 2 | The instructions the agent of a session reads. The person reads them whole before they switch the trick on. |
 | `decides` | word | no | `reply`. Refused on a trick that is only an agent view | 1 | Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again. |
+| `drafts` | word | no | `session`. Refused on a trick that is only an agent view | 1 | Whether its buttons may put text into a reply box. `session` lets a button set `does` to `draft`: a tap puts its `value` into the reply box of the session the page is open for, only when that box is empty, and never sends. Without it, a part with such a button is refused. The card says: "Its buttons can put text into the reply box of the session you are in. You read it and send it yourself." It is a right: a version that adds it asks again. |
 | `field` | list of tables | no | at most 12 `[[field]]` tables. Each has `key` (spelled like a trick id, each once), `kind` (`text`, `choice`, `switch` or `number`), `label` (at most 40 characters) and may have `hint` (at most 120), `default` and `required`. A `choice` lists 2 to 8 `options` of at most 40 characters; a `number` names whole `min` and `max` within 999999999 either way; a `text` value is one line of at most 200 characters; a `switch` is never `required` | 3 | Settings the person keeps for the trick, set in its About sheet on the phone. The program reads them in its facts as `values`. A value is the person's data and untrusted for the program: show it, never run it. A setting is never a secret: a key comes through `env`. A new or changed field is a new version and asks again; a changed value does not ask, and runs the trick once. |
 | `access` | word | no | `none`, `see` or `read`. Default `none` | 3 | How much of Collie's local API the trick reads through `t.api`. `see` reads lists and states, `read` adds the text of a screen. A right: a version that raises it asks again. See [Reading Collie through the local API](#reading-collie-through-the-local-api). Experimental. |
 
@@ -1382,7 +1383,17 @@ The program prints one JSON document on stdout and exits 0:
 | `fresh` | no | How long the parts stay fresh: 5s to 24h, one whole number and `s`, `m` or `h`, such as `90s`. Left out, 3 times `every`, at least 1 minute, or 10 minutes for a trick with no timer, and never more than 24h. Past it, the phone draws every tone as unknown. |
 | `decisions` | no | The Decisions to ask, at most 20. Left out, the open Decisions stay as they are. `[]` withdraws them all. See [The Hill](#the-hill). |
 
-There is no `draft` and no `open`: Collie ignores each with a note. A trick never writes into a reply box, and a tap never moves the phone. What a trick wants to show is a `link`. What it wants to tell the person is a Decision.
+There is no `draft` and no `open` key in the document: Collie ignores each with a note. What a trick wants to show is a `link`. What it wants to tell the person is a Decision.
+
+Collie never sends a trick's text into a session on its own. Text reaches a session in three ways, and each one waits for the person's own tap:
+
+| Way | What happens | What the trick needs |
+| --- | --- | --- |
+| A button with `does` set to `draft` | A tap puts the button's `value` into the reply box of the session the trick's page is open for, and opens that session. It fills only an empty box: a box with words is left as it is. Collie never sends it: the person reads it and taps Send. | `drafts = "session"` in `trick.toml` |
+| A Decision with `replyTo` | The person's answer is typed into that session as their own message. | `decides = "reply"` in `trick.toml` |
+| A button in an agent view | A tap sends the button's label to the session the view belongs to. | the place `agent-view` and its `rules` |
+
+Apart from a draft, which opens the session it filled, a tap never moves the phone. The trick learns nothing back: not whether the person sent the text, changed it or cleared it.
 
 ### Strict at write, tolerant at read
 
@@ -1396,6 +1407,7 @@ Collie checks strictly what a person or an agent writes: `trick.toml`, `collie h
 | A key or an attribute this Collie does not know, at any depth of a part, at contract 2 or newer | That part is refused alone, with an `unknown-key` refusal that names the key and ends: "A contract 2 trick uses only the keys this Collie knows, so the part is left out; the other parts draw." Collie keeps no last good version of it. |
 | A key this Collie does not know at the top of the document, beside `v`, `parts`, `asOf`, `fresh` and `decisions` | Ignored, with an `ignored` note, at every contract. Every part draws. A key that changes how a part draws or what a tap does goes in the part, never at the top. |
 | A bad value of a known field | That part is refused alone, and the other parts draw. The last good version of the part stays on the phone, marked old. |
+| A button with `does` set to `draft` in a trick whose `trick.toml` does not say `drafts = "session"` | That part is refused alone with "This trick did not say that its buttons put text into a reply box. Add drafts = "session" to trick.toml." The other parts draw. |
 | A bad Decision | That Decision is refused alone. Its open card stays as it is. |
 | A bad `asOf` or `fresh` | Refused alone. The parts still draw. |
 | A document that is too big, not JSON, not an object, with no usable `v`, or with `parts` that is not a list | The whole document is refused. The run counts as failed, and the last good parts stay, marked old. |
@@ -1592,6 +1604,7 @@ Tricks do not run on a Windows machine yet. [Collie on Windows](windows.md) says
 | A spark | 2 to 32 numbers |
 | A progress | `max` 1 to 12 |
 | A button's or an action's `value` | at most 1024 bytes |
+| A `draft` button's `value` | at most 4000 characters |
 
 ### Bound parts, contract 2
 
