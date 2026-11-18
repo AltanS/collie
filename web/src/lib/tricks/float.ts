@@ -76,6 +76,8 @@ export const FLOAT_IDLE_BOB_PX = 3;
 export const FLOAT_POP_SCALE = 1.2;
 /** Where a once motion that starts from a pet starts, down the pet's height from its top: about the height of a hand. */
 export const FLOAT_FROM_HAND = 0.4;
+/** How long a once part that arrives before the layer has its free area is kept for it, before it is dropped. */
+export const FLOAT_PENDING_MS = 2000;
 /** How long a once part with `from` waits for the stay picture it names to report where it is, before it starts as usual. */
 export const FLOAT_FROM_WAIT_MS = 1500;
 

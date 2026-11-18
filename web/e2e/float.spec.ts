@@ -176,8 +176,8 @@ function placeOf(transform: string) {
 }
 
 test.describe("a once picture that starts from a pet printed in the same run", () => {
-  for (const [along, flies] of [["start", "right"], ["end", "left"]] as const) {
-    test(`starts at the pet's front edge, 40% down, and flies ${flies} level (pet ${along === "start" ? "bottom left" : "bottom right"})`, async ({ page }) => {
+  for (const [along, flies, firstRun] of [["start", "right", false], ["end", "left", false], ["start", "right", true]] as const) {
+    test(`starts at the pet's front edge, 40% down, and flies ${flies} level (pet ${along === "start" ? "bottom left" : "bottom right"}${firstRun ? ", the trick's first float parts" : ""})`, async ({ page }) => {
       const ball = flatPng(400, 200);
       const state = { rev: 1 };
       await installApiStub(page);
@@ -187,7 +187,7 @@ test.describe("a once picture that starts from a pet printed in the same run", (
         // The phone first looks at the old run of the pet; the next run prints the pet again and the ball with it.
         const sheet = { src: "media/ryu.png", frames: 2, size: "l" };
         const ryu = (rev: number) => pet({ part: "ryu", rev }, { id: "ryu", mode: "stay", motion: "perch", edge: "bottom", along, sprite: sheet });
-        const parts = state.rev === 1 ? [ryu(1)] : [ryu(2), pet({ part: "ball", rev: 2 }, { id: "ball", mode: "once", motion: "fly-across", from: "ryu", sprite: { src: "media/ball.png", frames: 2, size: "m" } })];
+        const parts = state.rev === 1 ? (firstRun ? [] : [ryu(1)]) : [ryu(2), pet({ part: "ball", rev: 2 }, { id: "ball", mode: "once", motion: "fly-across", from: "ryu", sprite: { src: "media/ball.png", frames: 2, size: "m" } })];
         const reply: TricksReply = { rev: state.rev, tricks: [PET], parts, present: parts.map((p) => `${p.host}/${p.trick}/${p.part}`) };
         return route.fulfill({ contentType: "application/json", body: JSON.stringify(reply) });
       });
@@ -198,7 +198,8 @@ test.describe("a once picture that starts from a pet printed in the same run", (
       });
       await page.route("**/api/tricks/lodge/pet/media/ball.png*", (route) => route.fulfill({ contentType: "image/png", body: ball }));
       await page.goto("/");
-      await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+      // A first-ever run has no float part held yet: the layer draws nothing until the pet and the ball arrive.
+      if (!firstRun) await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
       // Let the screen settle: a landmark that arrives late moves the pet, and the ball starts from where the pet is.
       await page.waitForTimeout(2500);
       state.rev = 2;

@@ -17,7 +17,11 @@ import { TrickFloatLayer } from "./trick-float-layer";
 const nav = { down: vi.fn() };
 vi.mock("@/hooks/use-nav", () => ({ useNav: () => nav }));
 vi.mock("@/lib/authed-url", () => ({ useAuthedUrl: () => ({ url: "blob:pet", failed: false }) }));
-vi.mock("@/hooks/use-float-region", () => ({ useFloatRegion: () => ({ region: { x: 0, y: 92, w: 390, h: 544 }, reach: { x: 0, y: 88, w: 390, h: 552 } }) }));
+/** Whether the free area has been measured: a layer that has just been asked to draw has none for a frame. */
+const measured = vi.hoisted(() => ({ ready: true }));
+vi.mock("@/hooks/use-float-region", () => ({
+  useFloatRegion: () => (measured.ready ? { region: { x: 0, y: 92, w: 390, h: 544 }, reach: { x: 0, y: 88, w: 390, h: 552 } } : null),
+}));
 
 const AS_OF = new Date().toISOString();
 /** A part as the wire stores it: JSON, so no typed part is built here. */
@@ -100,6 +104,7 @@ const pets = () => [...document.querySelectorAll<HTMLElement>('[data-slot="float
 const shots = () => [...document.querySelectorAll<HTMLElement>('[data-slot="float-shot"]')];
 
 beforeEach(() => {
+  measured.ready = true;
   localStorage.clear();
   reduceMotion(false);
   nav.down.mockClear();
@@ -385,5 +390,47 @@ describe("a once picture from a pet", () => {
     await loadSheet(shots()[0]!, 32, 32);
     expect(shots()[0]?.dataset.from).toBeUndefined();
     expect(firstFrame()).toBeDefined();
+  });
+
+  it("plays a shot that arrives with the trick's first float part, before the free area is measured, and waits for its pet", async () => {
+    measured.ready = false;
+    const { store, replace } = storeWith([]);
+    const view = await mount(store);
+    await act(async () => replace([PET(), BEAM()], 2));
+    // The layer wants to draw now but has no free area yet: the shot is held, not dropped.
+    expect(shots()).toEqual([]);
+    measured.ready = true;
+    await act(async () => {
+      view.rerender(
+        <MemoryRouter initialEntries={["/"]}>
+          <TrickFloatLayer trickSessions={[PAGE]} store={store} />
+        </MemoryRouter>,
+      );
+    });
+    expect(shots()).toHaveLength(1);
+    expect(shots()[0]?.dataset.from).toBeUndefined();
+    await loadSheet(shots()[0]!, 32, 32);
+    expect(firstFrame()).toBeUndefined();
+    await loadSheet(pets()[0]!, 48, 48);
+    expect(shots()[0]?.dataset.from).toBe("pet");
+    expect(firstFrame()).toEqual({ x: 334 - 16, y: 592 + 0.4 * 48 - 16 });
+  });
+
+  it("drops a shot that arrived before the free area and is still without one after the hold", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    measured.ready = false;
+    const { store, replace } = storeWith([]);
+    const view = await mount(store);
+    await act(async () => replace([PET(), BEAM()], 2));
+    vi.setSystemTime(Date.now() + 2500);
+    measured.ready = true;
+    await act(async () => {
+      view.rerender(
+        <MemoryRouter initialEntries={["/"]}>
+          <TrickFloatLayer trickSessions={[PAGE]} store={store} />
+        </MemoryRouter>,
+      );
+    });
+    expect(shots()).toEqual([]);
   });
 });

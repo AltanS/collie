@@ -15,6 +15,7 @@ import { TrickBoundary } from "@/lib/tricks/boundary";
 import {
   FLOAT_FROM_WAIT_MS,
   FLOAT_IDLE_BOB_PX,
+  FLOAT_PENDING_MS,
   FLOAT_POP_SCALE,
   FLOAT_SETTLE_MS,
   FLOAT_WANDER_EVERY_MS,
@@ -376,8 +377,13 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
   const [shot, setShot] = useState<FloatSpec | null>(null);
   const seen = useRef(new Map<string, string>());
   const primed = useRef(false);
-  const latest = useRef({ here, drawing, reduced });
-  latest.current = { here, drawing, reduced };
+  // A part that arrives while the layer has not measured its free area yet (the trick's first float part makes the
+  // layer want to draw, and the area is read a frame later) is held, by key, until the area is there. It is not
+  // held for a screen that is covered, a device that has floating things off, or reduced motion: those drop it.
+  const pending = useRef(new Map<string, number>());
+  const holdable = wanted && !covered && !reduced;
+  const latest = useRef({ here, drawing, reduced, holdable });
+  latest.current = { here, drawing, reduced, holdable };
   const sync = state.rev;
   useEffect(() => {
     if (sync === null) return;
@@ -395,7 +401,11 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
     primed.current = true;
     // What was there when the phone first looked is old news: only a part that arrives or changes after that plays.
     if (first) return;
-    const { here: shown, drawing: can, reduced: calm } = latest.current;
+    const { here: shown, drawing: can, reduced: calm, holdable: later } = latest.current;
+    if (!can && later) {
+      for (const key of arrived) pending.current.set(key, Date.now());
+      return;
+    }
     if (!can || calm) return;
     for (const key of arrived) {
       const spec = shown.find((candidate) => candidate.key === key);
@@ -403,11 +413,24 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
       if (queue.current.offer(spec) === "play") setShot(spec);
     }
   }, [parts, sync]);
+  // The free area is there: what arrived before it, and not long ago, plays now.
+  useEffect(() => {
+    if (!drawing) return;
+    const { here: shown } = latest.current;
+    const now = Date.now();
+    for (const [key, at] of pending.current) {
+      pending.current.delete(key);
+      const spec = shown.find((candidate) => candidate.key === key);
+      if (spec === undefined || now - at > FLOAT_PENDING_MS) continue;
+      if (queue.current.offer(spec) === "play") setShot(spec);
+    }
+  }, [drawing]);
   // Anything that takes the screen away ends the shot and drops the one that waits.
   useEffect(() => {
     if (drawing) return;
     queue.current.cancel();
     setShot(null);
+    if (!latest.current.holdable) pending.current.clear();
   }, [drawing, screen, pane?.paneId]);
   const finishShot = () => setShot(queue.current.finish());
 
