@@ -74,6 +74,12 @@ export const FLOAT_SETTLE_MS = 300;
 export const FLOAT_IDLE_BOB_PX = 3;
 /** The biggest scale of a `pop`, about its centre. */
 export const FLOAT_POP_SCALE = 1.2;
+/** Where a once motion that starts from a pet starts, down the pet's height from its top: about the height of a hand. */
+export const FLOAT_FROM_HAND = 0.4;
+/** How long a once part that arrives before the layer has its free area is kept for it, before it is dropped. */
+export const FLOAT_PENDING_MS = 2000;
+/** How long a once part with `from` waits for the stay picture it names to report where it is, before it starts as usual. */
+export const FLOAT_FROM_WAIT_MS = 1500;
 
 // ── The box maths ────────────────────────────────────────────────────────────────────────────
 
@@ -550,14 +556,22 @@ function fade(t: number): number {
  * inside the region: a fly-across and an arc go from one side to the other, a pop opens at a spot with room
  * for its biggest size. The picture fades in at the start and out at the end.
  *
- * Without `from`, the side it starts from and its height come from the key. With `from`, the centre of the
- * stay picture the part names (the point is where that picture is now), the motion starts there and flies
- * away from it: toward the farther of the two side edges of the region, that is, away from the nearer side.
- * A fly-across keeps the pet's height, an arc starts at it and bends toward the side with more room, a pop
- * opens on it. The start is held inside the region, so a pet whose box is bigger than the picture's still
- * gives a path that never leaves it.
+ * Without `from`, the side it starts from and its height come from the key. With `from`, the drawn box of
+ * the stay picture the part names (the box where that picture is now, in the same coordinates as the
+ * region), the motion starts at the picture's HAND: the FRONT edge (the right edge when it flies right, the
+ * left edge when it flies left) at {@link FLOAT_FROM_HAND} of the picture's height from its top, and the
+ * shot's CENTRE is on that point. It flies away from the picture: toward the farther of the two side edges
+ * of the region. A fly-across keeps that height to the far side, an arc starts there and bends toward the
+ * side with more room, a pop opens there.
+ *
+ * THE START MAY SIT OUTSIDE THE REGION. A perched picture stands on its landmark with no gap (in `reach`),
+ * so the hand of a small pet and a big shot can put the shot's first box over the pet and the edge landmark
+ * below it. That first step is exact, and it is invisible (the fade starts at zero). Every later step is
+ * held inside the region, so over the fade-in (an eighth of the motion) the shot eases from the hand to the
+ * nearest place inside it, and the path never crosses a landmark beyond the pet's own spot. When the hand
+ * already lies inside the region (the usual case) the two are the same point and the flight is level.
  */
-export function pathOf(opts: { motion: (typeof FLOAT_ONCE_MOTIONS)[number]; key: string; rev: number; dims: Dims; region: Box; from?: Point | undefined }): OncePath {
+export function pathOf(opts: { motion: (typeof FLOAT_ONCE_MOTIONS)[number]; key: string; rev: number; dims: Dims; region: Box; from?: Box | undefined }): OncePath {
   const { motion, region, dims, from } = opts;
   const seed = `${opts.key}@${opts.rev}`;
   const durationMs = FLOAT_ONCE_MS[motion];
@@ -565,14 +579,21 @@ export function pathOf(opts: { motion: (typeof FLOAT_ONCE_MOTIONS)[number]; key:
   const spanY = Math.max(0, region.h - dims.h);
   const clampX = (x: number): number => Math.min(Math.max(x, region.x), region.x + spanX);
   const clampY = (y: number): number => Math.min(Math.max(y, region.y), region.y + spanY);
-  const leftToRight = from === undefined ? unit(seed, 7) < 0.5 : from.x <= region.x + region.w / 2;
-  const x0 = from === undefined ? (leftToRight ? region.x : region.x + spanX) : clampX(from.x - dims.w / 2);
+  const leftToRight = from === undefined ? unit(seed, 7) < 0.5 : from.x + from.w / 2 <= region.x + region.w / 2;
+  const hand: Point | undefined = from === undefined ? undefined : { x: leftToRight ? from.x + from.w : from.x, y: from.y + FLOAT_FROM_HAND * from.h };
+  // The top left of the shot's box when its centre is on the hand, before it is held in the region.
+  const rawX = hand === undefined ? undefined : hand.x - dims.w / 2;
+  const rawY = hand === undefined ? undefined : hand.y - dims.h / 2;
+  const x0 = rawX === undefined ? (leftToRight ? region.x : region.x + spanX) : clampX(rawX);
   const x1 = leftToRight ? region.x + spanX : region.x;
   const xAt = (t: number): number => x0 + (x1 - x0) * t;
-  const yFrom = from === undefined ? undefined : clampY(from.y - dims.h / 2);
+  /** The first step is the exact hand, the others are held in the region. */
+  const exactStart = (steps: PathStep[]): PathStep[] =>
+    steps.map((step, i) => (i === 0 && rawX !== undefined && rawY !== undefined ? { ...step, x: rawX, y: rawY } : step));
+  const yFrom = rawY === undefined ? undefined : clampY(rawY);
   if (motion === "fly-across") {
     const y = yFrom ?? region.y + (0.15 + 0.7 * unit(seed, 8)) * spanY;
-    return { durationMs, steps: [0, 0.12, 0.88, 1].map((t) => ({ offset: t, x: xAt(t), y, scale: 1, opacity: fade(t) })) };
+    return { durationMs, steps: exactStart([0, 0.12, 0.88, 1].map((t) => ({ offset: t, x: xAt(t), y, scale: 1, opacity: fade(t) }))) };
   }
   if (motion === "arc") {
     const base = yFrom ?? region.y + spanY;
@@ -584,15 +605,15 @@ export function pathOf(opts: { motion: (typeof FLOAT_ONCE_MOTIONS)[number]; key:
       const t = i / 8;
       return { offset: t, x: xAt(t), y: base + (up ? -1 : 1) * 4 * rise * t * (1 - t), scale: 1, opacity: fade(t) };
     });
-    return { durationMs, steps };
+    return { durationMs, steps: exactStart(steps) };
   }
   const grown = { w: dims.w * FLOAT_POP_SCALE, h: dims.h * FLOAT_POP_SCALE };
   const spot =
-    from === undefined
+    hand === undefined
       ? fraction(region, grown, 0.1 + 0.8 * unit(seed, 9), 0.1 + 0.8 * unit(seed, 10))
       : {
-          x: Math.min(Math.max(from.x - grown.w / 2, region.x), region.x + Math.max(0, region.w - grown.w)),
-          y: Math.min(Math.max(from.y - grown.h / 2, region.y), region.y + Math.max(0, region.h - grown.h)),
+          x: Math.min(Math.max(hand.x - grown.w / 2, region.x), region.x + Math.max(0, region.w - grown.w)),
+          y: Math.min(Math.max(hand.y - grown.h / 2, region.y), region.y + Math.max(0, region.h - grown.h)),
         };
   const at = { x: spot.x + (grown.w - dims.w) / 2, y: spot.y + (grown.h - dims.h) / 2 };
   const scales: [number, number, number][] = [
@@ -601,7 +622,7 @@ export function pathOf(opts: { motion: (typeof FLOAT_ONCE_MOTIONS)[number]; key:
     [0.6, 1, 1],
     [1, 1, 0],
   ];
-  return { durationMs, steps: scales.map(([offset, scale, opacity]) => ({ offset, x: at.x, y: at.y, scale, opacity })) };
+  return { durationMs, steps: exactStart(scales.map(([offset, scale, opacity]) => ({ offset, x: at.x, y: at.y, scale, opacity }))) };
 }
 
 /** The box a path step covers, with its scale about its centre. */
@@ -642,6 +663,11 @@ export class OnceQueue<T extends Shot> {
   private start(shot: T): void {
     this.playing = shot;
     this.started.set(shot.trick, this.now());
+  }
+
+  /** The shot really starts now (it waited for its pet): the rate counts from here. */
+  began(trick: string): void {
+    if (this.playing?.trick === trick) this.started.set(trick, this.now());
   }
 
   /** A shot arrives: `play` it now, `wait` for the one on screen, or `drop` it. */

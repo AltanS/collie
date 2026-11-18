@@ -1159,7 +1159,7 @@ export interface FloatPart {
   edge?: FloatEdge;
   /** With `perch` only: where along the edge it stands. Absent: `end`. */
   along?: FloatAlong;
-  /** With a `once` part only: the `id` of a `stay` part of this trick. While that picture is on screen the motion starts at it. */
+  /** With a `once` part only: the `id` of a `stay` part of this trick. While that picture is on screen the motion starts at its hand (its front edge, 40% down its height). */
   from?: string;
   sprite: FloatSprite;
   /** The sprite sheet's row: a chip state. Absent: `idle`. */

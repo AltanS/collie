@@ -179,9 +179,10 @@ describe("a picture never meets a landmark", () => {
     for (const motion of FLOAT_ONCE_MOTIONS) {
       for (let n = 0; n < 60; n++) {
         const dims: Dims = { w: 72 * (n % 2 === 0 ? 0.62 : 1), h: 72 };
-        const from = { x: region.x + unit(`fx${String(n)}`, 1) * region.w, y: region.y + unit(`fy${String(n)}`, 2) * region.h };
+        const from: Box = { x: region.x + unit(`fx${String(n)}`, 1) * (region.w - 30), y: region.y + unit(`fy${String(n)}`, 2) * (region.h - 40), w: 30, h: 40 };
         const path = pathOf({ motion, key: `m1/pet/r${String(n)}`, rev: n, dims, region, from });
-        for (const step of path.steps) {
+        // The first step is the hand itself, invisible, and may hang past the region by the pet's own spot.
+        for (const step of path.steps.slice(1)) {
           const box = stepBox(step, dims);
           expect(within(region, box), `${motion} ${String(n)}`).toBe(true);
           for (const landmark of landmarks) expect(overlaps(box, landmark)).toBe(false);
@@ -422,6 +423,19 @@ describe("the once queue", () => {
     expect(queue.finish()).toEqual({ trick: "a" });
   });
 
+  it("counts the rate from the moment a shot that waited for its pet really begins", () => {
+    const time = clock();
+    const queue = new OnceQueue<{ trick: string }>(time.now);
+    expect(queue.offer({ trick: "a" })).toBe("play");
+    time.advance(1200);
+    queue.began("a");
+    queue.finish();
+    time.advance(FLOAT_ONCE_EVERY_MS - 1);
+    expect(queue.offer({ trick: "a" })).toBe("drop");
+    time.advance(1);
+    expect(queue.offer({ trick: "a" })).toBe("play");
+  });
+
   it("stops everything on cancel and keeps the rate", () => {
     const time = clock();
     const queue = new OnceQueue<{ trick: string }>(time.now);
@@ -524,55 +538,74 @@ describe("the float place in a document", () => {
 
 describe("a once motion that starts from a pet", () => {
   const region: Box = { x: 0, y: 92, w: 390, h: 544 };
-  const dims: Dims = { w: 48 * (74 / 120), h: 48 };
+  const dims: Dims = { w: 48, h: 48 };
   const centre = (box: Box) => ({ x: box.x + box.w / 2, y: box.y + box.h / 2 });
   const opts = { key: "m1/pet/spark", rev: 1, dims, region };
+  /** A pet: 72 px high, 44 wide, standing on the landmark below the region (the reach, 4 px past the region). */
+  const petAt = (x: number, y = 640 - 72): Box => ({ x, y, w: 44, h: 72 });
+  /** The box of the step at `offset`. */
+  const stepAt = (path: OncePath, offset: number): PathStep => {
+    const step = path.steps.find((entry) => entry.offset === offset);
+    if (step === undefined) throw new Error(`no step at ${String(offset)}`);
+    return step;
+  };
 
-  it("starts a fly-across at the centre of the pet and flies to the right edge when the pet is on the left half", () => {
-    const from = { x: 90, y: 400 };
-    const path = pathOf({ ...opts, motion: "fly-across", from });
-    const began = stepBox(startOf(path), dims);
-    expect(centre(began)).toEqual(from);
+  it("starts a fly-across with its centre on the front (right) edge of the pet at 40% of its height, flying right from the left half", () => {
+    const pet = petAt(8);
+    const path = pathOf({ ...opts, motion: "fly-across", from: pet });
+    expect(centre(stepBox(startOf(path), dims))).toEqual({ x: pet.x + pet.w, y: pet.y + 0.4 * pet.h });
     const last = stepBox(lastStep(path), dims);
     expect(last.x + last.w).toBe(region.x + region.w);
-    // Level with the pet the whole way.
+    // Level with the hand the whole way, and the first step is the same point as the rest.
     expect(new Set(path.steps.map((step) => step.y)).size).toBe(1);
     expect(path.steps.map((step) => step.x)).toEqual(path.steps.map((step) => step.x).toSorted((a, b) => a - b));
   });
 
-  it("flies to the left edge when the pet is on the right half: away from the nearer side", () => {
-    const from = { x: 310, y: 300 };
-    const path = pathOf({ ...opts, motion: "fly-across", from });
-    expect(centre(stepBox(startOf(path), dims))).toEqual(from);
+  it("starts at the front (left) edge of a pet on the right half and flies left: away from the nearer side", () => {
+    const pet = petAt(390 - 8 - 44, 300);
+    const path = pathOf({ ...opts, motion: "fly-across", from: pet });
+    expect(centre(stepBox(startOf(path), dims))).toEqual({ x: pet.x, y: pet.y + 0.4 * pet.h });
     const last = stepBox(lastStep(path), dims);
     expect(last.x).toBe(region.x);
+    expect(new Set(path.steps.map((step) => step.y)).size).toBe(1);
     expect(path.steps.map((step) => step.x)).toEqual(path.steps.map((step) => step.x).toSorted((a, b) => b - a));
   });
 
-  it("starts an arc at the pet and ends at the farther side, bending toward the side with more room", () => {
-    const low = pathOf({ ...opts, motion: "arc", from: { x: 100, y: 600 } });
-    expect(centre(stepBox(startOf(low), dims))).toEqual({ x: 100, y: 600 });
+  it("starts an arc at the hand and ends at the farther side, bending toward the side with more room", () => {
+    const low = pathOf({ ...opts, motion: "arc", from: petAt(60, 520) });
+    expect(centre(stepBox(startOf(low), dims))).toEqual({ x: 60 + 44, y: 520 + 0.4 * 72 });
     expect(stepBox(lastStep(low), dims).x).toBe(region.x + region.w - dims.w);
     // Near the bottom: room above is larger, so the arc rises.
     expect(Math.min(...low.steps.map((step) => step.y))).toBeLessThan(startOf(low).y);
-    const high = pathOf({ ...opts, motion: "arc", from: { x: 100, y: 120 } });
+    const high = pathOf({ ...opts, motion: "arc", from: petAt(60, 110) });
     // Near the top: room below is larger, so the arc dips.
     expect(Math.max(...high.steps.map((step) => step.y))).toBeGreaterThan(startOf(high).y);
   });
 
-  it("opens a pop on the pet", () => {
-    const from = { x: 200, y: 300 };
-    const path = pathOf({ ...opts, motion: "pop", from });
+  it("opens a pop on the hand", () => {
+    const pet = petAt(150, 300);
+    const path = pathOf({ ...opts, motion: "pop", from: pet });
+    // 150 is on the left half: the front edge is the right one.
     for (const step of path.steps) {
       const at = centre(stepBox(Object.assign({}, step, { scale: 1 }), dims));
-      expect(at.x).toBeCloseTo(from.x, 6);
-      expect(at.y).toBeCloseTo(from.y, 6);
+      expect(at.x).toBeCloseTo(pet.x + pet.w, 6);
+      expect(at.y).toBeCloseTo(pet.y + 0.4 * pet.h, 6);
     }
   });
 
-  it("holds a start at the edge of the region inside it", () => {
-    const path = pathOf({ ...opts, motion: "fly-across", from: { x: 2, y: region.y + 1 } });
-    for (const step of path.steps) expect(within(region, stepBox(step, dims))).toBe(true);
+  it("starts exactly at the hand of a small pet on the edge even when the box overlaps the landmark below, then eases into the region", () => {
+    // A 32 px pet on the edge: its hand is 13 px below its top, so a 72 px shot centred there hangs 23 px past the region's foot.
+    const pet: Box = { x: 8, y: 640 - 32, w: 32, h: 32 };
+    const big: Dims = { w: 72, h: 72 };
+    const path = pathOf({ ...opts, dims: big, motion: "fly-across", from: pet });
+    const first = stepBox(startOf(path), big);
+    expect(centre(first)).toEqual({ x: pet.x + pet.w, y: pet.y + 0.4 * pet.h });
+    expect(within(region, first)).toBe(false);
+    // Every step from the end of the fade-in is inside the region, and level.
+    const rest = path.steps.slice(1);
+    for (const step of rest) expect(within(region, stepBox(step, big))).toBe(true);
+    expect(new Set(rest.map((step) => step.y)).size).toBe(1);
+    expect(startOf(path).opacity).toBe(0);
   });
 
   it("falls back to the normal start without a pet: the side and the height come from the key", () => {
@@ -582,6 +615,7 @@ describe("a once motion that starts from a pet", () => {
     for (let n = 0; n < 20; n++) starts.add(startOf(pathOf({ ...opts, key: `m1/pet/k${String(n)}`, motion: "fly-across" })).x);
     // From one side or the other of the region, not from a pet.
     expect([...starts].toSorted((a, b) => a - b)).toEqual([region.x, region.x + region.w - dims.w]);
+    expect(stepAt(plain, 0).opacity).toBe(0);
   });
 });
 
