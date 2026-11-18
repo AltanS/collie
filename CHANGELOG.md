@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A trick's button can write a prompt into your reply box for you to send.** On a trick's page opened from a session, a tap puts the button's text into that session's empty reply box and opens the session; you read it and tap Send yourself. Collie never sends it, never touches words already in the box, and asks for your yes first, because the trick must ask for this right (`drafts = "session"`).
 - **A trick can draw a small moving picture over the app.** A new place, `float`, shows one picture from the trick's own media folder: it plays one motion and leaves, or it stays and shows what the trick is doing. It stays out of the way of the header, the Belt, the composer and every question, never blocks a tap, and hides while a card asks you something or you type. "Floating things" in Settings, Appearance, turns every picture off on a device, and each trick keeps its own switch. A picture that rests on an edge can open its trick's Page when the trick says so.
+- **`COLLIE_AUTH_RETURN=1` sends `/auth/` back to the app.** For a front door that signs in on every path and has no page at `/auth/`, such as a tunnel with built-in sign-in, Sign in on the Access refused strip now lands back in the app instead of on the "Nothing is configured" page. The default is unchanged. Thanks @oliver-leung (#803).
 
 ### Changed
 
