@@ -17,7 +17,7 @@ import { TrickFloatLayer } from "./trick-float-layer";
 const nav = { down: vi.fn() };
 vi.mock("@/hooks/use-nav", () => ({ useNav: () => nav }));
 vi.mock("@/lib/authed-url", () => ({ useAuthedUrl: () => ({ url: "blob:pet", failed: false }) }));
-vi.mock("@/hooks/use-float-region", () => ({ useFloatRegion: () => ({ x: 0, y: 92, w: 390, h: 544 }) }));
+vi.mock("@/hooks/use-float-region", () => ({ useFloatRegion: () => ({ region: { x: 0, y: 92, w: 390, h: 544 }, reach: { x: 0, y: 88, w: 390, h: 552 } }) }));
 
 const AS_OF = new Date().toISOString();
 /** A part as the wire stores it: JSON, so no typed part is built here. */
@@ -83,6 +83,17 @@ async function mount(store: TricksStore, path = "/") {
     await store.syncTricks(1);
   });
   return view;
+}
+
+/** A loaded sheet: jsdom loads no picture, so the test says how big it is and fires the load. */
+async function loadSheet(el: Element, w: number, h: number) {
+  const img = el.querySelector("img");
+  if (img === null) throw new Error("no picture in the element");
+  Object.defineProperty(img, "naturalWidth", { configurable: true, value: w });
+  Object.defineProperty(img, "naturalHeight", { configurable: true, value: h });
+  await act(async () => {
+    fireEvent.load(img);
+  });
 }
 
 const pets = () => [...document.querySelectorAll<HTMLElement>('[data-slot="float-pet"]')];
@@ -238,5 +249,73 @@ describe("a once picture", () => {
     });
     await act(async () => replace([part("spark", ONCE({ motion: "arc" }), 2)], 2));
     expect(shots()).toEqual([]);
+  });
+});
+
+describe("the picture's shape and place", () => {
+  it("draws a tall frame at the full height of its size, its width from the sheet, and stands it on the landmark below", async () => {
+    // Four 74 x 120 frames side by side: a 296 x 120 sheet. Size l is 72 px high.
+    const { store } = storeWith([part("pet", STAY({ sprite: { src: "media/pet.png", frames: 4, size: "l" } }))]);
+    await mount(store);
+    const pet = pets()[0]!;
+    await loadSheet(pet, 296, 120);
+    const sprite = pet.querySelector<HTMLElement>('[data-slot="float-sprite"]')!;
+    expect(sprite.style.height).toBe("72px");
+    expect(Number.parseFloat(sprite.style.width)).toBeCloseTo(72 * (74 / 120), 3);
+    // Standing on the landmark: the reach ends at y 640, the picture is 72 high.
+    expect(pet.style.transform).toContain("translate3d(");
+    const moved = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(pet.style.transform);
+    const x = Number(moved?.[1]);
+    const y = Number(moved?.[2]);
+    expect(y + 72).toBe(640);
+    // `along` left out is the end: the right side.
+    expect(x + Number.parseFloat(sprite.style.width)).toBe(390 - 8);
+  });
+
+  it("is not drawn when the region cannot hold it", async () => {
+    // A single frame 33 times wider than high is 2400 px wide at 72 px high: wider than the free area.
+    const { store } = storeWith([part("pet", STAY({ sprite: { src: "media/pet.png", size: "l" } }))]);
+    await mount(store);
+    await loadSheet(pets()[0]!, 4000, 120);
+    expect(pets()).toEqual([]);
+  });
+});
+
+describe("a once picture from a pet", () => {
+  const PET = (extra: JsonObject = {}): WireTrickPart => ({ ...part("spark", STAY({ sprite: { src: "media/pet.png", size: "m" }, ...extra })), part: "pet" });
+  const BEAM = (rev = 1, extra: JsonObject = {}): WireTrickPart => ({ ...part("spark", ONCE({ motion: "fly-across", from: "pet", ...extra }), rev), part: "beam" });
+
+  it("starts at the pet when it is on screen", async () => {
+    const { store, replace } = storeWith([PET()]);
+    await mount(store);
+    await loadSheet(pets()[0]!, 48, 48);
+    await act(async () => replace([PET(), BEAM()], 2));
+    expect(shots().map((el) => el.dataset.from)).toEqual(["pet"]);
+  });
+
+  it("falls back to the normal start when the pet is not drawn yet", async () => {
+    const { store, replace } = storeWith([PET()]);
+    await mount(store);
+    // The sheet has not loaded, so the pet has no place yet.
+    await act(async () => replace([PET(), BEAM()], 2));
+    expect(shots()).toHaveLength(1);
+    expect(shots()[0]?.dataset.from).toBeUndefined();
+  });
+
+  it("falls back when the part names no stay part on screen", async () => {
+    const { store, replace } = storeWith([PET()]);
+    await mount(store);
+    await loadSheet(pets()[0]!, 48, 48);
+    await act(async () => replace([PET(), BEAM(1, { from: "ghost" })], 2));
+    expect(shots()).toHaveLength(1);
+    expect(shots()[0]?.dataset.from).toBeUndefined();
+  });
+
+  it("falls back when the only pet on screen is another trick's: a pet of another trick is no origin", async () => {
+    const { store, replace } = storeWith([{ ...part("other", STAY({ sprite: { src: "media/pet.png" } })), part: "pet" }]);
+    await mount(store);
+    await loadSheet(pets()[0]!, 32, 32);
+    await act(async () => replace([{ ...part("other", STAY({ sprite: { src: "media/pet.png" } })), part: "pet" }, BEAM()], 2));
+    expect(shots()[0]?.dataset.from).toBeUndefined();
   });
 });

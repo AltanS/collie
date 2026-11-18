@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router";
 
 import { sessionOfMark } from "@/components/belt-trick-mark";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useFloatCover, usePageVisible, useReducedMotion } from "@/hooks/use-float-cover";
-import { useFloatRegion } from "@/hooks/use-float-region";
+import { useFloatRegion, type FloatSpace } from "@/hooks/use-float-region";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { useAuthedUrl } from "@/lib/authed-url";
@@ -14,23 +14,27 @@ import { trickSessionPath } from "@/lib/nav";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import {
   FLOAT_IDLE_BOB_PX,
+  FLOAT_POP_SCALE,
   FLOAT_SETTLE_MS,
-  FLOAT_SIZE_PX,
   FLOAT_WANDER_EVERY_MS,
   FLOAT_WANDER_GLIDE_MS,
   OnceQueue,
-  boxSide,
+  boxDims,
   capStay,
+  drawnDims,
+  fitsRegion,
   floatScreenOf,
   floatsForScreen,
+  frameAspect,
   pathOf,
   readFloat,
   restOf,
   rowFor,
-  sheetRows,
+  spriteInBox,
   unit,
   type Box,
   type FloatSpec,
+  type Point,
 } from "@/lib/tricks/float";
 import { FLOAT_ONCE_MOTIONS, parsePartKey, trickMediaPath, type WireTrickPart } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, useTrickParts, type TricksStore } from "@/lib/tricks/store";
@@ -61,32 +65,40 @@ interface TrickFloatLayerProps {
   store?: TricksStore;
 }
 
-/** One sheet frame's size and row, drawn from the sheet at `url`. Transform only. */
-function Sprite({ spec, url, reduced, paused, onLoaded }: { spec: FloatSpec; url: string | null; reduced: boolean; paused: boolean; onLoaded?: () => void }) {
-  const px = FLOAT_SIZE_PX[spec.size];
-  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
-  const rows = natural === null ? 1 : sheetRows(natural.w, natural.h, spec.frames);
-  const row = rowFor(spec.mood, rows);
+/** What a loaded sheet says of its size, in pixels. */
+interface Natural {
+  w: number;
+  h: number;
+}
+
+/**
+ * One frame of a sheet, `aspect` wide for each unit of height (its own shape: it need not be square), and the
+ * mood's row. Transform only. The frame is as high as the part's size says, so a tall picture stands at full height.
+ */
+function Sprite({ spec, url, aspect, reduced, paused, onLoaded }: { spec: FloatSpec; url: string | null; aspect: number; reduced: boolean; paused: boolean; onLoaded?: (natural: Natural) => void }) {
+  const drawn = drawnDims(spec, aspect);
+  const [loaded, setLoaded] = useState(false);
+  const row = rowFor(spec.mood, spec.rows);
   const sheet = useRef<HTMLImageElement>(null);
   const animation = useRef<Animation | null>(null);
   useEffect(() => {
     const el = sheet.current;
     animation.current = null;
-    if (el === null || natural === null || reduced || spec.frames < 2 || !canAnimate(el)) return;
-    const y = -row * px;
+    if (el === null || !loaded || reduced || spec.frames < 2 || !canAnimate(el)) return;
+    const y = -row * drawn.h;
     const run = el.animate(
-      [{ transform: `translate3d(0, ${y}px, 0)` }, { transform: `translate3d(${-(spec.frames - 1) * px}px, ${y}px, 0)` }],
+      [{ transform: `translate3d(0, ${y}px, 0)` }, { transform: `translate3d(${-(spec.frames - 1) * drawn.w}px, ${y}px, 0)` }],
       { duration: (spec.frames / spec.fps) * 1000, iterations: Number.POSITIVE_INFINITY, easing: `steps(${spec.frames}, jump-none)` },
     );
     animation.current = run;
     return () => run.cancel();
-  }, [natural, reduced, spec.frames, spec.fps, row, px]);
+  }, [loaded, reduced, spec.frames, spec.fps, row, drawn.w, drawn.h]);
   useEffect(() => {
     if (paused) animation.current?.pause();
     else animation.current?.play();
-  }, [paused, natural, reduced, spec.frames, spec.fps, row]);
+  }, [paused, loaded, reduced, spec.frames, spec.fps, row]);
   return (
-    <span aria-hidden data-slot="float-sprite" className="relative block overflow-hidden" style={{ width: px, height: px }}>
+    <span aria-hidden data-slot="float-sprite" className="relative block overflow-hidden" style={{ width: drawn.w, height: drawn.h }}>
       {url !== null && (
         <img
           ref={sheet}
@@ -94,11 +106,11 @@ function Sprite({ spec, url, reduced, paused, onLoaded }: { spec: FloatSpec; url
           alt=""
           draggable={false}
           onLoad={(e) => {
-            setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight });
-            onLoaded?.();
+            setLoaded(true);
+            onLoaded?.({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight });
           }}
-          className={cn("absolute top-0 left-0 block max-w-none select-none", natural === null && "opacity-0")}
-          style={{ width: px * spec.frames, height: "auto", transform: `translate3d(0, ${-row * px}px, 0)` }}
+          className={cn("absolute top-0 left-0 block max-w-none select-none", !loaded && "opacity-0")}
+          style={{ width: drawn.w * spec.frames, height: drawn.h * spec.rows, transform: `translate3d(0, ${-row * drawn.h}px, 0)` }}
         />
       )}
     </span>
@@ -108,28 +120,36 @@ function Sprite({ spec, url, reduced, paused, onLoaded }: { spec: FloatSpec; url
 /** A stay picture at rest in the free area: on its edge, in place, or wandering from spot to spot. */
 function FloatPet({
   spec,
-  region,
+  space,
   reduced,
   paused,
   trickName,
   onOpen,
+  onPlace,
 }: {
   spec: FloatSpec;
-  region: Box;
+  space: FloatSpace;
   reduced: boolean;
   paused: boolean;
   trickName: string;
   onOpen: (() => void) | undefined;
+  /** Where the drawn picture is now (a box, or null once it is gone): a once part that says `from` starts there. */
+  onPlace: (key: string, drawn: Box | null) => void;
 }) {
   const { url } = useAuthedUrl(trickMediaPath(spec.host, spec.trickId, spec.src, spec.rev));
-  const side = boxSide(spec);
+  const { region, reach } = space;
+  const [natural, setNatural] = useState<Natural | null>(null);
+  const aspect = frameAspect(natural, spec.frames, spec.rows);
+  const box = boxDims(spec, aspect);
+  const drawn = drawnDims(spec, aspect);
   const [step, setStep] = useState(0);
   const [ready, setReady] = useState(false);
   const bob = useRef<HTMLSpanElement>(null);
   useEffect(() => {
+    if (natural === null) return;
     const frame = requestAnimationFrame(() => setReady(true));
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [natural]);
   const wanders = spec.motion === "wander" && !reduced && !paused;
   useEffect(() => {
     if (!wanders) return;
@@ -147,9 +167,21 @@ function FloatPet({
     );
     return () => run.cancel();
   }, [spec.motion, reduced, paused]);
-  const at = restOf(spec, region, reduced ? 0 : step);
+  // A picture whose box is wider or taller than the free area is not drawn: nothing may spill over a landmark.
+  const fits = fitsRegion(box, region);
+  const at = restOf(spec, region, reduced ? 0 : step, aspect, reach);
+  const inside = spriteInBox(spec, drawn, box);
+  const placed = natural !== null && fits;
+  const left = at.x + inside.x;
+  const top = at.y + inside.y;
+  const { w, h } = drawn;
+  useEffect(() => {
+    if (!placed) return;
+    onPlace(spec.key, { x: left, y: top, w, h });
+    return () => onPlace(spec.key, null);
+  }, [placed, left, top, w, h, spec.key, onPlace]);
+  if (!fits) return null;
   const glide = spec.motion === "wander" ? FLOAT_WANDER_GLIDE_MS : FLOAT_SETTLE_MS;
-  const inset = (side - FLOAT_SIZE_PX[spec.size]) / 2;
   return (
     <div
       data-slot="float-pet"
@@ -158,14 +190,14 @@ function FloatPet({
       data-trick={spec.trickId}
       className="pointer-events-none absolute top-0 left-0 will-change-transform animate-in fade-in duration-300 motion-reduce:animate-none"
       style={{
-        width: side,
-        height: side,
+        width: box.w,
+        height: box.h,
         transform: `translate3d(${at.x}px, ${at.y}px, 0)`,
         transition: ready && !reduced ? `transform ${glide}ms ease-in-out` : undefined,
       }}
     >
-      <span ref={bob} className="absolute block" style={{ left: inset, top: inset }}>
-        <Sprite spec={spec} url={url} reduced={reduced} paused={paused} />
+      <span ref={bob} className="absolute block" style={{ left: inside.x, top: inside.y }}>
+        <Sprite spec={spec} url={url} aspect={aspect} reduced={reduced} paused={paused} onLoaded={setNatural} />
       </span>
       {onOpen !== undefined && (
         <button
@@ -180,29 +212,38 @@ function FloatPet({
   );
 }
 
-/** A once-shot: one motion along its path in the free area, then it is over. Never takes a pointer. */
-function FloatShot({ spec, region: asked, paused, onDone }: { spec: FloatSpec; region: Box; paused: boolean; onDone: () => void }) {
-  // The free area as it was when the shot began: a shot of at most three seconds is not laid out again.
+/**
+ * A once-shot: one motion along its path in the free area, then it is over. Never takes a pointer. With
+ * `origin` (the centre of the stay picture its part names, when that one is on screen) the motion starts there.
+ */
+function FloatShot({ spec, region: asked, origin: from, paused, onDone }: { spec: FloatSpec; region: Box; origin: Point | undefined; paused: boolean; onDone: () => void }) {
+  // The free area and the start as they were when the shot began: a shot of at most three seconds is not laid out again.
   const [region] = useState(asked);
+  const [origin] = useState(from);
   const { url, failed } = useAuthedUrl(trickMediaPath(spec.host, spec.trickId, spec.src, spec.rev));
-  const [loaded, setLoaded] = useState(false);
+  const [natural, setNatural] = useState<Natural | null>(null);
+  const loaded = natural !== null;
+  const aspect = frameAspect(natural, spec.frames, spec.rows);
+  const dims = drawnDims(spec, aspect);
   const el = useRef<HTMLDivElement>(null);
   const run = useRef<Animation | null>(null);
-  const side = FLOAT_SIZE_PX[spec.size];
   const done = useRef(onDone);
   done.current = onDone;
   const motion = FLOAT_ONCE_MOTIONS.find((word) => word === spec.motion);
+  // A picture too big for the free area (a pop grows by a fifth) is not played, as one that does not load is not.
+  const fits = fitsRegion(dims, region, motion === "pop" ? FLOAT_POP_SCALE : 1);
+  const size = spec.size;
   const path = useMemo(
-    () => (motion === undefined ? null : pathOf({ motion, key: spec.key, rev: spec.rev, side, region })),
-    [motion, spec.key, spec.rev, side, region],
+    () => (motion === undefined || !loaded || !fits ? null : pathOf({ motion, key: spec.key, rev: spec.rev, dims: drawnDims({ size }, aspect), region, from: origin })),
+    [motion, loaded, fits, spec.key, spec.rev, size, aspect, region, origin],
   );
-  // A picture that does not load is not played: the shot is over.
+  // A picture that does not load, or does not fit, is not played: the shot is over.
   useEffect(() => {
-    if (failed || path === null) done.current();
-  }, [failed, path]);
+    if (failed || motion === undefined || (loaded && !fits)) done.current();
+  }, [failed, motion, loaded, fits]);
   useEffect(() => {
     const node = el.current;
-    if (!loaded || node === null || path === null) return;
+    if (node === null || path === null) return;
     if (!canAnimate(node)) {
       const timer = setTimeout(() => done.current(), path.durationMs);
       return () => clearTimeout(timer);
@@ -220,7 +261,7 @@ function FloatShot({ spec, region: asked, paused, onDone }: { spec: FloatSpec; r
       run.current = null;
       animation.cancel();
     };
-  }, [loaded, path]);
+  }, [path]);
   useEffect(() => {
     if (paused) run.current?.pause();
     else run.current?.play();
@@ -231,10 +272,11 @@ function FloatShot({ spec, region: asked, paused, onDone }: { spec: FloatSpec; r
       data-slot="float-shot"
       data-motion={spec.motion}
       data-trick={spec.trickId}
+      data-from={origin === undefined ? undefined : spec.from}
       className="pointer-events-none absolute top-0 left-0 will-change-transform"
-      style={{ width: side, height: side, opacity: 0 }}
+      style={{ width: dims.w, height: dims.h, opacity: 0 }}
     >
-      <Sprite spec={spec} url={url} reduced={false} paused={paused} onLoaded={() => setLoaded(true)} />
+      <Sprite spec={spec} url={url} aspect={aspect} reduced={false} paused={paused} onLoaded={setNatural} />
     </div>
   );
 }
@@ -258,8 +300,20 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
   const probe = useRef<HTMLDivElement>(null);
   const on = prefs.floatingThings;
   const wanted = on && screen !== null && parts.length > 0;
-  const region = useFloatRegion(screen, wanted && !covered, probe);
-  const drawing = wanted && !covered && region !== null;
+  const space = useFloatRegion(screen, wanted && !covered, probe);
+  const region = space?.region ?? null;
+  const drawing = wanted && !covered && space !== null;
+  // Where each stay picture on screen draws now, by key: a once part with `from` starts at the one it names.
+  const placed = useRef(new Map<string, Box>());
+  const onPlace = useCallback((key: string, box: Box | null) => {
+    if (box === null) placed.current.delete(key);
+    else placed.current.set(key, box);
+  }, []);
+  const originOf = (spec: FloatSpec): Point | undefined => {
+    if (spec.from === undefined) return undefined;
+    const box = placed.current.get(`${spec.host}/${spec.trickId}/${spec.from}`);
+    return box === undefined ? undefined : { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+  };
 
   const here = useMemo(
     () => (screen === "dashboard" ? floatsForScreen(parts, { dashboard: true }) : screen === "session" ? floatsForScreen(parts, { pane }) : []),
@@ -319,13 +373,13 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
           const open = page !== undefined && parked ? () => nav.down(trickSessionPath(page.paneId)) : undefined;
           return (
             <TrickBoundary key={`${spec.key}@${spec.rev}`} fallback="none" resetKey={`${spec.key}@${spec.rev}`}>
-              <FloatPet spec={spec} region={region} reduced={reduced} paused={!visible} trickName={trickName} onOpen={open} />
+              <FloatPet spec={spec} space={space} reduced={reduced} paused={!visible} trickName={trickName} onOpen={open} onPlace={onPlace} />
             </TrickBoundary>
           );
         })}
-      {drawing && shot !== null && (
+      {drawing && region !== null && shot !== null && (
         <TrickBoundary fallback="none" resetKey={`${shot.key}@${shot.rev}`}>
-          <FloatShot key={`${shot.key}@${shot.rev}`} spec={shot} region={region} paused={!visible} onDone={finishShot} />
+          <FloatShot key={`${shot.key}@${shot.rev}`} spec={shot} region={region} origin={originOf(shot)} paused={!visible} onDone={finishShot} />
         </TrickBoundary>
       )}
     </div>

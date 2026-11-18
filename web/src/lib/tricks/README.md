@@ -1144,8 +1144,14 @@ trick rows by whole groups in trick id order. The agent view switches live in th
 A `float` part is `{ at: "float", id, mode, motion, sprite, edge?, mood?, opens?, sessions? }`.
 `mode` is `once` (one motion, at most 3 s, then gone) or `stay`. `motion` is from a fixed list:
 `fly-across`, `arc`, `pop` for `once`; `perch` (with `edge`), `wander`, `idle` for `stay`. `sprite` is
-`{ src, frames?, fps?, size? }`: `src` a file of `media/` under the media route's own check (2 MiB, PNG,
-JPEG or WebP), square frames side by side, one row per mood in `CHIP_STATES` order. `opens = "page"`
+`{ src, frames?, rows?, fps?, size? }`: `src` a file of `media/` under the media route's own check (2 MiB, PNG,
+JPEG or WebP), `frames` frames side by side, each the sheet's width over `frames` wide and its height over
+`rows` (1 by default) high, so a frame need not be square; `size` (`s` 32, `m` 48, `l` 72 px) is the drawn
+frame HEIGHT and the width follows the frame's shape. With `rows` of 2 or more, one row per mood in `CHIP_STATES`
+order. `perch` stands ON its edge (its foot on the landmark below it, no gap) and `along` (`start`, `middle`, `end`;
+`end` by default) picks the place along it. A `once` part's `from` names a `stay` part of the same trick: while
+that picture is on screen the motion starts at its centre and flies toward the farther side edge, else it starts
+as usual; `from` naming no stay part of the trick is refused (`refuseUnknownFrom` in `schema.ts`). `opens = "page"`
 lets a parked picture (`perch`, `idle`) take a 44 px tap that opens the trick's Page. No view, no
 style, no coordinates and no code reach the phone. `readFloat` (`float.ts`) re-validates every field,
 because the wire carries a part as stored.

@@ -23,12 +23,18 @@ const PNG_128X32 = Buffer.from(
   "base64",
 );
 
+// Two 74 x 120 frames side by side: a 148 x 120 sheet, tall frames padded the way a real sprite sheet is.
+const PNG_148X120 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAJQAAAB4CAIAAACb2Ex6AAAAyUlEQVR42u3RQQ0AAAjEsFOEQNQiBRG8SJpMwZrp0tNiATzBEzx4gid4ggdP8AQPnuAJnuDBEzzBEzx4gid48ARP8AQPnuAJnuDBEzzBgyd4gid48ARP8OC5AE/wBA+e4Ame4METPMGDJ3iCJ3jwBE/wBA+e4AkePMETPMGDJ3iCJ3jwBE/w4Ame4AkePMETPHiCJ3iCB0/wBE/w4Ame4METPMETPHiCJ3iCB0/wBA+e4Ame4METPMETPHiCJ3jwBE/wBA+e4OnaAurNQTfDtucpAAAAAElFTkSuQmCC",
+  "base64",
+);
+
 function pet(extra: Partial<WireTrickPart>, value: JsonObject): WireTrickPart {
   // The wire carries a part as JSON, so the typed part is read from JSON here too.
   return { host: "lodge", trick: "pet", part: "p", rev: 1, asOf: AS_OF, value: JSON.parse(JSON.stringify({ at: "float", id: "p", ...value })), ...extra };
 }
 
-async function stubPet(page: Page, parts: WireTrickPart[]): Promise<void> {
+async function stubPet(page: Page, parts: WireTrickPart[], image: Buffer = PNG_128X32): Promise<void> {
   await installApiStub(page);
   await keepPhoneLayout(page);
   // The pane carries the walky instance token a real bridge stamps, so a bound part can name it.
@@ -38,7 +44,7 @@ async function stubPet(page: Page, parts: WireTrickPart[]): Promise<void> {
     const reply: TricksReply = { rev: 1, tricks: [PET], parts, present: parts.map((p) => `${p.host}/${p.trick}/${p.part}`) };
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(reply) });
   });
-  await page.route("**/api/tricks/lodge/pet/**", (route) => route.fulfill({ contentType: "image/png", body: PNG_128X32 }));
+  await page.route("**/api/tricks/lodge/pet/**", (route) => route.fulfill({ contentType: "image/png", body: image }));
 }
 
 const SPRITE: JsonObject = { src: "media/pet.png", frames: 4, fps: 6 };
@@ -50,6 +56,8 @@ async function boxes(page: Page, screen: "dashboard" | "session") {
       // Inline, not a helper: the function is serialized into the page and sees nothing of this module.
       const landmarks = selectors
         .flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        // An empty slot takes no room (its padding is not what a picture stands on), as the region reads it.
+        .filter((el) => el.childNodes.length > 0)
         .map((el) => {
           const r = el.getBoundingClientRect();
           return { x: r.left, y: r.top, w: r.width, h: r.height, slot: el.getAttribute("data-slot") ?? el.tagName };
@@ -99,6 +107,21 @@ test("a session shows a picture bound to it, clear of the header, the strip and 
   expect(pets).toHaveLength(1);
   expect(landmarks.map((l) => l.slot)).toContain("pane-bottom");
   for (const landmark of landmarks) expect(meets(pets[0]!, landmark), `meets ${landmark.slot}`).toBe(false);
+});
+
+test("a tall perched picture stands at full height on the landmark below it, with no gap", async ({ page }) => {
+  await stubPet(page, [pet({ bound: [{ session: "lodge:w1:p1", instance: "ab12" }] }, { mode: "stay", motion: "perch", edge: "bottom", sprite: { src: "media/pet.png", frames: 2, size: "l" } })], PNG_148X120);
+  await page.goto("/pane/w1:p1");
+  await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+  await page.waitForTimeout(700);
+  const { landmarks, pets } = await boxes(page, "session");
+  const pane = landmarks.find((l) => l.slot === "pane-bottom");
+  expect(pane).toBeDefined();
+  expect(pets).toHaveLength(1);
+  // 72 px high; 74 / 120 of that wide.
+  expect(pets[0]!.h).toBeCloseTo(72, 0);
+  expect(pets[0]!.w).toBeCloseTo(72 * (74 / 120), 0);
+  expect(pets[0]!.y + pets[0]!.h).toBeCloseTo(pane!.y, 0);
 });
 
 test.describe("at 360 px", () => {

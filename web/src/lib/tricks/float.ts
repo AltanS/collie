@@ -22,16 +22,20 @@
 
 import {
   CHIP_STATES,
+  FLOAT_ALONG,
   FLOAT_EDGES,
   FLOAT_FPS_MAX,
   FLOAT_FRAMES_MAX,
   FLOAT_ONCE_MOTIONS,
   FLOAT_OPENS,
+  FLOAT_ROWS_MAX,
   FLOAT_SIZES,
   FLOAT_STAY_MOTIONS,
   isImageSrc,
+  isPartId,
   partKey,
   type ChipState,
+  type FloatAlong,
   type FloatEdge,
   type FloatMode,
   type FloatMotion,
@@ -43,8 +47,10 @@ import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } f
 
 // ── The numbers ──────────────────────────────────────────────────────────────────────────────
 
-/** The two sizes of a picture, in CSS pixels. */
-export const FLOAT_SIZE_PX = { s: 32, m: 48 } as const satisfies Record<FloatSize, number>;
+/** The three sizes of a picture, in CSS pixels: the drawn HEIGHT of a frame. The width follows the frame's own shape. */
+export const FLOAT_SIZE_PX = { s: 32, m: 48, l: 72 } as const satisfies Record<FloatSize, number>;
+/** A perched picture keeps this far from the ends of its edge (less when the edge has no more room), so it never sits in a corner. */
+export const FLOAT_EDGE_MARGIN_PX = 8;
 /** The tap target of a parked picture that opens a page (DESIGN.md: 44 px). */
 export const FLOAT_TAP_PX = 44;
 /** The gap kept around every landmark, in pixels. */
@@ -235,12 +241,19 @@ export interface FloatSpec {
   trick: string;
   host: string;
   trickId: string;
+  /** The part's id, the last piece of its key. */
+  id: string;
   rev: number;
   mode: FloatMode;
   motion: FloatMotion;
   edge: FloatEdge;
+  /** With `perch`: where along the edge. `end` when the part leaves it out. */
+  along: FloatAlong;
+  /** A once part: the id of the stay part of this trick its motion starts from, when that picture is on screen. */
+  from: string | undefined;
   src: string;
   frames: number;
+  rows: number;
   fps: number;
   size: FloatSize;
   mood: ChipState;
@@ -278,12 +291,17 @@ export function readFloat(part: WireTrickPart): FloatSpec | null {
   const src = asJsonString(sprite?.src);
   if (sprite === undefined || src === undefined || !isImageSrc(src)) return null;
   const frames = sprite.frames === undefined ? 1 : whole(sprite.frames, 1, FLOAT_FRAMES_MAX);
+  const rows = sprite.rows === undefined ? 1 : whole(sprite.rows, 1, FLOAT_ROWS_MAX);
   const fps = sprite.fps === undefined ? 6 : whole(sprite.fps, 1, FLOAT_FPS_MAX);
   const size = sprite.size === undefined ? "s" : inList(FLOAT_SIZES, asJsonString(sprite.size));
-  if (frames === undefined || fps === undefined || size === undefined) return null;
+  if (frames === undefined || rows === undefined || fps === undefined || size === undefined) return null;
   const mood = value.mood === undefined ? "idle" : inList(CHIP_STATES, asJsonString(value.mood));
   const edge = value.edge === undefined ? "bottom" : inList(FLOAT_EDGES, asJsonString(value.edge));
   if (mood === undefined || edge === undefined) return null;
+  const along = value.along === undefined ? "end" : inList(FLOAT_ALONG, asJsonString(value.along));
+  if (along === undefined) return null;
+  const fromRaw = value.from === undefined ? undefined : asJsonString(value.from);
+  if (value.from !== undefined && (fromRaw === undefined || !isPartId(fromRaw) || mode !== "once")) return null;
   const opens = value.opens === undefined ? undefined : inList(FLOAT_OPENS, asJsonString(value.opens));
   if (value.opens !== undefined && (opens === undefined || mode === "once" || motion === "wander")) return null;
   return {
@@ -291,12 +309,16 @@ export function readFloat(part: WireTrickPart): FloatSpec | null {
     trick: `${part.host}/${part.trick}`,
     host: part.host,
     trickId: part.trick,
+    id: part.part,
     rev: part.rev,
     mode,
     motion,
     edge,
+    along,
+    from: fromRaw,
     src,
     frames,
+    rows,
     fps,
     size,
     mood,
@@ -311,10 +333,14 @@ export function moodRow(mood: ChipState): number {
   return CHIP_STATES.indexOf(mood);
 }
 
-/** The rows a sheet really has, from its size and its `frames`: square frames side by side. At least one. */
-export function sheetRows(width: number, height: number, frames: number): number {
-  if (!(width > 0) || !(height > 0)) return 1;
-  return Math.max(1, Math.floor(height / (width / frames) + 0.01));
+/**
+ * The width over the height of one frame of a sheet: the sheet is `frames` frames side by side and `rows`
+ * rows (one, unless the part says more), so a frame is `width / frames` wide and `height / rows` high and
+ * need not be square. 1 while the picture is not loaded or reports no size.
+ */
+export function frameAspect(natural: { w: number; h: number } | null, frames: number, rows = 1): number {
+  if (natural === null || !(natural.w > 0) || !(natural.h > 0)) return 1;
+  return natural.w / frames / (natural.h / rows);
 }
 
 /** The row to draw: the mood's own, or the first when the sheet has fewer rows. */
@@ -386,41 +412,119 @@ export function unit(seed: string, salt: number): number {
   return (h >>> 0) / 4294967296;
 }
 
-/** The side of the box a picture takes: its size, or the tap target when a tap may open a page. */
-export function boxSide(spec: Pick<FloatSpec, "size" | "opens">): number {
-  const side = FLOAT_SIZE_PX[spec.size];
-  return spec.opens === undefined ? side : Math.max(side, FLOAT_TAP_PX);
+/** A point, in pixels. */
+export interface Point {
+  x: number;
+  y: number;
 }
 
-/** The position, top left, of a box of `side` at the fraction `along` of the way along the room that is left. */
-function along(region: Box, side: number, fx: number, fy: number) {
-  return { x: region.x + fx * Math.max(0, region.w - side), y: region.y + fy * Math.max(0, region.h - side) };
+/** A width and a height, in pixels. */
+export interface Dims {
+  w: number;
+  h: number;
+}
+
+/** What a picture draws: a frame `FLOAT_SIZE_PX[size]` high, and as wide as its shape says (`aspect` is width over height). */
+export function drawnDims(spec: Pick<FloatSpec, "size">, aspect = 1): Dims {
+  const h = FLOAT_SIZE_PX[spec.size];
+  return { w: h * aspect, h };
 }
 
 /**
- * Where a stay picture rests, top left of its box: on its edge for `perch` (the place along the edge is
- * the part's own, fixed by its key), at a fixed spot a little above the middle for `idle`, and at spot
- * number `step` for `wander` (each spot from the key and the step, inside the area). Always inside it.
+ * The box a picture takes: what it draws, or at least the tap target on each side when a tap may open a
+ * page, so the tap box is never smaller than the picture.
  */
-export function restOf(spec: Pick<FloatSpec, "key" | "motion" | "edge" | "size" | "opens">, region: Box, step = 0): { x: number; y: number } {
-  const side = boxSide(spec);
-  const f = 0.1 + 0.8 * unit(spec.key, 1);
+export function boxDims(spec: Pick<FloatSpec, "size" | "opens">, aspect = 1): Dims {
+  const drawn = drawnDims(spec, aspect);
+  return spec.opens === undefined ? drawn : { w: Math.max(drawn.w, FLOAT_TAP_PX), h: Math.max(drawn.h, FLOAT_TAP_PX) };
+}
+
+/** Whether a box of `dims`, grown by `grow` about its centre, fits in the region. A picture that does not fit is not drawn. */
+export function fitsRegion(dims: Dims, region: Box, grow = 1): boolean {
+  return dims.w * grow <= region.w + EPS && dims.h * grow <= region.h + EPS;
+}
+
+/**
+ * The region a perched picture may reach on its edge: the safe region grown by the landmark gap and cut to
+ * the visible area. A side that a landmark bounds then meets the landmark's own edge, a side that the screen
+ * bounds stays where it is. A perched picture stands on that edge, with no gap between it and what it stands on.
+ */
+export function perchReach(region: Box, visible: Box, gap = FLOAT_GAP_PX): Box {
+  const grown = inflate(region, gap);
+  const x1 = Math.max(grown.x, visible.x);
+  const y1 = Math.max(grown.y, visible.y);
+  const x2 = Math.min(grown.x + grown.w, visible.x + visible.w);
+  const y2 = Math.min(grown.y + grown.h, visible.y + visible.h);
+  return x2 > x1 && y2 > y1 ? { x: x1, y: y1, w: x2 - x1, h: y2 - y1 } : region;
+}
+
+/** The place of a box of `size` along a stretch from `start` of `length`: the near end, the middle or the far end, kept a margin from the ends. */
+function alongAxis(start: number, length: number, size: number, where: FloatAlong): number {
+  const spare = Math.max(0, length - size);
+  const margin = Math.min(FLOAT_EDGE_MARGIN_PX, spare / 2);
+  if (where === "start") return start + margin;
+  if (where === "end") return start + spare - margin;
+  return start + spare / 2;
+}
+
+/** The position, top left, of a box of `dims` at the fractions `fx` and `fy` of the room that is left. */
+function fraction(region: Box, dims: Dims, fx: number, fy: number): Point {
+  return { x: region.x + fx * Math.max(0, region.w - dims.w), y: region.y + fy * Math.max(0, region.h - dims.h) };
+}
+
+/**
+ * Where a stay picture rests, top left of its box (`dims` from `boxDims`, with the picture's `aspect`).
+ * - `perch` STANDS ON ITS EDGE: the box touches the edge of `reach` (the landmark below it for `bottom`, the one
+ *   above for `top`, and so on; the screen's edge where no landmark is). Along the edge, the part's `along`
+ *   decides: `start`, `middle` or `end`, held a small margin from the corner.
+ * - `idle` sits at a fixed spot a little above the middle, held in by the bob on each side.
+ * - `wander` is at spot number `step`, each spot from the key and the step, inside the area.
+ * Always inside the region (a perch inside `reach`, which is the region grown to the landmarks).
+ */
+export function restOf(
+  spec: Pick<FloatSpec, "key" | "motion" | "edge" | "along" | "size" | "opens">,
+  region: Box,
+  step = 0,
+  aspect = 1,
+  reach: Box = region,
+): Point {
+  const dims = boxDims(spec, aspect);
   if (spec.motion === "perch") {
     switch (spec.edge) {
       case "top":
-        return along(region, side, f, 0);
+        return { x: alongAxis(region.x, region.w, dims.w, spec.along), y: reach.y };
       case "bottom":
-        return along(region, side, f, 1);
+        return { x: alongAxis(region.x, region.w, dims.w, spec.along), y: Math.max(reach.y, reach.y + reach.h - dims.h) };
       case "left":
-        return along(region, side, 0, f);
+        return { x: reach.x, y: alongAxis(region.y, region.h, dims.h, spec.along) };
       case "right":
-        return along(region, side, 1, f);
+        return { x: Math.max(reach.x, reach.x + reach.w - dims.w), y: alongAxis(region.y, region.h, dims.h, spec.along) };
     }
   }
-  if (spec.motion === "wander") return along(region, side, unit(spec.key, 100 + 2 * step), unit(spec.key, 101 + 2 * step));
+  if (spec.motion === "wander") return fraction(region, dims, unit(spec.key, 100 + 2 * step), unit(spec.key, 101 + 2 * step));
   // idle: held in by the bob on each side
   const held = { x: region.x, y: region.y + FLOAT_IDLE_BOB_PX, w: region.w, h: Math.max(0, region.h - 2 * FLOAT_IDLE_BOB_PX) };
-  return along(held, side, f, 0.55);
+  return fraction(held, dims, 0.1 + 0.8 * unit(spec.key, 1), 0.55);
+}
+
+/**
+ * Where the drawn picture sits inside its box, top left. The box is the picture or, when a tap may open a
+ * page, the tap target around it. A perched picture is pushed to its edge of the box, so it stands on the
+ * edge and not in the middle of its tap target; the others sit in the middle.
+ */
+export function spriteInBox(spec: Pick<FloatSpec, "motion" | "edge">, drawn: Dims, box: Dims): Point {
+  const centre = { x: (box.w - drawn.w) / 2, y: (box.h - drawn.h) / 2 };
+  if (spec.motion !== "perch") return centre;
+  switch (spec.edge) {
+    case "top":
+      return { x: centre.x, y: 0 };
+    case "bottom":
+      return { x: centre.x, y: box.h - drawn.h };
+    case "left":
+      return { x: 0, y: centre.y };
+    case "right":
+      return { x: box.w - drawn.w, y: centre.y };
+  }
 }
 
 /** One step of a once-motion's path: where, how big, how visible, at which fraction of the time. */
@@ -443,33 +547,54 @@ function fade(t: number): number {
 
 /**
  * The path of a once-motion inside the region. Every step's box, grown by its scale about its centre, lies
- * inside the region: a fly-across and an arc go from one side to the other (the side from the key), a pop
- * opens at a spot with room for its biggest size. The picture fades in at the start and out at the end.
+ * inside the region: a fly-across and an arc go from one side to the other, a pop opens at a spot with room
+ * for its biggest size. The picture fades in at the start and out at the end.
+ *
+ * Without `from`, the side it starts from and its height come from the key. With `from`, the centre of the
+ * stay picture the part names (the point is where that picture is now), the motion starts there and flies
+ * away from it: toward the farther of the two side edges of the region, that is, away from the nearer side.
+ * A fly-across keeps the pet's height, an arc starts at it and bends toward the side with more room, a pop
+ * opens on it. The start is held inside the region, so a pet whose box is bigger than the picture's still
+ * gives a path that never leaves it.
  */
-export function pathOf(opts: { motion: (typeof FLOAT_ONCE_MOTIONS)[number]; key: string; rev: number; side: number; region: Box }): OncePath {
-  const { motion, region, side } = opts;
+export function pathOf(opts: { motion: (typeof FLOAT_ONCE_MOTIONS)[number]; key: string; rev: number; dims: Dims; region: Box; from?: Point | undefined }): OncePath {
+  const { motion, region, dims, from } = opts;
   const seed = `${opts.key}@${opts.rev}`;
   const durationMs = FLOAT_ONCE_MS[motion];
-  const leftToRight = unit(seed, 7) < 0.5;
-  const span = Math.max(0, region.w - side);
-  const xAt = (t: number): number => region.x + (leftToRight ? t : 1 - t) * span;
+  const spanX = Math.max(0, region.w - dims.w);
+  const spanY = Math.max(0, region.h - dims.h);
+  const clampX = (x: number): number => Math.min(Math.max(x, region.x), region.x + spanX);
+  const clampY = (y: number): number => Math.min(Math.max(y, region.y), region.y + spanY);
+  const leftToRight = from === undefined ? unit(seed, 7) < 0.5 : from.x <= region.x + region.w / 2;
+  const x0 = from === undefined ? (leftToRight ? region.x : region.x + spanX) : clampX(from.x - dims.w / 2);
+  const x1 = leftToRight ? region.x + spanX : region.x;
+  const xAt = (t: number): number => x0 + (x1 - x0) * t;
+  const yFrom = from === undefined ? undefined : clampY(from.y - dims.h / 2);
   if (motion === "fly-across") {
-    const y = region.y + (0.15 + 0.7 * unit(seed, 8)) * Math.max(0, region.h - side);
+    const y = yFrom ?? region.y + (0.15 + 0.7 * unit(seed, 8)) * spanY;
     return { durationMs, steps: [0, 0.12, 0.88, 1].map((t) => ({ offset: t, x: xAt(t), y, scale: 1, opacity: fade(t) })) };
   }
   if (motion === "arc") {
-    const floor = region.y + Math.max(0, region.h - side);
-    const rise = Math.min(Math.max(0, region.h - side), 0.55 * region.h);
+    const base = yFrom ?? region.y + spanY;
+    const roomUp = base - region.y;
+    const roomDown = region.y + spanY - base;
+    const up = from === undefined || roomUp >= roomDown;
+    const rise = Math.min(up ? roomUp : roomDown, 0.55 * region.h);
     const steps = Array.from({ length: 9 }, (_, i) => {
       const t = i / 8;
-      return { offset: t, x: xAt(t), y: floor - 4 * rise * t * (1 - t), scale: 1, opacity: fade(t) };
+      return { offset: t, x: xAt(t), y: base + (up ? -1 : 1) * 4 * rise * t * (1 - t), scale: 1, opacity: fade(t) };
     });
     return { durationMs, steps };
   }
-  const grown = side * FLOAT_POP_SCALE;
-  const spot = along(region, grown, 0.1 + 0.8 * unit(seed, 9), 0.1 + 0.8 * unit(seed, 10));
-  const lift = (grown - side) / 2;
-  const at = { x: spot.x + lift, y: spot.y + lift };
+  const grown = { w: dims.w * FLOAT_POP_SCALE, h: dims.h * FLOAT_POP_SCALE };
+  const spot =
+    from === undefined
+      ? fraction(region, grown, 0.1 + 0.8 * unit(seed, 9), 0.1 + 0.8 * unit(seed, 10))
+      : {
+          x: Math.min(Math.max(from.x - grown.w / 2, region.x), region.x + Math.max(0, region.w - grown.w)),
+          y: Math.min(Math.max(from.y - grown.h / 2, region.y), region.y + Math.max(0, region.h - grown.h)),
+        };
+  const at = { x: spot.x + (grown.w - dims.w) / 2, y: spot.y + (grown.h - dims.h) / 2 };
   const scales: [number, number, number][] = [
     [0, 0.4, 0],
     [0.25, FLOAT_POP_SCALE, 1],
@@ -480,10 +605,11 @@ export function pathOf(opts: { motion: (typeof FLOAT_ONCE_MOTIONS)[number]; key:
 }
 
 /** The box a path step covers, with its scale about its centre. */
-export function stepBox(step: PathStep, side: number): Box {
-  const grown = side * step.scale;
-  const centre = { x: step.x + side / 2, y: step.y + side / 2 };
-  return { x: centre.x - grown / 2, y: centre.y - grown / 2, w: grown, h: grown };
+export function stepBox(step: PathStep, dims: Dims): Box {
+  const w = dims.w * step.scale;
+  const h = dims.h * step.scale;
+  const centre = { x: step.x + dims.w / 2, y: step.y + dims.h / 2 };
+  return { x: centre.x - w / 2, y: centre.y - h / 2, w, h };
 }
 
 // ── The limits that need a clock ─────────────────────────────────────────────────────────────
