@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router";
 
 import { sessionOfMark } from "@/components/belt-trick-mark";
@@ -13,6 +13,7 @@ import { t } from "@/lib/i18n";
 import { trickSessionPath } from "@/lib/nav";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import {
+  FLOAT_AWAY_CAP_MS,
   FLOAT_ENTER_MS,
   FLOAT_FROM_WAIT_MS,
   FLOAT_IDLE_BOB_PX,
@@ -45,6 +46,7 @@ import {
   type Box,
   type FloatSpec,
 } from "@/lib/tricks/float";
+import { floatClock } from "@/lib/tricks/float-clock";
 import { FLOAT_ONCE_MOTIONS, parsePartKey, trickMediaPath } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, useTrickParts, type TricksStore } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
@@ -80,7 +82,10 @@ import { cn } from "@/lib/utils";
 // its first, at once. Its frames are as high as the first's and as wide as its own sheet, so the box takes the new width in one step (no
 // glide), kept on the part's anchor (`afterRestOf`). The second sheet is fetched and decoded while the first plays, so the switch has no blank
 // frame. A changed part value plays both again from the first sprite's first frame. The place a once part with `from` starts at, and the
-// wait for the throw, are those of the FIRST sprite. Reduced motion, or no animation: the second sprite's last frame, still.
+// wait for the throw, are those of the FIRST sprite. The play has a clock of its own per part (lib/tricks/float-clock.ts): it stops while the
+// picture is away (a Page open, another screen, a sheet, a hidden page) and runs on when the picture is drawn again, so a tap that opens the
+// Page, and Back, take up the throw where it stopped. A shot that waited for the throw, or flew, comes back with it and starts from the hand once
+// the throw is over. Away longer than FLOAT_AWAY_CAP_MS: the end state shows and the shot is dropped as stale. Reduced motion, or no animation: the second sprite's last frame, still.
 
 interface TrickFloatLayerProps {
   /** The open session, for the pictures bound to it. */
@@ -110,6 +115,7 @@ function Sprite({
   reduced,
   paused,
   playKey,
+  clock,
   active = true,
   stillLast = !spec.loop,
   onLoaded,
@@ -121,6 +127,8 @@ function Sprite({
   reduced: boolean;
   paused: boolean;
   playKey: string;
+  /** The part's play clock (lib/tricks/float-clock.ts): where this sprite's play stands, `offsetMs` after the start of the sequence. None: it starts at its first frame. */
+  clock?: { key: string; offsetMs: number } | undefined;
   /** False: the sheet is loaded and ready but does not play (a second sprite before its turn). */
   active?: boolean;
   /** Where nothing animates (reduced motion): the last frame, not the first. */
@@ -135,6 +143,13 @@ function Sprite({
   const animation = useRef<Animation | null>(null);
   const held = useRef(onHeld);
   held.current = onHeld;
+  const clockKey = clock?.key;
+  const clockOffset = clock?.offsetMs ?? 0;
+  /** Where the play stands in this sprite's own pass: the part's clock, less the start of this sprite. Infinite once the sequence is over. */
+  const positionNow = useCallback(
+    (): number => (clockKey === undefined ? 0 : Math.max(0, floatClock.positionOf(clockKey, playKey) - clockOffset)),
+    [clockKey, playKey, clockOffset],
+  );
   const still = stillLast && spec.frames > 1 && (reduced || !canAnimate(HTMLImageElement.prototype));
   useEffect(() => {
     const el = sheet.current;
@@ -145,21 +160,27 @@ function Sprite({
       return;
     }
     const y = -row * drawn.h;
+    const pass = playMs(spec.frames, spec.fps);
+    const at = positionNow();
+    // Where the part's clock says the play is: a remount, a region change or a changed size takes up there, never at the first frame.
+    const start = spec.loop ? (Number.isFinite(at) ? at % pass : 0) : Math.min(at, pass);
     const run = el.animate(
       [{ transform: `translate3d(0, ${y}px, 0)` }, { transform: `translate3d(${-(spec.frames - 1) * drawn.w}px, ${y}px, 0)` }],
       {
-        duration: playMs(spec.frames, spec.fps),
+        duration: pass,
         iterations: spec.loop ? Number.POSITIVE_INFINITY : 1,
         fill: spec.loop ? "none" : "forwards",
         easing: `steps(${spec.frames}, jump-none)`,
       },
     );
+    if (start > 0) run.currentTime = start;
     animation.current = run;
     let frame = 0;
-    if (!spec.loop) {
+    const lastAt = lastFrameAtMs(spec.frames, spec.fps);
+    if (!spec.loop && start >= lastAt) held.current?.(true);
+    else if (!spec.loop) {
       // The last frame shows once the pass is lastFrameAtMs in. Polled on the animation's own clock, so a pause waits.
       held.current?.(false);
-      const lastAt = lastFrameAtMs(spec.frames, spec.fps);
       const watch = (): void => {
         if (run.playState === "finished" || Number(run.currentTime ?? 0) >= lastAt) {
           held.current?.(true);
@@ -173,14 +194,20 @@ function Sprite({
       cancelAnimationFrame(frame);
       run.cancel();
     };
-  }, [loaded, active, reduced, spec.frames, spec.fps, spec.loop, row, drawn.w, drawn.h, playKey]);
+  }, [loaded, active, reduced, spec.frames, spec.fps, spec.loop, row, drawn.w, drawn.h, playKey, positionNow]);
   useEffect(() => {
     const run = animation.current;
     if (run === null) return;
     // A play that is over is left alone: play() on a finished animation would rewind it.
     if (paused && run.playState === "running") run.pause();
-    else if (!paused && run.playState === "paused") run.play();
-  }, [paused, loaded, active, reduced, spec.frames, spec.fps, spec.loop, row, drawn.w, drawn.h, playKey]);
+    else if (!paused && run.playState === "paused") {
+      // The part's clock may have run out while the page was hidden (the cap): the end state shows, as it does on a remount.
+      const pass = playMs(spec.frames, spec.fps);
+      const at = positionNow();
+      if (!spec.loop && at - Number(run.currentTime ?? 0) > 100) run.currentTime = Math.min(at, pass);
+      run.play();
+    }
+  }, [paused, loaded, active, reduced, spec.frames, spec.fps, spec.loop, row, drawn.w, drawn.h, playKey, positionNow]);
   const x = still ? -(spec.frames - 1) * drawn.w : 0;
   return (
     <span aria-hidden data-slot="float-sprite" className="relative block overflow-hidden" style={{ width: drawn.w, height: drawn.h }}>
@@ -239,7 +266,8 @@ function FloatPet({
   const afterUrl = after === undefined ? null : (afterMedia.url ?? lastAfterUrl.current);
   const playKey = partSignature(spec.part);
   // Whether the first sprite has reached its last frame in this play: the second one starts then. A changed value starts over at once.
-  const [heldFirst, setHeldFirst] = useState(false);
+  // A picture that is drawn again after its first sprite played out starts with the second one showing.
+  const [heldFirst, setHeldFirst] = useState(() => !spec.loop && floatClock.positionOf(spec.key, playKey) >= lastFrameAtMs(spec.frames, spec.fps));
   const [seenKey, setSeenKey] = useState(playKey);
   if (seenKey !== playKey) {
     setSeenKey(playKey);
@@ -322,6 +350,13 @@ function FloatPet({
     onPlace(spec.key, { x: left, y: top, w, h });
     return () => onPlace(spec.key, null);
   }, [placed, left, top, w, h, spec.key, onPlace]);
+  // The play clock runs while the picture is drawn and the page is visible, and stands otherwise. Layout effect: the sprites read it in their own effects.
+  const running = fits && !paused;
+  useLayoutEffect(() => {
+    if (!running) return;
+    floatClock.resume(spec.key, playKey);
+    return () => floatClock.pause(spec.key, playKey);
+  }, [running, spec.key, playKey]);
   if (!fits) return null;
   const glide = spec.motion === "wander" ? FLOAT_WANDER_GLIDE_MS : FLOAT_SETTLE_MS;
   return (
@@ -342,7 +377,7 @@ function FloatPet({
     >
       <span ref={bob} className="absolute block" style={{ left: inside.x, top: inside.y }}>
         <span data-slot="float-first" className="absolute top-0 left-0 block" style={{ visibility: showAfter ? "hidden" : "visible" }}>
-          <Sprite spec={spec} url={url} aspect={aspect} reduced={reduced} paused={paused} playKey={playKey} onLoaded={setNatural} onHeld={hold} />
+          <Sprite spec={spec} url={url} aspect={aspect} reduced={reduced} paused={paused} playKey={playKey} clock={{ key: spec.key, offsetMs: 0 }} onLoaded={setNatural} onHeld={hold} />
         </span>
         {after !== undefined && (
           <span data-slot="float-after" className="absolute top-0 left-0 block" style={{ visibility: showAfter ? "visible" : "hidden" }}>
@@ -353,6 +388,7 @@ function FloatPet({
               reduced={reduced}
               paused={paused}
               playKey={playKey}
+              clock={{ key: spec.key, offsetMs: lastFrameAtMs(spec.frames, spec.fps) }}
               active={showAfter}
               stillLast
               onLoaded={setNaturalAfter}
@@ -411,7 +447,17 @@ function FloatShot({
   const [begun, setBegun] = useState<Begun | null>(() => (!waits || (pet !== undefined && !holding) ? { region: asked, origin: pet } : null));
   const latest = useRef({ asked, pet });
   latest.current = { asked, pet };
-  const arrived = useRef(Date.now());
+  // How long the shot has waited, as the page ran: a hidden page stops the count, as it stops the pet's play.
+  const waitClock = useRef<{ spent: number; since: number | null }>({ spent: 0, since: paused ? null : Date.now() });
+  useEffect(() => {
+    const clock = waitClock.current;
+    if (paused && clock.since !== null) {
+      clock.spent += Date.now() - clock.since;
+      clock.since = null;
+      return;
+    }
+    if (!paused && clock.since === null) clock.since = Date.now();
+  }, [paused]);
   useEffect(() => {
     if (begun !== null) return;
     if (pet !== undefined && !holding) {
@@ -421,14 +467,16 @@ function FloatShot({
     const start = (): void => setBegun({ region: latest.current.asked, origin: latest.current.pet });
     // No pet box by FLOAT_FROM_WAIT_MS: start as usual. A pet that has not finished its play by FLOAT_THROW_WAIT_MS: start from it anyway.
     // Both counted from the shot's arrival, not from this effect: a pet that reports late does not move them.
-    const gone = Date.now() - arrived.current;
+    if (paused) return;
+    const { spent, since } = waitClock.current;
+    const gone = spent + (since === null ? 0 : Date.now() - since);
     const timer = setTimeout(() => (latest.current.pet === undefined ? start() : undefined), Math.max(0, FLOAT_FROM_WAIT_MS - gone));
     const cap = setTimeout(start, Math.max(0, FLOAT_THROW_WAIT_MS - gone));
     return () => {
       clearTimeout(timer);
       clearTimeout(cap);
     };
-  }, [begun, pet, holding]);
+  }, [begun, pet, holding, paused]);
   const begin = useRef(onBegin);
   begin.current = onBegin;
   useEffect(() => {
@@ -560,8 +608,20 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
   // held for a screen that is covered, a device that has floating things off, or reduced motion: those drop it.
   const pending = useRef(new Map<string, number>());
   const holdable = wanted && !covered && !reduced;
-  const latest = useRef({ here, drawing, reduced, holdable });
-  latest.current = { here, drawing, reduced, holdable };
+  // A shot that is on screen when the layer goes away (a Page opens, a sheet covers the screen) is kept, not dropped: it comes back with its pet.
+  const parked = useRef<{ spec: FloatSpec; sig: string; at: number } | null>(null);
+  const keepsShots = on && parts.length > 0 && !reduced;
+  const latest = useRef({ here, drawing, reduced, holdable, keepsShots });
+  latest.current = { here, drawing, reduced, holdable, keepsShots };
+  // A part that has left takes its play clock with it.
+  useEffect(() => {
+    const keys = new Set<string>();
+    for (const part of parts) {
+      const spec = readFloat(part);
+      if (spec !== null) keys.add(spec.key);
+    }
+    floatClock.retain(keys);
+  }, [parts]);
   const sync = state.rev;
   useEffect(() => {
     if (sync === null) return;
@@ -596,6 +656,11 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
     if (!drawing) return;
     const { here: shown } = latest.current;
     const now = Date.now();
+    // The shot the layer left comes back, unless it was away too long or its part has changed or gone meanwhile: that one is dropped.
+    const kept = parked.current;
+    parked.current = null;
+    const again = kept === null ? undefined : shown.find((candidate) => candidate.key === kept.spec.key && partSignature(candidate.part) === kept.sig);
+    if (kept !== null && again !== undefined && now - kept.at <= FLOAT_AWAY_CAP_MS && queue.current.resume(again)) setShot(again);
     for (const [key, at] of pending.current) {
       pending.current.delete(key);
       const spec = shown.find((candidate) => candidate.key === key);
@@ -606,6 +671,10 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
   // Anything that takes the screen away ends the shot and drops the one that waits.
   useEffect(() => {
     if (drawing) return;
+    const playing = queue.current.playing;
+    // Only a shot that is on screen is parked; a second run of this effect (the screen changed again while away) leaves the kept one alone.
+    if (playing !== null && latest.current.keepsShots) parked.current = { spec: playing, sig: partSignature(playing.part), at: Date.now() };
+    else if (!latest.current.keepsShots) parked.current = null;
     queue.current.cancel();
     setShot(null);
     if (!latest.current.holdable) pending.current.clear();
@@ -620,8 +689,8 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
         stay.map((spec) => {
           const trickName = state.tricks.find((trick) => trick.host === spec.host && trick.id === spec.trickId)?.name ?? spec.trickId;
           const page = spec.opens === "page" && parsePartKey(spec.key) !== undefined ? sessionOfMark(spec.part, trickSessions) : undefined;
-          const parked = spec.motion === "perch" || spec.motion === "idle";
-          const open = page !== undefined && parked ? () => nav.down(trickSessionPath(page.paneId)) : undefined;
+          const resting = spec.motion === "perch" || spec.motion === "idle";
+          const open = page !== undefined && resting ? () => nav.down(trickSessionPath(page.paneId)) : undefined;
           return (
             <TrickBoundary key={spec.key} fallback="none" resetKey={`${spec.key}@${spec.rev}`}>
               <FloatPet spec={spec} space={space} reduced={reduced} paused={!visible} trickName={trickName} onOpen={open} onPlace={onPlace} onHold={onHold} />

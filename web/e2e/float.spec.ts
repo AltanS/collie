@@ -495,6 +495,56 @@ test.describe("a sprite with a second sprite after it", () => {
   });
 });
 
+// A TAP THAT OPENS THE PAGE, THEN BACK: the throw's clock stops while the layer is away and runs on when the pet is drawn again. The throw takes up
+// where it stopped, the shot that waited for it leaves the hand when the throw ends, and the second sprite plays; away too long, the end state.
+const throwClock = (page: Page) => page.evaluate(() => Number(document.querySelector('[data-slot="float-first"] img')?.getAnimations()[0]?.currentTime ?? Number.NaN));
+const ballFlies = (page: Page) => page.evaluate(() => (document.querySelector('[data-slot="float-shot"]')?.getAnimations().length ?? 0) > 0);
+test.describe("a tap that opens the Page, then Back", () => {
+  const RYU = (rev: number, mood: string) =>
+    pet({ part: "ryu", rev }, { id: "ryu", mode: "stay", motion: "perch", edge: "bottom", along: "start", mood, opens: "page", sprite: { ...THROWER, after: POSE } });
+  const BALL = pet({ part: "ball", rev: 2 }, { id: "ball", mode: "once", motion: "fly-across", from: "ryu", sprite: { src: "media/ball.png", size: "s" } });
+
+  async function stubThrow(page: Page, state: { rev: number }) {
+    await stubRuns(page, (rev) => (rev === 1 ? [RYU(1, "idle")] : [RYU(2, "working"), BALL]), state, SHEET_4X48);
+    // The trick's Page is a session of the trick: the pet's tap goes to it.
+    const agents = [...fixtureSnapshot.agents, { ...fixtureSnapshot.agents[0]!, paneId: "trick:lodge:pet:main", workspaceId: "trick:lodge", tabId: "trick:lodge:pet", agent: "pet", kind: "trick" }];
+    await page.route("**/api/snapshot", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...fixtureSnapshot, agents, tricksRev: state.rev }) }));
+    await page.route("**/api/tricks/lodge/pet/media/pose.png*", (route) => route.fulfill({ contentType: "image/png", body: POSE_3X96 }));
+    await page.route("**/api/tricks/lodge/pet/media/ball.png*", (route) => route.fulfill({ contentType: "image/png", body: flatPng(32, 32) }));
+  }
+
+  test("the throw goes on from where it stopped, the ball leaves the hand when it ends, and the after strip plays", async ({ page }) => {
+    const state = { rev: 1 };
+    await stubThrow(page, state);
+    await page.goto("/");
+    await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+    await page.waitForTimeout(4200);
+    state.rev = 2;
+    // The throw starts over with the new value, and the ball waits for it. Tap the pet half a second in.
+    await expect(page.locator('[data-slot="float-pet"][data-mood="working"]')).toBeVisible({ timeout: 15_000 });
+    await expect.poll(() => throwClock(page), { intervals: [16] }).toBeGreaterThan(300);
+    expect(await throwClock(page)).toBeLessThan(1200);
+    await page.locator('[data-slot="float-open"]').click();
+    await expect(page).toHaveURL(/\/trick\//);
+    await expect(page.locator('[data-slot="float-pet"]')).toHaveCount(0);
+    expect(await ballFlies(page)).toBe(false);
+    await page.waitForTimeout(2500);
+    await page.goBack();
+    await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+    // Not from the first frame, and not at the end: where it stopped (the 2.5 s away did not count).
+    const back = await expect.poll(() => throwClock(page), { intervals: [16] }).toBeGreaterThan(300).then(() => throwClock(page));
+    expect(back).toBeLessThan(1500);
+    // The ball is not out before the throw ends.
+    expect(await ballFlies(page)).toBe(false);
+    await expect.poll(() => ballFlies(page), { timeout: 5000, intervals: [16] }).toBe(true);
+    // The second sprite plays and holds its last frame: 2 x 96 px along.
+    await expect(page.locator('[data-slot="float-pet"]')).toHaveCSS("width", "96px");
+    await page.waitForTimeout(1200);
+    const x = await page.evaluate(() => -new DOMMatrix(getComputedStyle(document.querySelector('[data-slot="float-after"] img')!).transform).e);
+    expect(x).toBeCloseTo(192, 0);
+  });
+});
+
 // A FLY-ACROSS LEAVES PAST THE FAR EDGE: it travels on until the picture is wholly outside the free area, at full opacity,
 // and the layer's clip (`float-clip`, the width of the free area) hides it. Nothing paints outside the area, and the document never
 // grows a horizontal scroll while the picture is out there.
