@@ -13,6 +13,8 @@ import {
   incompatibleBackoffMs,
   INCOMPATIBLE_BACKOFF_MS,
   MAX_CONTACT_RESETS,
+  SESSION_TOPOLOGY_DEMAND_MS,
+  SESSION_TOPOLOGY_MAX_AGE_MS,
   STALE_DIAL_LOG_REPEAT_MS,
   CrewLead,
   type PeerMemory,
@@ -2085,5 +2087,224 @@ describe("CrewLead — every dial asks for every session, and the merge narrows 
     expect(h.lead.merge(localBody(), NARROW_PLAN).agents.map((p) => p.paneId)).toEqual(["w1:p1"]);
     const wide = h.lead.merge(localBody(), snapshotPlan("laptop", { session: undefined, widen: true }));
     expect(wide.agents.map((p) => p.paneId)).toEqual(["w1:p1"]);
+  });
+});
+
+// ── Issue 785: a member's non-primary session brings its own spaces and tabs ──
+// The sweep's widened body holds every session's panes but the PRIMARY session's spaces and tabs only,
+// so the lead fetches a watched non-primary session's own lists beside the member's dial.
+
+describe("CrewLead — a member's non-primary session shows its own spaces and tabs (issue 785)", () => {
+  const space = (workspaceId: string, label: string) => ({ workspaceId, number: 1, label, focused: false, agents: 1 });
+  const tab = (tabId: string, workspaceId: string, label: string) => ({ tabId, workspaceId, number: 1, label, focused: false });
+  const pane = (paneId: string, session: string, workspaceLabel: string) => ({
+    ...body.agents[0]!,
+    paneId,
+    workspaceId: "w1",
+    workspaceLabel,
+    tabId: "w1:t1",
+    session,
+  });
+
+  /** A member running `default` (primary) and `personal`. Space and tab ids collide, as in Herdr. */
+  const sessions = [
+    { name: "default", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 0 },
+    { name: "personal", isPrimary: false, reachable: true, agents: 1, working: 0, blocked: 0 },
+  ];
+  const widened = {
+    sessions,
+    agents: [pane("w1:p1", "default", "Work"), pane("w1:p1", "personal", "Personal")],
+    shellPanes: [],
+    workspaces: [space("w1", "Work")],
+    tabs: [tab("w1:t1", "w1", "work tab")],
+  };
+  const personal = {
+    sessions,
+    agents: [{ ...body.agents[0]!, workspaceLabel: "Personal" }],
+    shellPanes: [],
+    workspaces: [space("w1", "Personal")],
+    tabs: [tab("w1:t1", "w1", "personal tab")],
+  };
+  const personalPlan = snapshotPlan("laptop", { session: "personal", widen: false });
+
+  function leadOver(opts: {
+    sweepBody?: () => PeerSnapshotWire;
+    topology?: (view: SnapshotView) => PeerOutcome<unknown> | Promise<PeerOutcome<unknown>>;
+  } = {}) {
+    const views: SnapshotView[] = [];
+    const journal: string[] = [];
+    let clock = NOW;
+    const members = [member({ memberId: "laptop" })];
+    const l = new CrewLead({
+      log: (line) => journal.push(line),
+      registry: new CrewRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
+      snapshot: async (_link, view) => {
+        views.push(view);
+        if (view.widen) return ok(opts.sweepBody?.() ?? widened, clock);
+        return opts.topology === undefined ? ok(personal, clock) : opts.topology(view);
+      },
+      proxy: neverProxy,
+      self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
+      now: () => clock,
+    });
+    return {
+      lead: l,
+      views,
+      journal,
+      advance: (ms: number) => {
+        clock += ms;
+      },
+    };
+  }
+
+  const memberSpaces = (merged: SnapshotResponse) =>
+    merged.workspaces.filter((w) => w.host === "laptop").map((w) => w.label);
+  const memberTabs = (merged: SnapshotResponse) => merged.tabs.filter((t) => t.host === "laptop").map((t) => t.label);
+
+  test("the primary session selected shows the primary's spaces and tabs, with no extra dial", async () => {
+    const h = leadOver();
+    await h.lead.sweep();
+    for (const plan of [NARROW_PLAN, snapshotPlan("laptop", { session: "default", widen: false })]) {
+      const merged = h.lead.merge(localBody(), plan);
+      expect(memberSpaces(merged)).toEqual(["Work"]);
+      expect(memberTabs(merged)).toEqual(["work tab"]);
+    }
+    await h.lead.sweep();
+    expect(h.views).toEqual([SWEEP_VIEW, SWEEP_VIEW]);
+  });
+
+  test("the non-primary session selected shows its own spaces and tabs from the next sweep on", async () => {
+    const h = leadOver();
+    await h.lead.sweep();
+    // The first poll after the switch is served the old way: the lead never dials inside a poll.
+    const first = h.lead.merge(localBody(), personalPlan);
+    expect(memberSpaces(first)).toEqual(["Work"]);
+    expect(first.agents.map((p) => p.workspaceLabel)).toEqual(["Personal"]);
+    await h.lead.sweep();
+    expect(h.views).toEqual([SWEEP_VIEW, SWEEP_VIEW, { session: "personal", widen: false }]);
+    const merged = h.lead.merge(localBody(), personalPlan);
+    expect(memberSpaces(merged)).toEqual(["Personal"]);
+    expect(memberTabs(merged)).toEqual(["personal tab"]);
+    expect(merged.agents.map((p) => [p.paneId, p.workspaceLabel, p.host])).toEqual([["w1:p1", "Personal", "laptop"]]);
+    // A request about the primary still gets the primary's lists, from the same cache.
+    expect(memberSpaces(h.lead.merge(localBody(), NARROW_PLAN))).toEqual(["Work"]);
+  });
+
+  test("the widened view of the non-primary session takes that session's lists too", async () => {
+    // The member's own `/api/snapshot` rule: the named session decides `workspaces` and `tabs`.
+    const h = leadOver();
+    await h.lead.sweep();
+    h.lead.merge(localBody(), snapshotPlan("laptop", { session: "personal", widen: true }));
+    await h.lead.sweep();
+    const merged = h.lead.merge(localBody(), snapshotPlan("laptop", { session: "personal", widen: true }));
+    expect(memberSpaces(merged)).toEqual(["Personal"]);
+    expect(merged.agents).toHaveLength(2);
+  });
+
+  test("a member with one session makes no extra dial, whatever the phone names", async () => {
+    const h = leadOver({ sweepBody: () => ({ ...widened, sessions: [sessions[0]!], agents: [widened.agents[0]!] }) });
+    await h.lead.sweep();
+    h.lead.merge(localBody(), snapshotPlan("laptop", { session: "default", widen: false }));
+    // A name the member never published is never dialled either: only its own registry makes a session.
+    h.lead.merge(localBody(), snapshotPlan("laptop", { session: "personal", widen: false }));
+    h.lead.merge(localBody(), snapshotPlan("laptop", { session: "../x", widen: false }));
+    await h.lead.sweep();
+    expect(h.views).toEqual([SWEEP_VIEW, SWEEP_VIEW]);
+  });
+
+  test("a failed fetch falls back to today's body, with one journal line per change", async () => {
+    const h = leadOver({ topology: () => down });
+    await h.lead.sweep();
+    h.lead.merge(localBody(), personalPlan);
+    await h.lead.sweep();
+    await h.lead.sweep();
+    const merged = h.lead.merge(localBody(), personalPlan);
+    // Never empty and never an error: the primary's lists, as before the fix, and the panes intact.
+    expect(memberSpaces(merged)).toEqual(["Work"]);
+    expect(merged.agents.map((p) => p.workspaceLabel)).toEqual(["Personal"]);
+    expect(h.lead.contributions()[0]!.state.health).toBe("reachable");
+    const lines = h.journal.filter((l) => l.includes('session "personal"'));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("timed out");
+  });
+
+  test("a failed re-fetch keeps the last good lists, and the journal says when it answers again", async () => {
+    let fail = false;
+    const h = leadOver({ topology: () => (fail ? down : ok(personal)) });
+    await h.lead.sweep();
+    h.lead.merge(localBody(), personalPlan);
+    await h.lead.sweep();
+    fail = true;
+    h.advance(1500);
+    h.lead.merge(localBody(), personalPlan);
+    await h.lead.sweep();
+    expect(memberSpaces(h.lead.merge(localBody(), personalPlan))).toEqual(["Personal"]);
+    fail = false;
+    await h.lead.sweep();
+    expect(h.journal.filter((l) => l.includes('session "personal"'))).toEqual([
+      expect.stringContaining("could not fetch"),
+      expect.stringContaining("answer again"),
+    ]);
+  });
+
+  test("the topology dial runs beside the member's own dial, so the sweep still ends within one budget", async () => {
+    // Both start together, each bounded by the client's per-call budget, so a slow one adds no round trip.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const h = leadOver({
+      topology: async () => {
+        await gate;
+        return down;
+      },
+    });
+    await h.lead.sweep();
+    h.lead.merge(localBody(), personalPlan);
+    const sweeping = h.lead.sweep();
+    await Promise.resolve();
+    await Promise.resolve();
+    // Both dials of this member are already out before either answered.
+    expect(h.views).toEqual([SWEEP_VIEW, SWEEP_VIEW, { session: "personal", widen: false }]);
+    release();
+    await sweeping;
+    expect(memberSpaces(h.lead.merge(localBody(), personalPlan))).toEqual(["Work"]);
+  });
+
+  test("the cache honours its age, and the sweep stops dialling a session nobody looks at", async () => {
+    const h = leadOver();
+    await h.lead.sweep();
+    h.lead.merge(localBody(), personalPlan);
+    await h.lead.sweep();
+    expect(memberSpaces(h.lead.merge(localBody(), personalPlan))).toEqual(["Personal"]);
+    const dialsAfterLook = h.views.length;
+    // The phone left. Past the demand window the sweep dials the member's own view only.
+    h.advance(SESSION_TOPOLOGY_DEMAND_MS + 1);
+    await h.lead.sweep();
+    expect(h.views.slice(dialsAfterLook)).toEqual([SWEEP_VIEW]);
+    // A phone back within the age still gets the session's lists on its first poll.
+    expect(memberSpaces(h.lead.merge(localBody(), personalPlan))).toEqual(["Personal"]);
+    // Past the age it gets today's body again until the next sweep fetches the lists anew.
+    h.advance(SESSION_TOPOLOGY_MAX_AGE_MS + 1);
+    expect(memberSpaces(h.lead.merge(localBody(), personalPlan))).toEqual(["Work"]);
+    await h.lead.sweep();
+    expect(memberSpaces(h.lead.merge(localBody(), personalPlan))).toEqual(["Personal"]);
+  });
+
+  test("a session the member stops publishing is dropped, not dialled into a 404", async () => {
+    let answer: PeerSnapshotWire = widened;
+    const h = leadOver({ sweepBody: () => answer });
+    await h.lead.sweep();
+    h.lead.merge(localBody(), personalPlan);
+    await h.lead.sweep();
+    expect(h.views.filter((v) => !v.widen)).toHaveLength(1);
+    // `personal` closed on the member: its next answer lists `default` alone.
+    answer = { ...widened, sessions: [sessions[0]!], agents: [widened.agents[0]!] };
+    await h.lead.sweep();
+    expect(h.views.filter((v) => !v.widen)).toHaveLength(2);
+    await h.lead.sweep();
+    expect(h.views.filter((v) => !v.widen)).toHaveLength(2);
+    expect(memberSpaces(h.lead.merge(localBody(), personalPlan))).toEqual(["Work"]);
   });
 });

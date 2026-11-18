@@ -339,6 +339,18 @@ dial the lead's cache cannot already answer (§10.1). **Widening is a second dim
 and never travels as a host:** a crew request may still not name a `host=`, because a peer has no
 peers (§4).
 
+A widened answer still carries ONE `workspaces` and ONE `tabs` list, the primary session's, so the
+cached body cannot answer a request about a member's other session with that session's spaces and
+tabs *(added 2026-11-18, issue 785)*. When a phone's `?host=<member>&session=<name>` names a session
+the member published that is reachable and not its primary, the lead notes it, and its next sweeps
+also dial that member's `GET /crew/v1/snapshot?session=<name>` beside the widened one, on the same
+per-call budget, and keep only that answer's two lists for the merge. Nothing new is on the wire:
+`?session=` is the parameter every member already reads. The dial carries none of §20's follow headers
+and no §21 ack, and its outcome never reaches the member's health. It runs only while a phone keeps
+asking (15 s after the last request) and its lists serve for at most 60 s; a failed dial keeps the last
+good lists within that age, else the merge serves the primary's lists as before. A member with one
+session costs no second dial. Lead-local, so `CREW_PROTOCOL_VERSION` does not move.
+
 **`hello`'s response body** is the one place both versions cross a link — the wire contract and the
 answering build:
 
