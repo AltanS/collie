@@ -47,6 +47,12 @@ Collie's own look.
   and an experiment: off until you switch it on in Settings → Experiments. A trick posts a question
   there, a Decision, and does not list the Hill in its `places`.
 
+![Three phone screens, the Dashboard, a session and a session's settings sheet, with the seven places of a trick numbered.](images/tricks/places.png)
+
+In the picture, on the Dashboard: 1 the tile, 2 the row of the trick's Page, 3 the bottom bar item. In a
+session: 4 the status chip, 5 the mark on the Belt, 6 the agent view beside Terminal and Chat. In the
+session's settings: 7 the trick's rows.
+
 The [Places](tricks-reference.md#places) section of the reference describes each place: where it
 shows, what it takes, what a tap does, its limits and an example.
 
@@ -58,6 +64,8 @@ A part for a place that this Collie does not know is left out, with a note, and 
 show. So a trick written for a newer Collie still works on an older one.
 
 ### Session settings rows
+
+![A session's settings sheet, with a trick's rows in a group of its own after Collie's rows.](images/tricks/place-menu.png)
 
 A trick can add rows to the settings of an agent session, the sheet that opens from the session's
 ⋮ button. Its rows come after Collie's own rows and Close, in a group of their own under "From the
