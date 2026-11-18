@@ -9,7 +9,7 @@ import { HOST } from "../bridge/host.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import type { LocalProposer } from "../bridge/tricks/propose-door.ts";
 import type { ProposeAnswer } from "../bridge/tricks/proposals.ts";
-import { PROPOSE_LIMITS, PROPOSE_TOO_MANY_PARTS, readProposal } from "../bridge/tricks/propose-wire.ts";
+import { PROPOSE_LIMITS, PROPOSE_PICTURES, PROPOSE_TOO_MANY_PARTS, readProposal } from "../bridge/tricks/propose-wire.ts";
 import type { WalkyHost, WalkyPane } from "../bridge/walky/deliver.ts";
 import { WalkyLog } from "../bridge/walky/log.ts";
 import { PROPOSE_LINE_PREFIX, WALKY_LINE_MAX } from "../bridge/walky/parse.ts";
@@ -25,13 +25,18 @@ import { realFiles } from "./sys.ts";
 import { cmdTrickGuide, trickGuide } from "./trick-guide.ts";
 import { GROUP_MASKED, GROUP_TOO_LARGE, groupLineEnds } from "../bridge/tricks/card-group.ts";
 import { TRICK_HELPER } from "../bridge/tricks/scan.ts";
-import { cmdTrickPropose, PROPOSE_ADDED_HERE_HINT, PROPOSE_NEEDS_CONFIG, PROPOSE_UNKNOWN, PROPOSE_WHERE, proposeExit, proposeWhere, readTrickFolder } from "./trick-propose.ts";
+import { cmdTrickPropose, leftPictureLines, PROPOSE_ADDED_HERE_HINT, PROPOSE_NEEDS_CONFIG, PROPOSE_UNKNOWN, PROPOSE_WHERE, proposeExit, proposeWhere, readTrickFolder, sentLine } from "./trick-propose.ts";
 import { cmdTrickInit } from "./trick.ts";
 import { askSocket } from "./walky.ts";
 
 // `collie trick guide` and `collie trick propose` (crew slice 8). The guide is checked against the schema;
 // the propose verb against a real walky socket in a temp state dir, with a fake proposals door behind it,
 // so the line, its size rules and who the proposer is are the real ones.
+
+/** The first bytes of a PNG, a JPEG and a WebP: what the picture check reads. */
+const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1]);
+const WEBP_BYTES = new Uint8Array([0x52, 0x49, 0x46, 0x46, 12, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20]);
 
 const socketTest = test.skipIf(HOST.platform === "win32");
 const posixTest = test.skipIf(HOST.platform === "win32");
@@ -149,7 +154,7 @@ function trickFolder(extra: Record<string, string> = {}): string {
 }
 
 describe("the folder read", () => {
-  test("leaves dot files, node_modules, logs, inputs/, media/, captures/ and config.toml behind", async () => {
+  test("leaves dot files, node_modules, logs, inputs/, config.toml and what is not a picture in media/ and captures/ behind", async () => {
     const dir = trickFolder({ ".env": "SECRET=placeholder", ".git/config": "x", "node_modules/a/index.js": "x", "run.log": "x", "inputs/a.md": "x", "media/a.png": "x", "captures/b.png": "x", "lib/util.ts": "export {};\n", "config.toml": "a = 1\n" });
     chmodSync(join(dir, "program.ts"), 0o755);
     const read = await readTrickFolder(dir);
@@ -159,6 +164,80 @@ describe("the folder read", () => {
     if (process.platform !== "win32") expect(read.files.find((f) => f.rel === "program.ts")?.executable).toBe(true);
     expect(read.left).toBe(8);
     expect(read.config).toBe(true);
+    // "x" is no picture by its first bytes: each file stays behind with its reason, and no picture goes.
+    expect(read.pictures).toEqual([]);
+    expect(read.leftPictures).toEqual([
+      { rel: "captures/b.png", why: "is not a PNG, JPEG or WebP picture by its first bytes" },
+      { rel: "media/a.png", why: "is not a PNG, JPEG or WebP picture by its first bytes" },
+    ]);
+  });
+
+  test("brings the pictures of media/ and captures/: by name and first bytes, within the caps", async () => {
+    const dir = trickFolder({ "media/notes.txt": "x", "media/.hidden.png": "x", "Media/upper.png": "x" });
+    writeFileSync(join(dir, "media", "fireball.png"), PNG_BYTES);
+    mkdirSync(join(dir, "media", "sheets"));
+    writeFileSync(join(dir, "media", "sheets", "pose.webp"), WEBP_BYTES);
+    mkdirSync(join(dir, "captures"));
+    writeFileSync(join(dir, "captures", "shot.jpg"), JPEG_BYTES);
+    const big = new Uint8Array(PROPOSE_PICTURES.bytes + 1);
+    big.set(PNG_BYTES);
+    writeFileSync(join(dir, "media", "big.png"), big);
+    writeFileSync(join(dir, "media", "fake.png"), "<svg/>");
+    const read = await readTrickFolder(dir);
+    if (!read.ok) throw new Error(read.error);
+    expect(read.files.map((f) => f.rel).toSorted()).toEqual(["program.ts", "trick.toml"]);
+    expect(read.pictures.map((f) => f.rel)).toEqual(["captures/shot.jpg", "media/fireball.png", "media/sheets/pose.webp"]);
+    expect(read.leftPictures).toEqual([
+      { rel: "media/big.png", why: "is larger than 2 MB" },
+      { rel: "media/fake.png", why: "is not a PNG, JPEG or WebP picture by its first bytes" },
+      { rel: "media/notes.txt", why: "is not a .png, .jpg, .jpeg or .webp file" },
+    ]);
+    // Media/ in another case, the dot file and the three above stay behind.
+    expect(read.left).toBe(5);
+    // What the CLI reads, the wire takes.
+    expect(readProposal({ requestId: "11111111-2222-4333-8444-555555555555", files: [...read.files, ...read.pictures].map((f) => ({ rel: f.rel, b64: Buffer.from(f.bytes).toString("base64") })) }).ok).toBe(true);
+  });
+
+  posixTest("a picture through a link stays behind: a linked file, a linked folder, a linked media/; the mode bit never goes", async () => {
+    const dir = trickFolder();
+    const elsewhere = tempDir("propose-elsewhere-");
+    writeFileSync(join(elsewhere, "a.png"), PNG_BYTES);
+    mkdirSync(join(dir, "captures"));
+    writeFileSync(join(dir, "captures", "shot.png"), PNG_BYTES);
+    chmodSync(join(dir, "captures", "shot.png"), 0o755);
+    symlinkSync(join(elsewhere, "a.png"), join(dir, "captures", "linked.png"));
+    symlinkSync(elsewhere, join(dir, "captures", "sheets"));
+    symlinkSync(elsewhere, join(dir, "media"));
+    const read = await readTrickFolder(dir);
+    if (!read.ok) throw new Error(read.error);
+    // A picture never carries the executable mark, whatever its mode on disk.
+    expect(read.pictures.map((f) => [f.rel, f.executable])).toEqual([["captures/shot.png", false]]);
+    expect(read.leftPictures).toEqual([
+      { rel: "media", why: "is a symbolic link, so its pictures stay behind" },
+      { rel: "captures/linked.png", why: "is a symbolic link" },
+      { rel: "captures/sheets", why: "is a symbolic link" },
+    ]);
+  });
+
+  test("past the picture count, the rest stays behind, each named", async () => {
+    const dir = trickFolder();
+    mkdirSync(join(dir, "media"));
+    for (let i = 0; i <= PROPOSE_PICTURES.files; i += 1) writeFileSync(join(dir, "media", `p${String(i).padStart(3, "0")}.png`), PNG_BYTES);
+    const read = await readTrickFolder(dir);
+    if (!read.ok) throw new Error(read.error);
+    expect(read.pictures).toHaveLength(PROPOSE_PICTURES.files);
+    expect(read.leftPictures).toEqual([{ rel: `media/p${String(PROPOSE_PICTURES.files).padStart(3, "0")}.png`, why: `is past the ${String(PROPOSE_PICTURES.files)} pictures a proposal brings` }]);
+  });
+
+  test("the lines it prints: the pictures sent, and each file of media/ or captures/ left behind, at most ten", () => {
+    expect(sentLine(2, 0)).toBe("Sent 2 files.");
+    expect(sentLine(1, 1)).toBe("Sent 1 file and 1 picture.");
+    expect(sentLine(3, 2)).toBe("Sent 3 files and 2 pictures.");
+    const many = Array.from({ length: 12 }, (_, i) => ({ rel: `media/n${String(i)}.txt`, why: "is not a .png, .jpg, .jpeg or .webp file" }));
+    const lines = leftPictureLines(many);
+    expect(lines).toHaveLength(11);
+    expect(lines[0]).toBe("Left behind: media/n0.txt is not a .png, .jpg, .jpeg or .webp file.");
+    expect(lines.at(-1)).toBe("Left behind: 2 more files of media/ and captures/.");
   });
 
   posixTest("refuses a symbolic link, even to a file inside the folder", async () => {
@@ -305,7 +384,7 @@ describe("collie trick propose, over the walky socket", () => {
     const files = b.calls[0]?.fields.files;
     expect(Array.isArray(files) ? files.map((f) => asJsonObject(f)?.rel) : []).toEqual(["program.ts", "trick.toml"]);
     expect(d.io.stdout).toEqual([
-      "Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, media/, captures/, config.toml).",
+      "Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, config.toml, and any file in media/ or captures/ that is not a picture).",
       "Proposed legs. Your person sees it as dc_k3m9x2p7q1ab on the Hill, or in Settings, Tricks, while the Hill is off. Nothing runs before their yes.",
       "Read the answer with: collie hill status dc_k3m9x2p7q1ab",
     ]);
@@ -341,13 +420,26 @@ describe("collie trick propose, over the walky socket", () => {
     expect(d.io.stdout).toContain("Proposed legs. Your person sees it as dc_k3m9x2p7q1ab in this session on the phone, and in Settings, Tricks. Nothing runs before their yes.");
   });
 
+  socketTest("the pictures go on the line beside the code, and the CLI names what stayed behind", async () => {
+    const b = await bridge();
+    const d = deps([walkySocketPath(b.stateDir)]);
+    const dir = trickFolder({ "media/notes.txt": "x" });
+    writeFileSync(join(dir, "media", "fireball.png"), PNG_BYTES);
+    writeFileSync(join(dir, "media", "pose.png"), PNG_BYTES);
+    expect(await cmdTrickPropose(d, [dir])).toBe(EXIT.OK);
+    const files = b.calls[0]?.fields.files;
+    expect(Array.isArray(files) ? files.map((f) => asJsonObject(f)?.rel) : []).toEqual(["program.ts", "trick.toml", "media/fireball.png", "media/pose.png"]);
+    expect(d.io.stdout[0]).toBe("Sent 2 files and 2 pictures. Left behind: 1 (dot files, node_modules, logs, inputs/, config.toml, and any file in media/ or captures/ that is not a picture).");
+    expect(d.io.stdout[1]).toBe("Left behind: media/notes.txt is not a .png, .jpg, .jpeg or .webp file.");
+  });
+
   socketTest("a config.toml stays behind, and the CLI says so", async () => {
     const b = await bridge();
     const d = deps([walkySocketPath(b.stateDir)]);
     expect(await cmdTrickPropose(d, [trickFolder({ "config.toml": "rows = 3\n" })])).toBe(EXIT.OK);
     const files = b.calls[0]?.fields.files;
     expect(Array.isArray(files) ? files.map((f) => asJsonObject(f)?.rel) : []).toEqual(["program.ts", "trick.toml"]);
-    expect(d.io.stdout[0]).toBe("Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, media/, captures/, config.toml).");
+    expect(d.io.stdout[0]).toBe("Sent 2 files. Left behind: 1 (dot files, node_modules, logs, inputs/, config.toml, and any file in media/ or captures/ that is not a picture).");
     expect(d.io.stdout[1]).toBe("config.toml stays behind: your person sets the trick up on the machine.");
   });
 

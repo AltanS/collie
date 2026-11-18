@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 
 import { CODE_DIRS_MAX, CODE_FILES_MAX, codeHashOfFiles, diskTrickFs, skippedName, trickCodeHash, walkTrickCode, type EntryKind } from "./code-hash.ts";
 import { ORIGIN_FILE, renderProposalOrigin, type ProposalOrigin } from "./origin.ts";
-import type { ProposedFile } from "./propose-wire.ts";
+import { splitPictures, type ProposedFile } from "./propose-wire.ts";
 
 // A PROPOSED TRICK, WRITTEN INTO THE TRICKS FOLDER (crew slice 8). Two ways in, both on the lead and both
 // only from the tricks runner's serial lane (service.ts), so no switch write or version change runs beside
@@ -15,7 +15,12 @@ import type { ProposedFile } from "./propose-wire.ts";
 //     with the proposal record (origin.ts) beside them, then renamed into place. A folder of that name
 //     that appeared since the card was made stops it: nothing is written over.
 //   * A NEW VERSION of a trick a proposal made, after the person's "Use the new version": only the code
-//     moves, file by file (`replaceTrickCode`). Everything the code hash does not read stays untouched.
+//     moves, file by file (`replaceTrickCode`). Everything the code hash does not read stays untouched,
+//     except the pictures the proposal brings (2026-11-18): each is written over the file of its path in
+//     the folder's `media/` or `captures/`, before any code moves, and the person's other pictures stay.
+//
+// A new trick's pictures are written with its code (`writeNewTrick`). Either way the approved copy then
+// seeds them (approved.ts), as it seeds a folder `collie trick add` brought.
 //
 // Folders are 0700 and files 0644, or 0755 for a file the proposal marked executable, as `collie trick
 // add` writes them (cli/trick-add.ts). A path written twice is a bug, never an overwrite (`wx`).
@@ -204,7 +209,42 @@ function ancestors(rel: string): string[] {
  * running the approved copy, which this never touches.
  */
 export async function replaceTrickCode(root: string, id: string, files: readonly ProposedFile[], origin: ProposalOrigin, opts: CodeWriteOptions = {}): Promise<ProposalWrite> {
-  return await replaceCode(root, id, files, renderProposalOrigin(origin), opts);
+  const { code, pictures } = splitPictures(files);
+  // The pictures first: they are outside the code hash, so a failure here leaves the code and the running copy as they were.
+  const placed = pictures.length === 0 ? null : await writePictures(join(root, id), pictures);
+  if (placed !== null) return { ok: false, reason: `The new version's pictures could not be written: ${placed}. The trick still runs the version you approved.` };
+  return await replaceCode(root, id, code, renderProposalOrigin(origin), opts);
+}
+
+/**
+ * Write a proposal's pictures into the trick folder `dir`, each over the file of its path: every folder on
+ * the way a real folder (made 0700 when missing, never a link), each picture a dot temp file renamed into
+ * place, 0644. Answers why not, or null. The paths are the wire's (propose-wire.ts `isProposedPicture`).
+ */
+async function writePictures(dir: string, pictures: readonly ProposedFile[]): Promise<string | null> {
+  const st = await lstat(dir).catch(() => null);
+  if (st === null || !st.isDirectory() || st.isSymbolicLink()) return "the trick's folder is not there";
+  try {
+    for (const picture of pictures) {
+      for (const up of ancestors(picture.rel)) {
+        const at = join(dir, up);
+        const here = await lstat(at).catch(() => null);
+        if (here === null) await mkdir(at, { mode: 0o700 });
+        else if (here.isSymbolicLink() || !here.isDirectory()) return `${up} is not a folder`;
+      }
+      const path = join(dir, picture.rel);
+      const there = await lstat(path).catch(() => null);
+      if (there !== null && there.isDirectory()) return `${picture.rel} is a folder`;
+      // A dot name beside the picture, as a version's code is written: the code hash never reads it.
+      const pictureDir = dirname(path);
+      const tmp = join(pictureDir, `.collie-new-${randomBytes(6).toString("hex")}`);
+      await writeFile(tmp, picture.bytes, { flag: "wx", mode: 0o644 });
+      await rename(tmp, path);
+    }
+    return null;
+  } catch (err) {
+    return why(err);
+  }
 }
 
 /**

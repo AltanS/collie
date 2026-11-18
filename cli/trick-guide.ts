@@ -1,6 +1,6 @@
 import { GROUP_CARD_CODE_BYTES, GROUP_CODE_BYTES, GROUP_CODE_CARDS } from "../bridge/tricks/card-group.ts";
 import { EXIT, type Io } from "./io.ts";
-import { PROPOSE_LIMITS } from "../bridge/tricks/propose-wire.ts";
+import { PROPOSE_LIMITS, PROPOSE_PICTURES } from "../bridge/tricks/propose-wire.ts";
 import { PROPOSALS_MACHINE_HOUR_MAX, PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER_OPEN_MAX, PROPOSAL_EXPIRY_MS } from "../bridge/tricks/proposals.ts";
 import { RUN_TIMEOUT_MS, STDOUT_CAP_BYTES } from "../bridge/tricks/run.ts";
 import { MANIFEST, PLACES, type ManifestEntry } from "../web/src/lib/tricks/catalogue.ts";
@@ -65,7 +65,7 @@ export function trickGuide(): string[] {
     "  program.ts    the program, or any file the run line names.",
     "  trick.ts      the helper. collie trick init writes it. Do not edit it.",
     "  config.toml   settings the program reads. Optional. Your person writes it on the machine.",
-    "  media/        PNG, JPEG or WebP pictures the view shows. Optional. Your person adds them.",
+    "  media/        PNG, JPEG or WebP pictures the view shows. Optional. collie trick propose brings them.",
     "  AGENTS.md     the full contract, written by collie trick init. Read it.",
     "Start with: collie trick init <id>",
     "In your pane it makes ./<id>/ in your current folder: your draft, outside this machine's tricks. --dir <folder> picks another place.",
@@ -149,7 +149,8 @@ export function trickGuide(): string[] {
     "HAND IT TO THE PERSON",
     "  collie trick propose <folder>",
     "It sends the folder, your draft ./<id>, to the lead of your crew, or to this Collie when it has no crew.",
-    "Dot files, node_modules, logs, inputs/, media/, captures/ and config.toml stay behind.",
+    `It brings the pictures of media/ and captures/ (PNG, JPEG or WebP, at most ${String(PROPOSE_PICTURES.bytes / (1024 * 1024))} MB each, ${String(PROPOSE_PICTURES.files)} in all), and the card names each one.`,
+    "Dot files, node_modules, logs, inputs/, config.toml and any other file in media/ or captures/ stay behind.",
     "A proposal cannot carry a config.toml: the program reads it, so your person writes it.",
     "The person sees a card with your code in this session on the phone, and in Settings, Tricks (on the Hill too, while it is on). One tap on its Switch it on approves the code and switches the trick on. Nothing runs before their yes. Nothing is added to this machine's tricks before it.",
     `Code that does not fit one card shows on a group of up to ${String(GROUP_CODE_CARDS + 1)} cards, every line of it.`,

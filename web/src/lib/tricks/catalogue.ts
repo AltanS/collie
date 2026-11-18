@@ -223,6 +223,7 @@ import {
   PROPOSALS_SENDER_HOUR_MAX,
   PROPOSALS_SENDER_OPEN_MAX,
   PROPOSE_LIMITS,
+  PROPOSE_PICTURES,
   REPO_INDEX_ABOUT_MAX,
   REPO_INDEX_BYTES_MAX,
   REPO_INDEX_CONTRACT,
@@ -1453,7 +1454,7 @@ export const LIMITS: readonly LimitGroup[] = [
   {
     group: "Files of a trick",
     limits: [
-      { what: "Pictures in `media/` and `captures/`, copied with the approved copy", value: `at most ${String(SEED_FILES_MAX)} files and ${sizeWords(SEED_BYTES_MAX)} in all` },
+      { what: "Pictures in `media/` and `captures/`, copied with the approved copy, from `collie trick add` and `collie trick propose` alike", value: `at most ${String(SEED_FILES_MAX)} files and ${sizeWords(SEED_BYTES_MAX)} in all` },
       { what: "`SKILL.md`", value: `at most ${sizeWords(SKILL_BYTES_MAX)}. A larger file is refused, never cut` },
     ],
   },
@@ -1532,6 +1533,7 @@ export const LIMITS: readonly LimitGroup[] = [
     group: "A proposal from an agent",
     limits: [
       { what: "Files", value: `at most ${String(PROPOSE_LIMITS.files)}, ${sizeWords(PROPOSE_LIMITS.bytes)} in all, ${String(PROPOSE_LIMITS.depth)} folders deep` },
+      { what: "Pictures from `media/` and `captures/`", value: `at most ${String(PROPOSE_PICTURES.files)}, a PNG, JPEG or WebP by its first bytes, ${sizeWords(PROPOSE_PICTURES.bytes)} each, counted in the files above. The card names each one. Any other file there stays behind` },
       { what: "Open at once", value: `${String(PROPOSALS_SENDER_OPEN_MAX)} per session, ${String(PROPOSALS_MEMBER_OPEN_MAX)} per crew machine, ${String(PROPOSALS_OPEN_MAX)} on the lead` },
       { what: "Per hour", value: `${String(PROPOSALS_SENDER_HOUR_MAX)} per session, ${String(PROPOSALS_MACHINE_HOUR_MAX)} per machine` },
       { what: "The card closes by itself after", value: spanWords(PROPOSAL_EXPIRY_MS) },
@@ -1634,7 +1636,7 @@ export const COMMANDS: readonly CommandEntry[] = [
   { group: "trick", verb: "helper", usage: "trick helper <id|folder>", what: "Rewrites a trick's `trick.ts` with the helper this Collie carries.", flags: [] },
   { group: "trick", verb: "skill", usage: "trick skill [<id>]", what: "Prints what a trick that is on asks of an agent. With no id, prints how to write a trick.", flags: [] },
   { group: "trick", verb: "guide", usage: "trick guide [--json]", what: "Prints how to write a trick and hand it to the person, as plain text for an agent.", flags: [JSON_FLAG] },
-  { group: "trick", verb: "propose", usage: "trick propose <folder> [--request-id <uuid>] [--json]", what: "Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on the Hill while it is on. Nothing runs before their yes.", flags: [{ flag: "--request-id", what: "The proposal's request id, a UUID. The same sender, id and files get the same answer." }, JSON_FLAG] },
+  { group: "trick", verb: "propose", usage: "trick propose <folder> [--request-id <uuid>] [--json]", what: "Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on the Hill while it is on. Nothing runs before their yes. It brings the code and the pictures of `media/` and `captures/`; `config.toml` stays behind.", flags: [{ flag: "--request-id", what: "The proposal's request id, a UUID. The same sender, id and files get the same answer." }, JSON_FLAG] },
   { group: "trick", verb: "view", usage: "trick view <trick> <verb> [args]", what: "Runs one verb of an agent view, from the agent's pane. The verbs are the `trick view` commands below.", flags: [] },
   { group: "tricks", verb: "on", usage: "tricks on [--json]", what: "Switches tricks on for this machine. They are an experiment and off until switched on. Each trick still has its own switch.", flags: [JSON_FLAG] },
   { group: "tricks", verb: "off", usage: "tricks off [--json]", what: "Switches tricks off for this machine: no trick runs or draws. Each trick keeps its own switch.", flags: [JSON_FLAG] },

@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { ACCESS_LINES, DRAFTS_SESSION_LINE, MANIFEST_KEYS, SHOWS_IN_WORDS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { PROPOSAL_USE_LABEL } from "../../web/src/lib/hill/code-card.ts";
 import { addedDiff } from "./card-group.ts";
-import { PROPOSAL_KEY_RIGHTS, PROPOSAL_ON, PROPOSAL_TOO_LARGE, PROPOSAL_USE, proposalCard, proposalVersionCard, runsOnSentence, type ProposerFacts } from "./proposal-card.ts";
+import { picturesLines, PROPOSAL_KEY_RIGHTS, PROPOSAL_ON, PROPOSAL_PICTURES_NAMED, PROPOSAL_TOO_LARGE, PROPOSAL_USE, proposalCard, proposalCardCount, proposalVersionCard, runsOnSentence, type ProposerFacts } from "./proposal-card.ts";
 import { asksForSentence, DECIDES_REPLY_CHIP, DRAFTS_SESSION_CHIP, KEEPS_RUNNING, keepsRunning, RUNS_AS_YOU, runsAsYou } from "./version-card.ts";
 
 // EVERY RIGHT HAS A LINE ON THE CARD (the first full trick run, 2026-11-16, decision 1). A trick with
@@ -33,6 +33,27 @@ function cardOf(manifest: TrickManifest) {
   if (!made.ok) throw new Error(made.error);
   return made.card;
 }
+
+describe("the pictures a proposal brings", () => {
+  test("card 1 names each by its path, at most eight and then how many more; none, no line", () => {
+    expect(picturesLines([])).toEqual([]);
+    expect(picturesLines(undefined)).toEqual([]);
+    expect(picturesLines(["media/fireball.png"])).toEqual([{ kind: "para", text: "It brings 1 picture: media/fireball.png." }]);
+    expect(picturesLines(["media/fireball.png", "media/pose.png"])).toEqual([{ kind: "para", text: "It brings 2 pictures: media/fireball.png, media/pose.png." }]);
+    const many = Array.from({ length: PROPOSAL_PICTURES_NAMED + 3 }, (_, i) => `media/p${String(i)}.png`);
+    expect(picturesLines(many)[0]).toMatchObject({ text: expect.stringMatching(/^It brings 11 pictures: media\/p0\.png, .*media\/p7\.png, and 3 more\.$/u) });
+  });
+
+  test("both cards carry the line; the count reads pictures off the files and never shows one as code", () => {
+    const made = proposalCard({ id: "legs", manifest: BARE, proposer: WHO, diff: addedDiff([{ rel: "program.ts", bytes: enc("console.log(1);\n") }]), warnings: [], crew: false, pictures: ["media/a.png"] });
+    expect(made.ok && JSON.stringify(made.card.view)).toContain("It brings 1 picture: media/a.png.");
+    const version = proposalVersionCard({ id: "legs", manifest: BARE, baseManifest: BARE, proposer: WHO, diff: addedDiff([{ rel: "program.ts", bytes: enc("console.log(2);\n") }]), warnings: [], crew: false, pictures: ["media/a.png"] });
+    expect(version.ok && JSON.stringify(version.card.view)).toContain("It brings 1 picture: media/a.png.");
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+    const files = [{ rel: "program.ts", bytes: enc("console.log(1);\n") }, { rel: "media/a.png", bytes: png }];
+    expect(proposalCardCount({ manifest: BARE, warnings: [], crew: false, files })).toEqual({ ok: true, cards: 1 });
+  });
+});
 
 describe("every right a trick asks for has a line on the proposal card", () => {
   test("the table classes every manifest key", () => {

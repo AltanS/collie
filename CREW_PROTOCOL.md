@@ -4458,8 +4458,10 @@ nothing installs or runs it before a person's tap on the lead.
   and 5 MB, 8 folders deep, 256 characters a path; no `.` or `..` step, no dot step, no
   `node_modules` or `inputs` step, no absolute path, no backslash or colon, no control, bidi or
   invisible character, NFC only; no two names, of files or folders, that are one once case and Unicode
-  compatibility forms are set aside; nothing in `media/` or `captures/` and no `config.toml` at the top
-  (a proposal carries code only: the person adds pictures and settings on the machine); the reserved
+  compatibility forms are set aside; in `media/` and `captures/` only pictures (a `.png`, `.jpg`, `.jpeg`
+  or `.webp` name and PNG, JPEG or WebP first bytes, at most 2 MB each and 50 in all, never `x`; since
+  1.29.1, an older lead refuses any file there) and no `config.toml` at the top (the person writes the
+  settings on the machine); the reserved
   names are compared with case and Unicode compatibility forms set aside; a `trick.toml` of at most
   64 KiB that the strict reader accepts, with an id Collie does not keep for itself. The base64 length
   is checked before a byte is decoded.

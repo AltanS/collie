@@ -143,10 +143,10 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
-  test("windows-suites.ps1 gives each suite its own skip budget, 641 in all, each skip named", () => {
+  test("windows-suites.ps1 gives each suite its own skip budget, 643 in all, each skip named", () => {
     const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
     const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
-    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([414, 192, 35]);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([414, 194, 35]);
     // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
     // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 6 hold socket tests, the 7
     // walky mode and socket tests, the 6 walky sibling registry tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
@@ -337,8 +337,9 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(addSkips).toBe(24);
     expect(script).toContain("cli/trick-add.test.ts");
     const proposeSkips = readFileSync(join(ROOT, "cli", "trick-propose.test.ts"), "utf8").match(/^ +(?:socketTest|posixTest)\(/gm) ?? [];
-    expect(proposeSkips).toHaveLength(20);
+    expect(proposeSkips).toHaveLength(22);
     expect(script).toContain("refuses a symbolic link, even to a file inside the folder");
+    expect(script).toContain("a picture through a link stays behind: a linked file, a linked folder, a linked media/; the mode bit never goes");
     const helperSkips = namesIn("cli/trick-kit/trick.test.ts", /test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g);
     expect(helperSkips).toHaveLength(2);
     for (const name of helperSkips) expect(script).toContain(name);

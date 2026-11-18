@@ -333,8 +333,10 @@ It adds nothing to this machine's tricks. `propose` runs the same check as `coll
 card, "Switch on the trick idle-watch?". The card shows in the agent's own session on the phone, and
 in Settings, Tricks under "Waiting for your yes", and on the Hill too while the Hill is on. One tap on
 Switch it on approves exactly the code the card showed and switches the trick on. Not now closes the
-card in the session, and the trick still waits in Settings, Tricks. It leaves dot files, `node_modules/`, logs, `inputs/`,
-`media/`, `captures/` and `config.toml` behind. It prints the card's id. Read the answer with
+card in the session, and the trick still waits in Settings, Tricks. It brings the PNG, JPEG and WebP
+pictures of `media/` and `captures/` (at most 50, 2 MB each), and the card names each one. It leaves dot
+files, `node_modules/`, logs, `inputs/`, `config.toml` and any other file in `media/` or `captures/`
+behind, and names each file of those two folders that stays behind. It prints the card's id. Read the answer with
 `collie hill status <id>`, or wait for it as a message. The message says what happened: the trick is
 installed and on, or the person declined and nothing was installed.
 
