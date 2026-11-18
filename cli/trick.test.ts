@@ -619,6 +619,25 @@ describe("collie trick check", () => {
     expect(e.out.join("\n")).toContain("ok: it runs on this machine, but it cannot be proposed.");
   });
 
+  test("both v9 helper texts (701ce4ce4 and bcc2135aa) are the helper from an older Collie, said once, not refused", async () => {
+    const toml = 'id = "kit"\nname = "Kit"\nrun = "program.ts"\nplaces = ["status"]\n';
+    const program = 'import { run } from "./trick.ts";\nrun((t) => t.status({ text: "ok" }));\n';
+    for (const commit of ["701ce4ce4", "bcc2135aa"]) {
+      const shown = await Bun.$`git show ${commit}:cli/trick-kit/trick.ts`.quiet().nothrow();
+      if (shown.exitCode !== 0) continue;
+      const v9 = shown.stdout.toString();
+      const older = await folder(toml, { "program.ts": program, "trick.ts": v9 });
+      const report = await checkStatic(older, realFiles);
+      expect(report.helper).toEqual({ version: 9, current: false, modified: false });
+      expect(report.notScanned).toContain("trick.ts");
+      const d = await deps();
+      expect(await cmdTrickCheck(d, [older])).toBe(EXIT.OK);
+      expect(d.out.filter((line) => line.includes("older Collie"))).toEqual([`  note: trick.ts is the helper from an older Collie (v9). Run \`collie trick helper ${older}\` to update it.`]);
+      expect(d.out.join("\n")).toContain("ok: no problems.");
+      expect(d.err.join("\n")).not.toContain("differs");
+    }
+  });
+
   test("only code files are grepped: docs, data, tests and fixtures are listed as not grepped and still count in the code hash", async () => {
     const dir = await folder('id = "docs"\nname = "Docs"\nrun = "program.ts"\nevery = "5m"\nplaces = ["status"]\n', {
       "program.ts": 'console.log("{}");\n',

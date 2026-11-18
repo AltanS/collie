@@ -219,14 +219,32 @@ describe("the local API's own warning kind", () => {
   });
 });
 
-// THE HELPER'S VERSION MOVES WITH ITS TEXT (1.29.1). A helper whose text changed under the same version line
-// was read as a hand-edited helper: its 53 KB counted as the trick's own code, and `collie trick propose`
-// refused the trick as too large. The pin below makes that a red test, not a surprise on a person's machine.
+// THE HELPER'S VERSION MOVES WITH EVERY CHANGE OF ITS TEXT (1.29.1). A helper whose text changed under the same
+// version line was read as a hand-edited helper: its 53 KB counted as the trick's own code, and `collie trick
+// propose` refused the trick as too large. "Unshipped" is no exception: the dev lane and an Edge build serve the
+// text too, and a draft written with it keeps that text. The pins below make a change without a bump a red test,
+// and make a pin, once written, unchangeable.
 
 const sha = (text: string): string => createHash("sha256").update(text).digest("hex");
 
-/** The SHA-256 of the helper text of each version this Collie writes. A new text takes the next number. */
-const HELPER_PINS = new Map<number, string>([[9, "e3d318649b1736a68fc11c253c890ae2809fc15a4f9db82808ef3b9bc1d9234f"]]);
+/** The SHA-256 of the current helper text, by version. It names the current version only. */
+const HELPER_PINS = new Map<number, string>([[10, "6786899af0b341dd9ef4afe64fde23161e58cf4bc4202cb5f0fb040f6401cb26"]]);
+
+/**
+ * Every (version, SHA-256) of a helper text that was ever committed on the way to this one, since 1.29.0. FROZEN:
+ * a line here is never edited or removed, not even for a version that has not shipped. A new helper text adds a
+ * line, with the next version number.
+ */
+const FROZEN_HELPERS: readonly (readonly [number, string])[] = [
+  [8, "f1abca55dae2c534c378e9670e343e681519ca4fa55c50d7c5476b44e99ebc26"], // 1.29.0
+  [8, "7cc9c32214394c6e6cf529799ba951991d5ca5efd8843d892e24bca54a0f8ee0"], // dev lane, ce9f17f0d
+  [8, "d8b71b8e568b699da2db886d2c5a1a8659d5bc8c1ea514450ff485eaa29cef56"], // dev lane, c5c9dd62c
+  [8, "e20931773e1e193c09ce6f39139175c4c13ed8add88428ee7ed51fde4e18e9ad"], // dev lane, 5985e73d3
+  [8, "6e63071b76e7f7fd38abaf37e9131648801e58749bd6eb00a710ca1edc9eed0a"], // dev lane, 63bd78934
+  [9, "ed3bbcc08f02073fbd345d869e1702bc78437f07089a59bc03df6d5e74c5db8e"], // 701ce4ce4
+  [9, "e3d318649b1736a68fc11c253c890ae2809fc15a4f9db82808ef3b9bc1d9234f"], // bcc2135aa, sprite.after
+  [10, "6786899af0b341dd9ef4afe64fde23161e58cf4bc4202cb5f0fb040f6401cb26"],
+];
 
 describe("the helper's version moves with its text", () => {
   test("the first line of the helper names HELPER_VERSION", () => {
@@ -235,19 +253,33 @@ describe("the helper's version moves with its text", () => {
 
   test("the helper's text is the one pinned for its version; a change without a bump fails here", () => {
     const pinned = HELPER_PINS.get(HELPER_VERSION);
-    if (pinned === undefined) throw new Error(`HELPER_VERSION is ${String(HELPER_VERSION)}: pin the SHA-256 of the new helper text in HELPER_PINS (${sha(TRICK_HELPER)}), and add the old text's hash to OLDER_HELPERS in scan.ts.`);
+    if (pinned === undefined) throw new Error(`HELPER_VERSION is ${String(HELPER_VERSION)}: pin the SHA-256 of the new helper text in HELPER_PINS and FROZEN_HELPERS (${sha(TRICK_HELPER)}), and add the old text's hash to OLDER_HELPERS in scan.ts.`);
     if (sha(TRICK_HELPER) === pinned) return;
     throw new Error(
-      `The helper's text (cli/trick-kit/trick.ts) changed but its version did not: bump the helper version. ` +
-        `Change the first line and HELPER_VERSION in bridge/tricks/scan.ts to v${String(HELPER_VERSION + 1)}, add the SHA-256 of the released v${String(HELPER_VERSION)} text to OLDER_HELPERS, keep its text in bridge/tricks/fixtures, and pin ${sha(TRICK_HELPER)} here. ` +
-        `A trick folder that keeps the old text under the same version reads as a hand-edited helper and is refused as too large. ` +
-        `(If v${String(HELPER_VERSION)} was never released, only the pin here needs the new hash.)`,
+      `The helper's text (cli/trick-kit/trick.ts) changed but its version did not: bump the helper version, even for a version that has not shipped. ` +
+        `Change the first line and HELPER_VERSION in bridge/tricks/scan.ts to v${String(HELPER_VERSION + 1)}, add the SHA-256 of the v${String(HELPER_VERSION)} text (${pinned}) to OLDER_HELPERS, and pin ${sha(TRICK_HELPER)} here in HELPER_PINS and FROZEN_HELPERS. ` +
+        `Never edit a helper pin: a trick folder that keeps the old text under the same version reads as a hand-edited helper and is refused as too large.`,
     );
   });
 
-  test("every older version is known by the hash of its text, once, and none of them is the current text", () => {
-    expect([...OLDER_HELPERS.values()].toSorted((a, b) => a - b)).toEqual(Array.from({ length: HELPER_VERSION - 1 }, (_, i) => i + 1));
+  test("every frozen (version, hash) pair stays known: older ones in OLDER_HELPERS, the current one as the current text", () => {
+    const missing = FROZEN_HELPERS.filter(([version, hash]) => (version === HELPER_VERSION ? sha(TRICK_HELPER) !== hash : OLDER_HELPERS.get(hash) !== version));
+    if (missing.length === 0) return;
+    throw new Error(
+      `A frozen helper pin is gone or changed: ${missing.map(([version, hash]) => `v${String(version)} ${hash}`).join(", ")}. ` +
+        `Never edit a helper pin, even for a version that has not shipped: bump HELPER_VERSION, add the old hash to OLDER_HELPERS, and add the new pair here.`,
+    );
+  });
+
+  test("a frozen pair of an older version is listed once, and the current text is not among the older helpers", () => {
+    expect(new Set(FROZEN_HELPERS.map(([, hash]) => hash)).size).toBe(FROZEN_HELPERS.length);
     expect(OLDER_HELPERS.has(sha(TRICK_HELPER))).toBe(false);
+    expect(FROZEN_HELPERS.filter(([version]) => version === HELPER_VERSION)).toEqual([[HELPER_VERSION, HELPER_PINS.get(HELPER_VERSION) ?? ""]]);
+    expect(HELPER_PINS.size).toBe(1);
+  });
+
+  test("OLDER_HELPERS holds every older version at least once, and nothing newer than the current one", () => {
+    expect([...new Set(OLDER_HELPERS.values())].toSorted((a, b) => a - b)).toEqual(Array.from({ length: HELPER_VERSION - 1 }, (_, i) => i + 1));
   });
 
   test("v8, the helper of 1.29.0 and of the released tricks repository, is a known older helper", () => {
@@ -256,5 +288,22 @@ describe("the helper's version moves with its text", () => {
     expect(sha(v8)).toBe("f1abca55dae2c534c378e9670e343e681519ca4fa55c50d7c5476b44e99ebc26");
     expect(shippedHelperVersion(v8)).toBe(8);
     expect(shippedHelperVersion(TRICK_HELPER)).toBe(HELPER_VERSION);
+  });
+
+  test("both v9 texts (701ce4ce4 and bcc2135aa) and the dev lane's v8 texts are known older helpers", async () => {
+    const commits: readonly (readonly [string, number, string])[] = [
+      ["701ce4ce4", 9, "ed3bbcc08f02073fbd345d869e1702bc78437f07089a59bc03df6d5e74c5db8e"],
+      ["bcc2135aa", 9, "e3d318649b1736a68fc11c253c890ae2809fc15a4f9db82808ef3b9bc1d9234f"],
+      ["ce9f17f0d", 8, "7cc9c32214394c6e6cf529799ba951991d5ca5efd8843d892e24bca54a0f8ee0"],
+      ["63bd78934", 8, "6e63071b76e7f7fd38abaf37e9131648801e58749bd6eb00a710ca1edc9eed0a"],
+    ];
+    for (const [commit, version, hash] of commits) {
+      const shown = await Bun.$`git show ${commit}:cli/trick-kit/trick.ts`.quiet().nothrow();
+      if (shown.exitCode !== 0) continue;
+      const text = shown.stdout.toString();
+      expect(sha(text)).toBe(hash);
+      expect(helperVersion(text)).toBe(version);
+      expect(shippedHelperVersion(text)).toBe(version);
+    }
   });
 });

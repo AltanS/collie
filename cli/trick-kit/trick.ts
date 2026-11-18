@@ -1,4 +1,4 @@
-// collie trick helper v9
+// collie trick helper v10
 // The helper of a Collie trick: it reads the facts, collects the parts and the Decisions, and prints the
 // one document the bridge reads. `collie trick init` writes it into the trick folder, and
 // `collie trick helper <id>` rewrites it with the newest version. It imports only node: built-ins and
