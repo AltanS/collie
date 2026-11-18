@@ -23,7 +23,7 @@
     "crew": {
       "model": "openrouter/anthropic/claude-haiku-4.5",
       "skill": "338c503a5f7bab2b",
-      "recordedAt": "2026-11-16T17:14:49.853Z",
+      "recordedAt": "2026-11-18T07:25:57.547Z",
       "cases": [
         "claude.walky-crew-agents",
         "claude.walky-crew-broadcast",
