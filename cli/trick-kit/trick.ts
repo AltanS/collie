@@ -345,7 +345,15 @@ export type MenuRow =
   | { kind: "switch"; id: string; label: string; intent: string; on: boolean; icon?: Icon; disabled?: boolean };
 /** Where a belt mark or a menu part shows (contract 2): `sessions`, facts ids, binds it to those sessions only. */
 export interface Bind { sessions?: string[]; id?: string }
+/** A small moving picture over the app (list "float" in places). `src` is a file of the trick's media/ folder. Original art only, never a known character. */
+export interface FloatPart {
+  at: "float"; id: string; sessions?: string[];
+  mode: "once" | "stay"; motion: "fly-across" | "arc" | "pop" | "perch" | "wander" | "idle";
+  sprite: { src: string; frames?: number; fps?: number; size?: "s" | "m" };
+  edge?: "top" | "bottom" | "left" | "right"; mood?: string; opens?: "page";
+}
 export type Part =
+  | FloatPart
   | { at: "status"; id: "status"; chip: { text: string; icon?: Icon; tone?: Tone } }
   | { at: "belt"; id: string; sessions?: string[]; mark: { label: string; icon?: Icon; tone?: Tone; badge?: string; intent?: string } }
   | { at: "menu"; id: string; sessions?: string[]; rows: MenuRow[] }

@@ -2692,6 +2692,24 @@ describe("the menu place and bound parts (contract 2)", () => {
     expect(r.specs).toHaveLength(2);
   });
 
+  test("float: a trick keeps one picture that stays and one that plays once, and a refused one is not kept stale where an accepted one took its slot", async () => {
+    const FLOAT = 'id = "ci"\nname = "CI"\nrun = "./ci.sh"\nevery = "30s"\nplaces = ["float"]\n';
+    const stay = (id: string) => ({ at: "float", id, mode: "stay", motion: "perch", sprite: { src: "media/pet.png" } });
+    const once = (id: string) => ({ at: "float", id, mode: "once", motion: "pop", sprite: { src: "media/spark.png" } });
+    const first = doc(stay("pet"), once("spark"));
+    // The next run puts a new part in each slot first, then sends the old ones again, each refused as a second of its mode.
+    const second = doc(stay("pet2"), once("spark2"), stay("pet"), once("spark"));
+    const r = await rig([exited(first), exited(second)], { world, instanceOf: (session) => own.get(session) ?? null, audit: () => undefined });
+    await makeTrick(r.configDir, "ci", FLOAT, { "ci.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "ci");
+    await tickAt(r, T0);
+    expect((await r.service.reply(undefined, { bound: true })).parts.map((part) => part.part).toSorted()).toEqual(["pet", "spark"]);
+    await tickAt(r, T0 + 30_000);
+    const reply = await r.service.reply(undefined, { bound: true });
+    expect(reply.parts.map((part) => part.part).toSorted()).toEqual(["pet2", "spark2"]);
+    expect(reply.parts.some((part) => part.stale === true)).toBe(false);
+  });
+
   test("N1: a menu tap's receipt carries no message that reads as Collie's own; a belt tap's keeps it", async () => {
     const failed: RunOutcome = { kind: "exited", code: 1, stdout: "", stderr: "Collie restarted the build", ms: 3 };
     const r = await rig([exited(doc(menu(), mark())), failed, failed], { world, instanceOf: (session) => own.get(session) ?? null, audit: () => undefined });

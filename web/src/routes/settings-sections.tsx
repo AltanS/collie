@@ -47,6 +47,7 @@ import { TricksSettingsCard } from "@/components/tricks-settings-card";
 import { TricksSwitchControl } from "@/components/tricks-switch-card";
 import { TrickCardsWaiting } from "@/components/trick-cards";
 import { ZenControl } from "@/components/zen-control";
+import { FloatingThingsControl } from "@/components/floating-things-control";
 import { useServerDiagnostics } from "@/hooks/use-server-diagnostics";
 import { EMPTY_DEVICES, type DevicesData } from "@/lib/loaders";
 import { settingsSectionPath } from "@/lib/nav";
@@ -152,6 +153,10 @@ export function SettingsAppearanceRoute() {
           put a rendering choice beside haptics. */}
       <ToolCallsControl />
       <CompactionsControl />
+      {/* Whether tricks may draw small moving pictures over the app (the `float` place). One switch for all of
+          them, on by default; each trick keeps its own switch in Settings → Tricks. It decides what the app
+          shows over a page, so it sits here with the other choices about what is on screen. */}
+      <FloatingThingsControl />
     </SettingsPage>
   );
 }

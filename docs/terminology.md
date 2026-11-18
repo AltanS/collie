@@ -381,9 +381,10 @@ you add one by its address, and its row says "ColliePWA did not check this code.
 
 ## Place
 
-A spot on the phone where a trick can show (a surface). A program trick draws in six: `belt`,
-`session` (shown as Page), `dashboard`, `status`, `tabbar` and `menu` (rows in a session's settings).
-An agent view is the seventh, `agent-view`. The Hill is built in, and a trick posts there without
+A spot on the phone where a trick can show (a surface). A program trick draws in seven: `belt`,
+`session` (shown as Page), `dashboard`, `status`, `tabbar`, `menu` (rows in a session's settings) and
+`float` (a small moving picture over the app, a "floating thing" in Settings).
+An agent view is the eighth, `agent-view`. The Hill is built in, and a trick posts there without
 naming it. A place is not a [space](#space). Each place is
 described in [Places](tricks-reference.md#places).
 

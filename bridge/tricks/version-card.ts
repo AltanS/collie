@@ -128,6 +128,7 @@ const PLACE_WORDS = {
   status: "the status line",
   tabbar: "the bottom bar",
   menu: "session settings",
+  float: "a small moving picture over the app",
 } as const satisfies Readonly<Record<PlaceKind, string>>;
 
 /** The chip word of the place `agent-view` (contract 2): a view of a session that its own agent draws. */

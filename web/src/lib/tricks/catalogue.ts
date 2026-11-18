@@ -123,6 +123,16 @@ import {
   MANIFEST_KEYS,
   BOUND_PARTS_MAX,
   BOUND_SESSIONS_MAX,
+  FLOAT_EDGES,
+  FLOAT_FPS_MAX,
+  FLOAT_FRAMES_MAX,
+  FLOAT_MODES,
+  FLOAT_ONCE_MOTIONS,
+  FLOAT_OPENS,
+  FLOAT_OPENS_WORDS,
+  FLOAT_SIZES,
+  FLOAT_STAY_MOTIONS,
+  FLOAT_WORDS,
   MENU_CONTRACT,
   MENU_LABEL_MAX,
   MENU_RESERVED_LEADS,
@@ -183,6 +193,7 @@ import {
   type TrickEvent,
   TRICKS_WINDOWS_LINE,
 } from "./schema";
+import { FLOAT_ONCE_EVERY_MS, FLOAT_ONCE_MAX_MS, FLOAT_SIZE_PX, FLOAT_STAY_MAX, FLOAT_TAP_PX, FLOAT_WANDER_EVERY_MS } from "./float";
 import {
   BACKOFF_MS,
   BASE_ENV_NAMES,
@@ -294,7 +305,7 @@ export type Example =
 /** Who writes to a place: a program the person switched on, or the agent of one session. */
 export type Who = "program" | "agent";
 
-/** Every place word: the six a program draws in, and the one an agent view adds. */
+/** Every place word: the seven a program draws in, and the one an agent view adds. */
 export type PlaceId = PlaceKind | typeof AGENT_VIEW_PLACE;
 
 export interface PlaceEntry {
@@ -486,6 +497,40 @@ export const PLACES = {
       },
     ],
   },
+  float: {
+    id: "float",
+    name: "Floating picture",
+    where: `A small moving picture over the app, on the Dashboard and in a session's Chat and Terminal, in the free area clear of the header, the strips, the Belt and the composer. ${FLOAT_WORDS}`,
+    shows: `One picture of the trick's \`media/\` folder, and one motion of a fixed list. A part says \`once\` (the picture plays one motion and is gone) or \`stay\` (it stays and shows a mood). It takes no view, no coordinates, no style and no code: Collie places and times the picture. Without \`sessions\` it shows on the Dashboard; with them (contract 2) it shows only in those sessions. It is hidden while a sheet, a dialog or a card that asks a question is open, while a field has focus and while a yes is held, and it comes back after. "Floating things" in Settings, Appearance, turns every picture off on a device, and each trick keeps its own switch. Pictures must be original art, never a known character.`,
+    tap: `A once picture never takes a tap: a tap goes to what is under it. A stay picture is tap-through too, unless its part says \`opens\` ${code('"page"')}: a parked picture (\`perch\` or \`idle\`, never one that is moving) then takes a tap in a ${String(FLOAT_TAP_PX)} px box and opens the trick's Page. ${FLOAT_OPENS_WORDS} Nothing else takes a tap.`,
+    limits: [
+      { what: "Parts of this place per trick", value: "one `stay` and one `once` for every session, and up to eight bound ones of each mode with `sessions`. No session is named by two parts of one mode" },
+      { what: "A part", value: `\`id\`, \`mode\` (${orList(FLOAT_MODES)}), \`motion\`, \`sprite\`, and optionally \`edge\`, \`mood\`, \`opens\` and \`sessions\`. Nothing else` },
+      { what: "`motion` of `once`", value: `${orList(FLOAT_ONCE_MOTIONS)}. Each plays once, in at most ${String(FLOAT_ONCE_MAX_MS / 1000)} s, along a path inside the free area, and the picture fades in and out` },
+      { what: "`motion` of `stay`", value: `${orList(FLOAT_STAY_MOTIONS)}. \`perch\` sits on an edge (\`edge\`: ${orList(FLOAT_EDGES)}, \`bottom\` when left out), \`idle\` sits in place and bobs a little, \`wander\` moves to a new spot at most every ${String(FLOAT_WANDER_EVERY_MS / 1000)} s` },
+      { what: "`sprite`", value: `\`src\`, a file of the trick's \`media/\` folder (a PNG, JPEG or WebP, ${sizeWords(HILL_MEDIA_BYTES_MAX)} at most, the same check as an \`image\` node), and optionally \`frames\`, \`fps\` and \`size\`. Nothing else` },
+      { what: "`sprite` `size`", value: `${orList(FLOAT_SIZES)}: \`s\` is ${String(FLOAT_SIZE_PX.s)} px, \`m\` is ${String(FLOAT_SIZE_PX.m)} px. \`s\` when left out` },
+      { what: "`sprite` `frames` and `fps`", value: `\`frames\` is the columns of a sprite sheet, 1 to ${String(FLOAT_FRAMES_MAX)}; the frames are square and side by side. \`fps\` is 1 to ${String(FLOAT_FPS_MAX)} and needs \`frames\` of 2 or more` },
+      { what: "`mood`", value: `${orList(CHIP_STATES)}. It picks the row of the sprite sheet, counting from the top in that order. A sheet with fewer rows draws its first row. \`idle\` when left out` },
+      { what: "`opens`", value: `${orList(FLOAT_OPENS)}, on a \`stay\` part with \`perch\` or \`idle\`. The trick needs a Page for the tap to open` },
+      { what: "On screen at once", value: `at most ${String(FLOAT_STAY_MAX)} \`stay\` pictures across all tricks, and one \`once\` picture at a time: one waits and the rest are dropped. A trick's \`once\` pictures start at least ${String(FLOAT_ONCE_EVERY_MS / 1000)} s apart` },
+      { what: "When a `once` picture plays", value: "when Collie first sees the part, or sees it change, after the phone has loaded the tricks. To play the same picture again, print the part with a new `id` or another `mood`. Parts that were there when the phone opened do not play" },
+      { what: "Contract", value: `\`sessions\` needs contract ${String(MENU_CONTRACT)}, as on a belt mark. The place itself works at contract 1` },
+      { what: "Motion", value: "transform and opacity only. A hidden page pauses every picture. With reduced motion a `once` picture does nothing and a `stay` picture is a still image: the mood swaps the frame, and nothing glides or wanders" },
+      { what: "Art", value: "original art only, never a known character" },
+      SESSIONS_LIMIT,
+      PART_SIZE,
+    ],
+    who: "program",
+    examples: [
+      {
+        kind: "document",
+        json: { v: 1, parts: [{ at: "float", id: "pet", mode: "stay", motion: "perch", edge: "bottom", sprite: { src: "media/pet.png", frames: 4, fps: 6, size: "s" }, mood: "working", opens: "page" }] },
+      },
+      { kind: "document", json: { v: 1, parts: [{ at: "float", id: "tada", mode: "once", motion: "arc", sprite: { src: "media/spark.png", size: "m" } }] } },
+      { kind: "manifest", toml: `id = "pet"\nname = "Pet"\nrun = "program.ts"\nplaces = ["float", "session"]\n` },
+    ],
+  },
   "agent-view": {
     id: "agent-view",
     name: "Agent view",
@@ -517,7 +562,7 @@ export const PLACES = {
   },
 } satisfies Readonly<Record<PlaceId, PlaceEntry>>;
 
-/** The places in the order the reference lists them: the six a program draws in, then the agent view. */
+/** The places in the order the reference lists them: the seven a program draws in, then the agent view. */
 export const PLACE_ORDER: readonly PlaceId[] = [...PLACE_KINDS, AGENT_VIEW_PLACE];
 
 // ── Parts: the node kinds ────────────────────────────────────────────────────────────────────

@@ -8,11 +8,11 @@ Tricks are experimental. They may change, lose settings, or be withdrawn in a pa
 
 ## Places
 
-A place is a spot on the phone where a trick can show (a surface). A program trick, a program on your machine that prints parts, draws in the first six. An agent view, one screen that the session's own agent draws, is the seventh.
+A place is a spot on the phone where a trick can show (a surface). A program trick, a program on your machine that prints parts, draws in the first seven. An agent view, one screen that the session's own agent draws, is the eighth.
 
-![Three phone screens, the Dashboard, a session and a session's settings sheet, with the seven places of a trick numbered.](images/tricks/places.png)
+![Three phone screens, the Dashboard, a session and a session's settings sheet, with the eight places of a trick numbered.](images/tricks/places.png)
 
-In the picture: 1 Dashboard tile, 2 Page, 3 Bottom bar item, 4 Status chip, 5 Belt, 6 Agent view, 7 Session settings rows. Each place below has its own picture.
+In the picture: 1 Dashboard tile, 2 Page, 3 Bottom bar item, 4 Status chip, 5 Belt, 6 Agent view, 7 Session settings rows, 8 Floating picture. Each place below has its own picture.
 
 | Place | Name | Where it shows | Drawn by |
 | --- | --- | --- | --- |
@@ -22,6 +22,7 @@ In the picture: 1 Dashboard tile, 2 Page, 3 Bottom bar item, 4 Status chip, 5 Be
 | `status` | Status chip | One chip in the status line above the Belt, at the left end of the row; the model and the usage stay at the right end. | A program |
 | `tabbar` | Bottom bar item | An item in the Dashboard's bottom bar, after the Hill. | A program |
 | `menu` | Session settings rows | Rows in a session's settings (the sheet of the session's ⋮ button), in a group of the trick's own after Collie's rows and Close, under the heading "From the trick", then the trick's name. Agent sessions only. Adds rows to a session's settings. | A program |
+| `float` | Floating picture | A small moving picture over the app, on the Dashboard and in a session's Chat and Terminal, in the free area clear of the header, the strips, the Belt and the composer. It can draw a small moving picture over the app. It never covers a question and never blocks a tap. | A program |
 | `agent-view` | Agent view | A view of one agent session, beside Terminal and Chat. The session's own agent draws it, and the person switches it on per session. | A session's agent |
 
 ### `belt`
@@ -359,6 +360,89 @@ A program prints:
     }
   ]
 }
+```
+
+### `float`
+
+![A session, with a trick's small moving picture in the free area above the status line, clear of the Belt and the composer.](images/tricks/place-float.png)
+
+**Where.** A small moving picture over the app, on the Dashboard and in a session's Chat and Terminal, in the free area clear of the header, the strips, the Belt and the composer. It can draw a small moving picture over the app. It never covers a question and never blocks a tap.
+
+**Shows.** One picture of the trick's `media/` folder, and one motion of a fixed list. A part says `once` (the picture plays one motion and is gone) or `stay` (it stays and shows a mood). It takes no view, no coordinates, no style and no code: Collie places and times the picture. Without `sessions` it shows on the Dashboard; with them (contract 2) it shows only in those sessions. It is hidden while a sheet, a dialog or a card that asks a question is open, while a field has focus and while a yes is held, and it comes back after. "Floating things" in Settings, Appearance, turns every picture off on a device, and each trick keeps its own switch. Pictures must be original art, never a known character.
+
+**A tap.** A once picture never takes a tap: a tap goes to what is under it. A stay picture is tap-through too, unless its part says `opens` `"page"`: a parked picture (`perch` or `idle`, never one that is moving) then takes a tap in a 44 px box and opens the trick's Page. Tapping its picture opens its page. Nothing else takes a tap.
+
+| Limit | Value |
+| --- | --- |
+| Parts of this place per trick | one `stay` and one `once` for every session, and up to eight bound ones of each mode with `sessions`. No session is named by two parts of one mode |
+| A part | `id`, `mode` (`once` or `stay`), `motion`, `sprite`, and optionally `edge`, `mood`, `opens` and `sessions`. Nothing else |
+| `motion` of `once` | `fly-across`, `arc` or `pop`. Each plays once, in at most 3 s, along a path inside the free area, and the picture fades in and out |
+| `motion` of `stay` | `perch`, `wander` or `idle`. `perch` sits on an edge (`edge`: `top`, `bottom`, `left` or `right`, `bottom` when left out), `idle` sits in place and bobs a little, `wander` moves to a new spot at most every 10 s |
+| `sprite` | `src`, a file of the trick's `media/` folder (a PNG, JPEG or WebP, 2 MiB at most, the same check as an `image` node), and optionally `frames`, `fps` and `size`. Nothing else |
+| `sprite` `size` | `s` or `m`: `s` is 32 px, `m` is 48 px. `s` when left out |
+| `sprite` `frames` and `fps` | `frames` is the columns of a sprite sheet, 1 to 16; the frames are square and side by side. `fps` is 1 to 12 and needs `frames` of 2 or more |
+| `mood` | `working`, `waiting`, `idle`, `done` or `gone`. It picks the row of the sprite sheet, counting from the top in that order. A sheet with fewer rows draws its first row. `idle` when left out |
+| `opens` | `page`, on a `stay` part with `perch` or `idle`. The trick needs a Page for the tap to open |
+| On screen at once | at most 2 `stay` pictures across all tricks, and one `once` picture at a time: one waits and the rest are dropped. A trick's `once` pictures start at least 60 s apart |
+| When a `once` picture plays | when Collie first sees the part, or sees it change, after the phone has loaded the tricks. To play the same picture again, print the part with a new `id` or another `mood`. Parts that were there when the phone opened do not play |
+| Contract | `sessions` needs contract 2, as on a belt mark. The place itself works at contract 1 |
+| Motion | transform and opacity only. A hidden page pauses every picture. With reduced motion a `once` picture does nothing and a `stay` picture is a still image: the mood swaps the frame, and nothing glides or wanders |
+| Art | original art only, never a known character |
+| `sessions`, contract 2 | 1 to 8 of the facts' session ids, agent sessions only. The part shows only in those sessions, in place of the trick's unbound part of this place there. Left out, the part is unbound |
+| One part, as compact JSON | at most 16 KiB |
+
+A program prints:
+
+```json
+{
+  "v": 1,
+  "parts": [
+    {
+      "at": "float",
+      "id": "pet",
+      "mode": "stay",
+      "motion": "perch",
+      "edge": "bottom",
+      "sprite": {
+        "src": "media/pet.png",
+        "frames": 4,
+        "fps": 6,
+        "size": "s"
+      },
+      "mood": "working",
+      "opens": "page"
+    }
+  ]
+}
+```
+
+A program prints:
+
+```json
+{
+  "v": 1,
+  "parts": [
+    {
+      "at": "float",
+      "id": "tada",
+      "mode": "once",
+      "motion": "arc",
+      "sprite": {
+        "src": "media/spark.png",
+        "size": "m"
+      }
+    }
+  ]
+}
+```
+
+In `trick.toml`:
+
+```toml
+id = "pet"
+name = "Pet"
+run = "program.ts"
+places = ["float", "session"]
 ```
 
 ### `agent-view`
@@ -1273,7 +1357,7 @@ These are all the keys of `trick.toml`. At the same contract, any other key is r
 | `mode` | word | no | `once` or `serve`. Default `once` | 1 | `once` runs once per trigger and prints one document. `serve` is kept for a later Collie. |
 | `contract` | whole number | no | 1 to 999. Default 1. This Collie speaks 1 to 3 | 1 | The contract the trick is written for. Write 2 to read files with `inputs` or to add an agent view, 3 to keep settings with `[[field]]` or to read Collie with `access`. A higher number than this Collie knows is refused with one line. |
 | `icon` | word | no | one of the icon words in Shared values. Default `plug` | 1 | The trick's icon. `collie trick check` names a wrong one. |
-| `places` | list of words | yes | 1 to 16 of `belt`, `session`, `dashboard`, `status`, `tabbar`, `menu`, `agent-view`. Each once | 1 | Where its parts draw. Each place a part uses must be listed. `agent-view` adds an agent view and needs contract 2. |
+| `places` | list of words | yes | 1 to 16 of `belt`, `session`, `dashboard`, `status`, `tabbar`, `menu`, `float`, `agent-view`. Each once | 1 | Where its parts draw. Each place a part uses must be listed. `agent-view` adds an agent view and needs contract 2. |
 | `env` | list of names | no | at most 32 names of at most 64 characters: letters, digits and `_`, not starting with a digit | 1 | Environment names the program gets beyond the base list, such as `GH_TOKEN`. The person sees each one. |
 | `inputs` | list of globs | no | at most 8 globs of at most 256 characters and 6 steps, relative to a session's folder | 2 | Files the program reads from each agent session's folder. They are untrusted data: show them, never run them. |
 | `description` | text | no | at most 140 characters, plain text | 1 | One plain line that says what the trick does. Settings shows it under the name. |

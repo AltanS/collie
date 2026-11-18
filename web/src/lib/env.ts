@@ -50,6 +50,11 @@ export function hasResizeObserver(): boolean {
   return globalThis.ResizeObserver !== undefined;
 }
 
+/** True where an element can be animated with the Web Animations API (`element.animate`). jsdom cannot. */
+export function canAnimate(el: Element): boolean {
+  return "animate" in el;
+}
+
 /**
  * A grapheme segmenter, or `null` on an engine without `Intl.Segmenter` (Firefox <125, Safari
  * <14.1). Callers in the main chunk must fall back to per-code-point iteration rather than

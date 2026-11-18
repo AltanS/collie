@@ -3495,7 +3495,7 @@ export function AgentChat({
               rather than the element for exactly this reason (agent-chat.test.tsx says so at the
               docking test). */}
           <Collapse open={!zen}>
-            <div className="relative shrink-0">
+            <div data-slot="pane-bottom" className="relative shrink-0">
 
               {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx/permission mode
                   would otherwise vanish with the stripped input box). It is the LAST ROW OF THE MIRROR,

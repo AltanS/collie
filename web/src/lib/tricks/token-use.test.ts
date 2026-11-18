@@ -39,6 +39,7 @@ describe("trickTokenUse: places", () => {
     ["status", null],
     ["tabbar", null],
     ["menu", null],
+    ["float", null],
     ["agent-view", "agent-view"],
   ];
 

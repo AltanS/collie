@@ -31,27 +31,33 @@ everything:
 
 ## Where a trick can show
 
-A trick can show in seven places on the phone, and nowhere else. It can also post to the Hill.
+A trick can show in eight places on the phone, and nowhere else. It can also post to the Hill.
 
 A place is a spot on the phone where a trick can show (a surface). Collie owns every place. A trick
 names the places it wants in its manifest, and its parts appear there, drawn by the phone with
 Collie's own look.
 
-- **Six places take a program's parts.** On the Dashboard: a tile in the strip at the top, a row
+- **Seven places take a program's parts.** On the Dashboard: a tile in the strip at the top, a row
   under Tricks that opens the trick's own Page, and an item in the bottom bar. In an agent
   session: a chip at the left end of the status line, a mark at the end of the Belt, and rows in the
-  session's settings.
-- **The agent view is the seventh.** It is a view of one agent session, beside Terminal and Chat, and
+  session's settings. The seventh, `float`, is a small moving picture over the app: it plays once
+  (`once`) or stays on screen (`stay`), on the Dashboard or in the sessions the part names. It stays in the free area
+  of the screen, never covers a question and never blocks a tap. A picture that rests on an edge can
+  open the trick's Page, when its part says so. A picture is a file in the trick's `media/` folder,
+  drawn by Collie from a fixed list of motions. Use original art, never a known character.
+  "Floating things" in Settings → Appearance turns every picture off on a device, and each trick
+  keeps its own switch.
+- **The agent view is the eighth.** It is a view of one agent session, beside Terminal and Chat, and
   that session's own agent draws it.
 - **The Hill is not a place, it ships with Collie.** It is the page of questions that wait for you,
   and an experiment: off until you switch it on in Settings → Experiments. A trick posts a question
   there, a Decision, and does not list the Hill in its `places`.
 
-![Three phone screens, the Dashboard, a session and a session's settings sheet, with the seven places of a trick numbered.](images/tricks/places.png)
+![Three phone screens, the Dashboard, a session and a session's settings sheet, with the eight places of a trick numbered.](images/tricks/places.png)
 
 In the picture, on the Dashboard: 1 the tile, 2 the row of the trick's Page, 3 the bottom bar item. In a
 session: 4 the status chip, 5 the mark on the Belt, 6 the agent view beside Terminal and Chat. In the
-session's settings: 7 the trick's rows.
+session's settings: 7 the trick's rows. Over a session: 8 a floating picture.
 
 The [Places](tricks-reference.md#places) section of the reference describes each place: where it
 shows, what it takes, what a tap does, its limits and an example.
@@ -90,7 +96,7 @@ reference.
 A trick is a program that prints parts, or rules for an agent that draws a screen.
 
 - **A program trick** is a small program on your machine. The bridge runs it on a timer, or when you
-  tap. It prints what to show, and Collie draws it in its six places and on the Hill. Its folder
+  tap. It prints what to show, and Collie draws it in its seven places and on the Hill. Its folder
   holds `trick.toml` and the program.
 - **An agent view** is rules for the agent of one session. The agent answers you by drawing one
   screen, in that session's agent view. Its folder holds `trick.toml` and `rules.md`, and no program.

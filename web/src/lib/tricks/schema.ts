@@ -548,11 +548,12 @@ export type SessionStatus = (typeof SESSION_STATUSES)[number];
  * Every place here is drawn by this Collie: `belt` (agent-chat.tsx), `status` (trick-status-item.tsx),
  * `dashboard` and `tabbar` (trick-place-items.tsx, dashboard-tab-bar.tsx), `session` (the bridge's
  * Tricks Space, panes.ts, and routes/trick-session.tsx) and, from contract 2, `menu` (rows in a session's
- * settings, trick-menu-group.tsx; {@link MENU_CONTRACT}). M94 review 11 removed `tab`, `tab:<match>` and
+ * settings, trick-menu-group.tsx; {@link MENU_CONTRACT}) and `float` (small moving pictures drawn over
+ * the app, trick-float-layer.tsx; see the float section). M94 review 11 removed `tab`, `tab:<match>` and
  * `view:<match>`, which parsed and drew nowhere; a later Collie adds a place back at the same contract,
  * and an older one leaves a part there out (`parseTrickDocument`).
  */
-export const PLACE_KINDS = ["belt", "session", "dashboard", "status", "tabbar", "menu"] as const;
+export const PLACE_KINDS = ["belt", "session", "dashboard", "status", "tabbar", "menu", "float"] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
 /** The places a parser call with no `places` accepts: every place. */
 export const NEAR_PLACES: readonly PlaceKind[] = PLACE_KINDS;
@@ -617,6 +618,38 @@ export const SESSIONS_NEED_CONTRACT = `"sessions" needs contract = ${String(MENU
  */
 export const MENU_WORDS = "Adds rows to a session's settings.";
 export const MENU_TAP_WORDS = "A tap runs it and tells it which session. Collie gives it no way to type there.";
+
+// ── The float place ─────────────────────────────────────────────────────────────────────────────
+//
+// A `float` part draws one small picture over the app: `once` plays one motion and is gone (fly-across,
+// arc, pop), `stay` remains and shows a mood (perch, wander, idle). The program names the picture, the
+// motion and the mood; Collie places it inside the free area of the screen it is drawn on and holds the
+// rest (never over a question or a sheet, tap-through, rate limits): lib/tricks/float.ts and
+// components/trick-float-layer.tsx. `float` in `places` is the right. Unbound it shows on the Dashboard;
+// with `sessions` (contract 2) it shows only in those sessions.
+
+export const FLOAT_MODES = ["once", "stay"] as const;
+export type FloatMode = (typeof FLOAT_MODES)[number];
+export const FLOAT_ONCE_MOTIONS = ["fly-across", "arc", "pop"] as const;
+export const FLOAT_STAY_MOTIONS = ["perch", "wander", "idle"] as const;
+/** Every motion of the place. A once motion never takes a stay mode and the other way round. */
+export const FLOAT_MOTIONS = [...FLOAT_ONCE_MOTIONS, ...FLOAT_STAY_MOTIONS] as const;
+export type FloatMotion = (typeof FLOAT_MOTIONS)[number];
+export const FLOAT_EDGES = ["top", "bottom", "left", "right"] as const;
+export type FloatEdge = (typeof FLOAT_EDGES)[number];
+/** `s` is 32 px, `m` is 48 px (lib/tricks/float.ts `FLOAT_SIZE_PX`). */
+export const FLOAT_SIZES = ["s", "m"] as const;
+export type FloatSize = (typeof FLOAT_SIZES)[number];
+export const FLOAT_OPENS = ["page"] as const;
+export type FloatOpens = (typeof FLOAT_OPENS)[number];
+/** The columns of a sprite sheet. */
+export const FLOAT_FRAMES_MAX = 16;
+/** The frame rate of a sprite sheet. */
+export const FLOAT_FPS_MAX = 12;
+/** The words a person reads for the `float` right, the same in the About sheet (`settings.tricks.about.float`, held equal by a test). */
+export const FLOAT_WORDS = "It can draw a small moving picture over the app. It never covers a question and never blocks a tap.";
+/** The line beside {@link FLOAT_WORDS} for a part that says `opens = "page"`. */
+export const FLOAT_OPENS_WORDS = "Tapping its picture opens its page.";
 
 /** Whether index `at` of folded words sits on a word's edge: a blank or an end beside it, or not two Latin letters or digits. */
 function edgeAt(text: string, at: number): boolean {
@@ -1091,6 +1124,37 @@ export interface MenuPart {
   sessions?: string[];
   rows: MenuRow[];
 }
+/** The sprite of a `float` part: a picture of the trick's `media/` folder, a sheet when `frames` is more than 1. */
+export interface FloatSprite {
+  /** A file of the trick's `media/` folder (the image rule: PNG, JPEG or WebP by its first bytes, at most 2 MB). */
+  src: string;
+  /** The columns of a sprite sheet, 1 to {@link FLOAT_FRAMES_MAX}. The rows are one per mood, in the order of {@link CHIP_STATES}. */
+  frames?: number;
+  /** Frames per second, 1 to {@link FLOAT_FPS_MAX}, with `frames` of 2 or more. */
+  fps?: number;
+  /** `s` (32 px, the default) or `m` (48 px). */
+  size?: FloatSize;
+}
+/**
+ * A small moving picture over the app (the `float` place). Declarative only: a picture, a motion from a
+ * fixed list and a mood; no coordinates, style or code reach the phone. `once` plays one motion and is gone,
+ * `stay` stays on screen and shows a mood.
+ */
+export interface FloatPart {
+  at: "float";
+  id: string;
+  mode: FloatMode;
+  motion: FloatMotion;
+  /** With `perch` only: the edge of the free area it sits on. Absent: `bottom`. */
+  edge?: FloatEdge;
+  sprite: FloatSprite;
+  /** The sprite sheet's row: a chip state. Absent: `idle`. */
+  mood?: ChipState;
+  /** With a `stay` part that does not wander: a tap on the parked picture opens the trick's page. */
+  opens?: FloatOpens;
+  /** As a belt mark's: the sessions it shows in (contract 2). Absent: the Dashboard only. */
+  sessions?: string[];
+}
 /**
  * A trick's item in the status line above the Belt: the attributes of a tree `chip`, and no others. No
  * `state` (never a status shape), and no `intent`: the chip is not a control. `at` with `clock` makes it
@@ -1151,7 +1215,7 @@ export interface SessionPart {
   actions?: TrickAction[];
   view: View;
 }
-export type TrickPart = BeltPart | SessionPart | DashboardPart | StatusPart | TabbarPart | MenuPart;
+export type TrickPart = BeltPart | SessionPart | DashboardPart | StatusPart | TabbarPart | MenuPart | FloatPart;
 
 /** A part the parser accepted, with its place. */
 export type ParsedPart =
@@ -1160,7 +1224,8 @@ export type ParsedPart =
   | { place: "session"; part: SessionPart }
   | { place: "dashboard"; part: DashboardPart }
   | { place: "tabbar"; part: TabbarPart }
-  | { place: "menu"; part: MenuPart };
+  | { place: "menu"; part: MenuPart }
+  | { place: "float"; part: FloatPart };
 
 /** One control a part draws that sends a tap: its intent, and the value it sends (none for a mark). */
 export interface TapControl {
@@ -1203,13 +1268,14 @@ export function tapControls(part: TrickPart): TapControl[] {
     case "status":
     case "dashboard":
     case "tabbar":
+    case "float":
       return [];
   }
 }
 
-/** The sessions a bound part names (a belt mark or a menu part with `sessions`), or undefined for an unbound one. */
+/** The sessions a bound part names (a belt mark, a menu part or a float part with `sessions`), or undefined for an unbound one. */
 export function boundSessionsOf(part: TrickPart): readonly string[] | undefined {
-  return part.at === "belt" || part.at === "menu" ? part.sessions : undefined;
+  return part.at === "belt" || part.at === "menu" || part.at === "float" ? part.sessions : undefined;
 }
 
 // ── Types: decisions (the Hill's decision shape, as a trick lists it) ───────────────────────
@@ -3665,6 +3731,8 @@ export const SUB_KEYS = {
   item: ["icon", "label", "badge", "tone"],
   /** One row of a `menu` part (contract 2). */
   row: MENU_ROW_KEYS,
+  /** The sprite of a `float` part. */
+  sprite: ["src", "frames", "fps", "size"],
 } as const;
 
 export const PART_KEYS = {
@@ -3674,6 +3742,7 @@ export const PART_KEYS = {
   status: ["at", "id", "chip"],
   tabbar: ["at", "id", "item"],
   menu: ["at", "id", "sessions", "rows"],
+  float: ["at", "id", "mode", "motion", "edge", "sprite", "mood", "opens", "sessions"],
 } as const satisfies { readonly [K in PlaceKind]: readonly string[] };
 
 const PLACE_WORDS = {
@@ -3683,6 +3752,7 @@ const PLACE_WORDS = {
   status: "a status part",
   tabbar: "a tabbar part",
   menu: "a menu part",
+  float: "a float part",
 } as const satisfies { readonly [K in PlaceKind]: string };
 
 export interface ParseTrickDocumentOptions {
@@ -3768,6 +3838,17 @@ function wholeRefused(code: RefusalCode, reason: string): ParsedTrickDocument {
   return { parts: [], decisions: [], refusals: [{ code, path: "", reason }], refusedParts: [], refusedDecisions: [], documentRefused: true, notes: [] };
 }
 
+/** Which set of bound parts a part counts in: a belt mark, a menu part, or a float part of one mode (one picture of each mode per trick). */
+type BoundKey = "belt" | "menu" | "float-once" | "float-stay";
+
+/** The `Bound` slot of a part and the words a refusal about it says, or undefined for a place that cannot be bound. */
+function boundOf(part: ParsedPart): { key: BoundKey; what: string; sessions: readonly string[] | undefined } | undefined {
+  if (part.place === "belt") return { key: "belt", what: "belt mark", sessions: part.part.sessions };
+  if (part.place === "menu") return { key: "menu", what: "menu part", sessions: part.part.sessions };
+  if (part.place === "float") return { key: part.part.mode === "once" ? "float-once" : "float-stay", what: `float part that ${part.part.mode === "once" ? "plays once" : "stays"}`, sessions: part.part.sessions };
+  return undefined;
+}
+
 /**
  * Parse a program's output. Total: any JSON value gives a result, and every refusal is collected. A
  * bad part is refused alone and the others are kept. A bad decision is refused alone too. A bad
@@ -3802,7 +3883,8 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
   const seen = new Set<string>();
   // A belt mark and a menu part: one unbound per trick, and up to BOUND_PARTS_MAX bound ones, no two
   // naming one session (a bound part replaces the unbound one in its sessions, so one shows per session).
-  const bound = { belt: new Bound(), menu: new Bound() };
+  // A float part follows the same rule once per mode: a trick has one `stay` and one `once` picture for every session.
+  const bound = { belt: new Bound(), menu: new Bound(), "float-once": new Bound(), "float-stay": new Bound() };
   let status = false;
   let dashboard = false;
   let tabbar = false;
@@ -3821,8 +3903,9 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
     // A part in a place this Collie does not draw is left out: no refusal, no last good version.
     if (parsed.dropped === true) return;
     if (id !== undefined && seen.has(id)) sink.push({ code: "duplicate", path: pointer(path, "id"), reason: `The part id "${id}" is used twice. Each part needs its own.` });
-    if (parsed.part?.place === "belt" || parsed.part?.place === "menu") {
-      const problem = bound[parsed.part.place].problem(parsed.part.part.sessions, parsed.part.place === "belt" ? "belt mark" : "menu part");
+    const slot = parsed.part === undefined ? undefined : boundOf(parsed.part);
+    if (slot !== undefined) {
+      const problem = bound[slot.key].problem(slot.sessions, slot.what);
       if (problem !== undefined) sink.push({ code: "duplicate", path: pointer(path, problem.key), reason: problem.reason });
     }
     // A draft button needs the right: without `drafts = "session"` in the approved manifest the part is refused.
@@ -3844,7 +3927,8 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
       if (id !== undefined && closed.length === 0) result.refusedParts.push(id);
       return;
     }
-    if (parsed.part.place === "belt" || parsed.part.place === "menu") bound[parsed.part.place].take(parsed.part.part.sessions);
+    const taken = boundOf(parsed.part);
+    if (taken !== undefined) bound[taken.key].take(taken.sessions);
     if (parsed.part.place === "status") status = true;
     if (parsed.part.place === "dashboard") dashboard = true;
     if (parsed.part.place === "tabbar") tabbar = true;
@@ -3991,6 +4075,8 @@ function readPartBody(place: PlaceKind, id: string, f: Fields, kinds: readonly N
       const rows = readMenuRows(f);
       return { place: "menu", part: sessions === undefined ? { at: "menu", id, rows } : { at: "menu", id, sessions, rows } };
     }
+    case "float":
+      return readFloatPart(f, id, contract);
     case "status": {
       const chipFields = f.object("chip", "a chip", true);
       const chip = chipFields === undefined ? { text: "" } : readStatusChip(chipFields);
@@ -4005,6 +4091,53 @@ function readPartBody(place: PlaceKind, id: string, f: Fields, kinds: readonly N
       return place === "dashboard" ? { place: "dashboard", part: { at: "dashboard", id, item } } : { place: "tabbar", part: { at: "tabbar", id, item } };
     }
   }
+}
+
+/**
+ * A `float` part: `mode` and `motion` (each motion belongs to one mode), `sprite` (`src`, and a sheet's
+ * `frames` and `fps`, and `size`), and the optional `edge` (with `perch`), `mood`, `opens` and `sessions`.
+ * DECISION: `opens` is for a part that stays and holds still (not `wander`), since a picture that moves takes
+ * no tap, and once never does. No coordinates, no style, no duration: Collie places and times it.
+ */
+function readFloatPart(f: Fields, id: string, contract: number): ParsedPart {
+  const mode = f.word("mode", FLOAT_MODES, true);
+  const motion = f.word("motion", FLOAT_MOTIONS, true);
+  if (mode !== undefined && motion !== undefined) {
+    const mine: readonly string[] = mode === "once" ? FLOAT_ONCE_MOTIONS : FLOAT_STAY_MOTIONS;
+    if (!mine.includes(motion)) f.push("word", "motion", `"${motion}" is not a ${mode} motion. A ${mode} part uses: ${quoteList(mine)}.`);
+  }
+  const edge = f.word("edge", FLOAT_EDGES);
+  if (edge !== undefined && motion !== undefined && motion !== "perch") f.push("target", "edge", '"edge" goes with the motion "perch" only.');
+  const mood = f.word("mood", CHIP_STATES);
+  const opens = f.word("opens", FLOAT_OPENS);
+  if (opens !== undefined && mode === "once") f.push("target", "opens", 'A once part never takes a tap, so it cannot open a page. Use "opens" on a stay part.');
+  if (opens !== undefined && motion === "wander") f.push("target", "opens", 'A wandering picture never holds still to be tapped. Use "opens" with "perch" or "idle".');
+  const spriteFields = f.object("sprite", "a sprite", true);
+  const sprite = spriteFields === undefined ? { src: "" } : readFloatSprite(spriteFields);
+  const sessions = readBoundSessions(f, contract);
+  const part: FloatPart = { at: "float", id, mode: mode ?? "stay", motion: motion ?? "idle", sprite };
+  if (edge !== undefined) part.edge = edge;
+  if (mood !== undefined) part.mood = mood;
+  if (opens !== undefined) part.opens = opens;
+  if (sessions !== undefined) part.sessions = sessions;
+  return { place: "float", part };
+}
+
+/** A float sprite: `src` (the image rule), `frames` 1 to {@link FLOAT_FRAMES_MAX}, `fps` 1 to {@link FLOAT_FPS_MAX} with frames of 2 or more, `size`. */
+function readFloatSprite(f: Fields): FloatSprite {
+  f.keys(SUB_KEYS.sprite);
+  const srcRaw = f.text("src", { max: IMAGE_SRC_MAX, required: true });
+  const src = srcRaw !== undefined && !isImageSrc(srcRaw) ? undefined : srcRaw;
+  if (srcRaw !== undefined && src === undefined) f.push("target", "src", '"src" must name a .png, .jpg, .jpeg or .webp file in the trick\'s "media/" folder, such as "media/pet.png", with no step that starts with a dot.');
+  const frames = f.int("frames", { min: 1, max: FLOAT_FRAMES_MAX });
+  const fps = f.int("fps", { min: 1, max: FLOAT_FPS_MAX });
+  if (fps !== undefined && (frames === undefined || frames < 2)) f.push("target", "fps", '"fps" goes with "frames" of 2 or more: it is how fast the frames of a sprite sheet play.');
+  const size = f.word("size", FLOAT_SIZES);
+  const sprite: FloatSprite = { src: src ?? "" };
+  if (frames !== undefined) sprite.frames = frames;
+  if (fps !== undefined) sprite.fps = fps;
+  if (size !== undefined) sprite.size = size;
+  return sprite;
 }
 
 /**
@@ -4465,6 +4598,7 @@ export const SHOWS_IN_WORDS = {
   dashboard: "a tile in the strip at the top of the Dashboard",
   tabbar: "an item in the bottom bar of the Dashboard",
   menu: "rows in each session's settings",
+  float: "a small moving picture over the app",
 } as const satisfies Readonly<Record<PlaceKind, string>>;
 /** The agent view's phrase in {@link SHOWS_IN_WORDS}' list: a view of a session, beside Terminal and Chat. */
 export const SHOWS_IN_AGENT_VIEW = "a view of a session, beside Terminal and Chat";

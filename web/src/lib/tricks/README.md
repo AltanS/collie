@@ -51,8 +51,8 @@ nodes `{ kind, text?, attrs?, kids? }` of the 22 kinds (below), every attribute 
 `diff` and `spark`. A part's `image` names a file of the trick's `media/` folder by `src`; a Decision's
 view names one of the Decision's own pictures by `ref`, and both take `caption`, `fit` and `focus`.
 
-**The places**: `belt`, `session`, `dashboard`, `status` and `tabbar`, each drawn by the phone (see
-"Places"), and at contract 2 `menu` (see "Session settings rows"). Nothing else: a place no surface draws is not in the contract.
+**The places**: `belt`, `session`, `dashboard`, `status`, `tabbar` and `float`, each drawn by the phone (see
+"Places" and "Floating pictures"), and at contract 2 `menu` (see "Session settings rows"). Nothing else: a place no surface draws is not in the contract.
 
 **The limits**: 64 KiB of stdout and 10 s per run, 24 parts of at most 16 KiB each, 24 nodes at a
 view's top, 6 levels and 300 nodes in a view, 20 decisions, `every` and `fresh` from 5 s to 24 h, 32
@@ -1071,6 +1071,7 @@ answered on the Hill.
 | `tabbar`        | an item in the Dashboard's bottom bar, after the Hill | draws                           |
 | `header.line`   |                                           | refused, code `later`, the place named      |
 | `menu`          | rows in a session's settings, contract 2; see "Session settings rows" | draws             |
+| `float`         | a small moving picture over the app; see "Floating pictures" | draws                |
 | `settings`      |                                           | refused, code `later`, the place named      |
 
 In a program's output, a part at a place this Collie does not draw (a later place, a newer Collie's,
@@ -1132,6 +1133,29 @@ The sheet (`components/trick-menu-group.tsx`) freezes the groups and rows at the
 settle window (`hooks/use-settled.ts`, 500 ms, shared with agent views) on any change to a row,
 never flips a switch ahead of the document, keeps one footer line per group, and caps the sheet at 12
 trick rows by whole groups in trick id order. The agent view switches live in their trick's group.
+
+### Floating pictures
+
+A `float` part is `{ at: "float", id, mode, motion, sprite, edge?, mood?, opens?, sessions? }`.
+`mode` is `once` (one motion, at most 3 s, then gone) or `stay`. `motion` is from a fixed list:
+`fly-across`, `arc`, `pop` for `once`; `perch` (with `edge`), `wander`, `idle` for `stay`. `sprite` is
+`{ src, frames?, fps?, size? }`: `src` a file of `media/` under the media route's own check (2 MiB, PNG,
+JPEG or WebP), square frames side by side, one row per mood in `CHIP_STATES` order. `opens = "page"`
+lets a parked picture (`perch`, `idle`) take a 44 px tap that opens the trick's Page. No view, no
+style, no coordinates and no code reach the phone. `readFloat` (`float.ts`) re-validates every field,
+because the wire carries a part as stored.
+
+The phone (`float.ts` pure maths, `hooks/use-float-region.ts`, `hooks/use-float-cover.ts`,
+`components/trick-float-layer.tsx`) computes a safe region: the visual viewport, less the safe-area
+insets and the landmark boxes (`data-slot` elements read with a ResizeObserver), as the largest empty
+rectangle. Every motion path lies inside it, so a picture never touches a landmark; a region too small
+hides `stay` pictures and skips `once` ones. Pictures are hidden while a sheet, a dialog or a card that
+asks a question is open, while a field has focus and during a hold. At most two `stay` pictures show,
+one per trick; a trick's `once` pictures start 60 s apart, one plays at a time and one waits. A `once`
+picture plays when the phone first sees its part, or sees its value change; parts held at load do not
+play. Only transform and opacity move; a hidden page pauses all of them. Reduced motion: `once` does
+nothing, `stay` is a still image whose mood swaps the frame. "Floating things" (Settings, Appearance,
+per device, on by default) hides every picture. `sessions` binds a part like a belt mark's (contract 2).
 
 ## Rights
 

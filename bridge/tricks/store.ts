@@ -3,6 +3,7 @@ import { redactText } from "../redact.ts";
 import {
   partKey,
   PROBLEM_MAX,
+  type TrickPart,
   type TrickPartKey,
   type TricksReply,
   type TricksRunsOn,
@@ -70,8 +71,10 @@ const ONE_PART_PLACES: ReadonlySet<string> = new Set(["belt", "menu", "status", 
  * fills the place in each session it is bound to, and a page fills none. Two parts of a trick in one slot
  * would both draw, so a refused part kept stale never shares a slot with one drawn now.
  */
-function slotsOf(at: string, bound: readonly WireBound[] | undefined): string[] {
-  if (!ONE_PART_PLACES.has(at)) return [];
+function slotsOf(value: TrickPart, bound: readonly WireBound[] | undefined): string[] {
+  // A float part fills the slot of its mode: a trick has one picture that stays and one that plays once, for every session.
+  const at = value.at === "float" ? `float-${value.mode}` : value.at;
+  if (value.at !== "float" && !ONE_PART_PLACES.has(at)) return [];
   return bound === undefined ? [at] : bound.map((entry) => `${at}@${entry.session}`);
 }
 
@@ -151,7 +154,7 @@ export class TricksStore {
       const part = accepted.part.id;
       keep.add(partKey({ host: memberId, trick, part }));
       const sessions = bound?.get(part);
-      for (const slot of slotsOf(accepted.part.at, sessions)) taken.add(slot);
+      for (const slot of slotsOf(accepted.part, sessions)) taken.add(slot);
       const wire: Omit<WireTrickPart, "rev"> = { host: memberId, trick, part, value: accepted.part, asOf: stamp.asOf, fresh: stamp.fresh };
       if (sessions !== undefined) wire.bound = sessions;
       this.put(wire);
@@ -163,7 +166,7 @@ export class TricksStore {
       const key = partKey({ host: memberId, trick, part });
       const old = this.parts.get(key);
       if (old === undefined) continue;
-      const slots = slotsOf(old.value.at, old.bound);
+      const slots = slotsOf(old.value, old.bound);
       if (slots.some((slot) => taken.has(slot))) continue;
       for (const slot of slots) taken.add(slot);
       keep.add(key);

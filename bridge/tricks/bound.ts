@@ -64,7 +64,7 @@ export interface BoundDocument {
 
 /** The sessions a parsed part names, or undefined for an unbound one. */
 function namedSessions(parsed: ParsedPart): readonly string[] | undefined {
-  return parsed.place === "belt" || parsed.place === "menu" ? parsed.part.sessions : undefined;
+  return parsed.place === "belt" || parsed.place === "menu" || parsed.place === "float" ? parsed.part.sessions : undefined;
 }
 
 /**

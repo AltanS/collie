@@ -13,7 +13,7 @@ export const SCHEMA_PLACES: readonly PlaceId[] = [...PLACE_KINDS, AGENT_VIEW_PLA
 
 /**
  * Each place's number, in the order a person meets them: on the Dashboard (tile, bottom bar item, the
- * Page's row), in a session (status chip, Belt mark, session settings rows, agent view), then wherever
+ * Page's row), in a session (status chip, Belt mark, session settings rows, a floating picture, agent view), then wherever
  * you are (the Hill).
  */
 export const PLACE_NUMBER = {
@@ -23,6 +23,7 @@ export const PLACE_NUMBER = {
   status: 4,
   belt: 5,
   menu: 6,
-  "agent-view": 7,
-  hill: 8,
+  float: 7,
+  "agent-view": 8,
+  hill: 9,
 } as const satisfies Record<PlaceId, number>;
