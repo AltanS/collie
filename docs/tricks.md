@@ -31,7 +31,7 @@ everything:
 
 ## Where a trick can show
 
-A trick can show in eight places on the phone, and nowhere else.
+A trick can show in seven places on the phone, and nowhere else. It can also post to the Hill.
 
 A place is a spot on the phone where a trick can show (a surface). Collie owns every place. A trick
 names the places it wants in its manifest, and its parts appear there, drawn by the phone with
@@ -43,7 +43,7 @@ Collie's own look.
   session's settings.
 - **The agent view is the seventh.** It is a view of one agent session, beside Terminal and Chat, and
   that session's own agent draws it.
-- **The Hill is the eighth, and it ships with Collie.** It is the page of questions that wait for you,
+- **The Hill is not a place, it ships with Collie.** It is the page of questions that wait for you,
   and an experiment: off until you switch it on in Settings → Experiments. A trick posts a question
   there, a Decision, and does not list the Hill in its `places`.
 
@@ -90,7 +90,7 @@ reference.
 A trick is a program that prints parts, or rules for an agent that draws a screen.
 
 - **A program trick** is a small program on your machine. The bridge runs it on a timer, or when you
-  tap. It prints what to show, and Collie draws it in the five places and on the Hill. Its folder
+  tap. It prints what to show, and Collie draws it in its six places and on the Hill. Its folder
   holds `trick.toml` and the program.
 - **An agent view** is rules for the agent of one session. The agent answers you by drawing one
   screen, in that session's agent view. Its folder holds `trick.toml` and `rules.md`, and no program.
