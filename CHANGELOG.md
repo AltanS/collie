@@ -35,6 +35,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The cards that ask about a trick read "Collie tricks" on their first line.** The proposal card ("Switch on the trick X?") and the new-version card ("Use the new version of X?") show the tricks glyph where they showed the Collie mark and the word Collie.
 - **An answered trick card shrinks to one line in a session's Chat.** Once you switch a proposed trick on or decline it, the card becomes one small line, "Collie tricks", the trick's name and what happened, for example "hadoken: switched on", and it scrolls away with the conversation.
 - **The release page lists what changed and no update commands.** The commands stay in `docs/upgrading.md`, and the in-app update band shows its own.
+- **When the reply box ends up below the screen, the phone tells the bridge the screen heights.** Some phones, after a long break, draw the reply box past the bottom edge, and so far nobody could say why. The phone now sends a short list of heights, at most once a minute, so the cause can be found. It sends no text, no session name and no address. The bridge keeps the list in `diag-composer.jsonl` in its state folder and sends it nowhere.
 
 ### Fixed
 

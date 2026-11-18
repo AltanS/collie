@@ -81,6 +81,7 @@ const KNOWN_NAMES: ReadonlySet<string> = new Set([
   "crew-ops.json",
   "crew-runtime.json",
   "crew-trust.json",
+  "diag-composer.jsonl",
   "folders.json",
   "local-secret",
   "machine-alerts.json",

@@ -1323,6 +1323,8 @@ export const handlers = [
   // The trouble tally (M86 spec 05): the bridge answers 204 whether or not it counted. A trouble card
   // in any test posts here once, so the default world takes it quietly.
   http.post("/api/telemetry/trouble", () => new HttpResponse(null, { status: 204 })),
+  // The composer diagnostic: the bridge keeps the heights of a reply box below the screen and answers 204.
+  http.post("/api/diag/composer", () => new HttpResponse(null, { status: 204 })),
   // The report sheet's setup block, read by the trouble signal too.
   http.get("/api/report/context", () =>
     HttpResponse.json({ collie: "1.27.0", line: "stable", os: "linux", arch: "x64", mux: "herdr", harness: "claude", screenable: false }),

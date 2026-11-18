@@ -324,6 +324,10 @@ export const ACK_MANIFEST = {
     channel: "silent",
     why: "A count is not a command (M86 spec 05): no tap of the person's made it, the bridge answers 204 whether or not it counted, and the phone never retries, so there is nothing to acknowledge and a failure is not the person's to act on.",
   },
+  postComposerDiag: {
+    channel: "silent",
+    why: "A measurement, not a command: the phone sends the heights of a reply box that sits below the screen, by itself, with no tap of the person's behind it, no text in it, and a failure ignored. There is nothing to acknowledge and nothing for the person to act on (lib/composer-offscreen.ts).",
+  },
   setReleaseLine: {
     channel: "inline",
     why: "The answer is the line this machine is on now, and what that means for it (an Edge build ahead of Stable, a Stable offer above): a standing fact the Release line card states beside the two buttons, and a refusal the operator reads there too (components/release-line-card.tsx).",
