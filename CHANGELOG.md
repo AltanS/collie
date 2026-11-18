@@ -27,6 +27,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The release page lists what changed and no update commands.** The commands stay in `docs/upgrading.md`, and the in-app update band shows its own.
 
+### Fixed
+
+- **The app is on React Router 7.18.6, with the security fixes of 18 November.** A crafted link to your Collie address could make the app's page hang while it matched the path. The other advisories of that day are for server rendering, which Collie does not use.
+
 ### Docs
 
 - **The tricks pages show where each place is.** A picture of the phone marks all seven places on the Tricks page and at the top of the reference's Places, and each place in the reference has its own picture.
