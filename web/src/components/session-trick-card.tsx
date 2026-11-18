@@ -11,6 +11,7 @@ import { useHillAnswer, type HillAnswerState } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { singleCodeCard, trickCardDecline, trickYesAnswer, viewHasCode } from "@/lib/hill/code-card";
 import { linkHost, isWebLink } from "@/lib/hill/reader";
+import { useAnswerRowDrawn } from "@/lib/hill/answer-rows";
 import { closeInSession, useSessionLater } from "@/lib/hill/session-later";
 import { useHillAnswerHeld, useHillClosed, useHillOpen } from "@/lib/hill/store";
 import type { HillDecision, HillGroupAnswer, HillOption } from "@/lib/hill/wire";
@@ -360,7 +361,10 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
 function SessionTrickCard({ decision, onReadCode }: { decision: HillDecision; onReadCode?: (row: HTMLElement) => void }) {
   const { state, send } = useHillAnswer(decision.id);
   const held = useHillAnswerHeld(decision.id);
+  // The answer reached the transcript as its own row (components/trick-answer-row.tsx): that row says what this line says.
+  const rowDrawn = useAnswerRowDrawn(decision.id);
   if (decision.state !== "open" && held === null) return null;
+  if (decision.state !== "open" && rowDrawn) return null;
   return (
     <div data-slot="session-trick-card" data-card={decision.id} className="my-2">
       <ChatApprovalCard
