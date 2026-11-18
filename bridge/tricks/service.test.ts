@@ -1246,6 +1246,33 @@ describe("a trick's pictures", () => {
     expect(await r.service.media(HOST, "legs", "media/../trick.toml")).toBeNull();
   });
 
+  test("a picture replaced by hand in the installed folder reaches the approved copy on the next scan, with no new yes", async () => {
+    const r = await rig([]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST);
+    await mkdir(join(dir, "media"));
+    await writeFile(join(dir, "media", "chart.png"), PNG);
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    const rowOf = async () => (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
+    const before = (await rowOf())?.media?.["media/chart.png"];
+    expect(before).toMatch(/^[0-9a-f]{12}$/);
+    const hashBefore = (await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8")).length;
+    const other = new Uint8Array(PNG);
+    other[20] = 9;
+    await writeFile(join(dir, "media", "chart.png"), other);
+    await writeFile(join(dir, "media", "note.txt"), "not a picture");
+    await r.service.refresh(true);
+    const after = await rowOf();
+    expect(after?.media?.["media/chart.png"]).toMatch(/^[0-9a-f]{12}$/);
+    expect(after?.media?.["media/chart.png"]).not.toBe(before);
+    expect((await r.service.media(HOST, "legs", "media/chart.png"))?.bytes).toEqual(other);
+    // No new version waits for a yes, and nothing that is no picture reached the copy.
+    expect(after?.pending).toBeUndefined();
+    expect(after?.changed).toBeUndefined();
+    expect((await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8")).length).toBe(hashBefore);
+    expect((await readdir(join(await copyOf(r, "legs"), "media"))).toSorted()).toEqual(["chart.png"]);
+  });
+
   test("the row names each picture's version; a picture replaced under the same name takes a new one and moves the rev", async () => {
     const r = await rig([]);
     const dir = await makeTrick(r.configDir, "legs", MANIFEST);

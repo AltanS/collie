@@ -36,6 +36,8 @@ import { MIGRATED, parseSwitches, SWITCHES_VERSION, updateSwitches, withApproval
 //     there stays behind, so the copy holds no file the hash and the card left out that a program could
 //     import as code. Capped by {@link SEED_FILES_MAX} and {@link SEED_BYTES_MAX}; `inputs/` starts
 //     empty. The program writes here, and so do its `*.log` files and dot files, which the hash skips too.
+//     After approval a scan adds and replaces the folder's `media/` pictures that changed by hand, with no
+//     new yes (media.ts `TrickMediaSync`); it never deletes a file of the copy, and `captures/` is not synced.
 //   * NOT COPIED: `node_modules/` and every other dot file or dot folder. They are outside the hash, so
 //     they would be code nobody approved; a program that needs them does not run from the copy.
 //   * STATE stays where it was: `<stateDir>/tricks/<id>/`, the program's own folder (paths.ts).

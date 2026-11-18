@@ -37,7 +37,8 @@ A trick lives in `tricks/<id>/` in Collie's config folder, `~/.config/collie` on
   that `init` writes.
 - An agent view has the file that `rules` names, such as `rules.md`.
 - `config.toml` holds settings the program reads. It is not part of the code you approve, so you can
-  edit it freely.
+  edit it freely. A picture you replace in `media/` is not code either: it shows on the next scan,
+  with no new yes.
 - `[[field]]` in `trick.toml` names the settings the person sets on the phone. See
   [Settings a trick asks you for](#settings-a-trick-asks-you-for).
 - `AGENTS.md` is the contract for an agent that grows the trick. `init` writes it.

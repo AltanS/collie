@@ -1,12 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HILL_MEDIA_BYTES_MAX } from "../../web/src/lib/hill/wire.ts";
 import { isImageSrc, mediaVersionOf, trickMediaPath } from "../../web/src/lib/tricks/schema.ts";
 import { TRICKS_MEDIA_ROUTE } from "../server.ts";
-import { mediaVersionOfBytes, readTrickMedia, TrickMediaVersions } from "./media.ts";
+import { mediaVersionOfBytes, readTrickMedia, TrickMediaSync, TrickMediaVersions } from "./media.ts";
 import { tricksMediaRoute } from "./routes.ts";
 import type { TricksSurface } from "./service.ts";
 
@@ -243,3 +243,134 @@ describe("a trick's picture versions", () => {
     expect(asked).toEqual(Array.from({ length: 4 }, () => "lodge/look/media/a.png"));
   });
 });
+
+describe("a picture changed by hand reaches the approved copy", () => {
+  /** An installed folder and an approved copy beside it, each with a `media/`. */
+  function pair() {
+    const { dir, outside } = trick();
+    const copy = join(dir, "..", "copy");
+    mkdirSync(join(copy, "media"), { recursive: true });
+    return { src: dir, copy, outside };
+  }
+  const later = (file: string, seconds: number) => utimesSync(file, new Date(), new Date(Date.now() + seconds * 1000));
+
+  test("a replaced source picture is copied and the copy's version moves", () => {
+    const { src, copy } = pair();
+    const sync = new TrickMediaSync();
+    const versions = new TrickMediaVersions();
+    writeFileSync(join(src, "media", "a.png"), png(64));
+    writeFileSync(join(copy, "media", "a.png"), png(64));
+    expect(sync.sync(src, copy)).toBe(0);
+    const before = versions.of(copy)["media/a.png"];
+    const other = png(64);
+    other[40] = 9;
+    writeFileSync(join(src, "media", "a.png"), other);
+    later(join(src, "media", "a.png"), 5);
+    expect(sync.sync(src, copy)).toBe(1);
+    expect(readFileSync(join(copy, "media", "a.png"))).toEqual(Buffer.from(other));
+    expect(versions.of(copy)["media/a.png"]).not.toBe(before);
+    expect(versions.of(copy)["media/a.png"]).toBe(mediaVersionOfBytes(other));
+    // Nothing moved since: nothing written.
+    expect(sync.sync(src, copy)).toBe(0);
+  });
+
+  test("a new picture in a folder below media/ is added", () => {
+    const { src, copy } = pair();
+    writeFileSync(join(src, "media", "shots", "b.jpeg"), JPEG);
+    expect(new TrickMediaSync().sync(src, copy)).toBe(1);
+    expect(readFileSync(join(copy, "media", "shots", "b.jpeg"))).toEqual(Buffer.from(JPEG));
+  });
+
+  test("a non-picture, a link, a hidden file, an oversize file and an executable are not copied", () => {
+    const { src, copy, outside } = pair();
+    writeFileSync(join(outside, "x.png"), png());
+    symlinkSync(join(outside, "x.png"), join(src, "media", "link.png"));
+    writeFileSync(join(src, "media", ".hidden.png"), png());
+    writeFileSync(join(src, "media", "note.txt"), "text");
+    writeFileSync(join(src, "media", "fake.png"), "<svg/>");
+    writeFileSync(join(src, "media", "big.png"), png(HILL_MEDIA_BYTES_MAX));
+    writeFileSync(join(src, "media", "run.png"), png());
+    chmodSync(join(src, "media", "run.png"), 0o755);
+    writeFileSync(join(src, "media", "ok.png"), png());
+    expect(new TrickMediaSync().sync(src, copy)).toBe(1);
+    expect(readdirNames(join(copy, "media"))).toEqual(["ok.png"]);
+  });
+
+  test("a file the program wrote is kept: never deleted, and not replaced while the source is unchanged", () => {
+    const { src, copy } = pair();
+    const sync = new TrickMediaSync();
+    writeFileSync(join(src, "media", "a.png"), png(64));
+    writeFileSync(join(copy, "media", "a.png"), png(64));
+    sync.sync(src, copy);
+    // The program draws its own picture and overwrites a.png in the copy.
+    const mine = png(80);
+    writeFileSync(join(copy, "media", "a.png"), mine);
+    writeFileSync(join(copy, "media", "made.png"), png(90));
+    expect(sync.sync(src, copy)).toBe(0);
+    expect(readFileSync(join(copy, "media", "a.png"))).toEqual(Buffer.from(mine));
+    // The source file is deleted: the copy keeps both.
+    rmSync(join(src, "media", "a.png"));
+    expect(sync.sync(src, copy)).toBe(0);
+    expect(existsSync(join(copy, "media", "a.png"))).toBe(true);
+    expect(existsSync(join(copy, "media", "made.png"))).toBe(true);
+  });
+
+  test("a source change wins once over what the program wrote", () => {
+    const { src, copy } = pair();
+    const sync = new TrickMediaSync();
+    writeFileSync(join(src, "media", "a.png"), png(64));
+    writeFileSync(join(copy, "media", "a.png"), png(64));
+    sync.sync(src, copy);
+    writeFileSync(join(copy, "media", "a.png"), png(80));
+    const edited = png(70);
+    writeFileSync(join(src, "media", "a.png"), edited);
+    later(join(src, "media", "a.png"), 5);
+    expect(sync.sync(src, copy)).toBe(1);
+    expect(readFileSync(join(copy, "media", "a.png"))).toEqual(Buffer.from(edited));
+    // The program writes again: the source has not changed, so it stays.
+    writeFileSync(join(copy, "media", "a.png"), png(80));
+    expect(sync.sync(src, copy)).toBe(0);
+    expect(readFileSync(join(copy, "media", "a.png"))).toEqual(Buffer.from(png(80)));
+  });
+
+  test("after a restart the first look keeps a newer program file and takes a newer source", () => {
+    const { src, copy } = pair();
+    writeFileSync(join(src, "media", "kept.png"), png(64));
+    writeFileSync(join(src, "media", "hand.png"), png(64));
+    writeFileSync(join(copy, "media", "kept.png"), png(80));
+    writeFileSync(join(copy, "media", "hand.png"), png(64));
+    later(join(copy, "media", "kept.png"), 10);
+    const edited = png(72);
+    writeFileSync(join(src, "media", "hand.png"), edited);
+    later(join(src, "media", "hand.png"), 20);
+    expect(new TrickMediaSync().sync(src, copy)).toBe(1);
+    expect(readFileSync(join(copy, "media", "kept.png"))).toEqual(Buffer.from(png(80)));
+    expect(readFileSync(join(copy, "media", "hand.png"))).toEqual(Buffer.from(edited));
+  });
+
+  test("a name that is a link in the copy, or a media/ that is a link, is never written through", () => {
+    const { src, copy, outside } = pair();
+    writeFileSync(join(outside, "target.png"), png(40));
+    writeFileSync(join(src, "media", "a.png"), png(64));
+    symlinkSync(join(outside, "target.png"), join(copy, "media", "a.png"));
+    expect(new TrickMediaSync().sync(src, copy)).toBe(0);
+    expect(readFileSync(join(outside, "target.png"))).toEqual(Buffer.from(png(40)));
+    rmSync(join(copy, "media"), { recursive: true });
+    symlinkSync(outside, join(copy, "media"));
+    expect(new TrickMediaSync().sync(src, copy)).toBe(0);
+    expect(existsSync(join(outside, "a.png"))).toBe(false);
+  });
+
+  test("no temp file is left behind", () => {
+    const { src, copy } = pair();
+    writeFileSync(join(src, "media", "a.png"), png());
+    new TrickMediaSync().sync(src, copy);
+    expect(readdirNames(join(copy, "media"), true)).toEqual(["a.png"]);
+  });
+});
+
+function readdirNames(dir: string, hidden = false): string[] {
+  return readdirSync(dir)
+    .filter((name) => hidden || !name.startsWith("."))
+    .toSorted();
+}

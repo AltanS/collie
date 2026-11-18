@@ -50,7 +50,7 @@ import { HOST, hostFor, type Host } from "../host.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import type { TrickInputs } from "./inputs.ts";
 import { codeFile, codeIndex, codeShowsWhole, codeSource, type CodeFile, type CodeIndex } from "./code-view.ts";
-import { readTrickMedia, TrickMediaVersions, type TrickMediaFile } from "./media.ts";
+import { readTrickMedia, TrickMediaSync, TrickMediaVersions, type TrickMediaFile } from "./media.ts";
 import { isUnlistedOfficialOrigin, shippedOfficialList, type OfficialEntry } from "./official.ts";
 import { originRepoName, type ProposalOrigin } from "./origin.ts";
 import { replaceTrickCode, writeProposedTrick } from "./proposal-install.ts";
@@ -812,6 +812,8 @@ export class TricksService implements TricksSurface {
   private readonly values: TrickValues;
   /** The versions of the approved copies' pictures, read again only for a file whose size or time moved. */
   private readonly mediaVersions = new TrickMediaVersions();
+  /** What the installed folders' `media/` last gave the approved copies: a picture changed by hand reaches the copy. */
+  private readonly mediaSync = new TrickMediaSync();
   /** The request ids of value writes already taken, with their receipts: the same id twice writes once. */
   private readonly valueWrites = new SeenWrites<ValueAnswer>();
 
@@ -1506,10 +1508,16 @@ export class TricksService implements TricksSurface {
    */
   private syncMedia(): void {
     const dirs = new Set<string>();
+    const folders = new Set<string>();
     try {
       for (const rt of this.runtimes.values()) {
         const approved = rt.approved;
         const serves = rt.on && approved !== null && rt.copyProblem === null;
+        // Pictures are not code: one changed by hand in the installed folder reaches the approved copy with no new yes.
+        if (serves) {
+          this.mediaSync.sync(rt.found.dir, approved.dir);
+          folders.add(rt.found.dir);
+        }
         const next = serves ? this.mediaVersions.of(approved.dir) : {};
         if (serves) dirs.add(approved.dir);
         if (JSON.stringify(next) === JSON.stringify(rt.media ?? {})) continue;
@@ -1518,6 +1526,7 @@ export class TricksService implements TricksSurface {
         this.publish(rt.found.id);
       }
       this.mediaVersions.retain(dirs);
+      this.mediaSync.retain(folders);
     } catch (err) {
       this.warn(`the picture versions could not be read: ${err instanceof Error ? err.message : String(err)}`);
     }
