@@ -4,7 +4,8 @@ import { http, HttpResponse } from "msw";
 import { HILL_LIST_READ_AFTER_MS } from "@/lib/hill/motion";
 import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import { asJsonString, parseJsonObject, type JsonObject } from "@/lib/json";
-import { hillReceipt } from "@/test/hill-fixtures";
+import { collieCard, hillDecision, hillReceipt } from "@/test/hill-fixtures";
+import { consumeTopologyPoll, resetPollIntent, topologyBursting, TRICKS_BURST_POLLS } from "@/lib/poll-intent";
 import { server } from "@/test/setup";
 
 import { useHillAnswer } from "./use-hill-answer";
@@ -29,7 +30,27 @@ const ok = (body: JsonObject) => HttpResponse.json({ ...hillReceipt(), rid: asJs
 beforeEach(() => {
   posted = [];
   __resetHill();
+  resetPollIntent();
 });
+
+/** Put `open` on the Hill, as the snapshot's list does. */
+async function holdOpen(...open: ReturnType<typeof hillDecision>[]): Promise<void> {
+  server.use(http.get("/api/hill", () => HttpResponse.json({ v: 1, rev: 1, open, closed: [] })));
+  await act(async () => {
+    syncHill(1);
+    await __settleHill();
+  });
+}
+
+/** How many polls the burst buys now. */
+function burstPolls(): number {
+  let polls = 0;
+  while (topologyBursting() && polls < 50) {
+    consumeTopologyPoll();
+    polls += 1;
+  }
+  return polls;
+}
 
 describe("useHillAnswer", () => {
   it("posts the node, intent and text with a minted rid, and holds the receipt", async () => {
@@ -159,5 +180,28 @@ describe("useHillAnswer", () => {
       await __settleHill();
     });
     expect(reads).toEqual(["read"]);
+  });
+
+  it("a yes to a trick's card polls fast for a while, so the new version's result is drawn at once", async () => {
+    const card = collieCard("version", "legs");
+    await holdOpen(card);
+    answerWith(ok);
+    const { result } = renderHook(() => useHillAnswer(card.id));
+    await act(() => result.current.send("always", null));
+    expect(burstPolls()).toBe(TRICKS_BURST_POLLS);
+  });
+
+  it("an answer to any other decision, and an answer the bridge refused, buy no burst", async () => {
+    const card = collieCard("version", "legs");
+    const plain = hillDecision({ id: "dc_plain00001" });
+    await holdOpen(card, plain);
+    answerWith(ok);
+    const other = renderHook(() => useHillAnswer(plain.id));
+    await act(() => other.result.current.send("yes", null));
+    expect(burstPolls()).toBe(0);
+    answerWith((body) => HttpResponse.json({ ...hillReceipt({ code: "rejected", state: null, delivery: null, reason: "no" }), rid: asJsonString(body.rid) ?? "" }));
+    const refused = renderHook(() => useHillAnswer(card.id));
+    await act(() => refused.result.current.send("always", null));
+    expect(burstPolls()).toBe(0);
   });
 });

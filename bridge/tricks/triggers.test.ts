@@ -794,9 +794,11 @@ describe("`on` runs a trick through the road a timer run takes", () => {
     r.service.noteWatched();
     await r.service.refresh(true);
     expect(r.service.reactionCounts().subscribed).toBe(true);
+    // The scan that approved the copy asks for the start run at once, so it is the only run: the event
+    // that arrives before that run has ended is dropped, never held.
     r.bus.publish({ type: "turn.end", session: sessionOf("a:1") });
     await tick(50);
-    expect(r.specs.length).toBe(0);
+    expect(kinds(r)).toEqual(["start"]);
     await r.service.tick();
     expect(kinds(r)).toEqual(["start"]);
     r.service.stop();

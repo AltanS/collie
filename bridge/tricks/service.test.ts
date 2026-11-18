@@ -138,6 +138,7 @@ async function tickAt(r: Rig, t: number, watch = true): Promise<void> {
   if (watch) r.service.noteWatched();
   await r.service.refresh(true);
   await r.service.tick();
+  await r.service.idle();
 }
 
 /** The rev the phone holds of a part: the one `GET /api/tricks` serves for it now. */
@@ -583,10 +584,14 @@ describe("the watched gate and the timer", () => {
     const first = r.service.tick();
     await Bun.sleep(20);
     r.clock.t = T0 + 60_000;
-    await r.service.tick();
+    // A tick resolves when the run going is done, so it is not awaited before the release.
+    const second = r.service.tick();
+    await Bun.sleep(20);
     expect(r.specs.length).toBe(1);
     release();
     await first;
+    await second;
+    expect(r.specs.length).toBe(1);
   });
 });
 
@@ -3296,5 +3301,201 @@ describe("review J, read of 1bf6c747a, point 3: the service forgets an id that a
     await r.service.refresh(true);
     // The first scan found no folder: that scan counts as the first, so a trick after it is an arrival.
     expect(seen).toEqual(["legs"]);
+  });
+});
+
+describe("changes show at once: the start run goes right after the event, not at the next tick", () => {
+  /** A trick with one edit waiting for a yes: the folder was edited and sat still for the settle time. */
+  async function withWaitingVersion(r: Rig, dir: string): Promise<string> {
+    await writeFile(join(dir, "legs.sh"), "#!/bin/sh\necho 2\n");
+    await tickAt(r, T0 + 1000);
+    await tickAt(r, T0 + 1000 + PENDING_SETTLE_MS);
+    const code = await trickCodeHash(dir);
+    if (!code.ok) throw new Error(code.reason);
+    return code.hash;
+  }
+
+  test("a yes to a new version runs its code once, at once, with no tick and no wait for `every`", async () => {
+    const r = await rig([exited(belt("old")), exited(belt("new"))]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(r.specs.length).toBe(1);
+    const v2 = await withWaitingVersion(r, dir);
+    // The timer (every 30 s) is far off: the clock stays where the settle left it.
+    expect(r.specs.length).toBe(1);
+    const revBefore = r.service.rev() ?? 0;
+    expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
+    await r.service.idle();
+    expect(r.specs.length).toBe(2);
+    expect(factsOf(r.specs[1]).trigger).toEqual({ kind: "start" });
+    expect(r.specs[1]?.cwd).toBe(approvedCopyDir(r.configDir, "legs", v2));
+    // The push: the new run's result moved the rev, and the part the phone asks for is the new version's.
+    expect(r.service.rev() ?? 0).toBeGreaterThan(revBefore);
+    const drawn = (await r.service.reply(revBefore)).parts.find((p) => p.part === "belt");
+    expect(JSON.stringify(drawn?.value)).toContain("new");
+    // Exactly one: a tick at the same instant finds nothing due.
+    await r.service.tick();
+    await r.service.idle();
+    expect(r.specs.length).toBe(2);
+  });
+
+  test("a version change while a run goes: runs never overlap, the old run's output is dropped, the new code runs right after", async () => {
+    const specs: RunSpec[] = [];
+    const gate = Promise.withResolvers<void>();
+    let active = 0;
+    let peak = 0;
+    const r = await rig(null, {
+      run: async (spec) => {
+        specs.push(spec);
+        active += 1;
+        peak = Math.max(peak, active);
+        try {
+          if (specs.length === 2) await gate.promise;
+          return exited(belt(specs.length === 2 ? "old-slow" : specs.length === 1 ? "first" : "new"));
+        } finally {
+          active -= 1;
+        }
+      },
+    });
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const v2 = await withWaitingVersion(r, dir);
+    // The timer run of the OLD copy is going (and held) when the yes arrives.
+    r.clock.t = T0 + 31_000;
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    const timerRun = r.service.tick();
+    await Bun.sleep(20);
+    expect(specs.length).toBe(2);
+    expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
+    // The yes started nothing next to the run that goes.
+    expect(specs.length).toBe(2);
+    gate.resolve();
+    await timerRun;
+    await Bun.sleep(20);
+    await r.service.idle();
+    expect(specs.length).toBe(3);
+    expect(peak).toBe(1);
+    expect(factsOf(specs[2]).trigger).toEqual({ kind: "start" });
+    expect(specs[2]?.cwd).toBe(approvedCopyDir(r.configDir, "legs", v2));
+    const reply = await r.service.reply(undefined);
+    const text = JSON.stringify(reply.parts);
+    expect(text).toContain("new");
+    expect(text).not.toContain("old-slow");
+    // The overtaken run was neither a success nor a failure: no problem line, no failure counted.
+    expect(reply.tricks[0]?.error).toBeUndefined();
+    expect(reply.tricks[0]?.state).toBe("ok");
+  });
+
+  test("a switch on runs the trick at once", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    expect(r.specs.length).toBe(0);
+    expect(await r.service.setSwitch(HOST, "legs", true)).toMatchObject({ status: 200 });
+    await r.service.idle();
+    expect(r.specs.length).toBe(1);
+    expect(factsOf(r.specs[0]).trigger).toEqual({ kind: "start" });
+    await r.service.tick();
+    expect(r.specs.length).toBe(1);
+  });
+
+  test("a config.toml edit runs the trick once, at once, with the new settings", async () => {
+    const r = await rig([exited(belt("1"))]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n", "config.toml": "a = 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(r.specs.length).toBe(1);
+    await writeFile(join(dir, "config.toml"), "a = 2\n");
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    await r.service.idle();
+    expect(r.specs.length).toBe(2);
+    expect(factsOf(r.specs[1]).trigger).toEqual({ kind: "start" });
+    expect(await readFile(join(r.specs[1]?.cwd ?? "", "config.toml"), "utf8")).toBe("a = 2\n");
+    // A second look at the same file starts nothing more.
+    await r.service.refresh(true);
+    await r.service.idle();
+    expect(r.specs.length).toBe(2);
+  });
+
+  test("a config.toml edit while a run goes: that run's output is dropped and the new settings run right after", async () => {
+    const gate = Promise.withResolvers<void>();
+    const seen: string[] = [];
+    const r = await rig(null, {
+      run: async (spec) => {
+        const settings = await readFile(join(spec.cwd, "config.toml"), "utf8");
+        seen.push(settings);
+        if (seen.length === 2) await gate.promise;
+        return exited(belt(settings.trim()));
+      },
+    });
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n", "config.toml": "a = 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    r.clock.t = T0 + 31_000;
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    const timerRun = r.service.tick();
+    await Bun.sleep(20);
+    expect(seen).toEqual(["a = 1\n", "a = 1\n"]);
+    await writeFile(join(dir, "config.toml"), "a = 2\n");
+    await r.service.refresh(true);
+    expect(seen.length).toBe(2);
+    gate.resolve();
+    await timerRun;
+    await Bun.sleep(20);
+    await r.service.idle();
+    expect(seen).toEqual(["a = 1\n", "a = 1\n", "a = 2\n"]);
+    expect(JSON.stringify((await r.service.reply(undefined)).parts)).toContain("a = 2");
+  });
+
+  test("tricks switched on as a whole run the trick that was waiting, at once", async () => {
+    const listeners: ((on: boolean) => void)[] = [];
+    let on = false;
+    const feature = {
+      on: () => on,
+      onChange: (listener: (on: boolean) => void) => {
+        listeners.push(listener);
+        return () => undefined;
+      },
+    };
+    const r = await rig([exited(belt("1"))], { feature });
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    expect(r.specs.length).toBe(0);
+    on = true;
+    for (const listener of listeners) listener(true);
+    await Bun.sleep(50);
+    await r.service.idle();
+    expect(r.specs.length).toBe(1);
+    expect(factsOf(r.specs[0]).trigger).toEqual({ kind: "start" });
+  });
+
+  test("no phone looking: nothing starts early, the next tick decides, as before", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    await r.service.idle();
+    expect(r.specs.length).toBe(0);
+  });
+
+  test("a failed start run is not retried in a loop: it backs off as before", async () => {
+    const r = await rig([{ kind: "exited", code: 1, stdout: "", stderr: "boom", ms: 5 }]);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    await r.service.idle();
+    await Bun.sleep(30);
+    await r.service.refresh(true);
+    await r.service.idle();
+    expect(r.specs.length).toBe(1);
   });
 });
