@@ -264,9 +264,10 @@ run((t) => {
 
 `trick.ts` is one self-contained file (`cli/trick-kit/trick.ts` in this repo, held in the binary as
 text). It imports only `node:` built-ins and Bun, and its first line names its version, `// collie
-trick helper v9`. The version moves whenever the text changes: `bridge/tricks/scan.test.ts` pins the
-text's SHA-256 to `HELPER_VERSION` and fails with "bump the helper version" otherwise, and every released
-text stays known by its hash (`OLDER_HELPERS` in `bridge/tricks/scan.ts`). `collie trick helper <id>`
+trick helper v10`. The version moves whenever the text changes: `bridge/tricks/scan.test.ts` pins the
+text's SHA-256 to `HELPER_VERSION` and fails with "bump the helper version" otherwise, even for a version
+that has not shipped, and every text ever committed stays known by its hash (`OLDER_HELPERS` in
+`bridge/tricks/scan.ts`, and a frozen list of pairs in that test). `collie trick helper <id>`
 rewrites it with the version this Collie carries; the helper is part of the trick's code, so a trick
 that is on keeps running the approved copy, and the new helper waits for a person's yes.
 `collie trick check`, `dev` and `propose` take a `trick.ts` whose bytes are a helper this Collie ships

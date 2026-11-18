@@ -145,7 +145,7 @@ trick idle-watch (Idle watch) in /tmp/tricks-doc-lab/idle-watch
   run:    program.ts
   decides: reply. Your answers to its Decisions go to a session as your own message.
   code:   sha256 63bc959b… (what `collie trick on` approves)
-  helper: trick.ts is collie trick helper v9, Collie's own code, not checked line by
+  helper: trick.ts is collie trick helper v10, Collie's own code, not checked line by
           line
   ran in 31 ms: exit 0
   parts: status status, dashboard dashboard, session main
