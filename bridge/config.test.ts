@@ -68,6 +68,7 @@ const KEYS = [
   "COLLIE_STATE_DIR",
   "COLLIE_MULTI_SESSION",
   "COLLIE_SKIP_SERVE",
+  "COLLIE_AUTH_RETURN",
   "COLLIE_MAX_UPLOAD_MB",
   "COLLIE_UPLOAD_EXTRA_TYPES",
   "HERDR_SOCKET_PATH",
@@ -697,6 +698,14 @@ describe("normaliseBasePath — COLLIE_BASE_PATH as the bridge mounts it", () =>
     expect(loadConfig().basePath).toBe("/collie/");
     delete process.env.COLLIE_BASE_PATH;
     expect(loadConfig().basePath).toBe("/");
+  });
+});
+
+describe("COLLIE_AUTH_RETURN — /auth/ goes back to the app", () => {
+  test("off unless the operator sets it", () => {
+    expect(loadConfig().authReturn).toBe(false);
+    process.env.COLLIE_AUTH_RETURN = "1";
+    expect(loadConfig().authReturn).toBe(true);
   });
 });
 

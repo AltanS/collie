@@ -45,6 +45,7 @@ import {
   isLoopbackPeer,
   isReservedAuthPath,
   reservedAuthPlaceholder,
+  reservedAuthReturn,
   keysPane,
   cacheRulesRoute,
   launchersRoute,
@@ -283,6 +284,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     walkyPairLimit: 12,
     skipServe: false,
     basePath: "/",
+    authReturn: false,
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
     uploadExtraTypes: [],
     ...overrides,
@@ -3114,6 +3116,26 @@ describe("reservedAuthPlaceholder — what /auth/ says when no proxy answers", (
     const body = await reservedAuthPlaceholder('/a"><b>/').text();
     expect(body).not.toContain('"><b>');
     expect(body).toContain('<a href="/a&#34;&#62;&#60;b&#62;/">Back to Collie</a>');
+  });
+});
+
+describe("reservedAuthReturn — /auth/ under COLLIE_AUTH_RETURN=1", () => {
+  test("a 303 to the root with no body, never cached", async () => {
+    const res = reservedAuthReturn();
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.text()).toBe("");
+  });
+
+  test("under a mount it goes to the mount (ADR 0052)", () => {
+    expect(reservedAuthReturn("/collie/").headers.get("location")).toBe("/collie/");
+  });
+
+  test("the placeholder names the setting to the operator", async () => {
+    const body = await reservedAuthPlaceholder().text();
+    expect(body).toContain("<code>COLLIE_AUTH_RETURN=1</code>");
+    expect(body.indexOf("If you are the operator")).toBeLessThan(body.indexOf("COLLIE_AUTH_RETURN"));
   });
 });
 

@@ -507,6 +507,12 @@ export interface Config {
    * stripped. `collie serve` publishes at this path instead of the root when it is set.
    */
   basePath: string;
+  /**
+   * Whether `/auth/` answers with a redirect to {@link basePath} instead of the placeholder page
+   * (`COLLIE_AUTH_RETURN=1`). For a front door that signs in on every path and has no page of its
+   * own at `/auth/`: a request that reaches the bridge there has already been signed in.
+   */
+  authReturn: boolean;
 }
 
 /**
@@ -905,6 +911,7 @@ export function loadConfig(
     walkyPairLimit: envInt("COLLIE_WALKY_PAIR_LIMIT", PAIR_LIMIT, { min: 1, max: 100 }, env),
     skipServe: envBool("COLLIE_SKIP_SERVE", false, env),
     basePath: normaliseBasePath(env.COLLIE_BASE_PATH),
+    authReturn: envBool("COLLIE_AUTH_RETURN", false, env),
   };
 }
 
