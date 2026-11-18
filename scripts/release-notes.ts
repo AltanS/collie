@@ -20,10 +20,10 @@
 // `creditsOf` for which @ counts. A bullet may wrap onto indented continuation lines; they are
 // folded into the bullet before the lead and the credits are read (see `foldBullets`).
 //
-// The order on the page is the reader's, not the file's. A phone arrives here from the in-app
-// update banner to copy one command, so the update block is FIRST and is never folded into a
-// `<details>` a thumb has to find. What changed comes second. Only the by-hand checksum recipe is
-// folded, because the reader who wants it goes looking for it.
+// The page carries no update commands (Altan, 2026-11-18): `docs/upgrading.md` keeps them, and the
+// in-app update banner shows its own. The page opens with what changed. An Edge build's page says
+// what it is first. Only the by-hand checksum recipe is folded, because the reader who wants it goes
+// looking for it.
 //
 // Exit 1, with the reason on stderr, when the section cannot be read that way: no heading for the
 // version, a bullet with no bold lead, a bullet sitting above any group heading, or a group
@@ -388,39 +388,18 @@ export function changelogAnchor(version: string, date: string): string {
 }
 
 /**
- * The update commands, open on the page and first on it. A phone reader arrives from the in-app
- * update banner (web/src/components/update-banner.tsx) to copy one command, so this may never sit
- * behind a `<details>` and may never sit below the change list.
+ * The line an Edge build's page opens with. A Stable page has none: it opens with what changed.
+ * The update commands are not on the page; `docs/upgrading.md` keeps them.
  */
-function updateBlock(edge: boolean): string[] {
-	// AN EDGE BUILD IS A PRE-RELEASE (M60 spec 01). A Stable install never takes it on its own, and
-	// the routine command below would not either, so the page says what it is instead of printing a
-	// command that lands somewhere else. Stable supersedes it: the release of the same version is
-	// newer than every Edge build of it.
-	if (edge) {
-		return [
-			"## Update",
-			"",
-			"**This is an Edge build**, a pre-release for volunteers. A Stable install does not take it,",
-			"and the Stable release of the same version supersedes it.",
-		];
-	}
+function editionNote(edge: boolean): string[] {
+	// AN EDGE BUILD IS A PRE-RELEASE (M60 spec 01). A Stable install never takes it on its own, so
+	// the page says what it is. Stable supersedes it: the release of the same version is newer than
+	// every Edge build of it.
+	if (!edge) return [];
 	return [
-		"## Update",
+		"**This is an Edge build**, a pre-release for volunteers. A Stable install does not take it,",
+		"and the Stable release of the same version supersedes it.",
 		"",
-		"**Already on 1.x?** One command, then the phone updates itself within a minute.",
-		"",
-		// Two spellings, because there are two kinds of install and neither command works on the
-		// other: a Herdr-managed checkout has plugin actions, a downloaded binary install has
-		// `collie` on PATH (M14/01 §8).
-		"```",
-		"collie update                                              # downloaded install (install.sh or a tarball below)",
-		"herdr plugin action invoke update --plugin herdr.collie    # Herdr plugin install",
-		"```",
-		"",
-		"Check with `collie version` or `herdr plugin action invoke version --plugin herdr.collie`.",
-		// The 0.x crossing no longer rides here: `docs/upgrading.md` keeps it ("Upgrading from 0.x
-		// to 1.0"), and a release page of the 1.x line does not repeat it.
 	];
 }
 
@@ -485,12 +464,11 @@ export function renderBody(
 	const heading = sectionVersion(version);
 	const anchor = changelogAnchor(heading, section.date);
 	// THE URGENT LINE STAYS AS IT WAS WRITTEN, AND IT GOES FIRST (ADR 0046). It is the one sentence a
-	// reader has to see before the update command, so it sits above the block a phone came here to
-	// copy from. One line, the author's own, with no wrapper around it.
+	// reader has to see before anything else. One line, the author's own, with no wrapper around it.
 	const urgent = parseUrgent(changelog, version);
 	const lines: string[] = [];
 	if (urgent) lines.push(`**Urgent.** ${urgent.reason}`, "");
-	lines.push(...updateBlock(isEdgeVersion(version)), "", "## What changed", "");
+	lines.push(...editionNote(isEdgeVersion(version)), "## What changed", "");
 
 	for (const group of section.groups) {
 		if (group.leads.length === 0) continue;

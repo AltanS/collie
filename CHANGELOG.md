@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The release page lists what changed and no update commands.** The commands stay in `docs/upgrading.md`, and the in-app update band shows its own.
+
 ## [1.29.0] - 2026-11-18
 
 ### Added

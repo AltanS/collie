@@ -184,18 +184,7 @@ describe("changelogAnchor", () => {
 
 describe("renderBody", () => {
 	test("the whole body for a version with all five groups", () => {
-		expect(renderBody(FULL, "2.1.0", REPO, "v2.1.0", "v2.0.0")).toBe(`## Update
-
-**Already on 1.x?** One command, then the phone updates itself within a minute.
-
-\`\`\`
-collie update                                              # downloaded install (install.sh or a tarball below)
-herdr plugin action invoke update --plugin herdr.collie    # Herdr plugin install
-\`\`\`
-
-Check with \`collie version\` or \`herdr plugin action invoke version --plugin herdr.collie\`.
-
-## What changed
+		expect(renderBody(FULL, "2.1.0", REPO, "v2.1.0", "v2.0.0")).toBe(`## What changed
 
 **Added**
 
@@ -242,14 +231,14 @@ HTTPS and the pinned github.com host carry that.
 		expect(body).toContain("Full detail with commits: [1.0.0 in the changelog]");
 	});
 
-	test("the update block is open, and first on the page", () => {
+	test("a Stable page carries no update commands and opens with what changed", () => {
 		const body = renderBody(FULL, "2.1.0", REPO, "v2.1.0", "v2.0.0");
-		expect(body.startsWith("## Update\n")).toBe(true);
-		// The commands a phone came here to copy are visible without a tap: only the verify recipe
-		// is folded.
-		expect(body.indexOf("collie update  ")).toBeLessThan(body.indexOf("<details>"));
+		expect(body.startsWith("## What changed\n")).toBe(true);
+		expect(body).not.toContain("## Update");
+		expect(body).not.toContain("collie update");
+		expect(body).not.toContain("herdr plugin action invoke update");
+		// Only the verify recipe is folded.
 		expect(body.match(/<details>/g)).toHaveLength(1);
-		expect(body.indexOf("## Update")).toBeLessThan(body.indexOf("## What changed"));
 	});
 
 	test("only the groups that have content are printed", () => {
@@ -465,7 +454,7 @@ describe("parseUrgent", () => {
 	test("the release page keeps the line as it was written, at the top of the body", () => {
 		const body = renderBody(URGENT, "1.9.1", REPO, "v1.9.1");
 		expect(body.startsWith("**Urgent.** The cache reaper deletes live entries, take this today.\n")).toBe(true);
-		expect(body.indexOf("**Urgent.**")).toBeLessThan(body.indexOf("## Update"));
+		expect(body.indexOf("**Urgent.**")).toBeLessThan(body.indexOf("## What changed"));
 		// The rest of the page is what it always was — the line adds, it replaces nothing.
 		expect(body).toContain("## What changed");
 		expect(body).toContain("**Fixed**");
