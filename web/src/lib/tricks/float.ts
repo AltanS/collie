@@ -56,7 +56,7 @@ export const FLOAT_ONCE_MS = { "fly-across": 2400, arc: 2800, pop: 1600 } as con
 /** The most a once-motion may last, the bound the table above is held to. */
 export const FLOAT_ONCE_MAX_MS = 3000;
 /** A trick's once-shots start at least this far apart. */
-export const FLOAT_ONCE_EVERY_MS = 60_000;
+export const FLOAT_ONCE_EVERY_MS = 15_000;
 /** The most stay pictures on screen across all tricks. */
 export const FLOAT_STAY_MAX = 2;
 /** A wandering picture moves to a new spot no more often than this. */

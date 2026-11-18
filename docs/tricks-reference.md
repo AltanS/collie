@@ -383,7 +383,7 @@ A program prints:
 | `sprite` `frames` and `fps` | `frames` is the columns of a sprite sheet, 1 to 16; the frames are square and side by side. `fps` is 1 to 12 and needs `frames` of 2 or more |
 | `mood` | `working`, `waiting`, `idle`, `done` or `gone`. It picks the row of the sprite sheet, counting from the top in that order. A sheet with fewer rows draws its first row. `idle` when left out |
 | `opens` | `page`, on a `stay` part with `perch` or `idle`. The trick needs a Page for the tap to open |
-| On screen at once | at most 2 `stay` pictures across all tricks, and one `once` picture at a time: one waits and the rest are dropped. A trick's `once` pictures start at least 60 s apart |
+| On screen at once | at most 2 `stay` pictures across all tricks, and one `once` picture at a time: one waits and the rest are dropped. A trick's `once` pictures start at least 15 s apart |
 | When a `once` picture plays | when Collie first sees the part, or sees it change, after the phone has loaded the tricks. To play the same picture again, print the part with a new `id` or another `mood`. Parts that were there when the phone opened do not play |
 | Contract | `sessions` needs contract 2, as on a belt mark. The place itself works at contract 1 |
 | Motion | transform and opacity only. A hidden page pauses every picture. With reduced motion a `once` picture does nothing and a `stay` picture is a still image: the mood swaps the frame, and nothing glides or wanders |

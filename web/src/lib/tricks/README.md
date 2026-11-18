@@ -1151,7 +1151,7 @@ insets and the landmark boxes (`data-slot` elements read with a ResizeObserver),
 rectangle. Every motion path lies inside it, so a picture never touches a landmark; a region too small
 hides `stay` pictures and skips `once` ones. Pictures are hidden while a sheet, a dialog or a card that
 asks a question is open, while a field has focus and during a hold. At most two `stay` pictures show,
-one per trick; a trick's `once` pictures start 60 s apart, one plays at a time and one waits. A `once`
+one per trick; a trick's `once` pictures start 15 s apart, one plays at a time and one waits. A `once`
 picture plays when the phone first sees its part, or sees its value change; parts held at load do not
 play. Only transform and opacity move; a hidden page pauses all of them. Reduced motion: `once` does
 nothing, `stay` is a still image whose mood swaps the frame. "Floating things" (Settings, Appearance,

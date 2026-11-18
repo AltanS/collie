@@ -272,7 +272,7 @@ describe("the once queue", () => {
     expect(queue.playing).toBeNull();
   });
 
-  it("lets one trick start a shot once per 60 s, and counts from the start", () => {
+  it("lets one trick start a shot once per 15 s, and counts from the start", () => {
     const time = clock();
     const queue = new OnceQueue<{ trick: string }>(time.now);
     expect(queue.offer({ trick: "a" })).toBe("play");
