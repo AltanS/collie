@@ -9,6 +9,7 @@ import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { useLocale } from "@/hooks/use-locale";
+import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { t as translate, tn as translatePlural } from "@/lib/i18n";
 import { serverSkewMs } from "@/lib/server-clock";
 import { holdsMask } from "@/lib/masked-text";
@@ -1172,6 +1173,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // field is up and a text for a prompt that does not echo never take this road: they are never held or shown.
   const calmRef = useRef<CalmSend | null>(null);
   const [calmHeld, setCalmHeld] = useState(false);
+  // ── THE SEND CLOSES THE SOFT KEYBOARD (Altan, 2026-11-18) ───────────────────
+  // The reply is what the person wants to see next, and the keyboard covers it. So a box send that let go of the
+  // box (`startCalm`) also blurs the field, when a SOFT keyboard is up (`useKeyboardOpen`: the viewport shrank AND a
+  // field that types has focus). A hardware keyboard or a wide layout shows no such keyboard and keeps the focus, so
+  // the next message can be typed at once. The blur needs no answer from the bridge. The first tap still sends (issue
+  // 691: the press never moved the focus, so the click reaches Send); the blur comes after the send is dispatched.
+  // `keyboardReleased` is the calm send whose blur we did, so a send that fails (its text goes back into the box)
+  // can give the focus back: a try, since iPhone WebKit raises no keyboard from a focus outside a tap.
+  const softKeyboard = useKeyboardOpen();
+  const keyboardReleased = useRef<CalmSend | null>(null);
   const flipInstantRef = useRef(false);
   // The texts waiting on Put back for the pane on screen, oldest first (the M102 review 3): stored with the pane's draft
   // (lib/drafts.ts), so a pane switch or a reload keeps them, and never a list with a cap, so none is dropped.
@@ -2382,6 +2393,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     attachmentsRef.current = [];
     setInput("");
     setAttachments([]);
+    // Only the reply field: another field that has focus (the code field, a rename) keeps its keyboard.
+    const field = inputRef.current;
+    if (softKeyboard && field !== null && document.activeElement === field) {
+      field.blur();
+      keyboardReleased.current = calm;
+    }
     return calm;
   }
   /**
@@ -2394,9 +2411,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       calmRef.current = null;
       setCalmHeld(false);
     }
+    const released = keyboardReleased.current === calm;
+    if (released) keyboardReleased.current = null;
     if (end === "failed") {
       if (calm.row !== null) dropPending(calm.row.key, [calm.row.id]);
       giveBack(intent === undefined ? calm : { ...calm, intent });
+      // The send did not go and its words are back: the keyboard we put away comes back, unless the person has
+      // moved on to another control since (focus on the page body only).
+      const field = inputRef.current;
+      const idle = document.activeElement === null || document.activeElement === document.body;
+      if (released && idle && field !== null && boxOf(calm)) field.focus({ preventScroll: true });
       return;
     }
     if (calm.row !== null && end === "sent") setPendingState(calm.row.key, calm.row.id, "sent");
