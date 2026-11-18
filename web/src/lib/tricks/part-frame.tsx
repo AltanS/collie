@@ -7,7 +7,7 @@
 // the age of a part past its fresh window, and for a fresh part its age alone, in muted text. A failure's masked line opens on a tap, through
 // `Collapse` (the one sanctioned way in-flow content appears), with one button that COPIES "the trick
 // `<id>` failed: `<error>`" on the phone (the tree's `does: copy`, design section 7), so the person can
-// paste it to any agent. It sends nothing and places no draft: nothing in tricks writes into a reply box.
+// paste it to any agent. It sends nothing and places no draft: only a trick's own `does = "draft"` button does that.
 //
 // `TrickView` puts a stored part, its frame and its view together for slice 03's places, and holds a
 // new FORM back while a finger is down on the part, so a list that grows a row does not move the row
@@ -234,20 +234,26 @@ export interface TrickViewProps {
   imageUrl?: (src: string) => string | undefined;
   /** The session open on the phone, sent with a tap. */
   from?: string;
+  /**
+   * Put a draft button's text into the reply box of the session this page is open for (routes/trick-session.tsx).
+   * Handed to the view only for a trick whose manifest says `drafts = "session"` (`draftsSession` on its row), so
+   * the phone checks the right too. Absent: a draft button is drawn disabled with "Open a session first".
+   */
+  onDraft?: (value: string) => void;
   store?: TricksStore;
   /** Pin the clock, for a test or a playground card. */
   now?: number;
 }
 
 /** A stored part's view in its frame, with its taps wired to the store. Nothing while the part is not held. */
-export function TrickView({ partKey, onLink, imageUrl, from, store = tricksStore, now }: TrickViewProps) {
+export function TrickView({ partKey, onLink, imageUrl, from, onDraft, store = tricksStore, now }: TrickViewProps) {
   const { part, trick, tap } = useTrickPart(partKey, store);
   if (part === undefined) return null;
   // The boundary stands outside the body that reads the part's value, so a value that throws as it is
   // read draws the placeholder too, and a new rev tries it again.
   return (
     <TrickBoundary fallback="placeholder" resetKey={`${partKey}@${part.rev}`}>
-      <TrickViewBody partKey={partKey} part={part} trick={trick} tap={tap} onLink={onLink} imageUrl={imageUrl} from={from} store={store} now={now} />
+      <TrickViewBody partKey={partKey} part={part} trick={trick} tap={tap} onLink={onLink} imageUrl={imageUrl} from={from} onDraft={onDraft} store={store} now={now} />
     </TrickBoundary>
   );
 }
@@ -259,13 +265,15 @@ interface TrickViewBodyProps extends Omit<TrickViewProps, "store"> {
   store: TricksStore;
 }
 
-function TrickViewBody({ partKey, part, trick, tap, onLink, imageUrl, from, store, now }: TrickViewBodyProps) {
+function TrickViewBody({ partKey, part, trick, tap, onLink, imageUrl, from, onDraft, store, now }: TrickViewBodyProps) {
   const partValue = part.value;
   // Read once per version of the part, so the held view keeps one identity between redraws.
   const partRev = part.rev;
   const live = useMemo((): DrawnView => ({ view: viewOf(partValue), rev: partRev }), [partValue, partRev]);
   const { view, rev, onPointerDown } = useHeldView(live);
   const fetched = useTrickImages(partKey, part.rev, view);
+  // The right, as the bridge read it from the manifest of what runs: without it no draft button fills a box.
+  const drafts = trick?.draftsSession === true;
   const images = imageUrl ?? fetched;
   const onTap = useMemo(() => {
     const handlers: TapHandlers = {};
@@ -279,9 +287,10 @@ function TrickViewBody({ partKey, part, trick, tap, onLink, imageUrl, from, stor
         if (view === undefined) return <Placeholder />;
         const ctx: RenderCtx = { partKey, stale, tap, onTap, onLink, now };
         if (images !== undefined) ctx.imageUrl = images;
+        if (onDraft !== undefined && drafts) ctx.onDraft = onDraft;
         return renderView(view, ctx);
       },
-    [view, partKey, tap, onTap, onLink, images, now],
+    [view, partKey, tap, onTap, onLink, images, now, onDraft, drafts],
   );
   return (
     <div onPointerDown={onPointerDown} className="min-w-0">

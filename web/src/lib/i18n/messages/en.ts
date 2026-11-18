@@ -3590,6 +3590,9 @@ export const en = {
   "tricks.frame.fixText": "The trick `{id}` failed: `{error}`",
   "tricks.copied": "Copied",
   "tricks.copyFailed": "Could not copy",
+  // A `does = "draft"` button: on a trick page opened for no session, and the refusal when the box holds words.
+  "tricks.draft.noSession": "Open a session first",
+  "tricks.draft.holdsWords": "The box holds your words. Send or clear them first.",
   "tricks.space.title": "Tricks",
   "tricks.mark.open": "Open {trick}",
   "tricks.session.back": "Back",
@@ -3663,6 +3666,8 @@ export const en = {
   "settings.tricks.about.access.see": "It reads your machines, sessions, usage and the Hill.",
   "settings.tricks.about.access.read": "It reads your sessions' screens.",
   "settings.tricks.about.access.unknown": "It asks for access this app does not know yet. Update the app before you say yes.",
+  // `drafts = "session"`: the same words as the cards' line (schema.ts DRAFTS_SESSION_LINE).
+  "settings.tricks.about.drafts": "Its buttons can put text into the reply box of the session you are in. You read it and send it yourself.",
   "settings.tricks.about.from": "Where it comes from",
   "settings.tricks.about.local": "Added on this machine.",
   "settings.tricks.about.proposedAgent": "Proposed by an agent session on {host}.",
@@ -4140,7 +4145,7 @@ export type Messages = typeof en;
  * already carries, so the list cannot outlive its translations. Never a way to skip translating a
  * key for good: a key stays here only between a feature and its translation pass.
  */
-export const PENDING_TRANSLATION = [] as const satisfies readonly MessageKey[];
+export const PENDING_TRANSLATION = ["settings.tricks.about.drafts", "tricks.draft.noSession", "tricks.draft.holdsWords"] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */
 export type PendingKey = (typeof PENDING_TRANSLATION)[number];

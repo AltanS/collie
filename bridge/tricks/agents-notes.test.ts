@@ -26,7 +26,11 @@ function cardText(manifest: TrickManifest, files: Record<string, string>): strin
 describe("the notes init writes", () => {
   test("their text is pinned to NOTES_VERSION: a change to the text bumps the version and this hash", () => {
     const hash = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft)).digest("hex").slice(0, 16);
-    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 6, hash: "0059a80526fc454a", draft: "75802a20e01ac85b" });
+    expect({ version: NOTES_VERSION, hash: hash(false), draft: hash(true) }).toEqual({ version: 7, hash: "aacf3dffd3aabf41", draft: "e708d36c3ce94b50" });
+    // v6's bytes stay as shipped (1.29.0), so a draft init wrote at v6 is still named, as v6.
+    const v6 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 6)).digest("hex").slice(0, 16);
+    expect({ hash: v6(false), draft: v6(true) }).toEqual({ hash: "0059a80526fc454a", draft: "75802a20e01ac85b" });
+    expect(shippedNotesVersion("legs", sampleAgents("legs", "ts", true, 6))).toBe(6);
     // v5's bytes stay as shipped (security read of package I), so a draft init wrote at v5 is still named, as v5.
     const v5 = (draft: boolean): string => createHash("sha256").update(sampleAgents("legs", "ts", draft, 5)).digest("hex").slice(0, 16);
     expect({ hash: v5(false), draft: v5(true) }).toEqual({ hash: "7c36b5e6d11f7adb", draft: "30d901f38ead50c8" });

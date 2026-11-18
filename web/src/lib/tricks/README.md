@@ -793,9 +793,12 @@ slice 1. Its value is the member id, never the host name.
   "decisions": [], "asOf": "2026-11-08T09:41:00Z", "fresh": "90s" }
 ```
 
-`v` is the contract number. There is no `draft` and no `open` (a document that still sends one has
-the key ignored, with a note). A trick never writes into a reply box, and a tap never moves the
-phone. What a trick wants to show is a `link`. What it wants to tell the person is a decision.
+`v` is the contract number. There is no `draft` and no `open` key (a document that still sends one has
+the key ignored, with a note). The one way a trick's text reaches a reply box is a button with `does`
+set to `draft`, for a trick whose manifest says `drafts = "session"`: on the phone, a tap fills the
+EMPTY reply box of the session the page was opened for and opens that session. It never sends, and
+the trick hears nothing back. Apart from that, a tap never moves the phone. What a trick wants to show
+is a `link`. What it wants to tell the person is a decision.
 
 A document with no `decisions` key leaves the trick's decisions on the hill as they are. An empty
 list, `"decisions": []`, withdraws every open one. So a run that only redraws its parts (a tap on a
@@ -1140,7 +1143,8 @@ trick rows by whole groups in trick id order. The agent view switches live in th
 | a phone      | tap an intent, answer a decision     | a device key with `write`             |
 | a phone      | switch a trick on or off             | a device key with `write`             |
 | the trick    | redraw its parts, post a decision    | its own run, from the bridge          |
-| the trick    | send, press a key, write a reply box, answer an ask | never                  |
+| the trick    | send, press a key, answer an ask     | never                                 |
+| the trick    | fill an empty reply box (`does: draft`) | a person's tap, with `drafts = "session"`; never sent |
 | the bridge   | set `composer.draft`                 | never                                 |
 
 `TRICKS_ROUTE_RIGHTS` in `bridge/tricks/routes.ts` is the one home of the route levels.

@@ -24,8 +24,11 @@
 // CONTROL: the node's path in the view, so the busy and unknown states land on the control that was
 // pressed and on no other. A `button` with `confirm` arms on the first tap and sends on the second
 // (VOCABULARY.md 2.8). A `button` with `does: copy` copies its `value` on the phone and sends nothing.
+// A `button` with `does: draft` hands its `value` to `ctx.onDraft`, which puts it into an EMPTY reply box of
+// the session the view is open for and opens that session; it never sends, and the person's own Send is the
+// act. Without `ctx.onDraft` it is drawn disabled with "Open a session first".
 // A `row` with `href` and a `link` go to `ctx.onLink`: an http(s) address opens in the browser, a
-// session's scope key opens that Session. Nothing a trick draws can write into a reply box.
+// session's scope key opens that Session. Nothing else a trick draws can write into a reply box.
 //
 // PICTURES (2026-11-10). An `image` with a `ref` and a `compare` draw the Decision's own pictures through
 // `ctx.pictures`, which the place hands in (a Decision card: the bytes come with the pairing token, and a
@@ -199,6 +202,13 @@ export interface RenderCtx {
    * what it shows, as it always was.
    */
   tapName?: (label: string, path: string) => string;
+  /**
+   * A button with `does = "draft"` was tapped: put its `value` into the reply box of the session this view is
+   * open for, and only when that box is empty (the place owns the check, the refusal line and the open). It
+   * never sends. NO DEFAULT: absent (no session, a Dashboard tile, the bottom bar, a trick without the right
+   * `drafts = "session"`), such a button is drawn disabled with "Open a session first".
+   */
+  onDraft?: (value: string) => void;
 }
 
 /** The words of a free text as the place draws them: through `ctx.linkText` when it has one, else as they are. */
@@ -368,7 +378,10 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
   const announces = attrs.confirm !== undefined && ctx.armedLabel !== undefined;
   const label = armed && armedWords !== undefined ? armedWords : attrs.label;
   const ink = armed ? inkOf("danger", false) : inkOf(attrs.tone, ctx.stale);
-  const disabled = attrs.disabled !== undefined;
+  // A draft button with no session to fill (no `ctx.onDraft`) is drawn disabled, and its second line says why.
+  const noSession = attrs.does === "draft" && ctx.onDraft === undefined;
+  const disabled = attrs.disabled !== undefined || noSession;
+  const hint = noSession ? t("tricks.draft.noSession") : attrs.hint;
   // The button waits for its part (a send in flight, a turn), not for its own `disabled`: a place that
   // shows no grey wash (an agent view) keeps such a button at full contrast by this mark (review 10 W14).
   const waits = !disabled && partBusy(ctx) && attrs.does === undefined;
@@ -376,6 +389,12 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
     if (ctx.canTap?.() === false) return;
     if (attrs.does === "copy") {
       if (attrs.value !== undefined) copyValue(attrs.value);
+      return;
+    }
+    // A draft goes to the place, which fills an empty reply box and opens the session. Nothing is sent, and
+    // the program hears nothing of it.
+    if (attrs.does === "draft") {
+      if (attrs.value !== undefined && attrs.disabled === undefined) ctx.onDraft?.(attrs.value);
       return;
     }
     if (attrs.intent === undefined) return;
@@ -417,7 +436,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
   const named = ctx.tapName?.(attrs.label, path);
   const name = state === "unknown" ? `${named ?? label}, ${t("tricks.tap.unknown")}` : armed ? label : named;
   const hintId = useId();
-  const describes = named !== undefined && attrs.hint !== undefined;
+  const describes = named !== undefined && hint !== undefined;
   return (
     <div {...floorBox(node, ctx)} className={cn("flex min-w-0 items-center", compact && ctx.wrap !== true && "shrink-0", ctx.wrap === true && "items-stretch")}>
       <Button
@@ -427,7 +446,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
         aria-label={name}
         aria-describedby={describes ? hintId : undefined}
         aria-pressed={attrs.pressed === undefined ? undefined : attrs.pressed}
-        title={disabled && attrs.disabled !== "" ? attrs.disabled : attrs.hint}
+        title={attrs.disabled !== undefined && attrs.disabled !== "" ? attrs.disabled : hint}
         data-armed={armed ? "" : undefined}
         data-waits={waits ? "" : undefined}
         disabled={disabled || (partBusy(ctx) && attrs.does === undefined)}
@@ -435,7 +454,7 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
         className={cn(
           "h-11 min-w-0 transition-colors",
           compact ? "px-3" : "w-full px-4",
-          attrs.hint !== undefined && "h-full flex-col gap-0 py-1.5",
+          (hint !== undefined || attrs.does === "draft") && "h-full flex-col gap-0 py-1.5",
           ctx.wrap === true && "h-auto min-h-11 whitespace-normal py-2",
           ink,
         )}
@@ -445,9 +464,9 @@ function ButtonView({ node, ctx, path, compact = false }: { node: ButtonNode; ct
           {words}
           <BadgeMark badge={attrs.badge} />
         </span>
-        {attrs.hint !== undefined && (
-          <span id={describes ? hintId : undefined} className="max-w-full truncate text-xs font-normal text-muted-foreground">
-            {attrs.hint}
+        {hint !== undefined && (
+          <span id={describes ? hintId : undefined} data-slot={noSession ? "trick-button-no-session" : undefined} className="max-w-full truncate text-xs font-normal text-muted-foreground">
+            {hint}
           </span>
         )}
       </Button>

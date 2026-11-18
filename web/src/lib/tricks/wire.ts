@@ -347,6 +347,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const versioned = body.version;
   const known = body.repoFacts;
   const replying = body.decidesReply;
+  const drafting = body.draftsSession;
   const running = body.run;
   const ticking = body.everyMs;
   const asked = body.fields;
@@ -359,7 +360,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const accessOff = body.accessOff;
   if (!isTrickValue(body)) return undefined;
   if (body.provenance !== undefined) body.provenance = readProvenance(body.provenance);
-  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined && running === undefined && ticking === undefined && reacting === undefined && watching === undefined && leveled === undefined && accessOff === undefined && asked === undefined && kept === undefined && setup === undefined && unread === undefined) return body;
+  if (sent === undefined && waiting === undefined && reads === undefined && body.auto === undefined && body.autoAt === undefined && described === undefined && told === undefined && viewed === undefined && ruled === undefined && body.rulesUnshown === undefined && approving === undefined && versioned === undefined && known === undefined && replying === undefined && drafting === undefined && running === undefined && ticking === undefined && reacting === undefined && watching === undefined && leveled === undefined && accessOff === undefined && asked === undefined && kept === undefined && setup === undefined && unread === undefined) return body;
   // The fields read past the frame: the Tricks card lists them, so their shapes are held here. One of
   // another shape is left out, as from an older bridge.
   const warnings = readWarnings(sent);
@@ -368,7 +369,7 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   const description = readTrickText(described, "description");
   const about = readTrickText(told, "about");
   const rules = readTrickRules(ruled);
-  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, run: _running, everyMs: _ticking, events: _reacting, watch: _watching, access: _leveled, accessOff: _accessOff, fields: _asked, values: _kept, needsSetup: _setup, valuesUnread: _unread, ...rest } = body;
+  const { warnings: _sent, pending: _waiting, auto: _auto, autoAt: _autoAt, inputs: _reads, description: _described, about: _told, agentView: _viewed, rules: _ruled, rulesUnshown: _unshown, approves: _approves, version: _versioned, repoFacts: _known, decidesReply: _replying, draftsSession: _drafting, run: _running, everyMs: _ticking, events: _reacting, watch: _watching, access: _leveled, accessOff: _accessOff, fields: _asked, values: _kept, needsSetup: _setup, valuesUnread: _unread, ...rest } = body;
   const out: WireTrickInfo = warnings.length === 0 ? rest : { ...rest, warnings };
   if (pending !== undefined) out.pending = pending;
   if (inputs !== undefined) out.inputs = inputs;
@@ -388,6 +389,8 @@ export function readTrick(raw: JsonValue | undefined): WireTrickInfo | undefined
   if (viewed === true) out.agentView = true;
   // Declared in the manifest of what runs: its Decisions may answer into a session (the token label reads it).
   if (replying === true) out.decidesReply = true;
+  // Declared in the manifest of what runs: its buttons may put text into a reply box (the About sheet's line, the draft button).
+  if (drafting === true) out.draftsSession = true;
   const approves = asJsonString(approving);
   if (approves !== undefined && /^[0-9a-f]{64}$/u.test(approves)) out.approves = approves;
   if (rules !== undefined) out.rules = rules;

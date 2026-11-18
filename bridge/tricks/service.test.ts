@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { HOST as THIS_HOST } from "../host.ts";
 import type { JsonObject } from "../json.ts";
 import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
-import { CLOSED_KEY_LINE, DECIDES_REPLY_LINE, FACT_SESSIONS_MAX, parseDecisionView, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { CLOSED_KEY_LINE, DECIDES_REPLY_LINE, DRAFTS_SESSION_REFUSAL, FACT_SESSIONS_MAX, parseDecisionView, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import type { AgentView } from "../types.ts";
 import { legacyPowersOf, powersOf, powersOfDir } from "./approved.ts";
 import { factsWorldOf, NO_FACTS_CAPS, type FactsWorldInput } from "./facts.ts";
@@ -1890,6 +1890,41 @@ describe("the approved copy (crew slice 2)", () => {
     await tickAt(r, T0 + 80_000);
     expect((await legs())?.refusals).toBeUndefined();
     expect((await legs())?.decidesReply).toBe(true);
+  });
+
+  test("drafts = session is a right: a version that adds it waits, auto or not; the approved copy refuses the draft button meanwhile, then draws it after the yes", async () => {
+    const page = JSON.stringify({
+      v: 1,
+      asOf: "2026-11-08T09:00:00Z",
+      parts: [
+        { at: "belt", id: "belt", mark: { label: "1", intent: "x" } },
+        { at: "session", id: "page", view: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Use", does: "draft", value: "Run the tests." } }] }] },
+      ],
+    });
+    const r = await rig([exited(page)]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const legs = async () => (await r.service.reply(undefined)).tricks.find((trick) => trick.id === "legs");
+    const refusalsOf = async () => (await legs())?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.reason]);
+    // Without the key: the page part is refused alone with the plain line, the Belt mark still draws.
+    expect(await refusalsOf()).toEqual([["undeclared", "/parts/1/view/0/kids/0/attrs/does", DRAFTS_SESSION_REFUSAL]]);
+    expect((await legs())?.draftsSession).toBeUndefined();
+    await updateSwitches(r.stateDir, (now) => withEntry(now, "legs", { ...now.on.get("legs")!, auto: true }));
+    const v1 = await codeHashOf(dir);
+    await writeFile(join(dir, "trick.toml"), `${MANIFEST}drafts = "session"\n`);
+    const v2 = await newVersion(r, dir, T0 + 1000, "#!/bin/sh\necho 1\n");
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.hash).toBe(v1);
+    expect((await legs())?.pending).toMatchObject({ hash: v2, powersChanged: true });
+    // The approved copy's manifest is the one read: the folder's key does not count yet.
+    await tickAt(r, T0 + 40_000);
+    expect((await refusalsOf())?.map((row) => row[2])).toEqual([DRAFTS_SESSION_REFUSAL]);
+    expect((await legs())?.draftsSession).toBeUndefined();
+    expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
+    await tickAt(r, T0 + 80_000);
+    expect((await legs())?.refusals).toBeUndefined();
+    expect((await legs())?.draftsSession).toBe(true);
   });
 
   test("a copy that changed on disk stops the trick with a plain line; switching on again approves the folder anew", async () => {

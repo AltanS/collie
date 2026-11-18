@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A trick's button can write a prompt into your reply box for you to send.** On a trick's page opened from a session, a tap puts the button's text into that session's empty reply box and opens the session; you read it and tap Send yourself. Collie never sends it, never touches words already in the box, and asks for your yes first, because the trick must ask for this right (`drafts = "session"`).
+
 ### Changed
 
 - **The release page lists what changed and no update commands.** The commands stay in `docs/upgrading.md`, and the in-app update band shows its own.

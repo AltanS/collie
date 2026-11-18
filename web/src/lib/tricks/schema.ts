@@ -94,6 +94,12 @@ export const PART_MAX_BYTES = 16 * 1024;
 export const DOCUMENT_MAX_BYTES = 64 * 1024;
 /** A button's `value`, an action's `value` and a tap's text value, at most this many UTF-8 bytes. */
 export const VALUE_MAX_BYTES = 1024;
+/**
+ * The `value` of a button with `does = "draft"`, the text it puts into a reply box, at most this many
+ * characters (code points): the WalkyTalky body cap, long enough for a saved prompt. Line breaks are allowed.
+ * Every other button `value` keeps {@link VALUE_MAX_BYTES}.
+ */
+export const DRAFT_VALUE_MAX = 4000;
 /** Parts per document. One trick in many places, not a page of widgets. */
 export const PARTS_MAX = 24;
 /** The most refusals a result lists. One more row counts the rest, as the theme parser does. */
@@ -401,8 +407,12 @@ export type ChipState = (typeof CHIP_STATES)[number];
 /** `button.pressed` (VOCABULARY.md 2.8). */
 export const PRESSED_STATES = ["true", "false", "mixed"] as const;
 export type Pressed = (typeof PRESSED_STATES)[number];
-/** `button.does`: a trick may only copy. `install`, `notify`, `reload` and `wipe` are Collie's own. */
-export const BUTTON_DOES = ["copy"] as const;
+/**
+ * `button.does`: a trick's button may copy its `value`, or put it into a session's reply box (`draft`, only
+ * for a trick whose manifest says `drafts = "session"`). It never sends: the person reads the text in the box
+ * and taps Send. `install`, `notify`, `reload` and `wipe` are Collie's own.
+ */
+export const BUTTON_DOES = ["copy", "draft"] as const;
 export type ButtonDoes = (typeof BUTTON_DOES)[number];
 /** `link.rel`: what the `href` names. Absent: an https:// or http:// address or a session's scope key. `file` is refused: a trick opens no file. */
 export const LINK_RELS = ["url", "file", "pane"] as const;
@@ -801,7 +811,7 @@ export const REMOVED_KINDS = {
   field: "fields are not in a trick's vocabulary yet",
   select: "selects are not in a trick's vocabulary yet",
   option: "selects are not in a trick's vocabulary yet",
-  composer: "the composer is Collie's own; a trick never writes into a reply box",
+  composer: 'the composer is Collie\'s own; a button with "does": "draft" may put text into its reply box, and the person sends it',
   prompt: "a prompt is an agent's dialog; a trick asks the person through a decision",
   tool: "tool calls are an agent's",
   turn: "turns are an agent's",
@@ -1161,8 +1171,8 @@ export interface TapControl {
 /**
  * Every control of a part that sends a tap to the program (fault A): what the bridge holds a phone's tap
  * against. A belt mark with an intent; a session's actions and every `button` of its view, at any depth,
- * that sends an intent; a menu part's rows. A disabled control and a button that only copies send
- * nothing, so they are left out. A switch row sends the state it asks for, the other one than its `on`. A status chip, a Dashboard tile and a bottom bar item are no controls: a tap there opens the
+ * that sends an intent; a menu part's rows. A disabled control and a button that only copies or drafts
+ * send nothing to the program, so they are left out. A switch row sends the state it asks for, the other one than its `on`. A status chip, a Dashboard tile and a bottom bar item are no controls: a tap there opens the
  * trick's session on the phone and never reaches the bridge.
  */
 export function tapControls(part: TrickPart): TapControl[] {
@@ -1275,7 +1285,7 @@ export function decisionPriority(decision: TrickDecision): DecisionPriority {
   return decision.priority ?? DEFAULT_DECISION_PRIORITY;
 }
 
-/** The program's output, as written. There is no `draft` and no `open`: a trick never writes into a reply box. */
+/** The program's output, as written. There is no `draft` and no `open` key: only a button with `does = "draft"` puts text into a reply box, and it never sends. */
 export interface TrickDocument {
   /** The trick contract the document follows: 1 to {@link DOCUMENT_VERSION}. */
   v: number;
@@ -1354,6 +1364,13 @@ export interface TrickManifest {
    * ({@link DECIDES_REPLY_LINE}). A right: it is in the powers, so a version that adds it asks again.
    */
   decides?: DecidesWord;
+  /**
+   * `drafts = "session"`: the trick's buttons may say `does = "draft"`, and a tap puts the button's `value` into
+   * the reply box of the session the page is open for. Collie never sends it. Absent: the bridge refuses a part
+   * with such a button ({@link DRAFTS_SESSION_REFUSAL}). A right: it is in the powers, so a version that adds it
+   * asks again.
+   */
+  drafts?: DraftsWord;
   /**
    * `access = "see"` or `"read"` (M105 spec 04): how much of Collie's local API the trick reads through the
    * helper. Absent: `none`. A right: it is in the powers, so a version that raises it asks again; lowering it
@@ -1672,6 +1689,13 @@ export interface WireTrickInfo {
    * Absent: it does not, or an older bridge.
    */
   decidesReply?: true;
+  /**
+   * The manifest of what runs says `drafts = "session"`: the trick's buttons may put text into the reply box of
+   * the session its page is open for ({@link DRAFTS_SESSION_LINE}). Enforced on the bridge, which refuses a part
+   * with a draft button from a trick whose approved copy does not say it; the phone draws such a button only for
+   * a trick that carries this. Absent: it does not, or an older bridge.
+   */
+  draftsSession?: true;
   /**
    * Fault B: the trick stopped because its approved copy asks for other rights than the person approved, as
    * this bridge reads them. The row says so in the phone's words; `error` carries the bridge's English line.
@@ -2590,9 +2614,23 @@ export function isSourceUrl(text: string): boolean {
 function valueProblem(value: string): { code: RefusalCode; reason: string } | undefined {
   const bytes = utf8Bytes(value);
   if (bytes > VALUE_MAX_BYTES) return { code: "size", reason: `is ${bytes} bytes. At most ${VALUE_MAX_BYTES}.` };
+  return valueTextProblem(value);
+}
+
+/** The cleaning every `value` gets, whatever its cap: not empty, and no control or invisible character but a line break and a tab. */
+function valueTextProblem(value: string): { code: RefusalCode; reason: string } | undefined {
   if (value === "") return { code: "text", reason: "is empty." };
   if (hasControl(value, true, true) || hasInvisible(value)) return { code: "text", reason: "holds a control or an invisible character." };
   return undefined;
+}
+
+/**
+ * A button's `value` as its attribute is read, before the button's `does` is known: the cleaning of every
+ * value. Its cap depends on `does`, so `checkNode` holds it: {@link DRAFT_VALUE_MAX} characters for a
+ * draft, {@link VALUE_MAX_BYTES} for `copy` and an intent's value, as before.
+ */
+function buttonValueProblem(value: string): { code: RefusalCode; reason: string } | undefined {
+  return valueTextProblem(value);
 }
 
 /** Why a word is not a tone, said after the attribute's name, or undefined for a tone. */
@@ -3036,7 +3074,7 @@ function attrProblem(rule: AttrRule, value: string): { code: RefusalCode; reason
   switch (rule.kind) {
     case "word":
       if (rule.list === BUTTON_DOES && !isOneOf(rule.list, value)) {
-        return { code: "word", reason: 'must be "copy". A trick\'s button copies or sends an intent; install, notify, reload and wipe are Collie\'s.' };
+        return { code: "word", reason: 'must be "copy" or "draft". A trick\'s button copies, puts text into the reply box, or sends an intent; install, notify, reload and wipe are Collie\'s.' };
       }
       return isOneOf(rule.list, value) ? undefined : { code: "word", reason: `must be one of: ${quoteList(rule.list)}.` };
     case "tone":
@@ -3072,7 +3110,7 @@ function attrProblem(rule: AttrRule, value: string): { code: RefusalCode; reason
     case "intent":
       return isIntentName(value) ? undefined : { code: "id", reason: 'must be 1 to 48 of: lower-case letters, digits, ".", "_" and "-".' };
     case "value":
-      return valueProblem(value);
+      return buttonValueProblem(value);
     case "url":
       return isTrickUrl(value) ? undefined : { code: "target", reason: `must be an https:// or http:// address of at most ${URL_MAX} characters.` };
     case "href":
@@ -3179,9 +3217,13 @@ function checkNode(kind: NodeKind, f: Fields, attrs: JsonObject | undefined, kid
       if (attrs === undefined) return;
       const does = attr("does");
       const intent = attr("intent");
-      if (does === "copy" && attr("value") === undefined) pushAttr("missing", "value", 'A button with "does": "copy" needs "value", the text it copies.');
+      const value = attr("value");
+      if (does === "copy" && value === undefined) pushAttr("missing", "value", 'A button with "does": "copy" needs "value", the text it copies.');
       if (does === "copy" && intent !== undefined) pushAttr("target", "intent", 'A button that copies sends no intent. Remove "intent".');
-      if (does === undefined && intent === undefined) pushAttr("missing", "intent", 'A button needs "intent", the intent a tap sends, or "does": "copy".');
+      if (does === "draft" && value === undefined) pushAttr("missing", "value", 'A button with "does": "draft" needs "value", the text it puts into the reply box.');
+      if (does === "draft" && intent !== undefined) pushAttr("target", "intent", 'A button that puts text into the reply box sends no intent. Remove "intent".');
+      if (does === undefined && intent === undefined) pushAttr("missing", "intent", 'A button needs "intent", the intent a tap sends, or "does": "copy" or "draft".');
+      if (value !== undefined) checkButtonValue(pushAttr, value, does === "draft");
       return;
     }
     case "meter":
@@ -3210,6 +3252,22 @@ function checkNode(kind: NodeKind, f: Fields, attrs: JsonObject | undefined, kid
     case "spark":
       return;
   }
+}
+
+/**
+ * A button's `value` against its cap: a draft's text is at most {@link DRAFT_VALUE_MAX} characters, line
+ * breaks allowed; `copy` and an intent's value keep {@link VALUE_MAX_BYTES} bytes, as they always had.
+ */
+function checkButtonValue(pushAttr: (code: RefusalCode, name: string, reason: string) => void, value: string, draft: boolean): void {
+  if (draft) {
+    // A box of only spaces is an empty box: it would put nothing there.
+    if (value.trim() === "") pushAttr("text", "value", '"value" is empty. A button that puts text into the reply box needs words.');
+    const chars = codePoints(value);
+    if (chars > DRAFT_VALUE_MAX) pushAttr("size", "value", `"value" is ${chars} characters. A button that puts text into the reply box takes at most ${DRAFT_VALUE_MAX}.`);
+    return;
+  }
+  const bytes = utf8Bytes(value);
+  if (bytes > VALUE_MAX_BYTES) pushAttr("size", "value", `"value" is ${bytes} bytes. At most ${VALUE_MAX_BYTES}.`);
 }
 
 /** The attributes an image takes in a part only, and in a Decision's view only. `caption`, `fit` and `focus` are both's. */
@@ -3646,6 +3704,12 @@ export interface ParseTrickDocumentOptions {
    * no manifest, such as the phone).
    */
   decidesReply?: boolean;
+  /**
+   * Whether the manifest says `drafts = "session"`. False: a part with a button that says `does = "draft"` is
+   * refused alone with {@link DRAFTS_SESSION_REFUSAL}, so no text the trick wrote reaches a reply box unless the
+   * person's yes covered that right. Absent: not checked (a reader that has no manifest, such as the phone).
+   */
+  draftsSession?: boolean;
 }
 
 /**
@@ -3687,7 +3751,7 @@ export interface ParsedTrickDocument {
 export const DOCUMENT_KEYS = ["v", "parts", "asOf", "fresh", "decisions"] as const;
 /** Top-level keys of the first schema, refused with what replaced them. */
 const REMOVED_DOCUMENT_KEYS = {
-  draft: '"draft" is gone: a trick never writes into a reply box. Post a decision with "replyTo", and the person\'s answer reaches the session as their own message.',
+  draft: '"draft" is gone as a key of the document. A button with "does": "draft" puts its "value" into the reply box of the session the page is open for, and the person sends it. Or post a decision with "replyTo", and the person\'s answer reaches the session as their own message.',
   open: '"open" is gone: a tap moves nothing on the phone. Draw a "link", or a "row" with "href".',
 } as const satisfies Readonly<Record<string, string>>;
 
@@ -3761,6 +3825,9 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
       const problem = bound[parsed.part.place].problem(parsed.part.part.sessions, parsed.part.place === "belt" ? "belt mark" : "menu part");
       if (problem !== undefined) sink.push({ code: "duplicate", path: pointer(path, problem.key), reason: problem.reason });
     }
+    // A draft button needs the right: without `drafts = "session"` in the approved manifest the part is refused.
+    const drafting = opts.draftsSession === false && parsed.part?.place === "session" ? draftButtonPath(parsed.part.part.view, pointer(path, "view")) : undefined;
+    if (drafting !== undefined) sink.push({ code: "undeclared", path: drafting, reason: DRAFTS_SESSION_REFUSAL });
     if (parsed.part?.place === "status" && status) {
       sink.push({ code: "duplicate", path: pointer(path, "at"), reason: "A trick has one status item. This is a second one." });
     }
@@ -3788,6 +3855,17 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
   result.refusals = capRefusals(refusals);
   result.notes = capRefusals(notes);
   return result;
+}
+
+/** The pointer of the first button in a view that says `does = "draft"`, at any depth, or undefined when it holds none. */
+export function draftButtonPath(nodes: readonly ViewNode[], path: string): string | undefined {
+  for (const [i, node] of nodes.entries()) {
+    const here = pointer(path, i);
+    if (node.kind === "button" && node.attrs.does === "draft") return pointer(pointer(here, "attrs"), "does");
+    const deeper = "kids" in node && node.kids !== undefined ? draftButtonPath(node.kids, pointer(here, "kids")) : undefined;
+    if (deeper !== undefined) return deeper;
+  }
+  return undefined;
 }
 
 /**
@@ -4293,7 +4371,7 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules", "decides", "field", "access"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules", "decides", "drafts", "field", "access"] as const;
 
 // ── `access`: how much of Collie's local API a trick reads (M105 spec 04) ───────────────────────────
 
@@ -4335,6 +4413,25 @@ export type DecidesWord = (typeof DECIDES_WORDS)[number];
 export const DECIDES_REPLY_LINE = "This trick did not say that its Decisions reply to a session.";
 /** The right in a person's words: `collie trick check` and the version card's sentence. */
 export const DECIDES_REPLY_WORDS = "Your answers to its Decisions go to a session as your own message.";
+
+// ── `drafts`: whether a trick's buttons may put text into a session's reply box ──────────────────────
+
+/**
+ * The words `drafts` takes: one, `session`. A trick that writes `drafts = "session"` may draw a button with
+ * `does = "draft"`: a tap puts the button's `value` into the reply box of the session the trick's page is
+ * open for, and opens that session. Collie never sends it: the person reads the text and taps Send. Absent,
+ * a part with such a button is refused. A closed list, so a later word is a refusal here, never a silent yes.
+ */
+export const DRAFTS_WORDS = ["session"] as const;
+export type DraftsWord = (typeof DRAFTS_WORDS)[number];
+
+/** The refusal of a part with a `does = "draft"` button from a trick whose approved manifest does not say `drafts = "session"`. */
+export const DRAFTS_SESSION_REFUSAL = 'This trick did not say that its buttons put text into a reply box. Add drafts = "session" to trick.toml.';
+/**
+ * The right in a person's words, the same on the proposal card, the version card, in `collie trick check` and
+ * (in the phone's words) in the About sheet.
+ */
+export const DRAFTS_SESSION_LINE = "Its buttons can put text into the reply box of the session you are in. You read it and send it yourself.";
 
 // ── Agent views: the place word `agent-view` and the key `rules` (contract 2) ───────────────────────
 
@@ -4590,7 +4687,7 @@ export const INPUTS_NEED_CONTRACT = `"inputs" needs contract = ${String(INPUTS_C
 export const AGENT_VIEW_NEEDS_CONTRACT = `"agent-view" needs contract = ${String(AGENT_VIEW_CONTRACT)}. Add contract = ${String(AGENT_VIEW_CONTRACT)} to trick.toml.`;
 export const RULES_NEEDS_CONTRACT = `"rules" needs contract = ${String(AGENT_VIEW_CONTRACT)}. Add contract = ${String(AGENT_VIEW_CONTRACT)} to trick.toml.`;
 /** The keys a trick whose only place is `agent-view` may not name: it has no program. */
-export const VIEW_ONLY_REFUSED = ["run", "every", "inputs", "env", "decides"] as const;
+export const VIEW_ONLY_REFUSED = ["run", "every", "inputs", "env", "decides", "drafts"] as const;
 export function viewOnlyRefusal(key: (typeof VIEW_ONLY_REFUSED)[number]): string {
   return `A trick whose only place is "agent-view" has no program, so it takes no "${key}". Remove it, or add a place it draws in.`;
 }
@@ -5086,6 +5183,9 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   // Whether its Decisions answer into a session: one closed word, at every contract (an optional key adds
   // inside contract 1). A view-only trick runs no program, so it is refused there with the other program keys.
   const decides = f.word("decides", DECIDES_WORDS);
+  // Whether its buttons may put text into a session's reply box: one closed word, at every contract, refused on a
+  // view-only trick with the other program keys (it draws no part, so it has no button).
+  const drafts = f.word("drafts", DRAFTS_WORDS);
   // How much of the local API the trick reads: one closed word. `none` is the default, kept as no key.
   const access = f.word("access", ACCESS_WORDS);
   if (f.has("access") && contract !== undefined && contract < ACCESS_CONTRACT) f.push("version", "access", ACCESS_NEEDS_CONTRACT);
@@ -5100,6 +5200,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (agentView) manifest.agentView = true;
   if (rules !== undefined) manifest.rules = rules;
   if (decides !== undefined) manifest.decides = decides;
+  if (drafts !== undefined) manifest.drafts = drafts;
   if (access !== undefined && access !== "none") manifest.access = access;
   if (every !== undefined && everyMs !== undefined && everyOk) {
     manifest.every = every;

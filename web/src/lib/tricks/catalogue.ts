@@ -81,6 +81,10 @@ import {
   DECIDES_REPLY_LINE,
   DECIDES_WORDS,
   DECISION_VIEW_LIMITS,
+  DRAFT_VALUE_MAX,
+  DRAFTS_SESSION_LINE,
+  DRAFTS_SESSION_REFUSAL,
+  DRAFTS_WORDS,
   DECISIONS_MAX,
   DEFAULT_DECISION_PRIORITY,
   DEFAULT_DECISION_TEXT,
@@ -357,7 +361,7 @@ export const PLACES = {
     name: "Page",
     where: "A page of the trick's own: a row on the Dashboard under Tricks, and a screen of its own. The code word is `session`.",
     shows: "A name, an icon, a tone, a subtitle, a badge, a progress meter, up to four action buttons and a `view`: a list of nodes of any kind in the Parts table.",
-    tap: "A button, or an action, sends its intent to the trick, which runs once with that tap. A `row` or a `link` with an `href` opens a web page or a session.",
+    tap: "A button, or an action, sends its intent to the trick, which runs once with that tap. A `row` or a `link` with an `href` opens a web page or a session. A button with `does` set to `draft` puts its text into the empty reply box of the session the page was opened from, and opens that session. Opened from the Dashboard or the bottom bar, the page is for no session, and such a button says \"Open a session first\".",
     limits: [
       { what: "`name`", value: `at most ${String(NAME_MAX)} characters. Left out, the manifest's name` },
       { what: "`subtitle`", value: `at most ${String(SUBTITLE_MAX)} characters` },
@@ -561,7 +565,7 @@ const PART_WORDS = {
   },
   bar: { what: "A strip of buttons, chips and links. With `role` `strip` it scrolls sideways as a band.", example: { kind: "bar", kids: [{ kind: "button", attrs: { label: "Rerun", intent: "rerun" } }, { kind: "chip", text: "3 failed", attrs: { tone: "danger" } }] } },
   chip: { what: "A small label. `state` draws a dot, `current` marks the step, and `at` with `clock` makes it a live time.", example: { kind: "card", kids: [{ kind: "chip", text: "building", attrs: { state: "working", icon: "refresh" } }] } },
-  button: { what: "Sends one intent to the trick on a tap, or copies a text with `does` set to `copy`.", example: { kind: "card", kids: [{ kind: "button", attrs: { label: "Rerun", intent: "rerun", tone: "accent" } }] } },
+  button: { what: "Sends one intent to the trick on a tap, copies a text with `does` set to `copy`, or puts a text into the reply box with `does` set to `draft`.", example: { kind: "card", kids: [{ kind: "button", attrs: { label: "Rerun", intent: "rerun", tone: "accent" } }] } },
   para: { what: "One paragraph of plain text, or of `run` and `link` kids.", example: { kind: "para", text: "Three checks failed on the last run." } },
   line: { what: "One line of monospace screen text, such as a command or a log line.", example: { kind: "line", text: "$ bun test", attrs: { style: "dim" } } },
   run: { what: "A piece of text inside a `para` or a `line`, with its own style, link or live time.", example: { kind: "para", kids: [{ kind: "run", text: "Build " }, { kind: "run", text: "passed", attrs: { style: "bold" } }] } },
@@ -622,8 +626,8 @@ const ATTR_WORDS = {
     badge: "A count, or a dot, on the button.",
     icon: "An icon on the button.",
     hint: "A short line of help for the button.",
-    does: "`copy` copies `value` to the phone's clipboard instead of sending an intent.",
-    value: "The one fixed text a tap sends with the intent, or the text `copy` copies.",
+    does: "`copy` copies `value` to the phone's clipboard instead of sending an intent. `draft` puts `value` into the reply box of the session the page is open for, and opens that session. It never sends: the person reads it and taps Send. `draft` needs `drafts = \"session\"` in `trick.toml`, and it fills only an empty box.",
+    value: `The one fixed text a tap sends with the intent, the text \`copy\` copies, or the text \`draft\` puts into the reply box. A \`draft\` value is at most ${String(DRAFT_VALUE_MAX)} characters, line breaks allowed.`,
   },
   para: { role: "Draws the paragraph as a heading or a quote.", bullet: "A marker before the paragraph, such as `-` or `1.`.", term: "A short term that the paragraph defines." },
   line: { style: "Style words for the whole line.", role: "Draws the line as plain text, a status line or a note." },
@@ -653,7 +657,7 @@ const ATTR_WORDS = {
 
 /** Attributes that a kind needs only under a condition. The always-needed ones are `NODE_REQUIRED_ATTRS`. */
 const ATTR_NEEDS = {
-  button: { intent: "yes, unless `does` is `copy`", value: "yes, when `does` is `copy`" },
+  button: { intent: "yes, unless `does` is `copy` or `draft`", value: "yes, when `does` is `copy` or `draft`" },
   meter: { value: "yes, unless `role` is `progress`" },
   image: { src: "in a program's part", alt: "in a program's part", w: "in a program's part", h: "in a program's part", ref: "in a Decision's view and an agent view" },
 } as const satisfies { readonly [K in NodeKind]?: { readonly [A in (typeof NODE_ATTRS)[K][number]]?: string } };
@@ -674,7 +678,7 @@ const TEXT_NOTES = {
 
 /** What an agent view does differently for a kind. Every other kind reads the same as in a program's part. */
 const AGENT_VIEW_NOTES = {
-  button: `A tap sends the label (and the label of the group it sits in). \`value\`, \`does\` and \`pressed\` are refused: Collie marks the pick, the agent does not. The label is one line of at most ${String(VIEW_TAP_LABEL_MAX)} characters, and says none of Collie's own words.`,
+  button: `A tap sends the label (and the label of the group it sits in). \`value\`, \`does\` (\`draft\` too) and \`pressed\` are refused: Collie marks the pick, the agent does not. The label is one line of at most ${String(VIEW_TAP_LABEL_MAX)} characters, and says none of Collie's own words.`,
   group: `A \`label\` is one line of at most ${String(VIEW_TAP_GROUP_MAX)} characters, because a tap inside the group sends it.`,
   link: "Text that reads as a web address must be that address, in any script. The `href` is a web address only: a session is refused. The phone shows the host after the link.",
   run: "Text with an `href` that reads as a web address must be that address. The `href` is a web address only, and the phone shows its host after the run.",
@@ -730,7 +734,7 @@ export function describeRule(rule: AttrRule): RuleWords {
     case "intent":
       return { type: "intent", limit: "1 to 48 of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit" };
     case "value":
-      return { type: "text", limit: `1 to ${String(VALUE_MAX_BYTES)} bytes, no control or invisible character` };
+      return { type: "text", limit: `1 to ${String(VALUE_MAX_BYTES)} bytes, or with \`does\` \`draft\` 1 to ${String(DRAFT_VALUE_MAX)} characters; no control or invisible character but a line break and a tab` };
     case "url":
       return { type: "web address", limit: `https or http, at most ${String(URL_MAX)} characters` };
     case "href":
@@ -1258,6 +1262,7 @@ export function programOf(n: ProgramNumbers): ProgramEntry {
       { case: `A key or an attribute this Collie does not know, at any depth of a part, at contract 2 or newer`, result: `That part is refused alone, with an \`unknown-key\` refusal that names the key and ends: "${CLOSED_KEY_LINE}" Collie keeps no last good version of it.` },
       { case: "A key this Collie does not know at the top of the document, beside `v`, `parts`, `asOf`, `fresh` and `decisions`", result: "Ignored, with an `ignored` note, at every contract. Every part draws. A key that changes how a part draws or what a tap does goes in the part, never at the top." },
       { case: "A bad value of a known field", result: "That part is refused alone, and the other parts draw. The last good version of the part stays on the phone, marked old." },
+      { case: "A button with `does` set to `draft` in a trick whose `trick.toml` does not say `drafts = \"session\"`", result: `That part is refused alone with "${DRAFTS_SESSION_REFUSAL}" The other parts draw.` },
       { case: "A bad Decision", result: "That Decision is refused alone. Its open card stays as it is." },
       { case: "A bad `asOf` or `fresh`", result: "Refused alone. The parts still draw." },
       { case: "A document that is too big, not JSON, not an object, with no usable `v`, or with `parts` that is not a list", result: "The whole document is refused. The run counts as failed, and the last good parts stay, marked old." },
@@ -1359,6 +1364,7 @@ const MANIFEST_WORDS = {
   rules: { type: "file name", required: `yes, with \`${AGENT_VIEW_PLACE}\`; refused without it`, limit: `a file in the trick's folder of at most ${String(RULES_NAME_MAX)} characters ending in \`.md\`, such as \`rules.md\``, contract: AGENT_VIEW_CONTRACT, what: "The instructions the agent of a session reads. The person reads them whole before they switch the trick on." },
   access: { type: "word", required: "no", limit: `${orList(ACCESS_WORDS)}. Default \`${ACCESS_WORDS[0]}\``, contract: ACCESS_CONTRACT, what: "How much of Collie's local API the trick reads through `t.api`. `see` reads lists and states, `read` adds the text of a screen. A right: a version that raises it asks again. See [Reading Collie through the local API](#reading-collie-through-the-local-api). Experimental." },
   decides: { type: "word", required: "no", limit: `${orList(DECIDES_WORDS)}. Refused on a trick that is only an agent view`, contract: TRICK_CONTRACT_DEFAULT, what: "Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again." },
+  drafts: { type: "word", required: "no", limit: `${orList(DRAFTS_WORDS)}. Refused on a trick that is only an agent view`, contract: TRICK_CONTRACT_DEFAULT, what: `Whether its buttons may put text into a reply box. \`session\` lets a button set \`does\` to \`draft\`: a tap puts its \`value\` into the reply box of the session the page is open for, only when that box is empty, and never sends. Without it, a part with such a button is refused. The card says: "${DRAFTS_SESSION_LINE}" It is a right: a version that adds it asks again.` },
   field: { type: "list of tables", required: "no", limit: `at most ${String(FIELDS_MAX)} \`[[field]]\` tables. Each has \`key\` (spelled like a trick id, each once), \`kind\` (${orList(FIELD_KINDS)}), \`label\` (at most ${String(FIELD_LABEL_MAX)} characters) and may have \`hint\` (at most ${String(FIELD_HINT_MAX)}), \`default\` and \`required\`. A \`choice\` lists ${String(FIELD_OPTIONS_MIN)} to ${String(FIELD_OPTIONS_MAX)} \`options\` of at most ${String(FIELD_OPTION_MAX)} characters; a \`number\` names whole \`min\` and \`max\` within ${String(FIELD_NUMBER_ABS_MAX)} either way; a \`text\` value is one line of at most ${String(FIELD_TEXT_MAX)} characters; a \`switch\` is never \`required\`` , contract: FIELDS_CONTRACT, what: "Settings the person keeps for the trick, set in its About sheet on the phone. The program reads them in its facts as `values`. A value is the person's data and untrusted for the program: show it, never run it. A setting is never a secret: a key comes through `env`. A new or changed field is a new version and asks again; a changed value does not ask, and runs the trick once." },
 } as const satisfies { readonly [K in (typeof MANIFEST_KEYS)[number]]: Omit<ManifestEntry, "key"> };
 
@@ -1428,6 +1434,7 @@ export const LIMITS: readonly LimitGroup[] = [
       { what: "A spark", value: `${rangeWords(SPARK_LIMITS.values)} numbers` },
       { what: "A progress", value: `\`max\` ${rangeWords(VIEW_LIMITS.progressMax)}` },
       { what: "A button's or an action's `value`", value: `at most ${String(VALUE_MAX_BYTES)} bytes` },
+      { what: "A `draft` button's `value`", value: `at most ${String(DRAFT_VALUE_MAX)} characters` },
     ],
   },
   {
