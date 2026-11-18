@@ -195,7 +195,7 @@ import {
   type TrickEvent,
   TRICKS_WINDOWS_LINE,
 } from "./schema";
-import { FLOAT_EDGE_MARGIN_PX, FLOAT_ONCE_EVERY_MS, FLOAT_ONCE_MAX_MS, FLOAT_SIZE_PX, FLOAT_STAY_MAX, FLOAT_TAP_PX, FLOAT_WANDER_EVERY_MS } from "./float";
+import { FLOAT_EDGE_MARGIN_PX, FLOAT_FLY_MAX_MS, FLOAT_FLY_MIN_MS, FLOAT_ONCE_EVERY_MS, FLOAT_ONCE_MAX_MS, FLOAT_ONCE_MS, FLOAT_SIZE_PX, FLOAT_STAY_MAX, FLOAT_TAP_PX, FLOAT_WANDER_EVERY_MS } from "./float";
 import {
   BACKOFF_MS,
   BASE_ENV_NAMES,
@@ -509,7 +509,7 @@ export const PLACES = {
     limits: [
       { what: "Parts of this place per trick", value: "one `stay` and one `once` for every session, and up to eight bound ones of each mode with `sessions`. No session is named by two parts of one mode" },
       { what: "A part", value: `\`id\`, \`mode\` (${orList(FLOAT_MODES)}), \`motion\`, \`sprite\`, and optionally \`edge\`, \`along\`, \`from\`, \`mood\`, \`opens\` and \`sessions\`. Nothing else` },
-      { what: "`motion` of `once`", value: `${orList(FLOAT_ONCE_MOTIONS)}. Each plays once, in at most ${String(FLOAT_ONCE_MAX_MS / 1000)} s, along a path inside the free area, and the picture fades in and out` },
+      { what: "`motion` of `once`", value: `${orList(FLOAT_ONCE_MOTIONS)}. Each plays once, in at most ${String(FLOAT_ONCE_MAX_MS / 1000)} s, and the picture fades in. \`arc\` (${String(FLOAT_ONCE_MS.arc / 1000)} s) and \`pop\` (${String(FLOAT_ONCE_MS.pop / 1000)} s) stay inside the free area and fade out. \`fly-across\` crosses at one even speed, a phone-wide crossing in ${String(FLOAT_ONCE_MS["fly-across"] / 1000)} s (${String(FLOAT_FLY_MIN_MS / 1000)} to ${String(FLOAT_FLY_MAX_MS / 1000)} s, by its path), and flies out past the far edge of the free area, where it is cut off, with no fade at the end` },
       { what: "`motion` of `stay`", value: `${orList(FLOAT_STAY_MOTIONS)}. \`perch\` stands on an edge (\`edge\`: ${orList(FLOAT_EDGES)}, \`bottom\` when left out): its foot touches the Belt, the status line or the composer below it, with no gap, or the edge of the screen where nothing is there. \`idle\` sits in place and bobs a little, \`wander\` moves to a new spot at most every ${String(FLOAT_WANDER_EVERY_MS / 1000)} s` },
       { what: "`sprite`", value: `\`src\`, a file of the trick's \`media/\` folder (a PNG, JPEG or WebP, ${sizeWords(HILL_MEDIA_BYTES_MAX)} at most, the same check as an \`image\` node), and optionally \`frames\`, \`rows\`, \`fps\`, \`size\`, \`loop\` and \`after\`. Nothing else` },
       { what: "`sprite` `size`", value: `${orList(FLOAT_SIZES)}: the height a frame is drawn at. \`s\` is ${String(FLOAT_SIZE_PX.s)} px, \`m\` is ${String(FLOAT_SIZE_PX.m)} px, \`l\` is ${String(FLOAT_SIZE_PX.l)} px. The width follows the frame's own shape. \`s\` when left out. A picture that would not fit the free area is not drawn. With \`opens\` the tap box is at least ${String(FLOAT_TAP_PX)} px each way and never smaller than the picture` },

@@ -39,6 +39,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A trick's approval card no longer blocks scrolling in Chat.** A swipe that started on the Hold button did nothing, so a card taller than the screen could only be scrolled from above it. A vertical swipe on the button now scrolls the conversation, and holding the button still works.
+- **A floating picture that flies across now leaves past the far edge, and moves a little slower.** It used to fade out before it got there. It now keeps going at one even speed until it is gone, and a fly-across, an arc and a pop each take about a third longer.
 - **A floating picture that plays once is no longer lost on a trick's first run.** When a trick printed its first floating part and a once picture together, the once picture arrived before the phone had measured the free area and was dropped. It is now kept for up to two seconds and plays as soon as the area is known.
 - **A floating picture that starts from a trick's resting picture starts at its hand.** When both came in the same run, the shot did not wait for the resting picture and flew from a random height. It now waits up to 1.5 s for it, then starts at the front edge of the picture at 40% of its height and flies level to the far side.
 - **A resting floating picture fades in where it stands, and can play its frames once.** It used to fly in from the top of the screen. A sprite with `loop = false` plays once at its own speed and holds the last frame, and a picture that starts from it leaves when that throw ends.

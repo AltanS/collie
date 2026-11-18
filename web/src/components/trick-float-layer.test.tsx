@@ -347,6 +347,28 @@ describe("a once picture from a pet", () => {
     expect(new Set(ys).size).toBe(1);
   });
 
+  it("clips the shot to the free area's width, and the fly-across ends past the far edge at full opacity, over a time set by its path", async () => {
+    const { store, replace } = storeWith([]);
+    await mount(store);
+    await act(async () => replace([PET({ along: "start" }), BEAM()], 2));
+    await loadSheet(pets()[0]!, 48, 48);
+    await loadSheet(shots()[0]!, 32, 32);
+    const clip = shots()[0]?.closest<HTMLElement>('[data-slot="float-clip"]');
+    expect(clip).not.toBeNull();
+    expect(clip?.className).toContain("overflow-hidden");
+    expect(clip?.style.left).toBe("0px");
+    expect(clip?.style.width).toBe("390px");
+    const call = animate.mock.calls.find((args) => Array.isArray(args[0]) && args[0][0]?.transform?.includes("scale"));
+    // SAFETY: the call was found above by its keyframes, which are objects with a transform and an opacity.
+    const frames = call?.[0] as { transform: string; opacity: number }[];
+    const last = frames.at(-1);
+    // The pet is on the left, so the shot flies right: its box starts at the far edge of the region (x 390), still fully visible.
+    expect(/translate3d\(([-\d.]+)px/.exec(last?.transform ?? "")?.[1]).toBe("390");
+    expect(last?.opacity).toBe(1);
+    // From the hand (x 40) to 390 is 350 px at the speed of a 390 px crossing in 3200 ms.
+    expect(call?.[1]).toMatchObject({ easing: "linear", duration: Math.round((350 * 3200) / 390) });
+  });
+
   it("falls back to the normal start after the wait when the pet never reports a place", async () => {
     vi.useFakeTimers();
     const { store, replace } = storeWith([]);

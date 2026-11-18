@@ -17,7 +17,7 @@
 //
 // THE LIMITS, each held by a pure rule with a test: one stay picture per trick and two on screen in all
 // (`capStay`), a once-shot at most once a minute per trick and one on screen at a time, one waiting and the
-// rest dropped (`OnceQueue`), a once-motion of at most three seconds (`FLOAT_ONCE_MS`), a wander at most
+// rest dropped (`OnceQueue`), a once-motion of at most five seconds (`FLOAT_ONCE_MAX_MS`), a wander at most
 // every ten seconds (`FLOAT_WANDER_EVERY_MS`). Motion uses transform and opacity only.
 
 import {
@@ -57,11 +57,19 @@ export const FLOAT_TAP_PX = 44;
 export const FLOAT_GAP_PX = 4;
 /** The free area under which nothing is drawn: a stay picture hides and a once-shot is skipped. */
 export const FLOAT_MIN_REGION = { w: 120, h: 96 } as const;
-/** How long each once-motion plays. None is over three seconds. */
-export const FLOAT_ONCE_MS = { "fly-across": 2400, arc: 2800, pop: 1600 } as const satisfies Record<(typeof FLOAT_ONCE_MOTIONS)[number], number>;
-/** The most a once-motion may last, the bound the table above is held to. */
-export const FLOAT_ONCE_MAX_MS = 3000;
-/** A trick's once-shots start at least this far apart. */
+/**
+ * How long each once-motion plays. An arc and a pop play this long. A fly-across is set by SPEED, not by time: its entry is the time
+ * of the reference crossing, `FLOAT_FLY_REF_PX` wide (a 390 px phone), and its real time is its path over that speed ({@link flyMs}).
+ */
+export const FLOAT_ONCE_MS = { "fly-across": 3200, arc: 3700, pop: 2100 } as const satisfies Record<(typeof FLOAT_ONCE_MOTIONS)[number], number>;
+/** The width a fly-across crosses in {@link FLOAT_ONCE_MS}`["fly-across"]`: a 390 px phone's whole free width. Its speed is this over that time. */
+export const FLOAT_FLY_REF_PX = 390;
+/** The shortest and the longest a fly-across may take, whatever its path. Inside these it moves at one even speed. */
+export const FLOAT_FLY_MIN_MS = 2000;
+export const FLOAT_FLY_MAX_MS = 5000;
+/** The most a once-motion may last, the bound the table above and a fly-across are held to. */
+export const FLOAT_ONCE_MAX_MS = FLOAT_FLY_MAX_MS;
+/** A trick's once-shots start at least this far apart, counted from the real start. It is longer than the longest once-motion. */
 export const FLOAT_ONCE_EVERY_MS = 15_000;
 /** The most stay pictures on screen across all tricks. */
 export const FLOAT_STAY_MAX = 2;
@@ -634,10 +642,26 @@ function fade(t: number): number {
   return t < 0.12 ? t / 0.12 : t > 0.88 ? (1 - t) / 0.12 : 1;
 }
 
+/** How visible a flying picture is at `t`: in over the first eighth, then fully, to the end (it leaves past the clip, it does not fade). */
+function fadeIn(t: number): number {
+  return t < 0.12 ? t / 0.12 : 1;
+}
+
+/** How long a fly-across of `distance` pixels takes: at the speed of the reference crossing, held between the shortest and the longest. */
+export function flyMs(distance: number): number {
+  const even = (Math.abs(distance) * FLOAT_ONCE_MS["fly-across"]) / FLOAT_FLY_REF_PX;
+  return Math.round(Math.min(Math.max(even, FLOAT_FLY_MIN_MS), FLOAT_FLY_MAX_MS));
+}
+
 /**
  * The path of a once-motion inside the region. Every step's box, grown by its scale about its centre, lies
  * inside the region: a fly-across and an arc go from one side to the other, a pop opens at a spot with room
- * for its biggest size. The picture fades in at the start and out at the end.
+ * for its biggest size. The picture fades in at the start. An arc and a pop fade out at the end.
+ *
+ * A fly-across is the exception at its far end: it travels on until the picture is wholly PAST the far edge of the region (its box
+ * starts at the far edge when it flies right, and ends at the far edge when it flies left), and does not fade out; the float layer
+ * clips to the region, so the picture leaves as a thing leaves a window. Its time is its path over one speed ({@link flyMs}), so a
+ * longer path takes longer; the speed is the same from the start to the end.
  *
  * Without `from`, the side it starts from and its height come from the key. With `from`, the drawn box of
  * the stay picture the part names (the box where that picture is now, in the same coordinates as the
@@ -657,7 +681,6 @@ function fade(t: number): number {
 export function pathOf(opts: { motion: (typeof FLOAT_ONCE_MOTIONS)[number]; key: string; rev: number; dims: Dims; region: Box; from?: Box | undefined }): OncePath {
   const { motion, region, dims, from } = opts;
   const seed = `${opts.key}@${opts.rev}`;
-  const durationMs = FLOAT_ONCE_MS[motion];
   const spanX = Math.max(0, region.w - dims.w);
   const spanY = Math.max(0, region.h - dims.h);
   const clampX = (x: number): number => Math.min(Math.max(x, region.x), region.x + spanX);
@@ -668,7 +691,8 @@ export function pathOf(opts: { motion: (typeof FLOAT_ONCE_MOTIONS)[number]; key:
   const rawX = hand === undefined ? undefined : hand.x - dims.w / 2;
   const rawY = hand === undefined ? undefined : hand.y - dims.h / 2;
   const x0 = rawX === undefined ? (leftToRight ? region.x : region.x + spanX) : clampX(rawX);
-  const x1 = leftToRight ? region.x + spanX : region.x;
+  // A fly-across ends wholly past the far edge: its box starts at the far edge (right) or ends there (left).
+  const x1 = motion === "fly-across" ? (leftToRight ? region.x + region.w : region.x - dims.w) : leftToRight ? region.x + spanX : region.x;
   const xAt = (t: number): number => x0 + (x1 - x0) * t;
   /** The first step is the exact hand, the others are held in the region. */
   const exactStart = (steps: PathStep[]): PathStep[] =>
@@ -676,8 +700,10 @@ export function pathOf(opts: { motion: (typeof FLOAT_ONCE_MOTIONS)[number]; key:
   const yFrom = rawY === undefined ? undefined : clampY(rawY);
   if (motion === "fly-across") {
     const y = yFrom ?? region.y + (0.15 + 0.7 * unit(seed, 8)) * spanY;
-    return { durationMs, steps: exactStart([0, 0.12, 0.88, 1].map((t) => ({ offset: t, x: xAt(t), y, scale: 1, opacity: fade(t) }))) };
+    // Linear in x from the first step to the last: one even speed, and the end is past the edge at full opacity.
+    return { durationMs: flyMs(x1 - x0), steps: exactStart([0, 0.12, 1].map((t) => ({ offset: t, x: xAt(t), y, scale: 1, opacity: fadeIn(t) }))) };
   }
+  const durationMs = FLOAT_ONCE_MS[motion];
   if (motion === "arc") {
     const base = yFrom ?? region.y + spanY;
     const roomUp = base - region.y;

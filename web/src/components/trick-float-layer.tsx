@@ -407,7 +407,7 @@ function FloatShot({
   onBegin: () => void;
   onDone: () => void;
 }) {
-  // The free area and the start as they were when the shot began: a shot of at most three seconds is not laid out again.
+  // The free area and the start as they were when the shot began: a shot of at most five seconds is not laid out again.
   const [begun, setBegun] = useState<Begun | null>(() => (!waits || (pet !== undefined && !holding) ? { region: asked, origin: pet } : null));
   const latest = useRef({ asked, pet });
   latest.current = { asked, pet };
@@ -629,19 +629,26 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
           );
         })}
       {drawing && region !== null && shot !== null && (
-        <TrickBoundary fallback="none" resetKey={`${shot.key}@${shot.rev}`}>
-          <FloatShot
-            key={`${shot.key}@${shot.rev}`}
-            spec={shot}
-            region={region}
-            pet={shot.from === undefined ? undefined : placed.get(petKeyOf(shot))}
-            waits={shot.from !== undefined && stay.some((candidate) => candidate.key === petKeyOf(shot))}
-            holding={stay.some((candidate) => candidate.key === petKeyOf(shot) && !candidate.loop && !held.has(candidate.key))}
-            paused={!visible}
-            onBegin={() => queue.current.began(shot.trick)}
-            onDone={finishShot}
-          />
-        </TrickBoundary>
+        // The shot is clipped to the free area's width: a fly-across travels on until it is wholly past the far edge and the clip hides it
+        // there, so nothing paints over a side landmark or past the screen. The inner box is at the layer's origin, so the shot's own
+        // coordinates (the layer's) are unchanged.
+        <div data-slot="float-clip" className="pointer-events-none absolute top-0 bottom-0 overflow-hidden" style={{ left: region.x, width: region.w }}>
+          <div className="pointer-events-none absolute top-0" style={{ left: -region.x }}>
+            <TrickBoundary fallback="none" resetKey={`${shot.key}@${shot.rev}`}>
+              <FloatShot
+                key={`${shot.key}@${shot.rev}`}
+                spec={shot}
+                region={region}
+                pet={shot.from === undefined ? undefined : placed.get(petKeyOf(shot))}
+                waits={shot.from !== undefined && stay.some((candidate) => candidate.key === petKeyOf(shot))}
+                holding={stay.some((candidate) => candidate.key === petKeyOf(shot) && !candidate.loop && !held.has(candidate.key))}
+                paused={!visible}
+                onBegin={() => queue.current.began(shot.trick)}
+                onDone={finishShot}
+              />
+            </TrickBoundary>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -494,3 +494,85 @@ test.describe("a sprite with a second sprite after it", () => {
     expect(placeOf(seen.transform).x + 16).toBeCloseTo(throwBox.x, 0);
   });
 });
+
+// A FLY-ACROSS LEAVES PAST THE FAR EDGE: it travels on until the picture is wholly outside the free area, at full opacity,
+// and the layer's clip (`float-clip`, the width of the free area) hides it. Nothing paints outside the area, and the document never
+// grows a horizontal scroll while the picture is out there.
+declare global {
+  interface Window {
+    __flight?: { left: number; right: number; opacity: number; scroll: number }[];
+  }
+}
+
+test.describe("a fly-across leaves past the far edge", () => {
+  for (const [along, flies] of [["start", "right"], ["end", "left"]] as const) {
+    test(`flies ${flies} until it is wholly outside the free area, fully visible, with no horizontal scroll`, async ({ page }) => {
+      // Every frame of the shot: its painted box, its opacity, and how wide the document is.
+      await page.addInitScript(() => {
+        const log: NonNullable<Window["__flight"]> = [];
+        window.__flight = log;
+        const tick = (): void => {
+          const el = document.querySelector('[data-slot="float-shot"]');
+          if (el !== null) {
+            const r = el.getBoundingClientRect();
+            log.push({ left: r.left, right: r.right, opacity: Number(getComputedStyle(el).opacity), scroll: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) });
+          }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+      const state = { rev: 1 };
+      const ryu = (rev: number) => pet({ part: "ryu", rev }, { id: "ryu", mode: "stay", motion: "perch", edge: "bottom", along, sprite: { src: "media/ryu.png", frames: 2, size: "m" } });
+      await stubRuns(
+        page,
+        (rev) => (rev === 1 ? [ryu(1)] : [ryu(2), pet({ part: "ball", rev: 2 }, { id: "ball", mode: "once", motion: "fly-across", from: "ryu", sprite: { src: "media/ball.png", size: "s" } })]),
+        state,
+        SHEET_4X48,
+      );
+      await page.goto("/");
+      await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();
+      await page.waitForTimeout(2600);
+      const scrollBefore = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth));
+      state.rev = 2;
+      // The shot is on screen and running: wait until it is near the end, then finish it in the page and read its last painted state in the same task.
+      await page.waitForFunction(() => document.querySelector('[data-slot="float-shot"]')?.getAnimations()[0]?.currentTime !== undefined, undefined, { timeout: 15_000, polling: 16 });
+      await page.waitForTimeout(1500);
+      const end = await page.evaluate(() => {
+        const node = document.querySelector('[data-slot="float-shot"]');
+        const clip = document.querySelector('[data-slot="float-clip"]');
+        const run = node?.getAnimations()[0];
+        if (node === null || node === undefined || clip === null || run === undefined) return null;
+        const timing = run.effect?.getComputedTiming();
+        run.finish();
+        const r = node.getBoundingClientRect();
+        const c = clip.getBoundingClientRect();
+        return {
+          left: r.left,
+          right: r.right,
+          opacity: Number(getComputedStyle(node).opacity),
+          clipLeft: c.left,
+          clipRight: c.right,
+          clipStyle: getComputedStyle(clip).overflowX,
+          duration: Number(timing?.duration ?? 0),
+          scroll: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+        };
+      });
+      expect(end, "the shot was on screen").not.toBeNull();
+      expect(end!.clipStyle).toBe("hidden");
+      // The last painted position is wholly outside the free area, in the direction of travel, and the picture is still fully opaque.
+      if (flies === "right") expect(end!.left).toBeGreaterThanOrEqual(end!.clipRight - 0.5);
+      else expect(end!.right).toBeLessThanOrEqual(end!.clipLeft + 0.5);
+      expect(end!.opacity).toBe(1);
+      // Slower than before: a crossing of a 390 px phone is 3200 ms; this path is the part from the pet's hand to the far edge, at that speed.
+      expect(end!.duration).toBeGreaterThanOrEqual(2000);
+      expect(end!.duration).toBeLessThanOrEqual(5000);
+      expect(end!.scroll).toBeLessThanOrEqual(scrollBefore);
+      const flight = await page.evaluate(() => window.__flight ?? []);
+      expect(flight.length).toBeGreaterThan(10);
+      for (const sample of flight) expect(sample.scroll, "no horizontal scroll while it flies").toBeLessThanOrEqual(scrollBefore);
+      // No fade at the end: after the fade-in every painted frame is fully opaque.
+      const seen = flight.filter((sample) => sample.opacity > 0.001);
+      expect(seen.at(-1)!.opacity).toBe(1);
+    });
+  }
+});
