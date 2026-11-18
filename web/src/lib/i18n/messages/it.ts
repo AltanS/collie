@@ -2955,6 +2955,7 @@ export const it: Dictionary = {
   "sent.clear.confirm": "Tocchi di nuovo per cancellare",
   "sent.clear.error": "Impossibile cancellare Sent.",
   "sent.suggest.aria": "Suggerimenti da Sent",
+  "files.suggest.aria": "Suggerimenti di file",
   "sent.suggest.all": "Tutti",
   "sent.suggest.all.aria": "Tutte le righe inviate",
   "settings.sentSuggestions.title": "Suggerimenti da Sent",

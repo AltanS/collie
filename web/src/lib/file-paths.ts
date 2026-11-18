@@ -432,3 +432,39 @@ export function paneFilesDir(input: {
   if (root === null || cwd === null) return null;
   return readable(under(root, cwd));
 }
+
+const WINDOWS_DRIVE_ROOT = /^[A-Za-z]:[\\/]/u;
+
+function normalizeWindowsFolder(path: string): string | null {
+  if (!WINDOWS_DRIVE_ROOT.test(path) || path.includes("\0")) return null;
+  const drive = path.slice(0, 2);
+  const rest = normalizeAbsolute(`/${path.slice(2).replaceAll("\\", "/")}`);
+  if (rest === null) return null;
+  return rest === "/" ? `${drive}/` : `${drive}${rest}`;
+}
+
+/**
+ * The pane's `cwd` relative to a Files `root` the bridge already returned (`""` at the root itself,
+ * `"sub/dir"` strictly inside it, or `null` when unknown, outside the root, or under `.git`).
+ */
+export function dirUnderRoot(root: string, cwd: string | undefined): string | null {
+  if (cwd === undefined) return null;
+  const trimmedRoot = root.trim();
+  const trimmedCwd = cwd.trim();
+  if (trimmedRoot === "" || trimmedCwd === "") return null;
+  const posixRoot = folderOf(trimmedRoot);
+  const posixCwd = folderOf(trimmedCwd);
+  if (posixRoot !== null && posixCwd !== null) {
+    if (homeSpellings(posixCwd).includes(posixRoot)) return "";
+    return readable(under(posixRoot, posixCwd));
+  }
+  const winRoot = normalizeWindowsFolder(trimmedRoot);
+  const winCwd = normalizeWindowsFolder(trimmedCwd);
+  if (winRoot === null || winCwd === null) return null;
+  const lowerRoot = winRoot.toLowerCase();
+  const lowerCwd = winCwd.toLowerCase();
+  if (lowerCwd === lowerRoot) return "";
+  const prefix = lowerRoot.endsWith("/") ? lowerRoot : `${lowerRoot}/`;
+  if (!lowerCwd.startsWith(prefix)) return null;
+  return readable(winCwd.slice(prefix.length));
+}
