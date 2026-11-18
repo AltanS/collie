@@ -40,6 +40,7 @@ import { isPlainClick, useFileLinks } from "@/components/file-links";
 import { MarkdownText } from "@/components/markdown-text";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import { StatusDot } from "@/components/status-badge";
+import { TrickAnswerRow, useAnsweredTrickCard } from "@/components/trick-answer-row";
 import { WalkyCard } from "@/components/walky-card";
 import { WalkyIds } from "@/components/walky-id-chip";
 import { useWalkyLive, useWalkyLog, useWalkyReads, useWalkySelf } from "@/components/walky-log";
@@ -638,6 +639,7 @@ function EnvelopeTurn({ text, ts, header }: { text: string; ts?: string; header:
   const standing = standingOf(useWalkyLog(), header.id);
   const self = useWalkySelf();
   const reads = useWalkyReads();
+  const answeredCard = useAnsweredTrickCard(standing.standing === "held" ? standing.row : null);
   const absent = standing.standing === "absent";
   // The read count at which this turn first found itself absent, or null while it is not. Set while
   // rendering (React's "adjust state when a value changes" form) so the first absent render and the
@@ -646,7 +648,11 @@ function EnvelopeTurn({ text, ts, header }: { text: string; ts?: string; header:
   if (absent && absentSince === null) setAbsentSince(reads);
   else if (!absent && absentSince !== null) setAbsentSince(null);
   // A held id that this pane SENT is not a message it received: a header that borrows it stays the plain turn.
-  if (standing.standing === "held" && directionOf(standing.row, self) === "received") return <WalkyCard row={standing.row} />;
+  if (standing.standing === "held" && directionOf(standing.row, self) === "received") {
+    // The person's tap on a trick approval card, typed into this session: one row of the card's own line, not a message card.
+    if (answeredCard !== undefined && standing.row.kind === "operator") return <TrickAnswerRow row={standing.row} decision={answeredCard} />;
+    return <WalkyCard row={standing.row} />;
+  }
   return <UserTurn text={text} ts={ts} notInLog={absent && absentSince !== null && reads > absentSince} />;
 }
 

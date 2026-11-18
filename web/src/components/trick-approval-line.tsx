@@ -1,7 +1,7 @@
 import { isTrickApproval, TrickApprovalMark } from "@/components/decision-card";
 import { trickNameOf } from "@/components/trick-cards";
 import { useLocale } from "@/hooks/use-locale";
-import { PROPOSAL_USE_LABEL } from "@/lib/hill/code-card";
+import { PROPOSAL_USE_LABEL, trickCardDecline } from "@/lib/hill/code-card";
 import type { HillDecision } from "@/lib/hill/wire";
 import { t } from "@/lib/i18n";
 
@@ -28,6 +28,19 @@ export function trickLineWords(decision: HillDecision, approved: boolean): strin
   return t(approved ? "hill.trickLine.on" : "hill.trickLine.later", { name });
 }
 
+/** The classes of the line, shared with the answer row (components/trick-answer-row.tsx), which wears the same look. */
+export const TRICK_LINE_CLASS = "flex min-w-0 items-center gap-2 px-1.5 py-1 text-xs text-muted-foreground";
+
+/**
+ * Whether a trick approval's recorded answer was a yes (a hold that landed), from the Decision's own `answer`: the
+ * decline's intent and a dismiss are no. Null while the Decision holds no answer, or for a card that is no trick approval.
+ */
+export function answeredAsApproved(decision: HillDecision): boolean | null {
+  const decline = trickCardDecline(decision);
+  if (decline === null || decision.answer === null) return null;
+  return decision.answer.intent !== decline && decision.answer.intent !== "dismiss";
+}
+
 /** The one line of an answered trick approval. Draws nothing for a card that is no trick approval. */
 export function TrickApprovalLine({ decision, approved }: { decision: HillDecision; approved: boolean }) {
   useLocale();
@@ -39,7 +52,7 @@ export function TrickApprovalLine({ decision, approved }: { decision: HillDecisi
       data-slot="chat-approval-line"
       data-id={decision.id}
       data-outcome={approved ? "approved" : "declined"}
-      className="flex min-w-0 items-center gap-2 px-1.5 py-1 text-xs text-muted-foreground"
+      className={TRICK_LINE_CLASS}
     >
       <TrickApprovalMark />
       <span className="shrink-0 text-foreground">{t("hill.collieTricks")}</span>
