@@ -25,6 +25,9 @@ import {
   overlaps,
   pathOf,
   perchReach,
+  lastFrameAtMs,
+  partSignature,
+  playMs,
   readFloat,
   restOf,
   rowFor,
@@ -337,6 +340,26 @@ describe("reading a part", () => {
     expect(readFloat({ host: "m1", trick: "t", part: "dashboard", rev: 1, value: stored({ at: "dashboard", id: "dashboard", item: { label: "x" } }) })).toBeNull();
   });
 
+  it("reads the loop of a sprite: true by default, false plays the frames once", () => {
+    expect(readFloat(floatPart(STAY))?.loop).toBe(true);
+    expect(readFloat(floatPart({ ...STAY, sprite: { src: "media/x.png", frames: 4, loop: true } }))?.loop).toBe(true);
+    expect(readFloat(floatPart({ ...STAY, sprite: { src: "media/x.png", frames: 4, loop: false } }))?.loop).toBe(false);
+    expect(readFloat(floatPart({ ...STAY, sprite: { src: "media/x.png", frames: 4, loop: "no" } }))).toBeNull();
+  });
+
+  it("times a play: one pass over the frames, and the moment the last frame appears", () => {
+    expect(playMs(4, 2)).toBe(2000);
+    expect(lastFrameAtMs(4, 2)).toBe(1500);
+    expect(lastFrameAtMs(1, 6)).toBe(0);
+  });
+
+  it("tells a re-print that says something from one that does not: the value and the binding count, the asOf and the rev do not", () => {
+    const base = floatPart({ ...STAY, sprite: { src: "media/x.png", frames: 4, loop: false } });
+    expect(partSignature({ ...base, rev: 9, asOf: "2030-01-01T00:00:00.000Z" })).toBe(partSignature(base));
+    expect(partSignature(floatPart({ ...STAY, sprite: { src: "media/x.png", frames: 4, loop: false }, mood: "working" }))).not.toBe(partSignature(base));
+    expect(partSignature({ ...base, bound: [{ session: "m1:7", instance: "ab12" }] })).not.toBe(partSignature(base));
+  });
+
   it("keeps the stale flag of a part from a failed run", () => {
     expect(readFloat(floatPart(STAY, { stale: true }))?.stale).toBe(true);
   });
@@ -527,6 +550,13 @@ describe("the float place in a document", () => {
       expect(parse(sprite(bad)).parts, JSON.stringify(bad)).toEqual([]);
     }
     expect(parse(sprite({ frames: 16, fps: 12, size: "l" })).parts).toHaveLength(1);
+  });
+
+  it("accepts loop as true or false on a sprite, and refuses any other value", () => {
+    const sprite = (extra: JsonObject) => ({ mode: "stay", motion: "idle", sprite: { src: "media/a.png", frames: 4, ...extra } });
+    expect(parse(sprite({ loop: false })).parts).toHaveLength(1);
+    expect(parse(sprite({ loop: true, fps: 3 })).parts).toHaveLength(1);
+    for (const bad of [{ loop: "yes" }, { loop: 0 }]) expect(parse(sprite(bad)).parts, JSON.stringify(bad)).toEqual([]);
   });
 
   it("binds a float part to sessions at contract 2, and refuses it at contract 1", () => {

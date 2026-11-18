@@ -1144,7 +1144,7 @@ trick rows by whole groups in trick id order. The agent view switches live in th
 A `float` part is `{ at: "float", id, mode, motion, sprite, edge?, mood?, opens?, sessions? }`.
 `mode` is `once` (one motion, at most 3 s, then gone) or `stay`. `motion` is from a fixed list:
 `fly-across`, `arc`, `pop` for `once`; `perch` (with `edge`), `wander`, `idle` for `stay`. `sprite` is
-`{ src, frames?, rows?, fps?, size? }`: `src` a file of `media/` under the media route's own check (2 MiB, PNG,
+`{ src, frames?, rows?, fps?, size?, loop? }`: `src` a file of `media/` under the media route's own check (2 MiB, PNG,
 JPEG or WebP), `frames` frames side by side, each the sheet's width over `frames` wide and its height over
 `rows` (1 by default) high, so a frame need not be square; `size` (`s` 32, `m` 48, `l` 72 px) is the drawn
 frame HEIGHT and the width follows the frame's shape. With `rows` of 2 or more, one row per mood in `CHIP_STATES`

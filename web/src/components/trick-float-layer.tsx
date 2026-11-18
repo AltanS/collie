@@ -13,11 +13,13 @@ import { t } from "@/lib/i18n";
 import { trickSessionPath } from "@/lib/nav";
 import { TrickBoundary } from "@/lib/tricks/boundary";
 import {
+  FLOAT_ENTER_MS,
   FLOAT_FROM_WAIT_MS,
   FLOAT_IDLE_BOB_PX,
   FLOAT_PENDING_MS,
   FLOAT_POP_SCALE,
   FLOAT_SETTLE_MS,
+  FLOAT_THROW_WAIT_MS,
   FLOAT_WANDER_EVERY_MS,
   FLOAT_WANDER_GLIDE_MS,
   OnceQueue,
@@ -28,7 +30,10 @@ import {
   floatScreenOf,
   floatsForScreen,
   frameAspect,
+  lastFrameAtMs,
+  partSignature,
   pathOf,
+  playMs,
   readFloat,
   restOf,
   sameBox,
@@ -38,7 +43,7 @@ import {
   type Box,
   type FloatSpec,
 } from "@/lib/tricks/float";
-import { FLOAT_ONCE_MOTIONS, parsePartKey, trickMediaPath, type WireTrickPart } from "@/lib/tricks/schema";
+import { FLOAT_ONCE_MOTIONS, parsePartKey, trickMediaPath } from "@/lib/tricks/schema";
 import { tricksStore, useTricksState, useTrickParts, type TricksStore } from "@/lib/tricks/store";
 import type { AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -58,6 +63,16 @@ import { cn } from "@/lib/utils";
 // picture is a still image (the mood swaps the frame row, nothing glides or wanders).
 //
 // WHAT MOVES: transform and opacity, on the compositor. A page that is hidden pauses every animation here.
+//
+// A STAY PICTURE APPEARS IN PLACE: it is drawn at its rest spot from its first frame, invisible, and fades in
+// over FLOAT_ENTER_MS. It never travels to its spot. (Not a keyframe animation of the wrapper: the `animate-in`
+// keyframes of tailwind-animate name `translate3d(0, 0, 0)` as their first frame, which replaces the element's
+// own transform for their duration and flew the picture in from the layer's top left corner.) Only a later change
+// of the free area or the size glides, and a wander moves.
+//
+// A SPRITE PLAYS ONCE WHEN ITS PART SAYS `loop = false`: frames 0 to N - 1 at `fps`, the last one held. A new play
+// starts when the part is printed with a changed value (`partSignature`, the one a once part plays again on), never
+// on a new `asOf` or rev alone. The picture is mounted per part, not per rev, so a re-print does not make it appear again.
 
 interface TrickFloatLayerProps {
   /** The open session, for the pictures bound to it. */
@@ -76,29 +91,83 @@ interface Natural {
 /**
  * One frame of a sheet, `aspect` wide for each unit of height (its own shape: it need not be square), and the
  * mood's row. Transform only. The frame is as high as the part's size says, so a tall picture stands at full height.
+ * The frames loop, or with `loop = false` play once and hold the last one (still, too, under reduced motion and
+ * where nothing can animate). `playKey` names the print being played: a new one plays the frames again from the first.
+ * `onHeld` hears whether the frames are at their last one: false when a play starts, true when it reaches the last frame.
  */
-function Sprite({ spec, url, aspect, reduced, paused, onLoaded }: { spec: FloatSpec; url: string | null; aspect: number; reduced: boolean; paused: boolean; onLoaded?: (natural: Natural) => void }) {
+function Sprite({
+  spec,
+  url,
+  aspect,
+  reduced,
+  paused,
+  playKey,
+  onLoaded,
+  onHeld,
+}: {
+  spec: FloatSpec;
+  url: string | null;
+  aspect: number;
+  reduced: boolean;
+  paused: boolean;
+  playKey: string;
+  onLoaded?: (natural: Natural) => void;
+  onHeld?: (held: boolean) => void;
+}) {
   const drawn = drawnDims(spec, aspect);
   const [loaded, setLoaded] = useState(false);
   const row = rowFor(spec.mood, spec.rows);
   const sheet = useRef<HTMLImageElement>(null);
   const animation = useRef<Animation | null>(null);
+  const held = useRef(onHeld);
+  held.current = onHeld;
+  const still = !spec.loop && spec.frames > 1 && (reduced || !canAnimate(HTMLImageElement.prototype));
   useEffect(() => {
     const el = sheet.current;
     animation.current = null;
-    if (el === null || !loaded || reduced || spec.frames < 2 || !canAnimate(el)) return;
+    if (el === null || !loaded) return;
+    if (reduced || spec.frames < 2 || !canAnimate(el)) {
+      held.current?.(true);
+      return;
+    }
     const y = -row * drawn.h;
     const run = el.animate(
       [{ transform: `translate3d(0, ${y}px, 0)` }, { transform: `translate3d(${-(spec.frames - 1) * drawn.w}px, ${y}px, 0)` }],
-      { duration: (spec.frames / spec.fps) * 1000, iterations: Number.POSITIVE_INFINITY, easing: `steps(${spec.frames}, jump-none)` },
+      {
+        duration: playMs(spec.frames, spec.fps),
+        iterations: spec.loop ? Number.POSITIVE_INFINITY : 1,
+        fill: spec.loop ? "none" : "forwards",
+        easing: `steps(${spec.frames}, jump-none)`,
+      },
     );
     animation.current = run;
-    return () => run.cancel();
-  }, [loaded, reduced, spec.frames, spec.fps, row, drawn.w, drawn.h]);
+    let frame = 0;
+    if (!spec.loop) {
+      // The last frame shows once the pass is lastFrameAtMs in. Polled on the animation's own clock, so a pause waits.
+      held.current?.(false);
+      const lastAt = lastFrameAtMs(spec.frames, spec.fps);
+      const watch = (): void => {
+        if (run.playState === "finished" || Number(run.currentTime ?? 0) >= lastAt) {
+          held.current?.(true);
+          return;
+        }
+        frame = requestAnimationFrame(watch);
+      };
+      frame = requestAnimationFrame(watch);
+    }
+    return () => {
+      cancelAnimationFrame(frame);
+      run.cancel();
+    };
+  }, [loaded, reduced, spec.frames, spec.fps, spec.loop, row, drawn.w, drawn.h, playKey]);
   useEffect(() => {
-    if (paused) animation.current?.pause();
-    else animation.current?.play();
-  }, [paused, loaded, reduced, spec.frames, spec.fps, row]);
+    const run = animation.current;
+    if (run === null) return;
+    // A play that is over is left alone: play() on a finished animation would rewind it.
+    if (paused && run.playState === "running") run.pause();
+    else if (!paused && run.playState === "paused") run.play();
+  }, [paused, loaded, reduced, spec.frames, spec.fps, spec.loop, row, drawn.w, drawn.h, playKey]);
+  const x = still ? -(spec.frames - 1) * drawn.w : 0;
   return (
     <span aria-hidden data-slot="float-sprite" className="relative block overflow-hidden" style={{ width: drawn.w, height: drawn.h }}>
       {url !== null && (
@@ -112,7 +181,7 @@ function Sprite({ spec, url, aspect, reduced, paused, onLoaded }: { spec: FloatS
             onLoaded?.({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight });
           }}
           className={cn("absolute top-0 left-0 block max-w-none select-none", !loaded && "opacity-0")}
-          style={{ width: drawn.w * spec.frames, height: drawn.h * spec.rows, transform: `translate3d(0, ${-row * drawn.h}px, 0)` }}
+          style={{ width: drawn.w * spec.frames, height: drawn.h * spec.rows, transform: `translate3d(${x}px, ${-row * drawn.h}px, 0)` }}
         />
       )}
     </span>
@@ -128,6 +197,7 @@ function FloatPet({
   trickName,
   onOpen,
   onPlace,
+  onHold,
 }: {
   spec: FloatSpec;
   space: FloatSpace;
@@ -137,8 +207,17 @@ function FloatPet({
   onOpen: (() => void) | undefined;
   /** Where the drawn picture is now (a box, or null once it is gone): a once part that says `from` starts there. */
   onPlace: (key: string, drawn: Box | null) => void;
+  /** Whether the picture's frames are at their last one (`sprite.loop = false`): a once part with `from` waits for it. */
+  onHold: (key: string, held: boolean) => void;
 }) {
-  const { url } = useAuthedUrl(trickMediaPath(spec.host, spec.trickId, spec.src, spec.rev));
+  const media = useAuthedUrl(trickMediaPath(spec.host, spec.trickId, spec.src, spec.rev));
+  // A re-print moves the rev and so the sheet's address; the sheet on screen stays until the new one is there.
+  const lastUrl = useRef<string | null>(null);
+  if (media.url !== null) lastUrl.current = media.url;
+  const url = media.url ?? lastUrl.current;
+  const playKey = partSignature(spec.part);
+  const hold = useCallback((held: boolean) => onHold(spec.key, held), [onHold, spec.key]);
+  useEffect(() => () => onHold(spec.key, false), [onHold, spec.key]);
   const { region, reach } = space;
   const [natural, setNatural] = useState<Natural | null>(null);
   const aspect = frameAspect(natural, spec.frames, spec.rows);
@@ -190,16 +269,18 @@ function FloatPet({
       data-motion={spec.motion}
       data-mood={spec.mood}
       data-trick={spec.trickId}
-      className="pointer-events-none absolute top-0 left-0 will-change-transform animate-in fade-in duration-300 motion-reduce:animate-none"
+      className="pointer-events-none absolute top-0 left-0 will-change-transform"
       style={{
         width: box.w,
         height: box.h,
+        // In place from the first frame: invisible until its sheet is there and placed, then it fades in. No travel.
+        opacity: ready ? 1 : 0,
         transform: `translate3d(${at.x}px, ${at.y}px, 0)`,
-        transition: ready && !reduced ? `transform ${glide}ms ease-in-out` : undefined,
+        transition: ready && !reduced ? `transform ${glide}ms ease-in-out, opacity ${FLOAT_ENTER_MS}ms ease-out` : undefined,
       }}
     >
       <span ref={bob} className="absolute block" style={{ left: inside.x, top: inside.y }}>
-        <Sprite spec={spec} url={url} aspect={aspect} reduced={reduced} paused={paused} onLoaded={setNatural} />
+        <Sprite spec={spec} url={url} aspect={aspect} reduced={reduced} paused={paused} playKey={playKey} onLoaded={setNatural} onHeld={hold} />
       </span>
       {onOpen !== undefined && (
         <button
@@ -226,12 +307,15 @@ interface Begun {
  * is in) the motion starts at that picture's hand. A shot whose part says `from` and whose pet is on the way
  * (`waits`) holds still, loading its sheet, until the pet reports its box, for at most FLOAT_FROM_WAIT_MS; only
  * then does it begin (`onBegin`, so the queue's rate counts from here), and with no pet by then it starts as usual.
+ * A pet whose sprite plays once (`loop = false`) that has not reached its last frame (`holding`) is waited for too,
+ * for at most FLOAT_THROW_WAIT_MS from the shot's arrival; then the shot starts from the pet's hand anyway.
  */
 function FloatShot({
   spec,
   region: asked,
   pet,
   waits,
+  holding,
   paused,
   onBegin,
   onDone,
@@ -240,23 +324,33 @@ function FloatShot({
   region: Box;
   pet: Box | undefined;
   waits: boolean;
+  holding: boolean;
   paused: boolean;
   onBegin: () => void;
   onDone: () => void;
 }) {
   // The free area and the start as they were when the shot began: a shot of at most three seconds is not laid out again.
-  const [begun, setBegun] = useState<Begun | null>(() => (pet !== undefined || !waits ? { region: asked, origin: pet } : null));
+  const [begun, setBegun] = useState<Begun | null>(() => (!waits || (pet !== undefined && !holding) ? { region: asked, origin: pet } : null));
   const latest = useRef({ asked, pet });
   latest.current = { asked, pet };
+  const arrived = useRef(Date.now());
   useEffect(() => {
     if (begun !== null) return;
-    if (pet !== undefined) {
+    if (pet !== undefined && !holding) {
       setBegun({ region: latest.current.asked, origin: pet });
       return;
     }
-    const timer = setTimeout(() => setBegun({ region: latest.current.asked, origin: latest.current.pet }), FLOAT_FROM_WAIT_MS);
-    return () => clearTimeout(timer);
-  }, [begun, pet]);
+    const start = (): void => setBegun({ region: latest.current.asked, origin: latest.current.pet });
+    // No pet box by FLOAT_FROM_WAIT_MS: start as usual. A pet that has not finished its play by FLOAT_THROW_WAIT_MS: start from it anyway.
+    // Both counted from the shot's arrival, not from this effect: a pet that reports late does not move them.
+    const gone = Date.now() - arrived.current;
+    const timer = setTimeout(() => (latest.current.pet === undefined ? start() : undefined), Math.max(0, FLOAT_FROM_WAIT_MS - gone));
+    const cap = setTimeout(start, Math.max(0, FLOAT_THROW_WAIT_MS - gone));
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(cap);
+    };
+  }, [begun, pet, holding]);
   const begin = useRef(onBegin);
   begin.current = onBegin;
   useEffect(() => {
@@ -320,7 +414,7 @@ function FloatShot({
       className="pointer-events-none absolute top-0 left-0 will-change-transform"
       style={{ width: dims.w, height: dims.h, opacity: 0 }}
     >
-      <Sprite spec={spec} url={url} aspect={aspect} reduced={false} paused={paused} onLoaded={setNatural} />
+      <Sprite spec={spec} url={url} aspect={aspect} reduced={false} paused={paused} playKey={String(spec.rev)} onLoaded={setNatural} />
     </div>
   );
 }
@@ -328,11 +422,6 @@ function FloatShot({
 /** The key of the stay part a once part names with `from`. */
 function petKeyOf(spec: FloatSpec): string {
   return `${spec.host}/${spec.trickId}/${spec.from ?? ""}`;
-}
-
-/** The signature of what a once part draws: a change of it, or the part arriving, plays it again. */
-function onceSignature(part: WireTrickPart): string {
-  return `${JSON.stringify(part.value)}|${JSON.stringify(part.bound ?? null)}`;
 }
 
 export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: TrickFloatLayerProps) {
@@ -365,6 +454,17 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
       return next;
     });
   }, []);
+  // Which stay pictures have played their frames to the last one (`sprite.loop = false`), by key: a once part with `from` waits for it.
+  const [held, setHeld] = useState<ReadonlySet<string>>(() => new Set());
+  const onHold = useCallback((key: string, now: boolean) => {
+    setHeld((had) => {
+      if (had.has(key) === now) return had;
+      const next = new Set(had);
+      if (now) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
 
   const here = useMemo(
     () => (screen === "dashboard" ? floatsForScreen(parts, { dashboard: true }) : screen === "session" ? floatsForScreen(parts, { pane }) : []),
@@ -392,7 +492,7 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
     for (const part of parts) {
       const spec = readFloat(part);
       if (spec === null || spec.mode !== "once") continue;
-      const sig = onceSignature(part);
+      const sig = partSignature(part);
       current.set(spec.key, sig);
       if (seen.current.get(spec.key) !== sig && !spec.stale) arrived.push(spec.key);
     }
@@ -445,8 +545,8 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
           const parked = spec.motion === "perch" || spec.motion === "idle";
           const open = page !== undefined && parked ? () => nav.down(trickSessionPath(page.paneId)) : undefined;
           return (
-            <TrickBoundary key={`${spec.key}@${spec.rev}`} fallback="none" resetKey={`${spec.key}@${spec.rev}`}>
-              <FloatPet spec={spec} space={space} reduced={reduced} paused={!visible} trickName={trickName} onOpen={open} onPlace={onPlace} />
+            <TrickBoundary key={spec.key} fallback="none" resetKey={`${spec.key}@${spec.rev}`}>
+              <FloatPet spec={spec} space={space} reduced={reduced} paused={!visible} trickName={trickName} onOpen={open} onPlace={onPlace} onHold={onHold} />
             </TrickBoundary>
           );
         })}
@@ -458,6 +558,7 @@ export function TrickFloatLayer({ pane, trickSessions, store = tricksStore }: Tr
             region={region}
             pet={shot.from === undefined ? undefined : placed.get(petKeyOf(shot))}
             waits={shot.from !== undefined && stay.some((candidate) => candidate.key === petKeyOf(shot))}
+            holding={stay.some((candidate) => candidate.key === petKeyOf(shot) && !candidate.loop && !held.has(candidate.key))}
             paused={!visible}
             onBegin={() => queue.current.began(shot.trick)}
             onDone={finishShot}
