@@ -17,6 +17,7 @@ import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
 import { GROUP_CAPACITY_WORDS, GROUP_TOO_LARGE } from "../bridge/tricks/card-group.ts";
 import { TAP_SHOWS_NOTHING, agentPaneRefusal, checkStatic, runAgainstFixture, cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, sampleProgram, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, SWITCHED_ON_NOT_WHOLE, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
+import { sizeWords } from "../bridge/tricks/card-group.ts";
 import { checkWarnings, HELPER_VERSION, helperVersion, isBareImport, isScannedFile, looksBinary, runsLines, shippedHelperVersion, TRICK_HELPER } from "../bridge/tricks/scan.ts";
 import { realFiles } from "./sys.ts";
 import type { JsonObject } from "../bridge/json.ts";
@@ -586,6 +587,36 @@ describe("collie trick check", () => {
     const old = "// collie trick helper v1\nold text\n";
     const oldHash = new Bun.CryptoHasher("sha256").update(old).digest("hex");
     expect(shippedHelperVersion(old, new Map([[oldHash, 1]]))).toBe(1);
+  });
+
+  test("a trick.ts that is a helper of an older Collie is taken as the helper, said once, and not counted; a hand-edited one is refused with the reason", async () => {
+    const v8 = await readFile(new URL("../bridge/tricks/fixtures/helper-v8.txt", import.meta.url), "utf8");
+    const toml = 'id = "kit"\nname = "Kit"\nrun = "program.ts"\nplaces = ["status"]\n';
+    const program = 'import { run } from "./trick.ts";\nrun((t) => t.status({ text: "ok" }));\n';
+    // The current helper: no note, and it fits.
+    const current = await folder(toml, { "program.ts": program, "trick.ts": TRICK_HELPER });
+    const c = await deps();
+    expect(await cmdTrickCheck(c, [current])).toBe(EXIT.OK);
+    expect(c.out.join("\n")).not.toContain("older Collie");
+    expect(c.out.join("\n")).toContain("ok: no problems.");
+    // A helper of an older Collie (v8, as 1.29.0 shipped it): the helper, not own code, said once, counted for nothing.
+    const older = await folder(toml, { "program.ts": program, "trick.ts": v8 });
+    const report = await checkStatic(older, realFiles);
+    expect(report.helper).toEqual({ version: 8, current: false, modified: false });
+    expect(report.notScanned).toContain("trick.ts");
+    const d = await deps();
+    expect(await cmdTrickCheck(d, [older])).toBe(EXIT.OK);
+    const said = d.out.filter((line) => line.includes("older Collie"));
+    expect(said).toEqual([`  note: trick.ts is the helper from an older Collie (v8). Run \`collie trick helper ${older}\` to update it.`]);
+    expect(d.out.join("\n")).toContain("ok: no problems.");
+    expect(d.err.join("\n")).not.toContain("propose:");
+    // The same text with one line added says v8 but is no helper Collie shipped: it counts as the trick's own code, and the refusal says why.
+    const edited = await folder(toml, { "program.ts": program, "trick.ts": `${v8}// a hand edit\n` });
+    const e = await deps();
+    expect(await cmdTrickCheck(e, [edited])).toBe(EXIT.OK);
+    const refusal = `propose: trick.ts says helper v8 but its text differs from that helper, so it counts as your own code (${sizeWords(Buffer.byteLength(`${v8}// a hand edit\n`))}). Run \`collie trick helper ${edited}\` to restore it, or remove the version line.`;
+    expect(e.err.map((line) => line.replace(/^error: /u, ""))).toContain(refusal);
+    expect(e.out.join("\n")).toContain("ok: it runs on this machine, but it cannot be proposed.");
   });
 
   test("only code files are grepped: docs, data, tests and fixtures are listed as not grepped and still count in the code hash", async () => {

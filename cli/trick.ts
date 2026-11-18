@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { redactText } from "../bridge/redact.ts";
-import { GROUP_CAPACITY_WORDS } from "../bridge/tricks/card-group.ts";
+import { GROUP_CAPACITY_WORDS, sizeWords } from "../bridge/tricks/card-group.ts";
 import { proposalCardCount, type ProposalCardCount } from "../bridge/tricks/proposal-card.ts";
+import type { ProposedFile } from "../bridge/tricks/propose-wire.ts";
 import { approvedDirOf, approveFolder, pruneCopies, verifyCopy } from "../bridge/tricks/approved.ts";
 import { codeShowsWhole } from "../bridge/tricks/code-view.ts";
 import { CONFIG_FILE, diskTrickFs, trickCodeHash, walkTrickCode } from "../bridge/tricks/code-hash.ts";
@@ -927,9 +928,9 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
   if (report.reads !== undefined) io.out(`  reads:  ${report.reads} The files are data for the program, never code.`);
   if (report.codeHash !== undefined) io.out(`  code:   sha256 ${report.codeHash} (what \`collie trick on\` approves)`);
   const h = report.helper;
-  if (h !== undefined && h.modified) io.out(`  helper: ${HELPER_FILE} is a modified helper (its first line says v${String(h.version)}), so it is checked as the trick's own code`);
+  if (h !== undefined && h.modified) io.out(`  helper: ${HELPER_FILE} is a modified helper (its first line says v${String(h.version)}), so it is checked as the trick's own code.`);
   else if (h !== undefined && h.current) io.out(`  helper: ${HELPER_FILE} is collie trick helper v${String(h.version)}, Collie's own code, not checked line by line`);
-  else if (h !== undefined) io.out(`  helper: ${HELPER_FILE} is helper v${String(h.version)}, an older one; update with collie trick helper ${m?.id ?? report.id}`);
+  else if (h !== undefined) io.out(`  note: ${helperOlderNote(h.version, report.folder)}`);
   const others = report.notScanned.filter((f) => f !== HELPER_FILE);
   if (others.length > 0) io.out(`  not grepped (docs, data, tests): ${others.slice(0, 8).join(", ")}${others.length > 8 ? ` and ${String(others.length - 8)} more` : ""}`);
   if (report.runs.length > 0) {
@@ -969,12 +970,39 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
   else io.out(cards !== undefined && !cards.ok ? "ok: it runs on this machine, but it cannot be proposed." : "ok: no problems.");
 }
 
+/** The one sentence for a `trick.ts` that is a helper an older Collie shipped, byte for byte: Collie's own code, not counted. */
+export function helperOlderNote(version: number, where: string): string {
+  return `${HELPER_FILE} is the helper from an older Collie (v${String(version)}). Run \`collie trick helper ${where}\` to update it.`;
+}
+
+/** The refusal of a `trick.ts` that says helper vN but whose text matches none Collie shipped, so it counts as the trick's own code. */
+export function helperEditedRefusal(version: number, bytes: number, where: string): string {
+  return `${HELPER_FILE} says helper v${String(version)} but its text differs from that helper, so it counts as your own code (${sizeWords(bytes)}). Run \`collie trick helper ${where}\` to restore it, or remove the version line.`;
+}
+
+/**
+ * The cards of a trick folder as a proposal. A refusal for size is explained when a hand-edited helper is the
+ * cause: the same files without that `trick.ts` fit. Any other refusal, and a count that fits, stay as they are.
+ * `where` is the folder as the person named it, for the verb the sentence offers.
+ */
+export function proposalCards(report: TrickCheckReport, files: readonly (Pick<ProposedFile, "rel" | "bytes"> & { executable?: boolean })[], crew: boolean, where: string): ProposalCardCount {
+  const manifest = report.manifest;
+  if (manifest === undefined) throw new Error("proposalCards needs a manifest");
+  const warnings = [...new Set(report.warnings.map((w) => w.kind))];
+  const cards = proposalCardCount({ manifest, files, warnings, crew });
+  if (cards.ok || report.helper?.modified !== true || (cards.code !== "too_large" && cards.code !== "card_too_large")) return cards;
+  const helper = files.find((file) => file.rel === HELPER_FILE);
+  if (helper === undefined) return cards;
+  const without = proposalCardCount({ manifest, files: files.filter((file) => file !== helper), warnings, crew });
+  return without.ok ? { ...cards, error: helperEditedRefusal(report.helper.version, helper.bytes.byteLength, where) } : cards;
+}
+
 /** The cards of the folder as a proposal, read as `collie trick propose` reads it. A folder it cannot read counts nothing: propose says why. */
-async function countCards(report: TrickCheckReport, crew: boolean): Promise<void> {
+async function countCards(report: TrickCheckReport, crew: boolean, where: string): Promise<void> {
   if (report.manifest === undefined) return;
   const read = await readTrickFolder(report.folder);
   if (!read.ok) return;
-  report.cards = proposalCardCount({ manifest: report.manifest, files: [...read.files, ...read.pictures], warnings: [...new Set(report.warnings.map((w) => w.kind))], crew });
+  report.cards = proposalCards(report, [...read.files, ...read.pictures], crew, where);
 }
 
 export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): Promise<number> {
@@ -993,7 +1021,7 @@ export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): P
   const crew = leadsCrewOnDisk(deps);
   const report = await checkStatic(folder, deps.files, { crew, platform: deps.platform });
   if (run && report.manifest !== undefined && report.problems.length === 0) await checkRun(report, deps.ctx.env);
-  await countCards(report, crew);
+  await countCards(report, crew, named);
   if (json) deps.io.out(JSON.stringify(report, null, 2));
   else printReport(deps, report);
   return reportFails(report) ? EXIT.FAIL : EXIT.OK;

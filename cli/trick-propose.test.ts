@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,7 +23,7 @@ import type { HillDeps } from "./hill.ts";
 import { EXIT } from "./io.ts";
 import { realFiles } from "./sys.ts";
 import { cmdTrickGuide, trickGuide } from "./trick-guide.ts";
-import { GROUP_MASKED, GROUP_TOO_LARGE, groupLineEnds } from "../bridge/tricks/card-group.ts";
+import { GROUP_MASKED, GROUP_TOO_LARGE, groupLineEnds, sizeWords } from "../bridge/tricks/card-group.ts";
 import { TRICK_HELPER } from "../bridge/tricks/scan.ts";
 import { cmdTrickPropose, leftPictureLines, PROPOSE_ADDED_HERE_HINT, PROPOSE_NEEDS_CONFIG, PROPOSE_UNKNOWN, PROPOSE_WHERE, proposeExit, proposeWhere, readTrickFolder, sentLine } from "./trick-propose.ts";
 import { cmdTrickInit } from "./trick.ts";
@@ -460,7 +460,7 @@ describe("collie trick propose, over the walky socket", () => {
     expect(b.calls).toHaveLength(1);
   });
 
-  socketTest("a trick larger than a group of cards, or with a key in it, is refused before anything is sent (crew slice 8)", async () => {
+  socketTest("a trick larger than a group of cards, or with a key in it, is refused before anything is sent (crew slice 8); a helper of an older Collie is sent, a hand-edited one refused with the reason", async () => {
     const b = await bridge();
     const d = deps([walkySocketPath(b.stateDir)]);
     const big = Array.from({ length: 900 }, (_, i) => `"row ${String(i).padStart(4, "0")} of the data the program reads, longer than a group holds"`).join(",\n");
@@ -470,6 +470,23 @@ describe("collie trick propose, over the walky socket", () => {
     expect(await cmdTrickPropose(e, ["--json", trickFolder({ "keys.ts": 'export const KEY = "sk-or-v1-your-key-here-placeholder00";\n' })])).toBe(EXIT.REFUSED);
     expect(JSON.parse(e.io.stdout.join(""))).toEqual({ ok: false, code: "cannot_show", error: GROUP_MASKED });
     expect(b.calls).toEqual([]);
+    const v8 = readFileSync(new URL("../bridge/tricks/fixtures/helper-v8.txt", import.meta.url), "utf8");
+    // A trick.ts from an older Collie is sent as Collie's helper, with one note; a hand-edited one is refused with the reason.
+    const olderDeps = deps([walkySocketPath(b.stateDir)]);
+    const older = trickFolder({ "trick.ts": v8 });
+    expect(await cmdTrickPropose(olderDeps, [older])).toBe(EXIT.OK);
+    expect(b.calls).toHaveLength(1);
+    expect(olderDeps.io.stderr.filter((line) => line.includes("older Collie"))).toEqual([`trick.ts is the helper from an older Collie (v8). Run \`collie trick helper ${older}\` to update it.`]);
+    expect(olderDeps.io.stderr.join("\n")).not.toContain("too large");
+    const editedDeps = deps([walkySocketPath(b.stateDir)]);
+    const edited = trickFolder({ "trick.ts": `${v8}// a hand edit\n` });
+    expect(await cmdTrickPropose(editedDeps, [edited])).toBe(EXIT.REFUSED);
+    expect(editedDeps.io.stderr).toEqual([`propose: trick.ts says helper v8 but its text differs from that helper, so it counts as your own code (${sizeWords(Buffer.byteLength(`${v8}// a hand edit\n`))}). Run \`collie trick helper ${edited}\` to restore it, or remove the version line.`]);
+    expect(b.calls).toHaveLength(1);
+    // A hand-edited helper that is not the cause (the folder is too large anyway) keeps the general refusal.
+    const f = deps([walkySocketPath(b.stateDir)]);
+    expect(await cmdTrickPropose(f, [trickFolder({ "trick.ts": `${v8}// a hand edit\n`, "data.json": `[\n${big}\n]\n` })])).toBe(EXIT.REFUSED);
+    expect(f.io.stderr).toEqual([`propose: ${GROUP_TOO_LARGE}`]);
   });
 
   socketTest("a trick with Windows line ends is sent; one with a CR inside a line is refused in words that name the file", async () => {
