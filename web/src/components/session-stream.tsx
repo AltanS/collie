@@ -16,6 +16,7 @@ import type { ChatFeed } from "@/hooks/use-chat-window";
 import { ASKS_SHOWN, asksAt, shownAsks } from "@/lib/ask";
 import { finished, itemsOf, type ChatItem } from "@/lib/chat-items";
 import { useChatLook, type ChatLook } from "@/lib/chat-look";
+import { kindOfBlock, measureBlocks, rememberSilhouette, silhouetteOf } from "@/lib/chat-silhouette";
 import type { ChatStatus } from "@/lib/chat-window";
 import { HANDOVER_KEEP_MS, dropPending, unmatched, usePending } from "@/lib/durable-pending";
 import { clockTime } from "@/lib/format";
@@ -70,6 +71,9 @@ const STREAM_BLOCK = "flex min-w-0 flex-col [content-visibility:auto] [contain-i
  * auto` keeps that height while it is skipped.
  */
 const NEAR_BLOCK = "flex min-w-0 flex-col [contain-intrinsic-size:auto_64px] -m-3 p-3";
+
+/** How long the page waits, after its last change, before its silhouette is measured and kept (lib/chat-silhouette.ts). */
+const SILHOUETTE_SETTLE_MS = 400;
 
 /** How many blocks at the tail are {@link NEAR_BLOCK}s: more than a phone screen holds of new rows. */
 const NEAR_TAIL_BLOCKS = 8;
@@ -749,14 +753,49 @@ export function SessionStream({
       const top = recallScroll(address);
       if (top !== undefined && top > 0) el.scrollTop = top;
     }
-    const onScroll = () => rememberScroll(address, el.scrollTop);
+    // While no block is drawn the place is the top, as it was when this list was empty: the loading silhouette
+    // (components/chat-pending.tsx) is pinned to the bottom of a list with nothing of the thread in it, and where
+    // that sits is not the reader's place.
+    const placeNow = () => (blocks.length > 0 ? el.scrollTop : 0);
+    const onScroll = () => rememberScroll(address, placeNow());
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       el.removeEventListener("scroll", onScroll);
       // One last write, in case the unmount races the next scroll event.
-      rememberScroll(address, el.scrollTop);
+      rememberScroll(address, placeNow());
     };
   }, [address, blocks.length, listRef]);
+
+  // ── THE SILHOUETTE OF THIS PANE'S PAGE (lib/chat-silhouette.ts) ──────────────────
+  // Each time the newest page has been drawn and has settled, its rows' kinds, heights and line counts are kept for the
+  // next time this pane opens, so its loading view can draw the same silhouette. Never a word of the thread. Only a live
+  // window with rows in it: a saved copy is old and an empty one has no silhouette. A short wait after the last change keeps a
+  // streaming reply from measuring at every tick; the unmount writes the last one at once.
+  const rowKinds = useMemo(
+    () =>
+      blocks.map((group) =>
+        kindOfBlock(group, group.length === 1 && (showToolCalls || group[0]!.kind !== "tool" || standsAlone(group[0]!))),
+      ),
+    [blocks, showToolCalls],
+  );
+  const silhouetteReady = window.status.kind === "live" && window.savedAt === null && blocks.length > 0;
+  const hasOlder = window.hasOlder;
+  const recordSilhouette = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    recordSilhouette.current = null;
+    const el = listRef.current?.getScrollElement();
+    if (!silhouetteReady || el === null || el === undefined) return;
+    const record = () => {
+      if (!el.isConnected) return;
+      const measured = measureBlocks(el, rowKinds);
+      if (measured === null) return;
+      rememberSilhouette(address, silhouetteOf(measured, { viewport: el.clientHeight, older: hasOlder, count: rowKinds.length }));
+    };
+    recordSilhouette.current = record;
+    const timer = setTimeout(record, SILHOUETTE_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [silhouetteReady, rowKinds, hasOlder, address, window.rev, listRef]);
+  useLayoutEffect(() => () => recordSilhouette.current?.(), []);
 
   // ── PREPENDING MUST NOT MOVE WHAT THE READER IS ON ──────────────────────────
   // "Load older" inserts forty turns ABOVE the viewport. The browser holds `scrollTop` where it was,
@@ -1182,7 +1221,7 @@ export function SessionStream({
           pane is on its way. After a short wait, a few muted bars stand where the lines will be, so a pane
           whose page is slow to come is never a bare box. A held window and the loader's first page
           (lib/chat-held.ts) mean this is rarely drawn at all. */}
-      {empty && status.kind === "empty" && !feed.tried && !starting && drawnLines.length === 0 && <ChatPending />}
+      {empty && status.kind === "empty" && !feed.tried && !starting && drawnLines.length === 0 && <ChatPending address={address} />}
       {tail}
     </ChatMessageList>
   );
