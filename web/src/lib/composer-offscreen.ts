@@ -38,7 +38,7 @@ export const PIN_RECENT_MS = 10_000;
 const MAX_SINCE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type ComposerTrigger = "foreground" | "pageshow" | "resize" | "delayed";
-export type ComposerPaneKind = "agent" | "shell" | "durable";
+export type ComposerPaneKind = "agent" | "shell" | "screenless";
 export type ComposerPinAction = "none" | "pinned" | "released";
 
 /** What one look reads before it decides. Pure data, so the predicate is testable without a browser. */

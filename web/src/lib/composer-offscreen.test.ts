@@ -98,7 +98,7 @@ describe("the record", () => {
 
   it("holds only whole numbers, booleans and short enum words, never text", () => {
     const record = buildComposerRecord(INPUT);
-    const words = new Set(["foreground", "pageshow", "resize", "delayed", "none", "pinned", "released", "agent", "shell", "durable"]);
+    const words = new Set(["foreground", "pageshow", "resize", "delayed", "none", "pinned", "released", "agent", "shell", "screenless"]);
     for (const [key, value] of Object.entries(record)) {
       const allowed = Number.isInteger(value) || value === true || value === false || words.has(String(value));
       expect({ key, allowed }).toEqual({ key, allowed: true });

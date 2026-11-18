@@ -876,7 +876,7 @@ export function AgentChat({
   const gridless = !paneGrid.capable;
   // If the reply box ends up below the screen, the phone sends its heights to the bridge, once, with no content
   // (lib/composer-offscreen.ts). Draws nothing and changes nothing on screen.
-  useComposerOffscreenWatch({ zen, keyboardOpen: composing, paneKind: gridless ? "durable" : isShell ? "shell" : "agent" });
+  useComposerOffscreenWatch({ zen, keyboardOpen: composing, paneKind: gridless ? "screenless" : isShell ? "shell" : "agent" });
   const paneLive = useLive(paneId, scope);
   // AGENT VIEWS, the session's third body (components/agent-view-screen.tsx, hooks/use-agent-view-pane.ts):
   // a real agent session with a screen, on the lead (views live on the lead only; a crew member's routes

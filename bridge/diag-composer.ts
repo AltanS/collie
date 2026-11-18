@@ -44,7 +44,7 @@ export type ComposerTrigger = (typeof COMPOSER_TRIGGERS)[number];
 export const COMPOSER_PIN_ACTIONS = ["none", "pinned", "released"] as const;
 export type ComposerPinAction = (typeof COMPOSER_PIN_ACTIONS)[number];
 /** Which kind of pane view the box belongs to. */
-export const COMPOSER_PANE_KINDS = ["agent", "shell", "durable"] as const;
+export const COMPOSER_PANE_KINDS = ["agent", "shell", "screenless"] as const;
 export type ComposerPaneKind = (typeof COMPOSER_PANE_KINDS)[number];
 
 const PX_HEIGHT: readonly [number, number] = [0, 20_000];
