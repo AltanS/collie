@@ -149,6 +149,7 @@ import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate
 import { useActiveTheme } from "@/lib/theme/store";
 import { composerLayout } from "@/lib/composer-layout";
 import { useTabLook } from "@/lib/tab-look";
+import { pickTabPane } from "@/lib/tab-pane-memory";
 import { zoomPillShown } from "@/lib/zoom-pill";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
@@ -2271,7 +2272,11 @@ export function AgentChat({
   // Jump to another tab in this space by opening one of its panes (the in-pane tab bar).
   function goToTab(tabId: string) {
     if (!agent || tabId === agent.tabId) return;
-    const target = [...agents, ...shellPanes].find((p) => p.tabId === tabId);
+    // The pane the tab was last open on, else its first (lib/tab-pane-memory.ts).
+    const target = pickTabPane(
+      [...agents, ...shellPanes].filter((p) => p.tabId === tabId),
+      { host: agent.host, session: agent.session, tabId },
+    );
     if (target) switchTo(target.paneId);
   }
 
