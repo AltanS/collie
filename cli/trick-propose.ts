@@ -7,7 +7,7 @@ import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
 import type { HillDeps } from "./hill.ts";
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT } from "./io.ts";
-import { checkStatic, leadsCrewOnDisk, reportFails, runAgainstFixture } from "./trick.ts";
+import { checkStatic, helperOlderNote, leadsCrewOnDisk, proposalCards, reportFails, runAgainstFixture } from "./trick.ts";
 import { readTrickFolder, type LeftPicture } from "./trick-folder.ts";
 
 export { PROPOSE_WALK_MAX, readTrickFolder, type FolderRead, type LeftPicture } from "./trick-folder.ts";
@@ -15,7 +15,6 @@ import { AskLate, NO_SOCKET_TEXT, shown } from "./walky.ts";
 import { asJsonBoolean, asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "../web/src/lib/json.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { PROPOSE_ASK_MS } from "../bridge/tricks/propose-door.ts";
-import { proposalCardCount } from "../bridge/tricks/proposal-card.ts";
 import { manifestGivesRules, PROPOSE_HAS_RULES, readProposal, shownPath, wireFiles, type ProposedFile } from "../bridge/tricks/propose-wire.ts";
 import type { TrickManifest } from "../web/src/lib/tricks/schema.ts";
 import { MANIFEST_FILE } from "../bridge/tricks/paths.ts";
@@ -230,8 +229,10 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   if (!read.ok) return fail(read.error, "bad_files", EXIT.FAIL);
   // The cards the phone would show: a trick larger than a group, or with a line no card shows as it is,
   // is refused here, and again on the lead.
-  const cards = proposalCardCount({ manifest: report.manifest!, files: [...read.files, ...read.pictures], warnings: [...new Set(report.warnings.map((w) => w.kind))], crew: leadsCrewOnDisk(deps) });
+  const cards = proposalCards(report, [...read.files, ...read.pictures], leadsCrewOnDisk(deps), rest[0]!);
   if (!cards.ok) return fail(cards.error, cards.code, EXIT.REFUSED);
+  // A helper of an older Collie is Collie's code and is sent as it is; the person is told once, on stderr.
+  if (!json && report.helper !== undefined && !report.helper.current && !report.helper.modified) deps.io.err(helperOlderNote(report.helper.version, rest[0]!));
   const rid = requestId ?? (deps.mintRequestId ?? randomUUID)();
   // A trick whose config.toml stays behind runs once without it: the person adds the settings only after the yes.
   const sent = [...read.files, ...read.pictures];

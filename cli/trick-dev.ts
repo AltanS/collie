@@ -13,7 +13,7 @@ import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
 import { HILL_NODE_PREFIX, INPUTS_CONTRACT, isRequestId, isTrickId, parseFacts, type FactsTrigger, type TrickManifest, type ParsedPart, type Refusal, type TrickDecision, type TrickFacts, type View, type ViewNode } from "../web/src/lib/tricks/schema.ts";
 import { hillWordingWarnings } from "./hill-rules.ts";
 import { EXIT } from "./io.ts";
-import { checkStatic, decisionWording, runAgainstFixture, type FixtureOptions, type FixtureRun, type TrickDeps } from "./trick.ts";
+import { checkStatic, decisionWording, helperOlderNote, runAgainstFixture, type FixtureOptions, type FixtureRun, type TrickDeps } from "./trick.ts";
 import { namedPictureWarnings } from "./trick-folder.ts";
 
 // `collie trick dev <folder|id>` (M94 review 4): `check --run` made friendly. It runs the program once
@@ -242,6 +242,8 @@ interface DevInputs {
   state?: string;
   /** The absolute folder of `--inputs`. */
   read?: string;
+  /** Whether the note on an older helper was already said (a watch says it once). */
+  helperNoted?: boolean;
 }
 
 /**
@@ -359,6 +361,11 @@ async function devOnce(deps: TrickDeps, folder: string, args: DevArgs, inputs: D
           ? `a tap: ${trigger.intent} on ${trigger.node}`
           : `a ${trigger?.kind ?? "timer"} run`;
     deps.io.out(`trick ${manifest.id} (${manifest.name}) in ${folder}, ${source}, ${what}`);
+    // A helper of an older Collie is Collie's own code: said once, not on every run of a watch.
+    if (report.helper !== undefined && !report.helper.current && !report.helper.modified && inputs.helperNoted !== true) {
+      deps.io.out(`  note: ${helperOlderNote(report.helper.version, folder)}`);
+      inputs.helperNoted = true;
+    }
     if (inputs.state !== undefined) deps.io.out(`  state kept in ${inputs.state}`);
     if (readLine !== null) deps.io.out(`  ${readLine}`);
     for (const line of devSummary(ran, refusals)) deps.io.out(line);

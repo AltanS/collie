@@ -1,10 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { readManifestText } from "./discover.ts";
-import { RUN_DYNAMIC_WORDS, RUN_UNREAD, runTargets, TRICK_HELPER, trickWarnings } from "./scan.ts";
+import { HELPER_VERSION, helperVersion, OLDER_HELPERS, RUN_DYNAMIC_WORDS, RUN_UNREAD, runTargets, shippedHelperVersion, TRICK_HELPER, trickWarnings } from "./scan.ts";
 
 // NO RUN TARGET ESCAPES THE SCAN (the first full trick run, 2026-11-16, decision 2). The skip list (docs,
 // data, tests, fixtures) once covered the very file a run line named, and the card said nothing.
@@ -215,5 +216,45 @@ describe("the local API's own warning kind", () => {
     expect(WARN_PLAIN.api).toBe("This trick talks to Collie's local API directly, past its helper.");
     expect(WARN_VERBS.api).toBe("talks to Collie's local API directly, past its helper");
     expect(wireWarnings([{ kind: "api", file: "a.ts", line: 1, text: "x" }])).toEqual([{ kind: "api", text: WARN_PLAIN.api }]);
+  });
+});
+
+// THE HELPER'S VERSION MOVES WITH ITS TEXT (1.29.1). A helper whose text changed under the same version line
+// was read as a hand-edited helper: its 53 KB counted as the trick's own code, and `collie trick propose`
+// refused the trick as too large. The pin below makes that a red test, not a surprise on a person's machine.
+
+const sha = (text: string): string => createHash("sha256").update(text).digest("hex");
+
+/** The SHA-256 of the helper text of each version this Collie writes. A new text takes the next number. */
+const HELPER_PINS = new Map<number, string>([[9, "ed3bbcc08f02073fbd345d869e1702bc78437f07089a59bc03df6d5e74c5db8e"]]);
+
+describe("the helper's version moves with its text", () => {
+  test("the first line of the helper names HELPER_VERSION", () => {
+    expect(helperVersion(TRICK_HELPER)).toBe(HELPER_VERSION);
+  });
+
+  test("the helper's text is the one pinned for its version; a change without a bump fails here", () => {
+    const pinned = HELPER_PINS.get(HELPER_VERSION);
+    if (pinned === undefined) throw new Error(`HELPER_VERSION is ${String(HELPER_VERSION)}: pin the SHA-256 of the new helper text in HELPER_PINS (${sha(TRICK_HELPER)}), and add the old text's hash to OLDER_HELPERS in scan.ts.`);
+    if (sha(TRICK_HELPER) === pinned) return;
+    throw new Error(
+      `The helper's text (cli/trick-kit/trick.ts) changed but its version did not: bump the helper version. ` +
+        `Change the first line and HELPER_VERSION in bridge/tricks/scan.ts to v${String(HELPER_VERSION + 1)}, add the SHA-256 of the released v${String(HELPER_VERSION)} text to OLDER_HELPERS, keep its text in bridge/tricks/fixtures, and pin ${sha(TRICK_HELPER)} here. ` +
+        `A trick folder that keeps the old text under the same version reads as a hand-edited helper and is refused as too large. ` +
+        `(If v${String(HELPER_VERSION)} was never released, only the pin here needs the new hash.)`,
+    );
+  });
+
+  test("every older version is known by the hash of its text, once, and none of them is the current text", () => {
+    expect([...OLDER_HELPERS.values()].toSorted((a, b) => a - b)).toEqual(Array.from({ length: HELPER_VERSION - 1 }, (_, i) => i + 1));
+    expect(OLDER_HELPERS.has(sha(TRICK_HELPER))).toBe(false);
+  });
+
+  test("v8, the helper of 1.29.0 and of the released tricks repository, is a known older helper", () => {
+    const v8 = readFileSync(new URL("./fixtures/helper-v8.txt", import.meta.url), "utf8");
+    expect(helperVersion(v8)).toBe(8);
+    expect(sha(v8)).toBe("f1abca55dae2c534c378e9670e343e681519ca4fa55c50d7c5476b44e99ebc26");
+    expect(shippedHelperVersion(v8)).toBe(8);
+    expect(shippedHelperVersion(TRICK_HELPER)).toBe(HELPER_VERSION);
   });
 });

@@ -7,7 +7,7 @@ import { existsSync } from "node:fs";
 import { EXIT, type Io } from "./io.ts";
 import { realFiles } from "./sys.ts";
 import { cmdTrickDev, DEV_INPUTS_MARK, devTrigger, parseDevArgs, watchCounts, watchFolder } from "./trick-dev.ts";
-import { cmdTrickInit, type TrickDeps } from "./trick.ts";
+import { cmdTrickHelper, cmdTrickInit, type TrickDeps } from "./trick.ts";
 import { namedPictures } from "./trick-folder.ts";
 import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
 
@@ -53,6 +53,21 @@ async function trickWith(d: Awaited<ReturnType<typeof deps>>, id: string, progra
   d.out.length = 0;
   return dir;
 }
+
+describe("a trick.ts from an older Collie", () => {
+  test("is Collie's helper: the run goes on, and the note to update it is said once", async () => {
+    const d = await deps();
+    const dir = await trickWith(d, "older", 'console.log(JSON.stringify({ v: 1, parts: [] }));\n');
+    await writeFile(join(dir, "trick.ts"), await readFile(new URL("../bridge/tricks/fixtures/helper-v8.txt", import.meta.url), "utf8"));
+    expect(await cmdTrickDev(d, [dir])).toBe(EXIT.OK);
+    expect(d.out.filter((line) => line.includes("older Collie"))).toEqual([`  note: trick.ts is the helper from an older Collie (v8). Run \`collie trick helper ${dir}\` to update it.`]);
+    d.out.length = 0;
+    await cmdTrickHelper(d, [dir]);
+    d.out.length = 0;
+    expect(await cmdTrickDev(d, [dir])).toBe(EXIT.OK);
+    expect(d.out.join("\n")).not.toContain("older Collie");
+  });
+});
 
 describe("the pictures a run names", () => {
   test("a float sprite or an image the folder lacks is warned about, and the run still passes", async () => {

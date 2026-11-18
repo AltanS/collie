@@ -330,8 +330,13 @@ export function checkWarnings(sources: readonly { file: string; text: string; sh
 
 /** The helper file a TypeScript trick imports. */
 export const HELPER_FILE = "trick.ts";
-/** The version of the helper this Collie writes. Its first line names it: `// collie trick helper v8`. */
-export const HELPER_VERSION = 8;
+/**
+ * The version of the helper this Collie writes. Its first line names it: `// collie trick helper v9`. It moves
+ * whenever the helper's text changes (scan.test.ts pins the text's SHA-256 to this number and fails with "bump the
+ * helper version"): a text that changed under an old number is read as a hand-edited helper, so a trick that kept
+ * the file counts it as its own code. On a bump, add the old text's hash to {@link OLDER_HELPERS}.
+ */
+export const HELPER_VERSION = 9;
 /** The helper's source (cli/trick-kit/trick.ts), held in the binary as text. */
 export const TRICK_HELPER: string = trickHelperSource();
 
@@ -351,10 +356,11 @@ function sha256(text: string): string {
  * belt mark's `sessions`), and v5 (v6 ends a run after the pipe took the output, not with `process.exit`
  * over a write in flight, which Windows lost; it speaks contract 3 and reads its `values` as `t.values`), and v6
  * (v7 adds `t.api`, Collie's local API through the declared `access`), and v7 (v8 names the run's token in
- * `hello`, M105 spec 05: a v7 copy still runs, and its `t.api` hears `api.no_run_token`). A trick folder keeps the copy it was
- * approved with: an older one stays Collie's code, so a new Collie asks for no yes.
+ * `hello`, M105 spec 05: a v7 copy still runs, and its `t.api` hears `api.no_run_token`), and v8 (1.29.0, and the
+ * released tricks repository's four helpers; v9 adds the float place's types and a draft button's `does`). A trick folder
+ * keeps the copy it was approved with: an older one stays Collie's code, so a new Collie asks for no yes.
  */
-const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
+export const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
   ["534f992f9aa2a4a6e53945c1b46e7b407ab9528b3839970e6552d83b23ed13bb", 1],
   ["ec9ce0acd1c1691f61bb63a0f9f136578c9bf9250c7aa66d3d1186ee030b98a9", 2],
   ["15d022db6ff7efb5a19e148c7f29478b3cc50fd4d4dc9fb868ce576b84f03ad6", 3],
@@ -362,6 +368,7 @@ const OLDER_HELPERS: ReadonlyMap<string, number> = new Map([
   ["433bb8cae8929213274ed421f82cc63255a5a763732491a785c61f9f40bd4a1d", 5],
   ["52fed09e380c66a9902731aa111cc299c63bc2fcec83227f4f91963070789dfe", 6],
   ["647ee21270299c997325d9dcd76f6a3ff9dcaf51cc2e3b7f89aa5e918fab80cd", 7],
+  ["f1abca55dae2c534c378e9670e343e681519ca4fa55c50d7c5476b44e99ebc26", 8],
 ]);
 
 /** The version of a helper this Collie ships (this one, or one of `older`) whose bytes `text` are, or null for any other text. */

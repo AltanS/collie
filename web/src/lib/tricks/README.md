@@ -264,12 +264,16 @@ run((t) => {
 
 `trick.ts` is one self-contained file (`cli/trick-kit/trick.ts` in this repo, held in the binary as
 text). It imports only `node:` built-ins and Bun, and its first line names its version, `// collie
-trick helper v4`. `collie trick helper <id>` rewrites it with the version this Collie carries; the
-helper is part of the trick's code, so a trick that is on keeps running the approved copy, and the new
-helper waits for a person's yes.
-`collie trick check` lists a `trick.ts` whose bytes are a helper this Collie ships as "helper v4" (an
-older one with the command to update it) and does not grep it; a changed one is grepped as the trick's
-own code and called a modified helper.
+trick helper v9`. The version moves whenever the text changes: `bridge/tricks/scan.test.ts` pins the
+text's SHA-256 to `HELPER_VERSION` and fails with "bump the helper version" otherwise, and every released
+text stays known by its hash (`OLDER_HELPERS` in `bridge/tricks/scan.ts`). `collie trick helper <id>`
+rewrites it with the version this Collie carries; the helper is part of the trick's code, so a trick
+that is on keeps running the approved copy, and the new helper waits for a person's yes.
+`collie trick check`, `dev` and `propose` take a `trick.ts` whose bytes are a helper this Collie ships
+(this version or an older one) as Collie's own code: it is not grepped and it counts nothing against the
+size of a proposal. An older one is named once, with the command to update it. A `trick.ts` that starts
+with a helper version line but matches no shipped text is grepped as the trick's own code and called a
+modified helper; when it makes a proposal too large, the refusal says so and names the sizes.
 
 | API | What it does |
 | --- | ------------ |
