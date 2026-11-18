@@ -799,7 +799,7 @@ function declaredRoutes(): string[] {
   const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
   const exact = [...src.matchAll(/pathname === "([^"]+)"/g)].map((m) => m[1]!);
   const prefixes = [...src.matchAll(/pathname\.startsWith\("([^"]+)"\)/g)].map((m) => `${m[1]}*`);
-  const patterns = [...src.matchAll(/^const \w*ROUTE = (\/\^.+\/);$/gm)].map((m) => m[1]!);
+  const patterns = [...src.matchAll(/^(?:export )?const \w*ROUTE = (\/\^.+\/);$/gm)].map((m) => m[1]!);
   return [...new Set([...exact, ...prefixes, ...patterns])].toSorted();
 }
 
