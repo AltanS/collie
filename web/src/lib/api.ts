@@ -38,7 +38,7 @@ import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { closePaneNotifications } from "./pane-notifications";
 import { textRouteFor } from "./send-path";
-import { stampSend } from "./poll-intent";
+import { stampSend, stampTricks } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
@@ -3437,6 +3437,8 @@ export async function setTricksSwitch(on: boolean): Promise<boolean> {
   const raw = await req<JsonValue>("/api/tricks/switch", { method: "POST", body: JSON.stringify({ on }) });
   const held = asJsonBoolean(asJsonObject(raw)?.on);
   if (held === undefined) throw new Error("/api/tricks/switch answered with a body that is not { on }");
+  // Switched on, every trick that was waiting for it starts at once: the next polls come fast.
+  stampTricks();
   return held;
 }
 
@@ -3511,6 +3513,8 @@ export async function switchTrick(host: string, trick: string, on: boolean, hash
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(on && hash !== undefined ? { on, hash } : { on }) });
   const info = readTrick(raw);
   if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  // The bridge starts the trick's program at once (a switch on) and drops its parts at once (off).
+  stampTricks();
   return info;
 }
 
@@ -3617,6 +3621,7 @@ export async function setTrickAuto(host: string, trick: string, on: boolean): Pr
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({ on }) });
   const info = readTrick(raw);
   if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  stampTricks();
   return info;
 }
 
@@ -3632,6 +3637,8 @@ export async function setTrickValue(host: string, trick: string, body: { rid: st
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(body) });
   const info = readTrick(asJsonObject(raw)?.info);
   if (info === undefined) throw new Error(`${path} answered with a body that is not a value receipt`);
+  // A changed value runs the trick again about a second after the last write.
+  stampTricks();
   return info;
 }
 
@@ -3645,5 +3652,6 @@ export async function undoTrick(host: string, trick: string): Promise<WireTrickI
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({}) });
   const info = readTrick(raw);
   if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  stampTricks();
   return info;
 }

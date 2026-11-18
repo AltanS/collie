@@ -16,7 +16,9 @@ import {
   setFollowing,
   stampSend,
   stampTopology,
+  stampTricks,
   topologyBursting,
+  TRICKS_BURST_POLLS,
 } from "./poll-intent";
 
 // The burst rules are counted in POLLS, so they are testable without a clock at all — which is the
@@ -166,5 +168,32 @@ describe("stampTopology", () => {
     }
     consumeTopologyPoll();
     expect(topologyBursting()).toBe(false);
+  });
+});
+
+// A write to a trick: the bridge starts the program at once, and the phone can only learn the result by
+// polling, so the next polls are fast for long enough to cover a program that takes a second or two.
+describe("stampTricks", () => {
+  it("buys TRICKS_BURST_POLLS fast polls and bumps the reschedule counter", () => {
+    stampTricks();
+    expect(sendCount()).toBe(1);
+    let polls = 0;
+    while (topologyBursting()) {
+      consumeTopologyPoll();
+      polls += 1;
+    }
+    expect(polls).toBe(TRICKS_BURST_POLLS);
+    expect(TRICKS_BURST_POLLS).toBeGreaterThan(BURST_MIN_POLLS);
+  });
+
+  it("never shortens a longer budget that a create or a close left", () => {
+    stampTricks();
+    stampTopology();
+    let polls = 0;
+    while (topologyBursting()) {
+      consumeTopologyPoll();
+      polls += 1;
+    }
+    expect(polls).toBe(TRICKS_BURST_POLLS);
   });
 });

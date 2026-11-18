@@ -72,7 +72,7 @@ import { fieldValueProblem, isRequestId, isTrickId, type FieldRefusal, type Fiel
 import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX, WATCH_WINDOW_MS } from "../../web/src/lib/tricks/limits.ts";
 import { menuMessageLine } from "../../web/src/lib/tricks/menu-message.ts";
 import type { EventBus } from "../events/bus.ts";
-import { TrickReactions, type Admit, type FloorTimers, type ReactionCounts, type ReactTrigger } from "./triggers.ts";
+import { systemTimers, TrickReactions, type Admit, type FloorTimers, type ReactionCounts, type ReactTrigger } from "./triggers.ts";
 import { WATCH_POLL_MS, type WatchOptions } from "./watch.ts";
 
 // The run caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
@@ -193,6 +193,8 @@ export const PENDING_LINE = "A new version waits for your yes.";
 export const NOT_APPROVED_LINE = "No version of this trick is approved yet. Switch it on again to approve its code as it is now.";
 /** The answer to a tap on a trick that is only an agent view: it has no program, so nothing runs. */
 export const NO_PROGRAM_LINE = "This trick has no program, so nothing runs.";
+/** The reply of a run that a new version or new settings overtook while it went (its output is dropped). */
+export const SUPERSEDED_LINE = "The trick changed while it ran, so it runs again with the new version.";
 /** The line of a trick whose approved copy changed on disk. */
 export const TAMPERED_LINE = "The approved copy changed on disk, so the trick stopped. Switch it on again to approve its code as it is now.";
 /**
@@ -526,6 +528,8 @@ export interface TricksServiceDeps {
   watchOptions?: WatchOptions;
   /** The timer of the 10 second floor between two event or watch runs, for a test (triggers.ts). Absent: `setTimeout`. */
   reactionTimers?: FloorTimers;
+  /** The timer of a changed value's restart ({@link VALUE_RESTART_MS} after the last write), for a test. Absent: `setTimeout`. */
+  valueTimers?: FloorTimers;
 }
 
 /** The approved copy a trick runs from, as read and verified. */
@@ -620,6 +624,13 @@ interface TrickRuntime {
   nextAt: number;
   /** A changed value asked for a restart at this time; each later write moves it (`tick` starts the one run). Absent: none asked. */
   valueRestartAt?: number;
+  /**
+   * An immediate start run was asked for ({@link TricksService.startSoon}) and has not gone yet: it waits for the run
+   * or tap ahead to end, then `begin` asks again. Cleared when the start run begins or cannot begin.
+   */
+  soon?: boolean;
+  /** A microtask for {@link TricksService.startNow} is queued, so a burst of restarts in one turn is one start. */
+  soonQueued?: boolean;
   /** The run this trick has going or waiting for a slot. */
   running: Promise<void> | null;
   /** A phone tap waiting, one deep. */
@@ -752,6 +763,11 @@ export class TricksService implements TricksSurface {
   private readonly receiptFile: TrickReceiptSurface;
   private receiptsLoaded: Promise<void> | null = null;
   private readonly slots = new RunSlots(RUNS_MAX);
+  /** The immediate start runs going now ({@link startNow}), so a test (and `tick`) can wait for them. */
+  private readonly soonRuns = new Set<Promise<void>>();
+  private readonly valueTimers: FloorTimers;
+  /** The open restart timer of each trick whose value was written, by trick id. */
+  private readonly valueTimerOf = new Map<string, number>();
   private watchedAt = -Infinity;
   private folderExists = false;
   private scannedAt = -Infinity;
@@ -808,6 +824,7 @@ export class TricksService implements TricksSurface {
       { admit: (id) => this.reactAdmit(id), start: (id, trigger) => this.reactStart(id, trigger), due: (id) => this.reactDue(id), note: (id, note) => this.reactNote(id, note), warn: this.warn },
       { bus: deps.bus, watch: deps.watchOptions, now: this.now, timers: deps.reactionTimers },
     );
+    this.valueTimers = deps.valueTimers ?? systemTimers();
     this.feature = deps.feature ?? new TricksFeatureSwitch(deps.stateDir, this.warn);
     // A move of the switch folds in at once (after the read that saw it), so the parts go and the rows move.
     this.feature.onChange?.((on) => {
@@ -962,6 +979,8 @@ export class TricksService implements TricksSurface {
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
     this.reactions.close();
+    for (const handle of this.valueTimerOf.values()) this.valueTimers.clear(handle);
+    this.valueTimerOf.clear();
     // The bridge stops: no run token outlives it (spec 05, decision 2).
     this.runTokens.clear();
   }
@@ -998,6 +1017,11 @@ export class TricksService implements TricksSurface {
   runnerPath(): string {
     const host = this.host();
     return envPath(scrubEnv(this.deps.env, [], { host }), host) ?? "";
+  }
+
+  /** Resolves when the immediate start runs going now ({@link startNow}) are done. For a test. */
+  async idle(): Promise<void> {
+    while (this.soonRuns.size > 0) await Promise.all(this.soonRuns);
   }
 
   /** How many programs run (or hold a slot) now. For a test. */
@@ -1698,11 +1722,76 @@ export class TricksService implements TricksSurface {
     return host === this.deps.memberId || (this.deps.previousId != null && host === this.deps.previousId);
   }
 
+  /**
+   * Run the trick's start run again: a new approved copy (a yes, an undo, a switch on), a changed
+   * `config.toml` or a changed value. The start run goes at once ({@link startSoon}), not at the next tick,
+   * and never waits for the trick's `every`.
+   */
   private restart(rt: TrickRuntime): void {
     rt.failures = 0;
     rt.stopped = false;
     rt.pendingStart = true;
     rt.nextAt = 0;
+    this.startSoon(rt);
+  }
+
+  /**
+   * Ask for the start run right after the event that restarted the trick, in the next microtask, so the
+   * steps of one event (a scan restarts a trick twice, a promote and its scan) are ONE run. Every gate of
+   * {@link tick} holds: a phone must be looking, tricks on as a whole, this bridge scheduling, the trick
+   * runnable (an approved copy that holds) and not backing off. Nothing here weakens an approval check:
+   * `begin` reads the switch and the copy again right before the program starts, as for any run.
+   */
+  private startSoon(rt: TrickRuntime): void {
+    rt.soon = true;
+    if (rt.soonQueued === true) return;
+    rt.soonQueued = true;
+    queueMicrotask(() => {
+      rt.soonQueued = false;
+      this.startNow(rt);
+    });
+  }
+
+  /**
+   * The start run {@link startSoon} asked for. A run or a tap ahead of it is never overlapped: the ask is kept
+   * and the run's end (`begin`) asks again, so the new code runs right after, not at the next tick. An ask that
+   * cannot be served for any other reason is dropped (the next tick decides, as before); that also bounds the
+   * loop: one ask is one start run at most.
+   */
+  private startNow(rt: TrickRuntime): void {
+    if (rt.soon !== true) return;
+    if (this.runtimes.get(rt.found.id) !== rt) {
+      rt.soon = false;
+      return;
+    }
+    if (rt.running !== null || rt.queued !== null || rt.hillQueue.length > 0) return;
+    rt.soon = false;
+    if (this.gated() || this.deps.active?.() === false || this.switchedOff() || !this.watched()) return;
+    if (!rt.pendingStart || !this.due(rt, this.now())) return;
+    const run = this.begin(rt, { kind: "start" }, null);
+    this.soonRuns.add(run);
+    void run.finally(() => this.soonRuns.delete(run));
+  }
+
+  /**
+   * The one restart a run of value writes asks for, on a timer of its own: {@link VALUE_RESTART_MS} after the
+   * last write, so a changed setting shows about a second after the person stops, not at the tick after.
+   * Each write moves the timer; `tick` still honours `valueRestartAt` as the fallback.
+   */
+  private armValueRestart(rt: TrickRuntime, wait = VALUE_RESTART_MS): void {
+    const id = rt.found.id;
+    const open = this.valueTimerOf.get(id);
+    if (open !== undefined) this.valueTimers.clear(open);
+    const handle = this.valueTimers.set(() => {
+      this.valueTimerOf.delete(id);
+      const at = rt.valueRestartAt;
+      if (this.runtimes.get(id) !== rt || at === undefined) return;
+      // The clock counts too: a timer that fired early (a test, a clock set back) re-arms for the rest.
+      if (this.now() < at) return this.armValueRestart(rt, at - this.now());
+      delete rt.valueRestartAt;
+      this.restart(rt);
+    }, wait);
+    this.valueTimerOf.set(id, handle);
   }
 
   /** The official list's entries: the deps' or the one this binary carries, none when it is refused. */
@@ -1869,7 +1958,9 @@ export class TricksService implements TricksSurface {
       const trigger: FactsTrigger = rt.pendingStart ? { kind: "start" } : { kind: "timer" };
       started.push(this.begin(rt, trigger, null));
     }
-    await Promise.all(started);
+    // The immediate start runs going now too ({@link startNow}), so what a tick resolves on does not depend on
+    // whether a scan before it already started the run.
+    await Promise.all([...started, ...this.soonRuns]);
   }
 
   /**
@@ -1955,6 +2046,8 @@ export class TricksService implements TricksSurface {
       this.syncReactions();
       this.reactions.ended(rt.found.id);
       this.pump(rt);
+      // A restart asked while this run (or a tap) was going: the new code runs now, not at the next tick.
+      if (rt.soon === true) this.startSoon(rt);
     });
     return rt.running;
   }
@@ -2069,6 +2162,8 @@ export class TricksService implements TricksSurface {
     const command = manifest.run;
     if (command === undefined) return { rid, code: "rejected", message: NO_PROGRAM_LINE };
     const startedAt = this.now();
+    // The settings this run reads, to tell afterwards whether they moved while it went (see below).
+    const configAtStart = run.found.configHash;
     const state = trickStateDir(this.deps.stateDir, id);
     // The program's own folder under <stateDir>/tricks, owner only like the rest of the state folder.
     await mkdir(state, { recursive: true, mode: 0o700 }).catch(() => {});
@@ -2134,6 +2229,14 @@ export class TricksService implements TricksSurface {
     }
     // A copy that stopped while the program ran (it changed on disk) keeps nothing of that run.
     if (!this.runnable(rt)) return { rid, code: "rejected", message: rt.copyProblem ?? NOT_APPROVED_LINE };
+    // A yes to a new version, an undo or a changed `config.toml` landed while this run went: what it made
+    // is the old code's or the old settings', so nothing of it is kept, and it neither counts as a success
+    // (which would clear the restart and make the new code wait for `every`) nor as a failure. The restart
+    // that landed asked for the start run, and `begin` starts it as this run ends. A tap's program may have
+    // done its work, so a tap says `unknown`.
+    if (rt.approved !== run || run.found.configHash !== configAtStart) {
+      return { rid, code: trigger.kind === "tap" ? "unknown" : "rejected", message: SUPERSEDED_LINE };
+    }
     let problem = outcomeProblem(outcome, 200);
     let parsed: ParsedTrickDocument | null = null;
     let decisionsListed = false;
@@ -2682,7 +2785,10 @@ export class TricksService implements TricksSurface {
         this.deps.audit?.({ action: "trick.value", detail: { trick: id, field: key, by: "phone" } });
         // A changed value asks nothing again: it runs the trick once more, as a config.toml edit does, one
         // second after the last write (a debounce: `tick` starts the run), so a run of writes costs one run.
-        if (rt.on) rt.valueRestartAt = this.now() + VALUE_RESTART_MS;
+        if (rt.on) {
+          rt.valueRestartAt = this.now() + VALUE_RESTART_MS;
+          this.armValueRestart(rt);
+        }
       }
       this.publish(id);
       const info = this.store.reply(this.store.rev).tricks.find((trick) => trick.id === id);

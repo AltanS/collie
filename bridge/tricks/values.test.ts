@@ -120,6 +120,7 @@ async function tick(r: Rig, ms = 1000): Promise<void> {
   r.service.noteWatched();
   await r.service.refresh(true);
   await r.service.tick();
+  await r.service.idle();
 }
 
 function receipt(answer: ValueAnswer) {
@@ -344,6 +345,39 @@ describe("the write route", () => {
     await r.service.tick();
     // Later runs are the trick's own timer, not a restart a write left behind: at most one more in 5 s.
     expect(r.specs.length).toBeLessThanOrEqual(before + 2);
+  });
+
+  test("a changed value runs the trick on the restart timer, one second after the last write, with no tick", async () => {
+    // The timer is the test's: nothing fires until it is told to.
+    const open = new Map<number, () => void>();
+    let next = 1;
+    const valueTimers = {
+      set: (fn: () => void) => {
+        next += 1;
+        open.set(next, fn);
+        return next;
+      },
+      clear: (handle: number) => void open.delete(handle),
+    };
+    const r = await rig({ valueTimers });
+    await tick(r);
+    const before = r.specs.length;
+    for (const [i, rid] of [R1, R2, R3].entries()) receipt(await r.service.setValue(HOST, "legs", { rid, key: "repo", value: `lodge/${String(i)}` }));
+    // Three writes, one timer: each write took the one before it back.
+    expect(open.size).toBe(1);
+    expect(r.specs.length).toBe(before);
+    // A second after the last write the timer fires: one run with the last value, and no tick was needed.
+    r.clock.t += 1000;
+    for (const fn of Array.from(open.values())) fn();
+    await Bun.sleep(30);
+    expect(r.specs.length).toBe(before + 1);
+    expect(factsOf(r.specs.at(-1)).values).toEqual({ repo: "lodge/2", rows: 10 });
+    expect(factsOf(r.specs.at(-1)).trigger).toEqual({ kind: "start" });
+    // The tick that comes next finds the restart done: no second run.
+    r.service.noteWatched();
+    await r.service.tick();
+    expect(r.specs.length).toBe(before + 1);
+    r.service.stop();
   });
 
   test("A7: a value write reads the one trick, not the whole folder", async () => {

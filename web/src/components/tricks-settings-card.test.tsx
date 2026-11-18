@@ -9,7 +9,8 @@ import { HOLD_MS, TricksSettingsCard, autoLine, officialFailureLine, placesLine,
 import type { HillDecision } from "@/lib/hill/wire";
 import { __resetHill, __settleHill, syncHill } from "@/lib/hill/store";
 import { collieCard } from "@/test/hill-fixtures";
-import { addOfficialTrick, setTrickAuto, switchTrick, undoTrick } from "@/lib/api";
+import { addOfficialTrick, setTrickAuto, setTrickValue, setTricksSwitch, switchTrick, undoTrick } from "@/lib/api";
+import { resetPollIntent, topologyBursting } from "@/lib/poll-intent";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { ABOUT_MAX, DESCRIPTION_MAX, inputsSentence, TRICKS_WINDOWS_LINE, TRICKS_WINDOWS_SHELL_LINE, type TricksReply, type WireTrickInfo } from "@/lib/tricks/schema";
 import { createTricksStore, type TricksStore } from "@/lib/tricks/store";
@@ -443,6 +444,32 @@ describe("TricksSettingsCard: the switch", () => {
   it("disables the switches on a device that may only read", async () => {
     renderCard(await storeWith([LEGS]), undefined, true);
     expect(await screen.findByRole("switch", { name: "Browser leg" })).toBeDisabled();
+  });
+
+  it("each write to a trick buys fast polls, and a refused one buys none", async () => {
+    resetPollIntent();
+    server.use(
+      http.post(/\/api\/tricks\/[^/]+\/[^/]+\/(switch|auto|undo)$/, () => HttpResponse.json({ ...TRACKER, on: true, state: "ok" })),
+      http.post(/\/api\/tricks\/[^/]+\/[^/]+\/value$/, () => HttpResponse.json({ info: { ...TRACKER, on: true, state: "ok" } })),
+      http.post("/api/tricks/switch", () => HttpResponse.json({ on: true })),
+    );
+    expect(topologyBursting()).toBe(false);
+    const writes: (() => Promise<void>)[] = [
+      async () => void (await switchTrick("lodge", "tracker", true)),
+      async () => void (await setTrickAuto("lodge", "tracker", true)),
+      async () => void (await undoTrick("lodge", "tracker")),
+      async () => void (await setTrickValue("lodge", "tracker", { rid: "0f0c1d2e-3b4a-4c5d-8e6f-708192a3b4c5", key: "repo", value: "a" })),
+      async () => void (await setTricksSwitch(true)),
+    ];
+    for (const write of writes) {
+      resetPollIntent();
+      await write();
+      expect(topologyBursting()).toBe(true);
+    }
+    resetPollIntent();
+    server.use(http.post(/\/switch$/, () => HttpResponse.json({ error: "unknown-trick" }, { status: 404 })));
+    await expect(switchTrick("lodge", "gone", true)).rejects.toThrow();
+    expect(topologyBursting()).toBe(false);
   });
 
   it("switchTrick posts { on } to the trick's switch route and reads the trick back", async () => {

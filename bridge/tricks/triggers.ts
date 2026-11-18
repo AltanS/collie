@@ -80,7 +80,8 @@ export interface FloorTimers {
   clear(handle: number): void;
 }
 
-function systemTimers(): FloorTimers {
+/** The default {@link FloorTimers}: `setTimeout`, unref'd, so a timer never holds the process open. */
+export function systemTimers(): FloorTimers {
   const open = new Map<number, ReturnType<typeof setTimeout>>();
   let next = 1;
   return {

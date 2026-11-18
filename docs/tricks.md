@@ -506,6 +506,13 @@ and any new power the version asks for. You have three options:
 
 Switching the trick on again, or `collie trick on <id>`, approves the new version as well.
 
+Your yes starts the new version at once. The trick does not wait for its `every` time, and the phone
+draws what the new version prints within a second or two, with no reload. The same holds after you
+switch a trick on or change a setting. An edit of `config.toml` by hand runs the trick as soon as
+Collie sees it, within a few seconds while a phone is open. A run that is going finishes first, and
+its output is dropped. Two runs of one trick never overlap. A version that waits for your yes changes
+nothing: the old approved copy keeps running.
+
 "Take changes without asking" is a switch in the trick's About sheet, under Updates. The command is
 `collie trick auto <id> on`. With it on, a new version is taken without a card only when its powers
 did not change and a text search of its code finds no new kind of warning. A trick with rules never

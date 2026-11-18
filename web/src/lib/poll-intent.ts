@@ -113,10 +113,24 @@ export function stampSend(paneId: string): void {
  * wherever the operator is looking, and bumps the same send counter the poller already reschedules
  * on — a topology write must not sit out the remainder of a gap timed for an idle screen either.
  */
-export function stampTopology(): void {
-  topologyPolls = BURST_MIN_POLLS;
+export function stampTopology(polls: number = BURST_MIN_POLLS): void {
+  topologyPolls = Math.max(topologyPolls, polls);
   sends += 1;
   emit();
+}
+
+/** Polls a write to a trick buys at {@link BURST_MS}: about two and a half seconds, the yes to the drawn result. */
+export const TRICKS_BURST_POLLS = 8;
+
+/**
+ * The operator just changed a trick: a yes to its new version, its switch, the switch for tricks as a whole,
+ * a setting, the auto choice, an undo or an add. The bridge starts the trick's program at once and its
+ * result moves `tricksRev` the moment it is written, and the phone learns of both only by polling, so the
+ * next {@link TRICKS_BURST_POLLS} polls come at {@link BURST_MS} (the same burst a create or a close buys, a
+ * little longer for a program that takes a second) instead of waiting out an idle gap of six seconds.
+ */
+export function stampTricks(): void {
+  stampTopology(TRICKS_BURST_POLLS);
 }
 
 /** One tick spent the topology burst's budget — called by the poller each time it actually polls. */
