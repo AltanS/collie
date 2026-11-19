@@ -18,6 +18,7 @@ import { ScratchBridge } from "./phone-bridge";
 import { PhoneClient } from "./phone-client";
 import { LabDeferred, LabInfraError, loginEnv, prepareRun, seedClaude, type CodexSource, type SeedSource } from "./seed";
 import { realLiveness } from "./sweep";
+import { realLoad } from "./load-guard";
 import { LabTmux, paneCommand } from "./tmux";
 import { isDialogScreen, SETTLED_OUTCOMES, type AskFact, type ScreenFact, type SendFact, type WalkFact } from "./verdict";
 import { runWalk } from "./walk";
@@ -183,6 +184,7 @@ export function realPorts(options: RealOptions = {}): LabPorts {
 
   return {
     liveness: realLiveness,
+    loadAverage: realLoad,
     clone: (source, labRoot) => ensureClone(source, labRoot),
     async stopAll(): Promise<void> {
       const bridge = activeBridge;

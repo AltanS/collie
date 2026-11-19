@@ -425,7 +425,9 @@ describe("runLab, when the run is cut short", () => {
   }
 
   for (const reason of ["interrupted by SIGTERM", "interrupted by SIGINT", "uncaughtException: boom"]) {
-    test(`${reason}: tmux is stopped, the run folder and the login copy are deleted, the row is failed`, async () => {
+    // A signal is the environment (systemd's stop, a Ctrl-C): the pair is a retry row. An uncaught error is a lab bug: final.
+    const ended = reason.startsWith("interrupted") ? "retry" : "failed";
+    test(`${reason}: tmux is stopped, the run folder and the login copy are deleted, the row is ${ended}`, async () => {
       const { options, labRoot, ledger } = setup();
       const signals = new FakeSignals();
       const { ports, spy, release, started } = held();
@@ -436,11 +438,11 @@ describe("runLab, when the run is cut short", () => {
       expect(spy.calls).toContain("stop-all");
       expect(existsSync(runRoot(labRoot, "claude", "2.1.301"))).toBe(false);
       expect(walkNames(labRoot).filter((name) => name.endsWith(".credentials.json"))).toEqual([]);
-      expect(findRow(readLedger(ledger), "claude", "2.1.301")).toMatchObject({ result: "failed", note: reason });
+      expect(findRow(readLedger(ledger), "claude", "2.1.301")).toMatchObject({ result: ended, note: reason });
       // The session comes back after the emergency: the run must not settle the row a second time or publish.
       release();
       const done = await running;
-      expect(done.status).toBe("failed");
+      expect(done.status).toBe(ended);
       expect(spy.calls).not.toContain("publish");
       expect(findRow(readLedger(ledger), "claude", "2.1.301")?.note).toBe(reason);
       expect(signals.removes).toBe(1);
