@@ -1055,12 +1055,12 @@ describe("pushName — the given name, never the terminal title", () => {
     );
   });
 
-  test("keeps the order of the one name rule: Collie rename, person's name, agent's title, tab", () => {
+  test("keeps the order of the one name rule: Collie rename, person's name, tab, agent's title", () => {
     const all = { ...base, paneLabel: "release", sessionName: "migrate", agentTitle: "Auto title", soleTabName: "work" };
     expect(pushName(all)).toBe("release");
     expect(pushName({ ...all, paneLabel: undefined })).toBe("migrate");
-    expect(pushName({ ...all, paneLabel: undefined, sessionName: undefined })).toBe("Auto title");
-    expect(pushName({ ...all, paneLabel: undefined, sessionName: undefined, agentTitle: undefined })).toBe("work");
+    expect(pushName({ ...all, paneLabel: undefined, sessionName: undefined })).toBe("work");
+    expect(pushName({ ...all, paneLabel: undefined, sessionName: undefined, soleTabName: undefined })).toBe("Auto title");
   });
 
   test("never falls back to the terminal title, and strips control and bidi characters", () => {

@@ -37,8 +37,8 @@ export interface WalkyLivePanes {
 
 /**
  * The name a walky surface gives a live pane, in the order of `paneName` minus the terminal title: the
- * given name (`givenName`: Collie's rename, the person's name in the harness, the agent's own session
- * title, a named one-pane tab), then `<folder>#<branch>` when the pane's folder is on a branch, the
+ * given name (`givenName`: Collie's rename, the person's name in the harness, a named one-pane tab, the
+ * agent's own session title), then `<folder>#<branch>` when the pane's folder is on a branch, the
  * folder's name, and last the agent word ("shell" for a shell). The folder is the last part of the
  * pane's cwd; a detached head names no branch.
  */

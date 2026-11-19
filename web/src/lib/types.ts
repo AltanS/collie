@@ -58,8 +58,8 @@ export interface AgentView {
   sessionName?: string;
   /**
    * The title the agent gave its session itself (Claude's own title, Oh My Pi's automatic title,
-   * OpenCode's session title), from the harness's journal. Names the pane after the two hand-set names
-   * and before a sole tab's name (lib/pane-name.ts). Absent from an older bridge. Text only.
+   * OpenCode's session title), from the harness's journal. Names the pane after the hand-set names, a
+   * sole tab's name among them, and before the terminal title (lib/pane-name.ts). Absent from an older bridge. Text only.
    */
   agentTitle?: string;
   /**

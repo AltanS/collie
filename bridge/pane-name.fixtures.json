@@ -121,7 +121,7 @@
       "name": "migrate lodge"
     },
     {
-      "case": "precedence 3: the agent's own title outranks a one-pane tab's name",
+      "case": "precedence 3: a one-pane tab's name outranks the agent's own title",
       "pane": {
         "agent": "omp",
         "kind": "agent",
@@ -129,10 +129,10 @@
         "soleTabName": "work",
         "terminalTitle": "omp"
       },
-      "name": "Clarify Explanation Input and Output Languages"
+      "name": "work"
     },
     {
-      "case": "precedence 4: with no harness name, the one-pane tab's name outranks the terminal title",
+      "case": "precedence 4: with no harness name and no agent title, the one-pane tab's name outranks the terminal title",
       "pane": {
         "agent": "codex",
         "kind": "agent",
@@ -142,7 +142,7 @@
       "name": "work"
     },
     {
-      "case": "precedence 5: the agent's own title outranks the terminal title",
+      "case": "precedence 5: with no named tab, the agent's own title outranks the terminal title",
       "pane": {
         "agent": "opencode",
         "kind": "agent",

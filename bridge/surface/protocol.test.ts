@@ -11119,6 +11119,56 @@ describe("a send's profile is read for its pane", () => {
   });
 });
 
+describe("a Codex 0.169.0 goal notice remains after the empty-box shortcuts disappear", () => {
+  const notice = "Goal hit usage limits (/goal resume) · ⚠ 6 warnings · f2 to view";
+  const goalPane = (): FakePane => {
+    const pane = new FakePane("codex");
+    const render = pane.render.bind(pane);
+    pane.render = () => `${render()}${pane.box === "" ? "" : "\n"}${" ".repeat(70)}${notice}`;
+    return pane;
+  };
+
+  test("the standalone goal footer does not hold a message with probe_failed", async () => {
+    const pane = goalPane();
+    const answer = await rig({ pane, harness: "codex", version: "0.169.0" }).send("reply with one word: ready");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
+    expect(pane.transcript.at(-1)).toBe("› reply with one word: ready");
+  });
+
+  test("without the goal hint the same footer transition is refused and only the probe is cleaned up", async () => {
+    const pane = goalPane();
+    const answer = await rig({
+      pane,
+      harness: "codex",
+      version: "0.169.0",
+      edit: (profile) => ({
+        ...profile,
+        idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: {
+          ...profile.idle.volatile.below,
+          hints: (profile.idle.volatile.below.hints ?? []).filter((hint) => !hint.includes("Goal hit usage limits")),
+        } } },
+      }),
+    }).send("reply with one word: ready");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
+    expect(answer.receipt?.detail).toStartWith("The probe character changed more than the box.");
+    expect(pane.box).toBe("");
+    expect(pane.transcript).not.toContain("› reply with one word: ready");
+  });
+
+  test("the goal hint matches only the observed status and its warning suffix", () => {
+    const hints = (loadProfiles().get("codex")?.idle.volatile.below.hints ?? []).map((source) => new RegExp(source, "u"));
+    const isHint = (row: string): boolean => hints.some((hint) => hint.test(row));
+    expect(isHint(`  ${notice}`)).toBe(true);
+    expect(isHint("  Goal hit usage limits (/goal resume)")).toBe(true);
+    expect(isHint("  Goal hit usage limits (/goal resume) · ⚠ 1 warning · f2 to view")).toBe(true);
+    expect(isHint("  Goal hit usage limits (/goal resume) · ⚠ 12 · f2")).toBe(true);
+    expect(isHint("  Goal hit usage limits (/goal resume) · choose an account")).toBe(false);
+    expect(isHint("  Goal hit usage limits (/goal resume) · ⚠ 6 warnings · f2 to view the diff")).toBe(false);
+    expect(isHint("  Goal requires approval · Enter to confirm")).toBe(false);
+    expect(isHint("  GPT-6-Astra xhigh · ~/project")).toBe(false);
+  });
+});
+
 describe("a command into a Codex 0.163.0 turn whose idle footer carries a warning segment (lab, 2026-10-28)", () => {
   // The footer row is `? for shortcuts` with `⚠ 1 warning · f2 to view` after wide spacing; a turn swaps it for `tab to queue message`.
   /** The idle capture while the box is empty; the capture with the probe typed, its box row redrawn, once it holds text. */
