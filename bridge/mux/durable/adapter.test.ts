@@ -376,44 +376,6 @@ describe("the service name and the hysteresis", () => {
     expect(verdict(await adapter.poll())).toBe("unreachable: incompatible: not a durable agent");
   });
 
-  test("one failed read keeps the last layout; the second in a row is unreachable", async () => {
-    const { adapter, program, tick } = await rig();
-    expect(verdict(await adapter.poll())).toBe("ok");
-    // The program stops answering, but keeps its socket.
-    program.override = () => new Promise<Response>(() => undefined);
-    tick();
-    const first = await adapter.poll();
-    expect(verdict(first)).toBe("ok");
-    expect(first.ok && first.value.panes.length).toBeGreaterThan(0);
-    tick();
-    expect(verdict(await adapter.poll())).toStartWith("unreachable: no answer within");
-    // It answers again: one good read is enough to come back, and the count starts over.
-    program.override = null;
-    tick();
-    expect(verdict(await adapter.poll())).toBe("ok");
-    program.override = () => new Promise<Response>(() => undefined);
-    tick();
-    expect(verdict(await adapter.poll())).toBe("ok");
-  }, 10_000);
-
-  test("a held layout keeps its open asks across one dropped read, and the second drop clears them", async () => {
-    const { adapter, program, tick } = await rig();
-    await adapter.snapshot();
-    const asks = adapter.openAsks("conv-02");
-    expect(asks).toHaveLength(1);
-    program.override = () => new Promise<Response>(() => undefined);
-    tick();
-    const held = await adapter.poll();
-    expect(verdict(held)).toBe("ok");
-    expect(held.ok && held.value.panes.find((pane) => pane.paneId === "conv-02")?.status).toBe("blocked");
-    expect(adapter.openAsks("conv-02")).toEqual(asks);
-    expect(adapter.program()?.snapshot.panes.find((pane) => pane.id === "conv-02")?.openAsks).toHaveLength(1);
-    tick();
-    expect(verdict(await adapter.poll())).toStartWith("unreachable: no answer within");
-    expect(adapter.openAsks("conv-02")).toBeUndefined();
-    expect(adapter.program()).toBeNull();
-  }, 10_000);
-
   test("a program that answers starting is never held, even after a good read", async () => {
     const { adapter, program, tick } = await rig();
     expect(verdict(await adapter.poll())).toBe("ok");

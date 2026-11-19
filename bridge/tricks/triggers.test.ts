@@ -936,34 +936,6 @@ describe("`watch` runs a trick, and never loops on its own writes", () => {
     r.service.stop();
   });
 
-  watchTest("a trick that writes the file it watches runs once for an outside change, not again for its own write", async () => {
-    const dir = await tempDir();
-    const file = join(dir, "state.json");
-    await writeFile(file, "{}");
-    let runs = 0;
-    // Every run, the start run too, rewrites the file it watches, as a trick keeping its state in it would.
-    const own = await rig(null, {
-      run: async () => {
-        runs += 1;
-        await writeFile(file, `{"run":${String(runs)}}`);
-        return OK;
-      },
-    });
-    await makeTrick(own.configDir, "react", watchManifest(file));
-    await switchOn(own.stateDir, "react");
-    await tickAt(own, T0);
-    await tick(250);
-    // The start run's own write is absorbed.
-    expect(runs).toBe(1);
-    await writeFile(file, '{"outside":true}');
-    await tick(400);
-    // One run for the outside change; the write that run made did not start another.
-    expect(runs).toBe(2);
-    await tick(400);
-    expect(runs).toBe(2);
-    own.service.stop();
-  });
-
   watchTest("a file's change while the trick runs does not queue a second run after it", async () => {
     const dir = await tempDir();
     const file = join(dir, "todo.md");

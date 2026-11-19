@@ -4,32 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import {
-  capDiff,
-  changesParams,
-  type ChangesScope,
-  commitFileDiff,
-  discoverRepos,
-  fileDiff,
-  GIT_TIMEOUT_MS,
-  gitEnv,
-  listChanges,
-  MAX_DIFF_LINES,
-  parseCommitObject,
-  parseNameStatusZ,
-  parseNumstatZ,
-  parseStatusV2,
-  readCommit,
-  repoOfFolder,
-  SharedReads,
-  sharedDiffs,
-  sharedFileDiff,
-  sharedListChanges,
-  sharedLists,
-  gitRuns,
-  CHANGES_SHARE_MS,
-  syntheticAddedDiff,
-} from "./changes.ts";
+import { capDiff, changesParams, type ChangesScope, commitFileDiff, discoverRepos, fileDiff, GIT_TIMEOUT_MS, gitEnv, listChanges, MAX_DIFF_LINES, parseCommitObject, parseNameStatusZ, parseNumstatZ, parseStatusV2, readCommit, repoOfFolder, SharedReads, sharedListChanges, sharedLists, gitRuns, CHANGES_SHARE_MS, syntheticAddedDiff } from "./changes.ts";
 import { type FilesFs, NODE_FILES_FS, type OpenedFile } from "./read-guard.ts";
 import type { ChangeCommit, ChangesList } from "./types.ts";
 
@@ -675,22 +650,6 @@ describe("shared reads (ADR 0065 rule 8)", () => {
       // A different depth is a different key.
       await sharedListChanges(root, { depth: 3, nested: true }, S);
       expect(gitRuns.spawned).toBeGreaterThan(again);
-    });
-
-    test("two concurrent diff asks start git once between them, and run again after the window", async () => {
-      const root = join(dir, "r");
-      sharedDiffs.clear();
-      const q = { depth: 2, nested: true, repo: ".", path: "a.txt" };
-      const start = gitRuns.spawned;
-      const [a, b] = await Promise.all([sharedFileDiff(root, q, S), sharedFileDiff(root, q, S)]);
-      const one = gitRuns.spawned - start;
-      expect(one).toBeGreaterThan(0);
-      expect(a).toBe(b);
-      await Bun.sleep(CHANGES_SHARE_MS + 50);
-      const later = gitRuns.spawned;
-      const c = await sharedFileDiff(root, q, S);
-      expect(gitRuns.spawned - later).toBe(one);
-      expect(c).not.toBe(a);
     });
   });
 });

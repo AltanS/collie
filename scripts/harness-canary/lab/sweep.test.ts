@@ -76,14 +76,14 @@ describe("the sweep", () => {
     expect(findRow(readLedger(ledger), "claude", "2.1.301")?.result).toBe("running");
   });
 
-  test("a running row whose process is dead is settled as failed and its folder removed", async () => {
+  test("a running row whose process is dead is settled as a retry (the environment killed it) and its folder removed", async () => {
     const { labRoot, ledger } = rig();
     claim(ledger, "claude", "2.1.301", "2026-10-16", "/l", NOW, 77);
     const folder = runFolder(labRoot, "claude-2.1.301", 60_000);
     const done = await sweepLab({ labRoot, ledgerPath: ledger, now: NOW, live: live([]).live });
     expect(done.settled).toEqual(["claude-2.1.301"]);
     expect(existsSync(folder)).toBe(false);
-    expect(findRow(readLedger(ledger), "claude", "2.1.301")).toMatchObject({ result: "failed" });
+    expect(findRow(readLedger(ledger), "claude", "2.1.301")).toMatchObject({ result: "retry", cause: "interrupted", tries: 1 });
     expect(findRow(readLedger(ledger), "claude", "2.1.301")?.note).toContain("died");
   });
 

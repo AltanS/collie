@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
 // read by directory, so a new profile joins this check with no edit here. An id that appears as an
 // identifier or as a string literal in `web/src/lib/surface/*.ts`, `bridge/surface/*.ts` or
 // `bridge/walky/*.ts` fails.
-// Comments are not scanned. Test files are not scanned either: a test of a profile has to name it.
+// Comments are not scanned. Test files are not scanned either: a test of a profile has to name it, and so
+// does the rig it shares with its siblings (`*.rig.ts`, the fake pane of the Send Protocol tests).
 // `profiles/` itself is the one place a name may live, and it is not in either glob.
 
 // Walky talky (M62) holds the same rule: a message names its sender's harness as an open string.
@@ -28,7 +29,7 @@ function profileIds(): string[] {
 function sourceFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
+    .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && !name.endsWith(".rig.ts"))
     .map((name) => join(dir, name));
 }
 

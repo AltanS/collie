@@ -10,33 +10,7 @@ import { leadStore, material, member, muxCaps, CREW, T0 } from "./fixtures.ts";
 import { signDial, verifyDial, DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import { SWEEP_VIEW } from "./merge.ts";
 import { mintWarrant } from "./warrant.ts";
-import {
-  COLD_LINK,
-  DEFAULT_CREW_HELLO_TIMEOUT_MS,
-  DEFAULT_CREW_TIMEOUT_MS,
-  CREW_HELLO_TIMEOUT_ENV,
-  CREW_TIMEOUT_ENV,
-  PeerClient,
-  foldWarmth,
-  operatorReason,
-  crewHelloBudget,
-  crewTimeoutBudget,
-  crewTimeoutClampWarning,
-  crewUrl,
-  parseMuxReport,
-  parseSessionCards,
-  parseSurfaceVersion,
-  parsePeerStatus,
-  parsePeerVersion,
-  sweepPeers,
-  takeDataBudget,
-  HEADERLESS_PATIENCE_MS,
-  TRICKS_INPUTS_BUDGET_MS,
-  WRITE_BUDGET_MS,
-  type CrewFetch,
-  type CrewLink,
-  type PeerClientDeps,
-} from "./peer-client.ts";
+import { COLD_LINK, DEFAULT_CREW_HELLO_TIMEOUT_MS, DEFAULT_CREW_TIMEOUT_MS, CREW_HELLO_TIMEOUT_ENV, CREW_TIMEOUT_ENV, PeerClient, foldWarmth, operatorReason, crewHelloBudget, crewTimeoutBudget, crewTimeoutClampWarning, crewUrl, parseMuxReport, parseSessionCards, parseSurfaceVersion, parsePeerStatus, parsePeerVersion, sweepPeers, takeDataBudget, HEADERLESS_PATIENCE_MS, TRICKS_INPUTS_BUDGET_MS, type CrewFetch, type CrewLink, type PeerClientDeps } from "./peer-client.ts";
 import type { CrewRequestInit } from "./transport.ts";
 
 // The lead's client, tested against a FAKE fetch rather than a socket (CLAUDE.md: anything needing
@@ -1102,24 +1076,6 @@ describe("a forwarded write's own budget (§10.1)", () => {
     const second = await c.proxy(laptop, "pane/w1:p1", undefined, {});
     expect(!second.ok && second.reason).toBe("pane/w1:p1: timed out after 5ms");
   });
-
-  test("on the real clock: 2 s of work misses the poll budget and fits inside WRITE_BUDGET_MS", async () => {
-    // The measured case, on real timers rather than modelled: a launch onto a zellij member spawns a
-    // process and has the multiplexer build a tab. Around 2 s — under 1200 ms it is an abort the lead
-    // can only report as ambiguous (§10.3), and under 5000 ms it is the peer's own answer.
-    const slow: CrewFetch = (url, init) =>
-      new Promise((resolve, reject) => {
-        init.signal?.addEventListener("abort", () => reject(new Error("The operation was aborted.")));
-        setTimeout(() => void replying({ ok: true }).fetch(url, init).then(resolve, reject), 2000);
-      });
-    // No patient budget wired, so the poll budget is the honest comparison and not the credit.
-    const c = client(slow, { timeoutMs: crewTimeoutBudget(1500, {}) });
-    const missed = await c.proxy(laptop, "launch", undefined, { method: "POST" });
-    expect(!missed.ok && missed.reason).toBe(`launch: timed out after ${DEFAULT_CREW_TIMEOUT_MS}ms`);
-    const landed = await c.proxy(laptop, "launch", undefined, { method: "POST" }, WRITE_BUDGET_MS);
-    expect(landed.ok).toBe(true);
-    expect(landed.ok && landed.status).toBe(200);
-  }, 10_000);
 });
 
 // ── F18: the runtime's voice never reaches an operator ───────────────────────

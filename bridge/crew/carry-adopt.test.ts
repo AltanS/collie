@@ -78,8 +78,7 @@ describe("the person's tap starts the carried tricks", () => {
   });
 
   // The race is made with an inotify watch, which fires before the tap's rename; other platforms deliver
-  // the event later, and the test would race itself. Inline, not a skip: the Windows run's skip budget
-  // (scripts/windows-suites.ps1) counts every skipped test.
+  // the event later, and the test would race itself, so it returns early off Linux.
   test("a folder that appears while the tap writes is read after the rename: the lead's auto does not come along for it (review 7)", async () => {
     if (process.platform !== "linux") return;
     const lead = await machine("lead");
