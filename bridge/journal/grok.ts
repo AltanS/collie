@@ -164,11 +164,22 @@ function processAlive(pid: number): boolean {
   }
 }
 
-/** Inner text of the first `<user_query>…</user_query>`, trimmed; null when the tag isn't present. */
+/**
+ * Inner text of the first `<user_query>…</user_query>`, trimmed; null when the tag isn't present.
+ *
+ * Found with `indexOf`, never a regex: the text is whatever a person typed, and the old
+ * `/<user_query>\s*([\s\S]*?)\s*<\/user_query>/` took time in the cube of an open tag's trailing
+ * blanks when the close was missing (8 KB took 36 s, with the bridge stopped). The first open tag
+ * pairs with the first close after it, as the regex did; a later open tag cannot find a close the
+ * first one missed.
+ */
 export function extractUserQuery(text: string): string | null {
-  const m = /<user_query>\s*([\s\S]*?)\s*<\/user_query>/.exec(text);
-  if (!m) return null;
-  const inner = (m[1] ?? "").trim();
+  const OPEN = "<user_query>";
+  const open = text.indexOf(OPEN);
+  if (open === -1) return null;
+  const close = text.indexOf("</user_query>", open + OPEN.length);
+  if (close === -1) return null;
+  const inner = text.slice(open + OPEN.length, close).trim();
   return inner === "" ? null : inner;
 }
 

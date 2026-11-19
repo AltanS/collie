@@ -93,8 +93,14 @@ export function isAgentId(value: string): boolean {
 
 /** Inner text of the first `<tag>…</tag>`, trimmed; null when the tag isn't present. */
 function inner(tag: string, text: string): string | null {
-  const m = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(text);
-  return m ? (m[1] ?? "").trim() : null;
+  // `indexOf`, not `<tag>([\s\S]*?)</tag>`: on an open tag repeated with no close that regex read the
+  // rest of the text again from each one (quadratic, 2 s at 256 KB). The first open tag pairs with
+  // the first close after it, as the regex did.
+  const open = `<${tag}>`;
+  const start = text.indexOf(open);
+  if (start === -1) return null;
+  const end = text.indexOf(`</${tag}>`, start + open.length);
+  return end === -1 ? null : text.slice(start + open.length, end).trim();
 }
 
 /** True when the content IS this envelope (rather than merely mentioning the tag in prose). */
@@ -114,8 +120,66 @@ function isEnvelope(tag: string, text: string): boolean {
  * the operator said, not an edge case. The tags are Claude Code's own and the operator never typed
  * them; drawn as text they open the turn with markup, and in the queue row they took a tenth of its
  * 200 characters.
+ *
+ * The grammar, as the regex `(^|\n)<pasted_content id="([0-9a-f]+)">\n?([\s\S]*?)\n?<\/pasted_content(?:\s+id="\2")?>`
+ * had it: an open tag at the start or after a line break, a hex id, one optional line break, the
+ * pasted text up to the FIRST close that fits (an unlabelled `</pasted_content>` or one with the same
+ * id), one optional line break before that close. It is walked by hand now, because the text is
+ * whatever a person pasted: on open tags repeated with no close, that regex read the rest of the
+ * prompt again from each one (quadratic, 2.6 s at 256 KB, the bridge stopped meanwhile).
  */
-const PASTED_CONTENT = /(^|\n)<pasted_content id="([0-9a-f]+)">\n?([\s\S]*?)\n?<\/pasted_content(?:\s+id="\2")?>/g;
+const PASTE_OPEN = '<pasted_content id="';
+const PASTE_CLOSE = "</pasted_content";
+const PASTE_ID = /[0-9a-f]+/y;
+const PASTE_CLOSE_ID = /\s+id="([0-9a-f]+)">/y;
+
+/** One close tag: where it starts, where it ends, and the id it names (null: unlabelled). */
+interface PasteClose {
+  at: number;
+  end: number;
+  id: string | null;
+}
+
+/** Every close tag in `text`, in order. A `</pasted_content` of neither shape closes nothing. */
+function pasteCloses(text: string): PasteClose[] {
+  const closes: PasteClose[] = [];
+  for (let at = text.indexOf(PASTE_CLOSE); at !== -1; at = text.indexOf(PASTE_CLOSE, at + PASTE_CLOSE.length)) {
+    const after = at + PASTE_CLOSE.length;
+    if (text[after] === ">") {
+      closes.push({ at, end: after + 1, id: null });
+      continue;
+    }
+    PASTE_CLOSE_ID.lastIndex = after;
+    const m = PASTE_CLOSE_ID.exec(text);
+    if (m) closes.push({ at, end: PASTE_CLOSE_ID.lastIndex, id: m[1] ?? "" });
+  }
+  return closes;
+}
+
+/**
+ * The first close at or after `from` that fits an open tag with `id`. Each list is read once from its
+ * front, so the calls must come with `from` never moving back, as the walk in `unwrapPastes` does.
+ */
+function pasteCloseFinder(closes: readonly PasteClose[]): (id: string, from: number) => PasteClose | undefined {
+  const lists = new Map<string | null, { closes: PasteClose[]; next: number }>();
+  for (const close of closes) {
+    const list = lists.get(close.id);
+    if (list) list.closes.push(close);
+    else lists.set(close.id, { closes: [close], next: 0 });
+  }
+  const firstIn = (key: string | null, from: number): PasteClose | undefined => {
+    const list = lists.get(key);
+    if (!list) return undefined;
+    while (list.next < list.closes.length && list.closes[list.next]!.at < from) list.next++;
+    return list.closes[list.next];
+  };
+  return (id, from) => {
+    const plain = firstIn(null, from);
+    const named = firstIn(id, from);
+    if (!plain || !named) return plain ?? named;
+    return plain.at < named.at ? plain : named;
+  };
+}
 
 /** The text with each recorded paste replaced by what was pasted, trimmed at both ends. A tag with no
  *  matching close (same id) is left as it is.
@@ -126,7 +190,29 @@ const PASTED_CONTENT = /(^|\n)<pasted_content id="([0-9a-f]+)">\n?([\s\S]*?)\n?<
  *  a receipt. Change the two together when Claude Code changes the wrapper. */
 export function unwrapPastes(text: string): string {
   if (!text.includes("<pasted_content ")) return text;
-  return text.replace(PASTED_CONTENT, "$1$3").trim();
+  const firstClose = pasteCloseFinder(pasteCloses(text));
+  let out = "";
+  let copied = 0;
+  for (let at = text.indexOf(PASTE_OPEN); at !== -1; ) {
+    PASTE_ID.lastIndex = at + PASTE_OPEN.length;
+    const id = at === 0 || text[at - 1] === "\n" ? PASTE_ID.exec(text)?.[0] : undefined;
+    const idEnd = at + PASTE_OPEN.length + (id?.length ?? 0);
+    if (id === undefined || !text.startsWith('">', idEnd)) {
+      at = text.indexOf(PASTE_OPEN, at + 1);
+      continue;
+    }
+    const body = text[idEnd + 2] === "\n" ? idEnd + 3 : idEnd + 2;
+    const close = firstClose(id, body);
+    if (close === undefined) {
+      at = text.indexOf(PASTE_OPEN, at + 1);
+      continue;
+    }
+    const bodyEnd = close.at > body && text[close.at - 1] === "\n" ? close.at - 1 : close.at;
+    out += text.slice(copied, at) + text.slice(body, bodyEnd);
+    copied = close.end;
+    at = text.indexOf(PASTE_OPEN, copied);
+  }
+  return (out + text.slice(copied)).trim();
 }
 
 /**
