@@ -21,6 +21,17 @@ describe("Fab, the dashboard's one floating New button", () => {
     expect(button.className).not.toMatch(/border-(l|r|t|b)-/);
   });
 
+  it("is the 640px column's layer by default, and a layer of the given width, centred, for the large-screen grid", () => {
+    const { rerender } = render(<Fab label="New" onClick={vi.fn()} bottom={BOTTOM} />);
+    const layer = () => document.querySelector<HTMLElement>('[data-slot="fab-layer"]')!;
+    expect(layer()).toHaveClass("max-w-screen-sm", "px-4");
+    expect(layer().style.maxWidth).toBe("");
+    rerender(<Fab label="New" onClick={vi.fn()} bottom={BOTTOM} columnWidth={1248} />);
+    expect(layer().style.maxWidth).toBe("1248px");
+    expect(layer()).toHaveClass("mx-auto", "px-6");
+    expect(layer()).not.toHaveClass("max-w-screen-sm");
+  });
+
   it("collapses to the 48px round \"+\", keeping its name, and moves without motion when asked", () => {
     const { rerender } = render(<Fab label="New" onClick={vi.fn()} bottom={BOTTOM} />);
     const pill = screen.getByRole("button", { name: "New" });

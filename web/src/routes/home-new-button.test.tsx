@@ -21,7 +21,7 @@ import { HomeRoute } from "./home";
 
 vi.mock("@/hooks/use-loading-stalled", () => ({ useLoadingStalled: () => false }));
 const keyboard = vi.hoisted(() => ({ open: false }));
-vi.mock("@/hooks/use-keyboard", () => ({ useKeyboardOpen: () => keyboard.open }));
+vi.mock("@/hooks/use-keyboard", () => ({ useKeyboardOpen: () => keyboard.open, useTypingFocus: () => false }));
 
 const REFUSAL = "Saved copy. Reconnect to make changes.";
 
