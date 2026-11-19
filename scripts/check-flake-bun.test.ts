@@ -99,9 +99,11 @@ describe("the floor job runs MIN_BUN", () => {
     };
     const job = parsed.jobs["bun-floor"];
     expect(job).toBeDefined();
-    expect(job!.needs).toBeUndefined();
-    // A floor that can be skipped or allowed to fail measures nothing.
-    expect(job!.if).toBeUndefined();
+    // The floor waits for the `changes` job only, and runs when its paths changed or on the nightly run
+    // (scripts/ci-changes.ts: the nightly and a manual run switch every job on). It is never allowed to
+    // fail: a floor that may fail measures nothing.
+    expect(job!.needs).toBe("changes");
+    expect(job!.if).toBe("needs.changes.outputs.bun_floor == 'true'");
     expect(job!["continue-on-error"]).toBeUndefined();
     for (const step of job!.steps) {
       expect(step.if).toBeUndefined();
