@@ -1425,9 +1425,8 @@ own record, on its own disk, of a member rejoining without an operator.
   no new route mounted, no changed byte on any existing response. Every new field is
   optional-and-absent, following the `update?` / `servers?` precedent §11 argues for at length.
 - **Solo is untouched, and the gate proves it.** `bridge/solo-baseline.test.ts` and
-  `web/src/lib/solo-baseline.test.ts` pin the §11 table byte-for-byte, including the exhaustive
-  `Record<keyof T, true>` per wire type — so any new response field fails `bun run typecheck` at the
-  line it was added. **A failure there is not a stale golden**; if this feature ever trips it, the
+  `web/src/lib/solo-baseline.test.ts` hold the §11 table: a byte-compared golden solo body, and
+  rules that no crew field, route, setting or state file reaches a solo instance. **A failure there is not a stale golden**; if this feature ever trips it, the
   design is wrong, not the test.
 - **Adoption is per machine and needs no coordination**, per §7.1 — except for the one capability
   gap RFC §11.5 names: a peer must run an amended build **and be restarted** before it can be part of
