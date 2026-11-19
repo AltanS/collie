@@ -21,6 +21,12 @@ interface FabProps {
    * top: the word teaches the button once, then the circle gets out of the way.
    */
   collapsed?: boolean;
+  /**
+   * The content column's width in px, where it is not the phone's 640px: the dashboard on a large screen,
+   * whose grid of Spaces sets it (ADR 0158). The layer is then that wide, centred, and the button sits
+   * 24px inside its right edge, the grid's own edge. Absent, the layer is the 640px column, as ever.
+   */
+  columnWidth?: number;
 }
 
 /**
@@ -49,14 +55,17 @@ interface FabProps {
  * tap may write, is the caller's. `disabled:opacity-100` keeps a busy button at full ink: the spinner
  * is the state, and a faded spinner reads as broken.
  */
-export function Fab({ label, onClick, busy = false, bottom, collapsed = false }: FabProps) {
+export function Fab({ label, onClick, busy = false, bottom, collapsed = false, columnWidth }: FabProps) {
   return createPortal(
     <div
       data-slot="fab-layer"
       className={cn(
-        "pointer-events-none fixed inset-x-0 z-30 mx-auto flex w-full max-w-screen-sm justify-end px-4",
+        columnWidth === undefined
+          ? "pointer-events-none fixed inset-x-0 z-30 mx-auto flex w-full max-w-screen-sm justify-end px-4"
+          : "pointer-events-none fixed inset-x-0 z-30 mx-auto flex w-full justify-end px-6",
         bottom,
       )}
+      style={columnWidth === undefined ? undefined : { maxWidth: columnWidth }}
     >
       <FabButton label={label} onClick={onClick} busy={busy} collapsed={collapsed} />
     </div>,

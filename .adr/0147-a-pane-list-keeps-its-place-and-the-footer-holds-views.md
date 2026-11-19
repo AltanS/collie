@@ -1,6 +1,6 @@
 # 0147: A pane list keeps every pane in its place, and the dashboard's footer holds views
 
-- **Status:** Accepted (2026-11-16)
+- **Status:** Accepted (2026-11-16). Amended in scope by [ADR 0158](./0158-the-large-screen-dashboard-repeats-what-needs-you-in-a-band.md): a band on the large-screen dashboard, and a grid there.
 - **Date:** 2026-11-16
 - **Supersedes:** ADR 0063, ADR 0066, ADR 0068, ADR 0070, ADR 0071, ADR 0085
 - **Retires:** ADR 0069 (rule in `web/src/lib/glide.ts`)

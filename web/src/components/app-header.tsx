@@ -57,8 +57,11 @@ interface HeaderClaim {
    *  terminal mirror with a column count of its own: a 640px column minus its 16px gutters clips an
    *  80-column mirror, and a 768px one clips a 120-column mirror. A dashboard row has no such
    *  number. AgentChat's wrapper carries the measurement and the same four classes; the two must
-   *  not drift, or the header and the mirror stop sharing a right edge. */
-  width: "column" | "wide" | "full";
+   *  not drift, or the header and the mirror stop sharing a right edge.
+   *
+   *  A NUMBER is a column of exactly that many px, centred: the dashboard on a large screen, whose grid of
+   *  Spaces sets its own width (`lib/wide-dashboard.ts`, ADR 0158). */
+  width: "column" | "wide" | "full" | number;
   /** The route has taken the whole row (Settings, Crew, and either find bar). The shell then draws
    *  no mark, no caption and no slots — see `RouteHeader`. */
   override: boolean;
@@ -322,6 +325,8 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
     />
   );
 
+  // A claim of a number of px (the large-screen dashboard's grid), as that number; the three words give null.
+  const claimedPx = claim.width === "column" || claim.width === "wide" || claim.width === "full" ? null : claim.width;
   const header = (
     <>
       {/* A column, not a row: the sticky bar reserves the safe-area inset (see the class list), and
@@ -368,10 +373,12 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
           // when it comes back.
           claim.hidden ? "border-transparent" : "border-band-rule",
           dockedRow === null && claim.width === "column" && "mx-auto w-full max-w-screen-sm",
+          dockedRow === null && claimedPx !== null && "mx-auto w-full",
           dockedRow === null &&
             claim.width === "wide" &&
             "mx-auto w-full max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]",
         )}
+        style={dockedRow === null && claimedPx !== null ? { maxWidth: claimedPx } : undefined}
       >
         {/* The row and the prerelease strip leave TOGETHER, and through `Collapse` — DESIGN.md §1's
             only sanctioned way an in-flow surface arrives or leaves, which is what makes "hide the
@@ -596,7 +603,7 @@ interface RouteHeaderProps {
   /** Whether this route's header is as wide as its `max-w-screen-sm` content column (`column`), as
    *  the pane pair's growing 768-to-1400px one (`wide`), or edge to edge (`full`). See
    *  `HeaderClaim.width`. Defaults to `full`, which is the plainest of the three. */
-  width?: "column" | "wide" | "full";
+  width?: "column" | "wide" | "full" | number;
 
   /** Route-specific center content — the pane's `space › tab` breadcrumb. Rendered in a `flex-1
    *  min-w-0` region so a long breadcrumb truncates instead of pushing the pill off the row. Empty on

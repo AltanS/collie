@@ -181,7 +181,9 @@ Product details that shaped the loop:
 - **Opinionated triage, without moving anything.** The home screen leads with one summary line that
   counts what **needs you** and jumps to it; every pane stays where it sits, in the multiplexer's own
   order, and urgency is a mark on the row, never a position
-  ([ADR 0147](./.adr/0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md)). Simultaneous blocks
+  ([ADR 0147](./.adr/0147-a-pane-list-keeps-its-place-and-the-footer-holds-views.md)). The one exception is the
+  large-screen dashboard, where a band above the grid repeats the sessions that need you and no row leaves
+  its place ([ADR 0158](./.adr/0158-the-large-screen-dashboard-repeats-what-needs-you-in-a-band.md)). Simultaneous blocks
   batch into one summary notification, not three races. The split rests on the `agentDetection` capability: a driver that cannot tell an agent from a
   shell says so, and the screen is panes rather than a triage it would have to invent.
 - **Close the trust loop.** A "Sent" state on the `POST`'s HTTP response, then the visible

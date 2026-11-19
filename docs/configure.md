@@ -1388,12 +1388,20 @@ on this device, and **Enter sends** in Settings still changes the choice.
 
 ## Large screens
 
-> **Note.** On a tablet or an open Fold the pane screen shows several panes side by side. A phone held upright and flat is not changed.
+> **Note.** On a tablet or an open Fold the pane screen shows several panes side by side, and from 900 pixels wide the dashboard shows its Spaces in columns. A phone held upright and flat is not changed.
 
 The layout turns on for the pane screen when the screen is at least 600 CSS pixels wide and at least
 480 pixels tall. A phone held sideways is under 480 pixels tall, so it keeps the phone layout.
 To switch it off, open **Settings → Appearance → Large-screen layout** and pick **Off**. **Auto**,
 the default, turns it on where the screen is big enough. The choice is stored per device.
+
+The dashboard follows the same switch, from 900 pixels wide. The Spaces stand side by side in
+columns 384 pixels wide, as many as fit (two at 900 pixels, three at 1280, four at 1920, six at most),
+and the tab bar at the foot is as wide as the columns. A band at the top repeats every session that
+needs you or finished unseen, as a card with its question. A session in the band also keeps its row
+in its Space, so nothing moves out of place. The band closes when nothing waits, and the
+**needs you** switch hides it, because the columns then show only those sessions. Narrower than 900
+pixels, and with **Off**, the dashboard is the one narrow list.
 
 The layout has three parts.
 
