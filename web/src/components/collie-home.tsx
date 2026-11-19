@@ -6,7 +6,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { ORBIT_TURN_MS, type MarkHandle, type MarkState } from "@/components/mark-contract";
 import { t } from "@/lib/i18n";
 import { useStatus } from "@/lib/status";
-import { useOperatorBusy } from "@/lib/busy";
+import { useOnlyNavigating, useOperatorBusy } from "@/lib/busy";
 import { useLocale } from "@/hooks/use-locale";
 import { Icon } from "@/components/icons/icon";
 import { CrossfadeImage } from "@/components/ui/crossfade-image";
@@ -294,6 +294,7 @@ export function CollieHome({
   // of its own over the same time; `steady` below keeps that round from ramping, so the two are one
   // turn. Under reduced motion nothing turns and the colour alone holds for the same time.
   const busy = useOperatorBusy();
+  const onlyNavigating = useOnlyNavigating();
 
   const status = useStatus();
   const roundId = status?.id ?? 0;
@@ -385,8 +386,11 @@ export function CollieHome({
     reconnected: greets,
     loading: bloom || round || busy,
   });
-  // The picture stands in for the mark only while the mark has nothing to say (ADR 0160).
-  const shownPicture = state === "rest" && beads === null && !lost ? picture : null;
+  // The picture stands in for the mark only while the mark has nothing to say (ADR 0160). A route
+  // navigation alone is not such a thing: the picture holds over it, so a move from one pictured session
+  // to another never shows the mark for the new pane's loader (lib/busy.ts).
+  const resting = markReading({ lost, applying: applies, starting: starts, reconnected: greets, loading: bloom || round || (busy && !onlyNavigating) });
+  const shownPicture = resting.state === "rest" && resting.beads === null && !lost ? picture : null;
   return (
     <button
       type="button"

@@ -94,6 +94,28 @@ describe("CollieHome — the project picture", () => {
     expect(shown(container)).toBe("true");
   });
 
+  it("holds over a route navigation alone, so a move between two pictured sessions never shows the mark", () => {
+    const { container } = render(<CollieHome trouble={false} picture={PICTURE} />);
+    let navigation = () => {};
+    act(() => {
+      navigation = beginBusy("navigation");
+    });
+    // The mark turns under the picture for the loader; the picture does not step aside.
+    expect(markState(container)).toBe("loading");
+    expect(shown(container)).toBe("true");
+    // Work the operator started during the move still brings the mark back.
+    let send = () => {};
+    act(() => {
+      send = beginBusy();
+    });
+    expect(shown(container)).toBe("false");
+    act(() => send());
+    expect(shown(container)).toBe("true");
+    act(() => navigation());
+    expect(markState(container)).toBe("rest");
+    expect(shown(container)).toBe("true");
+  });
+
   it("comes back and goes again as the live state arrives and leaves", () => {
     const { container, rerender } = render(<CollieHome trouble={false} picture={PICTURE} />);
     expect(shown(container)).toBe("true");

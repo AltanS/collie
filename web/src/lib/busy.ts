@@ -34,7 +34,13 @@ import { useEffect, useSyncExternalStore } from "react";
 //
 // So: a call site declares an interval of operator-initiated work, the orbit turns for exactly that
 // interval, and nothing else feeds it.
+//
+// A ROUTE NAVIGATION is work of its own kind, counted inside `work` and once more in `navigating`. The
+// orbit turns for it like for any work, but a session's project picture does not step aside for it: a
+// move from one pictured session to another must not flash the Collie mark for the length of the new
+// pane's loader (ADR 0160, "shows its picture at once"). A slow navigation still shows the bar.
 let work = 0;
+let navigating = 0;
 let count = 0;
 let pollStalled = false;
 const listeners = new Set<() => void>();
@@ -76,16 +82,23 @@ export function setPollBusy(stalled: boolean): void {
  * otherwise decrement a counter it only incremented once and drive it negative, which is a stuck-OFF
  * orbit rather than a stuck-on one. Concurrent work nests: the orbit turns until the LAST release.
  */
-export function beginBusy(): () => void {
+export function beginBusy(kind: "work" | "navigation" = "work"): () => void {
   work++;
+  if (kind === "navigation") navigating++;
   emit();
   let released = false;
   return () => {
     if (released) return;
     released = true;
     work--;
+    if (kind === "navigation") navigating--;
     emit();
   };
+}
+
+/** Whether the only work in flight is a route navigation (the project picture holds over it). */
+export function isOnlyNavigating(): boolean {
+  return navigating > 0 && work === navigating;
 }
 
 /** Non-hook read of the orbit's channel (for tests and any non-React consumer). */
@@ -107,11 +120,11 @@ export function isOperatorBusy(): boolean {
  * back. Nothing needs a
  * minimum duration, and adding one would make the orbit outlive the work it is reporting.
  */
-export function useBusyWhile(active: boolean): void {
+export function useBusyWhile(active: boolean, kind: "work" | "navigation" = "work"): void {
   useEffect(() => {
     if (!active) return;
-    return beginBusy();
-  }, [active]);
+    return beginBusy(kind);
+  }, [active, kind]);
 }
 
 /** Reactive read of the orbit's channel. Module-scoped store, mirroring lib/status. */
@@ -119,9 +132,15 @@ export function useOperatorBusy(): boolean {
   return useSyncExternalStore(subscribe, isOperatorBusy, isOperatorBusy);
 }
 
+/** Reactive read of {@link isOnlyNavigating}. */
+export function useOnlyNavigating(): boolean {
+  return useSyncExternalStore(subscribe, isOnlyNavigating, isOnlyNavigating);
+}
+
 /** Test seam — drops any work left counted by a case that unmounted nothing. */
 export function __resetOperatorBusy(): void {
   work = 0;
+  navigating = 0;
   emit();
 }
 

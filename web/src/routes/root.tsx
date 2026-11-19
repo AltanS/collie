@@ -110,7 +110,8 @@ export function RootLayout() {
   // (lib/busy.ts states it at `useBusyWhile`), so a 120ms navigation reads as a short
   // accelerate/decelerate rather than a flicker, and delaying it would only make the fast case —
   // the common one — say nothing at all.
-  useBusyWhile(useNavigation().state !== "idle");
+  // A navigation is its own kind of work: a session's project picture holds over it (lib/busy.ts).
+  useBusyWhile(useNavigation().state !== "idle", "navigation");
   // The history the tab has walked, for the Files breadcrumb's pop (lib/nav-trail.ts).
   useNavTrail();
   // Which pane this tab reopens on, when it came through `/slot/<n>` (lib/slots.ts).
