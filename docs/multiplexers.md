@@ -188,12 +188,13 @@ Collie shows each Rex session as a space, each window as a tab, and each block a
 block that is not a terminal has no screen, and Collie leaves it out.
 
 Rex keeps the status a program reports about itself. Claude Code reports one on its own, so a
-Claude block shows as Claude, and as blocked while it waits for you. Codex, pi and Grok report one
-too. Rex does not know the conversation id, so a pane's History needs the hooks; they name the
+Claude block shows as Claude, and as blocked while it waits for you. Codex, pi, Grok and omp report
+one too. Rex does not know the conversation id, so a pane's History needs the hooks; they name the
 session through `$REX_BLOCK` and `$REX_SERVER`, which Rex sets in every block.
 
-omp and opencode report no status to Rex, so Collie shows them as shells. Codex shows as a shell
-until you trust its folder, because it reports nothing at that question.
+omp reports its status from version 18.8.7 on, and an older omp shows as a shell. opencode 1.19
+reports none, so it shows as a shell. Codex shows as a shell until you trust its folder, because it
+reports nothing at that question.
 
 The endpoint is the Rex server. Leave it empty to use the server that `rex` finds by itself, or set
 anything `rex -S` takes. Collie asks `rex` never to start a server: start yours with
