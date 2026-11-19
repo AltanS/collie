@@ -1158,7 +1158,12 @@ export class PeerClient {
       // `tls` rides the init: Bun's fetch takes the pinned material per request, so there is no agent
       // to construct, cache or invalidate — the pin is read fresh on every dial, from the store.
       const tls = this.deps.tls?.(link);
-      const dialInit: CrewRequestInit = { ...init, headers, signal: controller.signal };
+      // `redirect` is set AFTER the caller's init, so no caller can turn following back on. A crew dial
+      // never follows a redirect: a followed hop would carry this request, its body, the member and
+      // device headers and the dial attestation to an address the far side picked, and hand that
+      // address's answer back as the peer's (§9.1). `manual` rather than `error`, because the 3xx is
+      // then handed back and its target can be named in the reason below.
+      const dialInit: CrewRequestInit = { ...init, headers, signal: controller.signal, redirect: "manual" };
       // Assigned, never conditionally spread: an unpinned link must carry NO `tls` key at all.
       if (tls) dialInit.tls = tls;
       res = await this.deps.fetch(url, dialInit);
@@ -1181,6 +1186,15 @@ export class PeerClient {
       return this.fail({ state: "unreachable", reason: `${route}: ${reason}`, timedOut: aborted });
     } finally {
       clearTimeout(timer);
+    }
+
+    // ── A redirect is a failed dial, before anything else is read ────────────
+    // No collie answers a crew route with a redirect, so a 3xx is a peer that answers wrongly: the
+    // same `unreachable` a non-2xx is, whatever version it claims and in either mode, so a forwarded
+    // answer can never hand the phone a `Location`. Its body is not read, only cancelled.
+    if (isRedirectAnswer(res)) {
+      void res.body?.cancel().catch(() => undefined);
+      return this.fail({ state: "unreachable", reason: `${route}: ${redirectReason(res, url)}` });
     }
 
     // ── Version first, before status and before the body ─────────────────────
@@ -1388,6 +1402,49 @@ function httpDate(raw: string | null): number | null {
   if (raw === null || raw.trim() === "") return null;
   const ms = Date.parse(raw);
   return Number.isFinite(ms) ? ms : null;
+}
+
+/** The longest redirect target a reason names: the `Location` is the far side's text, so it is cut. */
+export const REDIRECT_TARGET_MAX = 80;
+
+/**
+ * Whether a crew answer is a redirect, in either shape a runtime with `redirect: "manual"` reports it:
+ * an `opaqueredirect` (the browser shape) or the 3xx itself (Bun's). A `304` is NOT one: it is the
+ * peer's honest answer to a passed-on `If-None-Match` (§9.1), and refusing it would cost every poll a
+ * full body.
+ */
+export function isRedirectAnswer(res: Response): boolean {
+  if (res.type === "opaqueredirect") return true;
+  return res.status >= 300 && res.status < 400 && res.status !== 304;
+}
+
+/**
+ * The reason for a refused redirect, as `crew status` and the logs print it.
+ *
+ * It names the target's ORIGIN only (scheme, host, port), resolved against the dialled URL so a
+ * relative `Location` names the peer's own origin. Never the path or the query, which can carry
+ * anything, and never the credentials of a `user:pass@` (the URL's `host` holds none). The far side
+ * wrote the `Location`, so what is left is cut to printable ASCII and {@link REDIRECT_TARGET_MAX}.
+ */
+export function redirectReason(res: Response, dialled: string): string {
+  const status = res.type === "opaqueredirect" ? "a redirect" : `a redirect (${String(res.status)})`;
+  const target = redirectTarget(res.headers.get("location"), dialled);
+  return `the peer answered ${status} ${target}, and a crew dial never follows one`;
+}
+
+/** `to <origin>` for a redirect's `Location`, bounded as {@link redirectReason} says. Exported for `crew join`. */
+export function redirectTarget(location: string | null, dialled: string): string {
+  if (location === null || location === "") return "with no target";
+  let parsed: URL;
+  try {
+    parsed = new URL(location, dialled);
+  } catch {
+    return "to an address that does not parse";
+  }
+  if (parsed.host === "") return "to an address with no host";
+  const origin = `${parsed.protocol}//${parsed.host}`.replace(/[^\x21-\x7e]/g, "?");
+  const cut = origin.length > REDIRECT_TARGET_MAX ? `${origin.slice(0, REDIRECT_TARGET_MAX - 3)}...` : origin;
+  return `to ${cut}`;
 }
 
 /** The record inside a parsed JSON body, or null when the body isn't one (a scalar, an array). */

@@ -2997,3 +2997,32 @@ describe("the lead's tricks at a handover (CREW_PROTOCOL §25)", () => {
     expect(text(h.io)).not.toContain("tricks here");
   });
 });
+
+describe("collie join never follows a redirect", () => {
+  // Through the real `fetch`: following is the runtime's act, so only a second listener that counts
+  // what reaches it can prove the token did not travel on.
+  test("a 308 from the lead's address: the token stays there, nothing is stored, and the target is named", async () => {
+    const seen: string[] = [];
+    const target = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: async (req) => (seen.push(await req.text()), jsonReply(ENROLLED, 200, "desk")) });
+    const front = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => new Response(null, { status: 308, headers: { location: `http://u:p@127.0.0.1:${String(target.port)}/crew/v1/enroll?x=1` } }),
+    });
+    try {
+      const h = harness(null, [], { fetch: (url, init) => fetch(url, init) });
+      const lead = `http://127.0.0.1:${String(front.port)}`;
+      expect(await cmdJoin(h.deps, [lead, "-", "--insecure", "--address", "192.0.2.9:8787"])).toBe(EXIT.FAIL);
+      expect(seen).toHaveLength(0);
+      expect(h.data()?.lead ?? null).toBeNull();
+      const said = text(h.io);
+      expect(said).toContain(`error: ${lead} answered a redirect (308) to http://127.0.0.1:${String(target.port)}.`);
+      expect(said).not.toContain("u:p@");
+      expect(said).not.toContain("x=1");
+      expect(h.restarts).toHaveLength(0);
+    } finally {
+      await front.stop(true);
+      await target.stop(true);
+    }
+  });
+});
