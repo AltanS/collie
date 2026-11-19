@@ -1,6 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { defaultRexSocket, rexBinaryCandidates, rexChildEnv } from "./exec.ts";
+import {
+  CALL_OUTPUT_CAP,
+  CAPTURE_OUTPUT_CAP,
+  defaultRexSocket,
+  OUTPUT_CAPPED_CODE,
+  outputCapFor,
+  pumpLines,
+  rexBinaryCandidates,
+  rexChildEnv,
+  SpawnRexExec,
+} from "./exec.ts";
 
 // The macOS facts these pin were probed against the Rex.app-managed server, rex 0.0.1793974979
 // (API revision 11), on an Apple-silicon Mac (MUX_CONTRACT.md, RX): the app exports REX_BIN_DIR into
@@ -53,5 +66,59 @@ describe("defaultRexSocket", () => {
 
   test("Linux keeps /run/user when nothing is configured", () => {
     expect(defaultRexSocket(undefined, 1000, "/home/o", "linux")).toBe("/run/user/1000/rex/server.sock");
+  });
+});
+
+describe("a child's output is capped", () => {
+  test("the whole capture may be large, every other call small", () => {
+    expect(outputCapFor(["capture", "-b", "block:x", "--format=vt"])).toBe(CAPTURE_OUTPUT_CAP);
+    expect(outputCapFor(["block", "call", "-b", "block:x", "blob_read", "{}"])).toBe(CALL_OUTPUT_CAP);
+    expect(CAPTURE_OUTPUT_CAP).toBe(64 * 1024 * 1024);
+    expect(CALL_OUTPUT_CAP).toBe(2 * 1024 * 1024);
+  });
+
+  test("a child that never stops printing is killed past the cap, and the answer says so", async () => {
+    // A stand-in that prints for ever, whatever it is asked: the shape of a rex that answers without end.
+    const dir = mkdtempSync(join(tmpdir(), "rex-cap-"));
+    const endless = join(dir, "rex");
+    writeFileSync(endless, "#!/bin/sh\nwhile :; do echo 0123456789abcdef0123456789abcdef; done\n");
+    chmodSync(endless, 0o755);
+    const exec = new SpawnRexExec(endless, "", 20_000);
+    const started = performance.now();
+    const result = await exec.run(["ls", "--json"]).finally(() => rmSync(dir, { recursive: true, force: true }));
+    expect(result.code).toBe(OUTPUT_CAPPED_CODE);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(`rex printed more than ${String(CALL_OUTPUT_CAP)} bytes for \`ls\` and was killed`);
+    expect(performance.now() - started).toBeLessThan(10_000);
+  });
+
+  test("an answer under the cap arrives whole", async () => {
+    const exec = new SpawnRexExec("/usr/bin/echo", "", 5_000);
+    const result = await exec.run(["ls", "--json"]);
+    expect(result).toEqual({ code: 0, stdout: "--autostart=false --color=never ls --json\n", stderr: "" });
+  });
+});
+
+describe("the event stream's lines", () => {
+  async function* chunks(...parts: string[]): AsyncIterable<Uint8Array> {
+    for (const part of parts) yield new TextEncoder().encode(part);
+  }
+
+  test("a line past the cap is dropped whole, and the next line arrives", async () => {
+    const lines: string[] = [];
+    await pumpLines(chunks('{"a":1}\n', "x".repeat(40), "x".repeat(40), "tail\n", '{"b":2}\n'), (line) => lines.push(line), 64);
+    expect(lines).toEqual(['{"a":1}', '{"b":2}']);
+  });
+
+  test("an unterminated line never grows past the cap", async () => {
+    const lines: string[] = [];
+    await pumpLines(chunks(...Array.from({ length: 100 }, () => "y".repeat(50))), (line) => lines.push(line), 64);
+    expect(lines).toEqual([]);
+  });
+
+  test("a line split across chunks and one ending CRLF are whole lines", async () => {
+    const lines: string[] = [];
+    await pumpLines(chunks('{"a"', ':1}\r\n{"b":2}'), (line) => lines.push(line), 64);
+    expect(lines).toEqual(['{"a":1}', '{"b":2}']);
   });
 });

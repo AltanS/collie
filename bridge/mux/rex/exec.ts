@@ -106,6 +106,32 @@ export const NO_BINARY_CODE = 127;
 /** How long a child gets between SIGTERM and SIGKILL when it overruns its budget. */
 export const KILL_GRACE_MS = 1000;
 
+/**
+ * How much one `rex capture` may print, stdout and stderr together, before it is killed. Rex keeps
+ * about 64 MiB of scrollback per terminal, and the whole VT capture of a full ring measured 7.1 MB
+ * (96,000 styled rows, API revision 19), so 64 MiB is nine times that and still a bound.
+ */
+export const CAPTURE_OUTPUT_CAP = 64 * 1024 * 1024;
+/**
+ * How much any other call may print. The largest honest answer is a `blob_read` of up to 960 KiB of
+ * JSON string plus its envelope; every listing and status is a few kB.
+ */
+export const CALL_OUTPUT_CAP = 2 * 1024 * 1024;
+/** One line of the `rex events` stream. An event is a few hundred bytes; a longer line is dropped. */
+export const EVENT_LINE_CAP = 1024 * 1024;
+/** The code {@link SpawnRexExec.run} answers with when a child printed past its cap. Not a rex code. */
+export const OUTPUT_CAPPED_CODE = 190;
+
+/** The output cap of one call: the whole capture is the one call that may be large. */
+export function outputCapFor(args: readonly string[]): number {
+  return args[0] === "capture" ? CAPTURE_OUTPUT_CAP : CALL_OUTPUT_CAP;
+}
+
+export function cappedMessage(args: readonly string[], cap: number): string {
+  const verb = args.filter((arg) => !arg.startsWith("-")).slice(0, 2).join(" ") || "the call";
+  return `rex printed more than ${String(cap)} bytes for \`${verb}\` and was killed`;
+}
+
 export function timedOutMessage(args: readonly string[], timeoutMs: number): string {
   const verb = args.filter((arg) => !arg.startsWith("-")).slice(0, 2).join(" ") || "the call";
   return `rex did not answer \`${verb}\` within ${String(timeoutMs)}ms and was killed`;
@@ -157,16 +183,35 @@ export class SpawnRexExec implements RexExec {
 
     let killed = false;
     let hardKill: ReturnType<typeof setTimeout> | null = null;
-    const timer = setTimeout(() => {
-      killed = true;
+    const stop = (): void => {
+      if (hardKill !== null) return;
       child.kill();
       // A child that ignores SIGTERM would keep `stdout` open and this call pending forever.
       hardKill = setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS);
+    };
+    const timer = setTimeout(() => {
+      killed = true;
+      stop();
     }, this.timeoutMs);
 
+    // stdout and stderr count against one cap as they arrive; past it the child is stopped and what
+    // it printed is dropped, so a runaway answer never reaches the bridge's memory whole.
+    const cap = outputCapFor(args);
+    const counter = { bytes: 0, over: false };
+    const onBytes = (size: number): boolean => {
+      counter.bytes += size;
+      if (counter.bytes <= cap) return true;
+      if (!counter.over) {
+        counter.over = true;
+        stop();
+      }
+      return false;
+    };
+
     try {
-      const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+      const [stdout, stderr] = await Promise.all([readCapped(child.stdout, onBytes), readCapped(child.stderr, onBytes)]);
       const code = await child.exited;
+      if (counter.over) return { code: OUTPUT_CAPPED_CODE, stdout: "", stderr: cappedMessage(args, cap) };
       if (killed) return { code: TIMED_OUT_CODE, stdout: "", stderr: timedOutMessage(args, this.timeoutMs) };
       return { code, stdout, stderr };
     } finally {
@@ -216,17 +261,40 @@ export class SpawnRexExec implements RexExec {
   }
 }
 
-async function pumpLines(stream: ReadableStream<Uint8Array>, onLine: (line: string) => void): Promise<void> {
+/** A stream's text, read while `onBytes` allows; once it says no, the rest is drained and dropped. */
+async function readCapped(stream: ReadableStream<Uint8Array>, onBytes: (size: number) => boolean): Promise<string> {
+  const chunks: Uint8Array[] = [];
+  let keep = true;
+  for await (const chunk of stream) {
+    if (keep && onBytes(chunk.byteLength)) chunks.push(chunk);
+    else keep = false;
+  }
+  if (!keep) return "";
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
+/**
+ * Splits a stream into lines. A line longer than `cap` characters is dropped whole: its start is
+ * thrown away once it passes the cap, and the rest is skipped up to its newline, so an unterminated
+ * line cannot grow the buffer without limit.
+ */
+export async function pumpLines(stream: AsyncIterable<Uint8Array>, onLine: (line: string) => void, cap: number = EVENT_LINE_CAP): Promise<void> {
   const decoder = new TextDecoder();
   let buffered = "";
+  let skipping = false;
   for await (const chunk of stream) {
     buffered += decoder.decode(chunk, { stream: true });
     let cut = buffered.indexOf("\n");
     while (cut >= 0) {
-      onLine(buffered.slice(0, cut).replace(/\r$/u, ""));
+      if (!skipping) onLine(buffered.slice(0, cut).replace(/\r$/u, ""));
+      skipping = false;
       buffered = buffered.slice(cut + 1);
       cut = buffered.indexOf("\n");
     }
+    if (buffered.length > cap) {
+      buffered = "";
+      skipping = true;
+    }
   }
-  if (buffered.length > 0) onLine(buffered);
+  if (buffered.length > 0 && !skipping) onLine(buffered);
 }
