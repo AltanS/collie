@@ -46,7 +46,7 @@ describe("AgentList with a grid", () => {
     expect(grid.style.gridTemplateColumns).toBe("repeat(3, 384px)");
     expect(grid.querySelectorAll("[data-space]")).toHaveLength(3);
     // The summary line and the workspace filter share one row.
-    const row = screen.getByRole("button", { name: /^Workspace / }).closest<HTMLElement>(".min-h-11")!;
+    const row = screen.getByRole("button", { name: /^Space / }).closest<HTMLElement>(".min-h-11")!;
     expect(within(row).getByRole("button", { name: /needs you/u })).toBeInTheDocument();
   });
 

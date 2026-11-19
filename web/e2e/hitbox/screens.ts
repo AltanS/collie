@@ -54,7 +54,7 @@ export const SCREENS: ScreenRecipe[] = [
   { id: "space", group: "Dashboard", title: "A space (workspace)", world: "rich", path: "/space/w1" },
 
   // ── Sheets over the Dashboard ────────────────────────────────────────────
-  { id: "sheet-workspace-filter", group: "Sheets", title: "Workspace filter sheet", world: "rich", path: "/", open: (p) => tapByName(p, /^Workspace /u) },
+  { id: "sheet-workspace-filter", group: "Sheets", title: "Workspace filter sheet", world: "rich", path: "/", open: (p) => tapByName(p, /^Space /u) },
   { id: "sheet-row-actions", group: "Sheets", title: "A row's actions (long press)", world: "rich", path: "/", open: (p) => hold(p, p.getByRole("button", { name: /needs you/u }).nth(1)) },
   { id: "sheet-new-tab", group: "Sheets", title: "New tab sheet (heading plus)", world: "rich", path: "/", open: (p) => tapByName(p, /^New tab in webapp/u) },
   { id: "sheet-session-switcher", group: "Sheets", title: "Space switcher sheet", world: "rich", path: "/", open: (p) => tapByName(p, /^Space: /u) },
