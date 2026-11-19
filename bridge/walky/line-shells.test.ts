@@ -131,8 +131,8 @@ function linesFor(payload: string) {
 }
 
 describe("the typed line at a shell prompt runs nothing (fix/walky-line-fields)", () => {
-  // A shell this machine lacks gets no test at all rather than a skipped one, so the Windows skip budget
-  // (scripts/windows-suites.ps1) is untouched: on Windows only the shells that start there (Git's bash) get tests.
+  // A shell this machine lacks gets no test at all rather than a skipped one: on Windows only the shells
+  // that start there (Git's bash) get tests.
   // With COLLIE_REQUIRE_SHELLS=1 (the Linux bridge job of ci.yml, which installs zsh and fish) a missing
   // bash, dash, zsh or fish FAILS here instead of leaving its tests out, so CI always runs the real shells.
   // Not keyed on CI: release, windows, webkit and packaging runs set CI too and lack these shells.

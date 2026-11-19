@@ -131,7 +131,7 @@ describe("processInfoVia: a parent counts only when it started no later than the
 });
 
 describe("the real reads never throw", () => {
-  // No skip on either side, so the Windows suite's skip budget (scripts/windows-suites.ps1) stays as it is.
+  // No skip on either side: the same test runs on every platform.
   test("off Windows there is no kernel32, so both are null; on Windows both answer for this process", () => {
     const onWindows = process.platform === "win32";
     expect(win32StartTime(process.pid) !== null).toBe(onWindows);
