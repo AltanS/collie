@@ -372,6 +372,15 @@ describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
     expect(extractInputDraft(boxBuffer("❯ Press up to edit queued messages"))).toBeNull();
   });
 
+  // Claude Code 2.1.328 after a failed turn (API error). Faint on a styled read; herdr-core reads
+  // plain text, so the profile's known placeholder text (`idle.placeholders.texts`) is the only tell.
+  it("returns null for the resend hint on an unstyled read, and keeps other words and longer text as a draft", () => {
+    expect(extractInputDraft(boxBuffer("❯\u00A0Resend your message to try again"))).toBeNull();
+    expect(extractInputDraft(boxBuffer("❯ Resend your message to try again"))).toBeNull();
+    expect(extractInputDraft(boxBuffer("❯\u00A0Resend your note to try again"))).toBe("Resend your note to try again");
+    expect(extractInputDraft(boxBuffer("❯\u00A0Resend your message to try again now please"))).toBe("Resend your message to try again now please");
+  });
+
   it("returns null when there's no input box at the tail", () => {
     expect(extractInputDraft(splitLines(parseAnsi("just some output\nmore output")))).toBeNull();
     expect(extractInputDraft(fixtureLines("claude--trust-prompt.txt"))).toBeNull();
