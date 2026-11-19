@@ -3398,6 +3398,7 @@ export const en = {
   "sent.clear.confirm": "Tap again to clear",
   "sent.clear.error": "Could not clear Sent.",
   "sent.suggest.aria": "Suggestions from Sent",
+  "files.suggest.aria": "File suggestions",
   "sent.suggest.all": "All",
   "sent.suggest.all.aria": "All sent lines",
   "settings.sentSuggestions.title": "Suggestions from Sent",

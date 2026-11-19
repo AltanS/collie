@@ -3156,6 +3156,7 @@ export const es: Dictionary = {
   "sent.clear.confirm": "Toque de nuevo para borrar",
   "sent.clear.error": "No se pudo borrar Sent.",
   "sent.suggest.aria": "Sugerencias de Sent",
+  "files.suggest.aria": "Sugerencias de archivos",
   "sent.suggest.all": "Todo",
   "sent.suggest.all.aria": "Todas las líneas enviadas",
   "settings.sentSuggestions.title": "Sugerencias de Sent",

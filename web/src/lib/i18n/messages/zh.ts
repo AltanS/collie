@@ -3109,6 +3109,7 @@ export const zh: Dictionary = {
   "sent.clear.confirm": "再次点按以清除",
   "sent.clear.error": "无法清除 Sent。",
   "sent.suggest.aria": "来自 Sent 的建议",
+  "files.suggest.aria": "文件建议",
   "sent.suggest.all": "全部",
   "sent.suggest.all.aria": "所有已发送行",
   "settings.sentSuggestions.title": "来自 Sent 的建议",

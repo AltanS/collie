@@ -2969,6 +2969,7 @@ export const tr: Dictionary = {
   "sent.clear.confirm": "Temizlemek için tekrar dokunun",
   "sent.clear.error": "Sent temizlenemedi.",
   "sent.suggest.aria": "Sent tarafından sunulan öneriler",
+  "files.suggest.aria": "Dosya önerileri",
   "sent.suggest.all": "Tümü",
   "sent.suggest.all.aria": "Gönderilen tüm satırlar",
   "settings.sentSuggestions.title": "Sent tarafından sunulan öneriler",

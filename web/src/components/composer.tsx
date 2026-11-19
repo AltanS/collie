@@ -1,6 +1,6 @@
 import { forwardRef, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
-import type { ChangeEvent, ClipboardEvent, CSSProperties, MouseEvent, ReactNode } from "react";
+import type { ChangeEvent, ClipboardEvent, CSSProperties, FocusEvent, MouseEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
 
 import { StatusDot } from "@/components/status-badge";
@@ -28,7 +28,9 @@ import { KeyBoardEditor } from "@/components/key-board-editor";
 import { CommandPalette, useClaudeCommands } from "@/components/command-palette";
 import { SentSheet } from "@/components/sent-sheet";
 import { SuggestionStrip } from "@/components/suggestion-strip";
+import { useFileSuggestions } from "@/hooks/use-file-suggestions";
 import { useSentSuggestions } from "@/hooks/use-sent-suggestions";
+import { applyFileSuggestion, findAtToken, type FileSuggestion } from "@/lib/file-suggest";
 import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow, type BeltMark, type GeneralAction } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -301,6 +303,8 @@ interface ComposerProps {
   isShell: boolean;
   /** The pane's folder, absolute. Sent (M61) lists "This folder" with it; absent, it offers the machine only. */
   cwd?: string | undefined;
+  /** The pane's folder relative to the Files root (ADR 0150), when known on the pane view. */
+  filesDir?: string | null | undefined;
   /* NO `status` AND NO `stale` HERE ANY MORE. The composer took the pane's state as a prop for one
      reason: the status band above the controls row drew it as a word. That band is gone (see the
      long note at the row below), the word went with it rather than moving, and the state is the
@@ -732,7 +736,7 @@ function lockWordsFor(slot: SendSlot, unreachableWords: string): string | null {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest, unreadState = null, onScreenUnread, onAnswerUnseen, onCannotTell, onCannotTellRing, cannotTellInView, heldScreen, olderMember },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, filesDir, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, walkyLinked = false, onDeliverNow, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, expandArea, changesPill, zoomPill, stale, hand = "right", layout = "field", aboveBelt, beltMarks, floatingHint, screen, todos, subagents, jobs, pins, agentView, onViewRequest, unreadState = null, onScreenUnread, onAnswerUnseen, onCannotTell, onCannotTellRing, cannotTellInView, heldScreen, olderMember },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -863,6 +867,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // native picker took it) still puts its marker where the operator was. Null means "no caret
   // yet", which puts the marker at the end.
   const caretRef = useRef<number | null>(null);
+  const [atCaretState, setAtCaretState] = useState<{ paneKey: string; caret: number | null }>({
+    paneKey: "",
+    caret: null,
+  });
+  const [drillingToken, setDrillingToken] = useState<{ paneKey: string; start: number } | null>(null);
+  const suggestionStripRef = useRef<HTMLDivElement | null>(null);
   // Mirror of `input` for the write-through path: updateInput needs the previous value to apply a
   // functional update AND to persist the result, without either reading stale state or doing the
   // save inside a (double-invoked) state updater.
@@ -877,6 +887,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const scopeId = scopeKey(scope);
   // Report a problem (ADR 0123): this pane's failure streak, and whether this device offers the card.
   const reportKey = paneScopeKey(scope, paneId);
+  function syncCaret(caret: number | null, activeCaret: number | null = caret) {
+    caretRef.current = caret;
+    setAtCaretState({ paneKey: reportKey, caret: activeCaret });
+    if (activeCaret === null) setDrillingToken(null);
+  }
+  const resetAtCaretRef = useRef<() => void>(() => {});
   const reportOn = isLead(scope) && reportOfferOf(prefs);
   const reportCount = useTroubleOffer(reportKey);
   const draftPaneRef = useRef({ scope, scopeId, paneId });
@@ -926,6 +942,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
    */
   /** The draft field's change, for the box's field and the fullscreen editor's alike: one draft. */
   function onDraftChange(e: ChangeEvent<HTMLTextAreaElement>) {
+    const field = e.currentTarget;
+    const nextCaret = field.selectionStart === field.selectionEnd ? field.selectionStart : null;
+    const nextAt = findAtToken(field.value, nextCaret);
+    setDrillingToken((prev) =>
+      prev !== null && prev.paneKey === reportKey && nextAt !== null && nextAt.start === prev.start ? prev : null,
+    );
     rememberCaret(e);
     updateInput(e.target.value);
     noteOfflineKeystroke(e.target.value);
@@ -988,7 +1010,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // This pane's Put back list, and never the outgoing pane's.
     setPutBackList(loadPutBack(scope, paneId));
     setHeldBackFull(false);
-    caretRef.current = null;
+    resetAtCaretRef.current();
     setPreviewDismissed(false); // it was about the pane we just left
     noticeNoEchoRef.current(null); // it described the pane we just left
   }, [scope, scopeId, paneId]);
@@ -3144,8 +3166,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   useEffect(() => {
     mountedRef.current = true;
-    // Assigned here, not during render: abort only touches refs, so the first closure stays valid.
+    // Assigned here, not during render: both only touch refs and stable setters, so the first closure stays valid.
     abortEditRef.current = abortEdit;
+    resetAtCaretRef.current = () => {
+      caretRef.current = null;
+      setAtCaretState({ paneKey: "", caret: null });
+      setDrillingToken(null);
+    };
     return () => {
       mountedRef.current = false;
       abortEditRef.current();
@@ -3222,7 +3249,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const placed = insertMarker(inputValueRef.current, caret, markerFor(attachment));
     attachmentsRef.current = [...attachmentsRef.current, attachment];
     setAttachments(attachmentsRef.current);
-    caretRef.current = placed.caret;
+    syncCaret(placed.caret);
     updateInput(placed.text);
     focusInputAt(placed.caret);
   }
@@ -3282,7 +3309,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     revokePreview(attachment);
     attachmentsRef.current = attachmentsRef.current.filter((a) => a.n !== attachment.n);
     setAttachments(attachmentsRef.current);
-    caretRef.current = null;
+    syncCaret(null);
     updateInput(removeMarker(inputValueRef.current, markerFor(attachment)));
   }
 
@@ -3303,7 +3330,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const placed = insertMarker(inputValueRef.current, start, markerFor(attachment), end);
     attachmentsRef.current = [...attachmentsRef.current, attachment];
     setAttachments(attachmentsRef.current);
-    caretRef.current = placed.caret;
+    syncCaret(placed.caret);
     updateInput(placed.text);
     focusInputAt(placed.caret);
   }
@@ -3325,7 +3352,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     attachmentsRef.current = attachmentsRef.current.filter((a) => a.n !== n);
     setAttachments(attachmentsRef.current);
     const expanded = expandAttachmentInText(inputValueRef.current, target);
-    caretRef.current = expanded.length;
+    syncCaret(expanded.length);
+    setDrillingToken(null);
     updateInput(expanded);
     focusInputEnd();
   }
@@ -3335,7 +3363,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     for (const attachment of attachmentsRef.current) revokePreview(attachment);
     attachmentsRef.current = [];
     setAttachments([]);
-    caretRef.current = null;
+    syncCaret(null);
     updateInput("");
   }
 
@@ -3361,7 +3389,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     sendConfirm.reset();
     attachmentsRef.current = [];
     setAttachments([]);
-    caretRef.current = null;
+    syncCaret(null);
     // Through the write-through, so the stored entry goes in the same tick (lib/drafts.ts drops the
     // key for an empty draft), and it restarts the chip numbering as a send does.
     updateInput("");
@@ -3441,7 +3469,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     attachmentsRef.current = held.attachments;
     setAttachments(held.attachments);
     nextAttachmentRef.current = held.next;
-    caretRef.current = held.caret;
+    syncCaret(held.caret);
+    setDrillingToken(null);
     updateInput(held.text);
     // The caret goes back where it stood, but only into a field that still has focus: focusing it
     // here would raise a keyboard the operator had put away. Deferred, as every caret move in this
@@ -3504,7 +3533,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   /** Remember the caret whenever the field reports one, so a marker can land there later. */
   function rememberCaret(e: { currentTarget: HTMLTextAreaElement }) {
-    caretRef.current = e.currentTarget.selectionStart;
+    const start = e.currentTarget.selectionStart;
+    syncCaret(start, start === e.currentTarget.selectionEnd ? start : null);
   }
 
   // Images wait for the sheet: a preview with Attach (the original bytes) and Edit. Anything else keeps the old path: refuse locally, then upload.
@@ -3767,6 +3797,41 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     };
   }, [expandWanted, expandShown]);
   const expandedOpen = expanded && !direct.active && !locked && expandArea !== undefined && expandArea !== null;
+  const atCaret = atCaretState.paneKey === reportKey ? atCaretState.caret : null;
+  const canSuggestFiles =
+    boxFocused && !isShell && !locked && !secretField && !confirmingSend && !direct.active && !dialogCard && !expandedOpen;
+  const activeAt = useMemo(
+    () => (canSuggestFiles ? findAtToken(input, atCaret) : null),
+    [canSuggestFiles, input, atCaret],
+  );
+  const fileSuggest = useFileSuggestions({ activeAt, paneId, scope, cwd, filesDir });
+  const holdFileStripOpen =
+    drillingToken?.paneKey === reportKey &&
+    activeAt !== null &&
+    drillingToken.start === activeAt.start &&
+    fileSuggest.loading;
+  function selectFileSuggestion(file: FileSuggestion) {
+    if (activeAt === null) return;
+    direct.deactivateSilently();
+    const placed = applyFileSuggestion(inputValueRef.current, activeAt, file);
+    // Return focus before React re-renders so a keyboard-focused chip unmounting during an uncached
+    // folder drill never drops focus to `document.body`.
+    inputRef.current?.focus();
+    syncCaret(placed.caret);
+    setDrillingToken(file.isDir ? { paneKey: reportKey, start: activeAt.start } : null);
+    updateInput(placed.text);
+    focusInputAt(placed.caret);
+  }
+  function onSuggestionStripBlur(e: FocusEvent<HTMLButtonElement>) {
+    const next = e.relatedTarget;
+    if (
+      next instanceof Node &&
+      (next === inputRef.current || suggestionStripRef.current?.contains(next) === true)
+    ) {
+      return;
+    }
+    setBoxFocused(false);
+  }
   useEffect(() => {
     setExpanded(false);
   }, [paneId]);
@@ -3779,6 +3844,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const caret = expandedRef.current;
     flushSync(() => setExpanded(false));
     moveCaret(caret, inputRef.current);
+    const field = inputRef.current;
+    if (field !== null) {
+      syncCaret(
+        field.selectionStart,
+        field.selectionStart === field.selectionEnd ? field.selectionStart : null,
+      );
+    }
   }
   function sendExpanded() {
     closeExpanded();
@@ -4525,10 +4597,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             round, docked at the field's right edge, and it cost 60px of typing width on a crew,
             out of the widest part of the composer. It answers the same question from the belt
             above, which is equally at the write surface and costs the draft nothing. */}
-        {/* THE SUGGESTION STRIP, directly above the box: one row, one look, one source per pane.
+        {/* THE SUGGESTION STRIP, directly above the box: one row, one look, one active source at a time.
             A shell pane offers lines sent before (M61), only while the box has focus and the Settings
             switch is on; not with "Type into terminal" armed (the box is not where the words go), a
-            dialog card up, a locked composer or a chip in the box. An agent pane offers its own
+            dialog card up, a locked composer or a chip in the box. An agent pane offers folders and
+            files from the pane's folder for an active `@` token (#757, ADR 0150), else its own
             commands for a typed `/` or `$` token (#475), whatever that switch says; a tap fills and
             never sends. */}
         {isShell ? (
@@ -4536,13 +4609,30 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <SuggestionStrip
               open={boxFocused && !direct.active && !dialogCard && !locked && attachments.length === 0}
               typed={input}
+              containerRef={suggestionStripRef}
+              onBlur={onSuggestionStripBlur}
               source={{ kind: "sent", lines: suggestions.lines, onPick: pickSent, onAll: () => setSentOpen(true) }}
             />
           )
+        ) : activeAt !== null ? (
+          <SuggestionStrip
+            open={fileSuggest.suggestions.length > 0 || holdFileStripOpen}
+            typed={input}
+            containerRef={suggestionStripRef}
+            onBlur={onSuggestionStripBlur}
+            source={{
+              kind: "files",
+              files: fileSuggest.suggestions,
+              holdOpen: holdFileStripOpen,
+              onPick: selectFileSuggestion,
+            }}
+          />
         ) : (
           <SuggestionStrip
             open={commandSuggestions.length > 0}
             typed={input}
+            containerRef={suggestionStripRef}
+            onBlur={onSuggestionStripBlur}
             source={{ kind: "commands", commands: commandSuggestions, onPick: selectSuggestion }}
           />
         )}
@@ -4659,10 +4749,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onCut={startHeld ? (e) => e.preventDefault() : undefined}
             onDrop={startHeld ? (e) => e.preventDefault() : undefined}
             onSelect={direct.active ? undefined : rememberCaret}
-            onFocus={() => setBoxFocused(true)}
-            onBlur={(e) => {
-              setBoxFocused(false);
+            onFocus={(e) => {
+              setBoxFocused(true);
               if (!direct.active) rememberCaret(e);
+            }}
+            onBlur={(e) => {
+              if (!direct.active) rememberCaret(e);
+              const next = e.relatedTarget;
+              if (next instanceof Node && suggestionStripRef.current?.contains(next) === true) return;
+              setBoxFocused(false);
             }}
             onCompositionStart={direct.active ? direct.onCompositionStart : undefined}
             onCompositionEnd={direct.active ? direct.onCompositionEnd : undefined}

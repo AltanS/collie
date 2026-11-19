@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { codeSpanPath, findFilePaths, paneFilesDir, paneFilesRoot, resolveFilePathLink } from "./file-paths";
+import { codeSpanPath, dirUnderRoot, findFilePaths, paneFilesDir, paneFilesRoot, resolveFilePathLink } from "./file-paths";
 
 /** The paths found in `text`, as printed (with the suffix), for a compact table. */
 const printed = (text: string) => findFilePaths(text).map((f) => text.slice(f.start, f.end));
@@ -257,5 +257,28 @@ describe("paneFilesDir: where Files opens from a pane", () => {
 
   it("uses the pane's own cwd as the root when no workspace folder is known, so there is nothing below it", () => {
     expect(dirOf("/var/home/me/repo/web", [])).toBeNull();
+  });
+});
+
+describe("dirUnderRoot: pane cwd relative to the bridge's Files root", () => {
+  it("returns empty string at the root and slash-joined relative folder strictly inside it", () => {
+    expect(dirUnderRoot("/home/me/repo", "/home/me/repo")).toBe("");
+    expect(dirUnderRoot("/home/me/repo", "/home/me/repo/")).toBe("");
+    expect(dirUnderRoot("/home/me/repo", "/home/me/repo/web/src")).toBe("web/src");
+    expect(dirUnderRoot("/var/home/me/repo", "/home/me/repo/web")).toBe("web");
+  });
+
+  it("supports Windows drive paths returned by a Windows bridge", () => {
+    expect(dirUnderRoot("C:\\Users\\me\\repo", "C:\\Users\\me\\repo")).toBe("");
+    expect(dirUnderRoot("C:\\Users\\me\\repo", "c:\\Users\\me\\repo\\packages\\api\\")).toBe("packages/api");
+  });
+
+  it("returns null when cwd is missing, outside root, or inside .git", () => {
+    expect(dirUnderRoot("/home/me/repo", undefined)).toBeNull();
+    expect(dirUnderRoot("/home/me/repo", "")).toBeNull();
+    expect(dirUnderRoot("/home/me/repo", "/home/me/other")).toBeNull();
+    expect(dirUnderRoot("/home/me/repo", "/home/me/repo-two")).toBeNull();
+    expect(dirUnderRoot("/home/me/repo", "/home/me/repo/.git/hooks")).toBeNull();
+    expect(dirUnderRoot("C:\\Users\\me\\repo", "D:\\Users\\me\\repo\\web")).toBeNull();
   });
 });
