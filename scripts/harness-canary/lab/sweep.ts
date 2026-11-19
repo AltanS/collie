@@ -9,7 +9,7 @@
 
 import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { findRow, loadLedger, settle } from "./lab-ledger";
+import { findRow, loadLedger, settleFailure } from "./lab-ledger";
 import { LabTmux } from "./tmux";
 
 export interface Liveness {
@@ -84,7 +84,8 @@ export async function sweepLab(input: SweepInput): Promise<SweepResult> {
   const ledger = loadLedger(input.ledgerPath, input.now);
   for (const row of ledger.rows) {
     if (row.result !== "running" || row.pid === undefined || input.live.isAlive(row.pid)) continue;
-    settle(input.ledgerPath, row.harness, row.version, { result: "failed", note: `interrupted: the run's process ${String(row.pid)} died` });
+    // The OOM killer or a stop by systemd: the environment, so the pair is a retry row, not a final one.
+    settleFailure(input.ledgerPath, row.harness, row.version, `interrupted: the run's process ${String(row.pid)} died`, input.now);
     settled.push(`${row.harness}-${row.version}`);
   }
   const rows = loadLedger(input.ledgerPath, input.now);
