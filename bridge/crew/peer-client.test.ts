@@ -29,6 +29,8 @@ import {
   parseSurfaceVersion,
   parsePeerStatus,
   parsePeerVersion,
+  REDIRECT_TARGET_MAX,
+  redirectReason,
   sweepPeers,
   takeDataBudget,
   HEADERLESS_PATIENCE_MS,
@@ -1775,5 +1777,151 @@ describe("the dial asks for gzip and inflates it itself (ADR 0161)", () => {
     const outcome = await client(encoded(new Uint8Array(0), "gzip", 304).fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(outcome.ok && outcome.value.status).toBe(304);
     if (outcome.ok) expect(outcome.value.headers.get("content-encoding")).toBeNull();
+  });
+});
+
+// ── A crew dial never follows a redirect (§9.1) ──────────────────────────────
+// Through the REAL dial: a real `fetch`, a member that answers a 3xx on a socket of its own, and a
+// second listener the redirect points at. The target's request count is the proof, not a fake's
+// record of the init, because following is the runtime's act and only a real socket shows it.
+
+/** A listener on loopback that counts what reaches it. Stopped by the caller. */
+function listener(answer: (req: Request) => Response | Promise<Response>) {
+  const seen: { method: string; path: string; body: string }[] = [];
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: async (req) => {
+      seen.push({ method: req.method, path: new URL(req.url).pathname, body: await req.text() });
+      return answer(req);
+    },
+  });
+  return { server, seen, origin: `http://127.0.0.1:${String(server.port)}` };
+}
+
+/** A member that answers every dial with `status` to `location`, stamped as a peer of this version. */
+function redirecting(status: number, location: string) {
+  return listener(
+    () => new Response("a body nobody reads", { status, headers: { location, [PROTOCOL_HEADER]: OURS, [MEMBER_HEADER]: "laptop" } }),
+  );
+}
+
+function realClient() {
+  return client((url, init) => fetch(url, init), { timeoutMs: 5_000 });
+}
+
+describe("a crew dial never follows a redirect (§9.1)", () => {
+  test("a 302 to another origin is not followed: the target gets nothing, the caller gets unreachable with its origin", async () => {
+    const target = listener(() => new Response("{}", { headers: { [PROTOCOL_HEADER]: OURS } }));
+    const redirector = redirecting(302, `${target.origin}/crew/v1/snapshot?steal=1`);
+    try {
+      const out = await realClient().raw({ memberId: "laptop", address: redirector.origin }, "snapshot");
+      expect(out.ok).toBe(false);
+      if (out.ok) return;
+      expect(out.state).toBe("unreachable");
+      expect(out.reason).toBe(`snapshot: the peer answered a redirect (302) to ${target.origin}, and a crew dial never follows one`);
+      expect(redirector.seen).toHaveLength(1);
+      expect(target.seen).toHaveLength(0);
+    } finally {
+      await redirector.server.stop(true);
+      await target.server.stop(true);
+    }
+  });
+
+  test("a 307 on a forwarded POST is not followed: the body reaches the member only, never the target", async () => {
+    const target = listener(() => new Response("{}", { headers: { [PROTOCOL_HEADER]: OURS } }));
+    const redirector = redirecting(307, `${target.origin}/elsewhere`);
+    try {
+      const out = await realClient().proxy({ memberId: "laptop", address: redirector.origin }, "send", undefined, {
+        bodyMax: CREW_JSON_MAX,
+        method: "POST",
+        body: JSON.stringify({ text: "the forwarded body" }),
+      });
+      expect(out.ok).toBe(false);
+      if (out.ok) return;
+      expect(out.state).toBe("unreachable");
+      expect(out.reason).toContain(`a redirect (307) to ${target.origin},`);
+      expect(redirector.seen.map((r) => r.body)).toEqual([JSON.stringify({ text: "the forwarded body" })]);
+      expect(target.seen).toHaveLength(0);
+    } finally {
+      await redirector.server.stop(true);
+      await target.server.stop(true);
+    }
+  });
+
+  test("every redirect status is refused in both modes, and a caller's `redirect` cannot turn following back on", async () => {
+    const target = listener(() => new Response("{}", { headers: { [PROTOCOL_HEADER]: OURS } }));
+    try {
+      for (const status of [301, 302, 303, 307, 308]) {
+        const redirector = redirecting(status, target.origin);
+        try {
+          const link = { memberId: "laptop", address: redirector.origin };
+          const consumed = await realClient().raw(link, "snapshot", undefined, { redirect: "follow" });
+          const passed = await realClient().proxy(link, "pane/t1", undefined, { redirect: "follow", bodyMax: CREW_JSON_MAX });
+          for (const out of [consumed, passed]) {
+            expect(out.ok).toBe(false);
+            if (!out.ok) expect(out.reason).toContain(`a redirect (${String(status)})`);
+          }
+        } finally {
+          await redirector.server.stop(true);
+        }
+      }
+      expect(target.seen).toHaveLength(0);
+    } finally {
+      await target.server.stop(true);
+    }
+  });
+
+  test("a hostile Location reaches the reason as its origin only: no credentials, no path, ASCII, cut", async () => {
+    const redirector = redirecting(302, `http://user:pass@${"a".repeat(300)}.example:4444/secret/path?token=t`);
+    try {
+      const out = await realClient().raw({ memberId: "laptop", address: redirector.origin }, "snapshot");
+      expect(out.ok).toBe(false);
+      if (out.ok) return;
+      expect(out.reason).not.toContain("user");
+      expect(out.reason).not.toContain("pass");
+      expect(out.reason).not.toContain("secret");
+      expect(out.reason).not.toContain("token");
+      const target = /to (\S+), and a crew dial/.exec(out.reason)?.[1] ?? "";
+      expect(target.length).toBe(REDIRECT_TARGET_MAX);
+      expect(target.endsWith("...")).toBe(true);
+      expect(target.startsWith("http://aaaa")).toBe(true);
+    } finally {
+      await redirector.server.stop(true);
+    }
+  });
+
+  test("redirectReason: non-ASCII, credentials, a relative target, none, and junk", () => {
+    const dialled = "https://laptop.example:8787/crew/v1/snapshot";
+    const reason = (location: string | null) =>
+      redirectReason(new Response(null, { status: 302, headers: location === null ? {} : { location } }), dialled);
+    // A non-ASCII host is punycoded by the URL parser; a byte past ASCII anywhere else is dropped with the path.
+    expect(reason("https://user:pa\u00e9ss@b\u00fccher.example/\u00e9t\u00e9")).toBe(
+      "the peer answered a redirect (302) to https://xn--bcher-kva.example, and a crew dial never follows one",
+    );
+    expect(reason("foo://h\u00e9st/x")).toMatch(/^[\x20-\x7e]*$/);
+    expect(reason("/elsewhere?q=1")).toContain("to https://laptop.example:8787,");
+    expect(reason(null)).toContain("a redirect (302) with no target,");
+    expect(reason("http://[::1")).toContain("to an address that does not parse,");
+    expect(reason("mailto:x@y")).toContain("to an address with no host,");
+  });
+
+  test("a 304 is still the peer's answer, and an honest member still answers", async () => {
+    const honest = listener((req) =>
+      new URL(req.url).pathname.endsWith("/pane/t1")
+        ? new Response(null, { status: 304, headers: { etag: '"e1"', [PROTOCOL_HEADER]: OURS, [MEMBER_HEADER]: "laptop" } })
+        : Response.json({ ok: true }, { headers: { [PROTOCOL_HEADER]: OURS, [MEMBER_HEADER]: "laptop" } }),
+    );
+    try {
+      const link = { memberId: "laptop", address: honest.origin };
+      const notModified = await realClient().proxy(link, "pane/t1", undefined, { headers: { "if-none-match": '"e1"' }, bodyMax: CREW_JSON_MAX });
+      expect(notModified.ok).toBe(true);
+      if (notModified.ok) expect(notModified.value.status).toBe(304);
+      const fine = await realClient().raw(link, "snapshot");
+      expect(fine.ok).toBe(true);
+      if (fine.ok) expect(await fine.value.json()).toEqual({ ok: true });
+    } finally {
+      await honest.server.stop(true);
+    }
   });
 });
