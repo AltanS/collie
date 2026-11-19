@@ -82,6 +82,7 @@ import {
   saysNotFound,
   saysUnreachable,
   stripEscapes,
+  type RexCreated,
   type RexProcess,
   type RexSession,
   type RexStatusRecord,
@@ -330,15 +331,17 @@ export class RexMux implements MuxAdapter {
     return muxUnsupported("renamePane", "Rex fills a block's label with its own defaults, so an operator's name cannot be told from one");
   }
 
+  // Every positional that names something goes after `--`: an id from the phone's URL or a label it
+  // typed is a name, never an option (`rex block close -h` prints help and exits 0).
   async closePane(paneId: string): Promise<MuxAck> {
-    const res = await this.attemptRun(["block", "close", paneId]);
+    const res = await this.attemptRun(["block", "close", "--", paneId]);
     if (!res.ok) return res;
     return muxAck();
   }
 
   /** `rex focus <block>`: probed, it makes the block's window active and focuses the block. */
   async setFocus(paneId: string): Promise<MuxAck> {
-    const res = await this.attemptRun(["focus", paneId]);
+    const res = await this.attemptRun(["focus", "--", paneId]);
     if (!res.ok) return res;
     return muxAck();
   }
@@ -353,12 +356,16 @@ export class RexMux implements MuxAdapter {
     if (!space) return muxGone(request.spaceId ? `space ${request.spaceId} is gone` : "rex has no session to open a tab in");
     const args = ["window", "new"];
     const label = request.label?.trim();
-    if (label) args.push(label);
+    if (label && !looksLikeFlag(label)) args.push(label);
     args.push("-s", space.spaceId, "--focus=false", "--json");
     const cwd = requestedCwd(request.cwd);
     if (cwd) args.push("--cwd", cwd);
     const made = await this.attemptCreate(args);
     if (!made.ok) return made;
+    if (label && looksLikeFlag(label)) {
+      const windowId = createdIds(made.value.stdout).windowId;
+      if (windowId !== null) await this.attemptRun(["window", "rename", "-s", space.spaceId, "--", windowId, label]);
+    }
     return this.confirmCreated(made.value.stdout, "tab");
   }
 
@@ -367,7 +374,7 @@ export class RexMux implements MuxAdapter {
     if (!looked.ok) return looked;
     const tab = looked.value.tabs.find((t) => t.tabId === tabId);
     if (!tab) return muxGone(`tab ${tabId} is gone`);
-    const res = await this.attemptRun(["window", "rename", "-s", tab.spaceId, tabId, label]);
+    const res = await this.attemptRun(["window", "rename", "-s", tab.spaceId, "--", tabId, label]);
     if (!res.ok) return res;
     return muxAck();
   }
@@ -377,7 +384,7 @@ export class RexMux implements MuxAdapter {
     if (!looked.ok) return looked;
     const tab = looked.value.tabs.find((t) => t.tabId === tabId);
     if (!tab) return muxGone(`tab ${tabId} is gone`);
-    const res = await this.attemptRun(["window", "close", "-s", tab.spaceId, tabId]);
+    const res = await this.attemptRun(["window", "close", "-s", tab.spaceId, "--", tabId]);
     if (!res.ok) return res;
     return muxAck();
   }
@@ -385,12 +392,16 @@ export class RexMux implements MuxAdapter {
   async createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
     const args = ["new"];
     const label = request.label?.trim();
-    if (label) args.push(label);
+    if (label && !looksLikeFlag(label)) args.push(label);
     args.push("--json");
     const cwd = requestedCwd(request.cwd);
     if (cwd) args.push("--cwd", cwd);
     const made = await this.attemptCreate(args);
     if (!made.ok) return made;
+    if (label && looksLikeFlag(label)) {
+      const sessionId = createdIds(made.value.stdout).sessionId;
+      if (sessionId !== null) await this.attemptRun(["session", "rename", "--", sessionId, label]);
+    }
     return this.confirmCreated(made.value.stdout, "space");
   }
 
@@ -621,6 +632,26 @@ function buildSnapshot(readings: readonly SessionReading[]): MuxSnapshot {
   });
 
   return { panes, spaces, tabs };
+}
+
+/**
+ * Whether rex would read this text as an option rather than a name. A create takes its label as the
+ * one positional before `--`, and `--` there starts the COMMAND, so a label like `--keep-open` cannot
+ * be quoted past the parser: probed on API revision 19, `rex new --keep-open` made a session with a
+ * random name and kept its block open, and `rex new -h` printed help and exited 0. Such a label is
+ * left off the create and set by a rename after `--`, where it is only a name.
+ */
+function looksLikeFlag(label: string): boolean {
+  return label.startsWith("-");
+}
+
+/** The ids a create answered with, or nulls when the answer did not parse. */
+function createdIds(stdout: string): RexCreated {
+  try {
+    return parseCreated(stdout);
+  } catch {
+    return { sessionId: null, windowId: null, blockId: null };
+  }
 }
 
 function safeClientCount(stdout: string): number {

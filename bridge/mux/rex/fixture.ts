@@ -78,11 +78,19 @@ function flag(args: readonly string[], name: string): string | undefined {
   return at >= 0 ? args[at + 1] : undefined;
 }
 
-/** argv with every `-x value` / `--long value` pair and every `--flag=value` / bare `--flag` removed. */
-function positionals(args: readonly string[], valued: readonly string[]): string[] {
+/**
+ * argv with every `-x value` / `--long value` pair and every `--flag=value` / bare `--flag` removed,
+ * as rex's parser reads it. After `--` every word is positional, unless `dash` says the verb reads
+ * them as a COMMAND (`rex new`, `rex window new`), when they are not positionals at all.
+ */
+function positionals(args: readonly string[], valued: readonly string[], dash: "names" | "command" = "names"): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i] ?? "";
+    if (arg === "--") {
+      if (dash === "names") out.push(...args.slice(i + 1));
+      return out;
+    }
     if (valued.includes(arg)) {
       i += 1;
       continue;
@@ -339,14 +347,14 @@ export class FakeRex implements RexExec {
     }
 
     if (verb === "block" && sub === "close") {
-      const id = args[2] ?? "";
+      const id = positionals(args.slice(2), ["-s", "-w"])[0] ?? "";
       if (!this.blocks.has(id)) return notFound("block", id);
       this.removeBlock(id);
       return ok();
     }
 
     if (verb === "focus") {
-      const id = args[1] ?? "";
+      const id = positionals(args.slice(1), ["-s", "-w"])[0] ?? "";
       const home = this.blockHome(id);
       if (!home) return notFound("block", id);
       home.window.focusedBlockId = id;
@@ -359,7 +367,7 @@ export class FakeRex implements RexExec {
       const target = flag(args, "-s");
       const session = this.sessionOf(target);
       if (!session) return notFound("session", target ?? "");
-      const label = positionals(args.slice(2), ["-s", "-c", "--cwd", "--shell"])[0];
+      const label = positionals(args.slice(2), ["-s", "-c", "--cwd", "--shell"], "command")[0];
       const windowId = this.mint("window");
       const blockId = this.mint("block");
       this.blocks.set(blockId, this.block(blockId, { cwd: flag(args, "--cwd") ?? "/home/rex" }));
@@ -388,8 +396,17 @@ export class FakeRex implements RexExec {
       return ok();
     }
 
+    if (verb === "session" && sub === "rename") {
+      const [sessionId, label] = positionals(args.slice(2), []);
+      const session = this.sessionOf(sessionId);
+      if (!session || label === undefined) return notFound("session", sessionId ?? "");
+      session.label = label;
+      this.emitSession(session.id, "session_label_changed", { label });
+      return ok();
+    }
+
     if (verb === "new") {
-      const label = positionals(args.slice(1), ["-c", "--cwd", "--window", "--shell"])[0] ?? "quiet-meadow";
+      const label = positionals(args.slice(1), ["-c", "--cwd", "--window", "--shell"], "command")[0] ?? "quiet-meadow";
       const sessionId = this.mint("session");
       const windowId = this.mint("window");
       const blockId = this.mint("block");
