@@ -190,21 +190,43 @@ function stepEntry(idx: number, type: number, payload: Uint8Array): TranscriptEn
 
 // 1.3.5 wraps USER_INPUT in a request envelope followed by generated metadata. Only unwrap that
 // complete shape; literal tags in ordinary user/assistant text stay verbatim.
-function userRequest(content: string): string {
+export function userRequest(content: string): string {
   const open = "<USER_REQUEST>\n";
   const close = "\n</USER_REQUEST>";
   if (!content.startsWith(open)) return content;
   const end = content.lastIndexOf(close);
   if (end < open.length) return content;
   const tail = content.slice(end + close.length);
-  if (
-    !/^\s*<ADDITIONAL_METADATA>[\s\S]*?<\/ADDITIONAL_METADATA>(?:\s*<USER_SETTINGS_CHANGE>[\s\S]*?<\/USER_SETTINGS_CHANGE>)?\s*$/.test(
-      tail,
-    )
-  ) {
-    return content;
-  }
+  if (!isMetadataTail(tail)) return content;
   return content.slice(open.length, end);
+}
+
+const METADATA_OPEN = "<ADDITIONAL_METADATA>";
+const METADATA_CLOSE = "</ADDITIONAL_METADATA>";
+const SETTINGS_OPEN = /\s*<USER_SETTINGS_CHANGE>/y;
+const SETTINGS_CLOSE = "</USER_SETTINGS_CHANGE>";
+
+/**
+ * Whether the text after the request is the generated metadata and nothing else, as
+ * `/^\s*<ADDITIONAL_METADATA>[\s\S]*?<\/ADDITIONAL_METADATA>(?:\s*<USER_SETTINGS_CHANGE>[\s\S]*?<\/USER_SETTINGS_CHANGE>)?\s*$/`
+ * read it: the metadata block, then optionally one settings block, then only blanks. By hand, because
+ * that regex read the rest of the text again from each metadata close followed by a settings open
+ * (quadratic, 7 s at 1 MB).
+ */
+function isMetadataTail(tail: string): boolean {
+  const body = tail.trim();
+  if (!body.startsWith(METADATA_OPEN)) return false;
+  // Without a settings block the text ends on the metadata close.
+  if (body.endsWith(METADATA_CLOSE) && body.length - METADATA_CLOSE.length >= METADATA_OPEN.length) return true;
+  if (!body.endsWith(SETTINGS_CLOSE)) return false;
+  // With one, some metadata close is followed by blanks and a settings open, and the text ends on a
+  // settings close after that open. The first such metadata close leaves the most room.
+  const settingsEnd = body.length - SETTINGS_CLOSE.length;
+  for (let at = body.indexOf(METADATA_CLOSE, METADATA_OPEN.length); at !== -1; at = body.indexOf(METADATA_CLOSE, at + 1)) {
+    SETTINGS_OPEN.lastIndex = at + METADATA_CLOSE.length;
+    if (SETTINGS_OPEN.test(body)) return SETTINGS_OPEN.lastIndex <= settingsEnd;
+  }
+  return false;
 }
 
 const JSONL_NOTE_TYPES = new Set([

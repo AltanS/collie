@@ -19,6 +19,7 @@
 // the edge. Display only: no rule, no TTL and no cache state reads this.
 
 import { normaliseModel } from "./journal/claude-resets.ts";
+import { dropBracketed } from "./journal/text.ts";
 
 /** One source's model, and when the bridge learned it. */
 export interface ModelReading {
@@ -28,10 +29,7 @@ export interface ModelReading {
 
 /** A model name with its tags removed: the `[1m]` window tag, a parenthesis, surrounding space. */
 export function displayModel(name: string): string {
-  return name
-    .replace(/\[[^\]]*\]/g, "")
-    .replace(/\([^)]*\)/g, "")
-    .trim();
+  return dropBracketed(dropBracketed(name, "[", "]"), "(", ")").trim();
 }
 
 /** The name two readings are compared by: family and version where it is a Claude name, else the lower-cased name. */

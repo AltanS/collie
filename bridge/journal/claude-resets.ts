@@ -26,7 +26,7 @@
 import type { ResetEvent } from "../cache/claims.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asRecord, asText } from "./cache-probe.ts";
-import { stripAnsi } from "./text.ts";
+import { dropBracketed, stripAnsi } from "./text.ts";
 
 /** The rule ids this module reports. Each is a shipped rule; `claude-resets.test.ts` holds them to it. */
 export const CLAUDE_RESET_IDS = {
@@ -55,10 +55,7 @@ const STDOUT = "<local-command-stdout>";
  */
 export function normaliseModel(name: string | undefined): string | null {
   if (name === undefined || name === "") return null;
-  const reduced = name
-    .toLowerCase()
-    .replace(/\[[^\]]*\]/g, "")
-    .replace(/\([^)]*\)/g, "")
+  const reduced = dropBracketed(dropBracketed(name.toLowerCase(), "[", "]"), "(", ")")
     .replace(/^claude-/, "")
     .replace(/-\d{8}$/, "")
     .replace(/[^a-z0-9]/g, "");

@@ -682,13 +682,36 @@ function detailRows(details: JsonValue | undefined, key: string): JsonObject[] {
 }
 
 /**
+ * The attribute text of each `<task-result …>` tag in order, as `/<task-result\b([^>]*)>/g` read it:
+ * a tag runs to the next `>`, and the next tag is looked for after that. Walked by hand, because that
+ * regex read the rest of the text again from each `<task-result` that had no `>` after it (quadratic,
+ * 2.6 s at 256 KB), and the text is whatever a job printed.
+ */
+function* taskResultAttrs(content: string): Generator<string> {
+  const TAG = "<task-result";
+  let at = content.indexOf(TAG);
+  while (at !== -1) {
+    const after = at + TAG.length;
+    // `\b`: `<task-results` is not this tag.
+    if (/\w/.test(content[after] ?? "")) {
+      at = content.indexOf(TAG, at + 1);
+      continue;
+    }
+    const end = content.indexOf(">", after);
+    // No `>` after this tag means none after any later one either.
+    if (end === -1) return;
+    yield content.slice(after, end);
+    at = content.indexOf(TAG, end + 1);
+  }
+}
+
+/**
  * The status an Oh My Pi `async-result` notice gives one job. The row's `details.jobs[]` carries no
  * status (OMP 18.6.1); the notice's own text does, as `<task-result id="<job>" … status="<s>">`. A
  * notice that names none is a delivered result, so `completed`.
  */
-function asyncResultStatus(content: string, jobId: string): string {
-  for (const m of content.matchAll(/<task-result\b([^>]*)>/g)) {
-    const attrs = m[1] ?? "";
+export function asyncResultStatus(content: string, jobId: string): string {
+  for (const attrs of taskResultAttrs(content)) {
     if (/\bid="([^"]*)"/.exec(attrs)?.[1] !== jobId) continue;
     const status = /\bstatus="([^"]*)"/.exec(attrs)?.[1];
     if (status !== undefined && status !== "") return status;

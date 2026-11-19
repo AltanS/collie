@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A session whose log holds certain unfinished markup no longer stops the app.** Collie reads each session's log to draw Chat and History. A long stretch of text with an opening tag or bracket that never closes, typed or pasted by you, printed by an agent or read from a file, made that read take seconds to minutes in Claude Code, pi, Oh My Pi, Grok and Antigravity sessions, and the whole app stopped answering until it was done. Those reads now take a few milliseconds per megabyte and give the same result as before. The scan that lists a trick's warnings had the same fault on long lines of a trick's code and is fixed too.
+
 ## [1.29.1] - 2026-11-19
 
 ### Added
