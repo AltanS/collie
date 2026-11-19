@@ -587,6 +587,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "redact",
   },
   {
+    key: "project_files",
+    env: "COLLIE_PROJECT_FILES",
+    section: "access",
+    kind: "bool",
+    default: true,
+    doc: "Read a repository's collie.toml for its project picture; off reads none and shows the agent logos.",
+    configField: "projectFiles",
+  },
+  {
     key: "sent",
     env: "COLLIE_SENT",
     section: "access",

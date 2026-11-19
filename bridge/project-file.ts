@@ -124,8 +124,11 @@ export function checkIconPath(raw: JsonValue | undefined): KeyResult {
   if (value.length === 0 || value.length > PROJECT_TEXT_MAX) return { ok: false, why: `is empty or longer than ${String(PROJECT_TEXT_MAX)} characters` };
   if (hasControl(value) || value.includes("\0")) return { ok: false, why: "holds a control character" };
   if (value.includes("\\")) return { ok: false, why: "uses a backslash; write the path with /" };
-  if (value.startsWith("/") || value.startsWith("~") || /^[A-Za-z]:/.test(value)) return { ok: false, why: "is not a relative path" };
-  const parts = value.split("/");
+  // The value is the repository's text, not a host path, so it is read the same on every host: a
+  // leading separator of either kind, a home `~` or a drive letter is not relative, and both kinds of
+  // separator split a step (the backslash is refused above, and this keeps the rule if that changes).
+  if (/^(?:[/\\~]|[A-Za-z]:)/.test(value)) return { ok: false, why: "is not a relative path" };
+  const parts = value.split(/[/\\]/);
   if (parts.some((p) => p === "" || p === "." || p === "..")) return { ok: false, why: "has an empty, . or .. step" };
   if (parts.some((p) => p.toLowerCase() === ".git")) return { ok: false, why: "is under .git" };
   return { ok: true, value };
