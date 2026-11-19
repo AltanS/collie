@@ -112,10 +112,53 @@ export function pictureHeader(b: Uint8Array): { mime: PictureMime; width: number
   return size === null ? null : { mime, ...size };
 }
 
-/** Whether bytes may go to the decoder: the size cap, a known type, and both sides in range. */
+/**
+ * Whether a PNG moves, or null when its chunks cannot be walked to the image data: an `acTL` chunk before
+ * the first `IDAT` (the APNG rule). The bridge's own walk (bridge/project-picture.ts, `pngAnimated`).
+ */
+export function pngMoves(b: Uint8Array): boolean | null {
+  let i = 8;
+  while (i + 8 <= b.length) {
+    const length = u32be(b, i);
+    if (asciiAt(b, i + 4, "acTL")) return true;
+    if (asciiAt(b, i + 4, "IDAT")) return false;
+    const next = i + 12 + length;
+    if (next <= i || next > b.length) return null;
+    i = next;
+  }
+  return null;
+}
+
+/**
+ * Whether a WebP moves, or null when its RIFF chunks cannot be walked: the VP8X animation flag, an `ANIM`
+ * or an `ANMF` chunk. The bridge's own walk (bridge/project-picture.ts, `webpAnimated`).
+ */
+export function webpMoves(b: Uint8Array): boolean | null {
+  if (!asciiAt(b, 0, "RIFF") || !asciiAt(b, 8, "WEBP")) return null;
+  let i = 12;
+  let chunks = 0;
+  while (i + 8 <= b.length) {
+    if (asciiAt(b, i, "ANIM") || asciiAt(b, i, "ANMF")) return true;
+    if (asciiAt(b, i, "VP8X") && b.length > i + 8 && (at(b, i + 8) & 0x02) !== 0) return true;
+    const size = (at(b, i + 4) | (at(b, i + 5) << 8) | (at(b, i + 6) << 16) | (at(b, i + 7) << 24)) >>> 0;
+    const next = i + 8 + size + (size % 2);
+    if (next <= i) return null;
+    i = next;
+    chunks += 1;
+  }
+  return chunks > 0 ? false : null;
+}
+
+/**
+ * Whether bytes may go to the decoder: the size cap, a known type, both sides in range, and still (a
+ * PNG or WebP that moves, or whose chunks cannot be walked, is refused, as the bridge refuses it).
+ */
 export function pictureHeaderFits(b: Uint8Array): boolean {
   if (b.length > PROJECT_PICTURE_BYTES_MAX) return false;
   const head = pictureHeader(b);
   const fits = (side: number) => side >= PROJECT_PICTURE_SIDE_MIN && side <= PROJECT_PICTURE_SIDE_MAX;
-  return head !== null && fits(head.width) && fits(head.height);
+  if (head === null || !fits(head.width) || !fits(head.height)) return false;
+  if (head.mime === "image/png") return pngMoves(b) === false;
+  if (head.mime === "image/webp") return webpMoves(b) === false;
+  return true;
 }

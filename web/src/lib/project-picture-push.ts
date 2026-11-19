@@ -41,6 +41,20 @@ export function bannerCopyKey(origin: string, mount: string, host: string | null
   return `${origin}${mount}project-pictures/${machinePart(host)}/${version}.png`;
 }
 
+/**
+ * The switch's marker, for the worker, which cannot read localStorage: present while "Project pictures"
+ * is off on this device, in a Cache of its own so that turning the switch off (which deletes the picture
+ * Cache) never deletes it. The page writes and removes it with the switch, and again at every start.
+ */
+export function pictureSwitchCacheName(mount: string): string {
+  return mount === "/" ? "collie-project-pictures-switch" : `collie-project-pictures-switch:${mount}`;
+}
+
+/** The marker's key in its Cache. Never requested from the network. */
+export function pictureSwitchKey(origin: string, mount: string): string {
+  return `${origin}${mount}project-pictures-off`;
+}
+
 /** The key of the pane map in that Cache. Never requested from the network. */
 export function paneMapKey(origin: string, mount: string): string {
   return `${origin}${mount}project-pictures/panes.json`;
@@ -84,6 +98,12 @@ export async function pushPictureFor(
 ): Promise<string | null> {
   if (pane?.paneId === undefined || pane.paneId === null || pane.paneId === "") return null;
   try {
+    // The switch is off on this device, whatever another tab still holds in memory.
+    const switchName = pictureSwitchCacheName(mount);
+    if (await caches.has(switchName)) {
+      const marker = await (await caches.open(switchName)).match(pictureSwitchKey(origin, mount));
+      if (marker !== undefined) return null;
+    }
     const name = projectPictureCacheName(mount);
     if (!(await caches.has(name))) return null;
     const cache = await caches.open(name);

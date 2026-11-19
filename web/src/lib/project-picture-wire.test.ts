@@ -15,7 +15,8 @@ import {
 
 const SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
-function png(width: number, height: number, length = 33): Uint8Array {
+/** A still PNG: the IHDR chunk, then an empty IDAT chunk (the animation walk stops there). */
+function png(width: number, height: number, length = 45): Uint8Array {
   const out = new Uint8Array(Math.max(length, 0));
   out.set([...SIG, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52].slice(0, out.length));
   if (out.length >= 24) {
@@ -23,6 +24,15 @@ function png(width: number, height: number, length = 33): Uint8Array {
     view.setUint32(16, width);
     view.setUint32(20, height);
   }
+  if (out.length >= 45) out.set([0, 0, 0, 0, 0x49, 0x44, 0x41, 0x54], 33);
+  return out;
+}
+
+/** A PNG with an `acTL` chunk before its IDAT: an APNG, which moves. */
+function apng(width: number, height: number): Uint8Array {
+  const out = png(width, height, 65);
+  out.set([0, 0, 0, 8, 0x61, 0x63, 0x54, 0x4c], 33);
+  out.set([0, 0, 0, 0, 0x49, 0x44, 0x41, 0x54], 53);
   return out;
 }
 
@@ -169,5 +179,31 @@ describe("pictureHeaderFits", () => {
     expect(PROJECT_PICTURE_BYTES_MAX).toBe(256 * 1024);
     expect(pictureHeaderFits(png(256, 256, PROJECT_PICTURE_BYTES_MAX))).toBe(true);
     expect(pictureHeaderFits(png(256, 256, PROJECT_PICTURE_BYTES_MAX + 1))).toBe(false);
+  });
+});
+
+describe("pictureHeaderFits refuses a picture that moves (R7)", () => {
+  it("refuses an APNG", () => {
+    expect(pictureHeaderFits(png(256, 256))).toBe(true);
+    expect(pictureHeaderFits(apng(256, 256))).toBe(false);
+  });
+
+  it("refuses a PNG whose chunks cannot be walked to its image data", () => {
+    expect(pictureHeaderFits(png(256, 256, 33))).toBe(false);
+  });
+
+  it("refuses a WebP with the animation flag, an ANIM or an ANMF chunk", () => {
+    expect(pictureHeaderFits(webpX(256, 256))).toBe(true);
+    const flagged = webpX(256, 256);
+    flagged[20] = 0x02;
+    expect(pictureHeaderFits(flagged)).toBe(false);
+    for (const fourcc of ["ANIM", "ANMF"]) {
+      const out = new Uint8Array(48);
+      out.set(webpX(256, 256));
+      // The VP8X chunk is 10 bytes long, so the next chunk starts at 30.
+      out.set([10, 0, 0, 0], 16);
+      out.set(Array.from(fourcc, (c) => c.charCodeAt(0)), 30);
+      expect(pictureHeaderFits(out)).toBe(false);
+    }
   });
 });

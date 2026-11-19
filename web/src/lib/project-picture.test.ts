@@ -19,7 +19,7 @@ import {
   setProjectPictures,
   useProjectPicture,
 } from "./project-picture";
-import { BANNER_HEIGHT, BANNER_WIDTH, bannerCopyKey, paneMapKey, projectPictureCacheName } from "./project-picture-push";
+import { BANNER_HEIGHT, BANNER_WIDTH, bannerCopyKey, paneMapKey, pictureSwitchCacheName, pictureSwitchKey, projectPictureCacheName, pushPictureFor } from "./project-picture-push";
 import { PROJECT_PICTURE_BYTES_MAX } from "./project-picture-wire";
 
 // THE PROJECT PICTURE STORE (issue 811, ADR 0160). The browser's decoder and canvas are the module's
@@ -39,13 +39,14 @@ const version = (n: number) => n.toString(16).padStart(24, "0");
 /** The storage key of one machine's copy: the machine (empty for the lead), a NUL, the version. */
 const K = (v: string, host?: string) => `${host ?? ""}\u0000${v}`;
 
-/** The leading bytes of a PNG: signature, IHDR length, "IHDR", width, height. Enough for the header check. */
+/** A still PNG's leading bytes: signature, the IHDR chunk with the sides, then an empty IDAT. */
 function pngBytes(width: number, height: number): Uint8Array {
-  const out = new Uint8Array(33);
+  const out = new Uint8Array(45);
   out.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
   const view = new DataView(out.buffer);
   view.setUint32(16, width);
   view.setUint32(20, height);
+  out.set([0, 0, 0, 0, 0x49, 0x44, 0x41, 0x54], 33);
   return out;
 }
 const blobOf = (b: Uint8Array) => new Blob([Uint8Array.from(b)], { type: "image/png" });
@@ -60,6 +61,8 @@ function fakeCaches() {
       return {
         put: async (key: string, response: Response) => void store.set(key, response),
         match: async (key: string) => store.get(key)?.clone(),
+        keys: async () => [...store.keys()].map((url) => ({ url })),
+        delete: async (request: { url: string }) => store.delete(request.url),
       };
     }),
     has: async (name: string) => stores.has(name),
@@ -607,5 +610,108 @@ describe("useProjectPicture", () => {
     expect(result.current).toBe(URL1);
     act(() => setProjectPictures(false));
     expect(result.current).toBeNull();
+  });
+});
+
+describe("the banner copies are bounded (R5)", () => {
+  it("keeps only the banners of the newest COPIES_MAX copies, and the pane map", async () => {
+    seams();
+    rememberPanePictures([{ paneId: "p1", picture: version(1) }]);
+    for (let n = 1; n <= COPIES_MAX + 5; n++) await loadPicture(version(n));
+    const store = fake.stores.get(cacheName)!;
+    const banners = [...store.keys()].filter((k) => k.endsWith(".png"));
+    expect(banners).toHaveLength(COPIES_MAX);
+    expect(store.has(bannerCopyKey(location.origin, "/", null, version(1)))).toBe(false);
+    expect(store.has(bannerCopyKey(location.origin, "/", null, version(COPIES_MAX + 5)))).toBe(true);
+    expect(store.has(paneMapKey(location.origin, "/"))).toBe(true);
+  });
+});
+
+describe("the switch reaches every tab and the worker (R6)", () => {
+  it("follows another tab's change through the storage event", async () => {
+    seams();
+    await loadPicture(V1);
+    expect(pictureCopy(null, V1)).toBe(URL1);
+    localStorage.setItem(SWITCH_KEY, "off");
+    act(() => {
+      globalThis.dispatchEvent(new StorageEvent("storage", { key: SWITCH_KEY }));
+    });
+    expect(projectPicturesOn()).toBe(false);
+    expect(pictureCopy(null, V1)).toBeNull();
+    await vi.waitFor(() => expect(fake.storage.delete).toHaveBeenCalledWith(cacheName));
+    localStorage.removeItem(SWITCH_KEY);
+    act(() => {
+      globalThis.dispatchEvent(new StorageEvent("storage", { key: SWITCH_KEY }));
+    });
+    expect(projectPicturesOn()).toBe(true);
+  });
+
+  it("ignores a storage event for another key", () => {
+    localStorage.setItem(SWITCH_KEY, "off");
+    globalThis.dispatchEvent(new StorageEvent("storage", { key: "collie:other" }));
+    expect(projectPicturesOn()).toBe(true);
+    localStorage.removeItem(SWITCH_KEY);
+  });
+
+  it("writes the worker's marker when off and removes it when on", async () => {
+    const marker = pictureSwitchCacheName("/");
+    setProjectPictures(false);
+    await vi.waitFor(() => expect(fake.stores.get(marker)?.has(pictureSwitchKey(location.origin, "/"))).toBe(true));
+    setProjectPictures(true);
+    await vi.waitFor(() => expect(fake.stores.has(marker)).toBe(false));
+  });
+
+  it("the worker attaches no picture while the marker is there, even with a copy and a map", async () => {
+    rememberPanePictures([{ paneId: "p1", picture: V1 }]);
+    await vi.waitFor(() => expect(fake.stores.get(cacheName)?.has(paneMapKey(location.origin, "/"))).toBe(true));
+    // A banner copy as plain bytes (jsdom's Blob does not reach a Response's body as bytes).
+    const pictures = await fake.storage.open(cacheName);
+    await pictures.put(bannerCopyKey(location.origin, "/", null, V1), new Response(Uint8Array.from(pngBytes(256, 256))));
+    expect(await pushPictureFor(fake.storage, location.origin, "/", { paneId: "p1" })).not.toBeNull();
+    // Another tab (or a stale page) still holds the copies: only the marker says off.
+    const marker = await fake.storage.open(pictureSwitchCacheName("/"));
+    await marker.put(pictureSwitchKey(location.origin, "/"), new Response("off"));
+    expect(await pushPictureFor(fake.storage, location.origin, "/", { paneId: "p1" })).toBeNull();
+  });
+});
+
+describe("a failed load retries when its wait ends (R7)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("tries again on its own timer, with no new render", async () => {
+    vi.useFakeTimers();
+    let fail = true;
+    const s = seams({ fetch: async () => (fail ? Promise.reject(new Error("down")) : bytes()) });
+    rememberPanePictures([{ paneId: "p1", picture: V1 }]);
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(1);
+    fail = false;
+    s.clock.at += RETRY_FIRST_MS;
+    await vi.advanceTimersByTimeAsync(RETRY_FIRST_MS);
+    expect(s.fetch).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(pictureCopy(null, V1)).toBe(URL1));
+  });
+
+  it("stops the timer when no pane shows the picture any more", async () => {
+    vi.useFakeTimers();
+    const s = seams({ fetch: async () => Promise.reject(new Error("down")) });
+    rememberPanePictures([{ paneId: "p1", picture: V1 }]);
+    await loadPicture(V1);
+    rememberPanePictures([]);
+    s.clock.at += RETRY_MAX_MS;
+    await vi.advanceTimersByTimeAsync(RETRY_MAX_MS);
+    expect(s.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops the timer when the switch goes off", async () => {
+    vi.useFakeTimers();
+    const s = seams({ fetch: async () => Promise.reject(new Error("down")) });
+    await loadPicture(V1);
+    setProjectPictures(false);
+    s.clock.at += RETRY_MAX_MS;
+    await vi.advanceTimersByTimeAsync(RETRY_MAX_MS);
+    expect(s.fetch).toHaveBeenCalledTimes(1);
   });
 });

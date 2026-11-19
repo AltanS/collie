@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { fetchAuthedBytes } from "@/lib/api";
 import { basePath } from "@/lib/base-path";
-import { BANNER_HEIGHT, BANNER_WIDTH, bannerCopyKey, paneKey, paneMapKey, projectPictureCacheName } from "@/lib/project-picture-push";
+import { BANNER_HEIGHT, BANNER_WIDTH, bannerCopyKey, paneKey, paneMapKey, pictureSwitchCacheName, pictureSwitchKey, projectPictureCacheName } from "@/lib/project-picture-push";
 import { isPictureVersion, pictureHeaderFits, PROJECT_PICTURE_BYTES_MAX, projectPicturePath } from "@/lib/project-picture-wire";
 import { onWipe } from "@/lib/wipe";
 import type { AgentView } from "@/lib/types";
@@ -116,6 +116,8 @@ let panes = readTable(PANES_KEY, isPane);
 /** Failed loads by copy key: when the next try may run, and the wait after that. */
 const failed = new Map<string, { until: number; wait: number }>();
 const loading = new Map<string, Promise<void>>();
+/** One retry timer per failed copy key: it fires when the wait ends, not only when a row draws again. */
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const listeners = new Set<() => void>();
 let snapshot = 0;
 
@@ -147,8 +149,46 @@ export function setProjectPictures(next: boolean): void {
   if (on === next) return;
   on = next;
   write(SWITCH_KEY, next ? null : "off");
+  void writeSwitchMarker(next);
   if (!next) void forgetProjectPictures();
   emit();
+}
+
+/** The worker's copy of the switch (project-picture-push.ts): present while the switch is off. */
+async function writeSwitchMarker(isOn: boolean): Promise<void> {
+  const storage: CacheStorage | undefined = globalThis.caches;
+  if (storage === undefined) return;
+  try {
+    const name = pictureSwitchCacheName(basePath());
+    if (isOn) {
+      await storage.delete(name);
+      return;
+    }
+    const cache = await storage.open(name);
+    await cache.put(pictureSwitchKey(location.origin, basePath()), new Response("off", { headers: { "content-type": "text/plain" } }));
+  } catch {
+    // No Cache Storage: the page's own off still drops every copy, so the worker has none to show.
+  }
+}
+
+/**
+ * The switch as another tab set it. Every tab of this device holds the switch in memory, so a tab that
+ * missed the change would write the map and the banners again; the `storage` event brings it along.
+ */
+function followOtherTabs(event: StorageEvent): void {
+  if (event.key !== SWITCH_KEY && event.key !== null) return;
+  const next = read(SWITCH_KEY) !== "off";
+  if (next === on) return;
+  on = next;
+  if (!next) void forgetProjectPictures();
+  emit();
+}
+
+if (globalThis.window !== undefined) {
+  globalThis.window.addEventListener("storage", followOtherTabs);
+  // At every start the marker follows the switch, so a wipe that cleared Cache Storage cannot leave the
+  // worker believing an off switch is on.
+  void writeSwitchMarker(on);
 }
 
 /** Drop every copy and the pane map: the switch's off, and the device wipe. The switch itself stays. */
@@ -156,6 +196,7 @@ export async function forgetProjectPictures(): Promise<void> {
   copies = new Map();
   panes = new Map();
   failed.clear();
+  clearRetries(() => true);
   write(COPIES_KEY, null);
   write(PANES_KEY, null);
   emit();
@@ -241,6 +282,7 @@ export function __resetProjectPictures(): void {
   copies = new Map();
   panes = new Map();
   failed.clear();
+  clearRetries(() => true);
   loading.clear();
   write(SWITCH_KEY, null);
   write(COPIES_KEY, null);
@@ -257,8 +299,18 @@ export function __reloadProjectPictures(): void {
   copies = readTable(COPIES_KEY, isCopy);
   panes = readTable(PANES_KEY, isPane);
   failed.clear();
+  clearRetries(() => true);
   loading.clear();
   emit();
+}
+
+/** Stop the retry timers whose key `drop` names. */
+function clearRetries(drop: (key: string) => boolean): void {
+  for (const [key, timer] of retryTimers) {
+    if (!drop(key)) continue;
+    clearTimeout(timer);
+    retryTimers.delete(key);
+  }
 }
 
 function keepCopy(key: string, url: string): void {
@@ -272,12 +324,29 @@ function keepCopy(key: string, url: string): void {
   writeTable(COPIES_KEY, copies);
 }
 
+/** The banner key of a copy key, for the pruning below. */
+function bannerKeyOf(key: string): string {
+  const cut = key.lastIndexOf("\u0000");
+  const host = key.slice(0, cut);
+  return bannerCopyKey(location.origin, basePath(), host === "" ? null : host, key.slice(cut + 1));
+}
+
+/**
+ * Keep one banner copy, and drop every banner that is not among the newest {@link COPIES_MAX}: the same
+ * pictures the small copies hold, so a repository that changes its picture every few seconds costs the
+ * device at most {@link COPIES_MAX} banners (about 1 MB each).
+ */
 async function keepBannerCopy(host: string | null | undefined, version: string, png: Blob): Promise<void> {
   const storage: CacheStorage | undefined = globalThis.caches;
-  if (storage === undefined) return;
+  if (storage === undefined || !on) return;
   try {
     const cache = await storage.open(projectPictureCacheName(basePath()));
     await cache.put(bannerCopyKey(location.origin, basePath(), host, version), new Response(png, { headers: { "content-type": "image/png" } }));
+    const kept = new Set([...copies.keys()].map(bannerKeyOf));
+    const map = paneMapKey(location.origin, basePath());
+    for (const request of await cache.keys()) {
+      if (request.url !== map && !kept.has(request.url)) await cache.delete(request);
+    }
   } catch {
     // No Cache Storage (plain HTTP, private mode): the push shows the Collie icon.
   }
@@ -285,7 +354,7 @@ async function keepBannerCopy(host: string | null | undefined, version: string, 
 
 async function writePaneMap(): Promise<void> {
   const storage: CacheStorage | undefined = globalThis.caches;
-  if (storage === undefined) return;
+  if (storage === undefined || !on) return;
   try {
     const cache = await storage.open(projectPictureCacheName(basePath()));
     await cache.put(paneMapKey(location.origin, basePath()), new Response(JSON.stringify(Object.fromEntries(panes)), { headers: { "content-type": "application/json" } }));
@@ -315,12 +384,22 @@ export function loadPicture(version: string, host?: string | null): Promise<void
       const url = await canvas.dataUrl(small);
       if (!on) return;
       failed.delete(key);
+      clearRetries((k) => k === key);
       keepCopy(key, url);
       await keepBannerCopy(host, version, banner);
       emit();
     } catch {
       const wait = Math.min((retry?.wait ?? RETRY_FIRST_MS / 2) * 2, RETRY_MAX_MS);
       failed.set(key, { until: clock() + wait, wait });
+      // Tried again when the wait ends, whether or not a row draws again in the meantime.
+      clearRetries((k) => k === key);
+      retryTimers.set(
+        key,
+        setTimeout(() => {
+          retryTimers.delete(key);
+          void loadPicture(version, host);
+        }, wait),
+      );
     } finally {
       loading.delete(key);
     }
@@ -346,6 +425,12 @@ export function rememberPanePictures(list: readonly Pick<AgentView, "paneId" | "
     if (oldest === undefined) break;
     next.delete(oldest);
   }
+  // A retry for a picture no pane shows any more stops here.
+  const shown = new Set(list.flatMap((pane) => {
+    const version = panePicture(pane);
+    return version === null ? [] : [copyKey(pane.host, version)];
+  }));
+  clearRetries((k) => !shown.has(k));
   const same = next.size === panes.size && [...next].every(([k, v]) => panes.get(k) === v);
   if (same) return;
   panes = next;
