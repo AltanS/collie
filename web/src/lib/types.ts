@@ -2525,6 +2525,11 @@ export interface BridgeConfig {
   operatorCommands?: OperatorCommand[];
   /** The operator's own Keys-tray presets. Absent when there is no `keys.toml`. */
   operatorKeys?: OperatorKeyRow[];
+  /**
+   * The operator's own keyboard shortcuts, raw: action name to binding strings (`[]` is unbound).
+   * Absent when there is no `shortcuts.toml` with a `[keys]` table. The app parses them itself.
+   */
+  operatorShortcuts?: { [name: string]: string[] };
   /** The operator's own Quick-dock groups. Absent when there is no `quick-replies.toml`. */
   operatorQuickReplies?: OperatorQuickReplyRow[];
   /** The operator's own UI typefaces. Absent when there is no `theme.toml` (ADR 0033). */

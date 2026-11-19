@@ -253,6 +253,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     submitKeys: ["Enter"],
     commandsFile: "/nope/commands.toml",
     keysFile: "/nope/keys.toml",
+    shortcutsFile: "/nope/shortcuts.toml",
     quickRepliesFile: "/nope/quick-replies.toml",
     themeFile: "/nope/theme.toml",
     fontsDir: "/nope/fonts",
@@ -3288,6 +3289,29 @@ describe("bridgeConfigBody — /api/config reports the crew mode", () => {
   test("push disabled still round-trips its key untouched", () => {
     const body = bridgeConfigBody({ push: false, vapidPublicKey: "", build: "unknown", mode: "solo" });
     expect(body).toEqual({ push: false, vapidPublicKey: "", build: "unknown" });
+  });
+});
+
+describe("bridgeConfigBody: the operator's keyboard shortcuts", () => {
+  const base = { push: true, vapidPublicKey: "BKey", build: "abc123" } as const;
+
+  test("an instance with no shortcuts.toml sends the same body as before", () => {
+    const plain = JSON.stringify(bridgeConfigBody({ ...base, mode: "solo" }));
+    expect(JSON.stringify(bridgeConfigBody({ ...base, mode: "solo", operatorShortcuts: null }))).toBe(plain);
+    expect(JSON.stringify(bridgeConfigBody({ ...base, mode: "solo", operatorShortcuts: undefined }))).toBe(plain);
+    expect("operatorShortcuts" in bridgeConfigBody({ ...base, mode: "solo", operatorShortcuts: null })).toBe(false);
+  });
+
+  test("a [keys] table rides the wire as it was read, after the Keys-tray rows", () => {
+    const bindings = { prefix: ["ctrl+a"], zoom: [] };
+    const body = bridgeConfigBody({
+      ...base,
+      mode: "solo",
+      operatorKeys: [{ label: "A", keys: ["ctrl+a"], danger: false }],
+      operatorShortcuts: bindings,
+    });
+    expect(body.operatorShortcuts).toEqual(bindings);
+    expect(Object.keys(body).indexOf("operatorShortcuts")).toBe(Object.keys(body).indexOf("operatorKeys") + 1);
   });
 });
 
