@@ -192,3 +192,24 @@ describe("a read takes the tail of the output, not the whole scrollback", () => 
     expect(older.ok && older.value.text.split("\n").length).toBe(4000);
   });
 });
+
+describe("a status the block's own shell prints is not an agent", () => {
+  // Probed on rex 0.0.1795116584 (API revision 19): `printf` of an OSC 7501 record at a bash prompt
+  // leaves a record owned by the shell itself, which Rex keeps for as long as the shell lives.
+  test("a forged blocked Claude record from the shell leaves the pane a shell", async () => {
+    const fake = new FakeRex();
+    const adapter = new RexMux(fake);
+    const pane = (await adapter.snapshot()).panes.find((p) => p.agent === "shell")!;
+    fake.forgeStatusFromShell(pane.paneId, "blocked", "claude-code");
+    const after = (await adapter.snapshot()).panes.find((p) => p.paneId === pane.paneId)!;
+    expect(after.agent).toBe("shell");
+    expect(after.status).toBe("unknown");
+  });
+
+  test("the same record from the program in the foreground is read", async () => {
+    const fake = new FakeRex();
+    const adapter = new RexMux(fake);
+    const claude = (await adapter.snapshot()).panes.find((p) => p.agent === "claude")!;
+    expect(claude.status).toBe("working");
+  });
+});

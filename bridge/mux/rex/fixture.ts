@@ -30,6 +30,8 @@ export const FAKE_REX_SERVER = "unix:///run/user/1000/rex/server.sock";
 interface FakeRecord {
   state: string;
   app: string;
+  /** Who wrote it: the agent in the foreground (the default) or the block's own shell. */
+  owner?: "foreground" | "shell";
 }
 
 interface FakeBlock {
@@ -222,6 +224,12 @@ export class FakeRex implements RexExec {
   }
 
   /** Put `lines` above a block's screen, as a long-running program leaves them in its scrollback. */
+  /** The block's own shell prints a status record, as `printf` of an OSC 7501 at its prompt does. */
+  forgeStatusFromShell(paneId: string, state: string, app: string): void {
+    const block = this.blocks.get(paneId);
+    if (block) block.records = [{ state, app, owner: "shell" }];
+  }
+
   fillHistory(paneId: string, lines: readonly string[]): void {
     const block = this.blocks.get(paneId);
     if (block) block.history = [...block.history, ...lines];
@@ -343,7 +351,7 @@ export class FakeRex implements RexExec {
               ? { last_exit: { exit_code: 0 }, home: "/home/rex" }
               : {
                   last_exit: null,
-                  child: { pid: 4242, name: "zsh", cwd: block.cwd },
+                  child: { pid: 4242, name: "zsh", argv0: "-zsh", cwd: block.cwd },
                   foreground: { pid: 4243, name: block.foreground, cwd: block.cwd },
                   home: "/home/rex",
                 },
@@ -351,7 +359,14 @@ export class FakeRex implements RexExec {
         );
       }
       if (method === "program_status") {
-        return ok(JSON.stringify({ records: block.records.map((r) => ({ state: r.state, app: r.app, effective_app: r.app, updated_at: "2026-11-19T00:00:00Z" })) }));
+        const records = block.records.map((r) => ({
+          state: r.state,
+          app: r.app,
+          effective_app: r.app,
+          updated_at: "2026-11-19T00:00:00Z",
+          owner: r.owner === "shell" ? { pid: 4242, name: "zsh" } : { pid: 4243, name: block.foreground },
+        }));
+        return ok(JSON.stringify({ records }));
       }
       if (method === "title") return ok(JSON.stringify({ title: block.title, owner: { pid: 4243, name: block.foreground } }));
       if (method === "size") return ok(JSON.stringify({ columns: 80, rows: block.rows, owner: null, desired: [] }));

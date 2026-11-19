@@ -47,6 +47,12 @@ export interface RexProcess {
   readonly cwd: string;
   /** False once the block's program has exited and only its screen is left (`--keep-open`). */
   readonly alive: boolean;
+  /**
+   * The pid of the block's own login shell, when its program is one: a child whose `argv0` starts
+   * with `-`, which is how a login shell is started (Rex starts the default shell that way). Null for a
+   * block that runs a program of its own, and once the program exited.
+   */
+  readonly loginShellPid: number | null;
 }
 
 /** One status record a program reported with OSC 7501 (`program_status`). */
@@ -57,6 +63,8 @@ export interface RexStatusRecord {
   readonly app: string;
   /** The record's id; empty for the root record. */
   readonly id: string;
+  /** The pid of the process that wrote the record; Rex drops a record once that process exits. */
+  readonly ownerPid: number | null;
 }
 
 /** The creator of a terminal block, the only kind of block this adapter maps to a pane. */
@@ -76,6 +84,11 @@ function asObject(value: JsonValue | undefined): JsonObject | null {
 /** A field as text, or `""` when it is absent or not a string. */
 function str(value: JsonValue | undefined): string {
   return typeof value === "string" ? value : "";
+}
+
+/** A field as a process id, or null when it is absent or not a positive whole number. */
+function pid(value: JsonValue | undefined): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
 
 /** A field as an array, or `[]`. */
@@ -185,6 +198,7 @@ export function parseProcess(stdout: string): RexProcess {
     foreground: foreground ? str(foreground.name) || null : null,
     cwd: str(foreground?.cwd) || str(child?.cwd),
     alive: !exited && child !== null,
+    loginShellPid: !exited && child !== null && str(child.argv0).startsWith("-") ? pid(child.pid) : null,
   };
 }
 
@@ -210,7 +224,7 @@ export function parseProgramStatus(stdout: string): RexStatusRecord[] {
     // The record is what the program in the block says about itself, so its fields are bounded
     // before use: a record with a field past the cap is not a report this adapter reads.
     if (state.length > STATUS_STATE_CAP || app.length > STATUS_FIELD_CAP || id.length > STATUS_FIELD_CAP) continue;
-    records.push({ state, app, id });
+    records.push({ state, app, id, ownerPid: pid(asObject(raw.owner)?.pid) });
   }
   return records;
 }

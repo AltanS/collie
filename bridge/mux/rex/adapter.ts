@@ -177,8 +177,15 @@ interface PaneAgent {
 /**
  * The agent a block's status records name, and how it is doing. The root record (no id) is the
  * program's own; a record with an id is a child task it reports beside it, so the root wins.
+ *
+ * A record is what the program in the block says about itself, and any program can print one. Rex
+ * drops a record when the process that wrote it exits, so a record outlives its writer only when the
+ * writer is the block's own login shell (a `printf` at the prompt). No agent is that shell, so such a
+ * record is not read: an agent started from the shell has a pid of its own, and an agent that is the
+ * block's program is not a login shell.
  */
-function agentOf(records: readonly RexStatusRecord[]): PaneAgent {
+function agentOf(allRecords: readonly RexStatusRecord[], loginShellPid: number | null): PaneAgent {
+  const records = allRecords.filter((record) => loginShellPid === null || record.ownerPid !== loginShellPid);
   const root = records.find((record) => record.id === "") ?? records[0];
   const agent = root ? AGENT_BY_APP.get(root.app.trim().toLowerCase()) : undefined;
   if (!root || agent === undefined) return { agent: "shell", status: "unknown" };
@@ -665,7 +672,7 @@ function buildSnapshot(readings: readonly SessionReading[]): MuxSnapshot {
       for (const block of window.blocks) {
         const fact = facts.get(block.blockId);
         if (block.creator !== REX_TERMINAL_CREATOR || fact === undefined) continue;
-        const { agent, status } = agentOf(fact.records);
+        const { agent, status } = agentOf(fact.records, fact.process.loginShellPid);
         windowPanes.push({
           paneId: block.blockId,
           spaceId,

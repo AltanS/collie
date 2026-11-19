@@ -108,8 +108,8 @@ describe("listings", () => {
       foreground: { pid: 2, name: "claude", cwd: "/home/diego/project" },
       home: "/home/diego",
     };
-    expect(parseProcess(JSON.stringify(running))).toEqual({ foreground: "claude", cwd: "/home/diego/project", alive: true });
-    expect(parseProcess(JSON.stringify({ last_exit: { exit_code: 0 }, home: "/home/diego" }))).toEqual({ foreground: null, cwd: "", alive: false });
+    expect(parseProcess(JSON.stringify(running))).toEqual({ foreground: "claude", cwd: "/home/diego/project", alive: true, loginShellPid: null });
+    expect(parseProcess(JSON.stringify({ last_exit: { exit_code: 0 }, home: "/home/diego" }))).toEqual({ foreground: null, cwd: "", alive: false, loginShellPid: null });
   });
 
   test("program status: Claude Code at its trust dialog, and a block with none", () => {
@@ -118,7 +118,7 @@ describe("listings", () => {
         records: [{ state: "blocked", kind: "permission", app: "claude-code", effective_app: "claude-code", msg: "trust this folder", owner: { pid: 3, name: "2.1.327" } }],
       }),
     );
-    expect(records).toEqual([{ state: "blocked", app: "claude-code", id: "" }]);
+    expect(records).toEqual([{ state: "blocked", app: "claude-code", id: "", ownerPid: 3 }]);
     expect(parseProgramStatus(JSON.stringify({ records: [] }))).toEqual([]);
   });
 
@@ -244,6 +244,16 @@ describe("a status record's fields are bounded before use", () => {
 
   test("an ordinary record is read, and kind and msg are never carried", () => {
     const [record] = parseProgramStatus(status({ state: "blocked", kind: "permission", msg: "Run rm -rf?", app: "claude-code" }));
-    expect(record).toEqual({ state: "blocked", app: "claude-code", id: "" });
+    expect(record).toEqual({ state: "blocked", app: "claude-code", id: "", ownerPid: null });
+  });
+});
+
+describe("the block's own login shell", () => {
+  test("a child started as a login shell names its pid; any other program does not", () => {
+    const shell = { last_exit: null, child: { pid: 7, name: "bash", argv0: "-bash" }, foreground: { pid: 7, name: "bash" } };
+    const program = { last_exit: null, child: { pid: 8, name: "claude", argv0: "claude" }, foreground: { pid: 8, name: "claude" } };
+    expect(parseProcess(JSON.stringify(shell)).loginShellPid).toBe(7);
+    expect(parseProcess(JSON.stringify(program)).loginShellPid).toBeNull();
+    expect(parseProcess(JSON.stringify({ last_exit: { exit_code: 0 } })).loginShellPid).toBeNull();
   });
 });

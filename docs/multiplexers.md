@@ -196,6 +196,11 @@ omp reports its status from version 18.8.7 on, and an older omp shows as a shell
 reports none, so it shows as a shell. Codex shows as a shell until you trust its folder, because it
 reports nothing at that question.
 
+The status is what the program in the block reports about itself, and any program can print one.
+Rex drops it when the program that printed it exits. Collie does not read a status that the block's
+own shell prints, for example with `printf` at the prompt, so a plain shell never shows as an agent
+that needs you. A program that you start from the shell can still claim any status while it runs.
+
 The endpoint is the Rex server. Leave it empty to use the server that `rex` finds by itself, or set
 anything `rex -S` takes. Collie asks `rex` never to start a server: start yours with
 `rex server start`, or `rex server install` to start it at boot.
