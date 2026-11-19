@@ -279,6 +279,32 @@ export function parseBlobPart(stdout: string): RexBlobPart {
 }
 
 /**
+ * The Rex API revisions this adapter was probed on (MUX_CONTRACT.md, source RX): 18 on rex
+ * 0.0.1795019727 and 19 on rex 0.0.1795116584, both on a Linux server. The author's earlier macOS
+ * probes were on revision 11, before the adapter took its present shape. A server on another
+ * revision is still driven; the bridge names it once in its log, and `collie doctor` names it too.
+ */
+export const REX_TESTED_API_REVISIONS: readonly number[] = [18, 19];
+
+/** `api_revision` in `rex api call server.status`, or null when the answer names none. */
+export function parseApiRevision(stdout: string): number | null {
+  let parsed: JsonObject;
+  try {
+    parsed = parseObject(stdout, "rex api call server.status");
+  } catch {
+    return null;
+  }
+  const revision = parsed.api_revision;
+  return typeof revision === "number" && Number.isInteger(revision) && revision >= 0 ? revision : null;
+}
+
+/** The one sentence for a revision this adapter was not probed on, or null for a tested one. */
+export function untestedRevisionNote(revision: number): string | null {
+  if (REX_TESTED_API_REVISIONS.includes(revision)) return null;
+  return `Rex API revision ${String(revision)} was not tested with Collie (tested: ${REX_TESTED_API_REVISIONS.join(", ")})`;
+}
+
+/**
  * The primary listener's address in `rex api call server.status`, or null when it names none.
  * Probed: `listeners: [{ endpoint: "unix:///run/user/1000/rex/server.sock", primary: true }, …]`.
  */

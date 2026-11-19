@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  untestedRevisionNote,
   isDefaultWindowLabel,
   keepSgrOnly,
   parseClientCount,
   parseCreated,
   parseEvent,
   parseProcess,
+  parseApiRevision,
   parseProgramStatus,
   parseSessions,
   parseView,
@@ -255,5 +257,20 @@ describe("the block's own login shell", () => {
     expect(parseProcess(JSON.stringify(shell)).loginShellPid).toBe(7);
     expect(parseProcess(JSON.stringify(program)).loginShellPid).toBeNull();
     expect(parseProcess(JSON.stringify({ last_exit: { exit_code: 0 } })).loginShellPid).toBeNull();
+  });
+});
+
+describe("the API revision", () => {
+  test("server.status names it, and a bad answer names none", () => {
+    expect(parseApiRevision(JSON.stringify({ api_revision: 19, listeners: [] }))).toBe(19);
+    expect(parseApiRevision(JSON.stringify({ listeners: [] }))).toBeNull();
+    expect(parseApiRevision(JSON.stringify({ api_revision: "19" }))).toBeNull();
+    expect(parseApiRevision("not json")).toBeNull();
+  });
+
+  test("only an untested revision has a note", () => {
+    expect(untestedRevisionNote(18)).toBeNull();
+    expect(untestedRevisionNote(19)).toBeNull();
+    expect(untestedRevisionNote(11)).toBe("Rex API revision 11 was not tested with Collie (tested: 18, 19)");
   });
 });

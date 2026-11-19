@@ -144,6 +144,8 @@ export class FakeRex implements RexExec {
   nextKeys: "stall" | "refuse" | null = null;
   /** The server forgets every stored `format` result, as it does once newer reads push one out. */
   forgetResults = false;
+  /** The API revision `server.status` reports; 19 is the one the adapter was last probed on. */
+  apiRevision = 19;
   /** What a VT row that holds anything opens with. The real server writes `ESC [ 0 m`. */
   vtRowStart = RESET;
 
@@ -318,7 +320,7 @@ export class FakeRex implements RexExec {
     }
 
     if (verb === "api" && sub === "call" && args[2] === "server.status") {
-      return ok(JSON.stringify({ listeners: [{ endpoint: FAKE_REX_SERVER, transport: "unix", primary: true }] }));
+      return ok(JSON.stringify({ api_revision: this.apiRevision, listeners: [{ endpoint: FAKE_REX_SERVER, transport: "unix", primary: true }] }));
     }
 
     if (verb === "window" && sub === "ls") {

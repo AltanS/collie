@@ -84,6 +84,7 @@ import {
   parseProgramStatus,
   parseRows,
   parseSessions,
+  parseApiRevision,
   parseBlobPart,
   parseFormatted,
   parseTitle,
@@ -92,6 +93,7 @@ import {
   saysNotFound,
   saysUnreachable,
   stripEscapes,
+  untestedRevisionNote,
   type RexBlobPart,
   type RexCreated,
   type RexFormatted,
@@ -254,8 +256,13 @@ export class RexMux implements MuxAdapter {
   });
 
   private readonly revisions = new Map<string, RevisionEntry>();
+  /** Whether the server's API revision was asked: once per adapter, on the first good snapshot. */
+  private revisionAsked = false;
 
-  constructor(private readonly exec: RexExec) {}
+  constructor(
+    private readonly exec: RexExec,
+    private readonly log: (line: string) => void = (line) => console.log(line),
+  ) {}
 
   async reachable(): Promise<boolean> {
     try {
@@ -271,6 +278,10 @@ export class RexMux implements MuxAdapter {
     if (!res.ok) {
       if (res.reason === "unreachable") throw new Error(res.detail);
       throw new Error(`failed to read the rex snapshot: ${res.detail}`);
+    }
+    if (!this.revisionAsked) {
+      this.revisionAsked = true;
+      await this.noteApiRevision();
     }
     return res.value;
   }
@@ -612,6 +623,19 @@ export class RexMux implements MuxAdapter {
     }
     if (result.code === TIMED_OUT_CODE) return muxUnconfirmed(result.stderr.trim());
     return result.code === 0 ? muxOk(result) : refusalFor(result);
+  }
+
+  /**
+   * One look at the server's API revision. A revision the adapter was not probed on is no refusal:
+   * Rex is in beta and most revisions keep the calls this adapter makes, so the bridge only says so,
+   * once. A server that does not answer is left to the snapshot's own error.
+   */
+  private async noteApiRevision(): Promise<void> {
+    const res = await this.attemptRun(["api", "call", "server.status"]);
+    if (!res.ok) return;
+    const revision = parseApiRevision(res.value.stdout);
+    const note = revision === null ? null : untestedRevisionNote(revision);
+    if (note !== null) this.log(`[mux] ${note}`);
   }
 
   private async attemptRun(args: readonly string[]): Promise<MuxOutcome<RexRunResult>> {

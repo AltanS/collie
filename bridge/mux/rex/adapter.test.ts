@@ -213,3 +213,22 @@ describe("a status the block's own shell prints is not an agent", () => {
     expect(claude.status).toBe("working");
   });
 });
+
+describe("an API revision the adapter was not probed on is named once", () => {
+  test("revision 20 writes one log line over two snapshots, and the snapshot still answers", async () => {
+    const fake = new FakeRex();
+    fake.apiRevision = 20;
+    const lines: string[] = [];
+    const adapter = new RexMux(fake, (line) => lines.push(line));
+    expect((await adapter.snapshot()).panes.length).toBeGreaterThan(0);
+    await adapter.snapshot();
+    expect(lines).toEqual(["[mux] Rex API revision 20 was not tested with Collie (tested: 18, 19)"]);
+  });
+
+  test("a tested revision writes nothing", async () => {
+    const lines: string[] = [];
+    const adapter = new RexMux(new FakeRex(), (line) => lines.push(line));
+    await adapter.snapshot();
+    expect(lines).toEqual([]);
+  });
+});
