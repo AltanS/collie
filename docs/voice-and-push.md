@@ -482,6 +482,30 @@ per machine instead and rewrites it as more agents need you: "claude needs you",
 Answering an agent, or opening a finished one, closes only that notification. The wait before an
 alert is the same in both modes.
 
+### Say what the agent waits on
+
+A push that needs you says only that the agent needs you and where it sits. To have it say what the
+agent waits on, add `COLLIE_PUSH_WORDS=on` to the `.env` Collie reads, or `push_words = true` under
+`[bridge]` in `config.toml`, and restart:
+
+```bash
+collie restart
+```
+
+The title then carries the pane's name and the agent's own words, and the body their second line:
+
+| The agent waits on | The title | The body |
+| --- | --- | --- |
+| a command | `api: Run the database migrations` | the command |
+| a question | `api: Which branch should I deploy?` | its options |
+| another tool | `api: Edit: /home/you/app/main.ts` | the pane's place |
+
+Collie reads the words from the agent's session log while the pane waits, and cuts them to 60 and
+120 characters. A pane whose log names no open call, or a crew member's pane, keeps the plain push.
+
+> **Caution.** The words can hold a path, a command line or a secret. They show on your lock screen
+> and pass through the browser's push service. `COLLIE_REDACT` masks secrets in them as in every push.
+
 Machine load sends nothing until you set a rule on a machine's page. The switch turns off every rule at
 once. One alert is sent each time a value climbs and stays high, and a tap opens that machine's Status view. See
 [Machines](crew.md#machines).

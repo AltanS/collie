@@ -256,6 +256,12 @@ export interface Config {
    * when it later resolves. See NotificationCoordinator. 0 = notify on the next tick (no debounce).
    */
   notifyDelayMs: number;
+  /**
+   * Whether a push for a blocked pane says what it waits on, in the agent's own words from its journal
+   * (`waiting-words.ts`, ADR 0152): the question it asked, or the command it wants to run. Off by
+   * default, because those words can carry a path, a command or a secret onto a lock screen.
+   */
+  pushWords: boolean;
   /** How many lines of scrollback to pull for the agent detail view. */
   readLines: number;
   /**
@@ -861,6 +867,7 @@ export function loadConfig(
     pollMs: envInt("COLLIE_POLL_MS", 1500, { min: 250 }, env),
     pollIdleMs: envInt("COLLIE_POLL_IDLE_MS", 12_000, { min: 1000 }, env),
     notifyDelayMs: envInt("COLLIE_NOTIFY_DELAY_MS", 30_000, { min: 0 }, env),
+    pushWords: envBool("COLLIE_PUSH_WORDS", false, env),
     // How early a watched pane's prompt-cache warning goes out. The floor is 30 s (a window shorter
     // than one poll's idle resolution is noise, not a warning) and the ceiling an hour, which is past
     // the longest TTL any shipped rule claims.

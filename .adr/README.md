@@ -368,3 +368,4 @@ One live record for this topic is being written.
 | [0040](./0040-configuration-precedence-and-the-config-file.md) | Configuration precedence is default, machine file, instance file, then the environment. | Accepted |
 | [0043](./0043-operator-bar-rows-replace-the-bar-not-the-palette.md) | Operator `bar = true` rows replace the bar, not the Agent palette. | Accepted |
 | [0074](./0074-a-push-title-is-a-code-the-phone-translates.md) | A push title is a code the phone translates. | Accepted |
+| [0152](./0152-a-push-may-say-what-the-agent-waits-on.md) | With `push_words` on, a blocked pane's push says what the agent waits on, in its own words. | Proposed |
