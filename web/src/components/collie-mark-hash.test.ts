@@ -4,11 +4,13 @@ import { join } from "node:path";
 
 // The marks and their contract are generated upstream (collie-brand/scripts/logo-ship.ts for
 // collie-mark.tsx, its two coat variants, the grey-head playground file and mark-contract.ts,
-// collie-brand/scripts/logo-ship-theme.ts for the three theme marks) and copied in whole. Each file's
+// collie-brand/scripts/logo-ship-theme.ts for the three theme marks, collie-brand/scripts/logo-wordmark.ts for
+// collie-wordmark.tsx, the name beside the mark) and copied in whole. Each file's
 // first line records a sha256 of everything after it; this test recomputes that hash and fails on ANY
 // hand edit made to the file in this repo. Re-copy it from collie-brand/assets/ instead of editing.
 describe.each([
   "collie-mark.tsx",
+  "collie-wordmark.tsx",
   "collie-collar-mark.tsx",
   "collie-blaze-mark.tsx",
   "collie-collar-grey-head.ts",
