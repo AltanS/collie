@@ -394,3 +394,61 @@ jobs:
       - name: Check the 14-day limit
         if: always()
         run: bun scripts/check-quarantine.ts
+
+  # The nightly report, the same shape as the `report` job in `windows.yml`. Only a scheduled run
+  # reports. A red night opens ONE issue labelled `ci-nightly` and each further red night adds a
+  # comment; the first green night closes it. A cancelled run says nothing. Cost of one night: a few
+  # seconds on a Linux runner, nothing repeats inside a night, and a push, PR or manual run never
+  # touches the issue. `needs` names every job above, so a red job anywhere turns the night red.
+  report:
+    name: nightly report
+    needs: [changes, check, web-tests, crew, bun-floor, durable-example, e2e, e2e-swap, quarantine]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RESULTS: ${{ join(needs.*.result, ' ') }}
+      NEEDS_JSON: ${{ toJSON(needs) }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+    steps:
+      - name: Open, update or close the issue
+        run: |
+          set -euo pipefail
+          label="ci-nightly"
+          # Any failure is red. Without one, a cancelled job says nothing about the code.
+          case " ${RESULTS} " in
+            *" failure "*) result="red" ;;
+            *" cancelled "*)
+              echo "The nightly run was cancelled; leaving the issue as it is."
+              exit 0 ;;
+            *) result="green" ;;
+          esac
+          gh label create "${label}" --repo "${REPO}" --color B60205 \
+            --description "The nightly CI run is red" 2>/dev/null || true
+          number="$(gh issue list --repo "${REPO}" --label "${label}" --state open --json number --jq '.[0].number // empty')"
+          if [ "${result}" = "green" ]; then
+            if [ -n "${number}" ]; then
+              gh issue close "${number}" --repo "${REPO}" \
+                --comment "The nightly CI run is green again: ${RUN_URL} (commit ${SHA:0:9})."
+            fi
+            exit 0
+          fi
+          failed="$(printf '%s' "${NEEDS_JSON}" | jq -r 'to_entries[] | select(.value.result == "failure") | .key' | paste -sd ',' - | sed 's/,/, /g')"
+          body="The nightly CI run is red: ${RUN_URL} (commit ${SHA:0:9}). Failed jobs: ${failed}."
+          last_green="$(gh run list --repo "${REPO}" --workflow ci.yml --event schedule --status success --limit 1 --json headSha --jq '.[0].headSha // empty')"
+          if [ -n "${last_green}" ]; then
+            body="${body} Commits since the last green nightly: https://github.com/${REPO}/compare/${last_green}...${SHA}"
+          fi
+          if [ -n "${number}" ]; then
+            gh issue comment "${number}" --repo "${REPO}" --body "${body}"
+            exit 0
+          fi
+          gh issue create --repo "${REPO}" --label "${label}" \
+            --title "The nightly CI run is red" --body "${body} This issue closes itself on the next green nightly run."

@@ -97,6 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      actions: read
       contents: read
       issues: write
     env:
@@ -126,6 +127,10 @@ jobs:
             exit 0
           fi
           body="The nightly Windows run is ${RESULT}: ${RUN_URL} (commit ${SHA:0:9}). The failing tests are in the run summary and in the artifact windows-suite-logs. A maintainer can run the same suites on a Windows 11 VM with make win-test."
+          last_green="$(gh run list --repo "${REPO}" --workflow windows.yml --event schedule --status success --limit 1 --json headSha --jq '.[0].headSha // empty')"
+          if [ -n "${last_green}" ]; then
+            body="${body} Commits since the last green nightly: https://github.com/${REPO}/compare/${last_green}...${SHA}"
+          fi
           if [ -n "${number}" ]; then
             gh issue comment "${number}" --repo "${REPO}" --body "${body}"
             exit 0
