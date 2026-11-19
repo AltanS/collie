@@ -337,7 +337,7 @@ describe("what ends a mode", () => {
     expect(mode()).toBe("normal");
   });
 
-  it("the move a picker key makes changes the route and leaves the mode, once", async () => {
+  it("a route change leaves a sticky mode alone while the new screen has a target for it", async () => {
     registerShortcutHandler("focus_pane_right", vi.fn());
     const view = await renderPage();
     tap(document.body, CTRL_B);
@@ -345,9 +345,41 @@ describe("what ends a mode", () => {
     tap(document.body, { key: "l" });
     view.rerender(<Page routeKey="/pane/p2" />);
     expect(mode()).toBe("navigate");
-    // The next route change is not the mode's own.
     view.rerender(<Page routeKey="/pane/p3" />);
+    expect(mode()).toBe("navigate");
+  });
+
+  it("a route change to a screen with no target for the sticky mode ends it", async () => {
+    const forget = registerShortcutHandler("focus_pane_right", vi.fn());
+    const view = await renderPage();
+    tap(document.body, CTRL_B);
+    tap(document.body, { key: "w" });
+    expect(mode()).toBe("navigate");
+    forget();
+    view.rerender(<Page routeKey="/elsewhere" />);
     expect(mode()).toBe("normal");
+  });
+
+  it("a route change under a prefix pressed inside a sticky mode ends the prefix and keeps the mode", async () => {
+    registerShortcutHandler("focus_pane_right", vi.fn());
+    const view = await renderPage();
+    tap(document.body, CTRL_B);
+    tap(document.body, { key: "w" });
+    tap(document.body, CTRL_B);
+    expect(mode()).toBe("prefix");
+    view.rerender(<Page routeKey="/pane/p2" />);
+    expect(mode()).toBe("navigate");
+  });
+
+  it("Enter and Escape still end a sticky mode", async () => {
+    registerShortcutHandler("focus_pane_right", vi.fn());
+    await renderPage();
+    for (const key of ["Enter", "Escape"]) {
+      tap(document.body, CTRL_B);
+      tap(document.body, { key: "w" });
+      tap(document.body, { key });
+      expect(mode(), key).toBe("normal");
+    }
   });
 
   it("leaving the root puts the keymap away and stops listening", async () => {

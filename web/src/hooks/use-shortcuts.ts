@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import { useLocation } from "react-router";
 
 import { useNav } from "@/hooks/use-nav";
@@ -55,11 +55,6 @@ function userBindings(wire: OperatorShortcutsWire | null): UserShortcuts {
   return Object.fromEntries(Object.entries(wire).map(([name, bindings]) => [name, [...bindings]]));
 }
 
-/** An action that runs inside the navigate mode moves the route, and the mode must outlive that move. */
-function isNavigateAction(action: string): boolean {
-  return ACTIONS.some((row) => row.id === action && "scope" in row && row.scope === "navigate");
-}
-
 const PASS: Outcome = { type: "pass" };
 
 /**
@@ -72,11 +67,6 @@ function onlyPrefixWhileTyping(outcome: Outcome, resolver: Resolver): Outcome {
   return PASS;
 }
 
-/** Set by a navigate-mode action, read by the next route change, which then leaves the mode alone. */
-interface KeepModeFlag {
-  current: boolean;
-}
-
 function act(outcome: Outcome, sink: PaneKeySink | null): void {
   if (outcome.type === "send-prefix") {
     // The write reports its own failure on the status line, like every Keys-tray tap.
@@ -86,7 +76,7 @@ function act(outcome: Outcome, sink: PaneKeySink | null): void {
   if (outcome.type === "run") runShortcutAction(outcome.action, outcome.index);
 }
 
-function handleKeyDown(event: KeyboardEvent, resolver: Resolver, keepModeOnRoute: KeepModeFlag): void {
+function handleKeyDown(event: KeyboardEvent, resolver: Resolver): void {
   // Under the idle cover the app is inert: its keyboard is too.
   if (isLocked() || isCatchingUp()) return;
   const sink = paneKeySink();
@@ -99,20 +89,18 @@ function handleKeyDown(event: KeyboardEvent, resolver: Resolver, keepModeOnRoute
   if (outcome.type === "pass") return;
   event.preventDefault();
   event.stopPropagation();
-  if (outcome.type === "run" && isNavigateAction(outcome.action)) keepModeOnRoute.current = true;
   act(outcome, sink);
 }
 
 /**
  * The keyboard half: build the keymap from the defaults and the operator's `shortcuts.toml`, listen,
- * and put the resolver back to normal when the window loses focus or the route changes. Needs no
+ * put the resolver back to normal when the window loses focus, and end a pending prefix on a route change. Needs no
  * router, so a test mounts it alone; `routeKey` is anything that changes when the route does.
  */
 export function useShortcutKeyboard(routeKey: string): Keymap {
   const user = useOperatorShortcuts();
   const keymap = useMemo(() => buildKeymap({ defaults: ACTIONS, user: userBindings(user), mac: isMacPlatform() }), [user]);
   const resolver = useMemo(() => createResolver(keymap), [keymap]);
-  const keepModeOnRoute = useRef(false);
 
   // The help list reads the keymap and its diagnostics from the store; the console gets each one once
   // per change of the file.
@@ -123,7 +111,7 @@ export function useShortcutKeyboard(routeKey: string): Keymap {
   }, [keymap]);
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => handleKeyDown(event, resolver, keepModeOnRoute);
+    const onKeyDown = (event: KeyboardEvent) => handleKeyDown(event, resolver);
     const onBlur = () => {
       resolver.reset();
       publishShortcutMode(resolver.mode);
@@ -138,14 +126,12 @@ export function useShortcutKeyboard(routeKey: string): Keymap {
     };
   }, [resolver]);
 
-  // A route change ends a pending prefix and a sticky mode, except the move the navigate mode itself
-  // made: its keys step the real focus, which is a route change, and the mode stays until Esc.
+  // A route change ends a pending prefix only. A sticky mode outlives it (its own keys move the route),
+  // unless the new screen has no key of the mode with a target, when it would only swallow typing.
   useEffect(() => {
-    if (keepModeOnRoute.current) {
-      keepModeOnRoute.current = false;
-      return;
-    }
-    resolver.reset();
+    resolver.cancelPrefix();
+    const sticky = resolver.sticky;
+    if (sticky !== null && !hasShortcutTarget(sticky)) resolver.reset();
     publishShortcutMode(resolver.mode);
   }, [routeKey, resolver]);
 

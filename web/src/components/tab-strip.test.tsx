@@ -770,7 +770,7 @@ describe("TabStrip new-tab on a program that offers starters", () => {
 
 // THE KEYBOARD (M108 spec 03): the shortcuts are a second path to the row's own controls, so each is
 // offered only where that control is: not on the space page's row (it has an "All" and no tab of its own
-// to step from), not at the ends of the row, and not for a "+" the machine does not draw.
+// to step from), wrapping at the ends of the row, and not for a "+" the machine does not draw.
 describe("TabStrip shortcuts", () => {
   afterEach(() => {
     __resetShortcutRegistry();
@@ -785,17 +785,24 @@ describe("TabStrip shortcuts", () => {
     return { onSelect, onNewTab };
   }
 
-  it("steps to the tab after and before, and stops at the ends", () => {
+  it("steps to the tab after and before, wrapping at the ends", () => {
     const { onSelect } = renderRow("w1:t1");
-    expect(runShortcutAction("previous_tab")).toBe(false);
     expect(runShortcutAction("next_tab")).toBe(true);
-    expect(onSelect).toHaveBeenCalledWith("w1:t2");
+    expect(onSelect).toHaveBeenLastCalledWith("w1:t2");
+    expect(runShortcutAction("previous_tab")).toBe(true);
+    expect(onSelect).toHaveBeenLastCalledWith("w1:t2");
   });
 
-  it("stops at the last tab", () => {
-    renderRow("w1:t2");
+  it("wraps from the last tab to the first and back", () => {
+    const { onSelect } = renderRow("w1:t2");
+    runShortcutAction("next_tab");
+    expect(onSelect).toHaveBeenLastCalledWith("w1:t1");
+  });
+
+  it("has no tab to step to when the space has one", () => {
+    render(<TabStrip workspaceId="w2" tabs={tabs} agents={[]} selected="w2:t1" onSelect={vi.fn()} onNewTab={vi.fn()} allowAll={false} />);
     expect(runShortcutAction("next_tab")).toBe(false);
-    expect(runShortcutAction("previous_tab")).toBe(true);
+    expect(runShortcutAction("previous_tab")).toBe(false);
   });
 
   it("opens a tab by its number, and does nothing for the open tab or a number past the row", () => {

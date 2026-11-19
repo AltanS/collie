@@ -504,4 +504,20 @@ describe("reset", () => {
     expect(resolver.sticky).toBeNull();
     expect(resolver.press(tap("l"))).toEqual(PASS);
   });
+
+  it("cancelPrefix ends a pending prefix and keeps the sticky mode under it", () => {
+    const resolver = make();
+    resolver.press(ctrl("b"));
+    resolver.press(tap("r"));
+    resolver.press(ctrl("b"));
+    resolver.cancelPrefix();
+    expect(resolver.mode).toBe("resize");
+    expect(resolver.press(tap("l"))).toEqual({ type: "run", action: "resize_wider" });
+  });
+
+  it("cancelPrefix in the normal mode changes nothing", () => {
+    const resolver = make();
+    resolver.cancelPrefix();
+    expect(resolver.mode).toBe("normal");
+  });
 });

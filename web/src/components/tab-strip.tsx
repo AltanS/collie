@@ -247,10 +247,11 @@ export function TabStrip({
     const tab = wsTabs[to];
     if (tab !== undefined && tab.tabId !== selected) onSelect(tab.tabId);
   };
+  const canStep = !allowAll && at >= 0 && wsTabs.length > 1;
   const canAdd = !allowAll && !creatingTab && (newTab.capable || startersOpen);
   useShortcutHandler("new_tab", canAdd ? () => (newTab.capable ? onNewTab(workspaceId) : onNewStarters?.()) : undefined);
-  useShortcutHandler("previous_tab", !allowAll && at > 0 ? () => toTabAt(at - 1) : undefined);
-  useShortcutHandler("next_tab", !allowAll && at >= 0 && at < wsTabs.length - 1 ? () => toTabAt(at + 1) : undefined);
+  useShortcutHandler("previous_tab", canStep ? () => toTabAt((at - 1 + wsTabs.length) % wsTabs.length) : undefined);
+  useShortcutHandler("next_tab", canStep ? () => toTabAt((at + 1) % wsTabs.length) : undefined);
   useShortcutHandler("switch_tab", allowAll ? undefined : (index) => (index === undefined ? undefined : toTabAt(index - 1)));
 
   if (wsTabs.length === 0) return null;

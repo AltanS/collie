@@ -30,8 +30,10 @@ export interface Resolver<Id extends string = ActionId> {
   /** The sticky mode under the prefix, or null. */
   readonly sticky: ModeId | null;
   press(event: KeyLike): Outcome<Id>;
-  /** Back to `normal`. For a blur or a route change. */
+  /** Back to `normal`. For a blur. */
   reset(): void;
+  /** Ends a pending prefix and leaves a sticky mode as it is. For a route change. */
+  cancelPrefix(): void;
 }
 
 /** Keys that are not a choice yet: a modifier on its own, a dead key, an IME step. */
@@ -201,6 +203,9 @@ export function createResolver<Id extends string = ActionId>(keymap: Keymap<Id>)
     reset(): void {
       isInPrefix = false;
       sticky = null;
+    },
+    cancelPrefix(): void {
+      isInPrefix = false;
     },
   };
 }
