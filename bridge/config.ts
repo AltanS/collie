@@ -315,6 +315,11 @@ export interface Config {
    */
   keysFile: string;
   /**
+   * Where the operator's keyboard shortcuts live, `shortcuts.toml`, the sibling of `keys.toml` in the
+   * same dir, read the same way (bridge/operator-shortcuts.ts) and likewise never read here.
+   */
+  shortcutsFile: string;
+  /**
    * Where the operator's Quick-dock groups live — `quick-replies.toml`, the third sibling in the
    * same dir, read the same way (bridge/operator-quick-replies.ts) and likewise never read here.
    */
@@ -885,6 +890,7 @@ export function loadConfig(
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
     commandsFile: join(configDir, "commands.toml"),
     keysFile: join(configDir, "keys.toml"),
+    shortcutsFile: join(configDir, "shortcuts.toml"),
     quickRepliesFile: join(configDir, "quick-replies.toml"),
     themeFile: join(configDir, "theme.toml"),
     fontsDir: join(configDir, "fonts"),

@@ -151,7 +151,7 @@ Without this setting, the UI will load as an empty page. See
 ## Your own slash commands
 
 Put machine-specific commands, such as a Herdr plugin `/fork-in-herdr` or a custom `/deploy`, in
-`commands.toml`. This is one of seven config files that share the same reader and load pattern:
+`commands.toml`. This is one of eight config files that share the same reader and load pattern:
 
 | file | scope | confirm/danger flag | live reload |
 | --- | --- | --- | --- |
@@ -162,6 +162,7 @@ Put machine-specific commands, such as a Herdr plugin `/fork-in-herdr` or a cust
 | `launchers.toml` | none, matched by exact command instead; `[phone]` switches the rows a phone adds | none | yes, but an already-open tab re-reads the rows only on its next load |
 | `cache-rules.toml` | none, matched by exact rule id instead | none | yes, no restart needed |
 | `spaces.toml` | none, matched by exact registry name instead | none | yes, within a few seconds |
+| `shortcuts.toml` | none, one table for the whole app | none | yes, reload the page |
 
 These files are unchanged by the config file. They share the instance `config.toml`'s
 directory, they keep their own formats and their own live reload, and nothing merges them into it.
@@ -460,6 +461,36 @@ on your pad, a quiet line says so, with **Put back**. The Prefix (Ctrl+B) preset
 fits a tmux running inside the pane. The Navigation preset has Home, End, PgUp and PgDn, which Herdr
 cannot send, so they are grey on a Herdr pane
 ([ADR 0092](../.adr/0092-the-keys-pad-is-a-board-you-arrange.md)).
+
+## Keyboard shortcuts
+
+On a desktop browser you can drive Collie from the keyboard, the way you drive Herdr: one prefix
+key, then one action key. You change the keys in `shortcuts.toml`, next to `keys.toml`:
+
+```bash
+cp shortcuts.toml.example ~/.config/collie/shortcuts.toml
+```
+
+```toml
+[keys]
+prefix = "ctrl+b"                    # the default
+new_tab = ["prefix+c", "ctrl+alt+c"] # several bindings for one action
+zoom = ""                            # unbind
+```
+
+The `[keys]` table has the same name as Herdr's, so you can copy a block from your Herdr file. Every
+value is a string or a list of strings. Your value replaces that action's default whole. `""` or `[]`
+unbinds the action. The example file lists every default as a commented line.
+
+- The prefix is `ctrl+b` by default. Press it twice to send `ctrl+b` to the pane.
+- A binding is `prefix+<key>`, or a direct chord such as `ctrl+alt+c`. A direct chord needs a
+  modifier.
+- The browser owns `ctrl+w`, `ctrl+t`, `ctrl+n`, `ctrl+tab`, `ctrl+shift+n` and `ctrl+l`. A direct
+  binding on one of them is refused.
+- A bad line is dropped and the rest of the file loads.
+
+The bridge re-reads the file when it changes. Reload the page to pick it up. The shortcut list in
+the app is the full reference for the actions and their keys.
 
 ## Your own quick replies
 

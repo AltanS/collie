@@ -111,6 +111,7 @@ const KNOWN_NAMES: ReadonlySet<string> = new Set([
   "keys.toml",
   "launchers.toml",
   "quick-replies.toml",
+  "shortcuts.toml",
   "spaces.toml",
   "theme.toml",
 ]);
