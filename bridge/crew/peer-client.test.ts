@@ -1673,3 +1673,50 @@ describe("parseMuxReport — a member's declaration, bounded and re-checked", ()
     expect(wire?.notes).toEqual({});
   });
 });
+
+// ── A member answers the lead uncompressed (§9.1, 1.30.0): no inflating on the lead ──────────────
+
+describe("the dial never inflates a member's body", () => {
+  test("every dial asks for identity and turns the runtime's decompression off, whatever the caller passed", async () => {
+    const { fetch, calls } = replying({ protocol: 2, member: "laptop" });
+    await client(fetch).hello(laptop);
+    await client(fetch).proxy(laptop, "pane/w1:p1", undefined, { headers: { "accept-encoding": "gzip, br" } });
+    for (const call of calls) {
+      expect(new Headers(call.init.headers).get("accept-encoding")).toBe("identity");
+      // SAFETY: the dial builds a CrewRequestInit (Bun's RequestInit plus `tls` and `decompress`); the
+      // fake fetch only widened it to RequestInit when it recorded it.
+      expect((call.init as CrewRequestInit).decompress).toBe(false);
+    }
+  });
+
+  test("an encoded answer is refused before its body is read", async () => {
+    let pulled = 0;
+    const fetch: CrewFetch = async () => {
+      const headers = new Headers({ "content-type": "image/png", "content-encoding": "br" });
+      headers.set(PROTOCOL_HEADER, String(CREW_PROTOCOL_VERSION));
+      headers.set(MEMBER_HEADER, "laptop");
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulled += 1;
+          controller.enqueue(new Uint8Array(1024));
+        },
+      });
+      return new Response(body, { headers });
+    };
+    const outcome = await client(fetch).proxy(laptop, "project-picture/abcdef012345abcdef012345");
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.reason).toContain("content-encoding");
+    // The stream may have been asked for its first chunk when it was built; nothing read it after.
+    expect(pulled).toBeLessThanOrEqual(1);
+  });
+
+  test("an identity answer passes as before", async () => {
+    const fetch: CrewFetch = async () => {
+      const headers = new Headers({ "content-type": "application/json", "content-encoding": "identity" });
+      headers.set(PROTOCOL_HEADER, String(CREW_PROTOCOL_VERSION));
+      headers.set(MEMBER_HEADER, "laptop");
+      return new Response("{}", { headers });
+    };
+    expect((await client(fetch).proxy(laptop, "pane/w1:p1")).ok).toBe(true);
+  });
+});

@@ -1411,6 +1411,14 @@ version.
   it holds is the body it writes out; whatever the runtime compresses and transparently decompresses
   anyway, it does *not* strip the stale `content-encoding` from the response headers, and re-emitting
   that header describes bytes that no longer exist.
+- **A member answers the lead uncompressed, on every dial** *(added 1.30.0)*. The lead sends
+  `Accept-Encoding: identity` on every crew request, not only on a forwarded read, and its runtime
+  never inflates a member's body (`decompress: false`). An answer whose `content-encoding` is anything
+  but absent or `identity` is refused before its body is read, as an unreachable peer. Every released
+  bridge compresses only when the request's `accept-encoding` names gzip (since 0.10.0), so a member of
+  any version already answers this way; the change is on the lead alone, and the price is that the
+  snapshot sweep, which used to ride the runtime's gzip, is uncompressed on the tailnet hop. It closes
+  a decompression bomb: a member's small brotli body cost an older lead hundreds of MB.
 - **The lead→phone hop is compressed by the lead itself**, on the phone's own `Accept-Encoding`, as a
   **stream transform** over the identity bytes (`CompressionStream("gzip")`) — the transform itself
   never buffers (a text answer the lead masks is held once, for the mask, below). It applies to JSON and text bodies with a body to send;

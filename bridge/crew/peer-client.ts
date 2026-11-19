@@ -1122,6 +1122,10 @@ export class PeerClient {
     headers.set("authorization", `Bearer ${secret}`);
     headers.set(PROTOCOL_HEADER, String(CREW_PROTOCOL_VERSION));
     headers.set(MEMBER_HEADER, this.deps.self);
+    // A member answers the lead uncompressed (CREW_PROTOCOL.md §9.4). Every compression a bridge does
+    // is chosen by the request's `accept-encoding` naming gzip (bridge/http-cache.ts, the static route),
+    // so `identity` here makes every member hop plain. Set for EVERY dial, not negotiable by a caller.
+    headers.set("accept-encoding", "identity");
     // A per-call device (a forwarded phone request, §12) wins over the client-wide one: it is the
     // operator the LEAD authenticated for *this* action, where the client-level source is a process
     // default with no request behind it. Authorization/protocol/member are NOT negotiable this way —
@@ -1158,7 +1162,10 @@ export class PeerClient {
       // `tls` rides the init: Bun's fetch takes the pinned material per request, so there is no agent
       // to construct, cache or invalidate — the pin is read fresh on every dial, from the store.
       const tls = this.deps.tls?.(link);
-      const dialInit: CrewRequestInit = { ...init, headers, signal: controller.signal };
+      // `decompress: false`: Bun's fetch would otherwise inflate a brotli, deflate or gzip body before
+      // any reader sees it, so a member's 1 KB body could cost the lead hundreds of MB. An encoded
+      // answer is refused below instead, before its body is read.
+      const dialInit: CrewRequestInit = { ...init, headers, signal: controller.signal, decompress: false };
       // Assigned, never conditionally spread: an unpinned link must carry NO `tls` key at all.
       if (tls) dialInit.tls = tls;
       res = await this.deps.fetch(url, dialInit);
@@ -1181,6 +1188,15 @@ export class PeerClient {
       return this.fail({ state: "unreachable", reason: `${route}: ${reason}`, timedOut: aborted });
     } finally {
       clearTimeout(timer);
+    }
+
+    // ── An encoded body is refused before anything reads it ──────────────────
+    // The dial asked for `identity` and does not inflate (above), so an answer with any other
+    // `content-encoding` is a member this lead cannot read safely. Its body is cancelled unread.
+    const encoding = res.headers.get("content-encoding");
+    if (encoding !== null && encoding.trim() !== "" && encoding.trim().toLowerCase() !== "identity") {
+      await res.body?.cancel().catch(() => undefined);
+      return this.fail({ state: "unreachable", reason: `${route}: the peer answered with content-encoding ${encoding.slice(0, 32)}, which the lead does not decode` });
     }
 
     // ── Version first, before status and before the body ─────────────────────
