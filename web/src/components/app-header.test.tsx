@@ -9,7 +9,7 @@ import { collieMark, markIsLive, markPaper, markState } from "@/test/collie-mark
 import { __resetAuthedUrls } from "@/lib/authed-url";
 import { __resetOperatorCommands, loadOperatorCommands } from "@/lib/operator-config";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
-import { AppHeaderHost, RouteHeader, SettingsGear, useHeaderDock } from "./app-header";
+import { AppHeaderHost, RouteHeader, SettingsGear } from "./app-header";
 import { ORBIT_TURN_MS } from "./collie-home";
 import { __resetReconnected, showReconnected } from "@/lib/reconnected";
 import { __resetBundleFocus, bundleFocusPending, subscribeBundleFocus } from "@/lib/bundle-apply";
@@ -1182,71 +1182,5 @@ describe("the header — the mark when the link comes back", () => {
     act(() => showReconnected(ORBIT_TURN_MS));
     act(() => screen.getByRole("button", { name: "Collie home, reconnected" }).click());
     expect(onHome).toHaveBeenCalledTimes(1);
-  });
-});
-
-// THE PROJECT PICTURE IN THE MARK'S PLACE (ADR 0160). A route claims one with `RouteHeader picture`;
-// the mark at the top of the window shows it while it rests, and a mark docked in a large screen's
-// sidebar never does.
-describe("the header — a route's project picture", () => {
-  const PICTURE = "data:image/png;base64,AAAA";
-  const layers = (c: HTMLElement) => Array.from(c.querySelectorAll<HTMLElement>('[data-slot="collie-mark-picture"]'));
-  const pictures = (c: HTMLElement) => layers(c).filter((l) => l.getAttribute("data-shown") === "true");
-
-  beforeEach(() => __resetConnectionHealth());
-
-  it("reaches the mark at the top of the window, and lets go when the claim does", async () => {
-    const user = userEvent.setup();
-    function Route() {
-      const [picture, setPicture] = useState<string | null>(PICTURE);
-      return (
-        <>
-          <button type="button" onClick={() => setPicture(null)}>drop</button>
-          <Header bridge="connected" error={false} picture={picture} onHome={() => {}} />
-        </>
-      );
-    }
-    const { container } = renderHeader(<Route />);
-    expect(pictures(container)).toHaveLength(1);
-    expect(pictures(container)[0]?.querySelector("img")?.getAttribute("src")).toBe(PICTURE);
-    await user.click(screen.getByRole("button", { name: "drop" }));
-    expect(pictures(container)).toHaveLength(0);
-  });
-
-  it("shows no picture on a route that claims none", () => {
-    const { container } = renderHeader(<Header bridge="connected" error={false} onHome={() => {}} />);
-    expect(layers(container)).toHaveLength(1);
-    expect(pictures(container)).toHaveLength(0);
-  });
-
-  it("is hidden while the mark is in a live state", () => {
-    const { container } = renderHeader(<Header bridge="connected" error={false} picture={PICTURE} starting onHome={() => {}} />);
-    expect(markState(container)).toBe("loading");
-    expect(pictures(container)).toHaveLength(0);
-  });
-
-  it("never reaches a docked mark: the sidebar's mark keeps the Collie mark", () => {
-    function Docked() {
-      const [row, setRow] = useState<HTMLElement | null>(null);
-      const [mark, setMark] = useState<HTMLElement | null>(null);
-      useHeaderDock({ row, mark, paper: "var(--card)" });
-      return (
-        <>
-          <div ref={setRow} data-slot="test-dock-row" />
-          <div ref={setMark} data-slot="test-dock-mark" />
-        </>
-      );
-    }
-    const { container } = renderHeader(
-      <AppHeaderHost bridge="connected" error={false}>
-        <Docked />
-        <RouteHeader picture={PICTURE} onHome={() => {}} />
-      </AppHeaderHost>,
-    );
-    const dockedMark = container.querySelector('[data-slot="test-dock-mark"]');
-    expect(dockedMark?.querySelector('[data-slot="collie-mark"]')).not.toBeNull();
-    expect(pictures(container)).toHaveLength(0);
-    expect(dockedMark?.querySelector("img")).toBeNull();
-    expect(layers(container)).toHaveLength(1);
   });
 });

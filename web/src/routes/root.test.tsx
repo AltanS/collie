@@ -414,64 +414,6 @@ describe("RootLayout — the shell survives a navigation", () => {
   });
 });
 
-// A MOVE BETWEEN TWO PICTURED SESSIONS NEVER SHOWS THE MARK (issue 811, ADR 0160). The navigation turns
-// the mark for the new pane's loader, and before it was its own kind of work (lib/busy.ts) that took the
-// picture's place for the whole load: the old picture faded out and the mark rose for 110 to 140 ms on the
-// live rig, on Back and Forward, a push link, the switcher and the sidebar. The loader is held open here,
-// so the assertion runs in the middle of the move, not after it.
-describe("RootLayout — a move between two pictured sessions", () => {
-  it("keeps the picture in the header for the whole load of the next pane", async () => {
-    const PICTURE_A = "data:image/png;base64,AAAA";
-    const PICTURE_B = "data:image/png;base64,BBBB";
-    let open: () => void = () => {};
-    const held = new Promise<null>((resolve) => {
-      open = () => resolve(null);
-    });
-    const Pane = ({ picture }: { picture: string }) => (
-      <>
-        <RouteHeader onHome={() => {}} picture={picture} />
-        <div>{picture === PICTURE_A ? "pane a" : "pane b"}</div>
-      </>
-    );
-    const router = createMemoryRouter(
-      [
-        {
-          id: ROOT_ROUTE_ID,
-          path: "/",
-          loader: () => home(AFTERNOON),
-          element: <RootLayout />,
-          children: [
-            { path: "pane/a", element: <Pane picture={PICTURE_A} /> },
-            { path: "pane/b", loader: () => held, element: <Pane picture={PICTURE_B} /> },
-          ],
-        },
-      ],
-      { initialEntries: ["/pane/a"] },
-    );
-    const { container } = render(<RouterProvider router={router} />);
-    await waitFor(() => expect(screen.getByText("pane a")).toBeInTheDocument());
-    const slot = () => container.querySelector("header [data-slot='collie-mark-picture']");
-    await waitFor(() => expect(slot()?.getAttribute("data-shown")).toBe("true"));
-
-    let moved: Promise<void> = Promise.resolve();
-    act(() => {
-      moved = router.navigate("/pane/b");
-    });
-    // In the middle of the move: the loader is pending, the mark turns, and the picture stays.
-    await waitFor(() => expect(router.state.navigation.state).toBe("loading"));
-    expect(markState(container.querySelector("header")!)).toBe("loading");
-    expect(slot()?.getAttribute("data-shown")).toBe("true");
-
-    await act(async () => {
-      open();
-      await moved;
-    });
-    await waitFor(() => expect(screen.getByText("pane b")).toBeInTheDocument());
-    expect(slot()?.getAttribute("data-shown")).toBe("true");
-    expect(slot()?.querySelector("img")?.getAttribute("src")).toBe(PICTURE_B);
-  });
-});
-
 // THE IDENTITY BLOCK IS MOUNTED ONCE AND HIDDEN, NEVER UNMOUNTED — the same claim as the one above,
 // one level deeper, and a reported bug rather than a theory. "Collie on <mux>" rides the wordmark
 // claim, which the dashboard makes and a pane does not. Rendered ON that claim, the block left the

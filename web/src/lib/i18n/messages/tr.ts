@@ -190,7 +190,7 @@ export const tr: Dictionary = {
     "Fiziksel klavyede Enter mesajı gönderir, Shift+Enter yeni satır ekler. Ekran klavyesinde Enter her zaman yeni satır ekler.",
   "settings.projectPictures.title": "Proje resimleri",
   "settings.projectPictures.hint":
-    "Bir deponun collie.toml dosyasında belirttiği resmi, köşede logo ile birlikte ajan logosunun yerine, bir oturum açıkken ve işaret dururken de Collie işaretinin yerine gösterir.",
+    "Bir deponun collie.toml dosyasında belirttiği resmi, köşede logo ile birlikte ajan logosunun yerine gösterir.",
   "settings.paneNav.title": "Bölme gezintisi",
   "settings.paneNav.twoFingers": "İki parmak",
   "settings.paneNav.joystick": "Joystick",

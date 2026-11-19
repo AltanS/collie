@@ -8,17 +8,17 @@ import { installApiStub } from "./fixtures/api";
 import { keepPhoneLayout } from "./fixtures/layout";
 
 // THE PROJECT PICTURE IN AN ENGINE (issue 811, ADR 0160). jsdom cannot decode a picture, draw a canvas or
-// lay out a row, so four claims are read here: the page decodes the bridge's bytes into its own copy and
-// draws it in the session's row and, in a session view, in the header mark; the dashboard's mark stays
-// the Collie mark; a live state of the mark brings the Collie mark back; and a row with a picture sits
-// exactly where the same row without one sits, at 390 and 360 px.
+// lay out a row, so these claims are read here: the page decodes the bridge's bytes into its own copy and
+// draws it, with the agent logo in its corner, in the session's row and in the session view's title; the
+// Collie mark is never replaced; a row with a picture sits exactly where the same row without one sits, at
+// 390 and 360 px; and the closed sidebar on a large screen draws it without moving a box.
 
 test.use({ serviceWorkers: "block" });
 
 const VERSION = "abcdef012345abcdef012345";
 
 test.beforeEach(async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "app-phone", "a phone-width layout claim; the tablet adds nothing");
+  test.skip(testInfo.project.name !== "app-phone", "a layout claim at set sizes; the tablet adds nothing");
   await installApiStub(page);
   await keepPhoneLayout(page);
 });
@@ -84,7 +84,8 @@ function rows(page: Page) {
 }
 
 const firstTile = (page: Page) => page.locator('[data-slot="agent-tile"]').first();
-const headerPicture = (page: Page) => page.locator('[data-slot="collie-mark-picture"]');
+/** Every picture the Collie mark's button holds: none, always (the mark is never replaced). */
+const markPictures = (page: Page) => page.locator('[data-slot="collie-mark"]').locator("xpath=ancestor::button[1]").locator('img[src^="data:"]');
 
 test("the row shows the picture with the agent logo in its corner, and the dashboard keeps the Collie mark", async ({ page }) => {
   await serve(page, true);
@@ -96,25 +97,19 @@ test("the row shows the picture with the agent logo in its corner, and the dashb
   expect(await img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
   // The harness stays visible: the agent's own logo, named, in the corner.
   await expect(firstTile(page).getByRole("img", { name: /claude/i })).toBeVisible();
-  // Not a session view: the mark is the Collie mark.
-  await expect(headerPicture(page)).toHaveAttribute("data-shown", "false");
+  // The Collie mark stays the Collie mark.
+  await expect(page.locator('header [data-slot="collie-mark"]')).toBeVisible();
+  await expect(markPictures(page)).toHaveCount(0);
 });
 
-test("in the session view the resting mark is the picture, and a live state brings the Collie mark back", async ({ page }) => {
-  let failing = false;
+test("in the session view the title's tile shows the picture, and the Collie mark stays", async ({ page }) => {
   await serve(page, true);
-  // Registered last, so it is asked first: while `failing`, every read fails, the pane's included.
-  await page.route("**/api/**", (route) => (failing ? route.abort("failed") : route.fallback()));
-  await page.goto("/");
-  await expect(firstTile(page)).toHaveAttribute("data-picture", "on");
   await page.goto(`/pane/${encodeURIComponent(fixtureSnapshot.agents[0]!.paneId)}`);
-  await expect(headerPicture(page)).toHaveAttribute("data-shown", "true");
-  // The connection goes: after the sustained beat the mark blooms, and a picture cannot say that.
-  failing = true;
-  await expect(headerPicture(page)).toHaveAttribute("data-shown", "false", { timeout: 20_000 });
-  // It comes back: the mark greets, then rests, and the picture returns.
-  failing = false;
-  await expect(headerPicture(page)).toHaveAttribute("data-shown", "true", { timeout: 20_000 });
+  const title = page.locator('header [data-slot="agent-tile"]');
+  await expect(title).toHaveAttribute("data-picture", "on");
+  await expect(title.locator("img")).toHaveAttribute("src", /^data:image\/png;base64,/);
+  await expect(page.locator('header [data-slot="collie-mark"]')).toBeVisible();
+  await expect(markPictures(page)).toHaveCount(0);
 });
 
 for (const width of [390, 360]) {
@@ -140,3 +135,40 @@ for (const width of [390, 360]) {
     expect(withIt.overflow).toBe(false);
   });
 }
+
+// THE CLOSED SIDEBAR ON A LARGE SCREEN (round 14). The rail's 44 px buttons hold a 28 px tile, and the
+// picture takes the logo's place in it with the logo at 14 px in its corner. Nothing on the rail moves
+// when the picture arrives: its width and every button's box are the same with and without it.
+test("the closed sidebar draws the picture, and its width and buttons do not move when it loads", async ({ browser }) => {
+  const measure = async (on: boolean) => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
+    const page = await context.newPage();
+    await installApiStub(page);
+    await page.addInitScript(() => localStorage.setItem("collie:wide-sidebar:v1", "0"));
+    await serve(page, on);
+    await page.goto(`/pane/${encodeURIComponent(fixtureSnapshot.agents[1]!.paneId)}`);
+    const rail = page.locator('aside[data-slot="rail"]');
+    await expect(rail).toBeVisible();
+    const pictured = rail.locator('[data-slot="agent-tile"][data-picture="on"]');
+    await expect(pictured).toHaveCount(on ? 1 : 0);
+    await expect(rail.locator('[data-slot="agent-tile"]').first()).toBeVisible();
+    await expect(page.locator('[data-slot="crossfade-out"]')).toHaveCount(0);
+    const sizes = on ? await pictured.evaluate((tile) => [tile, ...tile.querySelectorAll("img, svg")].map((el) => Math.round(el.getBoundingClientRect().width))) : [];
+    const read = await rail.evaluate((el) => ({
+      width: el.getBoundingClientRect().width,
+      buttons: [...el.querySelectorAll<HTMLElement>("button[data-pane-key]")].map((b) => {
+        const r = b.getBoundingClientRect();
+        return [r.x, r.y, r.width, r.height];
+      }),
+    }));
+    await context.close();
+    return { read, sizes };
+  };
+  const without = await measure(false);
+  const withIt = await measure(true);
+  expect(withIt.read).toEqual(without.read);
+  expect(withIt.read.width).toBe(56);
+  // The tile, the picture in it, and the corner logo: 28, 28 and 14 px.
+  expect(withIt.sizes[0]).toBe(28);
+  expect(withIt.sizes).toContain(14);
+});

@@ -192,7 +192,7 @@ export const fr: Dictionary = {
     "Avec un clavier physique, Entrée envoie le message et Maj+Entrée ajoute une nouvelle ligne. Avec le clavier à l'écran, Entrée ajoute toujours une nouvelle ligne.",
   "settings.projectPictures.title": "Images de projet",
   "settings.projectPictures.hint":
-    "Affiche l'image qu'un dépôt indique dans son collie.toml à la place du logo de l'agent, avec le logo dans le coin, et à la place de la marque Collie tant qu'une session est ouverte et que la marque est au repos.",
+    "Affiche l'image qu'un dépôt indique dans son collie.toml à la place du logo de l'agent, avec le logo dans le coin.",
   "settings.paneNav.title": "Navigation entre les volets",
   "settings.paneNav.twoFingers": "Deux doigts",
   "settings.paneNav.joystick": "Joystick",
