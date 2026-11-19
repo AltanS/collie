@@ -177,13 +177,14 @@ const probeTern: Probe = async (deps) => {
 };
 
 /**
- * Rex: the Linux server's socket, else the binary. A file check only, like Tern's: a rex call would
- * start a server unless told not to, and this verb never starts a multiplexer. The socket path is the
- * Linux default; on a Mac, where it was not probed, the row falls back to naming the binary.
+ * Rex: the platform's default socket, else the binary. A file check only, like Tern's: a rex call
+ * would start a server unless told not to, and this verb never starts a multiplexer. The socket path
+ * is probed on both platforms — `$XDG_RUNTIME_DIR/rex/server.sock` on Linux, and on macOS (where no
+ * XDG runtime dir is set) the app-managed `~/Library/Application Support/rex/server.sock`.
  */
 const probeRex: Probe = async (deps) => {
   const uid = deps.uid ?? process.getuid?.() ?? 1000;
-  const socket = defaultRexSocket(deps.ctx.env.XDG_RUNTIME_DIR, uid);
+  const socket = defaultRexSocket(deps.ctx.env.XDG_RUNTIME_DIR, uid, deps.ctx.home, process.platform);
   if (deps.files.exists(socket)) return { present: true, answering: null, where: socket, version: null };
   const binary = resolveRexBinary((deps.ctx.env.COLLIE_REX_BIN ?? "").trim(), (path) => deps.files.exists(path), rexBinaryCandidates(deps.ctx.home));
   return binary === null ? absent() : absent(`${binary}, no server socket at ${socket}`);

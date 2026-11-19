@@ -143,7 +143,18 @@ describe("window labels", () => {
 });
 
 describe("the event stream", () => {
-  const wrap = (event: object): string => JSON.stringify({ type: "session_event", payload: { session_id: SESSION, event } });
+  /** One wrapped event body: its `type`, and the payload shape that type decides. */
+  interface SessionEventBody {
+    readonly type: string;
+    readonly payload: {
+      readonly block_id?: string;
+      readonly creator_name?: string;
+      readonly name?: string;
+      readonly payload?: unknown;
+      readonly client_id?: string;
+    };
+  }
+  const wrap = (event: SessionEventBody): string => JSON.stringify({ type: "session_event", payload: { session_id: SESSION, event } });
 
   test("sessions appearing and going are topology", () => {
     expect(parseEvent(JSON.stringify({ type: "session_created", payload: { session: { session_id: SESSION, label: "x" } } }))).toEqual({ kind: "topology" });

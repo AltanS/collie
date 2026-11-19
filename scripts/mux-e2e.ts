@@ -29,6 +29,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HOST } from "../bridge/host.ts";
+import { REX_BINARY_OPTION } from "../bridge/mux/rex/adapter.ts";
 import { buildMuxRegistry, createMux, muxEndpointVar } from "../bridge/mux/registry.ts";
 import type { MuxAdapter } from "../bridge/mux/types.ts";
 
@@ -239,7 +240,10 @@ async function e2e(mux: Mux): Promise<Result> {
     await start(mux, env, root);
     started = true;
 
-    const probe = await run(["bun", join(import.meta.dir, "mux-probe.ts"), "--mux", mux], { ...env, [muxEndpointVar(mux)]: endpoint }, join(import.meta.dir, ".."));
+    // COLLIE_REX_BIN travels with the children, as the endpoint does: the isolated HOME hides every
+    // prefix the rex adapter probes for a binary, and a Mac holds none of them outside the app bundle.
+    const childEnv = { ...env, [muxEndpointVar(mux)]: endpoint, COLLIE_REX_BIN: process.env.COLLIE_REX_BIN ?? "" };
+    const probe = await run(["bun", join(import.meta.dir, "mux-probe.ts"), "--mux", mux], childEnv, join(import.meta.dir, ".."));
     const checks = probe.out.split("\n").filter((l) => /^\s+[✓✗·]/.test(l));
     lines.push(`probe exit ${String(probe.code)}, ${String(checks.filter((l) => l.includes("✓")).length)} checks passed`);
     lines.push(...checks.filter((l) => !l.includes("✓")).map((l) => l.trim()));
@@ -248,7 +252,7 @@ async function e2e(mux: Mux): Promise<Result> {
     // A child, like the probe: the adapter spawns its multiplexer's CLI with Bun's environment as it
     // was at startup, and Bun.spawn does not see a later write to process.env, so an in-process
     // adapter would reach the operator's zellij socket dir instead of this run's.
-    const send = await run(["bun", import.meta.path, SEND_FLAG, mux, endpoint], env, join(import.meta.dir, ".."));
+    const send = await run(["bun", import.meta.path, SEND_FLAG, mux, endpoint], childEnv, join(import.meta.dir, ".."));
     lines.push(send.out.trim());
 
     const ok = probe.code === 0 && checks.length > 0 && send.code === 0;
@@ -263,7 +267,11 @@ async function e2e(mux: Mux): Promise<Result> {
 /** The child half: one send and read back, run under the isolated environment it was given. */
 async function sendChild(mux: string, endpoint: string): Promise<never> {
   try {
-    const adapter = createMux(buildMuxRegistry(), mux, { endpoint, timeoutMs: 10_000, options: {} });
+    const adapter = createMux(buildMuxRegistry(), mux, {
+      endpoint,
+      timeoutMs: 10_000,
+      options: { [REX_BINARY_OPTION]: process.env.COLLIE_REX_BIN ?? "" },
+    });
     const paneId = await firstPane(adapter);
     const problems = await sendAndReadBack(adapter, paneId);
     console.log(problems.length === 0 ? `send and read back through the adapter on pane ${paneId}: ok` : problems.join("; "));

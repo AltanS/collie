@@ -14,6 +14,9 @@
 //  • A hung child is killed on the target's budget: SIGTERM, then SIGKILL a moment later.
 //  • Typed text rides STDIN (`printf … | rex send`, probed), not argv, so it has no kernel argv cap
 //    and never shows in `ps`.
+//  • `REX_SESSION` and `REX_BLOCK` are stripped from the child (`rexChildEnv`): an ambient session
+//    scopes every bare `-b`, so a bridge started inside one Rex session would lose sight of the
+//    server's others (probed, API revision 11).
 
 import { existsSync } from "node:fs";
 import { isAbsolute } from "node:path";
@@ -44,12 +47,18 @@ export interface RexExec {
 
 /**
  * Where the `rex` binary is looked for, in order. Probed: the Linux package installs `/usr/bin/rex`
- * and exports `REX_BIN_DIR=/usr/bin` into every block; the others are the usual user, local and
- * Homebrew prefixes.
+ * and exports `REX_BIN_DIR=/usr/bin` into every block, and the macOS app does the same for the copy
+ * inside its bundle (`REX_BIN_DIR=…/Rex Server.app/Contents/MacOS`), which on a Mac is the only place
+ * one lives — no prefix in the fixed list below holds it. `REX_BIN_DIR` is read first for that reason;
+ * the others are the usual user, local and Homebrew prefixes.
  */
-export function rexBinaryCandidates(home: string = process.env.HOME ?? ""): readonly string[] {
+export function rexBinaryCandidates(
+  home: string = process.env.HOME ?? "",
+  binDir: string = process.env.REX_BIN_DIR ?? "",
+): readonly string[] {
+  const own = binDir.trim() ? [`${binDir.trim()}/rex`] : [];
   const local = home.length > 0 ? [`${home}/.local/bin/rex`] : [];
-  return [...local, "/usr/local/bin/rex", "/usr/bin/rex", "/bin/rex", "/opt/homebrew/bin/rex", "/opt/local/bin/rex"];
+  return [...own, ...local, "/usr/local/bin/rex", "/usr/bin/rex", "/bin/rex", "/opt/homebrew/bin/rex", "/opt/local/bin/rex"];
 }
 
 /** The absolute path of the rex binary, or null when there is none. */
@@ -64,16 +73,23 @@ export function resolveRexBinary(
 }
 
 /**
- * The socket a Linux rex server listens on when nothing else is configured. Probed:
- * `unix:///run/user/1000/rex/server.sock`, the address `REX_SERVER` carries inside every block. Only
- * the CLI-probe in `cli/mux-list.ts` reads this; the adapter itself lets `rex` find its own server.
+ * The socket a rex server listens on when nothing else is configured. Probed on Linux:
+ * `unix:///run/user/1000/rex/server.sock`, the address `REX_SERVER` carries inside every block. On
+ * macOS (API revision 11) a server honours `XDG_RUNTIME_DIR` when one is set — `mux-e2e` starts its
+ * throwaway that way — and the app-managed default, with none set, is
+ * `~/Library/Application Support/rex/server.sock`. Only the CLI-probe in `cli/mux-list.ts` reads
+ * this; the adapter itself lets `rex` find its own server.
  */
 export function defaultRexSocket(
   runtimeDir: string | undefined = process.env.XDG_RUNTIME_DIR,
   uid: number = process.getuid?.() ?? 1000,
+  home: string = process.env.HOME ?? "",
+  platform: NodeJS.Platform = process.platform,
 ): string {
-  const dir = runtimeDir?.trim() ? runtimeDir.trim() : `/run/user/${String(uid)}`;
-  return `${dir}/rex/server.sock`;
+  const dir = runtimeDir?.trim();
+  if (dir) return `${dir}/rex/server.sock`;
+  if (platform === "darwin") return `${home}/Library/Application Support/rex/server.sock`;
+  return `/run/user/${String(uid)}/rex/server.sock`;
 }
 
 export const NO_REX_BINARY = "no rex binary found — set COLLIE_REX_BIN to its absolute path";
@@ -100,6 +116,21 @@ export function globalArgs(endpoint: string): string[] {
   return args;
 }
 
+/**
+ * The environment every child runs with: the operator's, minus rex's own scope markers. Probed on API
+ * revision 11 (macOS): a bare `-b <id>` resolves within `-s` or the ambient `REX_SESSION` only —
+ * pointed at a session that does not hold the block, it answers exit 3, `block target "…" not
+ * found` — while with no ambient scope the id resolves across the whole server, which is what an
+ * adapter that addresses panes by bare id needs. `REX_BLOCK` goes with it. `REX_SERVER` stays: it
+ * names the server an empty endpoint means, the one the operator's own block belongs to.
+ */
+export function rexChildEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const child = { ...env };
+  delete child.REX_SESSION;
+  delete child.REX_BLOCK;
+  return child;
+}
+
 /** Real execution via Bun.spawn. */
 export class SpawnRexExec implements RexExec {
   constructor(
@@ -114,6 +145,7 @@ export class SpawnRexExec implements RexExec {
       stdin: stdin === undefined ? "ignore" : new TextEncoder().encode(stdin),
       stdout: "pipe",
       stderr: "pipe",
+      env: rexChildEnv(),
     });
 
     let killed = false;
@@ -149,6 +181,7 @@ export class SpawnRexExec implements RexExec {
       stdin: "ignore",
       stdout: "pipe",
       stderr: "ignore",
+      env: rexChildEnv(),
     });
 
     let ended = false;

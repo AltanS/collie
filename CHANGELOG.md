@@ -2839,6 +2839,7 @@ A bugfix release, not urgent. You need it if you use pi with `editorPaddingX` ab
 - Android push notifications show a proper small badge glyph and a full-size Collie mark; the maskable home-screen tile was doing both jobs and rendered as a grey block on the notification ([177a8a9](https://github.com/AltanS/collie/commit/177a8a9))
 - Renaming a tab or pane from its sheet works on the phone again; the rename field's own keyboard used to fold the strip band and unmount the sheet mid-edit ([93373ce](https://github.com/AltanS/collie/commit/93373ce))
 - Dashboard rows lead with the pane title beside a small agent tile, with the space and tab as the address beneath; the big tile, the bold space name and its truncation are gone ([c442429](https://github.com/AltanS/collie/commit/c442429))
+- **The experimental rex adapter works on a Mac too.** The `rex` binary is found through the `REX_BIN_DIR` the Mac app exports into every terminal, the read-only probe and the end-to-end suite pass unchanged against the app's own server, and a collie started inside one Rex session no longer loses sight of the server's other sessions (#814).
 
 ## [1.1.0] - 2026-09-01
 

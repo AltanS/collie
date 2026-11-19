@@ -25,6 +25,7 @@ import { loadConfig } from "../bridge/config.ts";
 import { MUX_READ_ONLY_CHECKS } from "../bridge/mux/conformance.ts";
 import { DURABLE_MUX } from "../bridge/mux/durable/adapter.ts";
 import { HERDR_DIAL_MODE_OPTION } from "../bridge/mux/herdr/adapter.ts";
+import { REX_BINARY_OPTION } from "../bridge/mux/rex/adapter.ts";
 import {
   buildMuxRegistry,
   createMux,
@@ -75,6 +76,7 @@ async function probe(factory: MuxAdapterFactory, endpoint: string, dialMode: str
       [HERDR_DIAL_MODE_OPTION]: dialMode,
       [TMUX_BINARY_OPTION]: process.env.COLLIE_TMUX_BIN ?? "",
       [ZELLIJ_BINARY_OPTION]: process.env.COLLIE_ZELLIJ_BIN ?? "",
+      [REX_BINARY_OPTION]: process.env.COLLIE_REX_BIN ?? "",
     },
   });
 
