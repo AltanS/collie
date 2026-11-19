@@ -198,18 +198,18 @@ function inAreas(file: string, areas: readonly string[]): boolean {
   return areas.some((area) => file.startsWith(`${area}/`));
 }
 
-/**
- * The near tests of a change. `changed` is the changed paths, `all` is every file the repo holds
- * (tracked and not ignored), both relative to the root. A changed test file counts as itself and as
- * a source file, so a change to `foo.test.ts` also picks `foo.part.test.ts` beside it.
- */
-export function nearTests(
+/** Which sibling test files a changed file picks: quick ones for the gate, or the slow ones left out. */
+type NearKind = "quick" | "slow";
+
+const SLOW_TEST = /\.slow\.test\.(ts|tsx|sh)$/;
+
+function pickNear(
   changed: readonly string[],
   all: readonly string[],
   areas: readonly string[],
-  kind: "bun" | "shell",
+  wanted: RegExp,
+  kind: NearKind,
 ): string[] {
-  const wanted = kind === "bun" ? /\.test\.(ts|tsx)$/ : /\.test\.sh$/;
   const exists = new Set(all);
   const picked = new Set<string>();
   const dirs = new Map<string, string[]>();
@@ -221,11 +221,97 @@ export function nearTests(
     if (!inAreas(file, areas) || !exists.has(file)) continue;
     const stem = stemOf(file);
     for (const sibling of dirs.get(dirname(file)) ?? []) {
-      if (!wanted.test(sibling) || isExcludedFromNear(sibling)) continue;
+      if (!wanted.test(sibling)) continue;
+      if (kind === "quick" ? isExcludedFromNear(sibling) : !SLOW_TEST.test(sibling)) continue;
       const own = file === sibling;
       const named = stemOf(sibling) === stem;
       if (own || named) picked.add(sibling);
     }
   }
   return [...picked].toSorted();
+}
+
+function wantedFor(kind: "bun" | "shell"): RegExp {
+  return kind === "bun" ? /\.test\.(ts|tsx)$/ : /\.test\.sh$/;
+}
+
+/**
+ * The near tests of a change. `changed` is the changed paths, `all` is every file the repo holds
+ * (tracked and not ignored), both relative to the root. A changed test file counts as itself and as
+ * a source file, so a change to `foo.test.ts` also picks `foo.part.test.ts` beside it.
+ */
+export function nearTests(
+  changed: readonly string[],
+  all: readonly string[],
+  areas: readonly string[],
+  kind: "bun" | "shell",
+): string[] {
+  return pickNear(changed, all, areas, wantedFor(kind), "quick");
+}
+
+/** The `*.slow.test.*` files the near selection would pick, were they not slow. */
+export function slowNearTests(
+  changed: readonly string[],
+  all: readonly string[],
+  areas: readonly string[],
+  kind: "bun" | "shell",
+): string[] {
+  return pickNear(changed, all, areas, wantedFor(kind), "slow");
+}
+
+const SOURCE_FILE = /\.(ts|tsx|sh)$/;
+
+/**
+ * Changed code files in the near areas that no test picks: no quick one, and no slow one either
+ * (a slow one is reported by `slowNearTests`). A test file and a declaration file never count.
+ */
+export function withoutNearTest(changed: readonly string[], all: readonly string[], areas: readonly string[]): string[] {
+  const exists = new Set(all);
+  return changed
+    .filter((file) => inAreas(file, areas) && exists.has(file) && SOURCE_FILE.test(file) && !file.endsWith(".d.ts") && !isTestFile(file))
+    .filter((file) => {
+      const one = [file];
+      return (["bun", "shell"] as const).every((kind) => nearTests(one, all, areas, kind).length === 0 && slowNearTests(one, all, areas, kind).length === 0);
+    })
+    .toSorted();
+}
+
+export interface NearReport {
+  bunFiles: number;
+  shellFiles: number;
+  noNearTest: string[];
+  slowNear: string[];
+}
+
+export function nearReport(changed: readonly string[], all: readonly string[]): NearReport {
+  return {
+    bunFiles: nearTests(changed, all, BUN_NEAR_AREAS, "bun").length,
+    shellFiles: nearTests(changed, all, SHELL_NEAR_AREAS, "shell").length,
+    noNearTest: withoutNearTest(changed, all, SHELL_NEAR_AREAS),
+    slowNear: [...new Set([...slowNearTests(changed, all, BUN_NEAR_AREAS, "bun"), ...slowNearTests(changed, all, SHELL_NEAR_AREAS, "shell")])].toSorted(),
+  };
+}
+
+const NAME_CAP = 10;
+
+/** At most ten names, then "and K more". */
+export function capNames(names: readonly string[], cap = NAME_CAP): string {
+  if (names.length <= cap) return names.join(", ");
+  return `${names.slice(0, cap).join(", ")} and ${names.length - cap} more`;
+}
+
+/** The lines the quick gate prints at its end, to say what it did not run. */
+export function gateFooter(report: NearReport | null): string[] {
+  const lines: string[] = [];
+  if (report !== null) {
+    const shell = report.shellFiles === 0 ? "" : `, ${report.shellFiles} shell files`;
+    lines.push(`near tests: ${report.bunFiles} bun files${shell}, web via vitest --changed`);
+    if (report.noNearTest.length > 0) lines.push(`no near test for: ${capNames(report.noNearTest)}`);
+    if (report.slowNear.length > 0) {
+      lines.push(`slow tests near the change, not run: ${capNames(report.slowNear)}`);
+      lines.push(`run them: bun test ${report.slowNear.join(" ")}`);
+    }
+  }
+  lines.push("not run here: the full suites, Windows, WebKit; CI runs them (bun run gate --full runs the suites here)");
+  return lines;
 }

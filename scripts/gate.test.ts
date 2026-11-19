@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { decide } from "./ci-changes.ts";
+import { changedPaths, decide } from "./ci-changes.ts";
 import {
   BUN_NEAR_AREAS,
   FROZEN_BUN_IGNORE,
@@ -16,10 +16,15 @@ import {
   GUARD_WEB,
   IGNORE_ALWAYS,
   SHELL_NEAR_AREAS,
+  capNames,
+  gateFooter,
   isExcludedFromNear,
+  nearReport,
   nearTests,
+  slowNearTests,
   stemOf,
   wakes,
+  withoutNearTest,
 } from "./test-sets.ts";
 
 const ROOT = join(import.meta.dir, "..");
@@ -111,6 +116,101 @@ describe("the CI job paths", () => {
     for (const file of [".github/workflows/ci.yml", "scripts/test-sets.ts"]) {
       expect(decide("pull_request", [file])).toEqual(["frozen=true", "bun_floor=true", "durable=true", "swap=true"]);
     }
+  });
+});
+
+describe("changedPaths", () => {
+  const head = "HEAD";
+
+  test("an all-zero base (a new branch) is unknown, so every job runs", () => {
+    expect(changedPaths("0".repeat(40), head)).toBeNull();
+  });
+
+  test("an empty base or head is unknown", () => {
+    expect(changedPaths("", head)).toBeNull();
+    expect(changedPaths("HEAD~1", "")).toBeNull();
+  });
+
+  test("a base that is not in the repo (a force push, a shallow clone) is unknown", () => {
+    expect(changedPaths("deadbeef".repeat(5), head)).toBeNull();
+  });
+
+  test("two real commits give a list of paths", () => {
+    const paths = changedPaths("HEAD~1", head);
+    expect(paths).not.toBeNull();
+    expect(Array.isArray(paths)).toBe(true);
+  });
+});
+
+describe("what the gate did not run", () => {
+  const all = [
+    "bridge/foo.ts",
+    "bridge/foo.test.ts",
+    "bridge/foo.slow.test.ts",
+    "bridge/lonely.ts",
+    "bridge/slowonly.ts",
+    "bridge/slowonly.slow.test.ts",
+    "bridge/types.d.ts",
+    "bridge/data.json",
+    "bridge/quar.ts",
+    "bridge/quar.quarantine.test.ts",
+    "cli/run.sh",
+    "cli/run.test.sh",
+    "web/src/foo.tsx",
+  ];
+
+  test("a source file with no test of any kind is listed, one with a quick or a slow test is not", () => {
+    const changed = ["bridge/foo.ts", "bridge/lonely.ts", "bridge/slowonly.ts", "cli/run.sh"];
+    expect(withoutNearTest(changed, all, SHELL_NEAR_AREAS)).toEqual(["bridge/lonely.ts"]);
+  });
+
+  test("a quarantined test does not count as a near test", () => {
+    expect(withoutNearTest(["bridge/quar.ts"], all, SHELL_NEAR_AREAS)).toEqual(["bridge/quar.ts"]);
+  });
+
+  test("a test file, a declaration, data, a web file and a deleted file are never listed", () => {
+    const changed = ["bridge/foo.test.ts", "bridge/types.d.ts", "bridge/data.json", "web/src/foo.tsx", "bridge/gone.ts"];
+    expect(withoutNearTest(changed, all, SHELL_NEAR_AREAS)).toEqual([]);
+  });
+
+  test("the slow files near a change are the ones the quick selection left out", () => {
+    expect(slowNearTests(["bridge/foo.ts"], all, BUN_NEAR_AREAS, "bun")).toEqual(["bridge/foo.slow.test.ts"]);
+    expect(slowNearTests(["bridge/slowonly.ts"], all, BUN_NEAR_AREAS, "bun")).toEqual(["bridge/slowonly.slow.test.ts"]);
+    expect(slowNearTests(["bridge/foo.slow.test.ts"], all, BUN_NEAR_AREAS, "bun")).toEqual(["bridge/foo.slow.test.ts"]);
+    expect(slowNearTests(["bridge/lonely.ts"], all, BUN_NEAR_AREAS, "bun")).toEqual([]);
+    expect(slowNearTests(["bridge/quar.ts"], all, BUN_NEAR_AREAS, "bun")).toEqual([]);
+    expect(slowNearTests(["cli/run.sh"], all, SHELL_NEAR_AREAS, "shell")).toEqual([]);
+  });
+
+  test("the report counts the quick files and carries both lists", () => {
+    expect(nearReport(["bridge/foo.ts", "bridge/lonely.ts", "cli/run.sh"], all)).toEqual({
+      bunFiles: 1,
+      shellFiles: 1,
+      noNearTest: ["bridge/lonely.ts"],
+      slowNear: ["bridge/foo.slow.test.ts"],
+    });
+  });
+
+  test("a list of names is cut at ten, with the rest counted", () => {
+    const names = Array.from({ length: 13 }, (_, index) => `f${index}.ts`);
+    expect(capNames(names.slice(0, 10))).toBe(names.slice(0, 10).join(", "));
+    expect(capNames(names)).toBe(`${names.slice(0, 10).join(", ")} and 3 more`);
+  });
+
+  test("the footer names each gap, and always ends with what only CI runs", () => {
+    const quiet = gateFooter({ bunFiles: 3, shellFiles: 0, noNearTest: [], slowNear: [] });
+    expect(quiet[0]).toBe("near tests: 3 bun files, web via vitest --changed");
+    expect(quiet).toHaveLength(2);
+    const loud = gateFooter({ bunFiles: 0, shellFiles: 2, noNearTest: ["bridge/lonely.ts"], slowNear: ["bridge/foo.slow.test.ts"] });
+    expect(loud).toEqual([
+      "near tests: 0 bun files, 2 shell files, web via vitest --changed",
+      "no near test for: bridge/lonely.ts",
+      "slow tests near the change, not run: bridge/foo.slow.test.ts",
+      "run them: bun test bridge/foo.slow.test.ts",
+      loud.at(-1) ?? "",
+    ]);
+    for (const lines of [quiet, loud]) expect(lines.at(-1)).toStartWith("not run here: the full suites, Windows, WebKit; CI runs them");
+    expect(gateFooter(null)).toHaveLength(1);
   });
 });
 

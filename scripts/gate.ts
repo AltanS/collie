@@ -19,7 +19,9 @@
 // SKIP_LINT_CHECK=1 the lint, SKIP_TESTS=1 the guards and the tests. The pre-push hook runs this
 // script, so `SKIP_TESTS=1 git push` still skips the tests.
 //
-// Exit code 0 when every step passed. Output of a step is shown only when it fails.
+// Exit code 0 when every step passed. Output of a step is shown only when it fails. A quick run ends
+// with a footer that names what it did not run: changed files with no near test, slow tests near the
+// change, and the suites that only CI runs.
 
 import { spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
@@ -31,6 +33,8 @@ import {
   GUARD_SCRIPTS,
   GUARD_WEB,
   SHELL_NEAR_AREAS,
+  gateFooter,
+  nearReport,
   nearTests,
 } from "./test-sets.ts";
 
@@ -233,6 +237,10 @@ async function main(): Promise<number> {
   const wall = (performance.now() - started) / 1000;
   const sum = outcomes.reduce((total, outcome) => total + outcome.seconds, 0);
   console.log(`  ${"total".padEnd(width)}  ${failed.length === 0 ? "pass" : "FAIL"}  ${wall.toFixed(1).padStart(6)}s wall, ${sum.toFixed(0)}s of step time`);
+  if (!full) {
+    const report = process.env.SKIP_TESTS === "1" ? null : nearReport(changed, allFiles());
+    console.log(`\n${gateFooter(report).join("\n")}`);
+  }
   return failed.length === 0 ? 0 : 1;
 }
 
