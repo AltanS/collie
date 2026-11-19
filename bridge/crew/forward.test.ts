@@ -37,11 +37,14 @@ import {
   PANE_WRITE_BUDGET_MS,
   WORKTREE_WRITE_BUDGET_MS,
   WRITE_BUDGET_MS,
+  PeerClient,
   type CrewLink,
   type CrewParams,
   type PeerOutcome,
 } from "./peer-client.ts";
 import { member } from "./fixtures.ts";
+import { PROTOCOL_HEADER } from "./admission.ts";
+import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import { CrewRegistry, type PeerState } from "./registry.ts";
 import { readSend, readSendReply } from "../../web/src/lib/send-protocol.ts";
 
@@ -1971,5 +1974,54 @@ describe("accounts across the link: only the list crosses (M101 spec 06)", () =>
     // And the bridge serves no accounts path beyond those, so a new one has to be decided here first.
     const server = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
     expect([...new Set(server.match(/"\/api\/accounts[^"]*"/gu))].toSorted()).toEqual(['"/api/accounts"', '"/api/accounts/remove"']);
+  });
+});
+
+// ── A member that redirects is a member out of reach, to the phone (§9.1) ─────
+// Through the real dial: `PeerClient.proxy` with a real `fetch` is the transport, as the lead wires it.
+
+describe("a redirect on a forwarded read answers the phone as a member out of reach does", () => {
+  function realTransport(): ForwardTransport {
+    const peers = new PeerClient({ self: "desk", secret: () => "s", timeoutMs: 5_000, fetch: (url, init) => fetch(url, init), now: () => 1_000 });
+    return (link, route, params, init, budgetMs) => peers.proxy(link, route, params, init, budgetMs);
+  }
+
+  /** What the phone sees, minus the sentence: the status, the code, and every header. */
+  async function seenByPhone(res: Response) {
+    // SAFETY: both answers are lead refusals, and a lead refusal is `forwardError`'s JSON, `{ ok, code, error, host }`.
+    const body = (await res.json()) as ForwardFailure;
+    const headers: Record<string, string> = {};
+    res.headers.forEach((v, k) => {
+      if (k !== "content-length") headers[k] = v;
+    });
+    return { status: res.status, ok: body.ok, code: body.code, headers };
+  }
+
+  test("a 302 to another origin: the same 503 host_unreachable as a closed port, and the target is never asked", async () => {
+    const seen: string[] = [];
+    const target = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: (req) => (seen.push(req.url), new Response("stolen")) });
+    const redirector = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () =>
+        new Response(null, { status: 302, headers: { location: `http://127.0.0.1:${String(target.port)}/x`, [PROTOCOL_HEADER]: String(CREW_PROTOCOL_VERSION) } }),
+    });
+    const closed = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
+    const closedPort = closed.port;
+    await closed.stop(true);
+    try {
+      const transport = realTransport();
+      const [req, url] = get("/api/pane/t4?host=laptop&lines=60");
+      const redirected = await forward(req, url, { transport, link: { memberId: "laptop", address: `http://127.0.0.1:${String(redirector.port)}` } });
+      const [req2, url2] = get("/api/pane/t4?host=laptop&lines=60");
+      const gone = await forward(req2, url2, { transport, link: { memberId: "laptop", address: `http://127.0.0.1:${String(closedPort)}` } });
+      expect(redirected.headers.get("location")).toBeNull();
+      expect(await seenByPhone(redirected)).toEqual(await seenByPhone(gone));
+      expect(redirected.status).toBe(503);
+      expect(seen).toHaveLength(0);
+    } finally {
+      await redirector.stop(true);
+      await target.stop(true);
+    }
   });
 });

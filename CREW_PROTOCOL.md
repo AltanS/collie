@@ -1395,6 +1395,15 @@ version.
   it holds is the body it writes out; whatever the runtime compresses and transparently decompresses
   anyway, it does *not* strip the stale `content-encoding` from the response headers, and re-emitting
   that header describes bytes that no longer exist.
+- **A peer never follows a redirect** *(added after 1.29.1)*. This holds for every crew dial, the
+  lead's to a member and a member's to its lead, and for the enrollment POST of `crew join`. No
+  collie answers a crew route with a redirect, so a 3xx other than `304` is a peer that answers
+  wrongly: the dial is `unreachable`, its body is not read, and the reason names the target's origin
+  only (scheme, host, port, printable ASCII, cut to 80 characters). A followed hop would carry the
+  request, its body and the crew headers to an address the far side picked, and pass that address's
+  answer off as the peer's. A forwarded read therefore answers the phone as a member out of reach
+  does, never with a `Location`. `CREW_PROTOCOL_VERSION` does not move: a correct peer never
+  redirected.
 - **The lead→phone hop is compressed by the lead itself**, on the phone's own `Accept-Encoding`, as a
   **stream transform** over the identity bytes (`CompressionStream("gzip")`) — the transform itself
   never buffers (a text answer the lead masks is held once, for the mask, below). It applies to JSON and text bodies with a body to send;

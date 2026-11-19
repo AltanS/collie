@@ -41,8 +41,10 @@ import {
   crewHelloBudget,
   crewTimeoutBudget,
   crewTimeoutClampWarning,
+  isRedirectAnswer,
   parsePeerStatus,
   PeerClient,
+  redirectTarget,
   type PeerStatusReport,
   sweepPeers,
   type HelloResult,
@@ -856,6 +858,9 @@ async function postEnrollment(deps: CrewDeps, origin: URL, body: string): Promis
       // that ever fronts a lead, and §8.3's rule is about where a credential comes to rest.
       body,
       signal: controller.signal,
+      // Never followed: a 307 or 308 would carry the invite token and this machine's certificate to an
+      // address the far side picked. `cmdJoin` refuses the 3xx and names its target instead.
+      redirect: "manual",
     });
     return { res, reason: "", plaintext: false };
   } catch (err) {
@@ -1077,6 +1082,17 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
     return EXIT.UNREACHABLE;
   }
 
+  if (isRedirectAnswer(res)) {
+    // The address stored below is the one dialled, so a join that followed a redirect would leave
+    // every later dial to the same redirect, which the crew dial refuses (CREW_PROTOCOL.md §9.1).
+    // The token reached the dialled address only, never the redirect's target.
+    void res.body?.cancel().catch(() => undefined);
+    const status = res.type === "opaqueredirect" ? "" : ` (${String(res.status)})`;
+    deps.io.err(`error: ${dialed} answered a redirect${status} ${redirectTarget(res.headers.get("location"), new URL(CREW_ENROLL_PATH, origin).toString())}.`);
+    deps.io.err("       Collie does not follow a redirect with the invite token, and a crew link never follows one.");
+    deps.io.err("       If that address is your lead's, join it directly: `collie crew join <that address> -`.");
+    return EXIT.FAIL;
+  }
   if (res.status === 401) {
     deps.io.err("error: the lead refused the token — spent, expired (10 minutes), this is not its address,");
     deps.io.err("       or the lead is still restarting after `crew invite`.");
