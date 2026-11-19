@@ -42,6 +42,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A new name fades in when you rename a session, tab or Space.** The old name fades out and the new one fades in on the same line, in about a fifth of a second, instead of jumping. The words do not move and nothing around them moves. Opening another session still shows its name at once, and a device set to reduce motion swaps the name at once.
 - **A name that changes again within a second does not fade.** A title that an agent rewrites every turn swaps at once, so a name never stays half transparent.
 - **When the reply box ends up below the screen, the phone tells the bridge the screen heights.** Some phones, after a long break, draw the reply box past the bottom edge, and so far nobody could say why. The phone now sends a short list of heights, at most once a minute, so the cause can be found. It sends no text, no session name and no address. The bridge keeps the list in `diag-composer.jsonl` in its state folder and sends it nowhere.
+- **The name beside the logo is the same on the large screen and on the website, with any theme and font.** "ColliePWA" in the sidebar is now drawn from the brand's own letter shapes, so the font your device or theme picked no longer changes it. The logo in that row is also a little larger.
 
 ### Fixed
 

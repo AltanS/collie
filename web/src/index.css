@@ -1456,7 +1456,9 @@
  * ── The name's suffix: grey at rest, the herd's three inks under a pointer ──
  *
  * "PWA" of the sidebar's ColliePWA rests in the muted ink, the same size as "Collie", as on the
- * website (collie-website `components/wordmark.tsx`). Hover the logo row, or reach its mark with the
+ * website, which draws the same generated component (`components/collie-wordmark.tsx`, made in
+ * collie-brand). The three letters are paths with their own classes, `.wordmark-ink-p|w|a`, and the
+ * stylesheet reaches them by those and never by position. Hover the logo row, or reach its mark with the
  * keyboard, and the three letters take P `--status-done`, W `--status-working`, A `--status-blocked`,
  * fading back over 240ms. Altan tried the inks at rest on 2026-10-24 and reverted it the same day.
  *
@@ -1469,15 +1471,15 @@
   transition: color 240ms ease-out;
 }
 
-.wordmark-ink:nth-child(1) {
+.wordmark-ink-p {
   --wordmark-lit: var(--status-done);
 }
 
-.wordmark-ink:nth-child(2) {
+.wordmark-ink-w {
   --wordmark-lit: var(--status-working);
 }
 
-.wordmark-ink:nth-child(3) {
+.wordmark-ink-a {
   --wordmark-lit: var(--status-blocked);
 }
 
