@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { heapStats } from "bun:jsc";
 
 import { MASK, MASK_VERSION, maskPatternsSource, redactAnsi, redactSegments, redactText } from "./redact.ts";
 
@@ -213,9 +214,175 @@ describe("redact — the pattern list carries its version", () => {
     // just keeps that older copy. If this fails, bump MASK_VERSION in redact.ts and pin the new hash.
     const hash = new Bun.CryptoHasher("sha256").update(maskPatternsSource()).digest("hex");
     expect({ version: MASK_VERSION, hash }).toEqual({
-      version: 1,
-      hash: "30eae8d4c86947baac218f2899437c41db5f3fc72b843ab0cd9d089e7b0fb40c",
+      version: 2,
+      hash: "79cb00219a3945bd76942614cd7a82cd34bf1c3fecfefe7745c3fa1e397e1ff1",
     });
+  });
+});
+
+describe("redact — a secret is masked wherever it sits", () => {
+  // The places a secret is printed: alone, after a space, a quote, `=`, `:`, a line break, inside a
+  // JSON string, and (for a JWT, which `\b` allowed) after a `-` that ends a longer run.
+  const around: [string, (s: string) => string][] = [
+    ["at the start of the text", (s) => `${s} tail`],
+    ["after a space", (s) => `head ${s} tail`],
+    ["after a quote", (s) => `head '${s}' tail`],
+    ["after =", (s) => `X=${s}`],
+    ["after :", (s) => `x:${s}`],
+    ["after a line break", (s) => `head\n${s}\ntail`],
+    ["inside a JSON string", (s) => JSON.stringify({ value: s })],
+  ];
+  for (const [where, wrap] of around) {
+    test(`a JWT ${where} keeps its first four characters, the rest masked`, () => {
+      const text = wrap(JWT);
+      const at = text.indexOf(JWT);
+      expect(redactText(text)).toBe(`${text.slice(0, at + 4)}${MASK.repeat(JWT.length - 4)}${text.slice(at + JWT.length)}`);
+      // Not wrapped: as a grid, the JWT's row is the widest and the next row would join it.
+      expect(redactAnsi(text, false)).toBe(redactText(text));
+    });
+    test(`an OpenRouter key ${where} is masked, also through redactAnsi with a colour around it`, () => {
+      const text = wrap(OPENROUTER);
+      const out = redactText(text);
+      expect(out).not.toContain(OPENROUTER.slice(4));
+      expect(out.length).toBe(text.length);
+      const coloured = `${ESC}[31m${text}${ESC}[0m`;
+      expect(redactAnsi(coloured, false)).toBe(`${ESC}[31m${out}${ESC}[0m`);
+    });
+  }
+
+  test("a JWT after a `-` inside a longer run is masked from its `eyJ`, as `\\b` allowed", () => {
+    expect(redactText(`--token-${JWT} x`)).toBe(`--token-eyJh${MASK.repeat(JWT.length - 4)} x`);
+    expect(redactText(`abc-def-${JWT}`)).toBe(`abc-def-eyJh${MASK.repeat(JWT.length - 4)}`);
+    // Every `eyJ` of one run shares the run's end, so the first one opens the JWT, as before.
+    expect(redactText(`x-eyJab-${JWT}`)).toBe(`x-eyJa${MASK.repeat(JWT.length + 2)}`);
+  });
+
+  test("a JWT glued to a word is not masked, as before: `\\b` never started inside a word", () => {
+    expect(redactText(`abc${JWT}`)).toBe(`abc${JWT}`);
+    expect(redactText(`x_${JWT}`)).toBe(`x_${JWT}`);
+  });
+
+  test("a value masked across line breaks keeps every break, CR and LF alike", () => {
+    const pem = `-----BEGIN PRIVATE KEY-----\r\nPLACEHOLDER0000\r\nplaceholder0000\r\n-----END PRIVATE KEY-----`;
+    expect(redactText(pem)).toBe(`-----BEGIN PRIVATE KEY-----\r\n${MASK.repeat(15)}\r\n${MASK.repeat(15)}\r\n-----END PRIVATE KEY-----`);
+  });
+
+  test("an OSC title too short to hold a secret comes back as it was; a long one is masked", () => {
+    const short = `${ESC}]0;token=x${ESC}\\`;
+    expect(redactAnsi(`${short}ok`)).toBe(`${short}ok`);
+    const long = `${ESC}]0;token=placeholder${ESC}\\`;
+    expect(redactAnsi(`${long}ok`)).toBe(`${ESC}]0;token=${MASK.repeat(11)}${ESC}\\ok`);
+  });
+});
+
+describe("redact — hostile text costs linear time", () => {
+  // The bridge is one event loop: a slow mask freezes every phone and every crew member. The text can
+  // come from anything an agent prints or reads, or from a member's answer, so every pattern gets the
+  // inputs that make a regex scan far and fail: its opening repeated (each one a new start), its
+  // opening and a megabyte of its own characters, and a near miss repeated. Any of these going
+  // quadratic takes seconds to minutes at 1 MB (the released JWT pattern: about a minute), far past
+  // the limit; linear, each takes a few milliseconds.
+  const MB = 1 << 20;
+  const fill = (unit: string, size = MB): string => unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+  const run = (head: string, char: string, tail = ""): string => head + char.repeat(MB - head.length - tail.length) + tail;
+  // Split like the placeholders above, so a secret scan of this file finds no key shape.
+  const gh = ["gh", "p_"].join("");
+  const aws = ["AK", "IA"].join("");
+  const sk = ["s", "k-"].join("");
+  const families: [string, string, string, number][] = [
+    // [name, opening, a character of its run, the run's minimum length]
+    ["api key", sk, "a", 20],
+    ["github token", gh, "a", 30],
+    ["github pat", "github_pat_", "a", 22],
+    ["slack token", "xoxb-", "a", 10],
+    ["aws key", aws, "A", 16],
+    ["google key", "AIza", "a", 35],
+    ["gitlab token", "glpat-", "a", 20],
+    ["npm token", "npm_", "a", 36],
+    ["jwt", "eyJ", "a", 8],
+    ["bearer token", "Bearer ", "a", 20],
+    ["credential", "token=", "a", 8],
+    ["credential (quoted)", `"api_key": "`, "a", 8],
+  ];
+  const BEGIN = "-----BEGIN RSA PRIVATE KEY-----";
+  const END = "-----END RSA PRIVATE KEY-----";
+  const cases: [string, () => string, boolean][] = [
+    ...families.flatMap(([name, open, char, min]): [string, () => string, boolean][] => [
+      [`${name}: its opening repeated`, () => fill(open), false],
+      [`${name}: its opening and 1 MB of its run`, () => run(open, char), false],
+      [`${name}: a run one short of its minimum, repeated`, () => fill(`${open}${char.repeat(min - 1)} `), false],
+    ]),
+    // The two findings of the review: a JWT's opening after a `-`, and `token=` without end.
+    ["jwt: `-eyJ` repeated", () => fill("-eyJ"), false],
+    ["credential: `token=` repeated", () => fill("token="), false],
+    // The JWT's separators missing at the very end: the first segment and then the second.
+    ["jwt: 1 MB first segment, no dot", () => run("-eyJ", "a"), false],
+    ["jwt: 1 MB second segment, no second dot", () => run("eyJaaaaaaaa.", "a"), false],
+    ["jwt: two segments and a dot, repeated", () => fill("-eyJaaaaaaaa.aaaaaaaa."), false],
+    ["bearer: the word and 1 MB of blanks", () => run("Bearer", " ", "x"), false],
+    ["pem: BEGIN lines repeated", () => fill(`${BEGIN}\n`), false],
+    ["pem: BEGIN markers on one line, its break at the very end", () => `${fill(BEGIN, MB - 1)}\n`, false],
+    ["pem: BEGIN markers on one line, then body lines", () => `${fill(BEGIN, MB / 2)}\n${fill("QUJD\n", MB / 2)}`, false],
+    // Each block: a line of BEGIN markers, a body, and one character that is not a body just before END.
+    ["pem: blocks whose body breaks just before END", () => fill(`${fill(BEGIN, 8_000)}\n${fill("QUJD\n", 8_000)}.${END}\n`), false],
+    ["pem: BEGIN and 1 MB of its type name", () => run("-----BEGIN ", "A"), false],
+    ["ansi: CSI openings repeated", () => fill(`${ESC}[`), true],
+    ["ansi: OSC openings repeated", () => fill(`${ESC}]`), true],
+    ["ansi: OSC strings just long enough to scan, repeated", () => fill(`${ESC}]0;title-text${ESC}\\`), true],
+    ["ansi: rows exactly as wide as the widest, one key at the end", () => `${fill("a\n", MB - 64)}\nx ${OPENROUTER}`, true],
+  ];
+  // Measured on a desktop: 25 ms on the slowest case, a few ms for most, so a slow CI runner has ten
+  // times the room. The released patterns: the JWT case took 55 s, the PEM block case 1.2 s (16 KB
+  // read again per BEGIN marker), and BEGIN markers on one line are quadratic, 9 s at 8 MB.
+  const LIMIT_MS = 250;
+
+  test("every pattern masks 1 MB of hostile text within the limit", () => {
+    const slow: string[] = [];
+    for (const [name, make, ansi] of cases) {
+      const text = make();
+      const t0 = performance.now();
+      const out = ansi ? redactAnsi(text) : redactText(text);
+      const ms = performance.now() - t0;
+      expect(out.length).toBe(text.length);
+      if (ms > LIMIT_MS) slow.push(`${name}: ${ms.toFixed(0)} ms`);
+    }
+    expect(slow).toEqual([]);
+  });
+
+  test("BEGIN markers on one 8 MB line: quadratic would be seconds", () => {
+    // Its own limit: about 40 ms on a desktop, about 9 s for the released scan.
+    const text = `${fill(BEGIN, 8 * MB - 1)}\n`;
+    const t0 = performance.now();
+    expect(redactText(text)).toBe(text);
+    expect(performance.now() - t0).toBeLessThan(1_000);
+  });
+
+  // WHAT A MASKED TEXT HOLDS ON TO. The released mask added the mask one character at a time, so the
+  // string it returned was a chain of one piece per masked character (32 MB of `token=` cost 1.4 GB),
+  // and an ANSI read built two strings per escape. Counted here as the live strings a result keeps
+  // after a full collection: the released code left 8.4 M for this text and 4.2 M for this read, the
+  // fixed one about 20. A count of strings, not of bytes: the heap size moved between 0.5 and 7 times
+  // the input with what ran before, and the buffers of flat strings live outside it.
+  const stringsHeldBy = (mask: (text: string) => string, unit: string): number => {
+    const text = unit.repeat(Math.floor((8 * MB) / unit.length));
+    // A repeated string is built lazily; read it whole first, so its own pieces are not counted.
+    expect(text.includes("\u0000")).toBe(false);
+    const live = (): number => {
+      // The last regex input is kept for `RegExp.lastMatch`; point it at a tiny one first.
+      expect(/x/.exec("y")).toBeNull();
+      Bun.gc(true);
+      return heapStats().objectTypeCounts.string ?? 0;
+    };
+    const before = live();
+    const out = mask(text);
+    const held = live() - before;
+    expect(out.length).toBe(text.length);
+    return held;
+  };
+
+  test("a masked 8 MB text is one flat string, not a piece per masked character or per escape", () => {
+    expect(stringsHeldBy(redactText, "token=")).toBeLessThan(1_000);
+    expect(stringsHeldBy((t) => redactAnsi(t), `${ESC}[1mtoken=${ESC}[0m`)).toBeLessThan(1_000);
   });
 });
 

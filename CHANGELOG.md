@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A crew machine no longer follows a redirect from another machine of the crew.** Before, a member that answered a redirect made the lead send the same request, body included, to an address the member picked, and the lead took that address's answer as the member's. Now the lead treats such a member as out of reach, and `collie crew status` names the address the redirect pointed to. `collie crew join` refuses a redirect too, so the invite token goes only to the address you typed. If a proxy in front of your lead redirects, for example from `http://` to `https://`, join again with the address it redirects to.
+- **Masking secrets no longer stalls the app on long, odd text.** Collie hides keys and tokens in a session's text before it reaches your phone. Some long runs of text that only look a little like a token, printed by an agent, read from a file or sent by a crew member, made that check take seconds to minutes, and the whole app stopped answering until it was done; a long secret-like value could also take more than a gigabyte of memory. The check now takes a few milliseconds per megabyte and little memory, and it hides exactly what it hid before.
 
 ## [1.29.1] - 2026-11-19
 
