@@ -154,7 +154,7 @@ export function retryFactsOf(row: LabRow): RetryFacts | null {
  *  - A run that names the version by hand (`named`) runs a pair whose row is `failed` or `retry` again,
  *    because neither is a verdict. A `running` row, a `pass`, a `fail` and a `walk-only` stay final.
  *  - A `retry` row runs again for an unnamed run too, once its wait is over (`retryDue`). The wait grows
- *    per try, so the hourly loop never repeats a try inside one hour. An exhausted row never runs: the
+ *    per try, so the loop never repeats a try inside one hour. An exhausted row never runs: the
  *    next `loadLedger` turns it into `failed`.
  */
 export function shouldRun(ledger: LabLedger, harness: string, version: string, named = false, now: number = Date.now()): boolean {

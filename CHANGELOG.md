@@ -25,7 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
-- **The harness lab can run as an hourly loop for the free agents.** It checks Claude Code and OpenCode for a new version, never runs a paid agent, and does nothing while the machine is busy. A failure the environment caused (the registry has no such version yet, a login that ran out, a timeout) is tried again, up to five times, instead of hiding the version for good.
+- **The harness lab can run as a daily loop for the free agents.** It checks Claude Code and OpenCode for a new version, never runs a paid agent, and does nothing while the machine is busy. A failure the environment caused (the registry has no such version yet, a login that ran out, a timeout) is tried again, up to five times, instead of hiding the version for good.
 - **The harness lab loop lights a darius candle when a version needs a look.** A real drift failure, or a run that ends without a verdict after its tries, lights one candle per agent version. A pass stays a log line.
 
 ### Docs

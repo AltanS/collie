@@ -44,7 +44,7 @@ export interface CliOptions {
   readonly bridge: { readonly url: string; readonly tokenFile: string } | null;
   /** The harnesses this invocation may plan or run (`--agents`, or `--loop`). Null: every harness the lab knows. Nothing outside it is planned, run or spent. */
   readonly agents: readonly string[] | null;
-  /** `--loop`: the hourly drift loop (free agents only, two runs a tick, the load guard, a limit per pair). */
+  /** `--loop`: the daily drift loop (free agents only, two runs a tick, the load guard, a limit per pair). */
   readonly loop: boolean;
   /** The 1-minute load average above which a run does nothing and exits 0. 0: no guard. */
   readonly maxLoad: number;
@@ -115,7 +115,7 @@ a pair you name with --version runs again when its row says "failed" (no verdict
   --max-runs N        most pairs one invocation runs (default: ${String(DEFAULT_MAX_RUNS)})
   --agents a,b        only these harnesses are planned or run, whatever the feeds or --version name. A pair
                       outside the list is refused. Default: every harness the lab knows
-  --loop              the hourly drift loop: --agents ${LOOP_AGENTS.join(",")} (only free agents are allowed with it),
+  --loop              the daily drift loop: --agents ${LOOP_AGENTS.join(",")} (only free agents are allowed with it),
                       --max-runs ${String(LOOP_MAX_RUNS)}, --max-load ${String(LOAD_LIMIT)}, --pair-timeout-min ${String(LOOP_PAIR_TIMEOUT_MS / 60_000)}.
                       An environment failure (registry, login, load, timeout) is a retry row, not a final one
   --max-load N        a run with a 1-minute load average above N does nothing, logs one line and exits 0
@@ -313,7 +313,7 @@ export function notifyLine(outcome: LabOutcome): string {
 
 export type Notify = (line: string) => void;
 
-/** The same line inside this window is written once: an hourly loop must not repeat a notice every hour. */
+/** The same line inside this window is written once: a loop must not repeat a notice on every tick. */
 export const NOTIFY_DEDUPE_MS = 12 * 60 * 60 * 1000;
 
 export interface NotifyOptions {
@@ -372,7 +372,7 @@ export function candleOf(outcome: LabOutcome): Candle {
  */
 export function lightCandle(candle: Candle, run: CommandRunner = realRunner, hasDarius: () => boolean = () => Bun.which("darius") !== null): string | null {
   if (!hasDarius()) return `darius is not on PATH, so no candle was lit for ${candle.key}`;
-  const argv = ["darius", "candle", "light", candle.key, "--title", candle.title, "--severity", "medium", "--project", CANDLE_PROJECT, "--source", "harness-lab", "--stdin"];
+  const argv = ["darius", "candle", "light", candle.key, "--title", candle.title, "--severity", "medium", "--project", CANDLE_PROJECT, "--source", "harness-lab", "--deliver", "email", "--stdin"];
   try {
     const done = run(argv, candle.body);
     return done.code === 0 ? null : `darius candle light ${candle.key} exited ${String(done.code)}: ${done.out.split("\n").pop() ?? ""}`;

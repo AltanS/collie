@@ -1,7 +1,7 @@
-// The load guard of the drift loop (2026-11-19). The hourly run shares the machine with Altan's work. A lab
+// The load guard of the drift loop (2026-11-19). The daily run shares the machine with the owner's work. A lab
 // run starts tmux, a scratch bridge and an agent, and a Surface read on a slow, busy machine reads wrong.
 // So a tick with a high 1-minute load average does nothing: it writes one log line and exits 0, and the next
-// hour tries again. Nothing is marked in the ledger. Benchmark rounds use the same limit (4.0).
+// tick tries again. Nothing is marked in the ledger. Benchmark rounds use the same limit (4.0).
 
 import { loadavg } from "node:os";
 

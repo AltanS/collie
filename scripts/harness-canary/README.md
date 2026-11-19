@@ -338,7 +338,7 @@ so two hand runs with two ledgers in one folder would delete each other's run fo
 
 ### The drift loop (2026-11-19)
 
-`bun run harness:lab --loop` is one tick of an hourly loop. Draft systemd units are kept outside the repo; nothing installs them.
+`bun run harness:lab --loop` is one tick of a daily loop. A drift failure lights a darius candle with `--deliver email`, so the candle also sends a mail. Draft systemd units are kept outside the repo; nothing installs them.
 
 - Agents: Claude Code and OpenCode only (`--agents claude,opencode`). Both are free. The loop refuses a paid agent
   (omp, Codex) by flag and by `--version`. `--agents` alone narrows any run to the named harnesses.

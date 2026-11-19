@@ -69,7 +69,7 @@ describe("the retry state in the ledger", () => {
     expect(findRow(readLedger(ledger), "claude", "2.1.400")?.cause).toBeUndefined();
   });
 
-  test("the wait grows per try, so the hourly loop never repeats a try inside one hour", () => {
+  test("the wait grows per try, so the loop never repeats a try inside one hour", () => {
     const ledger = join(tmp(), "ledger.json");
     start(ledger, NOW);
     settleFailure(ledger, "claude", "2.1.400", "notarget", NOW);
@@ -404,7 +404,7 @@ describe("the darius candle", () => {
     const { run, calls } = stub();
     expect(lightCandle(candleOf(drift), run, () => true)).toBeNull();
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.argv).toEqual(["darius", "candle", "light", "drift:claude@2.1.329", "--title", "Collie misreads Claude Code 2.1.329 (harness lab)", "--severity", "medium", "--project", CANDLE_PROJECT, "--source", "harness-lab", "--stdin"]);
+    expect(calls[0]?.argv).toEqual(["darius", "candle", "light", "drift:claude@2.1.329", "--title", "Collie misreads Claude Code 2.1.329 (harness lab)", "--severity", "medium", "--project", CANDLE_PROJECT, "--source", "harness-lab", "--deliver", "email", "--stdin"]);
     expect(CANDLE_PROJECT).toBe("collie-workspace");
     expect(calls[0]?.stdin).toContain("Issue draft: /i/claude-2.1.329.json");
     expect(calls[0]?.stdin).toContain("Run log: /l/claude-2.1.329.log");
