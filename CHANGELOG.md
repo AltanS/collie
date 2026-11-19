@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Docs
+
+- **Contributors get one quick check before a push.** It runs the type checks, the lint and the tests near the change in a few minutes, and the full suites run in CI.
+
 ## [1.29.1] - 2026-11-19
 
 ### Added
