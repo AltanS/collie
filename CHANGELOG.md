@@ -70,6 +70,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Buttons and links show the hand cursor on a desktop.** Moving the mouse over a button, link, switch, tab, row or menu item now shows the pointer cursor. Disabled controls and text fields keep their own. A touch screen is unchanged.
 - **The dashboard filter and the Changes screens say "space", the app's word.** The filter read "All workspaces", and the Changes list and back button, the missing-folder notice and the New tab warning still said "workspace". They now say space, in every language the app has a word for it.
 - **The Japanese and Korean errors for a new tab or space say Space.** They still used an older word for it. They now use the word each language already uses for Space in the switcher.
+- **In a pi or Oh My Pi session whose log Collie cannot find, the older lines of the terminal stay reachable from Chat.** The top of the screen offered "Show entire history", which has nothing to open without a log. It now offers Load older, for the lines the terminal still holds, and "Show entire history" returns once the log appears. Thanks @wipash (#687).
 
 ### Docs
 
