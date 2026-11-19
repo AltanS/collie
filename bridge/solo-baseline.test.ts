@@ -1368,6 +1368,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_POLL_IDLE_MS",
       "COLLIE_POLL_MS",
       "COLLIE_PORT",
+      "COLLIE_PROJECT_FILES",
       "COLLIE_PUBLIC_HOSTS",
       "COLLIE_READ_LINES",
       "COLLIE_REDACT",
