@@ -2466,7 +2466,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
 
   /**
    * A Claude Code screen drawn from what Herdr was told to write into the pane, the way
-   * `bridge/surface/protocol.test.ts` draws one: a rule, the box (`❯`, the dim placeholder while it is
+   * `bridge/surface/protocol-rig.ts` draws one: a rule, the box (`❯`, the dim placeholder while it is
    * empty), a rule, the status row. `fake-herdr.ts` answers every `pane.read` with a fixed text, and the
    * Send Protocol will not type a message into a screen it cannot read (`inbox-only: unconfirmed`, no
    * write) nor trust a screen that never reacts to its probe character (`probe failed`). So the pane's

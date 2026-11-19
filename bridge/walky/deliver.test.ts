@@ -747,10 +747,10 @@ const RULE = "─".repeat(40);
 const WIDTH = 38;
 /** The Claude profile's probe character. */
 const PROBE = loadProfiles().get("claude")!.probe.char;
-/** The Claude range the Send Protocol tests pin (protocol.test.ts `CLAUDE_TEST_RANGE`). */
+/** The Claude range the Send Protocol tests pin (protocol-rig.ts `CLAUDE_TEST_RANGE`). */
 const TEST_RANGE: readonly [VersionRange] = [{ range: "2.1.0 - 2.1.296", low: "2.1.0", high: "2.1.296", status: "verified", verifiedThrough: "2.1.296", verifiedOn: "2026-10-12" }];
 
-/** A Claude Code input box as protocol.test.ts's FakePane draws it, cut to what a walky send needs. */
+/** A Claude Code input box as protocol-rig.ts's FakePane draws it, cut to what a walky send needs. */
 class BoxPane {
   revision = 1;
   transcript = ["> an earlier question", "An answer from the agent."];
