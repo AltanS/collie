@@ -132,7 +132,9 @@ test("the bars hold still when the reader asked for less motion", async ({ brows
   await page.goto(`/pane/${encodeURIComponent(FIRST)}`);
   await expect(page.locator("[data-block]").first()).toBeVisible();
   await page.getByRole("button", { name: /^kiro 2$/ }).tap();
-  const bar = page.locator('[data-slot="chat-pending"] > span').first();
+  // The loading view is the pane's silhouette (rows of bars, `chat-pending.tsx`), so a bar is no longer a direct child.
+  // `.count-skeleton` is the class every bar carries, and the one the reduced-motion rule holds still.
+  const bar = page.locator('[data-slot="chat-pending"] .count-skeleton').first();
   await expect(bar).toBeVisible({ timeout: 4000 });
   await expect(bar).toHaveCSS("animation-name", "none");
   await context.close();
