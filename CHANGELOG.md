@@ -71,6 +71,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The dashboard filter and the Changes screens say "space", the app's word.** The filter read "All workspaces", and the Changes list and back button, the missing-folder notice and the New tab warning still said "workspace". They now say space, in every language the app has a word for it.
 - **The Japanese and Korean errors for a new tab or space say Space.** They still used an older word for it. They now use the word each language already uses for Space in the switcher.
 - **Codex sends again when only its usage-limit line sits under the reply box.** After a goal hit its usage limit, Codex shows the row "Goal hit usage limits (/goal resume)" under the empty input box, and Collie did not recognise that box as ready, so a send from the phone was held back. Collie now knows that row. Thanks @erkangurel (#802).
+- **A tab you named shows its name again, before the title the agent writes itself.** Since 1.29.0 a session in a tab you named showed the agent's own title, and the agent rewrites that title as it works. A name you set now always comes before a name the agent wrote: your rename in Collie, a name set in the agent, then the name of a one-pane tab. A session with no named tab still shows the agent's title. Thanks @HarderBetterFasterStronger (#815).
 
 ### Docs
 

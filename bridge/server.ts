@@ -7176,9 +7176,11 @@ async function renameSoleTab(
 /**
  * A tab renamed from the phone also sets the label of its pane when the pane is alone in it. The name rule
  * ranks a pane's own label above the title its agent wrote, and a one-pane tab's name below that title, so
- * a tab rename alone left a Claude pane reading its own title (#810). With one pane the tab and the pane are
- * one thing to the person; a tab with two or more panes keeps its panes' names. The reverse of
- * {@link renameSoleTab}. Returns whether the pane was renamed.
+ * a tab rename alone left a Claude pane reading its own title (#810). Since #815 the name rule ranks a named
+ * one-pane tab's name above that title too, so this write is no longer what makes the name show; it still
+ * keeps the pane label equal to the tab name. With one pane the tab and the pane are one thing to the
+ * person; a tab with two or more panes keeps its panes' names. The reverse of {@link renameSoleTab}.
+ * Returns whether the pane was renamed.
  */
 async function renameSolePane(
   herdr: Pick<MuxAdapter, "renamePane" | "capabilities">,

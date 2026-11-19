@@ -591,8 +591,9 @@ If the lead cannot read a member's answer to mask it, it does not pass the answe
 shows that read as failed, as it does for a member it cannot reach.
 
 A push notification names a pane by its session name, in this order: the pane's label in Collie, a
-name you set in the harness (Claude Code's `/rename`, pi's `/name`), the title the agent gave its
-session in its own log, or a one-pane tab's name. A pane with none of these is called by its harness,
+name you set in the harness (Claude Code's `/rename`, pi's `/name`), a one-pane tab's name, or the
+title the agent gave its session in its own log. A name a person set always comes before one the agent
+wrote. A pane with none of these is called by its harness,
 for example `claude`. A push never uses the terminal title, which any program in the pane can set
 with an escape sequence.
 

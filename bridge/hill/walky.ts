@@ -146,8 +146,8 @@ export type HillNameablePane = NameableP & { readonly paneId: string };
 /**
  * The session's name as the Dashboard's row shows it, for the live pane a walky address names now, or
  * null. The same source and the same order as the row (`paneName`, mirrored in web/src/lib/pane-name.ts):
- * the pane's own label, then the harness's session name, then a named one-pane tab's label, then a
- * terminal title that is not stale, then the agent word. With COLLIE_REDACT on, the title is masked
+ * the pane's own label, then the harness's session name, then a named one-pane tab's label, then the
+ * agent's own session title, then a terminal title that is not stale, then the agent word. With COLLIE_REDACT on, the title is masked
  * first, as the snapshot masks it. Null for an address that is not live now (the instance token must
  * still match, through `place`), for a pane on another crew member (this machine has no view of it),
  * and for a pane id that no view, or more than one, holds. The caller then keeps the walky label.
