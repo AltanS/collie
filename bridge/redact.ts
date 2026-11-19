@@ -37,9 +37,18 @@
 // (replies, keys) is never touched here: this is only about text going out to a phone.
 //
 // ── COST ─────────────────────────────────────────────────────────────────────
-// The mirror is polled every 1.5 s per open pane. Each pattern opens on a literal prefix and has no
-// nested quantifier, so a scan is linear in the text; a screen with no match allocates nothing.
-// `redact.test.ts` pins a 200 × 200 screen under 20 ms.
+// The mirror is polled every 1.5 s per open pane, and the text is hostile: anything an agent prints
+// or reads, or a crew member's answer, up to 32 MB. The bridge is one event loop, so a slow mask
+// freezes it for every phone. A literal prefix and no nested quantifier are NOT enough for a linear
+// scan: a pattern whose unbounded run holds its own opening and must be followed by something
+// (the JWT's dot) starts again at every opening and reads to the end each time. So no pattern may
+// start inside such a run, and every PEM read is done once per END or line, not once per BEGIN.
+// The mask's memory is linear too, but not small: at its peak about 18 to 34 times the input on text
+// that is all matches (575 MB on 32 MB of `token=` pairs), mostly one span array per match. The
+// masked text it returns is one flat piece per masked run, about twice the input; the released
+// per-character mask returned a string of 1.4 GB on the same 32 MB. `redact.test.ts` pins a 200 × 200
+// screen under 20 ms, every pattern's hostile inputs at 1 MB under 250 ms, and what a masked 8 MB
+// text holds on to; a pattern added here gets its cases there.
 //
 // The switch is `COLLIE_REDACT` (`[access] redact`), default on (`config.ts`).
 
@@ -53,7 +62,7 @@ export const MASK = "•";
  * the lead no longer vouches for, and gets the body again, masked under this one. A local answer
  * needs no salt: its tag is hashed over the masked body, so a new pattern changes the tag by itself.
  */
-export const MASK_VERSION = 1;
+export const MASK_VERSION = 2;
 
 /** One pattern family. `group` names the capture to mask when the whole match is not the secret. */
 interface Family {
@@ -71,7 +80,7 @@ interface Family {
 // the separators that end a value in a URL query, a shell line or a list (`&`, `,`, `;`, `<`, `>`).
 const VALUE_CHARS = "[\\x21\\x23-\\x25\\x28-\\x2b\\x2d-\\x3a\\x3d\\x3f-\\x5f\\x61-\\x7e]";
 
-/** Every family, in no order that matters: overlapping matches merge. */
+/** Every family, in no order that matters: overlapping matches merge. A family that can match fewer than {@link SHORTEST_SECRET} characters must lower it. */
 const FAMILIES: readonly Family[] = [
   // OpenAI `sk-…`, `sk-proj-…`, Anthropic `sk-ant-…`, OpenRouter `sk-or-v1-…`. One family, because
   // the generic shape already covers the three prefixed ones; 20 characters after `sk-` keeps a
@@ -88,8 +97,21 @@ const FAMILIES: readonly Family[] = [
   { name: "google key", re: /\bAIza[0-9A-Za-z_-]{35,}/g, keep: 4 },
   { name: "gitlab token", re: /\bglpat-[0-9A-Za-z_-]{20,}/g, keep: 4 },
   { name: "npm token", re: /\bnpm_[A-Za-z0-9]{36,}/g, keep: 4 },
-  // A JWT: three base64url segments, the first a JSON header (`eyJ` is `{"` encoded).
-  { name: "jwt", re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, keep: 4 },
+  // A JWT: three base64url segments, the first a JSON header (`eyJ` is `{"` encoded). It may start at
+  // the head of a base64url run or after a `-` inside one, as `\beyJ` allowed.
+  //
+  // ONE ATTEMPT PER RUN, NOT ONE PER `eyJ`. `\beyJ…` started again at every `-eyJ` of a run and read
+  // the run to its end each time, looking for the dot: a megabyte of `-eyJ` held the bridge for a
+  // minute. Every start inside one run shares that run's end, so they all win or all lose together.
+  // The pattern therefore starts only at the head of a run (the lookbehind), and an atomic lookahead
+  // (`(?=(…))\1`, which nothing backtracks into) skips to the first `eyJ` the old start rule took that
+  // has 8 characters after it; group 2, from that `eyJ` on, is the JWT. Same matches, linear time.
+  {
+    name: "jwt",
+    re: /(?<![A-Za-z0-9_-])(?=((?:[A-Za-z0-9_-]*?-)??)eyJ[A-Za-z0-9_-]{8})\1(eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/g,
+    keep: 4,
+    group: 2,
+  },
   // `Authorization: Bearer <token>`, in a header, a curl line or a log. The token is masked whole.
   { name: "bearer token", re: /\b[Bb]earer[ \t]+([A-Za-z0-9._~+/=-]{20,})/g, keep: 0, group: 1 },
   // `password=…`, `DB_PASSWORD: …`, `"api_key": "…"`, `GITHUB_TOKEN=…`. The name may sit inside a
@@ -146,6 +168,12 @@ export function maskPatternsSource(): string {
   const res = [...FAMILIES.map((f) => `${f.re.source}/${f.re.flags}/${f.keep}/${f.group ?? ""}`), NOT_A_VALUE, PREFIXED, PEM_BEGIN, PEM_END, PEM_BODY_LINE, PEM_BODY];
   return [...res.map(String), String(PEM_MAX_BODY)].join("\n");
 }
+
+/**
+ * No pattern matches fewer characters than this (a `token=` pair with its 8-character value is the
+ * shortest, at 14; every other family needs 15 or more), so a shorter text is not scanned at all.
+ */
+const SHORTEST_SECRET = 14;
 
 /** A half-open `[start, end)` span of code units to mask. */
 type Span = readonly [number, number];
@@ -234,15 +262,25 @@ function pemSpans(text: string, spans: Span[]): void {
   // before it, and "no END after here" stays true for every later BEGIN. One search per BEGIN read
   // the rest of the text each time: a megabyte of BEGIN lines (a file in Files, a diff) held the
   // bridge for 36 s. `undefined` is "not looked for yet".
+  //
+  // The same holds for the two other reads a BEGIN makes. Whether the text up to the END is a key body
+  // is decided once per END, by where its last non-body character sits (`lastBad`): a BEGIN after that
+  // character has a clean body, one before it does not. Testing each BEGIN's slice instead read up to
+  // 16 KB per BEGIN line. And the first line break after a BEGIN is looked for once and reused: a
+  // megabyte of BEGIN markers on one line looked for it once per marker, to the end of the text.
   let nextEnd: RegExpExecArray | null | undefined;
+  let lastBad = -1;
+  let nextBreak: number | undefined;
+  let walk = { cursor: -1, last: -1, stopped: true };
   for (let m = PEM_BEGIN.exec(text); m !== null; m = PEM_BEGIN.exec(text)) {
     const bodyStart = m.index + m[0].length;
     if (nextEnd === undefined || (nextEnd !== null && nextEnd.index < bodyStart)) {
       PEM_END.lastIndex = bodyStart;
       nextEnd = PEM_END.exec(text);
+      if (nextEnd !== null) lastBad = lastNonBody(text, Math.max(bodyStart, nextEnd.index - PEM_MAX_BODY), nextEnd.index);
     }
     const end = nextEnd;
-    if (end !== null && end.index - bodyStart <= PEM_MAX_BODY && PEM_BODY.test(text.slice(bodyStart, end.index))) {
+    if (end !== null && end.index - bodyStart <= PEM_MAX_BODY && lastBad < bodyStart) {
       spans.push([bodyStart, end.index]);
       PEM_BEGIN.lastIndex = end.index + end[0].length;
       continue;
@@ -250,33 +288,79 @@ function pemSpans(text: string, spans: Span[]): void {
     // No END on screen: the block runs off the bottom. Mask the lines that still look like a body,
     // up to a key's worth of them. A line with `-----` is a marker, never base64, so the next BEGIN
     // ends this body rather than being read as part of it (and every BEGIN after it again).
-    let cursor = text.indexOf("\n", bodyStart);
-    let last = bodyStart;
-    while (cursor !== -1 && cursor - bodyStart <= PEM_MAX_BODY) {
+    // BEGINs on one line share the lines after it, so the walk below goes on from where the last one
+    // stopped instead of starting over: a later BEGIN only ever gets further (its 16 KB reach ends
+    // later), and a line that is not a body stops every one of them.
+    if (nextBreak === undefined || (nextBreak !== -1 && nextBreak < bodyStart)) {
+      nextBreak = text.indexOf("\n", bodyStart);
+      walk = { cursor: nextBreak, last: -1, stopped: false };
+    }
+    let { cursor } = walk;
+    let last = Math.max(bodyStart, walk.last);
+    while (!walk.stopped && cursor !== -1 && cursor - bodyStart <= PEM_MAX_BODY) {
       const lineEnd = text.indexOf("\n", cursor + 1);
       const line = text.slice(cursor + 1, lineEnd === -1 ? text.length : lineEnd);
-      if (line.trim() === "" || line.includes("-----") || !PEM_BODY_LINE.test(line)) break;
+      if (line.trim() === "" || line.includes("-----") || !PEM_BODY_LINE.test(line)) {
+        walk.stopped = true;
+        break;
+      }
       last = lineEnd === -1 ? text.length : lineEnd;
       cursor = lineEnd;
     }
+    walk.cursor = cursor;
+    walk.last = last;
     if (last > bodyStart) spans.push([bodyStart, last]);
   }
 }
 
-/** Replace every code unit inside a span with {@link MASK}, line breaks excepted. Same length. */
+/** One character of {@link PEM_BODY}'s class, taken from it so the two cannot drift apart. */
+const PEM_BODY_CHAR = new RegExp(PEM_BODY.source.slice(1, -2));
+
+/**
+ * The index of the last character in `[from, to)` that cannot be part of a PEM body, or `from - 1`
+ * when there is none: `PEM_BODY.test(text.slice(start, to))` is then `lastBad < start` for every
+ * `start` from `from` on.
+ */
+function lastNonBody(text: string, from: number, to: number): number {
+  for (let i = to - 1; i >= from; i--) {
+    if (!PEM_BODY_CHAR.test(text[i]!)) return i;
+  }
+  return from - 1;
+}
+
+/**
+ * Replace every code unit inside a span with {@link MASK}, line breaks excepted. Same length.
+ *
+ * ONE PIECE PER MASKED RUN, NOT ONE PER CHARACTER. Appending the mask a character at a time built a
+ * string of one piece per masked character: a 32 MB value cost about 1.4 GB. Each run between line
+ * breaks is one `MASK.repeat`, so the extra memory is a few bytes per input character.
+ */
 function applySpans(text: string, spans: readonly Span[]): string {
   const masked = new Uint8Array(text.length);
   for (const [start, end] of spans) masked.fill(1, start, end);
-  let out = "";
-  let runStart = 0;
-  for (let i = 0; i < text.length; i++) {
-    if (masked[i] === 0) continue;
-    const ch = text[i];
-    if (ch === "\n" || ch === "\r") continue;
-    out += text.slice(runStart, i) + MASK;
-    runStart = i + 1;
+  return applyMarks(text, masked);
+}
+
+/** {@link applySpans} over a mark per code unit: 1 masks it. */
+function applyMarks(text: string, masked: Uint8Array): string {
+  const parts: string[] = [];
+  let copied = 0;
+  for (let start = masked.indexOf(1); start !== -1; start = masked.indexOf(1, copied)) {
+    let end = start;
+    while (end < text.length && masked[end] === 1) end++;
+    parts.push(text.slice(copied, start));
+    let run = start;
+    for (let i = start; i < end; i++) {
+      const code = text.charCodeAt(i);
+      if (code !== 0x0a && code !== 0x0d) continue;
+      parts.push(MASK.repeat(i - run), text[i]!);
+      run = i + 1;
+    }
+    parts.push(MASK.repeat(end - run));
+    copied = end;
   }
-  return out + text.slice(runStart);
+  parts.push(text.slice(copied));
+  return parts.join("");
 }
 
 /**
@@ -328,22 +412,36 @@ const ESCAPE_RE = new RegExp(
  * byte for byte where it was, so colours and the client's parse are untouched. An OSC string (a
  * title, a hyperlink target) is not shown by the phone but does travel, so its payload is masked on
  * its own with {@link redactText}.
+ *
+ * NO PIECE PER ESCAPE. The masks are marked on the read itself, through a map from each visible
+ * character to its place in the read, and the read is rebuilt once. Two strings per escape cost
+ * about 37 bytes per input byte on a read that was nothing but escapes. A read with nothing to mask
+ * comes back as it came, with no map built.
  */
 export function redactAnsi(text: string, wrapped = true): string {
   if (text === "") return text;
   if (!text.includes(ESC)) return redactSegments([text], wrapped)[0]!;
-  const pieces: string[] = [];
-  const escapes: string[] = [];
-  let at = 0;
+  const visible = text.replace(ESCAPE_RE, "");
+  const spans = visible === "" ? [] : findSpans(visible, wrapped);
+  const at = spans.length === 0 ? null : new Int32Array(visible.length);
+  let marked: Uint8Array | null = null;
+  let seen = 0;
+  let from = 0;
   ESCAPE_RE.lastIndex = 0;
   for (let m = ESCAPE_RE.exec(text); m !== null; m = ESCAPE_RE.exec(text)) {
-    pieces.push(text.slice(at, m.index));
-    escapes.push(m[0].startsWith(`${ESC}]`) ? redactText(m[0]) : m[0]);
-    at = m.index + m[0].length;
+    if (at !== null) for (let k = from; k < m.index; k++) at[seen++] = k;
+    from = m.index + m[0].length;
+    if (m[0].length < SHORTEST_SECRET || !m[0].startsWith(`${ESC}]`)) continue;
+    const inside = scan(m[0]);
+    if (inside.length === 0) continue;
+    marked ??= new Uint8Array(text.length);
+    for (const [start, end] of inside) marked.fill(1, m.index + start, m.index + end);
   }
-  pieces.push(text.slice(at));
-  const masked = redactSegments(pieces, wrapped);
-  let out = masked[0]!;
-  for (let i = 0; i < escapes.length; i++) out += escapes[i]! + masked[i + 1]!;
-  return out;
+  if (at !== null) for (let k = from; k < text.length; k++) at[seen++] = k;
+  if (at === null && marked === null) return text;
+  marked ??= new Uint8Array(text.length);
+  if (at !== null) {
+    for (const [start, end] of spans) for (let k = start; k < end; k++) marked[at[k]!] = 1;
+  }
+  return applyMarks(text, marked);
 }
