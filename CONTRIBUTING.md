@@ -9,29 +9,34 @@ trips people up. Read [`CLAUDE.md`](./CLAUDE.md) for the full working agreement.
 
 ## Before you open a PR
 
-Run all four checks. The first three match the pre-commit and pre-push hooks, and CI runs every
-suite.
+Run the quick gate. It takes about three minutes on an idle machine for a small change.
 
 ```bash
-bun run typecheck            # backend
-cd web && bun run typecheck  # web — the root check does NOT cover web's test files
-bun run lint                 # oxlint, one config, at the repo root
-bun test ./bridge ./cli ./scripts
-cd web && bun run test       # vitest — never `bun test` in web/, Bun's runner can't drive jsdom
+bun run gate
 ```
 
-The web typecheck runs separately by design. Changing a shared type can pass the root check while
-breaking stale test fixtures. Run both commands every time.
+It runs both typechecks (the root one does NOT cover web's test files, so the gate runs both), the
+lint, a fixed list of guard tests that read the source, and the tests near your change: the test
+files named after a changed source file, and for `web/` the tests whose imports reach a change. It
+compares with the merge base with `origin/main`.
+
+CI runs the full suites on every push, so you do not need to run them. `bun run gate --full` runs
+them here, as `bun run test` (backend) and `cd web && bun run test` (vitest, never `bun test` in
+`web/`, Bun's runner can't drive jsdom). To check one file, `bun test ./bridge/foo.test.ts` or
+`cd web && bunx vitest run src/lib/foo.test.ts`.
 
 CI also runs a browser suite in Playwright, a second job that opens the app in Chromium at a phone
 size and a tablet size. You do not need to run it locally to open a PR. If you want to run it
-yourself, `cd web && bun run e2e`. It is not part of the pre-commit or pre-push hooks, so a green
-push does not guarantee it passed; check the CI run. See `CLAUDE.md` → "Browser tests" for the
-tiers, the fixtures, and how to add a case.
+yourself, `cd web && bun run e2e`. It is not part of the gate, so a green gate does not guarantee
+it passed; check the CI run. See `CLAUDE.md` → "Browser tests" for the tiers, the fixtures, and how
+to add a case. A few jobs (the Windows suites, the Safari engine, the Bun floor, the durable
+example, the swap-server browser specs) run nightly, at a minor release tag or when their own paths
+change, not on every PR.
 
 You can automate this by running `scripts/install-hooks.sh` once. It sets `core.hooksPath` to the
 repo hooks. The pre-commit hook checks the version, linting, and package wire. The pre-push hook
-runs typechecks, executes tests, and warns if you push an untagged release.
+runs the gate and warns if you push an untagged release. To skip one part of the gate for one push,
+set `SKIP_TYPECHECK=1`, `SKIP_LINT_CHECK=1` or `SKIP_TESTS=1`.
 
 ## Versions
 

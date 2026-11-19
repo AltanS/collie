@@ -143,7 +143,8 @@ release. 1.14.2 was cut this way on 2026-09-28.
    and takes 13 to 16 minutes, and it ships the commits of `LOCAL`, so commit the release first.
    Read its table: a failed step holds the tag, and so does an unavailable VM. **A patch release
    skips the rehearsal** (Altan, 2026-10-18). Every release, patch included, still needs a green
-   `windows.yml` run on the release commit. Then run the browser leg (step 8), then tag and push
+   `windows.yml` run on the release commit. That workflow no longer runs on a push to `main` (nightly,
+   `release-*` pushes and by hand only), so start it: `gh workflow run windows.yml --ref main`. Then run the browser leg (step 8), then tag and push
    (the paragraph after it).
 
    A missing Windows zip stops the release from the first of two moments: once an earlier stable
@@ -367,8 +368,29 @@ page to be skimmed.
   `scripts/collie-cli.test.sh`, which drives every verb of the compiled binary in a sandboxed HOME,
   and `scripts/collie-ctl.test.sh`, which pins the shim's delegation and bootstrap. Neither of these
   opens a browser, the browser tier is separate, see "Browser tests" below.
-  A **pre-push hook** (`scripts/git-hooks/pre-push`) runs **both** before
-  every push — override once with `SKIP_TESTS=1 git push` (see *Linting* → escape hatches). The bits that genuinely need `Bun.serve` /
+  **Before a commit or a push, run `bun run gate`, not the full suites.** The gate
+  (`scripts/gate.ts`) runs both typechecks, the lint, a fixed list of guard tests that read source
+  (host, mux-name, import, storage-key and similar rules, the list is `GUARD_*` in
+  `scripts/test-sets.ts`) and the tests near your change: for bun, the test files named after a
+  changed source file, for `web/`, `vitest --changed` against the merge base with `origin/main`. It
+  takes about three minutes or less on an idle machine. The **pre-push hook**
+  (`scripts/git-hooks/pre-push`) runs it, with escape hatches `SKIP_TYPECHECK=1`,
+  `SKIP_LINT_CHECK=1` and `SKIP_TESTS=1` (see *Linting* → escape hatches). **The full suites run in
+  CI on every push, and once more on the release head**; a worker does not run them locally. Run
+  `bun run gate --full` if you want them here. A new rule test that scans source joins the guard
+  list in the commit that adds it.
+  Three file names carry a meaning. `*.quarantine.test.*` is a flaky test: no run includes it, and
+  the non-blocking `quarantine` job in `ci.yml` runs only those files; fix it and give it its old
+  name back. Its first line is `// quarantined: YYYY-MM-DD <reason>`, and after 14 days that job
+  turns red (`scripts/check-quarantine.ts`) until it is fixed or deleted. `*.slow.test.*`
+  is slow on purpose: a full run keeps it, the gate leaves it out. No test file passes 100 KB
+  (`scripts/test-file-size.test.ts`, a ceiling per older file): add new cases in a new file next to it.
+  **Frozen code** (`FROZEN_PATHS` in `scripts/test-sets.ts`: the plugin data path of `collie harness
+  link`, the browser-leg rig and the harness lab tooling) keeps its tests in `bun run test` and in a
+  full vitest run, but CI runs them only when one of those paths changes, and in the nightly run; the
+  gate runs them only as near tests. The same nightly run (`ci.yml`, 02:15 UTC) runs the Bun-floor
+  job, the durable example and the swap-server browser specs, which otherwise wake only on their own
+  paths. The bits that genuinely need `Bun.serve` /
   `Bun.connect` (HTTP handlers, the socket client) stay out of the VITEST tier — Vitest-on-Node can't
   run them — so keep new backend logic pure/injectable enough for `bun test`, or exercise it through
   `web/`. Bun's own runner *can* run them, and the drill below is where that happens.
@@ -425,8 +447,9 @@ component, not a spec. On 2026-10-17 the specs that did not pass that test moved
   serves it, and drives Chromium at `phone` (390x844) and `tablet` (820x1180), declared as two
   projects in `web/playwright.config.ts`: `app-phone` and `app-tablet`. A third, `app-phone-webkit`,
   runs the same specs under WebKit, Safari's engine. It is NOT in the per-push job (`ci.yml` sets
-  `E2E_WEBKIT=0`). It runs nightly at 04:00 UTC and at every `v*` tag in
-  `.github/workflows/webkit.yml`, a workflow of its own, so a release never waits on it. Off CI it is
+  `E2E_WEBKIT=0`). It runs at every minor tag (`vX.Y.0` and its `-edge.N` builds) and by hand
+  in `.github/workflows/webkit.yml`, a workflow of its own, so a release never waits on it. It has
+  no nightly run and no run at a patch tag: start one with `gh workflow run webkit.yml --ref <tag>`. Off CI it is
   opt-in (`COLLIE_E2E_WEBKIT=1`), because Playwright's WebKit build cannot launch on Fedora; `make
   e2e-webkit` at the workspace root runs it inside an Ubuntu distrobox there. It exists because
   Safari disagrees with Chromium on geometry a unit test never sees (`web/e2e/belt.spec.ts` holds
@@ -492,9 +515,9 @@ uploads both under `if: failure()`. Open the HTML report (`playwright-report/`, 
 **Two prohibitions.** Never assert a pixel, no `toHaveScreenshot`, no baseline images, a screenshot
 is evidence for a person, not a comparison. And never point Tier 2 at anything but the dev lane.
 
-The pre-push hook (`scripts/git-hooks/pre-push`) runs the backend suite and `cd web && bun run
-test`. It does not run the browser suite, a browser download does not belong in a hook that fires
-on every push. `cd web && bun run typecheck` covers `e2e/`; the root `bun run typecheck` does not.
+The pre-push hook (`scripts/git-hooks/pre-push`) runs `bun run gate`, the typechecks, the lint and
+the tests near the change. It does not run the browser suite, a browser download does not belong in
+a hook that fires on every push. `cd web && bun run typecheck` covers `e2e/`; the root `bun run typecheck` does not.
 
 ## Linting — one linter, one config
 
@@ -534,8 +557,9 @@ a single command; never export one.
 | `SKIP_LINT_CHECK=1` | `git commit` (pre-commit hook) | oxlint over the staged files |
 | `SKIP_CREW_WIRE_CHECK=1` | `git commit` (pre-commit hook) | the crew-wire decision guard |
 | `SKIP_FLAKE_LOCK_CHECK=1` | `git commit` (pre-commit hook) | the `flake.lock`-only-in-a-release guard |
-| `SKIP_TYPECHECK=1` | `bun run build` / `collie build` | both typecheck steps |
-| `SKIP_TESTS=1` | `git push` (pre-push hook) | both test suites |
+| `SKIP_TYPECHECK=1` | `bun run build` / `collie build`, `bun run gate`, `git push` | both typecheck steps |
+| `SKIP_LINT_CHECK=1` | `bun run gate`, `git push` (pre-push hook) | the lint step of the gate (also read by pre-commit, above) |
+| `SKIP_TESTS=1` | `bun run gate`, `git push` (pre-push hook) | the guard tests and the near tests |
 | `SKIP_TAG_CHECK=1` | `git push` (pre-push hook) | the untagged-release warning |
 
 The pre-commit hook's four guards are **independent** — `SKIP_VERSION_CHECK=1` does not disarm the

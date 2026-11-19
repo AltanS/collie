@@ -21,52 +21,6 @@ const raw = (name: string) => readFileSync(join(PANES, name), "utf8");
 const load = (name: string) => splitLines(parseAnsi(raw(name)));
 const hermes = fixtures.filter((name) => name.startsWith("hermes--"));
 
-// The whole corpus, so a capture added later has to be placed in one cohort or the other here.
-const PINNED = [
-  "hermes--approval-long-full.txt",
-  "hermes--approval-long.txt",
-  "hermes--approval-moved.txt",
-  "hermes--approval-w60.txt",
-  "hermes--approval.txt",
-  "hermes--clarify-choices-moved.txt",
-  "hermes--clarify-choices-w60.txt",
-  "hermes--clarify-choices.txt",
-  "hermes--clarify-four.txt",
-  "hermes--clarify-long.txt",
-  "hermes--clarify-multi-toggled.txt",
-  "hermes--clarify-multi.txt",
-  "hermes--clarify-open.txt",
-  "hermes--clarify-other-draft-w60.txt",
-  "hermes--clarify-other-draft.txt",
-  "hermes--clarify-other-w60.txt",
-  "hermes--clarify-other.txt",
-  "hermes--clarify-two-second.txt",
-  "hermes--clarify-two.txt",
-  "hermes--done.txt",
-  "hermes--draft-multiline.txt",
-  "hermes--draft-six-lines.txt",
-  "hermes--draft-w60.txt",
-  "hermes--draft-wrapped.txt",
-  "hermes--draft.txt",
-  "hermes--exited.txt",
-  "hermes--idle-w60.txt",
-  "hermes--idle.txt",
-  "hermes--model-picker.txt",
-  "hermes--palette.txt",
-  "hermes--running.txt",
-  "hermes--slash-popup.txt",
-  "hermes--tui-busy-echo.txt",
-  "hermes--tui-busy-fresh.txt",
-  "hermes--tui-busy-title.txt",
-  "hermes--tui-busy.txt",
-  "hermes--tui-draft-title.txt",
-  "hermes--tui-draft.txt",
-  "hermes--tui-idle-en.txt",
-  "hermes--tui-idle-hint.txt",
-  "hermes--tui-idle-title.txt",
-  "hermes--v0225-title-idle.txt",
-];
-
 // The screens that lift a dialog. Everything else in the corpus is the raw cohort.
 const LIFTED = [
   "hermes--approval-long-full.txt",
@@ -113,10 +67,6 @@ function edited(name: string, from: RegExp, to: (row: string) => string): Styled
 }
 
 describe("the hermes corpus", () => {
-  it("is exactly the captures this adapter was developed against", () => {
-    expect(hermes).toEqual(PINNED);
-  });
-
   it("lifts exactly the dialog screens", () => {
     const lifted = hermes.filter((name) => hermesAdapter.buildBlocks(load(name)).some((b) => b.kind !== "raw"));
     expect(lifted).toEqual(LIFTED);

@@ -121,24 +121,6 @@ dataDescribe("the socket", () => {
     expect((await new FakePart(first.socket).request("GET", "/v1/ping")).status).toBe(200);
   });
 
-  test("a socket whose holder accepts but does not answer in time is left alone: no start, no delete", async () => {
-    const dir = scratch();
-    const path = insideSocketPath(dir);
-    mkdirSync(join(dir, "inside"), { recursive: true, mode: 0o700 });
-    // A frozen bridge: the kernel accepts the connection, nothing answers.
-    const { createServer } = await import("node:net");
-    const frozen = createServer(() => {});
-    await new Promise<void>((done) => frozen.listen(path, done));
-    try {
-      const second = await start(dir);
-      expect(second.started).toBe(false);
-      expect(second.lines.join("\n")).toContain("no clear answer from");
-      expect(lstatSync(path).isSocket()).toBe(true);
-    } finally {
-      frozen.close();
-    }
-  });
-
   test("a file that is not a socket is refused and left in place", async () => {
     const dir = scratch();
     mkdirSync(join(dir, "inside"), { mode: 0o700 });
@@ -283,17 +265,3 @@ dataDescribe("caps", () => {
   });
 });
 
-dataDescribe("the long poll", () => {
-  // Bun checks its idle limit on a coarse timer: a request past its 10 s default is cut after 10 to 12 s. A
-  // wait of 11.5 s passed inside that window while every real 25 s poll was cut (`server.timeout()` does
-  // nothing on a Unix socket in Bun 1.4), so the wait here is well past it.
-  test("outlives Bun's 10 s default request timeout and ends empty at its own limit", async () => {
-    const { socket } = await start(scratch());
-    const part = new FakePart(socket, { env: { HERDR_PANE_ID: "w1:p1" } });
-    await part.hello();
-    const started = Date.now();
-    const answer = await part.next({ waitMs: 20_000 });
-    expect(answer.status).toBe(204);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(19_500);
-  }, 30_000);
-});

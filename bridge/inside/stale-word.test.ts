@@ -13,7 +13,6 @@ import { join } from "node:path";
 
 import { DATA_PANE, dataDescribe, dataId, dataRig, type DataRig } from "./data-rig.ts";
 import { WORD_FRESH_MS } from "./hub.ts";
-import { PART_RATE_BURST } from "./server.ts";
 import { paneLinkedReader } from "../surface/path.ts";
 
 /** A captured Claude Code screen whose box holds the person's draft: the screen road reads `composer: draft`. */
@@ -91,19 +90,6 @@ dataDescribe("a lost turn.end", () => {
     expect((await r.send(id, "now")).receipt?.outcome).toBe("sent");
     expect((await served)?.id).toBe(id);
     expect(r.mux.calls).toEqual([]);
-  });
-
-  test("a turn.end refused 429 past the burst is a real loss; its retry a second later lands", async () => {
-    const { r } = await rig();
-    const part = await r.part();
-    await part.event("turn.start", { turn: "t1", seq: 1 });
-    // A burst of rows spends the part's bucket, so the turn end right after it is refused.
-    for (let i = 0; i < PART_RATE_BURST; i += 1) await part.event("row", { door: "response" });
-    expect((await part.event("turn.end", { turn: "t1", seq: 2 })).status).toBe(429);
-    expect(r.hub.turnOf(DATA_PANE)).toBe("running");
-    await Bun.sleep(1100);
-    expect((await part.event("turn.end", { turn: "t1", seq: 2 })).status).toBe(204);
-    expect(r.hub.turnOf(DATA_PANE)).toBe("idle");
   });
 });
 

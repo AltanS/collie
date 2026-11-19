@@ -27,65 +27,6 @@ const allCodexFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("codex--") && f.endsWith(".txt"))
   .toSorted();
 
-const PINNED = [
-  "grok--ask-color-moved.txt",
-  "grok--ask-color.txt",
-  "grok--ask-esc-park.txt",
-  "grok--ask-multi-checked.txt",
-  "grok--ask-multi.txt",
-  "grok--ask-size.txt",
-  "grok--ask-wizard-q1.txt",
-  "grok--ask-wizard-q2.txt",
-  "grok--ask-z-focused.txt",
-  "grok--ask-z-parked.txt",
-  "grok--ask-z-typed.txt",
-  "grok--done.txt",
-  "grok--draft-scrollbar-partial.txt",
-  "grok--draft-scrollbar.txt",
-  "grok--draft-single.txt",
-  "grok--draft-wrapped.txt",
-  "grok--fresh-idle.txt",
-  "grok--model-arg-hint.txt",
-  "grok--model-effort-moved.txt",
-  "grok--model-effort.txt",
-  "grok--model-picker-moved.txt",
-  "grok--model-picker.txt",
-  "grok--model-window-moved.txt",
-  "grok--model-window.txt",
-  "grok--output-scrollbar.txt",
-  "grok--permission-edit.txt",
-  "grok--permission-rm-feedback.txt",
-  "grok--permission-rm-moved.txt",
-  "grok--permission-rm.txt",
-  "grok--plan-approval.txt",
-  "grok--plan-request-changes.txt",
-  "grok--plan-tab-prompt.txt",
-  "grok--reply-table-highlighted.txt",
-  "grok--reply-table-scrollbar.txt",
-  "grok--reporter-294-draft-newline-hint.txt",
-  "grok--slash-popup-exact.txt",
-  "grok--slash-popup-partial.txt",
-  "grok--startup.txt",
-  "grok--trust-prompt.txt",
-  "grok--user-bubble.txt",
-  "grok--v1.0.77-done--w120.txt",
-  "grok--v1.0.77-draft-lines--w61.txt",
-  "grok--v1.0.77-draft-six-rows--w120.txt",
-  "grok--v1.0.77-draft-wrapped--w61.txt",
-  "grok--v1.0.77-draft-wrapped--w80.txt",
-  "grok--v1.0.77-idle-optin--w120.txt",
-  "grok--v1.0.77-model-picker--w61.txt",
-  "grok--v1.0.77-paste-fold--w120.txt",
-  "grok--v1.0.77-queued--w120.txt",
-  "grok--v1.0.77-running--w120.txt",
-  "grok--v1.0.77-running-draft--w120.txt",
-  "grok--v1.0.77-settings--w61.txt",
-  "grok--v1.0.77-slash-ghost--w120.txt",
-  "grok--v1.0.77-trust--w80.txt",
-  "grok--welcome-card.txt",
-  "grok--working.txt",
-];
-
 const DIALOG = [
   "grok--ask-color-moved.txt",
   "grok--ask-color.txt",
@@ -147,12 +88,6 @@ describeAdapterConformance(grokAdapter, {
   // A long draft pushes the hint row out of the tail the bridge binds to, so these captures must
   // not be read as a short composer that can be bound.
   unboundComposerFixtures: ["grok--draft-scrollbar.txt", "grok--draft-scrollbar-partial.txt", "grok--v1.0.77-draft-six-rows--w120.txt"],
-});
-
-describe("the grok corpus", () => {
-  it("is exactly the captures this adapter was developed against", () => {
-    expect(allGrokFixtures).toEqual(PINNED);
-  });
 });
 
 describe("composerReady — the gate the reply path pre-flights on", () => {

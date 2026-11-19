@@ -1,9 +1,11 @@
 name: WebKit
 
-# The Safari engine over the browser tier, nightly and at a release tag. It left the per-push `e2e`
+# The Safari engine over the browser tier, at a minor release tag and by hand. It left the per-push `e2e`
 # job in `ci.yml` (Chromium only now): WebKit costs a second browser download and a second pass over
 # every spec, and the bugs it finds are engine differences that no single push introduces by the
-# hour. Safari is where a phone actually opens Collie, so it still runs, just not on every push.
+# hour. Safari is where a phone actually opens Collie, so it still runs, just not on every push. It
+# left the nightly schedule too: a minor release is where a new engine difference ships, and a patch
+# tag or a night in between adds a run and no news.
 #
 # ITS OWN WORKFLOW, not a job in ci.yml or release.yml, for the reason `windows.yml` gives.
 # `release.yml`'s gate reads only the `ci.yml` run on the tagged commit, so this workflow adds no
@@ -12,15 +14,15 @@ name: WebKit
 # to be red.
 #
 # COST of one run: one runner, about the time of the Chromium job (one project, `app-phone-webkit`,
-# instead of three), plus a ~90 MB WebKit download on a cold cache. NOTHING REPEATS: the cron fires
-# once a day, a tag fires once per tag, and `concurrency` below cancels an older run of the same ref.
+# instead of three), plus a ~90 MB WebKit download on a cold cache. NOTHING REPEATS: a tag fires once
+# per tag, there is no cron, and `concurrency` below cancels an older run of the same ref.
 # A failed run is not retried by anything but `retries: 1` inside Playwright; re-running by hand is
 # the operator's call.
 on:
-  schedule:
-    - cron: "0 4 * * *" # 04:00 UTC, on the default branch
   push:
-    tags: ["v*"]
+    # A minor or major release (vX.Y.0) and its Edge builds (vX.Y.0-edge.N). A patch (vX.Y.Z, Z above 0)
+    # does not run it. Run it by hand on a patch with: gh workflow run webkit.yml --ref <tag>
+    tags: ["v*.*.0", "v*.*.0-edge.*"]
   workflow_dispatch:
 
 concurrency:

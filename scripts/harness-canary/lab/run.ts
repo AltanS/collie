@@ -10,7 +10,8 @@
 //                phone leg (phone.ts): a scratch bridge driven over HTTP, the way the phone drives one.
 //   6. judge     pass, fail or walk-only (verdict.ts).
 //   7. publish   pass: a commit on a branch in a scratch worktree. fail: the issue as files.
-//   8. settle    the row gets its result. A run that cannot finish gets `failed`.
+//   8. settle    the row gets its result. A run that cannot finish gets `failed`, or `retry` when the
+//                environment caused it (failure-class.ts): the loop runs that pair again, up to five tries.
 //   9. clean up  the run directory is deleted, with the login copy in it.
 //
 // The login copy must never outlive the run. Before step 1 the sweep (sweep.ts) removes the folders and
@@ -22,7 +23,8 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { redact, redactContext, type RedactContext } from "./redact";
-import { claim, expireStale, loadLedger, readLedger, settle, shouldRun, type LabResult, type LabRow } from "./lab-ledger";
+import { canRetry, claim, expireStale, loadLedger, readLedger, settle, settleFailure, shouldRun, type LabResult, type LabRow } from "./lab-ledger";
+import { RETRY_MAX_TRIES } from "./failure-class";
 import { sweepLab, type Liveness } from "./sweep";
 import { harnessSpec, runDirs, type HarnessSpec, type RunDirs } from "./harnesses";
 import { draftIssue, writeIssueFiles, type IssueFiles, type PassInput, type PassResult } from "./publish";
@@ -54,6 +56,8 @@ export interface LabPorts {
   install(spec: HarnessSpec, dirs: RunDirs, version: string, log: (line: string) => void): Promise<string>;
   /** The walk and the legs, in a throwaway tmux. Cleans its tmux server before it returns or throws. */
   session(spec: HarnessSpec, dirs: RunDirs, version: string, log: (line: string) => void, plan: SessionPlan): Promise<SessionFacts>;
+  /** The 1-minute load average. Absent: the lab never reads it (a test, or a run with no load guard). */
+  loadAverage?(): number;
   /** Stop the tmux server of the session that is running now, if any. Never throws. Used on a signal. */
   stopAll(): Promise<void>;
   /** Who is alive, and which lab tmux servers exist. The sweep asks. */
@@ -89,6 +93,13 @@ export interface LabOptions {
   readonly named?: boolean | undefined;
   /** A bridge that already runs, for a phone-only run (`--bridge` and `--token-file`). */
   readonly bridge?: { readonly url: string; readonly token: string } | undefined;
+  /**
+   * The most one pair may take, in milliseconds. At the limit the run ends like a signal: the folder and the
+   * tmux server go, and the row is `retry` (class timeout). Absent: no limit beyond the waits of each step.
+   */
+  readonly pairTimeoutMs?: number | undefined;
+  /** With the load average the ports read: a `fail` verdict while the load is above this is a `retry` (load), not drift. Absent: never. */
+  readonly loadLimit?: number | undefined;
 }
 
 export type LabStatus = "skipped" | "deferred" | LabResult;
@@ -195,6 +206,7 @@ export async function runLab(options: LabOptions, ports: LabPorts): Promise<LabO
   // An emergency ends the run: the folder (with the login copy) deleted first, then tmux stopped, the row failed.
   let claimed = false;
   let ended = false;
+  let endedAs: "retry" | "failed" = "failed";
   const emergency = async (reason: string): Promise<void> => {
     if (ended) return;
     ended = true;
@@ -208,7 +220,7 @@ export async function runLab(options: LabOptions, ports: LabPorts): Promise<LabO
     }
     if (claimed) {
       try {
-        settle(options.ledgerPath, harness, version, { result: "failed", note: reason });
+        endedAs = settleFailure(options.ledgerPath, harness, version, reason, now()).result;
       } catch (err) {
         log(`the row could not be settled: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -240,17 +252,22 @@ export async function runLab(options: LabOptions, ports: LabPorts): Promise<LabO
 
     // 4 to 8. Every end below settles the row.
     const finish = (result: Exclude<LabResult, "running">, note: string, extra: Partial<LabOutcome> = {}): LabOutcome => {
-      if (ended) return outcome("failed", "the run was ended by a signal or an uncaught error");
+      if (ended) return outcome(endedAs, "the run was ended by a signal or an uncaught error");
       ended = true;
-      log(`lab ${harness} ${version}: ${result}: ${note}`);
-      settle(options.ledgerPath, harness, version, { result, note });
+      // A run with no verdict is `retry` when the environment caused it, `failed` when it did not or when the tries ran out.
+      const end = result === "failed" ? settleFailure(options.ledgerPath, harness, version, note, now()) : null;
+      const settled: Exclude<LabResult, "running"> = end === null ? result : end.result;
+      const said = end?.result === "retry" ? `${note} (environment: ${end.cause ?? "?"}, try ${String(end.row.tries ?? 1)} of ${String(RETRY_MAX_TRIES)}; the loop tries again)` : note;
+      if (end === null) settle(options.ledgerPath, harness, version, { result, note });
+      log(`lab ${harness} ${version}: ${settled}: ${said}`);
       cleanup();
       writeLog();
-      return outcome(result, note, extra);
+      return outcome(settled, said, extra);
     };
 
+    const work = async (): Promise<LabOutcome> => {
     try {
-      const cutShort = (): LabOutcome => outcome("failed", "the run was ended by a signal or an uncaught error");
+      const cutShort = (): LabOutcome => outcome(endedAs, "the run was ended by a signal or an uncaught error");
       const printed = await twice("install", log, () => ports.install(spec, dirs, version, log));
       if (ended) return cutShort();
       log(`installed ${harness} ${printed}`);
@@ -287,6 +304,11 @@ export async function runLab(options: LabOptions, ports: LabPorts): Promise<LabO
         }
       }
 
+      // A fail while the machine is busy is no drift: a slow screen reads wrong. The pair is tried again, with no issue draft.
+      const load = options.loadLimit === undefined ? undefined : ports.loadAverage?.();
+      if (load !== undefined && options.loadLimit !== undefined && load > options.loadLimit && canRetry(options.ledgerPath, harness, version, now())) {
+        return finish("failed", `load average ${load.toFixed(1)} is above ${options.loadLimit.toFixed(1)} after the run, so the screens may have read wrong: ${verdict.reasons.join("; ")}`, { verdict });
+      }
       // A fail: the issue as files. `gh issue create` only on request.
       const issue = draftIssue(facts, verdict, lines.join("\n"), session.counters, context);
       const files = writeIssueFiles(options.labRoot, harness, version, issue);
@@ -305,6 +327,23 @@ export async function runLab(options: LabOptions, ports: LabPorts): Promise<LabO
       return finish("fail", `${verdict.reasons.join("; ")}${openNote}`, { verdict, issue: files, issueUrl: url });
     } catch (err) {
       return finish("failed", err instanceof Error ? err.message : String(err));
+    }
+    };
+    if (options.pairTimeoutMs === undefined) return await work();
+    // The limit ends the run like a signal does: folder first, then tmux, then the row. The session that is still
+    // running unwinds when its tmux server dies, and `ended` keeps it from writing anything more.
+    const limit = options.pairTimeoutMs;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<LabOutcome>((resolve) => {
+      timer = setTimeout(() => {
+        const note = `timed out: the pair took more than ${String(Math.round(limit / 60_000))} minutes`;
+        void emergency(note).then(() => resolve(outcome(endedAs, note)));
+      }, limit);
+    });
+    try {
+      return await Promise.race([work(), expired]);
+    } finally {
+      clearTimeout(timer);
     }
   } finally {
     uninstall();

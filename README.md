@@ -236,7 +236,8 @@ Windows 11 x64 running Herdr is maintained and tested directly. The platform sta
 experimental until an update between two real releases is proven on it. Linux and macOS are unaffected. See
 [**docs/windows.md**](./docs/windows.md) for installation, updates, and limitations. Summary:
 
-- **Tested.** The `windows.yml` workflow tests the bridge, CLI, and scripts on every push. A
+- **Tested.** The `windows.yml` workflow tests the bridge, CLI, and scripts every night, on every
+  release branch push and before each release. A
   Windows 11 VM rehearses an install, an update and a rollback before each release tag
   ([ADR 0075](./.adr/0075-windows-is-a-supported-host.md)).
 - **Installed without a toolchain.** Releases provide `collie-<version>-windows-x64.zip`,

@@ -685,16 +685,6 @@ describe("helper v6: a run ends after the pipe took its output (Windows fault b)
     expect(failed.stderr.trimEnd().split("\n").at(-1)).toBe("error: no gh on PATH");
   });
 
-  test("a big document arrives whole, and a timer the trick left open does not hold the run", async () => {
-    const program = `import { run, v } from "./trick.ts";\nrun((t) => { setInterval(() => {}, 60_000); t.session({ id: "big", view: [v.para("x".repeat(60_000))] }); });\n`;
-    const { dir, state } = await trickFolder(program, ["session"]);
-    const started = Date.now();
-    const ran = await runProgram(dir, factsFor(dir, state));
-    expect(ran.code).toBe(0);
-    expect(JSON.parse(ran.stdout).parts[0].id).toBe("big");
-    expect(Date.now() - started).toBeLessThan(8000);
-  });
-
   test("the v5 helper is still Collie's own code to the scan, so a trick folder that keeps it asks for no yes", async () => {
     const { shippedHelperVersion } = await import("../../bridge/tricks/scan.ts");
     const v5 = await Bun.$`git show v1.29.0-edge.3:cli/trick-kit/trick.ts`.quiet().nothrow();

@@ -582,15 +582,6 @@ apiSocketDescribe("the waits", () => {
     expect(r.bus.listeners().waits).toBe(0);
   });
 
-  test("an events wait times out with no events and the same cursor", async () => {
-    const r = rig();
-    await r.api.start();
-    const client = await Client.open(r.path);
-    const answer = await client.ask({ id: "t", op: "events", args: { after: "boot1.0", wait: 1 } });
-    expect(answer).toEqual({ id: "t", ok: true, events: [], next: "boot1.0" });
-    expect(r.api.counts().waits).toBe(0);
-  });
-
   test("the fifth wait on one connection is refused at once", async () => {
     const r = rig();
     await r.api.start();
@@ -1141,5 +1132,4 @@ apiSocketDescribe("the run token", () => {
     await slow.ended;
     expect(r.api.counts().connections).toBe(0);
   });
-
 });

@@ -260,7 +260,7 @@ describe("2. a text write that timed out is read before it is called nothing typ
 
   // The text lands after Collie stopped looking, and the person confirms "Send it again?". This rig reads
   // no styling, so a box text may be the placeholder and the Enter-only path is left to the probe (the
-  // styled case is in protocol.test.ts): the probe proves the draft and the send is refused. Either way the
+  // styled case is in protocol.*.test.ts): the probe proves the draft and the send is refused. Either way the
   // text is never in the box twice and nothing is submitted.
   test("it lands after the wait, then the same text again on an unstyled read: refused, never the text twice", async () => {
     const { pane, send } = rig();
