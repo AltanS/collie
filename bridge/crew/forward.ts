@@ -192,6 +192,11 @@ const FORWARDABLE: readonly RegExp[] = [
   // `history` (CREW_PROTOCOL.md §9.1). The hash is matched as an opaque segment, mirroring
   // `BLOB_ROUTE` in bridge/server.ts one-for-one — `forward.test.ts` pins that correspondence.
   /^blobs\/[^/]+$/,
+  // A project picture (ADR 0161) is bytes on ONE machine's disk, named by a `collie.toml` there, so a
+  // `?host=` read is proxied byte for byte like a blob. Mirrors `PROJECT_PICTURE_ROUTE` in
+  // bridge/server.ts one-for-one. Additive-optional (§7.1): a member that predates it answers 404, and
+  // an older member sends no `picture` on its panes at all, so the phone never asks it.
+  /^project-picture\/[^/]+$/,
   // A durable program's own history (M53 spec 11): the program runs on ONE member, so its conversation list,
   // the items of one and a reopen are asked of that member. The list and the items are reads; a reopen is a
   // WRITE. Mirrors `DURABLE_CONVERSATIONS_ROUTE` and `DURABLE_CONVERSATION_ROUTE` in bridge/server.ts
@@ -341,6 +346,8 @@ export function forwardKind(route: string, method?: string): ForwardKind {
   // A blob read serves a file off the owning member's disk and changes nothing there — the same
   // shape as `pane/:id/history`, and attempted against a stale member for the same reason (§10.3).
   if (route.startsWith("blobs/")) return "read";
+  // A project picture is a file off the member's disk too, changed by nothing: a read like a blob.
+  if (route.startsWith("project-picture/")) return "read";
   // A workspace's Changes list is the pane route's `changes`, asked by space: a read. Its Files view
   // too: it needs an authorised device on the member (ADR 0083), but it changes nothing, so it is
   // attempted against a stale member and rides the read budget like any other read.
@@ -427,6 +434,7 @@ export function forwardAuditAction(route: string, method?: string): string | nul
   if (route === "sent") return null;
   if (route === "folders" || route === "folders/star" || route === "folders/browse") return null; // reads, and a preference
   if (route.startsWith("blobs/")) return null; // a read
+  if (route.startsWith("project-picture/")) return null; // a read
   if (isWorkspaceRead(route)) return null; // a read
   if (route.startsWith("durable/")) return route.endsWith("/reopen") ? "durable.reopen" : null; // the list and the items are reads
   if (route.startsWith("tab/")) return route.endsWith("/close") ? "tab.close" : "tab.rename";

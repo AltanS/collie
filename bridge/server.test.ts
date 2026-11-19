@@ -283,6 +283,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     sendProtocol: false,
     walky: true,
     walkyPairLimit: 12,
+    projectFiles: true,
     skipServe: false,
     basePath: "/",
     authReturn: false,
@@ -3948,9 +3949,10 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // this machine's accounts, one resolve for the read and one for the two writes (M101), and an
     // answer to an ask by id, the hook hold card's tap on a member's pane (M56 spec 12)) reach their runtime through the caller's resolver and
     // nothing else. One of them, the launcher rows, hands the resolver the lead's merge (ADR 0127), and
-    // two, the launch and the branch create, hand it the lead's row carry (ADR 0127 point 3).
+    // two, the launch and the branch create, hand it the lead's row carry (ADR 0127 point 3). The project
+    // picture (ADR 0161) is one more read, resolved like a blob.
     const carry = String.raw`undefined, leadRowCarry\(allowedLaunchers, homedir\(\)\)`;
-    expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\((?:leadRows|${carry})?\);`, "g"))]).toHaveLength(33);
+    expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\((?:leadRows|${carry})?\);`, "g"))]).toHaveLength(34);
     expect([...src.matchAll(/await caller\.resolve\(leadRows\);/g)]).toHaveLength(1);
     expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\(${carry}\);`, "g"))]).toHaveLength(2);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather

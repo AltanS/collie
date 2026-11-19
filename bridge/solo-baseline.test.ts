@@ -435,6 +435,10 @@ const PANE_WIRE_KEYS = {
   // added 2026-11-13). Present only when the harness wrote one, and this harness builds its engine with no
   // title tracker, so no golden byte moved.
   agentTitle: true,
+  // Not a crew dimension: the project picture's version (ADR 0161). Present only when a pane folder's
+  // `collie.toml` names a picture, and this harness builds its body with no picture cache, so no golden
+  // byte moved.
+  picture: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -606,6 +610,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "model",
       "paneId",
       "paneLabel",
+      "picture",
       "pins",
       "progress",
       "readableLines",
@@ -870,6 +875,7 @@ describe("solo zero-tax — routes", () => {
       // The pane owner's Drop on a held walky talky message (M62 spec 03): a write, this collie's own
       // panes only. A message held on a crew member is dropped on that machine; the lead answers 400.
       "/^\\/api\\/pane\\/([^/]+)\\/walky\\/([^/]+)\\/drop$/",
+      "/^\\/api\\/project-picture\\/([^/]+)$/",
       // A space's rename (M53 spec 05): a write, forwarded to the owning member, and only an adapter that
       // declares `renameSpace` takes it; every other bridge answers it the refusal.
       "/^\\/api\\/space\\/([^/]+)\\/rename$/",
@@ -1215,6 +1221,8 @@ const CONFIG_KEYS = {
   sendProtocol: true,
   walky: true,
   walkyPairLimit: true,
+  // The project file switch (ADR 0160): on by default, and a solo machine reads its repositories the same.
+  projectFiles: true,
   accountWindows: true,
   skipServe: true,
   basePath: true,
@@ -1261,6 +1269,7 @@ describe("solo zero-tax — config", () => {
       "pollIdleMs",
       "pollMs",
       "port",
+      "projectFiles",
       "publicHosts",
       "quickRepliesFile",
       "readLines",

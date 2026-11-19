@@ -480,6 +480,12 @@ export interface Config {
    */
   walky: boolean;
   /**
+   * Project files (`COLLIE_PROJECT_FILES`, ADR 0160): whether this machine reads a repository's own
+   * `collie.toml` at all. On by default; off reads none and serves no project picture. The operator's
+   * own config wins over every repository's file.
+   */
+  projectFiles: boolean;
+  /**
    * The walky talky pair cap (`COLLIE_WALKY_PAIR_LIMIT`): messages in ten minutes between the same two
    * panes, either direction, counted by this bridge alone. 12 by default, 1 to 100; a value outside that
    * range, or one that is not an integer, warns and takes the default.
@@ -908,6 +914,7 @@ export function loadConfig(
     inside: env.COLLIE_INSIDE === undefined || env.COLLIE_INSIDE.trim() === "" ? null : envBool("COLLIE_INSIDE", false, env),
     sendProtocol: envBool("COLLIE_SEND_PROTOCOL", true, env),
     walky: envBool("COLLIE_WALKY", true, env),
+    projectFiles: envBool("COLLIE_PROJECT_FILES", true, env),
     walkyPairLimit: envInt("COLLIE_WALKY_PAIR_LIMIT", PAIR_LIMIT, { min: 1, max: 100 }, env),
     skipServe: envBool("COLLIE_SKIP_SERVE", false, env),
     basePath: normaliseBasePath(env.COLLIE_BASE_PATH),

@@ -40,6 +40,7 @@ import type { MuxAdapter, MuxAck, MuxCreatedPane, MuxOutcome, MuxGrid, MuxGridRe
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
 import type { GitHeadSurface } from "./git-head.ts";
+import type { ProjectPictureSource, ProjectPictureSurface } from "./project-picture.ts";
 import { localWatchPane, peerWatchPane, type CacheWarnPane } from "./cache/watch-key.ts";
 import { watchKeyOf, type CacheWatchSurface } from "./cache/watch.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
@@ -600,6 +601,15 @@ const STT_MODEL_ROUTE = /^\/api\/stt\/model\/([^/]+)$/;
  * on the machine whose journal named it and is therefore a forwarded READ.
  */
 const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
+
+/**
+ * `GET /api/project-picture/<version>` (ADR 0161): the picture a pane's `collie.toml` names, by the
+ * version the snapshot carried. The segment is matched opaque here and checked in the handler; the
+ * bridge serves only a picture it resolved itself, never a path the client names. Session-scoped like
+ * a blob, so a `?host=` read reaches the member whose disk holds the picture. `bridge/crew/forward.ts`
+ * mirrors this shape one-for-one (`forward.test.ts`).
+ */
+export const PROJECT_PICTURE_ROUTE = /^\/api\/project-picture\/([^/]+)$/;
 
 /**
  * `GET /api/hill/media/<decision id>/<media id>` (M96): one image of a decision, as its bytes. Both
@@ -1504,6 +1514,12 @@ export function startServer(opts: {
    */
   gitHeads?: GitHeadSurface;
   /**
+   * Each pane folder's project picture (bridge/project-picture.ts, ADR 0161), read at serialise time
+   * like `gitHeads`, and the source the picture route reads. Absent means no pane carries `picture` and
+   * the route answers 404, which is every test that builds this server by hand.
+   */
+  projectPictures?: ProjectPictureSurface & ProjectPictureSource;
+  /**
    * Each pane's walky talky instance token (bridge/walky/instances.ts), read at serialise time like
    * `gitHeads`: it answers from memory, minting a token for a pane it has not seen yet. Every pane on
    * the wire then carries `instance`, the solo snapshot and the one a member serves its lead alike.
@@ -1652,6 +1668,7 @@ export function startServer(opts: {
   // `COLLIE_TRANSCRIPT` is off: no journal, no probe, and every pane reads exactly as it did in 1.8.2.
   const cache = opts.cache;
   const gitHeads = opts.gitHeads;
+  const projectPictures = opts.projectPictures;
   const walkyInstance = opts.walkyInstance;
   const walkyPaneOff = opts.walkyPaneOff;
   const paneLinked = opts.paneLinked;
@@ -1992,7 +2009,10 @@ export function startServer(opts: {
       const withAccount = account === undefined ? withUsage : { ...withUsage, account };
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
       const gitHead = gitHeads?.get(p.cwd);
-      return gitHead === undefined ? withAccount : { ...withAccount, gitHead };
+      const withHead = gitHead === undefined ? withAccount : { ...withAccount, gitHead };
+      // The project picture's version rides the same way (ADR 0161): from memory, no key when there is none.
+      const picture = projectPictures?.get(p.cwd);
+      return picture === undefined ? withHead : { ...withHead, picture };
     };
     // The one place a pane leaves the bridge: the session ref is stripped to a presence flag here,
     // so an agent-reported filesystem path never reaches a browser (see toPaneWire). The flag is
@@ -2407,6 +2427,24 @@ export function startServer(opts: {
         return text("malformed URL", 400);
       }
       return blobRoute(hash, cfg.journalRoots.pi);
+    }
+
+    // ── The project picture (ADR 0161): a picture a pane's `collie.toml` names, by version ──
+    //
+    // A READ, gated like a blob: the phone fetches it with the pairing token and keeps its own copy by
+    // version. Forwarded with `?host=` to the member whose disk holds it; the lead states the cache rule
+    // itself, as for a blob, whatever a member says.
+    const pictureMatch = pathname.match(PROJECT_PICTURE_ROUTE);
+    if (pictureMatch && req.method === "GET") {
+      const denied = caller.gate("read");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) {
+        for (const [name, value] of Object.entries(HILL_MEDIA_HEADERS)) rt.headers.set(name, value);
+        rt.headers.delete("etag");
+        return rt;
+      }
+      return await projectPictureRoute(pictureMatch[1] ?? "", opts.projectPictures);
     }
 
     // ── Changes, asked by workspace (ADR 0065): the list every pane of the space shows ──
@@ -10748,6 +10786,18 @@ export const HILL_MEDIA_HEADERS = {
 
 /** What the image route answers for any id it does not hold, well formed or not. */
 export const HILL_MEDIA_MISSING = "no such image";
+
+/**
+ * The bytes of one project picture by version (ADR 0161), with the hill image's headers. Every miss is
+ * the same 404: an off switch, a malformed version, a version this bridge does not hold, a picture
+ * whose bytes changed since. Exported for the route test.
+ */
+export async function projectPictureRoute(version: string, source: ProjectPictureSource | undefined): Promise<Response> {
+  const picture = source === undefined ? null : await source.bytesOf(version);
+  if (picture === null) return text(HILL_MEDIA_MISSING, 404);
+  // A fresh copy, so the body is a plain ArrayBuffer-backed view whatever the reader handed back.
+  return secure(new Response(new Uint8Array(picture.bytes), { headers: { "content-type": picture.mime, ...HILL_MEDIA_HEADERS } }));
+}
 
 /**
  * `GET /api/hill/media/<decision id>/<media id>` (M96): the bytes of one image of a decision, with

@@ -272,6 +272,16 @@ export interface AgentView {
    */
   gitHead?: GitHead;
   /**
+   * The version of the project picture the pane folder's `collie.toml` names (ADR 0161): the first 12
+   * hex of the sha256 of its bytes, read off disk by `bridge/project-picture.ts` and attached at
+   * serialise time exactly as {@link gitHead} is. The phone fetches `/api/project-picture/<version>`.
+   *
+   * ABSENT, NEVER A PLACEHOLDER: no project file, no `icon`, a refused picture, the operator's
+   * `COLLIE_PROJECT_FILES=0`, a reading not taken yet and every older bridge carry no key, and the
+   * phone then draws the agent's logo as before.
+   */
+  picture?: string;
+  /**
    * How many pins the pane's session holds (M90, bridge/pins/store.ts). Set at snapshot time from the
    * store, only when above zero, never `0`, so a pane of a session with no pins and every solo body stay
    * what they were. The phone shows the Pins mark from it. An older bridge never sends it.

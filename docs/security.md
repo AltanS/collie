@@ -368,6 +368,7 @@ Key security boundaries and risks:
 | `COLLIE_DEVICE_ALLOWLIST` | Comma-separated device ids allowed to write; every other device stays read-only ([`docs/deployment.md`](deployment.md)). |
 | `COLLIE_REDACT=off` | Turns off the secret mask on pane text, diffs and file text ([below](#what-leaves-the-machine-is-masked)). On by default. |
 | `COLLIE_SENT=off` | Keeps no record of the shell lines you send ([below](#sent-the-shell-lines-you-sent)). On by default. |
+| `COLLIE_PROJECT_FILES=0` | Reads no repository's `collie.toml` and serves no project picture ([A project's own picture](configure.md#a-projects-own-picture)). On by default. |
 
 > 🚫 **Never use `tailscale funnel` with Collie.** Funnel routes traffic to the public internet,
 > whereas `tailscale serve` restricts access to your private tailnet. There is no supported use case

@@ -249,6 +249,13 @@ export interface AgentView {
    */
   gitHead?: GitHead;
   /**
+   * The version of this pane's project picture (ADR 0161). Mirrors `PaneWire.picture` in
+   * bridge/types.ts. **Absent, never a placeholder**: no picture, an older bridge and an older crew
+   * member all send no key, and the phone draws the agent's logo as before. Read it through
+   * `panePicture` (lib/project-picture.ts), which drops a malformed one from a peer.
+   */
+  picture?: string;
+  /**
    * The open asks a person may answer on this pane, as data, oldest first (ADR 0100). Mirrors
    * `PaneWire.asks` in bridge/types.ts. Every open ask is listed (the bridge caps at 50); the card
    * list shows the first five and folds the rest (lib/ask.ts `shownAsks`). **Absent on every pane with

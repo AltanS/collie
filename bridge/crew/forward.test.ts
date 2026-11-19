@@ -254,6 +254,21 @@ describe("which routes cross a link", () => {
     expect(forwardPaneId(`blobs/${hash}`)).toBeUndefined();
   });
 
+  test("a project picture crosses the link as a READ, like a blob (ADR 0161)", () => {
+    const version = "abcdef012345";
+    expect(crewRouteFor(`/api/project-picture/${version}`)).toBe(`project-picture/${version}`);
+    expect(apiPathFor(`project-picture/${version}`)).toBe(`/api/project-picture/${version}`);
+    expect(forwardKind(`project-picture/${version}`)).toBe("read");
+    expect(forwardAuditAction(`project-picture/${version}`)).toBeNull();
+    // Addressed by content, never by a pane.
+    expect(forwardPaneId(`project-picture/${version}`)).toBeUndefined();
+    // The same opaque segment server.ts matches, and nothing deeper.
+    const server = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
+    const route = server.match(/^export const PROJECT_PICTURE_ROUTE = (.+);$/m)![1]!;
+    expect(route).toBe("/^\\/api\\/project-picture\\/([^/]+)$/");
+    expect(crewRouteFor("/api/project-picture/x/y")).toBeNull();
+  });
+
   test("the routes §5 excludes are excluded — and stay that way by construction", () => {
     // Push subscriptions live on the lead, notification policy is one crew-wide setting the lead
     // owns, update checking is per-machine, `config` is consumed not proxied, `snapshot` is merged.
@@ -1745,6 +1760,19 @@ describe("journal, uploads and state stay host-local", () => {
     // The ETag IS the hash, and the lead re-emits it rather than recomputing anything (§9.1).
     expect(res.headers.get("etag")).toBe(`"${hash}"`);
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(png);
+  });
+  test("a member's project picture is one read; an older member's 404 reaches the phone as a 404", async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const fresh = transportOf(() => ok(new Response(png, { status: 200, headers: { "content-type": "image/png" } })));
+    const [req, url] = get("/api/project-picture/abcdef012345?host=laptop");
+    const res = await forward(req, url, { transport: fresh.transport });
+    expect(fresh.calls).toHaveLength(1);
+    expect(fresh.calls[0]!.route).toBe("project-picture/abcdef012345");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(png);
+    // A member that predates the route answers 404; the phone then keeps the agent logo.
+    const old = transportOf(() => ok(new Response("not found", { status: 404 })));
+    const [req2, url2] = get("/api/project-picture/abcdef012345?host=laptop");
+    expect((await forward(req2, url2, { transport: old.transport })).status).toBe(404);
   });
 
   // ── What §5 does NOT carry, pinned (M22/04) ───────────────────────────────

@@ -53,6 +53,7 @@ import type { AgentView, CrewMode, CrewStatusResponse, Launcher, MachineRow } fr
 import { EventPoker } from "./event-poker.ts";
 import { durableLogDir, moveFlatLogs, sourceLogDir } from "./durable/log.ts";
 import { GitHeads, nodeGitHeadDisk } from "./git-head.ts";
+import { ProjectPictures } from "./project-picture.ts";
 import { exePathOf, exeReplaced } from "./exe-replaced.ts";
 import {
   herdrActionCommand,
@@ -1015,6 +1016,11 @@ const accounts = new Accounts({
 // Which branch each pane's folder is on (bridge/git-head.ts). One for the whole bridge: every
 // session's poll feeds it its folders, and the server reads it from memory at serialise time.
 const gitHeads = new GitHeads();
+
+// Each pane folder's project picture (bridge/project-picture.ts, ADR 0161): one for the whole bridge,
+// fed by the same poll as the branches and read from memory at serialise time. The operator's
+// `COLLIE_PROJECT_FILES=0` turns every repository's `collie.toml` off.
+const projectPictures = new ProjectPictures(cfg.projectFiles, deniedFoldersSync(filesPrivateFolders(cfg)));
 
 // Which panes the operator asked to be warned about before their prompt cache goes cold, and the
 // deadlines already warned (bridge/cache/watch.ts). Loaded here beside the other two preference stores;
@@ -2029,6 +2035,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   engine.onUpdate(
     (s) => void gitHeads.refresh([...[...s.agents, ...s.shellPanes].map((p) => p.cwd), ...spaceFolders(s.workspaces)]),
   );
+  // The project pictures ride it too, for the agent panes only: a picture replaces an agent's logo.
+  engine.onUpdate((s) => void projectPictures.refresh(s.agents.map((p) => p.cwd)));
 
   // The prompt-cache probe rides the same poll, and for the reason the tracker's header gives:
   // `localSnapshot` is synchronous, so the disk read cannot happen at serialise time. It is fired and
@@ -4406,6 +4414,7 @@ const server = listenOrExit("front door", cfg.host, cfg.port, () => startServer(
   subagents: subagents ?? undefined,
   usage,
   gitHeads,
+  projectPictures,
   walkyInstance: (session, paneId) => walkyInstances.tokenOf(session, paneId),
   // The pane read's `linked` (M99 spec 15): the session half of the send pick, one function.
   paneLinked: paneIsLinked,

@@ -322,6 +322,7 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `GET` | `/crew/v1/accounts` | `GET /api/accounts` | proxied byte-for-byte, additive-optional (§7.1), added 2026-11-16 (M101 spec 06). The member's own accounts list, `{ harnesses, accounts, found }`, for the account pick in New: accounts are per machine. A row may carry `panes` (additive-optional, added 2026-11-17, M101): the ids of that machine's own panes that run in the row's folder, at most 64, absent when none; the phone reads it only from its own machine, because the Change login row is not offered over the link. For a **GET only**: the lead forwards no other method on this path (`route_not_federated`) and the member dispatches none (404). A READ (attempted against a stale member, read budget, audited on neither side, never masked); the lead keeps nothing of the answer, which holds a sign-in email. A peer that predates it answers a plain 404 and a Windows member its own `404 accounts.unavailable`; the phone reads both as "no accounts here" and hides the pick. A start with an account rides `launch` with its `account` id unchanged, and the member resolves the id against its own list (`accounts.unknown` otherwise); a `launch` with `signIn: true` over the link is refused by the member, `400 bad body` |
 | `POST` | `/crew/v1/accounts`, `/crew/v1/accounts/remove` | none: answered by the machine the phone talks to | Not forwarded (M101 spec 06): a member's accounts are added and removed on that machine only. The lead answers `?host=` with `501 route_not_federated`, and a member's surface answers 404 |
 | `GET` | `/crew/v1/blobs/:hash` | `GET /api/blobs/:hash` | proxied byte-for-byte — additive-optional (§7.1). The image an agent's own journal named, off the disk that holds it; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
+| `GET` | `/crew/v1/project-picture/:version` | `GET /api/project-picture/:version` | proxied byte-for-byte, like a blob — additive-optional (§7.1). The picture a `collie.toml` on the member names, off the member's disk, by the version its pane carried (ADR 0161); a lead that predates it never calls it, and a peer that predates it answers 404 |
 | `GET` | `/crew/v1/config` | `GET /api/config` (`:288`) | consumed by the lead, not proxied |
 | `GET` | `/crew/v1/hello` | — (new) | consumed by the lead: liveness + version + member id |
 
@@ -784,6 +785,18 @@ updated machines, so build skew is the steady state (§7), and this section is t
   branch. An older peer omits it, and an older lead passes it through untouched. A kind the phone does
   not know reads as absent. Nothing in `bridge/crew/merge.ts` changes, for the reason the `cache`
   bullet gives. `CREW_PROTOCOL_VERSION` stays `2`, no new route, no new verb and no new header.
+
+- **A pane gained an optional `picture`, and a read route `project-picture/:version`** (added in
+  1.30.0, ADR 0161). `picture` is the version of the project picture the pane folder's `collie.toml`
+  names on the machine the pane lives on: 12 lowercase hex characters, the start of the sha256 of the
+  bytes. The phone fetches `GET /api/project-picture/<version>?host=<member>`, and the lead forwards it
+  like a blob, byte for byte, stating the hill image's no-store headers itself. Additive-optional with
+  the closed reading this section requires: **absent or malformed means no picture**, which the phone
+  draws as the agent's logo, exactly as before the field. An older member sends no `picture`, so the
+  phone never asks it for one; one that is asked anyway answers 404. An older lead passes the field
+  through untouched and refuses the route `route_not_federated`, which the phone also reads as no
+  picture. Nothing in `bridge/crew/merge.ts` changes. `CREW_PROTOCOL_VERSION` stays `2`, no new verb
+  and no new header.
 
 - **A pane gained an optional `subtitle` and an optional `badge`** (added 2026-10-13, M53). They come
   from a durable agent (`bridge/mux/durable/WIRE.md` section 7.11): one line under the pane's title

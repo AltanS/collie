@@ -924,6 +924,48 @@ Three behaviors to note:
 - **Live on next reload.** Changes do not require a restart, taking effect on the next page reload.
   Invalid configurations log errors visible via `journalctl --user -u collie -n 20`.
 
+## A project's own picture
+
+A repository can name its own picture in a `collie.toml` at its root, and the phone shows it in
+place of the agent's logo for every session that works in that repository.
+
+```toml
+# collie.toml, in the repository root
+[project]
+icon = "assets/logo.png"
+```
+
+The picture replaces the logo on the session's row, on the dashboard and in the sidebar, with a
+small agent logo in its corner so you still see which agent runs there. In a session view it also
+takes the place of the Collie mark in the header, but only while the mark is at rest: loading, a
+lost connection, an update or an agent starting bring the Collie mark back. The dashboard and every
+other screen keep the mark. A push about that session shows the picture too.
+
+> **Note.** The file can change what Collie shows and nothing else. It never adds a command, a
+> launcher, a key or a hook, and a table with such a name is ignored
+> ([ADR 0160](../.adr/0160-a-repository-file-changes-what-collie-shows-and-nothing-else.md)).
+
+| Rule | Value |
+| --- | --- |
+| Which file | The nearest `collie.toml`, from the session's folder up to the repository root |
+| Outside a repository | Only a `collie.toml` in the session's own folder |
+| Linked worktree | Its own tree first, then the main checkout |
+| File size | At most 16 KB, UTF-8 TOML, a regular file (no link) |
+| `icon` | A relative path with `/`, inside the repository, no `..`, not under `.git`, no link |
+| Picture type | PNG, JPEG or WebP, read from the first bytes; no SVG, GIF or animation |
+| Picture size | At most 256 KB, each side 64 to 1024 pixels |
+
+A table or key Collie does not know is ignored, never an error. Run `collie doctor` in the
+repository to see which file speaks for that folder, what it ignored, and whether the picture
+passed. A changed picture shows within a few seconds and fades in.
+
+To turn the pictures off on one phone, open **Settings → Appearance → Project pictures**. To turn
+every repository's file off on a machine, set this in the instance's `.env` and restart Collie:
+
+```bash
+COLLIE_PROJECT_FILES=0
+```
+
 ## Your own cache rules
 
 Use `cache-rules.toml` to change a prompt-cache lifetime that your provider changed.

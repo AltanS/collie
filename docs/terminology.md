@@ -499,3 +499,16 @@ screen with secrets masked, follow the [events](#event). It is on while tricks a
 answers only a connection that names a live [run token](#run-token). `collie api` lists its operations.
 It is experimental, and it is closed to other users, other machines and browser pages
 ([The local API](commands.md#the-local-api-experimental)).
+
+## Project file
+
+A `collie.toml` file inside a repository. It changes what Collie shows for the sessions that work in
+that repository, and nothing else: it never adds a command, a key or a hook. The nearest one to a
+session's folder wins ([A project's own picture](configure.md#a-projects-own-picture)).
+
+## Project picture
+
+The picture a [project file](#project-file) names with `[project] icon`. It takes the agent logo's
+place on that project's session rows, with the agent logo small in its corner, and the Collie mark's
+place in a session's header while the mark is at rest. **Project pictures** in Settings, Appearance,
+turns it off on one device ([A project's own picture](configure.md#a-projects-own-picture)).
