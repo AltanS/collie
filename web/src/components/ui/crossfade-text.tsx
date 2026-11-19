@@ -19,11 +19,19 @@ import { cn } from "@/lib/utils";
 // TRUNCATION. Both copies are inline spans in the caller's own run, so a `truncate` or `line-clamp`
 // parent clips them (the old copy is one non-wrapping line, clipped by the parent's `overflow`).
 //
+// QUIET TIME. A name that changes fast must not fade (a terminal title the process rewrites every turn,
+// a spinner glyph in it): a fade restarted several times a second leaves the name half transparent. A
+// change fades only when the identity's previous change (or its mount, or the switch to it) is at least
+// `CROSSFADE_QUIET_MS` old. A sooner change swaps at once and drops a fade that is running.
+//
 // SCREEN READERS. The accessible name is the new text, read once: the outgoing copy is `aria-hidden`.
 // The keyframes live in index.css (`.crossfade-in`, `.crossfade-out`), which turns them off under reduced motion.
 
 /** How long the old and new words overlap, in ms. One number in CSS (`.crossfade-*`) and in the timer. */
 export const CROSSFADE_MS = 200;
+
+/** How long an identity's text must have held still before its next change fades, in ms. */
+export const CROSSFADE_QUIET_MS = 1000;
 
 interface Shown {
   identity: string;
@@ -32,6 +40,8 @@ interface Shown {
   from: string | null;
   /** Counts the changes of this identity, so a second change inside one fade restarts it. */
   beat: number;
+  /** The clock reading of this identity's last change, its mount or the switch to it. */
+  since: number;
 }
 
 /**
@@ -40,13 +50,15 @@ interface Shown {
  */
 export function CrossfadeText({ text, identity, className }: { text: string; identity: string; className?: string }) {
   const reduced = usePrefersReducedMotion();
-  const [shown, setShown] = useState<Shown>({ identity, text, from: null, beat: 0 });
+  const [shown, setShown] = useState<Shown>(() => ({ identity, text, from: null, beat: 0, since: Date.now() }));
   let view = shown;
   if (shown.identity !== identity) {
-    view = { identity, text, from: null, beat: 0 };
+    view = { identity, text, from: null, beat: 0, since: Date.now() };
     setShown(view);
   } else if (shown.text !== text) {
-    view = { identity, text, from: reduced ? null : shown.text, beat: shown.beat + 1 };
+    const now = Date.now();
+    const quiet = now - shown.since >= CROSSFADE_QUIET_MS;
+    view = { identity, text, from: reduced || !quiet ? null : shown.text, beat: shown.beat + 1, since: now };
     setShown(view);
   }
   const { from, beat } = view;

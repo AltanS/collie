@@ -64,6 +64,7 @@ import { CrewProvider } from "./crew-provider";
 import type { AgentStatus, AgentView, ChatWindowBody, ServerSummary, TabView, WorkspaceView } from "@/lib/types";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { withHeaderHost } from "@/test/header-host";
+import { CROSSFADE_QUIET_MS } from "@/components/ui/crossfade-text";
 import { COLLAPSE_MS } from "./ui/collapse";
 import { AgentChat } from "./agent-chat";
 import { saveChatTail } from "@/lib/chat-tail";
@@ -5615,6 +5616,10 @@ describe("AgentChat header — a rename fades", () => {
   }
   const out = (c: HTMLElement, slot: string) => c.querySelector(`[data-slot="${slot}"] [data-slot="crossfade-out"]`);
 
+  // A name fades only after it held still for the quiet time (ui/crossfade-text.tsx): move the clock on.
+  beforeEach(() => vi.useFakeTimers({ toFake: ["Date"] }));
+  afterEach(() => vi.useRealTimers());
+
   function mount(first: AgentView, second: AgentView) {
     const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Renamable first={first} second={second} />) }]);
     return render(<RouterProvider router={router} />).container;
@@ -5627,6 +5632,7 @@ describe("AgentChat header — a rename fades", () => {
       { ...base, paneLabel: "wiring", workspaceLabel: "frontend" },
     );
     expect(out(container, "pane-name")).toBeNull();
+    vi.setSystemTime(Date.now() + CROSSFADE_QUIET_MS);
     fireEvent.click(screen.getByRole("button", { name: "rename-test" }));
     expect(out(container, "pane-name")).toHaveTextContent("plumbing");
     expect(out(container, "pane-name")).toHaveAttribute("aria-hidden", "true");

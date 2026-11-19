@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { CROSSFADE_QUIET_MS } from "@/components/ui/crossfade-text";
 import { fixtureSnapshot } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
@@ -82,6 +83,8 @@ test("a renamed pane fades, takes no room, and still ends in an ellipsis", async
   const before = await measure(page);
   expect(before.ellipsis).toBe(true);
 
+  // A name fades only after it held still for the quiet time, so let the row's name sit that long.
+  await page.waitForTimeout(CROSSFADE_QUIET_MS + 200);
   label = `${LONG} two`;
   await expect.poll(() => samples.length, { timeout: 30_000 }).toBe(1);
   const sample = samples[0]!;

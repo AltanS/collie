@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 
-import { CROSSFADE_MS, CrossfadeText } from "./crossfade-text";
+import { CROSSFADE_MS, CROSSFADE_QUIET_MS, CrossfadeText } from "./crossfade-text";
 
 // The name fade (2026-11-19): a text that changes under an unchanged identity fades from the old words
 // to the new, and every other change swaps at once. jsdom has no layout and no animation clock, so
@@ -29,6 +29,8 @@ afterEach(() => {
 });
 
 const state = (container: HTMLElement) => container.querySelector('[data-slot="crossfade-text"]')!.getAttribute("data-state");
+/** Let the text hold still for the quiet time, so the next change may fade. */
+const settle = () => act(() => void vi.advanceTimersByTime(CROSSFADE_QUIET_MS));
 const outgoing = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-slot="crossfade-out"]');
 const incoming = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-slot="crossfade-in"]')!;
 
@@ -43,6 +45,7 @@ describe("CrossfadeText", () => {
 
   it("crossfades a new text under the same identity: the old copy out, the new copy in", () => {
     const { container, rerender } = render(<CrossfadeText text="plumbing" identity="p1" />);
+    settle();
     rerender(<CrossfadeText text="wiring" identity="p1" />);
     expect(state(container)).toBe("fading");
     expect(outgoing(container)?.textContent).toBe("plumbing");
@@ -53,6 +56,7 @@ describe("CrossfadeText", () => {
 
   it("drops the old copy after the fade", () => {
     const { container, rerender } = render(<CrossfadeText text="plumbing" identity="p1" />);
+    settle();
     rerender(<CrossfadeText text="wiring" identity="p1" />);
     act(() => void vi.advanceTimersByTime(CROSSFADE_MS - 1));
     expect(outgoing(container)).not.toBeNull();
@@ -62,16 +66,49 @@ describe("CrossfadeText", () => {
     expect(incoming(container).textContent).toBe("wiring");
   });
 
-  it("starts the fade over from the words on screen when a second rename lands inside the first", () => {
+  it("swaps at once when the text changes inside the quiet time, and drops a running fade", () => {
     const { container, rerender } = render(<CrossfadeText text="a" identity="p1" />);
+    // Inside the quiet time of the mount: no fade.
+    act(() => void vi.advanceTimersByTime(CROSSFADE_QUIET_MS - 1));
     rerender(<CrossfadeText text="b" identity="p1" />);
+    expect(state(container)).toBe("still");
+    expect(outgoing(container)).toBeNull();
+    expect(incoming(container).textContent).toBe("b");
+    // The change above restarted the quiet time, so this one is inside it as well.
+    act(() => void vi.advanceTimersByTime(CROSSFADE_QUIET_MS - 1));
+    rerender(<CrossfadeText text="c" identity="p1" />);
+    expect(state(container)).toBe("still");
+    expect(incoming(container).textContent).toBe("c");
+  });
+
+  it("drops a fade that is running when the next change comes inside the quiet time", () => {
+    const { container, rerender } = render(<CrossfadeText text="a" identity="p1" />);
+    settle();
+    rerender(<CrossfadeText text="b" identity="p1" />);
+    expect(state(container)).toBe("fading");
     act(() => void vi.advanceTimersByTime(100));
     rerender(<CrossfadeText text="c" identity="p1" />);
+    expect(state(container)).toBe("still");
+    expect(outgoing(container)).toBeNull();
+    expect(incoming(container).textContent).toBe("c");
+  });
+
+  it("fades again once the text has held still for the quiet time", () => {
+    const { container, rerender } = render(<CrossfadeText text="a" identity="p1" />);
+    rerender(<CrossfadeText text="b" identity="p1" />);
+    expect(state(container)).toBe("still");
+    settle();
+    rerender(<CrossfadeText text="c" identity="p1" />);
+    expect(state(container)).toBe("fading");
     expect(outgoing(container)?.textContent).toBe("b");
     expect(incoming(container).textContent).toBe("c");
-    act(() => void vi.advanceTimersByTime(150));
-    expect(state(container)).toBe("fading");
-    act(() => void vi.advanceTimersByTime(50));
+  });
+
+  it("starts the quiet time again at an identity switch", () => {
+    const { container, rerender } = render(<CrossfadeText text="a" identity="p1" />);
+    settle();
+    rerender(<CrossfadeText text="b" identity="p2" />);
+    rerender(<CrossfadeText text="c" identity="p2" />);
     expect(state(container)).toBe("still");
   });
 
@@ -87,6 +124,7 @@ describe("CrossfadeText", () => {
   it("swaps at once under prefers-reduced-motion", () => {
     preferReducedMotion(true);
     const { container, rerender } = render(<CrossfadeText text="plumbing" identity="p1" />);
+    settle();
     rerender(<CrossfadeText text="wiring" identity="p1" />);
     expect(state(container)).toBe("still");
     expect(outgoing(container)).toBeNull();
@@ -99,6 +137,7 @@ describe("CrossfadeText", () => {
         <CrossfadeText text="plumbing" identity="p1" />
       </button>,
     );
+    settle();
     rerender(
       <button type="button">
         <CrossfadeText text="wiring" identity="p1" />
@@ -114,6 +153,7 @@ describe("CrossfadeText", () => {
         <CrossfadeText text="a long name that gets cut" identity="p1" />
       </p>,
     );
+    settle();
     rerender(
       <p className="truncate" data-testid="host">
         <CrossfadeText text="another long name that gets cut" identity="p1" />

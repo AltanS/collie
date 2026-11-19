@@ -1,6 +1,8 @@
 import { render } from "@testing-library/react";
+import { afterEach, beforeEach, vi } from "vitest";
 import type { ReactElement } from "react";
 
+import { CROSSFADE_QUIET_MS } from "./ui/crossfade-text";
 import { AgentCard } from "./agent-card";
 import { AgentList } from "./agent-list";
 import { ThreadSidebar } from "./agent-sidebar";
@@ -61,10 +63,16 @@ function outgoing(root: ParentNode = document.body): string[] {
   return copies.map((copy) => copy.textContent ?? "");
 }
 
-/** Mount `before`, swap to `after` in place, and say what is fading out. */
+// A name fades only when it has held still for the quiet time (ui/crossfade-text.tsx), so the clock is
+// faked and moved past it between the mount and the rename.
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
+
+/** Mount `before`, let the names hold still, swap to `after` in place, and say what is fading out. */
 function rename(before: ReactElement, after: ReactElement): string[] {
   const { container, rerender } = render(before);
   expect(outgoing(container)).toEqual([]);
+  vi.setSystemTime(Date.now() + CROSSFADE_QUIET_MS);
   rerender(after);
   return outgoing(container);
 }
