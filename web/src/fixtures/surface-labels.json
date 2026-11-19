@@ -4225,6 +4225,11 @@
    "version": "2.2.6",
    "state": "idle"
   },
+  "oc--v232-herdr--esc-again.txt": {
+   "harness": "opencode",
+   "version": "2.3.2",
+   "state": "running"
+  },
   "oc--v226-session-idle.txt": {
    "harness": "opencode",
    "version": "2.2.6",
