@@ -55,21 +55,19 @@ describe("a name that starts with a dash is a name, never a rex option", () => {
     expect(rex.calls.some((argv) => argv[0] === "session" && argv[1] === "rename")).toBe(false);
   });
 
-  test("a rename, a close and a focus put `--` before the id and the label", async () => {
+  test("a rename and a close put `--` before the id and the label", async () => {
     const { adapter, rex } = world();
     const before = await adapter.snapshot();
     const tab = before.tabs[0]!;
     const pane = before.panes[0]!;
     expect((await adapter.renameTab(tab.tabId, "--help")).ok).toBe(true);
     expect((await adapter.snapshot()).tabs.find((t) => t.tabId === tab.tabId)?.label).toBe("--help");
-    expect((await adapter.setFocus(pane.paneId)).ok).toBe(true);
     expect((await adapter.closePane(pane.paneId)).ok).toBe(true);
     const other = (await adapter.snapshot()).tabs.find((t) => t.tabId !== tab.tabId)!;
     expect((await adapter.closeTab(other.tabId)).ok).toBe(true);
 
     const positional = (argv: readonly string[], name: string): boolean => argv.indexOf("--") >= 0 && argv.indexOf("--") < argv.indexOf(name);
     expect(rex.calls.filter((argv) => argv[0] === "window" && argv[1] === "rename").every((argv) => positional(argv, tab.tabId))).toBe(true);
-    expect(rex.calls.filter((argv) => argv[0] === "focus").every((argv) => positional(argv, pane.paneId))).toBe(true);
     expect(rex.calls.filter((argv) => argv[0] === "block" && argv[1] === "close").every((argv) => positional(argv, pane.paneId))).toBe(true);
     expect(rex.calls.filter((argv) => argv[0] === "window" && argv[1] === "close").every((argv) => positional(argv, other.tabId))).toBe(true);
   });
@@ -89,7 +87,6 @@ describe("an id rex did not hand out is gone before any rex call", () => {
       await adapter.typeText(id, "hi"),
       await adapter.writeKeys(id, ["Enter"]),
       await adapter.closePane(id),
-      await adapter.setFocus(id),
     ];
     for (const answer of answers) expect(answer).toMatchObject({ ok: false, reason: "gone" });
     expect(rex.calls).toEqual([]);
@@ -117,30 +114,16 @@ describe("an id rex did not hand out is gone before any rex call", () => {
   });
 });
 
-describe("Focus in rex with no Rex app on the session", () => {
-  test("is refused with the reason, and rex is never asked to focus", async () => {
+describe("Focus in rex is not offered", () => {
+  // `rex focus` moves the session's active block, but a screen follows only where a Rex app shows the
+  // session, and none was ever attached while this adapter was probed: Linux has no screen client.
+  test("the capability is not declared, and a call answers unsupported with no rex call", async () => {
     const { adapter, rex } = world();
-    const snapshot = await adapter.snapshot();
-    const notes = snapshot.spaces.find((space) => space.label === "notes")!;
-    const pane = snapshot.panes.find((p) => p.spaceId === notes.spaceId)!;
-    const answer = await adapter.setFocus(pane.paneId);
-    expect(answer).toEqual({ ok: false, reason: "refused", detail: "no Rex app shows this session, so there is no screen to move" });
-    expect(rex.calls.some((argv) => argv[0] === "focus")).toBe(false);
-  });
-
-  test("moves the screen where an app shows the session", async () => {
-    const { adapter, rex } = world();
-    const snapshot = await adapter.snapshot();
-    const work = snapshot.spaces.find((space) => space.label === "work")!;
-    const pane = snapshot.panes.find((p) => p.spaceId === work.spaceId && !p.focused)!;
-    expect((await adapter.setFocus(pane.paneId)).ok).toBe(true);
-    expect(rex.calls).toContainEqual(["focus", "--", pane.paneId]);
-    expect((await adapter.snapshot()).panes.find((p) => p.paneId === pane.paneId)?.focused).toBe(true);
-  });
-
-  test("a pane rex no longer lists is gone", async () => {
-    const { adapter } = world();
-    expect(await adapter.setFocus("block:01a1f140-f804-7d10-b29f-00000000ffff")).toMatchObject({ ok: false, reason: "gone" });
+    expect(adapter.capabilities.supports.setFocus).toBe(false);
+    const pane = (await adapter.snapshot()).panes[0]!;
+    rex.calls.length = 0;
+    expect(await adapter.setFocus(pane.paneId)).toMatchObject({ ok: false, reason: "unsupported" });
+    expect(rex.calls).toEqual([]);
   });
 });
 

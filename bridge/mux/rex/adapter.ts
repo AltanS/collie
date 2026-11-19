@@ -217,7 +217,6 @@ export class RexMux implements MuxAdapter {
       "typeText",
       "sendKeys",
       "closePane",
-      "setFocus",
       "createTab",
       "renameTab",
       "closeTab",
@@ -234,6 +233,8 @@ export class RexMux implements MuxAdapter {
       agentSessionRef:
         "Rex keeps an agent's status, not its conversation id. With `collie hooks install claude`, the hooks name the session.",
       listSessions: "A Rex server holds every session; one adapter reads them all as spaces.",
+      setFocus:
+        "`rex focus` moves a session's active window and block, but a screen follows only where a Rex app shows that session, and Rex has no screen client on Linux. Never probed with a Rex app attached, so not declared until it is.",
     },
   });
 
@@ -415,50 +416,8 @@ export class RexMux implements MuxAdapter {
     return muxAck();
   }
 
-  /**
-   * `rex focus <block>`: probed, it makes the block's window active and focuses the block. That moves
-   * a screen only where a Rex app shows the session, and Rex has no screen client on Linux, so with
-   * no app attached the tap is refused with the reason rather than answered with a silent success.
-   */
-  async setFocus(paneId: string): Promise<MuxAck> {
-    if (!isRexId("block", paneId)) return notRexId("block", paneId);
-    const home = await this.sessionOf(paneId);
-    if (!home.ok) return home;
-    const clients = await this.attemptRun(["client", "ls", "-s", home.value, "--json"]);
-    if (!clients.ok) return clients;
-    let apps: number;
-    try {
-      apps = parseClientCount(clients.value.stdout);
-    } catch (err) {
-      return muxRefused(err instanceof Error ? err.message : String(err));
-    }
-    if (apps === 0) return muxRefused("no Rex app shows this session, so there is no screen to move");
-    const res = await this.attemptRun(["focus", "--", paneId]);
-    if (!res.ok) return res;
-    return muxAck();
-  }
-
-  /** The session holding a block: one `ls`, then each session's windows, with no per-block reads. */
-  private async sessionOf(blockId: string): Promise<MuxOutcome<string>> {
-    const listed = await this.attemptRun(["ls", "--json", "--short=false"]);
-    if (!listed.ok) return listed;
-    let sessions: RexSession[];
-    try {
-      sessions = parseSessions(listed.value.stdout);
-    } catch (err) {
-      return muxRefused(err instanceof Error ? err.message : String(err));
-    }
-    const views = await Promise.all(sessions.map((session) => this.attemptRun(["window", "ls", "-s", session.sessionId, "--json"])));
-    for (const viewed of views) {
-      if (!viewed.ok) continue;
-      try {
-        const view = parseView(viewed.value.stdout);
-        if (view.windows.some((window) => window.blocks.some((block) => block.blockId === blockId))) return muxOk(view.sessionId);
-      } catch {
-        // A view that did not parse holds no block this tap can be sure of.
-      }
-    }
-    return muxGone(`pane ${blockId} is gone`);
+  async setFocus(_paneId: string): Promise<MuxAck> {
+    return muxUnsupported("setFocus", "a screen follows a Rex focus only where a Rex app shows the session, and that was never probed");
   }
 
   async createTab(request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>> {

@@ -209,8 +209,8 @@ Some things work differently on Rex:
 - A pane counts as the one your terminal shows only while a Rex app is attached to its session. On
   a server with no app attached, no pane is focused.
 - Rex has no screen client on Linux, so a Linux Rex server never shows a pane as focused.
-- Show in terminal makes the pane's window active and focuses the block, for every app attached to
-  that session. With no app attached, it says so and moves nothing.
+- Show in terminal is not offered. A Rex focus moves a screen only where a Rex app shows the
+  session, and Collie was never tested with one.
 - Pane rename is not offered: Rex gives every block a label of its own choosing, so Collie cannot
   tell your name from its default. Tab rename works.
 - A read of a pane takes only the end of its output, in two short `rex` calls. Load older past
