@@ -32,6 +32,8 @@ import { ReportDoor } from "@/components/report-door";
 import { CrewProvider } from "@/components/crew-provider";
 import { CollieMark } from "@/components/collie-mark";
 import { TourHost } from "@/components/tour-sheet";
+import { ShortcutBarHost } from "@/components/shortcut-bar-host";
+import { ShortcutHelpDoor } from "@/components/shortcut-help-door";
 import { TrickFloatLayer } from "@/components/trick-float-layer";
 import { describeThrownError } from "@/lib/api-error-message";
 import { findPane, paneRowKey } from "@/lib/hosts";
@@ -269,6 +271,11 @@ export function RootLayout() {
       {/* The floating pictures of the tricks (the `float` place): one layer over the page, under the toast and the
           sheets, tap-through. It draws on the Dashboard and a session only, and stays out of the way of every card. */}
       <TrickFloatLayer pane={openPane} trickSessions={data.trickSessions ?? NO_TRICK_SESSIONS} />
+      {/* The desktop shortcuts' two surfaces (M108): the mode bar along the foot of the window while the
+          prefix or a sticky mode is active, and the shortcut list's sheet, which the `help` action and the
+          Settings row open. Both read the keymap that `useShortcuts` above publishes. */}
+      <ShortcutBarHost />
+      <ShortcutHelpDoor />
     </CrewProvider>
   );
 }

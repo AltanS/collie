@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { __resetHardwareKeyboard, hasSeenHardwareKeyboard } from "@/lib/hardware-keyboard";
 import { __resetOperatorCommands, getOperatorShortcuts } from "@/lib/operator-config";
 import { __resetShortcutRegistry, registerPaneKeySink, registerShortcutHandler } from "@/lib/shortcuts/registry";
 import { __resetShortcutState, getShortcutKeymap, useShortcutMode } from "@/lib/shortcuts/state";
@@ -64,9 +65,11 @@ async function renderPage(props: Parameters<typeof Page>[0] = {}, user: Record<s
 beforeEach(() => {
   __resetShortcutRegistry();
   __resetShortcutState();
+  __resetHardwareKeyboard();
 });
 afterEach(() => {
   __resetOperatorCommands();
+  __resetHardwareKeyboard();
   vi.restoreAllMocks();
 });
 
@@ -141,6 +144,16 @@ describe("the prefix and an action key", () => {
     tap(document.body, CTRL_B);
     tap(document.body, { ...CTRL_B, repeat: true });
     expect(mode()).toBe("prefix");
+  });
+});
+
+describe("the hardware keyboard seen", () => {
+  it("is learned from the first keydown that names a physical key, ours or not", async () => {
+    await renderPage();
+    expect(tap(document.body, { key: "x", code: "" })).toBe(true);
+    expect(hasSeenHardwareKeyboard()).toBe(false);
+    expect(tap(document.body, { key: "x", code: "KeyX" })).toBe(true);
+    expect(hasSeenHardwareKeyboard()).toBe(true);
   });
 });
 

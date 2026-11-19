@@ -32,7 +32,8 @@
 # behind the prefix instead.
 #
 # A bad line is dropped, and the rest of the file still loads. A bad `prefix` falls back to
-# `ctrl+b`. When two of your lines claim the same key, the first one wins.
+# `ctrl+b`. When two of your lines claim the same key, the first one wins. The shortcut list shows
+# each dropped line and why: press the prefix, then `?`, or open Settings, Keyboard shortcuts.
 #
 # Collie never uses a shortcut as the only way to reach something. Every action here has a button.
 

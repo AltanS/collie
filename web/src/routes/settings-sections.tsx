@@ -35,6 +35,7 @@ import { WideLayoutControl } from "@/components/wide-layout-control";
 import { PairedDevices } from "@/components/paired-devices";
 import { PushControl, usePushAvailability } from "@/components/push-control";
 import { ReportControl } from "@/components/report-control";
+import { ShortcutSettingsRow } from "@/components/shortcut-settings-row";
 import { WorktreeFolderControl } from "@/components/worktree-folder-control";
 import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
@@ -196,6 +197,10 @@ export function SettingsDeviceRoute() {
       <SentSuggestionsControl />
       {/* How a pane's Changes view finds repos (ADR 0065). Read by the pane menu, not by here. */}
       <ChangesControl />
+      {/* The list of desktop shortcuts (M108), the visible control of the `help` action. A button that opens
+          the same sheet `prefix+?` does, and only on a device that has shown a hardware key press. Renders
+          nothing before that. */}
+      <ShortcutSettingsRow />
       {/* What this phone keeps of each pane's Chat, and for how long (M46 spec 09). Here, beside the
           Changes search, because it is a standing decision about the device, not about a look. */}
       <KeepChatControl />

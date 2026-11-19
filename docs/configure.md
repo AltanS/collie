@@ -487,10 +487,12 @@ unbinds the action. The example file lists every default as a commented line.
   modifier.
 - The browser owns `ctrl+w`, `ctrl+t`, `ctrl+n`, `ctrl+tab`, `ctrl+shift+n` and `ctrl+l`. A direct
   binding on one of them is refused.
-- A bad line is dropped and the rest of the file loads.
+- A bad line is dropped and the rest of the file loads. The shortcut list names each dropped line and
+  the reason, in a note at its foot.
 
 The bridge re-reads the file when it changes. Reload the page to pick it up. The shortcut list in
-the app is the full reference for the actions and their keys.
+the app is the full reference for the actions and their keys. Open it with the prefix, then `?`, or on a
+wide window from Settings, Device, Keyboard shortcuts.
 
 ## Your own quick replies
 

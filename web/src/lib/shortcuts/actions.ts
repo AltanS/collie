@@ -14,9 +14,8 @@
 // Checked on 2026-11-19 against the app: every row has one (the Settings gear, the switcher mark,
 // the header's way home, New, the tab bar's "+", the strip's width presets, zen mode, the sidebar
 // toggle, the Chat/Terminal choice, the composer, the find bar) except two. `reload_config` is left
-// out: nothing in the app re-reads a file by hand, and `shortcuts.toml` reloads live. `help` stays,
-// but the shortcut list is its control and ships with the design round (spec 04), so it must
-// not reach a person before that control does.
+// out: nothing in the app re-reads a file by hand, and `shortcuts.toml` reloads live. `help` stays: its
+// control is the Keyboard shortcuts row in Settings, Device (components/shortcut-settings-row.tsx).
 //
 // This file imports nothing but a type, so the core stays free of React and of the DOM.
 

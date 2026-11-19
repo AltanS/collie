@@ -1,6 +1,7 @@
 // What the running keymap shows the rest of the app (M108 spec 03): the mode it is in and the keymap
-// it was built from. Two small external stores, read with `useSyncExternalStore`, so the mode bar and
-// the help list (spec 04) need no prop and no context. Nothing here is rendered by spec 03.
+// it was built from. Two small external stores, read with `useSyncExternalStore`, so the mode bar
+// (components/shortcut-bar-host.tsx) and the shortcut list (components/shortcut-help-door.tsx) need no
+// prop and no context.
 
 import { useSyncExternalStore } from "react";
 
