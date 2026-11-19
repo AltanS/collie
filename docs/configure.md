@@ -1374,6 +1374,9 @@ line. The on-screen keyboard's Enter always adds a new line, so a tap on a phone
 mistake. Use the Send button there. **Ctrl+Enter** and **Cmd+Enter** send with the switch on or
 off, and they always did.
 
+The reply box of a durable agent follows the same switch. The full-screen editor, which opens from
+**Expand** for long text, keeps Ctrl+Enter and Cmd+Enter only, so Enter there is always a new line.
+
 Collie reads each Enter press to tell the two keyboards apart. A press counts as a physical
 keyboard's only when it names the Enter or numpad Enter key, no input method is composing text, the
 key is not held down, and the on-screen keyboard is not up. Any doubt leaves the new line.
