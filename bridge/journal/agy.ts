@@ -3,11 +3,10 @@
 // Reads per-conversation SQLite trajectories (`<root>/conversations/<uuid>.db`, CortexStep protobuf
 // payloads) first, and falls back to plaintext `<root>/brain/<uuid>/.system_generated/logs/transcript.jsonl`
 // when no populated `.db` exists (excluding `.pb` fixed-key decryption). Session discovery binds to
-// the running process's held `<root>/presence/<uuid>.lock` via `lsof`, never guessing from the newest
-// conversation in a shared folder.
-import { execFile } from "node:child_process";
+// the running process's held `<root>/presence/<uuid>.lock` (via Linux `/proc/locks` or `lsof` on macOS),
+// never guessing from the newest conversation in a shared folder.
+import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import type { JsonValue } from "../json.ts";
 import { decodeCursor, encodeCursor, NO_CURSOR, type Cursor, type ReadSince } from "./cursor.ts";
@@ -29,6 +28,8 @@ import {
   type Reduction,
   type RowReducer,
 } from "./reduce.ts";
+import { openFiles as defaultOpenFiles, pathsOf, type OpenFiles } from "./open-files.ts";
+import { hasLock, LINUX_PROC, type ProcReader } from "./proc-locks.ts";
 import { readSqlite } from "./sqlite-read.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
@@ -43,7 +44,6 @@ import type {
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_STEP_BYTES = 4 * 1024 * 1024;
-const exec = promisify(execFile);
 
 // Historical and current CortexStep tool step_types that share `meta.4` (`call.1=id, call.2=name, call.3=args`).
 const TOOL_STEP_TYPES = new Set([5, 7, 8, 9, 17, 21, 33, 132]);
@@ -559,50 +559,67 @@ export class AgyTranscriptSource implements TranscriptSource {
   }
 }
 
-type OpenFiles = (pid: number) => Promise<string>;
-const openFiles: OpenFiles = async (pid) =>
-  (
-    await exec("lsof", ["-nP", "-a", "-p", String(pid), "-Fn"], {
-      timeout: 1000,
-      maxBuffer: 1024 * 1024,
-      windowsHide: true,
-    })
-  ).stdout;
+export type AgyFiles = OpenFiles | ((pid: number) => Promise<string | readonly string[]>);
 
 /** Bind to the process-held presence lock, never the newest database in a shared workspace. */
-export function agyJournal(roots: string | readonly string[], files: OpenFiles = openFiles): JournalAdapter {
+export function agyJournal(
+  roots: string | readonly string[],
+  files: AgyFiles = defaultOpenFiles,
+  proc: ProcReader = LINUX_PROC,
+): JournalAdapter {
   const source = new AgyTranscriptSource(roots);
-  const cache = new Map<number, { at: number; paths: string[] }>();
 
   async function discover(_cwd: string, hints?: DiscoverHints): Promise<AgentSessionRef | null> {
-    for (const proc of hints?.processes ?? []) {
-      const name = proc.argv[0]?.split(/[/\\]/).pop()?.replace(/\.exe$/i, "");
+    for (const procHint of hints?.processes ?? []) {
+      const name = procHint.argv[0]?.split(/[/\\]/).pop()?.replace(/\.exe$/i, "");
       if (name !== "agy" && name !== "antigravity") continue;
-      const index = proc.argv.indexOf("--conversation");
+      const index = procHint.argv.indexOf("--conversation");
       const arg =
-        proc.argv.find((value) => value.startsWith("--conversation="))?.slice(15) ??
-        (index >= 0 ? proc.argv[index + 1] : undefined);
-      if (!proc.pid && arg && SESSION_ID.test(arg)) {
+        procHint.argv.find((value) => value.startsWith("--conversation="))?.slice(15) ??
+        (index >= 0 ? procHint.argv[index + 1] : undefined);
+      if (!procHint.pid && arg && SESSION_ID.test(arg)) {
         const ref = { kind: "id" as const, value: arg };
         if (await source.resolve(ref)) return ref;
       }
-      if (!proc.pid || !Number.isSafeInteger(proc.pid) || proc.pid <= 0) continue;
+      if (!procHint.pid || !Number.isSafeInteger(procHint.pid) || procHint.pid <= 0) continue;
+
+      // On Linux, read /proc/locks first: no lsof needed, and works under systemd services
+      // running with PrivateTmp=yes (where mount namespace isolation denies cross-namespace readlink on /proc/<pid>/fd).
       try {
-        let held = cache.get(proc.pid);
-        if (!held || Date.now() - held.at > 1000) {
-          held = {
-            at: Date.now(),
-            paths: (await files(proc.pid))
-              .split("\n")
-              .filter((line) => line.startsWith("n"))
-              .map((line) => line.slice(1)),
-          };
-          if (cache.size >= 64) cache.clear();
-          cache.set(proc.pid, held);
+        const locked = await proc.flocks(procHint.pid);
+        if (locked !== null && locked.size > 0) {
+          for (const root of source.roots) {
+            const presenceDir = join(root, "presence");
+            const entries = await readdir(presenceDir).catch(() => null);
+            if (entries === null) continue;
+            const ids: string[] = [];
+            for (const entry of entries) {
+              if (!entry.endsWith(".lock")) continue;
+              const id = entry.slice(0, -5);
+              if (!SESSION_ID.test(id)) continue;
+              const lockPath = join(presenceDir, entry);
+              const st = await stat(lockPath, { bigint: true }).catch(() => null);
+              if (st === null || !st.isFile()) continue;
+              if (hasLock(locked, st.dev, st.ino)) {
+                if (await containedRealpath(lockPath, presenceDir)) ids.push(id);
+              }
+            }
+            if (ids.length !== 1) continue;
+            const ref = { kind: "id" as const, value: ids[0]! };
+            if (await source.resolve(ref)) return ref;
+          }
         }
+      } catch {
+        /* /proc/locks unreadable or failed; fall back to openFiles */
+      }
+
+      // Fallback: ask openFiles (lsof on macOS, or wherever /proc/locks found nothing).
+      try {
+        const raw = await files(procHint.pid);
+        const paths = typeof raw === "string" ? pathsOf(raw) : raw;
         for (const root of source.roots) {
           const ids: string[] = [];
-          for (const path of held.paths) {
+          for (const path of paths) {
             const id = path.split(/[/\\]/).pop()?.replace(/\.lock$/, "") ?? "";
             if (!path.endsWith(".lock") || !SESSION_ID.test(id)) continue;
             if (await containedRealpath(path, join(root, "presence"))) ids.push(id);

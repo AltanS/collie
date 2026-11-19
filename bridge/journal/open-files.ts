@@ -1,5 +1,5 @@
 // The files a process holds open, asked of `lsof`, for the discoverers that find a session through a
-// file its process keeps open (dsh's `session.lock`, grok's `chat_history.jsonl`). One reader, so the
+// file its process keeps open (dsh's `session.lock`, grok's `chat_history.jsonl`, agy's `presence/<uuid>.lock`). One reader, so the
 // fork, its limits and its cache are written once.
 //
 // WHAT IS ASKED: `lsof -nP -p PID -g PID -Fn`. Without `-a` lsof ORs its selectors, so this is the
@@ -72,5 +72,5 @@ export function createOpenFiles(run: LsofRunner = runLsof, now: () => number = D
   };
 }
 
-/** The reader the product uses. One cache for dsh and grok: the same pid asks the same question. */
+/** The reader the product uses. One cache for agy, dsh and grok: the same pid asks the same question. */
 export const openFiles: OpenFiles = createOpenFiles();
