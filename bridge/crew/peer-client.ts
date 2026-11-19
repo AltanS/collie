@@ -1,6 +1,6 @@
 import type { JsonObject, JsonValue } from "../json.ts";
 import { inflatedResponse } from "./bounded-gunzip.ts";
-import { BodyRefused, bodyIdleMs, CREW_JSON_MAX, guardedResponse } from "./guarded-body.ts";
+import { BodyRefused, bodyDeadlineMs, bodyIdleMs, CREW_JSON_MAX, guardedResponse } from "./guarded-body.ts";
 import { LAUNCH_BUDGET_MS } from "../create-confirm.ts";
 import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import {
@@ -1164,6 +1164,8 @@ export class PeerClient {
     }
 
     const controller = new AbortController();
+    // The start of the dial: a body the lead reads itself must end by a deadline counted from here.
+    const startedAt = performance.now();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let res: Response;
     try {
@@ -1235,7 +1237,10 @@ export class PeerClient {
     // The budget above ended at the headers. From here the member's bytes are counted against the cap,
     // and a member that goes silent mid-body is cut off on the idle limit, its socket released by the
     // same abort the budget uses. A gzip body is inflated on top of that, with its own count of output.
-    res = guardedResponse(res, { idleMs: bodyIdleMs(mode, timeoutMs), max: cap, onStop: () => controller.abort() });
+    // A body the lead reads itself also ends by a total deadline, so every such dial, and with it the
+    // sweep that waits for every member, ends inside a bound however slowly a member drips its bytes.
+    const deadline = mode === "consumed" ? startedAt + bodyDeadlineMs(timeoutMs) : undefined;
+    res = guardedResponse(res, { idleMs: bodyIdleMs(mode, timeoutMs), max: cap, deadline, onStop: () => controller.abort() });
     if (encoding === "gzip") res = inflatedResponse(res, cap);
 
     // ── Version first, before status and before the body ─────────────────────

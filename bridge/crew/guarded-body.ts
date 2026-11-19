@@ -1,4 +1,4 @@
-// THE LEAD'S TWO BOUNDS ON EVERY BODY A MEMBER SENDS (CREW_PROTOCOL.md §9.1 and §10.1, review round 6).
+// THE LEAD'S BOUNDS ON EVERY BODY A MEMBER SENDS (CREW_PROTOCOL.md §9.1 and §10.1, review round 6).
 //
 // The dial's budget ends when the member's headers arrive. Without this module a member that sent its
 // headers and then went silent held the lead's read open for ever, and a member that sent an identity
@@ -9,6 +9,8 @@
 //   waiting for one. A big honest answer on a slow link passes, however long it takes in all, as long as
 //   its bytes keep coming. The clock runs only while a reader waits: a phone that reads slowly holds the
 //   member's stream back and never trips it.
+// - A TOTAL deadline, only for a body the lead reads itself, from the start of the dial: the idle limit
+//   alone lets a member that drips one byte a second hold such a read, and the sweep with it, for ever.
 // - A SIZE cap on the bytes the member sent, counted as they pass. Past it the read fails. A gzip body is
 //   also capped on its inflated output, in bounded-gunzip.ts, on top of this.
 //
@@ -81,6 +83,21 @@ export const BODY_IDLE_MS = 10_000;
  * A body the lead streams on to the phone may be silent for {@link BODY_IDLE_MS}, or the call's budget
  * when that is longer (a deputy copy on 30 s).
  */
+/**
+ * The total deadline for a body the lead reads itself, from the start of the dial to its last byte:
+ * three times the call's budget, 3.6 s on the sweep's 1.2 s. The headers may take one budget; the
+ * honest bodies (a 300-pane snapshot is about 190 KB) arrive in one round trip after them, so two more
+ * budgets are room, not a squeeze. The idle limit alone does not bound such a read: a member that sends
+ * one byte a second never trips it, and the sweep, which waits for every member, would never end (review
+ * round 8). A body streamed to the phone has no deadline: a large blob on a slow link is honest, and one
+ * phone read holds one socket and stalls nothing else.
+ */
+export const BODY_DEADLINE_FACTOR = 3;
+
+export function bodyDeadlineMs(budgetMs: number): number {
+  return BODY_DEADLINE_FACTOR * budgetMs;
+}
+
 export function bodyIdleMs(mode: "consumed" | "passthrough", budgetMs: number): number {
   return mode === "consumed" ? budgetMs : Math.max(budgetMs, BODY_IDLE_MS);
 }
@@ -90,7 +107,12 @@ export interface BodyGuard {
   readonly idleMs: number;
   /** The most bytes the member may send. */
   readonly max: number;
-  /** Called once when either limit fires, to release the socket (the dial aborts its request). */
+  /**
+   * A total deadline, as a `performance.now()` time: past it the read fails however steadily bytes come.
+   * Set for a body the lead reads itself ({@link bodyDeadlineMs}); absent for one streamed to the phone.
+   */
+  readonly deadline?: number;
+  /** Called once when any limit fires, to release the socket (the dial aborts its request). */
   readonly onStop?: () => void;
 }
 
@@ -108,9 +130,16 @@ export function guardedBody(source: ReadableStream<Uint8Array>, guard: BodyGuard
   return new ReadableStream<Uint8Array>(
     {
       async pull(controller) {
+        // The wait for this piece ends at the idle limit or at the total deadline, whichever comes first.
+        const left = guard.deadline === undefined ? Infinity : guard.deadline - performance.now();
+        const late = left < guard.idleMs;
+        if (left <= 0) {
+          await stop(controller, new BodyRefused("the answer did not end in time", true));
+          return;
+        }
         let timer: ReturnType<typeof setTimeout> | undefined;
         const idle = new Promise<"idle">((resolve) => {
-          timer = setTimeout(() => resolve("idle"), guard.idleMs);
+          timer = setTimeout(() => resolve("idle"), late ? left : guard.idleMs);
         });
         let next: Awaited<ReturnType<typeof reader.read>> | "idle";
         try {
@@ -122,7 +151,8 @@ export function guardedBody(source: ReadableStream<Uint8Array>, guard: BodyGuard
         }
         clearTimeout(timer);
         if (next === "idle") {
-          await stop(controller, new BodyRefused(`no byte of the answer for ${String(guard.idleMs)}ms`, true));
+          const why = late ? "the answer did not end in time" : `no byte of the answer for ${String(guard.idleMs)}ms`;
+          await stop(controller, new BodyRefused(why, true));
           return;
         }
         if (next.done) {

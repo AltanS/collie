@@ -1431,8 +1431,12 @@ version.
   million JSON values, before the mask parses it. It also ends a body when no byte arrived for an idle limit while
   the lead waited: the call's own budget for a body the lead reads itself (the sweep and every other
   JSON call, so one stalled member cannot hold the sweep), and 10 s, or the budget when longer, for a
-  body the lead streams on to the phone. The limit is on silence, never on the total, so a large answer
-  on a slow link passes. On any bound the member's stream is cancelled and the request aborted. Where
+  body the lead streams on to the phone. The idle limit is on silence, not on the total, so a large
+  answer on a slow link passes. A body the lead reads itself also has a total deadline from the start of
+  the dial, three times the call's budget (3.6 s on the sweep): a member that drips one byte under the
+  idle limit would otherwise hold that read, and the sweep that waits for every member, for ever. A
+  body streamed to the phone has no total deadline, on purpose: a large blob on a slow link is honest,
+  and a member that drips one costs one phone read and one socket, never the sweep. On any bound the member's stream is cancelled and the request aborted. Where
   the answer ends depends on where it was going. A body the lead reads ends as an unreachable peer (an
   idle cut counts as the lead's own time-out, §10.4), and so does a masked text answer, which the lead
   reads whole before the phone gets a byte. A body already streaming to the phone, which has its

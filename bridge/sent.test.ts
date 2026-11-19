@@ -599,6 +599,39 @@ describe("the lead's merge", () => {
     expect(await askSentMember(throws, new URLSearchParams(), 50)).toEqual({ ok: false, reason: "unreachable" });
   });
 
+  test("a member that sends its headers and then drips its body is a timeout at the budget, and its body is cancelled (review round 8)", async () => {
+    let cancelled = false;
+    const drip: SentMember = {
+      host: "drip",
+      label: "drip",
+      ask: () =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              async pull(c) {
+                await Bun.sleep(20);
+                c.enqueue(new TextEncoder().encode(" "));
+              },
+              cancel() {
+                cancelled = true;
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+    };
+    const started = performance.now();
+    expect(await askSentMember(drip, new URLSearchParams(), 100)).toEqual({ ok: false, reason: "timeout" });
+    expect(performance.now() - started).toBeLessThan(400);
+    await Bun.sleep(50);
+    expect(cancelled).toBe(true);
+    // The merge of every member answers inside the budget too, with the honest member's lines.
+    const honest: SentMember = { host: "laptop", label: "laptop", ask: () => Promise.resolve(jsonResponse(answerOf([{ line: "echo hi", at: 50 }]))) };
+    const merged = await mergeSentAnswers(answerOf([]), [drip, honest], query(), false, 100);
+    expect(merged.machines.map((m) => [m.host, m.ok])).toEqual(expect.arrayContaining([["drip", false], ["laptop", true]]));
+    expect(merged.entries.map((e) => e.line)).toContain("echo hi");
+  });
+
   test("the crew link carries the three routes: a read, and two writes audited by name", () => {
     expect(crewRouteFor("/api/sent")).toBe("sent");
     expect(crewRouteFor("/api/sent/remove")).toBe("sent/remove");

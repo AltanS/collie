@@ -5,7 +5,11 @@ import { join } from "node:path";
 
 import { bodyCapOf, proxiedResponse } from "./forward.ts";
 import { BODY_IDLE_MS, bodyIdleMs, CREW_BYTES_MAX, guardedBody } from "./guarded-body.ts";
+import { CrewLead } from "./lead.ts";
+import { member as trusted, neverProxy } from "./fixtures.ts";
 import { PeerClient, type CrewFetch } from "./peer-client.ts";
+import { CrewRegistry } from "./registry.ts";
+import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
 
 // THE LEAD'S TWO BOUNDS ON A MEMBER'S BODY (review round 6, B1 and B2), through the real dial against a
 // member in its own process: the idle limit after the headers, and the size cap on an identity body.
@@ -41,6 +45,14 @@ const server = Bun.serve({
       let at = 0;
       return new Response(new ReadableStream({ async pull(c) { if (at > 0) await sleep(250); if (at >= text.length) { c.close(); return; } c.enqueue(text.subarray(at, at + 1)); at += 1; } }), { headers: json });
     }
+    // A short JSON body one byte every 250 ms: 7 bytes, about 1.5 s, inside a 3 s deadline.
+    if (p.endsWith("/drip-short")) {
+      const text = new TextEncoder().encode('{"a":1}');
+      let at = 0;
+      return new Response(new ReadableStream({ async pull(c) { if (at > 0) await sleep(250); if (at >= text.length) { c.close(); return; } c.enqueue(text.subarray(at, at + 1)); at += 1; } }), { headers: json });
+    }
+    // The reviewer's member: the snapshot headers, then one byte every 700 ms for ever, under the 1 s idle limit.
+    if (p.endsWith("/drip-forever")) return new Response(new ReadableStream({ async pull(c) { await sleep(700); c.enqueue(new TextEncoder().encode(" ")); } }), { headers: json });
     // 4 MB announced as chunks: the first 2 MB, then silence.
     if (p.endsWith("/half")) {
       let sent = 0;
@@ -139,13 +151,53 @@ describe("B1: the idle limit on a member's body", () => {
     expect(performance.now() - started).toBeLessThan(2_500);
   });
 
-  test("a body that drips one byte under the limit passes, though it takes four times the budget", async () => {
+  test("a body the lead reads may drip under the idle limit only until its total deadline (review round 8)", async () => {
+    // 7 bytes over about 1.5 s: inside three budgets, so it passes.
+    const short = await dial().json(link, "drip-short");
+    expect(short.ok).toBe(true);
+    if (short.ok) expect(short.value).toEqual({ a: 1 });
+    // 17 bytes over about 4 s: no gap reaches the 1 s idle limit, but the 3 s deadline ends it.
     const started = performance.now();
-    const outcome = await dial().json(link, "drip");
-    expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect(outcome.value).toEqual({ ok: "dripping" });
-    expect(performance.now() - started).toBeGreaterThan(3_000);
+    const long = await dial().json(link, "drip");
+    expect(long.ok).toBe(false);
+    if (long.ok) return;
+    expect(long.reason).toBe("drip: the answer did not end in time");
+    expect(long.state === "unreachable" && long.timedOut).toBe(true);
+    expect(performance.now() - started).toBeGreaterThan(2_800);
+    expect(performance.now() - started).toBeLessThan(3_600);
   }, 15_000);
+
+  test("a body streamed to the phone has no deadline: the same 4 s drip reaches the phone whole", async () => {
+    const run = await throughThePhone("blobs/drip");
+    expect(run.error).toBeNull();
+    expect(run.bytes).toBe('{"ok":"dripping"}'.length);
+    expect(run.ms).toBeGreaterThan(3_000);
+  }, 15_000);
+
+  test("the reviewer's case: one member drips for ever, the sweep still ends, the honest member is fresh, and the next sweep runs", async () => {
+    // Two members on one child: the dripping one's snapshot is rewritten to the dripping route.
+    const fetch: CrewFetch = (url, init) =>
+      globalThis.fetch(url.replace(/^https?:\/\/drip\.example:8787\/crew\/v1\/snapshot/, `${base}/crew/v1/drip-forever`).replace(/^https?:\/\/[^/]+/, base), init);
+    const client = new PeerClient({ self: "desk", secret: () => "s".repeat(32), timeoutMs: 1_000, fetch, now: () => Date.now() });
+    const registry = new CrewRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => [trusted({ memberId: "drip" }), trusted({ memberId: "honest" })] });
+    const lead = new CrewLead({
+      log: () => undefined,
+      registry,
+      snapshot: (l, view, fresh, follow) => client.snapshot(l, view, fresh, follow),
+      proxy: neverProxy,
+      self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
+      now: () => Date.now(),
+    });
+    for (const round of [1, 2]) {
+      const started = performance.now();
+      await lead.sweep();
+      // Inside the bound: three budgets (3 s), and not stuck behind the drip.
+      expect([round, performance.now() - started < 4_000]).toEqual([round, true]);
+      expect(registry.state("honest").health).toBe("reachable");
+      expect(registry.state("drip").health).toBe("unreachable");
+    }
+  }, 30_000);
 
   test("a body that stalls half way fails, the lead's memory stays level, and the next dial answers", async () => {
     const rss = () => process.memoryUsage().rss / MB;
