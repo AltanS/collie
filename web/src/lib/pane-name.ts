@@ -7,11 +7,13 @@
 // The rule is here, once:
 //
 //   NAME  — paneLabel (a Collie rename), else sessionName (a name the person set in the harness),
-//           else agentTitle (the title the agent gave its session), else a named one-pane tab's
-//           label, else a non-stale terminalTitle, else the agent word
+//           else a named one-pane tab's label, else agentTitle (the title the agent gave its
+//           session), else a non-stale terminalTitle, else the agent word
 //           ("claude", "codex") for an agent pane and "shell" for a bare shell.
 //           The first four are the GIVEN name (`givenName`); a surface that may not show a terminal
 //           title (a push, a WalkyTalky name) asks for that alone and states its own fallback.
+//           A name a person set always comes before a name a program wrote (#815): the first three
+//           are the person's, `agentTitle` is the agent's and the agent rewrites it as it works.
 //   PLACE — `space › tab`, or the space alone when the tab carries no name of its own.
 //
 // The place is never line 1. A name answers "what is this work", a place answers "where does it
@@ -36,8 +38,8 @@ export const PLACE_SEP = " › ";
 /**
  * Line 1 on every surface: what this pane is called.
  *
- * The given name first ({@link givenName}): the hand-set names, then the agent's own title for its
- * session, then a named one-pane tab. The terminal title comes after them because the process rewrites
+ * The given name first ({@link givenName}): the hand-set names, a named one-pane tab among them, then
+ * the agent's own title for its session. The terminal title comes after them because the process rewrites
  * it every turn, and it outranks the agent word because "claude" tells you nothing when four rows say
  * it. A STALE title names nothing — the program that wrote it has exited, so it is a fact about the
  * past — and such a pane falls back to what it would be called with no title at all. All of these
@@ -53,15 +55,18 @@ export function paneName(pane: AgentView): string {
 
 /**
  * The name somebody or something gave this session, or null: Collie's rename (`paneLabel`), a name the
- * person set in the harness (`sessionName`), the title the agent gave its session (`agentTitle`), a
- * named one-pane tab. One order for every surface that names a session, so a session reads the same in
- * the dashboard, the chat header, a push and WalkyTalky; each surface adds only its own fallback after it.
+ * person set in the harness (`sessionName`), a named one-pane tab (`soleTabName`), then the title the
+ * agent gave its session (`agentTitle`). A name a person set always comes before one a program wrote:
+ * the agent rewrites its title as it works, so it must never hide a name somebody chose (#815). One order
+ * for every surface that names a session, so a session reads the same in the dashboard, the chat
+ * header, a push and WalkyTalky; each surface adds only its own fallback after it.
  */
 export function givenName(pane: Pick<AgentView, "paneLabel" | "sessionName" | "agentTitle" | "soleTabName">): string | null {
   if (pane.paneLabel) return pane.paneLabel;
   if (pane.sessionName) return pane.sessionName;
-  if (pane.agentTitle) return pane.agentTitle;
-  return soleTabName(pane);
+  const tab = soleTabName(pane);
+  if (tab !== null) return tab;
+  return pane.agentTitle ? pane.agentTitle : null;
 }
 
 /**
@@ -69,9 +74,9 @@ export function givenName(pane: Pick<AgentView, "paneLabel" | "sessionName" | "a
  *
  * Renaming a one-pane tab is how an operator names a pane (the belt's long-press, or the desktop),
  * and before this rule that name reached no line 1 anywhere: the title Claude writes itself won, so
- * `Ui fixes` read as `Tabs/spaces naming adjustment`. Hand-set names still come first, the title
- * after. The bridge decides whether the tab was NAMED and whether the pane is ALONE in it
- * (state-engine.ts), because only the adapter knows a chosen label from tmux's automatic one; this
+ * `Ui fixes` read as `Tabs/spaces naming adjustment`. Release 1.29.0 ranked the agent's own title
+ * above it, which hid a name a person chose (#815); the tab's name now comes before that title.
+ * The bridge decides whether the tab was NAMED and whether the pane is ALONE in it (state-engine.ts), because only the adapter knows a chosen label from tmux's automatic one; this
  * reads the answer.
  */
 export function soleTabName(pane: { soleTabName?: string | undefined }): string | null {

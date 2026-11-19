@@ -293,6 +293,8 @@ What looks different on the core:
   while it reads older lines, and under a dialog one such read takes about 25 seconds. So the phone's
   mirror reads the screen alone, and Load older at the top of the mirror reads the lines above it,
   once per tap. While the agent waits on you, Load older waits too, and says so.
+  If the agent's transcript cannot be found, Load older remains available for any terminal rows the
+  core retained; it does not reconstruct output the terminal no longer holds.
 
 What the core cannot do:
 

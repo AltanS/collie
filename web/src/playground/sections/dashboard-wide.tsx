@@ -80,7 +80,7 @@ const SEEDS: readonly SpaceSeed[] = [
     seats: [
       ["claude", "done", "traefik routes"],
       ["codex", "working", "headscale acl"],
-      ["shell", "unknown", "ssh minibuch"],
+      ["shell", "unknown", "ssh workshop"],
     ],
   },
   {

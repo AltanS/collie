@@ -180,7 +180,8 @@ import {
   type PaneWire,
   type SnapshotResponse,
 } from "./types.ts";
-import type { StateEngine } from "./state-engine.ts";
+import { StateEngine } from "./state-engine.ts";
+import { paneName } from "./pane-name.ts";
 import { HEAD_CASES, NOT_HEAD_CASES } from "./agent-view/testdata/head-cases.ts";
 import { BAD_HEAD } from "../web/src/lib/agent-view/wire.ts";
 import { readFileSync as readFixture } from "node:fs";
@@ -2572,89 +2573,82 @@ describe("renamePane and its one-pane tab", () => {
   });
 });
 
-// A tab renamed from the phone also sets the label of its pane when the pane is alone in it (#810): the name
-// rule ranks a pane's own label above the title its agent wrote, and a one-pane tab's name below it.
-describe("renameTab and its one pane", () => {
+// A tab renamed from the phone renames the tab and nothing else (#810, #815). The new name reaches the session
+// through the name rule: a named one-pane tab comes before the title the agent wrote. Driven through the real
+// Herdr adapter and the real state engine, so the name is the one a screen would draw.
+describe("renameTab and the name of its one pane", () => {
   const request = (body: string) => new Request("http://x/api/tab/w1%3At1/rename", { method: "POST", body });
-  const rig = (opts: { paneCount: number; renamePane?: "ok" | "throws" | "refused"; declared?: boolean }) => {
-    const paneRenames: Array<[string, string | null]> = [];
+  const rig = (opts: { paneLabel?: string } = {}) => {
     const tabRenames: Array<[string, string]> = [];
-    const audit: AuditEntry[] = [];
-    const mode = opts.renamePane ?? "ok";
-    const adapter: Pick<MuxAdapter, "renamePane" | "renameTab" | "refresh" | "capabilities"> = {
-      capabilities: declareCapabilities({
-        supports: opts.declared === false ? ["renameTab"] : ["renamePane", "renameTab"],
-        topologyLatency: { kind: "push" },
-      }),
-      refresh: async () => {},
-      renameTab: async (id, label) => (tabRenames.push([id, label]), muxAck()),
-      renamePane: async (id, label) => {
-        paneRenames.push([id, label]);
-        if (mode === "throws") throw new Error("pane rename blew up");
-        return mode === "refused" ? muxRefused("no") : muxAck();
-      },
-    };
-    const pane = (paneId: string): AgentView => ({
-      paneId,
-      workspaceId: "w1",
-      workspaceLabel: "Space",
-      workspaceNumber: 1,
-      tabId: "w1:t1",
-      agent: "claude",
-      status: "idle",
-      cwd: "/home/op",
+    const paneRenames: Array<[string, string | null]> = [];
+    const wirePane = {
+      pane_id: "w1:p1",
+      terminal_id: "term",
+      workspace_id: "w1",
+      tab_id: "w1:t1",
       focused: true,
-    });
-    const agents = opts.paneCount === 1 ? [pane("w1:p1")] : [pane("w1:p1"), pane("w1:p2")];
-    const tab: TabView = { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "1", focused: true, paneCount: opts.paneCount };
-    const snapshot = { agents, shellPanes: [], workspaces: [], tabs: [tab] };
-    const stub: Partial<StateEngine> = { pokeNow: () => {}, current: () => ({ ...snapshot, bridge: "connected" }) };
-    // SAFETY: renameTab reads only `current()`'s panes and tabs, and `pokeNow()`; the stub supplies both.
-    const engine = stub as Pick<StateEngine, "current" | "pokeNow">;
-    const run = (body: { label: string }) =>
-      renameTab(adapter, engine, "w1:t1", request(JSON.stringify(body)), { record: (entry: AuditEntry) => void audit.push(entry) }, "pixel", "default");
-    return { paneRenames, tabRenames, audit, run };
+      cwd: "/home/op/demo",
+      agent: "claude",
+      agent_status: "idle",
+      revision: 0,
+      label: opts.paneLabel,
+    };
+    const wireTab = { tab_id: "w1:t1", workspace_id: "w1", number: 1, label: "1", focused: true, pane_count: 1, agent_status: "idle" };
+    const wireSpace = { workspace_id: "w1", number: 1, label: "Space", focused: true, pane_count: 1, tab_count: 1, active_tab_id: "w1:t1", agent_status: "idle" };
+    const fake: Partial<HerdrClient> = {
+      // SAFETY: the wire rows above are plain records; the adapter reads their fields by name.
+      sessionSnapshot: () => Promise.resolve({ version: "0.7.2", protocol: 16, workspaces: [wireSpace], tabs: [wireTab], panes: [wirePane] } as never),
+      renameTab: (id: string, label: string) => (tabRenames.push([id, label]), (wireTab.label = label), Promise.resolve()),
+      renamePane: (id: string, label: string | null) => (paneRenames.push([id, label]), Promise.resolve()),
+    };
+    // SAFETY: a poll and the two renames reach only the members above; the rest of the client is never touched.
+    const mux = new HerdrMux(fake as HerdrClient, () => []);
+    const real = new StateEngine(mux, 1500);
+    const engine = { pokeNow: () => {} };
+    const audit: AuditEntry[] = [];
+    const run = async (label: string) => {
+      const res = await renameTab(mux, engine, "w1:t1", request(JSON.stringify({ label })), { record: (entry: AuditEntry) => void audit.push(entry) }, "pixel", "default");
+      await real["poll"]();
+      return res;
+    };
+    // The pane as the phone draws it: the engine's view, with the title its agent wrote.
+    const shownName = (agentTitle?: string) => {
+      const view = real.current().agents[0]!;
+      return paneName(agentTitle === undefined ? view : { ...view, agentTitle });
+    };
+    return { tabRenames, paneRenames, audit, run, shownName, poll: () => real["poll"](), setTab: (label: string) => void (wireTab.label = label) };
   };
 
-  test("a tab with one pane sets that pane's label to the same name, and the audit line says so", async () => {
-    const { run, paneRenames, tabRenames, audit } = rig({ paneCount: 1 });
-    const res = await run({ label: "  agentbuffs " });
+  test("renames the tab and nothing else, and the audit line says only that", async () => {
+    const { run, tabRenames, paneRenames, audit } = rig();
+    const res = await run("  agentbuffs ");
     expect([res.status, await res.json()]).toEqual([200, { ok: true }]);
     expect(tabRenames).toEqual([["w1:t1", "agentbuffs"]]);
-    expect(paneRenames).toEqual([["w1:p1", "agentbuffs"]]);
-    expect(audit).toEqual([
-      { action: "tab.rename", session: "default", device: "pixel", detail: { tabId: "w1:t1", label: "agentbuffs", paneRenamed: true } },
-    ]);
-  });
-
-  test("a tab with two panes leaves the pane labels alone", async () => {
-    const { run, paneRenames, tabRenames, audit } = rig({ paneCount: 2 });
-    expect((await run({ label: "agentbuffs" })).status).toBe(200);
-    expect(tabRenames).toEqual([["w1:t1", "agentbuffs"]]);
     expect(paneRenames).toEqual([]);
-    expect(audit[0]?.detail).toEqual({ tabId: "w1:t1", label: "agentbuffs", paneRenamed: false });
+    expect(audit).toEqual([{ action: "tab.rename", session: "default", device: "pixel", detail: { tabId: "w1:t1", label: "agentbuffs" } }]);
   });
 
-  test("an adapter that declares no renamePane is not asked, and the tab rename is still ok", async () => {
-    const { run, paneRenames, tabRenames, audit } = rig({ paneCount: 1, declared: false });
-    expect(await (await run({ label: "agentbuffs" })).json()).toEqual({ ok: true });
-    expect(tabRenames).toEqual([["w1:t1", "agentbuffs"]]);
-    expect(paneRenames).toEqual([]);
-    expect(audit[0]?.detail).toEqual({ tabId: "w1:t1", label: "agentbuffs", paneRenamed: false });
+  test("after the rename the session is named by the new tab name, not by the agent's own title", async () => {
+    const { run, poll, shownName } = rig();
+    await poll();
+    expect(shownName("Tabs naming adjustment")).toBe("Tabs naming adjustment");
+    await run("agentbuffs");
+    expect(shownName("Tabs naming adjustment")).toBe("agentbuffs");
+    expect(shownName()).toBe("agentbuffs");
   });
 
-  test("a renamePane that throws costs the pane label, never the tab rename", async () => {
-    const { run, paneRenames, audit } = rig({ paneCount: 1, renamePane: "throws" });
-    const res = await run({ label: "agentbuffs" });
-    expect([res.status, await res.json()]).toEqual([200, { ok: true }]);
-    expect(paneRenames).toEqual([["w1:p1", "agentbuffs"]]);
-    expect(audit[0]?.detail).toEqual({ tabId: "w1:t1", label: "agentbuffs", paneRenamed: false });
+  test("a tab renamed on the phone and then renamed again elsewhere shows the newest tab name", async () => {
+    const { run, setTab, poll, shownName } = rig();
+    await run("agentbuffs");
+    setTab("release notes"); // the second rename: the desktop, not this route
+    await poll();
+    expect(shownName("Tabs naming adjustment")).toBe("release notes");
   });
 
-  test("a renamePane the adapter refuses is paneRenamed false and the tab rename is still ok", async () => {
-    const { run, audit } = rig({ paneCount: 1, renamePane: "refused" });
-    expect(await (await run({ label: "agentbuffs" })).json()).toEqual({ ok: true });
-    expect(audit[0]?.detail).toEqual({ tabId: "w1:t1", label: "agentbuffs", paneRenamed: false });
+  test("a name set on the pane itself still comes first", async () => {
+    const { run, shownName } = rig({ paneLabel: "plumbing" });
+    await run("agentbuffs");
+    expect(shownName("Tabs naming adjustment")).toBe("plumbing");
   });
 });
 

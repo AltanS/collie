@@ -37,7 +37,9 @@ const LINK_CLASS = "underline decoration-1 underline-offset-2 break-all cursor-p
 // on a read-only device and a gone pane alike: opening an address sends nothing to the terminal.
 //
 // Text is React text nodes only; an address reaches an href only through the http(s)-only scanner
-// that found it (lib/links.ts). A row is `whitespace-pre-wrap` so the box's own spaces survive and a
+// that found it (lib/links.ts), and only an `https:` one, or an `http:` one to a loopback host, becomes a
+// link here. omp prints an `http://localhost:<port>` shortcut: a desktop browser on the same machine opens
+// it, and on a phone it fails harmlessly. Any other plain-http address stays text to read. A row is `whitespace-pre-wrap` so the box's own spaces survive and a
 // row wider than the card wraps instead of being cut or panned. A box that holds its title alone is
 // `waiting`: the card shows the title as printed and Collie's own line saying nothing has printed yet.
 //
@@ -62,10 +64,14 @@ export function BoxTextBlock({ boxText, signInHosts, signInPending = false }: Bo
         {boxText.text.map((row, i) => (
           <div key={i} className="min-h-[1lh] whitespace-pre-wrap break-words">
             {row.map((run, j) =>
-              run.kind === "link" && address === null ? (
+              run.kind === "link" && address === null && opensSafely(run.href) ? (
                 <a key={j} href={run.href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
                   {run.text}
                 </a>
+              ) : run.kind === "link" && address === null ? (
+                <span key={j} className="break-all">
+                  {run.text}
+                </span>
               ) : run.kind === "link" && address?.kind === "copy" && run.text === address.text ? null : run.kind === "link" ? (
                 // Shown once: in the copy block under the rows when it is text to copy.
                 <span key={j} className="break-all">
@@ -88,6 +94,20 @@ export function BoxTextBlock({ boxText, signInHosts, signInPending = false }: Bo
       </Collapse>
     </PromptPanel>
   );
+}
+
+/** The hosts a plain-http link may name, as `URL.hostname` spells them. */
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** Whether a box's address may be a link on the card: `https:` to any host, `http:` to a loopback host. */
+function opensSafely(href: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return false;
+  }
+  return url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname));
 }
 
 /** The sign-in card's one action: open the checked address, or copy one that did not pass. */

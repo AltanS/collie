@@ -168,8 +168,8 @@ export function paneClears(herdTag: string, paneIds: Iterable<string>): PushMess
 // chooses it, and it can carry a path, a command line or a secret. A push crosses a third-party push
 // service and shows on a lock screen, which is the last place for any of those. So the push asks
 // {@link pushName}: the given name (`givenName`, pane-name.ts) and no fallback to the terminal title,
-// not even a stale one. The given name includes the title the agent gave its session in its own
-// journal (`agentTitle`, decided 2026-11-13): it is the name the person sees for the session in the
+// not even a stale one. The given name includes, after every name a person set, the title the agent gave its session in
+// its own journal (`agentTitle`, decided 2026-11-13): it is the name the person sees for the session in the
 // harness itself, it is cleaned and capped by the one normalizer (session-title.ts) before it reaches
 // a view, and control and bidi characters are stripped again here. A pane with no given name gets the
 // neutral harness word, and the digest's collision rule adds its place when two read the same. The

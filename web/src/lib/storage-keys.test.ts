@@ -87,6 +87,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:project-pictures:v1", { area: "local", prefix: false, fate: "kept", why: "preference: project pictures on or off on this device (ADR 0160)" }],
   ["collie:enter-sends:v1", { area: "local", prefix: false, fate: "kept", why: "preference: whether Enter from a physical keyboard sends (ADR 0157)" }],
   ["collie:wide-layout-mode:v1", { area: "local", prefix: false, fate: "kept", why: "preference: Auto or Off for the large-screen layout (ADR 0120)" }],
+  ["collie:enter-sends:v1", { area: "local", prefix: false, fate: "kept", why: "preference: whether Enter sends or adds a line on this device (lib/enter-sends-store.ts)" }],
   ["collie:pin-hint:v1", { area: "local", prefix: false, fate: "kept", why: "a dismissed hint" }],
   ["collie:masked-hint:v1", { area: "local", prefix: false, fate: "kept", why: "a dismissed hint" }],
   ["collie:pane-nav-hint:v1", { area: "local", prefix: false, fate: "kept", why: "the Two fingers first-arm hint was shown (ADR 0121)" }],

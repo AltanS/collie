@@ -101,7 +101,7 @@ Read the draft and tap Send when you are ready.
   notes with their file, lines and text, and each has **Delete**.
 - **Which agent.** Opened from a pane, the notes go to that pane's agent. Opened from the
   dashboard's Files tab on a workspace with several agents, the list shows **Target agent in this
-  workspace**, and you tap the agent that gets them. On a [crew](crew.md), an agent on another
+  space**, and you tap the agent that gets them. On a [crew](crew.md), an agent on another
   machine counts as its own agent, even when two machines share a pane id.
 - **No agent, no comments.** The lines take a tap only when the pane is an agent's pane, or when the
   workspace has an agent pane. On a shell pane they do nothing.
