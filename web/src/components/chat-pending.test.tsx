@@ -131,12 +131,23 @@ describe("the loading view of Chat", () => {
   });
 
   it("fills the screen when the remembered rows fall short, with the typical thread above them", () => {
-    const remembered: Silhouette = { whole: false, rows: [{ k: "agent", h: 44, n: 2, w: 2 }] };
+    const remembered: Silhouette = { whole: false, rows: [{ k: "person", h: 48, w: 2 }, { k: "tool", h: 44 }, { k: "agent", h: 44, n: 2, w: 2 }] };
     rememberSilhouette(ADDRESS, remembered);
     const { container } = render(streamOf(feedOf({})));
     wait(CHAT_PENDING_DELAY_MS + 10);
     const rows = drawnRows(container);
     expect(rows.at(-1)).toMatchObject({ kind: "agent", height: 44 });
+    expect(drawnHeight(container)).toBeGreaterThanOrEqual(SCREEN);
+  });
+
+  it("draws a mix for a pane whose last screen was text alone, never bars of lines only", () => {
+    rememberSilhouette(ADDRESS, { whole: false, rows: Array.from({ length: 8 }, () => ({ k: "agent" as const, h: 110, n: 5, w: 2 as const })) });
+    const { container } = render(streamOf(feedOf({})));
+    wait(CHAT_PENDING_DELAY_MS + 10);
+    const kinds = drawnRows(container).map((row) => row.kind);
+    expect(kinds).toContain("person");
+    expect(kinds).toContain("tool");
+    expect(kinds).toContain("agent");
     expect(drawnHeight(container)).toBeGreaterThanOrEqual(SCREEN);
   });
 

@@ -83,11 +83,13 @@ function RowView({ row }: { row: SilhouetteRow }) {
 
 /**
  * What the reading area shows while a pane's Chat has not been read yet and the wait has run past
- * {@link CHAT_PENDING_DELAY_MS}: the pane's own silhouette (lib/chat-silhouette.ts), rows of the silhouettes and heights its
- * thread had when Chat last drew it, bottom-anchored and filling the screen; for a pane this device never drew,
- * the same language with a typical thread. No text, no spinner. The bars breathe with `.count-skeleton`, which holds
- * still under reduced motion. The scroller is pinned to its bottom, and its bottom padding is the thread's, so the
- * newest row of the page stands where the newest row of the silhouette stood and nothing jumps when the page comes.
+ * {@link CHAT_PENDING_DELAY_MS}: always a mix of a bubble, a tool block and text lines. A pane's own silhouette
+ * (lib/chat-silhouette.ts), the rows and heights its thread had when Chat last drew it, is drawn bottom-anchored and
+ * filling the screen when it is a mix; a pane this device never drew, or one whose last screen was text alone, gets
+ * a typical thread in the same language. No text, no spinner. The bars breathe with `.count-skeleton`, which holds
+ * still under reduced motion. The scroller is pinned to its bottom, and its bottom padding is the thread's, so for a
+ * mixed silhouette the newest row of the page stands where the newest row of the silhouette stood and nothing jumps
+ * when the page comes.
  */
 export function ChatPending({ address }: { address: string }) {
   const [late, setLate] = useState(false);
