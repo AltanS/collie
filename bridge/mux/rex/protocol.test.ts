@@ -205,3 +205,30 @@ describe("refusals", () => {
     expect(saysUnreachable(3, `Error: block target "${BLOCK}" not found`)).toBe(false);
   });
 });
+
+describe("keepSgrOnly lets no control byte through", () => {
+  const c = (code: number): string => String.fromCodePoint(code);
+
+  test("a huge cursor-forward count allocates nothing, and a large one stops at 1000 spaces", () => {
+    expect(keepSgrOnly(`a${ESC}[99999999Cb`)).toBe("ab");
+    expect(keepSgrOnly(`a${ESC}[9999Cb`)).toBe(`a${" ".repeat(1000)}b`);
+  });
+
+  test("an 8-bit CSI or OSC is dropped whole, its parameters with it", () => {
+    expect(keepSgrOnly(`a${c(0x9b)}2Jb`)).toBe("ab");
+    expect(keepSgrOnly(`a${c(0x9b)}31mb`)).toBe("ab");
+    expect(keepSgrOnly(`a${c(0x9d)}0;title${c(0x9c)}b`)).toBe("ab");
+  });
+
+  test("an unterminated or overlong escape leaves no ESC behind", () => {
+    expect(keepSgrOnly(`ab${ESC}[`)).toBe("ab");
+    expect(keepSgrOnly(`ab${ESC}`)).toBe("ab");
+    expect(keepSgrOnly(`a${ESC}[${"1;".repeat(3000)}mb`)).toBe("ab");
+    expect(keepSgrOnly(`a${ESC}]0;${"t".repeat(5000)}`).includes(ESC)).toBe(false);
+  });
+
+  test("C0 controls but tab and newline, DEL and C1 are dropped; SGR stays", () => {
+    const out = keepSgrOnly(`a${c(7)}${c(8)}${c(0)}${c(0x7f)}${c(0x85)}\tb\n${ESC}[1mbold${ESC}[0m`);
+    expect(out).toBe(`a\tb\n${ESC}[1mbold${ESC}[0m`);
+  });
+});

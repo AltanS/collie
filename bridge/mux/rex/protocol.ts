@@ -366,8 +366,11 @@ export function isDefaultWindowLabel(windowId: string, label: string): boolean {
 const ESC = String.fromCodePoint(0x1b);
 const BEL = String.fromCodePoint(0x07);
 
-/** An SGR sequence: colour and weight, the only escapes the contract lets through (ADR 0008). */
-const SGR = new RegExp(`^${ESC}\\[[0-9;:]*m$`, "u");
+/**
+ * An SGR sequence: colour and weight, the only escapes the contract lets through (ADR 0008). Bounded:
+ * a real one is a few dozen characters, and a longer one is dropped like any other escape.
+ */
+const SGR = new RegExp(`^${ESC}\\[[0-9;:]{0,256}m$`, "u");
 
 /**
  * Every escape sequence the VT capture can carry: CSI, OSC (BEL- or ST-terminated), and the
@@ -378,10 +381,36 @@ const ANY_ESCAPE = new RegExp(
   "gu",
 );
 
+/**
+ * The 8-bit forms, C1 CSI (0x9b) and C1 OSC (0x9d, ended by BEL, 0x9c or ESC \\). Rex's VT capture never
+ * wrote one in any probe, but a byte a filter does not know must not reach the phone as text.
+ */
+const C1_ESCAPE = new RegExp(
+  `${String.fromCodePoint(0x9b)}[0-9;:?<=>]*[ -/]*[@-~]|${String.fromCodePoint(0x9d)}[^${BEL}${String.fromCodePoint(0x9c)}${ESC}]{0,4096}(?:${BEL}|${String.fromCodePoint(0x9c)}|${ESC}\\\\)?`,
+  "gu",
+);
+
+/**
+ * Every control byte left once the escapes are gone: C0 but tab, newline and ESC, DEL and C1. A
+ * rendered row holds none, so none may pass (a NUL, a BEL or a backspace in a text node would still
+ * reach a grammar, a copy and a screen reader).
+ */
+const STRAY_CONTROL = new RegExp(
+  `[${String.fromCodePoint(0)}-${String.fromCodePoint(8)}${String.fromCodePoint(0x0b)}-${String.fromCodePoint(0x1a)}${String.fromCodePoint(0x1c)}-${String.fromCodePoint(0x1f)}${String.fromCodePoint(0x7f)}-${String.fromCodePoint(0x9f)}]`,
+  "gu",
+);
+
+/** An ESC that does not open a kept SGR, such as one cut off at the end of the text. */
+const LONE_ESC = new RegExp(`${ESC}(?!\\[[0-9;:]{0,256}m)`, "gu");
+
 /** Cursor forward, `ESC [ n C`: how the VT capture writes a run of blank cells inside a row. */
 const CURSOR_FORWARD = new RegExp(`${ESC}\\[([0-9]{0,4})C`, "gu");
 
-/** The widest run of blanks one cursor-forward may stand for: past any real terminal's width. */
+/**
+ * The widest run of blanks one cursor-forward may stand for: past any real terminal's width. The
+ * pattern above takes four digits at most, and a longer count is dropped as an unknown escape, so no
+ * count can make the filter allocate more than this many spaces.
+ */
 const MAX_BLANK_RUN = 1000;
 
 /**
@@ -400,7 +429,10 @@ export function keepSgrOnly(text: string): string {
     .replace(/\r\n/gu, "\n")
     .replace(/\r/gu, "")
     .replace(CURSOR_FORWARD, (_seq, count: string) => " ".repeat(Math.min(MAX_BLANK_RUN, Math.max(1, Number(count) || 1))))
-    .replace(ANY_ESCAPE, (seq) => (SGR.test(seq) ? seq : ""));
+    .replace(ANY_ESCAPE, (seq) => (SGR.test(seq) ? seq : ""))
+    .replace(C1_ESCAPE, "")
+    .replace(LONE_ESC, "")
+    .replace(STRAY_CONTROL, "");
 }
 
 /** Every escape gone — what `styling: "strip"` asks for. Run on {@link keepSgrOnly}'s output. */
