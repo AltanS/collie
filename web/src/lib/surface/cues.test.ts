@@ -588,6 +588,9 @@ describe("running signs and the prompt row", () => {
     ["grok", "grok--v1.0.77-queued--w120.txt"],
     ["opencode", "oc--working.txt"],
     ["opencode", "oc--draft-while-working.txt"],
+    // After one Escape opencode asks for a second one and the row reads `esc again to interrupt`; the
+    // turn still runs (opencode 1.19.5 and 2.3.2, lab 2026-11-20).
+    ["opencode", "oc--v232-herdr--esc-again.txt"],
   ])("running: the %s hint in %s, on its real row, is a running turn", (harness, fixture) => {
     const idle = requireProfile(harness).idle;
     const rows = fixtureRows(fixture);
