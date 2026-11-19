@@ -3,6 +3,7 @@ import {
   CHAT_SILHOUETTE_PREFIX,
   forgetAllChatSilhouettes,
   gapBefore,
+  isMixed,
   loadingRows,
   measureBlocks,
   PANES_KEPT,
@@ -13,6 +14,7 @@ import {
   silhouetteOf,
   type MeasuredBlock,
   type Silhouette,
+  type SilhouetteRow,
 } from "./chat-silhouette";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJson } from "./json";
 import { paneScopeKey } from "./scope";
@@ -199,9 +201,10 @@ describe("the rows the loading view draws", () => {
   });
 
   it("keeps only the newest rows that cover the screen", () => {
-    const tall: Silhouette = { whole: false, rows: Array.from({ length: 20 }, () => ({ k: "tool" as const, h: 100 })) };
+    const tall: Silhouette = { whole: false, rows: Array.from({ length: 20 }, (_, i): SilhouetteRow => (i % 2 === 0 ? { k: "person", h: 48, w: 2 } : { k: "tool", h: 100 })) };
     const { rows } = loadingRows(tall, 400);
     expect(rows.length).toBeLessThanOrEqual(5);
+    expect(rows.slice(1)).toEqual(tall.rows.slice(-(rows.length - 1)));
     expect(silhouetteHeight(rows)).toBeGreaterThanOrEqual(400);
   });
 
@@ -210,6 +213,58 @@ describe("the rows the loading view draws", () => {
     const { rows, top } = loadingRows(short, 700);
     expect(top).toBe(true);
     expect(rows).toEqual(short.rows);
+  });
+
+  it("draws the typical thread for a remembered silhouette of text alone", () => {
+    const text: Silhouette = { whole: false, rows: Array.from({ length: 10 }, () => ({ k: "agent" as const, h: 110, n: 5, w: 2 as const })) };
+    const { rows, top } = loadingRows(text, 640);
+    expect(top).toBe(false);
+    expect(rows).toEqual(loadingRows(undefined, 640).rows);
+    expect(isMixed(rows)).toBe(true);
+  });
+
+  it("keeps a mixed remembered silhouette unchanged", () => {
+    const mixed: Silhouette = {
+      whole: false,
+      rows: [{ k: "agent", h: 110, n: 5, w: 2 }, { k: "person", h: 48, w: 2 }, { k: "card", h: 120 }, { k: "agent", h: 66, n: 3, w: 3 }],
+    };
+    const { rows, top } = loadingRows(mixed, 300);
+    expect(top).toBe(false);
+    expect(rows).toEqual(mixed.rows);
+  });
+
+  it("keeps a short whole thread with a person's message at the top", () => {
+    const short: Silhouette = { whole: true, rows: [{ k: "person", h: 48, w: 2 }, { k: "agent", h: 44, n: 2, w: 2 }] };
+    const { rows, top } = loadingRows(short, 700);
+    expect(top).toBe(true);
+    expect(rows).toEqual(short.rows);
+  });
+
+  it("falls back to the typical thread for a short whole thread with no person's message", () => {
+    const short: Silhouette = { whole: true, rows: [{ k: "agent", h: 110, n: 5, w: 2 }, { k: "tool", h: 44 }] };
+    const { rows, top } = loadingRows(short, 700);
+    expect(top).toBe(false);
+    expect(rows).toEqual(loadingRows(undefined, 700).rows);
+    expect(silhouetteHeight(rows)).toBeGreaterThanOrEqual(700);
+  });
+
+  it("draws a mix with no memory at every screen from 220px up", () => {
+    for (const viewport of [220, 250, 400, 640, 844, 1200]) {
+      const { rows } = loadingRows(undefined, viewport);
+      expect(isMixed(rows), `viewport ${viewport}`).toBe(true);
+      expect(silhouetteHeight(rows)).toBeGreaterThanOrEqual(viewport);
+    }
+  });
+
+  it("holds a bubble, a tool well and text lines in the lowest 220px of the typical thread", () => {
+    const { rows } = loadingRows(undefined, 1200);
+    // A row is in the lowest 220px when the air and rows under it are shorter than that.
+    const reaching = rows.filter((_, i) => {
+      const next = rows[i + 1];
+      const below = next === undefined ? 0 : silhouetteHeight(rows.slice(i + 1)) + gapBefore(rows[i]!.k, next.k);
+      return below < 220;
+    });
+    expect(reaching.map((row) => row.k)).toEqual(expect.arrayContaining(["person", "tool", "agent"]));
   });
 
   it("spaces rows as the stream does", () => {
