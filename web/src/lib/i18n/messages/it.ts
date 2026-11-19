@@ -189,6 +189,9 @@ export const it: Dictionary = {
   "settings.wideLayout.off": "Disattivato",
   "settings.wideLayout.hint":
     "Automatico mostra la barra laterale e le colonne dei riquadri su uno schermo largo almeno 600 px e alto almeno 480 px. Disattivato mantiene ovunque il layout per smartphone.",
+  "settings.enterSends.title": "Invio invia",
+  "settings.enterSends.hint":
+    "Con una tastiera fisica, Invio invia il messaggio e Maiusc+Invio aggiunge una nuova riga. Con la tastiera sullo schermo, Invio aggiunge sempre una nuova riga.",
   "settings.paneNav.title": "Navigazione tra riquadri",
   "settings.paneNav.twoFingers": "Due dita",
   "settings.paneNav.joystick": "Joystick",
@@ -437,6 +440,9 @@ export const it: Dictionary = {
   "composer.heldBack.kept": "Non inviato, conservato qui: {text}",
   "composer.heldBack.putBack": "Rimetti",
   "composer.heldBack.boxFull": "Prima svuota la casella, poi tocca Rimetti.",
+  "composer.enterOffer.text": "Usi una tastiera? Invio può inviare.",
+  "composer.enterOffer.turnOn": "Attiva",
+  "composer.enterOffer.dismissAria": "Chiudi il suggerimento su Invio",
   "composer.heldBack.count": "{count} testi attendono qui. Questo è il più recente.",
   "composer.placeholder.gone": "Il riquadro non esiste più",
   "composer.placeholder.readOnly": "Sola lettura: non autorizzato",

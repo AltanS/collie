@@ -189,6 +189,9 @@ export const ko: Dictionary = {
   "settings.wideLayout.off": "끄기",
   "settings.wideLayout.hint":
     "자동은 화면 너비가 600 px 이상이고 높이가 480 px 이상일 때 사이드바와 창 열을 표시합니다. 끄기는 모든 곳에서 스마트폰 레이아웃을 유지합니다.",
+  "settings.enterSends.title": "Enter로 전송",
+  "settings.enterSends.hint":
+    "물리 키보드에서는 Enter가 메시지를 전송하고 Shift+Enter가 줄바꿈을 합니다. 화면 키보드에서는 Enter가 항상 줄바꿈을 합니다.",
   "settings.paneNav.title": "창 탐색",
   "settings.paneNav.twoFingers": "두 손가락",
   "settings.paneNav.joystick": "조이스틱",
@@ -478,6 +481,9 @@ export const ko: Dictionary = {
   "composer.heldBack.kept": "전송되지 않고 여기에 보관됨: {text}",
   "composer.heldBack.putBack": "되돌리기",
   "composer.heldBack.boxFull": "먼저 입력란을 비운 뒤 ‘되돌리기’를 탭하세요.",
+  "composer.enterOffer.text": "키보드를 사용 중이세요? Enter로 전송할 수 있습니다.",
+  "composer.enterOffer.turnOn": "켜기",
+  "composer.enterOffer.dismissAria": "Enter 안내 닫기",
   "composer.heldBack.count": "{count}개의 텍스트가 여기서 대기 중입니다. 이것이 가장 최근 것입니다.",
   "composer.placeholder.gone": "창이 닫혔습니다",
   "composer.placeholder.readOnly": "읽기 전용: 권한 없음",

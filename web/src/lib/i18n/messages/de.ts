@@ -199,6 +199,9 @@ export const de: Dictionary = {
   "settings.wideLayout.off": "Aus",
   "settings.wideLayout.hint":
     "Automatisch zeigt die Seitenleiste und Pane-Spalten auf einem Bildschirm an, der mindestens 600 px breit und 480 px hoch ist. Aus behält das Telefon-Layout überall bei.",
+  "settings.enterSends.title": "Enter sendet",
+  "settings.enterSends.hint":
+    "Mit einer physischen Tastatur sendet Enter die Nachricht und Umschalt+Enter fügt eine neue Zeile ein. Mit der Bildschirmtastatur fügt Enter immer eine neue Zeile ein.",
   "settings.paneNav.title": "Pane-Navigation",
   "settings.paneNav.twoFingers": "Zwei Finger",
   "settings.paneNav.joystick": "Joystick",
@@ -493,6 +496,9 @@ export const de: Dictionary = {
   "composer.heldBack.kept": "Nicht gesendet, hier behalten: {text}",
   "composer.heldBack.putBack": "Zurücklegen",
   "composer.heldBack.boxFull": "Erst das Eingabefeld leeren, dann auf Zurücklegen tippen.",
+  "composer.enterOffer.text": "Du nutzt eine Tastatur? Enter kann senden.",
+  "composer.enterOffer.turnOn": "Einschalten",
+  "composer.enterOffer.dismissAria": "Enter-Angebot schließen",
   "composer.heldBack.count": "{count} Texte warten hier. Dies ist der neueste.",
   "composer.placeholder.gone": "Pane existiert nicht mehr",
   "composer.placeholder.readOnly": "Schreibgeschützt: Gerät nicht autorisiert",
