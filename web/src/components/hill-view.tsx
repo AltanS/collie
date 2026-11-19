@@ -15,7 +15,7 @@ import { ListGroup } from "@/components/ui/list-group";
 import { OneOf } from "@/components/ui/one-of";
 import { PresenceList } from "@/components/ui/presence";
 import { BottomSheet } from "@/components/ui/sheet";
-import { useArm } from "@/hooks/use-arm";
+import { useArm, useDisarmOn } from "@/hooks/use-arm";
 import { useHillAnswer } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { HILL_PRIORITIES, type HillDecision, type HillState } from "@/lib/hill/wire";
@@ -189,7 +189,7 @@ function ClearButton({ count, control }: { count: number; control: HillClearCont
   const armedWords = tn("hill.clear.armed", count);
   const spoken = control.spoken ?? 0;
   // An arm is for the entries as they stood: a new count (another phone cleared, a row closed) drops it.
-  useEffect(() => disarm(), [count, disarm]);
+  useDisarmOn(count, disarm);
   // With open cards answered in their session, Clear asks which: the menu is the ask, so a row acts at once.
   if (spoken > 0 && control.onClearSpoken !== undefined) {
     const onClearSpoken = control.onClearSpoken;

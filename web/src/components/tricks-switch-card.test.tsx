@@ -14,6 +14,7 @@ import { tricksStore } from "@/lib/tricks/store";
 import type { WireTrickInfo } from "@/lib/tricks/schema";
 import { hillDecision, trickDecision } from "@/test/hill-fixtures";
 import { server } from "@/test/setup";
+import { tapAtFirstPaint } from "@/test/tap-at-first-paint";
 
 // The switch for tricks as a whole (bridge/tricks/feature-switch.ts), a card in Settings, Experiments: drawn from the
 // snapshot's `tricksOff`, a tap that writes `POST /api/tricks/switch`, the armed second tap while a trick's
@@ -61,6 +62,16 @@ describe("the tricks switch card", () => {
     const onToggle = vi.fn();
     render(<TricksSwitchCard on disabled onToggle={onToggle} />);
     expect(screen.getByRole("switch", { name: LABEL })).toBeDisabled();
+  });
+});
+
+describe("the first tap on the tricks switch right after the card appears", () => {
+  it("still arms it: the mount effect must not drop the arm a tap in the first paint set", async () => {
+    const onToggle = vi.fn();
+    await tapAtFirstPaint(<TricksSwitchCard on disabled={false} waiting={3} onToggle={onToggle} />, '[role="switch"]', (host) => {
+      expect(onToggle).not.toHaveBeenCalled();
+      expect(host.querySelector('[data-line="armed"]')).not.toBeNull();
+    });
   });
 });
 
