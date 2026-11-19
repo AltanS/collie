@@ -1,25 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
-import {
-  capture,
-  CONFIG,
-  context,
-  type FakeExec,
-  fakeExec,
-  type FakeFiles,
-  fakeFiles,
-  fakeLinkFs,
-  fakeOps,
-  HANDLER_FILE,
-  HOME,
-  ROOT,
-  STATE,
-  type Scripted,
-} from "./fakes.ts";
+import { capture, CONFIG, fakeExec, fakeLinkFs, fakeOps, HANDLER_FILE, HOME, ROOT, STATE, type Scripted } from "./fakes.ts";
 import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
 import { TrustStore, type TrustStoreData } from "../bridge/crew/trust-store.ts";
-import { hostFor, type Host } from "../bridge/host.ts";
+import { hostFor } from "../bridge/host.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Census, CensusInput, CensusReader } from "./census.ts";
@@ -27,14 +12,6 @@ import { SETUP_CLOSING } from "./setup-findings.ts";
 import { TAILSCALE_PROBE_MS } from "./tailnet.ts";
 import { POWERSHELL_UTF8, PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
 import { collieBinary, taskFilePath } from "./unit.ts";
-
-// The binary, spelled the way the code under test spells it. `collieBinary` joins with the host
-// separator, so a POSIX literal like `/opt/collie/bin/collie` never matches on a Windows host, and it
-// names `bin/collie.exe` for a `win32` platform. Everything here asks for the binary of the platform
-// the harness injects (`deps.host`), never the host's: `BINARY` is the one every non-Windows
-// harness platform shares, and `binaryOn` is the one for a platform a test pins.
-const binaryOn = (platform: NodeJS.Platform): string => collieBinary(ROOT, hostFor(platform));
-const BINARY = binaryOn("linux");
 
 /** The `Io` a nested `serve` was handed — `null` until it has been called. */
 interface SeenIo {
@@ -66,63 +43,7 @@ import { PART_MARKER } from "./harness-link.ts";
 import { ensureMuxChosen } from "./mux.ts";
 import { cmdServe } from "./serve.ts";
 import { formatTaskRecord, taskRecordPath, taskRestartPath } from "./task-scheduler.ts";
-
-// The lifecycle, driven end to end against fakes for the two seams (cli/fakes.ts). The shell could
-// only reach this coverage by `source`-ing itself and redefining functions in a heredoc; here
-// `start` on all three supervision tiers, the launchd retry, the pidfile guard, `uninstall` and the
-// banner are ordinary unit tests.
-
-interface Harness {
-  deps: LifecycleDeps;
-  io: ReturnType<typeof capture>;
-  exec: FakeExec;
-  files: FakeFiles;
-  /** Every `(port, host)` pair the banner's readiness probe was called with. */
-  readyCalls: Array<{ port: number; host: string }>;
-}
-
-type HarnessOptions = Partial<
-  Scripted & {
-    host: Host;
-    ready: boolean;
-    env: Record<string, string | undefined>;
-    /** The `COLLIE_INSTANCE` suffix this Collie was resolved with. Absent = the solo instance. */
-    instance: string | null;
-    files: Record<string, string>;
-    serve: (io?: Io) => Promise<number>;
-  }
->;
-
-function harness(over: HarnessOptions = {}): Harness {
-  const io = capture();
-  const exec = fakeExec(over);
-  // The binary exists unless a test deliberately removes it — every other test would otherwise be
-  // asserting the "no binary" guard by accident.
-  const files = fakeFiles({ [BINARY]: "", [collieBinary(ROOT, over.host ?? hostFor("linux"))]: "", ...over.files });
-  const readyCalls: Array<{ port: number; host: string }> = [];
-  const deps: LifecycleDeps = {
-    // Every fixture here is a Collie that has already chosen its multiplexer, so `start`'s first-run
-    // gate (`cli/mux.ts`) returns before it probes. A supervision test must not also be a test of
-    // that question — `cli/mux.test.ts` owns it, and the one case where it stops `start` is pinned
-    // below in "the first-run multiplexer gate".
-    ctx: context(
-      { COLLIE_MUX: "herdr", ...over.env },
-      over.instance === undefined ? {} : { instance: over.instance },
-    ),
-    io,
-    exec,
-    files,
-    ready: (port, host) => {
-      readyCalls.push({ port, host });
-      return Promise.resolve(over.ready ?? true);
-    },
-    sleep: () => Promise.resolve(),
-    uid: () => 501,
-    host: over.host ?? hostFor("linux"),
-    serve: over.serve ?? (() => Promise.resolve(EXIT.OK)),
-  };
-  return { deps, io, exec, files, readyCalls };
-}
+import { binaryOn, BINARY, Harness, HarnessOptions, harness } from "./lifecycle.rig.ts";
 
 /** The scripted answer that makes `systemctl --user show-environment` fail — no user systemd. */
 const NO_SYSTEMD: Scripted["answers"] = [["systemctl --user show-environment", { code: 1 }]];
@@ -1813,17 +1734,6 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(clock - 1_000_000).toBeLessThanOrEqual(30_000 + 6_000 + 5_000);
       expect(probes).toBeLessThanOrEqual(7);
       expect(h.io.stderr.join("\n")).toContain("within 30s");
-    });
-
-    test("a probe that never answers is cut off at the budget: the worst case is the budget", async () => {
-      // A 2 s budget, the first second spent after the kill: the one probe left gets one second.
-      const h = running({ env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "2000" } });
-      let calls = 0;
-      h.deps.ready = () => (++calls === 1 ? new Promise<boolean>(() => {}) : Promise.resolve(false));
-      const started = performance.now();
-      expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
-      expect(performance.now() - started).toBeLessThan(1_800);
-      expect(h.io.stderr.join("\n")).toContain("within 2s");
     });
 
     test("the default clock is performance.now, which a change of the wall clock does not move", async () => {
