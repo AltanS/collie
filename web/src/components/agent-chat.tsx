@@ -152,7 +152,8 @@ import { composerLayout } from "@/lib/composer-layout";
 import { useTabLook } from "@/lib/tab-look";
 import { pickTabPane } from "@/lib/tab-pane-memory";
 import { zoomPillShown } from "@/lib/zoom-pill";
-import { paneRowKey, paneScope } from "@/lib/hosts";
+import { CrossfadeText } from "@/components/ui/crossfade-text";
+import { paneRowKey, paneScope, paneSpaceKey } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
 import { useAccounts } from "@/lib/accounts";
 import { openReport, signalTrouble, unreadDialogReport } from "@/lib/report/store";
@@ -2696,7 +2697,7 @@ export function AgentChat({
                     )}
                   </div>
                   <span data-slot="pane-name" data-glide="name" className="block truncate font-semibold leading-5">
-                    {name}
+                    <CrossfadeText text={name} identity={paneRowKey(agent)} />
                   </span>
                   {experimental && <ExperimentalBadge className="shrink-0" />}
                 </div>
@@ -2742,7 +2743,7 @@ export function AgentChat({
                     className="min-w-0 shrink-[3] truncate text-[11px] leading-3 text-muted-foreground"
                   >
                     {/* In a strip the space header names the space, so the line keeps only the pane's own. */}
-                    {headerLine ?? (inStrip ? null : workspace)}
+                    {headerLine ?? (inStrip ? null : <CrossfadeText text={workspace} identity={paneSpaceKey(agent)} />)}
                   </span>
                   {/* The branch the pane's folder is on, after the workspace and in the same 12px
                       line box, so the 36px block above holds with or without it. The workspace gives

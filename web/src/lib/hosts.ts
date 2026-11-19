@@ -33,6 +33,11 @@ export function spaceKey(host: string | undefined, workspaceId: string): string 
   return `${host ?? ""}${KEY_SEP}${workspaceId}`;
 }
 
+/** The key for one tab on one machine: a tab id (`w1:t1`) is unique only within one host, like a workspace id. */
+export function tabKey(host: string | undefined, tabId: string): string {
+  return `tab${KEY_SEP}${host ?? ""}${KEY_SEP}${tabId}`;
+}
+
 /** The same key, read off a pane. */
 export function paneSpaceKey(pane: { host?: string; workspaceId: string }): string {
   return spaceKey(pane.host, pane.workspaceId);

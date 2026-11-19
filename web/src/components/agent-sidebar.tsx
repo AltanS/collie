@@ -11,7 +11,7 @@ import { MatchText } from "@/components/ui/match-text";
 import { SectionHeader } from "@/components/section-header";
 import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
 import { pinnedRows, shownGroups } from "@/lib/dash-view";
-import { paneRowKey } from "@/lib/hosts";
+import { paneRowKey, paneSpaceKey, tabKey } from "@/lib/hosts";
 import { groupPanesByWorkspace } from "@/lib/pane-groups";
 import { inRankOrder, type PaneOrder } from "@/lib/pane-order";
 import {
@@ -511,6 +511,7 @@ export function ThreadSidebar({
                   key={g.key}
                   id={`switch-ws-${g.key.replace(/[^A-Za-z0-9_-]/gu, "_")}`}
                   label={g.heading ?? g.label}
+                  fade={g.key}
                   tone={roomy ? "quiet" : "strong"}
                   mark={worstTriage(g.panes) === "needs" ? "blocked" : undefined}
                   trailing={<StatusCounts panes={g.panes} className="shrink-0 text-[11px] text-muted-foreground" />}
@@ -584,6 +585,7 @@ function Section({
   id,
   headingId,
   label,
+  fade,
   count,
   mark,
   dot,
@@ -598,6 +600,8 @@ function Section({
   /** The heading's id. Given, the section takes its name from it (`aria-labelledby`). */
   headingId?: string;
   label: string;
+  /** The Space this section heads, when its label is a Space's name: a rename fades ({@link SectionHeader}). */
+  fade?: string;
   count?: number;
   /** The status mark beside the header. A workspace heading carries one only while a pane inside
    *  needs you, as on the dashboard. */
@@ -618,6 +622,7 @@ function Section({
       <SectionHeader
         level={3}
         label={label}
+        {...(fade !== undefined ? { fade } : {})}
         className="px-2"
         {...(headingId !== undefined ? { id: headingId } : {})}
         {...(count !== undefined ? { count } : {})}
@@ -720,7 +725,7 @@ function PaneRow({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline gap-1">
           <span className={cn("min-w-0 truncate text-sm font-medium", roomy && "leading-5", roomy && !active && "text-foreground")}>
-            <MatchText text={name} ranges={marks?.name} />
+            <MatchText text={name} ranges={marks?.name} fade={paneRowKey(pane)} />
           </span>
           <PaneBadge pane={pane} className={cn("shrink-0 self-center", roomy && "text-muted-foreground")} />
           {/* A finished pane nobody opened: the dashboard's square, after the name, so a row agrees with
@@ -746,7 +751,7 @@ function PaneRow({
           ) : (
             <>
               <span className="max-w-[45%] shrink truncate">
-                <MatchText text={space} ranges={marks?.space} />
+                <MatchText text={space} ranges={marks?.space} fade={paneSpaceKey(pane)} />
               </span>
               {tab && (
                 <>
@@ -762,7 +767,7 @@ function PaneRow({
                       tab.positional && "text-muted-foreground/70",
                     )}
                   >
-                    <MatchText text={tab.text} ranges={marks?.tab} />
+                    <MatchText text={tab.text} ranges={marks?.tab} fade={tabKey(pane.host, pane.tabId)} />
                   </span>
                 </>
               )}

@@ -188,7 +188,8 @@ describe("AgentCard's unseen marker", () => {
       />,
     );
     const title = container.querySelector<HTMLElement>('[data-slot="agent-row-title"]')!;
-    const name = within(title).getByText("billing webhooks");
+    // The name is a truncating span; its words sit one crossfade span inside it (ui/crossfade-text.tsx).
+    const name = within(title).getByText("billing webhooks").closest<HTMLElement>('[data-glide="name"]')!;
     const dot = within(title).getByRole("img", { name: "unseen" });
     const meta = title.querySelector('[data-slot="pane-meta"]')!;
     // The dot is the name's very next element sibling…

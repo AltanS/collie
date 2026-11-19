@@ -9,6 +9,7 @@ import {
   STRIP_TAP_TARGET_SQUARE,
 } from "@/components/ui/labelled-strip";
 import { SpaceActionsSheet } from "@/components/space-actions-sheet";
+import { spaceKey } from "@/lib/hosts";
 import { cn } from "@/lib/utils";
 import { worstTriage } from "@/lib/triage";
 import { useMuxCapability, useMuxDeclared, useMuxHasSpaces } from "@/lib/mux-capability";
@@ -133,6 +134,7 @@ export function SpaceStrip({
             <Chip
               key={w.workspaceId}
               label={w.label}
+              fade={spaceKey(host, w.workspaceId)}
               active={selected === w.workspaceId}
               ring={w.focused}
               // Same dot language as the tab strip directly below it, and as the herd list. Host-

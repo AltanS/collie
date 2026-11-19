@@ -888,6 +888,7 @@ export function AgentList({
         <section key={g.key} id={groupDomId(g.key)} className="flex scroll-mt-4 flex-col gap-2">
           <SectionHeader
             label={g.heading ?? g.label}
+            fade={g.key}
             tone="strong"
             mark={urgentMark(g)}
             className="min-h-7"

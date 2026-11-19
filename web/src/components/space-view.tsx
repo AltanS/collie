@@ -1,4 +1,6 @@
 import { groupPanesByTab } from "@/lib/spaces";
+import { CrossfadeText } from "@/components/ui/crossfade-text";
+import { spaceKey, tabKey } from "@/lib/hosts";
 import { tabTitle } from "@/lib/pane-name";
 import type { AgentView, TabView, WorkspaceView } from "@/lib/types";
 import { AgentCard } from "./agent-card";
@@ -45,7 +47,9 @@ export function SpaceView({
   return (
     <div className="flex flex-col gap-5 px-4 py-4">
       <div>
-        <h2 className="truncate text-sm font-semibold">{workspace.label}</h2>
+        <h2 className="truncate text-sm font-semibold">
+          <CrossfadeText text={workspace.label} identity={spaceKey(host, workspace.workspaceId)} />
+        </h2>
         <p className="text-xs text-muted-foreground">
           {tn("space.view.tabCount", workspace.tabCount)} ·{" "}
           {tn("space.view.paneCount", workspace.paneCount)}
@@ -71,10 +75,11 @@ export function SpaceView({
                     </>
                   );
                 }
+                const tabId = tabKey(host, g.tabId);
                 return title.positional ? (
                   <span className="text-muted-foreground/70">{title.text}</span>
                 ) : (
-                  g.label
+                  <CrossfadeText text={g.label} identity={tabId} />
                 );
               })()}
             </h3>
