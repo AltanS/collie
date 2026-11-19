@@ -63,7 +63,15 @@ import {
   type MuxTabRequest,
   type MuxWatchOptions,
 } from "../types.ts";
-import { resolveRexBinary, SpawnRexExec, TIMED_OUT_CODE, type RexExec, type RexRunResult } from "./exec.ts";
+import {
+  noRexBinaryMessage,
+  resolveRexBinary,
+  rexBinaryCandidates,
+  SpawnRexExec,
+  TIMED_OUT_CODE,
+  type RexExec,
+  type RexRunResult,
+} from "./exec.ts";
 import { REX_UNSENDABLE_KEYS, toRexKey } from "./keys.ts";
 import { REX_LOGO_SVG } from "./logo.ts";
 import { rexBeaconMatcher } from "./markers.ts";
@@ -801,8 +809,10 @@ function contentDigest(text: string): string {
 }
 
 function execFor(target: MuxTarget): SpawnRexExec {
-  const binary = resolveRexBinary(target.options[REX_BINARY_OPTION] ?? "");
-  return new SpawnRexExec(binary, target.endpoint, target.timeoutMs || DEFAULT_REX_TIMEOUT_MS);
+  const configured = target.options[REX_BINARY_OPTION] ?? "";
+  const candidates = rexBinaryCandidates();
+  const binary = resolveRexBinary(configured, undefined, candidates);
+  return new SpawnRexExec(binary, target.endpoint, target.timeoutMs || DEFAULT_REX_TIMEOUT_MS, noRexBinaryMessage(configured, candidates));
 }
 
 export const rexMuxFactory: MuxAdapterFactory = {

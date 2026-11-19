@@ -102,7 +102,16 @@ export function defaultRexSocket(
   return `/run/user/${String(uid)}/rex/server.sock`;
 }
 
-export const NO_REX_BINARY = "no rex binary found — set COLLIE_REX_BIN to its absolute path";
+/**
+ * Why there is no rex to run, in words an operator can act on: the value of `COLLIE_REX_BIN` when it
+ * names one that is not there, else every path that was tried. A Herdr plugin action gets no login
+ * shell, so `PATH` is never part of the search, and the sentence says where the search did look.
+ */
+export function noRexBinaryMessage(configured: string, candidates: readonly string[]): string {
+  const named = configured.trim();
+  if (named !== "") return `COLLIE_REX_BIN="${named}" is not an absolute path to a file that is there`;
+  return `no rex binary at ${candidates.join(", ")}; set COLLIE_REX_BIN to its absolute path`;
+}
 export const TIMED_OUT_CODE = 143;
 /** The code {@link SpawnRexExec.run} answers with when there is no binary to run. */
 export const NO_BINARY_CODE = 127;
@@ -173,10 +182,12 @@ export class SpawnRexExec implements RexExec {
     private readonly binary: string | null,
     private readonly endpoint: string,
     private readonly timeoutMs: number,
+    /** What a call answers when {@link binary} is null; see {@link noRexBinaryMessage}. */
+    private readonly noBinary: string = noRexBinaryMessage("", rexBinaryCandidates()),
   ) {}
 
   async run(args: readonly string[], stdin?: string): Promise<RexRunResult> {
-    if (this.binary === null) return { code: NO_BINARY_CODE, stdout: "", stderr: NO_REX_BINARY };
+    if (this.binary === null) return { code: NO_BINARY_CODE, stdout: "", stderr: this.noBinary };
     const child = Bun.spawn([this.binary, ...globalArgs(this.endpoint), ...args], {
       stdin: stdin === undefined ? "ignore" : new TextEncoder().encode(stdin),
       stdout: "pipe",
@@ -225,7 +236,8 @@ export class SpawnRexExec implements RexExec {
 
   events(handlers: RexStreamHandlers): RexStreamClient {
     if (this.binary === null) {
-      queueMicrotask(() => handlers.onExit(NO_REX_BINARY));
+      const why = this.noBinary;
+      queueMicrotask(() => handlers.onExit(why));
       return { kill: () => undefined };
     }
     // `--all` is the one stream that carries session creation, every session's structure AND every

@@ -7,6 +7,8 @@ import {
   CALL_OUTPUT_CAP,
   CAPTURE_OUTPUT_CAP,
   defaultRexSocket,
+  NO_BINARY_CODE,
+  noRexBinaryMessage,
   OUTPUT_CAPPED_CODE,
   outputCapFor,
   pumpLines,
@@ -134,5 +136,24 @@ describe("REX_BIN_DIR counts only as an absolute folder", () => {
 
   test("an absolute one comes first", () => {
     expect(rexBinaryCandidates("/home/o", " /usr/bin ")[0]).toBe("/usr/bin/rex");
+  });
+});
+
+describe("the no rex binary message says where it looked", () => {
+  test("it lists every path tried and names COLLIE_REX_BIN", () => {
+    expect(noRexBinaryMessage("", ["/home/o/.local/bin/rex", "/usr/bin/rex"])).toBe(
+      "no rex binary at /home/o/.local/bin/rex, /usr/bin/rex; set COLLIE_REX_BIN to its absolute path",
+    );
+  });
+
+  test("a COLLIE_REX_BIN that is not there is named", () => {
+    expect(noRexBinaryMessage(" rex ", ["/usr/bin/rex"])).toBe('COLLIE_REX_BIN="rex" is not an absolute path to a file that is there');
+  });
+
+  test("a call with no binary answers that message, and so does the event stream", async () => {
+    const exec = new SpawnRexExec(null, "", 1_000, "no rex binary at /x/rex; set COLLIE_REX_BIN to its absolute path");
+    expect(await exec.run(["ls"])).toEqual({ code: NO_BINARY_CODE, stdout: "", stderr: "no rex binary at /x/rex; set COLLIE_REX_BIN to its absolute path" });
+    const reason = await new Promise<string>((resolve) => exec.events({ onLine: () => undefined, onExit: resolve }));
+    expect(reason).toBe("no rex binary at /x/rex; set COLLIE_REX_BIN to its absolute path");
   });
 });
