@@ -18,11 +18,14 @@ on:
     - cron: "15 2 * * *" # 02:15 UTC, on the default branch
   workflow_dispatch:
 
-# A new push to a PR supersedes the old run — don't burn a runner on the stale one. The event is in
-# the group so a nightly run on `main` never cancels the push run of a release commit.
+# A new push to a PR supersedes the old run — don't burn a runner on the stale one. A push run is
+# NEVER cancelled: the `changes` job diffs `before..head` of its own push, so a cancelled push run
+# would take its changed paths with it, and no path-gated job would wake for them before the nightly
+# run. The event is in the group so a nightly run on `main` never cancels the push run of a release
+# commit.
 concurrency:
   group: ci-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Which of the heavy parts does this run need? About 15 s. The reading is `scripts/ci-changes.ts`;
