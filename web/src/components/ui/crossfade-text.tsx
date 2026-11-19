@@ -13,8 +13,10 @@ import { cn } from "@/lib/utils";
 // every change under `prefers-reduced-motion`.
 //
 // NO SHIFT. The new text stays in the flow, so the box takes its new width at once. The old text is
-// an out-of-flow copy pinned to the start of the same box (`absolute`), so it holds no room and nothing
-// beside or below it moves. The drift is 2 px (`top` on a relative inline copy), never a reflow.
+// an out-of-flow copy (`absolute`) with NO offsets of its own, so it stays at its static position: the start
+// of the same line box, with the same line height. A `top-0 left-0` put its line box at the top of the
+// inline box's content area instead, half a leading above the new words (measured, 1 px). It holds no room
+// and nothing beside or below it moves. The fade is opacity only, no drift: the two copies share one line (measured in an engine, e2e/rename-fade.spec.ts).
 //
 // TRUNCATION. Both copies are inline spans in the caller's own run, so a `truncate` or `line-clamp`
 // parent clips them (the old copy is one non-wrapping line, clipped by the parent's `overflow`).
@@ -70,11 +72,11 @@ export function CrossfadeText({ text, identity, className }: { text: string; ide
   return (
     <span data-slot="crossfade-text" data-state={from === null ? "still" : "fading"} className={cn("relative", className)}>
       {from !== null && (
-        <span key={`out-${String(beat)}`} aria-hidden data-slot="crossfade-out" className="crossfade-out pointer-events-none absolute top-0 left-0 whitespace-nowrap">
+        <span key={`out-${String(beat)}`} aria-hidden data-slot="crossfade-out" className="crossfade-out pointer-events-none absolute whitespace-nowrap">
           {from}
         </span>
       )}
-      <span key={`in-${String(beat)}`} data-slot="crossfade-in" className={cn(from !== null && "crossfade-in relative")}>
+      <span key={`in-${String(beat)}`} data-slot="crossfade-in" className={cn(from !== null && "crossfade-in")}>
         {view.text}
       </span>
     </span>
