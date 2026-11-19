@@ -102,3 +102,129 @@ test("a renamed pane fades, takes no room, and still ends in an ellipsis", async
   expect(after.ellipsis).toBe(true);
   expect(after.pageOverflow).toBe(false);
 });
+
+// THE OLD COPY SITS ON THE NEW WORDS (operator, 2026-11-19: "the words drop below the tab label"). The
+// old copy is `absolute` inside an inline `relative` span, and a label that sits in a grid cell, a flex
+// item or beside a reserved copy could put it somewhere else than the new words. Four surfaces, read in
+// the engine during the fade: the old copy's top and left agree with the new copy's within half a pixel,
+// and the old copy does not reach below the box that holds the label. `still` is read with every
+// animation cancelled (the layout alone), `moving` on the fade's first frame (a 2px drift once put the new words 2px off the old ones there).
+
+interface Rect {
+  top: number;
+  left: number;
+  bottom: number;
+}
+interface PairSample {
+  text: string;
+  moving: { out: Rect; in: Rect };
+  still: { out: Rect; in: Rect; host: Rect };
+}
+
+declare global {
+  interface Window {
+    recordPair?: (sample: PairSample) => void;
+  }
+}
+
+/** The gap between two edges, to a hundredth of a pixel. */
+function gap(a: number, b: number): number {
+  return Math.round((a - b) * 100) / 100;
+}
+
+interface Surface {
+  name: string;
+  url: string;
+  /** The selector the outgoing copy sits under. */
+  scope: string;
+  /** The snapshot before the rename and after it. */
+  snapshot: (renamed: boolean) => typeof fixtureSnapshot;
+}
+
+const withTab = (label: string) => ({
+  ...fixtureSnapshot,
+  tabs: fixtureSnapshot.tabs.map((t) => (t.tabId === "w2:t1" ? Object.assign({}, t, { label }) : t)),
+});
+const withSpace = (label: string) => ({
+  ...fixtureSnapshot,
+  workspaces: fixtureSnapshot.workspaces.map((w) => (w.workspaceId === "w2" ? Object.assign({}, w, { label }) : w)),
+  agents: fixtureSnapshot.agents.map((a) => (a.workspaceId === "w2" ? Object.assign({}, a, { workspaceLabel: label }) : a)),
+});
+const withPane = (label: string) => ({
+  ...fixtureSnapshot,
+  agents: fixtureSnapshot.agents.map((a) => (a.paneId === "w2:p1" ? Object.assign({}, a, { paneLabel: label }) : a)),
+});
+
+const SURFACES: Surface[] = [
+  { name: "a tab label in the tab strip", url: "/space/w2", scope: 'nav[aria-label="Tabs"]', snapshot: (r) => withTab(r ? "docs" : "code") },
+  { name: "the Chat header's name", url: `/pane/${encodeURIComponent("w2:p1")}`, scope: '[data-slot="pane-name"]', snapshot: (r) => withPane(r ? "wiring" : "plumbing") },
+  { name: "a dashboard row's name", url: "/", scope: '[data-slot="agent-row-title"]', snapshot: (r) => withPane(r ? "wiring" : "plumbing") },
+  { name: "a Space chip", url: "/space/w2", scope: 'nav[aria-labelledby]', snapshot: (r) => withSpace(r ? "workshop" : "lab") },
+];
+
+for (const surface of SURFACES) {
+  test(`${surface.name}: the old copy sits on the new words`, async ({ page }, testInfo) => {
+    let renamed = false;
+    await page.route("**/api/snapshot", (route) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify(surface.snapshot(renamed)) }),
+    );
+    const samples: PairSample[] = [];
+    await page.exposeFunction("recordPair", (sample: PairSample) => {
+      samples.push(sample);
+    });
+    await page.addInitScript((scope) => {
+      let taken = false;
+      new MutationObserver(() => {
+        const record = window.recordPair;
+        const out = document.querySelector<HTMLElement>(`${scope} [data-slot="crossfade-out"]`);
+        if (taken || record === undefined || out === null) return;
+        const wrap = out.parentElement;
+        const fresh = wrap?.querySelector<HTMLElement>('[data-slot="crossfade-in"]');
+        if (wrap === null || wrap === undefined || fresh === null || fresh === undefined) return;
+        taken = true;
+        // The rect of the WORDS (a range over the copy), not of the element: an inline span's box is its
+        // font's content area and a blockified one is its line box, so the two boxes differ by half the
+        // leading while the glyphs sit on one line.
+        const words = () =>
+          [out, fresh].map((el) => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const r = range.getBoundingClientRect();
+            return { top: r.top, left: r.left, bottom: r.bottom };
+          });
+        const [movingOut, movingIn] = words();
+        for (const el of [out, fresh]) for (const a of el.getAnimations()) a.cancel();
+        const [stillOut, stillIn] = words();
+        const host = (out.closest("button") ?? wrap.parentElement ?? wrap).getBoundingClientRect();
+        record({
+          text: out.textContent ?? "",
+          moving: { out: movingOut!, in: movingIn! },
+          still: { out: stillOut!, in: stillIn!, host: { top: host.top, left: host.left, bottom: host.bottom } },
+        });
+      }).observe(document, { childList: true, subtree: true });
+    }, surface.scope);
+    await page.goto(surface.url);
+    await expect(page.locator(surface.scope).first()).toBeVisible();
+    await page.waitForTimeout(CROSSFADE_QUIET_MS + 200);
+    renamed = true;
+    await expect.poll(() => samples.length, { timeout: 30_000 }).toBe(1);
+    const s = samples[0]!;
+    testInfo.annotations.push({
+      type: "offsets",
+      description: JSON.stringify({
+        old: s.text,
+        movingDTop: gap(s.moving.in.top, s.moving.out.top),
+        movingDLeft: gap(s.moving.in.left, s.moving.out.left),
+        stillDTop: gap(s.still.in.top, s.still.out.top),
+        stillDLeft: gap(s.still.in.left, s.still.out.left),
+        outBottomPastHost: gap(s.still.out.bottom, s.still.host.bottom),
+      }),
+    });
+    console.log(`OFFSETS ${testInfo.project.name} ${surface.name} ${JSON.stringify(testInfo.annotations.at(-1)?.description)}`);
+    expect(Math.abs(s.still.out.top - s.still.in.top)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(s.still.out.left - s.still.in.left)).toBeLessThanOrEqual(0.5);
+    expect(s.still.out.bottom).toBeLessThanOrEqual(s.still.host.bottom + 0.5);
+    // Opacity only, no drift: even on the first frame the two copies share one line.
+    expect(Math.abs(s.moving.out.top - s.moving.in.top)).toBeLessThanOrEqual(0.5);
+  });
+}

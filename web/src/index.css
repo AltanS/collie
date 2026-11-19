@@ -1895,8 +1895,8 @@ svg[data-mark].mark-steps .ct-tw {
 
 /* THE NAME FADE (components/ui/crossfade-text.tsx). A renamed session, tab or Space: the new words fade in
    in place (the flow keeps them, so the box takes its new width at once) while the old words, an
-   out-of-flow copy, fade out over them. Opacity and a 2px `top` drift on a relative or absolute inline
-   run, so no neighbour moves. 200ms, ease-out. Reduced motion: no animation, and the primitive draws
+   out-of-flow copy, fade out over them. Opacity only: a drift read as the words dropping below the
+   label (operator, 2026-11-19), and the two copies share one line. 200ms, ease-out. Reduced motion: no animation, and the primitive draws
    no old copy. */
 .crossfade-in {
   animation: crossfade-in 200ms ease-out both;
@@ -1907,21 +1907,17 @@ svg[data-mark].mark-steps .ct-tw {
 @keyframes crossfade-in {
   from {
     opacity: 0;
-    top: 2px;
   }
   to {
     opacity: 1;
-    top: 0;
   }
 }
 @keyframes crossfade-out {
   from {
     opacity: 1;
-    top: 0;
   }
   to {
     opacity: 0;
-    top: -2px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
