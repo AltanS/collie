@@ -4,7 +4,7 @@ import { Icon } from "@/components/icons/icon";
 import { FeatureTokenChip } from "@/components/token-use-label";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { useArm } from "@/hooks/use-arm";
+import { useArm, useDisarmOn } from "@/hooks/use-arm";
 import { useHillSwitch } from "@/hooks/use-hill-switch";
 import { useLocale } from "@/hooks/use-locale";
 import { useHillCount } from "@/lib/hill/store";
@@ -50,7 +50,7 @@ export function HillSwitchCard({ on, disabled, onToggle, waiting = 0 }: HillSwit
   useLocale();
   const { armed, tap, disarm } = useArm<"off">();
   // A position the switch reached by itself leaves no arm behind.
-  useEffect(() => disarm(), [on, disarm]);
+  useDisarmOn(on, disarm);
   const asks = armed === "off";
   // The slot of the armed note: reserved once a question waits, and kept while the card is drawn.
   const [reserved, setReserved] = useState(on && waiting > 0);

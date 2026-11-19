@@ -7,6 +7,7 @@ import { ARM_DWELL_MS, ARM_MS } from "@/lib/arm";
 import { HILL_ANSWERED_IN_SESSION, sortOpenDecisions, type HillDecision } from "@/lib/hill/wire";
 import { withHeaderHost } from "@/test/header-host";
 import { HILL_T0, hillDecision, trickDecision } from "@/test/hill-fixtures";
+import { tapAtFirstPaint } from "@/test/tap-at-first-paint";
 
 import { PRESENCE_MS, PRESENCE_REDUCED_MS } from "@/components/ui/presence";
 
@@ -291,6 +292,17 @@ describe("the Hill's header", () => {
     const calm = header(2, 0).querySelector('[data-slot="hill-mark"]')!;
     expect(calm.className).not.toContain("status-working");
     expect(calm.className).toMatch(/\bborder-border\b/u);
+  });
+});
+
+describe("the first tap on Clear right after the group appears", () => {
+  it("still arms it: the mount effect must not drop the arm a tap in the first paint set", async () => {
+    const onClear = vi.fn();
+    const rows = [hillDecision({ state: "answered", closedAt: HILL_T0 }), hillDecision({ state: "dismissed", closedAt: HILL_T0 - 1 })];
+    await tapAtFirstPaint(<HillView open={[]} closed={rows} kept={NO_KEPT} clear={{ canWrite: true, busy: false, onClear }} renderCard={() => null} />, '[data-slot="hill-clear"]', (host) => {
+      expect(onClear).not.toHaveBeenCalled();
+      expect(host.querySelector('[data-slot="hill-clear"] [data-active]')?.textContent).toBe("Clear 2 entries?");
+    });
   });
 });
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 
-import { ignoreHeldEnter, useArm } from "@/hooks/use-arm";
+import { ignoreHeldEnter, useArm, useOnChange } from "@/hooks/use-arm";
 import { MOVE_CANCEL_PX, useLongPress } from "@/hooks/use-long-press";
 import { APPROVE_HOLD_MS, HOLD_BACK_MS } from "@/lib/arm";
 import { beginHold, endHold } from "@/lib/hold-flag";
@@ -169,11 +169,12 @@ export function useApproveHold({ enabled, resetKey, onApprove }: ApproveHoldOpti
   }, [cancel, unlisten]);
 
   // A changed card (another digest), or one that takes no answer now, ends a hold and an arm.
-  useEffect(() => {
+  // Not on mount: a press that lands before the mount effect is flushed would be cancelled by it.
+  useOnChange(JSON.stringify([enabled, resetKey]), () => {
     epoch.current += 1;
     cancel();
     disarm();
-  }, [enabled, resetKey, cancel, disarm]);
+  });
 
   // The button leaving the page ends the hold: no listener and no timer outlives it.
   useEffect(

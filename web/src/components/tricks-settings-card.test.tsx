@@ -747,6 +747,41 @@ describe("take changes without asking, and undo an automatic change (crew slice 
     clock.mockRestore();
   });
 
+  it("a first tap that lands in the same task as the row's first paint still arms Undo (the mount effect must not disarm it)", async () => {
+    const onUndo = vi.fn(async () => ({ ...LEGS, auto: true }));
+    renderWith(await storeWith([{ ...LEGS, auto: true, autoAt: "2026-11-08T07:41:00Z" }]), { onUndo });
+    // The rows wait for the official list's first answer, so the row is not there yet. Tap from a mutation
+    // observer: it runs right after the commit that draws the row, before React's own passive effects are
+    // flushed (those wait for a later task), the way a thumb can land before them.
+    const front = await new Promise<string | null | undefined>((resolve) => {
+      const watch = new MutationObserver(() => {
+        const undo = document.querySelector<HTMLElement>('[data-slot="trick-undo"]');
+        if (undo === null) return;
+        watch.disconnect();
+        fireEvent.click(undo);
+        resolve(undo.querySelector("[data-active]")?.textContent);
+      });
+      watch.observe(document.body, { childList: true, subtree: true });
+    });
+    expect(front).toBe("Undo?");
+    expect(onUndo).not.toHaveBeenCalled();
+  });
+
+  it("a newer automatic version drops an armed Undo: the new version needs its own first tap", async () => {
+    let reply: TricksReply = { rev: 5, tricks: [{ ...LEGS, auto: true, autoAt: "2026-11-08T07:41:00Z" }], parts: [], present: [] };
+    const store = createTricksStore({ fetchTricks: async () => reply, tapTrick: async () => Promise.reject(new Error("no tap")), mintRequestId: () => "r" });
+    await store.syncTricks(5);
+    renderWith(store, {});
+    await screen.findByText("Browser leg");
+    const front = () => rowOf("legs").querySelector('[data-slot="trick-undo"] [data-active]')?.textContent;
+    fireEvent.click(rowOf("legs").querySelector<HTMLElement>('[data-slot="trick-undo"]')!);
+    expect(front()).toBe("Undo?");
+    reply = { rev: 6, tricks: [{ ...LEGS, auto: true, autoAt: "2026-11-08T09:00:00Z" }], parts: [], present: [] };
+    await act(async () => void (await store.syncTricks(6)));
+    expect(rowOf("legs").querySelector('[data-line="auto-at"]')).toHaveTextContent("Updated 41 min ago, automatically.");
+    expect(front()).toBe("Undo");
+  });
+
   it("autoLine: only for a trick that is on with a time it can read", () => {
     expect(autoLine({ on: true, autoAt: "2026-11-08T09:38:00Z" }, NOW)).toBe("Updated 3 min ago, automatically.");
     expect(autoLine({ on: false, autoAt: "2026-11-08T09:38:00Z" }, NOW)).toBeNull();
