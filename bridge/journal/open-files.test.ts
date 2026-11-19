@@ -20,6 +20,26 @@ describe("lsofArgs", () => {
   test("asks for the pid's files and its group's, as a union: -p and -g with no -a", () => {
     expect(lsofArgs(10)).toEqual(["-nP", "-p", "10", "-g", "10", "-Fn"]);
     expect(lsofArgs(10)).not.toContain("-a");
+    expect(lsofArgs(10, "group")).toEqual(lsofArgs(10));
+  });
+
+  test("asks for the pid's own files only in the pid scope: -a -p and no -g", () => {
+    expect(lsofArgs(10, "pid")).toEqual(["-nP", "-a", "-p", "10", "-Fn"]);
+    expect(lsofArgs(10, "pid")).not.toContain("-g");
+  });
+
+  test("a reader asks the argument list of its own scope, the group by default", async () => {
+    const asked: string[][] = [];
+    const run: LsofRunner = async (args) => {
+      asked.push([...args]);
+      return "n/file";
+    };
+    await createOpenFiles(run)(10);
+    await createOpenFiles(run, Date.now, { scope: "pid" })(11);
+    expect(asked).toEqual([
+      ["-nP", "-p", "10", "-g", "10", "-Fn"],
+      ["-nP", "-a", "-p", "11", "-Fn"],
+    ]);
   });
 });
 

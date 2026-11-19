@@ -28,7 +28,7 @@ import {
   type Reduction,
   type RowReducer,
 } from "./reduce.ts";
-import { openFiles as defaultOpenFiles, pathsOf, type OpenFiles } from "./open-files.ts";
+import { pidOpenFiles as defaultOpenFiles, pathsOf, type OpenFiles } from "./open-files.ts";
 import { heldCandidates, LINUX_PROC, type ProcReader } from "./proc-locks.ts";
 import { readSqlite } from "./sqlite-read.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
