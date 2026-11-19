@@ -1196,7 +1196,9 @@ export class PeerClient {
     const encoding = res.headers.get("content-encoding");
     if (encoding !== null && encoding.trim() !== "" && encoding.trim().toLowerCase() !== "identity") {
       await res.body?.cancel().catch(() => undefined);
-      return this.fail({ state: "unreachable", reason: `${route}: the peer answered with content-encoding ${encoding.slice(0, 32)}, which the lead does not decode` });
+      // The member's value stays out of the reason: a header may hold any byte from 0x80 up (a C1 control
+      // such as U+009B among them), and this reason reaches the journal and the phone's crew status.
+      return this.fail({ state: "unreachable", reason: `${route}: the peer answered compressed, which the lead does not decode` });
     }
 
     // ── Version first, before status and before the body ─────────────────────

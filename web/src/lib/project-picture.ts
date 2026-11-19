@@ -425,12 +425,14 @@ export function rememberPanePictures(list: readonly Pick<AgentView, "paneId" | "
     if (oldest === undefined) break;
     next.delete(oldest);
   }
-  // A retry for a picture no pane shows any more stops here.
+  // A retry for a picture no pane shows any more stops here, and its failure is forgotten: a member that
+  // names a new version on every poll would otherwise add one entry each time, without end.
   const shown = new Set(list.flatMap((pane) => {
     const version = panePicture(pane);
     return version === null ? [] : [copyKey(pane.host, version)];
   }));
   clearRetries((k) => !shown.has(k));
+  for (const key of failed.keys()) if (!shown.has(key)) failed.delete(key);
   const same = next.size === panes.size && [...next].every(([k, v]) => panes.get(k) === v);
   if (same) return;
   panes = next;

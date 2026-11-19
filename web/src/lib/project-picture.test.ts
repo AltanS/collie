@@ -715,3 +715,19 @@ describe("a failed load retries when its wait ends (R7)", () => {
     expect(s.fetch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("the failures are bounded by the panes (S2)", () => {
+  it("forgets a failure when no pane shows its picture, so a version per poll cannot grow the map", async () => {
+    const s = seams({ fetch: async () => Promise.reject(new Error("down")) });
+    for (let n = 1; n <= 50; n++) {
+      rememberPanePictures([{ paneId: "p1", picture: version(n), host: "m" }]);
+      await loadPicture(version(n), "m");
+    }
+    expect(s.fetch).toHaveBeenCalledTimes(50);
+    // Only the last version is still shown, so only its failure holds back a new try.
+    await loadPicture(version(49), "m");
+    expect(s.fetch).toHaveBeenCalledTimes(51);
+    await loadPicture(version(50), "m");
+    expect(s.fetch).toHaveBeenCalledTimes(51);
+  });
+});

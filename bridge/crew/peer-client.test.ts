@@ -1705,7 +1705,7 @@ describe("the dial never inflates a member's body", () => {
     };
     const outcome = await client(fetch).proxy(laptop, "project-picture/abcdef012345abcdef012345");
     expect(outcome.ok).toBe(false);
-    if (!outcome.ok) expect(outcome.reason).toContain("content-encoding");
+    if (!outcome.ok) expect(outcome.reason).toContain("compressed");
     // The stream may have been asked for its first chunk when it was built; nothing read it after.
     expect(pulled).toBeLessThanOrEqual(1);
   });
@@ -1718,5 +1718,23 @@ describe("the dial never inflates a member's body", () => {
       return new Response("{}", { headers });
     };
     expect((await client(fetch).proxy(laptop, "pane/w1:p1")).ok).toBe(true);
+  });
+});
+
+describe("the encoded-answer refusal names no member bytes (S1)", () => {
+  test("a hostile content-encoding value never reaches the reason", async () => {
+    const fetch: CrewFetch = async () => {
+      const headers = new Headers({ "content-type": "image/png" });
+      // Bytes 0x80 to 0xFF read as latin1: U+009B is a one-byte CSI.
+      headers.set("content-encoding", "br\u009b2J\u00ff");
+      headers.set(PROTOCOL_HEADER, String(CREW_PROTOCOL_VERSION));
+      headers.set(MEMBER_HEADER, "laptop");
+      return new Response("x", { headers });
+    };
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1");
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.reason).toBe("pane/w1:p1: the peer answered compressed, which the lead does not decode");
+    expect([...outcome.reason].every((ch) => (ch.codePointAt(0) ?? 0) < 0x7f)).toBe(true);
   });
 });

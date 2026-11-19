@@ -470,21 +470,34 @@ export interface ProjectFileOnDisk extends ProjectFileRead {
 /** The `lstat` stamp of a path, or `null`. A changed stamp is the only reason to read a file again. */
 export async function stampOf(path: string): Promise<string | null> {
   try {
-    const s = await lstat(path);
-    return `${String(s.dev)}:${String(s.ino)}:${String(s.size)}:${String(s.mtimeMs)}:${s.isFile() ? "f" : "x"}`;
+    return stampOfStats(await lstat(path));
   } catch {
     return null;
   }
 }
 
+function stampOfStats(s: { dev: number; ino: number; size: number; mtimeMs: number; isFile(): boolean }): string {
+  return `${String(s.dev)}:${String(s.ino)}:${String(s.size)}:${String(s.mtimeMs)}:${s.isFile() ? "f" : "x"}`;
+}
+
 /** Read and validate one project file by the rules of this file's header ("HOW IT IS READ"). */
-export async function readProjectFile(path: string): Promise<ProjectFileOnDisk> {
+export async function readProjectFile(path: string, between?: () => Promise<void>): Promise<ProjectFileOnDisk> {
   const empty = { settings: {}, ignored: [], refused: [] };
-  const stamp = await stampOf(path);
-  const kind = await kindOf(path);
-  if (kind !== "file") return { ...empty, stamp, problem: kind === "link" ? "is a symlink" : "is not a regular file" };
+  // ONE `lstat` gives the stamp, the kind and the file the read must find (S3): off Linux the descriptor
+  // check takes a fresh `lstat`, which a swapped folder would answer, so the device and inode seen here
+  // travel with the read.
+  let link: Awaited<ReturnType<typeof lstat>> | null;
+  try {
+    link = await lstat(path);
+  } catch {
+    link = null;
+  }
+  const stamp = link === null ? null : stampOfStats(link);
+  if (link === null || !link.isFile()) return { ...empty, stamp, problem: link?.isSymbolicLink() === true ? "is a symlink" : "is not a regular file" };
+  // A test's swap between the look and the read; nothing else passes it.
+  await between?.();
   // `path` is a real path: the walk that found it ran on real paths (locateProjectFile).
-  const bytes = await readSmallFile(path, PROJECT_FILE_BYTES_MAX, path);
+  const bytes = await readSmallFile(path, PROJECT_FILE_BYTES_MAX, path, link);
   if (bytes === null) return { ...empty, stamp, problem: `is larger than ${String(PROJECT_FILE_BYTES_MAX / 1024)} KB or could not be read` };
   let text: string;
   try {

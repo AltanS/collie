@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
@@ -938,5 +938,25 @@ describe("an enclosing repository (R8)", () => {
     const pictures = new ProjectPictures(true, []);
     await pictures.refresh([m]);
     expect(pictures.get(m)).toBe(pictureVersion(png()));
+  });
+});
+
+describe("the project file's read keeps its first look (S3)", () => {
+  test("a file swapped between the look and the read is not read", async () => {
+    const dir = folder();
+    const path = write(join(dir, "collie.toml"), '[project]\nicon = "a.png"\n');
+    const swap = write(join(dir, "other.toml"), '[project]\nicon = "b.png"\n');
+    const read = await readProjectFile(path, async () => {
+      // Same path, another file: only the device and inode of the first look can tell.
+      renameSync(swap, path);
+    });
+    expect(read.settings).toEqual({});
+    expect(read.problem).not.toBeNull();
+  });
+
+  test("with no swap the same file is read", async () => {
+    const dir = folder();
+    const path = write(join(dir, "collie.toml"), '[project]\nicon = "a.png"\n');
+    expect((await readProjectFile(path, async () => undefined)).problem).toBeNull();
   });
 });
