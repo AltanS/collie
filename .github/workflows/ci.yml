@@ -385,3 +385,9 @@ jobs:
       - name: Test (quarantined files)
         if: steps.files.outputs.count != '0'
         run: bun scripts/test.ts --quarantine
+      # No `continue-on-error` on this step: a file quarantined for more than 14 days (the date in its
+      # first line) turns this job red. The job is not a required check, so a push still goes through.
+      # `if: always()` so a red test run above does not hide an expired file.
+      - name: Check the 14-day limit
+        if: always()
+        run: bun scripts/check-quarantine.ts

@@ -4,7 +4,9 @@
 //
 // Three naming rules, the same in every runner:
 //   - `*.quarantine.test.ts`  a flaky test. No run includes it; the non-blocking `quarantine` job in
-//     `ci.yml` runs only these files. It comes back to its old name when it is fixed.
+//     `ci.yml` runs only these files. It comes back to its old name when it is fixed. Its first line is
+//     `// quarantined: YYYY-MM-DD <reason>` (a guard test pins that), and after 14 days that job turns
+//     red until the test is fixed or deleted (`scripts/check-quarantine.ts`).
 //   - `*.slow.test.ts`        slow on purpose. A full run keeps it; the quick gate leaves it out.
 //   - `*.test.ts` and the rest  everything else.
 
@@ -133,6 +135,7 @@ export const GUARD_BUN: readonly (readonly [file: string, rule: string])[] = [
   ["scripts/docs-places.test.ts", "one place picture for every trick place"],
   ["scripts/themes-reference.test.ts", "the themes reference page is the generator's output"],
   ["scripts/tricks-reference.test.ts", "the tricks reference page is the generator's output"],
+  ["scripts/check-quarantine.test.ts", "every quarantined test file says since when and why"],
 ];
 
 /** One `bun test -t <name>` run over a file that is not a guard as a whole. */
