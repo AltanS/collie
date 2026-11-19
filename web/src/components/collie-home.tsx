@@ -9,7 +9,6 @@ import { useStatus } from "@/lib/status";
 import { useOperatorBusy } from "@/lib/busy";
 import { useLocale } from "@/hooks/use-locale";
 import { Icon } from "@/components/icons/icon";
-import { CrossfadeImage } from "@/components/ui/crossfade-image";
 
 interface CollieHomeProps {
   /** The tap, with where it goes: the place the mark's signal is about, or home. */
@@ -52,11 +51,6 @@ interface CollieHomeProps {
   paper?: string;
   /** How large the drawing is, in px (40, the header's). The 44px box around it does not change. */
   markSize?: number;
-  /** The project picture (ADR 0160), a URL the page made, or null. Shown in the mark's place ONLY
-   *  while the mark is at rest: any live state (loading, a round, busy work, lost, applying, starting,
-   *  reconnected) brings the mark back, because a picture cannot say any of them. The host passes one
-   *  only in a session view, and never to a docked mark. */
-  picture?: string | null;
   className?: string;
 }
 
@@ -209,7 +203,6 @@ export function CollieHome({
   lastSeenAt,
   paper = "var(--band-ground)",
   markSize = 40,
-  picture = null,
   className,
 }: CollieHomeProps) {
   useLocale();
@@ -385,8 +378,6 @@ export function CollieHome({
     reconnected: greets,
     loading: bloom || round || busy,
   });
-  // The picture stands in for the mark only while the mark has nothing to say (ADR 0160).
-  const shownPicture = state === "rest" && beads === null && !lost ? picture : null;
   return (
     <button
       type="button"
@@ -423,11 +414,6 @@ export function CollieHome({
       {/* `data-slot` is a HANDLE FOR MEASUREMENT. The agent-start handoff flies a second mark out of
           this one, so it needs this box on screen; it reads the `<svg>` inside for the true size. */}
       <span data-slot="collie-mark" className="relative grid size-11 shrink-0 place-items-center">
-        {/* THE PROJECT PICTURE (ADR 0160). The mark stays mounted under it, faded to nothing, so its
-            handle, its phase and the agent-start handoff keep working, and a live state brings it back
-            with a 200ms fade (none under reduced motion). The picture is a layer of the mark's own
-            size; two pictures crossfade by `CrossfadeImage`'s rules. The button's name still says
-            what the mark says: the picture is decorative. */}
         <BrandMark
           size={markSize}
           weight="header"
@@ -435,16 +421,8 @@ export function CollieHome({
           state={state}
           {...(beads === null ? {} : { beads })}
           paper={paper}
-          className={cn("transition-opacity duration-200 motion-reduce:transition-none", shownPicture !== null && "opacity-0")}
+          className="transition-opacity"
         />
-        <span
-          aria-hidden
-          data-slot="collie-mark-picture"
-          data-shown={shownPicture === null ? "false" : "true"}
-          className="pointer-events-none absolute inset-0 grid place-items-center"
-        >
-          <CrossfadeImage src={shownPicture} identity="header" fallback={null} imgClassName="rounded-md" className="rounded-md" style={{ width: markSize, height: markSize }} />
-        </span>
         {/* THE LOST BADGE. The strip under the header says the connection is gone, and the operator can
             hide it; this is what stays after that, so the state is never only a dimmed dog. It sits in
             the corner of the 44px box (inside it, so the tap target does not grow) on the header's own

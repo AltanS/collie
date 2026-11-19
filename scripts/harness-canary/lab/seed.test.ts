@@ -48,8 +48,7 @@ describe("the Claude login copy", () => {
     expect(JSON.parse(readFileSync(join(target, "empty-mcp.json"), "utf8"))).toEqual({ mcpServers: {} });
   });
 
-  // POSIX only: Windows has no file modes, so statSync reports 0o666 there. The skip is named in
-  // scripts/windows-suites.ps1 (scripts budget).
+  // POSIX only: Windows has no file modes, so statSync reports 0o666 there.
   test.skipIf(process.platform === "win32")("POSIX only: the login copy has mode 600", () => {
     const target = join(temp(), "config");
     seedClaude(target, "/p", source(60));

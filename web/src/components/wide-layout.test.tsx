@@ -5,6 +5,7 @@ import type { RefObject } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetBeltIntents, takeBeltIntent } from "@/lib/belt-intent";
+import { __reloadProjectPictures, __resetProjectPictures, setProjectPictures } from "@/lib/project-picture";
 import { paneRowKey } from "@/lib/hosts";
 import { asJsonObject, asJsonString, parseJsonObject } from "@/lib/json";
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
@@ -1218,5 +1219,56 @@ describe("the keyboard", () => {
     await mount("w1:p1", 1200);
     expect(run("toggle_sidebar")).toBe(false);
     expect(run("goto")).toBe(false);
+  });
+});
+
+// THE CLOSED SIDEBAR DRAWS THE PROJECT PICTURE (issue 811, ADR 0160, round 14): the rail's tile is the
+// same tile as the open sidebar's row, so a pictured session shows the picture with the agent logo in its
+// corner, a session with none shows the logo, and with the device's switch off nothing picture-shaped is
+// drawn. The device already holds the small copy, as after a cold open, so no fetch is involved.
+describe("the rail — project pictures", () => {
+  const V = "0123456789ab0123456789ab";
+  const COPY = "data:image/png;base64,SMALL";
+  const PICTURED = { ...pane("w3:p1", "w3", "gamma"), picture: V };
+
+  beforeEach(() => {
+    __resetProjectPictures();
+    localStorage.setItem("collie:project-picture-copies:v1", JSON.stringify({ ["\u0000" + V]: COPY }));
+    __reloadProjectPictures();
+    extraAgents = [PICTURED];
+  });
+  afterEach(() => __resetProjectPictures());
+
+  async function toRail() {
+    const { container } = await mount("w1:p1", 1200);
+    fireEvent.click(q(container, '[data-slot="sidebar-toggle"]')!);
+    return waitFor(() => {
+      const el = q(container, 'aside[data-slot="rail"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+  }
+  const tileOf = (rail: HTMLElement, p: AgentView) => sidebarRow(rail.ownerDocument.body, p)?.querySelector<HTMLElement>('[data-slot="agent-tile"]') ?? null;
+
+  it("shows the picture for a pictured session, with the agent logo in its corner, and the logo for one without", async () => {
+    const rail = await toRail();
+    const pictured = tileOf(rail, PICTURED)!;
+    expect(pictured.getAttribute("data-picture")).toBe("on");
+    expect(pictured.querySelector('img[alt=""]')?.getAttribute("src")).toBe(COPY);
+    expect(within(pictured).getAllByRole("img", { name: "claude logo" })).toHaveLength(1);
+    // The same 28 px tile as the logo alone.
+    expect(pictured.className).toContain("size-7");
+    const plain = tileOf(rail, A2)!;
+    expect(plain.getAttribute("data-picture")).toBe("off");
+    expect(plain.querySelector('img[alt=""]')).toBeNull();
+    expect(within(plain).getAllByRole("img", { name: "claude logo" })).toHaveLength(1);
+  });
+
+  it("draws nothing picture-shaped with the switch off", async () => {
+    setProjectPictures(false);
+    const rail = await toRail();
+    expect(rail.querySelectorAll('[data-slot="agent-tile"][data-picture="on"]')).toHaveLength(0);
+    expect(rail.querySelectorAll('img[src^="data:"]')).toHaveLength(0);
+    expect(tileOf(rail, PICTURED)?.getAttribute("data-picture")).toBe("off");
   });
 });

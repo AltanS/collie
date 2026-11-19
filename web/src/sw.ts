@@ -3,7 +3,7 @@ import { addPlugins, precacheAndRoute, createHandlerBoundToURL } from "workbox-p
 import { NavigationRoute, registerRoute } from "workbox-routing";
 import { clientsClaim } from "workbox-core";
 
-import { decidePush, notificationPath, type NotifData, type PushPayload } from "./lib/push-decision";
+import { decidePush, notificationPath, pushOptions, type NotifData, type PushPayload } from "./lib/push-decision";
 import { askInApp, openNotificationTarget, type OpenOutcome, type OpenTargetClient } from "./lib/notification-open";
 import { recordSlots, showBadge, slotUpdates } from "./lib/app-badge";
 import { readPushTitles } from "./lib/push-title-store";
@@ -327,25 +327,7 @@ async function handlePush(event: PushEvent): Promise<void> {
   // where the system has one: the page's own banner copy out of Cache Storage, never a fetch. The icon
   // and the badge are always Collie's.
   const image = notificationsShowImage(globalThis.Notification) ? await pushPictureFor(self.caches, self.location.origin, MOUNT, { paneId: decision.paneId, host: decision.host }) : null;
-  // `renotify` and `image` aren't in this TS lib's NotificationOptions yet, though browsers that support
-  // them honour them (`renotify` needs a tag).
-  const options: NotificationOptions & { renotify?: boolean; image?: string } = {
-    body: decision.body,
-    data: {
-      paneId: decision.paneId,
-      session: decision.session,
-      host: decision.host,
-      target: decision.target,
-      machine: decision.machine,
-      decision: decision.decision,
-    } satisfies NotifData,
-    icon: ICON,
-    badge: BADGE,
-    tag: decision.tag,
-    renotify: decision.renotify,
-  };
-  if (image !== null) options.image = image;
-  await self.registration.showNotification(decision.title, options);
+  await self.registration.showNotification(decision.title, pushOptions(decision, { icon: ICON, badge: BADGE }, image));
 }
 
 // Tap a notification: an update push routes to the Updates page under Settings; everything else deep-links to the agent's

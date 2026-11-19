@@ -22,7 +22,7 @@ import type { AgentView } from "@/lib/types";
 // canvas. What is kept, and what every surface shows, is the page's own PNG made from that canvas:
 //
 //   - a small copy ({@link SMALL_PX} px square), a `data:` URL in localStorage, so a cold open draws the
-//     picture in the first frame instead of the agent logo or the dog (bounded to {@link COPIES_MAX});
+//     picture in the first frame instead of the agent logo (bounded to {@link COPIES_MAX});
 //   - a banner copy (2:1, lib/project-picture-push.ts), a PNG in Cache Storage, which the service worker
 //     puts in a notification's picture slot. The operating system decodes it outside the browser's
 //     sandbox, so it gets this re-encoded copy and never the repository's bytes (sw.ts). The
@@ -34,7 +34,7 @@ import type { AgentView } from "@/lib/types";
 // pane, never a folder or a version.
 //
 // THE SWITCH. Settings, Appearance, "Project pictures", per device, on until the person turns it off.
-// Off: no picture anywhere, the agent logo and the Collie mark everywhere, no push picture. Turning it off
+// Off: no picture anywhere, the agent logo everywhere, no push picture. Turning it off
 // also drops every copy and the map, so nothing of a repository's picture stays on the device.
 //
 // A version that fails to load (the bridge refused, the header check failed, the bytes do not decode) is
@@ -219,7 +219,7 @@ export function pictureCopy(host: string | null | undefined, version: string | n
   return copies.get(copyKey(host, version)) ?? null;
 }
 
-/** The version the device last saw for a pane, or null: the header's guess before the snapshot lands. */
+/** The version the device last saw for a pane, or null: a tile's guess before the snapshot lands. */
 export function rememberedPicture(pane: { host?: string | null; session?: string | null; paneId: string }): string | null {
   if (!on) return null;
   return panes.get(paneKey(pane)) ?? null;

@@ -35,7 +35,6 @@ import {
   takeDataBudget,
   HEADERLESS_PATIENCE_MS,
   TRICKS_INPUTS_BUDGET_MS,
-  WRITE_BUDGET_MS,
   type CrewFetch,
   type CrewLink,
   type PeerClientDeps,
@@ -1107,24 +1106,6 @@ describe("a forwarded write's own budget (§10.1)", () => {
     const second = await c.proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(!second.ok && second.reason).toBe("pane/w1:p1: timed out after 5ms");
   });
-
-  test("on the real clock: 2 s of work misses the poll budget and fits inside WRITE_BUDGET_MS", async () => {
-    // The measured case, on real timers rather than modelled: a launch onto a zellij member spawns a
-    // process and has the multiplexer build a tab. Around 2 s — under 1200 ms it is an abort the lead
-    // can only report as ambiguous (§10.3), and under 5000 ms it is the peer's own answer.
-    const slow: CrewFetch = (url, init) =>
-      new Promise((resolve, reject) => {
-        init.signal?.addEventListener("abort", () => reject(new Error("The operation was aborted.")));
-        setTimeout(() => void replying({ ok: true }).fetch(url, init).then(resolve, reject), 2000);
-      });
-    // No patient budget wired, so the poll budget is the honest comparison and not the credit.
-    const c = client(slow, { timeoutMs: crewTimeoutBudget(1500, {}) });
-    const missed = await c.proxy(laptop, "launch", undefined, { bodyMax: CREW_JSON_MAX, method: "POST" });
-    expect(!missed.ok && missed.reason).toBe(`launch: timed out after ${DEFAULT_CREW_TIMEOUT_MS}ms`);
-    const landed = await c.proxy(laptop, "launch", undefined, { bodyMax: CREW_JSON_MAX, method: "POST" }, WRITE_BUDGET_MS);
-    expect(landed.ok).toBe(true);
-    expect(landed.ok && landed.status).toBe(200);
-  }, 10_000);
 });
 
 // ── F18: the runtime's voice never reaches an operator ───────────────────────

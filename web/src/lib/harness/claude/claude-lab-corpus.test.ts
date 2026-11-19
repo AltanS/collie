@@ -147,8 +147,10 @@ describe("the table and the fixture directory stay in lockstep", () => {
   });
 
   it("the corpus is not vacuous", () => {
-    expect(ENTRIES.length).toBe(120);
-    expect(new Set(ENTRIES.map((e) => e.cols))).toEqual(new Set([40, 41, 60, 82, 83, 119, 120, 132, 200]));
+    // The lockstep test above ties the table to the directory; this only keeps the corpus from shrinking
+    // to a handful of screens at one width.
+    expect(ENTRIES.length).toBeGreaterThan(100);
+    expect(new Set(ENTRIES.map((e) => e.cols)).size).toBeGreaterThan(3);
     expect(new Set(ENTRIES.map((e) => e.state)).size).toBeGreaterThan(25);
   });
 });

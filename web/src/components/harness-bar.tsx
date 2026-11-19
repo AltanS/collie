@@ -10,7 +10,7 @@ import type { Hand } from "@/hooks/use-display-prefs";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useLocale } from "@/hooks/use-locale";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
-import { useArm } from "@/hooks/use-arm";
+import { useArm, useOnChange } from "@/hooks/use-arm";
 import { useLongPress } from "@/hooks/use-long-press";
 import { STOP_HINT_MS, STOP_HOLD_MS } from "@/lib/arm";
 import { t as translate, type MessageKey } from "@/lib/i18n";
@@ -510,10 +510,11 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
     disarm();
     unhint();
   }, [disabled, running, disarm, unhint]);
-  useEffect(() => {
+  // Not on mount: see useOnChange.
+  useOnChange(paneId, () => {
     disarm();
     unhint();
-  }, [paneId, disarm, unhint]);
+  });
 
   const pressable = disabled !== true && running && !busy;
   // A hold belongs to the turn, the pane and the button state it began in. The hook's timer keeps the

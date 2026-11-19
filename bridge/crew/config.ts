@@ -6,8 +6,8 @@ import type { CrewMode } from "../types.ts";
 //
 // This deliberately does NOT live on `Config` in bridge/config.ts, and the reason is the zero-tax
 // contract rather than taste. CREW_PROTOCOL.md §11 promises a solo instance "no new env key" and no
-// new configuration surface; `bridge/solo-baseline.test.ts` enforces exactly that by pinning
-// `keyof Config` and the `COLLIE_*` literals `config.ts` names. A crew key on `Config` would be a
+// new configuration surface; `bridge/solo-baseline.test.ts` holds that no key of `loadConfig()` and
+// no `COLLIE_*` env key it reads names the crew. A crew key on `Config` would be a
 // key every solo deployment carries, reads and can typo — so crew settings live behind the mode,
 // parsed in the same env-pure style (the reader itself is imported from config.ts, not re-written).
 //

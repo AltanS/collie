@@ -84,7 +84,7 @@ function socketOf(r: Rig): ViewSocketRig {
 
 // THE AGENT VIEW CONTRACT'S RULES, one test (or more) per rule, named after it: the twelve rules of the
 // security read (section 3), the lead's seven additions (section 5) and V-A2. Doors of rule 7 that live in
-// other modules are tested there, under the same names: bridge/surface/protocol.test.ts (the composer,
+// other modules are tested there, under the same names: bridge/surface/protocol.*.test.ts (the composer,
 // a steer, the bridge's own callers), bridge/hill/walky.test.ts (WalkyTalky, a crew hop, the Hill's
 // receipt and tell). Rule 11 is in bridge/tricks/service.test.ts too (a changed rules text shuts the view).
 

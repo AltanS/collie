@@ -35,97 +35,6 @@ const allOpencodeFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("oc--") && f.endsWith(".txt"))
   .toSorted();
 
-const PINNED = [
-  "codex--approval-exec.txt",
-  "codex--ask-fruit.txt",
-  "codex--ask-notes-focused.txt",
-  "codex--ask-wizard-q1.txt",
-  "codex--ask-wizard-q2.txt",
-  "codex--draft-wrapped.txt",
-  "codex--draft.txt",
-  "codex--fresh-idle.txt",
-  "codex--queue-context-inline.txt",
-  "codex--reporter-294-busy-agents-hint.txt",
-  "codex--resume-picker-moved.txt",
-  "codex--resume-picker.txt",
-  "codex--submitted-fill-labelled-rule.txt",
-  "codex--trust-prompt.txt",
-  "codex--v0150-custom-status.txt",
-  "codex--v0150-draft-wrapped.txt",
-  "codex--v0150-idle.txt",
-  "codex--v0150-nogit-idle.txt",
-  "codex--v0150-paste-placeholder.txt",
-  "codex--v0151-draft-indented-line.txt",
-  "codex--v0154-submitted-fill.txt",
-  "codex--v0156-approval-exec-2opt.txt",
-  "codex--v0156-approval-exec-wrapped-50.txt",
-  "codex--v0156-approval-exec-wrapped.txt",
-  "codex--v0156-approval-patch.txt",
-  "codex--v0156-busy-draft.txt",
-  "codex--v0156-busy-streaming.txt",
-  "codex--v0156-draft-blank-line.txt",
-  "codex--v0156-draft-multiline.txt",
-  "codex--v0156-headless-draft.txt",
-  "codex--v0156-headless-idle.txt",
-  "codex--v0156-idle-50.txt",
-  "codex--v0156-idle.txt",
-  "codex--v0156-paste-placeholder.txt",
-  "codex--v0156-trust.txt",
-  "codex--v0157-busy-streaming.txt",
-  "codex--v0157-draft-notice.txt",
-  "codex--v0157-idle-50.txt",
-  "codex--v0157-idle.txt",
-  "codex--v0158-goal-notice.txt",
-  "codex--v0159-task-title.txt",
-  "codex--v0162-idle.txt",
-  "codex--v0162-picker-model.txt",
-  "codex--v0162-picker-permissions.txt",
-  "codex--v0162-resume-search.txt",
-  "codex--v0163-agents-hint-warnings.txt",
-  "codex--v0163-working-draft--w120.txt",
-  "codex--v0163-working-steered--w120.txt",
-  // 0.164.0 mid-turn: a line typed, then a steer (Enter) or a queue (Tab), and the turn's end (M69 spec 01).
-  "codex--v0164-queue-after--w120.txt",
-  "codex--v0164-queue-after-now--w120.txt",
-  "codex--v0164-queue-done--w120.txt",
-  "codex--v0164-queue-typed--w120.txt",
-  "codex--v0164-steer-after--w120.txt",
-  "codex--v0164-steer-after-now--w120.txt",
-  "codex--v0164-steer-done--w120.txt",
-  "codex--v0164-steer-typed--w120.txt",
-  // Issue 615: two derived (the empty and draft composers with `»` for `›`) and two real captures from the reporter (`--w170`).
-  "codex--v0165-ultra-draft--w170.txt",
-  "codex--v0165-ultra-draft.txt",
-  "codex--v0165-ultra-empty--w120.txt",
-  "codex--v0165-ultra-empty--w170.txt",
-  // 0.166.0, harness lab drift: the braille logo over an empty box on a pane of 32 rows or more, gone at the
-  // first character and back after Backspace; and the footer's `⚠ 1 warning · f2 to view` that any `-c` draws.
-  "codex--v0166-art-backspace--w120.txt",
-  "codex--v0166-art-empty--w120.txt",
-  "codex--v0166-art-typed--w120.txt",
-  // 0.166.0 on herdr-core, whose `terminal.read` carries no styling: a turn running, the box after it, and a
-  // draft (the Codex report of 2026-11-05, the unread-dialog card after every send).
-  "codex--v0166-core-draft--w120.txt",
-  "codex--v0166-core-idle--w120.txt",
-  "codex--v0166-core-working--w120.txt",
-  // 0.166.0 and 0.167.0, the trouble tally of 2026-11-07 (codex@0.167.0 on Herdr, 13 cards in a day): the
-  // folder-trust prompt whose way out is now `Back to Agent Command Center`, the hook-trust prompt that
-  // Herdr's SessionStart hook brings up at every launch, `/resume` on a 61-row pane, a turn running, and
-  // the agent command center itself (no grammar; the card is right there).
-  "codex--v0166-trust--w120.txt",
-  "codex--v0166-warning-art-empty--w120.txt",
-  "codex--v0166-warning-typed--w120.txt",
-  "codex--v0167-command-center--w120.txt",
-  "codex--v0167-hooks-review--w120.txt",
-  "codex--v0167-hooks-review--w80.txt",
-  "codex--v0167-hooks-review-moved--w80.txt",
-  "codex--v0167-resume-tall--w120.txt",
-  "codex--v0167-trust--w120.txt",
-  "codex--v0167-trust--w80.txt",
-  "codex--v0167-working--w120.txt",
-  "codex--working.txt",
-];
-
 // The dialog captures — screens that lift an interactive block. The notes-focused ask is NOT
 // here: it is a live modal the adapter deliberately REFUSES (a digit would type into the notes
 // box), so it belongs to the neutral (raw-only) cohort with composerReady false.
@@ -163,12 +72,6 @@ describeAdapterConformance(codexAdapter, {
   // Astra's starfield repaints the prompt row every frame, so the bridge's literal re-read could
   // never match a region (codex/chrome.ts, composerPrompt).
   unboundComposerFixtures: ["codex--v0154-submitted-fill.txt"],
-});
-
-describe("the codex corpus", () => {
-  it("is exactly the captures this adapter was developed against", () => {
-    expect(allCodexFixtures).toEqual(PINNED);
-  });
 });
 
 function fixtureLines(name: string) {

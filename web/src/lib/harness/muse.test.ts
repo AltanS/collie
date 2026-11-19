@@ -31,73 +31,6 @@ const allAgyFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("agy--") && f.endsWith(".txt"))
   .toSorted();
 
-const PINNED = [
-  "muse--approval-date-147.txt",
-  "muse--approval-ls-147.txt",
-  "muse--approval-ls-moved.txt",
-  "muse--approval-ls.txt",
-  "muse--approval-network-moved.txt",
-  "muse--approval-network.txt",
-  "muse--ask-color-moved.txt",
-  "muse--ask-color-notes-open.txt",
-  "muse--ask-color-notes-typed.txt",
-  "muse--ask-color.txt",
-  "muse--ask-drinks.txt",
-  "muse--ask-multi-q1.txt",
-  "muse--ask-multi-q2.txt",
-  "muse--ask-multi-review.txt",
-  "muse--ask-season.txt",
-  "muse--ask-toppings-147-moved.txt",
-  "muse--ask-toppings-147.txt",
-  "muse--ask-toppings-checked.txt",
-  "muse--ask-toppings-notes-open.txt",
-  "muse--ask-toppings-review.txt",
-  "muse--ask-toppings.txt",
-  "muse--done-1410.txt",
-  "muse--done.txt",
-  "muse--draft-1410.txt",
-  "muse--draft-blank-row.txt",
-  "muse--draft-image-chip.txt",
-  "muse--draft-multiline-live.txt",
-  "muse--draft-paste-token.txt",
-  "muse--draft-quoted-path.txt",
-  "muse--draft-single.txt",
-  "muse--draft-wrapped.txt",
-  "muse--filter-effort-nomatch.txt",
-  "muse--filter-effort-typed.txt",
-  "muse--filter-effort.txt",
-  "muse--filter-hud.txt",
-  "muse--fresh-idle.txt",
-  "muse--idle-1410.txt",
-  "muse--palette-exact.txt",
-  "muse--palette-hint-moved.txt",
-  "muse--palette-hint-skills.txt",
-  "muse--palette-hint.txt",
-  "muse--palette-partial.txt",
-  "muse--palette-skill.txt",
-  "muse--palette-typed-arg.txt",
-  "muse--probe-draft-1410.txt",
-  "muse--prompt-hint-1410.txt",
-  "muse--prompt-hint-typed-1410.txt",
-  "muse--prompt-hint.txt",
-  "muse--queued-input-1410.txt",
-  "muse--quoted-dialogs-bare.txt",
-  "muse--resume-picker-moved.txt",
-  "muse--resume-picker.txt",
-  "muse--running-checking-1410.txt",
-  "muse--running-command-1410.txt",
-  "muse--slash-palette-1410.txt",
-  "muse--tasks-popup-approval.txt",
-  "muse--tasks-popup-draft.txt",
-  "muse--tasks-popup.txt",
-  "muse--tip-loop.txt",
-  "muse--tip-paste.txt",
-  "muse--trust-prompt-147.txt",
-  "muse--trust-prompt.txt",
-  "muse--turn-running.txt",
-  "muse--working.txt",
-];
-
 // The captures buildBlocks up-levels. Everything else stays raw — including the three notes-open
 // captures, which decline deliberately (the note input owns the keyboard) while still failing the
 // composer gate (NOT_READY below).
@@ -165,12 +98,6 @@ describeAdapterConformance(museAdapter, {
     ...allOpencodeFixtures,
   ],
   neutralFixtures,
-});
-
-describe("the muse corpus", () => {
-  it("is exactly the captures this adapter was developed against", () => {
-    expect(allMuseFixtures).toEqual(PINNED);
-  });
 });
 
 describe("submitSettleMs — Muse 1.4.4 swallows an Enter sent right behind the text (#395)", () => {

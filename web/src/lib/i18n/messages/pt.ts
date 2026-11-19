@@ -190,7 +190,7 @@ export const pt: Dictionary = {
     "Com um teclado físico, Enter envia a mensagem e Shift+Enter adiciona uma nova linha. Com o teclado na tela, Enter sempre adiciona uma nova linha.",
   "settings.projectPictures.title": "Imagens do projeto",
   "settings.projectPictures.hint":
-    "Mostra a imagem que um repositório indica no seu collie.toml no lugar do logo do agente, com o logo no canto, e no lugar da marca do Collie enquanto uma sessão está aberta e a marca está em repouso.",
+    "Mostra a imagem que um repositório indica no seu collie.toml no lugar do logo do agente, com o logo no canto.",
   "settings.paneNav.title": "Navegação por painéis",
   "settings.paneNav.twoFingers": "Dois dedos",
   "settings.paneNav.joystick": "Joystick",

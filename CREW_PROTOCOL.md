@@ -1921,10 +1921,11 @@ nothing.**
 **Where the gate lives.** `bridge/solo-baseline.test.ts` (+ goldens under
 `bridge/fixtures/solo-baseline/`) and `web/src/lib/solo-baseline.test.ts`. Both were landed in
 1.0.0-alpha.1, *before* any federation code existed — written afterwards they would only re-record
-whatever the new code does. They pin the table above in two layers: an exhaustive
-`Record<keyof T, true>` per wire type (so adding `servers?:`/`host?:` fails `bun run typecheck` at the
-line it was added, and `satisfies SnapshotResponse` in `server.ts` closes the loop), plus a
-byte-compared golden body and its ETag. **A failure there is not a stale golden** — it is a solo
+whatever the new code does. They hold the table above as rules: a byte-compared golden body and its
+ETag, no crew field in a solo body, no `/crew` route in `server.ts`, no crew key in the config or the
+env, and no crew state file named outside `bridge/crew/`. Since 2026-11-19 they no longer keep a
+hand-written list of every route, wire key, setting and state file: a normal addition needs no edit
+there. **A failure there is not a stale golden** — it is a solo
 instance's behaviour moving. Regenerating is a deliberate act
 (`COLLIE_REGEN_SOLO_BASELINE=1 bun test bridge/solo-baseline.test.ts`) and **must** be called out in
 the PR description with the reason and the row it renegotiates.

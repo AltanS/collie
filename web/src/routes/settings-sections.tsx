@@ -150,7 +150,7 @@ export function SettingsAppearanceRoute() {
           both are about a keyboard and a screen big enough to have one. Off until the person turns it on;
           stored per device. */}
       <EnterSendsControl />
-      {/* Whether a repository's own picture stands in for the agent logo and the resting mark (ADR 0160).
+      {/* Whether a repository's own picture stands in for the agent logo (ADR 0160).
           On until the person turns it off; stored per device. */}
       <ProjectPicturesControl />
       {/* How the pane screen moves between panes and spaces by gesture (ADR 0121): Two fingers,

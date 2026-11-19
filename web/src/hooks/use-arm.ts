@@ -74,6 +74,28 @@ export function useArm<K extends string>(windowMs: number = ARM_MS): Arm<K> {
 }
 
 /**
+ * Run `run` when `value` changes, never on mount. The only way an armed control drops its arm for a changed
+ * value (a count, a version, a pane, a switch position): an effect that calls `disarm()` on its dependencies
+ * also runs on mount, and React may flush that mount effect AFTER a first tap that landed in the same task as
+ * the control's first paint, so the effect undoes the arm that tap just set and the person sees no change.
+ * The previous value sits in a ref, set when the effect sees a difference; a re-render with the same value,
+ * and the mount, do nothing.
+ */
+export function useOnChange<V>(value: V, run: () => void): void {
+  const previous = useRef(value);
+  useEffect(() => {
+    if (Object.is(previous.current, value)) return;
+    previous.current = value;
+    run();
+  }, [value, run]);
+}
+
+/** {@link useOnChange} for the common case: drop the arm when `value` changes, not on mount. */
+export function useDisarmOn<V>(value: V, disarm: () => void): void {
+  useOnChange(value, disarm);
+}
+
+/**
  * A button's keydown for an armable key (the M102 review 3): a hardware Enter held down on the focused button repeats
  * its click, and the first repeat comes about 500 ms in, past {@link ARM_DWELL_MS}, so it would fire the arm the first
  * press set. A repeated Enter makes no click; the first press and every new press still do.

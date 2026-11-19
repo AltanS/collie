@@ -968,11 +968,9 @@ place of the agent's logo for every session that works in that repository.
 icon = "assets/logo.png"
 ```
 
-The picture replaces the logo on the session's row, on the dashboard and in the sidebar, with a
-small agent logo in its corner so you still see which agent runs there. In a session view it also
-takes the place of the Collie mark in the header, but only while the mark is at rest: loading, a
-lost connection, an update or an agent starting bring the Collie mark back. The dashboard and every
-other screen keep the mark.
+The picture replaces the logo on the session's row, on the dashboard, in the sidebar, open or
+closed, and beside the session's name at the top of the session. A small agent logo sits in its
+corner, so you still see which agent runs there. The Collie mark is never replaced.
 
 A push about that session keeps the Collie icon and shows the picture as a wide image when you
 expand the notification. Chrome on Android shows it. Safari and Firefox have no slot for it, so

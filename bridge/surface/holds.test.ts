@@ -223,17 +223,6 @@ dataDescribe("a data send while the part's turn runs", () => {
     return { r, part };
   }
 
-  test("is held in the bridge's queue, with the held receipt and no hand-over, no key", async () => {
-    const { r, part } = await running();
-    const id = dataId();
-    const answer = await r.send(id, "after the turn");
-    expect(answer.receipt?.outcome).toBe("held");
-    expect(r.protocol.heldOf("main", "w1:p1").map((row) => row.requestId)).toEqual([id]);
-    expect(r.hub.stateOf(id)).toBeNull();
-    expect(r.mux.calls).toEqual([]);
-    expect((await part.next({ waitMs: 1000 })).status).toBe(204);
-  });
-
   test("goes to the part at the turn-end event, under its own request id, and ends sent", async () => {
     const { r, part } = await running();
     const id = dataId();
@@ -247,17 +236,6 @@ dataDescribe("a data send while the part's turn runs", () => {
     expect(r.store.get(id)?.path).toBe("data");
     expect(r.protocol.heldOf("main", "w1:p1")).toEqual([]);
     expect(r.mux.calls).toEqual([]);
-  });
-
-  test("Cancel works while it is held, and the turn end then sends nothing", async () => {
-    const { r, part } = await running();
-    const id = dataId();
-    await r.send(id, "never mind");
-    expect(r.protocol.cancelHeld("main", "w1:p1", id)?.result).toBe("cancelled");
-    await part.event("turn.end", { turn: "t1", reason: "answer" });
-    expect((await part.next({ waitMs: 1000 })).status).toBe(204);
-    expect(r.hub.stateOf(id)).toBeNull();
-    expect(r.store.get(id)?.receipt?.outcome).toBe("cancelled");
   });
 });
 

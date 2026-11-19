@@ -11,6 +11,7 @@ import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { clearStatus, currentStatus } from "@/lib/status";
 import { groupDecision, hillDecision, trickDecision } from "@/test/hill-fixtures";
 import { server } from "@/test/setup";
+import { tapAtFirstPaint } from "@/test/tap-at-first-paint";
 
 // Settings → Experiments → The Hill (bridge/hill/switch.ts): one row, drawn from the snapshot's `hillOff`
 // in the root data, a tap that writes `POST /api/hill/switch` and reads the snapshot again, and a
@@ -86,6 +87,16 @@ describe("the Hill's row in Settings", () => {
   it("a device that may only read sees the switch, disabled", async () => {
     renderRow({ device: { enforced: true, device: "tablet", authorized: false } });
     expect(await screen.findByRole("switch", { name: "The Hill" })).toBeDisabled();
+  });
+});
+
+describe("the first tap on the switch right after the card appears", () => {
+  it("still arms it: the mount effect must not drop the arm a tap in the first paint set", async () => {
+    const onToggle = vi.fn();
+    await tapAtFirstPaint(<HillSwitchCard on disabled={false} waiting={3} onToggle={onToggle} />, '[role="switch"]', (host) => {
+      expect(onToggle).not.toHaveBeenCalled();
+      expect(host.querySelector('[data-line="armed"]')).not.toBeNull();
+    });
   });
 });
 

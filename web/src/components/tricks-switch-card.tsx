@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/icons/icon";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { useArm } from "@/hooks/use-arm";
+import { useArm, useDisarmOn } from "@/hooks/use-arm";
 import { useLocale } from "@/hooks/use-locale";
 import { useTricksSwitch } from "@/hooks/use-tricks-switch";
 import { useHillTrickCount } from "@/lib/hill/store";
@@ -86,7 +86,7 @@ export function TricksSwitchCard({ on, disabled, onToggle, waiting = 0, windows 
   useLocale();
   const { armed, tap, disarm } = useArm<"off">();
   // A position the switch reached by itself leaves no arm behind.
-  useEffect(() => disarm(), [on, disarm]);
+  useDisarmOn(on, disarm);
   const asks = armed === "off";
   const starts = on || windows ? null : startAgainLine(startAgain);
   // The slot of the armed note: reserved once a question waits, and kept while the card is drawn.

@@ -416,10 +416,13 @@ export function kindOfBlock(group: readonly ChatItem[], drawnSingle: boolean): R
 
 // ── WHAT THE LOADING VIEW DRAWS ──────────────────────────────────────────────
 
-/** A pane never seen on this device: the thread of a typical session from the bottom up, repeated, top to bottom. */
+/**
+ * The thread of a typical session, top to bottom. The lowest 220px of it hold a bubble, a tool
+ * well and text lines, so a screen with the soft keyboard open still reads as a thread and not as bars of lines.
+ */
 const GENERIC: readonly SilhouetteRow[] = [
-  { k: "person", h: 48, w: 2 },
   { k: "agent", h: 110, n: 5, w: 2 },
+  { k: "person", h: 48, w: 2 },
   { k: "tool", h: 44 },
   { k: "agent", h: 66, n: 3, w: 1 },
 ];
@@ -433,26 +436,42 @@ export interface LoadingRows {
   top: boolean;
 }
 
-/**
- * The rows the loading view draws, top to bottom, and where they stand. With a silhouette kept: its rows, and where it
- * falls short of the screen, the typical thread above them. Without: the typical thread, repeated up the screen. Never
- * more than the screen plus the one row that crosses its top edge, because the list is pinned to its bottom and what
- * is above would only be scrollback of a placeholder. A WHOLE thread that is shorter than the screen is drawn from the
- * top and fills nothing, which is what the thread will do when it arrives.
- */
-export function loadingRows(silhouette: Silhouette | undefined, viewport: number): LoadingRows {
-  const base = silhouette?.rows ?? [];
-  if (silhouette?.whole === true && viewport > 0 && silhouetteHeight(base) < viewport) return { rows: [...base], top: true };
+/** Whether a set of rows is a mix: a person's bubble and a tool well or a card, not bars of text alone. */
+export function isMixed(rows: readonly SilhouetteRow[]): boolean {
+  return rows.some((row) => row.k === "person") && rows.some((row) => row.k === "tool" || row.k === "card");
+}
+
+/** `base` with the typical thread above it where it falls short of the screen, cut to the newest rows that cover the screen plus the one crossing its top edge. */
+function bottomAnchored(base: readonly SilhouetteRow[], viewport: number): SilhouetteRow[] {
   const rows = [...base];
   for (let repeats = 0; repeats < MAX_REPEATS && (rows.length === 0 || silhouetteHeight(rows) < viewport); repeats++) {
     rows.unshift(...GENERIC);
   }
-  if (viewport <= 0) return { rows, top: false };
-  // Keep the newest rows that cover the screen, plus the one crossing its top edge.
+  if (viewport <= 0) return rows;
   const kept: SilhouetteRow[] = [];
   for (let i = rows.length - 1; i >= 0; i--) {
     kept.unshift(rows[i]!);
     if (silhouetteHeight(kept) >= viewport) break;
   }
-  return { rows: kept, top: false };
+  return kept;
+}
+
+/**
+ * The rows the loading view draws, top to bottom, and where they stand. Always a mix of a bubble, a tool well or card
+ * and text. With a silhouette kept: its rows, and where it falls short of the screen, the typical thread above them,
+ * when that is a mix; a silhouette of text alone gives the typical thread instead. Without: the typical thread,
+ * repeated up the screen. Never more than the screen plus the one row that crosses its top edge, because the list is
+ * pinned to its bottom and what is above would only be scrollback of a placeholder. A WHOLE thread that is shorter
+ * than the screen and holds a person's message is drawn from the top and fills nothing, which is what the thread will
+ * do when it arrives. For a screen below 220px or not measured yet no mix is promised.
+ */
+export function loadingRows(silhouette: Silhouette | undefined, viewport: number): LoadingRows {
+  const base = silhouette?.rows ?? [];
+  if (silhouette?.whole === true && viewport > 0 && silhouetteHeight(base) < viewport) {
+    if (base.some((row) => row.k === "person")) return { rows: [...base], top: true };
+    return { rows: bottomAnchored([], viewport), top: false };
+  }
+  const kept = bottomAnchored(base, viewport);
+  if (base.length === 0 || isMixed(kept)) return { rows: kept, top: false };
+  return { rows: bottomAnchored([], viewport), top: false };
 }

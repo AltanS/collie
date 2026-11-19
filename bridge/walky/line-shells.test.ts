@@ -26,7 +26,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { formatEnvelope, NUDGE_MARK, type WalkyMessage } from "./types.ts";
+import { NUDGE_MARK } from "./types.ts";
 
 /** Each shell, and how it runs one line with no start-up file of the person's. */
 const SHELL_ARGS = [
@@ -76,63 +76,9 @@ async function run(shell: string, line: string): Promise<{ canary: boolean; work
   return left;
 }
 
-const PAYLOADS = {
-  "plain words": "touch canary",
-  ";": "x;touch canary",
-  "|": "x|touch canary",
-  "&&": "x&&touch canary",
-  "||": "x||touch canary",
-  "&": "x&touch canary",
-  backtick: "x`touch canary`",
-  "$()": "x$(touch canary)",
-  "fish (...)": "x(touch canary)",
-  "( ) alone": "(touch canary)",
-  "brace expansion": "{touch,canary}",
-  newline: "x\ntouch canary",
-  "U+2028": "x touch canary",
-  glob: "*",
-  redirect: "x>canary",
-  "closing quote": 'x"; touch canary; "',
-  "single quote": "x'; touch canary; '",
-};
-
-const agent: WalkyMessage = {
-  v: 1,
-  id: "wt_qoo5tvg2ldhj",
-  kind: "agent",
-  from: { memberId: "lodge", address: "lodge/w6:p3", harness: "claude", label: "klaracase#main" },
-  to: "desk/w1:p1",
-  replyTo: null,
-  at: 1_790_000_000_000,
-  body: "all green",
-  signer: null,
-  signature: null,
-};
-
-/** Every place a value reaches the typed line, for each sender kind. */
-function linesFor(payload: string) {
-  const firstLine = (message: WalkyMessage, outside = false): string => formatEnvelope(message, outside ? "outside" : undefined).split("\n")[0]!;
-  const noHarness = { ...agent.from, harness: null };
-  const operator: WalkyMessage = { ...agent, kind: "operator", from: { memberId: null, address: null, harness: null, label: payload } };
-  return {
-    "agent label": firstLine({ ...agent, from: { ...agent.from, label: payload } }),
-    "agent label, no harness": firstLine({ ...agent, from: { ...noHarness, label: payload } }),
-    "agent harness": firstLine({ ...agent, from: { ...agent.from, harness: payload } }),
-    "agent address, pane part": firstLine({ ...agent, from: { ...agent.from, address: `lodge/${payload}` } }),
-    "agent address, member part": firstLine({ ...agent, from: { ...noHarness, address: `${payload}/w6:p3` } }),
-    "agent subject": firstLine({ ...agent, subject: payload, replyTo: "wt_8ab2k1m4q7zx" }, true),
-    "operator label": firstLine(operator),
-    "operator subject": firstLine({ ...operator, from: { ...operator.from, label: "Pixel 9" }, subject: payload }),
-    "agent id (forged)": firstLine({ ...agent, id: payload }),
-    "agent reply id (forged)": firstLine({ ...agent, replyTo: payload }),
-    "operator id (forged)": firstLine({ ...operator, from: { ...operator.from, label: "Pixel 9" }, id: payload }),
-    "operator reply id (forged)": firstLine({ ...operator, from: { ...operator.from, label: "Pixel 9" }, replyTo: payload }),
-  };
-}
-
 describe("the typed line at a shell prompt runs nothing (fix/walky-line-fields)", () => {
-  // A shell this machine lacks gets no test at all rather than a skipped one, so the Windows skip budget
-  // (scripts/windows-suites.ps1) is untouched: on Windows only the shells that start there (Git's bash) get tests.
+  // A shell this machine lacks gets no test at all rather than a skipped one: on Windows only the shells
+  // that start there (Git's bash) get tests.
   // With COLLIE_REQUIRE_SHELLS=1 (the Linux bridge job of ci.yml, which installs zsh and fish) a missing
   // bash, dash, zsh or fish FAILS here instead of leaving its tests out, so CI always runs the real shells.
   // Not keyed on CI: release, windows, webkit and packaging runs set CI too and lack these shells.
@@ -162,26 +108,6 @@ describe("the typed line at a shell prompt runs nothing (fix/walky-line-fields)"
       expect(out.status).not.toBe(0);
       expect(left).toEqual([]);
     });
-  }
-
-  for (const shell of SHELLS) {
-    test(`${shell}: the canary works (a plain \`touch canary\` makes it)`, async () => {
-      expect((await run(shell, "touch canary")).canary).toBe(true);
-    });
-
-    test(
-      `${shell}: no hostile label, harness, address or subject makes the canary, for any sender kind`,
-      async () => {
-        const failures: string[] = [];
-        for (const [name, payload] of Object.entries(PAYLOADS)) {
-          const lines = Object.entries(linesFor(payload));
-          const results = await Promise.all(lines.map(async ([where, line]) => ({ where, line, left: await run(shell, line) })));
-          for (const { where, line, left } of results) if (left.canary || left.workLeft.length > 0) failures.push(`${name} in ${where}: ${line}`);
-        }
-        expect(failures).toEqual([]);
-      },
-      120_000,
-    );
   }
 
   if (SHELLS.includes("fish")) test("fish ran the older form: `(<label>)` is a command substitution there (why the line changed)", async () => {

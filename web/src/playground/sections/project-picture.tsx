@@ -1,17 +1,14 @@
 // "Project picture": the picture a repository's `collie.toml` names, on a pane row's tile, the sidebar's
-// tile with its status mark, the header mark at rest and while loading, and the Settings switch
-// (issue 811, ADR 0160).
+// tile with its status mark, the closed sidebar's tile, and the Settings switch (issue 811, ADR 0160).
 //
 // DEV-ONLY, unreachable from the app entry.
 //
 // THE PICTURE IS A FIXTURE: a 64 px PNG made for this page, held here as a data URL. The tiles read the
 // device's picture store (lib/project-picture.ts), so the section seeds that store with the fixture for
-// as long as it is mounted and puts the device's own values back when it leaves. The header mark takes
-// its picture as a prop, so it needs no store.
+// as long as it is mounted and puts the device's own values back when it leaves.
 
 import { useEffect, useState } from "react";
 
-import { CollieHome } from "@/components/collie-home";
 import { AgentTile } from "@/components/agent-tile";
 import { ProjectPicturesControl } from "@/components/project-pictures-control";
 import { PaneGlyph } from "@/components/ui/pane-glyph";
@@ -25,7 +22,7 @@ export const DEF: SectionDef = {
   id: "project-picture",
   title: "Project picture",
   intent:
-    "The picture a repository's collie.toml names, in place of the agent logo on a tile and of the resting mark in a session. The agent's logo stays in the tile's corner. Any live state brings the Collie mark back.",
+    "The picture a repository's collie.toml names, in place of the agent logo on a tile. The agent's logo stays in the tile's corner, and the Collie mark is never replaced.",
 };
 
 const VERSION = "0123456789ab0123456789ab";
@@ -102,21 +99,18 @@ export function ProjectPictureSection() {
         </Card>
       </Group>
 
-      <Group title="Header mark">
-        <Card state="header-mark-picture" label="4. mark at rest, picture" reach="open a session of such a repository while the connection is live and nothing is loading.">
-          <div className="flex items-center rounded-lg border border-border bg-background px-3 py-2">
-            <CollieHome trouble={false} picture={PICTURE} />
-          </div>
-        </Card>
-        <Card state="header-mark-loading" label="5. mark loading, Collie back" reach="the same session while a round, a send or a reconnect is under way: the Collie mark returns, the picture waits.">
-          <div className="flex items-center rounded-lg border border-border bg-background px-3 py-2">
-            <CollieHome trouble picture={PICTURE} />
-          </div>
+      <Group title="Closed sidebar">
+        <Card state="tile-rail" label="4. closed sidebar tile" reach="a large screen with the sidebar closed: a 28 px tile in a 44 px button, the logo at 14 px, the status mark below.">
+          {ready && (
+            <Row label="collie">
+              <PaneGlyph pane={inSidebar} markOn="bg-card" />
+            </Row>
+          )}
         </Card>
       </Group>
 
       <Group title="Settings">
-        <Card state="settings-switch" label="6. Settings switch" reach="Settings, Appearance, Project pictures. On until the person turns it off; off drops every picture the device kept.">
+        <Card state="settings-switch" label="5. Settings switch" reach="Settings, Appearance, Project pictures. On until the person turns it off; off drops every picture the device kept.">
           <ProjectPicturesControl />
         </Card>
       </Group>

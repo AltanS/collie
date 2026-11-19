@@ -73,7 +73,7 @@
       }
     },
     "runningRows": [
-      "^\\s*[⬝⬞■▪□▫]*\\s*esc interrupt\\b"
+      "^\\s*[⬝⬞■▪□▫]*\\s*esc (?:again to )?interrupt\\b"
     ],
     "overlayRows": [
       "^[\\s┃]*\\S(?:.*\\S)?\\s{3,}esc\\s*$"
