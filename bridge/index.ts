@@ -53,7 +53,7 @@ import type { AgentView, CrewMode, CrewStatusResponse, Launcher, MachineRow } fr
 import { EventPoker } from "./event-poker.ts";
 import { durableLogDir, moveFlatLogs, sourceLogDir } from "./durable/log.ts";
 import { GitHeads, nodeGitHeadDisk } from "./git-head.ts";
-import { ProjectPictures } from "./project-picture.ts";
+import { ProjectPictures, projectPictureDenied } from "./project-picture.ts";
 import { exePathOf, exeReplaced } from "./exe-replaced.ts";
 import {
   herdrActionCommand,
@@ -1020,7 +1020,8 @@ const gitHeads = new GitHeads();
 // Each pane folder's project picture (bridge/project-picture.ts, ADR 0160): one for the whole bridge,
 // fed by the same poll as the branches and read from memory at serialise time. The operator's
 // `COLLIE_PROJECT_FILES=0` turns every repository's `collie.toml` off.
-const projectPictures = new ProjectPictures(cfg.projectFiles, deniedFoldersSync(filesPrivateFolders(cfg)));
+// The private folders come from the one list `collie doctor` uses too (projectPictureDenied).
+const projectPictures = new ProjectPictures(cfg.projectFiles, projectPictureDenied({ stateDir: cfg.stateDir, configDir: dirname(cfg.commandsFile) }));
 
 // Which panes the operator asked to be warned about before their prompt cache goes cold, and the
 // deadlines already warned (bridge/cache/watch.ts). Loaded here beside the other two preference stores;

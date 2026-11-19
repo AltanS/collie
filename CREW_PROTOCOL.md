@@ -788,9 +788,12 @@ updated machines, so build skew is the steady state (§7), and this section is t
 
 - **A pane gained an optional `picture`, and a read route `project-picture/:version`** (added in
   1.30.0, ADR 0160). `picture` is the version of the project picture the pane folder's `collie.toml`
-  names on the machine the pane lives on: 12 lowercase hex characters, the start of the sha256 of the
-  bytes. The phone fetches `GET /api/project-picture/<version>?host=<member>`, and the lead forwards it
-  like a blob, byte for byte, stating the hill image's no-store headers itself. Additive-optional with
+  names on the machine the pane lives on: 24 lowercase hex characters (96 bits), the start of the
+  sha256 of the bytes. The phone fetches `GET /api/project-picture/<version>?host=<member>`, and the lead forwards it
+  like a blob, stating the hill image's no-store headers itself. The lead does not pass the member's
+  bytes on as they came: it reads at most 256 KB of the body, checks the picture's rules on it, checks
+  that the sha256 starts with the version asked for, and sets the type from the bytes. Anything else is
+  the same 404 a miss gives. Additive-optional with
   the closed reading this section requires: **absent or malformed means no picture**, which the phone
   draws as the agent's logo, exactly as before the field. An older member sends no `picture`, so the
   phone never asks it for one; one that is asked anyway answers 404. An older lead passes the field

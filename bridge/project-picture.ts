@@ -3,13 +3,14 @@
 //
 // ── WHAT A PICTURE MAY BE ────────────────────────────────────────────────────────────────────────
 // The path in the file is relative to the folder that holds the file. It is joined onto that folder's
-// REAL path and must land strictly below the repository root the file was found in. From there the
-// hill's reader holds every disk check (bridge/hill/media.ts, `readPostedImage`): `lstat` (a regular
-// file, not a symlink), its real path is the path as built (so no folder on the way is a symlink),
-// not under `.git` or the bridge's own folders, opened with O_NOFOLLOW and O_NONBLOCK, the same inode,
-// the kernel's own name for it, and the leading bytes decide the type. On top of that, for a project
-// picture only ({@link checkProjectPicture}), and without touching the limits of the Hill, tricks or
-// Morph:
+// REAL path and must land strictly below the repository root the file was found in. Then the disk checks
+// of the hill's reader (bridge/hill/media.ts, `readPostedImage`), made here with ASYNC calls so a folder
+// on a mount that hangs never stops the bridge ({@link readProjectPicture}): `lstat` (a regular file, not
+// a symlink), its real path is the path as built (so no folder on the way is a symlink), not under
+// `.git` or the bridge's own folders, opened with O_NOFOLLOW and O_NONBLOCK, the same device and inode,
+// the kernel's own name for the descriptor, the size on the descriptor before any read, and the leading
+// bytes decide the type. The hill's own reader and its limits are untouched. On top of that, for a
+// project picture only ({@link checkProjectPicture}):
 //
 //   - PNG, JPEG or WebP by the first bytes; SVG, GIF, HTML and everything else refused (the hill's rule);
 //   - an animated PNG (an `acTL` chunk before the image data) and an animated WebP (the VP8X animation
@@ -29,7 +30,9 @@
 //   - what a picture is: `lstat` every {@link STAMP_TTL_MS}, read and hashed again when its stamp moved.
 //
 // So a version changes at most once per {@link STAMP_TTL_MS}, never faster than the poll, however often an
-// agent rewrites its picture. Many folders of one repository share one file read and one picture read.
+// agent rewrites its picture. Every disk call is async, and one folder's whole read has a time limit
+// ({@link READ_TIME_MAX_MS}): a folder that does not answer in time keeps what it had, is left alone for
+// {@link SLOW_RETRY_MS}, and never holds up another folder or the refresh. Many folders of one repository share one file read and one picture read.
 // The folder table is bounded ({@link FOLDERS_MAX}); a folder nobody asked about for {@link FORGET_MS} is
 // dropped with every file and picture no remaining folder points at. There is no watcher.
 //
@@ -40,14 +43,15 @@
 // and the next snapshot names its new version.
 
 import { createHash } from "node:crypto";
-import { lstat } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize } from "node:path";
 
-import { HILL_MEDIA_BYTES_MAX, type HillMediaMime } from "../web/src/lib/hill/wire.ts";
-import { PROJECT_PICTURE_BYTES_MAX, PROJECT_PICTURE_SIDE_MAX, PROJECT_PICTURE_SIDE_MIN, isPictureVersion } from "../web/src/lib/project-picture-wire.ts";
-import { hillImageSize, readPostedImage } from "./hill/media.ts";
+import { type HillMediaMime } from "../web/src/lib/hill/wire.ts";
+import { PROJECT_PICTURE_BYTES_MAX, PROJECT_PICTURE_SIDE_MAX, PROJECT_PICTURE_SIDE_MIN, PICTURE_VERSION_HEX, isPictureVersion } from "../web/src/lib/project-picture-wire.ts";
+import { deniedFoldersSync, hillImageMime, hillImageSize } from "./hill/media.ts";
 import { HOST, isBelow } from "./host.ts";
-import { locateProjectFile, readProjectFile, stampOf, type LocatedProjectFile, type ProjectFileOnDisk } from "./project-file.ts";
+import { locateProjectFile, readProjectFile, readSmallFile, stampOf, type LocatedProjectFile, type ProjectFileOnDisk } from "./project-file.ts";
+import { isDeniedPath } from "./read-guard.ts";
 
 /** How long the answer to "which file speaks for this folder" stands. */
 export const LOCATE_TTL_MS = 30_000;
@@ -57,6 +61,30 @@ export const STAMP_TTL_MS = 5_000;
 export const FORGET_MS = 5 * 60_000;
 /** The most folders the cache keeps; past it, the one asked about longest ago goes first. */
 export const FOLDERS_MAX = 512;
+/** The longest one folder's read (or one route read) may take before it counts as no answer. */
+export const READ_TIME_MAX_MS = 3_000;
+/** A folder whose read ran out of time is not tried again for this long. */
+export const SLOW_RETRY_MS = 60_000;
+
+/**
+ * The bridge's own folders a picture may never come from: its state folder and its config folder. ONE
+ * list, for the bridge and for `collie doctor`, each folder as given and as its real path.
+ */
+export function projectPictureDenied(folders: { stateDir: string; configDir: string }): string[] {
+  return deniedFoldersSync([folders.stateDir, folders.configDir]);
+}
+
+/** Why a wait ran out: a marker, so the caller can tell a slow disk from a refusal. */
+class OutOfTime extends Error {}
+
+/** `work`, or an {@link OutOfTime} rejection after `ms`. The work itself runs on; its answer is dropped. */
+function withinTime<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new OutOfTime()), ms);
+  });
+  return Promise.race([work, limit]).finally(() => clearTimeout(timer));
+}
 
 /** One picture read and checked: its type, its bytes, its version. */
 export interface ProjectPictureFile {
@@ -135,9 +163,55 @@ export function checkProjectPicture(bytes: Uint8Array, mime: HillMediaMime): str
   return null;
 }
 
-/** The version of picture bytes: the first 12 hex of their sha256. */
+/** The version of picture bytes: the first {@link PICTURE_VERSION_HEX} hex (96 bits) of their sha256. */
 export function pictureVersion(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex").slice(0, 12);
+  return createHash("sha256").update(bytes).digest("hex").slice(0, PICTURE_VERSION_HEX);
+}
+
+/**
+ * At most `max` bytes of a response body, or `null` when it holds more (or fails). Reading stops at the
+ * cap and the rest of the stream is cancelled, so a member that sends a large body costs the lead at
+ * most `max` plus one chunk in memory.
+ */
+export async function readCappedBody(res: Response, max: number): Promise<Uint8Array | null> {
+  if (res.body === null) return new Uint8Array();
+  const reader = res.body.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > max) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      parts.push(value);
+    }
+  } catch {
+    await reader.cancel().catch(() => undefined);
+    return null;
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.byteLength;
+  }
+  return out;
+}
+
+/**
+ * Bytes a crew member sent as a picture, checked again on the lead before the phone sees them: a type
+ * read from the bytes, the picture's own rules, and the sha256 prefix equal to the version asked for.
+ * `null` for anything else, which the route answers as a miss.
+ */
+export function checkForwardedPicture(bytes: Uint8Array, version: string): { mime: HillMediaMime; bytes: Uint8Array } | null {
+  if (!isPictureVersion(version) || bytes.length > PROJECT_PICTURE_BYTES_MAX) return null;
+  const mime = hillImageMime(bytes);
+  if (mime === null || checkProjectPicture(bytes, mime) !== null) return null;
+  return pictureVersion(bytes) === version ? { mime, bytes } : null;
 }
 
 /**
@@ -151,27 +225,48 @@ export function iconTarget(located: LocatedProjectFile, icon: string): string | 
   return target;
 }
 
+const TOO_LARGE = `is larger than ${String(PROJECT_PICTURE_BYTES_MAX / 1024)} KB`;
+
 /**
- * Read and check one picture at an absolute path. `denied` is the bridge's own folders
- * (`deniedFoldersSync`). Total: never throws.
+ * Read and check one picture at an absolute path, with async calls only (this file's header). `denied` is
+ * {@link projectPictureDenied}. Total: never throws. It has no time limit of its own; its callers in
+ * this file wrap it in one.
  */
 export async function readProjectPicture(path: string, denied: readonly string[]): Promise<ProjectPictureRead> {
-  // The size first, on `lstat`, so a 2 GB file costs no read at all. The hill's reader takes up to its
-  // own cap; the bytes are checked against ours again below.
+  if (path === "" || path.includes("\0") || !isAbsolute(path) || normalize(path) !== path) return { ok: false, why: "is not an absolute path" };
   try {
-    const s = await lstat(path);
-    if (!s.isFile()) return { ok: false, why: "is not a regular file" };
-    if (s.size > PROJECT_PICTURE_BYTES_MAX) return { ok: false, why: `is larger than ${String(PROJECT_PICTURE_BYTES_MAX / 1024)} KB` };
+    // The size first, on `lstat`, so a 2 GB file costs no read at all.
+    const link = await lstat(path);
+    if (link.isSymbolicLink()) return { ok: false, why: "is a symlink; name the file itself" };
+    if (!link.isFile()) return { ok: false, why: "is not a regular file" };
+    if (link.size > PROJECT_PICTURE_BYTES_MAX) return { ok: false, why: TOO_LARGE };
+    if ((await realpath(path)) !== path) return { ok: false, why: "goes through a symlinked folder" };
   } catch {
     return { ok: false, why: "does not exist or may not be read" };
   }
-  const read = readPostedImage(path, denied);
-  if (!read.ok) return { ok: false, why: read.error };
-  if (read.bytes.length > HILL_MEDIA_BYTES_MAX) return { ok: false, why: "is too large" };
-  const problem = checkProjectPicture(read.bytes, read.mime);
+  if (isDeniedPath(path, denied)) return { ok: false, why: "is inside Collie's own folders or a .git folder" };
+  // Opened without following a link and without blocking, the descriptor checked to be this very file at
+  // this real path, its size checked before the read (project-file.ts, `readSmallFile`).
+  const bytes = await readSmallFile(path, PROJECT_PICTURE_BYTES_MAX);
+  if (bytes === null) return { ok: false, why: "changed while it was read, is too large, or could not be read" };
+  const mime = hillImageMime(bytes);
+  if (mime === null) return { ok: false, why: "is not a PNG, JPEG or WebP picture (read from its first bytes)" };
+  const problem = checkProjectPicture(bytes, mime);
   if (problem !== null) return { ok: false, why: problem };
-  return { ok: true, mime: read.mime, bytes: read.bytes, version: pictureVersion(read.bytes) };
+  return { ok: true, mime, bytes, version: pictureVersion(bytes) };
 }
+
+/** {@link readProjectPicture} within {@link READ_TIME_MAX_MS}; a read out of time is "no picture". */
+async function readPictureInTime(read: PictureReader, path: string, denied: readonly string[], ms: number): Promise<ProjectPictureRead> {
+  try {
+    return await withinTime(read(path, denied), ms);
+  } catch {
+    return { ok: false, why: "did not answer in time" };
+  }
+}
+
+/** The one disk read a test replaces, to stand in for a mount that hangs. */
+export type PictureReader = (path: string, denied: readonly string[]) => Promise<ProjectPictureRead>;
 
 interface FolderEntry {
   located: LocatedProjectFile | null;
@@ -225,12 +320,20 @@ export class ProjectPictures implements ProjectPictureSurface, ProjectPictureSou
   private readonly files = new Map<string, FileEntry>();
   private readonly pictures = new Map<string, PictureEntry>();
   private readonly inFlight = new Map<string, Promise<void>>();
+  /** Folders whose last read ran out of time, and when they may be tried again. */
+  private readonly slowUntil = new Map<string, number>();
+  private readonly readPicture: PictureReader;
+  private readonly timeMs: number;
 
   constructor(
     private readonly enabled: boolean,
     private readonly denied: readonly string[],
     private readonly now: () => number = Date.now,
-  ) {}
+    seams: { readPicture?: PictureReader; timeMs?: number } = {},
+  ) {
+    this.readPicture = seams.readPicture ?? readProjectPicture;
+    this.timeMs = seams.timeMs ?? READ_TIME_MAX_MS;
+  }
 
   get(folder: string): string | undefined {
     if (!this.enabled || !isAbsolute(folder)) return undefined;
@@ -260,7 +363,7 @@ export class ProjectPictures implements ProjectPictureSurface, ProjectPictureSou
     if (!this.enabled || !isPictureVersion(version)) return null;
     for (const [path, entry] of this.pictures) {
       if (entry.version !== version) continue;
-      const read = await readProjectPicture(path, this.denied);
+      const read = await readPictureInTime(this.readPicture, path, this.denied, this.timeMs);
       if (read.ok && read.version === version) return { mime: read.mime, bytes: read.bytes };
     }
     return null;
@@ -275,7 +378,7 @@ export class ProjectPictures implements ProjectPictureSurface, ProjectPictureSou
     if (icon === undefined) return { file: located.file, problem: read.problem, ignored: read.ignored, refused: read.refused, icon: null };
     const target = iconTarget(located, icon);
     if (target === null) return { file: located.file, problem: read.problem, ignored: read.ignored, refused: read.refused, icon: { path: icon, ok: false, why: "leaves the repository" } };
-    const picture = await readProjectPicture(target, this.denied);
+    const picture = await readPictureInTime(this.readPicture, target, this.denied, this.timeMs);
     return { file: located.file, problem: read.problem, ignored: read.ignored, refused: read.refused, icon: { path: icon, ok: picture.ok, why: picture.ok ? null : picture.why } };
   }
 
@@ -287,6 +390,8 @@ export class ProjectPictures implements ProjectPictureSurface, ProjectPictureSou
   }
 
   private stale(folder: string, at: number): boolean {
+    const slow = this.slowUntil.get(folder);
+    if (slow !== undefined && at < slow) return false;
     const entry = this.folders.get(folder);
     if (entry === undefined || at - entry.locatedAt >= LOCATE_TTL_MS) return true;
     if (entry.located === null) return false;
@@ -300,8 +405,13 @@ export class ProjectPictures implements ProjectPictureSurface, ProjectPictureSou
   private settle(folder: string): Promise<void> {
     const running = this.inFlight.get(folder);
     if (running !== undefined) return running;
-    const work = this.read(folder)
-      .catch(() => undefined)
+    // The whole folder within the time limit: a mount that hangs costs this folder its fresh answer, and
+    // nothing else. Its old answer stands, and it is left alone for SLOW_RETRY_MS.
+    const work = withinTime(this.read(folder), this.timeMs)
+      .then(() => void this.slowUntil.delete(folder))
+      .catch((error: Error) => {
+        if (error instanceof OutOfTime) this.slowUntil.set(folder, this.now() + SLOW_RETRY_MS);
+      })
       .finally(() => this.inFlight.delete(folder));
     this.inFlight.set(folder, work);
     return work;
@@ -344,7 +454,7 @@ export class ProjectPictures implements ProjectPictureSurface, ProjectPictureSou
       cached.checkedAt = this.now();
       return;
     }
-    const read = await readProjectPicture(path, this.denied);
+    const read = await this.readPicture(path, this.denied);
     this.pictures.set(path, read.ok ? { stamp, checkedAt: this.now(), version: read.version, mime: read.mime, why: null } : { stamp, checkedAt: this.now(), version: null, mime: null, why: read.why });
   }
 
@@ -358,6 +468,7 @@ export class ProjectPictures implements ProjectPictureSurface, ProjectPictureSou
 
   private forget(at: number): void {
     for (const [folder, entry] of this.folders) if (at - entry.askedAt >= FORGET_MS) this.folders.delete(folder);
+    for (const [folder, until] of this.slowUntil) if (at >= until && !this.folders.has(folder)) this.slowUntil.delete(folder);
     this.sweep();
   }
 

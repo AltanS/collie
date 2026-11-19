@@ -40,7 +40,8 @@ import type { MuxAdapter, MuxAck, MuxCreatedPane, MuxOutcome, MuxGrid, MuxGridRe
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
 import type { GitHeadSurface } from "./git-head.ts";
-import type { ProjectPictureSource, ProjectPictureSurface } from "./project-picture.ts";
+import { checkForwardedPicture, readCappedBody, type ProjectPictureSource, type ProjectPictureSurface } from "./project-picture.ts";
+import { PROJECT_PICTURE_BYTES_MAX } from "../web/src/lib/project-picture-wire.ts";
 import { localWatchPane, peerWatchPane, type CacheWarnPane } from "./cache/watch-key.ts";
 import { watchKeyOf, type CacheWatchSurface } from "./cache/watch.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
@@ -2432,18 +2433,15 @@ export function startServer(opts: {
     // ── The project picture (ADR 0160): a picture a pane's `collie.toml` names, by version ──
     //
     // A READ, gated like a blob: the phone fetches it with the pairing token and keeps its own copy by
-    // version. Forwarded with `?host=` to the member whose disk holds it; the lead states the cache rule
-    // itself, as for a blob, whatever a member says.
+    // version. Forwarded with `?host=` to the member whose disk holds it. The lead believes nothing the
+    // member sends: it reads at most the picture cap, checks the picture's rules and the version itself,
+    // types the bytes from the bytes, and states the cache rule; anything else is the same 404 as a miss.
     const pictureMatch = pathname.match(PROJECT_PICTURE_ROUTE);
     if (pictureMatch && req.method === "GET") {
       const denied = caller.gate("read");
       if (denied) return denied;
       const rt = await caller.resolve();
-      if (rt instanceof Response) {
-        for (const [name, value] of Object.entries(HILL_MEDIA_HEADERS)) rt.headers.set(name, value);
-        rt.headers.delete("etag");
-        return rt;
-      }
+      if (rt instanceof Response) return await forwardedPictureRoute(pictureMatch[1] ?? "", rt);
       return await projectPictureRoute(pictureMatch[1] ?? "", opts.projectPictures);
     }
 
@@ -10769,6 +10767,25 @@ export async function projectPictureRoute(version: string, source: ProjectPictur
   const picture = source === undefined ? null : await source.bytesOf(version);
   if (picture === null) return text(HILL_MEDIA_MISSING, 404);
   // A fresh copy, so the body is a plain ArrayBuffer-backed view whatever the reader handed back.
+  return secure(new Response(new Uint8Array(picture.bytes), { headers: { "content-type": picture.mime, ...HILL_MEDIA_HEADERS } }));
+}
+
+/**
+ * A crew member's answer to a picture read, checked on the lead before the phone sees it (ADR 0160): at
+ * most the picture cap read off the body, the picture's rules, the sha256 prefix equal to `version`, the
+ * type from the bytes. The member's headers are dropped. Every other answer is the same 404 as a miss.
+ * Exported for the route test.
+ */
+export async function forwardedPictureRoute(version: string, member: Response): Promise<Response> {
+  // A picture is never compressed on the link (crew/forward.ts compresses text types only), so an answer
+  // with an encoding is not the member's picture, and the cap below would count compressed bytes.
+  if (!member.ok || member.headers.get("content-encoding") !== null) {
+    await member.body?.cancel().catch(() => undefined);
+    return text(HILL_MEDIA_MISSING, 404);
+  }
+  const bytes = await readCappedBody(member, PROJECT_PICTURE_BYTES_MAX);
+  const picture = bytes === null ? null : checkForwardedPicture(bytes, version);
+  if (picture === null) return text(HILL_MEDIA_MISSING, 404);
   return secure(new Response(new Uint8Array(picture.bytes), { headers: { "content-type": picture.mime, ...HILL_MEDIA_HEADERS } }));
 }
 

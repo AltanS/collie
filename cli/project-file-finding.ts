@@ -8,8 +8,7 @@
 
 import { envBool } from "../bridge/config.ts";
 import type { Environment } from "../bridge/config-source.ts";
-import { deniedFoldersSync } from "../bridge/hill/media.ts";
-import { ProjectPictures, type ProjectFileReport } from "../bridge/project-picture.ts";
+import { ProjectPictures, projectPictureDenied, type ProjectFileReport } from "../bridge/project-picture.ts";
 import { ok, warn, type Finding } from "./finding.ts";
 
 const CHECK = "project-file";
@@ -28,9 +27,10 @@ export function projectFileLine(report: ProjectFileReport): Finding | null {
 }
 
 /** The finding for `folder`, under this install's switch and private folders. */
-export async function projectFileFindings(input: { env: Environment; folder: string; privateFolders: readonly string[] }): Promise<Finding[]> {
+export async function projectFileFindings(input: { env: Environment; folder: string; stateDir: string; configDir: string }): Promise<Finding[]> {
   if (!envBool("COLLIE_PROJECT_FILES", true, input.env)) return [ok(CHECK, "off (COLLIE_PROJECT_FILES=0): no repository's collie.toml is read")];
-  const report = await new ProjectPictures(true, deniedFoldersSync(input.privateFolders)).report(input.folder);
+  // The bridge's own list (projectPictureDenied), so doctor and the bridge refuse the same folders.
+  const report = await new ProjectPictures(true, projectPictureDenied({ stateDir: input.stateDir, configDir: input.configDir })).report(input.folder);
   const line = projectFileLine(report);
   return line === null ? [] : [line];
 }

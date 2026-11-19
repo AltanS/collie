@@ -272,7 +272,7 @@ export interface AgentView {
    */
   gitHead?: GitHead;
   /**
-   * The version of the project picture the pane folder's `collie.toml` names (ADR 0160): the first 12
+   * The version of the project picture the pane folder's `collie.toml` names (ADR 0160): the first 24
    * hex of the sha256 of its bytes, read off disk by `bridge/project-picture.ts` and attached at
    * serialise time exactly as {@link gitHead} is. The phone fetches `/api/project-picture/<version>`.
    *

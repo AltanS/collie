@@ -321,7 +321,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     ...walkyRefusals(deps),
     accountWindowsFinding(deps),
     // The `collie.toml` that speaks for the folder doctor runs in (ADR 0160): one row when there is one.
-    ...(deps.folder === undefined ? [] : await projectFileFindings({ env: deps.ctx.env, folder: deps.folder, privateFolders: [deps.ctx.stateDir, deps.ctx.configDir] })),
+    ...(deps.folder === undefined ? [] : await projectFileFindings({ env: deps.ctx.env, folder: deps.folder, stateDir: deps.ctx.stateDir, configDir: deps.ctx.configDir })),
     // Whether the anonymous install ping is on and which switch decided (M86 spec 01). Info only.
     ...(await telemetryFindings(deps)),
     // The Whistle model (ADR 0096): one finding when the model, or the host engine that needs it, is

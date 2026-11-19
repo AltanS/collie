@@ -1,13 +1,15 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { PROJECT_PICTURE_BYTES_MAX } from "../web/src/lib/project-picture-wire.ts";
-import { HILL_MEDIA_HEADERS, HILL_MEDIA_MISSING, PROJECT_PICTURE_ROUTE, projectPictureRoute } from "./server.ts";
-import { checkIconPath, locateProjectFile, NEVER_TABLES, parseProjectFile, PROJECT_FILE_BYTES_MAX, PROJECT_KEYS, readProjectFile } from "./project-file.ts";
-import { checkProjectPicture, iconTarget, pictureVersion, pngAnimated, ProjectPictures, readProjectPicture, STAMP_TTL_MS, webpAnimated } from "./project-picture.ts";
+import { pictureHeader, pictureHeaderFits, PROJECT_PICTURE_BYTES_MAX } from "../web/src/lib/project-picture-wire.ts";
+import { hillImageMime, hillImageSize } from "./hill/media.ts";
+import { forwardedPictureRoute, HILL_MEDIA_HEADERS, HILL_MEDIA_MISSING, PROJECT_PICTURE_ROUTE, projectPictureRoute } from "./server.ts";
+import { checkIconPath, cleanName, descriptorIs, isControlCode, locateProjectFile, NEVER_TABLES, parseProjectFile, PROJECT_FILE_BYTES_MAX, PROJECT_KEYS, readProjectFile, readSmallFile } from "./project-file.ts";
+import { checkProjectPicture, iconTarget, pictureVersion, pngAnimated, ProjectPictures, readCappedBody, readProjectPicture, SLOW_RETRY_MS, STAMP_TTL_MS, webpAnimated, type PictureReader } from "./project-picture.ts";
 
 const made: string[] = [];
 afterAll(() => {
@@ -212,13 +214,13 @@ describe("reading the file off disk", () => {
 });
 
 describe("the picture's rules", () => {
-  test("PNG, JPEG and WebP inside the limits pass; the version is the sha256's first 12 hex", async () => {
+  test("PNG, JPEG and WebP inside the limits pass; the version is the sha256's first 24 hex", async () => {
     const dir = folder();
     for (const [name, bytes] of [["a.png", png()], ["b.jpg", jpeg()], ["c.webp", webp()]] as const) {
       const read = await readProjectPicture(write(join(dir, name), bytes), []);
       expect(read).toMatchObject({ ok: true, version: pictureVersion(bytes) });
     }
-    expect(pictureVersion(png())).toMatch(/^[0-9a-f]{12}$/);
+    expect(pictureVersion(png())).toMatch(/^[0-9a-f]{24}$/);
   });
 
   test("SVG, GIF and HTML are refused by their first bytes, whatever the name", async () => {
@@ -365,13 +367,13 @@ describe("the cache", () => {
 
 describe("the route", () => {
   test("the route's grammar is one opaque segment", () => {
-    expect(PROJECT_PICTURE_ROUTE.exec("/api/project-picture/abcdef012345")?.[1]).toBe("abcdef012345");
+    expect(PROJECT_PICTURE_ROUTE.exec("/api/project-picture/abcdef012345abcdef012345")?.[1]).toBe("abcdef012345abcdef012345");
     expect(PROJECT_PICTURE_ROUTE.exec("/api/project-picture/a/b")).toBeNull();
   });
 
   test("a held version answers its bytes with the hill image's headers and its type", async () => {
     const bytes = new Uint8Array(png());
-    const res = await projectPictureRoute("abcdef012345", { bytesOf: async (v) => (v === "abcdef012345" ? { mime: "image/png", bytes } : null) });
+    const res = await projectPictureRoute("abcdef012345abcdef012345", { bytesOf: async (v) => (v === "abcdef012345abcdef012345" ? { mime: "image/png", bytes } : null) });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/png");
     for (const [name, value] of Object.entries(HILL_MEDIA_HEADERS)) expect(res.headers.get(name)).toBe(value);
@@ -380,9 +382,334 @@ describe("the route", () => {
   });
 
   test("every miss is the same 404, and no source at all is a miss", async () => {
-    for (const res of [await projectPictureRoute("abcdef012345", undefined), await projectPictureRoute("x", { bytesOf: async () => null })]) {
+    for (const res of [await projectPictureRoute("abcdef012345abcdef012345", undefined), await projectPictureRoute("x", { bytesOf: async () => null })]) {
       expect(res.status).toBe(404);
       expect(await res.text()).toBe(HILL_MEDIA_MISSING);
     }
   });
+});
+
+/** Control codes the project file's names and paths may never carry (L2): C1, line and paragraph separators, bidi. */
+const HOSTILE_CODES = [0x009b, 0x0085, 0x2028, 0x2029, 0x202e, 0x2066];
+/** The same, as a TOML `\u` escape run, so the parser itself produces the characters. */
+const HOSTILE_TOML = HOSTILE_CODES.map((c) => `\\u${c.toString(16).padStart(4, "0")}`).join("");
+const HOSTILE_TEXT = String.fromCodePoint(...HOSTILE_CODES);
+
+/** A promise that never settles: a mount that hangs. */
+const never = () => new Promise<never>(() => undefined);
+
+function makeFifo(path: string): boolean {
+  try {
+    return Bun.spawnSync(["mkfifo", path]).exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
+describe("a folder whose disk hangs (M1)", () => {
+  function projectWith(icon = "logo.png") {
+    const root = repo(folder());
+    write(join(root, "collie.toml"), `[project]\nicon = "${icon}"\n`);
+    const bytes = png();
+    write(join(root, icon), bytes);
+    return { root, bytes, picture: join(root, icon) };
+  }
+
+  test("one folder out of time costs only that folder; it is left alone until SLOW_RETRY_MS has passed", async () => {
+    const a = projectWith();
+    const b = projectWith();
+    const calls: string[] = [];
+    const readPicture: PictureReader = (path, denied) => {
+      calls.push(path);
+      return path === a.picture ? never() : readProjectPicture(path, denied);
+    };
+    let now = 1_000;
+    const pictures = new ProjectPictures(true, [], () => now, { readPicture, timeMs: 50 });
+    const started = performance.now();
+    await pictures.refresh([a.root, b.root]);
+    expect(performance.now() - started).toBeLessThan(1_000);
+    expect(pictures.get(b.root)).toBe(pictureVersion(b.bytes));
+    expect(pictures.get(a.root)).toBeUndefined();
+    expect(calls.filter((p) => p === a.picture)).toHaveLength(1);
+
+    await pictures.refresh([a.root]);
+    expect(calls.filter((p) => p === a.picture)).toHaveLength(1);
+
+    now += SLOW_RETRY_MS;
+    await pictures.refresh([a.root]);
+    expect(calls.filter((p) => p === a.picture)).toHaveLength(2);
+  });
+
+  test("bytesOf for a picture whose read now hangs answers null within the time limit", async () => {
+    const a = projectWith();
+    let hang = false;
+    const readPicture: PictureReader = (path, denied) => (hang ? never() : readProjectPicture(path, denied));
+    const pictures = new ProjectPictures(true, [], Date.now, { readPicture, timeMs: 50 });
+    await pictures.refresh([a.root]);
+    const version = pictureVersion(a.bytes);
+    expect((await pictures.bytesOf(version))?.bytes).toEqual(a.bytes);
+    hang = true;
+    const started = performance.now();
+    expect(await pictures.bytesOf(version)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+});
+
+describe("the async picture reader keeps every check (M1)", () => {
+  test("a valid PNG is read; its version is 24 hex", async () => {
+    const dir = folder();
+    const bytes = png();
+    const read = await readProjectPicture(write(join(dir, "a.png"), bytes), []);
+    expect(read).toMatchObject({ ok: true, mime: "image/png" });
+    if (read.ok) expect(read.version).toMatch(/^[0-9a-f]{24}$/);
+  });
+
+  test("a symlink to a valid PNG is refused", async () => {
+    const dir = folder();
+    const real = write(join(dir, "real.png"), png());
+    symlinkSync(real, join(dir, "link.png"));
+    expect(await readProjectPicture(join(dir, "link.png"), [])).toMatchObject({ ok: false, why: expect.stringContaining("symlink") });
+  });
+
+  test("a path through a symlinked folder is refused", async () => {
+    const dir = folder();
+    write(join(dir, "real", "a.png"), png());
+    symlinkSync(join(dir, "real"), join(dir, "linked"));
+    expect(await readProjectPicture(join(dir, "linked", "a.png"), [])).toMatchObject({ ok: false, why: expect.stringContaining("symlinked folder") });
+  });
+
+  test("a FIFO is refused and the read does not hang", async () => {
+    const dir = folder();
+    const path = join(dir, "fifo.png");
+    if (!makeFifo(path)) return;
+    const started = performance.now();
+    expect(await readProjectPicture(path, [])).toMatchObject({ ok: false, why: "is not a regular file" });
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
+  test("a file over 256 KB is refused", async () => {
+    const dir = folder();
+    const path = write(join(dir, "big.png"), png(128, 128, { pad: PROJECT_PICTURE_BYTES_MAX }));
+    expect(await readProjectPicture(path, [])).toMatchObject({ ok: false, why: "is larger than 256 KB" });
+  });
+
+  test("a path under a denied folder is refused", async () => {
+    const dir = folder();
+    const path = write(join(dir, "state", "a.png"), png());
+    expect(await readProjectPicture(path, [join(dir, "state")])).toMatchObject({ ok: false, why: expect.stringContaining("Collie's own folders") });
+  });
+
+  test("a path with a .git segment is refused", async () => {
+    const dir = folder();
+    const path = write(join(dir, ".git", "a.png"), png());
+    expect(await readProjectPicture(path, [])).toMatchObject({ ok: false, why: expect.stringContaining(".git") });
+  });
+
+  test("an animated PNG is refused", async () => {
+    const dir = folder();
+    const path = write(join(dir, "a.png"), png(128, 128, { animated: true }));
+    expect(await readProjectPicture(path, [])).toMatchObject({ ok: false, why: expect.stringContaining("animated") });
+  });
+});
+
+describe("a crew member's picture, checked on the lead (M2.1)", () => {
+  const bytes = png();
+  const version = pictureVersion(bytes);
+
+  async function expectMiss(res: Response) {
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe(HILL_MEDIA_MISSING);
+  }
+
+  test("a valid picture answers 200 with the type from its bytes, the hill's media headers and none of the member's", async () => {
+    const member = new Response(bytes, { headers: { "content-type": "text/html", etag: '"member"', "set-cookie": "sid=1", "x-member": "yes" } });
+    const res = await forwardedPictureRoute(version, member);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    for (const [name, value] of Object.entries(HILL_MEDIA_HEADERS)) expect(res.headers.get(name)).toBe(value);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    for (const name of ["etag", "set-cookie", "x-member"]) expect(res.headers.get(name)).toBeNull();
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+  });
+
+  test("a version that is not the bytes' hash is a miss", async () => {
+    await expectMiss(await forwardedPictureRoute("0".repeat(24), new Response(bytes)));
+    await expectMiss(await forwardedPictureRoute("../../etc/passwd", new Response(bytes)));
+  });
+
+  test("a body over 256 KB is a miss, and an endless body is not read past the cap", async () => {
+    const big = png(128, 128, { pad: PROJECT_PICTURE_BYTES_MAX });
+    await expectMiss(await forwardedPictureRoute(pictureVersion(big), new Response(big)));
+    let pulls = 0;
+    let cancelled = false;
+    const endless = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        await Promise.resolve();
+        pulls += 1;
+        controller.enqueue(new Uint8Array(64 * 1024));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    await expectMiss(await forwardedPictureRoute(version, new Response(endless)));
+    expect(cancelled).toBe(true);
+    expect(pulls).toBeLessThan(20);
+  });
+
+  test("bytes that are not an image, and an animated PNG, are a miss", async () => {
+    const html = new TextEncoder().encode("<!doctype html><script>1</script>");
+    await expectMiss(await forwardedPictureRoute(pictureVersion(html), new Response(html)));
+    const moving = png(128, 128, { animated: true });
+    await expectMiss(await forwardedPictureRoute(pictureVersion(moving), new Response(moving)));
+  });
+
+  test("a member status 500 and a content-encoding are a miss", async () => {
+    await expectMiss(await forwardedPictureRoute(version, new Response(bytes, { status: 500 })));
+    await expectMiss(await forwardedPictureRoute(version, new Response(bytes, { headers: { "content-encoding": "gzip" } })));
+  });
+});
+
+describe("readCappedBody", () => {
+  test("exactly the cap passes, one byte more is null", async () => {
+    expect((await readCappedBody(new Response(new Uint8Array(100)), 100))?.length).toBe(100);
+    expect(await readCappedBody(new Response(new Uint8Array(101)), 100)).toBeNull();
+  });
+
+  test("a body split over many chunks is joined in order", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2]));
+        controller.enqueue(new Uint8Array([3]));
+        controller.close();
+      },
+    });
+    expect(await readCappedBody(new Response(stream), 10)).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  test("a null body is empty bytes", async () => {
+    expect(await readCappedBody(new Response(null), 10)).toEqual(new Uint8Array());
+  });
+
+  test("a stream that errors is null", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("boom"));
+      },
+    });
+    expect(await readCappedBody(new Response(stream), 10)).toBeNull();
+  });
+});
+
+describe("a hostile worktree pointer (L1)", () => {
+  test("a commondir naming another repository's .git does not reach that repository's collie.toml", async () => {
+    const base = folder();
+    const other = join(base, "other");
+    mkdirSync(join(other, ".git"), { recursive: true });
+    write(join(other, "collie.toml"), "[project]\n");
+    const evil = join(base, "evil");
+    mkdirSync(join(evil, "fake"), { recursive: true });
+    mkdirSync(join(evil, "sub"));
+    writeFileSync(join(evil, ".git"), "gitdir: fake\n");
+    writeFileSync(join(evil, "fake", "commondir"), `${join(other, ".git")}\n`);
+    expect(await locateProjectFile(join(evil, "sub"))).toBeNull();
+  });
+
+  test("a git dir that is not under worktrees/ is not believed either", async () => {
+    const main = repo(folder());
+    write(join(main, "collie.toml"), "[project]\n");
+    writeFileSync(join(main, ".git", "commondir"), ".\n");
+    const wt = folder();
+    writeFileSync(join(wt, ".git"), `gitdir: ${join(main, ".git")}\n`);
+    expect(await locateProjectFile(wt)).toBeNull();
+  });
+
+  test("a genuine worktree with an absolute commondir still reaches the main checkout", async () => {
+    const main = repo(folder());
+    write(join(main, "collie.toml"), "[project]\n");
+    const wtGit = join(main, ".git", "worktrees", "wt");
+    mkdirSync(wtGit, { recursive: true });
+    writeFileSync(join(wtGit, "commondir"), `${join(main, ".git")}\n`);
+    const wt = folder();
+    writeFileSync(join(wt, ".git"), `gitdir: ${wtGit}\n`);
+    expect(await locateProjectFile(wt)).toEqual({ file: join(main, "collie.toml"), root: main });
+  });
+});
+
+describe("control characters in names and paths (L2)", () => {
+  test("the ignored names of a table and a key hold none", () => {
+    const read = parseProjectFile(`["a${HOSTILE_TOML}b"]\nx = 1\n[project]\n"k${HOSTILE_TOML}z" = 1\n`);
+    expect(read.parseError).toBe(false);
+    expect(read.ignored).toEqual(["ab", "project.kz"]);
+    for (const name of read.ignored) for (const ch of name) expect(isControlCode(ch.codePointAt(0) ?? 0)).toBe(false);
+  });
+
+  test("an icon path holding any of them is refused", () => {
+    for (const code of HOSTILE_CODES) expect(checkIconPath(`a${String.fromCodePoint(code)}b.png`).ok).toBe(false);
+    expect(checkIconPath(`a${HOSTILE_TEXT}.png`).ok).toBe(false);
+    expect(parseProjectFile(`[project]\nicon = "a${HOSTILE_TOML}.png"\n`)).toMatchObject({ settings: {}, refused: ["project.icon holds a control character"] });
+  });
+
+  test("isControlCode and cleanName cover the ranges and leave a plain name alone", () => {
+    for (const code of [...HOSTILE_CODES, 0x00, 0x1b, 0x7f, 0x80, 0x9f, 0x202a, 0x202d, 0x2067, 0x2069]) expect(isControlCode(code)).toBe(true);
+    for (const code of [0x20, 0x41, 0x7e, 0xa0, 0x2027, 0x202f, 0x2065, 0x206a, 0x1f600]) expect(isControlCode(code)).toBe(false);
+    expect(cleanName(`a${HOSTILE_TEXT}b`)).toBe("ab");
+    expect(cleanName(HOSTILE_TEXT)).toBe("?");
+    expect(cleanName("project.name-1")).toBe("project.name-1");
+  });
+});
+
+describe("the descriptor check and the small-file reader (L4)", () => {
+  test("an open descriptor is the file at its real path and no other", async () => {
+    const dir = folder();
+    const path = write(join(dir, "a.txt"), "one");
+    const other = write(join(dir, "b.txt"), "two");
+    const handle = await open(path, "r");
+    try {
+      const stat = await handle.stat();
+      expect(await descriptorIs(handle.fd, path, stat)).toBe(true);
+      expect(await descriptorIs(handle.fd, other, stat)).toBe(false);
+    } finally {
+      await handle.close();
+    }
+  });
+
+  test("readSmallFile reads a plain file and refuses a final symlink, a folder and a file over the cap", async () => {
+    const dir = folder();
+    const path = write(join(dir, "a.txt"), "hello");
+    expect(new TextDecoder().decode((await readSmallFile(path, 100)) ?? new Uint8Array())).toBe("hello");
+    symlinkSync(path, join(dir, "link.txt"));
+    expect(await readSmallFile(join(dir, "link.txt"), 100)).toBeNull();
+    expect(await readSmallFile(dir, 100)).toBeNull();
+    expect(await readSmallFile(path, 4)).toBeNull();
+    expect(await readSmallFile(join(dir, "missing"), 100)).toBeNull();
+  });
+});
+
+// The phone reads a picture's header before it decodes (web/src/lib/project-picture-wire.ts). Its grammar
+// is its own copy of the bridge's, so the two are held to the same answers here.
+describe("the phone's header reader agrees with the bridge's", () => {
+  const cases: [string, Uint8Array][] = [
+    ["png 128", png()],
+    ["png 64x1024", png(64, 1024)],
+    ["png 63", png(63, 128)],
+    ["png 1025", png(1025, 128)],
+    ["jpeg", jpeg()],
+    ["jpeg 2000", jpeg(2000, 100)],
+    ["webp vp8x", webp()],
+    ["webp 40", webp(40, 40)],
+    ["truncated png", png().slice(0, 20)],
+    ["not a picture", new TextEncoder().encode("<svg></svg>")],
+  ];
+  for (const [name, bytes] of cases) {
+    test(name, () => {
+      const mime = hillImageMime(bytes);
+      const size = mime === null ? null : hillImageSize(bytes, mime);
+      const phone = pictureHeader(bytes);
+      expect(phone === null ? null : { mime: phone.mime, width: phone.width, height: phone.height }).toEqual(mime === null || size === null ? null : { mime, ...size });
+      // Size and type rules only: the bridge's other rules (animation) are its own, before the bytes leave.
+      const fits = (side: number) => side >= 64 && side <= 1024;
+      expect(pictureHeaderFits(bytes)).toBe(size !== null && fits(size.width) && fits(size.height));
+    });
+  }
 });

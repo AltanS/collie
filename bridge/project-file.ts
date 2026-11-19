@@ -31,11 +31,12 @@
 // that is refused stops the walk all the same: it is the nearest one, and it says nothing.
 
 import { constants } from "node:fs";
-import { lstat, open, realpath } from "node:fs/promises";
+import { lstat, open, readlink, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 
 import { asJsonObject, asJsonString, type JsonObject, type JsonValue } from "../web/src/lib/json.ts";
 import { parseGitFile } from "./git-head.ts";
+import { HOST } from "./host.ts";
 
 /** The file's name, in the folder it speaks for. */
 export const PROJECT_FILE_NAME = "collie.toml";
@@ -92,22 +93,30 @@ export interface ProjectFileRead {
   readonly refused: readonly string[];
 }
 
-/** A C0 control, DEL, or a bidi override or isolate anywhere in a text. */
+/**
+ * A code a terminal or a reader may act on rather than print: a C0 control, DEL, a C1 control (U+0080 to
+ * U+009F; U+009B is a one-byte CSI), the line and paragraph separators U+2028 and U+2029, and the bidi
+ * embeddings, overrides and isolates (U+202A to U+202E, U+2066 to U+2069). `collie doctor` prints names
+ * from this file, so none of these may reach it.
+ */
+export function isControlCode(code: number): boolean {
+  if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
+  if (code === 0x2028 || code === 0x2029) return true;
+  return (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
+}
+
+/** Whether a text holds any {@link isControlCode}. */
 function hasControl(text: string): boolean {
-  for (let i = 0; i < text.length; i++) {
-    const code = text.charCodeAt(i);
-    if (code < 0x20 || code === 0x7f) return true;
-    if ((code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069)) return true;
-  }
+  for (let i = 0; i < text.length; i++) if (isControlCode(text.charCodeAt(i))) return true;
   return false;
 }
 
 /** A name from the file, safe to print in a terminal: controls dropped, cut to a length. */
-function cleanName(name: string): string {
+export function cleanName(name: string): string {
   let out = "";
   for (const ch of name) {
-    const code = ch.charCodeAt(0);
-    if (code < 0x20 || code === 0x7f || (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069)) continue;
+    const code = ch.codePointAt(0) ?? 0;
+    if (isControlCode(code)) continue;
     out += ch;
     if (out.length >= IGNORED_NAME_MAX) break;
   }
@@ -214,20 +223,51 @@ async function kindOf(path: string): Promise<"file" | "dir" | "link" | "other" |
   }
 }
 
-/** The head of a small regular file, or `null`. Never follows a link, never blocks on a FIFO. */
-async function readSmallFile(path: string, max: number): Promise<Uint8Array | null> {
+/**
+ * Whether an open descriptor is the file at `real`, the path's real path taken before the open. On
+ * Linux the kernel's own name for the descriptor (`/proc/self/fd/<n>`) must be `real`; elsewhere a fresh
+ * `lstat` of `real` must be a regular file with the descriptor's device and inode. So a folder on the
+ * way swapped for a link between the check and the open reads nothing.
+ */
+export async function descriptorIs(fd: number, real: string, opened: { dev: number; ino: number }): Promise<boolean> {
+  if (HOST.platform === "linux") {
+    try {
+      return (await readlink(`/proc/self/fd/${String(fd)}`)) === real;
+    } catch {
+      return false;
+    }
+  }
+  try {
+    const now = await lstat(real);
+    return now.isFile() && now.dev === opened.dev && now.ino === opened.ino;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The bytes of a small regular file, or `null`. Never follows a link at the last step, never blocks on a
+ * FIFO, and reads only when the open descriptor is the file `lstat` saw (device and inode) and sits at
+ * the path's real path ({@link descriptorIs}). The size is checked on `lstat` and again on the open
+ * descriptor before any read, and at most `max` plus one byte is read. Shared by the project file and the
+ * project picture (project-picture.ts).
+ */
+export async function readSmallFile(path: string, max: number): Promise<Uint8Array | null> {
   let link: Awaited<ReturnType<typeof lstat>>;
+  let real: string;
   try {
     link = await lstat(path);
+    if (!link.isFile() || link.size > max) return null;
+    real = await realpath(path);
   } catch {
     return null;
   }
-  if (!link.isFile() || link.size > max) return null;
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
     handle = await open(path, OPEN_FLAGS);
     const opened = await handle.stat();
-    if (!opened.isFile() || opened.dev !== link.dev || opened.ino !== link.ino) return null;
+    if (!opened.isFile() || opened.dev !== link.dev || opened.ino !== link.ino || opened.size > max) return null;
+    if (!(await descriptorIs(handle.fd, real, opened))) return null;
     const buf = Buffer.alloc(max + 1);
     let got = 0;
     while (got < buf.length) {
@@ -270,7 +310,13 @@ async function treeOf(folder: string): Promise<Tree | null> {
   return null;
 }
 
-/** The main checkout's real root for a linked worktree's `.git` file, or `null`. */
+/**
+ * The main checkout's real root for a linked worktree's `.git` file, or `null`. The `.git` file and the
+ * `commondir` it leads to are the repository's own text, so they are believed only in git's own layout,
+ * on real paths: the git dir is exactly `<common>/worktrees/<name>`, and `<common>` is a real folder
+ * named `.git` whose parent is the main checkout. Anything else (a `commondir` that names another
+ * repository's `.git`, a git dir outside `worktrees`) is a tree of its own, with no main checkout.
+ */
 async function mainCheckoutOf(dotGitFile: string, root: string): Promise<string | null> {
   const pointer = await readSmallFile(dotGitFile, GIT_POINTER_BYTES_MAX);
   if (pointer === null) return null;
@@ -281,13 +327,17 @@ async function mainCheckoutOf(dotGitFile: string, root: string): Promise<string 
   const line = Buffer.from(common).toString("utf8").split(/\r?\n/, 1)[0]?.trim() ?? "";
   if (line === "" || hasControl(line)) return null;
   const commonDir = isAbsolute(line) ? normalize(line) : resolve(gitDir, line);
-  if (basename(commonDir) !== ".git") return null;
-  let main: string;
+  let gitDirReal: string;
+  let commonReal: string;
   try {
-    main = await realpath(dirname(commonDir));
+    gitDirReal = await realpath(gitDir);
+    commonReal = await realpath(commonDir);
   } catch {
     return null;
   }
+  if (basename(commonReal) !== ".git" || (await kindOf(commonReal)) !== "dir") return null;
+  if (dirname(gitDirReal) !== join(commonReal, "worktrees") || basename(gitDirReal) === "") return null;
+  const main = dirname(commonReal);
   return main === root ? null : main;
 }
 

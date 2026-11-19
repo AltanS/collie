@@ -255,7 +255,7 @@ describe("which routes cross a link", () => {
   });
 
   test("a project picture crosses the link as a READ, like a blob (ADR 0160)", () => {
-    const version = "abcdef012345";
+    const version = "abcdef012345abcdef012345";
     expect(crewRouteFor(`/api/project-picture/${version}`)).toBe(`project-picture/${version}`);
     expect(apiPathFor(`project-picture/${version}`)).toBe(`/api/project-picture/${version}`);
     expect(forwardKind(`project-picture/${version}`)).toBe("read");
@@ -1764,14 +1764,14 @@ describe("journal, uploads and state stay host-local", () => {
   test("a member's project picture is one read; an older member's 404 reaches the phone as a 404", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const fresh = transportOf(() => ok(new Response(png, { status: 200, headers: { "content-type": "image/png" } })));
-    const [req, url] = get("/api/project-picture/abcdef012345?host=laptop");
+    const [req, url] = get("/api/project-picture/abcdef012345abcdef012345?host=laptop");
     const res = await forward(req, url, { transport: fresh.transport });
     expect(fresh.calls).toHaveLength(1);
-    expect(fresh.calls[0]!.route).toBe("project-picture/abcdef012345");
+    expect(fresh.calls[0]!.route).toBe("project-picture/abcdef012345abcdef012345");
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(png);
     // A member that predates the route answers 404; the phone then keeps the agent logo.
     const old = transportOf(() => ok(new Response("not found", { status: 404 })));
-    const [req2, url2] = get("/api/project-picture/abcdef012345?host=laptop");
+    const [req2, url2] = get("/api/project-picture/abcdef012345abcdef012345?host=laptop");
     expect((await forward(req2, url2, { transport: old.transport })).status).toBe(404);
   });
 
