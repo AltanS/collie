@@ -3,9 +3,11 @@
 // `max-w-screen-sm`), with empty margins on a desktop. A pick round is a proposal in the workspace's design
 // app (`design propose <worktree> dashboard-wide`), never a design reference entry.
 //
-// THE FRAME. The design app draws every option in a 390px phone frame. A wide screen does not fit one, so
-// each case draws a whole screen at its real size (1024 to 2560px wide) and scales it down to the frame's
-// width; "Actual size" above it shows it at 100% to pan. Taps work at either scale.
+// THE FRAME. The round sets `frame: "wide"`: the design app draws each option in a plain bordered box as
+// wide as its page, one per row, at 100% with no scaling. A screen measures that box (`useElementWidth`)
+// and lays itself out at the box's width, so the column count is the rule of `lib/wide-dashboard.ts` for
+// the width the person's own window gives. The cases keep their names; the screen width a case names is
+// not drawn, the real box width is, and a bar above each screen says which.
 //
 // Every option is drawn from the real components (`components/wide-dashboard.tsx`: `SpaceCard` over
 // `SectionHeader`, `ListGroup` and `AgentCard`), with the real header, control block, Spaces navigator,
@@ -14,7 +16,7 @@
 // After the pick: the chosen option becomes the route's large-screen body and a design reference entry;
 // delete this file, its test, its line in ../rounds.ts, and the three options not chosen.
 
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 
 import { AgentList } from "@/components/agent-list";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-header";
@@ -24,7 +26,6 @@ import { NeedsYouSwitch } from "@/components/needs-you-switch";
 import { ServerSwitcher } from "@/components/server-switcher";
 import { SpaceOverview } from "@/components/space-overview";
 import { StatusSummaryLine } from "@/components/status-counts";
-import { Button } from "@/components/ui/button";
 import { FabButton } from "@/components/ui/fab";
 import { TabBar } from "@/components/ui/tab-bar";
 import { SUMMARY_LINE_TAP_TARGET } from "@/components/ui/tap-target";
@@ -308,13 +309,18 @@ function After({ herd }: { herd: Herd }) {
 
 type Layout = (props: WideDashboardProps) => ReactNode;
 
+/** The width of the box the screen sits in. The router below keeps the element it was first given, so the width reaches the screen through context, not through props. */
+const ScreenWidth = createContext(0);
+
 /**
- * One screen of the given size: the header and the tab bar as wide as the content, the option's body
- * between them, and the New button at the content's right edge over the bar, where the phone has it.
+ * One screen as wide as the box the design app gives it: the header and the tab bar as wide as the content,
+ * the option's body between them, and the New button at the content's right edge over the bar, where the
+ * phone has it. A bar above says the measured width and the columns it gave.
  */
-function Screen({ state, shot, Body, fullBleed }: { state: string; shot: Shot; Body: Layout; fullBleed: boolean }) {
+function ScreenInner({ state, shot, Body, fullBleed }: { state: string; shot: Shot; Body: Layout; fullBleed: boolean }) {
   const [view, setView] = useState<DashView>("dashboard");
-  const { herd, width, height, servers } = shot;
+  const width = useContext(ScreenWidth);
+  const { herd, servers } = shot;
   const empty = herd.agents.length === 0 && herd.shellPanes.length === 0;
   const content = fullBleed || empty ? width : gridWidth(spaceColumns(width)) + 2 * WIDE_GUTTER;
   const side = (width - content) / 2;
@@ -341,69 +347,60 @@ function Screen({ state, shot, Body, fullBleed }: { state: string; shot: Shot; B
     />
   );
   return (
-    <PackedRootRouter data={{ ...homeSolo, agents: herd.agents, shellPanes: herd.shellPanes, workspaces: herd.workspaces, tabs: herd.tabs, servers: servers === undefined ? [] : [...servers] }}>
-      <div data-state={state} data-width={width} className="relative flex flex-col overflow-hidden bg-background text-foreground" style={{ width, height }}>
-        <div className="mx-auto w-full" style={{ maxWidth: content }}>
-          <AppHeaderHost bridge="connected" error={false}>
-            <RouteHeader
-              wordmark
-              rightLead={crew ? <ServerSwitcher servers={[...servers]} scope={{}} agents={herd.agents} /> : undefined}
-              rightTrail={<SettingsGear scope={{}} />}
-            />
-          </AppHeaderHost>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col">{body}</div>
-        <div className="mx-auto w-full" style={{ maxWidth: content }}>
-          <TabBar<DashView>
-            label={t("home.tabs.aria")}
-            active={view}
-            onSelect={setView}
-            items={[
-              ...(crew ? [{ value: "crew" as const, label: t("crew.title"), icon: <Icon name="crew" className="size-5" /> }] : []),
-              {
-                value: "dashboard",
-                label: t("home.tabs.dashboard"),
-                icon: <Icon name="tab-dashboard" className="size-5" />,
-                badge: blocked,
-                dot: blocked === 0 && hasReady(herd.agents),
-                badgeLabel: blocked > 0 ? tn("home.tabs.blocked", blocked) : t("home.tabs.unseen"),
-              },
-              { value: "changes", label: t("files.title"), icon: <Icon name="files" className="size-5" /> },
-            ]}
+    <div data-state={state} data-width={width} className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground" style={{ transform: "translate(0)" }}>
+      <div className="mx-auto w-full" style={{ maxWidth: content }}>
+        <AppHeaderHost bridge="connected" error={false}>
+          <RouteHeader
+            wordmark
+            rightLead={crew ? <ServerSwitcher servers={[...servers]} scope={{}} agents={herd.agents} /> : undefined}
+            rightTrail={<SettingsGear scope={{}} />}
           />
-        </div>
-        <div className="absolute z-30" style={{ right: side + WIDE_GUTTER, bottom: 56 + 1 + 16 }}>
-          <FabButton label={t("home.new.label")} onClick={() => undefined} />
-        </div>
+        </AppHeaderHost>
       </div>
-    </PackedRootRouter>
+      <div className="flex min-h-0 flex-1 flex-col">{body}</div>
+      <div className="mx-auto w-full" style={{ maxWidth: content }}>
+        <TabBar<DashView>
+          label={t("home.tabs.aria")}
+          active={view}
+          onSelect={setView}
+          items={[
+            ...(crew ? [{ value: "crew" as const, label: t("crew.title"), icon: <Icon name="crew" className="size-5" /> }] : []),
+            {
+              value: "dashboard",
+              label: t("home.tabs.dashboard"),
+              icon: <Icon name="tab-dashboard" className="size-5" />,
+              badge: blocked,
+              dot: blocked === 0 && hasReady(herd.agents),
+              badgeLabel: blocked > 0 ? tn("home.tabs.blocked", blocked) : t("home.tabs.unseen"),
+            },
+            { value: "changes", label: t("files.title"), icon: <Icon name="files" className="size-5" /> },
+          ]}
+        />
+      </div>
+      <div className="absolute z-30" style={{ right: side + WIDE_GUTTER, bottom: 56 + 1 + 16 }}>
+        <FabButton label={t("home.new.label")} onClick={() => undefined} />
+      </div>
+    </div>
   );
 }
 
-/**
- * The frame: the screen scaled to the phone frame's width, or at 100% to pan. Frame chrome, not part of
- * any option; the words are the round's, not the app's.
- */
-function Stage({ shot, children }: { shot: Shot; children: ReactNode }) {
-  const [measure, room] = useElementWidth<HTMLDivElement>(390);
-  const [actual, setActual] = useState(false);
-  const scale = actual ? 1 : Math.min(1, room / shot.width);
+function Screen({ state, shot, Body, fullBleed }: { state: string; shot: Shot; Body: Layout; fullBleed: boolean }) {
+  const [measure, width] = useElementWidth<HTMLDivElement>(shot.width);
+  const { herd, servers } = shot;
+  const empty = herd.agents.length === 0 && herd.shellPanes.length === 0;
+  const columns = spaceColumns(width);
+  const readout = empty ? "first start" : fullBleed ? "scrolls sideways" : `${columns} ${columns === 1 ? "column" : "columns"}`;
   return (
-    <div ref={measure} className="flex min-h-full flex-1 flex-col bg-muted">
-      <div className="flex h-11 shrink-0 items-center justify-between gap-2 bg-background px-3 text-xs text-muted-foreground">
-        <span className="tabular-nums">
-          {shot.width} × {shot.height}
-        </span>
-        <Button type="button" size="sm" variant="outline" className="h-8 px-2 text-xs" onClick={() => setActual((a) => !a)}>
-          {actual ? "Fit width" : "Actual size"}
-        </Button>
-      </div>
-      <div className={cn("min-h-0 flex-1", actual ? "overflow-auto" : "overflow-hidden")}>
-        <div style={{ width: shot.width * scale, height: shot.height * scale }}>
-          <div style={{ width: shot.width, height: shot.height, transform: `scale(${scale})`, transformOrigin: "top left" }}>{children}</div>
+    <ScreenWidth.Provider value={width}>
+      <div ref={measure} className="flex h-full min-h-[600px] w-full flex-col bg-muted">
+        <div className="flex h-9 shrink-0 items-center bg-background px-3 text-xs tabular-nums text-muted-foreground">
+          {width} px wide, {readout}
         </div>
+        <PackedRootRouter data={{ ...homeSolo, agents: herd.agents, shellPanes: herd.shellPanes, workspaces: herd.workspaces, tabs: herd.tabs, servers: servers === undefined ? [] : [...servers] }}>
+          <ScreenInner state={state} shot={shot} Body={Body} fullBleed={fullBleed} />
+        </PackedRootRouter>
       </div>
-    </div>
+    </ScreenWidth.Provider>
   );
 }
 
@@ -414,11 +411,7 @@ function option(n: number, label: string, state: string, Body: Layout, fullBleed
     state,
     render: (caseId) => {
       const shot = shotOf(caseId);
-      return (
-        <Stage shot={shot}>
-          <Screen state={state} shot={shot} Body={Body} fullBleed={fullBleed} />
-        </Stage>
-      );
+      return <Screen state={state} shot={shot} Body={Body} fullBleed={fullBleed} />;
     },
   };
 }
@@ -430,6 +423,6 @@ const OPTIONS: readonly PickOption[] = [
   option(4, "Needs you first, then Spaces", "dashboard-wide-board", DashboardWideBoard),
 ];
 
-const ROUND: PickRoundDef = { title: "The dashboard on a large screen", options: OPTIONS, cases: CASES, frameHeight: 760 };
+const ROUND: PickRoundDef = { title: "The dashboard on a large screen", options: OPTIONS, cases: CASES, frameHeight: 760, frame: "wide" };
 
 export default ROUND;

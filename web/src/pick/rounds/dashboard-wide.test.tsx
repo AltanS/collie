@@ -5,7 +5,8 @@ import { wordCount } from "../types";
 import ROUND from "./dashboard-wide";
 
 // The large-screen dashboard round, drawn the way the design app's round page draws it: four numbered
-// options, each the real Space sections on the twelve-Space herd, at the case's own screen size.
+// options, each the real Space sections on the twelve-Space herd. The round asks for the wide frame; the
+// screen measures its box, and jsdom has no layout, so it falls back to the case's own screen width.
 
 afterEach(cleanup);
 
@@ -28,6 +29,14 @@ describe("the large-screen dashboard round", () => {
       expect(o.state).toMatch(/^dashboard-wide-/);
     }
     expect(ROUND.cases[0]!.id).toBe("twelve");
+  });
+
+  it("asks the design app for the wide frame and draws no scale or Actual size switch", async () => {
+    expect(ROUND.frame).toBe("wide");
+    const screen = await draw(1, "twelve");
+    expect(screen.closest("[style*='scale']")).toBeNull();
+    expect(screen.textContent).not.toContain("Actual size");
+    expect(screen.parentElement!.textContent).toContain("3 columns");
   });
 
   it("draws every Space once, in the list's order, in every option", async () => {
