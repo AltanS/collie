@@ -262,7 +262,10 @@ export class FakeRex implements RexExec {
       const target = flag(args, "-s");
       const session = this.sessionOf(target);
       if (!session) return notFound("session", target ?? "");
-      const clients = Array.from({ length: session.attached }, (_, i) => ({ client_id: `client:app-${String(i)}`, info: { kind: "app" } }));
+      // Every listing also carries a command-line client, as a live server's does while another `rex`
+      // call (the adapter's own `window ls`, a `rex events -s`) is attached to the session.
+      const apps = Array.from({ length: session.attached }, (_, i) => ({ client_id: `client:app-${String(i)}`, info: { kind: "app" } }));
+      const clients = [...apps, { client_id: "client:cli-0", info: { kind: "cli", name: "rex" } }];
       return ok(JSON.stringify({ clients }));
     }
 

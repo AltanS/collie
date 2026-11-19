@@ -95,6 +95,12 @@ describe("listings", () => {
     expect(parseClientCount(JSON.stringify({ clients: [{ client_id: "client:1" }, { client_id: "client:2" }] }))).toBe(2);
   });
 
+  test("a command-line client is not a person looking at the session", () => {
+    const cli = { client_id: "client:3", info: { kind: "cli", platform: "linux", name: "rex" } };
+    expect(parseClientCount(JSON.stringify({ clients: [cli] }))).toBe(0);
+    expect(parseClientCount(JSON.stringify({ clients: [cli, { client_id: "client:4", info: { kind: "app" } }] }))).toBe(1);
+  });
+
   test("a running block and an exited --keep-open one", () => {
     const running = {
       last_exit: null,

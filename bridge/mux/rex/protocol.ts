@@ -155,10 +155,20 @@ export function parseView(stdout: string): RexView {
   };
 }
 
-/** `rex client ls -s <session> --json`: how many clients are attached to the session. */
+/**
+ * `rex client ls -s <session> --json`: how many clients that show the session to a person are attached.
+ *
+ * Command-line clients do not count. Rex's help says `--json` is "the server's full reply, including
+ * command line clients", and probed on API revision 19 a `rex window ls -s <session>` running beside
+ * the listing was one of them (`info.kind: "cli"`) in 6 of 20 tries, so the adapter's own calls, and
+ * any `rex events -s` (attached for as long as it streams), made a headless pane read as focused.
+ */
 export function parseClientCount(stdout: string): number {
   const parsed = parseObject(stdout, "rex client ls --json");
-  return list(parsed.clients).filter((client) => asObject(client) !== null).length;
+  return list(parsed.clients).filter((entry) => {
+    const client = asObject(entry);
+    return client !== null && str(asObject(client.info)?.kind) !== "cli";
+  }).length;
 }
 
 /**
