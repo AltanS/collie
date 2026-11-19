@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadConfig } from "./config.ts";
+import { HOST } from "./host.ts";
 import {
   COMPOSER_DIAG_KEYS,
   ComposerDiagStore,
@@ -17,6 +18,7 @@ import {
   type DiagIo,
 } from "./diag-composer.ts";
 import type { JsonObject } from "./json.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "./owner-only.ts";
 import { DEVICES_FILENAME, filePairingIo, PairingStore, sha256Hex } from "./pairing.ts";
 import { apiFrontGate, guard } from "./server.ts";
 
@@ -150,12 +152,18 @@ describe("the composer diagnostic file", () => {
   });
 
   test("the real file is made owner-only inside an owner-only folder, and only on the first record", async () => {
-    const dir = join(await tmp(), "state");
+    const parent = await tmp();
+    // Windows: the bridge gives the state folder an owner-only access list at start (M43 spec 04), and what is
+    // made inside inherits it. NTFS has no 0600 or 0700, so the check reads that list instead.
+    if (HOST.platform === "win32") ensureOwnerOnlyDir(parent, HOST, { root: privateRoot("state"), repair: true });
+    const dir = join(parent, "state");
     const store = new ComposerDiagStore(diagFileIo(dir), { version: "1.29.1" });
     expect(() => statSync(dir)).toThrow();
     expect(await store.record(GOOD, "Pixel")).toBe("written");
-    expect(statSync(join(dir, DIAG_COMPOSER_FILE)).mode & 0o777).toBe(0o600);
-    expect(statSync(dir).mode & 0o777).toBe(0o700);
+    for (const [path, mode] of [[join(dir, DIAG_COMPOSER_FILE), 0o600], [dir, 0o700]] as const) {
+      if (HOST.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(mode);
+      else expect(isOwnerOnly(path, HOST)).toEqual({ state: "private" });
+    }
     await store.record(GOOD, "Pixel");
     expect(readFileSync(join(dir, DIAG_COMPOSER_FILE), "utf8").split("\n").filter((r) => r !== "")).toHaveLength(2);
   });
@@ -164,7 +172,10 @@ describe("the composer diagnostic file", () => {
     const dir = await tmp();
     await writeFile(join(dir, DIAG_COMPOSER_FILE), "", { mode: 0o644 });
     await new ComposerDiagStore(diagFileIo(dir), { version: "1.29.1" }).record(GOOD, null);
-    expect(statSync(join(dir, DIAG_COMPOSER_FILE)).mode & 0o777).toBe(0o600);
+    // A file mode is POSIX. On Windows the state folder's access list is repaired at start (M43 spec 04), not
+    // per file, so the append itself is what holds there.
+    if (HOST.platform !== "win32") expect(statSync(join(dir, DIAG_COMPOSER_FILE)).mode & 0o777).toBe(0o600);
+    expect(readFileSync(join(dir, DIAG_COMPOSER_FILE), "utf8").split("\n").filter((r) => r !== "")).toHaveLength(1);
   });
 
   test("past the line cap the oldest lines go and the file never holds more than the cap", async () => {
@@ -173,7 +184,7 @@ describe("the composer diagnostic file", () => {
     for (let i = 0; i < 8; i++) await store.record({ ...GOOD, msSinceForeground: i }, null);
     const rows = readFileSync(join(dir, DIAG_COMPOSER_FILE), "utf8").split("\n").filter((r) => r !== "").map((r) => JSON.parse(r));
     expect(rows.map((r) => r.msSinceForeground)).toEqual([3, 4, 5, 6, 7]);
-    expect(statSync(join(dir, DIAG_COMPOSER_FILE)).mode & 0o777).toBe(0o600);
+    if (HOST.platform !== "win32") expect(statSync(join(dir, DIAG_COMPOSER_FILE)).mode & 0o777).toBe(0o600);
   });
 
   test("a store opened on a file that is already full drops the oldest too", async () => {

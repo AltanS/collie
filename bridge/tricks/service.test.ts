@@ -1714,8 +1714,13 @@ describe("warnings at the switch (review 15)", () => {
 });
 
 describe("the approved copy (crew slice 2)", () => {
-  /** Edit the program, then let the folder settle so the pending snapshot is taken. */
+  /**
+   * Edit the program, then let the folder settle so the pending snapshot is taken. A yes just before starts a run
+   * at once, and that run reads the folder again (`recheck`): it must end before the edit, or a read it took
+   * halfway through the edit lands after the next scan and the settle starts again (seen on Windows).
+   */
   async function newVersion(r: Rig, dir: string, at: number, text: string, extraFiles: Record<string, string> = {}): Promise<string> {
+    await r.service.idle();
     await writeFile(join(dir, "legs.sh"), text);
     for (const [name, body] of Object.entries(extraFiles)) await writeFile(join(dir, name), body);
     await tickAt(r, at);
@@ -1893,8 +1898,7 @@ describe("the approved copy (crew slice 2)", () => {
     expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v2, powersChanged: false });
     // After a yes, a change of one field label waits too, and a version with the same list is taken again.
     expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
-    await writeFile(join(dir, "trick.toml"), `${MANIFEST}contract = 3\n${field("Repo")}`);
-    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 1\n");
+    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 1\n", { "trick.toml": `${MANIFEST}contract = 3\n${field("Repo")}` });
     file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(file.on.legs.hash).toBe(v2);
     expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v3 });
@@ -1921,8 +1925,7 @@ describe("the approved copy (crew slice 2)", () => {
     expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v2, powersChanged: true });
     // A second glob after a yes to the first moves the rights again: it waits too.
     expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
-    await writeFile(join(dir, "trick.toml"), `${MANIFEST}contract = 2\ninputs = ["TODO.md", "notes/*.md"]\n`);
-    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 1\n");
+    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 1\n", { "trick.toml": `${MANIFEST}contract = 2\ninputs = ["TODO.md", "notes/*.md"]\n` });
     file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(file.on.legs.hash).toBe(v2);
     expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v3, powersChanged: true });

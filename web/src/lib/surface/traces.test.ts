@@ -18,6 +18,8 @@ const negative = all.filter((trace) => trace.header.set === "negative");
 const positive = all.filter((trace) => trace.header.set === "positive");
 /** The share of the positive traces of a harness with a profile that must read free (the rule of scripts/surface-corpus.ts). */
 const POSITIVE_SHARE = 0.95;
+/** Time limit of a test that replays the whole negative corpus: room for a slow shared runner (vitest's default is 5 s). */
+const SWEEP_TIMEOUT_MS = 30_000;
 
 describe("golden traces on disk", () => {
   it("has the required lab and synthetic traces, each with a header", () => {
@@ -116,7 +118,10 @@ describe("the sets, marked by label (traces/README.md)", () => {
     }
   });
 
-  it("never reads free: every negative trace, with the hook source present, step by step", () => {
+  // A whole-corpus sweep: about 1.5 s here, 5.1 s on a shared CI runner (1.29.1 release run), past the
+  // default 5 s. The same holds for the three hook-source sweeps below. The code did not slow down
+  // between v1.29.0 and v1.29.1; the runner did.
+  it("never reads free: every negative trace, with the hook source present, step by step", { timeout: SWEEP_TIMEOUT_MS }, () => {
     const failures = negative.flatMap((trace) =>
       replayTrace(trace, { mode: "present", fixture: fixtureText }).flatMap((result) => result.mismatches.map((line) => `${trace.name}: ${line}`)),
     );
@@ -140,7 +145,7 @@ describe("the sets, marked by label (traces/README.md)", () => {
 
 describe("the hook source varied", () => {
   for (const mode of HOOK_MODES) {
-    it(`never free: every negative trace, with the hook source ${mode}`, () => {
+    it(`never free: every negative trace, with the hook source ${mode}`, { timeout: SWEEP_TIMEOUT_MS }, () => {
       const freed = negative.flatMap((trace) => freeSteps(replayTrace(trace, { mode, fixture: fixtureText })).map((step) => `${trace.name} step ${String(step + 1)}`));
       expect(freed).toEqual([]);
     });

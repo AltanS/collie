@@ -467,7 +467,7 @@ Six kinds, each with its own switch under **Settings → Alerts → Notify when*
 
 | Alert | Fires when | Default |
 | --- | --- | --- |
-| Needs input | an agent is waiting on you | on |
+| Needs you | an agent waits on you or stopped on an error | on |
 | Finished | an agent completes its task | off |
 | App updates | a newer Collie release is available | on |
 | Machine load stays high | a machine's CPU, memory or fullest disk stays above a rule you set for it | on |
@@ -625,7 +625,7 @@ the push says, and never how often it is sent.
 | One durable agent on one machine | 30 pushes an hour | One summary push, then no push from that durable agent for an hour |
 
 The summary reads "A durable agent on {host} is raising many asks", with the machine's name for host. In a
-crew it names the member. The Needs input switch and the snooze hold the summary
+crew it names the member. The Needs you switch and the snooze hold the summary
 back too. A cap never hides a question: every open question stays on the phone.
 
 Collie pushes a question once. It remembers each one by machine, durable agent and tool call, so a durable agent

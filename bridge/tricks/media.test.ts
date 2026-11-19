@@ -1,10 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { HILL_MEDIA_BYTES_MAX } from "../../web/src/lib/hill/wire.ts";
 import { isImageSrc, mediaVersionOf, trickMediaPath } from "../../web/src/lib/tricks/schema.ts";
+import { HOST } from "../host.ts";
 import { TRICKS_MEDIA_ROUTE } from "../server.ts";
 import { mediaVersionOfBytes, readTrickMedia, TrickMediaSync, TrickMediaVersions } from "./media.ts";
 import { tricksMediaRoute } from "./routes.ts";
@@ -184,14 +185,16 @@ describe("a trick's picture versions", () => {
     const { dir } = trick();
     const file = join(dir, "media", "a.png");
     const held = new TrickMediaVersions();
+    // A whole second: a time in float seconds does not survive the trip through utimes exactly on NTFS (100 ns ticks).
+    const at = Math.floor(Date.now() / 1000);
     writeFileSync(file, png(64));
+    utimesSync(file, at, at);
     const first = held.of(dir)["media/a.png"];
     // Same size and the same modified time, other bytes: the held version stands (the walk never rereads it).
     const other = png(64);
     other[40] = 7;
-    const { mtimeMs } = statSync(file);
     writeFileSync(file, other);
-    utimesSync(file, mtimeMs / 1000, mtimeMs / 1000);
+    utimesSync(file, at, at);
     expect(held.of(dir)["media/a.png"]).toBe(first);
   });
 
@@ -292,8 +295,10 @@ describe("a picture changed by hand reaches the approved copy", () => {
     writeFileSync(join(src, "media", "run.png"), png());
     chmodSync(join(src, "media", "run.png"), 0o755);
     writeFileSync(join(src, "media", "ok.png"), png());
-    expect(new TrickMediaSync().sync(src, copy)).toBe(1);
-    expect(readdirNames(join(copy, "media"))).toEqual(["ok.png"]);
+    // Windows has no executable bit (chmod leaves the mode at 0666), so there run.png is a plain picture and is copied.
+    const execBit = HOST.platform !== "win32";
+    expect(new TrickMediaSync().sync(src, copy)).toBe(execBit ? 1 : 2);
+    expect(readdirNames(join(copy, "media"))).toEqual(execBit ? ["ok.png"] : ["ok.png", "run.png"]);
   });
 
   test("a file the program wrote is kept: never deleted, and not replaced while the source is unchanged", () => {

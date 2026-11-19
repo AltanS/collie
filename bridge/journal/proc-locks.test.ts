@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
 import { fileKey, flocksOf, heldCandidates, mountDevice, type ProcReader } from "./proc-locks.ts";
 
 const temps: string[] = [];
@@ -84,7 +85,10 @@ describe("heldCandidates", () => {
     ];
     // 00:24 is 0:36 in hex, as /proc/locks prints it.
     const table = `90: FLOCK  ADVISORY  WRITE ${PID} 00:24:7 0 EOF`;
-    expect(await heldCandidates(flocksOf(table, PID), candidates, reader(table, mounts))).toEqual([candidates[0]!]);
+    // A mount table names POSIX mount points. On Windows the folder's real path is `C:\...`, which no row holds, so
+    // nothing matches (the product never asks there: `LINUX_PROC` answers null off Linux).
+    const held = HOST.platform === "win32" ? [] : [candidates[0]!];
+    expect(await heldCandidates(flocksOf(table, PID), candidates, reader(table, mounts))).toEqual(held);
   });
 
   test("an exact match anywhere turns the btrfs rule off", async () => {

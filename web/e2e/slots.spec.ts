@@ -59,8 +59,16 @@ async function openTab(context: BrowserContext, path: string): Promise<Page> {
   return page;
 }
 
+/**
+ * A pane's row on the dashboard. The wide layout also repeats a session that needs the person in a band above
+ * the grid (ADR 0158), a card for the same pane with the same name. That copy carries no DOM id: the row in its
+ * Space does (`pane-row-...`). The row in its Space is the one every viewport draws once, so it is the one named.
+ */
 const paneRow = (page: Page, agent: Agent) =>
-  page.getByRole("main").getByRole("button", { name: new RegExp(`^${agent} logo ${agent}`, "u") });
+  page
+    .getByRole("main")
+    .getByRole("button", { name: new RegExp(`^${agent} logo ${agent}`, "u") })
+    .and(page.locator('[id^="pane-row-"]'));
 
 const STATUS_WORDS = [
   en["status.label.blocked"],

@@ -22,6 +22,11 @@ function cursor(locator: Locator): Promise<string> {
   return locator.evaluate((el) => getComputedStyle(el).cursor);
 }
 
+// A text field keeps the browser's own cursor, and the engines name it differently: Chromium's built-in
+// stylesheet sets `text`, WebKit's sets nothing and resolves `auto` to the I-beam at paint time. Either value
+// is the browser's own; the requirement is that the app's hand rule never reaches a text field.
+const TEXT_FIELD_CURSOR = /^(text|auto)$/;
+
 async function cursorOf(page: Page, selector: string): Promise<string> {
   return page.locator(selector).first().evaluate((el) => getComputedStyle(el).cursor);
 }
@@ -48,7 +53,7 @@ test("the real controls of the app show the hand", async ({ page }) => {
   // A pane: the Send button, and the text field, which keeps the browser's own cursor.
   await page.goto(`/pane/${encodeURIComponent("w2:p1")}`);
   expect(await cursor(page.getByRole("button", { name: en["composer.send.sendAria"], exact: true }))).toBe("pointer");
-  expect(await cursor(page.locator("textarea").first())).toBe("text");
+  expect(await cursor(page.locator("textarea").first())).toMatch(TEXT_FIELD_CURSOR);
 });
 
 test("a disabled control, a text field and a component's own cursor keep theirs", async ({ page }) => {
@@ -91,9 +96,9 @@ test("a disabled control, a text field and a component's own cursor keep theirs"
   for (const id of ["off", "fs", "bare", "select-off", "label-text", "label-off", "submit-off", "r-off", "plain"]) {
     expect(await cursorOf(page, `#cursor-probe #${id}`), id).toMatch(/^(default|auto)$/);
   }
-  // A text field keeps `text`.
-  expect(await cursorOf(page, "#cursor-probe #text")).toBe("text");
-  expect(await cursorOf(page, "#cursor-probe #area")).toBe("text");
+  // A text field keeps the browser's own cursor (`text` on Chromium, `auto` on WebKit), never the hand.
+  expect(await cursorOf(page, "#cursor-probe #text")).toMatch(TEXT_FIELD_CURSOR);
+  expect(await cursorOf(page, "#cursor-probe #area")).toMatch(TEXT_FIELD_CURSOR);
   // The rule adds no specificity: a utility class on the element still wins.
   expect(await cursorOf(page, "#cursor-probe #own")).toBe("grab");
   expect(await cursorOf(page, "#cursor-probe #own-off")).toBe("not-allowed");

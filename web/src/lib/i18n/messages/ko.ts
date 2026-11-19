@@ -233,8 +233,8 @@ export const ko: Dictionary = {
   // --- settings.notify ---
   "settings.notify.title": "알림 조건",
   "settings.notify.description": "모든 기기에 공통으로 적용됩니다.",
-  "settings.notify.blocked.label": "입력 대기",
-  "settings.notify.blocked.hint": "에이전트가 사용자 입력을 대기 중일 때",
+  "settings.notify.blocked.label": "확인 필요",
+  "settings.notify.blocked.hint": "에이전트가 사용자를 기다리거나 오류로 멈췄을 때",
   "settings.notify.done.label": "작업 완료",
   "settings.notify.done.hint": "에이전트 작업이 끝났을 때",
   "settings.notify.individual.label": "에이전트당 알림 1개",

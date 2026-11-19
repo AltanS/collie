@@ -173,7 +173,14 @@ describe("the folder read", () => {
   });
 
   test("brings the pictures of media/ and captures/: by name and first bytes, within the caps", async () => {
-    const dir = trickFolder({ "media/notes.txt": "x", "media/.hidden.png": "x", "Media/upper.png": "x" });
+    const dir = trickFolder({ "media/notes.txt": "x", "media/.hidden.png": "x" });
+    // Media/ in another case is another folder only where names keep their case. NTFS (and APFS) fold it into media/,
+    // where the file would be read as one of media/'s own, so the case point is made only where it exists.
+    const casesFold = existsSync(join(dir, "MEDIA"));
+    if (!casesFold) {
+      mkdirSync(join(dir, "Media"));
+      writeFileSync(join(dir, "Media", "upper.png"), "x");
+    }
     writeFileSync(join(dir, "media", "fireball.png"), PNG_BYTES);
     mkdirSync(join(dir, "media", "sheets"));
     writeFileSync(join(dir, "media", "sheets", "pose.webp"), WEBP_BYTES);
@@ -192,8 +199,8 @@ describe("the folder read", () => {
       { rel: "media/fake.png", why: "is not a PNG, JPEG or WebP picture by its first bytes" },
       { rel: "media/notes.txt", why: "is not a .png, .jpg, .jpeg or .webp file" },
     ]);
-    // Media/ in another case, the dot file and the three above stay behind.
-    expect(read.left).toBe(5);
+    // Media/ in another case (where it is a folder of its own), the dot file and the three above stay behind.
+    expect(read.left).toBe(casesFold ? 4 : 5);
     // What the CLI reads, the wire takes.
     expect(readProposal({ requestId: "11111111-2222-4333-8444-555555555555", files: [...read.files, ...read.pictures].map((f) => ({ rel: f.rel, b64: Buffer.from(f.bytes).toString("base64") })) }).ok).toBe(true);
   });

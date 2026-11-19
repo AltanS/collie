@@ -227,8 +227,8 @@ export const zh: Dictionary = {
   // --- settings.notify ---
   "settings.notify.title": "通知触发条件",
   "settings.notify.description": "设置将应用于所有已配对设备。",
-  "settings.notify.blocked.label": "等待输入",
-  "settings.notify.blocked.hint": "Agent 正在等待用户操作",
+  "settings.notify.blocked.label": "待处理",
+  "settings.notify.blocked.hint": "Agent 正在等待用户操作，或因错误而停止",
   "settings.notify.done.label": "任务完成",
   "settings.notify.done.hint": "Agent 已完成当前任务",
   "settings.notify.individual.label": "每个 Agent 发送一条通知",

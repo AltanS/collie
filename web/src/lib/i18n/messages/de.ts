@@ -245,8 +245,8 @@ export const de: Dictionary = {
   // --- settings.notify ---
   "settings.notify.title": "Benachrichtigen bei",
   "settings.notify.description": "Gilt für alle Geräte.",
-  "settings.notify.blocked.label": "Eingabe erforderlich",
-  "settings.notify.blocked.hint": "ein Agent wartet auf Rückmeldung",
+  "settings.notify.blocked.label": "Braucht dich",
+  "settings.notify.blocked.hint": "ein Agent wartet auf dich oder wurde von einem Fehler gestoppt",
   "settings.notify.done.label": "Fertiggestellt",
   "settings.notify.done.hint": "ein Agent schließt seine Aufgabe ab",
   "settings.notify.individual.label": "Eine Mitteilung pro Agent",
