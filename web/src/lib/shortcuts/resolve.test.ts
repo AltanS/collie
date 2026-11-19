@@ -276,10 +276,53 @@ describe("the layout", () => {
     expect(resolver.press(ctrl("к", { code: "KeyK" }))).toEqual({ type: "run", action: "find" });
   });
 
-  it("does not use the physical key for a bare key behind the prefix", () => {
+  it("uses the physical key for a bare key behind the prefix on a Cyrillic layout", () => {
     const resolver = make();
     resolver.press(ctrl("b"));
-    expect(resolver.press(tap("с", { code: "KeyC" }))).toEqual(SWALLOW);
+    expect(resolver.press(tap("с", { code: "KeyC" }))).toEqual({ type: "run", action: "new_tab" });
+    expect(resolver.mode).toBe("normal");
+  });
+
+  it("uses the physical digit behind the prefix", () => {
+    const resolver = make();
+    resolver.press(ctrl("b"));
+    expect(resolver.press(tap("٤", { code: "Digit4" }))).toEqual({ type: "run", action: "switch_tab", index: 4 });
+  });
+
+  it("matches a bare key behind the prefix by its key on a Dvorak layout", () => {
+    // Dvorak: the physical KeyC types `j`. `prefix j` is focus_pane_down, not new_tab.
+    const resolver = make();
+    resolver.press(ctrl("b"));
+    expect(resolver.press(tap("j", { code: "KeyC" }))).toEqual({ type: "run", action: "focus_pane_down" });
+    resolver.press(ctrl("b"));
+    expect(resolver.press(tap("z", { code: "KeyC" }))).toEqual({ type: "run", action: "zoom" });
+  });
+
+  it("does not use the physical key for a bare key an ASCII layout typed, behind the prefix", () => {
+    const resolver = make();
+    resolver.press(ctrl("b"));
+    expect(resolver.press(tap("y", { code: "KeyC" }))).toEqual(SWALLOW);
+  });
+
+  it("uses the physical key for a bare key inside a sticky mode on a Cyrillic layout", () => {
+    const resolver = make();
+    resolver.press(ctrl("b"));
+    resolver.press(tap("r"));
+    expect(resolver.press(tap("д", { code: "KeyL" }))).toEqual({ type: "run", action: "resize_wider" });
+    expect(resolver.mode).toBe("resize");
+  });
+
+  it("never uses the physical key for a bare key in the normal mode, where it is typing", () => {
+    const resolver = make({ goto: ["f3"] });
+    expect(resolver.press(tap("с", { code: "KeyC" }))).toEqual(PASS);
+    expect(resolver.press(tap("и", { code: "KeyB" }))).toEqual(PASS);
+    expect(resolver.mode).toBe("normal");
+  });
+
+  it("does not retry the physical key for a shifted bare key", () => {
+    const resolver = make();
+    resolver.press(ctrl("b"));
+    expect(resolver.press(tap("С", { code: "KeyC", shiftKey: true }))).toEqual(SWALLOW);
   });
 });
 
@@ -362,23 +405,40 @@ describe("a sticky mode", () => {
     expect(resolver.mode).toBe("resize");
   });
 
-  it("swallows every other key, a direct binding and a ctrl chord included", () => {
-    const resolver = inMode({ zoom: ["ctrl+shift+z"] });
+  it("swallows a bare, shifted or alt key it does not know", () => {
+    const resolver = inMode();
     expect(resolver.press(tap("x"))).toEqual(SWALLOW);
+    expect(resolver.press(tap("X", { shiftKey: true }))).toEqual(SWALLOW);
     expect(resolver.press(tap("Enter", { shiftKey: true }))).toEqual(SWALLOW);
-    expect(resolver.press(ctrl("Z", { shiftKey: true }))).toEqual(SWALLOW);
-    expect(resolver.press(ctrl("c"))).toEqual(SWALLOW);
+    expect(resolver.press(tap("x", { altKey: true }))).toEqual(SWALLOW);
     expect(resolver.mode).toBe("resize");
   });
 
-  it("leaves on Esc, and on Enter where the mode says so", () => {
-    const resize = inMode();
-    expect(resize.press(tap("Escape"))).toEqual({ type: "leave-mode" });
-    expect(resize.mode).toBe("normal");
+  it("passes a Ctrl or Meta chord it does not know, so ctrl+c and cmd+r keep working", () => {
+    const resolver = inMode({ zoom: ["ctrl+shift+z"] });
+    expect(resolver.press(ctrl("c"))).toEqual(PASS);
+    expect(resolver.press(tap("r", { metaKey: true }))).toEqual(PASS);
+    expect(resolver.press(ctrl("Z", { shiftKey: true }))).toEqual(PASS);
+    expect(resolver.mode).toBe("resize");
+  });
 
-    const again = inMode();
-    expect(again.press(tap("Enter"))).toEqual({ type: "leave-mode" });
-    expect(again.mode).toBe("normal");
+  it("still treats the prefix and a mode key with a modifier as its own", () => {
+    const resolver = inMode({ resize_wider: ["alt+l"] });
+    expect(resolver.press(tap("l", { altKey: true }))).toEqual({ type: "run", action: "resize_wider" });
+    expect(resolver.press(ctrl("b"))).toEqual({ type: "enter-prefix" });
+  });
+
+  it("leaves on Esc and on Enter, in both modes", () => {
+    for (const opener of ["r", "w"]) {
+      const byEsc = inMode(undefined, opener);
+      expect(byEsc.press(tap("Escape"))).toEqual({ type: "leave-mode" });
+      expect(byEsc.mode).toBe("normal");
+
+      const byEnter = inMode(undefined, opener);
+      expect(byEnter.press(tap("Enter"))).toEqual({ type: "leave-mode" });
+      expect(byEnter.mode).toBe("normal");
+      expect(byEnter.sticky).toBeNull();
+    }
   });
 
   it("does not leave the navigate mode on a key it did not name", () => {
@@ -417,14 +477,12 @@ describe("a sticky mode", () => {
     expect(resolver.press(tap("h"))).toEqual({ type: "run", action: "navigate_left" });
   });
 
-  it("runs the navigate keys, a tab number, and Enter opens and leaves", () => {
+  it("runs the navigate keys and a tab number live, and stays", () => {
     const resolver = inMode(undefined, "w");
     expect(resolver.press(tap("j"))).toEqual({ type: "run", action: "navigate_down" });
     expect(resolver.press(tap("ArrowUp"))).toEqual({ type: "run", action: "navigate_up" });
     expect(resolver.press(tap("3"))).toEqual({ type: "run", action: "navigate_tab", index: 3 });
     expect(resolver.mode).toBe("navigate");
-    expect(resolver.press(tap("Enter"))).toEqual({ type: "run", action: "navigate_open" });
-    expect(resolver.mode).toBe("normal");
   });
 
   it("takes the operator's keys", () => {

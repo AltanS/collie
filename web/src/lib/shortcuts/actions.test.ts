@@ -54,12 +54,6 @@ describe("the action table", () => {
     }
   });
 
-  it("only lets a mode action end its mode", () => {
-    for (const action of ACTIONS) {
-      if ("leavesMode" in action) expect("scope" in action, action.id).toBe(true);
-    }
-  });
-
   it("takes a number only where the binding is a range", () => {
     for (const action of ACTIONS) {
       if (!("indexed" in action)) continue;

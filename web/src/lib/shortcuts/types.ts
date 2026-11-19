@@ -55,7 +55,6 @@ export interface Hit<Id extends string = ActionId> {
   readonly action: Id;
   readonly index?: number;
   readonly opensMode?: ModeId;
-  readonly leavesMode?: true;
 }
 
 export interface ModeKeymap<Id extends string = ActionId> {

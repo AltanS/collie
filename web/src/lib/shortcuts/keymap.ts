@@ -137,7 +137,7 @@ function prefixProblem(input: { raw: string; mac: boolean }): Problem | null {
 }
 
 function hitFor<Id extends string>(def: ActionDef<Id>, binding: Binding): Hit<Id> {
-  return { action: def.id, index: binding.index, opensMode: def.opensMode, leavesMode: def.leavesMode };
+  return { action: def.id, index: binding.index, opensMode: def.opensMode };
 }
 
 /** Put a binding in a namespace, or say why it did not fit. */

@@ -6,7 +6,8 @@
 //   prefix    one shot, no timeout. The prefix again sends it literally; Esc cancels; a match runs
 //             and returns; any other key is swallowed and returns.
 //   sticky    a mode a binding opened (navigate, resize). It stays until Esc, or a key the mode names.
-//             Its own keys run, the prefix still opens `prefix` over it, anything else is swallowed.
+//             Its own keys run, the prefix still opens `prefix` over it. A press with Ctrl or Meta
+//             that is none of those passes (ctrl+c, cmd+r keep working); a bare key is swallowed.
 //
 // How a key event meets a binding, in order:
 //   1. `event.key` first, so a layout that moves a letter keeps working by what the key says.
@@ -14,6 +15,8 @@
 //   3. Only when nothing matched, a ctrl-only or alt-only chord retries with the physical key
 //      (`code` KeyA..KeyZ, Digit0..9), and only when `key` is not itself an ASCII letter or digit:
 //      that is a non-Latin layout, or a Mac's Option letter. A Dvorak `ctrl+x` stays `ctrl+x`.
+//      A bare key retries the same way inside `prefix` and a sticky mode, never in `normal`,
+//      where a bare key is typing.
 //   AltGr reaches the page as Ctrl+Alt on Windows. A key typed with AltGr is its character with no
 //   modifier, so `ctrl+alt+q` never fires on a German `@`.
 
@@ -96,9 +99,14 @@ function keyIds(press: Press): string[] {
   return ids;
 }
 
-/** The chord id of the physical key, for a ctrl-only or alt-only press on a non-Latin layout. */
-function physicalId(press: Press): string | null {
-  if (press.shift || press.meta || press.ctrl === press.alt) return null;
+/**
+ * The chord id of the physical key, for a ctrl-only or alt-only press on a non-Latin layout, and
+ * for a bare press where the caller says the key is a choice (inside the prefix or a mode).
+ */
+function physicalId(press: Press, allowBare: boolean): string | null {
+  const isBare = !press.ctrl && !press.alt && !press.shift && !press.meta;
+  const isCtrlOrAltOnly = !press.shift && !press.meta && press.ctrl !== press.alt;
+  if (!isCtrlOrAltOnly && !(allowBare && isBare)) return null;
   if (ASCII_ALPHANUMERIC.test(press.key)) return null;
   const letter = PHYSICAL_LETTER.exec(press.code)?.[1];
   const digit = PHYSICAL_DIGIT.exec(press.code)?.[1];
@@ -108,15 +116,16 @@ function physicalId(press: Press): string | null {
 }
 
 /** The id of the first binding the press matches, key first and the physical key last. */
-function matchId(press: Press, has: (id: string) => boolean): string | null {
+function matchId(input: { press: Press; has: (id: string) => boolean; allowBare: boolean }): string | null {
+  const { press, has, allowBare } = input;
   const byKey = keyIds(press).find(has);
   if (byKey !== undefined) return byKey;
-  const byCode = physicalId(press);
+  const byCode = physicalId(press, allowBare);
   return byCode !== null && has(byCode) ? byCode : null;
 }
 
-function lookup<T>(map: ReadonlyMap<string, T>, press: Press): T | undefined {
-  const id = matchId(press, (candidate) => map.has(candidate));
+function lookup<T>(map: ReadonlyMap<string, T>, press: Press, allowBare = false): T | undefined {
+  const id = matchId({ press, has: (candidate) => map.has(candidate), allowBare });
   return id === null ? undefined : map.get(id);
 }
 
@@ -155,7 +164,7 @@ export function createResolver<Id extends string = ActionId>(keymap: Keymap<Id>)
     }
     isInPrefix = false;
     if (press.key === "esc") return CANCEL;
-    const hit = lookup(keymap.prefixed, press);
+    const hit = lookup(keymap.prefixed, press, true);
     return hit === undefined ? SWALLOW : outcomeFor(hit);
   }
 
@@ -163,14 +172,14 @@ export function createResolver<Id extends string = ActionId>(keymap: Keymap<Id>)
     const mode = keymap.modes.get(id);
     if (mode === undefined) throw new Error(`shortcuts: the keymap has no mode ${id}`);
     if (lookup(prefixes, press) !== undefined) return openPrefix(press);
-    if (press.key === "esc" || matchId(press, (candidate) => mode.exits.has(candidate)) !== null) {
+    if (press.key === "esc" || matchId({ press, has: (candidate) => mode.exits.has(candidate), allowBare: true }) !== null) {
       sticky = null;
       return LEAVE_MODE;
     }
-    const hit = lookup(mode.keys, press);
-    if (hit === undefined) return SWALLOW;
-    if (hit.leavesMode) sticky = null;
-    return outcomeFor(hit);
+    const hit = lookup(mode.keys, press, true);
+    if (hit !== undefined) return outcomeFor(hit);
+    // Ctrl and Meta chords are not typing: ctrl+c and cmd+r keep working inside a mode.
+    return press.ctrl || press.meta ? PASS : SWALLOW;
   }
 
   return {

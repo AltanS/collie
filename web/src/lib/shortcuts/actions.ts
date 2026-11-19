@@ -44,8 +44,6 @@ export interface ActionDef<Id extends string = string> {
   readonly opensMode?: ModeId;
   /** The bindings live inside this sticky mode, not in the normal one. */
   readonly scope?: ModeId;
-  /** Running the action ends its mode (a mode action only). */
-  readonly leavesMode?: true;
 }
 
 export interface ModeDef {
@@ -55,8 +53,10 @@ export interface ModeDef {
   readonly exits: readonly string[];
 }
 
+// Both modes act live, with no highlight: in `navigate` the keys move the real focus (column, space,
+// tab) as the prefix actions do, and `Enter` or `Esc` leaves; in `resize` the keys step the width.
 export const MODES = [
-  { id: "navigate", labelKey: "shortcuts.mode.navigate", exits: [] },
+  { id: "navigate", labelKey: "shortcuts.mode.navigate", exits: ["enter"] },
   { id: "resize", labelKey: "shortcuts.mode.resize", exits: ["enter"] },
 ] as const satisfies readonly ModeDef[];
 
@@ -83,7 +83,6 @@ export const ACTIONS = [
   { id: "navigate_up", group: "navigation", defaults: ["k", "up"], labelKey: "shortcuts.action.navigate_up", scope: "navigate" },
   { id: "navigate_right", group: "navigation", defaults: ["l", "right"], labelKey: "shortcuts.action.navigate_right", scope: "navigate" },
   { id: "navigate_tab", group: "navigation", defaults: ["1..9"], labelKey: "shortcuts.action.navigate_tab", scope: "navigate", indexed: true },
-  { id: "navigate_open", group: "navigation", defaults: ["enter"], labelKey: "shortcuts.action.navigate_open", scope: "navigate", leavesMode: true },
 
   { id: "new_tab", group: "tabs", defaults: ["prefix+c"], labelKey: "shortcuts.action.new_tab" },
   { id: "previous_tab", group: "tabs", defaults: ["prefix+p"], labelKey: "shortcuts.action.previous_tab" },

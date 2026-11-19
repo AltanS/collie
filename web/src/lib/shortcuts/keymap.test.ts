@@ -51,8 +51,8 @@ describe("the defaults", () => {
     expect(navigate?.keys.get("h")).toEqual({ action: "navigate_left" });
     expect(navigate?.keys.get("left")).toEqual({ action: "navigate_left" });
     expect(navigate?.keys.get("4")).toEqual({ action: "navigate_tab", index: 4 });
-    expect(navigate?.keys.get("enter")).toEqual({ action: "navigate_open", leavesMode: true });
-    expect(navigate?.exits).toEqual(new Set(["esc"]));
+    expect(navigate?.keys.has("enter")).toBe(false);
+    expect(navigate?.exits).toEqual(new Set(["esc", "enter"]));
     expect(keymap.modes.get("resize")?.exits).toEqual(new Set(["esc", "enter"]));
     expect(keymap.prefixed.has("left")).toBe(false);
   });
