@@ -293,7 +293,9 @@ describe("the watch of a trick, in the runner", () => {
     host.verdict = "wait";
     const reactions = new TrickReactions(host, { bus, watch: { ...FAST } });
     reactions.sync([target("w", ["turn.end"], [file])]);
-    await writeFile(file, "b");
+    // A new size: NTFS often keeps the modified time of a same-size rewrite this quick (149 of 200 in the VM),
+    // and the watch's stat check would see no change.
+    await writeFile(file, "bb");
     bus.publish({ type: "turn.end", session: sessionOf("a:1") });
     await until(() => reactions.counts().waiting === 2);
     expect(reactions.counts().waiting).toBe(2);
