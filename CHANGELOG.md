@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Masking secrets no longer stalls the app on long, odd text.** Collie hides keys and tokens in a session's text before it reaches your phone. Some long runs of text that only look a little like a token, printed by an agent, read from a file or sent by a crew member, made that check take seconds to minutes, and the whole app stopped answering until it was done; a long secret-like value could also take more than a gigabyte of memory. The check now takes a few milliseconds per megabyte and little memory, and it hides exactly what it hid before.
+
 ## [1.29.1] - 2026-11-19
 
 ### Added
