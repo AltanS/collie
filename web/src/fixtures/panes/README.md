@@ -3820,6 +3820,11 @@ same characters, so no rule or box width moves.
 | `v2310-auth-refresh-output-spinner--w52` | Filled box, 48 content cells, `✶ Garnishing… ` (no timer yet) under it: the same free read of a running turn |
 | `v2310-auth-refresh-output-spinner-timer--w52` | Filled box, `✻ Moonwalking… (49s)` under it: the timer is drawn, and the surface reads the turn as running |
 
+Claude Code 2.1.328 titles the same box `Sign-in` (issue 816), and a macOS capture of it draws the spinner
+frame `✳` where these captures draw `*`. There is no pane fixture for it yet: the report's two captures
+(120 and 52 columns) came with their ANSI stripped, so `auth-box.test.ts` rebuilds them row for row. Add
+them here, with their labels, once an ANSI capture exists.
+
 ## Codex Ultra prompt glyph (derived 2026-10-29, issue 615)
 
 Codex 0.164.0 and 0.165.0 draw the composer prompt as `»` (U+00BB) at Ultra effort and `›` (U+203A) at Max. The first two fixtures below are **derived, not captured**: each is a copy of the named original with ONLY the composer row's leading `›` swapped for `»`. Every other byte is unchanged. They stay because the tests pair each with its `›` original and prove the glyph is the only difference. The last two are the reporter's real captures from the issue (see below).

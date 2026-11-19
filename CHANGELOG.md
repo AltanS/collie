@@ -46,6 +46,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **The sign-in card of an `awsAuthRefresh` login lifts again on Claude Code 2.1.328.** Claude Code now titles that box "Sign-in" instead of "Authentication", so Chat showed no card and the sign-in link was only in the terminal view. Collie reads both titles and shows the one the box prints. The card also stays while the turn spinner under the box shows its `✳` frame. Thanks @cooldaemon (#816).
 - **A trick's approval card no longer blocks scrolling in Chat.** A swipe that started on the Hold button did nothing, so a card taller than the screen could only be scrolled from above it. A vertical swipe on the button now scrolls the conversation, and holding the button still works.
 - **A floating picture that flies across now leaves past the far edge, and moves a little slower.** It used to fade out before it got there. It now keeps going at one even speed until it is gone, and a fly-across, an arc and a pop each take about a third longer.
 - **A floating picture that plays once is no longer lost on a trick's first run.** When a trick printed its first floating part and a once picture together, the once picture arrived before the phone had measured the free area and was dropped. It is now kept for up to two seconds and plays as soon as the area is known.
