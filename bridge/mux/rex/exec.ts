@@ -8,8 +8,11 @@
 //  • A fixed binary probe: `PATH` is not read, because a background service does not share a login
 //    shell's (`COLLIE_REX_BIN` names any other place).
 //  • `--autostart=false` on every call. Rex's CLI starts a missing local server by default; Collie
-//    mirrors the terminal the operator runs and never starts one of its own. Probed: with it, a
+//    mirrors the terminal the operator runs and never asks for one of its own. Probed: with it, a
 //    missing server answers exit 4, `no Rex server is running at …, and autostart is disabled`.
+//    The flag cannot stop systemd: where `rex.socket` listens (what `rex server install` enables on
+//    Linux), the connection itself starts the server, and the 5 s census then keeps it from idling
+//    out (probed, API revision 19). docs/multiplexers.md says so to the operator.
 //  • `--color=never`, so an error sentence is plain text for the classifiers in protocol.ts.
 //  • A hung child is killed on the target's budget: SIGTERM, then SIGKILL a moment later.
 //  • Typed text rides STDIN (`printf … | rex send`, probed), not argv, so it has no kernel argv cap
