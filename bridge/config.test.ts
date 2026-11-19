@@ -363,9 +363,11 @@ describe("loadConfig", () => {
     process.env.HERDR_PLUGIN_CONFIG_DIR = "/srv/herdr/plugins/collie";
     expect(loadConfig().commandsFile).toBe(join("/srv/herdr/plugins/collie", "commands.toml"));
     expect(loadConfig().keysFile).toBe(join("/srv/herdr/plugins/collie", "keys.toml"));
+    expect(loadConfig().shortcutsFile).toBe(join("/srv/herdr/plugins/collie", "shortcuts.toml"));
     delete process.env.HERDR_PLUGIN_CONFIG_DIR;
     expect(loadConfig().commandsFile).toBe(join(homedir(), ".config", "collie", "commands.toml"));
     expect(loadConfig().keysFile).toBe(join(homedir(), ".config", "collie", "keys.toml"));
+    expect(loadConfig().shortcutsFile).toBe(join(homedir(), ".config", "collie", "shortcuts.toml"));
   });
 
   test("reads the per-device auth header and allowlist", () => {

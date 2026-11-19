@@ -1,0 +1,81 @@
+# Your own keyboard shortcuts for Collie on a desktop browser. Copy to your plugin config dir, next
+# to `.env`:
+#   cp shortcuts.toml.example "$(herdr plugin config-dir herdr.collie)/shortcuts.toml"
+#
+# This file configures ONE thing: the keys that drive the app from a keyboard. It works the way
+# Herdr's does. You press a prefix key, then one action key. The `[keys]` table is named like
+# Herdr's, so you can copy a block from your Herdr file.
+#
+# The prefix is `ctrl+b` by default, the same as Herdr. Change it with `prefix`. Press the prefix
+# twice to send it to the pane you are looking at.
+#
+# This file with every line commented out (as shipped) leaves every shortcut as shipped. The lines
+# below are the defaults: uncomment the `[keys]` line and the lines you want, then change them. Your
+# value replaces that action's default whole.
+#
+# Edits are picked up live, no restart. Reload the page to see them. `prefix+shift+r` reads the
+# file again without a reload.
+#
+# A value is a string or a list of strings. A binding is `prefix+<key>` (the prefix, then the key)
+# or a direct chord such as `ctrl+alt+c`. A direct chord needs a modifier: a bare letter is refused.
+#   - Modifiers: `ctrl` (or `control`), `shift`, `alt` (or `option`, `meta`), `cmd` (or `command`,
+#     `super`), and `mod` (`cmd` on a Mac, `ctrl` elsewhere).
+#   - Named keys: `space`, `enter`, `esc`, `tab`, `backspace`, `left`, `right`, `up`, `down`,
+#     `f1` to `f12`, `minus`, `comma`, `period`, `slash`, `backslash`, `quote`, `semicolon`,
+#     `backtick`, `plus` (or `++`).
+#   - An upper-case letter adds shift. `1..9` is a range, for the action that takes a number.
+#   - Case does not matter for the rest.
+#
+# Unbind an action with `""` or `[]`.
+#
+# The browser owns a few chords, and a page cannot take them: `ctrl+w`, `ctrl+t`, `ctrl+n`,
+# `ctrl+tab`, `ctrl+shift+n` and `ctrl+l`. A direct binding on one of them is refused. Put them
+# behind the prefix instead.
+#
+# A bad line is dropped, and the rest of the file still loads. A bad `prefix` falls back to
+# `ctrl+b`. When two of your lines claim the same key, the first one wins.
+#
+# Collie never uses a shortcut as the only way to reach something. Every action here has a button.
+
+# [keys]
+# prefix = "ctrl+b"
+
+# Show the shortcut list, open Settings, open the switcher, go to the dashboard, open New.
+# help = "prefix+?"
+# settings = "prefix+s"
+# goto = "prefix+g"
+# home = "prefix+q"
+# new_workspace = "prefix+shift+n"
+
+# Tabs of the space you are in: a new one, the one before, the one after, one by number.
+# new_tab = "prefix+c"
+# previous_tab = "prefix+p"
+# next_tab = "prefix+n"
+# switch_tab = "prefix+1..9"
+
+# Move between the columns of the wide strip (left, right), and between spaces (up, down).
+# focus_pane_left = "prefix+h"
+# focus_pane_right = "prefix+l"
+# focus_pane_up = "prefix+k"
+# focus_pane_down = "prefix+j"
+# cycle_pane_next = "prefix+tab"
+# cycle_pane_previous = "prefix+shift+tab"
+
+# Close the column (the pane keeps running), zen mode, the sidebar.
+# close_column = "prefix+x"
+# zoom = "prefix+z"
+# toggle_sidebar = "prefix+b"
+
+# Two modes that stay until you press `esc`. In resize, `h` and `l` step the column width. In the
+# picker, `h` `j` `k` `l` and the arrows move, `1..9` picks a tab and `enter` opens it.
+# resize_mode = "prefix+r"
+# workspace_picker = "prefix+w"
+
+# Chat or Terminal for this pane, the composer, the find bar, a fresh read of this file.
+# toggle_view = "prefix+t"
+# focus_composer = "prefix+i"
+# find = "prefix+/"
+# reload_config = "prefix+shift+r"
+
+# One action can have several bindings. Write a list, for example `["prefix+c", "ctrl+alt+c"]`.
+# An unbound action has an empty value: `""` or `[]`.

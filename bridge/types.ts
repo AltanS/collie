@@ -1929,6 +1929,13 @@ export interface OperatorCommand {
 }
 
 /**
+ * The operator's keyboard shortcuts as `shortcuts.toml` declares them, before the app has parsed a
+ * binding: an action name (or `prefix`) to its binding strings. A bare string in the file became a
+ * one-item list, and `""` became `[]`, which means unbound. The bridge keeps no action list.
+ */
+export type OperatorShortcuts = { [name: string]: string[] };
+
+/**
  * One operator-declared Keys-tray preset (a `[[keys]]` row in their `keys.toml`). A pane any of
  * these rows address shows them INSTEAD of the shipped Ctrl presets; a pane none of them address
  * keeps the shipped ones (ADR 0018, the same rule `commands.toml` follows). Only the PRESETS are
@@ -2480,6 +2487,12 @@ export interface BridgeConfig {
   operatorCommands?: OperatorCommand[];
   /** The operator's own Keys-tray presets. Absent/empty when there is no `keys.toml`. */
   operatorKeys?: OperatorKeyRow[];
+  /**
+   * The operator's own keyboard shortcuts, raw: action name to a list of binding strings (`""` is
+   * `[]`, unbound). Absent when there is no `shortcuts.toml` with a `[keys]` table. The app parses
+   * and validates the strings; the bridge holds no action list.
+   */
+  operatorShortcuts?: OperatorShortcuts;
   /** The operator's own Quick-dock groups. Absent/empty when there is no `quick-replies.toml`. */
   operatorQuickReplies?: OperatorQuickReplyRow[];
   /**

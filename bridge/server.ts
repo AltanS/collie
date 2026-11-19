@@ -103,6 +103,7 @@ import { claudeConfigDir, discoverClaudeCommands, type ClaudeCommand } from "./c
 import { canonicalAgent } from "../web/src/lib/operator-scope.ts";
 import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
+import { createOperatorShortcuts } from "./operator-shortcuts.ts";
 import { createOperatorQuickReplies } from "./operator-quick-replies.ts";
 import { createOperatorFonts, resolveOperatorFont } from "./operator-fonts.ts";
 import { createLauncherSwitches, createOperatorLaunchers, DEFAULT_SWITCHES, type LauncherSwitches } from "./operator-launchers.ts";
@@ -314,6 +315,7 @@ import type {
   OperatorCommand,
   MuxConfig,
   OperatorKeyRow,
+  OperatorShortcuts,
   OperatorFontRow,
   OperatorQuickReplyRow,
   CrewStatusResponse,
@@ -1152,6 +1154,8 @@ export function bridgeConfigBody(opts: {
   operatorCommands?: readonly OperatorCommand[];
   /** The operator's own Keys-tray rows. Same omit-when-empty rule as `operatorCommands`. */
   operatorKeys?: readonly OperatorKeyRow[];
+  /** The operator's own keyboard shortcuts. Omitted when `shortcuts.toml` holds no `[keys]` table. */
+  operatorShortcuts?: OperatorShortcuts | null;
   /** The operator's own Quick-dock groups. Same omit-when-empty rule as `operatorCommands`. */
   operatorQuickReplies?: readonly OperatorQuickReplyRow[];
   /**
@@ -1197,6 +1201,7 @@ export function bridgeConfigBody(opts: {
   if (mode !== undefined) wire.mode = mode;
   if (mine.length > 0) wire.operatorCommands = [...mine];
   if (myKeys.length > 0) wire.operatorKeys = [...myKeys];
+  if (opts.operatorShortcuts) wire.operatorShortcuts = { ...opts.operatorShortcuts };
   if (myReplies.length > 0) wire.operatorQuickReplies = [...myReplies];
   if (myFonts.length > 0) wire.operatorFonts = [...myFonts];
   // Appended last, and unconditional once an adapter is in hand: unlike `mode`, this is not
@@ -1758,6 +1763,7 @@ export function startServer(opts: {
   const operatorCommands = createOperatorCommands(cfg.commandsFile);
   // Its sibling, on the same contract: one reader, one mtime cache, keys.toml off the hot path.
   const operatorKeys = createOperatorKeys(cfg.keysFile);
+  const operatorShortcuts = createOperatorShortcuts(cfg.shortcutsFile);
   // The third on that contract: the Quick dock's groups, quick-replies.toml off the hot path.
   const operatorQuickReplies = createOperatorQuickReplies(cfg.quickRepliesFile);
   // The fourth on that contract: the operator's own UI typefaces, theme.toml off the hot path.
@@ -3912,6 +3918,7 @@ export function startServer(opts: {
         // with no restart. The path is cfg's, never the request's.
         const mine = await operatorCommands();
         const myKeys = await operatorKeys();
+        const myShortcuts = await operatorShortcuts();
         const myReplies = await operatorQuickReplies();
         // Same mtime-checked re-read, same reason: an operator who adds a face to theme.toml wants
         // it in the picker on the next page load, not after a restart.
@@ -3976,6 +3983,7 @@ export function startServer(opts: {
             mode: crew.mode,
             operatorCommands: mine,
             operatorKeys: myKeys,
+            operatorShortcuts: myShortcuts,
             operatorQuickReplies: myReplies,
             operatorFonts: myFonts,
             mux: activeMux?.herdr,
