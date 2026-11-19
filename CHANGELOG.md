@@ -43,6 +43,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A name that changes again within a second does not fade.** A title that an agent rewrites every turn swaps at once, so a name never stays half transparent.
 - **When the reply box ends up below the screen, the phone tells the bridge the screen heights.** Some phones, after a long break, draw the reply box past the bottom edge, and so far nobody could say why. The phone now sends a short list of heights, at most once a minute, so the cause can be found. It sends no text, no session name and no address. The bridge keeps the list in `diag-composer.jsonl` in its state folder and sends it nowhere.
 - **The name beside the logo is the same on the large screen and on the website, with any theme and font.** "ColliePWA" in the sidebar is now drawn from the brand's own letter shapes, so the font your device or theme picked no longer changes it. The logo in that row is also a little larger.
+- **The sign-in card no longer depends on the exact title of Claude Code's box.** Collie knows the box by its shape and its place over Claude's input box, so when Claude Code renames it again, Chat still shows the card, headed by the new title, as soon as the box prints its sign-in link. A box that names a key never becomes this card. A sign-in card links only `https://` addresses, and any other address stays text you can read.
 
 ### Fixed
 

@@ -37,7 +37,8 @@ const LINK_CLASS = "underline decoration-1 underline-offset-2 break-all cursor-p
 // on a read-only device and a gone pane alike: opening an address sends nothing to the terminal.
 //
 // Text is React text nodes only; an address reaches an href only through the http(s)-only scanner
-// that found it (lib/links.ts). A row is `whitespace-pre-wrap` so the box's own spaces survive and a
+// that found it (lib/links.ts), and only an `https:` one becomes a link here: a plain-http address (omp
+// prints its `http://localhost` shortcut, which on the phone opens the phone itself) stays text to read. A row is `whitespace-pre-wrap` so the box's own spaces survive and a
 // row wider than the card wraps instead of being cut or panned. A box that holds its title alone is
 // `waiting`: the card shows the title as printed and Collie's own line saying nothing has printed yet.
 //
@@ -62,10 +63,14 @@ export function BoxTextBlock({ boxText, signInHosts, signInPending = false }: Bo
         {boxText.text.map((row, i) => (
           <div key={i} className="min-h-[1lh] whitespace-pre-wrap break-words">
             {row.map((run, j) =>
-              run.kind === "link" && address === null ? (
+              run.kind === "link" && address === null && opensOverHttps(run.href) ? (
                 <a key={j} href={run.href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
                   {run.text}
                 </a>
+              ) : run.kind === "link" && address === null ? (
+                <span key={j} className="break-all">
+                  {run.text}
+                </span>
               ) : run.kind === "link" && address?.kind === "copy" && run.text === address.text ? null : run.kind === "link" ? (
                 // Shown once: in the copy block under the rows when it is text to copy.
                 <span key={j} className="break-all">
@@ -88,6 +93,11 @@ export function BoxTextBlock({ boxText, signInHosts, signInPending = false }: Bo
       </Collapse>
     </PromptPanel>
   );
+}
+
+/** Whether a box's address may be a link on the card: `https:` only. */
+function opensOverHttps(href: string): boolean {
+  return /^https:\/\//iu.test(href);
 }
 
 /** The sign-in card's one action: open the checked address, or copy one that did not pass. */

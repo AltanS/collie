@@ -110,6 +110,14 @@ describe("BoxTextBlock", () => {
     expect(screen.getByText(/<b>bold<\/b> javascript:alert\(1\)/u)).toBeInTheDocument();
   });
 
+  it("links an https address only: a plain-http address in the rows stays text", () => {
+    const local = "http://localhost:54545/launch";
+    const mixed: BoxTextModel = { title: "Login", phase: "filled", text: [[plain("Or open "), link(local)], [link(CODED)]] };
+    render(<BoxTextBlock boxText={mixed} />);
+    expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([CODED]);
+    expect(screen.getByText(local)).toBeInTheDocument();
+  });
+
   it("shows the box's printed title and the waiting line, with no link and no button, before the command prints", () => {
     render(<BoxTextBlock boxText={WAITING} />);
     const card = screen.getByRole("group", { name: "Login output" });
