@@ -173,8 +173,8 @@ describe("AgentList — two axes, urgency then workspace", () => {
     // The title still carries line 1's weight and truncates on its own — the spare width is
     // `PaneMeta`'s `ml-auto` now, not the name's own `flex-1` (2026-09-14, so the unseen dot can
     // sit right after the name instead of at the far end of the row).
-    expect(screen.getByText("rewrite the loader").className).toMatch(/truncate/);
-    expect(screen.getByText("rewrite the loader").closest("[data-slot]")).toHaveAttribute(
+    expect(screen.getByText("rewrite the loader").closest('[data-glide="name"]')!.className).toMatch(/truncate/);
+    expect(screen.getByText("rewrite the loader").closest('[data-slot="agent-row-title"]')).toHaveAttribute(
       "data-slot",
       "agent-row-title",
     );

@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 
+import { CrossfadeText } from "@/components/ui/crossfade-text";
 import { cn } from "@/lib/utils";
 
 /** One matched piece of a text, `[start, end)` in UTF-16 code units, the unit `String.slice` counts in. */
@@ -11,6 +12,12 @@ export interface MatchTextProps {
   ranges?: readonly MatchRange[];
   /** Added to each `<mark>`. */
   className?: string;
+  /**
+   * The identity of the thing this text names (a pane, a tab, a Space), for a NAME that a rename can
+   * change. Given, a text with no mark fades from the old words to the new when it changes and this
+   * identity stays ({@link CrossfadeText}). With marks drawn it is ignored: a filtered list repaints.
+   */
+  fade?: string;
 }
 
 /**
@@ -37,17 +44,18 @@ function pieces(text: string, ranges: readonly MatchRange[]): { text: string; hi
  * A text with the matched letters marked: the one look for "this is the part you searched for", in
  * the theme token `--find`. The list filter's matched letters wear it, and so does Find in Chat.
  *
- * With no range it returns the bare string, so the caller's element holds the same one text node it
+ * With no range it returns the bare string (or, with `fade`, the name that crossfades on a rename), so the caller's element holds the same one text node it
  * held before this component, and an empty filter changes nothing in the DOM. A mark is
  * `rounded-sm bg-find text-inherit` and nothing else: no padding, weight, size or border, because a
  * match repaints and never re-lays-out (DESIGN.md §2). The ground has alpha and the ink stays the
  * caller's own, so a mark reads on a current row (`bg-accent`) and on a blocked one alike. Owns no
  * matching: the ranges come from the caller.
  */
-export function MatchText({ text, ranges, className }: MatchTextProps): ReactNode {
-  if (ranges === undefined || ranges.length === 0) return text;
+export function MatchText({ text, ranges, className, fade }: MatchTextProps): ReactNode {
+  const plain = fade === undefined ? text : <CrossfadeText text={text} identity={fade} />;
+  if (ranges === undefined || ranges.length === 0) return plain;
   const cut = pieces(text, ranges);
-  if (!cut.some((piece) => piece.hit)) return text;
+  if (!cut.some((piece) => piece.hit)) return plain;
   return (
     <>
       {cut.map((piece, i) =>

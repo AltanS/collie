@@ -5588,3 +5588,57 @@ describe("AgentChat — the Authentication box lifts as a card", () => {
     expect(backOnB.textContent).not.toContain("ABCD-EFGH");
   });
 });
+
+// THE NAME FADE (ui/crossfade-text.tsx). A rename of the open pane or of its Space fades the header's
+// words instead of swapping them; opening another pane swaps at once. The test drives the header from
+// state, so the same mounted header sees the new agent.
+describe("AgentChat header — a rename fades", () => {
+  function Renamable({ first, second }: { first: AgentView; second: AgentView }) {
+    const [agent, setAgent] = useState(first);
+    return (
+      <>
+        <button type="button" onClick={() => setAgent(second)}>
+          rename-test
+        </button>
+        <AgentChat
+          paneId={agent.paneId}
+          agent={agent}
+          agents={[agent]}
+          shellPanes={[]}
+          tabs={[]}
+          text={paneTextWithDraft("recent pane output")}
+          onBack={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      </>
+    );
+  }
+  const out = (c: HTMLElement, slot: string) => c.querySelector(`[data-slot="${slot}"] [data-slot="crossfade-out"]`);
+
+  function mount(first: AgentView, second: AgentView) {
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Renamable first={first} second={second} />) }]);
+    return render(<RouterProvider router={router} />).container;
+  }
+
+  it("fades the pane's name and its Space when the same pane is renamed", () => {
+    const base = fixtureAgents[0]!;
+    const container = mount(
+      { ...base, paneLabel: "plumbing", workspaceLabel: "webapp" },
+      { ...base, paneLabel: "wiring", workspaceLabel: "frontend" },
+    );
+    expect(out(container, "pane-name")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "rename-test" }));
+    expect(out(container, "pane-name")).toHaveTextContent("plumbing");
+    expect(out(container, "pane-name")).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector('[data-slot="pane-name"]')).toHaveTextContent("wiring");
+    expect(out(container, "pane-place")).toHaveTextContent("webapp");
+  });
+
+  it("swaps at once when the header shows another pane", () => {
+    const base = fixtureAgents[0]!;
+    const container = mount({ ...base, paneLabel: "plumbing" }, { ...base, paneId: "w9:p9", paneLabel: "wiring" });
+    fireEvent.click(screen.getByRole("button", { name: "rename-test" }));
+    expect(container.querySelector('[data-slot="pane-name"]')).toHaveTextContent("wiring");
+    expect(container.querySelector('[data-slot="crossfade-out"]')).toBeNull();
+  });
+});

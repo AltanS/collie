@@ -5,6 +5,7 @@ import { UnseenMark } from "@/components/ui/unseen-mark";
 import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { useLongPress } from "@/hooks/use-long-press";
 import { StatusDot } from "@/components/status-badge";
+import { CrossfadeText } from "@/components/ui/crossfade-text";
 import { TRIAGE_STATUS, type TriageKey } from "@/lib/triage";
 import { statusLabel } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
@@ -12,6 +13,11 @@ import { t } from "@/lib/i18n";
 
 interface ChipProps {
   label: string;
+  /**
+   * What the label NAMES (a Space, a tab), when a rename can change it: the label then crossfades from
+   * the old words to the new while this identity stays ({@link CrossfadeText}). Omit for a fixed word.
+   */
+  fade?: string;
   /**
    * A leading glyph, before the dot and the label, e.g. a server icon in a machine's tint. Drawn in
    * EVERY state the chip can take (resting, active, ringed, dimmed), so a state change repaints and
@@ -67,6 +73,7 @@ interface ChipProps {
 // matches how the space rows and section headings already read.
 export function Chip({
   label,
+  fade,
   glyph,
   ariaLabel,
   active,
@@ -149,7 +156,7 @@ export function Chip({
           {!named && <span className="sr-only">{statusLabel(TRIAGE_STATUS[status])}</span>}
         </>
       )}
-      {label}
+      {fade === undefined ? label : <CrossfadeText text={label} identity={fade} />}
       {dimmed && !named && <span className="sr-only">{t("home.workspace.hidden")}</span>}
       {statusWords !== null && (
         <span id={descriptionId} className="sr-only">

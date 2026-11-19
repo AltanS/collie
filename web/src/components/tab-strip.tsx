@@ -16,7 +16,8 @@ import { useWidthClass } from "@/hooks/use-width-class";
 import { cn } from "@/lib/utils";
 import { useTabLook, type TabLook } from "@/lib/tab-look";
 import { TRIAGE_STATUS, worstTriage, type TriageKey } from "@/lib/triage";
-import { hostKey } from "@/lib/hosts";
+import { CrossfadeText } from "@/components/ui/crossfade-text";
+import { hostKey, tabKey } from "@/lib/hosts";
 import { tabCellTitle, type TabTitle } from "@/lib/pane-name";
 import { statusLabel } from "@/lib/types";
 import type { AgentView, TabView } from "@/lib/types";
@@ -320,6 +321,7 @@ export function TabStrip({
                 step={step}
                 label={t.label}
                 title={tabCellTitle(t.label, inTab)}
+                fade={tabKey(host, t.tabId)}
                 active={selected === t.tabId}
                 // What's actually going on in there — blocked / ready / working / idle — instead of a
                 // dot that only ever appeared for blocked and left every other state unreadable.
@@ -397,6 +399,8 @@ interface TabProps {
   label: string;
   /** What the cell says ({@link tabCellTitle}); the "All" cell passes its word as a plain title. */
   title?: TabTitle | null;
+  /** The tab's identity ({@link tabKey}): a rename of this tab fades its words in ({@link CrossfadeText}). */
+  fade?: string;
   active: boolean;
   /**
    * The most urgent thing happening inside this tab ({@link worstTriage}) — drawn as a leading dot
@@ -417,6 +421,7 @@ function Tab({
   step,
   label,
   title: titleProp,
+  fade,
   active,
   status,
   onClick,
@@ -526,7 +531,7 @@ function Tab({
         // open one takes the full ink like any open tab, because ink is half of the only mark.
         <StableLabel className={active ? undefined : "text-muted-foreground/70"}>{title.text}</StableLabel>
       ) : (
-        <StableLabel>{title.text}</StableLabel>
+        <StableLabel fade={fade}>{title.text}</StableLabel>
       )}
     </button>
   );
@@ -536,13 +541,17 @@ function Tab({
 // E). Two copies share one grid cell: the invisible one is always semibold and sets the cell's
 // width, the visible one takes the tab's own weight and is centred over it. The copy is
 // `aria-hidden`, so the button's accessible name is the label once, not twice.
-function StableLabel({ children, className }: { children: string; className?: string }) {
+// `fade` is the tab's identity: given, a rename crossfades the visible copy (the invisible one takes
+// the new width at once).
+function StableLabel({ children, className, fade }: { children: string; className?: string; fade?: string }) {
   return (
     <span className={cn("grid justify-items-center", className)}>
       <span aria-hidden="true" className="invisible col-start-1 row-start-1 font-semibold">
         {children}
       </span>
-      <span className="col-start-1 row-start-1">{children}</span>
+      <span className="col-start-1 row-start-1">
+        {fade === undefined ? children : <CrossfadeText text={children} identity={fade} />}
+      </span>
     </span>
   );
 }

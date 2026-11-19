@@ -244,6 +244,6 @@ describe("SpaceOverview — a worktree space's second line", () => {
   it("draws no second line for a space that is not a worktree", () => {
     render(view({ workspaces: [{ ...repoSpace(), gitHead: { kind: "branch", name: "main" } }, ws("w3", "tgl", 1, 1)] }));
     expect(document.querySelector('[data-slot="space-row-worktree"]')).toBeNull();
-    expect(screen.getByText("openplate-workspace")).toHaveClass("min-w-0", "flex-1", "truncate", "font-medium");
+    expect(screen.getByText("openplate-workspace").closest(".truncate")).toHaveClass("min-w-0", "flex-1", "truncate", "font-medium");
   });
 });
