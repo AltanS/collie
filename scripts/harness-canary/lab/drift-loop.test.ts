@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { allowed, fileNotify, LOOP_AGENTS, parseCli, pending, runCandidates, tellOnce, type CliOptions } from "./cli";
+import { allowed, candleOf, CANDLE_PROJECT, fileNotify, LOOP_AGENTS, lightCandle, parseCli, pending, runCandidates, tellOnce, type CliOptions, type CommandRunner } from "./cli";
 import { classifyFailure, RETRY_GAP_MS, RETRY_MAX_AGE_MS, RETRY_MAX_TRIES } from "./failure-class";
 import { canRetry, claim, expireStale, findRow, loadLedger, readLedger, settleFailure, shouldRun, writeLedger, type LabRow } from "./lab-ledger";
 import { guardTick, loadGuardLine, loadTooHigh } from "./load-guard";
@@ -363,31 +363,93 @@ describe("notices", () => {
     expect(told[0]).toContain("claude 2.1.400 pass");
   });
 
-  test("a notice goes to notify.log, and a darius call is prepared (never sent) only when darius exists", () => {
+  test("a notice goes to notify.log, and nothing else is written", () => {
     const root = tmp();
-    const quiet = fileNotify(join(root, "a"), { now: () => NOW, hasDarius: () => false });
-    quiet("harness lab: claude 2.1.400 fail: drift");
-    expect(readFileSync(join(root, "a", "notify.log"), "utf8")).toBe(`${new Date(NOW).toISOString()} harness lab: claude 2.1.400 fail: drift\n`);
-    expect(existsSync(join(root, "a", "push-queue.jsonl"))).toBe(false);
-
-    const loud = fileNotify(join(root, "b"), { now: () => NOW, hasDarius: () => true });
-    loud("harness lab: claude 2.1.400 fail: drift");
-    const queued: unknown = JSON.parse(readFileSync(join(root, "b", "push-queue.jsonl"), "utf8").trim());
-    expect(queued).toMatchObject({ via: "darius push", sent: false, body: "harness lab: claude 2.1.400 fail: drift" });
+    const notify = fileNotify(root, { now: () => NOW });
+    notify("harness lab: claude 2.1.400 fail: drift");
+    expect(readFileSync(join(root, "notify.log"), "utf8")).toBe(`${new Date(NOW).toISOString()} harness lab: claude 2.1.400 fail: drift\n`);
+    expect(existsSync(join(root, "push-queue.jsonl"))).toBe(false);
   });
 
   test("the same line twice inside twelve hours is written once", () => {
     const root = tmp();
     let at = NOW;
-    const notify = fileNotify(root, { now: () => at, hasDarius: () => true });
+    const notify = fileNotify(root, { now: () => at });
     notify("harness lab: claude 2.1.400 deferred: the login has 4 minutes left");
     at += H;
     notify("harness lab: claude 2.1.400 deferred: the login has 4 minutes left");
     expect(readFileSync(join(root, "notify.log"), "utf8").trim().split("\n")).toHaveLength(1);
-    expect(readFileSync(join(root, "push-queue.jsonl"), "utf8").trim().split("\n")).toHaveLength(1);
     at += 13 * H;
     notify("harness lab: claude 2.1.400 deferred: the login has 4 minutes left");
     expect(readFileSync(join(root, "notify.log"), "utf8").trim().split("\n")).toHaveLength(2);
+  });
+});
+
+describe("the darius candle", () => {
+  const drift: LabOutcome = { harness: "claude", version: "2.1.329", status: "fail", note: "the walk never came back", logPath: "/l/claude-2.1.329.log", issue: { json: "/i/claude-2.1.329.json", markdown: "/i/claude-2.1.329.md" } };
+  interface Call {
+    readonly argv: readonly string[];
+    readonly stdin: string;
+  }
+  const stub = (code = 0, out = "") => {
+    const calls: Call[] = [];
+    const run: CommandRunner = (command, stdin) => {
+      calls.push({ argv: command, stdin });
+      return { code, out };
+    };
+    return { calls, run };
+  };
+
+  test("the command line: one key per version, severity medium, the workspace project named, the paths in the body", () => {
+    const { run, calls } = stub();
+    expect(lightCandle(candleOf(drift), run, () => true)).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.argv).toEqual(["darius", "candle", "light", "drift:claude@2.1.329", "--title", "Collie misreads Claude Code 2.1.329 (harness lab)", "--severity", "medium", "--project", CANDLE_PROJECT, "--source", "harness-lab", "--stdin"]);
+    expect(CANDLE_PROJECT).toBe("collie-workspace");
+    expect(calls[0]?.stdin).toContain("Issue draft: /i/claude-2.1.329.json");
+    expect(calls[0]?.stdin).toContain("Run log: /l/claude-2.1.329.log");
+  });
+
+  test("a drift failure and a final failed light a candle; a pass and a retry light none", () => {
+    const root = tmp();
+    const ledger = join(root, "ledger.json");
+    const { run, calls } = stub();
+    const light = (candle: Parameters<typeof lightCandle>[0]): string | null => lightCandle(candle, run, () => true);
+    const row = (version: string, result: LabRow["result"]): void => {
+      claim(ledger, "claude", version, "2026-11-19", "/l", Date.now(), 1);
+      writeLedger(ledger, { rows: [...readLedger(ledger).rows.filter((r) => r.version !== version), { harness: "claude", version, date: "2026-11-19", result, log: "/l" }] });
+    };
+    row("2.1.329", "fail");
+    row("2.1.330", "failed");
+    row("2.1.331", "pass");
+    row("2.1.332", "retry");
+    const end = (version: string, status: LabOutcome["status"]): LabOutcome => ({ ...drift, version, status, issue: undefined });
+    tellOnce(ledger, end("2.1.329", "fail"), () => {}, light);
+    tellOnce(ledger, end("2.1.330", "failed"), () => {}, light);
+    tellOnce(ledger, end("2.1.331", "pass"), () => {}, light);
+    tellOnce(ledger, end("2.1.332", "retry"), () => {}, light);
+    expect(calls.map((c) => c.argv[3])).toEqual(["drift:claude@2.1.329", "drift:claude@2.1.330"]);
+    expect(calls[1]?.argv[5]).toBe("The harness lab could not finish Claude Code 2.1.330");
+    // Told once: the same verdict on the next tick lights nothing.
+    tellOnce(ledger, end("2.1.329", "fail"), () => {}, light);
+    expect(calls).toHaveLength(2);
+  });
+
+  test("no darius, a failing call and a throwing runner write a notify line and never throw", () => {
+    expect(lightCandle(candleOf(drift), stub().run, () => false)).toContain("not on PATH");
+    expect(lightCandle(candleOf(drift), stub(1, "darius: no project 'x'").run, () => true)).toContain("exited 1: darius: no project 'x'");
+    expect(lightCandle(candleOf(drift), () => {
+      throw new Error("spawn failed");
+    }, () => true)).toContain("spawn failed");
+
+    const root = tmp();
+    const ledger = join(root, "ledger.json");
+    claim(ledger, "claude", "2.1.329", "2026-11-19", "/l", Date.now(), 1);
+    writeLedger(ledger, { rows: [{ harness: "claude", version: "2.1.329", date: "2026-11-19", result: "fail", log: "/l" }] });
+    const told: string[] = [];
+    expect(tellOnce(ledger, drift, (line) => told.push(line), (candle) => lightCandle(candle, stub(1, "boom").run, () => true))).toBe(true);
+    expect(told).toHaveLength(2);
+    expect(told[1]).toContain("exited 1: boom");
   });
 });
 

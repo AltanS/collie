@@ -11,7 +11,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { appendFileSync, mkdirSync } from "node:fs";
-import { allowed, exitCodeOf, fileNotify, parseCli, repoProblem, runCandidates, stateDirOf, summaryLine, sweepAtStart, USAGE, pending, type Candidate } from "./cli";
+import { allowed, exitCodeOf, fileNotify, lightCandle, parseCli, repoProblem, runCandidates, stateDirOf, summaryLine, sweepAtStart, USAGE, pending, type Candidate } from "./cli";
 import { guardTick, realLoad } from "./load-guard";
 import { FEEDS, readFeed } from "./feeds";
 import { realPorts } from "./ports";
@@ -85,7 +85,7 @@ async function main(): Promise<number> {
     return feedErrors > 0 && candidates.length === 0 ? 1 : 0;
   }
 
-  const report = await runCandidates(candidates, cli, realPorts(), fileNotify(stateDirOf(cli.ledger)));
+  const report = await runCandidates(candidates, cli, realPorts(), fileNotify(stateDirOf(cli.ledger)), () => Date.now(), (candle) => lightCandle(candle));
   for (const outcome of report.outcomes) driftLog(`${new Date().toISOString()} ${summaryLine(outcome)}`);
   if (report.outcomes.length === 0) driftLog(`${new Date().toISOString()} nothing to run: every version the feeds name is in the ledger or waits for its retry`);
   return Math.max(exitCodeOf(report.outcomes), feedErrors > 0 && candidates.length === 0 ? 1 : 0);

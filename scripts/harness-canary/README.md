@@ -350,8 +350,10 @@ so two hand runs with two ledgers in one folder would delete each other's run fo
   `cause`. The wait grows by 50 minutes per try. After 5 tries or 7 days the row becomes `failed`. A drift verdict (`fail`) stays final and
   writes the issue draft, except that a `fail` read on a busy machine is a `retry` while tries are left. An unclassified `failed` stays final.
   `--version` runs a `retry` row at once, like a `failed` one.
-- Notices: a drift failure, a final `failed` and a pass each tell once to `notify.log`. When `darius` is on PATH, a call is prepared in
-  `push-queue.jsonl` (`sent: false`) and never sent. A repeated line inside 12 hours is written once.
+- Notices: a drift failure, a final `failed` and a pass each write one line to `notify.log`, once. A drift failure and a final `failed` also
+  light a darius candle: `darius candle light drift:<agent>@<version> --title ... --severity medium --project collie-workspace --source harness-lab --stdin`.
+  The body holds the issue-draft path and the run log. One key per version, so one version never lights twice. A pass lights none.
+  A missing `darius` or a failed call writes one more `notify.log` line and never fails the run. A repeated line inside 12 hours is written once.
 - Cleanup: `bun scripts/harness-canary/lab/retry-old.ts` prints which `failed` rows of 2026-10-23 with a `notarget` note would become `retry`.
   `--apply` writes them, after a copy of the ledger.
 

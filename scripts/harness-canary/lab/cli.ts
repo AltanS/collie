@@ -318,19 +318,14 @@ export const NOTIFY_DEDUPE_MS = 12 * 60 * 60 * 1000;
 
 export interface NotifyOptions {
   readonly now?: () => number;
-  /** Whether `darius` is on PATH. Absent: ask the system. */
-  readonly hasDarius?: () => boolean;
 }
 
 /**
- * Tell the person, locally. Every line goes to the console and to `notify.log` in the state folder. When
- * `darius` is on PATH a call is also PREPARED in `push-queue.jsonl` (`sent: false`): the lab never sends it.
- * Darius has no verb that sends a free text to the phone yet (`darius push` has keys, status, devices, test,
- * flush), so a person or a later ritual reads the queue. Nothing is posted anywhere public.
+ * Tell the person, locally. Every line goes to the console and to `notify.log` in the state folder. The same
+ * line inside {@link NOTIFY_DEDUPE_MS} is written once. Nothing is posted anywhere public.
  */
 export function fileNotify(stateDir: string, options: NotifyOptions = {}): Notify {
   const now = options.now ?? ((): number => Date.now());
-  const hasDarius = options.hasDarius ?? ((): boolean => Bun.which("darius") !== null);
   return (line) => {
     console.log(`NOTIFY ${line}`);
     mkdirSync(stateDir, { recursive: true });
@@ -339,22 +334,71 @@ export function fileNotify(stateDir: string, options: NotifyOptions = {}): Notif
     const [stamp, ...rest] = last.split(" ");
     if (rest.join(" ") === line && now() - Date.parse(stamp ?? "") < NOTIFY_DEDUPE_MS) return;
     appendFileSync(file, `${new Date(now()).toISOString()} ${line}\n`);
-    if (!hasDarius()) return;
-    appendFileSync(join(stateDir, "push-queue.jsonl"), `${JSON.stringify({ at: new Date(now()).toISOString(), via: "darius push", title: "Collie harness lab", body: line, sent: false })}\n`);
   };
 }
+
+/** The darius project the candles belong to. Passed as `--project`, so the timer's own working directory does not matter. */
+export const CANDLE_PROJECT = "collie-workspace";
+
+/** A candle the loop asks darius to light: one problem that needs the operator. */
+export interface Candle {
+  readonly key: string;
+  readonly title: string;
+  readonly body: string;
+}
+
+/** Runs a command with a text on stdin. Injected, so a test never lights a real candle. */
+export type CommandRunner = (argv: readonly string[], stdin: string) => { readonly code: number; readonly out: string };
+
+export const realRunner: CommandRunner = (argv, stdin) => {
+  const done = Bun.spawnSync([...argv], { stdin: new TextEncoder().encode(stdin), stdout: "pipe", stderr: "pipe" });
+  return { code: done.exitCode, out: `${done.stdout.toString()}${done.stderr.toString()}`.trim() };
+};
+
+const HARNESS_NAMES = new Map([["claude", "Claude Code"], ["opencode", "OpenCode"], ["codex", "Codex"]]);
+
+/** The candle of a version the lab could not clear: one key per version, so one version never lights twice. */
+export function candleOf(outcome: LabOutcome): Candle {
+  const name = HARNESS_NAMES.get(outcome.harness) ?? outcome.harness;
+  const title = outcome.status === "fail" ? `Collie misreads ${name} ${outcome.version} (harness lab)` : `The harness lab could not finish ${name} ${outcome.version}`;
+  const where = outcome.issue === undefined ? `Run log: ${outcome.logPath}` : `Issue draft: ${outcome.issue.json}\nRun log: ${outcome.logPath}`;
+  return { key: `drift:${outcome.harness}@${outcome.version}`, title, body: `${outcome.note}\n\n${where}\n` };
+}
+
+/**
+ * Light a candle with `darius candle light`. Severity medium: it needs the operator soon, and it is not urgent.
+ * Lighting a key again at the same severity sends nothing; darius counts the report. Never throws: a missing
+ * darius or a failed call returns a line for notify.log, and the run goes on.
+ */
+export function lightCandle(candle: Candle, run: CommandRunner = realRunner, hasDarius: () => boolean = () => Bun.which("darius") !== null): string | null {
+  if (!hasDarius()) return `darius is not on PATH, so no candle was lit for ${candle.key}`;
+  const argv = ["darius", "candle", "light", candle.key, "--title", candle.title, "--severity", "medium", "--project", CANDLE_PROJECT, "--source", "harness-lab", "--stdin"];
+  try {
+    const done = run(argv, candle.body);
+    return done.code === 0 ? null : `darius candle light ${candle.key} exited ${String(done.code)}: ${done.out.split("\n").pop() ?? ""}`;
+  } catch (err) {
+    return `darius candle light ${candle.key} failed: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+/** Lights one candle. Returns the line for notify.log when it could not, else null. Only a real drift failure and a final `failed` row call it. */
+export type Light = (candle: Candle) => string | null;
 
 /**
  * Tell the person once per (harness, version, verdict): a real drift failure (`fail`), a final `failed` (a
  * retry that ran out, or a cause that is no environment) and a new pass. A `retry` row tells nobody: the loop
- * tries it again. The ledger row remembers what it told, so a second tick with the same verdict is silent
- * (M44 spec 06).
+ * tries it again. A `fail` and a `failed` also light a candle (`light`). A pass writes its `notify.log` line only.
+ * The ledger row remembers what it told, so a second tick with the same verdict is silent (M44 spec 06).
  */
-export function tellOnce(ledgerFile: string, outcome: LabOutcome, notify: Notify): boolean {
+export function tellOnce(ledgerFile: string, outcome: LabOutcome, notify: Notify, light?: Light): boolean {
   if (outcome.status !== "fail" && outcome.status !== "failed" && outcome.status !== "pass") return false;
   const row = findRow(loadLedger(ledgerFile, Date.now()), outcome.harness, outcome.version);
   if (row === undefined || row.notified === outcome.status) return false;
   notify(notifyLine(outcome));
+  if (outcome.status !== "pass" && light !== undefined) {
+    const trouble = light(candleOf(outcome));
+    if (trouble !== null) notify(`harness lab: ${trouble}`);
+  }
   markNotified(ledgerFile, outcome.harness, outcome.version, outcome.status);
   return true;
 }
@@ -378,7 +422,7 @@ export function readTokenFile(path: string, read: (path: string) => string = (fi
   return token;
 }
 
-export async function runCandidates(candidates: readonly Candidate[], cli: CliOptions, ports: LabPorts, notify: Notify, now: () => number = () => Date.now()): Promise<RunReport> {
+export async function runCandidates(candidates: readonly Candidate[], cli: CliOptions, ports: LabPorts, notify: Notify, now: () => number = () => Date.now(), light?: Light): Promise<RunReport> {
   const outcomes: LabOutcome[] = [];
   let told = 0;
   // Read once, before any run: a missing token stops the command before anything is spent.
@@ -404,7 +448,7 @@ export async function runCandidates(candidates: readonly Candidate[], cli: CliOp
     outcomes.push(outcome);
     // A deferral writes no row, so it would be a silent night. One notify line makes it visible.
     if (outcome.status === "deferred") notify(`harness lab: ${outcome.harness} ${outcome.version} deferred: ${outcome.note}`);
-    if (tellOnce(cli.ledger, outcome, notify)) told++;
+    if (tellOnce(cli.ledger, outcome, notify, light)) told++;
   }
   return { outcomes, told };
 }
