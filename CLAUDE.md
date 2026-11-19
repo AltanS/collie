@@ -382,7 +382,9 @@ page to be skimmed.
   Three file names carry a meaning. `*.quarantine.test.*` is a flaky test: no run includes it, and
   the non-blocking `quarantine` job in `ci.yml` runs only those files; fix it and give it its old
   name back. Its first line is `// quarantined: YYYY-MM-DD <reason>`, and after 14 days that job
-  turns red (`scripts/check-quarantine.ts`) until it is fixed or deleted. `*.slow.test.*` is slow on purpose: a full run keeps it, the gate leaves it out.
+  turns red (`scripts/check-quarantine.ts`) until it is fixed or deleted. `*.slow.test.*`
+  is slow on purpose: a full run keeps it, the gate leaves it out. No test file passes 100 KB
+  (`scripts/test-file-size.test.ts`, a ceiling per older file): add new cases in a new file next to it.
   **Frozen code** (`FROZEN_PATHS` in `scripts/test-sets.ts`: the plugin data path of `collie harness
   link`, the browser-leg rig and the harness lab tooling) keeps its tests in `bun run test` and in a
   full vitest run, but CI runs them only when one of those paths changes, and in the nightly run; the

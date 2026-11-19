@@ -8,7 +8,8 @@
 //     `// quarantined: YYYY-MM-DD <reason>` (a guard test pins that), and after 14 days that job turns
 //     red until the test is fixed or deleted (`scripts/check-quarantine.ts`).
 //   - `*.slow.test.ts`        slow on purpose. A full run keeps it; the quick gate leaves it out.
-//   - `*.test.ts` and the rest  everything else.
+//   - `*.test.ts` and the rest  everything else. No test file passes 100 KB (`scripts/test-file-size.test.ts`):
+//     a new case goes in a new file next to the old one.
 
 import { basename, dirname } from "node:path";
 
@@ -136,6 +137,7 @@ export const GUARD_BUN: readonly (readonly [file: string, rule: string])[] = [
   ["scripts/themes-reference.test.ts", "the themes reference page is the generator's output"],
   ["scripts/tricks-reference.test.ts", "the tricks reference page is the generator's output"],
   ["scripts/check-quarantine.test.ts", "every quarantined test file says since when and why"],
+  ["scripts/test-file-size.test.ts", "no test file is over 100 KB, and a listed one stays under its ceiling"],
 ];
 
 /** One `bun test -t <name>` run over a file that is not a guard as a whole. */
