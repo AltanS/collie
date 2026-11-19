@@ -432,7 +432,7 @@ describe("the size the last active viewer sets (HC_API.md, The terminal record)"
 });
 
 describe("a program's state words (HC_API.md, Status)", () => {
-  test("done is Collie's done, never idle; error is unknown, and the pane is still the agent", async () => {
+  test("done is Collie's done, never idle; error maps to blocked, and the pane is still the agent", async () => {
     const { fake, adapter } = build();
     const statuses = async (): Promise<string[]> => (await adapter.snapshot()).panes.filter((p) => p.paneId === "t1").map((p) => `${p.agent}:${p.status}`);
     for (const [state, expected] of [
@@ -440,14 +440,14 @@ describe("a program's state words (HC_API.md, Status)", () => {
       ["working", "claude:working"],
       ["done", "claude:done"],
       ["blocked", "claude:blocked"],
-      ["error", "claude:unknown"],
+      ["error", "claude:blocked"],
     ] as const) {
       fake.reportState("t1", state);
       expect(await statuses()).toEqual([expected]);
     }
   });
 
-  test("done and idle are two marks the phone ranks apart; error shares unknown's mark", () => {
+  test("done and idle are two marks the phone ranks apart; error shares blocked's mark", () => {
     expect(STATUS_RANK.done).not.toBe(STATUS_RANK.idle);
     expect(Object.keys(STATUS_RANK).toSorted()).toEqual(["blocked", "done", "idle", "unknown", "working"]);
   });

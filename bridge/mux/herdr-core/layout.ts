@@ -60,7 +60,11 @@ export function agentForApp(app: string): string | null {
   return MUX_AGENT_NAMES.includes(key) ? key : null;
 }
 
-/** A program's status word in Collie's triage words. `error` has no Collie word, so it is unknown. */
+/**
+ * A program's status word in Collie's triage words. `error` maps to `blocked` so an agent whose
+ * turn halted on an error surfaces under Needs you and sends a push alert without widening the
+ * crew wire's status union.
+ */
 export function agentStatus(state: string): AgentStatus {
   switch (state) {
     case "idle":
@@ -68,6 +72,7 @@ export function agentStatus(state: string): AgentStatus {
     case "working":
       return "working";
     case "blocked":
+    case "error":
       return "blocked";
     case "done":
       return "done";
