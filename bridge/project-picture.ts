@@ -30,9 +30,12 @@
 //   - what a picture is: `lstat` every {@link STAMP_TTL_MS}, read and hashed again when its stamp moved.
 //
 // So a version changes at most once per {@link STAMP_TTL_MS}, never faster than the poll, however often an
-// agent rewrites its picture. Every disk call is async, and one folder's whole read has a time limit
-// ({@link READ_TIME_MAX_MS}): a folder that does not answer in time keeps what it had, is left alone for
-// {@link SLOW_RETRY_MS}, and never holds up another folder or the refresh. Many folders of one repository share one file read and one picture read.
+// agent rewrites its picture. Every disk call is async. A WAIT for a read has a time limit
+// ({@link READ_TIME_MAX_MS}): past it the folder keeps what it had and nobody waits longer. The read
+// itself stays counted until it really ends, as in bridge/git-head.ts: no second read starts for a folder
+// (or for a route's picture) while one is out, and the whole bridge has at most {@link READS_MAX} reads
+// out at once, the cache and the route together. Above that the answer is "no picture" at once. So a
+// mount that hangs holds a few reads, never the runtime's whole pool of async disk calls. Many folders of one repository share one file read and one picture read.
 // The folder table is bounded ({@link FOLDERS_MAX}); a folder nobody asked about for {@link FORGET_MS} is
 // dropped with every file and picture no remaining folder points at. There is no watcher.
 //
@@ -63,8 +66,10 @@ export const FORGET_MS = 5 * 60_000;
 export const FOLDERS_MAX = 512;
 /** The longest one folder's read (or one route read) may take before it counts as no answer. */
 export const READ_TIME_MAX_MS = 3_000;
-/** A folder whose read ran out of time is not tried again for this long. */
-export const SLOW_RETRY_MS = 60_000;
+/** The most reads out at one time for the whole bridge, the cache and the route together. */
+export const READS_MAX = 4;
+/** The longest a crew member's picture body may take to arrive on the lead. */
+export const FORWARD_BODY_TIME_MAX_MS = 10_000;
 
 /**
  * The bridge's own folders a picture may never come from: its state folder and its config folder. ONE
@@ -169,18 +174,20 @@ export function pictureVersion(bytes: Uint8Array): string {
 }
 
 /**
- * At most `max` bytes of a response body, or `null` when it holds more (or fails). Reading stops at the
- * cap and the rest of the stream is cancelled, so a member that sends a large body costs the lead at
- * most `max` plus one chunk in memory.
+ * At most `max` bytes of a response body, within `ms`, or `null` when it holds more, takes longer or
+ * fails. Reading stops at the cap or the deadline and the rest of the stream is cancelled, so a member
+ * that sends a large or a slow body costs the lead at most `max` plus one chunk in memory and `ms` of
+ * waiting.
  */
-export async function readCappedBody(res: Response, max: number): Promise<Uint8Array | null> {
+export async function readCappedBody(res: Response, max: number, ms: number = FORWARD_BODY_TIME_MAX_MS): Promise<Uint8Array | null> {
   if (res.body === null) return new Uint8Array();
   const reader = res.body.getReader();
   const parts: Uint8Array[] = [];
   let size = 0;
+  const deadline = Date.now() + ms;
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value } = await withinTime(reader.read(), Math.max(0, deadline - Date.now()));
       if (done) break;
       size += value.byteLength;
       if (size > max) {
@@ -234,9 +241,11 @@ const TOO_LARGE = `is larger than ${String(PROJECT_PICTURE_BYTES_MAX / 1024)} KB
  */
 export async function readProjectPicture(path: string, denied: readonly string[]): Promise<ProjectPictureRead> {
   if (path === "" || path.includes("\0") || !isAbsolute(path) || normalize(path) !== path) return { ok: false, why: "is not an absolute path" };
+  let seen: Awaited<ReturnType<typeof lstat>>;
   try {
     // The size first, on `lstat`, so a 2 GB file costs no read at all.
     const link = await lstat(path);
+    seen = link;
     if (link.isSymbolicLink()) return { ok: false, why: "is a symlink; name the file itself" };
     if (!link.isFile()) return { ok: false, why: "is not a regular file" };
     if (link.size > PROJECT_PICTURE_BYTES_MAX) return { ok: false, why: TOO_LARGE };
@@ -247,7 +256,8 @@ export async function readProjectPicture(path: string, denied: readonly string[]
   if (isDeniedPath(path, denied)) return { ok: false, why: "is inside Collie's own folders or a .git folder" };
   // Opened without following a link and without blocking, the descriptor checked to be this very file at
   // this real path, its size checked before the read (project-file.ts, `readSmallFile`).
-  const bytes = await readSmallFile(path, PROJECT_PICTURE_BYTES_MAX);
+  // Compared with `path` itself, the path every check above ran on (R2): one resolve, one truth.
+  const bytes = await readSmallFile(path, PROJECT_PICTURE_BYTES_MAX, path, seen);
   if (bytes === null) return { ok: false, why: "changed while it was read, is too large, or could not be read" };
   const mime = hillImageMime(bytes);
   if (mime === null) return { ok: false, why: "is not a PNG, JPEG or WebP picture (read from its first bytes)" };
@@ -304,6 +314,8 @@ export interface ProjectPictureSource {
 /** What `collie doctor` prints about one folder's project file. Names and short reasons only. */
 export interface ProjectFileReport {
   readonly file: string | null;
+  /** The enclosing repository's root, when the file came from one (a workspace), else `null`. */
+  readonly enclosing: string | null;
   readonly problem: string | null;
   readonly ignored: readonly string[];
   readonly refused: readonly string[];
@@ -319,9 +331,12 @@ export class ProjectPictures implements ProjectPictureSurface, ProjectPictureSou
   private readonly folders = new Map<string, FolderEntry>();
   private readonly files = new Map<string, FileEntry>();
   private readonly pictures = new Map<string, PictureEntry>();
+  /** Each folder's REAL read, until it ends, however long a waiter waited. */
   private readonly inFlight = new Map<string, Promise<void>>();
-  /** Folders whose last read ran out of time, and when they may be tried again. */
-  private readonly slowUntil = new Map<string, number>();
+  /** Each picture the route is reading, until the read ends. */
+  private readonly routeReads = new Map<string, Promise<ProjectPictureRead>>();
+  /** Reads out now, the cache and the route together, bounded by {@link READS_MAX}. */
+  private outstanding = 0;
   private readonly readPicture: PictureReader;
   private readonly timeMs: number;
 
@@ -363,23 +378,51 @@ export class ProjectPictures implements ProjectPictureSurface, ProjectPictureSou
     if (!this.enabled || !isPictureVersion(version)) return null;
     for (const [path, entry] of this.pictures) {
       if (entry.version !== version) continue;
-      const read = await readPictureInTime(this.readPicture, path, this.denied, this.timeMs);
-      if (read.ok && read.version === version) return { mime: read.mime, bytes: read.bytes };
+      const running = this.routeReadOf(path);
+      // Every read slot is taken (a mount that hangs, most likely): no picture now, at once.
+      if (running === null) return null;
+      const read = await withinTime(running, this.timeMs).catch(() => null);
+      if (read?.ok === true && read.version === version) return { mime: read.mime, bytes: read.bytes };
     }
     return null;
+  }
+
+  /** How many reads are out now: for the tests and nothing else. */
+  readsOut(): number {
+    return this.outstanding;
+  }
+
+  /** The route's read of one picture, shared while it runs, or `null` when every read slot is taken. */
+  private routeReadOf(path: string): Promise<ProjectPictureRead> | null {
+    const running = this.routeReads.get(path);
+    if (running !== undefined) return running;
+    const read = this.counted(() => this.readPicture(path, this.denied));
+    if (read === null) return null;
+    const shared = read.finally(() => this.routeReads.delete(path));
+    this.routeReads.set(path, shared);
+    return shared;
+  }
+
+  /** `work` started as one of the bridge's counted reads, or `null` when {@link READS_MAX} are out. */
+  private counted<T>(work: () => Promise<T>): Promise<T> | null {
+    if (this.outstanding >= READS_MAX) return null;
+    this.outstanding += 1;
+    return work().finally(() => {
+      this.outstanding -= 1;
+    });
   }
 
   /** The project file for one folder, read now and in full, for `collie doctor`. Never throws. */
   async report(folder: string): Promise<ProjectFileReport> {
     const located = await locateProjectFile(folder);
-    if (located === null) return { file: null, problem: null, ignored: [], refused: [], icon: null };
+    if (located === null) return { file: null, enclosing: null, problem: null, ignored: [], refused: [], icon: null };
     const read = await readProjectFile(located.file);
     const icon = read.settings.icon;
-    if (icon === undefined) return { file: located.file, problem: read.problem, ignored: read.ignored, refused: read.refused, icon: null };
+    if (icon === undefined) return { file: located.file, enclosing: located.enclosing ?? null, problem: read.problem, ignored: read.ignored, refused: read.refused, icon: null };
     const target = iconTarget(located, icon);
-    if (target === null) return { file: located.file, problem: read.problem, ignored: read.ignored, refused: read.refused, icon: { path: icon, ok: false, why: "leaves the repository" } };
+    if (target === null) return { file: located.file, enclosing: located.enclosing ?? null, problem: read.problem, ignored: read.ignored, refused: read.refused, icon: { path: icon, ok: false, why: "leaves the repository" } };
     const picture = await readPictureInTime(this.readPicture, target, this.denied, this.timeMs);
-    return { file: located.file, problem: read.problem, ignored: read.ignored, refused: read.refused, icon: { path: icon, ok: picture.ok, why: picture.ok ? null : picture.why } };
+    return { file: located.file, enclosing: located.enclosing ?? null, problem: read.problem, ignored: read.ignored, refused: read.refused, icon: { path: icon, ok: picture.ok, why: picture.ok ? null : picture.why } };
   }
 
   private versionOf(entry: FolderEntry | undefined): string | undefined {
@@ -390,8 +433,6 @@ export class ProjectPictures implements ProjectPictureSurface, ProjectPictureSou
   }
 
   private stale(folder: string, at: number): boolean {
-    const slow = this.slowUntil.get(folder);
-    if (slow !== undefined && at < slow) return false;
     const entry = this.folders.get(folder);
     if (entry === undefined || at - entry.locatedAt >= LOCATE_TTL_MS) return true;
     if (entry.located === null) return false;
@@ -402,19 +443,20 @@ export class ProjectPictures implements ProjectPictureSurface, ProjectPictureSou
     return picture === undefined || at - picture.checkedAt >= STAMP_TTL_MS;
   }
 
+  /**
+   * Bring one folder up to date, waiting at most the time limit. The read itself stays in `inFlight`
+   * until it really ends, so a folder whose read hangs never starts a second one; the wait ends at the
+   * limit with the folder's old answer standing. With every read slot taken, nothing starts.
+   */
   private settle(folder: string): Promise<void> {
-    const running = this.inFlight.get(folder);
-    if (running !== undefined) return running;
-    // The whole folder within the time limit: a mount that hangs costs this folder its fresh answer, and
-    // nothing else. Its old answer stands, and it is left alone for SLOW_RETRY_MS.
-    const work = withinTime(this.read(folder), this.timeMs)
-      .then(() => void this.slowUntil.delete(folder))
-      .catch((error: Error) => {
-        if (error instanceof OutOfTime) this.slowUntil.set(folder, this.now() + SLOW_RETRY_MS);
-      })
-      .finally(() => this.inFlight.delete(folder));
-    this.inFlight.set(folder, work);
-    return work;
+    let running = this.inFlight.get(folder);
+    if (running === undefined) {
+      const read = this.counted(() => this.read(folder));
+      if (read === null) return Promise.resolve();
+      running = read.catch(() => undefined).finally(() => this.inFlight.delete(folder));
+      this.inFlight.set(folder, running);
+    }
+    return withinTime(running, this.timeMs).catch(() => undefined);
   }
 
   private async read(folder: string): Promise<void> {
@@ -468,7 +510,6 @@ export class ProjectPictures implements ProjectPictureSurface, ProjectPictureSou
 
   private forget(at: number): void {
     for (const [folder, entry] of this.folders) if (at - entry.askedAt >= FORGET_MS) this.folders.delete(folder);
-    for (const [folder, until] of this.slowUntil) if (at >= until && !this.folders.has(folder)) this.slowUntil.delete(folder);
     this.sweep();
   }
 

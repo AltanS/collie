@@ -954,6 +954,7 @@ there the push stays as it was.
 | Which file | The nearest `collie.toml`, from the session's folder up to the repository root |
 | Outside a repository | Only a `collie.toml` in the session's own folder |
 | Linked worktree | Its own tree first, then the main checkout |
+| Workspace of repositories | A repository with no file takes the enclosing repository's, up to 4 levels |
 | File size | At most 16 KB, UTF-8 TOML, a regular file (no link) |
 | `icon` | A relative path with `/`, inside the repository, no `..`, not under `.git`, no link |
 | Picture type | PNG, JPEG or WebP, read from the first bytes; no SVG, GIF or animation |
@@ -961,7 +962,9 @@ there the push stays as it was.
 
 A table or key Collie does not know is ignored, never an error. Run `collie doctor` in the
 repository to see which file speaks for that folder, what it ignored, and whether the picture
-passed. A changed picture shows within a few seconds and fades in.
+passed. A repository that holds other repositories as folders, such as a workspace, can name one
+picture for all of them: a member with no `collie.toml` of its own takes the workspace's, and
+`collie doctor` says so. A changed picture shows within a few seconds and fades in.
 
 To turn the pictures off on one phone, open **Settings → Appearance → Project pictures**. To turn
 every repository's file off on a machine, set this in the instance's `.env` and restart Collie:

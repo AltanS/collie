@@ -19,15 +19,25 @@ function png(): Uint8Array {
   return new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...chunk("IHDR", [...be32(128), ...be32(128), 8, 6, 0, 0, 0]), ...chunk("IDAT", Array.from({ length: 16 }, () => 0)), ...chunk("IEND", [])]);
 }
 
-const clean = { file: "/repo/collie.toml", problem: null, ignored: [], refused: [], icon: { path: "a.png", ok: true, why: null } };
+const clean = { file: "/repo/collie.toml", enclosing: null, problem: null, ignored: [], refused: [], icon: { path: "a.png", ok: true, why: null } };
 
 describe("the project-file row", () => {
   test("no file is no row", () => {
-    expect(projectFileLine({ file: null, problem: null, ignored: [], refused: [], icon: null })).toBeNull();
+    expect(projectFileLine({ file: null, enclosing: null, problem: null, ignored: [], refused: [], icon: null })).toBeNull();
   });
 
   test("a clean file is ok and names the file and the picture", () => {
     expect(projectFileLine(clean)).toMatchObject({ check: "project-file", status: "ok", detail: "/repo/collie.toml · picture a.png passes" });
+  });
+
+  test("a file from an enclosing repository says so", () => {
+    expect(projectFileLine({ ...clean, file: "/ws/collie.toml", enclosing: "/ws" })?.detail).toContain("from the enclosing repository /ws");
+  });
+
+  test("control characters in the folder path never reach the terminal (R7)", () => {
+    const detail = projectFileLine({ ...clean, file: "/re\u009bpo\u202e/x\u200f/collie.toml" })?.detail ?? "";
+    expect(detail).toContain("/repo/x/collie.toml");
+    expect([...detail].some((ch) => [0x9b, 0x202e, 0x200f].includes(ch.codePointAt(0) ?? 0))).toBe(false);
   });
 
   test("ignored names alone stay ok; a refused value or picture warns", () => {

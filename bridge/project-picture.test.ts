@@ -1,15 +1,15 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { open } from "node:fs/promises";
+import { lstat, open } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 import { pictureHeader, pictureHeaderFits, PROJECT_PICTURE_BYTES_MAX } from "../web/src/lib/project-picture-wire.ts";
 import { hillImageMime, hillImageSize } from "./hill/media.ts";
 import { forwardedPictureRoute, HILL_MEDIA_HEADERS, HILL_MEDIA_MISSING, PROJECT_PICTURE_ROUTE, projectPictureRoute } from "./server.ts";
-import { checkIconPath, cleanName, descriptorIs, isControlCode, locateProjectFile, NEVER_TABLES, parseProjectFile, PROJECT_FILE_BYTES_MAX, PROJECT_KEYS, readProjectFile, readSmallFile } from "./project-file.ts";
-import { checkProjectPicture, iconTarget, pictureVersion, pngAnimated, ProjectPictures, readCappedBody, readProjectPicture, SLOW_RETRY_MS, STAMP_TTL_MS, webpAnimated, type PictureReader } from "./project-picture.ts";
+import { checkIconPath, cleanName, descriptorIs, ENCLOSING_MAX, isControlCode, locateProjectFile, NEVER_TABLES, parseProjectFile, PROJECT_FILE_BYTES_MAX, PROJECT_KEYS, readProjectFile, readSmallFile } from "./project-file.ts";
+import { checkProjectPicture, iconTarget, pictureVersion, pngAnimated, ProjectPictures, readCappedBody, readProjectPicture, READS_MAX, STAMP_TTL_MS, LOCATE_TTL_MS, webpAnimated, type PictureReader } from "./project-picture.ts";
 
 const made: string[] = [];
 afterAll(() => {
@@ -159,19 +159,25 @@ describe("which file speaks for a folder", () => {
     writeFileSync(join(wtGit, "commondir"), "../..\n");
     const wt = folder();
     writeFileSync(join(wt, ".git"), `gitdir: ${wtGit}\n`);
+    // Git's back link, which a real `git worktree add` writes (R4).
+    writeFileSync(join(wtGit, "gitdir"), `${join(wt, ".git")}\n`);
     mkdirSync(join(wt, "src"));
     expect(await locateProjectFile(join(wt, "src"))).toEqual({ file: join(main, "collie.toml"), root: main });
     write(join(wt, "collie.toml"), "[project]\n");
     expect(await locateProjectFile(join(wt, "src"))).toEqual({ file: join(wt, "collie.toml"), root: wt });
   });
 
-  test("a submodule is a tree of its own: no reach into the outer repository", async () => {
+  test("a submodule is a tree of its own, and the outer repository speaks for it only as an enclosing one (R8)", async () => {
     const outer = repo(folder());
     write(join(outer, "collie.toml"), "[project]\n");
     const sub = join(outer, "vendor", "lib");
     mkdirSync(join(outer, ".git", "modules", "lib"), { recursive: true });
     write(join(sub, ".git"), "gitdir: ../../.git/modules/lib\n");
-    expect(await locateProjectFile(sub)).toBeNull();
+    // No main checkout for a submodule: the outer file comes in as the enclosing repository's.
+    expect(await locateProjectFile(sub)).toEqual({ file: join(outer, "collie.toml"), root: outer, enclosing: outer });
+    // Its own file wins.
+    write(join(sub, "collie.toml"), "[project]\n");
+    expect(await locateProjectFile(sub)).toEqual({ file: join(sub, "collie.toml"), root: sub });
   });
 
   test("a folder reached through a symlink walks its real tree", async () => {
@@ -390,7 +396,7 @@ describe("the route", () => {
 });
 
 /** Control codes the project file's names and paths may never carry (L2): C1, line and paragraph separators, bidi. */
-const HOSTILE_CODES = [0x009b, 0x0085, 0x2028, 0x2029, 0x202e, 0x2066];
+const HOSTILE_CODES = [0x009b, 0x0085, 0x2028, 0x2029, 0x202e, 0x2066, 0x200e, 0x200f, 0x061c];
 /** The same, as a TOML `\u` escape run, so the parser itself produces the characters. */
 const HOSTILE_TOML = HOSTILE_CODES.map((c) => `\\u${c.toString(16).padStart(4, "0")}`).join("");
 const HOSTILE_TEXT = String.fromCodePoint(...HOSTILE_CODES);
@@ -415,7 +421,7 @@ describe("a folder whose disk hangs (M1)", () => {
     return { root, bytes, picture: join(root, icon) };
   }
 
-  test("one folder out of time costs only that folder; it is left alone until SLOW_RETRY_MS has passed", async () => {
+  test("one folder out of time costs only that folder, and a read that never ends starts no second one in 30 cycles (R1)", async () => {
     const a = projectWith();
     const b = projectWith();
     const calls: string[] = [];
@@ -424,20 +430,58 @@ describe("a folder whose disk hangs (M1)", () => {
       return path === a.picture ? never() : readProjectPicture(path, denied);
     };
     let now = 1_000;
-    const pictures = new ProjectPictures(true, [], () => now, { readPicture, timeMs: 50 });
+    const pictures = new ProjectPictures(true, [], () => now, { readPicture, timeMs: 20 });
     const started = performance.now();
     await pictures.refresh([a.root, b.root]);
     expect(performance.now() - started).toBeLessThan(1_000);
     expect(pictures.get(b.root)).toBe(pictureVersion(b.bytes));
     expect(pictures.get(a.root)).toBeUndefined();
+    for (let cycle = 0; cycle < 30; cycle++) {
+      now += LOCATE_TTL_MS + STAMP_TTL_MS;
+      await pictures.refresh([a.root, b.root]);
+      pictures.get(a.root);
+    }
+    // The hung read is still the one read out for A: no pile.
     expect(calls.filter((p) => p === a.picture)).toHaveLength(1);
+    expect(pictures.readsOut()).toBe(1);
+  });
 
-    await pictures.refresh([a.root]);
-    expect(calls.filter((p) => p === a.picture)).toHaveLength(1);
+  test("the whole bridge has at most READS_MAX reads out, across folders (R1)", async () => {
+    const projects = Array.from({ length: READS_MAX + 3 }, () => projectWith());
+    let calls = 0;
+    const readPicture: PictureReader = () => {
+      calls += 1;
+      return never();
+    };
+    let now = 1_000;
+    const pictures = new ProjectPictures(true, [], () => now, { readPicture, timeMs: 20 });
+    for (let cycle = 0; cycle < 5; cycle++) {
+      await pictures.refresh(projects.map((p) => p.root));
+      now += LOCATE_TTL_MS + STAMP_TTL_MS;
+    }
+    expect(pictures.readsOut()).toBe(READS_MAX);
+    expect(calls).toBeLessThanOrEqual(READS_MAX);
+  });
 
-    now += SLOW_RETRY_MS;
-    await pictures.refresh([a.root]);
-    expect(calls.filter((p) => p === a.picture)).toHaveLength(2);
+  test("with every read slot taken, the route answers the miss at once (R1)", async () => {
+    const good = projectWith();
+    const hung = Array.from({ length: READS_MAX }, () => projectWith());
+    const hungPaths = new Set(hung.map((p) => p.picture));
+    let blocked = false;
+    const readPicture: PictureReader = (path, denied) => (blocked && hungPaths.has(path) ? never() : readProjectPicture(path, denied));
+    let now = 1_000;
+    const pictures = new ProjectPictures(true, [], () => now, { readPicture, timeMs: 20_000 });
+    await pictures.refresh([good.root]);
+    const version = pictureVersion(good.bytes);
+    blocked = true;
+    now += LOCATE_TTL_MS + STAMP_TTL_MS;
+    void pictures.refresh(hung.map((p) => p.root));
+    // Let the folder reads reach their hung picture reads.
+    for (let i = 0; i < 50 && pictures.readsOut() < READS_MAX; i++) await Bun.sleep(5);
+    expect(pictures.readsOut()).toBe(READS_MAX);
+    const started = performance.now();
+    expect(await pictures.bytesOf(version)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(100);
   });
 
   test("bytesOf for a picture whose read now hangs answers null within the time limit", async () => {
@@ -632,7 +676,86 @@ describe("a hostile worktree pointer (L1)", () => {
     writeFileSync(join(wtGit, "commondir"), `${join(main, ".git")}\n`);
     const wt = folder();
     writeFileSync(join(wt, ".git"), `gitdir: ${wtGit}\n`);
+    writeFileSync(join(wtGit, "gitdir"), `${join(wt, ".git")}\n`);
     expect(await locateProjectFile(wt)).toEqual({ file: join(main, "collie.toml"), root: main });
+  });
+
+  test("a .git file that borrows another repository's real worktree entry gets no main checkout (R4)", async () => {
+    // The victim has a real worktree entry, back link and all, for its own worktree.
+    const victim = repo(folder());
+    write(join(victim, "collie.toml"), "[project]\n");
+    const entry = join(victim, ".git", "worktrees", "real");
+    mkdirSync(entry, { recursive: true });
+    writeFileSync(join(entry, "commondir"), "../..\n");
+    const victimWt = folder();
+    writeFileSync(join(victimWt, ".git"), `gitdir: ${entry}\n`);
+    writeFileSync(join(entry, "gitdir"), `${join(victimWt, ".git")}\n`);
+    expect(await locateProjectFile(victimWt)).toEqual({ file: join(victim, "collie.toml"), root: victim });
+    // Case A: an absolute pointer to that entry. Case B: a relative one. Case C: through a symlink.
+    const evilA = folder();
+    writeFileSync(join(evilA, ".git"), `gitdir: ${entry}\n`);
+    const evilB = folder();
+    writeFileSync(join(evilB, ".git"), `gitdir: ${relative(evilB, entry)}\n`);
+    const evilC = folder();
+    symlinkSync(entry, join(evilC, "lnk"));
+    writeFileSync(join(evilC, ".git"), "gitdir: lnk\n");
+    for (const evil of [evilA, evilB, evilC]) expect(await locateProjectFile(evil)).toBeNull();
+  });
+
+  test("a layout made by a real `git worktree add` still reaches the main checkout (R4)", async () => {
+    const main = folder();
+    const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", ...args], { cwd, stdio: "ignore" });
+    try {
+      git(main, "init", "-q");
+      write(join(main, "README"), "x\n");
+      git(main, "add", "README");
+      git(main, "commit", "-q", "-m", "x");
+      // Not committed, so the worktree's checkout has none of its own.
+      write(join(main, "collie.toml"), "[project]\n");
+    } catch {
+      return; // no git on this host
+    }
+    const wt = join(folder(), "wt");
+    git(main, "worktree", "add", "-q", wt);
+    expect(await locateProjectFile(wt)).toEqual({ file: join(main, "collie.toml"), root: main });
+  });
+});
+
+describe("one resolve, one truth (R2)", () => {
+  test("the descriptor is compared with the caller's own path, never a fresh resolve", async () => {
+    const dir = folder();
+    mkdirSync(join(dir, "real"));
+    const inside = write(join(dir, "real", "a.png"), png());
+    symlinkSync(join(dir, "real"), join(dir, "flip"));
+    const through = join(dir, "flip", "a.png");
+    // The caller checked `through` as if it were real: the open lands elsewhere, so nothing is read.
+    expect(await readSmallFile(through, 1 << 20, through)).toBeNull();
+    // The same file named by the path that really holds it is read.
+    expect(await readSmallFile(inside, 1 << 20, inside)).not.toBeNull();
+  });
+
+  test("the open file must be the file the caller's first lstat saw", async () => {
+    const dir = folder();
+    const a = write(join(dir, "a.png"), png());
+    const b = write(join(dir, "b.png"), png());
+    const seen = await lstat(b);
+    expect(await readSmallFile(a, 1 << 20, a, { dev: seen.dev, ino: seen.ino })).toBeNull();
+  });
+});
+
+describe("a slow member body (R3)", () => {
+  test("a body that stops sending ends as no bytes at the time limit", async () => {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        if (pulled === 1) controller.enqueue(new Uint8Array(10));
+        return new Promise(() => undefined);
+      },
+    });
+    const started = performance.now();
+    expect(await readCappedBody(new Response(body), 1024, 50)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(1_000);
   });
 });
 
@@ -700,6 +823,9 @@ describe("the phone's header reader agrees with the bridge's", () => {
     ["webp 40", webp(40, 40)],
     ["truncated png", png().slice(0, 20)],
     ["not a picture", new TextEncoder().encode("<svg></svg>")],
+    ["apng", png(128, 128, { animated: true })],
+    ["webp anim chunk", webp(256, 256, { anim: true })],
+    ["webp anim flag", webp(256, 256, { flag: true })],
   ];
   for (const [name, bytes] of cases) {
     test(name, () => {
@@ -707,9 +833,110 @@ describe("the phone's header reader agrees with the bridge's", () => {
       const size = mime === null ? null : hillImageSize(bytes, mime);
       const phone = pictureHeader(bytes);
       expect(phone === null ? null : { mime: phone.mime, width: phone.width, height: phone.height }).toEqual(mime === null || size === null ? null : { mime, ...size });
-      // Size and type rules only: the bridge's other rules (animation) are its own, before the bytes leave.
-      const fits = (side: number) => side >= 64 && side <= 1024;
-      expect(pictureHeaderFits(bytes)).toBe(size !== null && fits(size.width) && fits(size.height));
+      // Every rule the phone checks (size, type, sides, animation) answers as the bridge's own check does.
+      expect(pictureHeaderFits(bytes)).toBe(mime !== null && checkProjectPicture(bytes, mime) === null);
     });
   }
+
+  test("fuzz: a picture with random bytes changed gets the same yes or no from both", () => {
+    let seed = 811;
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) >>> 0;
+      return seed / 2 ** 32;
+    };
+    const bases = [png(), png(128, 128, { animated: true }), jpeg(), webp(), webp(256, 256, { anim: true }), webp(256, 256, { flag: true })];
+    for (let round = 0; round < 3000; round++) {
+      const bytes = Uint8Array.from(bases[round % bases.length]!);
+      const flips = 1 + Math.floor(random() * 4);
+      for (let f = 0; f < flips; f++) bytes[Math.floor(random() * Math.min(bytes.length, 64))] = Math.floor(random() * 256);
+      const mime = hillImageMime(bytes);
+      expect(pictureHeaderFits(bytes)).toBe(mime !== null && checkProjectPicture(bytes, mime) === null);
+    }
+  });
+});
+
+// R8: a workspace repository that holds member repositories as plain folders speaks for a member that has
+// no `collie.toml` of its own.
+describe("an enclosing repository (R8)", () => {
+  /** A repository at `path`, made as a folder with its own `.git`. */
+  const member = (path: string) => {
+    mkdirSync(path, { recursive: true });
+    return repo(path);
+  };
+
+  test("a session in a member with no file finds the workspace's", async () => {
+    const ws = repo(folder());
+    write(join(ws, "collie.toml"), "[project]\n");
+    const athena = member(join(ws, "athena"));
+    mkdirSync(join(athena, "src"));
+    expect(await locateProjectFile(join(athena, "src"))).toEqual({ file: join(ws, "collie.toml"), root: ws, enclosing: ws });
+  });
+
+  test("the member's own file wins", async () => {
+    const ws = repo(folder());
+    write(join(ws, "collie.toml"), "[project]\n");
+    const athena = member(join(ws, "athena"));
+    write(join(athena, "collie.toml"), "[project]\n");
+    expect(await locateProjectFile(athena)).toEqual({ file: join(athena, "collie.toml"), root: athena });
+  });
+
+  test("a file in a folder of the workspace between it and the member speaks first", async () => {
+    const ws = repo(folder());
+    write(join(ws, "collie.toml"), "[project]\n");
+    write(join(ws, "group", "collie.toml"), "[project]\n");
+    const m = member(join(ws, "group", "m"));
+    expect(await locateProjectFile(m)).toEqual({ file: join(ws, "group", "collie.toml"), root: ws, enclosing: ws });
+  });
+
+  test("three levels: a member of a member of a workspace", async () => {
+    const ws = repo(folder());
+    write(join(ws, "collie.toml"), "[project]\n");
+    const mid = member(join(ws, "mid"));
+    const leaf = member(join(mid, "leaf"));
+    expect(await locateProjectFile(leaf)).toEqual({ file: join(ws, "collie.toml"), root: ws, enclosing: ws });
+  });
+
+  test("the search stops after ENCLOSING_MAX enclosing repositories", async () => {
+    const top = repo(folder());
+    write(join(top, "collie.toml"), "[project]\n");
+    // Nest ENCLOSING_MAX repositories under `top`, then the session's own: `top` is one level too far.
+    let at = top;
+    for (let i = 0; i < ENCLOSING_MAX; i++) at = member(join(at, `r${String(i)}`));
+    const session = member(join(at, "session"));
+    expect(await locateProjectFile(session)).toBeNull();
+    // One level less, and it is found.
+    expect(await locateProjectFile(at)).toEqual({ file: join(top, "collie.toml"), root: top, enclosing: top });
+  });
+
+  test("a parent that is not a repository gives nothing", async () => {
+    const plain = folder();
+    write(join(plain, "collie.toml"), "[project]\n");
+    const m = member(join(plain, "m"));
+    expect(await locateProjectFile(m)).toBeNull();
+  });
+
+  test("a member inside a linked worktree of the workspace finds the workspace's main checkout", async () => {
+    const main = repo(folder());
+    write(join(main, "collie.toml"), "[project]\n");
+    const wtGit = join(main, ".git", "worktrees", "wt");
+    mkdirSync(wtGit, { recursive: true });
+    writeFileSync(join(wtGit, "commondir"), "../..\n");
+    const wt = folder();
+    writeFileSync(join(wt, ".git"), `gitdir: ${wtGit}\n`);
+    writeFileSync(join(wtGit, "gitdir"), `${join(wt, ".git")}\n`);
+    const m = member(join(wt, "athena"));
+    expect(await locateProjectFile(m)).toEqual({ file: join(main, "collie.toml"), root: main, enclosing: main });
+  });
+
+  test("the workspace's icon must stay inside the workspace, and doctor names where the file came from", async () => {
+    const ws = repo(folder());
+    write(join(ws, "collie.toml"), '[project]\nicon = "logo.png"\n');
+    write(join(ws, "logo.png"), png());
+    const m = member(join(ws, "m"));
+    const report = await new ProjectPictures(true, []).report(m);
+    expect(report).toMatchObject({ file: join(ws, "collie.toml"), enclosing: ws, icon: { ok: true } });
+    const pictures = new ProjectPictures(true, []);
+    await pictures.refresh([m]);
+    expect(pictures.get(m)).toBe(pictureVersion(png()));
+  });
 });

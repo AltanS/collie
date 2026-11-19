@@ -20,6 +20,9 @@
 // its repository, the first `collie.toml` is the one. No merging. Never above the repository root. A
 // folder outside any repository reads only a `collie.toml` in that folder itself. A linked git
 // worktree reads its own tree first, then the main checkout, from the same folder inside it upward.
+// When the session's own repository has no file, an ENCLOSING repository's does (a workspace that holds
+// member repositories as folders): from the folder holding the member up to the workspace's root, by the
+// same rules, through at most {@link ENCLOSING_MAX} enclosing repositories (ADR 0160).
 // Every step is on the REAL path of the session's folder, so a symlinked folder name cannot lift the
 // walk out of the tree it really is in.
 //
@@ -95,13 +98,13 @@ export interface ProjectFileRead {
 
 /**
  * A code a terminal or a reader may act on rather than print: a C0 control, DEL, a C1 control (U+0080 to
- * U+009F; U+009B is a one-byte CSI), the line and paragraph separators U+2028 and U+2029, and the bidi
- * embeddings, overrides and isolates (U+202A to U+202E, U+2066 to U+2069). `collie doctor` prints names
- * from this file, so none of these may reach it.
+ * U+009F; U+009B is a one-byte CSI), the line and paragraph separators U+2028 and U+2029, the bidi
+ * marks (U+200E, U+200F, U+061C), and the bidi embeddings, overrides and isolates (U+202A to U+202E,
+ * U+2066 to U+2069). `collie doctor` prints names from this file, so none of these may reach it.
  */
 export function isControlCode(code: number): boolean {
   if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
-  if (code === 0x2028 || code === 0x2029) return true;
+  if (code === 0x2028 || code === 0x2029 || code === 0x200e || code === 0x200f || code === 0x061c) return true;
   return (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
 }
 
@@ -113,12 +116,17 @@ function hasControl(text: string): boolean {
 
 /** A name from the file, safe to print in a terminal: controls dropped, cut to a length. */
 export function cleanName(name: string): string {
+  return cleanText(name, IGNORED_NAME_MAX);
+}
+
+/** Any text for a terminal (a name, a folder path): every {@link isControlCode} dropped, cut to `max`. */
+export function cleanText(text: string, max: number): string {
   let out = "";
-  for (const ch of name) {
+  for (const ch of text) {
     const code = ch.codePointAt(0) ?? 0;
     if (isControlCode(code)) continue;
     out += ch;
-    if (out.length >= IGNORED_NAME_MAX) break;
+    if (out.length >= max) break;
   }
   return out === "" ? "?" : out;
 }
@@ -209,6 +217,11 @@ export interface LocatedProjectFile {
   readonly file: string;
   /** The root of the tree the file was found in: what an icon must stay below. */
   readonly root: string;
+  /**
+   * Set when the file came from an ENCLOSING repository (a workspace that holds the session's repository
+   * as a folder): that repository's root, which `root` then also is. Absent for the session's own tree.
+   */
+  readonly enclosing?: string;
 }
 
 /** What a path is, without following a link. `null` when it does not exist or cannot be read. */
@@ -248,17 +261,26 @@ export async function descriptorIs(fd: number, real: string, opened: { dev: numb
 /**
  * The bytes of a small regular file, or `null`. Never follows a link at the last step, never blocks on a
  * FIFO, and reads only when the open descriptor is the file `lstat` saw (device and inode) and sits at
- * the path's real path ({@link descriptorIs}). The size is checked on `lstat` and again on the open
- * descriptor before any read, and at most `max` plus one byte is read. Shared by the project file and the
- * project picture (project-picture.ts).
+ * `expected` ({@link descriptorIs}). The size is checked on `lstat` and again on the open descriptor
+ * before any read, and at most `max` plus one byte is read. Shared by the project file and the project
+ * picture (project-picture.ts).
+ *
+ * `expected` is the real path the CALLER already checked (its private-folder list, its `.git` rule, its
+ * repository bound). The descriptor is compared with exactly that path, never with a second resolve made
+ * here: a folder on the way swapped for a link between the caller's check and the open would pass a
+ * fresh resolve, and reads nothing this way. Only a caller that checked nothing about the path (a git
+ * pointer file) leaves `expected` out, and then the path's own real path stands in. `seen` is the
+ * device and inode of the caller's own first `lstat`: the open file must be that file, on every host
+ * (off Linux a fresh `lstat` could follow a swapped folder to the outside file).
  */
-export async function readSmallFile(path: string, max: number): Promise<Uint8Array | null> {
+export async function readSmallFile(path: string, max: number, expected?: string, seen?: { dev: number; ino: number }): Promise<Uint8Array | null> {
   let link: Awaited<ReturnType<typeof lstat>>;
   let real: string;
   try {
     link = await lstat(path);
     if (!link.isFile() || link.size > max) return null;
-    real = await realpath(path);
+    if (seen !== undefined && (link.dev !== seen.dev || link.ino !== seen.ino)) return null;
+    real = expected ?? (await realpath(path));
   } catch {
     return null;
   }
@@ -337,6 +359,22 @@ async function mainCheckoutOf(dotGitFile: string, root: string): Promise<string 
   }
   if (basename(commonReal) !== ".git" || (await kindOf(commonReal)) !== "dir") return null;
   if (dirname(gitDirReal) !== join(commonReal, "worktrees") || basename(gitDirReal) === "") return null;
+  // Git's back link: `<common>/worktrees/<name>/gitdir` names the worktree's own `.git` file. It must be
+  // THIS `.git` file, on real paths, or a `.git` file could borrow another repository's real worktree
+  // entry and with it that repository's `collie.toml`.
+  const back = await readSmallFile(join(gitDirReal, "gitdir"), GIT_POINTER_BYTES_MAX);
+  if (back === null) return null;
+  const backLine = Buffer.from(back).toString("utf8").split(/\r?\n/, 1)[0]?.trim() ?? "";
+  if (backLine === "" || hasControl(backLine)) return null;
+  let backReal: string;
+  let selfReal: string;
+  try {
+    backReal = await realpath(isAbsolute(backLine) ? normalize(backLine) : resolve(gitDirReal, backLine));
+    selfReal = await realpath(dotGitFile);
+  } catch {
+    return null;
+  }
+  if (backReal !== selfReal) return null;
   const main = dirname(commonReal);
   return main === root ? null : main;
 }
@@ -379,11 +417,37 @@ export async function locateProjectFile(folder: string): Promise<LocatedProjectF
     return null;
   }
   if ((await kindOf(real)) !== "dir") return null;
-  const tree = await treeOf(real);
+  let tree = await treeOf(real);
   if (tree === null) {
     const own = join(real, PROJECT_FILE_NAME);
     return (await kindOf(own)) === null ? null : { file: own, root: real };
   }
+  const found = await locateInTree(real, tree);
+  if (found !== null) return found;
+  // THE ENCLOSING REPOSITORY (R8, ADR 0160): a workspace repository that holds this one as a plain folder.
+  // Its file speaks for a session in a member that has none, from the folder that holds the member up to
+  // the workspace's own root, by the same rules (its icon stays inside the workspace). A member's own
+  // file always wins, because it is searched first. At most ENCLOSING_MAX levels.
+  for (let level = 0; level < ENCLOSING_MAX; level++) {
+    const parent = dirname(tree.root);
+    if (parent === tree.root) return null;
+    const enclosing = await treeOf(parent);
+    if (enclosing === null) return null;
+    const shared = await locateInTree(parent, enclosing);
+    if (shared !== null) return { ...shared, enclosing: shared.root };
+    tree = enclosing;
+  }
+  return null;
+}
+
+/** How many enclosing repositories the search goes through, at most, above the session's own. */
+export const ENCLOSING_MAX = 4;
+
+/**
+ * The nearest file from a real folder up to its tree's root, then, for a linked worktree, from the same
+ * folder inside the main checkout up to that root.
+ */
+async function locateInTree(real: string, tree: Tree): Promise<LocatedProjectFile | null> {
   const own = await nearestIn(real, tree.root);
   if (own !== null) return { file: own, root: tree.root };
   if (tree.main === null) return null;
@@ -419,7 +483,8 @@ export async function readProjectFile(path: string): Promise<ProjectFileOnDisk> 
   const stamp = await stampOf(path);
   const kind = await kindOf(path);
   if (kind !== "file") return { ...empty, stamp, problem: kind === "link" ? "is a symlink" : "is not a regular file" };
-  const bytes = await readSmallFile(path, PROJECT_FILE_BYTES_MAX);
+  // `path` is a real path: the walk that found it ran on real paths (locateProjectFile).
+  const bytes = await readSmallFile(path, PROJECT_FILE_BYTES_MAX, path);
   if (bytes === null) return { ...empty, stamp, problem: `is larger than ${String(PROJECT_FILE_BYTES_MAX / 1024)} KB or could not be read` };
   let text: string;
   try {

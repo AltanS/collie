@@ -47,10 +47,16 @@ someone will propose to grow into the operator's files.
    key is ignored, never an error, and `collie doctor` lists it by name. A known key with a bad value is
    refused alone; the rest of the file still counts. A later key (`name`, `color`) is one more entry with
    its own validator, and it must pass rule 1.
-4. **The nearest file wins, never above the repository.** From the session's real folder up to its
-   repository root, the first `collie.toml` speaks; files are never merged. A folder outside any
-   repository reads only its own `collie.toml`. A linked worktree reads its own tree, then the main
-   checkout from the same folder. A submodule is its own tree. A refused nearest file means no settings,
+4. **The nearest file wins, and a workspace speaks for its members.** From the session's real folder up
+   to its repository root, the first `collie.toml` speaks; files are never merged. A linked worktree
+   reads its own tree, then the main checkout from the same folder. When the session's repository has no
+   file, an ENCLOSING repository's does (a workspace that holds member repositories, or a submodule, as
+   folders): from the folder holding the member up to the workspace's root, by the same rules, through
+   at most 4 enclosing repositories. The member's own file always wins, and an icon stays inside the
+   repository of the file that names it. A parent folder is the operator's own ground more than the
+   session's folder is, and the file changes display only. So a home folder that is a repository with a
+   `collie.toml` gives every session below it that picture, which is what that file says. A folder
+   outside any repository reads only its own `collie.toml`. A refused nearest file means no settings,
    never a reach further up.
 5. **The operator's switch wins.** `COLLIE_PROJECT_FILES=0` in the instance's `.env` turns every
    repository's file off on that machine: nothing is read, nothing is served. On by default.

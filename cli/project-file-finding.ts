@@ -8,6 +8,7 @@
 
 import { envBool } from "../bridge/config.ts";
 import type { Environment } from "../bridge/config-source.ts";
+import { cleanText } from "../bridge/project-file.ts";
 import { ProjectPictures, projectPictureDenied, type ProjectFileReport } from "../bridge/project-picture.ts";
 import { ok, warn, type Finding } from "./finding.ts";
 
@@ -16,7 +17,9 @@ const CHECK = "project-file";
 /** The row's words for one report. Exported for the test, which drives it without a disk. */
 export function projectFileLine(report: ProjectFileReport): Finding | null {
   if (report.file === null) return null;
-  const parts = [report.file];
+  // The folder path is the disk's, and a folder name may hold any character: cleaned like a name.
+  const parts = [cleanText(report.file, 512)];
+  if (report.enclosing !== null) parts.push(`from the enclosing repository ${cleanText(report.enclosing, 512)}, since this repository has no collie.toml`);
   if (report.problem !== null) parts.push(`the file ${report.problem}`);
   if (report.icon !== null) parts.push(report.icon.ok ? `picture ${report.icon.path} passes` : `picture ${report.icon.path} ${report.icon.why ?? "is refused"}`);
   if (report.ignored.length > 0) parts.push(`ignored: ${report.ignored.join(", ")}`);
