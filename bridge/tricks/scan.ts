@@ -83,7 +83,9 @@ const WARN_PATTERNS = {
 const SHELL_SPAWN = /\$\(/;
 const SHELL_NETWORK = /\bcurl\b|\bwget\b|\bssh\b|\bgh\s+(?:api|pr|issue|run|repo|release|search)\b/;
 const SHELL_WRITE = /(?:^|[^<>&0-9=-])>>?\s*(?!&|\/dev\/null)[^\s>&|;)]/;
-const SHELL_MODEL = new RegExp(`(?:^|[;&|(]|\\$\\(|\\bexec\\s+|\\bcommand\\s+-v\\s+)\\s*(?:${AGENT_NAMES})(?=\\s|$|\\))`);
+// `exec` and `-v` need a blank after them, and the shared `\s*` reads it: written `exec\s+` before that
+// `\s*`, the two split a run of blanks every way there is (quadratic, 5.5 s on a 64 KB line).
+const SHELL_MODEL = new RegExp(`(?:^|[;&|(]|\\$\\(|\\bexec(?=\\s)|\\bcommand\\s+-v(?=\\s))\\s*(?:${AGENT_NAMES})(?=\\s|$|\\))`);
 /** A write that names the state folder (or the trick's own media folder) is the trick's own business. */
 const OWN_PLACES = /state|STATE|media|\/dev\/null/;
 
@@ -116,8 +118,60 @@ const KIND_ORDER: readonly CheckWarningKind[] = ["model", "api", "network", "spa
 /** The line printed beside every list of warnings: what they are and are not. */
 export const WARNINGS_HONESTY = "These come from a text search of the code, not a proof: a program can do any of this in a way no pattern sees, and a trick runs with your full rights.";
 
-/** The import specifiers of one source line: `import ... from "x"`, `export ... from "x"`, `import("x")`, `require("x")`. */
-const IMPORT_SPECIFIERS = /(?:^|[\s;])(?:import|export)\s+(?:[^'"`;]*?\sfrom\s+)?["']([^"']+)["']|\b(?:import|require)\s*\(\s*["']([^"']+)["']\s*\)/g;
+const QUOTED_AT = /["']([^"']+)["']/y;
+const FROM_AT = /\sfrom\s+["']([^"']+)["']/y;
+const CALL_AT = /\b(?:import|require)\s*\(\s*["']([^"']+)["']\s*\)/y;
+const BLANKS_AT = /\s+/y;
+const STOPS = `'"\`;`;
+
+/** The specifier a sticky pattern captures at `at`, and where its match ends; null when it does not match there. */
+function stickyAt(re: RegExp, text: string, at: number): { spec: string; end: number } | null {
+  re.lastIndex = at;
+  const m = re.exec(text);
+  return m ? { spec: m[1] ?? "", end: re.lastIndex } : null;
+}
+
+/**
+ * The import specifiers of a source text, in order: `import ... from "x"`, `export ... from "x"`,
+ * `import "x"`, `import("x")`, `require("x")`. The same matches as the regex
+ * `/(?:^|[\s;])(?:import|export)\s+(?:[^'"`;]*?\sfrom\s+)?["']([^"']+)["']|\b(?:import|require)\s*\(\s*["']([^"']+)["']\s*\)/g`,
+ * walked by hand. That regex read the rest of a stretch with no quote or `;` again from each
+ * `import` in it, looking for a ` from "x"` (quadratic, 3.4 s for a 256 KB line); here each stretch
+ * is read once, from the right, for the first ` from "x"` at or after each place.
+ */
+export function importSpecifiers(text: string): string[] {
+  const n = text.length;
+  // nextFrom[i]: the first ` from "x"` at or after i; nextStop[i]: the first quote, backtick or `;`.
+  const nextFrom = new Int32Array(n + 1).fill(n);
+  const nextStop = new Int32Array(n + 1).fill(n);
+  for (let i = n - 1; i >= 0; i--) {
+    const ch = text[i] ?? "";
+    nextStop[i] = STOPS.includes(ch) ? i : nextStop[i + 1]!;
+    nextFrom[i] = text.startsWith("from", i + 1) && stickyAt(FROM_AT, text, i) !== null ? i : nextFrom[i + 1]!;
+  }
+  // `import` or `export` at `k`, then blanks, then `"x"` either at once or after a stretch with no
+  // quote or `;` that ends in ` from "x"`, the first such. The regex tried the blanks all taken first.
+  const importAt = (k: number): { spec: string; end: number } | null => {
+    if (!text.startsWith("import", k) && !text.startsWith("export", k)) return null;
+    BLANKS_AT.lastIndex = k + 6;
+    if (!BLANKS_AT.test(text)) return null;
+    const w = BLANKS_AT.lastIndex;
+    if (nextFrom[w]! < nextStop[w]!) return stickyAt(FROM_AT, text, nextFrom[w]!);
+    // The blanks one shorter: the last blank may start ` from "x"` itself.
+    return stickyAt(QUOTED_AT, text, w) ?? (w - 1 > k + 6 ? stickyAt(FROM_AT, text, w - 1) : null);
+  };
+  const specs: string[] = [];
+  for (let i = 0; i < n; ) {
+    const hit = (i === 0 ? importAt(0) : null) ?? (/[\s;]/.test(text[i] ?? "") ? importAt(i + 1) : null) ?? stickyAt(CALL_AT, text, i);
+    if (hit === null) {
+      i++;
+      continue;
+    }
+    specs.push(hit.spec);
+    i = hit.end;
+  }
+  return specs;
+}
 /** The file names a runtime-run trick's sources are read for imports by. */
 const SCRIPT_FILE = /\.(?:ts|mts|cts|js|mjs|cjs|tsx|jsx)$/;
 /** The names a script may import bare: Bun's own module and Node's built-ins. */
@@ -145,7 +199,7 @@ export function importWarnings(sources: readonly { file: string; text: string }[
         const t = raw.trim();
         // A type import is erased before the script runs: it needs no install.
         if (isCommentLine(t) || /^(?:import|export)\s+type\s/u.test(t)) return;
-        const bare = [...t.matchAll(IMPORT_SPECIFIERS)].some((m) => isBareImport(m[1] ?? m[2] ?? "./"));
+        const bare = importSpecifiers(t).some(isBareImport);
         if (bare) out.push({ kind: "import", file, line: i + 1, text: shortLine(t) });
       });
   }
@@ -283,8 +337,7 @@ export function runTargets(run: string, files: ReadonlySet<string>): RunTargets 
 /** The trick's files a source imports by a relative path (`./lib.ts`, `../x`), with the runtime's extensions tried. */
 function relativeImports(src: { file: string; text: string }, files: ReadonlySet<string>): string[] {
   const out: string[] = [];
-  for (const match of src.text.slice(0, SOURCE_READ_MAX).matchAll(IMPORT_SPECIFIERS)) {
-    const spec = match[1] ?? match[2] ?? "";
+  for (const spec of importSpecifiers(src.text.slice(0, SOURCE_READ_MAX))) {
     if (!spec.startsWith("./") && !spec.startsWith("../")) continue;
     const rel = folderRel(posix.join(posix.dirname(src.file), spec));
     if (rel === null) continue;

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { readManifestText } from "./discover.ts";
-import { HELPER_VERSION, helperVersion, OLDER_HELPERS, RUN_DYNAMIC_WORDS, RUN_UNREAD, runTargets, shippedHelperVersion, TRICK_HELPER, trickWarnings } from "./scan.ts";
+import { checkWarnings, HELPER_VERSION, helperVersion, importSpecifiers, importWarnings, OLDER_HELPERS, RUN_DYNAMIC_WORDS, RUN_UNREAD, runTargets, shippedHelperVersion, TRICK_HELPER, trickWarnings } from "./scan.ts";
 
 // NO RUN TARGET ESCAPES THE SCAN (the first full trick run, 2026-11-16, decision 2). The skip list (docs,
 // data, tests, fixtures) once covered the very file a run line named, and the card said nothing.
@@ -305,5 +305,54 @@ describe("the helper's version moves with its text", () => {
       expect(helperVersion(text)).toBe(version);
       expect(shippedHelperVersion(text)).toBe(version);
     }
+  });
+});
+
+// A TRICK'S SOURCE COSTS LINEAR TIME TO SCAN. The scan runs in the bridge when a trick is read, and a
+// trick's text is whatever its author wrote. The released import pattern read the rest of a stretch
+// again from each `import` in it (3.4 s on a 256 KB line), and the shell model pattern split a run of
+// blanks after `exec` every way there is (5.5 s on a 64 KB line). Measured on a desktop: each case
+// below takes a few ms, the slowest about 45 ms, so a slow runner has about five times the room.
+describe("scan — hostile source costs linear time", () => {
+  const MB = 1 << 20;
+  const LIMIT_MS = 250;
+  const fill = (unit: string, size = MB): string => unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+  const timed = (read: () => void): number => {
+    const t0 = performance.now();
+    read();
+    return performance.now() - t0;
+  };
+
+  test("import specifiers: 1 MB of near misses, each in time", () => {
+    const cases: [string, string][] = [
+      ["import repeated", fill("import ")],
+      ["export repeated", fill(" export ")],
+      ["import and 1 MB of blanks", `import${" ".repeat(MB)}`],
+      ["import with a from but no quote, repeated", fill("import x from ")],
+      ["import and froms with no quote", `import ${fill(" from ")}`],
+      ["require( repeated", fill("require( ")],
+    ];
+    const slow = cases.filter(([, text]) => timed(() => importSpecifiers(text)) > LIMIT_MS).map(([name]) => name);
+    expect(slow).toEqual([]);
+    const lines = cases.filter(([, text]) => timed(() => importWarnings([{ file: "a.ts", text }])) > LIMIT_MS).map(([name]) => name);
+    expect(lines).toEqual([]);
+  });
+
+  test("a shell line with exec and a long run of blanks is in time", () => {
+    // The scan reads the first 256 KB of a file, so the line must end inside them: the released pattern
+    // took about 50 s on this one.
+    const blanks = " ".repeat(200 * 1024);
+    for (const text of [`exec${blanks}x`, `command -v${blanks}x`, fill("exec  ")]) {
+      expect(timed(() => checkWarnings([{ file: "a.sh", text }], true))).toBeLessThan(LIMIT_MS);
+    }
+  });
+
+  test("the specifiers are the ones the regex found", () => {
+    expect(importSpecifiers('import x from "react"; import "./a"; const y = require("fs"); export * from \'../b\'')).toEqual(["react", "./a", "fs", "../b"]);
+    expect(importSpecifiers("import  from 'x'")).toEqual(["x"]);
+    expect(importSpecifiers('import { from } from "y"')).toEqual(["y"]);
+    expect(importSpecifiers('import a; from "z"')).toEqual([]);
+    expect(importSpecifiers('await import("m")')).toEqual(["m"]);
+    expect(checkWarnings([{ file: "a.sh", text: "exec   claude -p hi" }], true).map((w) => w.kind)).toContain("model");
   });
 });
