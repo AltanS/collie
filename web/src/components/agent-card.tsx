@@ -6,7 +6,7 @@ import { LIST_ROW_CORNERS } from "@/components/ui/list-group";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { Card } from "@/components/ui/card";
 import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
-import { AgentIcon } from "@/components/agent-icon";
+import { AgentTile } from "@/components/agent-tile";
 import { PaneMeta } from "@/components/pane-meta";
 import { PaneHint } from "@/components/pane-hint";
 import { PaneBadge } from "@/components/pane-badge";
@@ -388,7 +388,7 @@ export function AgentCard({
                 <Icon name="shell-pane" className="size-2.5 text-muted-foreground" />
               </div>
             ) : (
-              <AgentIcon agent={agent.agent} className="size-4" glide="tile" />
+              <AgentTile pane={agent} className="size-4" surface={flat ? "ring-background" : "ring-card"} glide="tile" />
             )}
             {/* No longer `flex-1`: that let the name claim the whole line, which pushed the unseen
                 dot all the way to the far end, beside the meta, instead of beside the NAME. It now

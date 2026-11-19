@@ -190,6 +190,9 @@ export const ru: Dictionary = {
   "settings.enterSends.title": "Enter отправляет",
   "settings.enterSends.hint":
     "С физической клавиатурой Enter отправляет сообщение, а Shift+Enter добавляет новую строку. С экранной клавиатурой Enter всегда добавляет новую строку.",
+  "settings.projectPictures.title": "Картинки проектов",
+  "settings.projectPictures.hint":
+    "Показывает картинку, которую репозиторий указал в своём collie.toml, вместо логотипа агента, с логотипом в углу, и вместо знака Collie, пока сессия открыта и знак в покое.",
   "settings.paneNav.title": "Навигация по панелям",
   "settings.paneNav.twoFingers": "Два пальца",
   "settings.paneNav.joystick": "Джойстик",

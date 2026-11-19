@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { rememberPanePictures } from "@/lib/project-picture";
 import {
   Outlet,
   useLoaderData,
@@ -123,6 +124,11 @@ export function RootLayout() {
   // A notification whose clear the bridge skipped (its daily budget, bridge/push.ts rule 4) closes here
   // instead, once a live snapshot says nothing waits on it any more.
   useNotificationSweep(data);
+  // Which picture each pane shows (ADR 0161), for the next cold open and for a push's icon.
+  const agents = data.agents;
+  useEffect(() => {
+    rememberPanePictures(agents);
+  }, [agents]);
   // THE PUSH RACE. `usePushSetup` can raise the browser's permission prompt on its own, behind the
   // tour's backdrop, so it waits until the tour has decided it is not showing. "pending" is what
   // makes this correct rather than racy: a child's effect runs before the parent's, but the state it

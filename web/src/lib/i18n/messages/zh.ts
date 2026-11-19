@@ -189,6 +189,9 @@ export const zh: Dictionary = {
   "settings.enterSends.title": "回车发送",
   "settings.enterSends.hint":
     "使用实体键盘时，回车键发送消息，Shift+回车键换行。使用屏幕键盘时，回车键始终换行。",
+  "settings.projectPictures.title": "项目图片",
+  "settings.projectPictures.hint":
+    "用仓库 collie.toml 中指定的图片代替代理的徽标，徽标显示在角上；在会话打开且标志静止时，也用它代替 Collie 标志。",
   "settings.paneNav.title": "窗格导航",
   "settings.paneNav.twoFingers": "双指",
   "settings.paneNav.joystick": "摇杆",

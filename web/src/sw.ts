@@ -7,6 +7,7 @@ import { decidePush, notificationPath, type NotifData, type PushPayload } from "
 import { askInApp, openNotificationTarget, type OpenOutcome, type OpenTargetClient } from "./lib/notification-open";
 import { recordSlots, showBadge, slotUpdates } from "./lib/app-badge";
 import { readPushTitles } from "./lib/push-title-store";
+import { pushPictureFor } from "./lib/project-picture-push";
 import { FONT_URLS, navigationNetworkOnlyUnder } from "./lib/sw-routes";
 import { stripMount, sttCacheName, sttCopyToStore, sttStorable, sttSweepKeeps } from "./lib/stt-cache";
 
@@ -334,7 +335,9 @@ async function handlePush(event: PushEvent): Promise<void> {
       machine: decision.machine,
       decision: decision.decision,
     } satisfies NotifData,
-    icon: ICON,
+    // The project picture of the pane the push is about (ADR 0161): the page's own PNG copy, out of
+    // Cache Storage, or the Collie icon. The badge stays Collie's.
+    icon: (await pushPictureFor(self.caches, self.location.origin, MOUNT, { paneId: decision.paneId, host: decision.host })) ?? ICON,
     badge: BADGE,
     tag: decision.tag,
     renotify: decision.renotify,

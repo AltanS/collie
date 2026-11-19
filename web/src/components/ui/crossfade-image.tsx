@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 import { usePrefersReducedMotion } from "@/components/ui/collapse";
 import { CROSSFADE_MS, CROSSFADE_QUIET_MS } from "@/components/ui/crossfade-text";
@@ -40,12 +40,15 @@ export function CrossfadeImage({
   fallback,
   className,
   imgClassName,
+  style,
 }: {
   src: string | null;
   identity: string;
   fallback: ReactNode;
   className?: string;
   imgClassName?: string;
+  /** For a box sized in px by its caller (the header mark's `markSize`). */
+  style?: CSSProperties;
 }) {
   const reduced = usePrefersReducedMotion();
   const [shown, setShown] = useState<Shown>(() => ({ identity, src, from: undefined, beat: 0, since: Date.now() }));
@@ -66,7 +69,7 @@ export function CrossfadeImage({
     return () => clearTimeout(timer);
   }, [from, beat]);
   return (
-    <span data-slot="crossfade-image" data-state={from === undefined ? "still" : "fading"} data-picture={view.src === null ? "off" : "on"} className={cn("relative inline-grid shrink-0 overflow-hidden", className)}>
+    <span data-slot="crossfade-image" data-state={from === undefined ? "still" : "fading"} data-picture={view.src === null ? "off" : "on"} className={cn("relative inline-grid shrink-0 overflow-hidden", className)} style={style}>
       {from !== undefined && (
         <span key={`out-${String(beat)}`} aria-hidden data-slot="crossfade-out" className="crossfade-out pointer-events-none absolute inset-0 grid">
           <Layer src={from} fallback={fallback} imgClassName={imgClassName} />

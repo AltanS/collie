@@ -216,4 +216,8 @@ export const ENTRIES: readonly SectionEntry[] = [
     def: { id: "accounts", group: "Settings", title: "Profiles", keywords: ["profiles", "profile", "accounts", "account", "login", "sign-in", "email", "plan", "AccountListRow", "SignedInRow", "identity", "intro", "IntroLines", "more", "sessions", "same-login"] },
     load: () => import("./sections/accounts").then((m) => ({ default: m.AccountsSection })),
   },
+  {
+    def: { id: "project-picture", group: "Pane", title: "Project picture", keywords: ["AgentTile", "CollieHome", "PaneGlyph", "ProjectPicturesControl", "project-picture", "picture", "collie.toml", "icon", "logo", "mark", "header", "sidebar"] },
+    load: () => import("./sections/project-picture").then((m) => ({ default: m.ProjectPictureSection })),
+  },
 ];

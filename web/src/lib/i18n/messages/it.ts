@@ -192,6 +192,9 @@ export const it: Dictionary = {
   "settings.enterSends.title": "Invio invia",
   "settings.enterSends.hint":
     "Con una tastiera fisica, Invio invia il messaggio e Maiusc+Invio aggiunge una nuova riga. Con la tastiera sullo schermo, Invio aggiunge sempre una nuova riga.",
+  "settings.projectPictures.title": "Immagini di progetto",
+  "settings.projectPictures.hint":
+    "Mostra l'immagine che un repository indica nel suo collie.toml al posto del logo dell'agente, con il logo nell'angolo, e al posto del marchio Collie mentre una sessione è aperta e il marchio è a riposo.",
   "settings.paneNav.title": "Navigazione tra riquadri",
   "settings.paneNav.twoFingers": "Due dita",
   "settings.paneNav.joystick": "Joystick",

@@ -1,7 +1,7 @@
 import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
-import { AgentIcon } from "@/components/agent-icon";
+import { AgentTile } from "@/components/agent-tile";
 import { StatusDot } from "@/components/status-badge";
 import { shownStatus } from "@/lib/triage";
 import { statusLabel, type AgentView } from "@/lib/types";
@@ -40,7 +40,7 @@ export function PaneGlyph({
     pane.kind === "shell" ? (
       <Icon name="shell-pane" className={cn(className, "text-muted-foreground")} aria-hidden />
     ) : (
-      <AgentIcon agent={pane.agent} className={className} />
+      <AgentTile pane={pane} className={className} surface={markOn === undefined ? "ring-background" : markOn.replace(/^bg-/, "ring-")} />
     );
   if (markOn === undefined) return glyph;
   const status = shownStatus(pane);
