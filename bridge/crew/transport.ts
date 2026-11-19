@@ -56,10 +56,11 @@ export interface CrewTlsOptions {
 
 /** A `fetch` init that may carry TLS material. Bun honours `tls`; the type just says so out loud. */
 /**
- * A crew dial's fetch options. `decompress` is Bun's own switch: the dial sets it to `false`, so a
- * member's body is never inflated on the lead (peer-client.ts, `request`).
+ * A crew dial's fetch options. `decompress` is Bun's own switch: the dial sets it to `false`, so the
+ * runtime never inflates a member's body. `inflateMax` is the caller's cap on a gzip answer's inflated
+ * bytes (bounded-gunzip.ts); the dial strips it before the fetch.
  */
-export type CrewRequestInit = RequestInit & { tls?: CrewTlsOptions; decompress?: boolean };
+export type CrewRequestInit = RequestInit & { tls?: CrewTlsOptions; decompress?: boolean; inflateMax?: number };
 
 /**
  * The peer listener's TLS configuration, or `null` when this collie must not pin one.

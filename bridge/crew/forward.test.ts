@@ -44,6 +44,7 @@ import {
 import { member } from "./fixtures.ts";
 import { CrewRegistry, type PeerState } from "./registry.ts";
 import { readSend, readSendReply } from "../../web/src/lib/send-protocol.ts";
+import type { CrewRequestInit } from "./transport.ts";
 
 // The lead's forwarding path (CREW_PROTOCOL.md §5, §9.1, §10.3, §12, §13).
 //
@@ -82,11 +83,11 @@ const SKEWED: PeerState = {
 };
 
 /** Records every dial, so "was this attempted?" and "was it retried?" are assertable facts. */
-function transportOf(answer: (init: RequestInit) => PeerOutcome<Response>) {
+function transportOf(answer: (init: CrewRequestInit) => PeerOutcome<Response>) {
   const calls: {
     route: string;
     params: CrewParams;
-    init: RequestInit;
+    init: CrewRequestInit;
     budgetMs: number | undefined;
   }[] = [];
   const transport: ForwardTransport = async (_link, route, params, init, budgetMs) => {
@@ -738,12 +739,25 @@ describe("the lead compresses the phone hop itself (.adr/0023)", () => {
     expect(res.headers.get("etag")).toBe('"png"');
   });
 
-  test("the peer hop stays identity no matter what the phone asked for (the beta.9 invariant)", async () => {
+  test("the phone's accept-encoding never reaches the member hop (the beta.9 invariant, ADR 0161)", async () => {
+    // The dial sets the member hop's own `accept-encoding: gzip` and inflates it with a cap
+    // (peer-client.test.ts); the forward passes none of the phone's value on.
     const [, peer] = peerJson();
     const { transport, calls } = transportOf(() => ok(peer));
     const [req, url] = get("/api/pane/w1:p1?host=laptop", { "accept-encoding": "gzip, deflate, br, zstd" });
     await forward(req, url, { transport });
-    expect(new Headers(calls[0]!.init.headers).get("accept-encoding")).toBe("identity");
+    expect(new Headers(calls[0]!.init.headers).get("accept-encoding")).toBeNull();
+  });
+
+  test("a project picture's forward names its own inflate cap, every other read none", async () => {
+    const [, peer] = peerJson();
+    const { transport, calls } = transportOf(() => ok(peer));
+    const [req, url] = get("/api/project-picture/0123456789ab0123456789ab?host=laptop");
+    await forward(req, url, { transport });
+    const [req2, url2] = get("/api/pane/w1:p1?host=laptop");
+    await forward(req2, url2, { transport });
+    expect(calls[0]!.init.inflateMax).toBe(256 * 1024);
+    expect(calls[1]!.init.inflateMax).toBeUndefined();
   });
 });
 
@@ -783,9 +797,8 @@ describe("request shaping", () => {
     for (const banned of ["cookie", "origin", "authorization", "x-tailnet-device"]) {
       expect(headers.get(banned)).toBeNull();
     }
-    // Identity bytes only, and ASKED FOR rather than merely not-forwarded: Bun's `fetch` supplies its
-    // own `accept-encoding: gzip, …` when the init carries none, so an absent header is a gzipped hop.
-    expect(headers.get("accept-encoding")).toBe("identity");
+    // The browser's `accept-encoding` is not forwarded: the dial sets the member hop's own (ADR 0161).
+    expect(headers.get("accept-encoding")).toBeNull();
   });
 
   test("a device name outside ASCII is forwarded, not thrown on (#324)", () => {

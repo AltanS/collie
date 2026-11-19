@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue } from "../json.ts";
+import { CREW_INFLATE_MAX, inflatedResponse } from "./bounded-gunzip.ts";
 import { LAUNCH_BUDGET_MS } from "../create-confirm.ts";
 import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import {
@@ -1122,10 +1123,10 @@ export class PeerClient {
     headers.set("authorization", `Bearer ${secret}`);
     headers.set(PROTOCOL_HEADER, String(CREW_PROTOCOL_VERSION));
     headers.set(MEMBER_HEADER, this.deps.self);
-    // A member answers the lead uncompressed (CREW_PROTOCOL.md §9.4). Every compression a bridge does
-    // is chosen by the request's `accept-encoding` naming gzip (bridge/http-cache.ts, the static route),
-    // so `identity` here makes every member hop plain. Set for EVERY dial, not negotiable by a caller.
-    headers.set("accept-encoding", "identity");
+    // A member may answer in gzip and in nothing else (CREW_PROTOCOL.md §9.1). The lead inflates it
+    // itself, with a cap (bounded-gunzip.ts), never the runtime. Set for EVERY dial, not negotiable by a
+    // caller: a caller names only the cap (`inflateMax`).
+    headers.set("accept-encoding", "gzip");
     // A per-call device (a forwarded phone request, §12) wins over the client-wide one: it is the
     // operator the LEAD authenticated for *this* action, where the client-level source is a process
     // default with no request behind it. Authorization/protocol/member are NOT negotiable this way —
@@ -1163,9 +1164,10 @@ export class PeerClient {
       // to construct, cache or invalidate — the pin is read fresh on every dial, from the store.
       const tls = this.deps.tls?.(link);
       // `decompress: false`: Bun's fetch would otherwise inflate a brotli, deflate or gzip body before
-      // any reader sees it, so a member's 1 KB body could cost the lead hundreds of MB. An encoded
-      // answer is refused below instead, before its body is read.
-      const dialInit: CrewRequestInit = { ...init, headers, signal: controller.signal, decompress: false };
+      // any reader sees it, with no bound, so a member's 1 KB body could cost the lead gigabytes. A gzip
+      // answer is inflated below through a capped decoder; any other encoding is refused unread.
+      const { inflateMax: _cap, ...sent } = init;
+      const dialInit: CrewRequestInit = { ...sent, headers, signal: controller.signal, decompress: false };
       // Assigned, never conditionally spread: an unpinned link must carry NO `tls` key at all.
       if (tls) dialInit.tls = tls;
       res = await this.deps.fetch(url, dialInit);
@@ -1190,15 +1192,19 @@ export class PeerClient {
       clearTimeout(timer);
     }
 
-    // ── An encoded body is refused before anything reads it ──────────────────
-    // The dial asked for `identity` and does not inflate (above), so an answer with any other
-    // `content-encoding` is a member this lead cannot read safely. Its body is cancelled unread.
-    const encoding = res.headers.get("content-encoding");
-    if (encoding !== null && encoding.trim() !== "" && encoding.trim().toLowerCase() !== "identity") {
+    // ── gzip is inflated by the lead, with a cap; any other encoding is refused unread ──
+    // The dial asked for gzip and does not inflate (above). A plain answer (no header, or `identity`) is
+    // read as it is. Exactly `gzip` goes through the capped decoder, which stops and errors the moment
+    // its output or input passes the cap. Anything else (br, deflate, zstd, a list, an unknown word) is
+    // a member this lead cannot read safely, and its body is cancelled unread.
+    const encoding = (res.headers.get("content-encoding") ?? "").trim().toLowerCase();
+    if (encoding === "gzip") {
+      res = inflatedResponse(res, init.inflateMax ?? CREW_INFLATE_MAX);
+    } else if (encoding !== "" && encoding !== "identity") {
       await res.body?.cancel().catch(() => undefined);
       // The member's value stays out of the reason: a header may hold any byte from 0x80 up (a C1 control
       // such as U+009B among them), and this reason reaches the journal and the phone's crew status.
-      return this.fail({ state: "unreachable", reason: `${route}: the peer answered compressed, which the lead does not decode` });
+      return this.fail({ state: "unreachable", reason: `${route}: the peer answered in an encoding the lead does not decode` });
     }
 
     // ── Version first, before status and before the body ─────────────────────

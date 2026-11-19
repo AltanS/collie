@@ -1406,19 +1406,21 @@ body is the secret mask below, and that change keeps the status and salts the ET
 version.
 
 - `If-None-Match` from the phone is passed through to the peer.
-- **Compression is hop-local: the peer hop is `Accept-Encoding: identity`, and the peer's
-  `content-encoding` is never re-emitted.** The lead asks the peer for uncompressed bytes, so the body
-  it holds is the body it writes out; whatever the runtime compresses and transparently decompresses
-  anyway, it does *not* strip the stale `content-encoding` from the response headers, and re-emitting
-  that header describes bytes that no longer exist.
-- **A member answers the lead uncompressed, on every dial** *(added 1.30.0)*. The lead sends
-  `Accept-Encoding: identity` on every crew request, not only on a forwarded read, and its runtime
-  never inflates a member's body (`decompress: false`). An answer whose `content-encoding` is anything
-  but absent or `identity` is refused before its body is read, as an unreachable peer. Every released
-  bridge compresses only when the request's `accept-encoding` names gzip (since 0.10.0), so a member of
-  any version already answers this way; the change is on the lead alone, and the price is that the
-  snapshot sweep, which used to ride the runtime's gzip, is uncompressed on the tailnet hop. It closes
-  a decompression bomb: a member's small brotli body cost an older lead hundreds of MB.
+- **Compression is hop-local, and the lead inflates the member hop itself** *(changed in 1.30.0,
+  ADR 0161)*. On every crew request, not only a forwarded read, the lead sends
+  `Accept-Encoding: gzip` and nothing else, and its runtime never inflates a member's body
+  (`decompress: false`). An answer with no `content-encoding`, or `identity`, is read as it is. An
+  answer whose `content-encoding` is exactly `gzip` is inflated by the lead through a streaming decoder
+  that counts its output and its input: the moment either passes the cap (256 KB for a project picture,
+  32 MB for every other answer), the decoder stops, the member's stream is cancelled and the answer is
+  refused as an unreachable peer. Any other encoding (br, deflate, zstd, a list, an unknown word) is
+  refused the same way before its body is read, with a reason that quotes none of the member's bytes.
+  The answer the lead then holds carries no `content-encoding` and no `content-length`: the lead's
+  headers describe the lead's bytes, never the member's. Every released bridge compresses only gzip and
+  only when the request names it (since 0.10.0), so a member of any version already answers this way
+  and no version moves. Before 1.30.0 the lead asked a forwarded read for identity and let the runtime
+  inflate everything else without a bound, so a member's small brotli body could cost the lead
+  hundreds of MB.
 - **The lead→phone hop is compressed by the lead itself**, on the phone's own `Accept-Encoding`, as a
   **stream transform** over the identity bytes (`CompressionStream("gzip")`) — the transform itself
   never buffers (a text answer the lead masks is held once, for the mask, below). It applies to JSON and text bodies with a body to send;

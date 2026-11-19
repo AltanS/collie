@@ -1,4 +1,5 @@
 import { apiError } from "../error-codes.ts";
+import { PROJECT_PICTURE_BYTES_MAX } from "../../web/src/lib/project-picture-wire.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { MASK_VERSION } from "../redact.ts";
 import { REASON_HEADER, REFUSED_BY_HEADER, isRefusalReason, withRefusal, type RefusalReason } from "../refusal.ts";
@@ -17,6 +18,7 @@ import {
   WRITE_BUDGET_MS,
 } from "./peer-client.ts";
 import { HOST_PARAM, type PeerState } from "./registry.ts";
+import type { CrewRequestInit } from "./transport.ts";
 
 // The LEAD side of a per-pane request: `?host=laptop` came in, the pane lives on the laptop, so the
 // request is forwarded over the crew link and the laptop's answer is handed back (CREW_PROTOCOL.md
@@ -525,21 +527,18 @@ export const MEMBER_VERSION_HEADER = "x-collie-member-version";
  *   host's own ledger (.adr/0003). The lead marks nothing for a pane it does not own.
  * - `content-type` — carries the multipart boundary an upload cannot be re-assembled without (§13).
  *
- * **`accept-encoding: identity` is SET here, and the phone's own value is never forwarded.** The lead
- * asks the peer for identity bytes, so the body it holds and the body it re-emits are the same bytes.
- * Compression is **hop-local** (.adr/0023): this hop is plain, and {@link proxiedResponse} compresses
- * the lead→phone hop itself, on the phone's own `accept-encoding`.
+ * **The phone's `accept-encoding` is never forwarded, and the member hop's own is the dial's.** The
+ * dial (peer-client.ts) asks every member for gzip only, turns the runtime's own decompression off, and
+ * inflates a gzip answer itself through a capped decoder (bounded-gunzip.ts, ADR 0161), so the body the
+ * lead holds is plain bytes it produced, under headers that describe them. Compression is **hop-local**
+ * (ADR 0144 rule 10): {@link proxiedResponse} compresses the lead→phone hop itself, on the phone's own
+ * `accept-encoding`.
  *
- * Omitting the header is NOT enough, which is what this comment used to claim: Bun's `fetch` supplies
- * its own `accept-encoding: gzip, deflate, br, zstd` when the init carries none, so the peer gzips,
- * `fetch` transparently decompresses — and, unlike the spec's step, does **not** strip
- * `content-encoding: gzip` from the response headers. The lead then re-emitted a `gzip` header over
- * plain bytes and every peer pane rendered as "(no recent output)", because the phone's `fetch` threw
- * trying to inflate them. Setting `identity` explicitly (Bun passes it through unmodified) makes the
- * peer hop genuinely uncompressed; {@link PROXIED_RESPONSE_HEADERS} not carrying the peer's
- * `content-encoding` is the belt to this braces. The ETag is unaffected either way — it is hashed over
- * the pre-gzip body (`bridge/http-cache.ts`) — so what this costs is one tailnet hop's compression,
- * and what it buys is a header that describes the bytes.
+ * Why the lead inflates and never the runtime: Bun's `fetch` inflates any encoded body with no bound,
+ * and before 0.32.0-beta.9 it also left `content-encoding: gzip` on the bytes it had already inflated,
+ * so the lead re-emitted a gzip header over plain bytes and every member pane rendered "(no recent
+ * output)". {@link PROXIED_RESPONSE_HEADERS} not carrying the member's `content-encoding` stays the belt.
+ * The ETag is unaffected either way: it is hashed over the pre-gzip body (`bridge/http-cache.ts`).
  *
  * `X-Crew-Device` is added here rather than on the client because it is a property of the PHONE's
  * request — the operator's device as the lead's own `deviceAuth()` resolved it (§12) — and the sweep
@@ -559,7 +558,7 @@ export function forwardHeaders(req: Request, device?: string | null): Headers {
   if (device !== null && device !== undefined && device !== "") {
     headers.set(DEVICE_HEADER, encodeDeviceHeader(device));
   }
-  headers.set("accept-encoding", "identity");
+  // No `accept-encoding` here: the dial sets it for every call (gzip, inflated by the lead with a cap).
   return headers;
 }
 
@@ -567,8 +566,8 @@ export function forwardHeaders(req: Request, device?: string | null): Headers {
  * Response headers a proxied answer keeps. Everything else is the peer's business, not the phone's.
  *
  * **The peer's `content-encoding` is NOT on this list, because it describes the peer hop and not this
- * one.** By the time a peer's response is in hand the lead holds identity bytes — the hop asked for
- * identity, and anything the runtime compressed anyway it has already decompressed (see
+ * one.** By the time a peer's response is in hand the lead holds identity bytes: the dial inflated a
+ * gzip answer itself and dropped the member's `content-encoding` and `content-length` (see
  * {@link forwardHeaders}). Copying that header would describe bytes that no longer exist.
  *
  * Compression is not given up, it is **re-decided per hop** (.adr/0023): {@link proxiedResponse}
@@ -808,7 +807,7 @@ export type ForwardTransport = (
   link: CrewLink,
   route: string,
   params: CrewParams,
-  init: RequestInit,
+  init: CrewRequestInit,
   budgetMs?: number,
 ) => Promise<PeerOutcome<Response>>;
 
@@ -1154,7 +1153,9 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     if (kept === null) headers.delete("if-none-match");
     else headers.set("if-none-match", kept);
   }
-  const init: RequestInit & { duplex?: "half" } = { method: req.method, headers };
+  const init: CrewRequestInit & { duplex?: "half" } = { method: req.method, headers };
+  // A project picture is at most 256 KB, so its gzip answer is cut off there, before any check runs.
+  if (route.startsWith("project-picture/")) init.inflateMax = PROJECT_PICTURE_BYTES_MAX;
   // The body is STREAMED, not buffered: an upload is up to 10 MB of multipart and the lead never
   // stores a copy of it (§13). Assigned, never conditionally spread: a bodyless method must carry
   // NEITHER key.
@@ -1227,8 +1228,8 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     answer === null || deps.mask === undefined
       ? outcome.value
       : withSaltedTag(await maskedAnswer(outcome.value, answer, deps.mask, deps.link.memberId));
-  // The phone's own `accept-encoding` — never the peer's, which was pinned to `identity` on the way
-  // out. Compression is decided once per hop (.adr/0023).
+  // The phone's own `accept-encoding`, never the member hop's, which the dial set and inflated itself.
+  // Compression is decided once per hop (ADR 0144 rule 10, ADR 0161).
   const proxied = proxiedResponse(answered, req.headers.get("accept-encoding"));
   // The member's refusal, marked as the member's; a refused write also names the member's version.
   if (memberRefusal !== undefined) proxied.headers.set(REFUSED_BY_HEADER, "member");

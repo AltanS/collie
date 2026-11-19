@@ -122,7 +122,8 @@ The rule today: [0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown
 
 | # | Decision | Status |
 | --- | --- | --- |
-| [0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown.md) | A crew has one lead and one door; code rides the operator's SSH; only the operator moves the crown. | Accepted |
+| [0144](./0144-one-lead-one-door-and-the-operator-moves-the-crown.md) | A crew has one lead and one door; code rides the operator's SSH; only the operator moves the crown. | Accepted, superseded in part by 0161 |
+| [0161](./0161-a-members-gzip-is-inflated-by-the-lead-with-a-cap.md) | The lead asks a member for gzip and inflates it itself, with a hard cap; any other encoding is refused. | Accepted |
 | [0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) | The lead consumes a peer's Collie HTTP API, never its Herdr socket. | Superseded by 0144 |
 | [0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) | Every machine runs a collie and the group has a lead (the word "pack" is replaced by 0038). | Superseded by 0144 |
 | [0013](./0013-a-peer-listens-without-becoming-a-front-door.md) | A peer opens an unpublished crew listener and publishes no front door. | Accepted |
