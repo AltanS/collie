@@ -186,7 +186,7 @@ The rule today: A send goes through the Send Protocol, which reads the screen be
 
 ### Dialogs, cards and screen readers
 
-The rule today: [0151](./0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) states it in one place. A dialog becomes a card only by its own words, and a tap sends only keys the screen printed, plus the arrows of a walk, plus seven named exceptions, each with its file (three unprinted Enters on Claude, the Antigravity artifact review, the sticky edge arrow of a clamped list, the unread card's declared cancel key, and the edit keys that clear a field). A tap on a pointed row is walked, verified by a fresh read, then confirmed (0080, which stays live and replaced the "one batch" wording of 0055, 0058, 0076 and 0078, now stubs), and an AskUserQuestion answer is typed into its field (0113, live). Every card renders in one dock above the belt and can be put down. A dialog Collie cannot read still gets a way out (0053); 0142 widens that card and changes 0009 in one point, and is not built yet. The sign-in box Claude draws over its live input box is no dialog: it lifts by its shape and place, its title is a label, and it links only an https address (0158).
+The rule today: [0151](./0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap-sends-what-the-screen-printed.md) states it in one place. A dialog becomes a card only by its own words, and a tap sends only keys the screen printed, plus the arrows of a walk, plus seven named exceptions, each with its file (three unprinted Enters on Claude, the Antigravity artifact review, the sticky edge arrow of a clamped list, the unread card's declared cancel key, and the edit keys that clear a field). A tap on a pointed row is walked, verified by a fresh read, then confirmed (0080, which stays live and replaced the "one batch" wording of 0055, 0058, 0076 and 0078, now stubs), and an AskUserQuestion answer is typed into its field (0113, live). Every card renders in one dock above the belt and can be put down. A dialog Collie cannot read still gets a way out (0053); 0142 widens that card and changes 0009 in one point, and is not built yet. The sign-in box Claude draws over its live input box is no dialog: it lifts by its shape and place, its title is a label, and it links only an https address or a loopback http one (0159).
 
 | # | Decision | Status |
 | --- | --- | --- |
@@ -203,7 +203,7 @@ The rule today: [0151](./0151-a-dialog-becomes-a-card-by-its-own-words-and-a-tap
 | [0108](./0108-a-dialog-over-live-chrome-declares-its-tail.md) | A dialog over live chrome declares how many rows lie below it (`bindTail`). | Superseded by 0151 |
 | [0109](./0109-an-above-prompt-notice-is-not-a-modal.md) | An above-prompt notice whose keys act on a one-character box is not a modal. | Accepted |
 | [0113](./0113-an-askuserquestion-answer-is-typed-into-its-field.md) | An AskUserQuestion answer is typed into its field. | Accepted |
-| [0158](./0158-the-sign-in-box-is-known-by-its-shape-and-place-and-its-title-is-a-label.md) | The sign-in box over the input box is known by its shape and place; an unknown title lifts only a keyless box with an https link. | Accepted |
+| [0159](./0159-the-sign-in-box-is-known-by-its-shape-and-place-and-its-title-is-a-label.md) | The sign-in box over the input box is known by its shape and place; an unknown title lifts only a keyless box with a link. | Accepted |
 
 ### Harness specifics and WalkyTalky
 

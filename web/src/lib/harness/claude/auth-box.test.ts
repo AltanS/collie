@@ -196,7 +196,7 @@ describe("only the Authentication box over Claude's live input box lifts", () =>
     expect(kinds(claudeBuildBlocks(screenOf(withoutBox)))).toEqual(["raw"]);
   });
 
-  // ADR 0158: the title is a label. A filled box with a link lifts under any title of one short run of
+  // ADR 0159: the title is a label. A filled box with a link lifts under any title of one short run of
   // words, headed by the title it prints; a title that is not such a run lifts nothing.
   it.each(["Notifications", "authentication", "AUTHENTICATION", "Authentication needed", "Re-Authentication"])(
     "lifts the card headed by the printed title from a filled box with a link whose title row reads %j",
@@ -650,7 +650,7 @@ describe("the box Claude Code 2.1.328 titles Sign-in lifts as the same card", ()
   });
 });
 
-// ADR 0158. The box is known by its shape and its place over the live input box; the title is a label.
+// ADR 0159. The box is known by its shape and its place over the live input box; the title is a label.
 // A known title behaves as before. Any other title lifts only a filled box of the box's plainest shape
 // that holds an https link. Nothing with a key, an indent, or another frame under it lifts.
 describe("a box over the live input box with a title Collie does not know", () => {
@@ -720,9 +720,11 @@ describe("a box over the live input box with a title Collie does not know", () =
     expect(kinds(claudeBuildBlocks(lines("claude--draft-paste-placeholder.txt")))).not.toContain("box-text");
   });
 
-  // No keys, ever. With the input box live under it, no menu reader claims such a box (a menu must not
-  // claim a screen with a live box), so this reader refuses it itself and the rows stay in the mirror.
-  describe("a box that prints a key or an option is never this card, whatever its title", () => {
+  // No keys under an unknown title. With the input box live under it, no menu reader claims such a box (a
+  // menu must not claim a screen with a live box), so this reader refuses it itself and the rows stay in
+  // the mirror. A known title keeps exactly its old guards: the box holds the output of the person's own
+  // `awsAuthRefresh` command, which may print numbered steps or "Press Enter".
+  describe("a box that prints a key or an option: an unknown title refuses it, a known title lifts as before", () => {
     const KEY_ROWS: [string, string[]][] = [
       ["a footer of keys", [DEVICE, "Enter to confirm · Esc to cancel"]],
       ["one key hint", [DEVICE, "Esc to cancel"]],
@@ -730,14 +732,38 @@ describe("a box over the live input box with a title Collie does not know", () =
       ["a pointed option", ["❯ Open the page", DEVICE]],
       ["a ctrl key hint", [DEVICE, "ctrl+c to stop"]],
     ];
-    it.each(KEY_ROWS.flatMap(([name, rows]) => ["Authentication", "Sign-in", "Log in"].map((title) => [title, name, rows] as const)))(
-      "lifts no card from a box titled %j with %s",
+    it.each(KEY_ROWS.flatMap(([name, rows]) => ["Log in", "Notifications"].map((title) => [title, name, rows] as const)))(
+      "lifts no card from a box with the unknown title %j and %s",
       (title, _name, rows) => {
         const blocks = claudeBuildBlocks(screenOf(withBox(title, rows)));
         expect(kinds(blocks)).not.toContain("box-text");
         expect(blocks.some(blockOwnsKeyboard)).toBe(false);
       },
     );
+
+    // The two-hint footer is the one shape a known title still refuses, as it always did: the strong-cue
+    // guard reads it as a dialog's footer under the box.
+    it("lifts no card from a box with a known title and a footer of two key hints, by the strong cue as before", () => {
+      for (const title of ["Authentication", "Sign-in"]) expect(liftsNoCard(withBox(title, KEY_ROWS[0]![1])), title).toBe(true);
+    });
+
+    it.each(KEY_ROWS.slice(1).flatMap(([name, rows]) => ["Authentication", "Sign-in"].map((title) => [title, name, rows] as const)))(
+      "lifts the card, keyless, from a box with the known title %j and %s",
+      (title, _name, rows) => {
+        const blocks = claudeBuildBlocks(screenOf(withBox(title, rows)));
+        expect(kinds(blocks)).toContain("box-text");
+        expect(blocks.some(blockOwnsKeyboard)).toBe(false);
+        expect(cardOf(screenOf(withBox(title, rows))).title).toBe(title);
+      },
+    );
+
+    it("lifts a known title whose command printed numbered steps, Press Enter and a link, with the link a link", () => {
+      const rows = ["1. Open the address:", DEVICE, "2) Enter the code ABCD-EFGH", "Press Enter after you signed in"];
+      const card = cardOf(screenOf(withBox("Sign-in", rows)));
+      expect(card.phase).toBe("filled");
+      expect(linksOf(card)).toEqual([DEVICE]);
+      expect(card.text.map(textOf).map((row) => row.trimEnd())).toEqual(["", ...rows]);
+    });
   });
 
   describe("a drawing that is not Claude's own box over its live input box lifts nothing", () => {
@@ -825,8 +851,19 @@ describe("a box card links only an https address whose host a person can read", 
     );
   const runsOfCard = (title: string, rows: readonly string[]): BoxTextRun[] => cardOf(boxOf(title, rows)).text.flat();
 
+  // `http://[::1]` is allowed too, but the scanner (lib/links.ts) stops at `[`, so no box row yields it.
+  it.each(["http://localhost:54545/launch", "http://127.0.0.1:8080/callback", "http://localhost/launch"])(
+    "links %j, a plain-http address to a loopback host",
+    (address) => {
+      const runs = runsOfCard("Sign-in", ["Visit:", address]);
+      expect(runs.filter((run) => run.kind === "link")).toEqual([{ kind: "link", text: address, href: address }]);
+    },
+  );
+
   it.each([
-    ["http", "http://example.awsapps.com/start"],
+    ["http to a host that is not loopback", "http://example.awsapps.com/start"],
+    ["http to a host that only starts like loopback", "http://localhost.evil.example/start"],
+    ["http to another 127 address", "http://127.0.0.2/start"],
     ["a user name before the host", "https://example.awsapps.com@evil.example/start"],
     ["a user name and a password", "https://user:pw@evil.example/start"],
     ["a look-alike letter in the host", "https://exаmple.awsapps.com/start"],

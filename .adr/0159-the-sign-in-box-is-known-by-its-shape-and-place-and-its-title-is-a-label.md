@@ -1,4 +1,4 @@
-# 0158: the sign-in box is known by its shape and place, and its title is a label
+# 0159: the sign-in box is known by its shape and place, and its title is a label
 
 - **Status:** Accepted
 - **Date:** 2026-11-19
@@ -50,19 +50,24 @@ are true:
 - the top edge is `─` alone;
 - the title row holds one run of at most four words, at most 32 characters, with no key hint;
 - a blank row stands under the title row;
+- no row prints a key hint (`Esc to cancel`) or an option (`1. Yes`, a `❯` pointer);
 - the rows hold at least one link.
 
 An unknown title over a box with no link lifts nothing.
 
-**No keys, ever.** A box whose title or rows print a key hint (`Esc to cancel`) or an option (`1. Yes`, a
-`❯` pointer) lifts nothing, whatever its title. With a live input box under it, no menu reader claims such
-a box, so this reader refuses it itself, and the rows stay in the mirror. The reader runs after every
-dialog and notice reader in `claude/index.ts`.
+**No keys under an unknown title.** With a live input box under it, no menu reader claims a box that
+prints keys, so this reader refuses it itself, and the rows stay in the mirror. The reader runs after
+every dialog and notice reader in `claude/index.ts`. A known title keeps exactly the guards it had: the
+statusline tail, the gap rule and the strong-cue check. Its box holds the output of the person's own
+`awsAuthRefresh` command, which may print "1. Open the address" or "Press Enter after you signed in", and
+a keys rule there would hide the link again, which is the bug of issue 816.
 
-**The link is an https address a person can read.** The reader makes a run a link only for an `https:`
-address that is printable ASCII from end to end and carries no user name or password. A plain-http,
-look-alike, bidi or `user@host` address stays text. The card renders a link only for `https:`, for every
-`box-text` reader. There is no host allow-list, because the login host is the person's own identity
+**The link is an address a person can read.** The reader makes a run a link only for an `https:` address
+to any host, or an `http:` address to a loopback host (`localhost`, `127.0.0.1`, `[::1]`, any port), that
+is printable ASCII from end to end and carries no user name or password. Any other plain-http address,
+and a look-alike, bidi or `user@host` address, stays text. The card applies the same scheme rule for
+every `box-text` reader, so omp's `http://localhost:<port>/launch` shortcut stays a link: a desktop
+browser on the same machine opens it, and on a phone it fails harmlessly. There is no host allow-list, because the login host is the person's own identity
 provider. The link's text is its href, so the card shows the whole host it opens.
 
 **No drift signal.** A box in that place with an unknown title would be worth a count. The trouble tally

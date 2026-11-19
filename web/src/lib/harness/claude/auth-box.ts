@@ -33,21 +33,25 @@
 // keep a stale card on screen, whose link at worst opens an expired login page. No keystroke is ever
 // at stake.
 //
-// THE BOX IS KNOWN BY ITS SHAPE AND ITS PLACE, AND ITS TITLE IS A LABEL (ADR 0158). Claude Code renamed
+// THE BOX IS KNOWN BY ITS SHAPE AND ITS PLACE, AND ITS TITLE IS A LABEL (ADR 0159). Claude Code renamed
 // the title once (issue 816), and a list of titles hid the sign-in link from Chat until Collie learned
 // the new word. A known title ("Authentication", "Sign-in") lifts as it always did, the waiting card
 // included. Any other title lifts the same card, headed by the title the box prints, only when the box
 // has Claude's plainest shape: a top edge of `─` alone, the title alone on the first row as one short
 // run of words, a blank row under it, and at least one https link in the rows. A box with any other
 // title and no link lifts nothing, so Claude's own welcome box (a titled top edge, a blank first row)
-// and any keyless notice without a link stay in the mirror. A box whose rows print a key or an option
-// (`Esc to cancel`, `1. Yes`, a `❯` pointer) lifts nothing, whatever its title: a box with keys is a
-// dialog, never this card.
+// and any keyless notice without a link stay in the mirror. A box with an unknown title whose title or
+// rows print a key or an option (`Esc to cancel`, `1. Yes`, a `❯` pointer) lifts nothing: a box with keys
+// is a dialog, never this card. A known title keeps exactly the guards it always had (the statusline tail,
+// the gap rule, the strong cue), because the box holds the output of the person's own `awsAuthRefresh`
+// command, which may well print "1. Open the address" or "Press Enter after you signed in".
 //
-// THE LINK IS AN HTTPS ADDRESS A PERSON CAN READ. A run is a link only when it is `https:`, printable
-// ASCII from end to end (no space, no control, no bidi or other format character, no look-alike
-// letter), and carries no user name or password, so the host the card shows is the host the link
-// opens. Anything else stays plain text in the card, as it is on the terminal.
+// THE LINK IS AN ADDRESS A PERSON CAN READ. A run is a link only when it is `https:` to any host, or
+// `http:` to a loopback host (`localhost`, `127.0.0.1`, `[::1]`, any port: a login's local shortcut,
+// which a desktop browser on the same machine opens and a phone fails on harmlessly); printable ASCII
+// from end to end (no space, no control, no bidi or other format character, no look-alike letter); and
+// with no user name or password, so the host the card shows is the host the link opens. Anything else
+// stays plain text in the card, as it is on the terminal.
 //
 // Pure functions over parsed line text.
 
@@ -73,8 +77,10 @@ const TITLE_MAX = 32;
 const PLAIN_TOP_EDGE = /^╭─+╮$/u;
 /** A row that prints an option: a numbered choice, or a `❯`/`›` pointer at its start. */
 const OPTION_ROW = /^\s*(?:[❯›]\s*)?\d+[.)]\s|^\s*[❯›]\s/u;
-/** A whole address a card may link: https, then printable ASCII only. */
-const LINKABLE = /^https:\/\/[\x21-\x7e]+$/u;
+/** A whole address a card may link: http(s), then printable ASCII only. Which scheme for which host is `linkableAddress`. */
+const LINKABLE = /^https?:\/\/[\x21-\x7e]+$/u;
+/** The hosts a plain-http link may name, as `URL.hostname` spells them. */
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "[::1]"]);
 /** The border and its one padding cell, on each side of a row. */
 const EDGE_CELLS = 2;
 
@@ -86,8 +92,9 @@ export interface AuthBoxRegion {
 }
 
 /**
- * Whether the card may link `address`: https, printable ASCII only, and no user name or password, so the
- * host a person reads is the host the link opens. The scanner (lib/links.ts) already holds it to http(s).
+ * Whether the card may link `address`: https to any host or http to a loopback host, printable ASCII only,
+ * and no user name or password, so the host a person reads is the host the link opens. The scanner
+ * (lib/links.ts) already holds it to http(s).
  */
 export function linkableAddress(address: string): boolean {
   if (!LINKABLE.test(address)) return false;
@@ -97,7 +104,8 @@ export function linkableAddress(address: string): boolean {
   } catch {
     return false;
   }
-  return url.protocol === "https:" && url.username === "" && url.password === "" && url.hostname !== "";
+  if (url.username !== "" || url.password !== "" || url.hostname === "") return false;
+  return url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname));
 }
 
 function pushPlain(runs: BoxTextRun[], text: string): void {
@@ -202,7 +210,7 @@ export function detectAuthBox(lines: StyledLine[]): AuthBoxRegion | null {
   if (!known && !labelledLikeTheBox(texts, box, title)) return null;
   const contentWidth = box.width - 2 * EDGE_CELLS;
   const rows = texts.slice(titleRow + 1, box.bottom).map((text) => text.trimEnd().slice(EDGE_CELLS, EDGE_CELLS + contentWidth));
-  if (printsKeys(title) || rows.some(printsKeys)) return null;
+  if (!known && (printsKeys(title) || rows.some(printsKeys))) return null;
   if (rows.every(isBlank)) return known ? { startLine: box.top, endLine: box.bottom, model: { title, phase: "waiting", text: [] } } : null;
   const text = joinBrokenUrls(rows, contentWidth).map(runsOf);
   if (!known && !text.some((row) => row.some((run) => run.kind === "link"))) return null;
