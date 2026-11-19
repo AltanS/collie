@@ -185,6 +185,9 @@ export const pt: Dictionary = {
   "settings.wideLayout.off": "Desativado",
   "settings.wideLayout.hint":
     "Automático mostra a barra lateral e as colunas do painel em uma tela com pelo menos 600 px de largura e 480 px de altura. Desativado mantém o layout de telefone em qualquer lugar.",
+  "settings.enterSends.title": "Enter envia",
+  "settings.enterSends.hint":
+    "Com um teclado físico, Enter envia a mensagem e Shift+Enter adiciona uma nova linha. Com o teclado na tela, Enter sempre adiciona uma nova linha.",
   "settings.paneNav.title": "Navegação por painéis",
   "settings.paneNav.twoFingers": "Dois dedos",
   "settings.paneNav.joystick": "Joystick",
@@ -433,6 +436,9 @@ export const pt: Dictionary = {
   "composer.heldBack.kept": "Não enviado, guardado aqui: {text}",
   "composer.heldBack.putBack": "Colocar de volta",
   "composer.heldBack.boxFull": "Esvazie a caixa primeiro e depois toque em Colocar de volta.",
+  "composer.enterOffer.text": "Está usando um teclado? O Enter pode enviar.",
+  "composer.enterOffer.turnOn": "Ativar",
+  "composer.enterOffer.dismissAria": "Dispensar a oferta do Enter",
   "composer.heldBack.count": "{count} textos esperam aqui. Este é o mais recente.",
   "composer.placeholder.gone": "O painel sumiu",
   "composer.placeholder.readOnly": "Somente leitura: não autorizado",

@@ -186,6 +186,9 @@ export const ja: Dictionary = {
   "settings.wideLayout.off": "オフ",
   "settings.wideLayout.hint":
     "「自動」にすると、幅が 600 px 以上かつ高さが 480 px 以上ある画面でサイドバーとペインの列を表示します。「オフ」にすると、すべての画面でスマートフォン用レイアウトを維持します。",
+  "settings.enterSends.title": "Enter で送信",
+  "settings.enterSends.hint":
+    "物理キーボードでは、Enter でメッセージを送信し、Shift+Enter で改行します。画面上のキーボードでは、Enter は常に改行です。",
   "settings.paneNav.title": "ペインの移動",
   "settings.paneNav.twoFingers": "2本指",
   "settings.paneNav.joystick": "ジョイスティック",
@@ -476,6 +479,9 @@ export const ja: Dictionary = {
   "composer.heldBack.kept": "未送信、ここに保管: {text}",
   "composer.heldBack.putBack": "戻す",
   "composer.heldBack.boxFull": "先に入力欄を空にしてから、「戻す」をタップしてください。",
+  "composer.enterOffer.text": "キーボードをお使いですか？ Enter で送信できます。",
+  "composer.enterOffer.turnOn": "オンにする",
+  "composer.enterOffer.dismissAria": "Enter の案内を閉じる",
   "composer.heldBack.count": "{count} 件のテキストがここで待機しています。これが最新です。",
   "composer.placeholder.gone": "ペインが存在しません",
   "composer.placeholder.readOnly": "読み取り専用です。権限がありません",

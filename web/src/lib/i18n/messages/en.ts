@@ -212,6 +212,9 @@ export const en = {
   "settings.wideLayout.off": "Off",
   "settings.wideLayout.hint":
     "Auto shows the sidebar and pane columns on a screen at least 600 px wide and 480 px tall. Off keeps the phone layout everywhere.",
+  "settings.enterSends.title": "Enter sends",
+  "settings.enterSends.hint":
+    "With a physical keyboard, Enter sends the message and Shift+Enter adds a new line. With the on-screen keyboard, Enter always adds a new line.",
   "settings.paneNav.title": "Pane navigation",
   "settings.paneNav.twoFingers": "Two fingers",
   "settings.paneNav.joystick": "Joystick",
@@ -530,6 +533,9 @@ export const en = {
   "composer.heldBack.kept": "Not sent, kept here: {text}",
   "composer.heldBack.putBack": "Put back",
   "composer.heldBack.boxFull": "Empty the box first, then tap Put back.",
+  "composer.enterOffer.text": "Using a keyboard? Enter can send.",
+  "composer.enterOffer.turnOn": "Turn on",
+  "composer.enterOffer.dismissAria": "Dismiss the Enter offer",
   // More than one text waits on Put back (the M102 review 3): the notice shows the newest and says how many wait.
   "composer.heldBack.count": "{count} texts wait here. This is the newest.",
   "composer.placeholder.gone": "Pane is gone",

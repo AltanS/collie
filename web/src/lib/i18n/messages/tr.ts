@@ -185,6 +185,9 @@ export const tr: Dictionary = {
   "settings.wideLayout.off": "Kapalı",
   "settings.wideLayout.hint":
     "Otomatik seçeneği, en az 600 px genişliğinde ve 480 px yüksekliğindeki bir ekranda kenar çubuğunu ve bölme sütunlarını gösterir. Kapalı seçeneği, telefon düzenini her yerde korur.",
+  "settings.enterSends.title": "Enter gönderir",
+  "settings.enterSends.hint":
+    "Fiziksel klavyede Enter mesajı gönderir, Shift+Enter yeni satır ekler. Ekran klavyesinde Enter her zaman yeni satır ekler.",
   "settings.paneNav.title": "Bölme gezintisi",
   "settings.paneNav.twoFingers": "İki parmak",
   "settings.paneNav.joystick": "Joystick",
@@ -433,6 +436,9 @@ export const tr: Dictionary = {
   "composer.heldBack.kept": "Gönderilmedi, burada tutuldu: {text}",
   "composer.heldBack.putBack": "Geri koy",
   "composer.heldBack.boxFull": "Önce kutuyu boşaltın, sonra Geri koy'a dokunun.",
+  "composer.enterOffer.text": "Klavye mi kullanıyorsunuz? Enter ile gönderebilirsiniz.",
+  "composer.enterOffer.turnOn": "Aç",
+  "composer.enterOffer.dismissAria": "Enter önerisini kapat",
   "composer.heldBack.count": "{count} metin burada bekliyor. Bu en yenisi.",
   "composer.placeholder.gone": "Bölme kapandı",
   "composer.placeholder.readOnly": "Yalnızca okunur: yetki yok",

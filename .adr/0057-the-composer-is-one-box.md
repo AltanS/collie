@@ -6,6 +6,8 @@
   `web/src/components/actions-row.tsx` · `web/src/components/ui/anchored-menu.tsx` ·
   `DESIGN.md` §2, §6 · [ADR 0005](./0005-a-composed-key-queue-never-outlives-its-dock.md)
 
+Amended in scope by: [ADR 0157](./0157-enter-sends-when-the-person-turns-it-on-and-the-key-came-from-a-keyboard.md): the sentence that says Enter is the one key Collie cannot spend now holds only until the person turns "Enter sends" on; Ctrl/Cmd+Enter is unchanged.
+
 ## Context
 
 The composer's write surface was three shapes on one line. A bordered, rounded textarea; an attach

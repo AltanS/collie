@@ -185,6 +185,9 @@ export const zhTW: Dictionary = {
   "settings.wideLayout.off": "關閉",
   "settings.wideLayout.hint":
     "「自動」會在寬度至少 600 px 且高度至少 480 px 的螢幕上顯示側邊欄和窗格欄位。「關閉」則在所有位置維持手機版面配置。",
+  "settings.enterSends.title": "Enter 傳送",
+  "settings.enterSends.hint":
+    "使用實體鍵盤時，Enter 會傳送訊息，Shift+Enter 會換行。使用螢幕鍵盤時，Enter 一律換行。",
   "settings.paneNav.title": "窗格導覽",
   "settings.paneNav.twoFingers": "雙指",
   "settings.paneNav.joystick": "搖桿",
@@ -466,6 +469,9 @@ export const zhTW: Dictionary = {
   "composer.heldBack.kept": "未傳送，保留在這裡：{text}",
   "composer.heldBack.putBack": "放回",
   "composer.heldBack.boxFull": "請先清空輸入框，然後點按「放回」。",
+  "composer.enterOffer.text": "在使用鍵盤嗎？Enter 可以傳送。",
+  "composer.enterOffer.turnOn": "開啟",
+  "composer.enterOffer.dismissAria": "關閉 Enter 提示",
   "composer.heldBack.count": "這裡有 {count} 段文字在等待。這是最新的一段。",
   "composer.placeholder.gone": "窗格已不存在",
   "composer.placeholder.readOnly": "唯讀模式，未授權",

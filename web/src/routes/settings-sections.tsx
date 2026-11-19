@@ -27,6 +27,7 @@ import { HillSwitchControl } from "@/components/hill-switch-card";
 import { LanguageControl } from "@/components/language-control";
 import { ClearNotificationsControl } from "@/components/clear-notifications-control";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
+import { EnterSendsControl } from "@/components/enter-sends-control";
 import { PaneNavControl } from "@/components/pane-nav-control";
 import { PaneOrderControl } from "@/components/pane-order-control";
 import { WideLayoutControl } from "@/components/wide-layout-control";
@@ -143,6 +144,10 @@ export function SettingsAppearanceRoute() {
           way out for a screen where the layout misbehaves, so it sits with the other arrangement
           choices. Stored per device. */}
       <WideLayoutControl />
+      {/* Whether Enter from a physical keyboard sends the reply (ADR 0157). Beside Large-screen layout, because
+          both are about a keyboard and a screen big enough to have one. Off until the person turns it on;
+          stored per device. */}
+      <EnterSendsControl />
       {/* How the pane screen moves between panes and spaces by gesture (ADR 0121): Two fingers,
           Joystick or Off. Beside Large-screen layout, because both decide how the pane screen is
           arranged and moved through. Stored per device with the hand. */}

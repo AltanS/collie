@@ -187,6 +187,9 @@ export const ru: Dictionary = {
   "settings.wideLayout.off": "Выкл.",
   "settings.wideLayout.hint":
     "Авто показывает боковую панель и столбцы панелей на экране шириной не менее 600 px и высотой не менее 480 px. Выкл. сохраняет макет для телефона везде.",
+  "settings.enterSends.title": "Enter отправляет",
+  "settings.enterSends.hint":
+    "С физической клавиатурой Enter отправляет сообщение, а Shift+Enter добавляет новую строку. С экранной клавиатурой Enter всегда добавляет новую строку.",
   "settings.paneNav.title": "Навигация по панелям",
   "settings.paneNav.twoFingers": "Два пальца",
   "settings.paneNav.joystick": "Джойстик",
@@ -435,6 +438,9 @@ export const ru: Dictionary = {
   "composer.heldBack.kept": "Не отправлено, оставлено здесь: {text}",
   "composer.heldBack.putBack": "Вернуть",
   "composer.heldBack.boxFull": "Сначала очистите поле, затем нажмите «Вернуть».",
+  "composer.enterOffer.text": "Используете клавиатуру? Enter может отправлять.",
+  "composer.enterOffer.turnOn": "Включить",
+  "composer.enterOffer.dismissAria": "Закрыть подсказку про Enter",
   "composer.heldBack.count": "Ждущих здесь текстов: {count}. Это самый новый.",
   "composer.placeholder.gone": "Панель закрыта",
   "composer.placeholder.readOnly": "Только чтение: нет авторизации",

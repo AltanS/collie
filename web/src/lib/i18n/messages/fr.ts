@@ -187,6 +187,9 @@ export const fr: Dictionary = {
   "settings.wideLayout.off": "Désactivé",
   "settings.wideLayout.hint":
     "Auto affiche la barre latérale et les colonnes de volets sur un écran d'au moins 600 px de large et 480 px de haut. Désactivé conserve la disposition téléphone partout.",
+  "settings.enterSends.title": "Entrée envoie",
+  "settings.enterSends.hint":
+    "Avec un clavier physique, Entrée envoie le message et Maj+Entrée ajoute une nouvelle ligne. Avec le clavier à l'écran, Entrée ajoute toujours une nouvelle ligne.",
   "settings.paneNav.title": "Navigation entre les volets",
   "settings.paneNav.twoFingers": "Deux doigts",
   "settings.paneNav.joystick": "Joystick",
@@ -435,6 +438,9 @@ export const fr: Dictionary = {
   "composer.heldBack.kept": "Non envoyé, gardé ici : {text}",
   "composer.heldBack.putBack": "Remettre",
   "composer.heldBack.boxFull": "Commencez par vider la zone, puis touchez Remettre.",
+  "composer.enterOffer.text": "Vous utilisez un clavier ? Entrée peut envoyer.",
+  "composer.enterOffer.turnOn": "Activer",
+  "composer.enterOffer.dismissAria": "Fermer la proposition sur Entrée",
   "composer.heldBack.count": "{count} textes attendent ici. Voici le plus récent.",
   "composer.placeholder.gone": "Le volet a disparu",
   "composer.placeholder.readOnly": "Lecture seule : non autorisé",

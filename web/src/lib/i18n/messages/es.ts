@@ -197,6 +197,9 @@ export const es: Dictionary = {
   "settings.wideLayout.off": "Desactivado",
   "settings.wideLayout.hint":
     "Automático muestra la barra lateral y las columnas de paneles en una pantalla de al menos 600 px de ancho y 480 px de alto. Desactivado mantiene el diseño de teléfono en todas partes.",
+  "settings.enterSends.title": "Enter envía",
+  "settings.enterSends.hint":
+    "Con un teclado físico, Intro envía el mensaje y Mayús+Intro añade una línea nueva. Con el teclado en pantalla, Intro siempre añade una línea nueva.",
   "settings.paneNav.title": "Navegación de paneles",
   "settings.paneNav.twoFingers": "Dos dedos",
   "settings.paneNav.joystick": "Joystick",
@@ -490,6 +493,9 @@ export const es: Dictionary = {
   "composer.heldBack.kept": "No enviado, guardado aquí: {text}",
   "composer.heldBack.putBack": "Volver a poner",
   "composer.heldBack.boxFull": "Vacía primero la caja y luego toca Volver a poner.",
+  "composer.enterOffer.text": "¿Usas un teclado? Intro puede enviar.",
+  "composer.enterOffer.turnOn": "Activar",
+  "composer.enterOffer.dismissAria": "Descartar la oferta de Intro",
   "composer.heldBack.count": "{count} textos esperan aquí. Este es el más reciente.",
   "composer.placeholder.gone": "El panel ya no existe",
   "composer.placeholder.readOnly": "Solo lectura: dispositivo no autorizado",

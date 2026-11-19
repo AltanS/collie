@@ -7,6 +7,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 
 import * as api from "@/lib/api";
 import { setLocale, whenLocaleReady } from "@/lib/i18n";
+import { __resetEnterSendsStore, enterSendsChoice, setEnterSends } from "@/lib/enter-sends-store";
 import { clearStatus, useStatus } from "@/lib/status";
 import { isReloadHeld, subscribeReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
 import { loadDraft, loadDraftEntry, saveDraft } from "@/lib/drafts";
@@ -174,6 +175,7 @@ beforeAll(() => {
 });
 beforeEach(() => {
   clearStatus();
+  __resetEnterSendsStore();
   // An unknown send arms "Send it again?" for the same text on the same pane; no test inherits another's.
   __forgetSendAgainMemory();
   imageEditHarness.mode = "auto";
@@ -3673,7 +3675,8 @@ describe("Composer — the composer is one box", () => {
     await user.type(field(), "looks good");
     // `fireEvent` returns false when the handler called preventDefault, so this reads the two
     // decisions directly: the plain key is handed to the textarea, the modified one is taken.
-    expect(fireEvent.keyDown(field(), { key: "Enter" })).toBe(true);
+    // A hardware-looking Enter, with nothing stored on this device (ADR 0157): still the browser's new line.
+    expect(fireEvent.keyDown(field(), { key: "Enter", code: "Enter", keyCode: 13 })).toBe(true);
     expect(props.onSent).not.toHaveBeenCalled();
     expect(field()).toHaveValue("looks good");
 
@@ -7173,3 +7176,185 @@ describe("Send it now on a row held for two minutes (M102 spec 02)", () => {
   });
 });
 
+
+// ADR 0057 said a bare Enter is a new line and the Send button, or Ctrl/Cmd+Enter, sends. ADR 0157 keeps that for
+// every device until the person turns "Enter sends" on, and then a bare Enter sends only when the press shows it came
+// from a physical keyboard. A guess never changes what Enter does: the first real-looking press only OFFERS the switch.
+describe("Composer — Enter sends (ADR 0157)", () => {
+  const field = () => screen.getByPlaceholderText(/type a reply/i);
+  const HARDWARE = { key: "Enter", code: "Enter", keyCode: 13 } as const;
+  const offer = () => screen.queryByText("Using a keyboard? Enter can send.");
+
+  /** A soft keyboard for `useKeyboardOpen`, which reads `visualViewport` (jsdom has none). */
+  function withSoftKeyboard() {
+    const listeners = new Set<() => void>();
+    const vv = {
+      width: 400,
+      height: 800,
+      addEventListener: (_: string, fn: () => void) => void listeners.add(fn),
+      removeEventListener: (_: string, fn: () => void) => void listeners.delete(fn),
+    };
+    Object.defineProperty(window, "visualViewport", { value: vv, configurable: true });
+    return {
+      open: () => {
+        vv.height = 400;
+        act(() => listeners.forEach((fn) => fn()));
+      },
+    };
+  }
+  afterEach(() => {
+    Reflect.deleteProperty(window, "visualViewport");
+  });
+
+  it("with nothing stored, never sends on a bare Enter, and offers the switch once after a real-looking press", async () => {
+    const user = userEvent.setup();
+    const props = renderComposer();
+    await user.type(field(), "looks good");
+    expect(offer()).toBeNull();
+    // The browser keeps the new line (the handler did not call preventDefault) and nothing is sent.
+    expect(fireEvent.keyDown(field(), HARDWARE)).toBe(true);
+    expect(props.onSent).not.toHaveBeenCalled();
+    expect(await screen.findByText("Using a keyboard? Enter can send.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Turn on" })).toBeInTheDocument();
+    expect(enterSendsChoice()).toBeNull();
+    // A second press still never sends.
+    expect(fireEvent.keyDown(field(), HARDWARE)).toBe(true);
+    expect(props.onSent).not.toHaveBeenCalled();
+  });
+
+  it("Turn on stores the choice, the offer leaves, and the next Enter sends once", async () => {
+    const user = userEvent.setup();
+    const props = renderComposer();
+    await user.type(field(), "ship it");
+    fireEvent.keyDown(field(), HARDWARE);
+    await user.click(await screen.findByRole("button", { name: "Turn on" }));
+    expect(enterSendsChoice()).toBe("on");
+    expect(localStorage.getItem("collie:enter-sends:v1")).toBe("on");
+    expectLeaving(offer());
+    expect(props.onSent).not.toHaveBeenCalled();
+
+    expect(fireEvent.keyDown(field(), HARDWARE)).toBe(false);
+    await waitFor(() => expect(field()).toHaveValue(""));
+    expect(props.onSent).toHaveBeenCalledTimes(1);
+  });
+
+  it("the dismiss control stores off, and neither the offer nor a send comes back", async () => {
+    const user = userEvent.setup();
+    const props = renderComposer();
+    await user.type(field(), "later");
+    fireEvent.keyDown(field(), HARDWARE);
+    await user.click(await screen.findByRole("button", { name: "Dismiss the Enter offer" }));
+    expect(enterSendsChoice()).toBe("off");
+    expectLeaving(offer());
+
+    await waitFor(() => expect(offer()).toBeNull());
+    expect(fireEvent.keyDown(field(), HARDWARE)).toBe(true);
+    expect(offer()).toBeNull();
+    expect(props.onSent).not.toHaveBeenCalled();
+  });
+
+  it("shows no offer when a choice is stored, on or off", async () => {
+    const user = userEvent.setup();
+    setEnterSends(false);
+    renderComposer();
+    await user.type(field(), "x");
+    fireEvent.keyDown(field(), HARDWARE);
+    expect(offer()).toBeNull();
+  });
+
+  it("shows no offer with the soft keyboard up, and sends nothing there with the switch on", async () => {
+    const user = userEvent.setup();
+    const keyboard = withSoftKeyboard();
+    const props = renderComposer();
+    await user.type(field(), "typed on the phone");
+    keyboard.open();
+    expect(fireEvent.keyDown(field(), HARDWARE)).toBe(true);
+    expect(offer()).toBeNull();
+    setEnterSends(true);
+    expect(fireEvent.keyDown(field(), HARDWARE)).toBe(true);
+    expect(props.onSent).not.toHaveBeenCalled();
+    expect(field()).toHaveValue("typed on the phone");
+  });
+
+  it("shows no offer for a press with an empty code (an on-screen keyboard)", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    await user.type(field(), "x");
+    fireEvent.keyDown(field(), { key: "Enter", code: "", keyCode: 13 });
+    expect(offer()).toBeNull();
+  });
+
+  describe("with the switch on", () => {
+    beforeEach(() => setEnterSends(true));
+
+    it("sends on a hardware-looking Enter, and on the numpad's", async () => {
+      const user = userEvent.setup();
+      const props = renderComposer();
+      await user.type(field(), "one");
+      expect(fireEvent.keyDown(field(), HARDWARE)).toBe(false);
+      await waitFor(() => expect(props.onSent).toHaveBeenCalledTimes(1));
+      await user.type(field(), "two");
+      expect(fireEvent.keyDown(field(), { ...HARDWARE, code: "NumpadEnter" })).toBe(false);
+      await waitFor(() => expect(props.onSent).toHaveBeenCalledTimes(2));
+    });
+
+    it("leaves Shift+Enter and Alt+Enter to the textarea", async () => {
+      const user = userEvent.setup();
+      const props = renderComposer();
+      await user.type(field(), "keep");
+      expect(fireEvent.keyDown(field(), { ...HARDWARE, shiftKey: true })).toBe(true);
+      expect(fireEvent.keyDown(field(), { ...HARDWARE, altKey: true })).toBe(true);
+      expect(props.onSent).not.toHaveBeenCalled();
+      expect(field()).toHaveValue("keep");
+    });
+
+    it("leaves an Enter with an empty code to the textarea", async () => {
+      const user = userEvent.setup();
+      const props = renderComposer();
+      await user.type(field(), "keep");
+      expect(fireEvent.keyDown(field(), { key: "Enter", code: "", keyCode: 13 })).toBe(true);
+      expect(props.onSent).not.toHaveBeenCalled();
+    });
+
+    it("never sends on the Enter that confirms an input method composition", async () => {
+      const user = userEvent.setup();
+      const props = renderComposer();
+      await user.type(field(), "かな");
+      expect(fireEvent.keyDown(field(), { ...HARDWARE, isComposing: true })).toBe(true);
+      expect(fireEvent.keyDown(field(), { ...HARDWARE, keyCode: 229 })).toBe(true);
+      expect(props.onSent).not.toHaveBeenCalled();
+    });
+
+    it("sends once for a held Enter: the repeats add no new line and send nothing", async () => {
+      const user = userEvent.setup();
+      const props = renderComposer();
+      await user.type(field(), "once");
+      expect(fireEvent.keyDown(field(), HARDWARE)).toBe(false);
+      // The repeats of the same press are stopped, so the emptied box gets no new lines.
+      expect(fireEvent.keyDown(field(), { ...HARDWARE, repeat: true })).toBe(false);
+      expect(fireEvent.keyDown(field(), { ...HARDWARE, repeat: true })).toBe(false);
+      await waitFor(() => expect(field()).toHaveValue(""));
+      expect(props.onSent).toHaveBeenCalledTimes(1);
+    });
+
+    it("on an empty box does what Ctrl+Enter does there: nothing is sent", async () => {
+      const props = renderComposer();
+      expect(fireEvent.keyDown(field(), HARDWARE)).toBe(false);
+      expect(fireEvent.keyDown(field(), { key: "Enter", ctrlKey: true })).toBe(false);
+      expect(props.onSent).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([
+    ["nothing stored", null],
+    ["off", false],
+    ["on", true],
+  ] as const)("Ctrl+Enter still sends with the choice %s", async (_name, choice) => {
+    const user = userEvent.setup();
+    if (choice !== null) setEnterSends(choice);
+    const props = renderComposer();
+    await user.type(field(), "go");
+    expect(fireEvent.keyDown(field(), { key: "Enter", ctrlKey: true })).toBe(false);
+    await waitFor(() => expect(props.onSent).toHaveBeenCalledTimes(1));
+  });
+});

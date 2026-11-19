@@ -186,6 +186,9 @@ export const zh: Dictionary = {
   "settings.wideLayout.off": "关闭",
   "settings.wideLayout.hint":
     "“自动”会在宽度至少为 600 px 且高度至少为 480 px 的屏幕上显示侧边栏和窗格列。“关闭”则在所有位置保持手机布局。",
+  "settings.enterSends.title": "回车发送",
+  "settings.enterSends.hint":
+    "使用实体键盘时，回车键发送消息，Shift+回车键换行。使用屏幕键盘时，回车键始终换行。",
   "settings.paneNav.title": "窗格导航",
   "settings.paneNav.twoFingers": "双指",
   "settings.paneNav.joystick": "摇杆",
@@ -467,6 +470,9 @@ export const zh: Dictionary = {
   "composer.heldBack.kept": "未发送，保留在这里：{text}",
   "composer.heldBack.putBack": "放回",
   "composer.heldBack.boxFull": "请先清空输入框，然后点按“放回”。",
+  "composer.enterOffer.text": "在用键盘吗？回车键可以发送。",
+  "composer.enterOffer.turnOn": "开启",
+  "composer.enterOffer.dismissAria": "关闭回车键提示",
   "composer.heldBack.count": "这里有 {count} 段文字在等待。这是最新的一段。",
   "composer.placeholder.gone": "窗格已不存在",
   "composer.placeholder.readOnly": "只读模式，未授权",
