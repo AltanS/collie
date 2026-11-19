@@ -1,7 +1,7 @@
 # Terminals
 
 These are the terminals Collie reads [sessions](sessions.md) from: Herdr, the Herdr core
-(`herdr-core`), tmux, zellij, tuios and Tern. Collie drives one terminal per install, and Herdr is
+(`herdr-core`), tmux, zellij, tuios, Tern and Rex. Collie drives one terminal per install, and Herdr is
 the default. This page covers pointing
 Collie at any of them, what each one can answer, and the beacons Collie uses to detect an agent in
 a pane. A durable agent with no screen is not a terminal, and [Durable agents](durable-agents.md) covers it.
@@ -15,10 +15,11 @@ Name the backend in `COLLIE_MUX`, point it at an endpoint, restart, and install 
 > **Experimental.** tmux and zellij (since 1.0) were tested on **tmux 3.6b** and **zellij 0.44.2**,
 > on a single host. tuios (since 1.15.0) was tested on **tuios 0.8.4**. The Herdr core (since 1.25.0)
 > was tested on **hc 0.1.14**, a 0.x preview. Tern was probed by its
-> contributor on **tern 0.4.5**, a closed beta that the maintainers cannot run.
+> contributor on **tern 0.4.5**, a closed beta that the maintainers cannot run. Rex was probed by
+> its contributor on **rex 0.0.1795019727**, the Linux server of an invite-only beta.
 > Herdr is the default and the primary supported backend. **Testers wanted:** open an issue on
 > [AltanS/collie](https://github.com/AltanS/collie/issues/new) titled `tmux: …`, `zellij: …`,
-> `tuios: …` or `tern: …`, with your multiplexer, version, OS, and what you saw.
+> `tuios: …`, `tern: …` or `rex: …`, with your multiplexer, version, OS, and what you saw.
 
 Name the multiplexer on the command line:
 
@@ -29,6 +30,7 @@ COLLIE_MUX=tmux collie start
 COLLIE_MUX=zellij collie start
 COLLIE_MUX=tuios collie start
 COLLIE_MUX=tern collie start
+COLLIE_MUX=rex collie start
 ```
 
 Set the endpoint when the default target is not the one you want:
@@ -47,7 +49,7 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 
 | variable | value | what it means |
 | --- | --- | --- |
-| `COLLIE_MUX` | `herdr`, `herdr-core`, `tern`, `tmux`, `zellij` or `tuios` | which terminal this install drives |
+| `COLLIE_MUX` | `herdr`, `herdr-core`, `rex`, `tern`, `tmux`, `zellij` or `tuios` | which terminal this install drives |
 | `COLLIE_MUX_ENDPOINT_HERDR_CORE` | `/run/user/1000/herdr-core/work.sock` | the core's socket PATH |
 | `COLLIE_MUX_ENDPOINT_HERDR_CORE` | empty | the socket `hc` would dial: `HC_SOCKET`, else `$XDG_RUNTIME_DIR/herdr-core/<session>.sock`, else `/run/user/<uid>/herdr-core/<session>.sock` when that directory exists, else `${XDG_STATE_HOME:-~/.local/state}/herdr-core/<session>/<session>.sock` (macOS); the session is `HC_SESSION` or `default` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `/run/user/1000/collie-tmux.sock` | a socket PATH (`tmux -S`), because it has a `/` |
@@ -60,6 +62,9 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 | `COLLIE_MUX_ENDPOINT_TERN` | `/run/user/1000/tern/daemon.sock` | the Tern daemon's socket PATH |
 | `COLLIE_MUX_ENDPOINT_TERN` | empty | `$XDG_RUNTIME_DIR/tern/daemon.sock`, else `/tmp/tern-<uid>/daemon.sock` |
 | `COLLIE_TERN_BIN` | `/home/you/.local/opt/tern/tern` | only if tern sits somewhere unusual |
+| `COLLIE_MUX_ENDPOINT_REX` | `unix:///run/user/1000/rex/server.sock` | a Rex server, as `rex -S` takes it: an address or a host label |
+| `COLLIE_MUX_ENDPOINT_REX` | empty | the server `rex` finds by itself |
+| `COLLIE_REX_BIN` | `/opt/rex/bin/rex` | only if rex sits somewhere unusual |
 | `COLLIE_TMUX_BIN` | `/usr/bin/tmux` | only if tmux sits somewhere unusual |
 | `COLLIE_ZELLIJ_BIN` | `/home/you/.local/bin/zellij` | only if zellij sits somewhere unusual |
 
@@ -168,6 +173,40 @@ Tern reports lifecycle events via `tern events`, enabling immediate topology cha
 "Show in terminal" moves your Tern window to the pane's Tern session and tab and focuses its block. A tab or a Tern session that Collie creates opens in the background and does not move your window.
 
 Collie does not detect Tern on its own, as it does not detect tuios: name it with `COLLIE_MUX=tern`. Typed text longer than 128 KiB is refused, because it travels as one command-line argument.
+
+### rex notes
+
+Rex reports agents itself, so it needs no hooks to tell an agent from a shell:
+
+```bash
+COLLIE_MUX=rex collie start
+# optional: gives a Claude pane its History
+collie hooks install claude
+```
+
+Collie shows each Rex session as a space, each window as a tab, and each block as a pane. A
+block that is not a terminal has no screen, and Collie leaves it out.
+
+Rex keeps the status a program reports about itself. Claude Code reports one on its own, so a
+Claude block shows as Claude, and as blocked while it waits for you. Rex does not know the
+conversation id, so a pane's History needs the hooks; they name the session through `$REX_BLOCK`
+and `$REX_SERVER`, which Rex sets in every block.
+
+The endpoint is the Rex server. Leave it empty to use the server that `rex` finds by itself, or set
+anything `rex -S` takes. Collie never starts a Rex server: start yours with `rex server start`, or
+`rex server install` to start it at boot.
+
+Some things work differently on Rex:
+
+- A pane counts as the one your terminal shows only while a Rex app is attached to its session. On
+  a server with no app attached, no pane is focused.
+- Show in terminal makes the pane's window active and focuses the block, for every app attached to
+  that session.
+- Pane rename is not offered: Rex gives every block a label of its own choosing, so Collie cannot
+  tell your name from its default. Tab rename works.
+- Every read of a pane fetches its whole scrollback, because `rex capture` has no line limit.
+
+Collie does not detect Rex on its own: name it with `COLLIE_MUX=rex`.
 
 ### durable notes
 
@@ -413,6 +452,7 @@ drives. The command only reads: it starts and writes nothing.
 MUX         PRESENT                    DRIVEN BY    HINT
 herdr       yes                        next (8788)
 herdr-core  yes                        hc (8794)
+rex         no                         -
 tern        no                         -
 tmux        yes                        tmux (8789)
 tuios       no                         -

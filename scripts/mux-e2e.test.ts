@@ -8,7 +8,7 @@ import { parseArgs, run, withCleanup, type Result } from "./mux-e2e.ts";
 
 describe("parseArgs", () => {
   test("no arguments drive every multiplexer", () => {
-    expect(parseArgs([])).toEqual({ ok: true, muxes: ["tmux", "zellij", "tuios"] });
+    expect(parseArgs([])).toEqual({ ok: true, muxes: ["tmux", "zellij", "tuios", "rex"] });
   });
 
   test("--mux picks one", () => {

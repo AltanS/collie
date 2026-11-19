@@ -13,6 +13,7 @@ import {
   parseMuxKey,
 } from "./keys.ts";
 import { toTernKey } from "./tern/keys.ts";
+import { toRexKey } from "./rex/keys.ts";
 import { toTmuxKey } from "./tmux/keys.ts";
 import { toTuiosKey } from "./tuios/keys.ts";
 import { toZellijKey } from "./zellij/keys.ts";
@@ -118,13 +119,19 @@ describe("ctrl+Enter, the chord that needs an extended keyboard encoding", () =>
     expect(toHerdrKey("ctrl+Enter").ok).toBe(true);
   });
 
+  // Probed 2026-11-19 against `cat -v` on rex 0.0.1795019727: `^[[27;5;13~`, the modifyOtherKeys
+  // form, never the `^M` Enter sends.
+  test("Rex sends it, as probed on rex 0.0.1795019727", () => {
+    expect(toRexKey("ctrl+Enter")).toEqual({ ok: true, key: "ctrl+enter" });
+  });
+
   test("every adapter that refuses it declares it, so a surface can ask before it offers a button", async () => {
     for (const fixture of MUX_CONFORMANCE_FIXTURES) {
       const world = await fixture.create();
       try {
         const deliverable = keysDeliverable(world.adapter.capabilities, ["ctrl+Enter"]);
         expect(deliverable, `${fixture.mux}${fixture.variant === undefined ? "" : ` (${fixture.variant})`}`).toBe(
-          fixture.mux === "herdr",
+          fixture.mux === "herdr" || fixture.mux === "rex",
         );
       } finally {
         await world.close();

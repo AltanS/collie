@@ -25,6 +25,7 @@ import { TMUX_BINARY_OPTION } from "../bridge/mux/tmux/adapter.ts";
 import { ZELLIJ_BINARY_OPTION } from "../bridge/mux/zellij/adapter.ts";
 import { DURABLE_MUX } from "../bridge/mux/durable/adapter.ts";
 import { HERDR_CORE_MUX } from "../bridge/mux/herdr-core/adapter.ts";
+import { REX_BINARY_OPTION } from "../bridge/mux/rex/adapter.ts";
 import { TERN_BINARY_OPTION } from "../bridge/mux/tern/adapter.ts";
 import { bindIsWildcard } from "../bridge/crew/config.ts";
 import { deriveMode } from "../bridge/crew/mode.ts";
@@ -1549,6 +1550,7 @@ function muxTarget(settings: MuxSettings): MuxTarget {
       [TMUX_BINARY_OPTION]: settings.tmuxBin,
       [ZELLIJ_BINARY_OPTION]: settings.zellijBin,
       [TERN_BINARY_OPTION]: settings.ternBin,
+      [REX_BINARY_OPTION]: settings.rexBin,
     },
   };
 }

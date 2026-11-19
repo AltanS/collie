@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// THE THROWAWAY LAYER of mux conformance: tmux, zellij and tuios, each started fresh, probed, typed
+// THE THROWAWAY LAYER of mux conformance: tmux, zellij, tuios and rex, each started fresh, probed, typed
 // into, and torn down.
 //
 //   bun scripts/mux-e2e.ts                  # every multiplexer this box has
@@ -12,7 +12,7 @@
 //
 // IT AIMS ONLY AT ITS OWN INSTANCES. Every multiplexer runs under one temporary root: its own HOME
 // (no shell rc, no mux config), XDG dirs, TMPDIR, a tmux socket path, a ZELLIJ_SOCKET_DIR and a
-// tuios runtime dir. The probe and the send both run as children given that environment and no
+// tuios runtime dir, which is also where a rex server puts its socket. The probe and the send both run as children given that environment and no
 // other, and the adapters are pointed at the instance this run created; nothing enumerates or targets
 // the operator's sessions. That separates configuration and endpoints. It is not a process or
 // filesystem sandbox.
@@ -32,7 +32,7 @@ import { HOST } from "../bridge/host.ts";
 import { buildMuxRegistry, createMux, muxEndpointVar } from "../bridge/mux/registry.ts";
 import type { MuxAdapter } from "../bridge/mux/types.ts";
 
-const MUXES = ["tmux", "zellij", "tuios"] as const;
+const MUXES = ["tmux", "zellij", "tuios", "rex"] as const;
 export type Mux = (typeof MUXES)[number];
 
 const SESSION = "collie-e2e";
@@ -127,11 +127,25 @@ function isolatedEnv(root: string): IsolatedEnv {
 function endpointOf(mux: Mux, env: IsolatedEnv, root: string): string {
   if (mux === "tmux") return join(root, "tmux.sock");
   if (mux === "zellij") return SESSION;
+  // A rex server started with this run's XDG_RUNTIME_DIR listens under it (probed on rex 0.0.1795019727).
+  if (mux === "rex") return `unix://${join(env.XDG_RUNTIME_DIR, "rex", "server.sock")}`;
   return join(env.XDG_RUNTIME_DIR, "tuios", "tuios.sock");
 }
 
 async function start(mux: Mux, env: IsolatedEnv, root: string): Promise<void> {
   const cwd = env.HOME;
+  if (mux === "rex") {
+    // A server of this run's own, then one session in it. `--autostart=false` on the second, so a
+    // server that did not come up fails here rather than starting a second one somewhere else.
+    for (const argv of [
+      ["rex", "server", "start"],
+      ["rex", "--autostart=false", "-S", endpointOf(mux, env, root), "new", SESSION, "--", SHELL, "--norc", "--noprofile"],
+    ]) {
+      const r = await run(argv, env, cwd);
+      if (r.code !== 0) throw new Error(`${argv.slice(0, 3).join(" ")} exited ${String(r.code)}: ${r.out.trim()}`);
+    }
+    return;
+  }
   const argv =
     mux === "tmux"
       ? ["tmux", "-S", endpointOf(mux, env, root), "-f", "/dev/null", "new-session", "-d", "-s", SESSION, "-x", "120", "-y", "40", `${SHELL} --norc --noprofile`]
@@ -148,6 +162,7 @@ function stopCommands(mux: Mux, env: IsolatedEnv, root: string): string[][] {
   // `delete-session --force` kills a running session first; a kill-session before it leaves nothing
   // to delete, and that second command then exits 2.
   if (mux === "zellij") return [["zellij", "delete-session", "--force", SESSION]];
+  if (mux === "rex") return [["rex", "--autostart=false", "-S", endpointOf(mux, env, root), "server", "stop"]];
   return [["tuios", "kill-server"]];
 }
 

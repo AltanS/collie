@@ -426,6 +426,7 @@ export interface MuxSettings {
   readonly tmuxBin: string;
   readonly zellijBin: string;
   readonly ternBin: string;
+  readonly rexBin: string;
   readonly origin: MuxOrigin;
 }
 
@@ -445,6 +446,7 @@ export function muxSettings(deps: MuxDeps): MuxSettings {
   const tmuxBin = (env.COLLIE_TMUX_BIN ?? "").trim();
   const zellijBin = (env.COLLIE_ZELLIJ_BIN ?? "").trim();
   const ternBin = (env.COLLIE_TERN_BIN ?? "").trim();
+  const rexBin = (env.COLLIE_REX_BIN ?? "").trim();
   const named = explicitMux(env);
   if (named !== null) {
     return {
@@ -453,13 +455,14 @@ export function muxSettings(deps: MuxDeps): MuxSettings {
       tmuxBin,
       zellijBin,
       ternBin,
+      rexBin,
       origin: { kind: "explicit" },
     };
   }
   const found = probeMuxes(deps);
   const only = found.length === 1 ? found[0] : undefined;
   if (only === undefined) {
-    return { name: DEFAULT_MUX, endpoint: "", tmuxBin, zellijBin, ternBin, origin: { kind: "undecided", found } };
+    return { name: DEFAULT_MUX, endpoint: "", tmuxBin, zellijBin, ternBin, rexBin, origin: { kind: "undecided", found } };
   }
   return {
     name: only.mux,
@@ -467,6 +470,7 @@ export function muxSettings(deps: MuxDeps): MuxSettings {
     tmuxBin,
     zellijBin,
     ternBin,
+    rexBin,
     origin: { kind: "auto", evidence: only.evidence },
   };
 }
