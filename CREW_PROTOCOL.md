@@ -1437,14 +1437,17 @@ version.
   idle limit would otherwise hold that read, and the sweep that waits for every member, for ever. A
   forwarded answer that is read in full before it is of any use (every route but a blob, a file's
   picture and a project picture: the lead masks or merges it, or the phone parses it whole) has a
-  total deadline too, 8 s from the start of the dial, or the route's write budget when that is longer:
-  the lead's own server drops a phone request that heard nothing for 10 s, so a longer read only holds
-  memory for an answer no one waits for. `bodyRuleOf` in `bridge/crew/forward.ts` holds each route's cap
+  total deadline too, 8 s from the start of the dial, or the route's write budget when that is longer.
+  The number is a choice: the phone itself gives up on a read after 6 s (a poll) or 10 s (History, a
+  file), so a longer read only holds memory for an answer no one waits for, and 8 s leaves the lead 2 s
+  for the mask. An honest whole answer that needs more is cut, for example a 32 MB History over a link
+  slower than about 4 MB/s. That is availability, not security, and the fix is smaller reads (pages),
+  never a longer deadline. `bodyRuleOf` in `bridge/crew/forward.ts` holds each route's cap
   and class in one table. Only a body that truly streams on to the phone has no total deadline, on
   purpose: a large blob on a slow link is honest, and a member that drips one costs one phone read and
   one socket, never the sweep. The phone's own request signal rides the dial, so a phone that goes away
   aborts the member's read and cancels its stream; a write the member may have received still answers
-  `write_outcome_unknown`. On any bound the member's stream is cancelled and the request aborted. Where
+  `write_outcome_unknown`; its audit line says `caller_left`, not a lost link. On any bound the member's stream is cancelled and the request aborted. Where
   the answer ends depends on where it was going. A body the lead reads ends as an unreachable peer (an
   idle cut counts as the lead's own time-out, §10.4), and so does a masked text answer, which the lead
   reads whole before the phone gets a byte. A body already streaming to the phone, which has its

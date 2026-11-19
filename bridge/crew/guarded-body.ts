@@ -118,16 +118,25 @@ export interface BodyGuard {
   readonly deadline?: number;
   /** Called once when any limit fires, to release the socket (the dial aborts its request). */
   readonly onStop?: () => void;
+  /** Called once when the body ends in any way: closed, cut by a limit, failed, or cancelled. */
+  readonly onEnd?: () => void;
 }
 
 /** `source`, a member's body, under the two bounds of {@link BodyGuard}. Cancelling the result cancels the member's stream. */
 export function guardedBody(source: ReadableStream<Uint8Array>, guard: BodyGuard): ReadableStream<Uint8Array> {
   const reader = source.getReader();
   let seen = 0;
+  let ended = false;
+  const end = () => {
+    if (ended) return;
+    ended = true;
+    guard.onEnd?.();
+  };
 
   const stop = async (controller: ReadableStreamDefaultController<Uint8Array>, error: BodyRefused) => {
     await reader.cancel(error.message).catch(() => undefined);
     guard.onStop?.();
+    end();
     controller.error(error);
   };
 
@@ -160,6 +169,7 @@ export function guardedBody(source: ReadableStream<Uint8Array>, guard: BodyGuard
           return;
         }
         if (next.done) {
+          end();
           controller.close();
           return;
         }
@@ -171,6 +181,7 @@ export function guardedBody(source: ReadableStream<Uint8Array>, guard: BodyGuard
         controller.enqueue(next.value);
       },
       async cancel(reason) {
+        end();
         await reader.cancel(reason).catch(() => undefined);
       },
     },
@@ -183,17 +194,27 @@ const NO_BODY = new Set([204, 205, 304]);
 
 /** `res` with its body under {@link guardedBody}: the same status and headers, since the bytes do not change. */
 export function guardedResponse(res: Response, guard: BodyGuard): Response {
-  if (res.body === null || NO_BODY.has(res.status)) return res;
+  if (res.body === null || NO_BODY.has(res.status)) {
+    guard.onEnd?.();
+    return res;
+  }
   return new Response(guardedBody(res.body, guard), { status: res.status, statusText: res.statusText, headers: res.headers });
 }
 
 /**
  * The total deadline of a `whole` answer, from the start of the dial to its last byte: 8 s, or the
- * call's own budget when that is longer (a launch, a worktree create). The lead's server drops a request
- * whose socket stays silent for 10 s (Bun's default `idleTimeout`, which the bridge does not set), and a
- * whole answer sends the phone nothing until it is complete; 8 s leaves 2 s for the lead's own work on it
- * (the mask, a merge). A 32 MB History page needs about 7 s on a 5 MB/s link, so the deadline does not cut
- * an honest one on a reasonable link, and 3 times the poll budget (3.6 s) would.
+ * call's own budget when that is longer (a launch, a worktree create).
+ *
+ * 8 s is a CHOICE, not a number the runtime imposes. What holds: the phone gives up on its own, after
+ * 6 s for a poll read and 10 s for a long read (History, a file; `POLL_TIMEOUT_MS` and `GET_TIMEOUT_MS`
+ * in web/src/lib/api.ts), and its abort reaches the member read through the dial. A whole answer sends
+ * the phone nothing until it is complete, so a read past the phone's 10 s holds memory for an answer no
+ * one waits for. 8 s ends the read inside that, with 2 s left for the lead's own work (the mask, a
+ * merge). It is NOT Bun's server: Bun 1.4.4 prints "timed out a request after 10 seconds" for a silent
+ * request but still delivers the answer when it comes (probed: a handler that answered at 12 s arrived
+ * whole). A 32 MB History page needs about 7 s on a 5 MB/s link; an honest whole answer on a link slower
+ * than about 4 MB/s is cut. That is availability, not security: the fix is smaller reads (pages), never a
+ * longer deadline, which is the pile-up again (review rounds 9 and 10).
  */
 export const WHOLE_ANSWER_DEADLINE_MS = 8_000;
 

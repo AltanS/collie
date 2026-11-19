@@ -764,6 +764,7 @@ function withVersion(res: Response, version: string | null | undefined): Respons
 export function failureReason(failure: PeerFailure): RefusalReason {
   if (failure.state === "incompatible") return "member_incompatible";
   if (failure.state === "unreachable" && failure.attempted === false) return "link_refused";
+  if (failure.state === "unreachable" && failure.callerLeft === true) return "caller_left";
   if (failure.state === "unreachable" && failure.timedOut === true) return "link_timeout";
   return "link_lost";
 }
@@ -1344,10 +1345,18 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   const answered =
     answer === null || deps.mask === undefined
       ? watchedBody(outcome.value, (why) => {
+          const log = deps.log ?? ((line: string) => console.log(line));
+          // The phone left first: its signal aborted the dial, so the cut is the phone's doing, not the
+          // link's. Its own words, in the audit line and the log.
+          if (req.signal.aborted) {
+            record(`http ${String(status)}, caller left`, { reason: "caller_left", by: "lead" });
+            log(`[crew] ${deps.link.memberId}: the phone left before the answer to ${route} ended (http ${String(status)})`);
+            return;
+          }
           // The phone already has the status and the headers; its read now ends in an error. Both lines
           // say so: the audit line of an audited route, and the lead's log for every route.
           record(`http ${String(status)}, body cut: ${why}`, memberRefusal);
-          (deps.log ?? ((line: string) => console.log(line)))(`[crew] ${deps.link.memberId}: the answer to ${route} broke off after http ${String(status)}: ${why}`);
+          log(`[crew] ${deps.link.memberId}: the answer to ${route} broke off after http ${String(status)}: ${why}`);
         })
       : withSaltedTag(await maskedAnswer(outcome.value, answer, deps.mask, deps.link.memberId));
   // The phone's own `accept-encoding`, never the member hop's, which the dial set and inflated itself.

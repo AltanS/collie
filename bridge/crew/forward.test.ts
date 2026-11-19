@@ -1076,6 +1076,7 @@ describe("a write to a member that is not reachable (§10.3)", () => {
       [{ ok: false, state: "unreachable", reason: "timed out after 6400ms", timedOut: true, receivedAt: 2 }, "unknown", "link_timeout"],
       [{ ok: false, state: "unreachable", reason: "socket hang up", receivedAt: 2 }, "unknown", "link_lost"],
       [{ ok: false, state: "unreachable", reason: "no crew secret", attempted: false, receivedAt: 2 }, "refused", "link_refused"],
+      [{ ok: false, state: "unreachable", reason: "the caller went away", callerLeft: true, receivedAt: 2 }, "unknown", "caller_left"],
     ];
     for (const [failure, outcome, reason] of cases) {
       const { transport } = transportOf(() => failure);
@@ -1086,6 +1087,41 @@ describe("a write to a member that is not reachable (§10.3)", () => {
       expect(res.headers.get("x-collie-reason")).toBe(reason);
       expect(res.headers.get("x-collie-by")).toBe("lead");
     }
+  });
+
+  test("a write the phone left is still write_outcome_unknown to the phone, and the audit names the phone, not the link (review round 10)", async () => {
+    const { transport } = transportOf(() => ({ ok: false, state: "unreachable", reason: "the caller went away", callerLeft: true, receivedAt: 2 }));
+    const audit: { reason?: string; outcome?: string }[] = [];
+    const [req, url] = post("/api/pane/w1:p1/reply?host=laptop", `{"text":"hi"}`);
+    const res = await forward(req, url, { transport, audit: (entry) => audit.push(entry) });
+    const body: unknown = await res.json();
+    expect(typeof body === "object" && body !== null && "code" in body ? body.code : null).toBe("write_outcome_unknown");
+    expect(audit.map((entry) => [entry.outcome, entry.reason])).toEqual([["unknown", "caller_left"]]);
+  });
+
+  test("a streamed answer the phone left mid-body is logged and audited as the phone leaving, not as a cut (review round 10)", async () => {
+    const leaving = new AbortController();
+    const { transport } = transportOf((init) => {
+      // The dial's own abort, which the phone's signal drives, errors the member's body.
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2, 3]));
+          init.signal?.addEventListener("abort", () => controller.error(new Error("aborted")));
+        },
+      });
+      return ok(new Response(body, { status: 200, headers: { "content-type": "application/octet-stream" } }));
+    });
+    const audit: { outcome?: string; reason?: string }[] = [];
+    const lines: string[] = [];
+    const [plain, url] = post("/api/pane/w1:p1/reply?host=laptop", `{"text":"hi"}`);
+    const req = new Request(plain, { signal: leaving.signal });
+    const res = await forward(req, url, { transport, audit: (entry) => audit.push(entry), log: (line) => lines.push(line) });
+    const reader = res.body!.getReader();
+    await reader.read();
+    leaving.abort();
+    await reader.read().catch(() => null);
+    expect(audit.map((entry) => [entry.outcome, entry.reason])).toEqual([["http 200", undefined], ["http 200, caller left", "caller_left"]]);
+    expect(lines).toEqual(["[crew] laptop: the phone left before the answer to pane/w1:p1/reply ended (http 200)"]);
   });
 
   test("a member's own refusal code reaches the phone as the member's, and the lead's line names it", async () => {

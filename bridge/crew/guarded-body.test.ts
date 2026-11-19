@@ -307,6 +307,34 @@ describe("X1: a read the lead masks ends by a total deadline, and a phone that l
     expect(after.closed - before.closed).toBe(1);
   }, 20_000);
 
+  test("a caller's signal shared across dials holds no listener once each dial has ended (review round 10)", async () => {
+    const shared = new AbortController().signal;
+    let live = 0;
+    const add = shared.addEventListener.bind(shared);
+    const remove = shared.removeEventListener.bind(shared);
+    shared.addEventListener = (...args: Parameters<AbortSignal["addEventListener"]>) => {
+      live += 1;
+      add(...args);
+    };
+    shared.removeEventListener = (...args: Parameters<AbortSignal["removeEventListener"]>) => {
+      live -= 1;
+      remove(...args);
+    };
+    const client = dial();
+    // A body read to its end, as the lead reads a JSON answer.
+    const whole = await client.proxy(link, "drip-short", undefined, { bodyMax: CREW_BYTES_MAX, signal: shared });
+    expect(whole.ok).toBe(true);
+    if (whole.ok) await whole.value.arrayBuffer();
+    // A body the reader cancels.
+    const cancelled = await client.proxy(link, "history", undefined, { bodyMax: CREW_BYTES_MAX, signal: shared });
+    expect(cancelled.ok).toBe(true);
+    if (cancelled.ok) await cancelled.value.body?.cancel();
+    // A dial that fails on its budget before the headers.
+    const failedDial = await client.proxy(link, "silent", undefined, { bodyMax: CREW_BYTES_MAX, signal: shared });
+    expect(failedDial.ok).toBe(false);
+    expect(live).toBe(0);
+  }, 20_000);
+
   test("a phone that goes away aborts the member's read at once", async () => {
     const lead = Bun.serve({ hostname: "127.0.0.1", port: 0, idleTimeout: 0, fetch: (req) => forwardOnce(new Request(`https://lead.example${new URL(req.url).pathname}${new URL(req.url).search}`, { signal: req.signal })) });
     try {

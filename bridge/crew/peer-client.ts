@@ -416,6 +416,11 @@ export type PeerFailure =
        */
       readonly attempted?: boolean;
       /**
+       * `true` when the caller's own signal ended the dial (a phone that went away, a caller that
+       * stopped waiting): it says nothing about the link, so it neither cools it nor reads as lost.
+       */
+      readonly callerLeft?: boolean;
+      /**
        * `true` when this call died on its own budget rather than on the network — the difference
        * between "the link is slow" and "the host is not there".
        *
@@ -1179,6 +1184,13 @@ export class PeerClient {
       if (outer.aborted) leave();
       else outer.addEventListener("abort", leave, { once: true });
     }
+    // The listener lives as long as the dial: until a failure below, or until the answer's body ends
+    // (closed, cut, cancelled, or none at all), so a caller's signal shared across dials collects none.
+    const release = () => outer?.removeEventListener("abort", leave);
+    const failed = (failure: PeerFailure): PeerOutcome<never> => {
+      release();
+      return this.fail(failure);
+    };
     let res: Response;
     try {
       // `tls` rides the init: Bun's fetch takes the pinned material per request, so there is no agent
@@ -1214,7 +1226,8 @@ export class PeerClient {
       //
       // `timedOut` is NOT the same ambiguity: the abort is this process's own clock firing, so it is
       // known rather than guessed, and it is what lets §10.4 tell a slow link from a dead host.
-      return this.fail({ state: "unreachable", reason: `${route}: ${reason}`, timedOut: aborted });
+      if (callerLeft) return failed({ state: "unreachable", reason: `${route}: ${reason}`, timedOut: false, callerLeft: true });
+      return failed({ state: "unreachable", reason: `${route}: ${reason}`, timedOut: aborted });
     } finally {
       clearTimeout(timer);
     }
@@ -1225,7 +1238,7 @@ export class PeerClient {
     // answer can never hand the phone a `Location`. Its body is not read, only cancelled.
     if (isRedirectAnswer(res)) {
       void res.body?.cancel().catch(() => undefined);
-      return this.fail({ state: "unreachable", reason: `${route}: ${redirectReason(res, url)}` });
+      return failed({ state: "unreachable", reason: `${route}: ${redirectReason(res, url)}` });
     }
     // ── gzip is inflated by the lead, with a cap; any other encoding is refused unread ──
     // The dial asked for gzip and does not inflate (above). A plain answer (no header, or `identity`) is
@@ -1238,13 +1251,13 @@ export class PeerClient {
       await res.body?.cancel().catch(() => undefined);
       // The member's value stays out of the reason: a header may hold any byte from 0x80 up (a C1 control
       // such as U+009B among them), and this reason reaches the journal and the phone's crew status.
-      return this.fail({ state: "unreachable", reason: `${route}: the peer answered in an encoding the lead does not decode` });
+      return failed({ state: "unreachable", reason: `${route}: the peer answered in an encoding the lead does not decode` });
     }
     // A body the member itself says is past the cap is refused unread, before a byte is counted.
     const declared = Number(res.headers.get("content-length") ?? "");
     if (res.headers.has("content-length") && Number.isFinite(declared) && declared > cap) {
       await res.body?.cancel().catch(() => undefined);
-      return this.fail({ state: "unreachable", reason: `${route}: the peer's answer is larger than the lead reads (${String(cap)} bytes)` });
+      return failed({ state: "unreachable", reason: `${route}: the peer's answer is larger than the lead reads (${String(cap)} bytes)` });
     }
     // ── Every body, in every encoding, under the two bounds of guarded-body.ts ──
     // The budget above ended at the headers. From here the member's bytes are counted against the cap,
@@ -1254,7 +1267,7 @@ export class PeerClient {
     // sweep that waits for every member, ends inside a bound however slowly a member drips its bytes.
     const deadline =
       mode === "consumed" ? startedAt + bodyDeadlineMs(timeoutMs) : init.bodyDeadlineMs === undefined ? undefined : startedAt + init.bodyDeadlineMs;
-    res = guardedResponse(res, { idleMs: bodyIdleMs(mode, timeoutMs), max: cap, deadline, onStop: () => controller.abort() });
+    res = guardedResponse(res, { idleMs: bodyIdleMs(mode, timeoutMs), max: cap, deadline, onStop: () => controller.abort(), onEnd: release });
     if (encoding === "gzip") res = inflatedResponse(res, cap);
 
     // ── Version first, before status and before the body ─────────────────────
@@ -1277,7 +1290,7 @@ export class PeerClient {
       // the exact cost the branch above was written to avoid.
       // `authRefused` is what lets the operator-facing split call this Attention rather than
       // Reconnecting (§10.2): the peer answered, so there is nothing to wait for.
-      return this.fail({
+      return failed({
         state: "unreachable",
         reason: `${route}: refused by the peer (unauthorized)`,
         authRefused: true,
@@ -1308,12 +1321,12 @@ export class PeerClient {
         // spent, once there is any, so the move onto the ladder is not a surprise when it comes.
         const seconds = Math.floor(waited / 1000);
         const plain = `${route}: peer answered ${res.status} with no crew protocol header`;
-        return this.fail({
+        return failed({
           state: "unreachable",
           reason: seconds < 1 ? plain : `${plain}, ${seconds}s so far`,
         });
       }
-      return this.fail({
+      return failed({
         state: "incompatible",
         reason: `${route}: peer answered ${res.status} with no crew protocol header for over ${Math.round(HEADERLESS_PATIENCE_MS / 1000)}s, this build speaks ${CREW_PROTOCOL_VERSION}`,
         expected: CREW_PROTOCOL_VERSION,
@@ -1321,7 +1334,7 @@ export class PeerClient {
       });
     }
     if (received !== null && received !== CREW_PROTOCOL_VERSION) {
-      const mismatch = this.fail({
+      const mismatch = failed({
         state: "incompatible",
         reason: `${route}: peer answered protocol ${received}, this build speaks ${CREW_PROTOCOL_VERSION}`,
         expected: CREW_PROTOCOL_VERSION,
@@ -1338,7 +1351,7 @@ export class PeerClient {
       if (conflict !== null) {
         // Not a version skew and not a refusal: this member answered precisely, and what it said is
         // that the caller's whole premise about who leads is out of date (§10.2's fourth state).
-        return this.fail({
+        return failed({
           state: "conflicted",
           reason: `${route}: ${conflict.error}`,
           leadMemberId: conflict.leadMemberId,
@@ -1352,7 +1365,7 @@ export class PeerClient {
       // name the labels, which is the one thing its operator can act on.
       const collision = pairingCollisionOf(body);
       if (collision !== null) {
-        return this.fail({
+        return failed({
           state: "refused",
           reason: `${route}: ${collision.error}`,
           code: PAIRING_LABEL_COLLISION,
@@ -1367,7 +1380,7 @@ export class PeerClient {
       // body says about versions, it is not a 1.7.0 collie. The overlap reads the header and the
       // status, never a body (§0.1).
       const mismatch = readMismatch(body);
-      return this.fail({
+      return failed({
         state: "incompatible",
         reason: `${route}: ${mismatch.reason}`,
         expected: mismatch.expected,
@@ -1380,13 +1393,13 @@ export class PeerClient {
       // proxy's own 403 never masquerades as a considered answer from a member.
       const refusal = await readRefusal(res);
       if (refusal !== null) {
-        return this.fail({ state: "refused", reason: refusal.error, code: refusal.code, status: res.status });
+        return failed({ state: "refused", reason: refusal.error, code: refusal.code, status: res.status });
       }
     }
     if (mode === "consumed" && !res.ok) {
       // Includes 401 — an auth failure is `unreachable`, per §10.2's table, and not a distinct state:
       // a rotated secret and a pulled cable both mean "the lead cannot see this member right now".
-      return this.fail({ state: "unreachable", reason: `${route}: HTTP ${res.status}` });
+      return failed({ state: "unreachable", reason: `${route}: HTTP ${res.status}` });
     }
 
     return {

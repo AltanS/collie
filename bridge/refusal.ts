@@ -30,6 +30,8 @@ export const REFUSAL_REASONS = [
   "link_timeout",
   /** The link broke after the request may have been written. */
   "link_lost",
+  /** The phone (or the lead's own caller) went away before the answer ended: the dial was aborted for it, and a write may still have been done. */
+  "caller_left",
   // ── The send and ask routes, written by the bridge that owns the pane (bridge/server.ts) ──
   /** A body the route cannot read. */
   "bad_body",
