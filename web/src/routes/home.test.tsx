@@ -612,9 +612,9 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     renderHome(solo());
     await userEvent.click(await settled());
     const sheet = () => screen.getByRole("dialog", { name: "Spaces" });
-    expect(within(sheet()).getByRole("checkbox", { name: "All Spaces" })).toBeChecked();
+    expect(within(sheet()).getByRole("checkbox", { name: "All spaces" })).toBeChecked();
     expect(within(sheet()).getAllByRole("checkbox").map((o) => o.textContent)).toEqual([
-      "All Spaces",
+      "All spaces",
       expect.stringMatching(/^webapp/),
       expect.stringMatching(/^collie/),
     ]);
@@ -628,13 +628,13 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(screen.getByRole("heading", { name: "collie" })).toBeInTheDocument();
     expect(stored().isolatedSpaces).toHaveLength(2);
     await userEvent.click(within(sheet()).getByRole("checkbox", { name: /^webapp/ }));
-    // A new mount reads it back, and "All Spaces" clears it.
+    // A new mount reads it back, and "All spaces" clears it.
     cleanup();
     renderHome(solo());
     await userEvent.click(await settled());
     expect(within(sheet()).getByRole("checkbox", { name: /^collie/ })).toBeChecked();
     expect(screen.queryByRole("heading", { name: "webapp" })).not.toBeInTheDocument();
-    await userEvent.click(within(sheet()).getByRole("checkbox", { name: "All Spaces" }));
+    await userEvent.click(within(sheet()).getByRole("checkbox", { name: "All spaces" }));
     expect(screen.getByRole("heading", { name: "webapp" })).toBeInTheDocument();
     expect(stored().isolatedSpaces).toEqual([]);
   });
@@ -695,7 +695,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     // Only the root workspace and the unrelated workspace are listed in the filter sheet;
     // the root's state word reflects its blocked worktree pane.
     expect(within(sheet()).getAllByRole("checkbox").map((o) => o.textContent)).toEqual([
-      "All Spaces",
+      "All spaces",
       "membero · needs you",
       "collie",
     ]);
@@ -712,7 +712,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     // On the Files tab, both the root checkout and its linked worktree keep their own change rows.
     await userEvent.click(within(sheet()).getByRole("button", { name: "Close" }));
     await userEvent.click(tab(/^Files$/));
-    const changesList = await screen.findByRole("list", { name: "Changes by Space" });
+    const changesList = await screen.findByRole("list", { name: "Changes by space" });
     expect(within(changesList).getAllByRole("button").map((r) => r.textContent)).toEqual([
       expect.stringMatching(/^membero/),
       expect.stringMatching(/^lucky-meadow-d1ec/),
@@ -886,7 +886,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     await userEvent.click(await settled());
     const sheet = () => screen.getByRole("dialog", { name: "Spaces" });
     expect(within(sheet()).getAllByRole("checkbox").map((o) => o.textContent)).toEqual([
-      "All Spaces",
+      "All spaces",
       "collie",
       "audiolink · working",
     ]);
@@ -973,7 +973,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     const router = renderHome(solo());
     await settled();
     await userEvent.click(tab(/^Files$/));
-    const list = await screen.findByRole("list", { name: "Changes by Space" });
+    const list = await screen.findByRole("list", { name: "Changes by space" });
     // fixtureChanges: 3 files in webapp's root repo and 2 in packages/api, +10 −2 over all five.
     await within(list).findByText("5 files");
     await within(list).findByText("No folder");
