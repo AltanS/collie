@@ -116,3 +116,30 @@ describe("an id rex did not hand out is gone before any rex call", () => {
     expect(rex.calls.length).toBeGreaterThan(before);
   });
 });
+
+describe("Focus in rex with no Rex app on the session", () => {
+  test("is refused with the reason, and rex is never asked to focus", async () => {
+    const { adapter, rex } = world();
+    const snapshot = await adapter.snapshot();
+    const notes = snapshot.spaces.find((space) => space.label === "notes")!;
+    const pane = snapshot.panes.find((p) => p.spaceId === notes.spaceId)!;
+    const answer = await adapter.setFocus(pane.paneId);
+    expect(answer).toEqual({ ok: false, reason: "refused", detail: "no Rex app shows this session, so there is no screen to move" });
+    expect(rex.calls.some((argv) => argv[0] === "focus")).toBe(false);
+  });
+
+  test("moves the screen where an app shows the session", async () => {
+    const { adapter, rex } = world();
+    const snapshot = await adapter.snapshot();
+    const work = snapshot.spaces.find((space) => space.label === "work")!;
+    const pane = snapshot.panes.find((p) => p.spaceId === work.spaceId && !p.focused)!;
+    expect((await adapter.setFocus(pane.paneId)).ok).toBe(true);
+    expect(rex.calls).toContainEqual(["focus", "--", pane.paneId]);
+    expect((await adapter.snapshot()).panes.find((p) => p.paneId === pane.paneId)?.focused).toBe(true);
+  });
+
+  test("a pane rex no longer lists is gone", async () => {
+    const { adapter } = world();
+    expect(await adapter.setFocus("block:01a1f140-f804-7d10-b29f-00000000ffff")).toMatchObject({ ok: false, reason: "gone" });
+  });
+});
