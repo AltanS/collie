@@ -72,8 +72,7 @@ describe("the diff of two copies", () => {
     expect(view).toContain('"text":"changed +x"');
     // The code part holds the change as text, so the card has code to show and its yes works after its end.
     expect(view).toContain('{"kind":"diff","text":"legs.sh: mode +x, it can now run as a program","attrs":{"file":"legs.sh"}}');
-    // A folder by hand: the bits are read off the disk, which only a POSIX file mode holds. Inline, not a
-    // skip: the Windows run's skip budget (scripts/windows-suites.ps1) counts every skipped test.
+    // A folder by hand: the bits are read off the disk, which only a POSIX file mode holds, so Windows stops here.
     if (process.platform === "win32") return;
     const next = await folder(same);
     await chmod(join(next, "legs.sh"), 0o755);

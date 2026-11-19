@@ -15,8 +15,8 @@
 // with `COLLIE_`, and it declares the key it takes.
 //
 // **A config file adds no environment key** (CREW_PROTOCOL.md §11). Moving these literals here does
-// not change what any process reads; `bridge/solo-baseline.test.ts` pins the same 37 names it always
-// pinned, now read from {@link CONFIG_SETTINGS} instead of from `bridge/config.ts`'s source.
+// not change what any process reads; `bridge/solo-baseline.test.ts` reads {@link CONFIG_SETTINGS}
+// and holds that no env key a solo `loadConfig` names belongs to the crew.
 
 import { ACCOUNT_WINDOW_HARNESSES } from "./account-windows-setting.ts";
 import { DEFAULT_MUX } from "./mux/registry.ts";
@@ -103,7 +103,7 @@ interface ConfigSettingBase {
    * Absent for every setting resolved somewhere else — the crew budgets, the standby door, the
    * update lane, the front door and speech-to-text all read their own environment in their own
    * module. `bridge/solo-baseline.test.ts` reads this field: the rows that carry one are exactly the
-   * env keys a SOLO instance's `loadConfig` names, which is the list §11's zero-tax contract pins.
+   * env keys a SOLO instance's `loadConfig` names, and none of them may be a crew key (§11).
    */
   readonly configField?: string;
 }

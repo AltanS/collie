@@ -11,46 +11,14 @@
 //  4. At most once, never held, and the long hold's mark.
 //  5. Every send Collie makes alone is the same with or without the word.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
-import { loadProfiles, profileFor, resetProfileLog, type Profile } from "../../web/src/lib/surface/profile.ts";
+import { type Profile } from "../../web/src/lib/surface/profile.ts";
 import { HELD_LONG_MS, type SendAnswer } from "../../web/src/lib/surface/send.ts";
-import { KeyGate } from "./key-gate.ts";
-import { GENERIC_PROBE, looseRow, RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
-import { RequestStore } from "./requests.ts";
+import { looseRow, type SendRequest } from "./protocol.ts";
 import { HoldStore } from "./holds.ts";
 import { maskedAnswer } from "../server.ts";
-import type { PaneForeground } from "../pane-binary.ts";
-
-const FIXTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures");
-const pane = (name: string): string => readFileSync(join(FIXTURES, "panes", name), "utf8");
-// SAFETY: surface-labels.json is the corpus label file, written by its own tool with this shape.
-const LABELS = JSON.parse(readFileSync(join(FIXTURES, "surface-labels.json"), "utf8")) as { fixtures: Record<string, { harness: string; state: string }> };
-
-/** A harness with no profile: its send goes blind (a bare shell is one). */
-const NO_PROFILE = "nothing-known";
-/** A harness whose profile never finds its frame and has no block reader: every screen is read unread. */
-const FRAMELESS = "frameless-test";
-
-function framelessProfile(): Profile {
-  const base = loadProfiles().get("agy")!;
-  const never = { pattern: "(?!)", column: 0 };
-  const { paste, ...rest } = base;
-  void paste;
-  return {
-    ...rest,
-    id: FRAMELESS,
-    identity: { ...base.identity, agentNames: [] },
-    versions: [{ ...base.versions[0]!, range: "0.0.0 - *", low: "0.0.0", high: null }],
-    idle: { ...base.idle, frame: { ...base.idle.frame, top: never, prompt: { pattern: "(?!)(?<draft>.*)", column: 0 }, bottom: never }, runningRows: [] },
-    keys: { ...base.keys, submit: ["Enter"], enterWhileRunning: "queues" },
-    reservedLeads: ["/", "!", "@"],
-    probe: { ...base.probe, char: GENERIC_PROBE },
-  };
-}
+import { pane, NO_PROFILE, FRAMELESS, Write, ScreenPane, dir, RigOptions, rig, refusedClean, useScratchDir } from "./protocol.override-reach.rig.ts";
 
 /** A profile whose harness takes nothing in a turn: Enter steers it and no key queues. */
 function noQueue(profile: Profile): Profile {
@@ -61,116 +29,7 @@ function noQueue(profile: Profile): Profile {
   return { ...profile, keys: { ...keys, enterWhileRunning: "steers" } };
 }
 
-type Write = { readonly how: "type" | "paste" | "block"; readonly text: string };
-
-/** One screen, served as it is; every text write and key is recorded, and nothing on screen changes. */
-class ScreenPane {
-  writes: Write[] = [];
-  keys: string[] = [];
-  revision = 1;
-  constructor(public screen: string) {}
-
-  readGrid = (paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> => {
-    void request;
-    return Promise.resolve(muxOk({ paneId, text: this.screen, truncated: false, revision: this.revision }));
-  };
-
-  private wrote(how: Write["how"], text: string): Promise<MuxAck> {
-    this.writes.push({ how, text });
-    this.revision++;
-    return Promise.resolve(muxAck());
-  }
-
-  typeText = (paneId: string, text: string): Promise<MuxAck> => (void paneId, this.wrote("type", text));
-  pasteText = (paneId: string, text: string): Promise<MuxAck> => (void paneId, this.wrote("paste", text));
-  pasteBlock = (paneId: string, text: string): Promise<MuxAck> => (void paneId, this.wrote("block", text));
-
-  writeKeys = (paneId: string, keys: readonly string[]): Promise<MuxAck> => {
-    void paneId;
-    this.keys.push(...keys);
-    this.revision++;
-    return Promise.resolve(muxAck());
-  };
-}
-
-let dir: string;
-beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "collie-override-"));
-  resetProfileLog();
-});
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
-
-let ids = 0;
-const nextId = (): string => `override-${String(++ids).padStart(8, "0")}`;
-
-interface RigOptions {
-  readonly harness?: string;
-  readonly version?: string;
-  readonly edit?: (profile: Profile) => Profile;
-  /** What the multiplexer can write: typed keys only, a bracketed paste (tmux), or a whole-text paste (Herdr). */
-  readonly write?: "type" | "paste" | "block";
-  readonly holds?: HoldStore;
-  /** What the multiplexer's foreground read answers for the pane (`SendDeps.paneForeground`); absent: no read. */
-  readonly foreground?: PaneForeground;
-  /** The foreground read throws. */
-  readonly foregroundThrows?: true;
-}
-
-function rig(screen: ScreenPane, options: RigOptions = {}) {
-  const clock = { now: 1_000_000 };
-  const now = (): number => clock.now;
-  const harness = options.harness ?? "claude";
-  const write = options.write ?? "paste";
-  const mux =
-    write === "type"
-      ? { readGrid: screen.readGrid, typeText: screen.typeText }
-      : write === "paste"
-        ? { readGrid: screen.readGrid, typeText: screen.typeText, pasteText: screen.pasteText }
-        : { readGrid: screen.readGrid, typeText: screen.typeText, pasteText: screen.pasteText, pasteBlock: screen.pasteBlock };
-  const store = new RequestStore(join(dir, `sends-${String(ids)}`), now);
-  const protocol = new SendProtocol({
-    mux,
-    gate: new KeyGate(screen, now),
-    store,
-    locks: new SessionLocks(),
-    ring: new RowRing(),
-    holds: options.holds,
-    paneForeground: options.foregroundThrows === true ? () => Promise.reject(new Error("gone")) : options.foreground === undefined ? undefined : () => options.foreground!,
-    profile: (name: string) => {
-      if (name === NO_PROFILE) return Promise.resolve(null);
-      const base = name === FRAMELESS ? framelessProfile() : loadProfiles().get(name);
-      if (base === undefined) return Promise.resolve(null);
-      const profile = options.edit === undefined ? base : options.edit(base);
-      return Promise.resolve(profileFor(name, options.version ?? "2.1.325", { log: () => undefined, profiles: new Map([[name, profile]]) }));
-    },
-    generation: () => "gen-1",
-    now,
-    sleep: (ms: number) => {
-      clock.now += ms;
-      return Promise.resolve();
-    },
-  });
-  const target = { session: "main", paneId: "%1", harness };
-  const prepare = async (): Promise<string> => {
-    const answer = await protocol.handle({ id: "prepare", text: "", mode: "prepare" }, target);
-    expect(answer.rowsHash).toBeDefined();
-    return answer.rowsHash!;
-  };
-  const send = (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> => protocol.handle({ id: nextId(), text, mode: "send", ...over }, target);
-  /** The person's override: a prepare, then the send with the hash it gave. */
-  const override = async (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> => send(text, { rowsHash: await prepare(), override: true, fromPhone: true, ...over });
-  return { protocol, store, clock, prepare, send, override };
-}
-
-/** A refusal that typed nothing and pressed nothing, with the rows now and their hash. */
-function refusedClean(answer: SendAnswer, screen: ScreenPane, reason: string): void {
-  expect(answer.receipt).toMatchObject({ outcome: "refused", reason, keys: [] });
-  expect(screen.writes).toEqual([]);
-  expect(screen.keys).toEqual([]);
-  expect(answer.rowsHash).toMatch(/^[0-9a-f]+$/u);
-  expect(answer.rows?.length ?? 0).toBeGreaterThan(0);
-  expect(answer.offers).toEqual(["keys"]);
-}
+useScratchDir();
 
 /** The override road's end: the text written once, in one piece, and no key at all. */
 function typedNoKey(answer: SendAnswer, screen: ScreenPane, text: string, how: Write["how"] = "paste"): void {
@@ -296,39 +155,6 @@ describe("1. the gate table: every refusal a person's send could meet, before an
 });
 
 describe("2. the harm cases: an override never answers a question (M102 spec 12)", () => {
-  const dialogs = Object.entries(LABELS.fixtures).filter(([, label]) => label.state === "dialog");
-  // Each of the four walks reads every dialog fixture of the corpus (722 screens). That took 6.5 to 6.9 s
-  // on the Windows VM and 4 s on a loaded Linux host, against bun's 5 s. The walk stays whole; the limit is
-  // the one that a slow machine needs.
-  const WALK_TIMEOUT_MS = 60_000;
-
-  test("every dialog fixture of every harness, read unread (no frame, no reader): refused menu_open, nothing typed, no key", async () => {
-    const harnesses = new Set<string>();
-    const typed: string[] = [];
-    for (const [name, label] of dialogs) {
-      const screen = new ScreenPane(pane(name));
-      const answer = await rig(screen, { harness: FRAMELESS }).override("1");
-      if (answer.receipt?.reason !== "menu_open" || screen.writes.length > 0 || screen.keys.length > 0) typed.push(`${name}: ${answer.receipt?.outcome ?? "-"}(${answer.receipt?.reason ?? "-"}) writes=${String(screen.writes.length)} keys=${screen.keys.join(",")}`);
-      else refusedClean(answer, screen, "menu_open");
-      harnesses.add(label.harness);
-    }
-    expect(typed).toEqual([]);
-    expect(harnesses.size).toBeGreaterThanOrEqual(11);
-  }, WALK_TIMEOUT_MS);
-
-  for (const foreground of [undefined, "unknown", "program"] as const) {
-    test(`the same dialogs on a pane with no profile (the blind road, foreground ${foreground ?? "not read"}): refused menu_open, nothing typed, no key`, async () => {
-      const typed: string[] = [];
-      for (const [name] of dialogs) {
-        const screen = new ScreenPane(pane(name));
-        const answer = await rig(screen, { harness: NO_PROFILE, foreground }).override("y");
-        if (answer.receipt?.reason !== "menu_open" || screen.writes.length > 0 || screen.keys.length > 0) typed.push(`${name}: ${answer.receipt?.outcome ?? "-"}(${answer.receipt?.reason ?? "-"})`);
-        else expect(answer.receipt?.menuSign).toBeDefined();
-      }
-      expect(typed).toEqual([]);
-    }, WALK_TIMEOUT_MS);
-  }
-
   const MENUS: readonly (readonly [string, readonly string[]])[] = [
     ["a (y/n) prompt", ["Overwrite config.toml? (y/n)"]],
     ["a numbered menu", ["Do you want to make this edit?", "  1. Yes", "  2. Yes, allow all edits this session", "  3. No"]],

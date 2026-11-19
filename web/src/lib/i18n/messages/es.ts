@@ -202,7 +202,7 @@ export const es: Dictionary = {
     "Con un teclado físico, Intro envía el mensaje y Mayús+Intro añade una línea nueva. Con el teclado en pantalla, Intro siempre añade una línea nueva.",
   "settings.projectPictures.title": "Imágenes de proyecto",
   "settings.projectPictures.hint":
-    "Muestra la imagen que un repositorio indica en su collie.toml en lugar del logo del agente, con el logo en la esquina, y en lugar de la marca de Collie mientras una sesión está abierta y la marca está en reposo.",
+    "Muestra la imagen que un repositorio indica en su collie.toml en lugar del logo del agente, con el logo en la esquina.",
   "settings.paneNav.title": "Navegación de paneles",
   "settings.paneNav.twoFingers": "Dos dedos",
   "settings.paneNav.joystick": "Joystick",

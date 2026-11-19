@@ -79,17 +79,13 @@ interface HeaderClaim {
   /** An agent is starting on this screen: the mark turns with most of its beads in the info colour
    *  (`CollieHome`'s `starting`). A claim, not a prop on the mark, because the shell owns the mark. */
   starting: boolean;
-  /** The project picture the mark shows while it rests, as a URL the page made, or null (ADR 0160).
-   *  Only the session view claims one, and only the mark at the top of the window shows it: a docked
-   *  mark (the large-screen sidebar's logo row) always keeps the Collie mark. */
-  picture: string | null;
 }
 
 // What a route gets when no route has claimed the row: the bare shell. This is the FORGOT case, and
 // it is deliberately benign rather than empty — the mark, the strip, the rule and the 60px floor are
 // all the shell's own, so a route that renders no <RouteHeader/> at all still gets a real header of
 // the right height. The one thing it cannot get wrong is the thing the operator was looking at.
-const UNCLAIMED: HeaderClaim = { wordmark: false, width: "full", override: false, hidden: false, starting: false, picture: null };
+const UNCLAIMED: HeaderClaim = { wordmark: false, width: "full", override: false, hidden: false, starting: false };
 
 function sameClaim(a: HeaderClaim, b: HeaderClaim): boolean {
   return (
@@ -97,8 +93,7 @@ function sameClaim(a: HeaderClaim, b: HeaderClaim): boolean {
     a.width === b.width &&
     a.override === b.override &&
     a.hidden === b.hidden &&
-    a.starting === b.starting &&
-    a.picture === b.picture
+    a.starting === b.starting
   );
 }
 
@@ -315,7 +310,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
     }
     home.current?.fn?.();
   };
-  const homeMark = (paper?: string, markSize?: number, picture: string | null = null) => (
+  const homeMark = (paper?: string, markSize?: number) => (
     <CollieHome
       onHome={onHome}
       trouble={trouble}
@@ -323,7 +318,6 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
       applying={applying}
       reconnected={reconnected}
       starting={claim.starting}
-      picture={picture}
       online={online}
       lastSeenAt={lastSeenAt}
       {...(paper === undefined ? {} : { paper })}
@@ -432,7 +426,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
                     the route's own thing (space → dashboard, pane → dashboard, history → the pane)
                     without the callback's identity re-rendering anything. */}
                 {/* Docked on a large screen, the mark stands in the sidebar instead (HeaderDock). */}
-                {dockedRow === null && homeMark(undefined, undefined, claim.picture)}
+                {dockedRow === null && homeMark()}
                 {/* THE IDENTITY, STACKED: the brand over the multiplexer this collie drives, both
                     beside the mark. It was ONE 18px line — "Collie on <mux>" — and on a phone that
                     line ran out of room inside the multiplexer's NAME, the one word here the reader
@@ -636,9 +630,6 @@ interface RouteHeaderProps {
   /** An agent is starting on this screen (the bridge has not read its first screen yet). The mark
    *  turns at the loading pace with three beads in four in the info colour. See `HeaderClaim.starting`. */
   starting?: boolean;
-  /** The project picture the mark shows while it rests (ADR 0160). Only the session view passes one.
-   *  See `HeaderClaim.picture`. */
-  picture?: string | null;
 }
 
 /**
@@ -676,7 +667,6 @@ export function RouteHeader({
   override,
   hidden = false,
   starting = false,
-  picture = null,
 }: RouteHeaderProps) {
   const slots = useContext(HeaderSlotContext);
   // Loud, not lenient. A <RouteHeader/> outside the host means a route was mounted with no header
@@ -691,9 +681,9 @@ export function RouteHeader({
   // effect, not a passive one: it lands in the same commit the portal's children do, before the
   // browser paints, so there is no frame in which the row's shape and its contents disagree.
   useLayoutEffect(() => {
-    claim(owner, { wordmark, width, override: overridden, hidden, starting, picture });
+    claim(owner, { wordmark, width, override: overridden, hidden, starting });
     return () => release(owner);
-  }, [claim, release, owner, wordmark, width, overridden, hidden, starting, picture]);
+  }, [claim, release, owner, wordmark, width, overridden, hidden, starting]);
 
   // The mark's tap. No deps: `onHome` is a new closure on every render and the shell reads this
   // through a ref at click time, so keeping it current costs one assignment and re-renders nothing.

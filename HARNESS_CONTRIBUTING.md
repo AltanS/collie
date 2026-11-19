@@ -336,7 +336,7 @@ gate keep it from reading a log that did not change.
   [`web/src/lib/harness/fence.test.ts`](./web/src/lib/harness/fence.test.ts): it fails the build if any
   module under `harness/` except `guard.ts` imports the network API (`@/lib/api` or a relative
   `…/api`), matching the specifier anywhere in the file so a Prettier line-wrapped import can't slip
-  through. It runs under `bun run test` (which the pre-push hook runs). The `no-restricted-imports`
+  through. It is one of the guard tests that `bun run gate` always runs, and CI runs it on every push. The `no-restricted-imports`
   rule in [`web/eslint.config.mjs`](./web/eslint.config.mjs) encodes the same fence but is
   **aspirational** — no ESLint runner is wired yet, so it does not execute; the test is the real gate.
 

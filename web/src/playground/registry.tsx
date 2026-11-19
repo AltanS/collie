@@ -217,7 +217,7 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/accounts").then((m) => ({ default: m.AccountsSection })),
   },
   {
-    def: { id: "project-picture", group: "Pane", title: "Project picture", keywords: ["AgentTile", "CollieHome", "PaneGlyph", "ProjectPicturesControl", "project-picture", "picture", "collie.toml", "icon", "logo", "mark", "header", "sidebar"] },
+    def: { id: "project-picture", group: "Pane", title: "Project picture", keywords: ["AgentTile", "PaneGlyph", "ProjectPicturesControl", "project-picture", "picture", "collie.toml", "icon", "logo", "sidebar", "rail"] },
     load: () => import("./sections/project-picture").then((m) => ({ default: m.ProjectPictureSection })),
   },
 ];

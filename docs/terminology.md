@@ -509,6 +509,6 @@ session's folder wins ([A project's own picture](configure.md#a-projects-own-pic
 ## Project picture
 
 The picture a [project file](#project-file) names with `[project] icon`. It takes the agent logo's
-place on that project's session rows, with the agent logo small in its corner, and the Collie mark's
-place in a session's header while the mark is at rest. **Project pictures** in Settings, Appearance,
+place wherever Collie draws the logo of that project's sessions, with the agent logo small in its
+corner. The Collie mark is never replaced. **Project pictures** in Settings, Appearance,
 turns it off on one device ([A project's own picture](configure.md#a-projects-own-picture)).

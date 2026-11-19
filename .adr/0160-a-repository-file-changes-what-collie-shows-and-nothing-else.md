@@ -9,11 +9,12 @@
   opens: a per-repository file that grows to carry commands, launchers, keys or hooks, the way
   `commands.toml`, `launchers.toml` and `keys.toml` do for the operator. On the picture, the operator:
   "the icon mark, should only be overridable inside a session view, not the workspace", and "push
-  pictures would be cool". Roads turned down there: an SVG or a GIF, a picture in place of the mark on
-  every screen, and a push icon fetched from the bridge.
+  pictures would be cool". After a look at the build: "ok project logos are nice, but we dont have to
+  replace the collie mark, the project icon + harness logo in one are enough". Roads turned down there:
+  an SVG or a GIF, a picture in the Collie mark's place, and a push icon fetched from the bridge.
   Files: `bridge/project-file.ts`, `bridge/project-picture.ts`, `bridge/config.ts`
   (`COLLIE_PROJECT_FILES`), `cli/project-file-finding.ts`, `web/src/lib/project-picture.ts`,
-  `web/src/components/collie-home.tsx`, `web/src/sw.ts`, `docs/configure.md`
+  `web/src/components/agent-tile.tsx`, `web/src/sw.ts`, `docs/configure.md`
 
 ## Context
 
@@ -28,8 +29,7 @@ the mirror renders text nodes only, a beacon names what Collie shows and never a
 file is that class of input with a longer life, and it reaches every session opened in the tree.
 
 The first key is a picture (`[project] icon`): it stands in for the agent logo on a session's tile, with
-the logo small in its corner, and for the resting mark in a session view. The
-operator asked for a file that can take more keys later. A file with room to grow is also a file
+the logo small in its corner. The operator asked for a file that can take more keys later. A file with room to grow is also a file
 someone will propose to grow into the operator's files.
 
 ## Decision
@@ -71,10 +71,10 @@ imitate a logo or a warning sign. Three options it closes:
 1. **Only a still raster picture: never an SVG, a GIF or an animated PNG or WebP.** PNG, JPEG or WebP,
    typed by its first bytes, at most 256 KB, each side 64 to 1024 px. A drawing format is markup, and
    a moving picture can mimic a live state.
-2. **Never the mark's place outside a session view, and never while the mark has something to say.**
-   The dashboard, a Space and the large-screen sidebar keep the Collie mark. In a session the picture
-   shows only while the mark rests: loading, a lost or returning connection, an update and an agent
-   starting bring the mark back.
+2. **Never the Collie mark's place.** The picture lives only in the tile where Collie draws a
+   session's agent logo, with that logo small in its corner, so the agent stays visible. The mark speaks
+   for the app's own state (loading, a lost or returning connection, an update, an agent starting), and a
+   picture can say none of it.
 3. **A push never fetches the picture, and its icon is never a repository's picture.** The icon and the
    badge are always Collie's. The picture goes only in the notification's own picture slot, where the
    system has one, with nothing drawn on top. The operating system decodes it outside the browser's

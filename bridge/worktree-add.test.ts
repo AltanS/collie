@@ -27,7 +27,7 @@ import {
 
 // The tests that hand `addWorktree` a fake git (a logging wrapper, or a git that sleeps past the
 // timeout) are POSIX `#!/bin/sh` scripts, which Windows cannot spawn (EFTYPE), so they are
-// `test.skipIf` on win32 and named in scripts/windows-suites.ps1. Every test that runs the real git
+// `test.skipIf` on win32. Every test that runs the real git
 // runs on Windows too.
 
 let root: string;

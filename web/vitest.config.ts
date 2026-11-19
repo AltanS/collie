@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 
@@ -45,6 +45,19 @@ import { glyphSetsPlugin } from "./vite-glyphs";
 const LOGIC_DIRS = ["src/lib/harness", "src/lib/surface"];
 const LOGIC = LOGIC_DIRS.map((dir) => `${dir}/**/*.{test,spec}.{ts,tsx}`);
 
+// ── QUARANTINE AND SLOW FILES ───────────────────────────────────────────────
+// A flaky test moves to `<name>.quarantine.test.ts`. Every run leaves it out, so it cannot turn a push
+// red, and the non-blocking `quarantine` job in `ci.yml` runs only those files
+// (`COLLIE_QUARANTINE=only`, the files named on the command line). A test that is slow on purpose is
+// `<name>.slow.test.ts`. A full run keeps it; the quick gate (`bun run gate`) sets `COLLIE_SKIP_SLOW=1`
+// and leaves it out. The same two suffixes mean the same in the bun runs (`bunfig.toml`).
+const QUARANTINE_ONLY = process.env.COLLIE_QUARANTINE === "only";
+const SKIPPED = [
+  ...(QUARANTINE_ONLY ? [] : ["**/*.quarantine.test.{ts,tsx}"]),
+  ...(process.env.COLLIE_SKIP_SLOW === "1" ? ["**/*.slow.test.{ts,tsx}"] : []),
+];
+const BASE_EXCLUDE = [...configDefaults.exclude, ...SKIPPED];
+
 // ── NODE 25+ SHADOWS JSDOM'S localStorage ───────────────────────────────────
 // Node 25 turned its own experimental web storage on by default, and node 26.3.0 still has it. The
 // global `localStorage` it defines is a getter that returns undefined until `--localstorage-file` is
@@ -81,13 +94,20 @@ export default defineConfig({
     projects: [
       {
         extends: true,
-        test: { ...shared, name: "logic", environment: "node", include: LOGIC },
+        test: { ...shared, name: "logic", environment: "node", include: LOGIC, exclude: BASE_EXCLUDE },
       },
       // The browser leg's model stub (M67): node only, and no MSW, because its tests stand up real
       // 127.0.0.1 listeners (the stub and a fake OpenRouter) and MSW would answer their fetches.
       {
         extends: true,
-        test: { globals: true, css: false, name: "rig", environment: "node", include: ["e2e/rig/**/*.test.ts"] },
+        test: {
+          globals: true,
+          css: false,
+          name: "rig",
+          environment: "node",
+          include: ["e2e/rig/**/*.test.ts"],
+          exclude: BASE_EXCLUDE,
+        },
       },
       {
         extends: true,
@@ -99,7 +119,7 @@ export default defineConfig({
           // already stood up rather than standing up a second one.
           setupFiles: [...shared.setupFiles, "./src/test/setup.ts"],
           include: ["src/**/*.{test,spec}.{ts,tsx}"],
-          exclude: LOGIC,
+          exclude: [...BASE_EXCLUDE, ...LOGIC],
         },
       },
     ],

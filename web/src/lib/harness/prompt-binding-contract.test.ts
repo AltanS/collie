@@ -138,10 +138,9 @@ describe("client/bridge binding contract", () => {
     });
   }
 
-  it("covers a column-bound region: the panel question's columns are pinned with its rows", () => {
-    expect(REGIONS.filter((r) => r.bindColumns !== undefined).map((r) => [r.fixture, r.bindColumns])).toEqual([
-      ["pi--omo-v5130-panel-question.txt", { start: 0, end: 91 }],
-    ]);
+  it("covers a column-bound region: at least one region pins its columns with its rows", () => {
+    // Each row's own test above checks its columns; this only keeps the column half from going untested.
+    expect(REGIONS.some((r) => r.bindColumns !== undefined)).toBe(true);
   });
 
   // Completeness gate: a newly added dialog fixture must not slip past the contract unnoticed. A new

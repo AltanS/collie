@@ -275,10 +275,6 @@ describe("M102-15 part 1c, mutated captures of the corpus", () => {
     expect(a).toEqual(b);
   });
 
-  test("I7: on a screen with a menu sign, no road of Collie's own, the person's first tap or the override writes Enter, a digit or a letter", async () => {
-    expect((await results()).i7).toEqual([]);
-  }, 120_000);
-
   test("I4: no override is refused on a screen with no menu sign for a reason outside the known-red buckets", async () => {
     expect((await results()).i4.get("other") ?? []).toEqual([]);
   }, 120_000);

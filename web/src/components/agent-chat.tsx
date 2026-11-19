@@ -89,7 +89,6 @@ import { useTrickHandlers } from "@/hooks/use-trick-handlers";
 import { DurableComposer } from "@/components/durable-composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentTile } from "@/components/agent-tile";
-import { useProjectPicture } from "@/lib/project-picture";
 import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
 import { StripsSummary } from "@/components/strips-summary";
@@ -424,9 +423,6 @@ export function AgentChat({
   // pane that has been running Claude for an hour announces nothing, because this mount never
   // watched it turn over (hooks/use-agent-start.ts).
   const agentStart = useAgentStart(paneId, agent?.agent, isShell);
-  // The project picture (ADR 0160): the header mark shows it while the mark rests, in this view only. A
-  // shell pane has no agent logo to replace, so it has no picture.
-  const headerPicture = useProjectPicture(agent === undefined || isShell ? null : agent);
   // LINE 1 IS THE NAME, LINE 2 IS THE PLACE — the one rule every other surface follows
   // (lib/pane-name.ts). The header used to lead with the ADDRESS and never consult the terminal
   // title at all, so a pane the dashboard called "Collie playground sync check" was called
@@ -2431,8 +2427,6 @@ export function AgentChat({
           width="wide"
           // The mark says an agent is starting, and the title says so too (`condition` below).
           starting={startup.starting}
-          // The project picture takes the mark's place while it rests (ADR 0160); the shell decides when.
-          picture={headerPicture}
           // Zen takes the whole row off the screen — the one shell owns the <header> element, so
           // only the shell can stop drawing it, and this is how a route asks. See HeaderClaim.hidden
           // for what survives (the element, its safe-area inset, its reserved rule) and why.
