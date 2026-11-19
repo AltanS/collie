@@ -4,7 +4,7 @@
 // (`decompress: false`), because Bun's fetch inflates with no bound: a member's 1 KB body could cost the
 // lead gigabytes. An answer marked `gzip` comes here instead. The member's bytes go to the decoder in
 // small pieces, the next piece only when the reader asks for more, and the decoder's output is counted
-// as it comes out. The moment the output (or the input) passes the cap the stream errors, the decoder is
+// as it comes out. The cap is the caller's, chosen per route (guarded-body.ts): there is no default. The moment the output (or the input) passes the cap the stream errors, the decoder is
 // destroyed and the member's stream is cancelled. Nothing is buffered past the cap: one piece of
 // {@link PIECE_BYTES} inflates to about a thousand times its size at most, so the most this holds at once
 // is the cap plus about one MB.
@@ -14,19 +14,17 @@
 
 import { createGunzip, type Gunzip } from "node:zlib";
 
-/**
- * The cap on a member's inflated body, and on its compressed input, for every crew read that names no
- * cap of its own. Twice the largest single honest object a member sends: a blob or a file's picture is at
- * most 16 MB (`BLOB_MAX_BYTES`, `MAX_IMAGE_READ_BYTES`), and a history page with inline pictures (each
- * at most 4 MB of text) is the largest JSON. A snapshot of a big herd is far below it (30 panes: 19 KB).
- */
-export const CREW_INFLATE_MAX = 32 * 1024 * 1024;
+import { BodyRefused } from "./guarded-body.ts";
 
 /** The most compressed bytes handed to the decoder at once (deflate's best ratio is about 1032:1). */
 const PIECE_BYTES = 1024;
 
-/** Why a body was cut off: plain ASCII, never a byte from the member. */
-export class InflateRefused extends Error {}
+/** Why a gzip body was cut off: plain ASCII, never a byte from the member. Never the idle limit. */
+export class InflateRefused extends BodyRefused {
+  constructor(message: string) {
+    super(message, false);
+  }
+}
 
 /**
  * `source`, a gzip stream from a member, as its inflated bytes. Errors with {@link InflateRefused} when

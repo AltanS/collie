@@ -31,7 +31,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
-- **The lead unpacks a crew member's compressed answers itself, with a size limit.** Before, the lead let its runtime unpack any compressed answer with no limit, so a member could send a small file that grew to gigabytes on the lead. Now a member may compress only with gzip, the lead stops at 32 MB unpacked (256 KB for a project picture), and every other kind of compression is refused. The data between your machines stays compressed.
+- **The lead unpacks a crew member's compressed answers itself, with a size limit.** Before, the lead let its runtime unpack any compressed answer with no limit, so a member could send a small file that grew to gigabytes on the lead. Now a member may compress only with gzip, the lead stops unpacking at a limit that fits each kind of answer (2 MB for the lead's own regular check of each machine, more only for history, files and pictures), and every other kind of compression is refused. The data between your machines stays compressed.
+
+### Fixed
+
+- **A crew member that stops in the middle of an answer no longer holds the lead.** Before, a member that sent the start of an answer and then went silent kept the lead waiting with no end, and for its regular check of each machine that froze the view of every other machine too. The lead now gives up when no new byte arrives for a short while: within its usual wait for that check, and after 10 seconds for a screen or a file you opened, so a large file on a slow link still arrives. Every answer from a member is also cut off at a size limit for its kind, also when it is not compressed: 32 MB for a file or a picture, twice the largest one a member serves, and 2 MB for the lead's own checks. The phone then shows an error, never a file that is cut short.
 
 ## [1.29.1] - 2026-11-19
 

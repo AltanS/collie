@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { CREW_JSON_MAX } from "./guarded-body.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import type { SessionCard } from "../types.ts";
 import { NARROW_VIEW } from "../sessions.ts";
@@ -884,7 +885,7 @@ describe("sweepPeers — concurrent, never serial (§10.1)", () => {
 describe("proxy — the peer's own status codes are the answer, not a failure", () => {
   test("a 304 comes back as an outcome, not as `unreachable` — the whole conditional-GET win", async () => {
     const { fetch } = replying("", { status: 304 });
-    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1");
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(outcome.ok).toBe(true);
     expect(outcome.ok && outcome.value.status).toBe(304);
     // `raw` is for bodies the LEAD consumes, where a non-2xx is a broken peer. Same dial, one rule
@@ -896,7 +897,7 @@ describe("proxy — the peer's own status codes are the answer, not a failure", 
   test("a peer's 404/405/413 reaches the phone as itself", async () => {
     for (const status of [400, 404, 405, 413, 500]) {
       const { fetch } = replying({ error: "x" }, { status });
-      const outcome = await client(fetch).proxy(laptop, "pane/w1:p1/reply", undefined, { method: "POST" });
+      const outcome = await client(fetch).proxy(laptop, "pane/w1:p1/reply", undefined, { bodyMax: CREW_JSON_MAX, method: "POST" });
       expect(outcome.ok && outcome.value.status).toBe(status);
     }
   });
@@ -904,7 +905,7 @@ describe("proxy — the peer's own status codes are the answer, not a failure", 
   test("a peer's OWN 403 is passed through — that is its write gate doing its job (§12)", async () => {
     // Stamped with the crew headers, so it is the peer answering rather than the link refusing.
     const { fetch } = replying("device not authorised", { status: 403 });
-    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1/keys", undefined, { method: "POST" });
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1/keys", undefined, { bodyMax: CREW_JSON_MAX, method: "POST" });
     expect(outcome.ok && outcome.value.status).toBe(403);
   });
 
@@ -913,7 +914,7 @@ describe("proxy — the peer's own status codes are the answer, not a failure", 
     // a rotated secret is told apart from a peer's own refusal. §10.2 files auth failure under
     // `unreachable`, so it stays on the poll cadence rather than the ten-minute skew backoff.
     const { fetch } = replying({ error: "unauthorized" }, { status: 401, protocol: null });
-    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1");
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(outcome.ok).toBe(false);
     expect(!outcome.ok && outcome.state).toBe("unreachable");
     expect(!outcome.ok && outcome.reason).toContain("unauthorized");
@@ -921,13 +922,13 @@ describe("proxy — the peer's own status codes are the answer, not a failure", 
 
   test("a version skew is still a skew, before any status or body is looked at (§7)", async () => {
     const { fetch } = replying({ ok: true }, { status: 200, protocol: "3" });
-    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1");
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(!outcome.ok && outcome.state).toBe("incompatible");
   });
 
   test("the response body is never read here — an ETag and the bytes survive the hop", async () => {
     const { fetch } = replying({ lines: ["hello"] }, { status: 200 });
-    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1");
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(outcome.ok && outcome.value.bodyUsed).toBe(false);
     expect(outcome.ok && (await outcome.value.json())).toEqual({ lines: ["hello"] });
   });
@@ -936,9 +937,9 @@ describe("proxy — the peer's own status codes are the answer, not a failure", 
 describe("`attempted` — the input to §10.3's refuse-vs-unknown decision", () => {
   test("a fault that provably never left this process says so", async () => {
     const { fetch } = replying({});
-    const noSecret = await client(fetch, { secret: null }).proxy(laptop, "pane/w1:p1/reply");
+    const noSecret = await client(fetch, { secret: null }).proxy(laptop, "pane/w1:p1/reply", undefined, { bodyMax: CREW_JSON_MAX });
     expect(!noSecret.ok && noSecret.state === "unreachable" && noSecret.attempted).toBe(false);
-    const badAddress = await client(fetch).proxy({ memberId: "x", address: "http://a/b?c=1" }, "pane/p/reply");
+    const badAddress = await client(fetch).proxy({ memberId: "x", address: "http://a/b?c=1" }, "pane/p/reply", undefined, { bodyMax: CREW_JSON_MAX });
     expect(!badAddress.ok && badAddress.state === "unreachable" && badAddress.attempted).toBe(false);
   });
 
@@ -946,7 +947,7 @@ describe("`attempted` — the input to §10.3's refuse-vs-unknown decision", () 
     // The runtime does not tell us whether the request had been written when the socket died, and a
     // write reported as cleanly-failed is a write the operator sends again (.adr/0010).
     const fetch: CrewFetch = () => Promise.reject(new Error("socket hang up"));
-    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1/reply", undefined, { method: "POST" });
+    const outcome = await client(fetch).proxy(laptop, "pane/w1:p1/reply", undefined, { bodyMax: CREW_JSON_MAX, method: "POST" });
     expect(!outcome.ok && outcome.state === "unreachable" && outcome.attempted).toBeUndefined();
   });
 });
@@ -955,6 +956,7 @@ describe("the forwarded device identity (§12)", () => {
   test("a per-request device wins over the client-wide one", async () => {
     const { fetch, calls } = replying({});
     await client(fetch, { device: "process-default" }).proxy(laptop, "pane/w1:p1/reply", undefined, {
+      bodyMax: CREW_JSON_MAX,
       method: "POST",
       headers: { [DEVICE_HEADER]: "phone-7" },
     });
@@ -964,6 +966,7 @@ describe("the forwarded device identity (§12)", () => {
   test("nothing a caller passes can shape the link's own claims", async () => {
     const { fetch, calls } = replying({});
     await client(fetch).proxy(laptop, "pane/w1:p1/reply", undefined, {
+      bodyMax: CREW_JSON_MAX,
       method: "POST",
       headers: { authorization: "Bearer forged", [PROTOCOL_HEADER]: "99", [MEMBER_HEADER]: "not-desk" },
     });
@@ -994,7 +997,7 @@ describe("two budgets, and which call runs on which (§10.4)", () => {
     // Spent. Everything after it is strict again, so a host that is genuinely gone still fails fast.
     const second = await patient.snapshot(laptop);
     expect(!second.ok && second.reason).toBe("snapshot: timed out after 5ms");
-    const forwarded = await patient.proxy(laptop, "pane/w1:p1/reply", undefined, { method: "POST" });
+    const forwarded = await patient.proxy(laptop, "pane/w1:p1/reply", undefined, { bodyMax: CREW_JSON_MAX, method: "POST" });
     expect(!forwarded.ok && forwarded.reason).toBe("pane/w1:p1/reply: timed out after 5ms");
   });
 
@@ -1081,15 +1084,15 @@ describe("a forwarded write's own budget (§10.1)", () => {
 
   test("`proxy` runs on the budget it is given, and says which one fired", async () => {
     const c = client(stalling, { timeoutMs: 5, patientTimeoutMs: 40 });
-    const written = await c.proxy(laptop, "launch", undefined, { method: "POST" }, 90);
+    const written = await c.proxy(laptop, "launch", undefined, { bodyMax: CREW_JSON_MAX, method: "POST" }, 90);
     expect(!written.ok && written.reason).toBe("launch: timed out after 90ms");
   });
 
   test("an explicit budget spends NO bootstrap credit — the sweep's accounting is untouched", async () => {
     const c = client(stalling, { timeoutMs: 5, patientTimeoutMs: 40 });
     // Two forwarded writes on a cold link, both on their own budget.
-    expect(!(await c.proxy(laptop, "launch", undefined, { method: "POST" }, 90)).ok).toBe(true);
-    expect(!(await c.proxy(laptop, "launch", undefined, { method: "POST" }, 90)).ok).toBe(true);
+    expect(!(await c.proxy(laptop, "launch", undefined, { bodyMax: CREW_JSON_MAX, method: "POST" }, 90)).ok).toBe(true);
+    expect(!(await c.proxy(laptop, "launch", undefined, { bodyMax: CREW_JSON_MAX, method: "POST" }, 90)).ok).toBe(true);
     // The credit is still there for the sweep, which is the call the poll fraction is sized for.
     const sweep = await c.snapshot(laptop);
     expect(!sweep.ok && sweep.reason).toBe("snapshot: timed out after 40ms");
@@ -1097,9 +1100,9 @@ describe("a forwarded write's own budget (§10.1)", () => {
 
   test("a forwarded READ keeps the poll budget and the credit, unchanged", async () => {
     const c = client(stalling, { timeoutMs: 5, patientTimeoutMs: 40 });
-    const first = await c.proxy(laptop, "pane/w1:p1", undefined, {});
+    const first = await c.proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(!first.ok && first.reason).toBe("pane/w1:p1: timed out after 40ms");
-    const second = await c.proxy(laptop, "pane/w1:p1", undefined, {});
+    const second = await c.proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(!second.ok && second.reason).toBe("pane/w1:p1: timed out after 5ms");
   });
 
@@ -1114,9 +1117,9 @@ describe("a forwarded write's own budget (§10.1)", () => {
       });
     // No patient budget wired, so the poll budget is the honest comparison and not the credit.
     const c = client(slow, { timeoutMs: crewTimeoutBudget(1500, {}) });
-    const missed = await c.proxy(laptop, "launch", undefined, { method: "POST" });
+    const missed = await c.proxy(laptop, "launch", undefined, { bodyMax: CREW_JSON_MAX, method: "POST" });
     expect(!missed.ok && missed.reason).toBe(`launch: timed out after ${DEFAULT_CREW_TIMEOUT_MS}ms`);
-    const landed = await c.proxy(laptop, "launch", undefined, { method: "POST" }, WRITE_BUDGET_MS);
+    const landed = await c.proxy(laptop, "launch", undefined, { bodyMax: CREW_JSON_MAX, method: "POST" }, WRITE_BUDGET_MS);
     expect(landed.ok).toBe(true);
     expect(landed.ok && landed.status).toBe(200);
   }, 10_000);
@@ -1489,7 +1492,7 @@ describe("PeerClient — every dial is attested (§8.6)", () => {
     const c = client(fetch, withDial());
     await c.hello(laptop);
     await c.snapshot(laptop);
-    await c.proxy(laptop, "pane/w1:p1");
+    await c.proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(calls).toHaveLength(3);
     for (const sent of calls) {
       const headers = new Headers(sent.init.headers);
@@ -1514,8 +1517,8 @@ describe("PeerClient — every dial is attested (§8.6)", () => {
     // upload in the lead's memory, on the security path.
     const { fetch, calls } = replying({ ok: true });
     const body = new ReadableStream<Uint8Array>({ start: (ctrl) => ctrl.close() });
-    const init: CrewRequestInit = { method: "POST", body };
-    await client(fetch, withDial()).proxy(laptop, "pane/w1:p1/upload", undefined, init);
+    const init: CrewRequestInit = { method: "POST", body, bodyMax: CREW_JSON_MAX };
+    await client(fetch, withDial()).proxy(laptop, "pane/w1:p1/upload", undefined, { ...init, bodyMax: CREW_JSON_MAX });
     expect(calls[0]!.init.body).toBe(body);
     expect(new Headers(calls[0]!.init.headers).get(DIAL_HEADER)).not.toBeNull();
   });
@@ -1696,13 +1699,13 @@ describe("the dial asks for gzip and inflates it itself (ADR 0161)", () => {
   test("every dial asks for gzip only, turns the runtime's decompression off, and never sends the cap", async () => {
     const { fetch, calls } = replying({ protocol: 2, member: "laptop" });
     await client(fetch).hello(laptop);
-    await client(fetch).proxy(laptop, "pane/w1:p1", undefined, { headers: { "accept-encoding": "br" }, inflateMax: 1024 });
+    await client(fetch).proxy(laptop, "pane/w1:p1", undefined, { headers: { "accept-encoding": "br" }, bodyMax: 1024 });
     for (const call of calls) {
       expect(new Headers(call.init.headers).get("accept-encoding")).toBe("gzip");
       // SAFETY: as in `encoded` above.
       const init = call.init as CrewRequestInit;
       expect(init.decompress).toBe(false);
-      expect("inflateMax" in init).toBe(false);
+      expect("bodyMax" in init).toBe(false);
     }
   });
 
@@ -1711,7 +1714,7 @@ describe("the dial asks for gzip and inflates it itself (ADR 0161)", () => {
     const { fetch } = encoded(Bun.gzipSync(JSON.stringify(doc)), "gzip");
     const outcome = await client(fetch).json(laptop, "snapshot");
     expect(outcome.ok && outcome.value).toEqual(doc);
-    const raw = await client(encoded(Bun.gzipSync("{}"), " GZIP ").fetch).proxy(laptop, "pane/w1:p1");
+    const raw = await client(encoded(Bun.gzipSync("{}"), " GZIP ").fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(raw.ok).toBe(true);
     if (!raw.ok) return;
     expect(raw.value.headers.get("content-encoding")).toBeNull();
@@ -1721,11 +1724,11 @@ describe("the dial asks for gzip and inflates it itself (ADR 0161)", () => {
 
   test("a gzip bomb stops at the caller's cap", async () => {
     const bomb = Bun.gzipSync(new Uint8Array(64 * 1024 * 1024));
-    const outcome = await client(encoded(bomb, "gzip").fetch).proxy(laptop, "pane/w1:p1", undefined, { inflateMax: 1024 * 1024 });
+    const outcome = await client(encoded(bomb, "gzip").fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: 1024 * 1024 });
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     await expect(outcome.value.arrayBuffer()).rejects.toThrow("passed 1048576 bytes");
-    const consumed = await client(encoded(bomb, "gzip").fetch, { timeoutMs: 5_000 }).json(laptop, "snapshot", undefined, { inflateMax: 1024 * 1024 });
+    const consumed = await client(encoded(bomb, "gzip").fetch, { timeoutMs: 5_000 }).json(laptop, "snapshot", undefined, { bodyMax: 1024 * 1024 });
     expect(consumed.ok).toBe(false);
   });
 
@@ -1737,7 +1740,7 @@ describe("the dial asks for gzip and inflates it itself (ADR 0161)", () => {
         controller.enqueue(new Uint8Array(1024));
       },
     });
-    const outcome = await client(encoded(body, encoding).fetch).proxy(laptop, "project-picture/abcdef012345abcdef012345");
+    const outcome = await client(encoded(body, encoding).fetch).proxy(laptop, "project-picture/abcdef012345abcdef012345", undefined, { bodyMax: CREW_JSON_MAX });
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.reason).toBe("project-picture/abcdef012345abcdef012345: the peer answered in an encoding the lead does not decode");
     // The stream may have been asked for its first chunk when it was built; nothing read it after.
@@ -1746,7 +1749,7 @@ describe("the dial asks for gzip and inflates it itself (ADR 0161)", () => {
 
   test("a hostile encoding value never reaches the reason (S1)", async () => {
     // Bytes 0x80 to 0xFF read as latin1: U+009B is a one-byte CSI.
-    const outcome = await client(encoded(new Uint8Array(1), "br\u009b2J\u00ff").fetch).proxy(laptop, "pane/w1:p1");
+    const outcome = await client(encoded(new Uint8Array(1), "br\u009b2J\u00ff").fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(outcome.ok).toBe(false);
     if (outcome.ok) return;
     expect([...outcome.reason].every((ch) => (ch.codePointAt(0) ?? 0) < 0x7f)).toBe(true);
@@ -1762,14 +1765,14 @@ describe("the dial asks for gzip and inflates it itself (ADR 0161)", () => {
   test("a lying member: a gzip header over plain bytes is refused, plain bytes that are gzip pass raw", async () => {
     const lied = await client(encoded(new TextEncoder().encode("{}"), "gzip").fetch).json(laptop, "snapshot");
     expect(lied.ok).toBe(false);
-    if (!lied.ok) expect(lied.reason).toBe("snapshot: malformed response body");
-    const raw = await client(encoded(Bun.gzipSync("{}"), null).fetch).proxy(laptop, "pane/w1:p1");
+    if (!lied.ok) expect(lied.reason).toBe("snapshot: the body is not valid gzip");
+    const raw = await client(encoded(Bun.gzipSync("{}"), null).fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(raw.ok).toBe(true);
     if (raw.ok) expect(new Uint8Array(await raw.value.arrayBuffer())).toEqual(Bun.gzipSync("{}"));
   });
 
   test("a 304 marked gzip comes back with no body and no encoding", async () => {
-    const outcome = await client(encoded(new Uint8Array(0), "gzip", 304).fetch).proxy(laptop, "pane/w1:p1");
+    const outcome = await client(encoded(new Uint8Array(0), "gzip", 304).fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
     expect(outcome.ok && outcome.value.status).toBe(304);
     if (outcome.ok) expect(outcome.value.headers.get("content-encoding")).toBeNull();
   });

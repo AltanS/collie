@@ -1411,9 +1411,8 @@ version.
   `Accept-Encoding: gzip` and nothing else, and its runtime never inflates a member's body
   (`decompress: false`). An answer with no `content-encoding`, or `identity`, is read as it is. An
   answer whose `content-encoding` is exactly `gzip` is inflated by the lead through a streaming decoder
-  that counts its output and its input: the moment either passes the cap (256 KB for a project picture,
-  32 MB for every other answer), the decoder stops, the member's stream is cancelled and the answer is
-  refused as an unreachable peer. Any other encoding (br, deflate, zstd, a list, an unknown word) is
+  that counts its output and its input: the moment either passes the dial's cap (below), the decoder
+  stops and the member's stream is cancelled. Any other encoding (br, deflate, zstd, a list, an unknown word) is
   refused the same way before its body is read, with a reason that quotes none of the member's bytes.
   The answer the lead then holds carries no `content-encoding` and no `content-length`: the lead's
   headers describe the lead's bytes, never the member's. Every released bridge compresses only gzip and
@@ -1421,6 +1420,25 @@ version.
   and no version moves. Before 1.30.0 the lead asked a forwarded read for identity and let the runtime
   inflate everything else without a bound, so a member's small brotli body could cost the lead
   hundreds of MB.
+- **Every member body is read under two bounds of the lead's own** *(added in 1.30.0)*. The call's
+  budget (§10.1) ends at the headers; from there the lead counts the member's bytes, in either
+  encoding, against the dial's cap, and refuses unread an answer whose `content-length` already
+  passes it. Every dial names its cap, none has a default, and the cap follows what the lead does with
+  the answer: 2 MB for a body the lead parses itself (the sweep, hello and every other JSON call); for
+  a forwarded answer, its route's cap (`bodyCapOf` in `bridge/crew/forward.ts`): 256 KB for a project
+  picture, 8 MB for Changes and Files, 32 MB for History, Chat, Sent and pins, 32 MB for a blob or a
+  file's picture, 2 MB for every other route. A text answer the lead masks is also refused past a
+  million JSON values, before the mask parses it. It also ends a body when no byte arrived for an idle limit while
+  the lead waited: the call's own budget for a body the lead reads itself (the sweep and every other
+  JSON call, so one stalled member cannot hold the sweep), and 10 s, or the budget when longer, for a
+  body the lead streams on to the phone. The limit is on silence, never on the total, so a large answer
+  on a slow link passes. On any bound the member's stream is cancelled and the request aborted. Where
+  the answer ends depends on where it was going. A body the lead reads ends as an unreachable peer (an
+  idle cut counts as the lead's own time-out, §10.4), and so does a masked text answer, which the lead
+  reads whole before the phone gets a byte. A body already streaming to the phone, which has its
+  status and headers, breaks off there with an error, never as a short body that looks whole, and the
+  lead logs that the answer was cut (and writes a second audit line for an audited route). Nothing on
+  the wire changes.
 - **The lead→phone hop is compressed by the lead itself**, on the phone's own `Accept-Encoding`, as a
   **stream transform** over the identity bytes (`CompressionStream("gzip")`) — the transform itself
   never buffers (a text answer the lead masks is held once, for the mask, below). It applies to JSON and text bodies with a body to send;

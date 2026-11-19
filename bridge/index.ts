@@ -124,6 +124,7 @@ import {
 } from "./crew/deposed.ts";
 import { LeadContact } from "./crew/lead-contact.ts";
 import { forwardAuditDetail } from "./crew/forward.ts";
+import { CREW_JSON_MAX } from "./crew/guarded-body.ts";
 import { deputyAnchorOf, dialTls, peerListenerTls } from "./crew/transport.ts";
 import { commitCrewChange, CREW_PROTOCOL_VERSION } from "./crew/enrollment.ts";
 import { CrewLead } from "./crew/lead.ts";
@@ -3770,7 +3771,7 @@ async function walkyToLead(payload: string, route: string = CREW_WALKY_ROUTE, bu
     { memberId: lead.memberId, address: lead.address },
     route,
     undefined,
-    { method: "POST", headers: { "content-type": "application/json" }, body: payload },
+    { method: "POST", headers: { "content-type": "application/json" }, body: payload, bodyMax: CREW_JSON_MAX },
     budgetMs,
     true,
   );

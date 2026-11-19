@@ -18,7 +18,8 @@ import {
   WRITE_BUDGET_MS,
 } from "./peer-client.ts";
 import { HOST_PARAM, type PeerState } from "./registry.ts";
-import type { CrewRequestInit } from "./transport.ts";
+import { BodyRefused, CREW_BYTES_MAX, CREW_FILES_MAX, CREW_JSON_MAX, CREW_LOG_MAX } from "./guarded-body.ts";
+import type { CappedRequestInit } from "./transport.ts";
 
 // The LEAD side of a per-pane request: `?host=laptop` came in, the pane lives on the laptop, so the
 // request is forwarded over the crew link and the laptop's answer is handed back (CREW_PROTOCOL.md
@@ -371,6 +372,30 @@ const PANE_SCREEN_ROUTE = /^pane\/[^/]+$/;
 
 /** The routes that make a pane: a launch, a tab, a space. Each carries its own request id. */
 const CREATE_ROUTES: ReadonlySet<string> = new Set(["launch", "tab", "workspace"]);
+
+/**
+ * ── EVERY FORWARDED ROUTE'S CAP ON THE MEMBER'S ANSWER (review round 7) ────────────────────────────
+ * The most bytes the lead takes from a member for one forwarded answer, as sent and, for gzip, inflated
+ * (guarded-body.ts holds the numbers and their reasons). One table, so a reviewer can check the list:
+ *
+ * | route                                                        | cap                         |
+ * | ------------------------------------------------------------ | --------------------------- |
+ * | `project-picture/<v>`                                        | 256 KB (the picture limit)  |
+ * | `blobs/<hash>`, `pane/<id>/files/image`, `workspace/<id>/files/image` | 32 MB, raw bytes   |
+ * | `pane/<id>/history`, `pane/<id>/chat`, `durable/conversation/<id>/items`, `sent`, `pane/<id>/pins` | 32 MB, log answers |
+ * | `pane/<id>/changes`, `pane/<id>/files`, `workspace/<id>/changes`, `workspace/<id>/files` | 8 MB |
+ * | every other route: the screen read, lists, writes' answers   | 2 MB, JSON                  |
+ *
+ * A text answer the lead masks (§9.1) is parsed on the lead; its parse is bounded again by the mask's own
+ * count of values ({@link MASK_VALUES_MAX}).
+ */
+export function bodyCapOf(route: string): number {
+  if (route.startsWith("project-picture/")) return PROJECT_PICTURE_BYTES_MAX;
+  if (route.startsWith("blobs/") || /^(?:pane|workspace)\/[^/]+\/files\/image$/.test(route)) return CREW_BYTES_MAX;
+  if (/^pane\/[^/]+\/(?:history|chat|pins)$/.test(route) || /^durable\/conversation\/[^/]+\/items$/.test(route) || route === "sent") return CREW_LOG_MAX;
+  if (/^(?:pane|workspace)\/[^/]+\/(?:changes|files)$/.test(route)) return CREW_FILES_MAX;
+  return CREW_JSON_MAX;
+}
 
 /**
  * The explicit budget a forwarded request dials on: {@link PANE_WRITE_BUDGET_MS} for a write to a pane (a send on a
@@ -807,7 +832,7 @@ export type ForwardTransport = (
   link: CrewLink,
   route: string,
   params: CrewParams,
-  init: CrewRequestInit,
+  init: CappedRequestInit,
   budgetMs?: number,
 ) => Promise<PeerOutcome<Response>>;
 
@@ -859,6 +884,11 @@ export interface ForwardDeps {
   readonly surfaceVersion?: number | null | undefined;
   /** Where a pane read that fails is logged ({@link MemberPaneReads}). Absent, nothing is logged. */
   readonly paneReads?: MemberPaneReads | undefined;
+  /**
+   * The lead's log, for an answer its own bounds cut off after the phone already had the status (a
+   * streamed body past its cap or silent past its idle limit). Absent, `console.log`.
+   */
+  readonly log?: ((line: string) => void) | undefined;
 }
 
 /**
@@ -881,6 +911,60 @@ export interface ForwardDeps {
  * mirror poll would then cost a full body. No
  * `content-length` is copied ({@link proxiedResponse}), so the new body is framed by its own length.
  */
+/**
+ * The most JSON values a text answer may hold before the lead's mask parses it. A parse costs about 90
+ * bytes per value (measured: 11 M empty objects, 32 MB of text, 1 GB), so this bounds a mask's parse near
+ * 90 MB. The fullest honest answer, a Changes list of 20 repositories of 1000 files, holds about 160,000.
+ */
+export const MASK_VALUES_MAX = 1_000_000;
+
+/** Whether `raw` holds at most `max` JSON values, counted as openers and separators outside strings. */
+export function jsonValuesWithin(raw: string, max: number): boolean {
+  let values = 1;
+  let inString = false;
+  for (let i = 0; i < raw.length; i += 1) {
+    const c = raw.charCodeAt(i);
+    if (inString) {
+      if (c === 0x5c) i += 1;
+      else if (c === 0x22) inString = false;
+      continue;
+    }
+    if (c === 0x22) inString = true;
+    // `{`, `[` and `,` each open a place for one more value.
+    else if (c === 0x7b || c === 0x5b || c === 0x2c) {
+      values += 1;
+      if (values > max) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * `res` with its body watched: a body the lead's bounds cut off mid-stream (guarded-body.ts) calls `onCut`
+ * with the reason, so the audit line says the phone's `200` broke off, and the error goes on to the phone.
+ */
+function watchedBody(res: Response, onCut: (why: string) => void): Response {
+  if (res.body === null || res.body.locked) return res;
+  const reader = res.body.getReader();
+  const body = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        try {
+          const next = await reader.read();
+          if (next.done) controller.close();
+          else controller.enqueue(next.value);
+        } catch (err) {
+          onCut(err instanceof BodyRefused ? err.message : "the answer broke off");
+          controller.error(err);
+        }
+      },
+      cancel: (reason) => reader.cancel(reason),
+    },
+    { highWaterMark: 0 },
+  );
+  return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+}
+
 async function maskedAnswer(res: Response, answer: TextAnswer, mask: AnswerMask, memberId: string): Promise<Response> {
   if (res.status < 200 || res.status >= 300 || res.status === 204 || res.body === null) return res;
   let raw: string;
@@ -891,7 +975,9 @@ async function maskedAnswer(res: Response, answer: TextAnswer, mask: AnswerMask,
       host: memberId,
     });
   }
-  const masked = mask(answer, raw);
+  // The mask parses the answer, and a parse costs about 90 bytes per value: a body of tiny values is
+  // refused before it, as one the mask could not read.
+  const masked = jsonValuesWithin(raw, MASK_VALUES_MAX) ? mask(answer, raw) : null;
   if (masked === null) {
     return forwardError(
       "answer_unmaskable",
@@ -1153,9 +1239,8 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     if (kept === null) headers.delete("if-none-match");
     else headers.set("if-none-match", kept);
   }
-  const init: CrewRequestInit & { duplex?: "half" } = { method: req.method, headers };
-  // A project picture is at most 256 KB, so its gzip answer is cut off there, before any check runs.
-  if (route.startsWith("project-picture/")) init.inflateMax = PROJECT_PICTURE_BYTES_MAX;
+  // The member's answer, gzip or plain, is cut off at the route's own cap ({@link bodyCapOf}).
+  const init: CappedRequestInit & { duplex?: "half" } = { method: req.method, headers, bodyMax: bodyCapOf(route) };
   // The body is STREAMED, not buffered: an upload is up to 10 MB of multipart and the lead never
   // stores a copy of it (§13). Assigned, never conditionally spread: a bodyless method must carry
   // NEITHER key.
@@ -1224,9 +1309,16 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   const memberRefusal = memberReason !== null && isRefusalReason(memberReason) ? { reason: memberReason, by: "member" as const } : undefined;
   record(`http ${outcome.value.status}`, memberRefusal);
   if (kind === "read" && paneId !== undefined) deps.paneReads?.record(deps.link.memberId, paneId, outcome.value.status, "the member answered it");
+  // A streamed answer the lead's bounds cut off later gets a second audit line that says so (V3).
+  const status = outcome.value.status;
   const answered =
     answer === null || deps.mask === undefined
-      ? outcome.value
+      ? watchedBody(outcome.value, (why) => {
+          // The phone already has the status and the headers; its read now ends in an error. Both lines
+          // say so: the audit line of an audited route, and the lead's log for every route.
+          record(`http ${String(status)}, body cut: ${why}`, memberRefusal);
+          (deps.log ?? ((line: string) => console.log(line)))(`[crew] ${deps.link.memberId}: the answer to ${route} broke off after http ${String(status)}: ${why}`);
+        })
       : withSaltedTag(await maskedAnswer(outcome.value, answer, deps.mask, deps.link.memberId));
   // The phone's own `accept-encoding`, never the member hop's, which the dial set and inflated itself.
   // Compression is decided once per hop (ADR 0144 rule 10, ADR 0161).

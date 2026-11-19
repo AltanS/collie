@@ -1,4 +1,5 @@
 import { emptyConfigLayer } from "../bridge/config-source.ts";
+import { CREW_JSON_MAX } from "../bridge/crew/guarded-body.ts";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { get as httpGet } from "node:http";
@@ -1299,7 +1300,7 @@ describe("a cold handshake priced above the budget", () => {
       expect((await client.snapshot(link)).ok).toBe(true);
       expect(proxy.state.accepts).toBe(2);
       expect((await client.snapshot(link)).ok).toBe(true);
-      expect((await client.proxy(link, "snapshot")).ok).toBe(true);
+      expect((await client.proxy(link, "snapshot", undefined, { bodyMax: CREW_JSON_MAX })).ok).toBe(true);
       expect(proxy.state.accepts).toBe(2);
     } finally {
       proxy.stop();

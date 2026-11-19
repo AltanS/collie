@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { BodyRefused, CREW_BYTES_MAX, CREW_FILES_MAX, CREW_JSON_MAX, CREW_LOG_MAX } from "./guarded-body.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -6,7 +7,10 @@ import { computeEtag } from "../http-cache.ts";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
 import {
   apiPathFor,
+  bodyCapOf,
   budgetOf,
+  jsonValuesWithin,
+  MASK_VALUES_MAX,
   forwardAuditAction,
   forwardHeaders,
   forwardKind,
@@ -749,15 +753,81 @@ describe("the lead compresses the phone hop itself (.adr/0023)", () => {
     expect(new Headers(calls[0]!.init.headers).get("accept-encoding")).toBeNull();
   });
 
-  test("a project picture's forward names its own inflate cap, every other read none", async () => {
-    const [, peer] = peerJson();
-    const { transport, calls } = transportOf(() => ok(peer));
+  test("a streamed answer the lead's bounds cut off: the phone's read fails, and the lead's lines say so (V3)", async () => {
+    const cut = () =>
+      ok(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(c) {
+              c.enqueue(new Uint8Array(8));
+            },
+            pull(c) {
+              c.error(new BodyRefused("the answer passed 10 bytes", false));
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/octet-stream" } },
+        ),
+      );
+    const lines: string[] = [];
+    const audit: { outcome: string }[] = [];
+    // A read: no audit line, one log line.
+    const [req, url] = get("/api/blobs/abc?host=laptop");
+    const res = await forward(req, url, { transport: transportOf(cut).transport, log: (l) => lines.push(l), audit: (e) => audit.push(e) });
+    expect(res.status).toBe(200);
+    expect(await res.arrayBuffer().then(() => "whole", () => "error")).toBe("error");
+    expect(lines).toEqual(["[crew] laptop: the answer to blobs/abc broke off after http 200: the answer passed 10 bytes"]);
+    expect(audit).toEqual([]);
+    // A write: its audit line first says `http 200`, then a second line says the body was cut.
+    const write = new Request("https://lead.example/api/pane/w1:p1/reply?host=laptop", { method: "POST", body: "{}" });
+    const res2 = await forward(write, new URL(write.url), { transport: transportOf(cut).transport, log: (l) => lines.push(l), audit: (e) => audit.push(e) });
+    await res2.arrayBuffer().catch(() => null);
+    expect(audit.map((e) => e.outcome)).toEqual(["http 200", "http 200, body cut: the answer passed 10 bytes"]);
+  });
+
+  test("the table of forwarded caps: each route of each tier, and the JSON cap for the rest (review round 7)", () => {
+    const cases: [string, number][] = [
+      ["project-picture/0123456789ab0123456789ab", 256 * 1024],
+      ["blobs/abc", CREW_BYTES_MAX],
+      ["pane/w1:p1/files/image", CREW_BYTES_MAX],
+      ["workspace/w1/files/image", CREW_BYTES_MAX],
+      ["pane/w1:p1/history", CREW_LOG_MAX],
+      ["pane/w1:p1/chat", CREW_LOG_MAX],
+      ["pane/w1:p1/pins", CREW_LOG_MAX],
+      ["durable/conversation/c1/items", CREW_LOG_MAX],
+      ["sent", CREW_LOG_MAX],
+      ["pane/w1:p1/changes", CREW_FILES_MAX],
+      ["pane/w1:p1/files", CREW_FILES_MAX],
+      ["workspace/w1/changes", CREW_FILES_MAX],
+      ["workspace/w1/files", CREW_FILES_MAX],
+      ["pane/w1:p1", CREW_JSON_MAX],
+      ["pane/w1:p1/reply", CREW_JSON_MAX],
+      ["pane/w1:p1/upload", CREW_JSON_MAX],
+      ["launchers", CREW_JSON_MAX],
+      ["folders/browse", CREW_JSON_MAX],
+      ["durable/conversations", CREW_JSON_MAX],
+      ["sent/clear", CREW_JSON_MAX],
+    ];
+    for (const [route, cap] of cases) expect([route, bodyCapOf(route)]).toEqual([route, cap]);
+  });
+
+  test("the mask's count of values: an honest answer passes, a body of tiny values does not", () => {
+    // One value, then one per opener and separator outside a string: 6 here; the string's own count none.
+    expect(jsonValuesWithin('{"a":[1,2,3],"b":"x,y{z["}', 6)).toBe(true);
+    expect(jsonValuesWithin('{"a":[1,2,3],"b":"x,y{z["}', 5)).toBe(false);
+    // An escaped backslash does not escape the closing quote, so the `,[` after it count.
+    expect(jsonValuesWithin('"\\\\",[', 3)).toBe(true);
+    expect(jsonValuesWithin('"\\\\",[', 2)).toBe(false);
+    expect(jsonValuesWithin(`[${"{},".repeat(MASK_VALUES_MAX)}{}]`, MASK_VALUES_MAX)).toBe(false);
+  });
+
+  test("every forward names its route's cap: the picture's own, the screen read the JSON one", async () => {
+    const { transport, calls } = transportOf(() => ok(peerJson()[1]));
     const [req, url] = get("/api/project-picture/0123456789ab0123456789ab?host=laptop");
     await forward(req, url, { transport });
     const [req2, url2] = get("/api/pane/w1:p1?host=laptop");
     await forward(req2, url2, { transport });
-    expect(calls[0]!.init.inflateMax).toBe(256 * 1024);
-    expect(calls[1]!.init.inflateMax).toBeUndefined();
+    expect(calls[0]!.init.bodyMax).toBe(256 * 1024);
+    expect(calls[1]!.init.bodyMax).toBe(CREW_JSON_MAX);
   });
 });
 

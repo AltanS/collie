@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from "../json.ts";
-import { CREW_INFLATE_MAX, inflatedResponse } from "./bounded-gunzip.ts";
+import { inflatedResponse } from "./bounded-gunzip.ts";
+import { BodyRefused, bodyIdleMs, CREW_JSON_MAX, guardedResponse } from "./guarded-body.ts";
 import { LAUNCH_BUDGET_MS } from "../create-confirm.ts";
 import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import {
@@ -25,7 +26,7 @@ import {
 import { cleanHost } from "./machine-host.ts";
 import { LEAD_LINE_HEADER, LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
-import type { CrewRequestInit, CrewTlsOptions } from "./transport.ts";
+import type { CappedRequestInit, CrewRequestInit, CrewTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
 import { NARROW_VIEW, SESSIONS_ALL, SESSIONS_PARAM, SESSION_PARAM, type SnapshotView } from "../sessions.ts";
 import type { MuxConfig, SessionCard, SessionState } from "../types.ts";
@@ -36,7 +37,7 @@ import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warrant.ts";
 import { CREW_VERSION_FIELD } from "../update-action.ts";
 import { WALKY_ACK_HEADER, WALKY_OUTCOMES_ROUTE } from "../walky/crew.ts";
-import { INPUT_CALL_MS, TRICKS_INPUTS_ROUTE } from "../tricks/inputs.ts";
+import { INPUT_ANSWER_BODY_MAX_BYTES, INPUT_CALL_MS, TRICKS_INPUTS_ROUTE } from "../tricks/inputs.ts";
 
 // The LEAD side of a crew link: the client that dials a peer's `/crew/v1/*` surface.
 //
@@ -828,7 +829,7 @@ export class PeerClient {
       link,
       "launchers-copy",
       undefined,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows }) },
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows }), bodyMax: CREW_JSON_MAX },
       undefined,
       true,
     );
@@ -849,7 +850,7 @@ export class PeerClient {
       link,
       route,
       undefined,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), bodyMax: CREW_JSON_MAX },
       CARRY_CALL_MS,
       true,
     );
@@ -968,7 +969,7 @@ export class PeerClient {
       link,
       WALKY_OUTCOMES_ROUTE,
       undefined,
-      { method: "POST", headers: { "content-type": "application/json" }, body: payload },
+      { method: "POST", headers: { "content-type": "application/json" }, body: payload, bodyMax: CREW_JSON_MAX },
       WRITE_BUDGET_MS,
       false,
     );
@@ -987,7 +988,7 @@ export class PeerClient {
       link,
       TRICKS_INPUTS_ROUTE,
       undefined,
-      { method: "POST", headers: { "content-type": "application/json" }, body: payload },
+      { method: "POST", headers: { "content-type": "application/json" }, body: payload, bodyMax: INPUT_ANSWER_BODY_MAX_BYTES },
       TRICKS_INPUTS_BUDGET_MS,
       false,
     );
@@ -1007,7 +1008,11 @@ export class PeerClient {
     try {
       const value: JsonValue = await outcome.value.json();
       return { ...outcome, value };
-    } catch {
+    } catch (err) {
+      // A body cut off by the lead's own bounds (guarded-body.ts, bounded-gunzip.ts) is a member out of
+      // reach this time, in the same shape as a dial that timed out; an idle cut is this process's own
+      // clock, so §10.4 may re-ask on the patient budget, as it does after a header timeout.
+      if (err instanceof BodyRefused) return this.fail({ state: "unreachable", reason: `${route}: ${err.message}`, timedOut: err.idle });
       // A body that will not parse, from a peer whose version header matched, is a broken peer — not
       // a version problem. §7's rule runs the other way (a version mismatch is never *reported* as a
       // parse error) and is already applied in `raw()`, before a byte of body is read.
@@ -1044,8 +1049,8 @@ export class PeerClient {
   async proxy(
     link: CrewLink,
     route: string,
-    params?: CrewParams,
-    init: CrewRequestInit = {},
+    params: CrewParams | undefined,
+    init: CappedRequestInit,
     budgetMs?: number,
     sign = false,
   ): Promise<PeerOutcome<Response>> {
@@ -1065,7 +1070,9 @@ export class PeerClient {
     budgetMs?: number,
     sign = true,
   ): Promise<PeerOutcome<Response>> {
-    return this.dial(link, route, params, init, "consumed", budgetMs, sign);
+    // A body the lead reads itself is JSON, so it takes the small JSON cap; a caller may only lower it.
+    const bodyMax = Math.min(init.bodyMax ?? CREW_JSON_MAX, CREW_JSON_MAX);
+    return this.dial(link, route, params, { ...init, bodyMax }, "consumed", budgetMs, sign);
   }
 
   /**
@@ -1085,7 +1092,7 @@ export class PeerClient {
     link: CrewLink,
     route: string,
     params: CrewParams | undefined,
-    init: CrewRequestInit,
+    init: CappedRequestInit,
     mode: "consumed" | "passthrough",
     // The one knob a caller may widen, and three callers do: the verdict probe's patient budget
     // (§10.4), §19's fresh preflight, and a forwarded WRITE on WRITE_BUDGET_MS (§10.1's 2026-09-08
@@ -1125,7 +1132,7 @@ export class PeerClient {
     headers.set(MEMBER_HEADER, this.deps.self);
     // A member may answer in gzip and in nothing else (CREW_PROTOCOL.md §9.1). The lead inflates it
     // itself, with a cap (bounded-gunzip.ts), never the runtime. Set for EVERY dial, not negotiable by a
-    // caller: a caller names only the cap (`inflateMax`).
+    // caller: a caller names only the cap (`bodyMax`).
     headers.set("accept-encoding", "gzip");
     // A per-call device (a forwarded phone request, §12) wins over the client-wide one: it is the
     // operator the LEAD authenticated for *this* action, where the client-level source is a process
@@ -1166,7 +1173,7 @@ export class PeerClient {
       // `decompress: false`: Bun's fetch would otherwise inflate a brotli, deflate or gzip body before
       // any reader sees it, with no bound, so a member's 1 KB body could cost the lead gigabytes. A gzip
       // answer is inflated below through a capped decoder; any other encoding is refused unread.
-      const { inflateMax: _cap, ...sent } = init;
+      const { bodyMax: _cap, ...sent } = init;
       const dialInit: CrewRequestInit = { ...sent, headers, signal: controller.signal, decompress: false };
       // Assigned, never conditionally spread: an unpinned link must carry NO `tls` key at all.
       if (tls) dialInit.tls = tls;
@@ -1198,14 +1205,25 @@ export class PeerClient {
     // its output or input passes the cap. Anything else (br, deflate, zstd, a list, an unknown word) is
     // a member this lead cannot read safely, and its body is cancelled unread.
     const encoding = (res.headers.get("content-encoding") ?? "").trim().toLowerCase();
-    if (encoding === "gzip") {
-      res = inflatedResponse(res, init.inflateMax ?? CREW_INFLATE_MAX);
-    } else if (encoding !== "" && encoding !== "identity") {
+    const cap = init.bodyMax;
+    if (encoding !== "" && encoding !== "identity" && encoding !== "gzip") {
       await res.body?.cancel().catch(() => undefined);
       // The member's value stays out of the reason: a header may hold any byte from 0x80 up (a C1 control
       // such as U+009B among them), and this reason reaches the journal and the phone's crew status.
       return this.fail({ state: "unreachable", reason: `${route}: the peer answered in an encoding the lead does not decode` });
     }
+    // A body the member itself says is past the cap is refused unread, before a byte is counted.
+    const declared = Number(res.headers.get("content-length") ?? "");
+    if (res.headers.has("content-length") && Number.isFinite(declared) && declared > cap) {
+      await res.body?.cancel().catch(() => undefined);
+      return this.fail({ state: "unreachable", reason: `${route}: the peer's answer is larger than the lead reads (${String(cap)} bytes)` });
+    }
+    // ── Every body, in every encoding, under the two bounds of guarded-body.ts ──
+    // The budget above ended at the headers. From here the member's bytes are counted against the cap,
+    // and a member that goes silent mid-body is cut off on the idle limit, its socket released by the
+    // same abort the budget uses. A gzip body is inflated on top of that, with its own count of output.
+    res = guardedResponse(res, { idleMs: bodyIdleMs(mode, timeoutMs), max: cap, onStop: () => controller.abort() });
+    if (encoding === "gzip") res = inflatedResponse(res, cap);
 
     // ── Version first, before status and before the body ─────────────────────
     // §7: "The lead applies the same rule to a peer's RESPONSE header: a reply with a version it
