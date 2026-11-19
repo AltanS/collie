@@ -19,7 +19,6 @@ const OVERSIZED = {
   "bridge/crew/router.test.ts": 190 * KB,
   "bridge/journal/pi.test.ts": 140 * KB,
   "bridge/server.test.ts": 340 * KB,
-  "bridge/solo-baseline.test.ts": 110 * KB,
   "bridge/tricks/service.test.ts": 200 * KB,
   "bridge/walky/crew.test.ts": 130 * KB,
   "bridge/walky/deliver.test.ts": 150 * KB,
