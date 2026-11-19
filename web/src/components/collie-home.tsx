@@ -52,7 +52,7 @@ interface CollieHomeProps {
   paper?: string;
   /** How large the drawing is, in px (40, the header's). The 44px box around it does not change. */
   markSize?: number;
-  /** The project picture (ADR 0161), a URL the page made, or null. Shown in the mark's place ONLY
+  /** The project picture (ADR 0160), a URL the page made, or null. Shown in the mark's place ONLY
    *  while the mark is at rest: any live state (loading, a round, busy work, lost, applying, starting,
    *  reconnected) brings the mark back, because a picture cannot say any of them. The host passes one
    *  only in a session view, and never to a docked mark. */
@@ -385,7 +385,7 @@ export function CollieHome({
     reconnected: greets,
     loading: bloom || round || busy,
   });
-  // The picture stands in for the mark only while the mark has nothing to say (ADR 0161).
+  // The picture stands in for the mark only while the mark has nothing to say (ADR 0160).
   const shownPicture = state === "rest" && beads === null && !lost ? picture : null;
   return (
     <button
@@ -423,7 +423,7 @@ export function CollieHome({
       {/* `data-slot` is a HANDLE FOR MEASUREMENT. The agent-start handoff flies a second mark out of
           this one, so it needs this box on screen; it reads the `<svg>` inside for the true size. */}
       <span data-slot="collie-mark" className="relative grid size-11 shrink-0 place-items-center">
-        {/* THE PROJECT PICTURE (ADR 0161). The mark stays mounted under it, faded to nothing, so its
+        {/* THE PROJECT PICTURE (ADR 0160). The mark stays mounted under it, faded to nothing, so its
             handle, its phase and the agent-start handoff keep working, and a live state brings it back
             with a 200ms fade (none under reduced motion). The picture is a layer of the mark's own
             size; two pictures crossfade by `CrossfadeImage`'s rules. The button's name still says

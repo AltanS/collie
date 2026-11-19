@@ -1185,7 +1185,7 @@ describe("the header — the mark when the link comes back", () => {
   });
 });
 
-// THE PROJECT PICTURE IN THE MARK'S PLACE (ADR 0161). A route claims one with `RouteHeader picture`;
+// THE PROJECT PICTURE IN THE MARK'S PLACE (ADR 0160). A route claims one with `RouteHeader picture`;
 // the mark at the top of the window shows it while it rests, and a mark docked in a large screen's
 // sidebar never does.
 describe("the header — a route's project picture", () => {

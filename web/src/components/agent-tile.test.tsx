@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __reloadProjectPictures, __resetProjectPictures, setProjectPictures } from "@/lib/project-picture";
 import { AgentTile } from "./agent-tile";
 
-// THE AGENT TILE (issue 811, ADR 0161): the agent's logo, or the project's picture with the logo in its
+// THE AGENT TILE (issue 811, ADR 0160): the agent's logo, or the project's picture with the logo in its
 // corner, in a box whose size never changes.
 
 const V = "0123456789ab";

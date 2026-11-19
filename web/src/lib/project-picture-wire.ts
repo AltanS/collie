@@ -1,4 +1,4 @@
-// THE PROJECT PICTURE ON THE WIRE (issue 811, ADR 0161). Shared by the bridge and the phone, so the two
+// THE PROJECT PICTURE ON THE WIRE (issue 811, ADR 0160). Shared by the bridge and the phone, so the two
 // can never disagree about the shape of a version or the address of a picture.
 //
 // A pane's view carries `picture`: the version of the picture its project file names, the first 12

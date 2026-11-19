@@ -254,7 +254,7 @@ describe("which routes cross a link", () => {
     expect(forwardPaneId(`blobs/${hash}`)).toBeUndefined();
   });
 
-  test("a project picture crosses the link as a READ, like a blob (ADR 0161)", () => {
+  test("a project picture crosses the link as a READ, like a blob (ADR 0160)", () => {
     const version = "abcdef012345";
     expect(crewRouteFor(`/api/project-picture/${version}`)).toBe(`project-picture/${version}`);
     expect(apiPathFor(`project-picture/${version}`)).toBe(`/api/project-picture/${version}`);

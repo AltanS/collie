@@ -6,7 +6,7 @@ import type { AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // AN AGENT PANE'S TILE: the agent's logo, or the project's picture with the logo in its corner
-// (issue 811, ADR 0161).
+// (issue 811, ADR 0160).
 //
 // The box is the size the caller gives (`size-4` on a row, `size-5` in the sidebar) and never changes,
 // so a picture arriving or leaving moves nothing on the row. With a picture, the agent's own logo sits

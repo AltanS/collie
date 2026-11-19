@@ -335,7 +335,7 @@ async function handlePush(event: PushEvent): Promise<void> {
       machine: decision.machine,
       decision: decision.decision,
     } satisfies NotifData,
-    // The project picture of the pane the push is about (ADR 0161): the page's own PNG copy, out of
+    // The project picture of the pane the push is about (ADR 0160): the page's own PNG copy, out of
     // Cache Storage, or the Collie icon. The badge stays Collie's.
     icon: (await pushPictureFor(self.caches, self.location.origin, MOUNT, { paneId: decision.paneId, host: decision.host })) ?? ICON,
     badge: BADGE,

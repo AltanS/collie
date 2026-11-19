@@ -1,4 +1,4 @@
-// THE PROJECT PICTURE (issue 811, ADR 0161): the `[project] icon` of a session's `collie.toml`
+// THE PROJECT PICTURE (issue 811, ADR 0160): the `[project] icon` of a session's `collie.toml`
 // (bridge/project-file.ts), read off disk, checked, and offered to the phone by version.
 //
 // ── WHAT A PICTURE MAY BE ────────────────────────────────────────────────────────────────────────

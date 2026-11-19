@@ -1,6 +1,6 @@
 // "Project picture": the picture a repository's `collie.toml` names, on a pane row's tile, the sidebar's
 // tile with its status mark, the header mark at rest and while loading, and the Settings switch
-// (issue 811, ADR 0161).
+// (issue 811, ADR 0160).
 //
 // DEV-ONLY, unreachable from the app entry.
 //

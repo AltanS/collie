@@ -1,15 +1,19 @@
 # 0160: A repository's own file changes what Collie shows, and nothing else
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-19
 - **Trail:** Issue 811 (`@mfrep`): "maybe we add a collie.toml or collie config per repo? this could be
   used to set these workspace icons?", and the operator's answers of 2026-11-19: "we need some attributes
   for collie.toml this could be used for other settings down the line that we're not aware of now", and
   "is the schema really necessary? its a toml file". The road this closes is the one the first answer
   opens: a per-repository file that grows to carry commands, launchers, keys or hooks, the way
-  `commands.toml`, `launchers.toml` and `keys.toml` do for the operator.
+  `commands.toml`, `launchers.toml` and `keys.toml` do for the operator. On the picture, the operator:
+  "the icon mark, should only be overridable inside a session view, not the workspace", and "push
+  pictures would be cool". Roads turned down there: an SVG or a GIF, a picture in place of the mark on
+  every screen, and a push icon fetched from the bridge.
   Files: `bridge/project-file.ts`, `bridge/project-picture.ts`, `bridge/config.ts`
-  (`COLLIE_PROJECT_FILES`), `cli/project-file-finding.ts`, `docs/configure.md`
+  (`COLLIE_PROJECT_FILES`), `cli/project-file-finding.ts`, `web/src/lib/project-picture.ts`,
+  `web/src/components/collie-home.tsx`, `web/src/sw.ts`, `docs/configure.md`
 
 ## Context
 
@@ -23,7 +27,8 @@ works in that checkout, which writes files all day. Collie already treats agent 
 the mirror renders text nodes only, a beacon names what Collie shows and never an action. A repository
 file is that class of input with a longer life, and it reaches every session opened in the tree.
 
-The first key is a picture ([ADR 0161](./0161-a-project-picture-replaces-the-agent-logo-in-a-session.md)). The
+The first key is a picture (`[project] icon`): it stands in for the agent logo on a session's tile, with
+the logo small in its corner, and for the resting mark in a session view. The
 operator asked for a file that can take more keys later. A file with room to grow is also a file
 someone will propose to grow into the operator's files.
 
@@ -52,10 +57,30 @@ someone will propose to grow into the operator's files.
 6. **Reading never blocks a poll.** The snapshot answers from memory; the disk is read in the background
    on stamp-keyed clocks with a bounded table and no watcher (the shape of `bridge/git-head.ts`).
 
+## The picture: three roads closed
+
+The picture comes from a file anyone with write access to the repository can change, so it can
+imitate a logo or a warning sign. Three options it closes:
+
+1. **Only a still raster picture: never an SVG, a GIF or an animated PNG or WebP.** PNG, JPEG or WebP,
+   typed by its first bytes, at most 256 KB, each side 64 to 1024 px. A drawing format is markup, and
+   a moving picture can mimic a live state.
+2. **Never the mark's place outside a session view, and never while the mark has something to say.**
+   The dashboard, a Space and the large-screen sidebar keep the Collie mark. In a session the picture
+   shows only while the mark rests: loading, a lost or returning connection, an update and an agent
+   starting bring the mark back.
+3. **A push never fetches the picture.** The operating system decodes a notification's icon outside the
+   browser's sandbox, so the service worker shows only the PNG copy the page drew itself on a canvas, or
+   the Collie icon. The badge stays Collie's.
+
+The wire carries a version (12 hex of the sha256), never a path, and the read route serves only a
+picture the bridge itself resolved.
+
 ## Consequences
 
 - A cloned repository can change a picture on the operator's phone without asking. That is the whole of
-  its reach, and the per-device switch and the operator's switch both turn it off.
+  its reach, and the per-device switch (Settings, Appearance, "Project pictures") and the operator's
+  switch both turn it off. The agent's own logo stays in the tile's corner, drawn by Collie.
 - The rule is tested at the line that would break it: `project-file.test.ts` fails when a table named in
   rule 1 enters the fixed list.
 - A setting that would need more than display (a repository's own launcher, say) is a new ADR that

@@ -6,7 +6,7 @@ import { clearStatus, setStatus } from "@/lib/status";
 import { collieMark, markState } from "@/test/collie-mark";
 import { CollieHome } from "./collie-home";
 
-// THE PROJECT PICTURE IN THE MARK'S PLACE (issue 811, ADR 0161): shown only while the mark is at rest.
+// THE PROJECT PICTURE IN THE MARK'S PLACE (issue 811, ADR 0160): shown only while the mark is at rest.
 // Every live state brings the Collie mark back, because a picture cannot say any of them.
 
 const PICTURE = "data:image/png;base64,AAAA";

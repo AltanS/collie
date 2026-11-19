@@ -124,7 +124,7 @@ export function RootLayout() {
   // A notification whose clear the bridge skipped (its daily budget, bridge/push.ts rule 4) closes here
   // instead, once a live snapshot says nothing waits on it any more.
   useNotificationSweep(data);
-  // Which picture each pane shows (ADR 0161), for the next cold open and for a push's icon.
+  // Which picture each pane shows (ADR 0160), for the next cold open and for a push's icon.
   const agents = data.agents;
   useEffect(() => {
     rememberPanePictures(agents);

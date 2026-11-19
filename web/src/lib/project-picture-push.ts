@@ -1,4 +1,4 @@
-// THE PUSH COPY OF A PROJECT PICTURE (issue 811, ADR 0161), read by the service worker.
+// THE PUSH COPY OF A PROJECT PICTURE (issue 811, ADR 0160), read by the service worker.
 //
 // The page keeps its own PNG of each picture (lib/project-picture.ts), drawn on a canvas from the bytes
 // it fetched, and a map from a pane to the picture's version, both in one Cache per mount. A push names

@@ -424,7 +424,7 @@ export function AgentChat({
   // pane that has been running Claude for an hour announces nothing, because this mount never
   // watched it turn over (hooks/use-agent-start.ts).
   const agentStart = useAgentStart(paneId, agent?.agent, isShell);
-  // The project picture (ADR 0161): the header mark shows it while the mark rests, in this view only. A
+  // The project picture (ADR 0160): the header mark shows it while the mark rests, in this view only. A
   // shell pane has no agent logo to replace, so it has no picture.
   const headerPicture = useProjectPicture(agent === undefined || isShell ? null : agent);
   // LINE 1 IS THE NAME, LINE 2 IS THE PLACE — the one rule every other surface follows
@@ -2426,7 +2426,7 @@ export function AgentChat({
           width="wide"
           // The mark says an agent is starting, and the title says so too (`condition` below).
           starting={startup.starting}
-          // The project picture takes the mark's place while it rests (ADR 0161); the shell decides when.
+          // The project picture takes the mark's place while it rests (ADR 0160); the shell decides when.
           picture={headerPicture}
           // Zen takes the whole row off the screen — the one shell owns the <header> element, so
           // only the shell can stop drawing it, and this is how a route asks. See HeaderClaim.hidden

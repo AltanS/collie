@@ -20,7 +20,7 @@ import {
 } from "./project-picture";
 import { paneMapKey, projectPictureCacheName, pushCopyKey } from "./project-picture-push";
 
-// THE PROJECT PICTURE STORE (issue 811, ADR 0161). The browser's decoder and canvas are the module's
+// THE PROJECT PICTURE STORE (issue 811, ADR 0160). The browser's decoder and canvas are the module's
 // own seam, so these cases run on fake bytes and a fake canvas; Cache Storage is an in-memory fake.
 
 const SWITCH_KEY = "collie:project-pictures:v1";

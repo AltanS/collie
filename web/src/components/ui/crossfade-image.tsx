@@ -4,7 +4,7 @@ import { usePrefersReducedMotion } from "@/components/ui/collapse";
 import { CROSSFADE_MS, CROSSFADE_QUIET_MS } from "@/components/ui/crossfade-text";
 import { cn } from "@/lib/utils";
 
-// A PICTURE THAT CHANGES, FADED INSTEAD OF SWAPPED (issue 811, ADR 0161).
+// A PICTURE THAT CHANGES, FADED INSTEAD OF SWAPPED (issue 811, ADR 0160).
 //
 // `CrossfadeText`'s rule for a picture: a box of a fixed size shows `src` (a URL), or `fallback` when
 // `src` is null, and when the SAME thing (`identity`) changes what it shows, the old layer fades out and

@@ -60,7 +60,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:slot:v1:", { area: "local", prefix: true, fate: "wiped", why: "the last pane address and workspace name of each browser tile" }],
   // Written first by the wipe and removed last; present only while a wipe is unfinished (lib/wipe.ts).
   ["collie:wipe-pending", { area: "local", prefix: false, fate: "wiped", why: "a wipe's resume mark" }],
-  // The project pictures (lib/project-picture.ts, ADR 0161): the page's own small copies, and which pane shows which.
+  // The project pictures (lib/project-picture.ts, ADR 0160): the page's own small copies, and which pane shows which.
   ["collie:project-picture-copies:v1", { area: "local", prefix: false, fate: "wiped", why: "small copies of pictures this pairing's repositories named" }],
   ["collie:project-picture-panes:v1", { area: "local", prefix: false, fate: "wiped", why: "which picture version each pane of this pairing shows" }],
   // ── Kept: how this phone likes to look and behave, never what a session said ──
@@ -84,7 +84,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:trouble-signalled:v1", { area: "local", prefix: false, fate: "wiped", why: "which trouble cards already signalled today: kind, crew host, pane id and day, no content (lib/report/once.ts)" }],
   ["collie:wide-layout:v1", { area: "local", prefix: false, fate: "kept", why: "large-screen columns per space: pane addresses and widths, no content (ADR 0120)" }],
   ["collie:wide-sidebar:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
-  ["collie:project-pictures:v1", { area: "local", prefix: false, fate: "kept", why: "preference: project pictures on or off on this device (ADR 0161)" }],
+  ["collie:project-pictures:v1", { area: "local", prefix: false, fate: "kept", why: "preference: project pictures on or off on this device (ADR 0160)" }],
   ["collie:enter-sends:v1", { area: "local", prefix: false, fate: "kept", why: "preference: whether Enter from a physical keyboard sends (ADR 0157)" }],
   ["collie:wide-layout-mode:v1", { area: "local", prefix: false, fate: "kept", why: "preference: Auto or Off for the large-screen layout (ADR 0120)" }],
   ["collie:pin-hint:v1", { area: "local", prefix: false, fate: "kept", why: "a dismissed hint" }],

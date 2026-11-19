@@ -435,7 +435,7 @@ const PANE_WIRE_KEYS = {
   // added 2026-11-13). Present only when the harness wrote one, and this harness builds its engine with no
   // title tracker, so no golden byte moved.
   agentTitle: true,
-  // Not a crew dimension: the project picture's version (ADR 0161). Present only when a pane folder's
+  // Not a crew dimension: the project picture's version (ADR 0160). Present only when a pane folder's
   // `collie.toml` names a picture, and this harness builds its body with no picture cache, so no golden
   // byte moved.
   picture: true,

@@ -7,7 +7,7 @@ import { isPictureVersion, projectPicturePath } from "@/lib/project-picture-wire
 import { onWipe } from "@/lib/wipe";
 import type { AgentView } from "@/lib/types";
 
-// THE PROJECT PICTURE ON THE PHONE (issue 811, ADR 0161).
+// THE PROJECT PICTURE ON THE PHONE (issue 811, ADR 0160).
 //
 // A pane's view carries `picture`, the version of the picture its repository's `collie.toml` names. This
 // module turns a version into something the page can draw at once, and keeps what the service worker

@@ -249,7 +249,7 @@ export interface AgentView {
    */
   gitHead?: GitHead;
   /**
-   * The version of this pane's project picture (ADR 0161). Mirrors `PaneWire.picture` in
+   * The version of this pane's project picture (ADR 0160). Mirrors `PaneWire.picture` in
    * bridge/types.ts. **Absent, never a placeholder**: no picture, an older bridge and an older crew
    * member all send no key, and the phone draws the agent's logo as before. Read it through
    * `panePicture` (lib/project-picture.ts), which drops a malformed one from a peer.

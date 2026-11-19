@@ -6,7 +6,7 @@ import { t } from "@/lib/i18n";
 import { setProjectPictures, useProjectPicturesOn } from "@/lib/project-picture";
 
 /**
- * Whether this device shows project pictures (ADR 0161, lib/project-picture.ts): the picture a
+ * Whether this device shows project pictures (ADR 0160, lib/project-picture.ts): the picture a
  * repository's `collie.toml` names, in place of the agent logo and of the resting mark in a session. On
  * until the person turns it off. Off shows the agent logo and the Collie mark everywhere, puts no picture
  * on a push, and drops the copies the device kept. Per device, and never written to a bridge.

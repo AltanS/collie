@@ -161,7 +161,7 @@ const AGENT_VIEW_KEYS = {
   // Not a crew dimension: what the checkout holding the pane's folder is on, read off the disk of
   // the machine the pane lives on. An older bridge or peer omits it.
   gitHead: true,
-  // Not a crew dimension: the project picture's version (ADR 0161), read off the disk of the machine the
+  // Not a crew dimension: the project picture's version (ADR 0160), read off the disk of the machine the
   // pane lives on. An older bridge or peer omits it.
   picture: true,
   // Not crew dimensions: a durable program's open asks and newest turn (ADR 0100, ADR 0101), present

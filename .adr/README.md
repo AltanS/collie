@@ -104,7 +104,7 @@ The rule today: Collie manages one front door, `tailscale serve`, and every othe
 | [0087](./0087-the-on-device-store-is-one-thing.md) | The phone keeps session content in one IndexedDB store, with caps and one wipe at unpair. | Accepted |
 | [0129](./0129-an-anonymous-install-count-on-by-default.md) | One anonymous install ping a day, on by default, with four ways to turn it off. | Accepted, amended in scope by 0134 |
 | [0134](./0134-the-trouble-tally-names-the-dialog-by-a-hash-of-its-key-hint-row.md) | The trouble tally may carry a hash of the dialog's key-hint row. | Accepted |
-| [0160](./0160-a-repository-file-changes-what-collie-shows-and-nothing-else.md) | A repository's own `collie.toml` changes what Collie shows and nothing else; the operator's switch turns it off. | Proposed |
+| [0160](./0160-a-repository-file-changes-what-collie-shows-and-nothing-else.md) | A repository's own `collie.toml` changes what Collie shows and nothing else; its picture is a still raster, takes the mark's place only at rest in a session, and a push shows only the page's own copy. | Accepted |
 | [0034](./0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md) | Collie collects nothing, and opt-in is the ceiling. | Superseded by 0129 |
 
 ### Pairing and devices
@@ -261,7 +261,6 @@ The rule today: [0148](./0148-a-theme-names-words-never-drawings-and-the-device-
 | # | Decision | Status |
 | --- | --- | --- |
 | [0148](./0148-a-theme-names-words-never-drawings-and-the-device-choice-wins.md) | A theme names words, never drawings, and the device's own choice wins: the look rule of today. | Accepted |
-| [0161](./0161-a-project-picture-replaces-the-agent-logo-in-a-session.md) | A project picture replaces the agent logo with the logo in its corner, and the mark only at rest in a session; a still raster picture, faded, per device. | Proposed |
 | [0002](./0002-invert-the-light-terminal-mirror.md) | The light terminal mirror is inverted by CSS, not re-themed with a light palette. | Accepted, amended in scope by 0047 |
 | [0033](./0033-the-app-face-is-a-device-preference.md) | The app's typeface is a per-device preference, and an operator's fonts add to the list. | Superseded by 0148 |
 | [0047](./0047-muse-panes-render-natively.md) | Muse panes render natively in light, with no inversion filter. | Accepted |

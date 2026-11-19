@@ -4,7 +4,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { CrossfadeImage } from "./crossfade-image";
 import { CROSSFADE_MS, CROSSFADE_QUIET_MS } from "./crossfade-text";
 
-// The picture fade (issue 811, ADR 0161): `CrossfadeText`'s rules for a fixed box that shows a picture or
+// The picture fade (issue 811, ADR 0160): `CrossfadeText`'s rules for a fixed box that shows a picture or
 // a fallback. jsdom has no animation clock, so these read the layers the primitive draws.
 
 function preferReducedMotion(reduce: boolean) {

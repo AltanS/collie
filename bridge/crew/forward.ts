@@ -192,7 +192,7 @@ const FORWARDABLE: readonly RegExp[] = [
   // `history` (CREW_PROTOCOL.md §9.1). The hash is matched as an opaque segment, mirroring
   // `BLOB_ROUTE` in bridge/server.ts one-for-one — `forward.test.ts` pins that correspondence.
   /^blobs\/[^/]+$/,
-  // A project picture (ADR 0161) is bytes on ONE machine's disk, named by a `collie.toml` there, so a
+  // A project picture (ADR 0160) is bytes on ONE machine's disk, named by a `collie.toml` there, so a
   // `?host=` read is proxied byte for byte like a blob. Mirrors `PROJECT_PICTURE_ROUTE` in
   // bridge/server.ts one-for-one. Additive-optional (§7.1): a member that predates it answers 404, and
   // an older member sends no `picture` on its panes at all, so the phone never asks it.

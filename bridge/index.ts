@@ -1017,7 +1017,7 @@ const accounts = new Accounts({
 // session's poll feeds it its folders, and the server reads it from memory at serialise time.
 const gitHeads = new GitHeads();
 
-// Each pane folder's project picture (bridge/project-picture.ts, ADR 0161): one for the whole bridge,
+// Each pane folder's project picture (bridge/project-picture.ts, ADR 0160): one for the whole bridge,
 // fed by the same poll as the branches and read from memory at serialise time. The operator's
 // `COLLIE_PROJECT_FILES=0` turns every repository's `collie.toml` off.
 const projectPictures = new ProjectPictures(cfg.projectFiles, deniedFoldersSync(filesPrivateFolders(cfg)));

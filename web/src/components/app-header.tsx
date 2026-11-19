@@ -79,7 +79,7 @@ interface HeaderClaim {
   /** An agent is starting on this screen: the mark turns with most of its beads in the info colour
    *  (`CollieHome`'s `starting`). A claim, not a prop on the mark, because the shell owns the mark. */
   starting: boolean;
-  /** The project picture the mark shows while it rests, as a URL the page made, or null (ADR 0161).
+  /** The project picture the mark shows while it rests, as a URL the page made, or null (ADR 0160).
    *  Only the session view claims one, and only the mark at the top of the window shows it: a docked
    *  mark (the large-screen sidebar's logo row) always keeps the Collie mark. */
   picture: string | null;
@@ -636,7 +636,7 @@ interface RouteHeaderProps {
   /** An agent is starting on this screen (the bridge has not read its first screen yet). The mark
    *  turns at the loading pace with three beads in four in the info colour. See `HeaderClaim.starting`. */
   starting?: boolean;
-  /** The project picture the mark shows while it rests (ADR 0161). Only the session view passes one.
+  /** The project picture the mark shows while it rests (ADR 0160). Only the session view passes one.
    *  See `HeaderClaim.picture`. */
   picture?: string | null;
 }

@@ -7,7 +7,7 @@ import { fixtureSnapshot } from "@/test/handlers";
 import { installApiStub } from "./fixtures/api";
 import { keepPhoneLayout } from "./fixtures/layout";
 
-// THE PROJECT PICTURE IN AN ENGINE (issue 811, ADR 0161). jsdom cannot decode a picture, draw a canvas or
+// THE PROJECT PICTURE IN AN ENGINE (issue 811, ADR 0160). jsdom cannot decode a picture, draw a canvas or
 // lay out a row, so four claims are read here: the page decodes the bridge's bytes into its own copy and
 // draws it in the session's row and, in a session view, in the header mark; the dashboard's mark stays
 // the Collie mark; a live state of the mark brings the Collie mark back; and a row with a picture sits

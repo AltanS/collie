@@ -603,7 +603,7 @@ const STT_MODEL_ROUTE = /^\/api\/stt\/model\/([^/]+)$/;
 const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
 
 /**
- * `GET /api/project-picture/<version>` (ADR 0161): the picture a pane's `collie.toml` names, by the
+ * `GET /api/project-picture/<version>` (ADR 0160): the picture a pane's `collie.toml` names, by the
  * version the snapshot carried. The segment is matched opaque here and checked in the handler; the
  * bridge serves only a picture it resolved itself, never a path the client names. Session-scoped like
  * a blob, so a `?host=` read reaches the member whose disk holds the picture. `bridge/crew/forward.ts`
@@ -1514,7 +1514,7 @@ export function startServer(opts: {
    */
   gitHeads?: GitHeadSurface;
   /**
-   * Each pane folder's project picture (bridge/project-picture.ts, ADR 0161), read at serialise time
+   * Each pane folder's project picture (bridge/project-picture.ts, ADR 0160), read at serialise time
    * like `gitHeads`, and the source the picture route reads. Absent means no pane carries `picture` and
    * the route answers 404, which is every test that builds this server by hand.
    */
@@ -2010,7 +2010,7 @@ export function startServer(opts: {
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
       const gitHead = gitHeads?.get(p.cwd);
       const withHead = gitHead === undefined ? withAccount : { ...withAccount, gitHead };
-      // The project picture's version rides the same way (ADR 0161): from memory, no key when there is none.
+      // The project picture's version rides the same way (ADR 0160): from memory, no key when there is none.
       const picture = projectPictures?.get(p.cwd);
       return picture === undefined ? withHead : { ...withHead, picture };
     };
@@ -2429,7 +2429,7 @@ export function startServer(opts: {
       return blobRoute(hash, cfg.journalRoots.pi);
     }
 
-    // ── The project picture (ADR 0161): a picture a pane's `collie.toml` names, by version ──
+    // ── The project picture (ADR 0160): a picture a pane's `collie.toml` names, by version ──
     //
     // A READ, gated like a blob: the phone fetches it with the pairing token and keeps its own copy by
     // version. Forwarded with `?host=` to the member whose disk holds it; the lead states the cache rule
@@ -10788,7 +10788,7 @@ export const HILL_MEDIA_HEADERS = {
 export const HILL_MEDIA_MISSING = "no such image";
 
 /**
- * The bytes of one project picture by version (ADR 0161), with the hill image's headers. Every miss is
+ * The bytes of one project picture by version (ADR 0160), with the hill image's headers. Every miss is
  * the same 404: an off switch, a malformed version, a version this bridge does not hold, a picture
  * whose bytes changed since. Exported for the route test.
  */

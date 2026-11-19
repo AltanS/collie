@@ -19,7 +19,7 @@ const shell: AgentView = { ...agent, paneId: "w1:p2", kind: "shell", agent: "she
 describe("PaneGlyph", () => {
   it("draws the glyph alone, with no status mark, when it is given no surface", () => {
     const { container } = render(<PaneGlyph pane={agent} className="size-5" />);
-    // An agent's glyph is its tile (components/agent-tile.tsx, ADR 0161): the logo, or the project picture
+    // An agent's glyph is its tile (components/agent-tile.tsx, ADR 0160): the logo, or the project picture
     // with the logo in its corner, in a box of the size given.
     const tile = container.firstElementChild;
     expect(tile?.getAttribute("data-slot")).toBe("agent-tile");

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { paneKey, paneMapKey, projectPictureCacheName, pushCopyKey, pushPictureFor, type PictureCaches } from "./project-picture-push";
 
-// THE PUSH COPY, as the service worker reads it (issue 811, ADR 0161). The worker never fetches.
+// THE PUSH COPY, as the service worker reads it (issue 811, ADR 0160). The worker never fetches.
 
 const ORIGIN = "https://box.example";
 const MOUNT = "/";
