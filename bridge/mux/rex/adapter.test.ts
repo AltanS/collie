@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { RexMux } from "./adapter.ts";
+import type { MuxGridRequest } from "../types.ts";
 import type { RexExec, RexRunResult, RexStreamClient, RexStreamHandlers } from "./exec.ts";
 import { FakeRex } from "./fixture.ts";
 
@@ -71,5 +72,47 @@ describe("a name that starts with a dash is a name, never a rex option", () => {
     expect(rex.calls.filter((argv) => argv[0] === "focus").every((argv) => positional(argv, pane.paneId))).toBe(true);
     expect(rex.calls.filter((argv) => argv[0] === "block" && argv[1] === "close").every((argv) => positional(argv, pane.paneId))).toBe(true);
     expect(rex.calls.filter((argv) => argv[0] === "window" && argv[1] === "close").every((argv) => positional(argv, other.tabId))).toBe(true);
+  });
+});
+
+describe("an id rex did not hand out is gone before any rex call", () => {
+  // Rex reads a target as a full id, then a label, then a one-based position, then an id suffix, so
+  // `shell` or `1` would name whichever block carries that label or sits in that place.
+  const VIEWPORT: MuxGridRequest = { scope: "viewport", lines: 50, styling: "preserve" };
+  const paneIds = ["shell", "1", "bdbcf4", "window:01a1f140-f804-7d10-b29f-000000000101", "block:not-a-uuid"];
+
+  test.each(paneIds)("a pane id %p", async (id) => {
+    const { adapter, rex } = world();
+    const answers = [
+      await adapter.readGrid(id, VIEWPORT),
+      await adapter.readLogicalText(id, 50),
+      await adapter.typeText(id, "hi"),
+      await adapter.writeKeys(id, ["Enter"]),
+      await adapter.closePane(id),
+      await adapter.setFocus(id),
+    ];
+    for (const answer of answers) expect(answer).toMatchObject({ ok: false, reason: "gone" });
+    expect(rex.calls).toEqual([]);
+  });
+
+  test.each(["1", "work", "block:01a1f140-f804-7d10-b29f-000000000101"])("a tab id %p", async (id) => {
+    const { adapter, rex } = world();
+    expect(await adapter.renameTab(id, "new name")).toMatchObject({ ok: false, reason: "gone" });
+    expect(await adapter.closeTab(id)).toMatchObject({ ok: false, reason: "gone" });
+    expect(rex.calls).toEqual([]);
+  });
+
+  test.each(["1", "work"])("a space id %p for a new tab", async (id) => {
+    const { adapter, rex } = world();
+    expect(await adapter.createTab({ spaceId: id })).toMatchObject({ ok: false, reason: "gone" });
+    expect(rex.calls).toEqual([]);
+  });
+
+  test("an id rex handed out still reaches rex", async () => {
+    const { adapter, rex } = world();
+    const pane = (await adapter.snapshot()).panes[0]!;
+    const before = rex.calls.length;
+    expect((await adapter.readGrid(pane.paneId, VIEWPORT)).ok).toBe(true);
+    expect(rex.calls.length).toBeGreaterThan(before);
   });
 });

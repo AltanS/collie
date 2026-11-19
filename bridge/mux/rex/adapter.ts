@@ -243,6 +243,7 @@ export class RexMux implements MuxAdapter {
   }
 
   async readGrid(paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> {
+    if (!isRexId("block", paneId)) return notRexId("block", paneId);
     // Rex's capture is always screen AND scrollback (its help: "Print the screen and scrollback"),
     // so a viewport read keeps the last screenful, sized by the terminal's own rows.
     const [captured, sized] = await Promise.all([
@@ -269,6 +270,7 @@ export class RexMux implements MuxAdapter {
 
   /** The same rows with soft wraps joined: `--unwrap`, probed, joins lines the terminal wrapped. */
   async readLogicalText(paneId: string, lines: number): Promise<MuxOutcome<string>> {
+    if (!isRexId("block", paneId)) return notRexId("block", paneId);
     const result = await this.attemptRun(["capture", "-b", paneId, "--format=vt", "--unwrap"]);
     if (!result.ok) return result;
     const captured = keepSgrOnly(result.value.stdout).replace(/\n$/u, "").split("\n");
@@ -281,6 +283,7 @@ export class RexMux implements MuxAdapter {
    * pane with nothing to read the input answers `gone` as the contract says.
    */
   private async ensureAlive(paneId: string): Promise<MuxAck> {
+    if (!isRexId("block", paneId)) return notRexId("block", paneId);
     const res = await this.attemptRun(["block", "call", "-b", paneId, "process"]);
     if (!res.ok) return res;
     try {
@@ -334,6 +337,7 @@ export class RexMux implements MuxAdapter {
   // Every positional that names something goes after `--`: an id from the phone's URL or a label it
   // typed is a name, never an option (`rex block close -h` prints help and exits 0).
   async closePane(paneId: string): Promise<MuxAck> {
+    if (!isRexId("block", paneId)) return notRexId("block", paneId);
     const res = await this.attemptRun(["block", "close", "--", paneId]);
     if (!res.ok) return res;
     return muxAck();
@@ -341,12 +345,14 @@ export class RexMux implements MuxAdapter {
 
   /** `rex focus <block>`: probed, it makes the block's window active and focuses the block. */
   async setFocus(paneId: string): Promise<MuxAck> {
+    if (!isRexId("block", paneId)) return notRexId("block", paneId);
     const res = await this.attemptRun(["focus", "--", paneId]);
     if (!res.ok) return res;
     return muxAck();
   }
 
   async createTab(request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+    if (request.spaceId && !isRexId("session", request.spaceId)) return notRexId("session", request.spaceId);
     const looked = await this.attemptSnapshot();
     if (!looked.ok) return looked;
     const space = request.spaceId
@@ -370,6 +376,7 @@ export class RexMux implements MuxAdapter {
   }
 
   async renameTab(tabId: string, label: string): Promise<MuxAck> {
+    if (!isRexId("window", tabId)) return notRexId("window", tabId);
     const looked = await this.attemptSnapshot();
     if (!looked.ok) return looked;
     const tab = looked.value.tabs.find((t) => t.tabId === tabId);
@@ -380,6 +387,7 @@ export class RexMux implements MuxAdapter {
   }
 
   async closeTab(tabId: string): Promise<MuxAck> {
+    if (!isRexId("window", tabId)) return notRexId("window", tabId);
     const looked = await this.attemptSnapshot();
     if (!looked.ok) return looked;
     const tab = looked.value.tabs.find((t) => t.tabId === tabId);
@@ -632,6 +640,22 @@ function buildSnapshot(readings: readonly SessionReading[]): MuxSnapshot {
   });
 
   return { panes, spaces, tabs };
+}
+
+/**
+ * Only an id Rex itself handed out reaches `rex`. Rex reads a target as a full id, then a label, then
+ * a one-based position, then an id suffix (probed on API revision 19), so `shell` or `1` from a
+ * phone's URL would name whichever block happens to carry that label or sit in that place. Every
+ * id Rex prints is `<kind>:<uuid>`, and anything else is no pane, tab or space Collie listed.
+ */
+const ISSUED_REX_ID = /^(?:block|window|session):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+
+function isRexId(kind: "block" | "window" | "session", id: string): boolean {
+  return id.startsWith(`${kind}:`) && ISSUED_REX_ID.test(id);
+}
+
+function notRexId(kind: "block" | "window" | "session", id: string): MuxRefusalOutcome {
+  return muxGone(`no rex ${kind} has the id ${id}`);
 }
 
 /**
