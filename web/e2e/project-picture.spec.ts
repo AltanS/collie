@@ -15,7 +15,7 @@ import { keepPhoneLayout } from "./fixtures/layout";
 
 test.use({ serviceWorkers: "block" });
 
-const VERSION = "abcdef012345";
+const VERSION = "abcdef012345abcdef012345";
 
 test.beforeEach(async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "app-phone", "a phone-width layout claim; the tablet adds nothing");

@@ -7,7 +7,7 @@ import { decidePush, notificationPath, type NotifData, type PushPayload } from "
 import { askInApp, openNotificationTarget, type OpenOutcome, type OpenTargetClient } from "./lib/notification-open";
 import { recordSlots, showBadge, slotUpdates } from "./lib/app-badge";
 import { readPushTitles } from "./lib/push-title-store";
-import { pushPictureFor } from "./lib/project-picture-push";
+import { notificationsShowImage, pushPictureFor } from "./lib/project-picture-push";
 import { FONT_URLS, navigationNetworkOnlyUnder } from "./lib/sw-routes";
 import { stripMount, sttCacheName, sttCopyToStore, sttStorable, sttSweepKeeps } from "./lib/stt-cache";
 
@@ -323,9 +323,13 @@ async function handlePush(event: PushEvent): Promise<void> {
     }
     return;
   }
-  // `renotify` isn't in this TS lib's NotificationOptions yet, though it's honoured by browsers that
-  // support it (and it needs a tag).
-  const options: NotificationOptions & { renotify?: boolean } = {
+  // The project picture of the pane the push is about (ADR 0160) goes ONLY in the picture slot, `image`,
+  // where the system has one: the page's own banner copy out of Cache Storage, never a fetch. The icon
+  // and the badge are always Collie's.
+  const image = notificationsShowImage(globalThis.Notification) ? await pushPictureFor(self.caches, self.location.origin, MOUNT, { paneId: decision.paneId, host: decision.host }) : null;
+  // `renotify` and `image` aren't in this TS lib's NotificationOptions yet, though browsers that support
+  // them honour them (`renotify` needs a tag).
+  const options: NotificationOptions & { renotify?: boolean; image?: string } = {
     body: decision.body,
     data: {
       paneId: decision.paneId,
@@ -335,13 +339,12 @@ async function handlePush(event: PushEvent): Promise<void> {
       machine: decision.machine,
       decision: decision.decision,
     } satisfies NotifData,
-    // The project picture of the pane the push is about (ADR 0160): the page's own PNG copy, out of
-    // Cache Storage, or the Collie icon. The badge stays Collie's.
-    icon: (await pushPictureFor(self.caches, self.location.origin, MOUNT, { paneId: decision.paneId, host: decision.host })) ?? ICON,
+    icon: ICON,
     badge: BADGE,
     tag: decision.tag,
     renotify: decision.renotify,
   };
+  if (image !== null) options.image = image;
   await self.registration.showNotification(decision.title, options);
 }
 

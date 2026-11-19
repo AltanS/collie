@@ -939,7 +939,11 @@ The picture replaces the logo on the session's row, on the dashboard and in the 
 small agent logo in its corner so you still see which agent runs there. In a session view it also
 takes the place of the Collie mark in the header, but only while the mark is at rest: loading, a
 lost connection, an update or an agent starting bring the Collie mark back. The dashboard and every
-other screen keep the mark. A push about that session shows the picture too.
+other screen keep the mark.
+
+A push about that session keeps the Collie icon and shows the picture as a wide image when you
+expand the notification. Chrome on Android shows it. Safari and Firefox have no slot for it, so
+there the push stays as it was.
 
 > **Note.** The file can change what Collie shows and nothing else. It never adds a command, a
 > launcher, a key or a hook, and a table with such a name is ignored

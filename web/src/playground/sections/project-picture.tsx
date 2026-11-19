@@ -28,7 +28,7 @@ export const DEF: SectionDef = {
     "The picture a repository's collie.toml names, in place of the agent logo on a tile and of the resting mark in a session. The agent's logo stays in the tile's corner. Any live state brings the Collie mark back.",
 };
 
-const VERSION = "0123456789ab";
+const VERSION = "0123456789ab0123456789ab";
 const PICTURE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAA9ElEQVR42u3a0Q3CMAwE0NuERdipv8zApP1FYoB+I0FoHDt2rid5gHttpDa2cdseSxcEEEAAAT5rf94bVRTQDh2KQUp0RwYSo7swkB59kIE66W0GlEpvMKBa+l4DItK/X/vXijDAMf2v3GaJD8A3ei9jFBAUvYsRCBhPf8ZgB8xJP2gwAnzT/zVYAJPTmw2kgJT0NsPFANHp24bLABLPj+EUodrj730JAggggAACzAIs8yHTv1BhgO4DswC6ExcALN9WYWhsLd9aZGjuLt9eZxhwMIyYGIZ8DGNWhkE3w6oBw7IHyboNycITycqZthYFEEAAax2rMU2LMl6+SgAAAABJRU5ErkJggg==";
 
 const COPIES_KEY = "collie:project-picture-copies:v1";
@@ -50,7 +50,7 @@ function useSeededPictures(): boolean {
   useEffect(() => {
     const kept = { copies: localStorage.getItem(COPIES_KEY), on: localStorage.getItem(SWITCH_KEY) };
     localStorage.removeItem(SWITCH_KEY);
-    localStorage.setItem(COPIES_KEY, JSON.stringify({ [VERSION]: PICTURE }));
+    localStorage.setItem(COPIES_KEY, JSON.stringify({ ["\u0000" + VERSION]: PICTURE }));
     __reloadProjectPictures();
     setReady(true);
     return () => {

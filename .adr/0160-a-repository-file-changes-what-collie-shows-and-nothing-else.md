@@ -69,18 +69,24 @@ imitate a logo or a warning sign. Three options it closes:
    The dashboard, a Space and the large-screen sidebar keep the Collie mark. In a session the picture
    shows only while the mark rests: loading, a lost or returning connection, an update and an agent
    starting bring the mark back.
-3. **A push never fetches the picture.** The operating system decodes a notification's icon outside the
-   browser's sandbox, so the service worker shows only the PNG copy the page drew itself on a canvas, or
-   the Collie icon. The badge stays Collie's.
+3. **A push never fetches the picture, and its icon is never a repository's picture.** The icon and the
+   badge are always Collie's. The picture goes only in the notification's own picture slot, where the
+   system has one, with nothing drawn on top. The operating system decodes it outside the browser's
+   sandbox, so the service worker hands it only the PNG copy the page drew itself on a canvas, for that
+   pane's machine and version (the owner, 2026-11-19).
 
-The wire carries a version (12 hex of the sha256), never a path, and the read route serves only a
-picture the bridge itself resolved.
+The wire carries a version (24 hex of the sha256), never a path, and the read route serves only a
+picture the bridge itself resolved. A lead checks a crew member's picture again before the phone sees
+it, and the phone reads the header before it decodes.
 
 ## Consequences
 
 - A cloned repository can change a picture on the operator's phone without asking. That is the whole of
   its reach, and the per-device switch (Settings, Appearance, "Project pictures") and the operator's
   switch both turn it off. The agent's own logo stays in the tile's corner, drawn by Collie.
+- What remains of a stale picture: the push map is keyed by machine and pane id, because a push names
+  no session. A reused pane id can show the old pane's picture in a push until the phone's next poll
+  rewrites the map.
 - The rule is tested at the line that would break it: `project-file.test.ts` fails when a table named in
   rule 1 enters the fixed list.
 - A setting that would need more than display (a repository's own launcher, say) is a new ADR that

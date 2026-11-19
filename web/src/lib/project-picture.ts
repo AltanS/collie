@@ -2,8 +2,8 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { fetchAuthedBytes } from "@/lib/api";
 import { basePath } from "@/lib/base-path";
-import { paneKey, paneMapKey, projectPictureCacheName, pushCopyKey } from "@/lib/project-picture-push";
-import { isPictureVersion, projectPicturePath } from "@/lib/project-picture-wire";
+import { BANNER_HEIGHT, BANNER_WIDTH, bannerCopyKey, paneKey, paneMapKey, projectPictureCacheName } from "@/lib/project-picture-push";
+import { isPictureVersion, pictureHeaderFits, PROJECT_PICTURE_BYTES_MAX, projectPicturePath } from "@/lib/project-picture-wire";
 import { onWipe } from "@/lib/wipe";
 import type { AgentView } from "@/lib/types";
 
@@ -13,31 +13,40 @@ import type { AgentView } from "@/lib/types";
 // module turns a version into something the page can draw at once, and keeps what the service worker
 // needs to put the same picture on a push.
 //
-// THE PAGE NEVER DRAWS THE REPOSITORY'S BYTES TWICE. The bytes are fetched once per version with the
-// pairing token, decoded by the browser into a bitmap, and drawn onto a canvas. What is kept, and what
-// every surface shows, is the page's own PNG made from that canvas:
+// EVERYTHING IS KEYED BY MACHINE AND VERSION. A version is a hash of the bytes, but the bytes come from
+// one machine's disk, so one machine can never supply, or block, the picture of another machine's pane.
 //
-//   - a small copy ({@link SMALL_PX} px), a `data:` URL in localStorage, so a cold open draws the picture
-//     in the first frame instead of the agent logo or the dog (bounded to {@link COPIES_MAX} versions);
-//   - a push copy ({@link PUSH_PX} px), a PNG in Cache Storage, which the service worker hands to the
-//     notification. The operating system decodes a notification's icon outside the browser's sandbox, so
-//     it gets this re-encoded copy and never the repository's bytes (sw.ts).
+// THE PAGE NEVER DRAWS THE REPOSITORY'S BYTES TWICE. The bytes are fetched once per machine and version
+// with the pairing token, checked on their header before any decode ({@link pictureHeaderFits}: the size
+// cap, PNG, JPEG or WebP, each side in range), decoded by the browser into a bitmap, and drawn onto a
+// canvas. What is kept, and what every surface shows, is the page's own PNG made from that canvas:
 //
-// Beside them, a small map from a pane (machine and pane id) to its version, in localStorage for the
-// page's first frame and in Cache Storage for the service worker, which has no localStorage. A push names
-// its pane, never a folder or a version.
+//   - a small copy ({@link SMALL_PX} px square), a `data:` URL in localStorage, so a cold open draws the
+//     picture in the first frame instead of the agent logo or the dog (bounded to {@link COPIES_MAX});
+//   - a banner copy (2:1, lib/project-picture-push.ts), a PNG in Cache Storage, which the service worker
+//     puts in a notification's picture slot. The operating system decodes it outside the browser's
+//     sandbox, so it gets this re-encoded copy and never the repository's bytes (sw.ts). The
+//     notification's icon is always Collie's.
+//
+// Beside them, a small map from a pane (machine and pane id) to its version, rewritten from each snapshot
+// (a pane that left the herd or changed its picture loses its old entry), in localStorage for the page's
+// first frame and in Cache Storage for the service worker, which has no localStorage. A push names its
+// pane, never a folder or a version.
 //
 // THE SWITCH. Settings, Appearance, "Project pictures", per device, on until the person turns it off.
 // Off: no picture anywhere, the agent logo and the Collie mark everywhere, no push picture. Turning it off
 // also drops every copy and the map, so nothing of a repository's picture stays on the device.
 //
-// A version that fails to load (the bridge refused, the bytes do not decode) is not asked again in this
-// page's life, so a broken picture cannot make the phone fetch on every poll.
+// A version that fails to load (the bridge refused, the header check failed, the bytes do not decode) is
+// tried again only after a backoff that doubles from {@link RETRY_FIRST_MS} to {@link RETRY_MAX_MS}, so a
+// broken picture cannot make the phone fetch on every poll, and a 404 from a bridge still reading its
+// disk does not block the picture for the rest of the page's life.
 
 /** The small copy's side, in px: three times the 32 px a header tile draws at most. */
 export const SMALL_PX = 96;
-/** The push copy's side, in px: the size Android draws a notification's large icon. */
-export const PUSH_PX = 192;
+/** The first wait before a failed version is tried again, and the longest. */
+export const RETRY_FIRST_MS = 15_000;
+export const RETRY_MAX_MS = 10 * 60_000;
 /** How many small copies the device keeps, newest kept. */
 export const COPIES_MAX = 16;
 /** How many panes the map remembers. */
@@ -93,13 +102,19 @@ function writeTable(key: string, table: Map<string, string>): void {
   write(key, table.size === 0 ? null : JSON.stringify(Object.fromEntries(table)));
 }
 
-const isCopy = (k: string, v: string) => isPictureVersion(k) && v.startsWith("data:image/png;base64,");
+/** The key of one picture: its machine (empty for the lead) and its version. */
+function copyKey(host: string | null | undefined, version: string): string {
+  return `${host ?? ""}\u0000${version}`;
+}
+
+const isCopy = (k: string, v: string) => isPictureVersion(k.slice(k.lastIndexOf("\u0000") + 1)) && k.includes("\u0000") && v.startsWith("data:image/png;base64,");
 const isPane = (_k: string, v: string) => isPictureVersion(v);
 
 let on = read(SWITCH_KEY) !== "off";
 let copies = readTable(COPIES_KEY, isCopy);
 let panes = readTable(PANES_KEY, isPane);
-const failed = new Set<string>();
+/** Failed loads by copy key: when the next try may run, and the wait after that. */
+const failed = new Map<string, { until: number; wait: number }>();
 const loading = new Map<string, Promise<void>>();
 const listeners = new Set<() => void>();
 let snapshot = 0;
@@ -157,10 +172,10 @@ export async function forgetProjectPictures(): Promise<void> {
 // The switch stays, like every look preference. A password wipe touches session text only.
 onWipe("project-pictures", (context) => (context.reason === "password" ? undefined : forgetProjectPictures()));
 
-/** The small copy of a version, or null. Synchronous: what the first frame draws. */
-export function pictureCopy(version: string | null): string | null {
+/** The small copy of one machine's version, or null. Synchronous: what the first frame draws. */
+export function pictureCopy(host: string | null | undefined, version: string | null): string | null {
   if (!on || version === null) return null;
-  return copies.get(version) ?? null;
+  return copies.get(copyKey(host, version)) ?? null;
 }
 
 /** The version the device last saw for a pane, or null: the header's guess before the snapshot lands. */
@@ -173,26 +188,27 @@ export function rememberedPicture(pane: { host?: string | null; session?: string
 
 /** What the page needs to turn bytes into its own PNG. A seam, so a test runs without a canvas. */
 export interface PictureCanvas {
-  /** The picture drawn into a square of `side` px, kept whole and centred, as a PNG. */
-  draw(bytes: Blob, sides: readonly number[]): Promise<Blob[]>;
+  /** The picture drawn into each box, kept whole and centred on a transparent ground, as PNGs. */
+  draw(bytes: Blob, boxes: readonly { width: number; height: number }[]): Promise<Blob[]>;
   /** A PNG as a `data:` URL. */
   dataUrl(png: Blob): Promise<string>;
 }
 
 /** The browser's own decoder and canvas. */
 export const browserCanvas: PictureCanvas = {
-  async draw(bytes, sides) {
+  async draw(bytes, boxes) {
     const bitmap = await createImageBitmap(bytes);
     try {
       const out: Blob[] = [];
-      for (const side of sides) {
-        const canvas = new OffscreenCanvas(side, side);
+      for (const box of boxes) {
+        const canvas = new OffscreenCanvas(box.width, box.height);
         const ctx = canvas.getContext("2d");
         if (ctx === null) throw new Error("no 2d canvas");
-        const scale = Math.min(side / bitmap.width, side / bitmap.height);
+        // Contain: the whole picture, centred, never cropped and never stretched.
+        const scale = Math.min(box.width / bitmap.width, box.height / bitmap.height);
         const w = Math.round(bitmap.width * scale);
         const h = Math.round(bitmap.height * scale);
-        ctx.drawImage(bitmap, Math.round((side - w) / 2), Math.round((side - h) / 2), w, h);
+        ctx.drawImage(bitmap, Math.round((box.width - w) / 2), Math.round((box.height - h) / 2), w, h);
         out.push(await canvas.convertToBlob({ type: "image/png" }));
       }
       return out;
@@ -210,11 +226,13 @@ export const browserCanvas: PictureCanvas = {
 
 let canvas: PictureCanvas = browserCanvas;
 let fetchBytes: (path: string) => Promise<Blob> = (path) => fetchAuthedBytes(path);
+let clock: () => number = Date.now;
 
-/** Test seam: replace the canvas and the fetch. */
-export function __setProjectPictureSeams(seams: { canvas?: PictureCanvas; fetch?: (path: string) => Promise<Blob> }): void {
+/** Test seam: replace the canvas, the fetch and the clock. */
+export function __setProjectPictureSeams(seams: { canvas?: PictureCanvas; fetch?: (path: string) => Promise<Blob>; now?: () => number }): void {
   if (seams.canvas !== undefined) canvas = seams.canvas;
   if (seams.fetch !== undefined) fetchBytes = seams.fetch;
+  if (seams.now !== undefined) clock = seams.now;
 }
 
 /** Test seam: back to a device that never saw a picture, the switch on. */
@@ -229,6 +247,7 @@ export function __resetProjectPictures(): void {
   write(PANES_KEY, null);
   canvas = browserCanvas;
   fetchBytes = (path) => fetchAuthedBytes(path);
+  clock = Date.now;
   emit();
 }
 
@@ -242,9 +261,9 @@ export function __reloadProjectPictures(): void {
   emit();
 }
 
-function keepCopy(version: string, url: string): void {
-  copies.delete(version);
-  copies.set(version, url);
+function keepCopy(key: string, url: string): void {
+  copies.delete(key);
+  copies.set(key, url);
   while (copies.size > COPIES_MAX) {
     const oldest = copies.keys().next().value;
     if (oldest === undefined) break;
@@ -253,12 +272,12 @@ function keepCopy(version: string, url: string): void {
   writeTable(COPIES_KEY, copies);
 }
 
-async function keepPushCopy(version: string, png: Blob): Promise<void> {
+async function keepBannerCopy(host: string | null | undefined, version: string, png: Blob): Promise<void> {
   const storage: CacheStorage | undefined = globalThis.caches;
   if (storage === undefined) return;
   try {
     const cache = await storage.open(projectPictureCacheName(basePath()));
-    await cache.put(pushCopyKey(location.origin, basePath(), version), new Response(png, { headers: { "content-type": "image/png" } }));
+    await cache.put(bannerCopyKey(location.origin, basePath(), host, version), new Response(png, { headers: { "content-type": "image/png" } }));
   } catch {
     // No Cache Storage (plain HTTP, private mode): the push shows the Collie icon.
   }
@@ -275,56 +294,61 @@ async function writePaneMap(): Promise<void> {
   }
 }
 
-/** Fetch, decode and keep one version, once. Never rejects. */
+/** Fetch, check, decode and keep one machine's version, once at a time. Never rejects. */
 export function loadPicture(version: string, host?: string | null): Promise<void> {
-  if (!on || copies.has(version) || failed.has(version)) return Promise.resolve();
-  const running = loading.get(version);
+  const key = copyKey(host, version);
+  if (!on || copies.has(key)) return Promise.resolve();
+  const retry = failed.get(key);
+  if (retry !== undefined && clock() < retry.until) return Promise.resolve();
+  const running = loading.get(key);
   if (running !== undefined) return running;
   const work = (async () => {
     try {
       const bytes = await fetchBytes(projectPicturePath(version, host));
-      const [small, push] = await canvas.draw(bytes, [SMALL_PX, PUSH_PX]);
-      if (small === undefined || push === undefined) throw new Error("no copy");
+      // The header before the decoder: a hostile picture's harm is in decoding it.
+      if (bytes.size > PROJECT_PICTURE_BYTES_MAX || !pictureHeaderFits(new Uint8Array(await bytes.arrayBuffer()))) throw new Error("refused");
+      const [small, banner] = await canvas.draw(bytes, [
+        { width: SMALL_PX, height: SMALL_PX },
+        { width: BANNER_WIDTH, height: BANNER_HEIGHT },
+      ]);
+      if (small === undefined || banner === undefined) throw new Error("no copy");
       const url = await canvas.dataUrl(small);
       if (!on) return;
-      keepCopy(version, url);
-      await keepPushCopy(version, push);
+      failed.delete(key);
+      keepCopy(key, url);
+      await keepBannerCopy(host, version, banner);
       emit();
     } catch {
-      failed.add(version);
+      const wait = Math.min((retry?.wait ?? RETRY_FIRST_MS / 2) * 2, RETRY_MAX_MS);
+      failed.set(key, { until: clock() + wait, wait });
     } finally {
-      loading.delete(version);
+      loading.delete(key);
     }
   })();
-  loading.set(version, work);
+  loading.set(key, work);
   return work;
 }
 
 /**
  * Remember which version each pane shows, for the next cold open and for the service worker. Called with
- * the panes of a snapshot; writes only when something changed.
+ * every pane of a snapshot: the map is rebuilt from it, so a pane that left the herd or changed its
+ * picture loses its old entry at once. Writes only when something changed.
  */
 export function rememberPanePictures(list: readonly Pick<AgentView, "paneId" | "picture" | "host" | "session">[]): void {
   if (!on) return;
-  let changed = false;
+  const next = new Map<string, string>();
   for (const pane of list) {
-    const key = paneKey(pane);
     const version = panePicture(pane);
-    if (version === null) {
-      if (panes.delete(key)) changed = true;
-      continue;
-    }
-    if (panes.get(key) === version) continue;
-    panes.delete(key);
-    panes.set(key, version);
-    changed = true;
+    if (version !== null) next.set(paneKey(pane), version);
   }
-  while (panes.size > PANES_MAX) {
-    const oldest = panes.keys().next().value;
+  while (next.size > PANES_MAX) {
+    const oldest = next.keys().next().value;
     if (oldest === undefined) break;
-    panes.delete(oldest);
+    next.delete(oldest);
   }
-  if (!changed) return;
+  const same = next.size === panes.size && [...next].every(([k, v]) => panes.get(k) === v);
+  if (same) return;
+  panes = next;
   writeTable(PANES_KEY, panes);
   void writePaneMap();
 }
@@ -345,5 +369,5 @@ export function useProjectPicture(pane: Pick<AgentView, "picture" | "host" | "se
   useEffect(() => {
     if (version !== null) void loadPicture(version, host);
   }, [version, host]);
-  return pictureCopy(version);
+  return pictureCopy(host, version);
 }

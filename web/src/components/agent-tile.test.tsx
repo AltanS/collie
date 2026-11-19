@@ -7,12 +7,12 @@ import { AgentTile } from "./agent-tile";
 // THE AGENT TILE (issue 811, ADR 0160): the agent's logo, or the project's picture with the logo in its
 // corner, in a box whose size never changes.
 
-const V = "0123456789ab";
+const V = "0123456789ab0123456789ab";
 const COPY = "data:image/png;base64,SMALL";
 
 /** A device that already holds the picture, as after a cold open. */
 function holdPicture() {
-  localStorage.setItem("collie:project-picture-copies:v1", JSON.stringify({ [V]: COPY }));
+  localStorage.setItem("collie:project-picture-copies:v1", JSON.stringify({ ["\u0000" + V]: COPY }));
   __reloadProjectPictures();
 }
 

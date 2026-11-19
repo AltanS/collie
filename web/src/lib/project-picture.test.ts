@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   COPIES_MAX,
   PANES_MAX,
-  PUSH_PX,
+  RETRY_FIRST_MS,
+  RETRY_MAX_MS,
   SMALL_PX,
   __reloadProjectPictures,
   __resetProjectPictures,
@@ -18,7 +19,8 @@ import {
   setProjectPictures,
   useProjectPicture,
 } from "./project-picture";
-import { paneMapKey, projectPictureCacheName, pushCopyKey } from "./project-picture-push";
+import { BANNER_HEIGHT, BANNER_WIDTH, bannerCopyKey, paneMapKey, projectPictureCacheName } from "./project-picture-push";
+import { PROJECT_PICTURE_BYTES_MAX } from "./project-picture-wire";
 
 // THE PROJECT PICTURE STORE (issue 811, ADR 0160). The browser's decoder and canvas are the module's
 // own seam, so these cases run on fake bytes and a fake canvas; Cache Storage is an in-memory fake.
@@ -27,12 +29,26 @@ const SWITCH_KEY = "collie:project-pictures:v1";
 const COPIES_KEY = "collie:project-picture-copies:v1";
 const PANES_KEY = "collie:project-picture-panes:v1";
 
-const V1 = "0123456789ab";
-const V2 = "ba9876543210";
+const V1 = "0123456789ab0123456789ab";
+const V2 = "ba9876543210ba9876543210";
 const URL1 = "data:image/png;base64,SMALL";
 
-/** Twelve hex digits for a number, so a test can mint as many versions as it needs. */
-const version = (n: number) => n.toString(16).padStart(12, "0");
+/** Twenty-four hex digits for a number, so a test can mint as many versions as it needs. */
+const version = (n: number) => n.toString(16).padStart(24, "0");
+
+/** The storage key of one machine's copy: the machine (empty for the lead), a NUL, the version. */
+const K = (v: string, host?: string) => `${host ?? ""}\u0000${v}`;
+
+/** The leading bytes of a PNG: signature, IHDR length, "IHDR", width, height. Enough for the header check. */
+function pngBytes(width: number, height: number): Uint8Array {
+  const out = new Uint8Array(33);
+  out.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  const view = new DataView(out.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return out;
+}
+const blobOf = (b: Uint8Array) => new Blob([Uint8Array.from(b)], { type: "image/png" });
 
 /** An in-memory Cache Storage: just the slice the module touches, keyed by string. */
 function fakeCaches() {
@@ -54,14 +70,18 @@ function fakeCaches() {
 }
 
 const cacheName = projectPictureCacheName("/");
-const bytes = () => new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" });
+/** A picture that passes the header check; the canvas is faked, so the rest of it never matters. */
+const bytes = () => blobOf(pngBytes(256, 256));
+/** What the canvas hands back: opaque stand-ins for the page's own PNGs. */
+const out = () => new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" });
 
 function seams(over: { fetch?: (path: string) => Promise<Blob> } = {}) {
-  const draw = vi.fn(async (_b: Blob, sides: readonly number[]) => sides.map(() => bytes()));
+  const draw = vi.fn(async (_b: Blob, boxes: readonly { width: number; height: number }[]) => boxes.map(() => out()));
   const dataUrl = vi.fn(async () => URL1);
   const fetch = vi.fn(over.fetch ?? (async () => bytes()));
-  __setProjectPictureSeams({ canvas: { draw, dataUrl }, fetch });
-  return { draw, dataUrl, fetch };
+  const clock = { at: 1_000_000 };
+  __setProjectPictureSeams({ canvas: { draw, dataUrl }, fetch, now: () => clock.at });
+  return { draw, dataUrl, fetch, clock };
 }
 
 let fake: ReturnType<typeof fakeCaches>;
@@ -95,7 +115,7 @@ describe("the project picture switch", () => {
     seams();
     await loadPicture(V1);
     rememberPanePictures([{ paneId: "p1", picture: V1 }]);
-    expect(pictureCopy(V1)).toBe(URL1);
+    expect(pictureCopy(null, V1)).toBe(URL1);
     expect(localStorage.getItem(COPIES_KEY)).not.toBeNull();
     expect(localStorage.getItem(PANES_KEY)).not.toBeNull();
 
@@ -103,7 +123,7 @@ describe("the project picture switch", () => {
     await vi.waitFor(() => expect(fake.storage.delete).toHaveBeenCalledWith(cacheName));
     expect(localStorage.getItem(COPIES_KEY)).toBeNull();
     expect(localStorage.getItem(PANES_KEY)).toBeNull();
-    expect(pictureCopy(V1)).toBeNull();
+    expect(pictureCopy(null, V1)).toBeNull();
     expect(rememberedPicture({ paneId: "p1" })).toBeNull();
     expect(fake.stores.has(cacheName)).toBe(false);
   });
@@ -114,7 +134,7 @@ describe("panePicture", () => {
     expect(panePicture({ picture: bad })).toBeNull();
   });
 
-  it("keeps a 12-hex version", () => {
+  it("keeps a 24-hex version", () => {
     expect(panePicture({ picture: V1 })).toBe(V1);
   });
 });
@@ -124,10 +144,13 @@ describe("loadPicture", () => {
     const s = seams();
     await loadPicture(V1);
     expect(s.fetch).toHaveBeenCalledWith(`/api/project-picture/${V1}`);
-    expect(s.draw).toHaveBeenCalledWith(expect.any(Blob), [SMALL_PX, PUSH_PX]);
-    expect(pictureCopy(V1)).toBe(URL1);
-    expect(JSON.parse(localStorage.getItem(COPIES_KEY) ?? "{}")).toEqual({ [V1]: URL1 });
-    const stored = await (await fake.storage.open(cacheName)).match(pushCopyKey(location.origin, "/", V1));
+    expect(s.draw).toHaveBeenCalledWith(expect.any(Blob), [
+      { width: SMALL_PX, height: SMALL_PX },
+      { width: BANNER_WIDTH, height: BANNER_HEIGHT },
+    ]);
+    expect(pictureCopy(null, V1)).toBe(URL1);
+    expect(JSON.parse(localStorage.getItem(COPIES_KEY) ?? "{}")).toEqual({ [K(V1)]: URL1 });
+    const stored = await (await fake.storage.open(cacheName)).match(bannerCopyKey(location.origin, "/", null, V1));
     expect(stored?.headers.get("content-type")).toBe("image/png");
   });
 
@@ -151,31 +174,258 @@ describe("loadPicture", () => {
     expect(s.fetch).not.toHaveBeenCalled();
   });
 
-  it("does not ask again for a version that failed, in this page's life", async () => {
-    const s = seams({ fetch: async () => Promise.reject(new Error("refused")) });
-    await loadPicture(V1);
-    await loadPicture(V1);
-    expect(s.fetch).toHaveBeenCalledTimes(1);
-    expect(pictureCopy(V1)).toBeNull();
-    // Another version is not tainted by it.
-    await loadPicture(V2);
-    expect(s.fetch).toHaveBeenCalledTimes(2);
+  it("puts the banner copy under the key of the picture's own machine", async () => {
+    const s = seams();
+    await loadPicture(V1, "box 2");
+    expect(s.draw).toHaveBeenCalledTimes(1);
+    const cache = await fake.storage.open(cacheName);
+    expect(await cache.match(bannerCopyKey(location.origin, "/", "box 2", V1))).toBeDefined();
+    expect(await cache.match(bannerCopyKey(location.origin, "/", null, V1))).toBeUndefined();
+    expect(await cache.match(bannerCopyKey(location.origin, "/", "box 3", V1))).toBeUndefined();
   });
 
-  it("counts bytes that do not decode as a failure", async () => {
+  it("asks the canvas for the small box and the 2:1 banner box, and stores the second blob as the banner", async () => {
+    const small = new Blob(["small"], { type: "image/png" });
+    const banner = new Blob(["banner!"], { type: "image/png" });
+    const draw = vi.fn(async () => [small, banner]);
+    __setProjectPictureSeams({ canvas: { draw, dataUrl: vi.fn(async () => URL1) }, fetch: async () => bytes() });
+    // jsdom's Blob is not a body Node's Response can read, so the test records what the module hands over.
+    const bodies: unknown[] = [];
+    const Plain = Response;
+    vi.stubGlobal(
+      "Response",
+      class extends Plain {
+        constructor(body?: BodyInit | null, init?: ResponseInit) {
+          super(body, init);
+          bodies.push(body);
+        }
+      },
+    );
+    await loadPicture(V1, "box");
+    expect(draw).toHaveBeenCalledWith(expect.any(Blob), [
+      { width: 96, height: 96 },
+      { width: 1024, height: 512 },
+    ]);
+    const stored = await (await fake.storage.open(cacheName)).match(bannerCopyKey(location.origin, "/", "box", V1));
+    expect(stored).toBeDefined();
+    expect(bodies).toEqual([banner]);
+    expect(bodies[0]).not.toBe(small);
+  });
+
+  it("counts bytes that do not decode as a failure, and tries again only after the wait", async () => {
     const s = seams();
     __setProjectPictureSeams({ canvas: { draw: async () => Promise.reject(new Error("no decode")), dataUrl: async () => URL1 } });
     await loadPicture(V1);
     await loadPicture(V1);
     expect(s.fetch).toHaveBeenCalledTimes(1);
-    expect(pictureCopy(V1)).toBeNull();
+    expect(pictureCopy(null, V1)).toBeNull();
   });
 
   it("keeps the small copy when Cache Storage is missing", async () => {
     vi.stubGlobal("caches", undefined);
     seams();
     await loadPicture(V1);
-    expect(pictureCopy(V1)).toBe(URL1);
+    expect(pictureCopy(null, V1)).toBe(URL1);
+  });
+});
+
+describe("a copy belongs to one machine", () => {
+  it("is not returned for another machine with the same version", async () => {
+    seams();
+    await loadPicture(V1, "a");
+    expect(pictureCopy("a", V1)).toBe(URL1);
+    expect(pictureCopy("b", V1)).toBeNull();
+    expect(pictureCopy(null, V1)).toBeNull();
+    expect(pictureCopy("", V1)).toBeNull();
+    expect(Object.keys(JSON.parse(localStorage.getItem(COPIES_KEY) ?? "{}"))).toEqual([K(V1, "a")]);
+  });
+
+  it("is kept apart from the lead's copy of the same version", async () => {
+    seams();
+    await loadPicture(V1);
+    await loadPicture(V1, "a");
+    expect(Object.keys(JSON.parse(localStorage.getItem(COPIES_KEY) ?? "{}")).toSorted()).toEqual([K(V1), K(V1, "a")].toSorted());
+    expect(pictureCopy(null, V1)).toBe(URL1);
+    expect(pictureCopy("a", V1)).toBe(URL1);
+  });
+
+  it("is read back from storage by machine, and a bare version key reads as nothing", () => {
+    localStorage.setItem(COPIES_KEY, JSON.stringify({ [K(V1, "a")]: URL1, [V2]: URL1 }));
+    __reloadProjectPictures();
+    expect(pictureCopy("a", V1)).toBe(URL1);
+    expect(pictureCopy("b", V1)).toBeNull();
+    expect(pictureCopy(null, V2)).toBeNull();
+  });
+
+  it("is fetched again for the other machine, once each", async () => {
+    const s = seams();
+    await loadPicture(V1, "a");
+    await loadPicture(V1, "b");
+    await loadPicture(V1, "a");
+    expect(s.fetch.mock.calls.map((c) => c[0])).toEqual([`/api/project-picture/${V1}?host=a`, `/api/project-picture/${V1}?host=b`]);
+  });
+
+  it("is not blocked by another machine's failure of the same version", async () => {
+    const s = seams({ fetch: async (path) => (path.includes("host=a") ? Promise.reject(new Error("404")) : bytes()) });
+    await loadPicture(V1, "a");
+    expect(pictureCopy("a", V1)).toBeNull();
+    await loadPicture(V1, "b");
+    expect(pictureCopy("b", V1)).toBe(URL1);
+    expect(s.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the retry backoff of a failed load", () => {
+  /** A fetch that fails until told to succeed. */
+  function flaky() {
+    const state = { ok: false };
+    const s = seams({ fetch: async (path) => (state.ok || !path.includes(V1) ? bytes() : Promise.reject(new Error("404"))) });
+    return { ...s, state };
+  }
+
+  it("does not retry before the first wait, retries after it, and waits twice as long next", async () => {
+    const s = flaky();
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(1);
+
+    s.clock.at += RETRY_FIRST_MS - 1;
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(1);
+
+    s.clock.at += 1;
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(2);
+
+    // The second failure waits 30 s.
+    s.clock.at += 2 * RETRY_FIRST_MS - 1;
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(2);
+    s.clock.at += 1;
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("doubles from 15 s up to the 10 min cap and stays there", async () => {
+    const s = flaky();
+    const waits = [15, 30, 60, 120, 240, 480, 600, 600, 600].map((sec) => sec * 1000);
+    let calls = 0;
+    for (const wait of waits) {
+      await loadPicture(V1);
+      calls += 1;
+      expect(s.fetch).toHaveBeenCalledTimes(calls);
+      s.clock.at += wait - 1;
+      await loadPicture(V1);
+      expect(s.fetch).toHaveBeenCalledTimes(calls);
+      s.clock.at += 1;
+    }
+    expect(RETRY_FIRST_MS).toBe(waits[0]);
+    expect(RETRY_MAX_MS).toBe(600_000);
+  });
+
+  it("clears the failure on a success, so the copy is kept and nothing is fetched again", async () => {
+    const s = flaky();
+    await loadPicture(V1);
+    s.state.ok = true;
+    s.clock.at += RETRY_FIRST_MS;
+    await loadPicture(V1);
+    expect(pictureCopy(null, V1)).toBe(URL1);
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("forgets the old wait after a success: a later failure of the same key starts at the first wait", async () => {
+    const s = flaky();
+    await loadPicture(V1);
+    s.clock.at += RETRY_FIRST_MS;
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(2);
+    s.state.ok = true;
+    s.clock.at += 2 * RETRY_FIRST_MS;
+    await loadPicture(V1);
+    expect(pictureCopy(null, V1)).toBe(URL1);
+    // Push V1 out of the bounded copies, so it can fail afresh.
+    for (let n = 1; n <= COPIES_MAX; n += 1) await loadPicture(version(n));
+    expect(pictureCopy(null, V1)).toBeNull();
+    s.state.ok = false;
+    const before = s.fetch.mock.calls.length;
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(before + 1);
+    s.clock.at += RETRY_FIRST_MS;
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(before + 2);
+  });
+
+  it("counts a refused header as a failure with the same wait", async () => {
+    const s = seams({ fetch: async () => blobOf(new Uint8Array([1, 2, 3])) });
+    await loadPicture(V1);
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(1);
+    s.clock.at += RETRY_FIRST_MS;
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a failure for one machine from delaying another's retry", async () => {
+    const s = flaky();
+    await loadPicture(V1, "a");
+    s.clock.at += RETRY_FIRST_MS;
+    await loadPicture(V1, "b");
+    await loadPicture(V1, "a");
+    expect(s.fetch.mock.calls.map((c) => c[0])).toEqual([`/api/project-picture/${V1}?host=a`, `/api/project-picture/${V1}?host=b`, `/api/project-picture/${V1}?host=a`]);
+  });
+});
+
+describe("the header check before the canvas", () => {
+  /** The header bytes of a JPEG: SOI, a baseline frame header (SOF0) with the given sides. */
+  function jpegBytes(width: number, height: number): Uint8Array {
+    const b = new Uint8Array(30);
+    b.set([0xff, 0xd8, 0xff, 0xc0, 0, 17, 8, height >> 8, height & 0xff, width >> 8, width & 0xff, 3]);
+    return b;
+  }
+  /** The header bytes of an extended WebP (VP8X) with the given sides. */
+  function webpBytes(width: number, height: number): Uint8Array {
+    const b = new Uint8Array(30);
+    b.set([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x58]);
+    const w = width - 1;
+    const h = height - 1;
+    b.set([w & 0xff, (w >> 8) & 0xff, (w >> 16) & 0xff, h & 0xff, (h >> 8) & 0xff, (h >> 16) & 0xff], 24);
+    return b;
+  }
+
+  const refused: [string, () => Blob][] = [
+    ["over 256 KB", () => blobOf(Object.assign(new Uint8Array(PROJECT_PICTURE_BYTES_MAX + 1), pngBytes(256, 256)))],
+    ["a GIF", () => blobOf(new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, ...Array.from({ length: 30 }, () => 0)]))],
+    ["a PNG 63 px wide", () => blobOf(pngBytes(63, 256))],
+    ["a PNG 63 px tall", () => blobOf(pngBytes(256, 63))],
+    ["a PNG 1025 px wide", () => blobOf(pngBytes(1025, 256))],
+    ["a PNG 1025 px tall", () => blobOf(pngBytes(256, 1025))],
+    ["a truncated PNG header", () => blobOf(pngBytes(256, 256).subarray(0, 20))],
+    ["an empty body", () => blobOf(new Uint8Array(0))],
+  ];
+
+  it.each(refused)("refuses %s before the canvas is asked, and counts it as a failure", async (_name, make) => {
+    const s = seams({ fetch: async () => make() });
+    await loadPicture(V1);
+    expect(s.fetch).toHaveBeenCalledTimes(1);
+    expect(s.draw).not.toHaveBeenCalled();
+    expect(s.dataUrl).not.toHaveBeenCalled();
+    expect(pictureCopy(null, V1)).toBeNull();
+    expect(localStorage.getItem(COPIES_KEY)).toBeNull();
+  });
+
+  const accepted: [string, () => Blob][] = [
+    ["a PNG", () => blobOf(pngBytes(256, 256))],
+    ["a PNG at the smallest side", () => blobOf(pngBytes(64, 64))],
+    ["a PNG at the largest side", () => blobOf(pngBytes(1024, 1024))],
+    ["a JPEG (SOF0)", () => blobOf(jpegBytes(300, 200))],
+    ["a WebP (VP8X)", () => blobOf(webpBytes(512, 128))],
+  ];
+
+  it.each(accepted)("lets %s through to the canvas", async (_name, make) => {
+    const s = seams({ fetch: async () => make() });
+    await loadPicture(V1);
+    expect(s.draw).toHaveBeenCalledTimes(1);
+    expect(pictureCopy(null, V1)).toBe(URL1);
   });
 });
 
@@ -184,39 +434,39 @@ describe("the small copies", () => {
     seams();
     await loadPicture(V1);
     __reloadProjectPictures();
-    expect(pictureCopy(V1)).toBe(URL1);
+    expect(pictureCopy(null, V1)).toBe(URL1);
   });
 
   it("read a stored value that is not a PNG data URL or not a version as nothing", () => {
-    localStorage.setItem(COPIES_KEY, JSON.stringify({ [V1]: "https://evil.example/x.png", nothex: URL1, [V2]: URL1 }));
+    localStorage.setItem(COPIES_KEY, JSON.stringify({ [K(V1)]: "https://evil.example/x.png", [K("nothex")]: URL1, [V1.replace("0", "1")]: URL1, [K(V2)]: URL1 }));
     __reloadProjectPictures();
-    expect(pictureCopy(V1)).toBeNull();
-    expect(pictureCopy("nothex")).toBeNull();
-    expect(pictureCopy(V2)).toBe(URL1);
+    expect(pictureCopy(null, V1)).toBeNull();
+    expect(pictureCopy(null, "nothex")).toBeNull();
+    expect(pictureCopy(null, V2)).toBe(URL1);
   });
 
   it.each(["{oops", "[]", "null", "7", '"text"'])("read malformed storage (%s) as empty", (junk) => {
     localStorage.setItem(COPIES_KEY, junk);
     __reloadProjectPictures();
-    expect(pictureCopy(V1)).toBeNull();
+    expect(pictureCopy(null, V1)).toBeNull();
   });
 
   it("are bounded to COPIES_MAX, the oldest dropped", async () => {
     seams();
     for (let n = 1; n <= COPIES_MAX + 2; n += 1) await loadPicture(version(n));
-    expect(pictureCopy(version(1))).toBeNull();
-    expect(pictureCopy(version(2))).toBeNull();
-    expect(pictureCopy(version(3))).toBe(URL1);
-    expect(pictureCopy(version(COPIES_MAX + 2))).toBe(URL1);
+    expect(pictureCopy(null, version(1))).toBeNull();
+    expect(pictureCopy(null, version(2))).toBeNull();
+    expect(pictureCopy(null, version(3))).toBe(URL1);
+    expect(pictureCopy(null, version(COPIES_MAX + 2))).toBe(URL1);
     expect(Object.keys(JSON.parse(localStorage.getItem(COPIES_KEY) ?? "{}"))).toHaveLength(COPIES_MAX);
   });
 
   it("answer null for no version and while the switch is off", async () => {
     seams();
     await loadPicture(V1);
-    expect(pictureCopy(null)).toBeNull();
+    expect(pictureCopy(null, null)).toBeNull();
     setProjectPictures(false);
-    expect(pictureCopy(V1)).toBeNull();
+    expect(pictureCopy(null, V1)).toBeNull();
   });
 });
 
@@ -247,6 +497,28 @@ describe("rememberPanePictures", () => {
     rememberPanePictures([{ paneId: "p2", picture: "malformed" }]);
     expect(rememberedPicture({ paneId: "p2" })).toBeNull();
     expect(localStorage.getItem(PANES_KEY)).toBeNull();
+  });
+
+  it("drops a pane that is absent from the next list, and a machine's pane with the same id stays apart", () => {
+    rememberPanePictures([{ paneId: "p1", picture: V1 }, { paneId: "p2", picture: V2 }, { paneId: "p2", host: "box", picture: V1 }]);
+    rememberPanePictures([{ paneId: "p2", picture: V2 }]);
+    expect(rememberedPicture({ paneId: "p1" })).toBeNull();
+    expect(rememberedPicture({ paneId: "p2", host: "box" })).toBeNull();
+    expect(rememberedPicture({ paneId: "p2" })).toBe(V2);
+    expect(Object.keys(JSON.parse(localStorage.getItem(PANES_KEY) ?? "{}"))).toEqual(["\u0000p2"]);
+    rememberPanePictures([]);
+    expect(localStorage.getItem(PANES_KEY)).toBeNull();
+  });
+
+  it("changes the entry, in storage and in Cache Storage, when the pane's version changes", async () => {
+    rememberPanePictures([{ paneId: "p1", picture: V1 }]);
+    rememberPanePictures([{ paneId: "p1", picture: V2 }]);
+    expect(rememberedPicture({ paneId: "p1" })).toBe(V2);
+    expect(JSON.parse(localStorage.getItem(PANES_KEY) ?? "{}")).toEqual({ "\u0000p1": V2 });
+    await vi.waitFor(async () => {
+      const entry = await (await fake.storage.open(cacheName)).match(paneMapKey(location.origin, "/"));
+      expect(JSON.parse((await entry?.text()) ?? "{}")).toEqual({ "\u0000p1": V2 });
+    });
   });
 
   it("writes nothing when nothing changed", () => {
@@ -289,7 +561,7 @@ describe("useProjectPicture", () => {
   });
 
   it("returns the copy on the very first render when the device holds one (the first-frame rule)", () => {
-    localStorage.setItem(COPIES_KEY, JSON.stringify({ [V1]: URL1 }));
+    localStorage.setItem(COPIES_KEY, JSON.stringify({ [K(V1)]: URL1 }));
     __reloadProjectPictures();
     seams();
     const seen: (string | null)[] = [];
@@ -310,7 +582,7 @@ describe("useProjectPicture", () => {
   });
 
   it("falls back to the remembered version when the pane carries none", () => {
-    localStorage.setItem(COPIES_KEY, JSON.stringify({ [V1]: URL1 }));
+    localStorage.setItem(COPIES_KEY, JSON.stringify({ [K(V1)]: URL1 }));
     localStorage.setItem(PANES_KEY, JSON.stringify({ "\u0000p1": V1 }));
     __reloadProjectPictures();
     seams();
@@ -319,7 +591,7 @@ describe("useProjectPicture", () => {
   });
 
   it("prefers the pane's own version over the remembered one", () => {
-    localStorage.setItem(COPIES_KEY, JSON.stringify({ [V1]: URL1, [V2]: "data:image/png;base64,TWO" }));
+    localStorage.setItem(COPIES_KEY, JSON.stringify({ [K(V1)]: URL1, [K(V2)]: "data:image/png;base64,TWO" }));
     localStorage.setItem(PANES_KEY, JSON.stringify({ "\u0000p1": V1 }));
     __reloadProjectPictures();
     seams();
@@ -328,7 +600,7 @@ describe("useProjectPicture", () => {
   });
 
   it("goes quiet when the switch is turned off while mounted", () => {
-    localStorage.setItem(COPIES_KEY, JSON.stringify({ [V1]: URL1 }));
+    localStorage.setItem(COPIES_KEY, JSON.stringify({ [K(V1)]: URL1 }));
     __reloadProjectPictures();
     seams();
     const { result } = renderHook(() => useProjectPicture({ paneId: "p1", picture: V1 }));
