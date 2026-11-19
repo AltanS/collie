@@ -1379,6 +1379,51 @@
     font-family: var(--font-sans);
     overscroll-behavior-y: none;
   }
+  /* THE HAND CURSOR (a pointer device only ever sees it; touch has no cursor). Tailwind 4's preflight
+     stopped giving a button the pointer, so on a desktop nothing clickable showed it. ONE rule here
+     names what a person can click: enabled buttons, links with an href, summary, select, a label of a
+     control, the box-like inputs, and the ARIA roles. A disabled control (`:disabled`,
+     `aria-disabled="true"`) keeps the default cursor. The whole selector sits in `:where()` so it
+     adds no specificity, and it is in the base layer, so a component's own `cursor-*` class (a
+     drag handle's `cursor-grab`, a backdrop's `cursor-default`, `disabled:cursor-not-allowed`) still
+     wins. A text field is not in the list and keeps the browser's `text` cursor. Cursor only, no
+     hover style. */
+  :where(
+    button:not(:disabled),
+    a[href],
+    summary,
+    select:not(:disabled),
+    label[for],
+    label:has(
+      :is(
+        input:is([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+        select,
+        button
+      ):not(:disabled)
+    ),
+    input:is(
+      [type="checkbox"],
+      [type="radio"],
+      [type="range"],
+      [type="file"],
+      [type="button"],
+      [type="submit"],
+      [type="reset"],
+      [type="image"]
+    ):not(:disabled),
+    :is(
+      [role="button"],
+      [role="link"],
+      [role="tab"],
+      [role="switch"],
+      [role="checkbox"],
+      [role="radio"],
+      [role="menuitem"],
+      [role="option"]
+    ):not([aria-disabled="true"], :disabled)
+  ) {
+    cursor: pointer;
+  }
 }
 
 /* THE ROWS OF A LIST GROUP (M57 spec 17). ui/list-group.tsx and the hand-rolled lists that carry
