@@ -81,7 +81,9 @@ export function resolveRexBinary(
  * this; the adapter itself lets `rex` find its own server.
  */
 export function defaultRexSocket(
-  runtimeDir: string | undefined = process.env.XDG_RUNTIME_DIR,
+  // No default: an explicit `undefined` is "no runtime dir in this environment", and a default would
+  // replace it with the bridge's own, so a caller's seam (cli/mux-list.ts passes ctx.env's) would leak.
+  runtimeDir: string | undefined,
   uid: number = process.getuid?.() ?? 1000,
   home: string = process.env.HOME ?? "",
   platform: NodeJS.Platform = process.platform,
