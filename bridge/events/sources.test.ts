@@ -45,8 +45,8 @@ class FakeEngine implements TransitionFeed {
     this.removes.add(fn);
     return () => this.removes.delete(fn);
   }
-  fire(paneId: string, from: AgentStatus, to: AgentStatus): void {
-    for (const fn of this.transitions) fn({ paneId }, from, to);
+  fire(paneId: string, from: AgentStatus, to: AgentStatus, blockedBy?: string): void {
+    for (const fn of this.transitions) fn(blockedBy === undefined ? { paneId } : { paneId, blockedBy }, from, to);
   }
   remove(paneId: string): void {
     for (const fn of this.removes) fn(paneId);
@@ -90,6 +90,13 @@ describe("the replay of one recorded turn", () => {
       "turn.end",
       "status:idle",
     ]);
+  });
+
+  test("a turn that stopped on an error says blocked and opens no ask (PR 787)", () => {
+    const { engine, emitted } = rig();
+    engine.fire("w1:p1", "idle", "working");
+    engine.fire("w1:p1", "working", "blocked", "error");
+    expect(emitted()).toEqual(["status:working", "status:blocked"]);
   });
 
   test("the same turn on a multiplexer that says idle at the end emits the same events", () => {

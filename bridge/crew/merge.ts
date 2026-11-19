@@ -439,10 +439,14 @@ function untagSession(s: SessionSummary): SessionSummary {
  * member's word and reaches an address (bridge/walky/crew.ts `crewTargets`), so it is kept only as
  * four characters of [a-z0-9]; anything else is dropped, as an older member sends none. Its pin count
  * (`PaneWire.pins`, M90) is a number the phone draws, so it is kept only as a whole number above zero.
+ * Why a blocked pane needs a look (`blockedBy`) decides whether the lead and the phone treat it as a
+ * question, so it is kept only as `"error"` on a `blocked` pane; anything else is dropped, and the pane
+ * is then a plain `blocked`, what an older member sends.
  */
 function untagPane(p: PaneWire): PaneWire {
-  const { host: _ignored, instance, pins, workspaceNamed, ...rest } = p;
-  const tokened = typeof instance === "string" && INSTANCE_TOKEN.test(instance) ? { ...rest, instance } : rest;
+  const { host: _ignored, instance, pins, workspaceNamed, blockedBy, ...rest } = p;
+  const errored = p.status === "blocked" && blockedBy === "error" ? { ...rest, blockedBy } : rest;
+  const tokened = typeof instance === "string" && INSTANCE_TOKEN.test(instance) ? { ...errored, instance } : errored;
   // M98: the space's "named" fact is kept only as a boolean; anything else reads as absent, which is the default.
   const named = typeof workspaceNamed === "boolean" ? { ...tokened, workspaceNamed } : tokened;
   return Number.isSafeInteger(pins) && pins !== undefined && pins > 0 ? { ...named, pins } : named;

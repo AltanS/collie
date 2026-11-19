@@ -32,6 +32,29 @@ export type { PaneJob } from "./jobs-journal.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
+/**
+ * Why a `blocked` pane needs a person when it is not a question (`AgentView.blockedBy`). One word today:
+ * `"error"`, a turn that stopped on a failure (herdr-core's OSC 7501 `state=error`). The status stays
+ * `blocked`, so an older phone or lead still shows the pane as needing you.
+ */
+export type BlockedBy = "error";
+
+/**
+ * Whether a pane stopped on an error: `blocked` with `blockedBy: "error"`. It asks for a look and waits
+ * on nothing, so Load older reads and no dialog guard applies.
+ */
+export function isErrorBlocked(pane: { readonly status: AgentStatus; readonly blockedBy?: BlockedBy | undefined }): boolean {
+  return pane.status === "blocked" && pane.blockedBy === "error";
+}
+
+/**
+ * Whether a pane waits on an answer: a question, a dialog or an answer box. Every `blocked` pane but one
+ * that stopped on an error ({@link isErrorBlocked}); a plain `blocked` from an older member is a question.
+ */
+export function isQuestionPane(pane: { readonly status: AgentStatus; readonly blockedBy?: BlockedBy | undefined }): boolean {
+  return pane.status === "blocked" && pane.blockedBy !== "error";
+}
+
 /** A small mark next to a pane's title: a count, or a short word. Exactly one key (WIRE.md section 3). */
 export type PaneBadge = { count: number } | { text: string };
 
@@ -60,6 +83,12 @@ export interface AgentView {
   tabId: string;
   agent: string;
   status: AgentStatus;
+  /**
+   * `"error"` on a `blocked` pane whose program reported that its turn stopped on a failure
+   * (`MuxPane.blockedBy`): it needs a look, not an answer. Absent on every other pane, and from an
+   * older member, whose `blocked` is then a question (CREW_PROTOCOL.md §5, "A pane may carry `blockedBy`").
+   */
+  blockedBy?: BlockedBy;
   cwd: string;
   focused: boolean;
   /**

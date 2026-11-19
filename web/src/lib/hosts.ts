@@ -13,6 +13,7 @@
 
 import type { Scope } from "./scope";
 import type { AgentView, ServerSummary, SessionSummary } from "./types";
+import { shownStatus } from "./triage";
 
 // NUL-joined, exactly as lib/scope.ts joins its cache keys: a member id and a workspace id are both
 // opaque strings, and a separator either of them could contain would make two different pairs share
@@ -368,7 +369,8 @@ export function hostCounts(agents: readonly AgentView[]): Map<string, HostCounts
     const held = byHost.get(key) ?? { ...ZERO };
     held.agents += 1;
     if (a.status === "working") held.working += 1;
-    if (a.status === "blocked") held.blocked += 1;
+    // A pane that stopped on an error counts until it is seen (lib/triage.ts `shownStatus`).
+    if (shownStatus(a) === "blocked") held.blocked += 1;
     byHost.set(key, held);
   }
   return byHost;

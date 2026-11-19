@@ -369,6 +369,25 @@ describe("a slow history read holds the terminal's keys (M78 report 10, case 2; 
     expect(fake.historyReads("t1")).toBe(1);
   });
 
+  test("Load older on a pane whose program reports error reads history and carries no note: an error waits on no answer (PR 787)", async () => {
+    const { fake, adapter } = jam();
+    fake.slowHistoryReads("t1", { on: false });
+    fake.reportState("t1", "error");
+    const t1 = (await adapter.snapshot()).panes.find((p) => p.paneId === "t1");
+    expect(t1).toMatchObject({ status: "blocked", blockedBy: "error" });
+    const grid = await adapter.readGrid("t1", OLDER);
+    if (!grid.ok) throw new Error(grid.detail);
+    expect(grid.value.olderNote).toBeUndefined();
+    expect(grid.value.truncated).toBe(false);
+    expect(grid.value.text).toContain("earlier line 1");
+    expect(fake.historyReads("t1")).toBe(1);
+    // The bridge's hint still wins: a screen-detected dialog over the error is a question (server.ts paneReadHint).
+    const hinted = await adapter.readGrid("t1", { ...OLDER, hint: { blocked: true } });
+    if (!hinted.ok) throw new Error(hinted.detail);
+    expect(hinted.value.olderNote).toBe(OLDER_NOTE_BLOCKED);
+    expect(fake.historyReads("t1")).toBe(1);
+  });
+
   test("Load older whose hint says blocked starts no history read, so a pane the core reports working takes keys at once", async () => {
     // pi reports `working` while its dialog waits; the bridge's engine reads the screen's ask and says so.
     const { fake, adapter, lines } = jam();
@@ -444,6 +463,21 @@ describe("a program's state words (HC_API.md, Status)", () => {
     ] as const) {
       fake.reportState("t1", state);
       expect(await statuses()).toEqual([expected]);
+    }
+  });
+
+  test("error is blocked by an error (PR 787); a reported blocked is a question and carries no such mark", async () => {
+    const { fake, adapter } = build();
+    const t1 = async () => (await adapter.snapshot()).panes.find((p) => p.paneId === "t1");
+    fake.reportState("t1", "error");
+    expect(await t1()).toMatchObject({ agent: "claude", status: "blocked", blockedBy: "error" });
+    fake.reportState("t1", "blocked");
+    const asking = await t1();
+    expect(asking?.status).toBe("blocked");
+    expect(asking?.blockedBy).toBeUndefined();
+    for (const state of ["idle", "working", "done"] as const) {
+      fake.reportState("t1", state);
+      expect((await t1())?.blockedBy).toBeUndefined();
     }
   });
 

@@ -1,6 +1,6 @@
 import { isAbsolute } from "node:path";
 import { meaningfulTabLabel, meaningfulTerminalTitle } from "../../activity.ts";
-import type { AgentStatus } from "../../types.ts";
+import type { AgentStatus, BlockedBy } from "../../types.ts";
 import { MUX_AGENT_NAMES, MUX_SHELL_AGENT } from "../agents.ts";
 import type { MuxPane, MuxSnapshot, MuxSpace, MuxTab } from "../types.ts";
 import type { WireForeground, WireLayout, WireStatus, WireTerminal } from "./client.ts";
@@ -63,7 +63,8 @@ export function agentForApp(app: string): string | null {
 /**
  * A program's status word in Collie's triage words. `error` maps to `blocked` so an agent whose
  * turn halted on an error surfaces under Needs you and sends a push alert without widening the
- * crew wire's status union.
+ * crew wire's status union. The pane says why beside it (`blockedBy: "error"`, {@link agentOf}), so
+ * the bridge and the phone do not take the error for a question.
  */
 export function agentStatus(state: string): AgentStatus {
   switch (state) {
@@ -81,10 +82,11 @@ export function agentStatus(state: string): AgentStatus {
   }
 }
 
-/** A pane's harness and its triage word. */
+/** A pane's harness and its triage word, and why it is `blocked` when that is not a question. */
 interface PaneAgent {
   readonly agent: string;
   readonly status: AgentStatus;
+  readonly blockedBy?: BlockedBy;
 }
 
 /**
@@ -98,6 +100,8 @@ function agentOf(status: WireStatus | null, foreground: WireForeground | null): 
     // A program that names itself decides, even when Collie has no harness for the name.
     const reported = agentForApp(status.app);
     if (reported === null) return { agent: MUX_SHELL_AGENT, status: "unknown" };
+    // A turn that stopped on a failure needs a look, not an answer (MuxPane.blockedBy).
+    if (status.state === "error") return { agent: reported, status: agentStatus(status.state), blockedBy: "error" };
     return { agent: reported, status: agentStatus(status.state) };
   }
   const running = foreground === null ? null : agentForApp(foreground.name);
@@ -253,7 +257,7 @@ export function absoluteCwd(path: string, home: string): string {
 }
 
 function toPane(terminal: WireTerminal, place: PanePlace): MuxPane {
-  const { agent, status } = agentOf(terminal.status, terminal.foreground);
+  const { agent, status, blockedBy } = agentOf(terminal.status, terminal.foreground);
   const pane: MutableMuxPane = {
     paneId: terminal.address,
     spaceId: place.space.id,
@@ -272,6 +276,7 @@ function toPane(terminal: WireTerminal, place: PanePlace): MuxPane {
     agent,
     status,
   };
+  if (blockedBy !== undefined) pane.blockedBy = blockedBy;
   // A tab label worth showing: the name somebody gave it, never a place number (meaningfulTabLabel).
   const tabLabel = place.tab.docName || meaningfulTabLabel(place.tabLabel);
   if (tabLabel !== undefined && tabLabel !== "") pane.tabLabel = tabLabel;

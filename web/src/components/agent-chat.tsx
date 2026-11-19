@@ -8,7 +8,7 @@ import { useSheetPull } from "@/hooks/use-sheet-pull";
 import { usePaneNavigation } from "@/components/pane-nav";
 import { besideOf, useNewTabOrSheet } from "@/hooks/use-new-tab-or-sheet";
 import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
-import { shownStatus } from "@/lib/triage";
+import { isQuestion, shownStatus } from "@/lib/triage";
 import { useNav } from "@/hooks/use-nav";
 import { useNewEntry } from "@/hooks/use-new-entry";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
@@ -22,7 +22,7 @@ import { useChatWindow } from "@/hooks/use-chat-window";
 import { useStartupReadiness } from "@/hooks/use-startup-readiness";
 import type { AgentLaunch } from "@/lib/agent-startup";
 import { useChatReady } from "@/hooks/use-chat-ready";
-import { usePaneStart } from "@/hooks/use-pane-start";
+import { startStatusOf, usePaneStart } from "@/hooks/use-pane-start";
 import { useHandover, useHeldBody } from "@/hooks/use-handover";
 import { useLatestReply } from "@/hooks/use-latest-reply";
 import { useComposerOffscreenWatch } from "@/hooks/use-composer-offscreen";
@@ -755,7 +755,7 @@ export function AgentChat({
   // Red only, on purpose: an unseen reply or a working pane is not worth pulling the eye off the
   // pane you are in, and the pane on screen already shows its own state.
   const hereKey = agent ? paneRowKey(agent) : null;
-  const elsewhereNeedsYou = agents.some((a) => a.status === "blocked" && paneRowKey(a) !== hereKey);
+  const elsewhereNeedsYou = agents.some((a) => shownStatus(a) === "blocked" && paneRowKey(a) !== hereKey);
   // On a large screen's strip the sidebar beside it is the switcher, so the pill would be a second one.
   const pullHandle =
     !inStrip && (agents.length + shellPanes.length > 0 || launchers.length > 0)
@@ -1330,7 +1330,8 @@ export function AgentChat({
     paneId,
     agent?.agent,
     isShell,
-    agent?.status,
+    // A turn that stopped on an error ended; it is not a question that holds the terminal body.
+    startStatusOf(agent),
     chatFeed,
     Boolean(agent?.hasSession) && journal !== "missing" && journal !== "off",
     Boolean(agent?.hasSession),
@@ -1350,7 +1351,8 @@ export function AgentChat({
     settled: paneStart.settled,
     // A harness Collie has no screen reader for asks in a dialog no card can lift, so the question
     // is on screen only in the terminal (lib/chat-gate.ts, rule 1b).
-    unreadQuestion: agent?.status === "blocked" && adapterFor(agent?.agent) === undefined,
+    // A pane that stopped on an error asks nothing, so it keeps its body (lib/triage.ts `isQuestion`).
+    unreadQuestion: agent !== undefined && isQuestion(agent) && adapterFor(agent.agent) === undefined,
   });
   const chatBody = body !== "terminal";
   // What the Chat body's running question card says about the dialog below it. Chat body only: the

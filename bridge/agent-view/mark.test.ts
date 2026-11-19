@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { markHasConversation, viewPaneMark, type MarkablePane } from "./mark.ts";
+import { markHasConversation, viewPaneMark, viewQuestion, type MarkablePane } from "./mark.ts";
 
 // The pane mark an agent view's rules proof and screen are held against: the harness and the conversation the snapshot
 // holds for the pane a session names, and null when the pane is not live here.
@@ -39,5 +39,15 @@ describe("the pane mark", () => {
   test("a mark names a conversation only when the harness reported one", () => {
     expect(markHasConversation(marker([{ paneId: "w1:p1", agent: "claude", agentSession: { kind: "id", value: "conv-1" } }])(ONE) ?? "")).toBe(true);
     expect(markHasConversation(marker([{ paneId: "w1:p1", agent: "agent-x" }])(ONE) ?? "")).toBe(false);
+  });
+});
+
+describe("the question a view reads (PR 787)", () => {
+  const asks = (view: MarkablePane) => viewQuestion({ place: () => ({ address: ONE }), views: () => [view], memberId: "lead" })(ONE);
+
+  test("a blocked pane is a question; one that stopped on an error is not, so a send from the view is not refused", () => {
+    expect(asks({ paneId: "w1:p1", agent: "claude", status: "blocked" })).toBe(true);
+    expect(asks({ paneId: "w1:p1", agent: "claude", status: "blocked", blockedBy: "error" })).toBe(false);
+    expect(asks({ paneId: "w1:p1", agent: "claude", status: "idle" })).toBe(false);
   });
 });
