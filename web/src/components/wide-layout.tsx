@@ -13,7 +13,7 @@ import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/com
 import { Button } from "@/components/ui/button";
 import { PaneGlyph } from "@/components/ui/pane-glyph";
 import { BottomSheet } from "@/components/ui/sheet";
-import { Wordmark } from "@/components/wordmark";
+import { CollieWordmark } from "@/components/collie-wordmark";
 import { openForCount, useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useElementWidth } from "@/hooks/use-element-width";
 import { useLocale } from "@/hooks/use-locale";
@@ -42,6 +42,7 @@ import { useRootData } from "@/lib/route-data";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { shortenHome } from "@/lib/shorten-home";
 import { COLUMN_SNAP_CLASSES, STRIP_SNAP_CLASSES, leftmostWholeColumn, shouldFollowFocus } from "@/lib/strip-snap";
+import { pickTabPane } from "@/lib/tab-pane-memory";
 import { shownStatus } from "@/lib/triage";
 import { isReadOnly, statusLabel, type AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -99,8 +100,10 @@ const COLUMN_PASSES_X = "[&_*]:overscroll-x-auto!";
 /** The mark's drawing in the rail's top row; its 44px tap box is the header's. */
 const RAIL_MARK_PX = 26;
 
-/** The mark's drawing in the open sidebar's top row, a step above the rail's; the row stays 48px (h-12). */
-const SIDEBAR_MARK_PX = 36;
+/** The mark's drawing in the open sidebar's top row, a step above the rail's; the row stays 48px (h-12)
+ *  and the mark's tap box 44px (size-11). It was 36; 40 is a try. To change it back, change this line and
+ *  the row's left padding in `SidebarTop` (`pl-3.5` here, `pl-3` at 36, and a `-ml-0.5` on the word). */
+const SIDEBAR_MARK_PX = 40;
 
 interface WideLayoutProps {
   widthClass: "medium" | "expanded";
@@ -279,7 +282,10 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   };
   const toTab = (tabId: string) => {
     if (agent === undefined || tabId === agent.tabId) return;
-    const target = herd.find((p) => p.tabId === tabId && p.host === agent.host);
+    const target = pickTabPane(
+      herd.filter((p) => p.tabId === tabId && p.host === agent.host),
+      { host: agent.host, session: agent.session, tabId },
+    );
     if (target !== undefined) goTo(target);
   };
   const onIntent = (pane: AgentView, intent: BeltIntent) => {
@@ -784,12 +790,13 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
     );
   }
   return (
-    // `pl-3`: the mark's box is 44px and its drawing SIDEBAR_MARK_PX (36), so the drawing starts
-    // 12 + 4 = 16px in, on the list's inset; `-ml-0.5` pulls the word to the drawing past the box's air.
+    // `pl-3.5`: the mark's box is 44px and its drawing SIDEBAR_MARK_PX (40), so the drawing starts
+    // 14 + 2 = 16px in, on the list's inset. The word follows the box and the gap: 2px of air + 4px gap = 6px
+    // from the drawing (the 36px drawing had 4 + 4 - 2 = 6 with a `-ml-0.5` on the word; no margin is needed now).
     // `wordmark-lockup`: the row is the pointer target that lights the name's suffix (index.css).
-    <div className="wordmark-lockup flex h-12 shrink-0 items-center gap-1 border-b border-rule pl-3 pr-1">
+    <div className="wordmark-lockup flex h-12 shrink-0 items-center gap-1 border-b border-rule pl-3.5 pr-1">
       <div ref={setMark} data-slot="sidebar-mark" className="flex size-11 shrink-0 items-center justify-center" />
-      {/* The product's name outside (components/wordmark.tsx): Collie in the text colour, PWA in the
+      {/* The product's name outside (components/collie-wordmark.tsx, the brand's outlines): Collie in the text colour, PWA in the
           herd's three colours under a pointer. Not translated. */}
       {/* The word is part of the mark's button: a tap on it is the mark's tap (home, up a level,
           DESIGN.md §12). Hidden from the a11y tree and the tab order, so the row is ONE control. */}
@@ -799,9 +806,9 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
         aria-hidden
         data-slot="sidebar-word"
         onClick={(e) => e.currentTarget.parentElement?.querySelector<HTMLButtonElement>('[data-slot="sidebar-mark"] button')?.click()}
-        className="-ml-0.5 flex h-11 min-w-0 flex-1 items-center truncate text-left text-lg font-semibold text-foreground"
+        className="flex h-11 min-w-0 flex-1 items-center truncate text-left text-lg text-foreground"
       >
-        <Wordmark />
+        <CollieWordmark />
       </button>
       {toggle}
     </div>

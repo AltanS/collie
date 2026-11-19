@@ -11,7 +11,7 @@ import type { NotifyPrefs } from "@/lib/api";
 import type { CacheWatchListEntry } from "@/lib/types";
 
 // Which lifecycle events are worth a push. Bridge-wide (fans out to every device, like the snooze),
-// so the copy says so. Seven switches: "Needs input" (blocked, default on), "Finished" (done,
+// so the copy says so. Seven switches: "Needs you" (blocked, default on), "Finished" (done,
 // default off), "One notification per agent" (individual, default on), "App updates" (updates, default on), "Machine load stays high" (machines, default on),
 // "Decisions that need you now" (decisions, default on) and "Cache about to go cold" (cache, default off).
 // Optimistic toggle with revert on failure — see useNotifyPrefs.

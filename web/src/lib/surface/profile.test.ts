@@ -75,6 +75,7 @@ describe("every profile file", () => {
     expect(claude.idle.frame.prompt.pattern).toContain("(?<draft>");
     expect(claude.idle.placeholders.sgr).toBe(2);
     expect(claude.idle.placeholders.texts).toContain("Press up to edit queued messages");
+    expect(claude.idle.placeholders.texts).toContain("Resend your message to try again");
     expect(claude.idle.volatile.below.maxRows).toBe(8);
     expect(claude.keys.submit).toEqual(["Enter"]);
     expect(claude.keys.interrupt).toEqual(["Escape"]);

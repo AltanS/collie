@@ -319,6 +319,14 @@ Key security boundaries and risks:
   shell pane, and each one-off command, in `sent.jsonl` in the state folder (mode 0600). A paired
   device can read it, as it can read the panes. Some secrets are still kept
   ([Sent: the shell lines you sent](#sent-the-shell-lines-you-sent)).
+- **A phone whose reply box sits below its screen reports the screen heights.** The phone sends one
+  record of whole numbers (the heights of the screen and of the box, whether the app is installed,
+  whether the keyboard is open) and three words (what woke the check, what the height fix did, the
+  kind of session). It sends no text, no session name, no pane id and no address, at most one record
+  a minute and twenty in a page's life. The bridge keeps each record, with the time, its version and
+  the device's name, in `diag-composer.jsonl` in the state folder (mode 0600), the newest 500 lines
+  or 256 KB. Nothing leaves the machine, and a paired device can send it, as it can read the panes.
+  Delete the file to forget the records.
 - **A single instance exposes all Herdr sessions.** By default, one Collie process fronts every
   Herdr session discovered under Herdr's configuration root, including sandbox sessions
   ([Multi-session](configure.md#multi-session)).
@@ -583,8 +591,9 @@ If the lead cannot read a member's answer to mask it, it does not pass the answe
 shows that read as failed, as it does for a member it cannot reach.
 
 A push notification names a pane by its session name, in this order: the pane's label in Collie, a
-name you set in the harness (Claude Code's `/rename`, pi's `/name`), the title the agent gave its
-session in its own log, or a one-pane tab's name. A pane with none of these is called by its harness,
+name you set in the harness (Claude Code's `/rename`, pi's `/name`), a one-pane tab's name, or the
+title the agent gave its session in its own log. A name a person set always comes before one the agent
+wrote. A pane with none of these is called by its harness,
 for example `claude`. A push never uses the terminal title, which any program in the pane can set
 with an escape sequence.
 

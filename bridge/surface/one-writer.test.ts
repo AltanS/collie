@@ -139,7 +139,9 @@ describe("the write-ahead mark", () => {
     s.accept(input);
     s.markStarted(input.id);
     s.accept({ ...input, id: "req-0000002" });
-    const ended = s.recover(SendProtocol.crashReceipt);
+    // The store clock is fixed, so both records share one acceptedAt and the order of `recover` is the
+    // order the directory lists them, which no file system promises. Compare by id.
+    const ended = s.recover(SendProtocol.crashReceipt).toSorted((a, b) => a.id.localeCompare(b.id));
     expect(ended.map((record) => [record.id, record.receipt?.reason])).toEqual([
       ["req-0000001", "interrupted"],
       ["req-0000002", "crash"],

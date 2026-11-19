@@ -277,6 +277,8 @@ function toView(pane: MuxPane, kind: "agent" | "shell"): AgentView {
   // Optional fields are ASSIGNED, never conditionally spread: absent stays absent, and each
   // condition below stays readable as the one rule it encodes.
   if (pane.paneLabel) view.paneLabel = pane.paneLabel;
+  // Why a blocked pane needs you when it is not a question (AgentView.blockedBy). Only with `blocked`.
+  if (pane.status === "blocked" && pane.blockedBy !== undefined) view.blockedBy = pane.blockedBy;
   // Only a fact that differs from the default rides (see AgentView.workspaceNamed).
   if (pane.spaceNamed !== undefined && pane.spaceNamed !== (pane.spaceLabel !== pane.spaceId)) view.workspaceNamed = pane.spaceNamed;
   // Denormalised alongside workspaceLabel so no client has to join tabs[].
@@ -444,7 +446,9 @@ export class StateEngine {
    * waits, because pi has no blocked state for an extension's question. Lifted before the
    * transitions are taken, so the "Needs you" mark and the push follow the screen. The read is the
    * previous poll's (the Surface reads after each poll), so the mark trails the screen by one poll
-   * either way. Only ever raises to `blocked`; a status the mux reports is never lowered.
+   * either way. Only ever raises to `blocked`; a status the mux reports is never lowered. A pane
+   * `blocked` by an error (`blockedBy: "error"`) whose screen shows an ask loses that mark and is a
+   * question.
    */
   liftScreenAsks(fn: ScreenAsk): void {
     this.screenAsk = fn;
@@ -753,10 +757,17 @@ export class StateEngine {
       }
       await this.enrichSessionNames(agents, revisions);
 
-      // The screen's ask wins for `blocked` (see liftScreenAsks).
+      // The screen's ask wins for `blocked` (see liftScreenAsks). It also wins over an error: a pane whose
+      // program reported `error` while a dialog shows on its screen is a question, with every guard a
+      // question has, so the error's mark goes (AgentView.blockedBy).
       const screenAsk = this.screenAsk;
       if (screenAsk !== undefined) {
-        for (const a of agents) if (a.status !== "blocked" && screenAsk(a.paneId)) a.status = "blocked";
+        for (const a of agents) {
+          if (a.status === "blocked" && a.blockedBy === undefined) continue;
+          if (!screenAsk(a.paneId)) continue;
+          a.status = "blocked";
+          delete a.blockedBy;
+        }
       }
 
       // Detect transitions against the previous poll. First sighting of a pane never fires a

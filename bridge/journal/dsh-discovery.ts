@@ -11,7 +11,9 @@
 // What has to agree before a session is returned:
 //  - the kernel lists a FLOCK write lock held by a foreground process of the pane;
 //  - that lock's device and inode are those of a `session.lock` found by walking the configured
-//    roots (bounded, as kiro-discovery.ts bounds its scan; a scan cut short finds nothing);
+//    roots (bounded, as kiro-discovery.ts bounds its scan; a scan cut short finds nothing), matched
+//    exactly, or on btrfs through the mount's device under the rules of `heldCandidates`
+//    (proc-locks.ts);
 //  - among the sessions that pid holds, exactly one is a top-level session (a sub-agent is a child
 //    session, written by the same process, and its header says so with `delegationDepth > 0`);
 //  - the source's own resolve lands on that session's log.
@@ -26,7 +28,7 @@
 // where only the session writer ever opens `session.lock`. Elsewhere the reader answers null and
 // discovery finds nothing, which is the safe answer: the pane keeps its terminal view.
 
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
 import { HOST } from "../host.ts";
@@ -44,20 +46,8 @@ const MAX_SCAN_ENTRIES = 8192;
 /** The most of a log's head read to find its header row. The header is the first, small frame. */
 const HEADER_BYTES = 64 * 1024;
 
-/** The kernel fact discovery reads, as a seam so tests need no live process. */
-export interface ProcReader {
-  /** The files `pid` holds a FLOCK write lock on, as `<major>:<minor>:<inode>`, or null when the table cannot be read. */
-  flocks(pid: number): Promise<Set<string> | null>;
-}
-
-/** The real /proc. Off Linux every answer is null. */
-export const LINUX_PROC: ProcReader = {
-  async flocks(pid) {
-    if (HOST.platform !== "linux") return null;
-    const table = await readFile("/proc/locks", "utf8").catch(() => null);
-    return table === null ? null : flocksOf(table, pid);
-  },
-};
+import { fileKey, heldCandidates, LINUX_PROC, type LockCandidate, type ProcReader } from "./proc-locks.ts";
+export { fileKey, flocksOf, LINUX_PROC, type ProcReader } from "./proc-locks.ts";
 
 /**
  * The macOS lock table, over `openFiles` (bridge/journal/open-files.ts): the pid's open files, and a
@@ -93,32 +83,11 @@ export const DEFAULT_PROC: ProcReader = {
     if (HOST.platform === "darwin") return DARWIN_PROC.flocks(pid);
     return null;
   },
+  // The mount table is Linux's; darwin's keys come from stat and always match exactly.
+  async mounts() {
+    return HOST.platform === "linux" ? (LINUX_PROC.mounts?.() ?? null) : null;
+  },
 };
-
-/**
- * The files `pid` holds a FLOCK write lock on, from the text of /proc/locks, as
- * `<major>:<minor>:<inode>` in decimal. A row reads
- * `<n>: FLOCK  ADVISORY  WRITE <pid> <maj>:<min>:<inode> <start> <end>`, the device numbers in hex; a
- * blocked waiter's row starts `<n>: -> `, and is not a holder.
- */
-export function flocksOf(table: string, pid: number): Set<string> {
-  const held = new Set<string>();
-  for (const row of table.split("\n")) {
-    const fields = row.trim().split(/\s+/);
-    if (fields[1] !== "FLOCK" || fields[3] !== "WRITE" || Number(fields[4]) !== pid) continue;
-    const [major, minor, inode] = (fields[5] ?? "").split(":");
-    if (!/^[0-9a-f]+$/i.test(major ?? "") || !/^[0-9a-f]+$/i.test(minor ?? "") || !/^\d+$/.test(inode ?? "")) continue;
-    held.add(`${Number.parseInt(major ?? "", 16)}:${Number.parseInt(minor ?? "", 16)}:${inode}`);
-  }
-  return held;
-}
-
-/** A file's identity in the lock table's terms, `<major>:<minor>:<inode>`, from Linux's dev_t encoding. */
-export function fileKey(dev: bigint, ino: bigint): string {
-  const major = ((dev >> 8n) & 0xfffn) | ((dev >> 32n) & ~0xfffn);
-  const minor = (dev & 0xffn) | ((dev >> 12n) & ~0xffn);
-  return `${major}:${minor}:${ino}`;
-}
 
 function validPid(pid: number | undefined): pid is number {
   return pid !== undefined && Number.isSafeInteger(pid) && pid > 0 && pid <= MAX_PID;
@@ -166,9 +135,13 @@ interface Held {
  * The session folders under `roots` whose `session.lock` is one of `locked`, or null when the walk
  * reached its entry limit. Every session folder is visited; only a lock file's stat is read.
  */
-async function lockedSessions(roots: readonly string[], locked: ReadonlySet<string>): Promise<Held[] | null> {
+async function lockedSessions(
+  roots: readonly string[],
+  locked: ReadonlySet<string>,
+  proc: ProcReader,
+): Promise<Held[] | null> {
   let left = MAX_SCAN_ENTRIES;
-  const held: Held[] = [];
+  const candidates: (Held & LockCandidate)[] = [];
   for (const root of roots) {
     for (const project of await readdir(root).catch(() => [])) {
       const sessions = await readdir(join(root, project)).catch(() => []);
@@ -177,11 +150,16 @@ async function lockedSessions(roots: readonly string[], locked: ReadonlySet<stri
       for (const id of sessions) {
         if (!isDshSessionId(id)) continue;
         const folder = join(root, project, id);
-        const st = await stat(join(folder, DSH_LOCK_NAME), { bigint: true }).catch(() => null);
-        if (st === null || !st.isFile() || !locked.has(fileKey(st.dev, st.ino))) continue;
-        if ((await containedRealpath(folder, root)) !== null) held.push({ id, folder, root });
+        const path = join(folder, DSH_LOCK_NAME);
+        const st = await stat(path, { bigint: true }).catch(() => null);
+        if (st === null || !st.isFile()) continue;
+        candidates.push({ id, folder, root, path, dev: st.dev, ino: st.ino });
       }
     }
+  }
+  const held: Held[] = [];
+  for (const { id, folder, root } of await heldCandidates(locked, candidates, proc)) {
+    if ((await containedRealpath(folder, root)) !== null) held.push({ id, folder, root });
   }
   return held;
 }
@@ -202,7 +180,7 @@ export function createDshDiscovery(
       for (const key of held) locked.add(key);
     }
     if (locked.size === 0) return null;
-    const found = await lockedSessions(roots, locked);
+    const found = await lockedSessions(roots, locked, proc);
     if (found === null) return null;
     const top: Held[] = [];
     for (const session of found) {

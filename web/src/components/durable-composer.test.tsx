@@ -10,6 +10,7 @@ import type { ChatMessageListHandle } from "@/components/ui/chat/chat-message-li
 import type { ChatFeed } from "@/hooks/use-chat-window";
 import { EMPTY_CHAT_WINDOW } from "@/lib/chat-window";
 import { __resetPending } from "@/lib/durable-pending";
+import { __resetEnterSendsStore, setEnterSends } from "@/lib/enter-sends-store";
 import { paneScopeKey } from "@/lib/scope";
 import type { ChatEntry } from "@/lib/types";
 import { server } from "@/test/setup";
@@ -44,6 +45,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  __resetEnterSendsStore();
   __resetPending();
   __resetOperatorCommands();
   declares({ steerTurn: true, abortTurn: true });
@@ -1009,5 +1011,80 @@ describe("a failed send keeps whatever was written since", () => {
     answer();
     await waitFor(() => expect(field()).toHaveValue("old words\nnew words"));
     expect(loadDraft(undefined, "c1")).toBe("old words\nnew words");
+  });
+});
+
+// The durable agent's reply box follows the same Enter rule as the main one (ADR 0157): a bare Enter is a new
+// line until the person turns "Enter sends" on, and then only a physical keyboard's Enter sends. It offers no
+// switch of its own; the offer lives in the main reply box.
+describe("Enter sends", () => {
+  const HARDWARE = { key: "Enter", code: "Enter", keyCode: 13 } as const;
+  const ok = () => stub("send", () => HttpResponse.json({ ok: true, outcome: "ok" }));
+
+  it("with the switch on, a hardware Enter sends once", async () => {
+    setEnterSends(true);
+    const seen = ok();
+    draw();
+    await type("go left");
+    expect(fireEvent.keyDown(field(), HARDWARE)).toBe(false);
+    await waitFor(() => expect(seen).toHaveLength(1));
+    expect(seen[0]).toMatchObject({ text: "go left" });
+    await waitFor(() => expect(field()).toHaveValue(""));
+    expect(seen).toHaveLength(1);
+  });
+
+  it("with the switch on, Shift+Enter and an Enter with an empty code are left to the field", async () => {
+    setEnterSends(true);
+    const seen = ok();
+    draw();
+    await type("keep");
+    expect(fireEvent.keyDown(field(), { ...HARDWARE, shiftKey: true })).toBe(true);
+    expect(fireEvent.keyDown(field(), { key: "Enter", code: "", keyCode: 13 })).toBe(true);
+    expect(fireEvent.keyDown(field(), { ...HARDWARE, isComposing: true })).toBe(true);
+    expect(seen).toHaveLength(0);
+    expect(field()).toHaveValue("keep");
+  });
+
+  it("with the switch on, a held Enter sends once and its repeats add no new line", async () => {
+    setEnterSends(true);
+    const seen = ok();
+    draw();
+    await type("once");
+    // The placeholder changes while the send runs, so the field is taken once.
+    const box = field();
+    expect(fireEvent.keyDown(box, HARDWARE)).toBe(false);
+    expect(fireEvent.keyDown(box, { ...HARDWARE, repeat: true })).toBe(false);
+    await waitFor(() => expect(seen).toHaveLength(1));
+  });
+
+  it("with nothing stored, a hardware Enter is a new line and offers nothing here", async () => {
+    const seen = ok();
+    draw();
+    await type("keep");
+    expect(fireEvent.keyDown(field(), HARDWARE)).toBe(true);
+    expect(seen).toHaveLength(0);
+    expect(screen.queryByText("Using a keyboard? Enter can send.")).toBeNull();
+  });
+
+  it("with the switch off, a hardware Enter is a new line", async () => {
+    setEnterSends(false);
+    const seen = ok();
+    draw();
+    await type("keep");
+    expect(fireEvent.keyDown(field(), HARDWARE)).toBe(true);
+    expect(seen).toHaveLength(0);
+  });
+
+  it.each([
+    ["nothing stored", null],
+    ["off", false],
+    ["on", true],
+  ] as const)("Ctrl+Enter sends with the choice %s", async (_name, choice) => {
+    if (choice !== null) setEnterSends(choice);
+    const seen = ok();
+    draw();
+    await type("go");
+    expect(fireEvent.keyDown(field(), { key: "Enter", ctrlKey: true })).toBe(false);
+    await waitFor(() => expect(seen).toHaveLength(1));
   });
 });

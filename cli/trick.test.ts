@@ -17,6 +17,7 @@ import { EXIT, type Io } from "./io.ts";
 import { tricksFindings } from "./trick-findings.ts";
 import { GROUP_CAPACITY_WORDS, GROUP_TOO_LARGE } from "../bridge/tricks/card-group.ts";
 import { TAP_SHOWS_NOTHING, agentPaneRefusal, checkStatic, runAgainstFixture, cmdTrick, cmdTrickAuto, cmdTrickCheck, cmdTrickHelper, cmdTrickInit, sampleProgram, cmdTrickList, cmdTrickSkill, cmdTrickSwitch, SWITCHED_ON_NOT_WHOLE, sampleAgents, SKILL_BYTES_MAX, TRICK_WRITE_BRIEF, TRICK_SUBCOMMANDS, type TrickCheckReport, type TrickDeps } from "./trick.ts";
+import { sizeWords } from "../bridge/tricks/card-group.ts";
 import { checkWarnings, HELPER_VERSION, helperVersion, isBareImport, isScannedFile, looksBinary, runsLines, shippedHelperVersion, TRICK_HELPER } from "../bridge/tricks/scan.ts";
 import { realFiles } from "./sys.ts";
 import type { JsonObject } from "../bridge/json.ts";
@@ -427,6 +428,21 @@ describe("collie trick check", () => {
     expect(f.out.join("\n")).not.toContain(TAP_SHOWS_NOTHING);
   });
 
+  test("--run warns about a picture the output names that the folder lacks or a proposal would leave behind; never a failure", async () => {
+    const image = (src: string) => ({ kind: "image", attrs: { src, alt: "", w: "8", h: "8" } });
+    const doc = { v: 1, parts: [{ at: "session", id: "main", view: [image("media/here.png"), image("media/missing.png"), image("media/fake.png")] }] };
+    const dir = await folder('id = "pics"\nname = "P"\nrun = "program.ts"\nplaces = ["session"]\n', { "program.ts": prints(JSON.stringify(doc)), "media/fake.png": "<svg/>" });
+    await writeFile(join(dir, "media", "here.png"), new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]));
+    const d = await deps();
+    expect(await cmdTrickCheck(d, ["--run", dir])).toBe(EXIT.OK);
+    const warns = d.out.filter((line) => line.startsWith("  warn: media/"));
+    expect(warns).toEqual([
+      "  warn: media/missing.png is named by the output but is not in the folder. The phone shows no picture there.",
+      "  warn: media/fake.png is named by the output but is not a PNG, JPEG or WebP picture by its first bytes, so a proposal leaves it behind. The phone shows no picture there.",
+    ]);
+    expect(d.out.at(-1)).toBe("ok: no problems.");
+  });
+
   test("the checked-in fixture is clean", async () => {
     const d = await deps();
     expect(await cmdTrickCheck(d, [join(import.meta.dir, "..", "bridge", "tricks", "fixtures", "hello")])).toBe(EXIT.OK);
@@ -571,6 +587,55 @@ describe("collie trick check", () => {
     const old = "// collie trick helper v1\nold text\n";
     const oldHash = new Bun.CryptoHasher("sha256").update(old).digest("hex");
     expect(shippedHelperVersion(old, new Map([[oldHash, 1]]))).toBe(1);
+  });
+
+  test("a trick.ts that is a helper of an older Collie is taken as the helper, said once, and not counted; a hand-edited one is refused with the reason", async () => {
+    const v8 = await readFile(new URL("../bridge/tricks/fixtures/helper-v8.txt", import.meta.url), "utf8");
+    const toml = 'id = "kit"\nname = "Kit"\nrun = "program.ts"\nplaces = ["status"]\n';
+    const program = 'import { run } from "./trick.ts";\nrun((t) => t.status({ text: "ok" }));\n';
+    // The current helper: no note, and it fits.
+    const current = await folder(toml, { "program.ts": program, "trick.ts": TRICK_HELPER });
+    const c = await deps();
+    expect(await cmdTrickCheck(c, [current])).toBe(EXIT.OK);
+    expect(c.out.join("\n")).not.toContain("older Collie");
+    expect(c.out.join("\n")).toContain("ok: no problems.");
+    // A helper of an older Collie (v8, as 1.29.0 shipped it): the helper, not own code, said once, counted for nothing.
+    const older = await folder(toml, { "program.ts": program, "trick.ts": v8 });
+    const report = await checkStatic(older, realFiles);
+    expect(report.helper).toEqual({ version: 8, current: false, modified: false });
+    expect(report.notScanned).toContain("trick.ts");
+    const d = await deps();
+    expect(await cmdTrickCheck(d, [older])).toBe(EXIT.OK);
+    const said = d.out.filter((line) => line.includes("older Collie"));
+    expect(said).toEqual([`  note: trick.ts is the helper from an older Collie (v8). Run \`collie trick helper ${older}\` to update it.`]);
+    expect(d.out.join("\n")).toContain("ok: no problems.");
+    expect(d.err.join("\n")).not.toContain("propose:");
+    // The same text with one line added says v8 but is no helper Collie shipped: it counts as the trick's own code, and the refusal says why.
+    const edited = await folder(toml, { "program.ts": program, "trick.ts": `${v8}// a hand edit\n` });
+    const e = await deps();
+    expect(await cmdTrickCheck(e, [edited])).toBe(EXIT.OK);
+    const refusal = `propose: trick.ts says helper v8 but its text differs from that helper, so it counts as your own code (${sizeWords(Buffer.byteLength(`${v8}// a hand edit\n`))}). Run \`collie trick helper ${edited}\` to restore it, or remove the version line.`;
+    expect(e.err.map((line) => line.replace(/^error: /u, ""))).toContain(refusal);
+    expect(e.out.join("\n")).toContain("ok: it runs on this machine, but it cannot be proposed.");
+  });
+
+  test("both v9 helper texts (701ce4ce4 and bcc2135aa) are the helper from an older Collie, said once, not refused", async () => {
+    const toml = 'id = "kit"\nname = "Kit"\nrun = "program.ts"\nplaces = ["status"]\n';
+    const program = 'import { run } from "./trick.ts";\nrun((t) => t.status({ text: "ok" }));\n';
+    for (const commit of ["701ce4ce4", "bcc2135aa"]) {
+      const shown = await Bun.$`git show ${commit}:cli/trick-kit/trick.ts`.quiet().nothrow();
+      if (shown.exitCode !== 0) continue;
+      const v9 = shown.stdout.toString();
+      const older = await folder(toml, { "program.ts": program, "trick.ts": v9 });
+      const report = await checkStatic(older, realFiles);
+      expect(report.helper).toEqual({ version: 9, current: false, modified: false });
+      expect(report.notScanned).toContain("trick.ts");
+      const d = await deps();
+      expect(await cmdTrickCheck(d, [older])).toBe(EXIT.OK);
+      expect(d.out.filter((line) => line.includes("older Collie"))).toEqual([`  note: trick.ts is the helper from an older Collie (v9). Run \`collie trick helper ${older}\` to update it.`]);
+      expect(d.out.join("\n")).toContain("ok: no problems.");
+      expect(d.err.join("\n")).not.toContain("differs");
+    }
   });
 
   test("only code files are grepped: docs, data, tests and fixtures are listed as not grepped and still count in the code hash", async () => {

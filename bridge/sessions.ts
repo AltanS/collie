@@ -15,7 +15,7 @@ import { DURABLE_MUX } from "./mux/durable/adapter.ts";
 import { versionNotice, type VersionRefusal } from "./mux/durable/protocol.ts";
 import { sourceWhere, type DurableSource } from "./sources.ts";
 import type { StateEngine } from "./state-engine.ts";
-import type { SessionCard, SessionEntry, SessionState, SessionSummary } from "./types.ts";
+import { isErrorBlocked, isQuestionPane, type AgentView, type SessionCard, type SessionEntry, type SessionState, type SessionSummary } from "./types.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multi-session support. A multiplexer may run several instances on one machine, each
@@ -320,8 +320,10 @@ export class SessionRegistry {
   /**
    * Summaries for the snapshot's `sessions` field: primary first, then alphabetical. Counts come
    * from each engine's current snapshot; an unreachable session (last poll failed) reports 0 counts.
+   * `errorUnseen` says whether a pane that stopped on an error is still unseen (the activity ledger);
+   * without it every such pane counts as blocked.
    */
-  list(): SessionEntry[] {
+  list(errorUnseen: (session: string, pane: AgentView) => boolean = () => true): SessionEntry[] {
     // The card rides only on an instance that runs a program. One with none sends the summary alone,
     // byte for byte as before programs existed (solo-baseline.test.ts), and the phone reads an
     // absent card as a terminal session with the instance's own capabilities.
@@ -336,7 +338,9 @@ export class SessionRegistry {
         reachable,
         agents: agents.length,
         working: agents.filter((a) => a.status === "working").length,
-        blocked: agents.filter((a) => a.status === "blocked").length,
+        // A pane that stopped on an error counts until the person has seen it, as the phone's mark does
+        // (web/src/lib/triage.ts `shownStatus`); every other blocked pane counts while it is blocked.
+        blocked: agents.filter((a) => isQuestionPane(a) || (isErrorBlocked(a) && errorUnseen(rt.name, a))).length,
       };
       return carded ? Object.assign(summary, cardOf(rt, reachable)) : summary;
     });

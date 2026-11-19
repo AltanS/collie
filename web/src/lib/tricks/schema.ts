@@ -94,6 +94,12 @@ export const PART_MAX_BYTES = 16 * 1024;
 export const DOCUMENT_MAX_BYTES = 64 * 1024;
 /** A button's `value`, an action's `value` and a tap's text value, at most this many UTF-8 bytes. */
 export const VALUE_MAX_BYTES = 1024;
+/**
+ * The `value` of a button with `does = "draft"`, the text it puts into a reply box, at most this many
+ * characters (code points): the WalkyTalky body cap, long enough for a saved prompt. Line breaks are allowed.
+ * Every other button `value` keeps {@link VALUE_MAX_BYTES}.
+ */
+export const DRAFT_VALUE_MAX = 4000;
 /** Parts per document. One trick in many places, not a page of widgets. */
 export const PARTS_MAX = 24;
 /** The most refusals a result lists. One more row counts the rest, as the theme parser does. */
@@ -401,8 +407,12 @@ export type ChipState = (typeof CHIP_STATES)[number];
 /** `button.pressed` (VOCABULARY.md 2.8). */
 export const PRESSED_STATES = ["true", "false", "mixed"] as const;
 export type Pressed = (typeof PRESSED_STATES)[number];
-/** `button.does`: a trick may only copy. `install`, `notify`, `reload` and `wipe` are Collie's own. */
-export const BUTTON_DOES = ["copy"] as const;
+/**
+ * `button.does`: a trick's button may copy its `value`, or put it into a session's reply box (`draft`, only
+ * for a trick whose manifest says `drafts = "session"`). It never sends: the person reads the text in the box
+ * and taps Send. `install`, `notify`, `reload` and `wipe` are Collie's own.
+ */
+export const BUTTON_DOES = ["copy", "draft"] as const;
 export type ButtonDoes = (typeof BUTTON_DOES)[number];
 /** `link.rel`: what the `href` names. Absent: an https:// or http:// address or a session's scope key. `file` is refused: a trick opens no file. */
 export const LINK_RELS = ["url", "file", "pane"] as const;
@@ -538,11 +548,12 @@ export type SessionStatus = (typeof SESSION_STATUSES)[number];
  * Every place here is drawn by this Collie: `belt` (agent-chat.tsx), `status` (trick-status-item.tsx),
  * `dashboard` and `tabbar` (trick-place-items.tsx, dashboard-tab-bar.tsx), `session` (the bridge's
  * Tricks Space, panes.ts, and routes/trick-session.tsx) and, from contract 2, `menu` (rows in a session's
- * settings, trick-menu-group.tsx; {@link MENU_CONTRACT}). M94 review 11 removed `tab`, `tab:<match>` and
+ * settings, trick-menu-group.tsx; {@link MENU_CONTRACT}) and `float` (small moving pictures drawn over
+ * the app, trick-float-layer.tsx; see the float section). M94 review 11 removed `tab`, `tab:<match>` and
  * `view:<match>`, which parsed and drew nowhere; a later Collie adds a place back at the same contract,
  * and an older one leaves a part there out (`parseTrickDocument`).
  */
-export const PLACE_KINDS = ["belt", "session", "dashboard", "status", "tabbar", "menu"] as const;
+export const PLACE_KINDS = ["belt", "session", "dashboard", "status", "tabbar", "menu", "float"] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
 /** The places a parser call with no `places` accepts: every place. */
 export const NEAR_PLACES: readonly PlaceKind[] = PLACE_KINDS;
@@ -607,6 +618,43 @@ export const SESSIONS_NEED_CONTRACT = `"sessions" needs contract = ${String(MENU
  */
 export const MENU_WORDS = "Adds rows to a session's settings.";
 export const MENU_TAP_WORDS = "A tap runs it and tells it which session. Collie gives it no way to type there.";
+
+// ── The float place ─────────────────────────────────────────────────────────────────────────────
+//
+// A `float` part draws one small picture over the app: `once` plays one motion and is gone (fly-across,
+// arc, pop), `stay` remains and shows a mood (perch, wander, idle). The program names the picture, the
+// motion and the mood; Collie places it inside the free area of the screen it is drawn on and holds the
+// rest (never over a question or a sheet, tap-through, rate limits): lib/tricks/float.ts and
+// components/trick-float-layer.tsx. `float` in `places` is the right. Unbound it shows on the Dashboard;
+// with `sessions` (contract 2) it shows only in those sessions.
+
+export const FLOAT_MODES = ["once", "stay"] as const;
+export type FloatMode = (typeof FLOAT_MODES)[number];
+export const FLOAT_ONCE_MOTIONS = ["fly-across", "arc", "pop"] as const;
+export const FLOAT_STAY_MOTIONS = ["perch", "wander", "idle"] as const;
+/** Every motion of the place. A once motion never takes a stay mode and the other way round. */
+export const FLOAT_MOTIONS = [...FLOAT_ONCE_MOTIONS, ...FLOAT_STAY_MOTIONS] as const;
+export type FloatMotion = (typeof FLOAT_MOTIONS)[number];
+export const FLOAT_EDGES = ["top", "bottom", "left", "right"] as const;
+export type FloatEdge = (typeof FLOAT_EDGES)[number];
+/** The drawn HEIGHT of a frame: `s` is 32 px, `m` is 48 px, `l` is 72 px (lib/tricks/float.ts `FLOAT_SIZE_PX`). The width follows the frame's own shape. */
+export const FLOAT_SIZES = ["s", "m", "l"] as const;
+export type FloatSize = (typeof FLOAT_SIZES)[number];
+/** With `perch`: where along its edge the picture stands. `start` is the left (top or bottom edge) or the top (left or right edge). */
+export const FLOAT_ALONG = ["start", "middle", "end"] as const;
+export type FloatAlong = (typeof FLOAT_ALONG)[number];
+export const FLOAT_OPENS = ["page"] as const;
+export type FloatOpens = (typeof FLOAT_OPENS)[number];
+/** The columns of a sprite sheet. */
+export const FLOAT_FRAMES_MAX = 16;
+/** The rows of a sprite sheet: one per mood at most (the five chip states). */
+export const FLOAT_ROWS_MAX = 5;
+/** The frame rate of a sprite sheet. */
+export const FLOAT_FPS_MAX = 12;
+/** The words a person reads for the `float` right, the same in the About sheet (`settings.tricks.about.float`, held equal by a test). */
+export const FLOAT_WORDS = "It can draw a small moving picture over the app. It never covers a question and never blocks a tap.";
+/** The line beside {@link FLOAT_WORDS} for a part that says `opens = "page"`. */
+export const FLOAT_OPENS_WORDS = "Tapping its picture opens its page.";
 
 /** Whether index `at` of folded words sits on a word's edge: a blank or an end beside it, or not two Latin letters or digits. */
 function edgeAt(text: string, at: number): boolean {
@@ -801,7 +849,7 @@ export const REMOVED_KINDS = {
   field: "fields are not in a trick's vocabulary yet",
   select: "selects are not in a trick's vocabulary yet",
   option: "selects are not in a trick's vocabulary yet",
-  composer: "the composer is Collie's own; a trick never writes into a reply box",
+  composer: 'the composer is Collie\'s own; a button with "does": "draft" may put text into its reply box, and the person sends it',
   prompt: "a prompt is an agent's dialog; a trick asks the person through a decision",
   tool: "tool calls are an agent's",
   turn: "turns are an agent's",
@@ -1081,6 +1129,61 @@ export interface MenuPart {
   sessions?: string[];
   rows: MenuRow[];
 }
+/** The sprite of a `float` part: a picture of the trick's `media/` folder, a sheet when `frames` is more than 1. */
+export interface FloatSprite {
+  /** A file of the trick's `media/` folder (the image rule: PNG, JPEG or WebP by its first bytes, at most 2 MB). */
+  src: string;
+  /**
+   * The columns of a sprite sheet, 1 to {@link FLOAT_FRAMES_MAX}: `frames` frames side by side. A frame is the
+   * sheet's width over `frames` wide and its height over `rows` high, so a frame need not be square.
+   */
+  frames?: number;
+  /** The rows of the sheet, 1 to {@link FLOAT_ROWS_MAX}, one per mood in the order of {@link CHIP_STATES}. Absent: 1. */
+  rows?: number;
+  /** Frames per second, 1 to {@link FLOAT_FPS_MAX}, with `frames` of 2 or more. */
+  fps?: number;
+  /** The drawn height of a frame: `s` (32 px, the default), `m` (48 px) or `l` (72 px). */
+  size?: FloatSize;
+  /** `false`: the frames play once, 0 to `frames` - 1 at `fps`, and the last one stays. Absent or `true`: they loop. */
+  loop?: boolean;
+  /**
+   * A stay part only, and only with `loop` set to `false`: one more sprite that starts from its first frame the moment
+   * this one reaches its last. Its frames are as high as this sprite's (`size`) and as wide as its own sheet says.
+   */
+  after?: FloatAfter;
+}
+/** The second sprite of a float part (`sprite.after`): a picture of `media/`, a sheet when `frames` is more than 1. No `size`, no `rows`, no `after` of its own. */
+export interface FloatAfter {
+  src: string;
+  frames?: number;
+  fps?: number;
+  /** `false`: the frames play once and the last one stays. Absent or `true`: they loop. */
+  loop?: boolean;
+}
+/**
+ * A small moving picture over the app (the `float` place). Declarative only: a picture, a motion from a
+ * fixed list and a mood; no coordinates, style or code reach the phone. `once` plays one motion and is gone,
+ * `stay` stays on screen and shows a mood.
+ */
+export interface FloatPart {
+  at: "float";
+  id: string;
+  mode: FloatMode;
+  motion: FloatMotion;
+  /** With `perch` only: the edge of the free area it sits on. Absent: `bottom`. */
+  edge?: FloatEdge;
+  /** With `perch` only: where along the edge it stands. Absent: `end`. */
+  along?: FloatAlong;
+  /** With a `once` part only: the `id` of a `stay` part of this trick. While that picture is on screen the motion starts at its hand (its front edge, 40% down its height). */
+  from?: string;
+  sprite: FloatSprite;
+  /** The sprite sheet's row: a chip state. Absent: `idle`. */
+  mood?: ChipState;
+  /** With a `stay` part that does not wander: a tap on the parked picture opens the trick's page. */
+  opens?: FloatOpens;
+  /** As a belt mark's: the sessions it shows in (contract 2). Absent: the Dashboard only. */
+  sessions?: string[];
+}
 /**
  * A trick's item in the status line above the Belt: the attributes of a tree `chip`, and no others. No
  * `state` (never a status shape), and no `intent`: the chip is not a control. `at` with `clock` makes it
@@ -1141,7 +1244,7 @@ export interface SessionPart {
   actions?: TrickAction[];
   view: View;
 }
-export type TrickPart = BeltPart | SessionPart | DashboardPart | StatusPart | TabbarPart | MenuPart;
+export type TrickPart = BeltPart | SessionPart | DashboardPart | StatusPart | TabbarPart | MenuPart | FloatPart;
 
 /** A part the parser accepted, with its place. */
 export type ParsedPart =
@@ -1150,7 +1253,8 @@ export type ParsedPart =
   | { place: "session"; part: SessionPart }
   | { place: "dashboard"; part: DashboardPart }
   | { place: "tabbar"; part: TabbarPart }
-  | { place: "menu"; part: MenuPart };
+  | { place: "menu"; part: MenuPart }
+  | { place: "float"; part: FloatPart };
 
 /** One control a part draws that sends a tap: its intent, and the value it sends (none for a mark). */
 export interface TapControl {
@@ -1161,8 +1265,8 @@ export interface TapControl {
 /**
  * Every control of a part that sends a tap to the program (fault A): what the bridge holds a phone's tap
  * against. A belt mark with an intent; a session's actions and every `button` of its view, at any depth,
- * that sends an intent; a menu part's rows. A disabled control and a button that only copies send
- * nothing, so they are left out. A switch row sends the state it asks for, the other one than its `on`. A status chip, a Dashboard tile and a bottom bar item are no controls: a tap there opens the
+ * that sends an intent; a menu part's rows. A disabled control and a button that only copies or drafts
+ * send nothing to the program, so they are left out. A switch row sends the state it asks for, the other one than its `on`. A status chip, a Dashboard tile and a bottom bar item are no controls: a tap there opens the
  * trick's session on the phone and never reaches the bridge.
  */
 export function tapControls(part: TrickPart): TapControl[] {
@@ -1193,13 +1297,14 @@ export function tapControls(part: TrickPart): TapControl[] {
     case "status":
     case "dashboard":
     case "tabbar":
+    case "float":
       return [];
   }
 }
 
-/** The sessions a bound part names (a belt mark or a menu part with `sessions`), or undefined for an unbound one. */
+/** The sessions a bound part names (a belt mark, a menu part or a float part with `sessions`), or undefined for an unbound one. */
 export function boundSessionsOf(part: TrickPart): readonly string[] | undefined {
-  return part.at === "belt" || part.at === "menu" ? part.sessions : undefined;
+  return part.at === "belt" || part.at === "menu" || part.at === "float" ? part.sessions : undefined;
 }
 
 // ── Types: decisions (the Hill's decision shape, as a trick lists it) ───────────────────────
@@ -1275,7 +1380,7 @@ export function decisionPriority(decision: TrickDecision): DecisionPriority {
   return decision.priority ?? DEFAULT_DECISION_PRIORITY;
 }
 
-/** The program's output, as written. There is no `draft` and no `open`: a trick never writes into a reply box. */
+/** The program's output, as written. There is no `draft` and no `open` key: only a button with `does = "draft"` puts text into a reply box, and it never sends. */
 export interface TrickDocument {
   /** The trick contract the document follows: 1 to {@link DOCUMENT_VERSION}. */
   v: number;
@@ -1354,6 +1459,13 @@ export interface TrickManifest {
    * ({@link DECIDES_REPLY_LINE}). A right: it is in the powers, so a version that adds it asks again.
    */
   decides?: DecidesWord;
+  /**
+   * `drafts = "session"`: the trick's buttons may say `does = "draft"`, and a tap puts the button's `value` into
+   * the reply box of the session the page is open for. Collie never sends it. Absent: the bridge refuses a part
+   * with such a button ({@link DRAFTS_SESSION_REFUSAL}). A right: it is in the powers, so a version that adds it
+   * asks again.
+   */
+  drafts?: DraftsWord;
   /**
    * `access = "see"` or `"read"` (M105 spec 04): how much of Collie's local API the trick reads through the
    * helper. Absent: `none`. A right: it is in the powers, so a version that raises it asks again; lowering it
@@ -1672,6 +1784,20 @@ export interface WireTrickInfo {
    * Absent: it does not, or an older bridge.
    */
   decidesReply?: true;
+  /**
+   * The manifest of what runs says `drafts = "session"`: the trick's buttons may put text into the reply box of
+   * the session its page is open for ({@link DRAFTS_SESSION_LINE}). Enforced on the bridge, which refuses a part
+   * with a draft button from a trick whose approved copy does not say it; the phone draws such a button only for
+   * a trick that carries this. Absent: it does not, or an older bridge.
+   */
+  draftsSession?: true;
+  /**
+   * The content version of each picture in the approved copy's `media/` folder, by its `src` (`media/pet.png`):
+   * the first 12 hex of a sha256 of its bytes. The phone adds it to the picture's address (`?v=`), so a picture
+   * replaced under the same name is fetched again. Pictures stay outside the code hash. Absent: the folder holds
+   * none, or an older bridge; the address then carries no version, as before.
+   */
+  media?: Record<string, string>;
   /**
    * Fault B: the trick stopped because its approved copy asks for other rights than the person approved, as
    * this bridge reads them. The row says so in the phone's words; `error` carries the bridge's English line.
@@ -2225,15 +2351,29 @@ export function isImageSrc(text: string): boolean {
   return text.length <= IMAGE_SRC_MAX && IMAGE_SRC.test(text) && !text.includes("//");
 }
 
+/** A picture's content version on the wire: the first 12 hex of a sha256 of its bytes. */
+export const TRICK_MEDIA_VERSION = /^[0-9a-f]{12}$/;
+
+/** The most pictures one trick's `media` map names. The bridge stops at it; the phone reads no more. */
+export const TRICK_MEDIA_VERSIONS_MAX = 100;
+
+/** The version of the picture `src` in a trick's row, or undefined (no row, an older bridge, a picture not listed). */
+export function mediaVersionOf(info: Pick<WireTrickInfo, "media"> | undefined, src: string): string | undefined {
+  const version = info?.media?.[src];
+  return version !== undefined && TRICK_MEDIA_VERSION.test(version) ? version : undefined;
+}
+
 /**
  * Where the phone reads an image node's bytes: `GET /api/tricks/<host>/<id>/<src>`, `src` being
  * `media/` and the file (bridge/tricks/media.ts). Each step is encoded on its own. `rev`, the part's
- * revision, rides as a query the bridge ignores, so a new version of the part asks again.
+ * revision, and `version`, the picture's content version (`WireTrickInfo.media`), ride as a query the
+ * bridge ignores, so a new version of the part, or a picture replaced under the same name, asks again.
  */
-export function trickMediaPath(host: string, trick: string, src: string, rev?: number): string {
+export function trickMediaPath(host: string, trick: string, src: string, rev?: number, version?: string): string {
   const file = src.split("/").map(encodeURIComponent).join("/");
   const path = `/api/tricks/${encodeURIComponent(host)}/${encodeURIComponent(trick)}/${file}`;
-  return rev === undefined ? path : `${path}?rev=${String(rev)}`;
+  const query = [rev === undefined ? null : `rev=${String(rev)}`, version === undefined ? null : `v=${encodeURIComponent(version)}`].filter((part) => part !== null);
+  return query.length === 0 ? path : `${path}?${query.join("&")}`;
 }
 
 /** A decision's media `file`: relative to the trick folder, no `..` or `.` step, a `.png`, `.jpg`, `.jpeg` or `.webp`. */
@@ -2590,9 +2730,23 @@ export function isSourceUrl(text: string): boolean {
 function valueProblem(value: string): { code: RefusalCode; reason: string } | undefined {
   const bytes = utf8Bytes(value);
   if (bytes > VALUE_MAX_BYTES) return { code: "size", reason: `is ${bytes} bytes. At most ${VALUE_MAX_BYTES}.` };
+  return valueTextProblem(value);
+}
+
+/** The cleaning every `value` gets, whatever its cap: not empty, and no control or invisible character but a line break and a tab. */
+function valueTextProblem(value: string): { code: RefusalCode; reason: string } | undefined {
   if (value === "") return { code: "text", reason: "is empty." };
   if (hasControl(value, true, true) || hasInvisible(value)) return { code: "text", reason: "holds a control or an invisible character." };
   return undefined;
+}
+
+/**
+ * A button's `value` as its attribute is read, before the button's `does` is known: the cleaning of every
+ * value. Its cap depends on `does`, so `checkNode` holds it: {@link DRAFT_VALUE_MAX} characters for a
+ * draft, {@link VALUE_MAX_BYTES} for `copy` and an intent's value, as before.
+ */
+function buttonValueProblem(value: string): { code: RefusalCode; reason: string } | undefined {
+  return valueTextProblem(value);
 }
 
 /** Why a word is not a tone, said after the attribute's name, or undefined for a tone. */
@@ -3036,7 +3190,7 @@ function attrProblem(rule: AttrRule, value: string): { code: RefusalCode; reason
   switch (rule.kind) {
     case "word":
       if (rule.list === BUTTON_DOES && !isOneOf(rule.list, value)) {
-        return { code: "word", reason: 'must be "copy". A trick\'s button copies or sends an intent; install, notify, reload and wipe are Collie\'s.' };
+        return { code: "word", reason: 'must be "copy" or "draft". A trick\'s button copies, puts text into the reply box, or sends an intent; install, notify, reload and wipe are Collie\'s.' };
       }
       return isOneOf(rule.list, value) ? undefined : { code: "word", reason: `must be one of: ${quoteList(rule.list)}.` };
     case "tone":
@@ -3072,7 +3226,7 @@ function attrProblem(rule: AttrRule, value: string): { code: RefusalCode; reason
     case "intent":
       return isIntentName(value) ? undefined : { code: "id", reason: 'must be 1 to 48 of: lower-case letters, digits, ".", "_" and "-".' };
     case "value":
-      return valueProblem(value);
+      return buttonValueProblem(value);
     case "url":
       return isTrickUrl(value) ? undefined : { code: "target", reason: `must be an https:// or http:// address of at most ${URL_MAX} characters.` };
     case "href":
@@ -3179,9 +3333,13 @@ function checkNode(kind: NodeKind, f: Fields, attrs: JsonObject | undefined, kid
       if (attrs === undefined) return;
       const does = attr("does");
       const intent = attr("intent");
-      if (does === "copy" && attr("value") === undefined) pushAttr("missing", "value", 'A button with "does": "copy" needs "value", the text it copies.');
+      const value = attr("value");
+      if (does === "copy" && value === undefined) pushAttr("missing", "value", 'A button with "does": "copy" needs "value", the text it copies.');
       if (does === "copy" && intent !== undefined) pushAttr("target", "intent", 'A button that copies sends no intent. Remove "intent".');
-      if (does === undefined && intent === undefined) pushAttr("missing", "intent", 'A button needs "intent", the intent a tap sends, or "does": "copy".');
+      if (does === "draft" && value === undefined) pushAttr("missing", "value", 'A button with "does": "draft" needs "value", the text it puts into the reply box.');
+      if (does === "draft" && intent !== undefined) pushAttr("target", "intent", 'A button that puts text into the reply box sends no intent. Remove "intent".');
+      if (does === undefined && intent === undefined) pushAttr("missing", "intent", 'A button needs "intent", the intent a tap sends, or "does": "copy" or "draft".');
+      if (value !== undefined) checkButtonValue(pushAttr, value, does === "draft");
       return;
     }
     case "meter":
@@ -3210,6 +3368,22 @@ function checkNode(kind: NodeKind, f: Fields, attrs: JsonObject | undefined, kid
     case "spark":
       return;
   }
+}
+
+/**
+ * A button's `value` against its cap: a draft's text is at most {@link DRAFT_VALUE_MAX} characters, line
+ * breaks allowed; `copy` and an intent's value keep {@link VALUE_MAX_BYTES} bytes, as they always had.
+ */
+function checkButtonValue(pushAttr: (code: RefusalCode, name: string, reason: string) => void, value: string, draft: boolean): void {
+  if (draft) {
+    // A box of only spaces is an empty box: it would put nothing there.
+    if (value.trim() === "") pushAttr("text", "value", '"value" is empty. A button that puts text into the reply box needs words.');
+    const chars = codePoints(value);
+    if (chars > DRAFT_VALUE_MAX) pushAttr("size", "value", `"value" is ${chars} characters. A button that puts text into the reply box takes at most ${DRAFT_VALUE_MAX}.`);
+    return;
+  }
+  const bytes = utf8Bytes(value);
+  if (bytes > VALUE_MAX_BYTES) pushAttr("size", "value", `"value" is ${bytes} bytes. At most ${VALUE_MAX_BYTES}.`);
 }
 
 /** The attributes an image takes in a part only, and in a Decision's view only. `caption`, `fit` and `focus` are both's. */
@@ -3607,6 +3781,10 @@ export const SUB_KEYS = {
   item: ["icon", "label", "badge", "tone"],
   /** One row of a `menu` part (contract 2). */
   row: MENU_ROW_KEYS,
+  /** The sprite of a `float` part. */
+  sprite: ["src", "frames", "rows", "fps", "size", "loop", "after"],
+  /** The `after` of a float sprite: a second sheet that plays after the first. */
+  after: ["src", "frames", "fps", "loop"],
 } as const;
 
 export const PART_KEYS = {
@@ -3616,6 +3794,7 @@ export const PART_KEYS = {
   status: ["at", "id", "chip"],
   tabbar: ["at", "id", "item"],
   menu: ["at", "id", "sessions", "rows"],
+  float: ["at", "id", "mode", "motion", "edge", "along", "from", "sprite", "mood", "opens", "sessions"],
 } as const satisfies { readonly [K in PlaceKind]: readonly string[] };
 
 const PLACE_WORDS = {
@@ -3625,6 +3804,7 @@ const PLACE_WORDS = {
   status: "a status part",
   tabbar: "a tabbar part",
   menu: "a menu part",
+  float: "a float part",
 } as const satisfies { readonly [K in PlaceKind]: string };
 
 export interface ParseTrickDocumentOptions {
@@ -3646,6 +3826,12 @@ export interface ParseTrickDocumentOptions {
    * no manifest, such as the phone).
    */
   decidesReply?: boolean;
+  /**
+   * Whether the manifest says `drafts = "session"`. False: a part with a button that says `does = "draft"` is
+   * refused alone with {@link DRAFTS_SESSION_REFUSAL}, so no text the trick wrote reaches a reply box unless the
+   * person's yes covered that right. Absent: not checked (a reader that has no manifest, such as the phone).
+   */
+  draftsSession?: boolean;
 }
 
 /**
@@ -3687,7 +3873,7 @@ export interface ParsedTrickDocument {
 export const DOCUMENT_KEYS = ["v", "parts", "asOf", "fresh", "decisions"] as const;
 /** Top-level keys of the first schema, refused with what replaced them. */
 const REMOVED_DOCUMENT_KEYS = {
-  draft: '"draft" is gone: a trick never writes into a reply box. Post a decision with "replyTo", and the person\'s answer reaches the session as their own message.',
+  draft: '"draft" is gone as a key of the document. A button with "does": "draft" puts its "value" into the reply box of the session the page is open for, and the person sends it. Or post a decision with "replyTo", and the person\'s answer reaches the session as their own message.',
   open: '"open" is gone: a tap moves nothing on the phone. Draw a "link", or a "row" with "href".',
 } as const satisfies Readonly<Record<string, string>>;
 
@@ -3702,6 +3888,17 @@ export function parseTrickDocumentText(text: string, opts: ParseTrickDocumentOpt
 
 function wholeRefused(code: RefusalCode, reason: string): ParsedTrickDocument {
   return { parts: [], decisions: [], refusals: [{ code, path: "", reason }], refusedParts: [], refusedDecisions: [], documentRefused: true, notes: [] };
+}
+
+/** Which set of bound parts a part counts in: a belt mark, a menu part, or a float part of one mode (one picture of each mode per trick). */
+type BoundKey = "belt" | "menu" | "float-once" | "float-stay";
+
+/** The `Bound` slot of a part and the words a refusal about it says, or undefined for a place that cannot be bound. */
+function boundOf(part: ParsedPart): { key: BoundKey; what: string; sessions: readonly string[] | undefined } | undefined {
+  if (part.place === "belt") return { key: "belt", what: "belt mark", sessions: part.part.sessions };
+  if (part.place === "menu") return { key: "menu", what: "menu part", sessions: part.part.sessions };
+  if (part.place === "float") return { key: part.part.mode === "once" ? "float-once" : "float-stay", what: `float part that ${part.part.mode === "once" ? "plays once" : "stays"}`, sessions: part.part.sessions };
+  return undefined;
 }
 
 /**
@@ -3738,7 +3935,8 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
   const seen = new Set<string>();
   // A belt mark and a menu part: one unbound per trick, and up to BOUND_PARTS_MAX bound ones, no two
   // naming one session (a bound part replaces the unbound one in its sessions, so one shows per session).
-  const bound = { belt: new Bound(), menu: new Bound() };
+  // A float part follows the same rule once per mode: a trick has one `stay` and one `once` picture for every session.
+  const bound = { belt: new Bound(), menu: new Bound(), "float-once": new Bound(), "float-stay": new Bound() };
   let status = false;
   let dashboard = false;
   let tabbar = false;
@@ -3757,10 +3955,14 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
     // A part in a place this Collie does not draw is left out: no refusal, no last good version.
     if (parsed.dropped === true) return;
     if (id !== undefined && seen.has(id)) sink.push({ code: "duplicate", path: pointer(path, "id"), reason: `The part id "${id}" is used twice. Each part needs its own.` });
-    if (parsed.part?.place === "belt" || parsed.part?.place === "menu") {
-      const problem = bound[parsed.part.place].problem(parsed.part.part.sessions, parsed.part.place === "belt" ? "belt mark" : "menu part");
+    const slot = parsed.part === undefined ? undefined : boundOf(parsed.part);
+    if (slot !== undefined) {
+      const problem = bound[slot.key].problem(slot.sessions, slot.what);
       if (problem !== undefined) sink.push({ code: "duplicate", path: pointer(path, problem.key), reason: problem.reason });
     }
+    // A draft button needs the right: without `drafts = "session"` in the approved manifest the part is refused.
+    const drafting = opts.draftsSession === false && parsed.part?.place === "session" ? draftButtonPath(parsed.part.part.view, pointer(path, "view")) : undefined;
+    if (drafting !== undefined) sink.push({ code: "undeclared", path: drafting, reason: DRAFTS_SESSION_REFUSAL });
     if (parsed.part?.place === "status" && status) {
       sink.push({ code: "duplicate", path: pointer(path, "at"), reason: "A trick has one status item. This is a second one." });
     }
@@ -3777,17 +3979,65 @@ export function parseTrickDocument(raw: JsonValue | undefined, opts: ParseTrickD
       if (id !== undefined && closed.length === 0) result.refusedParts.push(id);
       return;
     }
-    if (parsed.part.place === "belt" || parsed.part.place === "menu") bound[parsed.part.place].take(parsed.part.part.sessions);
+    const taken = boundOf(parsed.part);
+    if (taken !== undefined) bound[taken.key].take(taken.sessions);
     if (parsed.part.place === "status") status = true;
     if (parsed.part.place === "dashboard") dashboard = true;
     if (parsed.part.place === "tabbar") tabbar = true;
     result.parts.push(parsed.part);
   });
+  refuseUnknownFrom(result, list);
   readDecisions(top, result, opts);
   readDocumentExtras(top, result);
   result.refusals = capRefusals(refusals);
   result.notes = capRefusals(notes);
   return result;
+}
+
+/**
+ * A `once` float part's `from` must name a `stay` float part of this document, which is of this trick (a
+ * document is one trick's). The check runs when every part has been read, so the stay part may come after
+ * it. A part that names a missing part, a part of another kind or a stay part that was itself refused is
+ * refused alone, with a note that says which of the three it is; the other parts keep drawing.
+ */
+function refuseUnknownFrom(result: ParsedTrickDocument, list: readonly JsonValue[]): void {
+  const stays = new Set<string>();
+  const others = new Set<string>();
+  for (const part of result.parts) {
+    if (part.place === "float" && part.part.mode === "stay") stays.add(part.part.id);
+    else others.add(part.part.id);
+  }
+  const rawIndex = (id: string): number => list.findIndex((value) => asJsonString(asJsonObject(value)?.id) === id);
+  const refused = new Set<string>();
+  for (const part of result.parts) {
+    if (part.place !== "float" || part.part.from === undefined || stays.has(part.part.from)) continue;
+    const from = part.part.from;
+    const why = others.has(from)
+      ? `The part "${from}" is not a float part that stays.`
+      : `This trick has no part with the id "${from}", or that part was refused.`;
+    const at = rawIndex(part.part.id);
+    result.refusals.push({
+      code: "target",
+      path: at < 0 ? pointer("/parts", "from") : pointer(pointer("/parts", at), "from"),
+      reason: `"from" names "${from}". ${why} Name the "id" of a float part of this trick with "mode": "stay".`,
+      part: part.part.id,
+    });
+    result.refusedParts.push(part.part.id);
+    refused.add(part.part.id);
+  }
+  if (refused.size === 0) return;
+  result.parts = result.parts.filter((part) => !(part.place === "float" && refused.has(part.part.id)));
+}
+
+/** The pointer of the first button in a view that says `does = "draft"`, at any depth, or undefined when it holds none. */
+export function draftButtonPath(nodes: readonly ViewNode[], path: string): string | undefined {
+  for (const [i, node] of nodes.entries()) {
+    const here = pointer(path, i);
+    if (node.kind === "button" && node.attrs.does === "draft") return pointer(pointer(here, "attrs"), "does");
+    const deeper = "kids" in node && node.kids !== undefined ? draftButtonPath(node.kids, pointer(here, "kids")) : undefined;
+    if (deeper !== undefined) return deeper;
+  }
+  return undefined;
 }
 
 /**
@@ -3913,6 +4163,8 @@ function readPartBody(place: PlaceKind, id: string, f: Fields, kinds: readonly N
       const rows = readMenuRows(f);
       return { place: "menu", part: sessions === undefined ? { at: "menu", id, rows } : { at: "menu", id, sessions, rows } };
     }
+    case "float":
+      return readFloatPart(f, id, contract);
     case "status": {
       const chipFields = f.object("chip", "a chip", true);
       const chip = chipFields === undefined ? { text: "" } : readStatusChip(chipFields);
@@ -3927,6 +4179,107 @@ function readPartBody(place: PlaceKind, id: string, f: Fields, kinds: readonly N
       return place === "dashboard" ? { place: "dashboard", part: { at: "dashboard", id, item } } : { place: "tabbar", part: { at: "tabbar", id, item } };
     }
   }
+}
+
+/**
+ * A `float` part: `mode` and `motion` (each motion belongs to one mode), `sprite` (`src`, and a sheet's
+ * `frames` and `fps`, and `size`), and the optional `edge` (with `perch`), `mood`, `opens` and `sessions`.
+ * DECISION: `opens` is for a part that stays and holds still (not `wander`), since a picture that moves takes
+ * no tap, and once never does. No coordinates, no style, no duration: Collie places and times it.
+ */
+function readFloatPart(f: Fields, id: string, contract: number): ParsedPart {
+  const mode = f.word("mode", FLOAT_MODES, true);
+  const motion = f.word("motion", FLOAT_MOTIONS, true);
+  if (mode !== undefined && motion !== undefined) {
+    const mine: readonly string[] = mode === "once" ? FLOAT_ONCE_MOTIONS : FLOAT_STAY_MOTIONS;
+    if (!mine.includes(motion)) f.push("word", "motion", `"${motion}" is not a ${mode} motion. A ${mode} part uses: ${quoteList(mine)}.`);
+  }
+  const edge = f.word("edge", FLOAT_EDGES);
+  if (edge !== undefined && motion !== undefined && motion !== "perch") f.push("target", "edge", '"edge" goes with the motion "perch" only.');
+  const along = f.word("along", FLOAT_ALONG);
+  if (along !== undefined && motion !== undefined && motion !== "perch") f.push("target", "along", '"along" goes with the motion "perch" only.');
+  const from = readFloatFrom(f, mode);
+  const mood = f.word("mood", CHIP_STATES);
+  const opens = f.word("opens", FLOAT_OPENS);
+  if (opens !== undefined && mode === "once") f.push("target", "opens", 'A once part never takes a tap, so it cannot open a page. Use "opens" on a stay part.');
+  if (opens !== undefined && motion === "wander") f.push("target", "opens", 'A wandering picture never holds still to be tapped. Use "opens" with "perch" or "idle".');
+  const spriteFields = f.object("sprite", "a sprite", true);
+  const sprite = spriteFields === undefined ? { src: "" } : readFloatSprite(spriteFields);
+  if (sprite.after !== undefined && mode === "once") spriteFields?.push("target", "after", '"after" goes with a part that stays: a picture that plays once and is gone has nothing to follow it.');
+  const sessions = readBoundSessions(f, contract);
+  const part: FloatPart = { at: "float", id, mode: mode ?? "stay", motion: motion ?? "idle", sprite };
+  if (edge !== undefined) part.edge = edge;
+  if (along !== undefined) part.along = along;
+  if (from !== undefined) part.from = from;
+  if (mood !== undefined) part.mood = mood;
+  if (opens !== undefined) part.opens = opens;
+  if (sessions !== undefined) part.sessions = sessions;
+  return { place: "float", part };
+}
+
+/** The `from` of a float part: a part id (the id rule), on a `once` part only. That the id names a `stay` part is checked once the whole document is read ({@link refuseUnknownFrom}). */
+function readFloatFrom(f: Fields, mode: FloatMode | undefined): string | undefined {
+  if (!f.has("from")) return undefined;
+  if (mode !== undefined && mode !== "once") {
+    f.push("target", "from", '"from" goes with a part that plays once: it names the stay picture the motion starts from.');
+    return undefined;
+  }
+  const raw = asJsonString(f.obj.from);
+  if (raw === undefined || !isPartId(raw)) {
+    f.push("id", "from", '"from" must be the "id" of a stay part of this trick: 1 to 32 lower-case letters, digits and hyphens.');
+    return undefined;
+  }
+  return raw;
+}
+
+/** A float sprite: `src` (the image rule), `frames` 1 to {@link FLOAT_FRAMES_MAX}, `rows` 1 to {@link FLOAT_ROWS_MAX}, `fps` 1 to {@link FLOAT_FPS_MAX} with frames of 2 or more, `size`, `loop` (true or false). */
+function readFloatSprite(f: Fields): FloatSprite {
+  f.keys(SUB_KEYS.sprite);
+  const srcRaw = f.text("src", { max: IMAGE_SRC_MAX, required: true });
+  const src = srcRaw !== undefined && !isImageSrc(srcRaw) ? undefined : srcRaw;
+  if (srcRaw !== undefined && src === undefined) f.push("target", "src", '"src" must name a .png, .jpg, .jpeg or .webp file in the trick\'s "media/" folder, such as "media/pet.png", with no step that starts with a dot.');
+  const frames = f.int("frames", { min: 1, max: FLOAT_FRAMES_MAX });
+  const rows = f.int("rows", { min: 1, max: FLOAT_ROWS_MAX });
+  const fps = f.int("fps", { min: 1, max: FLOAT_FPS_MAX });
+  if (fps !== undefined && (frames === undefined || frames < 2)) f.push("target", "fps", '"fps" goes with "frames" of 2 or more: it is how fast the frames of a sprite sheet play.');
+  const size = f.word("size", FLOAT_SIZES);
+  const loop = f.bool("loop");
+  const after = f.has("after") ? readFloatAfter(f, loop) : undefined;
+  const sprite: FloatSprite = { src: src ?? "" };
+  if (frames !== undefined) sprite.frames = frames;
+  if (rows !== undefined) sprite.rows = rows;
+  if (fps !== undefined) sprite.fps = fps;
+  if (size !== undefined) sprite.size = size;
+  if (loop !== undefined) sprite.loop = loop;
+  if (after !== undefined) sprite.after = after;
+  return sprite;
+}
+
+/**
+ * The `after` of a float sprite: `src`, `frames`, `fps` and `loop`, read as the sprite's own. It follows only a sprite that plays once
+ * (`loop` is `false`: a looping sprite never reaches a last frame), it is one level deep, and it has no `rows` (a sheet of moods) and
+ * no `size` (its frames are as high as the sprite's).
+ */
+function readFloatAfter(sprite: Fields, outerLoop: boolean | undefined): FloatAfter | undefined {
+  const f = sprite.object("after", "a second sprite");
+  if (f === undefined) return undefined;
+  if (outerLoop !== false) sprite.push("target", "after", '"after" goes with a sprite whose "loop" is false: a sprite that loops never reaches its last frame, so nothing could follow it.');
+  if (f.has("after")) f.push("target", "after", 'An "after" has no "after" of its own: one more sprite after the first is all there is.');
+  if (f.has("rows")) f.push("target", "rows", 'An "after" has no "rows": it is one row of frames. Name the mood on the part, not on the second sprite.');
+  if (f.has("size")) f.push("target", "size", 'An "after" has no "size": its frames are as high as the first sprite\'s "size", and as wide as its own sheet says.');
+  f.keys([...SUB_KEYS.after, "after", "rows", "size"]);
+  const srcRaw = f.text("src", { max: IMAGE_SRC_MAX, required: true });
+  const src = srcRaw !== undefined && !isImageSrc(srcRaw) ? undefined : srcRaw;
+  if (srcRaw !== undefined && src === undefined) f.push("target", "src", '"src" must name a .png, .jpg, .jpeg or .webp file in the trick\'s "media/" folder, such as "media/pose.png", with no step that starts with a dot.');
+  const frames = f.int("frames", { min: 1, max: FLOAT_FRAMES_MAX });
+  const fps = f.int("fps", { min: 1, max: FLOAT_FPS_MAX });
+  if (fps !== undefined && (frames === undefined || frames < 2)) f.push("target", "fps", '"fps" goes with "frames" of 2 or more: it is how fast the frames of a sprite sheet play.');
+  const loop = f.bool("loop");
+  const after: FloatAfter = { src: src ?? "" };
+  if (frames !== undefined) after.frames = frames;
+  if (fps !== undefined) after.fps = fps;
+  if (loop !== undefined) after.loop = loop;
+  return after;
 }
 
 /**
@@ -4293,7 +4646,7 @@ export const ENV_NAME_MAX = 64;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Every key `trick.toml` takes. */
-export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules", "decides", "field", "access"] as const;
+export const MANIFEST_KEYS = ["id", "name", "run", "every", "watch", "on", "mode", "contract", "icon", "places", "env", "inputs", "description", "about", "version", "rules", "decides", "drafts", "field", "access"] as const;
 
 // ── `access`: how much of Collie's local API a trick reads (M105 spec 04) ───────────────────────────
 
@@ -4336,6 +4689,25 @@ export const DECIDES_REPLY_LINE = "This trick did not say that its Decisions rep
 /** The right in a person's words: `collie trick check` and the version card's sentence. */
 export const DECIDES_REPLY_WORDS = "Your answers to its Decisions go to a session as your own message.";
 
+// ── `drafts`: whether a trick's buttons may put text into a session's reply box ──────────────────────
+
+/**
+ * The words `drafts` takes: one, `session`. A trick that writes `drafts = "session"` may draw a button with
+ * `does = "draft"`: a tap puts the button's `value` into the reply box of the session the trick's page is
+ * open for, and opens that session. Collie never sends it: the person reads the text and taps Send. Absent,
+ * a part with such a button is refused. A closed list, so a later word is a refusal here, never a silent yes.
+ */
+export const DRAFTS_WORDS = ["session"] as const;
+export type DraftsWord = (typeof DRAFTS_WORDS)[number];
+
+/** The refusal of a part with a `does = "draft"` button from a trick whose approved manifest does not say `drafts = "session"`. */
+export const DRAFTS_SESSION_REFUSAL = 'This trick did not say that its buttons put text into a reply box. Add drafts = "session" to trick.toml.';
+/**
+ * The right in a person's words, the same on the proposal card, the version card, in `collie trick check` and
+ * (in the phone's words) in the About sheet.
+ */
+export const DRAFTS_SESSION_LINE = "Its buttons can put text into the reply box of the session you are in. You read it and send it yourself.";
+
 // ── Agent views: the place word `agent-view` and the key `rules` (contract 2) ───────────────────────
 
 /**
@@ -4368,6 +4740,7 @@ export const SHOWS_IN_WORDS = {
   dashboard: "a tile in the strip at the top of the Dashboard",
   tabbar: "an item in the bottom bar of the Dashboard",
   menu: "rows in each session's settings",
+  float: "a small moving picture over the app",
 } as const satisfies Readonly<Record<PlaceKind, string>>;
 /** The agent view's phrase in {@link SHOWS_IN_WORDS}' list: a view of a session, beside Terminal and Chat. */
 export const SHOWS_IN_AGENT_VIEW = "a view of a session, beside Terminal and Chat";
@@ -4590,7 +4963,7 @@ export const INPUTS_NEED_CONTRACT = `"inputs" needs contract = ${String(INPUTS_C
 export const AGENT_VIEW_NEEDS_CONTRACT = `"agent-view" needs contract = ${String(AGENT_VIEW_CONTRACT)}. Add contract = ${String(AGENT_VIEW_CONTRACT)} to trick.toml.`;
 export const RULES_NEEDS_CONTRACT = `"rules" needs contract = ${String(AGENT_VIEW_CONTRACT)}. Add contract = ${String(AGENT_VIEW_CONTRACT)} to trick.toml.`;
 /** The keys a trick whose only place is `agent-view` may not name: it has no program. */
-export const VIEW_ONLY_REFUSED = ["run", "every", "inputs", "env", "decides"] as const;
+export const VIEW_ONLY_REFUSED = ["run", "every", "inputs", "env", "decides", "drafts"] as const;
 export function viewOnlyRefusal(key: (typeof VIEW_ONLY_REFUSED)[number]): string {
   return `A trick whose only place is "agent-view" has no program, so it takes no "${key}". Remove it, or add a place it draws in.`;
 }
@@ -5086,6 +5459,9 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   // Whether its Decisions answer into a session: one closed word, at every contract (an optional key adds
   // inside contract 1). A view-only trick runs no program, so it is refused there with the other program keys.
   const decides = f.word("decides", DECIDES_WORDS);
+  // Whether its buttons may put text into a session's reply box: one closed word, at every contract, refused on a
+  // view-only trick with the other program keys (it draws no part, so it has no button).
+  const drafts = f.word("drafts", DRAFTS_WORDS);
   // How much of the local API the trick reads: one closed word. `none` is the default, kept as no key.
   const access = f.word("access", ACCESS_WORDS);
   if (f.has("access") && contract !== undefined && contract < ACCESS_CONTRACT) f.push("version", "access", ACCESS_NEEDS_CONTRACT);
@@ -5100,6 +5476,7 @@ export function parseManifest(doc: JsonValue | undefined, opts: ParseManifestOpt
   if (agentView) manifest.agentView = true;
   if (rules !== undefined) manifest.rules = rules;
   if (decides !== undefined) manifest.decides = decides;
+  if (drafts !== undefined) manifest.drafts = drafts;
   if (access !== undefined && access !== "none") manifest.access = access;
   if (every !== undefined && everyMs !== undefined && everyOk) {
     manifest.every = every;

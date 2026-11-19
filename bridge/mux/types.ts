@@ -26,7 +26,7 @@
 // capability — it does not get a VT parser written for it.
 
 import type { AgentSessionRef, ForegroundProcess } from "../journal/types.ts";
-import type { AgentStatus, AnswerRequest, Ask, AskDecided, ControlRequest, PaneAction } from "../types.ts";
+import type { AgentStatus, AnswerRequest, BlockedBy, Ask, AskDecided, ControlRequest, PaneAction } from "../types.ts";
 import type { MuxCapability, MuxCapabilityDeclaration } from "./capabilities.ts";
 import type { MuxIdentity } from "./identity.ts";
 
@@ -233,6 +233,15 @@ export interface MuxPane extends MuxIdentity {
   readonly agent: string;
   /** How that agent is doing. `"unknown"` is the honest answer without `agentDetection`. */
   readonly status: AgentStatus;
+  /**
+   * Why a `blocked` pane needs a person, when it is NOT a question: `"error"` when the program reported
+   * that its turn stopped on a failure (herdr-core's OSC 7501 `state=error`: an API 5xx, an overload, a
+   * stream that broke off). Such a pane asks for a look and waits on nothing: no dialog is open, Load
+   * older reads, and a send goes as on an idle pane. Absent on every other pane, so a plain `blocked`
+   * stays a question. Only the herdr-core adapter sets it; a screen-detected dialog takes it away
+   * (bridge/state-engine.ts).
+   */
+  readonly blockedBy?: BlockedBy;
   /**
    * The operator's own label for this pane — ONLY a name given through Collie's {@link
    * MuxAdapter.renamePane}, and never a title the pane's program printed.

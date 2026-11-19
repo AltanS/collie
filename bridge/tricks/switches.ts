@@ -485,12 +485,21 @@ export async function withSwitchLock<T>(stateDir: string, work: () => Promise<T>
   }
 }
 
-/** The bridge's reader: the switches behind a stat check, last read kept until the file moves. */
+/**
+ * The bridge's reader: the switches behind a stat check, last read kept until the file moves.
+ *
+ * Reads are TAKEN IN TURN. Two reads at once could cross: one stats the old file and is still reading it
+ * when a write lands and a second read stats and reads the new one; the first then finishes last and keeps
+ * the OLD text under the NEW stamp, so every later read answered a switch file that no longer existed
+ * (until the next write). The runner reads while an approval writes (an immediate start run after a yes),
+ * so this is no longer a rare overlap. In turn, each read sees the file as it is when its turn comes.
+ */
 export function createSwitchReader(stateDir: string, warn: (line: string) => void): () => Promise<Switches> {
   const path = switchesPath(stateDir);
   let seen: string | undefined;
   let current = EMPTY;
-  return async () => {
+  let turn: Promise<unknown> = Promise.resolve();
+  const read = async (): Promise<Switches> => {
     let stamp: string;
     try {
       const st = await stat(path);
@@ -500,14 +509,21 @@ export function createSwitchReader(stateDir: string, warn: (line: string) => voi
       stamp = "none";
     }
     if (stamp === seen) return current;
-    seen = stamp;
     if (stamp === "none") {
+      seen = stamp;
       current = EMPTY;
       return current;
     }
     const { switches, problem } = parseSwitches(await readText(path));
     if (problem !== null) warn(problem);
+    // Kept only after the read went through: a read that throws leaves the last good answer and asks again.
+    seen = stamp;
     current = switches;
     return current;
+  };
+  return () => {
+    const mine = turn.then(read, read);
+    turn = mine.catch(() => {});
+    return mine;
   };
 }

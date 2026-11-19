@@ -7,7 +7,7 @@ import { memoryHillReceipts } from "../hill/receipts.ts";
 import { HillService } from "../hill/service.ts";
 import { HillStore } from "../hill/store.ts";
 import { HILL_SUMMARY_MAX, type HillDecision, type HillReceipt } from "../../web/src/lib/hill/wire.ts";
-import { ACCESS_LINES, DECISION_VIEW_LIMITS, parseDecisionView, RULES_NEVER_AUTO, SHOWS_IN_WORDS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
+import { ACCESS_LINES, DECISION_VIEW_LIMITS, DRAFTS_SESSION_LINE, parseDecisionView, RULES_NEVER_AUTO, SHOWS_IN_WORDS, WATCH_MAX, WATCH_PATH_MAX, type TrickManifest, type ViewNode } from "../../web/src/lib/tricks/schema.ts";
 import { parseJson } from "../../web/src/lib/json.ts";
 import { TRICKS_DIR } from "./paths.ts";
 import { PENDING_SETTLE_MS, TricksService, type TrickVersionSubject } from "./service.ts";
@@ -15,7 +15,7 @@ import { powersOfDir } from "./approved.ts";
 import { trickCodeHash } from "./code-hash.ts";
 import { withSwitch, writeSwitches } from "./switches.ts";
 import { GROUP_MASKED_NOTE, GROUP_WRAP } from "./card-group.ts";
-import { ACCESS_CHIPS, accessLine, showsIn, asksForSentence, ON_CHIP, newRights, raisedAccess, RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VERSION_TOO_MUCH_START, VersionCards, KEEPS_RUNNING, RUNS_AS_YOU, newInputs, versionCard, versionRequestId, versionTitle, versionTooMuch, versionView } from "./version-card.ts";
+import { ACCESS_CHIPS, accessLine, addedDrafts, DRAFTS_SESSION_CHIP, showsIn, asksForSentence, ON_CHIP, newRights, raisedAccess, RULES_ON_MACHINE, VERSION_CARD_GONE, VERSION_MOVED, VERSION_NEW_RIGHTS, VERSION_NOT_SHOWN, VERSION_TOO_MUCH_START, VersionCards, KEEPS_RUNNING, RUNS_AS_YOU, newInputs, versionCard, versionRequestId, versionTitle, versionTooMuch, versionView } from "./version-card.ts";
 import { diffArgv, readPatch, versionDiff, viewLine, type DiffRun, type VersionDiff } from "./version-diff.ts";
 import { singleCodeCard, viewHasCode } from "../../web/src/lib/hill/code-card.ts";
 
@@ -343,6 +343,38 @@ describe("access: the level a version raises (M105 spec 04)", () => {
       expect(card?.view?.[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
     }
     expect(withAccess("see", "see")?.summary).toContain("It asks for no new rights.");
+  });
+});
+
+describe("drafts: the right a version adds (1.29.1)", () => {
+  const manifest = (drafts?: "session"): TrickManifest => {
+    const out: TrickManifest = { id: "legs", name: "Browser leg", run: "./legs.sh", mode: "once", contract: 3, icon: "plug", places: ["session"] };
+    if (drafts !== undefined) out.drafts = drafts;
+    return out;
+  };
+  const withDrafts = (next?: "session", was?: "session"): ReturnType<typeof versionCard> => {
+    const base = subject();
+    const pending = base.pending;
+    if (pending === null) throw new Error("no pending");
+    return versionCard({ ...base, base: { dir: "/y", manifest: manifest(was) }, pending: { ...pending, manifest: manifest(next) } }, DIFF);
+  };
+
+  test("adding it is a new right with its chip, and keeping or dropping it is not", () => {
+    expect(newRights(manifest(), manifest("session"))).toEqual([DRAFTS_SESSION_CHIP]);
+    expect(newRights(manifest("session"), manifest("session"))).toEqual([]);
+    expect(newRights(manifest("session"), manifest())).toEqual([]);
+    expect(addedDrafts(manifest(), manifest("session"))).toBe("session");
+    expect(addedDrafts(manifest("session"), manifest("session"))).toBeUndefined();
+    expect(addedDrafts(undefined, manifest("session"))).toBe("session");
+  });
+
+  test("the card holds the line after the honest line, names the chip, and never recommends", () => {
+    const card = withDrafts("session");
+    expect(card?.view?.[0]).toEqual({ kind: "para", text: RUNS_AS_YOU });
+    expect(card?.view?.[1]).toEqual({ kind: "para", text: DRAFTS_SESSION_LINE });
+    expect(card?.summary).toContain(`It now also asks for ${DRAFTS_SESSION_CHIP}.`);
+    expect(card?.recommends).toBeNull();
+    for (const kept of [withDrafts("session", "session"), withDrafts(undefined, "session")]) expect(JSON.stringify(kept?.view)).not.toContain(DRAFTS_SESSION_LINE);
   });
 });
 
@@ -983,6 +1015,7 @@ describe("the line of where a trick shows", () => {
       dashboard: "a tile in the strip at the top of the Dashboard",
       tabbar: "an item in the bottom bar of the Dashboard",
       menu: "rows in each session's settings",
+      float: "a small moving picture over the app",
     });
     expect(showsIn({ places: ["status", "tabbar", "status"], agentView: true })).toEqual([
       { kind: "para", text: "It shows in: the left end of the usage row of each session, an item in the bottom bar of the Dashboard, a view of a session, beside Terminal and Chat." },

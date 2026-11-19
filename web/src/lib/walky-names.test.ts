@@ -57,10 +57,11 @@ describe("walkyPaneName", () => {
     expect(walkyPaneName(pane({ ...branch, soleTabName: "t" }))).toBe("t");
   });
 
-  it("names a pane by the agent's own session title between the person's name and a named sole tab", () => {
+  it("names a pane by a named sole tab before the agent's own session title", () => {
     const branch = { gitHead: { kind: "branch", name: "main" } } as const;
     expect(walkyPaneName(pane({ ...branch, sessionName: "s", agentTitle: "Auto title", soleTabName: "t" }))).toBe("s");
-    expect(walkyPaneName(pane({ ...branch, agentTitle: "Auto title", soleTabName: "t" }))).toBe("Auto title");
+    expect(walkyPaneName(pane({ ...branch, agentTitle: "Auto title", soleTabName: "t" }))).toBe("t");
+    expect(walkyPaneName(pane({ ...branch, agentTitle: "Auto title" }))).toBe("Auto title");
   });
 
   it("ends on the agent word, or \"shell\", when the pane has no folder", () => {

@@ -32,6 +32,10 @@ import {
   ACCESS_WORDS,
   FIELDS_CONTRACT,
   DECIDES_WORDS,
+  DRAFT_VALUE_MAX,
+  DRAFTS_SESSION_LINE,
+  DRAFTS_SESSION_REFUSAL,
+  DRAFTS_WORDS,
   DECISIONS_MAX,
   DECISION_KEYS,
   DECISION_OPTION_KEYS,
@@ -1626,6 +1630,79 @@ describe("the manifest's decides (2026-11-12)", () => {
   it("a Decision without replyTo passes either way, and a reader with no manifest checks nothing", () => {
     expect(parseTrickDocument(doc(asked), { decidesReply: false }).decisions).toHaveLength(1);
     expect(parseTrickDocument(doc({ ...asked, replyTo: "lodge:w1:1" })).decisions).toHaveLength(1);
+  });
+});
+
+describe("the manifest's drafts and the draft button (1.29.1)", () => {
+  const base = { id: "pouch", name: "Pouch", run: "./pouch.ts", places: ["session"] };
+  const draft = (attrs: JsonObject) => button({ label: "Use", does: "draft", ...attrs });
+  const DOES = "/parts/0/view/0/kids/0/attrs/does";
+  const VALUE = "/parts/0/view/0/kids/0/attrs/value";
+
+  it("takes one closed word, session, at every contract; absent is none", () => {
+    expect(DRAFTS_WORDS).toEqual(["session"]);
+    expect(MANIFEST_KEYS).toContain("drafts");
+    expect(parseManifest(base).manifest?.drafts).toBeUndefined();
+    for (const contract of [1, 2, 3]) {
+      const read = parseManifest({ ...base, contract, drafts: "session" });
+      expect(read.refusals).toEqual([]);
+      expect(read.manifest?.drafts).toBe("session");
+    }
+  });
+
+  it("refuses another word, a value that is not text, and the key on a trick that is only an agent view", () => {
+    const wrongs: JsonValue[] = ["sessions", "Session", "", true, ["session"], "reply"];
+    for (const drafts of wrongs) {
+      const read = parseManifest({ ...base, drafts });
+      expect(read.manifest, JSON.stringify(drafts)).toBeUndefined();
+      expect(read.refusals.map((r) => [r.code, r.path])).toEqual([["word", "/drafts"]]);
+    }
+    const view = parseManifest({ id: "morph", name: "Morph", contract: 2, places: ["agent-view"], rules: "rules.md", drafts: "session" });
+    expect(view.manifest).toBeUndefined();
+    expect(view.refusals.map((r) => r.path)).toEqual(["/drafts"]);
+  });
+
+  it("a draft button passes only with the right: refused alone without it, and a reader with no manifest checks nothing", () => {
+    const doc = draft({ value: "Run the tests, then tell me what failed." });
+    expect(parse(doc, { draftsSession: true })).toEqual([]);
+    expect(parse(doc)).toEqual([]);
+    const refused = parseTrickDocument(doc, { draftsSession: false });
+    expect(refused.parts).toEqual([]);
+    expect(refused.refusals).toEqual([{ code: "undeclared", path: DOES, reason: DRAFTS_SESSION_REFUSAL, part: "s" }]);
+    // A draft button deep in a card is found too, and the other parts still draw.
+    const deep = { v: 1, parts: [{ at: "session", id: "a", view: [{ kind: "card", kids: [{ kind: "group", kids: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Use", does: "draft", value: "x" } }] }] }] }] }, { at: "session", id: "b", view: [{ kind: "line", text: "ok" }] }] };
+    const read = parseTrickDocument(deep, { draftsSession: false });
+    expect(read.parts.map((p) => p.part.id)).toEqual(["b"]);
+    expect(read.refusals.map((r) => r.path)).toEqual(["/parts/0/view/0/kids/0/kids/0/kids/0/attrs/does"]);
+    // A view with only copy and intent buttons is read as before without the right.
+    expect(parse(button({ label: "Copy", does: "copy", value: "abc" }), { draftsSession: false })).toEqual([]);
+    expect(DRAFTS_SESSION_LINE).toBe("Its buttons can put text into the reply box of the session you are in. You read it and send it yourself.");
+  });
+
+  it("a draft needs a value with words, sends no intent, and takes up to 4000 characters with line breaks", () => {
+    expect(DRAFT_VALUE_MAX).toBe(4000);
+    expect(parse(draft({}))).toEqual([VALUE]);
+    expect(parse(draft({ value: "   \n  " }))).toEqual([VALUE]);
+    expect(parse(draft({ value: "abc", intent: "go" }))).toEqual(["/parts/0/view/0/kids/0/attrs/intent"]);
+    expect(parse(draft({ value: "line one\nline two\n\tindented" }))).toEqual([]);
+    expect(parse(draft({ value: "x".repeat(4000) }))).toEqual([]);
+    expect(parse(draft({ value: "x".repeat(4001) }))).toEqual([VALUE]);
+    // Characters, not bytes: 4000 of a three-byte character pass.
+    expect(parse(draft({ value: "あ".repeat(4000) }))).toEqual([]);
+    // The cleaning of copy: a control or an invisible character is refused.
+    for (const value of ["a\u0007b", "a\u202eb", "a\u200bb", "a\rb"]) expect(parse(draft({ value })), JSON.stringify(value)).toEqual([VALUE]);
+  });
+
+  it("copy and an intent's value keep their 1024-byte cap", () => {
+    expect(parse(button({ label: "Copy", does: "copy", value: "x".repeat(1024) }))).toEqual([]);
+    expect(parse(button({ label: "Copy", does: "copy", value: "x".repeat(1025) }))).toEqual([VALUE]);
+    expect(parse(button({ label: "Go", intent: "go", value: "x".repeat(2000) }))).toEqual([VALUE]);
+  });
+
+  it("a draft button sends nothing to the program: it is no tap control", () => {
+    const read = parseTrickDocument(draft({ value: "abc" }), { draftsSession: true });
+    const part = read.parts[0]?.part;
+    expect(part === undefined ? undefined : tapControls(part)).toEqual([]);
   });
 });
 

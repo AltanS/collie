@@ -302,6 +302,11 @@ describe("powers", () => {
     expect(powersOf({ places: ["belt", "session"], decides: "reply" })).toBe(new Bun.CryptoHasher("sha256").update('{"env":[],"inputs":[],"places":["belt","session"],"replies":"reply"}').digest("hex").slice(0, 16));
     expect(powersOf({ places: ["belt", "session"], decides: "reply" })).not.toBe(era);
     expect(powersOf({ places: ["belt", "session"], decides: "reply", rules: "rules.md", rulesSha256: sha })).toBe(new Bun.CryptoHasher("sha256").update(`{"env":[],"inputs":[],"places":["belt","session"],"replies":"reply","rules":"${sha}"}`).digest("hex").slice(0, 16));
+    // drafts = "session" (1.29.1): hashed as `prefills`, only when the manifest has it, first of the later keys.
+    expect(powersOf({ places: ["session"], drafts: "session" })).toBe(new Bun.CryptoHasher("sha256").update('{"env":[],"inputs":[],"places":["session"],"prefills":"session"}').digest("hex").slice(0, 16));
+    expect(powersOf({ places: ["session"], drafts: "session" })).not.toBe(powersOf({ places: ["session"] }));
+    expect(powersOf({ places: ["session"] })).toBe(new Bun.CryptoHasher("sha256").update('{"env":[],"inputs":[],"places":["session"]}').digest("hex").slice(0, 16));
+    expect(powersOf({ places: ["session"], drafts: "session", decides: "reply" })).toBe(new Bun.CryptoHasher("sha256").update('{"env":[],"inputs":[],"places":["session"],"prefills":"session","replies":"reply"}').digest("hex").slice(0, 16));
     expect([...LATER_POWER_KEYS]).toEqual([...LATER_POWER_KEYS].toSorted());
     expect(LATER_POWER_KEYS.every((key) => key > "places")).toBe(true);
   });

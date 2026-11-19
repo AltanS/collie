@@ -114,6 +114,22 @@ describe("syncTricks", () => {
     expect([...store.getState().parts.keys()]).toEqual([partKey(LEGS), partKey(TRACKER)]);
   });
 
+  it("a new version's run replaces the drawn parts and drops the one the new code no longer makes, with no reload", async () => {
+    const store = storeOf();
+    const newer = wire("legs", legsSaying("new version"), 7);
+    const [legs, tracker] = TRICKS;
+    if (legs === undefined || tracker === undefined) throw new Error("the fixture lists two tricks");
+    serveTricks(reply(3, [BELT, LEGS, TRACKER]), reply(7, [newer], [partKey(LEGS), partKey(TRACKER)], [{ ...legs, name: "Browser leg 2" }, tracker]));
+    await store.syncTricks(3);
+    await store.syncTricks(7);
+    const parts = store.getState().parts;
+    // Replaced where the new version draws again, gone where it does not, the other trick untouched.
+    expect(parts.get(partKey(LEGS))).toEqual(newer);
+    expect(parts.has(partKey(BELT))).toBe(false);
+    expect(parts.get(partKey(TRACKER))).toEqual(TRACKER);
+    expect(store.getState().tricks[0]?.name).toBe("Browser leg 2");
+  });
+
   it("fetches everything again when the rev went down, because the bridge restarted", async () => {
     const store = storeOf();
     const fresh = wire("legs", LEGS_BELT, 1);

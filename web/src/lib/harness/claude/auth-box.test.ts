@@ -196,12 +196,20 @@ describe("only the Authentication box over Claude's live input box lifts", () =>
     expect(kinds(claudeBuildBlocks(screenOf(withoutBox)))).toEqual(["raw"]);
   });
 
-  it.each(["Notifications", "authentication", "AUTHENTICATION", "Authentication needed", "Re-Authentication", "Authentication:"])(
-    "lifts no card from a box whose title row reads %j",
+  // ADR 0159: the title is a label. A filled box with a link lifts under any title of one short run of
+  // words, headed by the title it prints; a title that is not such a run lifts nothing.
+  it.each(["Notifications", "authentication", "AUTHENTICATION", "Authentication needed", "Re-Authentication"])(
+    "lifts the card headed by the printed title from a filled box with a link whose title row reads %j",
     (title) => {
-      expect(liftsNoCard(retitled(title))).toBe(true);
+      const card = cardOf(screenOf(retitled(title)));
+      expect(card.title).toBe(title);
+      expect(card.phase).toBe("filled");
     },
   );
+
+  it.each(["Authentication:", "Authentication (2/2)", "Esc to cancel", "1. Sign-in"])("lifts no card from a box whose title row reads %j", (title) => {
+    expect(liftsNoCard(retitled(title))).toBe(true);
+  });
 
   it("lifts no card when a non-blank row stands between the box's bottom edge and the input box", () => {
     const rows = [...FILLED_ROWS.slice(0, INPUT_RULE), "a row in between", ...FILLED_ROWS.slice(INPUT_RULE)];
@@ -487,6 +495,7 @@ describe("a turn spinner row between the box and the input box leaves the card l
     "✢ Whirlpooling… ",
     "✶ Garnishing… ",
     "✻ Moonwalking… (49s)",
+    "✳ Enchanting… (22s)",
     "✶ Hashing… · tool use (4s · thinking with high effort)",
     "✽ Brewing… (1m 27s)",
     "* Cooking… (4s · ↓ 304 tokens)",
@@ -552,5 +561,336 @@ describe("the API retry row Claude prints while it refreshes expired credentials
     ["a retry row with no countdown", ["✻ API error · Retrying in · attempt 1/2"]],
   ])("lifts no card with %s under the box's bottom edge", (_name, under) => {
     expect(liftsNoCard(filledWith(under))).toBe(true);
+  });
+});
+
+// Claude Code 2.1.328 titles the box "Sign-in" (issue 816). The two screens are the report's captures
+// (detached tmux, macOS), ANSI stripped, rebuilt row for row: no pane fixture until an ANSI capture exists.
+describe("the box Claude Code 2.1.328 titles Sign-in lifts as the same card", () => {
+  const CODE_URL = "https://example.awsapps.com/start/#/device?user_code=ABCD-EFGH";
+  const screenOf = (rows: readonly string[]): StyledLine[] => rowsOf(rows.join("\n"));
+  const boxOf = (width: number, rows: readonly string[]): string[] => [
+    `╭${"─".repeat(width - 2)}╮`,
+    ...rows.map((row) => `│ ${row.padEnd(width - 4)} │`),
+    `╰${"─".repeat(width - 2)}╯`,
+  ];
+  const W120_ROWS = [
+    "Browser will not be automatically opened. Please visit the following URL:",
+    `${CODE_URL} Then enter the code: ABCD-EFGH`,
+  ];
+  const W120 = [
+    ...boxOf(W120_ROWS[1]!.length + 4, ["Sign-in", "", ...W120_ROWS]),
+    "✳ Enchanting… (22s)",
+    "─".repeat(120),
+    "❯  ",
+    "─".repeat(120),
+    "  Context: --% │ 💰 $0.00",
+    "  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle)",
+  ];
+  const W52_ROWS = [
+    "Browser will not be automatically opened. Please",
+    "visit the following URL:",
+    "https://example.awsapps.com/start/#/device?user_",
+    "code=ABCD-EFGH Then enter the code: ABCD-EFGH",
+  ];
+  const W52 = [...boxOf(52, ["Sign-in", "", ...W52_ROWS]), "✻ Incubating… ", "─".repeat(52), "❯  ", "─".repeat(52)];
+  const linksOf = (card: { text: readonly (readonly BoxTextRun[])[] }): string[] =>
+    card.text.flatMap((row) => row.filter((run) => run.kind === "link").map((run) => run.text));
+
+  it("draws the report's 120-column box 97 cells wide, as captured", () => {
+    expect(W120[0]!.length).toBe(97);
+  });
+
+  it("lifts the 120-column capture, the `✳` spinner frame with its timer under the box, headed Sign-in", () => {
+    expect(kinds(claudeBuildBlocks(screenOf(W120)))).toEqual(["box-text"]);
+    const card = cardOf(screenOf(W120));
+    expect(card.title).toBe("Sign-in");
+    expect(card.phase).toBe("filled");
+    expect(card.text.map(textOf)).toEqual(["", ...W120_ROWS].map((row) => row.padEnd(W120_ROWS[1]!.length)));
+    expect(linksOf(card)).toEqual([CODE_URL]);
+  });
+
+  it("lifts the 52-column capture and joins the address the box broke at its right edge", () => {
+    const card = cardOf(screenOf(W52));
+    expect(card.title).toBe("Sign-in");
+    expect(card.phase).toBe("filled");
+    expect(linksOf(card)).toEqual([CODE_URL]);
+    expect(card.text.map(textOf).join("\n")).not.toMatch(/Incubating/u);
+  });
+
+  it("lifts a title-only Sign-in box as a waiting card", () => {
+    const waiting = [...boxOf(11, ["Sign-in"]), ...W52.slice(-3)];
+    expect(cardOf(screenOf(waiting))).toEqual({ title: "Sign-in", phase: "waiting", text: [] });
+  });
+
+  it("still heads the older box with its own title", () => {
+    expect(cardOf(lines(FILLED_W61)).title).toBe("Authentication");
+  });
+
+  it.each(["Sign in", "sign-in", "SIGN-IN", "Signin", "Sign-in needed", "Re-Sign-in"])(
+    "lifts the card headed by %j, the title the filled box with a link prints",
+    (title) => {
+      const retitled = [...boxOf(52, [title, "", ...W52_ROWS]), ...W52.slice(-4)];
+      const card = cardOf(screenOf(retitled));
+      expect(card.title).toBe(title);
+      expect(linksOf(card)).toEqual([CODE_URL]);
+    },
+  );
+
+  it.each(["Sign-in:", "Sign-in · 1/2"])("lifts no card from a box whose title row reads %j", (title) => {
+    const retitled = [...boxOf(52, [title, "", ...W52_ROWS]), ...W52.slice(-4)];
+    expect(kinds(claudeBuildBlocks(screenOf(retitled)))).not.toContain("box-text");
+  });
+
+  it("owns no keyboard and names no dialog, like the older box", () => {
+    const blocks = claudeBuildBlocks(screenOf(W120));
+    expect(blocks.some(blockOwnsKeyboard)).toBe(false);
+    expect(dialogNounOf(blocks)).toBeNull();
+    expect(claudeAdapter.composerReady?.(screenOf(W120))).toBe(true);
+  });
+});
+
+// ADR 0159. The box is known by its shape and its place over the live input box; the title is a label.
+// A known title behaves as before. Any other title lifts only a filled box of the box's plainest shape
+// that holds an https link. Nothing with a key, an indent, or another frame under it lifts.
+describe("a box over the live input box with a title Collie does not know", () => {
+  const FILLED_ROWS = lines(FILLED_W61).map(lineText);
+  const TOP = FILLED_ROWS.findIndex((row) => row.startsWith("╭"));
+  const BOTTOM = FILLED_ROWS.findIndex((row) => row.startsWith("╰"));
+  const INNER = FILLED_ROWS[TOP]!.trimEnd().length - 2;
+  const CONTENT = INNER - 2;
+  const side = (text: string): string => `│ ${text.padEnd(CONTENT)} │`;
+  const edge = (corners: "╭╮" | "╰╯"): string => `${corners[0]}${"─".repeat(INNER)}${corners[1]}`;
+  /** The capture with its box replaced by one titled `title` holding `rows` under a blank row. */
+  const withBox = (title: string, rows: readonly string[], top: string = edge("╭╮")): string[] => [
+    ...FILLED_ROWS.slice(0, TOP),
+    top,
+    side(title),
+    side(""),
+    ...rows.map(side),
+    edge("╰╯"),
+    ...FILLED_ROWS.slice(BOTTOM + 1),
+  ];
+  const screenOf = (rows: readonly string[]): StyledLine[] => rowsOf(rows.join("\n"));
+  const liftsNoCard = (rows: readonly string[]): boolean => !kinds(claudeBuildBlocks(screenOf(rows))).includes("box-text");
+  const linksOf = (card: { text: readonly (readonly BoxTextRun[])[] }): string[] =>
+    card.text.flatMap((row) => row.filter((run) => run.kind === "link").map((run) => run.href));
+  const DEVICE = "https://example.awsapps.com/start/#/device";
+  const LOGIN_ROWS = ["Open this page to sign in:", DEVICE, "Then enter the code: ABCD-EFGH"];
+
+  it("lifts the card headed by the printed title when the filled box holds an https link", () => {
+    const card = cardOf(screenOf(withBox("Log in", LOGIN_ROWS)));
+    expect(card).toMatchObject({ title: "Log in", phase: "filled" });
+    expect(linksOf(card)).toEqual([DEVICE]);
+    expect(card.text.map(textOf).map((row) => row.trimEnd())).toEqual(["", ...LOGIN_ROWS]);
+  });
+
+  it("leaves the card keyless and the composer ready, as with a known title", () => {
+    const blocks = claudeBuildBlocks(screenOf(withBox("Log in", LOGIN_ROWS)));
+    expect(blocks.some(blockOwnsKeyboard)).toBe(false);
+    expect(dialogNounOf(blocks)).toBeNull();
+    expect(claudeAdapter.composerReady?.(screenOf(withBox("Log in", LOGIN_ROWS)))).toBe(true);
+  });
+
+  it("lifts no card from a filled box with no link, though the same rows lift under a known title", () => {
+    const rows = ["Another Claude Code process is running your", "awsAuthRefresh command."];
+    expect(liftsNoCard(withBox("Log in", rows))).toBe(true);
+    expect(cardOf(screenOf(withBox("Authentication", rows))).phase).toBe("filled");
+  });
+
+  it("lifts no card from a title-only box, though a known title lifts the waiting card", () => {
+    expect(liftsNoCard(withBox("Log in", []))).toBe(true);
+    expect(cardOf(screenOf(withBox("Sign-in", []))).phase).toBe("waiting");
+  });
+
+  it.each([
+    ["a top edge with a word drawn into it", withBox("Log in", LOGIN_ROWS, `╭─ Claude Code ${"─".repeat(INNER - 14)}╮`)],
+    ["no blank row under the title", [...FILLED_ROWS.slice(0, TOP), edge("╭╮"), side("Log in"), ...LOGIN_ROWS.map(side), edge("╰╯"), ...FILLED_ROWS.slice(BOTTOM + 1)]],
+    ["a title of five words", withBox("Please log in to continue", LOGIN_ROWS)],
+    ["a title longer than 32 characters", withBox("Authenticationauthenticationauthentication", LOGIN_ROWS)],
+    ["a title that names a key", withBox("Enter to sign in", LOGIN_ROWS)],
+    ["a title with a colon", withBox("Note:", LOGIN_ROWS)],
+    ["a blank first row and the title under it", withBox("", ["Log in", "", ...LOGIN_ROWS])],
+  ])("lifts no card from a box with %s", (_name, rows) => {
+    expect(liftsNoCard(rows)).toBe(true);
+  });
+
+  it("lifts nothing from Claude's own welcome box over the live input box", () => {
+    expect(kinds(claudeBuildBlocks(lines("claude--draft-wrapped.txt")))).not.toContain("box-text");
+    expect(kinds(claudeBuildBlocks(lines("claude--draft-paste-placeholder.txt")))).not.toContain("box-text");
+  });
+
+  // No keys under an unknown title. With the input box live under it, no menu reader claims such a box (a
+  // menu must not claim a screen with a live box), so this reader refuses it itself and the rows stay in
+  // the mirror. A known title keeps exactly its old guards: the box holds the output of the person's own
+  // `awsAuthRefresh` command, which may print numbered steps or "Press Enter".
+  describe("a box that prints a key or an option: an unknown title refuses it, a known title lifts as before", () => {
+    const KEY_ROWS: [string, string[]][] = [
+      ["a footer of keys", [DEVICE, "Enter to confirm · Esc to cancel"]],
+      ["one key hint", [DEVICE, "Esc to cancel"]],
+      ["numbered options", ["Sign in with:", "1. AWS SSO", "2. Okta", DEVICE]],
+      ["a pointed option", ["❯ Open the page", DEVICE]],
+      ["a ctrl key hint", [DEVICE, "ctrl+c to stop"]],
+    ];
+    it.each(KEY_ROWS.flatMap(([name, rows]) => ["Log in", "Notifications"].map((title) => [title, name, rows] as const)))(
+      "lifts no card from a box with the unknown title %j and %s",
+      (title, _name, rows) => {
+        const blocks = claudeBuildBlocks(screenOf(withBox(title, rows)));
+        expect(kinds(blocks)).not.toContain("box-text");
+        expect(blocks.some(blockOwnsKeyboard)).toBe(false);
+      },
+    );
+
+    // The two-hint footer is the one shape a known title still refuses, as it always did: the strong-cue
+    // guard reads it as a dialog's footer under the box.
+    it("lifts no card from a box with a known title and a footer of two key hints, by the strong cue as before", () => {
+      for (const title of ["Authentication", "Sign-in"]) expect(liftsNoCard(withBox(title, KEY_ROWS[0]![1])), title).toBe(true);
+    });
+
+    it.each(KEY_ROWS.slice(1).flatMap(([name, rows]) => ["Authentication", "Sign-in"].map((title) => [title, name, rows] as const)))(
+      "lifts the card, keyless, from a box with the known title %j and %s",
+      (title, _name, rows) => {
+        const blocks = claudeBuildBlocks(screenOf(withBox(title, rows)));
+        expect(kinds(blocks)).toContain("box-text");
+        expect(blocks.some(blockOwnsKeyboard)).toBe(false);
+        expect(cardOf(screenOf(withBox(title, rows))).title).toBe(title);
+      },
+    );
+
+    it("lifts a known title whose command printed numbered steps, Press Enter and a link, with the link a link", () => {
+      const rows = ["1. Open the address:", DEVICE, "2) Enter the code ABCD-EFGH", "Press Enter after you signed in"];
+      const card = cardOf(screenOf(withBox("Sign-in", rows)));
+      expect(card.phase).toBe("filled");
+      expect(linksOf(card)).toEqual([DEVICE]);
+      expect(card.text.map(textOf).map((row) => row.trimEnd())).toEqual(["", ...rows]);
+    });
+  });
+
+  describe("a drawing that is not Claude's own box over its live input box lifts nothing", () => {
+    const indented = (prefix: string): string[] => {
+      const rows = withBox("Sign-in", LOGIN_ROWS);
+      const at = rows.indexOf(edge("╭╮"));
+      const end = rows.indexOf(edge("╰╯"));
+      return rows.map((row, i) => (i >= at && i <= end ? (i === at ? prefix : " ".repeat(prefix.length)) + row : row));
+    };
+
+    it.each([
+      ["indented two cells, as agent text is", indented("  ")],
+      ["under the agent's bullet", indented("● ")],
+      ["inside tool output", indented("  ⎿  ")],
+    ])("lifts no card from a box %s, with a known title and a link", (_name, rows) => {
+      expect(liftsNoCard(rows)).toBe(true);
+    });
+
+    // An exited frame leaves Claude's resume hint and the shell's prompt under the status rows. An
+    // unknown title is held to the same place as a known one: neither lifts there.
+    const EXITED = ["", "Resume this session with:", "claude --resume 00000000-0000-4000-8000-000000000000", "", "~/work", "❯ ls"];
+    const SHELL_OUTPUT = Array.from({ length: 10 }, (_, i) => `file-${String(i)}.txt`);
+
+    it.each([
+      ["the resume hint and the shell's prompt", EXITED],
+      ["the shell's output past the status-row cap", [...EXITED, ...SHELL_OUTPUT, "~/work", "❯ "]],
+    ])("lifts no card from a box above a frame that has exited, with %s under it", (_name, tail) => {
+      for (const title of ["Sign-in", "Log in"]) {
+        expect(liftsNoCard([...withBox(title, LOGIN_ROWS), ...tail]), title).toBe(true);
+      }
+    });
+
+    it("lifts no card from a box with output rows under the status rows past the status-row cap", () => {
+      const cap = requireProfile("claude").idle.volatile.below.maxRows;
+      const rows = [...withBox("Log in", LOGIN_ROWS), ...Array.from({ length: cap + 1 }, (_, i) => `output row ${String(i)}`)];
+      expect(liftsNoCard(rows)).toBe(true);
+    });
+
+    it("lifts no card from a box with a dialog's choices under the input box", () => {
+      const base = withBox("Log in", LOGIN_ROWS);
+      const rule = base.findIndex((row, i) => i > TOP && row.startsWith("───"));
+      expect(liftsNoCard([...base.slice(0, rule + 3), "  ❯ 1. Yes", "    2. No", "", "  Esc to cancel"])).toBe(true);
+    });
+
+    it("lifts no card from a box with a non-blank row between it and the input box", () => {
+      const base = withBox("Log in", LOGIN_ROWS);
+      const rule = base.findIndex((row, i) => i > TOP && row.startsWith("───"));
+      expect(liftsNoCard([...base.slice(0, rule), "a row in between", ...base.slice(rule)])).toBe(true);
+    });
+
+    it("shows the completion popup's own card, and no box card, when the popup stands under the input box", () => {
+      const popup = lines("claude--autocomplete-slash-short.txt");
+      const box = screenOf(withBox("Log in", LOGIN_ROWS));
+      const top = box.findIndex((line) => lineText(line).startsWith("╭"));
+      const bottom = box.findIndex((line) => lineText(line).startsWith("╰"));
+      const rule = popup.findIndex((line) => lineText(line).startsWith("───"));
+      const screen = [...popup.slice(0, rule), ...box.slice(top, bottom + 1), rowsOf("")[0]!, ...popup.slice(rule)];
+      expect(kinds(claudeBuildBlocks(screen))).toEqual(["raw", "autocomplete"]);
+    });
+
+    it("lifts no card from a box when the input box is not under it", () => {
+      const rows = withBox("Log in", LOGIN_ROWS);
+      expect(liftsNoCard(rows.slice(0, rows.findIndex((row, i) => i > TOP && row.startsWith("───"))))).toBe(true);
+    });
+  });
+});
+
+describe("a box card links only an https address whose host a person can read", () => {
+  const FILLED_ROWS = lines(FILLED_W61).map(lineText);
+  const TOP = FILLED_ROWS.findIndex((row) => row.startsWith("╭"));
+  const BOTTOM = FILLED_ROWS.findIndex((row) => row.startsWith("╰"));
+  const CONTENT = FILLED_ROWS[TOP]!.trimEnd().length - 4;
+  const side = (text: string): string => `│ ${text.padEnd(CONTENT)} │`;
+  const boxOf = (title: string, rows: readonly string[]): StyledLine[] =>
+    rowsOf(
+      [
+        ...FILLED_ROWS.slice(0, TOP),
+        FILLED_ROWS[TOP]!,
+        side(title),
+        side(""),
+        ...rows.map(side),
+        FILLED_ROWS[BOTTOM]!,
+        ...FILLED_ROWS.slice(BOTTOM + 1),
+      ].join("\n"),
+    );
+  const runsOfCard = (title: string, rows: readonly string[]): BoxTextRun[] => cardOf(boxOf(title, rows)).text.flat();
+
+  // `http://[::1]` is allowed too, but the scanner (lib/links.ts) stops at `[`, so no box row yields it.
+  it.each(["http://localhost:54545/launch", "http://127.0.0.1:8080/callback", "http://localhost/launch"])(
+    "links %j, a plain-http address to a loopback host",
+    (address) => {
+      const runs = runsOfCard("Sign-in", ["Visit:", address]);
+      expect(runs.filter((run) => run.kind === "link")).toEqual([{ kind: "link", text: address, href: address }]);
+    },
+  );
+
+  it.each([
+    ["http to a host that is not loopback", "http://example.awsapps.com/start"],
+    ["http to a host that only starts like loopback", "http://localhost.evil.example/start"],
+    ["http to another 127 address", "http://127.0.0.2/start"],
+    ["a user name before the host", "https://example.awsapps.com@evil.example/start"],
+    ["a user name and a password", "https://user:pw@evil.example/start"],
+    ["a look-alike letter in the host", "https://exаmple.awsapps.com/start"],
+    ["a right-to-left override", "https://evil.example/‮moc.spawsa"],
+  ])("shows an address with %s as plain text under a known title", (_name, address) => {
+    const runs = runsOfCard("Sign-in", ["Visit:", address]);
+    expect(runs.some((run) => run.kind === "link")).toBe(false);
+    expect(runs.map((run) => run.text).join("")).toContain(address);
+  });
+
+  it("lifts no card under an unknown title when the only address is one it may not link", () => {
+    const screen = boxOf("Log in", ["Visit:", "http://example.awsapps.com/start"]);
+    expect(kinds(claudeBuildBlocks(screen))).not.toContain("box-text");
+  });
+
+  it("links the https address beside a plain http one, and keeps the row's text whole", () => {
+    const row = cardOf(boxOf("Sign-in", ["http://a.example/x or https://b.example/y"])).text[1]!;
+    expect(row).toEqual([
+      { kind: "plain", text: "http://a.example/x or " },
+      { kind: "link", text: "https://b.example/y", href: "https://b.example/y" },
+      { kind: "plain", text: " ".repeat(CONTENT - "http://a.example/x or https://b.example/y".length) },
+    ]);
+  });
+
+  it("links an address whose text is its href, so the host the card shows is the host it opens", () => {
+    for (const run of cardOf(lines(FILLED_W120)).text.flat()) {
+      if (run.kind === "link") expect(run.href).toBe(run.text);
+    }
   });
 });

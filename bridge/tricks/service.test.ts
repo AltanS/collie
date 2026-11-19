@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { HOST as THIS_HOST } from "../host.ts";
 import type { JsonObject } from "../json.ts";
 import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
-import { CLOSED_KEY_LINE, DECIDES_REPLY_LINE, FACT_SESSIONS_MAX, parseDecisionView, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
+import { CLOSED_KEY_LINE, DECIDES_REPLY_LINE, DRAFTS_SESSION_REFUSAL, FACT_SESSIONS_MAX, parseDecisionView, parseFacts, parseTrickDocumentText, partKey, RULES_NEVER_AUTO, type FactsSession, type TrickFacts, type TrickTapReply, type TricksRunsOn } from "../../web/src/lib/tricks/schema.ts";
 import type { AgentView } from "../types.ts";
 import { legacyPowersOf, powersOf, powersOfDir } from "./approved.ts";
 import { factsWorldOf, NO_FACTS_CAPS, type FactsWorldInput } from "./facts.ts";
@@ -138,6 +138,7 @@ async function tickAt(r: Rig, t: number, watch = true): Promise<void> {
   if (watch) r.service.noteWatched();
   await r.service.refresh(true);
   await r.service.tick();
+  await r.service.idle();
 }
 
 /** The rev the phone holds of a part: the one `GET /api/tricks` serves for it now. */
@@ -583,10 +584,14 @@ describe("the watched gate and the timer", () => {
     const first = r.service.tick();
     await Bun.sleep(20);
     r.clock.t = T0 + 60_000;
-    await r.service.tick();
+    // A tick resolves when the run going is done, so it is not awaited before the release.
+    const second = r.service.tick();
+    await Bun.sleep(20);
     expect(r.specs.length).toBe(1);
     release();
     await first;
+    await second;
+    expect(r.specs.length).toBe(1);
   });
 });
 
@@ -1240,6 +1245,68 @@ describe("a trick's pictures", () => {
     expect(await r.service.media(HOST, "legs", "trick.toml")).toBeNull();
     expect(await r.service.media(HOST, "legs", "media/../trick.toml")).toBeNull();
   });
+
+  test("a picture replaced by hand in the installed folder reaches the approved copy on the next scan, with no new yes", async () => {
+    const r = await rig([]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST);
+    await mkdir(join(dir, "media"));
+    await writeFile(join(dir, "media", "chart.png"), PNG);
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    const rowOf = async () => (await r.service.reply(undefined)).tricks.find((t) => t.id === "legs");
+    const before = (await rowOf())?.media?.["media/chart.png"];
+    expect(before).toMatch(/^[0-9a-f]{12}$/);
+    const hashBefore = (await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8")).length;
+    const other = new Uint8Array(PNG);
+    other[20] = 9;
+    await writeFile(join(dir, "media", "chart.png"), other);
+    await writeFile(join(dir, "media", "note.txt"), "not a picture");
+    await r.service.refresh(true);
+    const after = await rowOf();
+    expect(after?.media?.["media/chart.png"]).toMatch(/^[0-9a-f]{12}$/);
+    expect(after?.media?.["media/chart.png"]).not.toBe(before);
+    expect((await r.service.media(HOST, "legs", "media/chart.png"))?.bytes).toEqual(other);
+    // No new version waits for a yes, and nothing that is no picture reached the copy.
+    expect(after?.pending).toBeUndefined();
+    expect(after?.changed).toBeUndefined();
+    expect((await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8")).length).toBe(hashBefore);
+    expect((await readdir(join(await copyOf(r, "legs"), "media"))).toSorted()).toEqual(["chart.png"]);
+  });
+
+  test("the row names each picture's version; a picture replaced under the same name takes a new one and moves the rev", async () => {
+    const r = await rig([]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST);
+    await mkdir(join(dir, "media"));
+    await writeFile(join(dir, "media", "chart.png"), PNG);
+    await makeTrick(r.configDir, "bare", MANIFEST.replace('id = "legs"', 'id = "bare"'));
+    await switchOn(r.stateDir, "legs", "bare");
+    await r.service.refresh(true);
+    const rowOf = async (id: string) => (await r.service.reply(undefined)).tricks.find((t) => t.id === id);
+    const first = (await rowOf("legs"))?.media;
+    expect(Object.keys(first ?? {})).toEqual(["media/chart.png"]);
+    expect(first?.["media/chart.png"]).toMatch(/^[0-9a-f]{12}$/);
+    // A trick with no picture has no field at all, as an older bridge's row.
+    expect(await rowOf("bare")).not.toHaveProperty("media");
+    // The same bytes again: the version and the rev stand.
+    const rev = (await r.service.reply(undefined)).rev;
+    await r.service.refresh(true);
+    expect((await rowOf("legs"))?.media).toEqual(first);
+    expect((await r.service.reply(undefined)).rev).toBe(rev);
+    // New bytes under the same name, in the approved copy where the program writes them.
+    const copy = await copyOf(r, "legs");
+    const other = new Uint8Array(PNG);
+    other[20] = 9;
+    await writeFile(join(copy, "media", "chart.png"), other);
+    await r.service.refresh(true);
+    const second = (await rowOf("legs"))?.media;
+    expect(second?.["media/chart.png"]).toMatch(/^[0-9a-f]{12}$/);
+    expect(second?.["media/chart.png"]).not.toBe(first?.["media/chart.png"]);
+    expect((await r.service.reply(undefined)).rev).toBeGreaterThan(rev);
+    // Switched off, nothing is served and no version is named.
+    await updateSwitches(r.stateDir, (file) => withSwitch(file, "legs", false, "2026-11-08T09:00:00Z"));
+    await r.service.refresh(true);
+    expect(await rowOf("legs")).not.toHaveProperty("media");
+  });
 });
 
 describe("consent tied to the code", () => {
@@ -1647,8 +1714,13 @@ describe("warnings at the switch (review 15)", () => {
 });
 
 describe("the approved copy (crew slice 2)", () => {
-  /** Edit the program, then let the folder settle so the pending snapshot is taken. */
+  /**
+   * Edit the program, then let the folder settle so the pending snapshot is taken. A yes just before starts a run
+   * at once, and that run reads the folder again (`recheck`): it must end before the edit, or a read it took
+   * halfway through the edit lands after the next scan and the settle starts again (seen on Windows).
+   */
   async function newVersion(r: Rig, dir: string, at: number, text: string, extraFiles: Record<string, string> = {}): Promise<string> {
+    await r.service.idle();
     await writeFile(join(dir, "legs.sh"), text);
     for (const [name, body] of Object.entries(extraFiles)) await writeFile(join(dir, name), body);
     await tickAt(r, at);
@@ -1826,8 +1898,7 @@ describe("the approved copy (crew slice 2)", () => {
     expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v2, powersChanged: false });
     // After a yes, a change of one field label waits too, and a version with the same list is taken again.
     expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
-    await writeFile(join(dir, "trick.toml"), `${MANIFEST}contract = 3\n${field("Repo")}`);
-    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 1\n");
+    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 1\n", { "trick.toml": `${MANIFEST}contract = 3\n${field("Repo")}` });
     file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(file.on.legs.hash).toBe(v2);
     expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v3 });
@@ -1854,8 +1925,7 @@ describe("the approved copy (crew slice 2)", () => {
     expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v2, powersChanged: true });
     // A second glob after a yes to the first moves the rights again: it waits too.
     expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
-    await writeFile(join(dir, "trick.toml"), `${MANIFEST}contract = 2\ninputs = ["TODO.md", "notes/*.md"]\n`);
-    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 1\n");
+    const v3 = await newVersion(r, dir, T0 + 20_000, "#!/bin/sh\necho 1\n", { "trick.toml": `${MANIFEST}contract = 2\ninputs = ["TODO.md", "notes/*.md"]\n` });
     file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
     expect(file.on.legs.hash).toBe(v2);
     expect((await r.service.reply(undefined)).tricks[0]?.pending).toMatchObject({ hash: v3, powersChanged: true });
@@ -1890,6 +1960,41 @@ describe("the approved copy (crew slice 2)", () => {
     await tickAt(r, T0 + 80_000);
     expect((await legs())?.refusals).toBeUndefined();
     expect((await legs())?.decidesReply).toBe(true);
+  });
+
+  test("drafts = session is a right: a version that adds it waits, auto or not; the approved copy refuses the draft button meanwhile, then draws it after the yes", async () => {
+    const page = JSON.stringify({
+      v: 1,
+      asOf: "2026-11-08T09:00:00Z",
+      parts: [
+        { at: "belt", id: "belt", mark: { label: "1", intent: "x" } },
+        { at: "session", id: "page", view: [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Use", does: "draft", value: "Run the tests." } }] }] },
+      ],
+    });
+    const r = await rig([exited(page)]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const legs = async () => (await r.service.reply(undefined)).tricks.find((trick) => trick.id === "legs");
+    const refusalsOf = async () => (await legs())?.refusals?.map((refusal) => [refusal.code, refusal.path, refusal.reason]);
+    // Without the key: the page part is refused alone with the plain line, the Belt mark still draws.
+    expect(await refusalsOf()).toEqual([["undeclared", "/parts/1/view/0/kids/0/attrs/does", DRAFTS_SESSION_REFUSAL]]);
+    expect((await legs())?.draftsSession).toBeUndefined();
+    await updateSwitches(r.stateDir, (now) => withEntry(now, "legs", { ...now.on.get("legs")!, auto: true }));
+    const v1 = await codeHashOf(dir);
+    await writeFile(join(dir, "trick.toml"), `${MANIFEST}drafts = "session"\n`);
+    const v2 = await newVersion(r, dir, T0 + 1000, "#!/bin/sh\necho 1\n");
+    const file = JSON.parse(await readFile(join(r.stateDir, TRICKS_DIR, "switches.json"), "utf8"));
+    expect(file.on.legs.hash).toBe(v1);
+    expect((await legs())?.pending).toMatchObject({ hash: v2, powersChanged: true });
+    // The approved copy's manifest is the one read: the folder's key does not count yet.
+    await tickAt(r, T0 + 40_000);
+    expect((await refusalsOf())?.map((row) => row[2])).toEqual([DRAFTS_SESSION_REFUSAL]);
+    expect((await legs())?.draftsSession).toBeUndefined();
+    expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
+    await tickAt(r, T0 + 80_000);
+    expect((await legs())?.refusals).toBeUndefined();
+    expect((await legs())?.draftsSession).toBe(true);
   });
 
   test("a copy that changed on disk stops the trick with a plain line; switching on again approves the folder anew", async () => {
@@ -2657,6 +2762,24 @@ describe("the menu place and bound parts (contract 2)", () => {
     expect(r.specs).toHaveLength(2);
   });
 
+  test("float: a trick keeps one picture that stays and one that plays once, and a refused one is not kept stale where an accepted one took its slot", async () => {
+    const FLOAT = 'id = "ci"\nname = "CI"\nrun = "./ci.sh"\nevery = "30s"\nplaces = ["float"]\n';
+    const stay = (id: string) => ({ at: "float", id, mode: "stay", motion: "perch", sprite: { src: "media/pet.png" } });
+    const once = (id: string) => ({ at: "float", id, mode: "once", motion: "pop", sprite: { src: "media/spark.png" } });
+    const first = doc(stay("pet"), once("spark"));
+    // The next run puts a new part in each slot first, then sends the old ones again, each refused as a second of its mode.
+    const second = doc(stay("pet2"), once("spark2"), stay("pet"), once("spark"));
+    const r = await rig([exited(first), exited(second)], { world, instanceOf: (session) => own.get(session) ?? null, audit: () => undefined });
+    await makeTrick(r.configDir, "ci", FLOAT, { "ci.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "ci");
+    await tickAt(r, T0);
+    expect((await r.service.reply(undefined, { bound: true })).parts.map((part) => part.part).toSorted()).toEqual(["pet", "spark"]);
+    await tickAt(r, T0 + 30_000);
+    const reply = await r.service.reply(undefined, { bound: true });
+    expect(reply.parts.map((part) => part.part).toSorted()).toEqual(["pet2", "spark2"]);
+    expect(reply.parts.some((part) => part.stale === true)).toBe(false);
+  });
+
   test("N1: a menu tap's receipt carries no message that reads as Collie's own; a belt tap's keeps it", async () => {
     const failed: RunOutcome = { kind: "exited", code: 1, stdout: "", stderr: "Collie restarted the build", ms: 3 };
     const r = await rig([exited(doc(menu(), mark())), failed, failed], { world, instanceOf: (session) => own.get(session) ?? null, audit: () => undefined });
@@ -3243,5 +3366,201 @@ describe("review J, read of 1bf6c747a, point 3: the service forgets an id that a
     await r.service.refresh(true);
     // The first scan found no folder: that scan counts as the first, so a trick after it is an arrival.
     expect(seen).toEqual(["legs"]);
+  });
+});
+
+describe("changes show at once: the start run goes right after the event, not at the next tick", () => {
+  /** A trick with one edit waiting for a yes: the folder was edited and sat still for the settle time. */
+  async function withWaitingVersion(r: Rig, dir: string): Promise<string> {
+    await writeFile(join(dir, "legs.sh"), "#!/bin/sh\necho 2\n");
+    await tickAt(r, T0 + 1000);
+    await tickAt(r, T0 + 1000 + PENDING_SETTLE_MS);
+    const code = await trickCodeHash(dir);
+    if (!code.ok) throw new Error(code.reason);
+    return code.hash;
+  }
+
+  test("a yes to a new version runs its code once, at once, with no tick and no wait for `every`", async () => {
+    const r = await rig([exited(belt("old")), exited(belt("new"))]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(r.specs.length).toBe(1);
+    const v2 = await withWaitingVersion(r, dir);
+    // The timer (every 30 s) is far off: the clock stays where the settle left it.
+    expect(r.specs.length).toBe(1);
+    const revBefore = r.service.rev() ?? 0;
+    expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
+    await r.service.idle();
+    expect(r.specs.length).toBe(2);
+    expect(factsOf(r.specs[1]).trigger).toEqual({ kind: "start" });
+    expect(r.specs[1]?.cwd).toBe(approvedCopyDir(r.configDir, "legs", v2));
+    // The push: the new run's result moved the rev, and the part the phone asks for is the new version's.
+    expect(r.service.rev() ?? 0).toBeGreaterThan(revBefore);
+    const drawn = (await r.service.reply(revBefore)).parts.find((p) => p.part === "belt");
+    expect(JSON.stringify(drawn?.value)).toContain("new");
+    // Exactly one: a tick at the same instant finds nothing due.
+    await r.service.tick();
+    await r.service.idle();
+    expect(r.specs.length).toBe(2);
+  });
+
+  test("a version change while a run goes: runs never overlap, the old run's output is dropped, the new code runs right after", async () => {
+    const specs: RunSpec[] = [];
+    const gate = Promise.withResolvers<void>();
+    let active = 0;
+    let peak = 0;
+    const r = await rig(null, {
+      run: async (spec) => {
+        specs.push(spec);
+        active += 1;
+        peak = Math.max(peak, active);
+        try {
+          if (specs.length === 2) await gate.promise;
+          return exited(belt(specs.length === 2 ? "old-slow" : specs.length === 1 ? "first" : "new"));
+        } finally {
+          active -= 1;
+        }
+      },
+    });
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\necho 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    const v2 = await withWaitingVersion(r, dir);
+    // The timer run of the OLD copy is going (and held) when the yes arrives.
+    r.clock.t = T0 + 31_000;
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    const timerRun = r.service.tick();
+    await Bun.sleep(20);
+    expect(specs.length).toBe(2);
+    expect(await r.service.approvePending("legs", v2, "phone")).toMatchObject({ ok: true });
+    // The yes started nothing next to the run that goes.
+    expect(specs.length).toBe(2);
+    gate.resolve();
+    await timerRun;
+    await Bun.sleep(20);
+    await r.service.idle();
+    expect(specs.length).toBe(3);
+    expect(peak).toBe(1);
+    expect(factsOf(specs[2]).trigger).toEqual({ kind: "start" });
+    expect(specs[2]?.cwd).toBe(approvedCopyDir(r.configDir, "legs", v2));
+    const reply = await r.service.reply(undefined);
+    const text = JSON.stringify(reply.parts);
+    expect(text).toContain("new");
+    expect(text).not.toContain("old-slow");
+    // The overtaken run was neither a success nor a failure: no problem line, no failure counted.
+    expect(reply.tricks[0]?.error).toBeUndefined();
+    expect(reply.tricks[0]?.state).toBe("ok");
+  });
+
+  test("a switch on runs the trick at once", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    expect(r.specs.length).toBe(0);
+    expect(await r.service.setSwitch(HOST, "legs", true)).toMatchObject({ status: 200 });
+    await r.service.idle();
+    expect(r.specs.length).toBe(1);
+    expect(factsOf(r.specs[0]).trigger).toEqual({ kind: "start" });
+    await r.service.tick();
+    expect(r.specs.length).toBe(1);
+  });
+
+  test("a config.toml edit runs the trick once, at once, with the new settings", async () => {
+    const r = await rig([exited(belt("1"))]);
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n", "config.toml": "a = 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    expect(r.specs.length).toBe(1);
+    await writeFile(join(dir, "config.toml"), "a = 2\n");
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    await r.service.idle();
+    expect(r.specs.length).toBe(2);
+    expect(factsOf(r.specs[1]).trigger).toEqual({ kind: "start" });
+    expect(await readFile(join(r.specs[1]?.cwd ?? "", "config.toml"), "utf8")).toBe("a = 2\n");
+    // A second look at the same file starts nothing more.
+    await r.service.refresh(true);
+    await r.service.idle();
+    expect(r.specs.length).toBe(2);
+  });
+
+  test("a config.toml edit while a run goes: that run's output is dropped and the new settings run right after", async () => {
+    const gate = Promise.withResolvers<void>();
+    const seen: string[] = [];
+    const r = await rig(null, {
+      run: async (spec) => {
+        const settings = await readFile(join(spec.cwd, "config.toml"), "utf8");
+        seen.push(settings);
+        if (seen.length === 2) await gate.promise;
+        return exited(belt(settings.trim()));
+      },
+    });
+    const dir = await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n", "config.toml": "a = 1\n" });
+    await switchOn(r.stateDir, "legs");
+    await tickAt(r, T0);
+    r.clock.t = T0 + 31_000;
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    const timerRun = r.service.tick();
+    await Bun.sleep(20);
+    expect(seen).toEqual(["a = 1\n", "a = 1\n"]);
+    await writeFile(join(dir, "config.toml"), "a = 2\n");
+    await r.service.refresh(true);
+    expect(seen.length).toBe(2);
+    gate.resolve();
+    await timerRun;
+    await Bun.sleep(20);
+    await r.service.idle();
+    expect(seen).toEqual(["a = 1\n", "a = 1\n", "a = 2\n"]);
+    expect(JSON.stringify((await r.service.reply(undefined)).parts)).toContain("a = 2");
+  });
+
+  test("tricks switched on as a whole run the trick that was waiting, at once", async () => {
+    const listeners: ((on: boolean) => void)[] = [];
+    let on = false;
+    const feature = {
+      on: () => on,
+      onChange: (listener: (on: boolean) => void) => {
+        listeners.push(listener);
+        return () => undefined;
+      },
+    };
+    const r = await rig([exited(belt("1"))], { feature });
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    expect(r.specs.length).toBe(0);
+    on = true;
+    for (const listener of listeners) listener(true);
+    await Bun.sleep(50);
+    await r.service.idle();
+    expect(r.specs.length).toBe(1);
+    expect(factsOf(r.specs[0]).trigger).toEqual({ kind: "start" });
+  });
+
+  test("no phone looking: nothing starts early, the next tick decides, as before", async () => {
+    const r = await rig([exited(belt("1"))]);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    await r.service.refresh(true);
+    await r.service.idle();
+    expect(r.specs.length).toBe(0);
+  });
+
+  test("a failed start run is not retried in a loop: it backs off as before", async () => {
+    const r = await rig([{ kind: "exited", code: 1, stdout: "", stderr: "boom", ms: 5 }]);
+    await makeTrick(r.configDir, "legs", MANIFEST, { "legs.sh": "#!/bin/sh\n" });
+    await switchOn(r.stateDir, "legs");
+    r.service.noteWatched();
+    await r.service.refresh(true);
+    await r.service.idle();
+    await Bun.sleep(30);
+    await r.service.refresh(true);
+    await r.service.idle();
+    expect(r.specs.length).toBe(1);
   });
 });

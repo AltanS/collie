@@ -339,6 +339,18 @@ dial the lead's cache cannot already answer (§10.1). **Widening is a second dim
 and never travels as a host:** a crew request may still not name a `host=`, because a peer has no
 peers (§4).
 
+A widened answer still carries ONE `workspaces` and ONE `tabs` list, the primary session's, so the
+cached body cannot answer a request about a member's other session with that session's spaces and
+tabs *(added 2026-11-18, issue 785)*. When a phone's `?host=<member>&session=<name>` names a session
+the member published that is reachable and not its primary, the lead notes it, and its next sweeps
+also dial that member's `GET /crew/v1/snapshot?session=<name>` beside the widened one, on the same
+per-call budget, and keep only that answer's two lists for the merge. Nothing new is on the wire:
+`?session=` is the parameter every member already reads. The dial carries none of §20's follow headers
+and no §21 ack, and its outcome never reaches the member's health. It runs only while a phone keeps
+asking (15 s after the last request) and its lists serve for at most 60 s; a failed dial keeps the last
+good lists within that age, else the merge serves the primary's lists as before. A member with one
+session costs no second dial. Lead-local, so `CREW_PROTOCOL_VERSION` does not move.
+
 **`hello`'s response body** is the one place both versions cross a link — the wire contract and the
 answering build:
 
@@ -1532,6 +1544,13 @@ prevents (`web/src/lib/api.ts:201-203`).
   read. It only shows: the member's accounts are its own, read and changed with `?host=` on
   `/api/accounts`. `CREW_PROTOCOL_VERSION` stays `2`, no new route on the link, no new verb and no new
   header.
+- **A pane may carry `blockedBy`** (additive-optional, §7.1, added 2026-11-19, PR 787): `"error"` on a
+  pane whose `status` is `blocked` because its program reported that its turn stopped on a failure
+  (herdr-core's `state=error`). The status stays `blocked`, so a lead or phone that predates the field
+  still shows the pane as needing you. A collie that reads it treats the pane as needing a look, not
+  an answer: no ask is open, Load older reads, and its push goes once the pane is seen. The lead keeps
+  it only as `"error"` and only on a `blocked` pane, and drops anything else; a pane without it is a
+  plain `blocked`, which is what every older member sends. `CREW_PROTOCOL_VERSION` stays `2`.
 - **A session may carry `label`** (additive-optional, §7.1, added 2026-10-19): the display label
   the member's own operator wrote in its `spaces.toml`. It is display-only: `name` stays the
   session's identity on the link and in every address. The lead keeps it only as a string and runs
@@ -1814,7 +1833,7 @@ federation code exists to break it.
 
 | Surface | Solo behaviour | Decided at |
 |---|---|---|
-| Routes served to a browser | unchanged; **zero** routes added, zero status codes changed. Amended on purpose 2026-10-05 (ADR 0084): `GET /api/machines`, `GET /api/machines/:id/history` and `POST /api/machines/:id/alerts` answer on a solo collie for its one machine, id `local`; they name no crew state and are pinned in `bridge/solo-baseline.test.ts` | `bridge/server.ts:165-390` |
+| Routes served to a browser | unchanged; **zero** routes added, zero status codes changed. Amended on purpose 2026-10-05 (ADR 0084): `GET /api/machines`, `GET /api/machines/:id/history` and `POST /api/machines/:id/alerts` answer on a solo collie for its one machine, id `local`; they name no crew state and are pinned in `bridge/solo-baseline.test.ts`. Amended on purpose 2026-11-18: `POST /api/diag/composer` answers on a solo collie, read-gated, never forwarded, and names no crew state | `bridge/server.ts:165-390` |
 | `/crew/v1/*` | **not routed at all** — no crew prefix is registered with zero peers | §5 |
 | Snapshot bytes | unchanged — `servers` is **omitted**, and no `host` field is added to sessions or panes | `bridge/types.ts:164-186` |
 | Snapshot ETag | **unchanged.** Follows from the row above: no added field, no shifted hash | `bridge/http-cache.ts:16-19` |
@@ -1824,7 +1843,7 @@ federation code exists to break it.
 | Push payload | unchanged — no `host` field, mirroring how `session` is stamped only for non-primary | `bridge/push.ts:124-131` |
 | Poll cadence | unchanged — **no second timer, no peer sweep**, same idle relaxation. Amended on purpose 2026-10-05: the one interval runs at the fast cadence for `HOT_POLLS` polls after an input or a new agent pane with no session (`ARCHITECTURE.md` §5), solo or not, and names no crew state | `bridge/event-poker.ts`, `bridge/config.ts:212-213` |
 | Audit line bytes | unchanged — `host` is omitted, not null, exactly as `session`/`device` are today | `bridge/audit.ts:55-61` |
-| Files written | **exactly today's set**: `uploads/`, `audit.log`, `push-subscriptions.json`, `snooze.json`, `notify-prefs.json`, `activity.json`, `update-state.json`. **No key, no certificate, no trust store, no roster.** Amended on purpose 2026-09-27 (M40/02, #289): `folders.json` joins the set as a file written **only after the first space created with a folder or the first star** — an instance that never does either writes nothing new, and it names no crew state. Amended on purpose 2026-10-05 (ADR 0084): `machine-history.json` is written from the tick at most once every five minutes once a minute is recorded, and `machine-alerts.json` only after the operator sets the first rule. Amended on purpose 2026-10-17 (ADR 0107): `sent.jsonl` is written only after the first shell line or one-off run the skip rules keep, and never with `COLLIE_SENT=off`. Amended on purpose 2026-11-09 (push rule 4): `push-clear-budget.json` is written only after the first silent clear reaches a push subscription, so an instance nobody subscribed to push from never has it | `bridge/server.ts:1075`, `bridge/audit.ts:65`, `bridge/push.ts:86`, `bridge/snooze.ts:19`, `bridge/notify-prefs.ts:45`, `bridge/activity.ts:100`, `bridge/update.ts:147`, `bridge/folders.ts`, `bridge/machine-history.ts`, `bridge/machine-alerts.ts`, `bridge/sent.ts` |
+| Files written | **exactly today's set**: `uploads/`, `audit.log`, `push-subscriptions.json`, `snooze.json`, `notify-prefs.json`, `activity.json`, `update-state.json`. **No key, no certificate, no trust store, no roster.** Amended on purpose 2026-09-27 (M40/02, #289): `folders.json` joins the set as a file written **only after the first space created with a folder or the first star** — an instance that never does either writes nothing new, and it names no crew state. Amended on purpose 2026-10-05 (ADR 0084): `machine-history.json` is written from the tick at most once every five minutes once a minute is recorded, and `machine-alerts.json` only after the operator sets the first rule. Amended on purpose 2026-10-17 (ADR 0107): `sent.jsonl` is written only after the first shell line or one-off run the skip rules keep, and never with `COLLIE_SENT=off`. Amended on purpose 2026-11-09 (push rule 4): `push-clear-budget.json` is written only after the first silent clear reaches a push subscription, so an instance nobody subscribed to push from never has it. Amended on purpose 2026-11-18: `diag-composer.jsonl` is written only after a paired phone reports a reply box below its screen (`POST /api/diag/composer`, numbers and enums only, at most 500 lines), so a bridge no phone reports to never has it, and it names no crew state | `bridge/server.ts:1075`, `bridge/audit.ts:65`, `bridge/push.ts:86`, `bridge/snooze.ts:19`, `bridge/notify-prefs.ts:45`, `bridge/activity.ts:100`, `bridge/update.ts:147`, `bridge/folders.ts`, `bridge/machine-history.ts`, `bridge/machine-alerts.ts`, `bridge/sent.ts` |
 | Ports opened | exactly one, loopback, as today. The standby door's second listener (§18.15) is bound only when `COLLIE_STANDBY_PORT` is set **and** a trust store exists, which a solo instance has neither of | `bridge/config.ts:210-211`, `bridge/crew/standby.ts` |
 
 **Why `servers` is optional-and-absent rather than always-present.** An always-present field — even a
@@ -4458,8 +4477,10 @@ nothing installs or runs it before a person's tap on the lead.
   and 5 MB, 8 folders deep, 256 characters a path; no `.` or `..` step, no dot step, no
   `node_modules` or `inputs` step, no absolute path, no backslash or colon, no control, bidi or
   invisible character, NFC only; no two names, of files or folders, that are one once case and Unicode
-  compatibility forms are set aside; nothing in `media/` or `captures/` and no `config.toml` at the top
-  (a proposal carries code only: the person adds pictures and settings on the machine); the reserved
+  compatibility forms are set aside; in `media/` and `captures/` only pictures (a `.png`, `.jpg`, `.jpeg`
+  or `.webp` name and PNG, JPEG or WebP first bytes, at most 2 MB each and 50 in all, never `x`; since
+  1.29.1, an older lead refuses any file there) and no `config.toml` at the top (the person writes the
+  settings on the machine); the reserved
   names are compared with case and Unicode compatibility forms set aside; a `trick.toml` of at most
   64 KiB that the strict reader accepts, with an id Collie does not keep for itself. The base64 length
   is checked before a byte is decoded.

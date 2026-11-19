@@ -381,9 +381,10 @@ you add one by its address, and its row says "ColliePWA did not check this code.
 
 ## Place
 
-A spot on the phone where a trick can show (a surface). A program trick draws in six: `belt`,
-`session` (shown as Page), `dashboard`, `status`, `tabbar` and `menu` (rows in a session's settings).
-An agent view is the seventh, `agent-view`. The Hill is built in, and a trick posts there without
+A spot on the phone where a trick can show (a surface). A program trick draws in seven: `belt`,
+`session` (shown as Page), `dashboard`, `status`, `tabbar`, `menu` (rows in a session's settings) and
+`float` (a small moving picture over the app, a "floating thing" in Settings).
+An agent view is the eighth, `agent-view`. The Hill is built in, and a trick posts there without
 naming it. A place is not a [space](#space). Each place is
 described in [Places](tricks-reference.md#places).
 
@@ -391,9 +392,19 @@ described in [Places](tricks-reference.md#places).
 
 A trick's own screen: a row on the Dashboard under Tricks, and the screen it opens. A tap on the
 trick's tile, bottom bar item or chip opens it too. It has no reply box, because a trick is not an
-agent you talk to. The code word in `places` is `session`, and older versions of the app said
+agent you talk to. A [draft button](#draft-button) on it can fill the reply box of the session you
+opened it from. The code word in `places` is `session`, and older versions of the app said
 "session" for a page. A page is not an agent [session](#session)
 ([Where a trick can show](tricks.md#where-a-trick-can-show)).
+
+## Draft button
+
+A button on a trick's [page](#page) that puts a text into the reply box of the agent
+[session](#session) you opened the page from, then opens that session. It fills only an empty box, and
+it never sends: you read the text and tap Send. Opened from the Dashboard or the bottom bar, the page is
+for no session, and the button says "Open a session first". The trick asks for it with
+`drafts = "session"` in `trick.toml`, a [power](#power)
+([Parts](tricks-reference.md#button)).
 
 ## Part
 
@@ -406,7 +417,8 @@ others ([The parts](tricks.md#the-parts), [Parts](tricks-reference.md#parts)).
 
 What a trick may reach beyond its own code: the environment names it asks for (`env`), the places it
 draws in (`places`), the files it reads from your agent sessions (`inputs`), and when it runs on its
-own (`on`, `watch`), and how much of the local API it reads (`access`). The About sheet lists them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
+own (`on`, `watch`), how much of the local API it reads (`access`), and whether its buttons may put text
+into your reply box (`drafts`). The About sheet lists them. A new version that changes a power always waits for your yes. Settings and `collie trick on`
 sometimes say "rights" for the same thing ([What a trick may and may not do](tricks.md#powers-the-environment-and-the-warnings)).
 
 ## Access (of a trick)

@@ -226,7 +226,7 @@ collie push-keys     # writes the VAPID keys to your .env
 collie restart
 ```
 
-Turn notifications on in Collie's Settings on the phone. **Needs input** is enabled by default. On
+Turn notifications on in Collie's Settings on the phone. **Needs you** is enabled by default. On
 an iPhone, install Collie to your home screen first. Safari restricts Web Push to home-screen web
 apps. See [Web Push](voice-and-push.md#web-push-optional).
 

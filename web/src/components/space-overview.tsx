@@ -16,6 +16,7 @@ import {
   spaceWorktreeContext,
   type WorktreeContext,
 } from "@/lib/spaces";
+import { CrossfadeText } from "@/components/ui/crossfade-text";
 import { spaceKey } from "@/lib/hosts";
 import { TRIAGE_STATUS } from "@/lib/triage";
 import { timeAgo } from "@/lib/format";
@@ -252,12 +253,16 @@ export function SpaceOverview({
                       <span className="size-2.5 shrink-0 rounded-full border border-muted-foreground/40" />
                     )}
                     {context === null ? (
-                      <span className="min-w-0 flex-1 truncate font-medium">{w.label}</span>
+                      <span className="min-w-0 flex-1 truncate font-medium">
+                        <CrossfadeText text={w.label} identity={key} />
+                      </span>
                     ) : (
                       // A worktree's label is its folder, the branch slug. The second line says what
                       // it is a checkout of; every other space keeps its one line, unchanged.
                       <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate font-medium">{w.label}</span>
+                        <span className="truncate font-medium">
+                          <CrossfadeText text={w.label} identity={key} />
+                        </span>
                         <WorktreeLine context={context} />
                       </span>
                     )}

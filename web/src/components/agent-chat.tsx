@@ -8,7 +8,7 @@ import { useSheetPull } from "@/hooks/use-sheet-pull";
 import { usePaneNavigation } from "@/components/pane-nav";
 import { besideOf, useNewTabOrSheet } from "@/hooks/use-new-tab-or-sheet";
 import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
-import { shownStatus } from "@/lib/triage";
+import { isQuestion, shownStatus } from "@/lib/triage";
 import { useNav } from "@/hooks/use-nav";
 import { useNewEntry } from "@/hooks/use-new-entry";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
@@ -22,9 +22,10 @@ import { useChatWindow } from "@/hooks/use-chat-window";
 import { useStartupReadiness } from "@/hooks/use-startup-readiness";
 import type { AgentLaunch } from "@/lib/agent-startup";
 import { useChatReady } from "@/hooks/use-chat-ready";
-import { usePaneStart } from "@/hooks/use-pane-start";
+import { startStatusOf, usePaneStart } from "@/hooks/use-pane-start";
 import { useHandover, useHeldBody } from "@/hooks/use-handover";
 import { useLatestReply } from "@/hooks/use-latest-reply";
+import { useComposerOffscreenWatch } from "@/hooks/use-composer-offscreen";
 import { finishedTurnKey, useMirrorImages } from "@/hooks/use-mirror-images";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { useLocale } from "@/hooks/use-locale";
@@ -149,8 +150,10 @@ import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate
 import { useActiveTheme } from "@/lib/theme/store";
 import { composerLayout } from "@/lib/composer-layout";
 import { useTabLook } from "@/lib/tab-look";
+import { pickTabPane } from "@/lib/tab-pane-memory";
 import { zoomPillShown } from "@/lib/zoom-pill";
-import { paneRowKey, paneScope } from "@/lib/hosts";
+import { CrossfadeText } from "@/components/ui/crossfade-text";
+import { paneRowKey, paneScope, paneSpaceKey } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
 import { useAccounts } from "@/lib/accounts";
 import { openReport, signalTrouble, unreadDialogReport } from "@/lib/report/store";
@@ -670,8 +673,9 @@ export function AgentChat({
   // ring is a tick the composer raises when a tap on Send met the unchanged kept draft.
   const [cannotTell, setCannotTell] = useState<CannotTellFacts | null>(null);
   const [cannotTellRing, setCannotTellRing] = useState(0);
-  // A trick's own session, one level down: the one way a belt mark, a status item and the switcher open it.
-  const openTrickSession = useCallback((pane: AgentView) => nav.down(trickSessionPath(pane.paneId)), [nav]);
+  // A trick's own session, one level down: the one way a belt mark, a status item and the switcher open it. It is
+  // opened FOR this pane's session, so a draft button there fills this pane's reply box (when it is empty).
+  const openTrickSession = useCallback((pane: AgentView) => nav.down(trickSessionPath(pane.paneId), { forSession: true }), [nav]);
   // THE TRICKS' BELT MARKS (M94 slice 03): one per `belt` part, in manifest order, at the end of the belt's
   // scrolling strip after Collie's own pills, never in its pinned block. A tap goes to the trick with this
   // pane as `from`; it never touches this pane's reply box.
@@ -751,7 +755,7 @@ export function AgentChat({
   // Red only, on purpose: an unseen reply or a working pane is not worth pulling the eye off the
   // pane you are in, and the pane on screen already shows its own state.
   const hereKey = agent ? paneRowKey(agent) : null;
-  const elsewhereNeedsYou = agents.some((a) => a.status === "blocked" && paneRowKey(a) !== hereKey);
+  const elsewhereNeedsYou = agents.some((a) => shownStatus(a) === "blocked" && paneRowKey(a) !== hereKey);
   // On a large screen's strip the sidebar beside it is the switcher, so the pill would be a second one.
   const pullHandle =
     !inStrip && (agents.length + shellPanes.length > 0 || launchers.length > 0)
@@ -871,6 +875,9 @@ export function AgentChat({
   // badge its row wears in the Spaces list. A terminal session's header is untouched.
   const experimental = wearsExperimental(useSessionCard(scope));
   const gridless = !paneGrid.capable;
+  // If the reply box ends up below the screen, the phone sends its heights to the bridge, once, with no content
+  // (lib/composer-offscreen.ts). Draws nothing and changes nothing on screen.
+  useComposerOffscreenWatch({ zen, keyboardOpen: composing, paneKind: gridless ? "screenless" : isShell ? "shell" : "agent" });
   const paneLive = useLive(paneId, scope);
   // AGENT VIEWS, the session's third body (components/agent-view-screen.tsx, hooks/use-agent-view-pane.ts):
   // a real agent session with a screen, on the lead (views live on the lead only; a crew member's routes
@@ -1317,13 +1324,17 @@ export function AgentChat({
   });
   const chatStatus = chatFeed.window.status;
   const journal: JournalReading = journalReadingOf(chatStatus);
+  // A session can precede its log. Keep discovery enabled, but offer retained terminal rows
+  // instead of a transcript the bridge has confirmed it cannot read.
+  const transcriptReadable = historyAvailable && journal !== "missing" && journal !== "off";
   // What this view has seen of how the agent began, for the gate (hooks/use-pane-start.ts): the
   // events, and whether the journal read that followed the turn's end has answered.
   const paneStart = usePaneStart(
     paneId,
     agent?.agent,
     isShell,
-    agent?.status,
+    // A turn that stopped on an error ended; it is not a question that holds the terminal body.
+    startStatusOf(agent),
     chatFeed,
     Boolean(agent?.hasSession) && journal !== "missing" && journal !== "off",
     Boolean(agent?.hasSession),
@@ -1343,7 +1354,8 @@ export function AgentChat({
     settled: paneStart.settled,
     // A harness Collie has no screen reader for asks in a dialog no card can lift, so the question
     // is on screen only in the terminal (lib/chat-gate.ts, rule 1b).
-    unreadQuestion: agent?.status === "blocked" && adapterFor(agent?.agent) === undefined,
+    // A pane that stopped on an error asks nothing, so it keeps its body (lib/triage.ts `isQuestion`).
+    unreadQuestion: agent !== undefined && isQuestion(agent) && adapterFor(agent.agent) === undefined,
   });
   const chatBody = body !== "terminal";
   // What the Chat body's running question card says about the dialog below it. Chat body only: the
@@ -2270,7 +2282,11 @@ export function AgentChat({
   // Jump to another tab in this space by opening one of its panes (the in-pane tab bar).
   function goToTab(tabId: string) {
     if (!agent || tabId === agent.tabId) return;
-    const target = [...agents, ...shellPanes].find((p) => p.tabId === tabId);
+    // The pane the tab was last open on, else its first (lib/tab-pane-memory.ts).
+    const target = pickTabPane(
+      [...agents, ...shellPanes].filter((p) => p.tabId === tabId),
+      { host: agent.host, session: agent.session, tabId },
+    );
     if (target) switchTo(target.paneId);
   }
 
@@ -2686,7 +2702,7 @@ export function AgentChat({
                     )}
                   </div>
                   <span data-slot="pane-name" data-glide="name" className="block truncate font-semibold leading-5">
-                    {name}
+                    <CrossfadeText text={name} identity={paneRowKey(agent)} />
                   </span>
                   {experimental && <ExperimentalBadge className="shrink-0" />}
                 </div>
@@ -2732,7 +2748,7 @@ export function AgentChat({
                     className="min-w-0 shrink-[3] truncate text-[11px] leading-3 text-muted-foreground"
                   >
                     {/* In a strip the space header names the space, so the line keeps only the pane's own. */}
-                    {headerLine ?? (inStrip ? null : workspace)}
+                    {headerLine ?? (inStrip ? null : <CrossfadeText text={workspace} identity={paneSpaceKey(agent)} />)}
                   </span>
                   {/* The branch the pane's folder is on, after the workspace and in the same 12px
                       line box, so the 36px block above holds with or without it. The workspace gives
@@ -3204,12 +3220,13 @@ export function AgentChat({
                   {/* Top-of-buffer affordance, reached by scrolling up. WHICH button appears is decided
                       by what the pane can actually offer, because the two are never both possible:
 
-                        • an agent pane with a transcript → "Show entire history". Its terminal runs on
-                          the alternate screen, which keeps no scrollback ring, so the mirror can never
+                        • an agent pane with a transcript the bridge can read → "Show entire history".
+                          Its terminal runs on the alternate screen, which keeps no scrollback ring, so the mirror can never
                           show more than the viewport — the agent's own session log is the only history
                           that exists (see bridge/transcript.ts).
                         • a pane with real scrollback (a shell, on the primary screen) → "Load older",
-                          which grows the requested window.
+                          which grows the requested window. So does an agent pane whose session names
+                          a log the bridge cannot find or read.
                         • neither → nothing.
 
                       This used to be gated on `truncated`, which Herdr never sets true — so the button
@@ -3221,7 +3238,7 @@ export function AgentChat({
                       at the top of the text it dates, rather than in a bar above the mirror. */}
                   {savedCopyLine !== null ? (
                     <SavedCopyRow text={savedCopyLine} />
-                  ) : historyAvailable ? (
+                  ) : transcriptReadable ? (
                     <button
                       type="button"
                       onClick={() => nav.down(historyPath(paneId, scope))}
@@ -3248,7 +3265,7 @@ export function AgentChat({
                   {/* Why the last Load older brought no older rows, in the multiplexer's own words
                       (herdr-core: the agent waits on you, or the core still reads them). The button
                       above stays, so a second tap asks again. */}
-                  {savedCopyLine === null && !historyAvailable && moreScrollback && olderHeld !== null ? (
+                  {savedCopyLine === null && !transcriptReadable && moreScrollback && olderHeld !== null ? (
                     <p data-slot="older-note" className="mb-2 px-2 text-center text-xs text-muted-foreground">
                       {olderHeld}
                     </p>
@@ -3494,7 +3511,7 @@ export function AgentChat({
               rather than the element for exactly this reason (agent-chat.test.tsx says so at the
               docking test). */}
           <Collapse open={!zen}>
-            <div className="relative shrink-0">
+            <div data-slot="pane-bottom" className="relative shrink-0">
 
               {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx/permission mode
                   would otherwise vanish with the stripped input box). It is the LAST ROW OF THE MIRROR,

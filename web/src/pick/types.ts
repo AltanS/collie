@@ -28,8 +28,17 @@ export interface PickRoundDef {
   readonly title: string;
   readonly options: readonly PickOption[];
   readonly cases: readonly PickCase[];
-  /** Height of each phone frame in px. Default 760. */
+  /** Height of each option's frame in px. Default 760. */
   readonly frameHeight?: number;
+  /**
+   * How the design app frames an option. `"phone"` (the default): a 390px phone frame, several side by
+   * side. `"wide"`: a large-screen design, one option per row at the page's full width in a plain
+   * bordered box `frameHeight` high, at 100% with no scaling (window 640px and wider; under that the
+   * phone frame is kept). The box is the option's viewport: measure it, never the window
+   * (`useElementWidth`), because the box is narrower than the window. A `position: fixed` child stays
+   * inside the box.
+   */
+  readonly frame?: "phone" | "wide";
 }
 
 export const MAX_LABEL_WORDS = 5;

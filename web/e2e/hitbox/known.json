@@ -986,7 +986,7 @@
   {
     "screen": "settings-alerts",
     "selector": "div[data-slot=\"card\"] > div:nth-of-type(2) > button[data-slot=\"switch\"]",
-    "name": "Needs input",
+    "name": "Needs you",
     "why": "Taken as found on 2026-11-12. A design decision or an open item; write the reason here when you know it."
   },
   {

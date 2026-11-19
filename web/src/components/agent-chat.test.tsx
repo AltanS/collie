@@ -43,6 +43,7 @@ vi.mock("@/lib/chat-gate", async (importOriginal) => ({
 import { server } from "@/test/setup";
 import { __resetBeltIntents, queueBeltIntent, takeBeltIntent } from "@/lib/belt-intent";
 import { paneScopeKey } from "@/lib/scope";
+import { __forgetTabPaneMemory, rememberTabPane } from "@/lib/tab-pane-memory";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
 import { HarnessPrefsControl } from "@/components/harness-prefs-control";
@@ -63,6 +64,7 @@ import { CrewProvider } from "./crew-provider";
 import type { AgentStatus, AgentView, ChatWindowBody, ServerSummary, TabView, WorkspaceView } from "@/lib/types";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { withHeaderHost } from "@/test/header-host";
+import { CROSSFADE_QUIET_MS } from "@/components/ui/crossfade-text";
 import { COLLAPSE_MS } from "./ui/collapse";
 import { AgentChat } from "./agent-chat";
 import { saveChatTail } from "@/lib/chat-tail";
@@ -2241,6 +2243,57 @@ describe("AgentChat — closing the current tab", () => {
   });
 });
 
+// Opening a tab from the in-pane strip returns to the pane the tab was last open on (lib/tab-pane-memory.ts),
+// not its first pane. The route writes the memory when a pane is shown; these cases write it the same way.
+describe("AgentChat \u2014 a tab opens on the pane it was last open on", () => {
+  afterEach(() => {
+    sessionStorage.clear();
+    __forgetTabPaneMemory();
+  });
+
+  const paneIn = (paneId: string, tabId: string): AgentView => ({
+    paneId,
+    workspaceId: "w6",
+    workspaceLabel: "collie",
+    workspaceNumber: 6,
+    tabId,
+    agent: "claude",
+    status: "idle",
+    cwd: "/home/you/collie",
+    focused: false,
+  });
+  const tabsOf = (...ids: string[]): TabView[] =>
+    ids.map((tabId, i) => ({ tabId, workspaceId: "w6", number: i + 1, label: `tab${i + 1}`, focused: false, paneCount: 2 }));
+  const here = paneIn("w6:pA", "w6:t1");
+  const sideBySide = [here, paneIn("w6:pB", "w6:t2"), paneIn("w6:pC", "w6:t2")];
+
+  async function openTab(label: string, onSelect = vi.fn()) {
+    renderChat({ agent: here, agents: sideBySide, shellPanes: [], tabs: tabsOf("w6:t1", "w6:t2"), onSelect });
+    await userEvent.setup().click(screen.getByRole("button", { name: new RegExp(`${label}$`) }));
+    return onSelect;
+  }
+
+  it("returns to the remembered pane of the tab", async () => {
+    rememberTabPane(sideBySide[2]!);
+    expect(await openTab("tab2")).toHaveBeenCalledExactlyOnceWith("w6:pC");
+  });
+
+  it("keeps the memory over a reload (sessionStorage), not only in memory", async () => {
+    rememberTabPane(sideBySide[2]!);
+    __forgetTabPaneMemory();
+    expect(await openTab("tab2")).toHaveBeenCalledExactlyOnceWith("w6:pC");
+  });
+
+  it("opens the first pane when the tab was never visited", async () => {
+    expect(await openTab("tab2")).toHaveBeenCalledExactlyOnceWith("w6:pB");
+  });
+
+  it("falls back to the first pane when the remembered pane is gone", async () => {
+    rememberTabPane(paneIn("w6:pGone", "w6:t2"));
+    expect(await openTab("tab2")).toHaveBeenCalledExactlyOnceWith("w6:pB");
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // THE BOTTOM FITS THE SCREEN IT IS ON — and the screen is measured, never assumed.
 //
@@ -4200,7 +4253,7 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
 
   /** One recorded frame: which body is drawn, and which phase the layer is in (or none). */
   type Frame = { body: "chat" | "terminal"; phase: string };
-  function renderShell() {
+  function renderShell(truncated = false) {
     let setAgent: (a: AgentView) => void = () => {};
     let revalidate: () => void = () => {};
     function Host() {
@@ -4216,6 +4269,7 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
           shellPanes={agent.kind === "shell" ? [agent] : []}
           tabs={[]}
           text={paneTextWithDraft("recent pane output")}
+          truncated={truncated}
           onBack={vi.fn()}
           onSelect={vi.fn()}
         />
@@ -4391,7 +4445,7 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
 
   it("(d) a log that never appears: the terminal says so after the read that follows the turn's end", async () => {
     chatAnswer = "no-log";
-    const view = renderShell();
+    const view = renderShell(true);
     await handOver(view, agentOf("pi", "idle", true));
     view.set(agentOf("pi", "working", true));
     await advance(view, 120_000);
@@ -4408,11 +4462,14 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     await advance(view, 100);
     expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
     expect(screen.getByText("No transcript file was found for this pane's session yet.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /load older/i })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /show entire history/i })).toBeNull();
 
     chatAnswer = "live";
     view.poll();
     await advance(view, 300);
     expect(screen.getByText("what changed today?")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /load older/i })).toBeNull();
     expect(bodies(view.frames)).toEqual(["terminal", "chat", "terminal", "chat"]);
     swapsOnlyUnderCover(view.frames);
   });
@@ -4424,7 +4481,7 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     ["a 404 from an older member", () => new HttpResponse(null, { status: 404 })],
   ])("(g) a server that cannot read (%s) draws the terminal, not an empty Chat", async (_name, answer) => {
     server.use(http.get(/\/api\/pane\/[^/]+\/chat/, answer));
-    const view = renderShell();
+    const view = renderShell(true);
     await handOver(view, agentOf("claude", "idle", true));
     await advance(view, 500);
     view.poll();
@@ -4432,6 +4489,8 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     expect(view.container.querySelector('[data-slot="session-stream"]')).toBeNull();
     expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
     expect(startLine()).toBeNull();
+    expect(screen.getByRole("button", { name: /load older/i })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /show entire history/i })).toBeNull();
   });
 
   it("(f) a question with nothing to read: the terminal at once, so the dialog is on screen", async () => {
@@ -5534,5 +5593,64 @@ describe("AgentChat — the Authentication box lifts as a card", () => {
     const backOnB = screen.getByRole("group", { name: "Login output" });
     expect(within(backOnB).getByText(WAITING_LINE)).toBeInTheDocument();
     expect(backOnB.textContent).not.toContain("ABCD-EFGH");
+  });
+});
+
+// THE NAME FADE (ui/crossfade-text.tsx). A rename of the open pane or of its Space fades the header's
+// words instead of swapping them; opening another pane swaps at once. The test drives the header from
+// state, so the same mounted header sees the new agent.
+describe("AgentChat header — a rename fades", () => {
+  function Renamable({ first, second }: { first: AgentView; second: AgentView }) {
+    const [agent, setAgent] = useState(first);
+    return (
+      <>
+        <button type="button" onClick={() => setAgent(second)}>
+          rename-test
+        </button>
+        <AgentChat
+          paneId={agent.paneId}
+          agent={agent}
+          agents={[agent]}
+          shellPanes={[]}
+          tabs={[]}
+          text={paneTextWithDraft("recent pane output")}
+          onBack={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      </>
+    );
+  }
+  const out = (c: HTMLElement, slot: string) => c.querySelector(`[data-slot="${slot}"] [data-slot="crossfade-out"]`);
+
+  // A name fades only after it held still for the quiet time (ui/crossfade-text.tsx): move the clock on.
+  beforeEach(() => vi.useFakeTimers({ toFake: ["Date"] }));
+  afterEach(() => vi.useRealTimers());
+
+  function mount(first: AgentView, second: AgentView) {
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Renamable first={first} second={second} />) }]);
+    return render(<RouterProvider router={router} />).container;
+  }
+
+  it("fades the pane's name and its Space when the same pane is renamed", () => {
+    const base = fixtureAgents[0]!;
+    const container = mount(
+      { ...base, paneLabel: "plumbing", workspaceLabel: "webapp" },
+      { ...base, paneLabel: "wiring", workspaceLabel: "frontend" },
+    );
+    expect(out(container, "pane-name")).toBeNull();
+    vi.setSystemTime(Date.now() + CROSSFADE_QUIET_MS);
+    fireEvent.click(screen.getByRole("button", { name: "rename-test" }));
+    expect(out(container, "pane-name")).toHaveTextContent("plumbing");
+    expect(out(container, "pane-name")).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector('[data-slot="pane-name"]')).toHaveTextContent("wiring");
+    expect(out(container, "pane-place")).toHaveTextContent("webapp");
+  });
+
+  it("swaps at once when the header shows another pane", () => {
+    const base = fixtureAgents[0]!;
+    const container = mount({ ...base, paneLabel: "plumbing" }, { ...base, paneId: "w9:p9", paneLabel: "wiring" });
+    fireEvent.click(screen.getByRole("button", { name: "rename-test" }));
+    expect(container.querySelector('[data-slot="pane-name"]')).toHaveTextContent("wiring");
+    expect(container.querySelector('[data-slot="crossfade-out"]')).toBeNull();
   });
 });

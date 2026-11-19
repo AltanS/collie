@@ -516,6 +516,21 @@ describe("findInputFrame", () => {
     }
   });
 
+  it("marks Claude Code's `Resend your message to try again` hint by its exact text on a plain-text read (herdr-core, 2.1.328)", () => {
+    // The text comes from the profile (`idle.placeholders.texts`), a whole-text match: other words and the
+    // same words with more typed after them are a draft.
+    const hint = "Resend your message to try again";
+    const live = findInputFrame(plainRows([RULE, `❯\u00a0${hint}`, RULE, "  ⏸ manual mode on · ? for shortcuts"]), IDLE)!;
+    expect(live.interior.text).toBe(hint);
+    expect(live.placeholder).toBe(true);
+    expect(live.anchorsHit).toContain("placeholder-text");
+    for (const draft of ["Resend your note to try again", `${hint} now please`, `please ${hint}`, "Resend your message"]) {
+      const frame = findInputFrame(plainRows([RULE, `❯\u00a0${draft}`, RULE]), IDLE)!;
+      expect(frame.placeholder, draft).toBe(false);
+      expect(frame.interior.text, draft).toBe(draft);
+    }
+  });
+
   it("counts the `Try \"…\"` shape only on a read with no styling: a typed one on a coloured read stays a draft", () => {
     // tmux, zellij and the Herdr TUI hand out colour. Typed text is default ink there, with no colour or
     // flag of its own, but the prompt marker and the rules carry colour, so the read is styled and the

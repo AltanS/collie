@@ -25,6 +25,7 @@ import {
   checkAccess,
   launch,
   renamePane,
+  renameTab,
   createWorkspace,
   foldersBody,
   parseStarFolderRequest,
@@ -45,6 +46,7 @@ import {
   isLoopbackPeer,
   isReservedAuthPath,
   reservedAuthPlaceholder,
+  reservedAuthReturn,
   keysPane,
   cacheRulesRoute,
   launchersRoute,
@@ -178,7 +180,8 @@ import {
   type PaneWire,
   type SnapshotResponse,
 } from "./types.ts";
-import type { StateEngine } from "./state-engine.ts";
+import { StateEngine } from "./state-engine.ts";
+import { paneName } from "./pane-name.ts";
 import { HEAD_CASES, NOT_HEAD_CASES } from "./agent-view/testdata/head-cases.ts";
 import { BAD_HEAD } from "../web/src/lib/agent-view/wire.ts";
 import { readFileSync as readFixture } from "node:fs";
@@ -284,6 +287,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     walkyPairLimit: 12,
     skipServe: false,
     basePath: "/",
+    authReturn: false,
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
     uploadExtraTypes: [],
     ...overrides,
@@ -2569,6 +2573,85 @@ describe("renamePane and its one-pane tab", () => {
   });
 });
 
+// A tab renamed from the phone renames the tab and nothing else (#810, #815). The new name reaches the session
+// through the name rule: a named one-pane tab comes before the title the agent wrote. Driven through the real
+// Herdr adapter and the real state engine, so the name is the one a screen would draw.
+describe("renameTab and the name of its one pane", () => {
+  const request = (body: string) => new Request("http://x/api/tab/w1%3At1/rename", { method: "POST", body });
+  const rig = (opts: { paneLabel?: string } = {}) => {
+    const tabRenames: Array<[string, string]> = [];
+    const paneRenames: Array<[string, string | null]> = [];
+    const wirePane = {
+      pane_id: "w1:p1",
+      terminal_id: "term",
+      workspace_id: "w1",
+      tab_id: "w1:t1",
+      focused: true,
+      cwd: "/home/op/demo",
+      agent: "claude",
+      agent_status: "idle",
+      revision: 0,
+      label: opts.paneLabel,
+    };
+    const wireTab = { tab_id: "w1:t1", workspace_id: "w1", number: 1, label: "1", focused: true, pane_count: 1, agent_status: "idle" };
+    const wireSpace = { workspace_id: "w1", number: 1, label: "Space", focused: true, pane_count: 1, tab_count: 1, active_tab_id: "w1:t1", agent_status: "idle" };
+    const fake: Partial<HerdrClient> = {
+      // SAFETY: the wire rows above are plain records; the adapter reads their fields by name.
+      sessionSnapshot: () => Promise.resolve({ version: "0.7.2", protocol: 16, workspaces: [wireSpace], tabs: [wireTab], panes: [wirePane] } as never),
+      renameTab: (id: string, label: string) => (tabRenames.push([id, label]), (wireTab.label = label), Promise.resolve()),
+      renamePane: (id: string, label: string | null) => (paneRenames.push([id, label]), Promise.resolve()),
+    };
+    // SAFETY: a poll and the two renames reach only the members above; the rest of the client is never touched.
+    const mux = new HerdrMux(fake as HerdrClient, () => []);
+    const real = new StateEngine(mux, 1500);
+    const engine = { pokeNow: () => {} };
+    const audit: AuditEntry[] = [];
+    const run = async (label: string) => {
+      const res = await renameTab(mux, engine, "w1:t1", request(JSON.stringify({ label })), { record: (entry: AuditEntry) => void audit.push(entry) }, "pixel", "default");
+      await real["poll"]();
+      return res;
+    };
+    // The pane as the phone draws it: the engine's view, with the title its agent wrote.
+    const shownName = (agentTitle?: string) => {
+      const view = real.current().agents[0]!;
+      return paneName(agentTitle === undefined ? view : { ...view, agentTitle });
+    };
+    return { tabRenames, paneRenames, audit, run, shownName, poll: () => real["poll"](), setTab: (label: string) => void (wireTab.label = label) };
+  };
+
+  test("renames the tab and nothing else, and the audit line says only that", async () => {
+    const { run, tabRenames, paneRenames, audit } = rig();
+    const res = await run("  agentbuffs ");
+    expect([res.status, await res.json()]).toEqual([200, { ok: true }]);
+    expect(tabRenames).toEqual([["w1:t1", "agentbuffs"]]);
+    expect(paneRenames).toEqual([]);
+    expect(audit).toEqual([{ action: "tab.rename", session: "default", device: "pixel", detail: { tabId: "w1:t1", label: "agentbuffs" } }]);
+  });
+
+  test("after the rename the session is named by the new tab name, not by the agent's own title", async () => {
+    const { run, poll, shownName } = rig();
+    await poll();
+    expect(shownName("Tabs naming adjustment")).toBe("Tabs naming adjustment");
+    await run("agentbuffs");
+    expect(shownName("Tabs naming adjustment")).toBe("agentbuffs");
+    expect(shownName()).toBe("agentbuffs");
+  });
+
+  test("a tab renamed on the phone and then renamed again elsewhere shows the newest tab name", async () => {
+    const { run, setTab, poll, shownName } = rig();
+    await run("agentbuffs");
+    setTab("release notes"); // the second rename: the desktop, not this route
+    await poll();
+    expect(shownName("Tabs naming adjustment")).toBe("release notes");
+  });
+
+  test("a name set on the pane itself still comes first", async () => {
+    const { run, shownName } = rig({ paneLabel: "plumbing" });
+    await run("agentbuffs");
+    expect(shownName("Tabs naming adjustment")).toBe("plumbing");
+  });
+});
+
 // A space is renamed through `POST /api/space/:id/rename` (M53 spec 05), on an adapter that has `renameSpace`.
 describe("renameSpace", () => {
   const request = (body: string) => new Request("http://x/api/space/triage/rename", { method: "POST", body });
@@ -3115,6 +3198,26 @@ describe("reservedAuthPlaceholder — what /auth/ says when no proxy answers", (
     const body = await reservedAuthPlaceholder('/a"><b>/').text();
     expect(body).not.toContain('"><b>');
     expect(body).toContain('<a href="/a&#34;&#62;&#60;b&#62;/">Back to Collie</a>');
+  });
+});
+
+describe("reservedAuthReturn — /auth/ under COLLIE_AUTH_RETURN=1", () => {
+  test("a 303 to the root with no body, never cached", async () => {
+    const res = reservedAuthReturn();
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.text()).toBe("");
+  });
+
+  test("under a mount it goes to the mount (ADR 0052)", () => {
+    expect(reservedAuthReturn("/collie/").headers.get("location")).toBe("/collie/");
+  });
+
+  test("the placeholder names the setting to the operator", async () => {
+    const body = await reservedAuthPlaceholder().text();
+    expect(body).toContain("<code>COLLIE_AUTH_RETURN=1</code>");
+    expect(body.indexOf("If you are the operator")).toBeLessThan(body.indexOf("COLLIE_AUTH_RETURN"));
   });
 });
 
@@ -5826,6 +5929,21 @@ describe("the state engine's blocked hint reaches the pane's recent reads (herdr
       ["w1:p1", "recent", { blocked: true }],
     ]);
     expect("hint" in (requests[1]?.[1] ?? {})).toBe(false);
+  });
+});
+
+describe("a pane that stopped on an error is no question (PR 787)", () => {
+  test("it gets no blocked hint, so Load older reads its history; a plain blocked and a lifted ask still get one", () => {
+    const engine = {
+      current: () => ({
+        agents: [
+          { paneId: "w1:p1", status: "blocked" as const, blockedBy: "error" as const },
+          { paneId: "w1:p2", status: "blocked" as const },
+        ],
+      }),
+    };
+    expect(paneReadHint(engine, "w1:p1")).toBeUndefined();
+    expect(paneReadHint(engine, "w1:p2")).toEqual({ blocked: true });
   });
 });
 

@@ -4,10 +4,11 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { asJsonBoolean, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { AGENT_VIEW_PLACE, isTrickId, RESERVED_TRICK_IDS, type TrickManifest } from "../../web/src/lib/tricks/schema.ts";
 import { isRequestId } from "../worktree-receipts.ts";
-import { CONFIG_FILE, PICTURE_DIRS, unsafeText } from "./code-hash.ts";
+import { hillImageMime } from "../hill/media.ts";
+import { CONFIG_FILE, isPictureName, PICTURE_DIRS, unsafeText } from "./code-hash.ts";
 import { MANIFEST_BYTES_MAX, readManifestText } from "./discover.ts";
 import { MANIFEST_FILE } from "./paths.ts";
-import { PROPOSE_LIMITS } from "../../web/src/lib/tricks/limits.ts";
+import { PROPOSE_LIMITS, PROPOSE_PICTURES } from "../../web/src/lib/tricks/limits.ts";
 
 // A TRICK PROPOSAL ON THE WIRE (crew slice 8): the one reader of the files a proposal carries.
 //
@@ -25,8 +26,16 @@ import { PROPOSE_LIMITS } from "../../web/src/lib/tricks/limits.ts";
 //     private use, unassigned) and anything `unsafeText` refuses, and a name not in Unicode NFC.
 //   * Two names that fold to one (NFKC, then lower case) are refused, so a case-folding file system or a
 //     normalising one never writes one file over another. So is a name used as a file and as a folder.
-//   * Nothing in `media/` or `captures/`, and no `config.toml` at the top, in any case: a proposal
-//     carries code only, and the person adds pictures and settings on the machine (review F2, F3).
+//   * PICTURES ONLY in `media/` and `captures/` (2026-11-18, so a proposed trick keeps its pictures): a file
+//     under the top folder spelled exactly `media` or `captures`, named `.png`, `.jpg`, `.jpeg` or `.webp`,
+//     whose first bytes are a PNG, JPEG or WebP picture (the Hill's own sniff), never marked executable,
+//     at most {@link PROPOSE_PICTURES}.bytes each and {@link PROPOSE_PICTURES}.files together. Anything else
+//     there, in any case (`Media/run.ts`, `media/notes.txt`), is refused. The pictures are outside the code
+//     hash, as in every trick folder; the proposal hash binds them, and the card names each one, so the
+//     person approves exactly the pictures that come. The yes writes them into the trick folder and the
+//     approved copy seeds them (approved.ts), as it seeds a folder `collie trick add` brought.
+//   * No `config.toml` at the top, in any case: the program reads it, so the person writes it on the
+//     machine (review F2).
 //   * `b64` is standard base64 that writes back to itself. `x: true` marks an executable file; the
 //     proposed store never sets the bit, the installed folder does.
 //   * At most {@link PROPOSE_LIMITS}.files files and {@link PROPOSE_LIMITS}.bytes bytes, the caps of
@@ -34,7 +43,7 @@ import { PROPOSE_LIMITS } from "../../web/src/lib/tricks/limits.ts";
 //     is read by the strict reader, and its `id` names the trick.
 
 // The caps of a proposal live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
-export { PROPOSE_LIMITS };
+export { PROPOSE_LIMITS, PROPOSE_PICTURES };
 
 /**
  * Trick ids a proposal may not take, though they are valid ids: they read as Collie's own words on a card. They
@@ -212,11 +221,44 @@ export function proposedPathProblem(rel: string): string | null {
   }
   const top = foldKey(steps[0] ?? "");
   if (top === "inputs") return "is under inputs/, which the bridge fills";
-  // A proposal carries code only (security review F3): the person's pictures stay theirs, and a new trick
-  // gets its pictures from the person on the machine. A file of that name is refused too.
-  if (PICTURE_DIRS.some((dir) => dir === top)) return "is in media/ or captures/: a proposal carries code only, and your person adds pictures on the machine";
+  // `media/` and `captures/` bring pictures and nothing else (security review F3, narrowed 2026-11-18): a
+  // picture's name under the exact spelling here, its bytes in checkProposedFiles. Another spelling, a file
+  // of that name, or any other file there is refused.
+  if (PICTURE_DIRS.some((dir) => dir === top) && !isProposedPicture(rel)) return "is in media/ or captures/, which bring only .png, .jpg, .jpeg and .webp pictures";
   if (rel.endsWith(".log")) return "is a .log file, which is not code";
   return null;
+}
+
+/**
+ * Whether `rel` is a picture a proposal brings: under the top `media/` or `captures/`, spelled exactly so
+ * (the code hash skips only those spellings), with a picture's name. The bytes are checked apart
+ * ({@link proposedPictureProblem}).
+ */
+export function isProposedPicture(rel: string): boolean {
+  const steps = rel.split("/");
+  return steps.length >= 2 && PICTURE_DIRS.some((dir) => dir === steps[0]) && isPictureName(steps.at(-1) ?? "");
+}
+
+/** Why a picture's bytes are refused, or null: a PNG, JPEG or WebP by its first bytes, within the cap, never executable. */
+export function proposedPictureProblem(file: Pick<ProposedFile, "bytes" | "executable">): string | null {
+  if (file.executable) return "is a picture marked executable";
+  if (file.bytes.length > PROPOSE_PICTURES.bytes) return `is larger than ${String(PROPOSE_PICTURES.bytes / (1024 * 1024))} MB, the most the phone is served of one picture`;
+  if (hillImageMime(file.bytes) === null) return "is not a PNG, JPEG or WebP picture by its first bytes";
+  return null;
+}
+
+/** A proposal's files split: the code (what the code hash reads, what the card shows) and the pictures it brings. */
+export interface SplitFiles<T> {
+  code: T[];
+  pictures: T[];
+}
+
+/** Split a proposal's files into its code and its pictures ({@link isProposedPicture}), each in the order given. */
+export function splitPictures<T extends Pick<ProposedFile, "rel">>(files: readonly T[]): SplitFiles<T> {
+  const code: T[] = [];
+  const pictures: T[] = [];
+  for (const file of files) (isProposedPicture(file.rel) ? pictures : code).push(file);
+  return { code, pictures };
 }
 
 /** The key two names collide on: NFKC, then lower case. */
@@ -277,6 +319,7 @@ export function checkProposedFiles(files: readonly ProposedFile[]): { ok: true; 
   if (files.length === 0) return refuse("bad_files", "The proposal holds no file.");
   if (files.length > PROPOSE_LIMITS.files) return refuse("bad_files", `The trick holds ${String(files.length)} files, more than ${String(PROPOSE_LIMITS.files)}.`);
   let bytes = 0;
+  let pictures = 0;
   const folded = new Map<string, string>();
   // Each folder's folded name, and the one spelling it was first seen with.
   const folders = new Map<string, string>();
@@ -295,6 +338,12 @@ export function checkProposedFiles(files: readonly ProposedFile[]): { ok: true; 
       const seen = folders.get(folder);
       if (seen !== undefined && seen !== spelling) return refuse("bad_files", `Two folders are named "${shownPath(spelling)}" once case and Unicode form are set aside.`);
       folders.set(folder, spelling);
+    }
+    if (isProposedPicture(file.rel)) {
+      const bad = proposedPictureProblem(file);
+      if (bad !== null) return refuse("bad_files", `"${shownPath(file.rel)}" ${bad}.`);
+      pictures += 1;
+      if (pictures > PROPOSE_PICTURES.files) return refuse("bad_files", `The trick brings more than ${String(PROPOSE_PICTURES.files)} pictures.`);
     }
     if (file.rel === MANIFEST_FILE && file.bytes.length > MANIFEST_BYTES_MAX) {
       return refuse("bad_files", `${file.rel} is larger than ${String(MANIFEST_BYTES_MAX / 1024)} KiB.`);

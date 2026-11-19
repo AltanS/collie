@@ -37,7 +37,8 @@ A trick lives in `tricks/<id>/` in Collie's config folder, `~/.config/collie` on
   that `init` writes.
 - An agent view has the file that `rules` names, such as `rules.md`.
 - `config.toml` holds settings the program reads. It is not part of the code you approve, so you can
-  edit it freely.
+  edit it freely. A picture you replace in `media/` is not code either: it shows on the next scan,
+  with no new yes.
 - `[[field]]` in `trick.toml` names the settings the person sets on the phone. See
   [Settings a trick asks you for](#settings-a-trick-asks-you-for).
 - `AGENTS.md` is the contract for an agent that grows the trick. `init` writes it.
@@ -145,7 +146,7 @@ trick idle-watch (Idle watch) in /tmp/tricks-doc-lab/idle-watch
   run:    program.ts
   decides: reply. Your answers to its Decisions go to a session as your own message.
   code:   sha256 63bc959b… (what `collie trick on` approves)
-  helper: trick.ts is collie trick helper v4, Collie's own code, not checked line by
+  helper: trick.ts is collie trick helper v10, Collie's own code, not checked line by
           line
   ran in 31 ms: exit 0
   parts: status status, dashboard dashboard, session main
@@ -333,8 +334,10 @@ It adds nothing to this machine's tricks. `propose` runs the same check as `coll
 card, "Switch on the trick idle-watch?". The card shows in the agent's own session on the phone, and
 in Settings, Tricks under "Waiting for your yes", and on the Hill too while the Hill is on. One tap on
 Switch it on approves exactly the code the card showed and switches the trick on. Not now closes the
-card in the session, and the trick still waits in Settings, Tricks. It leaves dot files, `node_modules/`, logs, `inputs/`,
-`media/`, `captures/` and `config.toml` behind. It prints the card's id. Read the answer with
+card in the session, and the trick still waits in Settings, Tricks. It brings the PNG, JPEG and WebP
+pictures of `media/` and `captures/` (at most 50, 2 MB each), and the card names each one. It leaves dot
+files, `node_modules/`, logs, `inputs/`, `config.toml` and any other file in `media/` or `captures/`
+behind, and names each file of those two folders that stays behind. It prints the card's id. Read the answer with
 `collie hill status <id>`, or wait for it as a message. The message says what happened: the trick is
 installed and on, or the person declined and nothing was installed.
 

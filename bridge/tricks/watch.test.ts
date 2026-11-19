@@ -153,12 +153,13 @@ describe("debounce", () => {
     const dir = await tempDir();
     const file = join(dir, "burst.md");
     await writeFile(file, "0");
-    const p = probe([file]);
+    // Wider than FAST: with a 40 ms debounce the burst became two fires on a loaded Windows VM.
+    const p = probe([file], { debounceMs: 150, maxWaitMs: 1000 });
     for (const text of ["1", "22", "333", "4444", "55555"]) {
       await writeFile(file, text);
       await Bun.sleep(5);
     }
-    await Bun.sleep(250);
+    await Bun.sleep(600);
     expect(p.fires.length).toBe(1);
     p.watch.close();
   });

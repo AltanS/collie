@@ -1,9 +1,14 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { BoxTextBlock } from "@/components/box-text-block";
 import type { BoxTextModel } from "@/lib/blocks";
+import { detectSignInCard } from "@/lib/harness/sign-in-card";
+import { idleFor, rowsOf } from "@/test/surface-corpus";
 
 const DEVICE = "https://example.awsapps.com/start/#/device";
 const CODED = "https://example.awsapps.com/start/#/device?user_code=ABCD-EFGH";
@@ -108,6 +113,19 @@ describe("BoxTextBlock", () => {
     expect(container.querySelector("b")).toBeNull();
     expect(screen.queryAllByRole("link")).toEqual([]);
     expect(screen.getByText(/<b>bold<\/b> javascript:alert\(1\)/u)).toBeInTheDocument();
+  });
+
+  it("links an https address and a loopback http one; any other plain-http address stays text", () => {
+    const loopback = ["http://localhost:54545/launch", "http://127.0.0.1:8080/cb", "http://[::1]:9/x"];
+    const remote = "http://example.com/login";
+    const mixed: BoxTextModel = {
+      title: "Login",
+      phase: "filled",
+      text: [...loopback.map((address) => [plain("Or open "), link(address)]), [link(remote)], [link(CODED)]],
+    };
+    render(<BoxTextBlock boxText={mixed} />);
+    expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([...loopback, CODED]);
+    expect(screen.getByText(remote)).toBeInTheDocument();
   });
 
   it("shows the box's printed title and the waiting line, with no link and no button, before the command prints", () => {
@@ -253,5 +271,19 @@ describe("BoxTextBlock, a sign-in card while its hosts are read", () => {
     render(<BoxTextBlock boxText={SIGN_IN} signInHosts={HOSTS} />);
     expect(opener()).toHaveAttribute("href", ADDRESS);
     expect(document.querySelector('[data-slot="collapse"]')).toHaveAttribute("data-state", "open");
+  });
+});
+
+describe("BoxTextBlock, omp's sign-in card from its capture", () => {
+  const PANES = join(import.meta.dirname, "..", "fixtures", "panes");
+
+  it("keeps omp's local shortcut, http://localhost:<port>/launch, a link beside the https sign-in address", () => {
+    const rows = rowsOf(readFileSync(join(PANES, "omp--v18-6-1-login-url--w61.txt"), "utf8"));
+    const card = detectSignInCard(rows, idleFor("omp")!);
+    expect(card).not.toBeNull();
+    render(<BoxTextBlock boxText={card!.model} />);
+    const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href") ?? "");
+    expect(hrefs[0]).toMatch(/^https:\/\//u);
+    expect(hrefs.some((href) => /^http:\/\/localhost:\d+\/launch$/u.test(href))).toBe(true);
   });
 });

@@ -141,7 +141,7 @@ describe("the hold in a live chat", () => {
     scroller.dispatchEvent(new Event("scroll"));
     await wait(APPROVE_HOLD_MS);
     // A scroll alone no longer ends a hold: the browser's pan of a touch that began on the yes ends it with
-    // `pointercancel`, and `touch-action: none` on the button keeps a still finger from becoming a pan at all.
+    // `pointercancel`, and a still finger is no pan.
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 

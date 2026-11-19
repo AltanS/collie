@@ -36,6 +36,8 @@ import { MIGRATED, parseSwitches, SWITCHES_VERSION, updateSwitches, withApproval
 //     there stays behind, so the copy holds no file the hash and the card left out that a program could
 //     import as code. Capped by {@link SEED_FILES_MAX} and {@link SEED_BYTES_MAX}; `inputs/` starts
 //     empty. The program writes here, and so do its `*.log` files and dot files, which the hash skips too.
+//     After approval a scan adds and replaces the folder's `media/` pictures that changed by hand, with no
+//     new yes (media.ts `TrickMediaSync`); it never deletes a file of the copy, and `captures/` is not synced.
 //   * NOT COPIED: `node_modules/` and every other dot file or dot folder. They are outside the hash, so
 //     they would be code nobody approved; a program that needs them does not run from the copy.
 //   * STATE stays where it was: `<stateDir>/tricks/<id>/`, the program's own folder (paths.ts).
@@ -313,6 +315,9 @@ export async function syncConfig(src: string, copyDir: string, fs: TrickFs = dis
  * `decides = "reply"` (2026-11-12) is a right too, hashed only when the manifest has it: a Decision with
  * `replyTo` types the person's answer into a session, so a version that adds it asks again, even with auto.
  *
+ * `drafts = "session"` (1.29.1) is a right too, hashed only when the manifest has it, under `prefills`: a button
+ * with `does = "draft"` puts the trick's text into a session's reply box, so a version that adds it asks again.
+ *
  * THE CANONICAL FORM (fault B). The three first keys, `env`, `inputs` and `places`, are always hashed, as
  * sorted lists. Every key added after them is hashed only when it holds something: an absent key equals
  * its neutral value (`undefined`, `null`, `false`, an empty list, an empty object), so a right a later
@@ -321,7 +326,7 @@ export async function syncConfig(src: string, copyDir: string, fs: TrickFs = dis
  * text above. The keys go in sorted order (`env`, `inputs`, `places`, then {@link LATER_POWER_KEYS}), which is
  * the order every stored hash was written in.
  */
-export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "inputs" | "agentView" | "rules" | "rulesSha256" | "decides" | "on" | "watch" | "access">): string {
+export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "inputs" | "agentView" | "rules" | "rulesSha256" | "decides" | "drafts" | "on" | "watch" | "access">): string {
   const env = [...new Set(manifest.env ?? [])].toSorted();
   const places = [...new Set<string>([...manifest.places, ...(manifest.agentView === true ? [AGENT_VIEW_PLACE] : [])])].toSorted();
   const inputs = [...new Set(manifest.inputs ?? [])].toSorted();
@@ -329,6 +334,8 @@ export function powersOf(manifest: Pick<TrickManifest, "env" | "places" | "input
   if (manifest.rules !== undefined) later.rules = manifest.rulesSha256 ?? "";
   // `decides = "reply"`: its Decisions may type the person's answer into a session. Absent hashes as before.
   if (manifest.decides !== undefined) later.replies = manifest.decides;
+  // `drafts = "session"`: its buttons may put text into a session's reply box. Absent hashes as before.
+  if (manifest.drafts !== undefined) later.prefills = manifest.drafts;
   // `on` and `watch` (M105 step one) make the trick run when something happens, so each is a right: a
   // version that adds one, or names another event or path, asks again. Sorted and once; absent hashes as before.
   if (manifest.on !== undefined) later.reacts = [...new Set<string>(manifest.on)].toSorted();
@@ -368,6 +375,8 @@ export interface FirstPowers {
 
 /** The power keys added after the first three. A new right gets its key here, and in {@link LATER_POWER_KEYS}. */
 export interface LaterPowers {
+  /** The manifest's `drafts`: `session` when the trick's buttons may put text into a reply box (1.29.1). Named so it sorts after `places`. */
+  prefills?: string;
   /** The manifest's `on` events, sorted and once (M105 step one). Named so it sorts after `places`. */
   reacts?: readonly string[];
   /** The manifest's `decides`: `reply` when the trick's Decisions may answer into a session (2026-11-12). Named so it sorts after `places`. */
@@ -381,7 +390,7 @@ export interface LaterPowers {
 }
 
 /** The later keys, in sorted order. */
-export const LATER_POWER_KEYS = ["reacts", "replies", "rules", "through", "watches"] as const satisfies readonly (keyof LaterPowers)[];
+export const LATER_POWER_KEYS = ["prefills", "reacts", "replies", "rules", "through", "watches"] as const satisfies readonly (keyof LaterPowers)[];
 
 /** Whether a later power key holds nothing, so it hashes as if absent: absent, or an empty list. The empty string holds something. */
 export function neutralPower(value: string | readonly string[] | undefined): boolean {

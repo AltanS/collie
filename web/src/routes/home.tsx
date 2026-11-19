@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useRevalidator } from "react-router";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
@@ -38,6 +38,8 @@ import { useNav } from "@/hooks/use-nav";
 import { useNewEntry } from "@/hooks/use-new-entry";
 import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
+import { useElementWidth } from "@/hooks/use-element-width";
+import { useWidthClass } from "@/hooks/use-width-class";
 import { showBadge } from "@/lib/app-badge";
 import { takeBundleFocus, useBundleFocusPending } from "@/lib/bundle-apply";
 import { useLaunchers } from "@/lib/launchers";
@@ -57,6 +59,7 @@ import { usePairing } from "@/lib/pairing";
 import { usePins } from "@/lib/pins";
 import { programScope, programSessions, programsAbove, waitingPrograms } from "@/lib/session-cards";
 import { cn } from "@/lib/utils";
+import { contentWidth, SPACE_WIDTH, spaceColumns, WIDE_GUTTER } from "@/lib/wide-dashboard";
 import { isReadOnly, type AgentView, type ServerSummary, type SessionSummary } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
 
@@ -116,9 +119,27 @@ function ChangesTabBody({
   );
 }
 
+/**
+ * The dashboard's column on a large screen (ADR 0158): `width` px, centred, with the large-screen gutter, so
+ * the grid of Spaces inside it is `gridWidth` wide. The phone's parts (the banners, the Spaces navigator, the
+ * footer lines) carry their own 16px gutter, and `PhoneParts` takes it back so they stand on the grid's edge.
+ */
+function WideColumn({ width, children }: { width: number; children: ReactNode }) {
+  return (
+    <div className="mx-auto w-full" style={{ maxWidth: width, paddingInline: WIDE_GUTTER }}>
+      {children}
+    </div>
+  );
+}
+
+function PhoneParts({ on, children }: { on: boolean; children: ReactNode }) {
+  return on ? <div className="-mx-4">{children}</div> : <>{children}</>;
+}
+
 // Dashboard home screen. Every pane sits under the workspace it lives in, in the multiplexer's own
 // order (lib/pane-groups.ts, ADR 0063); urgency is a mark on a row and a heading and one summary
-// line on top, never a position. The operator may ask for Activity or Cache order instead, with the
+// line on top, never a position (the one exception: on a large screen a band above the grid repeats the
+// sessions that need you, and no row leaves its place, ADR 0158). The operator may ask for Activity or Cache order instead, with the
 // order select under that line (ADR 0071): one ranked list, read once and held. The Spaces navigator sits
 // under the thing it navigates to, and the Programs section (M55 spec 13) sits after it, or above Launch
 // while a program has a question that waits on you.
@@ -287,6 +308,22 @@ export function HomeRoute() {
   // scrolls, so nothing else restores this. Keyed on the scope (host + session), so two herdr
   // sessions — or two crew members — keep independent positions. See lib/scroll-memory.ts.
   const scrollRef = useScrollMemory<HTMLDivElement>(`home:${scopeKey(data.scope)}`);
+  // THE DASHBOARD ON A LARGE SCREEN (ADR 0158). In the window's `expanded` width class, and with Large-screen
+  // layout not Off (the class reads compact then, `useWidthClass`), the home route is no longer the phone's
+  // 640px column: the header, the grid of Spaces and the tab bar are as wide as the grid. The number of
+  // columns is read from the width of the scroller itself, the room inside it without its scrollbar, and never
+  // from the window. Compact and medium, and Off at any width, draw the phone's column exactly as before.
+  const wide = useWidthClass() === "expanded";
+  const [measureScroller, scrollerWidth] = useElementWidth<HTMLDivElement>(window.innerWidth, "client");
+  const setScroller = useCallback(
+    (el: HTMLDivElement | null) => {
+      scrollRef.current = el;
+      measureScroller(el);
+    },
+    [scrollRef, measureScroller],
+  );
+  const columns = spaceColumns(scrollerWidth);
+  const columnWidth = contentWidth(columns);
   // The install-count notice's one read: a device that has not spent the notice keeps the list unseen for
   // at most 400 ms while it answers, so the notice never opens above a list that has painted (calm load).
   const telemetry = useTelemetryNoticeRead();
@@ -304,13 +341,67 @@ export function HomeRoute() {
   }, [focusPending]);
   // "+ New" shrinks to the round "+" once the list has scrolled, and grows back at the top (card 3.2).
   const scrolled = useScrolledPast(scrollRef, 24);
+  // Only the Dashboard tab with herd rows is the grid. Crew, Files and the durable home keep the phone's column,
+  // centred under the wide header, and the parts under the grid (Launch, the Spaces navigator, Programs, the
+  // Tricks Space) stand in one Space's width after the last Space.
+  const gridList = wide && view === "dashboard" && !screenless;
+  const inColumn = (node: ReactNode) => (wide ? <WideColumn width={columnWidth}>{node}</WideColumn> : node);
+  const narrowed = (node: ReactNode) => (wide && !gridList ? <div className="mx-auto max-w-screen-sm">{node}</div> : node);
+  const underGrid = (node: ReactNode) =>
+    gridList ? (
+      <div style={{ width: SPACE_WIDTH }}>
+        <PhoneParts on>{node}</PhoneParts>
+      </div>
+    ) : (
+      node
+    );
+  // The scroller's foot, in the phone's order, and on a large screen in one Space's width under the grid.
+  const footer = (
+    <>
+      {/* The footer is the dashboard's meta zone, in widening order: the crew you're part of, an
+          available update / needed restart, then the build stamp (which bundle you're running,
+          with a stale-cache nudge). The crew line self-hides on a solo install. */}
+      <CrewFooterLink scope={data.scope} className="px-4 pt-3" />
+      {/* With the Hill off, a card of Collie's own about a trick waits here (M96 spec 14), in the update line's box. */}
+      <TrickCardsLine className="px-4 pt-3" />
+      <UpdateBanner ref={updateLine} className="px-4 pt-3" />
+      {/* The footer below owns the safe area now, so the stamp only keeps its own air. */}
+      {/* With the New button drawn, the stamp's air grows so the last row scrolls clear of it:
+          16px gap + 56px button + 8px, from the footer's top edge. Set by capability, not by the
+          button's transient hides, so a sheet or the keyboard never moves the list. On a large screen
+          the same room holds: the button sits at the grid's right edge, and the stamp is the last
+          thing in the scroller. */}
+      <BuildStamp
+        className={cn(
+          "px-4 pt-3",
+          fabOffered ? (tabsShown ? "pb-20" : "pb-[calc(5rem_+_env(safe-area-inset-bottom))]") : tabsShown ? "pb-2" : "pb-[calc(0.5rem_+_env(safe-area-inset-bottom))]",
+        )}
+      />
+    </>
+  );
+  const tabBar = tabsShown && (
+    <DashboardTabBar
+      view={view}
+      onSelect={setDashView}
+      crew={multi}
+      files={!screenless}
+      blockedCount={blockedCount}
+      readyUnseen={readyUnseen}
+      hill={bar.hill}
+      hillNow={bar.hillNow}
+      onOpenHill={() => nav.down(hillPath(data.scope))}
+      tabbarParts={bar.tabbarParts}
+      sessions={bar.sessions}
+      onOpenSession={openTrickSession}
+    />
+  );
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
+    <div className={wide ? "mx-auto flex min-h-0 w-full flex-1 flex-col" : "mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col"}>
       {/* The dashboard header: wordmark + the session switcher (dashboard-only), then the shared pill
           and the Settings gear. The switcher self-hides on a single-session install. */}
       <RouteHeader
         wordmark
-        width="column"
+        width={wide ? columnWidth : "column"}
         rightLead={
           <>
             {/* Host first, then session — outer dimension first, and the two are deliberately
@@ -327,15 +418,21 @@ export function HomeRoute() {
           load-bearing: it makes this scroller the containing block for its absolutely-positioned
           descendants. Tailwind's `sr-only` is `position: absolute`, so every status label in the
           list would otherwise escape this scroller's clip and grow the document's own scrollbar. */}
-      <div ref={scrollRef} className={cn("relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto", telemetry.held && "invisible")}>
+      <div ref={setScroller} className={cn("relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto", telemetry.held && "invisible")}>
         {/* A notice BELOW the header is content, not viewport chrome: it is an inset box on the
             page gutter, not a full-bleed strip. Full-bleed it ran its left edge 16px outside the
             list it sat on top of — two left edges stacked, the loudest misalignment on the page. */}
-        <ReadOnlyBanner device={data.device} />
-        {/* Once per device: the install count is on by default (M86 spec 02). Self-hides. */}
-        <TelemetryNotice read={telemetry} />
+        {inColumn(
+          <PhoneParts on={wide}>
+            <ReadOnlyBanner device={data.device} />
+            {/* Once per device: the install count is on by default (M86 spec 02). Self-hides. */}
+            <TelemetryNotice read={telemetry} />
+          </PhoneParts>,
+        )}
 
         <main className="flex-1">
+          {inColumn(
+            <>
           {/* THE TRICKS' TILES (the `dashboard` place, 2026-11-10): one per trick, in a strip at the top
               of the Dashboard view, above the summary line. Not on Crew or Files. Nothing at all while
               no trick has a tile; it arrives and leaves through Collapse (DESIGN.md §11). */}
@@ -350,18 +447,23 @@ export function HomeRoute() {
             // none of it is drawn here and the tab's body starts with the machine cards (ADR 0085).
             // It also covers a crew with no pane anywhere, which the pane list would answer with its
             // empty placeholder.
-            <div className="px-4 py-4">
-              <CrewTab />
-            </div>
+            narrowed(
+              <div className="px-4 py-4">
+                <CrewTab />
+              </div>,
+            )
           ) : durableHome ? (
-            <DurableHome
-              scope={data.scope}
-              panes={navPanes.agents}
-              workspaces={data.workspaces}
-              paneOpen={paneOpen}
-              stale={data.stale === true}
-            />
+            narrowed(
+              <DurableHome
+                scope={data.scope}
+                panes={navPanes.agents}
+                workspaces={data.workspaces}
+                paneOpen={paneOpen}
+                stale={data.stale === true}
+              />,
+            )
           ) : (
+            narrowed(
             <AgentList
               agents={data.agents}
               shellPanes={data.shellPanes}
@@ -416,15 +518,17 @@ export function HomeRoute() {
                     )
                   : undefined
               }
-            />
+              wide={gridList ? { columns } : undefined}
+            />,
+            )
           )}
           {/* Launch and the Spaces navigator belong to the whole herd, so they sit under the Dashboard
               with the needs-you switch off. The filtered list and the other tabs are narrower, and
               a launcher under them would read as part of that list. */}
-          {view === "dashboard" && needsYouOnly && !screenless && (
-            <ProgramSection programs={programsWaiting} servers={data.servers} onOpen={openProgram} />
-          )}
-          {view === "dashboard" && !needsYouOnly && !screenless && (
+          {view === "dashboard" && needsYouOnly && !screenless &&
+            underGrid(<ProgramSection programs={programsWaiting} servers={data.servers} onOpen={openProgram} />)}
+          {view === "dashboard" && !needsYouOnly && !screenless &&
+            underGrid(
             <>
               {/* Above Launch, so Launch keeps its place directly over the Spaces it creates into. */}
               {programsFirst && <ProgramSection programs={programs} servers={data.servers} onOpen={openProgram} />}
@@ -445,27 +549,21 @@ export function HomeRoute() {
               {/* The Tricks Space (M94 slice 03): a trick's own sessions, after the Programs, outside the
                   herd's groups and counts. Nothing when no trick has a session part. */}
               <TrickSpaceSection sessions={data.trickSessions ?? NO_TRICK_SESSIONS} onOpen={openTrickSession} />
-            </>
+            </>,
+            )}
+            </>,
           )}
         </main>
 
-        {/* The footer is the dashboard's meta zone, in widening order: the crew you're part of, an
-            available update / needed restart, then the build stamp (which bundle you're running,
-            with a stale-cache nudge). The crew line self-hides on a solo install. */}
-        <CrewFooterLink scope={data.scope} className="px-4 pt-3" />
-        {/* With the Hill off, a card of Collie's own about a trick waits here (M96 spec 14), in the update line's box. */}
-        <TrickCardsLine className="px-4 pt-3" />
-        <UpdateBanner ref={updateLine} className="px-4 pt-3" />
-        {/* The footer below owns the safe area now, so the stamp only keeps its own air. */}
-        {/* With the New button drawn, the stamp's air grows so the last row scrolls clear of it:
-            16px gap + 56px button + 8px, from the footer's top edge. Set by capability, not by the
-            button's transient hides, so a sheet or the keyboard never moves the list. */}
-        <BuildStamp
-          className={cn(
-            "px-4 pt-3",
-            fabOffered ? (tabsShown ? "pb-20" : "pb-[calc(5rem_+_env(safe-area-inset-bottom))]") : tabsShown ? "pb-2" : "pb-[calc(0.5rem_+_env(safe-area-inset-bottom))]",
-          )}
-        />
+        {wide ? (
+          <WideColumn width={columnWidth}>
+            <div style={{ width: SPACE_WIDTH }}>
+              <PhoneParts on>{footer}</PhoneParts>
+            </div>
+          </WideColumn>
+        ) : (
+          footer
+        )}
       </div>
 
       {/* The dashboard's footer (ADR 0066, ADR 0085, both amended 2026-11-10): lists, each named for what
@@ -473,23 +571,14 @@ export function HomeRoute() {
           the Hill, a fixed item that opens its own route, and the tricks' items after it. It sits OUTSIDE
           the scroller, so the content scrolls above it and a switch moves neither it nor the strip and
           summary line at the top of the list. At every width: the dashboard has no sidebar on a wide
-          screen (it is one centred column), so nothing else offers these views. Its height is the same
+          screen (the grid of Spaces and this bar are as wide as each other, ADR 0158), so nothing else offers these views. Its height is the same
           56px row in both of its modes, so the sums below hold. */}
-      {tabsShown && (
-        <DashboardTabBar
-          view={view}
-          onSelect={setDashView}
-          crew={multi}
-          files={!screenless}
-          blockedCount={blockedCount}
-          readyUnseen={readyUnseen}
-          hill={bar.hill}
-          hillNow={bar.hillNow}
-          onOpenHill={() => nav.down(hillPath(data.scope))}
-          tabbarParts={bar.tabbarParts}
-          sessions={bar.sessions}
-          onOpenSession={openTrickSession}
-        />
+      {wide && tabBar !== false ? (
+        <div className="mx-auto w-full" style={{ maxWidth: columnWidth }}>
+          {tabBar}
+        </div>
+      ) : (
+        tabBar
       )}
 
       {/* Status overlay, anchored to the bottom of the viewport (no input here) — same slim line,
@@ -548,6 +637,7 @@ export function HomeRoute() {
           }
           busy={creatingSpace || launching.size > 0}
           collapsed={scrolled}
+          columnWidth={wide ? columnWidth : undefined}
           onClick={openNew}
         />
       )}

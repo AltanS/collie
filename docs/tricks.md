@@ -31,27 +31,33 @@ everything:
 
 ## Where a trick can show
 
-A trick can show in seven places on the phone, and nowhere else. It can also post to the Hill.
+A trick can show in eight places on the phone, and nowhere else. It can also post to the Hill.
 
 A place is a spot on the phone where a trick can show (a surface). Collie owns every place. A trick
 names the places it wants in its manifest, and its parts appear there, drawn by the phone with
 Collie's own look.
 
-- **Six places take a program's parts.** On the Dashboard: a tile in the strip at the top, a row
+- **Seven places take a program's parts.** On the Dashboard: a tile in the strip at the top, a row
   under Tricks that opens the trick's own Page, and an item in the bottom bar. In an agent
   session: a chip at the left end of the status line, a mark at the end of the Belt, and rows in the
-  session's settings.
-- **The agent view is the seventh.** It is a view of one agent session, beside Terminal and Chat, and
+  session's settings. The seventh, `float`, is a small moving picture over the app: it plays once
+  (`once`) or stays on screen (`stay`), on the Dashboard or in the sessions the part names. It stays in the free area
+  of the screen, never covers a question and never blocks a tap. A picture that rests on an edge can
+  open the trick's Page, when its part says so. A picture is a file in the trick's `media/` folder,
+  drawn by Collie from a fixed list of motions. Use original art, never a known character.
+  "Floating things" in Settings → Appearance turns every picture off on a device, and each trick
+  keeps its own switch.
+- **The agent view is the eighth.** It is a view of one agent session, beside Terminal and Chat, and
   that session's own agent draws it.
 - **The Hill is not a place, it ships with Collie.** It is the page of questions that wait for you,
   and an experiment: off until you switch it on in Settings → Experiments. A trick posts a question
   there, a Decision, and does not list the Hill in its `places`.
 
-![Three phone screens, the Dashboard, a session and a session's settings sheet, with the seven places of a trick numbered.](images/tricks/places.png)
+![Three phone screens, the Dashboard, a session and a session's settings sheet, with the eight places of a trick numbered.](images/tricks/places.png)
 
 In the picture, on the Dashboard: 1 the tile, 2 the row of the trick's Page, 3 the bottom bar item. In a
 session: 4 the status chip, 5 the mark on the Belt, 6 the agent view beside Terminal and Chat. In the
-session's settings: 7 the trick's rows.
+session's settings: 7 the trick's rows. Over a session: 8 a floating picture.
 
 The [Places](tricks-reference.md#places) section of the reference describes each place: where it
 shows, what it takes, what a tap does, its limits and an example.
@@ -90,7 +96,7 @@ reference.
 A trick is a program that prints parts, or rules for an agent that draws a screen.
 
 - **A program trick** is a small program on your machine. The bridge runs it on a timer, or when you
-  tap. It prints what to show, and Collie draws it in its six places and on the Hill. Its folder
+  tap. It prints what to show, and Collie draws it in its seven places and on the Hill. Its folder
   holds `trick.toml` and the program.
 - **An agent view** is rules for the agent of one session. The agent answers you by drawing one
   screen, in that session's agent view. Its folder holds `trick.toml` and `rules.md`, and no program.
@@ -120,6 +126,12 @@ draws the rest. So a screen can be new every time, and still look and behave lik
 A kind outside the list is never drawn, and neither is a kind only Collie draws, such as its own
 questions or its reply box. A trick or an agent can choose what to show. Only Collie decides how it
 looks. The [Parts](tricks-reference.md#parts) section of the reference lists all 22 kinds.
+
+One button reaches the reply box. With `does` set to `draft`, a tap on a trick's page puts the
+button's text into the reply box of the session you opened the page from, and opens that session. It
+fills only an empty box and never sends: you read the text and tap Send. The trick asks for it with
+`drafts = "session"` in `trick.toml`, and its card says so before you switch it on
+([`button`](tricks-reference.md#button)).
 
 ## Example 1: a program trick
 
@@ -494,6 +506,13 @@ and any new power the version asks for. You have three options:
 
 Switching the trick on again, or `collie trick on <id>`, approves the new version as well.
 
+Your yes starts the new version at once. The trick does not wait for its `every` time, and the phone
+draws what the new version prints within a second or two, with no reload. The same holds after you
+switch a trick on or change a setting. An edit of `config.toml` by hand runs the trick as soon as
+Collie sees it, within a few seconds while a phone is open. A run that is going finishes first, and
+its output is dropped. Two runs of one trick never overlap. A version that waits for your yes changes
+nothing: the old approved copy keeps running.
+
 "Take changes without asking" is a switch in the trick's About sheet, under Updates. The command is
 `collie trick auto <id> on`. With it on, a new version is taken without a card only when its powers
 did not change and a text search of its code finds no new kind of warning. A trick with rules never
@@ -502,12 +521,14 @@ before.
 
 ### Powers, the environment and the warnings
 
-A trick cannot type for you, cannot put code on your phone, and asks only through the Hill. Past
-that, it can do what you can do.
+A trick cannot type for you, cannot put code on your phone, and asks only through the Hill. At most,
+a button can put a text into your empty reply box, and you send it yourself. Past that, it can do what
+you can do.
 
 **Powers.** A power is something a trick may reach beyond its own code: the environment names it asks
-for (`env`), the places it draws in (`places`), and the files it reads from your agent sessions
-(`inputs`). The About sheet lists them. A new version that changes one always asks you again. The
+for (`env`), the places it draws in (`places`), the files it reads from your agent sessions
+(`inputs`), and whether its buttons may put text into your reply box (`drafts`). The About sheet
+lists them. A new version that changes one always asks you again. The
 `menu` place is a power like any other place, and a Belt mark that names `sessions` only shows in fewer
 sessions, so it needs no new yes. Collie's own text also calls a power a right.
 

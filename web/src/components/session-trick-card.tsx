@@ -5,11 +5,13 @@ import { hillMediaSource, viewPictures, type HillMediaSource } from "@/component
 import { HoldToApprove, holdLabel } from "@/components/hold-to-approve";
 import { Icon } from "@/components/icons/icon";
 import { OptionButton, OptionGroupCaption, PromptPanel } from "@/components/option-button";
+import { TrickApprovalLine } from "@/components/trick-approval-line";
 import { FoldPanel } from "@/components/ui/fold-toggle";
 import { useHillAnswer, type HillAnswerState } from "@/hooks/use-hill-answer";
 import { useLocale } from "@/hooks/use-locale";
 import { singleCodeCard, trickCardDecline, trickYesAnswer, viewHasCode } from "@/lib/hill/code-card";
 import { linkHost, isWebLink } from "@/lib/hill/reader";
+import { useAnswerRowDrawn } from "@/lib/hill/answer-rows";
 import { closeInSession, useSessionLater } from "@/lib/hill/session-later";
 import { useHillAnswerHeld, useHillClosed, useHillOpen } from "@/lib/hill/store";
 import type { HillDecision, HillGroupAnswer, HillOption } from "@/lib/hill/wire";
@@ -39,11 +41,14 @@ import { cn } from "@/lib/utils";
 // under its "Card N" label, because the facts table and the seam lines name cards by number.
 //
 // ── ITS OWN SURFACE (Altan, 2026-11-17) ───────────────────────────────────────────────────────────────
-// The card's colour says where it stands, with a uniform border on all four sides and a low tint of the same
-// hue, never a left accent: while it WAITS for the person, the "needs you" red-orange (`--status-blocked`, the
-// tint an agent card that needs you wears); once APPROVED, a quiet green (`--status-done`); once DECLINED or
-// DISMISSED, red (`--destructive`). The first build's amber tint read as the person's own message bubbles and
-// was dropped. See {@link approvalTone}.
+// While the card WAITS for the person it wears a uniform border on all four sides and a low tint of the "needs you"
+// red-orange (`--status-blocked`, the tint an agent card that needs you wears), never a left accent. The first
+// build's amber tint read as the person's own message bubbles and was dropped.
+//
+// ── ANSWERED, IT IS ONE LINE (Altan, 2026-11-18) ──────────────────────────────────────────────────────
+// A card whose answer landed (see {@link approvalTone}) is no card any more: it collapses into the one small line of
+// components/trick-approval-line.tsx, the tricks glyph, "Collie tricks", the trick's name and what happened, which
+// flows in the conversation like a message so the person scrolls past it. The card is tall only while it asks.
 //
 // ── THE GUARDS (ADR 0156, the operator's decision of 2026-11-17) ─────────────────────────────────────
 //   * The yes is a HOLD of 1.5 seconds (components/hold-to-approve.tsx): the finger stays down while a
@@ -187,12 +192,8 @@ export function approvalTone(decision: HillDecision, answer: HillAnswerState): A
   return "waiting";
 }
 
-/** The panel's surface for each standing: a uniform border and a low tint of one semantic hue. */
-const TONE_SURFACE = {
-  waiting: "border-status-blocked/50 bg-status-blocked/8",
-  approved: "border-status-done/35 bg-status-done/6",
-  declined: "border-destructive/40 bg-destructive/6",
-} as const satisfies Record<ApprovalTone, string>;
+/** The panel's surface while the card waits: a uniform border and a low tint of the "needs you" hue. */
+const WAITING_SURFACE = "border-status-blocked/50 bg-status-blocked/8";
 
 /** The key a card and its fold are kept under: another digest is another card. */
 function cardKey(decision: HillDecision): string {
@@ -204,6 +205,9 @@ function cardKey(decision: HillDecision): string {
  * card, so a hold on the old one ends and its fold starts closed.
  */
 export function ChatApprovalCard(props: ChatApprovalCardProps) {
+  const tone = approvalTone(props.decision, props.answer);
+  // An answered card has nothing left to ask: it collapses into one line that flows with the conversation (Altan, 2026-11-18).
+  if (tone !== "waiting") return <TrickApprovalLine decision={props.decision} approved={tone === "approved"} />;
   return <ApprovalBody key={cardKey(props.decision)} {...props} />;
 }
 
@@ -247,11 +251,10 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
   // The option that was the answer, once it landed: it keeps its place with a check mark.
   const marks = trickAnswerMarks(answer);
   const chosenIntent = marks.chosen;
-  const tone = approvalTone(decision, answer);
 
   return (
-    <div data-slot="chat-approval" data-id={decision.id} data-ready={ready ? "" : undefined} data-tone={tone}>
-      <PromptPanel ariaLabel={t("hill.card.aria", { title: decision.title })} className={TONE_SURFACE[tone]}>
+    <div data-slot="chat-approval" data-id={decision.id} data-ready={ready ? "" : undefined}>
+      <PromptPanel ariaLabel={t("hill.card.aria", { title: decision.title })} className={WAITING_SURFACE}>
         <div className="flex flex-col gap-3 px-1.5 pt-1 pb-0.5">
           <OptionGroupCaption>{decision.from.label}</OptionGroupCaption>
           <div className="flex flex-col gap-1">
@@ -294,11 +297,11 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
             </div>
           )}
 
-          {/* THE OPTIONS STAY (Altan, 2026-11-17 and 2026-11-18, "no new boxes"): after an answer no row, line or box
-              comes or goes. The chosen option takes a check mark (a spinner while in flight), every other one is
-              disabled, and the card's border turns green or red. A yes that did not land says "Not sent. Hold
+          {/* THE OPTIONS STAY while the answer is in flight or did not land (Altan, 2026-11-17 and 2026-11-18, "no new
+              boxes"): no row, line or box comes or goes. The option in flight shows a spinner (a check mark for a
+              yes with no word back), every other one is disabled. A yes that did not land says "Not sent. Hold
               again" in its own label, sized for those words from the first frame; the reason goes to a screen
-              reader only. */}
+              reader only. Once the answer landed the whole card is one line (trick-approval-line.tsx). */}
           <div className="flex flex-col gap-2">
             {blocked && (
               <p data-slot="chat-approval-unshown" className="font-content text-xs text-muted-foreground">
@@ -354,11 +357,14 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
   );
 }
 
-/** One card wired to the bridge: an answered card stays with what its answer did while this phone holds the receipt. */
+/** One card wired to the bridge: an answered card stays, as its one line, while this phone holds the receipt. */
 function SessionTrickCard({ decision, onReadCode }: { decision: HillDecision; onReadCode?: (row: HTMLElement) => void }) {
   const { state, send } = useHillAnswer(decision.id);
   const held = useHillAnswerHeld(decision.id);
+  // The answer reached the transcript as its own row (components/trick-answer-row.tsx): that row says what this line says.
+  const rowDrawn = useAnswerRowDrawn(decision.id);
   if (decision.state !== "open" && held === null) return null;
+  if (decision.state !== "open" && rowDrawn) return null;
   return (
     <div data-slot="session-trick-card" data-card={decision.id} className="my-2">
       <ChatApprovalCard

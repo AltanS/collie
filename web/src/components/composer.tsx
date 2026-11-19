@@ -9,6 +9,9 @@ import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { useLocale } from "@/hooks/use-locale";
+import { useKeyboardOpen } from "@/hooks/use-keyboard";
+import { enterKeyAnswer } from "@/lib/enter-key";
+import { setEnterSends, useEnterSendsChoice } from "@/lib/enter-sends-store";
 import { t as translate, tn as translatePlural } from "@/lib/i18n";
 import { serverSkewMs } from "@/lib/server-clock";
 import { holdsMask } from "@/lib/masked-text";
@@ -44,7 +47,7 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type StyledLine } from "@/lib/blocks";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
 import type { HeldRow, SendMode, SendOffer, SendRequestBody, SendWhen } from "@/lib/surface/send";
-import { Notice } from "@/components/ui/notice";
+import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import { WalkyAimStrip, WalkyHeldStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
@@ -1172,6 +1175,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // field is up and a text for a prompt that does not echo never take this road: they are never held or shown.
   const calmRef = useRef<CalmSend | null>(null);
   const [calmHeld, setCalmHeld] = useState(false);
+  // ── THE SEND CLOSES THE SOFT KEYBOARD (Altan, 2026-11-18) ───────────────────
+  // The reply is what the person wants to see next, and the keyboard covers it. So a box send that let go of the
+  // box (`startCalm`) also blurs the field, when a SOFT keyboard is up (`useKeyboardOpen`: the viewport shrank AND a
+  // field that types has focus). A hardware keyboard or a wide layout shows no such keyboard and keeps the focus, so
+  // the next message can be typed at once. The blur needs no answer from the bridge. The first tap still sends (issue
+  // 691: the press never moved the focus, so the click reaches Send); the blur comes after the send is dispatched.
+  // `keyboardReleased` is the calm send whose blur we did, so a send that fails (its text goes back into the box)
+  // can give the focus back: a try, since iPhone WebKit raises no keyboard from a focus outside a tap.
+  const softKeyboard = useKeyboardOpen();
+  // Whether a bare Enter from a hardware keyboard sends (Settings → Enter sends, ADR 0157): the person's own
+  // choice on this device, or null before they made one. A guess never sets it, only a tap does.
+  const enterChoice = useEnterSendsChoice();
+  // The one-time offer of that switch, above the box. It shows after a bare Enter that looks like a real keyboard's
+  // while nothing is chosen, goes with the pane or a reload, and never shows again once a choice is stored.
+  const [enterOffer, setEnterOffer] = useState(false);
+  useEffect(() => setEnterOffer(false), [paneId]);
+  const keyboardReleased = useRef<CalmSend | null>(null);
   const flipInstantRef = useRef(false);
   // The texts waiting on Put back for the pane on screen, oldest first (the M102 review 3): stored with the pane's draft
   // (lib/drafts.ts), so a pane switch or a reload keeps them, and never a list with a cap, so none is dropped.
@@ -2382,6 +2402,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     attachmentsRef.current = [];
     setInput("");
     setAttachments([]);
+    // Only the reply field: another field that has focus (the code field, a rename) keeps its keyboard.
+    const field = inputRef.current;
+    if (softKeyboard && field !== null && document.activeElement === field) {
+      field.blur();
+      keyboardReleased.current = calm;
+    }
     return calm;
   }
   /**
@@ -2394,9 +2420,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       calmRef.current = null;
       setCalmHeld(false);
     }
+    const released = keyboardReleased.current === calm;
+    if (released) keyboardReleased.current = null;
     if (end === "failed") {
       if (calm.row !== null) dropPending(calm.row.key, [calm.row.id]);
       giveBack(intent === undefined ? calm : { ...calm, intent });
+      // The send did not go and its words are back: the keyboard we put away comes back, unless the person has
+      // moved on to another control since (focus on the page body only).
+      const field = inputRef.current;
+      const idle = document.activeElement === null || document.activeElement === document.body;
+      if (released && idle && field !== null && boxOf(calm)) field.focus({ preventScroll: true });
       return;
     }
     if (calm.row !== null && end === "sent") setPendingState(calm.row.key, calm.row.id, "sent");
@@ -2842,6 +2875,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The sign-in field the person closed is one tap away again, from the notice that says it is closed.
   const refusalSecret = secretField && secretClosed;
   const secretOpen = secretField && !secretClosed && !direct.active;
+  // The offer of "Enter sends" shows only while nothing is chosen, and never in Type mode (its Enter is its own).
+  const enterOfferShown = enterOffer && enterChoice === null && !direct.active;
   // THE STEP (M102 spec 02): the one button that changes the situation, first in the notice. The card (or,
   // with no card, the Screen) and Open Keys follow it, so the notice holds at most two buttons plus the
   // card. A step that cannot act here draws nothing: the card and the Keys pad still show.
@@ -4423,6 +4458,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             {translate("composer.draft.holdsMask")}
           </p>
         </Collapse>
+        {/* THE ONE-TIME OFFER OF "ENTER SENDS" (ADR 0157). A bare Enter that looks like a real keyboard's, with
+            nothing chosen yet, still adds its new line and brings this one line straight above the box. Turn on
+            stores the choice "on", the x stores "off"; either way it never shows again on this device. It
+            comes and goes through Collapse like the notices above it, so it moves the box by its own height. */}
+        <Collapse open={enterOfferShown}>
+          {enterOfferShown && (
+            <Notice
+              tone="neutral"
+              variant="box"
+              className="mb-2"
+              onDismiss={() => setEnterSends(false)}
+              dismissLabel={translate("composer.enterOffer.dismissAria")}
+              action={
+                <Button type="button" variant="outline" size="sm" data-slot="composer-enter-offer-on" className={NOTICE_ACTION} onClick={() => setEnterSends(true)}>
+                  {translate("composer.enterOffer.turnOn")}
+                </Button>
+              }
+            >
+              <span data-slot="composer-enter-offer">{translate("composer.enterOffer.text")}</span>
+            </Notice>
+          )}
+        </Collapse>
         {/* ── ONE BOX, ONE ROW: THE FIELD, ATTACH, THE PRIMARY ACTION ──────────────────────
             The field, the attach control and Send used to be three shapes on one line: a
             bordered field with a button tucked into its bottom-right corner, and a round primary
@@ -4618,10 +4675,31 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       e.preventDefault();
                       return;
                     }
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      onSendClick();
-                    }
+                    // Ctrl/Cmd+Enter always sends. A bare Enter sends only from a hardware key with the
+                    // device's setting on; the rule is lib/enter-key.ts (ADR 0157), and every other press
+                    // is left to the browser, a new line. The menus around the box take no keys, so
+                    // none of them has an Enter to lose, and the sign-in field is its own component.
+                    const answer = enterKeyAnswer(
+                      {
+                        key: e.key,
+                        code: e.code,
+                        shiftKey: e.shiftKey,
+                        altKey: e.altKey,
+                        ctrlKey: e.ctrlKey,
+                        metaKey: e.metaKey,
+                        isComposing: e.nativeEvent.isComposing,
+                        keyCode: e.keyCode,
+                        repeat: e.repeat,
+                      },
+                      softKeyboard,
+                      enterChoice,
+                    );
+                    // "hint": the Enter still adds its new line; the offer appears above the box.
+                    if (answer === "hint") setEnterOffer(true);
+                    if (answer === "default" || answer === "hint") return;
+                    e.preventDefault();
+                    if (answer === "send") onSendClick();
+                    // "swallow": a held Enter. The first press sent; a repeat adds no new line.
                   }
             }
             onPaste={onPasteFile}

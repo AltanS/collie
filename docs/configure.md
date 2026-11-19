@@ -1362,14 +1362,46 @@ The terminal mirror continues polling in Zen mode, and interactive buffer elemen
 functional. Prompt buttons, "Load older", and "Show entire history" controls stay available because
 they are part of the content stream rather than chrome.
 
+## Enter sends
+
+> **Note.** Enter stays a new line until you turn **Enter sends** on. Nothing changes by itself.
+
+To make Enter send the message, open **Settings → Appearance → Enter sends** and turn it on. The
+choice is stored per device and never leaves it.
+
+With the switch on, a physical keyboard's Enter sends the message and **Shift+Enter** adds a new
+line. The on-screen keyboard's Enter always adds a new line, so a tap on a phone never sends by
+mistake. Use the Send button there. **Ctrl+Enter** and **Cmd+Enter** send with the switch on or
+off, and they always did.
+
+The reply box of a durable agent follows the same switch. The full-screen editor, which opens from
+**Expand** for long text, keeps Ctrl+Enter and Cmd+Enter only, so Enter there is always a new line.
+
+Collie reads each Enter press to tell the two keyboards apart. A press counts as a physical
+keyboard's only when it names the Enter or numpad Enter key, no input method is composing text, the
+key is not held down, and the on-screen keyboard is not up. Any doubt leaves the new line.
+
+The first time Collie sees an Enter press from a real keyboard and you have not chosen, that Enter
+still adds its new line, and one line above the reply box says "Using a keyboard? Enter can send."
+**Turn on** switches it on. The close button switches it off. Either way the line does not come back
+on this device, and **Enter sends** in Settings still changes the choice.
+
 ## Large screens
 
-> **Note.** On a tablet or an open Fold the pane screen shows several panes side by side. A phone held upright and flat is not changed.
+> **Note.** On a tablet or an open Fold the pane screen shows several panes side by side, and from 900 pixels wide the dashboard shows its Spaces in columns. A phone held upright and flat is not changed.
 
 The layout turns on for the pane screen when the screen is at least 600 CSS pixels wide and at least
 480 pixels tall. A phone held sideways is under 480 pixels tall, so it keeps the phone layout.
 To switch it off, open **Settings → Appearance → Large-screen layout** and pick **Off**. **Auto**,
 the default, turns it on where the screen is big enough. The choice is stored per device.
+
+The dashboard follows the same switch, from 900 pixels wide. The Spaces stand side by side in
+columns 384 pixels wide, as many as fit (two at 900 pixels, three at 1280, four at 1920, six at most),
+and the tab bar at the foot is as wide as the columns. A band at the top repeats every session that
+needs you or finished unseen, as a card with its question. A session in the band also keeps its row
+in its Space, so nothing moves out of place. The band closes when nothing waits, and the
+**needs you** switch hides it, because the columns then show only those sessions. Narrower than 900
+pixels, and with **Off**, the dashboard is the one narrow list.
 
 The layout has three parts.
 
@@ -1523,10 +1555,11 @@ That works on Linux and macOS, not on Windows. When two Grok panes sit in one fo
 the list does not name yet keeps its terminal view rather than show the other pane's chat.
 
 Antigravity CLI (`agy`, which Herdr may also call `antigravity`) needs no Herdr integration for Chat
-either. Collie asks `lsof` which `presence/<uuid>.lock` file the pane's foreground agy process holds,
-and reads that conversation from `conversations/<uuid>.db` under `~/.gemini/antigravity-cli`,
+either. Collie asks which `presence/<uuid>.lock` file the pane's foreground agy process holds, and
+reads that conversation from `conversations/<uuid>.db` under `~/.gemini/antigravity-cli`,
 read-only, or from its `transcript.jsonl` when the database is empty. It never guesses the newest
-conversation in a folder. This needs `lsof` on the machine, so it works on Linux and macOS, not on
+conversation in a folder. On Linux, Collie reads `/proc/locks` without needing `lsof` or extra privileges;
+on macOS, it asks `lsof` which files the process holds open. This works on Linux and macOS, not on
 Windows; without it an agy pane keeps its terminal view. Set `agy_root`, or `COLLIE_AGY_ROOT`, when
 Antigravity keeps its home somewhere else.
 

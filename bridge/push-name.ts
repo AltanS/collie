@@ -17,7 +17,7 @@ export function stripControlChars(value: string): string {
 
 /**
  * What a push calls a pane: its given name (pane-name.ts `givenName`: Collie's rename, the person's
- * name in the harness, the agent's own session title, a named one-pane tab), cleaned of control and
+ * name in the harness, a named one-pane tab, the agent's own session title), cleaned of control and
  * bidi characters; else `shell` or the harness word. Never `terminalTitle`.
  */
 export function pushName(pane: NameableP): string {

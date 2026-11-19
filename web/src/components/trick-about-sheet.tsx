@@ -24,6 +24,7 @@ import { HostWords } from "@/lib/tricks/render";
 import { originLine, runsOnLine, showsInPlaces, warningLines } from "@/lib/tricks/row-words";
 import { isSourceUrl, runsWithNoPhone, type FieldValue, type TricksRunsOn, type WireOfficialTrick, type WireRepoFacts, type WireTrickInfo, type WireTrickRules } from "@/lib/tricks/schema";
 import { cn } from "@/lib/utils";
+import { useTrickParts } from "@/lib/tricks/store";
 import { trickTokenUse, type TrickTokenFacts } from "@/lib/tricks/token-use";
 
 // A trick's About sheet: what a person reads before they switch a trick on. Opened by a tap on the trick's
@@ -149,6 +150,13 @@ function menuRows(): FactRow[] {
   ];
 }
 
+/** The `float` place's rows: what it can draw, and, when a held part says `opens = "page"`, what a tap on it does. */
+function floatRows(opensPage: boolean): FactRow[] {
+  const rows: FactRow[] = [{ key: "float", node: t("settings.tricks.about.float") }];
+  if (opensPage) rows.push({ key: "float-opens", node: t("settings.tricks.about.floatOpens") });
+  return rows;
+}
+
 /** The rows of "What it does", from the wire's facts alone. Empty when the wire carries none. */
 /** The first row of "What it does" when the trick makes an agent read or write more: why, in one sentence. */
 function tokenRows(subject: TrickTokenFacts): FactRow[] {
@@ -194,7 +202,7 @@ const ACCESS_LINE_KEYS = {
   unknown: "settings.tricks.about.access.unknown",
 } as const satisfies Readonly<Record<NonNullable<WireTrickInfo["access"]>, string>>;
 
-function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
+function doesRows(trick: WireTrickInfo, tokens: boolean, opensPage = false): FactRow[] {
   const rows: FactRow[] = tokens ? tokenRows(trick) : [];
   const places = Array.isArray(trick.places) ? trick.places : [];
   const view = trick.agentView === true;
@@ -207,6 +215,8 @@ function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
   }
   // Contract 2: rows in a session's settings. What a tap there does is said beside it (MENU_WORDS, MENU_TAP_WORDS).
   if (places.includes("menu")) rows.push(...menuRows());
+  // The `float` right: what it can draw and what it never does (FLOAT_WORDS), and the tap, when a held part opens its page.
+  if (places.includes("float")) rows.push(...floatRows(opensPage));
   if (trick.rules !== undefined) rows.push({ key: "rules", node: t("settings.tricks.about.rules") });
   rows.push(...runRows(trick));
   if (trick.inputs !== undefined) rows.push({ key: "reads", node: readsWords(trick.inputs) });
@@ -221,6 +231,8 @@ function doesRows(trick: WireTrickInfo, tokens: boolean): FactRow[] {
     rows.push({ key: "runs-as-you", node: <span data-line="runs-as-you">{t("settings.tricks.about.runsAsYou")}</span> });
     rows.push({ key: "access", node: <span data-line="access">{t(ACCESS_LINE_KEYS[trick.access])}</span> });
   }
+  // `drafts = "session"`: its buttons may fill the reply box of the session you are in, and never send. The cards' line.
+  if (trick.draftsSession === true) rows.push({ key: "drafts", node: <span data-line="drafts">{t("settings.tricks.about.drafts")}</span> });
   for (const line of warningLines(trick)) {
     rows.push({
       key: `warn:${line.kind}`,
@@ -321,7 +333,10 @@ export function TrickAboutSheet({ trick, runsOn, open, onClose, auto, canWrite =
   useLocale();
   const paragraphs = trick.about === undefined ? [] : aboutParagraphs(trick.about);
   const tokens = useTokenUseShown();
-  const does = doesRows(trick, tokens);
+  // A held `float` part of this trick that says `opens = "page"`: the tap line is true only then.
+  const floats = useTrickParts("float");
+  const opensPage = floats.some((part) => part.host === trick.host && part.trick === trick.id && part.value.at === "float" && part.value.opens === "page");
+  const does = doesRows(trick, tokens, opensPage);
   const fromRepo = trick.provenance?.via === "repo" ? trick.provenance.url : undefined;
   const comes = present([
     { key: "origin", node: originLine(trick.provenance) },

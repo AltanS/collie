@@ -1015,11 +1015,11 @@ export function HillSection() {
           <ChatCard decision={GROUP_CHAT} open />
         </Card>
         <Card state="hill-chat-approved" label="74: a proposal in the chat, switched on">
-          <CardHead n={74} title="Switched on: the card turns a quiet green and says what happened" />
+          <CardHead n={74} title="Switched on: the card is one line, the tricks glyph, Collie tricks, the name and what happened, and it flows with the chat" />
           <ChatCard decision={chatProposal} answer={answered(receipts.typed, "on")} />
         </Card>
         <Card state="hill-chat-declined" label="75: a proposal in the chat, declined">
-          <CardHead n={75} title="Declined with Not now, or dismissed: the card turns red and says nothing was installed" />
+          <CardHead n={75} title="Declined or dismissed: the same one line, saying the trick is not switched on" />
           <ChatCard decision={chatProposal} answer={answered(receipts.typed, "later")} />
         </Card>
       </Group>

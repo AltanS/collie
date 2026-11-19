@@ -46,7 +46,7 @@ beforeEach(() => {
 describe("NotifyPrefsControl", () => {
   test("renders the fetched prefs onto the switches", async () => {
     render(<NotifyPrefsControl />);
-    const needs = await screen.findByRole("switch", { name: /needs input/i });
+    const needs = await screen.findByRole("switch", { name: /needs you/i });
     const finished = await screen.findByRole("switch", { name: /finished/i });
     const updates = await screen.findByRole("switch", { name: /app updates/i });
     expect(needs).toBeChecked(); // blocked default on
@@ -82,7 +82,7 @@ describe("NotifyPrefsControl", () => {
     const individual = await screen.findByRole("switch", { name: /one notification per agent/i });
     const names = screen.getAllByRole("switch").map((s) => s.getAttribute("aria-label"));
     const at = names.indexOf("One notification per agent");
-    expect(names.slice(at - 2, at)).toEqual(["Needs input", "Finished"]);
+    expect(names.slice(at - 2, at)).toEqual(["Needs you", "Finished"]);
     expect(screen.getByText(/each agent that needs you gets its own notification/i)).toBeInTheDocument();
     await waitFor(() => expect(individual).not.toBeDisabled());
     expect(individual).toBeChecked();
@@ -99,7 +99,7 @@ describe("NotifyPrefsControl", () => {
       http.post("/api/notifications/prefs", () => new HttpResponse(null, { status: 500 })),
     );
     render(<NotifyPrefsControl />);
-    const needs = await screen.findByRole("switch", { name: /needs input/i });
+    const needs = await screen.findByRole("switch", { name: /needs you/i });
     expect(needs).toBeChecked();
 
     await user.click(needs); // optimistic → off, POST 500 → revert to on
@@ -126,7 +126,7 @@ describe("NotifyPrefsControl — the fourth switch and the panes it watches", ()
 
   test("renders six switch rows, the cache warning last so its watched panes sit under it", async () => {
     render(<NotifyPrefsControl />);
-    expect(await screen.findByRole("switch", { name: /needs input/i })).toBeInTheDocument();
+    expect(await screen.findByRole("switch", { name: /needs you/i })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /finished/i })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /one notification per agent/i })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /app updates/i })).toBeInTheDocument();

@@ -81,6 +81,10 @@ import {
   DECIDES_REPLY_LINE,
   DECIDES_WORDS,
   DECISION_VIEW_LIMITS,
+  DRAFT_VALUE_MAX,
+  DRAFTS_SESSION_LINE,
+  DRAFTS_SESSION_REFUSAL,
+  DRAFTS_WORDS,
   DECISIONS_MAX,
   DEFAULT_DECISION_PRIORITY,
   DEFAULT_DECISION_TEXT,
@@ -119,6 +123,18 @@ import {
   MANIFEST_KEYS,
   BOUND_PARTS_MAX,
   BOUND_SESSIONS_MAX,
+  FLOAT_ALONG,
+  FLOAT_EDGES,
+  FLOAT_FPS_MAX,
+  FLOAT_FRAMES_MAX,
+  FLOAT_MODES,
+  FLOAT_ONCE_MOTIONS,
+  FLOAT_OPENS,
+  FLOAT_OPENS_WORDS,
+  FLOAT_ROWS_MAX,
+  FLOAT_SIZES,
+  FLOAT_STAY_MOTIONS,
+  FLOAT_WORDS,
   MENU_CONTRACT,
   MENU_LABEL_MAX,
   MENU_RESERVED_LEADS,
@@ -179,6 +195,7 @@ import {
   type TrickEvent,
   TRICKS_WINDOWS_LINE,
 } from "./schema";
+import { FLOAT_EDGE_MARGIN_PX, FLOAT_FLY_MAX_MS, FLOAT_FLY_MIN_MS, FLOAT_ONCE_EVERY_MS, FLOAT_ONCE_MAX_MS, FLOAT_ONCE_MS, FLOAT_SIZE_PX, FLOAT_STAY_MAX, FLOAT_TAP_PX, FLOAT_WANDER_EVERY_MS } from "./float";
 import {
   BACKOFF_MS,
   BASE_ENV_NAMES,
@@ -208,6 +225,7 @@ import {
   PROPOSALS_SENDER_HOUR_MAX,
   PROPOSALS_SENDER_OPEN_MAX,
   PROPOSE_LIMITS,
+  PROPOSE_PICTURES,
   REPO_INDEX_ABOUT_MAX,
   REPO_INDEX_BYTES_MAX,
   REPO_INDEX_CONTRACT,
@@ -290,7 +308,7 @@ export type Example =
 /** Who writes to a place: a program the person switched on, or the agent of one session. */
 export type Who = "program" | "agent";
 
-/** Every place word: the six a program draws in, and the one an agent view adds. */
+/** Every place word: the seven a program draws in, and the one an agent view adds. */
 export type PlaceId = PlaceKind | typeof AGENT_VIEW_PLACE;
 
 export interface PlaceEntry {
@@ -357,7 +375,7 @@ export const PLACES = {
     name: "Page",
     where: "A page of the trick's own: a row on the Dashboard under Tricks, and a screen of its own. The code word is `session`.",
     shows: "A name, an icon, a tone, a subtitle, a badge, a progress meter, up to four action buttons and a `view`: a list of nodes of any kind in the Parts table.",
-    tap: "A button, or an action, sends its intent to the trick, which runs once with that tap. A `row` or a `link` with an `href` opens a web page or a session.",
+    tap: "A button, or an action, sends its intent to the trick, which runs once with that tap. A `row` or a `link` with an `href` opens a web page or a session. A button with `does` set to `draft` puts its text into the empty reply box of the session the page was opened from, and opens that session. Opened from the Dashboard or the bottom bar, the page is for no session, and such a button says \"Open a session first\".",
     limits: [
       { what: "`name`", value: `at most ${String(NAME_MAX)} characters. Left out, the manifest's name` },
       { what: "`subtitle`", value: `at most ${String(SUBTITLE_MAX)} characters` },
@@ -482,6 +500,55 @@ export const PLACES = {
       },
     ],
   },
+  float: {
+    id: "float",
+    name: "Floating picture",
+    where: `A small moving picture over the app, on the Dashboard and in a session's Chat and Terminal, in the free area clear of the header, the strips, the Belt and the composer. ${FLOAT_WORDS}`,
+    shows: `One picture of the trick's \`media/\` folder, and one motion of a fixed list. A part says \`once\` (the picture plays one motion and is gone) or \`stay\` (it stays and shows a mood). It takes no view, no coordinates, no style and no code: Collie places and times the picture. Without \`sessions\` it shows on the Dashboard; with them (contract 2) it shows only in those sessions. It is hidden while a sheet, a dialog or a card that asks a question is open, while a field has focus and while a yes is held, and it comes back after. "Floating things" in Settings, Appearance, turns every picture off on a device, and each trick keeps its own switch. Pictures must be original art, never a known character.`,
+    tap: `A once picture never takes a tap: a tap goes to what is under it. A stay picture is tap-through too, unless its part says \`opens\` ${code('"page"')}: a parked picture (\`perch\` or \`idle\`, never one that is moving) then takes a tap in a ${String(FLOAT_TAP_PX)} px box and opens the trick's Page. ${FLOAT_OPENS_WORDS} Nothing else takes a tap.`,
+    limits: [
+      { what: "Parts of this place per trick", value: "one `stay` and one `once` for every session, and up to eight bound ones of each mode with `sessions`. No session is named by two parts of one mode" },
+      { what: "A part", value: `\`id\`, \`mode\` (${orList(FLOAT_MODES)}), \`motion\`, \`sprite\`, and optionally \`edge\`, \`along\`, \`from\`, \`mood\`, \`opens\` and \`sessions\`. Nothing else` },
+      { what: "`motion` of `once`", value: `${orList(FLOAT_ONCE_MOTIONS)}. Each plays once, in at most ${String(FLOAT_ONCE_MAX_MS / 1000)} s, and the picture fades in. \`arc\` (${String(FLOAT_ONCE_MS.arc / 1000)} s) and \`pop\` (${String(FLOAT_ONCE_MS.pop / 1000)} s) stay inside the free area and fade out. \`fly-across\` crosses at one even speed, a phone-wide crossing in ${String(FLOAT_ONCE_MS["fly-across"] / 1000)} s (${String(FLOAT_FLY_MIN_MS / 1000)} to ${String(FLOAT_FLY_MAX_MS / 1000)} s, by its path), and flies out past the far edge of the free area, where it is cut off, with no fade at the end` },
+      { what: "`motion` of `stay`", value: `${orList(FLOAT_STAY_MOTIONS)}. \`perch\` stands on an edge (\`edge\`: ${orList(FLOAT_EDGES)}, \`bottom\` when left out): its foot touches the Belt, the status line or the composer below it, with no gap, or the edge of the screen where nothing is there. \`idle\` sits in place and bobs a little, \`wander\` moves to a new spot at most every ${String(FLOAT_WANDER_EVERY_MS / 1000)} s` },
+      { what: "`sprite`", value: `\`src\`, a file of the trick's \`media/\` folder (a PNG, JPEG or WebP, ${sizeWords(HILL_MEDIA_BYTES_MAX)} at most, the same check as an \`image\` node), and optionally \`frames\`, \`rows\`, \`fps\`, \`size\`, \`loop\` and \`after\`. Nothing else` },
+      { what: "`sprite` `size`", value: `${orList(FLOAT_SIZES)}: the height a frame is drawn at. \`s\` is ${String(FLOAT_SIZE_PX.s)} px, \`m\` is ${String(FLOAT_SIZE_PX.m)} px, \`l\` is ${String(FLOAT_SIZE_PX.l)} px. The width follows the frame's own shape. \`s\` when left out. A picture that would not fit the free area is not drawn. With \`opens\` the tap box is at least ${String(FLOAT_TAP_PX)} px each way and never smaller than the picture` },
+      { what: "`sprite` `frames` and `fps`", value: `\`frames\` is the columns of a sprite sheet, 1 to ${String(FLOAT_FRAMES_MAX)}: that many frames side by side. A frame is the sheet's width over \`frames\` wide and its height over \`rows\` high, so a frame need not be square: a sheet of four 74 by 120 frames is 296 by 120 pixels, and its figure stands at the full height of \`size\`. \`fps\` is 1 to ${String(FLOAT_FPS_MAX)} and needs \`frames\` of 2 or more` },
+      { what: "`sprite` `loop`", value: "`true` or `false`. `true` when left out: the frames play over and over. `false`: they play once, frame 1 to the last at `fps`, and the last frame stays, for a motion that happens once, such as a throw. Set a slower `fps` for a slower play. A `stay` picture plays again from the first frame when its part is printed with a changed value (another `mood`, say), and does not when the same part is printed again unchanged. With reduced motion, and where a device cannot animate, it shows the last frame as a still" },
+      { what: "`sprite` `after`", value: `One more sprite, \`{ src, frames, fps, loop }\`, on a \`stay\` part whose own \`loop\` is \`false\`: a sprite that loops never reaches a last frame, so an \`after\` on a sprite with \`loop\` set to \`true\` or left out is refused. \`src\`, \`frames\` (1 to ${String(FLOAT_FRAMES_MAX)}), \`fps\` (the same cap) and \`loop\` (\`true\` when left out) read as the first sprite's do. It is one level deep (an \`after\` inside an \`after\` is refused) and takes no \`rows\` and no \`size\`. Timing: when the first sprite reaches its last frame, the second starts from its first frame at once; with \`loop\` set to \`false\` it holds its last frame, otherwise it loops. Its frames are as high as the first sprite's (\`size\`) and as wide as its own sheet says, so it may be wider, for a pose with writing beside the figure. At the switch the picture takes the new width at once, with no glide, and keeps its anchor: with \`perch\`, \`along\` \`start\` keeps the left side fixed and grows to the right, \`end\` keeps the right side, \`middle\` keeps the centre. The second sheet is loaded while the first plays. A part printed with a changed value plays both again from the first frame of the first sprite, and the same part printed again unchanged does not restart anything. With reduced motion, and where a device cannot animate, the picture shows the last frame of the second sprite as a still. A \`once\` part with \`from\` waits for the end of the first sprite only, and starts from the picture's hand as the first sprite's box measures it` },
+      { what: "`sprite` `rows`", value: `The rows of a sprite sheet, 1 to ${String(FLOAT_ROWS_MAX)}. 1 when left out, and the sheet is then one row of frames as high as the picture. Name more only for a sheet with one row per \`mood\`` },
+      { what: "`mood`", value: `${orList(CHIP_STATES)}. With \`rows\` of 2 or more it picks the row of the sprite sheet, counting from the top in that order; a sheet with fewer rows draws its first row. \`idle\` when left out` },
+      { what: "`along`", value: `${orList(FLOAT_ALONG)}, with \`perch\` only: where the picture stands along its edge. \`start\` is the left of a top or bottom edge and the top of a left or right one, \`end\` the other end. It keeps ${String(FLOAT_EDGE_MARGIN_PX)} px from the corner. \`end\` when left out` },
+      { what: "`from`", value: "With a `once` part only: the `id` of a `stay` part of the same trick. While that picture is on screen, the motion starts at its hand: the picture's front edge (the one toward the side it flies to) at 40% of its height from the top, with the shot's centre on that point. It flies away from the picture across the free area, toward the farther side edge, and a `fly-across` keeps that height. A picture printed in the same run is waited for, up to 1.5 s. When that picture's sprite has `loop` set to `false`, the motion also waits until the picture's frames have played to the last one (up to 2 s after the part arrived, then it starts anyway), so a ball leaves when the throw ends. A picture that loops never delays it. Without that picture on screen (hidden, no room, not drawn within that time) it starts as usual. Naming a part that is missing, is not a `stay` float part or belongs to another trick refuses the part" },
+      { what: "`opens`", value: `${orList(FLOAT_OPENS)}, on a \`stay\` part with \`perch\` or \`idle\`. The trick needs a Page for the tap to open` },
+      { what: "On screen at once", value: `at most ${String(FLOAT_STAY_MAX)} \`stay\` pictures across all tricks, and one \`once\` picture at a time: one waits and the rest are dropped. A trick's \`once\` pictures start at least ${String(FLOAT_ONCE_EVERY_MS / 1000)} s apart` },
+      { what: "When a `once` picture plays", value: "when Collie first sees the part, or sees it change, after the phone has loaded the tricks. To play the same picture again, print the part with a new `id` or another `mood`. Parts that were there when the phone opened do not play" },
+      { what: "Contract", value: `\`sessions\` needs contract ${String(MENU_CONTRACT)}, as on a belt mark. The place itself works at contract 1` },
+      { what: "Motion", value: "transform and opacity only. A hidden page pauses every picture. With reduced motion a `once` picture does nothing and a `stay` picture is a still image: the mood swaps the frame, and nothing glides or wanders" },
+      { what: "How a `stay` picture appears", value: "In place: it is drawn at the spot it rests at and fades in over a fraction of a second. It never travels in from an edge. Only a later change of the free area or of its size glides it, and a `wander` picture moves from spot to spot" },
+      { what: "Art", value: "original art only, never a known character" },
+      SESSIONS_LIMIT,
+      PART_SIZE,
+    ],
+    who: "program",
+    examples: [
+      {
+        kind: "document",
+        json: { v: 1, parts: [{ at: "float", id: "pet", mode: "stay", motion: "perch", edge: "bottom", along: "end", sprite: { src: "media/pet.png", frames: 4, fps: 6, size: "l" }, mood: "working", opens: "page" }] },
+      },
+      {
+        kind: "document",
+        json: {
+          v: 1,
+          parts: [
+            { at: "float", id: "pet", mode: "stay", motion: "perch", sprite: { src: "media/pet.png", size: "m" } },
+            { at: "float", id: "tada", mode: "once", motion: "fly-across", from: "pet", sprite: { src: "media/spark.png", size: "s" } },
+          ],
+        },
+      },
+      { kind: "manifest", toml: `id = "pet"\nname = "Pet"\nrun = "program.ts"\nplaces = ["float", "session"]\n` },
+    ],
+  },
   "agent-view": {
     id: "agent-view",
     name: "Agent view",
@@ -513,7 +580,7 @@ export const PLACES = {
   },
 } satisfies Readonly<Record<PlaceId, PlaceEntry>>;
 
-/** The places in the order the reference lists them: the six a program draws in, then the agent view. */
+/** The places in the order the reference lists them: the seven a program draws in, then the agent view. */
 export const PLACE_ORDER: readonly PlaceId[] = [...PLACE_KINDS, AGENT_VIEW_PLACE];
 
 // ── Parts: the node kinds ────────────────────────────────────────────────────────────────────
@@ -561,7 +628,7 @@ const PART_WORDS = {
   },
   bar: { what: "A strip of buttons, chips and links. With `role` `strip` it scrolls sideways as a band.", example: { kind: "bar", kids: [{ kind: "button", attrs: { label: "Rerun", intent: "rerun" } }, { kind: "chip", text: "3 failed", attrs: { tone: "danger" } }] } },
   chip: { what: "A small label. `state` draws a dot, `current` marks the step, and `at` with `clock` makes it a live time.", example: { kind: "card", kids: [{ kind: "chip", text: "building", attrs: { state: "working", icon: "refresh" } }] } },
-  button: { what: "Sends one intent to the trick on a tap, or copies a text with `does` set to `copy`.", example: { kind: "card", kids: [{ kind: "button", attrs: { label: "Rerun", intent: "rerun", tone: "accent" } }] } },
+  button: { what: "Sends one intent to the trick on a tap, copies a text with `does` set to `copy`, or puts a text into the reply box with `does` set to `draft`.", example: { kind: "card", kids: [{ kind: "button", attrs: { label: "Rerun", intent: "rerun", tone: "accent" } }] } },
   para: { what: "One paragraph of plain text, or of `run` and `link` kids.", example: { kind: "para", text: "Three checks failed on the last run." } },
   line: { what: "One line of monospace screen text, such as a command or a log line.", example: { kind: "line", text: "$ bun test", attrs: { style: "dim" } } },
   run: { what: "A piece of text inside a `para` or a `line`, with its own style, link or live time.", example: { kind: "para", kids: [{ kind: "run", text: "Build " }, { kind: "run", text: "passed", attrs: { style: "bold" } }] } },
@@ -622,8 +689,8 @@ const ATTR_WORDS = {
     badge: "A count, or a dot, on the button.",
     icon: "An icon on the button.",
     hint: "A short line of help for the button.",
-    does: "`copy` copies `value` to the phone's clipboard instead of sending an intent.",
-    value: "The one fixed text a tap sends with the intent, or the text `copy` copies.",
+    does: "`copy` copies `value` to the phone's clipboard instead of sending an intent. `draft` puts `value` into the reply box of the session the page is open for, and opens that session. It never sends: the person reads it and taps Send. `draft` needs `drafts = \"session\"` in `trick.toml`, and it fills only an empty box.",
+    value: `The one fixed text a tap sends with the intent, the text \`copy\` copies, or the text \`draft\` puts into the reply box. A \`draft\` value is at most ${String(DRAFT_VALUE_MAX)} characters, line breaks allowed.`,
   },
   para: { role: "Draws the paragraph as a heading or a quote.", bullet: "A marker before the paragraph, such as `-` or `1.`.", term: "A short term that the paragraph defines." },
   line: { style: "Style words for the whole line.", role: "Draws the line as plain text, a status line or a note." },
@@ -653,7 +720,7 @@ const ATTR_WORDS = {
 
 /** Attributes that a kind needs only under a condition. The always-needed ones are `NODE_REQUIRED_ATTRS`. */
 const ATTR_NEEDS = {
-  button: { intent: "yes, unless `does` is `copy`", value: "yes, when `does` is `copy`" },
+  button: { intent: "yes, unless `does` is `copy` or `draft`", value: "yes, when `does` is `copy` or `draft`" },
   meter: { value: "yes, unless `role` is `progress`" },
   image: { src: "in a program's part", alt: "in a program's part", w: "in a program's part", h: "in a program's part", ref: "in a Decision's view and an agent view" },
 } as const satisfies { readonly [K in NodeKind]?: { readonly [A in (typeof NODE_ATTRS)[K][number]]?: string } };
@@ -674,7 +741,7 @@ const TEXT_NOTES = {
 
 /** What an agent view does differently for a kind. Every other kind reads the same as in a program's part. */
 const AGENT_VIEW_NOTES = {
-  button: `A tap sends the label (and the label of the group it sits in). \`value\`, \`does\` and \`pressed\` are refused: Collie marks the pick, the agent does not. The label is one line of at most ${String(VIEW_TAP_LABEL_MAX)} characters, and says none of Collie's own words.`,
+  button: `A tap sends the label (and the label of the group it sits in). \`value\`, \`does\` (\`draft\` too) and \`pressed\` are refused: Collie marks the pick, the agent does not. The label is one line of at most ${String(VIEW_TAP_LABEL_MAX)} characters, and says none of Collie's own words.`,
   group: `A \`label\` is one line of at most ${String(VIEW_TAP_GROUP_MAX)} characters, because a tap inside the group sends it.`,
   link: "Text that reads as a web address must be that address, in any script. The `href` is a web address only: a session is refused. The phone shows the host after the link.",
   run: "Text with an `href` that reads as a web address must be that address. The `href` is a web address only, and the phone shows its host after the run.",
@@ -730,7 +797,7 @@ export function describeRule(rule: AttrRule): RuleWords {
     case "intent":
       return { type: "intent", limit: "1 to 48 of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit" };
     case "value":
-      return { type: "text", limit: `1 to ${String(VALUE_MAX_BYTES)} bytes, no control or invisible character` };
+      return { type: "text", limit: `1 to ${String(VALUE_MAX_BYTES)} bytes, or with \`does\` \`draft\` 1 to ${String(DRAFT_VALUE_MAX)} characters; no control or invisible character but a line break and a tab` };
     case "url":
       return { type: "web address", limit: `https or http, at most ${String(URL_MAX)} characters` };
     case "href":
@@ -1258,6 +1325,7 @@ export function programOf(n: ProgramNumbers): ProgramEntry {
       { case: `A key or an attribute this Collie does not know, at any depth of a part, at contract 2 or newer`, result: `That part is refused alone, with an \`unknown-key\` refusal that names the key and ends: "${CLOSED_KEY_LINE}" Collie keeps no last good version of it.` },
       { case: "A key this Collie does not know at the top of the document, beside `v`, `parts`, `asOf`, `fresh` and `decisions`", result: "Ignored, with an `ignored` note, at every contract. Every part draws. A key that changes how a part draws or what a tap does goes in the part, never at the top." },
       { case: "A bad value of a known field", result: "That part is refused alone, and the other parts draw. The last good version of the part stays on the phone, marked old." },
+      { case: "A button with `does` set to `draft` in a trick whose `trick.toml` does not say `drafts = \"session\"`", result: `That part is refused alone with "${DRAFTS_SESSION_REFUSAL}" The other parts draw.` },
       { case: "A bad Decision", result: "That Decision is refused alone. Its open card stays as it is." },
       { case: "A bad `asOf` or `fresh`", result: "Refused alone. The parts still draw." },
       { case: "A document that is too big, not JSON, not an object, with no usable `v`, or with `parts` that is not a list", result: "The whole document is refused. The run counts as failed, and the last good parts stay, marked old." },
@@ -1359,6 +1427,7 @@ const MANIFEST_WORDS = {
   rules: { type: "file name", required: `yes, with \`${AGENT_VIEW_PLACE}\`; refused without it`, limit: `a file in the trick's folder of at most ${String(RULES_NAME_MAX)} characters ending in \`.md\`, such as \`rules.md\``, contract: AGENT_VIEW_CONTRACT, what: "The instructions the agent of a session reads. The person reads them whole before they switch the trick on." },
   access: { type: "word", required: "no", limit: `${orList(ACCESS_WORDS)}. Default \`${ACCESS_WORDS[0]}\``, contract: ACCESS_CONTRACT, what: "How much of Collie's local API the trick reads through `t.api`. `see` reads lists and states, `read` adds the text of a screen. A right: a version that raises it asks again. See [Reading Collie through the local API](#reading-collie-through-the-local-api). Experimental." },
   decides: { type: "word", required: "no", limit: `${orList(DECIDES_WORDS)}. Refused on a trick that is only an agent view`, contract: TRICK_CONTRACT_DEFAULT, what: "Whether its Decisions answer into a session. `reply` lets a Decision name `replyTo`, and the person's answer is typed into that session as their own message. Without it, a Decision with `replyTo` is refused. It is a right: a version that adds it asks again." },
+  drafts: { type: "word", required: "no", limit: `${orList(DRAFTS_WORDS)}. Refused on a trick that is only an agent view`, contract: TRICK_CONTRACT_DEFAULT, what: `Whether its buttons may put text into a reply box. \`session\` lets a button set \`does\` to \`draft\`: a tap puts its \`value\` into the reply box of the session the page is open for, only when that box is empty, and never sends. Without it, a part with such a button is refused. The card says: "${DRAFTS_SESSION_LINE}" It is a right: a version that adds it asks again.` },
   field: { type: "list of tables", required: "no", limit: `at most ${String(FIELDS_MAX)} \`[[field]]\` tables. Each has \`key\` (spelled like a trick id, each once), \`kind\` (${orList(FIELD_KINDS)}), \`label\` (at most ${String(FIELD_LABEL_MAX)} characters) and may have \`hint\` (at most ${String(FIELD_HINT_MAX)}), \`default\` and \`required\`. A \`choice\` lists ${String(FIELD_OPTIONS_MIN)} to ${String(FIELD_OPTIONS_MAX)} \`options\` of at most ${String(FIELD_OPTION_MAX)} characters; a \`number\` names whole \`min\` and \`max\` within ${String(FIELD_NUMBER_ABS_MAX)} either way; a \`text\` value is one line of at most ${String(FIELD_TEXT_MAX)} characters; a \`switch\` is never \`required\`` , contract: FIELDS_CONTRACT, what: "Settings the person keeps for the trick, set in its About sheet on the phone. The program reads them in its facts as `values`. A value is the person's data and untrusted for the program: show it, never run it. A setting is never a secret: a key comes through `env`. A new or changed field is a new version and asks again; a changed value does not ask, and runs the trick once." },
 } as const satisfies { readonly [K in (typeof MANIFEST_KEYS)[number]]: Omit<ManifestEntry, "key"> };
 
@@ -1402,7 +1471,7 @@ export const LIMITS: readonly LimitGroup[] = [
   {
     group: "Files of a trick",
     limits: [
-      { what: "Pictures in `media/` and `captures/`, copied with the approved copy", value: `at most ${String(SEED_FILES_MAX)} files and ${sizeWords(SEED_BYTES_MAX)} in all` },
+      { what: "Pictures in `media/` and `captures/`, copied with the approved copy, from `collie trick add` and `collie trick propose` alike", value: `at most ${String(SEED_FILES_MAX)} files and ${sizeWords(SEED_BYTES_MAX)} in all` },
       { what: "`SKILL.md`", value: `at most ${sizeWords(SKILL_BYTES_MAX)}. A larger file is refused, never cut` },
     ],
   },
@@ -1428,6 +1497,7 @@ export const LIMITS: readonly LimitGroup[] = [
       { what: "A spark", value: `${rangeWords(SPARK_LIMITS.values)} numbers` },
       { what: "A progress", value: `\`max\` ${rangeWords(VIEW_LIMITS.progressMax)}` },
       { what: "A button's or an action's `value`", value: `at most ${String(VALUE_MAX_BYTES)} bytes` },
+      { what: "A `draft` button's `value`", value: `at most ${String(DRAFT_VALUE_MAX)} characters` },
     ],
   },
   {
@@ -1480,6 +1550,7 @@ export const LIMITS: readonly LimitGroup[] = [
     group: "A proposal from an agent",
     limits: [
       { what: "Files", value: `at most ${String(PROPOSE_LIMITS.files)}, ${sizeWords(PROPOSE_LIMITS.bytes)} in all, ${String(PROPOSE_LIMITS.depth)} folders deep` },
+      { what: "Pictures from `media/` and `captures/`", value: `at most ${String(PROPOSE_PICTURES.files)}, a PNG, JPEG or WebP by its first bytes, ${sizeWords(PROPOSE_PICTURES.bytes)} each, counted in the files above. The card names each one. Any other file there stays behind` },
       { what: "Open at once", value: `${String(PROPOSALS_SENDER_OPEN_MAX)} per session, ${String(PROPOSALS_MEMBER_OPEN_MAX)} per crew machine, ${String(PROPOSALS_OPEN_MAX)} on the lead` },
       { what: "Per hour", value: `${String(PROPOSALS_SENDER_HOUR_MAX)} per session, ${String(PROPOSALS_MACHINE_HOUR_MAX)} per machine` },
       { what: "The card closes by itself after", value: spanWords(PROPOSAL_EXPIRY_MS) },
@@ -1582,7 +1653,7 @@ export const COMMANDS: readonly CommandEntry[] = [
   { group: "trick", verb: "helper", usage: "trick helper <id|folder>", what: "Rewrites a trick's `trick.ts` with the helper this Collie carries.", flags: [] },
   { group: "trick", verb: "skill", usage: "trick skill [<id>]", what: "Prints what a trick that is on asks of an agent. With no id, prints how to write a trick.", flags: [] },
   { group: "trick", verb: "guide", usage: "trick guide [--json]", what: "Prints how to write a trick and hand it to the person, as plain text for an agent.", flags: [JSON_FLAG] },
-  { group: "trick", verb: "propose", usage: "trick propose <folder> [--request-id <uuid>] [--json]", what: "Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on the Hill while it is on. Nothing runs before their yes.", flags: [{ flag: "--request-id", what: "The proposal's request id, a UUID. The same sender, id and files get the same answer." }, JSON_FLAG] },
+  { group: "trick", verb: "propose", usage: "trick propose <folder> [--request-id <uuid>] [--json]", what: "Hands a trick folder to the person as a card of Collie's own on the lead: in the proposing session on the phone and in Settings, Tricks, and on the Hill while it is on. Nothing runs before their yes. It brings the code and the pictures of `media/` and `captures/`; `config.toml` stays behind.", flags: [{ flag: "--request-id", what: "The proposal's request id, a UUID. The same sender, id and files get the same answer." }, JSON_FLAG] },
   { group: "trick", verb: "view", usage: "trick view <trick> <verb> [args]", what: "Runs one verb of an agent view, from the agent's pane. The verbs are the `trick view` commands below.", flags: [] },
   { group: "tricks", verb: "on", usage: "tricks on [--json]", what: "Switches tricks on for this machine. They are an experiment and off until switched on. Each trick still has its own switch.", flags: [JSON_FLAG] },
   { group: "tricks", verb: "off", usage: "tricks off [--json]", what: "Switches tricks off for this machine: no trick runs or draws. Each trick keeps its own switch.", flags: [JSON_FLAG] },

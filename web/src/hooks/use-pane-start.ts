@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { LAST_RESORT_NO_JOURNAL_MS, type PaneActivity, type PaneHistory } from "@/lib/chat-gate";
 import { mayBeNewWithNothingToRead } from "@/lib/journal-agents";
-import type { AgentStatus } from "@/lib/types";
+import { isErrorBlocked } from "@/lib/triage";
+import type { AgentStatus, AgentView } from "@/lib/types";
 
 // What this view has seen of how the open pane's agent began, for lib/chat-gate.ts.
 //
@@ -119,6 +120,15 @@ export function nextRecord(
   const endMark = base.endMark ?? (ended ? asked : null);
   if (worked === base.worked && blocked === base.blocked && endMark === base.endMark) return base;
   return { ...base, worked, blocked, endMark };
+}
+
+/**
+ * The status the start record reads for a pane. A turn that stopped on an error (`blockedBy: "error"`)
+ * ended, so it reads as `done`: it is no question, and must not latch the terminal body as one.
+ */
+export function startStatusOf(agent: Pick<AgentView, "status" | "blockedBy"> | undefined): AgentStatus | undefined {
+  if (agent === undefined) return undefined;
+  return isErrorBlocked(agent) ? "done" : agent.status;
 }
 
 /** The gate's activity reading of a record. A question or the last resort outranks an ended turn. */

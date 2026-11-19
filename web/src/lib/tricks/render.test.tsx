@@ -364,6 +364,36 @@ describe("a button", () => {
     expect(onTap).not.toHaveBeenCalled();
   });
 
+  it("with does draft and a session, hands its value to the place exactly, and sends nothing to the program", () => {
+    const onTap = vi.fn();
+    const onDraft = vi.fn();
+    const value = "Run the tests,\nthen tell me what failed.";
+    const view = viewOfNodes(bar(button({ label: "Use this prompt", does: "draft", value })));
+    const { getByRole, container } = draw(view, { onTap, onDraft, tap: busy("v/9") });
+    const use = getByRole("button");
+    expect(use).not.toBeDisabled();
+    expect(container.querySelector('[data-slot="trick-button-no-session"]')).toBeNull();
+    fireEvent.click(use);
+    expect(onDraft).toHaveBeenCalledTimes(1);
+    expect(onDraft).toHaveBeenCalledWith(value);
+    expect(onTap).not.toHaveBeenCalled();
+    expect(copyText).not.toHaveBeenCalled();
+  });
+
+  it("with does draft and no session, is drawn disabled and says to open a session first; a tap does nothing", () => {
+    const onTap = vi.fn();
+    const view = viewOfNodes(bar(button({ label: "Use this prompt", does: "draft", value: "x" })));
+    const { getByRole, container } = draw(view, { onTap });
+    const off = getByRole("button");
+    expect(off).toBeDisabled();
+    expect(container.querySelector('[data-slot="trick-button-no-session"]')?.textContent).toBe("Open a session first");
+    fireEvent.click(off);
+    expect(onTap).not.toHaveBeenCalled();
+    // The same height with or without a session: the second line is reserved for every draft button.
+    const live = draw(view, { onDraft: vi.fn() });
+    expect(nodeEl(live.container, "button").style.height).toBe(nodeEl(container, "button").style.height);
+  });
+
   it("is disabled with its reason as the title, and draws its badge and hint", () => {
     const { getByRole, container } = draw(viewOfNodes(bar(button({ label: "Run", intent: "run", disabled: "No log yet", badge: "2", hint: "Runs the red cases" }))));
     const off = getByRole("button");

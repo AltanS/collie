@@ -13,7 +13,8 @@ import { FACTS } from "../web/src/lib/tricks/fixtures/index.ts";
 import { HILL_NODE_PREFIX, INPUTS_CONTRACT, isRequestId, isTrickId, parseFacts, type FactsTrigger, type TrickManifest, type ParsedPart, type Refusal, type TrickDecision, type TrickFacts, type View, type ViewNode } from "../web/src/lib/tricks/schema.ts";
 import { hillWordingWarnings } from "./hill-rules.ts";
 import { EXIT } from "./io.ts";
-import { checkStatic, decisionWording, runAgainstFixture, type FixtureOptions, type FixtureRun, type TrickDeps } from "./trick.ts";
+import { checkStatic, decisionWording, helperOlderNote, runAgainstFixture, type FixtureOptions, type FixtureRun, type TrickDeps } from "./trick.ts";
+import { namedPictureWarnings } from "./trick-folder.ts";
 
 // `collie trick dev <folder|id>` (M94 review 4): `check --run` made friendly. It runs the program once
 // against the same fixture facts `check --run` uses, through the same run path (`runAgainstFixture`:
@@ -151,6 +152,15 @@ export function partSummary(parsed: ParsedPart): string {
       add("view", viewWords(part.view));
       break;
     }
+    case "float": {
+      const { part } = parsed;
+      add("", `${part.mode} ${part.motion}`);
+      add("edge", part.edge);
+      add("src", quoted(part.sprite.src));
+      add("mood", part.mood);
+      add("opens", part.opens);
+      break;
+    }
   }
   return words.join("  ");
 }
@@ -232,6 +242,8 @@ interface DevInputs {
   state?: string;
   /** The absolute folder of `--inputs`. */
   read?: string;
+  /** Whether the note on an older helper was already said (a watch says it once). */
+  helperNoted?: boolean;
 }
 
 /**
@@ -330,11 +342,13 @@ async function devOnce(deps: TrickDeps, folder: string, args: DevArgs, inputs: D
   }
   const ran = await runAgainstFixture(manifest, folder, deps.ctx.env, opts);
   const refusals = ran.parsed?.refusals ?? [];
+  // A picture the output names that the folder lacks, or that a proposal would leave behind: said, never a failure.
+  const pictures = ran.parsed === null ? [] : await namedPictureWarnings(folder, ran.parsed);
   if (args.json) {
     const stderr = ran.outcome.kind === "spawn-failed" ? "" : ran.outcome.stderr;
     const parsed = ran.parsed;
     const kind = args.tap === null ? (inputs.facts?.value.trigger.kind ?? "timer") : "tap";
-    const body = { folder, trigger: kind, outcome: ran.outcome.kind, ms: ran.outcome.ms, stdoutBytes: ran.stdoutBytes, problem: ran.problem, stderr, decisionsListed: ran.decisionsListed, parts: parsed?.parts ?? [], decisions: parsed?.decisions ?? [], refusals, notes: parsed?.notes ?? [], wording: decisionWording(parsed?.decisions ?? []) };
+    const body = { folder, trigger: kind, outcome: ran.outcome.kind, ms: ran.outcome.ms, stdoutBytes: ran.stdoutBytes, problem: ran.problem, stderr, decisionsListed: ran.decisionsListed, parts: parsed?.parts ?? [], decisions: parsed?.decisions ?? [], refusals, notes: parsed?.notes ?? [], wording: decisionWording(parsed?.decisions ?? []), pictures };
     const withState = inputs.state === undefined ? body : { ...body, state: inputs.state };
     deps.io.out(JSON.stringify(readLine === null ? withState : { ...withState, inputs: readLine }, null, 2));
   } else {
@@ -347,9 +361,15 @@ async function devOnce(deps: TrickDeps, folder: string, args: DevArgs, inputs: D
           ? `a tap: ${trigger.intent} on ${trigger.node}`
           : `a ${trigger?.kind ?? "timer"} run`;
     deps.io.out(`trick ${manifest.id} (${manifest.name}) in ${folder}, ${source}, ${what}`);
+    // A helper of an older Collie is Collie's own code: said once, not on every run of a watch.
+    if (report.helper !== undefined && !report.helper.current && !report.helper.modified && inputs.helperNoted !== true) {
+      deps.io.out(`  note: ${helperOlderNote(report.helper.version, folder)}`);
+      inputs.helperNoted = true;
+    }
     if (inputs.state !== undefined) deps.io.out(`  state kept in ${inputs.state}`);
     if (readLine !== null) deps.io.out(`  ${readLine}`);
     for (const line of devSummary(ran, refusals)) deps.io.out(line);
+    for (const line of pictures) deps.io.out(`  warn  ${line}`);
   }
   return ran.problem === null && refusals.length === 0;
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { pinTarget, startViewportPin } from "./viewport-pin";
+import { lastViewportPinAction, pinTarget, startViewportPin } from "./viewport-pin";
 
 // The owner's report (2026-11-07): back from a long break, the installed Android PWA drew the Chat view
 // about one composer box too tall with the keyboard down, and only a hard refresh brought the box
@@ -69,6 +69,18 @@ describe("the column after a return from the background", () => {
     setHeights(900, 840);
     returnToForeground();
     expect(columnHeight()).toBe("840px");
+  });
+
+  it("tells a reader what the pin did last, and when, without changing it", () => {
+    stop = startViewportPin();
+    setHeights(900, 840);
+    const before = Date.now();
+    returnToForeground();
+    expect(lastViewportPinAction()).toMatchObject({ kind: "pinned" });
+    expect(lastViewportPinAction()?.at).toBeGreaterThanOrEqual(before);
+    window.dispatchEvent(new Event("resize"));
+    expect(lastViewportPinAction()).toMatchObject({ kind: "released" });
+    expect(columnHeight()).toBe("100dvh");
   });
 
   it("is left alone when the two agree", () => {

@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { redactText } from "../bridge/redact.ts";
-import { GROUP_CAPACITY_WORDS } from "../bridge/tricks/card-group.ts";
+import { GROUP_CAPACITY_WORDS, sizeWords } from "../bridge/tricks/card-group.ts";
 import { proposalCardCount, type ProposalCardCount } from "../bridge/tricks/proposal-card.ts";
+import type { ProposedFile } from "../bridge/tricks/propose-wire.ts";
 import { approvedDirOf, approveFolder, pruneCopies, verifyCopy } from "../bridge/tricks/approved.ts";
 import { codeShowsWhole } from "../bridge/tricks/code-view.ts";
 import { CONFIG_FILE, diskTrickFs, trickCodeHash, walkTrickCode } from "../bridge/tricks/code-hash.ts";
@@ -44,6 +45,7 @@ import {
   AGENT_VIEW_WORDS,
   ACCESS_LINES,
   DECIDES_REPLY_WORDS,
+  DRAFTS_SESSION_LINE,
   isHostName,
   isTrickId,
   parseFacts,
@@ -67,7 +69,7 @@ import {
 } from "../web/src/lib/tricks/schema.ts";
 import { readTricksFeature } from "../bridge/tricks/feature-switch.ts";
 import { readEnvMarkers } from "./beacon.ts";
-import { readTrickFolder } from "./trick-folder.ts";
+import { namedPictureWarnings, readTrickFolder } from "./trick-folder.ts";
 import { paneNotProvenShell, type PaneKind } from "./walky.ts";
 import type { CliContext } from "./context.ts";
 import { hillWordingWarnings } from "./hill-rules.ts";
@@ -677,6 +679,8 @@ export interface TrickCheckReport {
     wording: { key: string; text: string }[];
     /** The soft note that a tap on the trick's tile shows nothing new ({@link TAP_SHOWS_NOTHING}), or absent. Never fails the check. */
     tapNote?: string;
+    /** One warning for each `media/` or `captures/` file the output names that a proposal would not bring (trick-folder.ts `namedPictureWarnings`). Never fails the check. */
+    pictures: string[];
     stderr: string;
   };
 }
@@ -826,7 +830,7 @@ export async function runAgainstFixture(manifest: TrickManifest, folder: string,
     });
     const problem = outcomeProblem(outcome, 400);
     if (problem !== null || outcome.kind !== "exited") return { outcome, problem, stdoutBytes: 0, parsed: null, decisionsListed: false };
-    const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places, contract: manifest.contract, decidesReply: manifest.decides === "reply" });
+    const parsed = parseTrickDocumentText(outcome.stdout, { declared: manifest.places, contract: manifest.contract, decidesReply: manifest.decides === "reply", draftsSession: manifest.drafts === "session" });
     const decisionsListed = asJsonObject(parseJson(outcome.stdout))?.decisions !== undefined;
     return { outcome, problem, stdoutBytes: new TextEncoder().encode(outcome.stdout).length, parsed, decisionsListed };
   } finally {
@@ -873,12 +877,13 @@ export async function checkRun(report: TrickCheckReport, env: CliContext["env"])
   const ran = await runAgainstFixture(manifest, report.folder, env);
   const { outcome, problem } = ran;
   const stderr = outcome.kind === "spawn-failed" ? "" : outcome.stderr;
-  const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], notes: [], wording: [], stderr };
+  const run: NonNullable<TrickCheckReport["run"]> = { outcome: outcome.kind, ms: outcome.ms, problem, parts: [], refusals: [], notes: [], wording: [], pictures: [], stderr };
   if (ran.parsed !== null) {
     run.parts = ran.parsed.parts.map((p) => `${p.part.at} ${p.part.id}`);
     run.refusals = ran.parsed.refusals;
     run.notes = ran.parsed.notes;
     run.wording = decisionWording(ran.parsed.decisions);
+    run.pictures = await namedPictureWarnings(report.folder, ran.parsed);
     if (problem === null && run.refusals.length === 0 && (await tapShowsNothing(manifest, report.folder, env, ran.parsed))) run.tapNote = TAP_SHOWS_NOTHING;
   }
   report.run = run;
@@ -912,6 +917,7 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     }
     if (m.rules !== undefined) io.out(`  rules:  ${m.rules}. ${RULES_WORDS}`);
     if (m.decides === "reply") io.out(`  decides: reply. ${DECIDES_REPLY_WORDS}`);
+    if (m.drafts === "session") io.out(`  drafts: session. ${DRAFTS_SESSION_LINE}`);
     if (m.access !== undefined) io.out(`  access: ${m.access}. ${ACCESS_LINES[m.access]}`);
   }
   if (report.env.length > 0) {
@@ -922,9 +928,9 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
   if (report.reads !== undefined) io.out(`  reads:  ${report.reads} The files are data for the program, never code.`);
   if (report.codeHash !== undefined) io.out(`  code:   sha256 ${report.codeHash} (what \`collie trick on\` approves)`);
   const h = report.helper;
-  if (h !== undefined && h.modified) io.out(`  helper: ${HELPER_FILE} is a modified helper (its first line says v${String(h.version)}), so it is checked as the trick's own code`);
+  if (h !== undefined && h.modified) io.out(`  helper: ${HELPER_FILE} is a modified helper (its first line says v${String(h.version)}), so it is checked as the trick's own code.`);
   else if (h !== undefined && h.current) io.out(`  helper: ${HELPER_FILE} is collie trick helper v${String(h.version)}, Collie's own code, not checked line by line`);
-  else if (h !== undefined) io.out(`  helper: ${HELPER_FILE} is helper v${String(h.version)}, an older one; update with collie trick helper ${m?.id ?? report.id}`);
+  else if (h !== undefined) io.out(`  note: ${helperOlderNote(h.version, report.folder)}`);
   const others = report.notScanned.filter((f) => f !== HELPER_FILE);
   if (others.length > 0) io.out(`  not grepped (docs, data, tests): ${others.slice(0, 8).join(", ")}${others.length > 8 ? ` and ${String(others.length - 8)} more` : ""}`);
   if (report.runs.length > 0) {
@@ -948,6 +954,7 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
     for (const n of run.notes) io.out(`  note: output ${n.path === "" ? "" : `${n.path} `}${n.reason}`);
     // Soft too: how a Decision is worded is the author's call (HILL_WRITING).
     for (const w of run.wording) io.out(`  warn: decision ${w.key}: ${w.text}`);
+    for (const line of run.pictures) io.out(`  warn: ${line}`);
     if (run.tapNote !== undefined) io.out(`  note: ${run.tapNote}`);
     if (run.problem !== null && run.stderr.trim() !== "") {
       io.err("  stderr:");
@@ -963,12 +970,39 @@ function printReport(deps: Pick<TrickDeps, "io">, report: TrickCheckReport): voi
   else io.out(cards !== undefined && !cards.ok ? "ok: it runs on this machine, but it cannot be proposed." : "ok: no problems.");
 }
 
+/** The one sentence for a `trick.ts` that is a helper an older Collie shipped, byte for byte: Collie's own code, not counted. */
+export function helperOlderNote(version: number, where: string): string {
+  return `${HELPER_FILE} is the helper from an older Collie (v${String(version)}). Run \`collie trick helper ${where}\` to update it.`;
+}
+
+/** The refusal of a `trick.ts` that says helper vN but whose text matches none Collie shipped, so it counts as the trick's own code. */
+export function helperEditedRefusal(version: number, bytes: number, where: string): string {
+  return `${HELPER_FILE} says helper v${String(version)} but its text differs from that helper, so it counts as your own code (${sizeWords(bytes)}). Run \`collie trick helper ${where}\` to restore it, or remove the version line.`;
+}
+
+/**
+ * The cards of a trick folder as a proposal. A refusal for size is explained when a hand-edited helper is the
+ * cause: the same files without that `trick.ts` fit. Any other refusal, and a count that fits, stay as they are.
+ * `where` is the folder as the person named it, for the verb the sentence offers.
+ */
+export function proposalCards(report: TrickCheckReport, files: readonly (Pick<ProposedFile, "rel" | "bytes"> & { executable?: boolean })[], crew: boolean, where: string): ProposalCardCount {
+  const manifest = report.manifest;
+  if (manifest === undefined) throw new Error("proposalCards needs a manifest");
+  const warnings = [...new Set(report.warnings.map((w) => w.kind))];
+  const cards = proposalCardCount({ manifest, files, warnings, crew });
+  if (cards.ok || report.helper?.modified !== true || (cards.code !== "too_large" && cards.code !== "card_too_large")) return cards;
+  const helper = files.find((file) => file.rel === HELPER_FILE);
+  if (helper === undefined) return cards;
+  const without = proposalCardCount({ manifest, files: files.filter((file) => file !== helper), warnings, crew });
+  return without.ok ? { ...cards, error: helperEditedRefusal(report.helper.version, helper.bytes.byteLength, where) } : cards;
+}
+
 /** The cards of the folder as a proposal, read as `collie trick propose` reads it. A folder it cannot read counts nothing: propose says why. */
-async function countCards(report: TrickCheckReport, crew: boolean): Promise<void> {
+async function countCards(report: TrickCheckReport, crew: boolean, where: string): Promise<void> {
   if (report.manifest === undefined) return;
   const read = await readTrickFolder(report.folder);
   if (!read.ok) return;
-  report.cards = proposalCardCount({ manifest: report.manifest, files: read.files, warnings: [...new Set(report.warnings.map((w) => w.kind))], crew });
+  report.cards = proposalCards(report, [...read.files, ...read.pictures], crew, where);
 }
 
 export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): Promise<number> {
@@ -987,7 +1021,7 @@ export async function cmdTrickCheck(deps: TrickDeps, args: readonly string[]): P
   const crew = leadsCrewOnDisk(deps);
   const report = await checkStatic(folder, deps.files, { crew, platform: deps.platform });
   if (run && report.manifest !== undefined && report.problems.length === 0) await checkRun(report, deps.ctx.env);
-  await countCards(report, crew);
+  await countCards(report, crew, named);
   if (json) deps.io.out(JSON.stringify(report, null, 2));
   else printReport(deps, report);
   return reportFails(report) ? EXIT.FAIL : EXIT.OK;

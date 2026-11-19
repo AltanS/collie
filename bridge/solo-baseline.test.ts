@@ -435,6 +435,9 @@ const PANE_WIRE_KEYS = {
   // added 2026-11-13). Present only when the harness wrote one, and this harness builds its engine with no
   // title tracker, so no golden byte moved.
   agentTitle: true,
+  // Not a crew dimension: why a blocked pane needs a look (PR 787). Present only on a herdr-core pane whose
+  // program reported `error`, and this harness reports none, so no golden byte moved.
+  blockedBy: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -584,6 +587,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "askRoute",
       "asks",
       "badge",
+      "blockedBy",
       "cache",
       "canSteer",
       "canStop",
@@ -799,7 +803,7 @@ function declaredRoutes(): string[] {
   const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
   const exact = [...src.matchAll(/pathname === "([^"]+)"/g)].map((m) => m[1]!);
   const prefixes = [...src.matchAll(/pathname\.startsWith\("([^"]+)"\)/g)].map((m) => `${m[1]}*`);
-  const patterns = [...src.matchAll(/^const \w*ROUTE = (\/\^.+\/);$/gm)].map((m) => m[1]!);
+  const patterns = [...src.matchAll(/^(?:export )?const \w*ROUTE = (\/\^.+\/);$/gm)].map((m) => m[1]!);
   return [...new Set([...exact, ...prefixes, ...patterns])].toSorted();
 }
 
@@ -941,6 +945,12 @@ describe("solo zero-tax — routes", () => {
       // It is named here, not exempted: the guard's job is that a route arrives on purpose.
       "/api/devices",
       "/api/devices/revoke",
+      // The composer diagnostic: a SOLO route that legitimately extends this list, named here rather
+      // than exempted. A paired phone whose reply box sits below its screen sends the heights it
+      // measured (numbers and enums only, a fixed key set); this bridge keeps them in
+      // `diag-composer.jsonl`. Read-gated like the notification preferences, never forwarded, nothing
+      // leaves the host. A bridge no phone reports to writes nothing through it.
+      "/api/diag/composer",
       // The new-space sheet's folder list (M40/02, #289) — two SOLO routes that legitimately extend
       // this list, named here rather than exempted. Session-scoped through the same closure
       // `/api/launchers` rides, the read gated as a read and the star as a write, so a `?host=` call
@@ -1213,6 +1223,7 @@ const CONFIG_KEYS = {
   accountWindows: true,
   skipServe: true,
   basePath: true,
+  authReturn: true,
   uploadExtraTypes: true,
   cacheWarnSeconds: true,
   accessTeam: true,
@@ -1230,6 +1241,7 @@ describe("solo zero-tax — config", () => {
       "allowNonLoopbackBind",
       "allowedOrigins",
       "auditContent",
+      "authReturn",
       "basePath",
       "cacheRulesFile",
       "cacheWarnSeconds",
@@ -1307,7 +1319,7 @@ describe("solo zero-tax — config", () => {
   // Read from `bridge/config-schema.ts` rather than by grepping `config.ts`'s source, because the
   // schema is now the single declaration of what every setting is (ADR 0040). The rows that carry a
   // `configField` are exactly the settings `loadConfig` resolves, which is the list §11 pins. A
-  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052), `COLLIE_MUSE_ROOT`, `COLLIE_OPENCLAW_ROOT` (#401), `COLLIE_KIRO_ROOT`, `COLLIE_DSH_ROOT`, the two `COLLIE_ACCESS_*` keys (ADR 0081) `COLLIE_SENT` (ADR 0107) `COLLIE_ACCOUNT_WINDOWS` (ADR 0118) and `COLLIE_INSIDE` (M99) — the two
+  // CONFIG FILE ADDS NO ENV KEY, so this list is the 38 names it has always been plus `COLLIE_BASE_PATH` (ADR 0052), `COLLIE_AUTH_RETURN`, `COLLIE_MUSE_ROOT`, `COLLIE_OPENCLAW_ROOT` (#401), `COLLIE_KIRO_ROOT`, `COLLIE_DSH_ROOT`, the two `COLLIE_ACCESS_*` keys (ADR 0081) `COLLIE_SENT` (ADR 0107) `COLLIE_ACCOUNT_WINDOWS` (ADR 0118) and `COLLIE_INSIDE` (M99) — the two
   // `COLLIE_MUX_ENDPOINT_<NAME>` rows collapse back to the prefix the old grep saw, because the env
   // name is built at the call site and the file key must not be.
   test("the schema names exactly today's COLLIE_* env keys — no crew enrollment key", () => {
@@ -1327,6 +1339,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_ALLOW_ANY_HOST",
       "COLLIE_ALLOW_NON_LOOPBACK_BIND",
       "COLLIE_AUDIT_CONTENT",
+      "COLLIE_AUTH_RETURN",
       "COLLIE_BASE_PATH",
       "COLLIE_CACHE_WARN_SECONDS",
       "COLLIE_CODEX_ROOT",
@@ -1420,6 +1433,10 @@ const STATE_DIR_ENTRIES = [
   // The bridge's own log of a durable program's panes (ADR 0099), one file per pane inside this folder.
   // Written only by a bridge that drives `COLLIE_MUX=durable`: the factory that builds the writer is
   // never called for Herdr, tmux or zellij, so every other instance never has this folder.
+  // The composer diagnostic (bridge/diag-composer.ts): the heights a phone measured when its reply box sat
+  // below its screen, one JSON line each, at most 500 lines. Written by use and by nothing else: absent
+  // until a phone reports an off-screen box. Numbers and enums only, no text.
+  "diag-composer.jsonl",
   "durable",
   // The push guard's memory for asks that travel as data (ADR 0100), keyed on (host, toolCallId).
   // Written only when a pane that carries asks opens or closes one: a bridge with no durable pane,

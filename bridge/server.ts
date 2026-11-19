@@ -134,6 +134,7 @@ import {
   type SentSurface,
   type SentWriteAnswer,
 } from "./sent.ts";
+import { ComposerDiagStore, DIAG_COMPOSER_BODY_MAX, diagFileIo, parseComposerDiag } from "./diag-composer.ts";
 import {
   clearRecentRuns,
   memoryRecentRuns,
@@ -282,7 +283,7 @@ import {
   type WhistleRouteDeps,
 } from "./stt/whistle-http.ts";
 import { uploadTooLarge } from "./uploads.ts";
-import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, journalAgentOf, toPaneWire } from "./types.ts";
+import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, isErrorBlocked, isQuestionPane, journalAgentOf, toPaneWire } from "./types.ts";
 import type { LaunchCheckResponse, MachineAlertsResponse } from "./types.ts";
 import { parseMachineAlerts } from "./machine-parse.ts";
 import { SPARK_MAX_MINUTES } from "./machine-history.ts";
@@ -664,7 +665,7 @@ const TRICKS_UNDO_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/undo$/;
 const TRICKS_VALUE_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/value$/;
 // And a picture of the trick's own `media/` folder (M94 review 11), read-gated like the list. Group 3 is
 // `media/` and the file; bridge/tricks/media.ts checks it before any path is built.
-const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
+export const TRICKS_MEDIA_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/(media\/.+)$/;
 // And a trick's code for the About sheet's folds (package F), read-gated like the list: the approved copy's
 // bytes, masked, marked by the text search. Group 1 the host, group 2 the trick id; `?file=` names one file.
 const TRICKS_CODE_ROUTE = /^\/api\/tricks\/([^/]+)\/([^/]+)\/code$/;
@@ -1744,6 +1745,8 @@ export function startServer(opts: {
   };
   /** Who the requester is, across both device gates — see {@link requestDevice}. */
   const whois = (req: Request): DeviceAuth => requestDevice(req, cfg, pairingGate);
+  // The composer diagnostic's file (bridge/diag-composer.ts): nothing touches the disk until a phone reports one.
+  const composerDiag = new ComposerDiagStore(diagFileIo(cfg.stateDir), { version: opts.version });
   const crewLead = opts.crewLead;
   const crewStatus = opts.crewStatus;
   const peerNotifier = opts.peerNotifier;
@@ -2085,7 +2088,14 @@ export function startServer(opts: {
       workspaces: withSpacesContext(workspaces, { gitHeads, bases: worktreeBases }),
       tabs,
       // A label is display-only: `name` stays the identity the phone sends back as `?session=`.
-      sessions: withSessionLabels(registry.list(), sessionLabels.labelOf),
+      // A pane that stopped on an error counts as needing you until it is seen, the phone's own rule.
+      sessions: withSessionLabels(
+        registry.list((session, pane) => {
+          const a = activity.get(session, pane.paneId);
+          return a !== undefined && a.activeAt > a.seenAt;
+        }),
+        sessionLabels.labelOf,
+      ),
       notifications: { snoozedUntil: snooze.until() },
       update: updateStatusWithPeers(),
       ts: Date.now(),
@@ -3586,6 +3596,28 @@ export function startServer(opts: {
         if (rt instanceof Response) return rt;
         return sendReceiptsRoute(rt, url.searchParams.get("pane"), req.headers.get("accept-encoding"));
       }
+      // The composer diagnostic: a phone whose reply box sits below its screen sends the heights it measured,
+      // once. Numbers, booleans and three small enums, a fixed key set (bridge/diag-composer.ts), kept in
+      // `<stateDir>/diag-composer.jsonl` for a person on this host to read. Read-gated like the notification
+      // preferences: a paired device, with or without the write right, because a read-only phone shows the same
+      // fault. This machine's file only, never forwarded, nothing leaves the host.
+      if (pathname === "/api/diag/composer" && req.method === "POST") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        const raw = await req.text().catch(() => "");
+        if (raw.length > DIAG_COMPOSER_BODY_MAX) return text("bad composer record", 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `JSON.parse` output IS a JsonValue by construction; `parseComposerDiag` checks every key and value.
+          body = JSON.parse(raw) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const diag = parseComposerDiag(body);
+        if (diag === null) return text("bad composer record", 400);
+        if ((await composerDiag.record(diag, pairedLabel(req, pairingGate))) === "unwritable") return text("could not keep the record", 500);
+        return secure(new Response(null, { status: 204 }));
+      }
       // Report a problem (ADR 0123): the setup block and, on `screen=1`, the pane's last rows, always
       // masked. A read for a paired device only, since the screen goes to a public issue if the person
       // sends it. This collie's own panes only: a crew member's pane is the next slice.
@@ -5048,7 +5080,9 @@ export function startServer(opts: {
       // the bridge refuses a stale session. Collie never routes it. If a request gets this far, no
       // proxy claimed it — say so, instead of letting the SPA fallback answer with the app shell and
       // leave the operator staring at the UI they were trying to escape.
-      if (isReservedAuthPath(pathname)) return reservedAuthPlaceholder(cfg.basePath);
+      if (isReservedAuthPath(pathname)) {
+        return cfg.authReturn ? reservedAuthReturn(cfg.basePath) : reservedAuthPlaceholder(cfg.basePath);
+      }
 
       // ── The math engines (ADR 0132) ──────────────────────────────────────
       // From the store's pack of the running version, else `web/dist/math/` beside a source build,
@@ -5198,16 +5232,18 @@ export function hasSplitUrl(ansiText: string): boolean {
 /**
  * What the bridge knows about a pane that its multiplexer may not, for a `recent` read of it
  * (mux/types.ts `MuxReadHint`): `blocked` when the state engine reads the pane as waiting on a
- * person. The engine lifts a pane whose screen shows an ask to `blocked` even when the multiplexer
- * reports `working` (state-engine.ts `liftScreenAsks`), which is the case herdr-core cannot see on
- * its own: pi under a dialog. `undefined` when the engine knows nothing to add.
+ * person's answer. The engine lifts a pane whose screen shows an ask to `blocked` even when the
+ * multiplexer reports `working` (state-engine.ts `liftScreenAsks`), which is the case herdr-core cannot
+ * see on its own: pi under a dialog. A pane that stopped on an error (`blockedBy: "error"`) waits on no
+ * answer, so it gets no hint and Load older reads its history. `undefined` when the engine knows
+ * nothing to add.
  */
 export function paneReadHint(
-  engine: { current(): { readonly agents: readonly Pick<AgentView, "paneId" | "status">[] } },
+  engine: { current(): { readonly agents: readonly Pick<AgentView, "paneId" | "status" | "blockedBy">[] } },
   paneId: string,
 ): MuxReadHint | undefined {
   const pane = engine.current().agents.find((agent) => agent.paneId === paneId);
-  return pane?.status === "blocked" ? { blocked: true } : undefined;
+  return pane !== undefined && isQuestionPane(pane) ? { blocked: true } : undefined;
 }
 
 /**
@@ -7165,12 +7201,16 @@ export function normalizeTabLabel(
 // Set a tab's label. Structural metadata op — strictly less powerful than the text/keys injection the
 // bridge already allows, so it stays within the existing remote-shell threat model. A tab has no
 // "clear" (see normalizeTabLabel): a blank label is a 400, not a reset to the tab number.
-async function renameTab(
-  herdr: MuxAdapter,
-  engine: StateEngine,
+//
+// The tab is all it renames. A one-pane tab's name already names its session through the name rule
+// (pane-name.ts `givenName`: a person's names come before the agent's title, #815), so no pane label is
+// copied from it; a copy would go stale at the next rename made anywhere else.
+export async function renameTab(
+  herdr: Pick<MuxAdapter, "renameTab" | "refresh">,
+  engine: Pick<StateEngine, "pokeNow">,
   tabId: string,
   req: Request,
-  audit: AuditLog,
+  audit: Pick<AuditLog, "record">,
   device: string | null,
   session: string,
 ): Promise<Response> {
@@ -10010,7 +10050,7 @@ export interface SendRouteRuntime {
   readonly name: string;
   readonly herdr: Pick<MuxAdapter, "controlTurn">;
   readonly engine: {
-    current(): { readonly agents: readonly (Pick<AgentView, "paneId" | "agent"> & { readonly status?: AgentView["status"] })[]; readonly shellPanes?: readonly Pick<AgentView, "paneId">[] };
+    current(): { readonly agents: readonly (Pick<AgentView, "paneId" | "agent"> & { readonly status?: AgentView["status"]; readonly blockedBy?: AgentView["blockedBy"] })[]; readonly shellPanes?: readonly Pick<AgentView, "paneId">[] };
     noteInput(): void;
     pokeNow(): void;
   };
@@ -10031,6 +10071,16 @@ export function sendSpoke(mode: SendRequest["mode"], outcome: string): boolean {
 
 /** The pane states in which a session waits for the person: no turn runs, and no question or dialog is open. */
 const WAITING_STATES: ReadonlySet<string> = new Set(["idle", "done"]);
+
+/**
+ * Whether the session waits for the person, by the bridge's last read of its pane: {@link WAITING_STATES},
+ * or `blocked` by an error (`blockedBy: "error"`), which also runs no turn and shows no dialog (PR 787).
+ */
+export function sessionWaited(pane: { readonly status?: AgentView["status"] | undefined; readonly blockedBy?: AgentView["blockedBy"] } | undefined): boolean {
+  const status = pane?.status;
+  if (status === undefined) return false;
+  return WAITING_STATES.has(status) || isErrorBlocked({ status, blockedBy: pane?.blockedBy });
+}
 
 /**
  * Whether one phone send that spoke ALSO started the session's next turn (M96 spec 10): the Hill then
@@ -10113,8 +10163,7 @@ export async function sendRoute(
     sendRequest = { ...plain, text: source.text, mode: source.mode };
   }
   // Whether the session waited for the person right before this send, by the bridge's own last read.
-  const status = rt.engine.current().agents.find((agent) => agent.paneId === paneId)?.status;
-  const waited = status !== undefined && WAITING_STATES.has(status);
+  const waited = sessionWaited(rt.engine.current().agents.find((agent) => agent.paneId === paneId));
   let answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
   let receipt = answer.receipt;
   // The old row goes once the new request was taken; a refusal keeps it, text and all.
@@ -11486,7 +11535,8 @@ nothing here and has no sign-in of its own.</p>
 this Collie, pair this device instead: run <code>collie pair</code> on the computer that runs
 Collie, then enter the code in Settings.</p>
 <p>If you are the operator: point this path at your proxy's sign-in flow. See <em>Serving Collie
-behind your own reverse proxy</em> in the README.</p>
+behind your own reverse proxy</em> in the README. If your front door signs in on every path and has
+no page here, set <code>COLLIE_AUTH_RETURN=1</code> and this address sends you back to Collie.</p>
 <p><a href="${base}">Back to Collie</a> · <a href="${base}settings/system">Open Settings</a></p>
 </body>
 </html>
@@ -11497,6 +11547,24 @@ behind your own reverse proxy</em> in the README.</p>
       headers: {
         "content-type": "text/html; charset=utf-8",
         "content-security-policy": CSP,
+        "cache-control": "no-store",
+      },
+    }),
+  );
+}
+
+/**
+ * What `/auth/` answers under `COLLIE_AUTH_RETURN=1`: a `303` to the mount, never cached.
+ *
+ * @param basePath The normalised mount (`/` or `/collie/`, ADR 0052). The only `location` it sends.
+ * @returns A redirect with no body, outside every gate, like the placeholder.
+ */
+export function reservedAuthReturn(basePath: string = "/"): Response {
+  return secure(
+    new Response(null, {
+      status: 303,
+      headers: {
+        location: basePath,
         "cache-control": "no-store",
       },
     }),

@@ -327,6 +327,10 @@ describe("rule 3: tap words are visible words", () => {
     const copy = parseAgentView([{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Copy", does: "copy", value: "rm -rf ~" } }] }]);
     expect(copy.view).toBeUndefined();
     expect(copy.refusals.map((x) => x.reason)).toEqual(expect.arrayContaining([VIEW_NO_DOES, VIEW_NO_VALUE]));
+    // `does: "draft"` (1.29.1) is refused here too: an agent view's tap already sends its label, and a draft would be a second sender.
+    const draft = parseAgentView([{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Draft", does: "draft", value: "run the tests" } }] }]);
+    expect(draft.view).toBeUndefined();
+    expect(draft.refusals.map((x) => x.reason)).toEqual(expect.arrayContaining([VIEW_NO_DOES, VIEW_NO_VALUE]));
     expect(parseViewChoice({ options: [{ label: "A", value: "hidden" }] }, "/choice", { images: 0 }).choice).toBeUndefined();
   });
 

@@ -16,6 +16,8 @@ interface PinHintProps {
    * The list hands it to the first row below, so focus never falls to `body`.
    */
   onFocusLeaves?: () => void;
+  /** The line's widest size in px. The large-screen dashboard (ADR 0158) holds it to one Space's width. Absent, the column's. */
+  width?: number;
 }
 
 // THE PIN HINT (M38/02): one quiet line on the Panes tab, in the place the Pinned group takes once a
@@ -35,14 +37,14 @@ interface PinHintProps {
 // (§11 rule 1), holding its words through the exit. The list's `gap-5` rides inside the collapse
 // (`-mt-5` outside, `pt-5` inside), so the gap closes with the box and nothing drops 20px when the
 // box finally unmounts. At first paint it is simply there, with no entrance.
-export function PinHint({ open, onFocusLeaves }: PinHintProps) {
+export function PinHint({ open, onFocusLeaves, width }: PinHintProps) {
   useLocale();
   const pointerFine = useMediaQuery("(pointer: fine)");
   const box = useRef<HTMLDivElement>(null);
   return (
     <Collapse open={open} className="-mt-5">
       {open ? (
-        <div ref={box} className="pt-5">
+        <div ref={box} className="pt-5" style={width === undefined ? undefined : { maxWidth: width }}>
           <Notice
             tone="neutral"
             variant="box"

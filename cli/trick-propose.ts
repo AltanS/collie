@@ -7,16 +7,15 @@ import { edgeStateDirs, readEnvMarkers } from "./beacon.ts";
 import type { HillDeps } from "./hill.ts";
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT } from "./io.ts";
-import { checkStatic, leadsCrewOnDisk, reportFails, runAgainstFixture } from "./trick.ts";
-import { readTrickFolder } from "./trick-folder.ts";
+import { checkStatic, helperOlderNote, leadsCrewOnDisk, proposalCards, reportFails, runAgainstFixture } from "./trick.ts";
+import { readTrickFolder, type LeftPicture } from "./trick-folder.ts";
 
-export { PROPOSE_WALK_MAX, readTrickFolder, type FolderRead } from "./trick-folder.ts";
+export { PROPOSE_WALK_MAX, readTrickFolder, type FolderRead, type LeftPicture } from "./trick-folder.ts";
 import { AskLate, NO_SOCKET_TEXT, shown } from "./walky.ts";
 import { asJsonBoolean, asJsonObject, asJsonString, parseJsonObject, type JsonValue } from "../web/src/lib/json.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { PROPOSE_ASK_MS } from "../bridge/tricks/propose-door.ts";
-import { proposalCardCount } from "../bridge/tricks/proposal-card.ts";
-import { manifestGivesRules, PROPOSE_HAS_RULES, readProposal, wireFiles, type ProposedFile } from "../bridge/tricks/propose-wire.ts";
+import { manifestGivesRules, PROPOSE_HAS_RULES, readProposal, shownPath, wireFiles, type ProposedFile } from "../bridge/tricks/propose-wire.ts";
 import type { TrickManifest } from "../web/src/lib/tricks/schema.ts";
 import { MANIFEST_FILE } from "../bridge/tricks/paths.ts";
 import { warningLines } from "../bridge/tricks/scan.ts";
@@ -33,8 +32,9 @@ import { isRequestId } from "../bridge/worktree-receipts.ts";
 // their yes.
 //
 // Left behind, never sent: dot files and dot folders (`.env`, `.git`), `node_modules/`, `*.log`, the
-// bridge's own `inputs/`, `media/` and `captures/` (a proposal carries code only, security review F3), and
-// `config.toml`: the program reads it, so the person writes it on the machine (security review F2).
+// bridge's own `inputs/`, and `config.toml`: the program reads it, so the person writes it on the machine
+// (security review F2). The top `media/` and `captures/` folders send their PICTURES only (2026-11-18,
+// cli/trick-folder.ts): each other file there is named with the reason it stays behind.
 
 /** What the CLI prints when no bridge on this machine takes proposals. */
 export const PROPOSE_UNKNOWN = "No running Collie on this machine takes trick proposals. Update Collie, or start it.";
@@ -63,6 +63,25 @@ export function proposeWhere(where: JsonValue | undefined): string {
   return "in Settings, Tricks, on the phone";
 }
 
+/** What the CLI prints after "Sent …": the kinds of file a proposal never carries. */
+export const PROPOSE_LEFT_KINDS = "dot files, node_modules, logs, inputs/, config.toml, and any file in media/ or captures/ that is not a picture";
+/** The most files of `media/` and `captures/` the CLI names one by one as left behind. */
+export const PROPOSE_LEFT_PICTURES_SHOWN = 10;
+
+/** "Sent 3 files and 2 pictures." */
+export function sentLine(files: number, pictures: number): string {
+  const code = files === 1 ? "1 file" : `${String(files)} files`;
+  if (pictures === 0) return `Sent ${code}.`;
+  return `Sent ${code} and ${pictures === 1 ? "1 picture" : `${String(pictures)} pictures`}.`;
+}
+
+/** One line for each file of `media/` and `captures/` that stays behind, at most {@link PROPOSE_LEFT_PICTURES_SHOWN}, then how many more. */
+export function leftPictureLines(left: readonly LeftPicture[]): string[] {
+  const lines = left.slice(0, PROPOSE_LEFT_PICTURES_SHOWN).map((row) => `Left behind: ${shownPath(row.rel)} ${row.why}.`);
+  const more = left.length - PROPOSE_LEFT_PICTURES_SHOWN;
+  return more > 0 ? [...lines, `Left behind: ${String(more)} more files of media/ and captures/.`] : lines;
+}
+
 /** What the CLI says when the folder's config.toml stayed behind. */
 export const PROPOSE_CONFIG_LEFT = "config.toml stays behind: your person sets the trick up on the machine.";
 /** The warning for a trick that, run without its config.toml, drew nothing, failed or printed a part Collie refuses (decision 7). */
@@ -75,6 +94,7 @@ export const PROPOSE_NEEDS_CONFIG =
  * trick run, 2026-11-16, decision 7). Runs in a scratch folder of its own, removed after.
  */
 async function needsItsConfig(manifest: TrickManifest, files: readonly ProposedFile[], env: ProposeDeps["ctx"]["env"]): Promise<boolean> {
+  // `files` holds the pictures too, so a program that reads its own media/ runs as it will after the yes.
   const dir = await mkdtemp(join(tmpdir(), `collie-propose-${manifest.id}-`));
   try {
     for (const file of files) {
@@ -209,13 +229,16 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   if (!read.ok) return fail(read.error, "bad_files", EXIT.FAIL);
   // The cards the phone would show: a trick larger than a group, or with a line no card shows as it is,
   // is refused here, and again on the lead.
-  const cards = proposalCardCount({ manifest: report.manifest!, files: read.files, warnings: [...new Set(report.warnings.map((w) => w.kind))], crew: leadsCrewOnDisk(deps) });
+  const cards = proposalCards(report, [...read.files, ...read.pictures], leadsCrewOnDisk(deps), rest[0]!);
   if (!cards.ok) return fail(cards.error, cards.code, EXIT.REFUSED);
+  // A helper of an older Collie is Collie's code and is sent as it is; the person is told once, on stderr.
+  if (!json && report.helper !== undefined && !report.helper.current && !report.helper.modified) deps.io.err(helperOlderNote(report.helper.version, rest[0]!));
   const rid = requestId ?? (deps.mintRequestId ?? randomUUID)();
   // A trick whose config.toml stays behind runs once without it: the person adds the settings only after the yes.
-  const settings = read.config && report.manifest!.run !== undefined && (await needsItsConfig(report.manifest!, read.files, deps.ctx.env));
+  const sent = [...read.files, ...read.pictures];
+  const settings = read.config && report.manifest!.run !== undefined && (await needsItsConfig(report.manifest!, sent, deps.ctx.env));
   // The one reader the bridge and the lead use: what it refuses, they refuse.
-  const fields: ProposeFields = { requestId: rid, files: wireFiles(read.files) };
+  const fields: ProposeFields = { requestId: rid, files: wireFiles(sent) };
   if (settings) fields.settings = true;
   const checked = readProposal(fields);
   if (!checked.ok) return fail(checked.refusal.error, checked.refusal.code, EXIT.FAIL);
@@ -237,10 +260,11 @@ export async function cmdTrickPropose(deps: ProposeDeps, args: readonly string[]
   const replaced = asJsonString(body.replaced) ?? null;
   const place = proposeWhere(body.where);
   if (json) {
-    deps.io.out(JSON.stringify({ ok: true, kind, id, hash: checked.proposal.hash, decision, replaced, requestId: rid, files: read.files.length, left: read.left, warnings: report.warnings.map((w) => w.kind), needsConfig: settings, where: place }));
+    deps.io.out(JSON.stringify({ ok: true, kind, id, hash: checked.proposal.hash, decision, replaced, requestId: rid, files: read.files.length, pictures: read.pictures.map((p) => p.rel), left: read.left, leftPictures: read.leftPictures, warnings: report.warnings.map((w) => w.kind), needsConfig: settings, where: place }));
     return EXIT.OK;
   }
-  deps.io.out(`Sent ${String(read.files.length)} files. Left behind: ${String(read.left)} (dot files, node_modules, logs, inputs/, media/, captures/, config.toml).`);
+  deps.io.out(`${sentLine(read.files.length, read.pictures.length)} Left behind: ${String(read.left)} (${PROPOSE_LEFT_KINDS}).`);
+  for (const leftLine of leftPictureLines(read.leftPictures)) deps.io.out(leftLine);
   if (read.config) deps.io.out(PROPOSE_CONFIG_LEFT);
   if (kind === "version") deps.io.out(`Proposed a new version of ${id}. Your person sees it as ${decision ?? "a card"} ${place}. Nothing of it is written or runs before their yes.`);
   else deps.io.out(`Proposed ${id}. Your person sees it as ${decision ?? "a card"} ${place}. Nothing runs before their yes.`);

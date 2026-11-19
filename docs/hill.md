@@ -426,7 +426,7 @@ before your yes.
 collie trick propose ~/work/disk-space
 ```
 
-The card's title is "Switch on the trick `<id>`?". Its summary is Collie's own facts: who proposed it,
+The card's first line reads "Collie tricks" with the tricks glyph. Its title is "Switch on the trick `<id>`?". Its summary is Collie's own facts: who proposed it,
 how many files it has, and what it asks for. Below come the powers it asks for, the warnings of the
 text search, the author's words under "Its author's words. Collie did not check them.", and then
 every file of its code, as a group of cards.
@@ -440,8 +440,11 @@ every file of its code, as a group of cards.
   session.
 
 Your answer is typed into the session that proposed the trick, and it starts a turn there. After the
-option, one line says what happened: the trick is installed and on, or you declined, the proposal is
-closed and nothing was installed. A Dismiss types nothing.
+option, the card shrinks to one line that stays in the conversation and scrolls away with it: the tricks
+glyph, "Collie tricks", the trick's name and what happened, for example "hadoken: switched on" or
+"hadoken: not switched on". For a new version it reads "new version in use" or "kept the old version".
+A Dismiss types nothing. A vertical swipe that starts on the card, the Hold button included, scrolls the
+conversation; only a finger that stays on the button holds.
 
 The first card names the files Collie ships, byte for byte: the helper `trick.ts` and the
 `AGENTS.md` that `collie trick init` writes. No card shows them. Notes the agent changed show only the

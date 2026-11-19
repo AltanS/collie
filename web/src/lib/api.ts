@@ -20,6 +20,7 @@ import { readRegistryStatus } from "./theme/registry-status";
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import { readReportContext, type ReportContext } from "./report/context";
 import type { TroubleSignal } from "./report/signal";
+import type { ComposerDiagRecord } from "./composer-offscreen";
 import { REQUEST_ID, type HeldCancelAnswer, type SendReceiptRow, type SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
 import { boundedDraft, CLEAR_OUTCOMES, CLEAR_REASONS, type ClearBody, type ClearReceipt } from "./surface/clear";
@@ -38,7 +39,7 @@ import { fileVersionOf } from "./file-image-cache";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
 import { closePaneNotifications } from "./pane-notifications";
 import { textRouteFor } from "./send-path";
-import { stampSend } from "./poll-intent";
+import { stampSend, stampTricks } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
@@ -2814,6 +2815,20 @@ export async function postTroubleSignal(signal: TroubleSignal, where?: { readonl
 }
 
 /**
+ * The composer diagnostic: the heights a phone measured when its reply box sat below the screen
+ * (lib/composer-offscreen.ts). Numbers, booleans and enums only; the bridge keeps it in one local file and
+ * refuses anything else. Fire and forget, through the transport below the busy signal, and a failure is
+ * ignored: this is a measurement, not something a person asked for.
+ */
+export async function postComposerDiag(record: ComposerDiagRecord): Promise<void> {
+  try {
+    await doReq<undefined>("/api/diag/composer", { method: "POST", body: JSON.stringify(record) });
+  } catch {
+    // Nothing to do: an older bridge answers 404, an offline phone throws, and neither is a person's problem.
+  }
+}
+
+/**
  * "Go back now" (M60 spec 01): from an Edge build down to the Stable release the bridge offered as
  * `back`. The one downgrade a person starts from here besides a rollback. The request id becomes the
  * run id, as on a rollback.
@@ -3437,6 +3452,8 @@ export async function setTricksSwitch(on: boolean): Promise<boolean> {
   const raw = await req<JsonValue>("/api/tricks/switch", { method: "POST", body: JSON.stringify({ on }) });
   const held = asJsonBoolean(asJsonObject(raw)?.on);
   if (held === undefined) throw new Error("/api/tricks/switch answered with a body that is not { on }");
+  // Switched on, every trick that was waiting for it starts at once: the next polls come fast.
+  stampTricks();
   return held;
 }
 
@@ -3511,6 +3528,8 @@ export async function switchTrick(host: string, trick: string, on: boolean, hash
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(on && hash !== undefined ? { on, hash } : { on }) });
   const info = readTrick(raw);
   if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  // The bridge starts the trick's program at once (a switch on) and drops its parts at once (off).
+  stampTricks();
   return info;
 }
 
@@ -3617,6 +3636,7 @@ export async function setTrickAuto(host: string, trick: string, on: boolean): Pr
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({ on }) });
   const info = readTrick(raw);
   if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  stampTricks();
   return info;
 }
 
@@ -3632,6 +3652,8 @@ export async function setTrickValue(host: string, trick: string, body: { rid: st
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify(body) });
   const info = readTrick(asJsonObject(raw)?.info);
   if (info === undefined) throw new Error(`${path} answered with a body that is not a value receipt`);
+  // A changed value runs the trick again about a second after the last write.
+  stampTricks();
   return info;
 }
 
@@ -3645,5 +3667,6 @@ export async function undoTrick(host: string, trick: string): Promise<WireTrickI
   const raw = await req<JsonValue>(path, { method: "POST", body: JSON.stringify({}) });
   const info = readTrick(raw);
   if (info === undefined) throw new Error(`${path} answered with a body that is not a trick`);
+  stampTricks();
   return info;
 }

@@ -249,9 +249,9 @@ describe("the sidebar", () => {
     expect(aside.dataset.slot).toBe("wide-sidebar");
     expect(aside.className).toContain("bg-card");
     expect(aside.style.width).toBe("320px");
-    // One word: Collie in the text colour, then three inked letters (components/wordmark.tsx).
-    expect(q(aside, '[data-slot="sidebar-word"]')?.textContent).toBe("ColliePWA");
-    expect([...aside.querySelectorAll(".wordmark-ink")].map((el) => el.textContent)).toEqual(["P", "W", "A"]);
+    // One image: Collie in the text colour, then three inked letters (components/collie-wordmark.tsx).
+    expect(q(aside, '[data-slot="sidebar-word"] svg')?.getAttribute("aria-label")).toBe("ColliePWA");
+    expect([...aside.querySelectorAll(".wordmark-ink")].map((el) => el.classList[1])).toEqual(["wordmark-ink-p", "wordmark-ink-w", "wordmark-ink-a"]);
     expect(q(aside, '[data-slot="sidebar-mark"] [data-slot="collie-mark"]')).not.toBeNull();
     expect(q(container, '[data-testid="chat"]')?.dataset.inStrip).toBe("true");
     // The header moved into the focused column, and the mark is not drawn twice.

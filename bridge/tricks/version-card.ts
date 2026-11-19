@@ -11,6 +11,7 @@ import {
   CHIP_TEXT_MAX,
   DECISION_VIEW_LIMITS,
   DIFF_LIMITS,
+  DRAFTS_SESSION_LINE,
   inputsSentence,
   LINE_MAX,
   parseDecisionView,
@@ -23,6 +24,7 @@ import {
   TABLE_LIMITS,
   TEXT_MAX,
   VIEW_LIMITS,
+  type DraftsWord,
   type PlaceKind,
   type TrickAccess,
   type TrickManifest,
@@ -126,6 +128,7 @@ const PLACE_WORDS = {
   status: "the status line",
   tabbar: "the bottom bar",
   menu: "session settings",
+  float: "a small moving picture over the app",
 } as const satisfies Readonly<Record<PlaceKind, string>>;
 
 /** The chip word of the place `agent-view` (contract 2): a view of a session that its own agent draws. */
@@ -149,6 +152,19 @@ export const WARN_VERBS = {
 
 /** The chip of the right `decides = "reply"`: its Decisions may type your answer into a session. */
 export const DECIDES_REPLY_CHIP = "answers go to a session";
+
+/** The chip of the right `drafts = "session"`: its buttons may put text into your reply box, never sent. */
+export const DRAFTS_SESSION_CHIP = "text in your reply box";
+
+/** The right `drafts = "session"` in its one line, for a manifest that has it; nothing for one without. */
+export function draftsLine(drafts: DraftsWord | undefined): ViewNode[] {
+  return drafts === undefined ? [] : [{ kind: "para", text: DRAFTS_SESSION_LINE }];
+}
+
+/** The `drafts` a version adds, or undefined when the approved one had it already or the new one has none. */
+export function addedDrafts(base: Pick<TrickManifest, "drafts"> | undefined, next: Pick<TrickManifest, "drafts"> | undefined): DraftsWord | undefined {
+  return base?.drafts === undefined ? next?.drafts : undefined;
+}
 
 /**
  * The chips of the right `access` (M105 spec 04): the level the trick declares for Collie's local API, in the
@@ -214,7 +230,7 @@ export function watchChip(paths: readonly string[]): string {
   return `runs when these files change: ${paths.join(", ")}`;
 }
 
-type RightsManifest = Pick<TrickManifest, "env" | "places" | "agentView" | "decides" | "on" | "watch" | "access">;
+type RightsManifest = Pick<TrickManifest, "env" | "places" | "agentView" | "decides" | "drafts" | "on" | "watch" | "access">;
 
 /**
  * The rights a manifest asks for past the base: its environment names, its places (an agent view among
@@ -225,6 +241,7 @@ function rightsOf(manifest: RightsManifest | undefined): Set<string> {
   if (manifest === undefined) return new Set();
   const places: string[] = [...manifest.places, ...(manifest.agentView === true ? [AGENT_VIEW_PLACE] : [])];
   const decides = manifest.decides === undefined ? [] : [`decides:${manifest.decides}`];
+  const drafts = manifest.drafts === undefined ? [] : [`drafts:${manifest.drafts}`];
   // `read` holds `see`: a version that lowers `read` to `see` asks for nothing new.
   const access = manifest.access === undefined ? [] : manifest.access === "read" ? ["access:see", "access:read"] : ["access:see"];
   return new Set([
@@ -232,6 +249,7 @@ function rightsOf(manifest: RightsManifest | undefined): Set<string> {
     ...(manifest.env ?? []).map((name) => `env:${name}`),
     ...places.map((place) => `place:${place}`),
     ...decides,
+    ...drafts,
     ...(manifest.on ?? []).map((event) => `event:${event}`),
     ...(manifest.watch ?? []).map((path) => `watch:${path}`),
   ]);
@@ -241,6 +259,7 @@ function rightsOf(manifest: RightsManifest | undefined): Set<string> {
 function rightWords(right: string): string {
   if (right.startsWith("env:")) return right.slice(4);
   if (right.startsWith("decides:")) return DECIDES_REPLY_CHIP;
+  if (right.startsWith("drafts:")) return DRAFTS_SESSION_CHIP;
   if (right.startsWith("access:")) return right === "access:read" ? ACCESS_CHIPS.read : ACCESS_CHIPS.see;
   return placeWords(right.slice(6));
 }
@@ -347,7 +366,8 @@ export function versionCard(subject: TrickVersionSubject, diff: VersionDiff, cre
   // the words a person reads, then the inputs and the warnings.
   const lines = [...(viewNew ? [AGENT_VIEW_WORDS, AGENT_VIEW_TAP_WORDS] : []), ...(newRules ? [RULES_WORDS] : [])];
   // The level the version raises, in its one line right after the honest line (M105 spec 04).
-  const accessNodes = accessLine(raisedAccess(base, next));
+  // The level the version raises, and the reply box its buttons may now fill, each in its line.
+  const accessNodes = [...accessLine(raisedAccess(base, next)), ...draftsLine(addedDrafts(base, next))];
   // The one line of a trick that reacts, right after the rights lines (Altan, 2026-11-17).
   const reactNodes = keepsRunning(next);
   // Where the trick shows (the operator, 2026-11-17): the whole list of the version's places, after the rights lines.

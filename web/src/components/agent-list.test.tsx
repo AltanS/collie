@@ -173,8 +173,8 @@ describe("AgentList — two axes, urgency then workspace", () => {
     // The title still carries line 1's weight and truncates on its own — the spare width is
     // `PaneMeta`'s `ml-auto` now, not the name's own `flex-1` (2026-09-14, so the unseen dot can
     // sit right after the name instead of at the far end of the row).
-    expect(screen.getByText("rewrite the loader").className).toMatch(/truncate/);
-    expect(screen.getByText("rewrite the loader").closest("[data-slot]")).toHaveAttribute(
+    expect(screen.getByText("rewrite the loader").closest('[data-glide="name"]')!.className).toMatch(/truncate/);
+    expect(screen.getByText("rewrite the loader").closest('[data-slot="agent-row-title"]')).toHaveAttribute(
       "data-slot",
       "agent-row-title",
     );
@@ -519,11 +519,11 @@ describe("AgentList — an older bridge with no timestamps", () => {
 const prefKeyOf = (p: AgentView) => workspacePrefKey(groupPanesByWorkspace([p])[0]!);
 
 // The workspace filter (issue #527): a button naming the choice, and the sheet of checks it opens.
-const filterButton = () => screen.getByRole("button", { name: /^Workspace / });
+const filterButton = () => screen.getByRole("button", { name: /^Space / });
 /** The open sheet; the first call opens it. A tap leaves it open, so later calls find the same one. */
 const filterSheet = () => {
-  if (screen.queryByRole("dialog", { name: "Workspaces" }) === null) fireEvent.click(filterButton());
-  return screen.getByRole("dialog", { name: "Workspaces" });
+  if (screen.queryByRole("dialog", { name: "Spaces" }) === null) fireEvent.click(filterButton());
+  return screen.getByRole("dialog", { name: "Spaces" });
 };
 /** Every row of the sheet, checks and actions alike, as the words it shows (the Close button has a label). */
 const filterRowNames = () =>
@@ -542,12 +542,12 @@ describe("AgentList — the workspace filter", () => {
     agent("c", "idle", { workspaceId: "w3", workspaceLabel: "three", workspaceNumber: 3, tabId: "w3:t1" }),
   ];
 
-  it("is one button named Workspace that opens a sheet: All workspaces, then one check per workspace in the list's order", () => {
+  it("is one button named Space that opens a sheet: All spaces, then one check per workspace in the list's order", () => {
     render(<AgentList agents={two} onOpen={vi.fn()} />);
-    expect(filterButton()).toHaveAccessibleName("Workspace All workspaces");
-    expect(screen.queryByRole("dialog", { name: "Workspaces" })).toBeNull();
-    expect(filterRowNames()).toEqual(["All workspaces", "one", "two"]);
-    expect(filterCheck("All workspaces")).toBeChecked();
+    expect(filterButton()).toHaveAccessibleName("Space All spaces");
+    expect(screen.queryByRole("dialog", { name: "Spaces" })).toBeNull();
+    expect(filterRowNames()).toEqual(["All spaces", "one", "two"]);
+    expect(filterCheck("All spaces")).toBeChecked();
     expect(filterCheck("one")).not.toBeChecked();
     // No chip strip any more: the filter is this button alone.
     expect(screen.queryByRole("navigation", { name: /spaces/i })).toBeNull();
@@ -561,7 +561,7 @@ describe("AgentList — the workspace filter", () => {
       agent("d", "idle", { workspaceId: "w4", workspaceLabel: "four", workspaceNumber: 4, tabId: "w4:t1" }),
     ];
     render(<AgentList agents={states} onOpen={vi.fn()} />);
-    expect(filterRowNames()).toEqual(["All workspaces", "one · needs you", "two · working", "three · unseen", "four"]);
+    expect(filterRowNames()).toEqual(["All spaces", "one · needs you", "two · working", "three · unseen", "four"]);
   });
 
   it("keeps a hidden workspace hidden when Herdr renumbers its id", () => {
@@ -571,7 +571,7 @@ describe("AgentList — the workspace filter", () => {
     expect(headings()).not.toContain("one");
   });
 
-  it("chooses a workspace on a tap; All workspaces returns to all", async () => {
+  it("chooses a workspace on a tap; All spaces returns to all", async () => {
     const user = userEvent.setup();
     const onIsolate = vi.fn();
     const key = prefKeyOf(two[0]!);
@@ -584,9 +584,9 @@ describe("AgentList — the workspace filter", () => {
     // Chosen: only "one"'s group is left on screen, and the sheet checks it.
     expect(headings()).toEqual(["one"]);
     expect(filterCheck("one")).toBeChecked();
-    expect(filterCheck("All workspaces")).not.toBeChecked();
+    expect(filterCheck("All spaces")).not.toBeChecked();
 
-    await user.click(filterCheck("All workspaces"));
+    await user.click(filterCheck("All spaces"));
     expect(onIsolate).toHaveBeenLastCalledWith([]);
   });
 
@@ -609,7 +609,7 @@ describe("AgentList — the workspace filter", () => {
     expect(filterCheck("one")).toBeChecked();
     expect(filterCheck("two")).toBeChecked();
     expect(filterCheck("three")).not.toBeChecked();
-    expect(filterCheck("All workspaces")).not.toBeChecked();
+    expect(filterCheck("All spaces")).not.toBeChecked();
   });
 
   it("unchecks one of two and keeps the other", async () => {
@@ -622,19 +622,19 @@ describe("AgentList — the workspace filter", () => {
     expect(onIsolate).toHaveBeenCalledExactlyOnceWith([kTwo]);
   });
 
-  it("names the choice on the closed button: All workspaces, the names while few, a count past two", () => {
+  it("names the choice on the closed button: All spaces, the names while few, a count past two", () => {
     const keys = three.map(prefKeyOf);
     const { rerender } = render(<AgentList agents={three} onOpen={vi.fn()} />);
-    expect(filterButton()).toHaveAccessibleName("Workspace All workspaces");
+    expect(filterButton()).toHaveAccessibleName("Space All spaces");
     rerender(<AgentList agents={three} onOpen={vi.fn()} isolated={[keys[0]!]} />);
-    expect(filterButton()).toHaveAccessibleName("Workspace one");
+    expect(filterButton()).toHaveAccessibleName("Space one");
     rerender(<AgentList agents={three} onOpen={vi.fn()} isolated={[keys[0]!, keys[1]!]} />);
-    expect(filterButton()).toHaveAccessibleName("Workspace one, two");
+    expect(filterButton()).toHaveAccessibleName("Space one, two");
     // Stored in another order, named in the list's.
     rerender(<AgentList agents={three} onOpen={vi.fn()} isolated={[keys[1]!, keys[0]!]} />);
-    expect(filterButton()).toHaveAccessibleName("Workspace one, two");
+    expect(filterButton()).toHaveAccessibleName("Space one, two");
     rerender(<AgentList agents={three} onOpen={vi.fn()} isolated={keys} />);
-    expect(filterButton()).toHaveAccessibleName("Workspace 3 workspaces");
+    expect(filterButton()).toHaveAccessibleName("Space 3 spaces");
   });
 
   it("unchecking the last chosen workspace asks for all of them", async () => {
@@ -649,16 +649,16 @@ describe("AgentList — the workspace filter", () => {
   it("ignores a stale key beside a live one, and the label names only the live one", () => {
     render(<AgentList agents={two} onOpen={vi.fn()} isolated={["gone\u0000nowhere", prefKeyOf(two[1]!)]} />);
     expect(headings()).toEqual(["two"]);
-    expect(filterButton()).toHaveAccessibleName("Workspace two");
+    expect(filterButton()).toHaveAccessibleName("Space two");
     expect(filterCheck("two")).toBeChecked();
     expect(filterCheck("one")).not.toBeChecked();
   });
 
-  it("shows every workspace when every chosen key is stale, and says All workspaces", () => {
+  it("shows every workspace when every chosen key is stale, and says All spaces", () => {
     render(<AgentList agents={two} onOpen={vi.fn()} isolated={["gone\u0000nowhere", "gone\u0000too"]} />);
     expect(headings()).toEqual(["one", "two"]);
-    expect(filterButton()).toHaveAccessibleName("Workspace All workspaces");
-    expect(filterCheck("All workspaces")).toBeChecked();
+    expect(filterButton()).toHaveAccessibleName("Space All spaces");
+    expect(filterCheck("All spaces")).toBeChecked();
   });
 
   it("stays open after a tap, so several workspaces are chosen in one visit", async () => {
@@ -667,17 +667,17 @@ describe("AgentList — the workspace filter", () => {
     filterSheet();
     expect(filterButton()).toHaveAttribute("aria-expanded", "true");
     await user.click(filterCheck("one"));
-    expect(screen.getByRole("dialog", { name: "Workspaces" })).toBeInTheDocument();
-    await user.click(filterCheck("All workspaces"));
-    expect(screen.getByRole("dialog", { name: "Workspaces" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Spaces" })).toBeInTheDocument();
+    await user.click(filterCheck("All spaces"));
+    expect(screen.getByRole("dialog", { name: "Spaces" })).toBeInTheDocument();
     // The close button is how it goes away.
-    await user.click(within(screen.getByRole("dialog", { name: "Workspaces" })).getByRole("button", { name: "Close" }));
-    expect(screen.queryByRole("dialog", { name: "Workspaces" })).toBeNull();
+    await user.click(within(screen.getByRole("dialog", { name: "Spaces" })).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Spaces" })).toBeNull();
   });
 
   it("has no way to hide a workspace (the sheet has no long press), and offers none when none is hidden", () => {
     render(<AgentList agents={two} onOpen={vi.fn()} onToggleHidden={vi.fn()} />);
-    expect(filterRowNames()).not.toContain("Show hidden workspaces");
+    expect(filterRowNames()).not.toContain("Show hidden spaces");
   });
 
   it("keeps a hidden workspace in the sheet, marked hidden, with its group dropped from the list", () => {
@@ -686,7 +686,7 @@ describe("AgentList — the workspace filter", () => {
     // "one" no longer has a heading — its rows are gone from the list.
     expect(headings()).toEqual(["two"]);
     // Its row is still there, and says so.
-    expect(filterRowNames()).toEqual(["All workspaces", "one · hidden", "two"]);
+    expect(filterRowNames()).toEqual(["All spaces", "one · hidden", "two"]);
   });
 
   it("brings every hidden workspace back from one row, and leaves the choice on what it was", async () => {
@@ -696,10 +696,10 @@ describe("AgentList — the workspace filter", () => {
     const hidden = two.map(prefKeyOf);
     render(<AgentList agents={two} onOpen={vi.fn()} hidden={hidden} onToggleHidden={onToggleHidden} onIsolate={onIsolate} />);
     filterSheet();
-    await user.click(within(filterSheet()).getByRole("button", { name: "Show hidden workspaces" }));
+    await user.click(within(filterSheet()).getByRole("button", { name: "Show hidden spaces" }));
     expect(onToggleHidden.mock.calls.map((c) => c[0])).toEqual(hidden);
     expect(onIsolate).not.toHaveBeenCalled();
-    expect(filterCheck("All workspaces")).toBeChecked();
+    expect(filterCheck("All spaces")).toBeChecked();
   });
 
   it("checks a hidden workspace to see it alone: isolate wins over hide", async () => {
@@ -964,7 +964,7 @@ describe("AgentList — hiding a machine", () => {
       <AgentList agents={herd} servers={servers} hiddenMachines={["workshop"]} isolated={[isolated]} onOpen={vi.fn()} />,
     );
     expect(headings()).toEqual(["docs"]);
-    expect(filterRowNames()).toEqual(["All workspaces", "collie · needs you", "Show workshop's panes", "docs", "attic-ws · working"]);
+    expect(filterRowNames()).toEqual(["All spaces", "collie · needs you", "Show workshop's panes", "docs", "attic-ws · working"]);
     expect(filterCheck("docs")).toBeChecked();
   });
 
@@ -1026,9 +1026,9 @@ describe("AgentList — hiding a machine", () => {
 
   it("swaps a hidden machine's workspaces for one \"Show <machine>'s panes\" option, at their place", () => {
     render(<AgentList agents={herd} servers={servers} hiddenMachines={["workshop"]} onOpen={vi.fn()} />);
-    expect(filterRowNames()).toEqual(["All workspaces", "collie · needs you", "Show workshop's panes", "attic-ws · working"]);
-    // It is an action, not a place: the filter stays on All workspaces.
-    expect(filterCheck("All workspaces")).toBeChecked();
+    expect(filterRowNames()).toEqual(["All spaces", "collie · needs you", "Show workshop's panes", "attic-ws · working"]);
+    // It is an action, not a place: the filter stays on All spaces.
+    expect(filterCheck("All spaces")).toBeChecked();
   });
 
   it("draws no such option for a hidden machine with no panes", () => {
@@ -1064,7 +1064,7 @@ describe("AgentList — hiding a machine", () => {
     await user.click(standIn("workshop"));
     expect(headings()).toEqual(["collie", "moonward", "docs", "attic-ws"]);
     expect(within(filterSheet()).queryByRole("button", { name: /^Show workshop/ })).toBeNull();
-    expect(filterCheck("All workspaces")).toBeChecked();
+    expect(filterCheck("All spaces")).toBeChecked();
   });
 });
 

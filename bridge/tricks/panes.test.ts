@@ -157,7 +157,8 @@ describe("placing the Tricks Space in a body", () => {
   test("server.ts adds the Space after `sessions` took its counts, and outside every state engine", () => {
     const src = readFileSync(join(import.meta.dir, "..", "server.ts"), "utf8");
     const snapshot = src.slice(src.indexOf("const localSnapshot = ("), src.indexOf("const watchedPaneIds = ()"));
-    const counts = snapshot.indexOf("sessions: withSessionLabels(registry.list()");
+    // `registry.list(...)` takes an argument and the call spans lines, so the position comes from a pattern.
+    const counts = snapshot.search(/sessions: withSessionLabels\(\s*registry\.list\(/u);
     const added = snapshot.indexOf("const trickSessions = opts.tricks?.sessionPanes();");
     expect(counts).toBeGreaterThan(0);
     expect(added).toBeGreaterThan(counts);

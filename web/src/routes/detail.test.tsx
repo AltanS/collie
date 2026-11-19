@@ -11,6 +11,7 @@ import { panePath } from "@/lib/nav";
 import { __resetOperatorCommands, getMuxConfig } from "@/lib/operator-config";
 import { server } from "@/test/setup";
 import type { AgentView } from "@/lib/types";
+import { __forgetTabPaneMemory, rememberedPaneId } from "@/lib/tab-pane-memory";
 import { DetailRoute } from "./detail";
 
 // Stub the heavy terminal view: this test is about DetailRoute's routing/freshPane logic, not the
@@ -254,5 +255,26 @@ describe("DetailRoute: a launch's intent", () => {
     await act(() => router.navigate(panePath(fresh.paneId), { state: { freshPane: fresh,
       agentLaunch: { id: "foreign", paneKey: paneScopeKey({ session: "other" }, fresh.paneId), harness: "kiro" } } }));
     expect(await screen.findByText("launch:none")).toBeInTheDocument();
+  });
+});
+
+describe("DetailRoute — remembers the pane a tab was last open on", () => {
+  afterEach(() => {
+    sessionStorage.clear();
+    __forgetTabPaneMemory();
+  });
+
+  it("a pane opened directly becomes its tab's remembered pane, and the next one replaces it", async () => {
+    const a = { ...agentView("w1:p1", "agent"), tabId: "w1:t9" };
+    const b = { ...agentView("w1:p2", "agent"), tabId: "w1:t9" };
+    const router = makeRouter(panePath("w1:p1"), () => connected([a, b]));
+    render(<RouterProvider router={router} />);
+    await screen.findByTestId("chat");
+    expect(rememberedPaneId({ tabId: "w1:t9" })).toBe("w1:p1");
+
+    await act(async () => {
+      await router.navigate(panePath("w1:p2"));
+    });
+    await waitFor(() => expect(rememberedPaneId({ tabId: "w1:t9" })).toBe("w1:p2"));
   });
 });

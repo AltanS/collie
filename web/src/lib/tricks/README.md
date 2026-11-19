@@ -51,8 +51,8 @@ nodes `{ kind, text?, attrs?, kids? }` of the 22 kinds (below), every attribute 
 `diff` and `spark`. A part's `image` names a file of the trick's `media/` folder by `src`; a Decision's
 view names one of the Decision's own pictures by `ref`, and both take `caption`, `fit` and `focus`.
 
-**The places**: `belt`, `session`, `dashboard`, `status` and `tabbar`, each drawn by the phone (see
-"Places"), and at contract 2 `menu` (see "Session settings rows"). Nothing else: a place no surface draws is not in the contract.
+**The places**: `belt`, `session`, `dashboard`, `status`, `tabbar` and `float`, each drawn by the phone (see
+"Places" and "Floating pictures"), and at contract 2 `menu` (see "Session settings rows"). Nothing else: a place no surface draws is not in the contract.
 
 **The limits**: 64 KiB of stdout and 10 s per run, 24 parts of at most 16 KiB each, 24 nodes at a
 view's top, 6 levels and 300 nodes in a view, 20 decisions, `every` and `fresh` from 5 s to 24 h, 32
@@ -264,12 +264,17 @@ run((t) => {
 
 `trick.ts` is one self-contained file (`cli/trick-kit/trick.ts` in this repo, held in the binary as
 text). It imports only `node:` built-ins and Bun, and its first line names its version, `// collie
-trick helper v4`. `collie trick helper <id>` rewrites it with the version this Collie carries; the
-helper is part of the trick's code, so a trick that is on keeps running the approved copy, and the new
-helper waits for a person's yes.
-`collie trick check` lists a `trick.ts` whose bytes are a helper this Collie ships as "helper v4" (an
-older one with the command to update it) and does not grep it; a changed one is grepped as the trick's
-own code and called a modified helper.
+trick helper v10`. The version moves whenever the text changes: `bridge/tricks/scan.test.ts` pins the
+text's SHA-256 to `HELPER_VERSION` and fails with "bump the helper version" otherwise, even for a version
+that has not shipped, and every text ever committed stays known by its hash (`OLDER_HELPERS` in
+`bridge/tricks/scan.ts`, and a frozen list of pairs in that test). `collie trick helper <id>`
+rewrites it with the version this Collie carries; the helper is part of the trick's code, so a trick
+that is on keeps running the approved copy, and the new helper waits for a person's yes.
+`collie trick check`, `dev` and `propose` take a `trick.ts` whose bytes are a helper this Collie ships
+(this version or an older one) as Collie's own code: it is not grepped and it counts nothing against the
+size of a proposal. An older one is named once, with the command to update it. A `trick.ts` that starts
+with a helper version line but matches no shipped text is grepped as the trick's own code and called a
+modified helper; when it makes a proposal too large, the refusal says so and names the sizes.
 
 | API | What it does |
 | --- | ------------ |
@@ -565,9 +570,13 @@ bridge checks with. `--json` prints `{ guide, manifestKeys, places }`.
 **Propose** reads the folder as `collie trick check` reads it (a trick it refuses is never sent), then
 reads the files the hardened way (`readTrickFolder`): regular files only, a symbolic link anywhere
 refuses the folder, at most 300 files, 5 MB and 8 folders deep, the caps of `collie trick add`. Dot
-files and dot folders, `node_modules/`, `*.log`, the top `inputs/`, `media/` and `captures/` folders
-and `config.toml` stay behind (a proposal carries code only: the person adds pictures and settings on
-the machine), and the verb says how many. The files go as one line on the walky socket,
+files and dot folders, `node_modules/`, `*.log`, the top `inputs/` folder and `config.toml` stay
+behind (the person writes the settings on the machine), and the verb says how many. The top `media/`
+and `captures/` folders bring their pictures (since 2026-11-18; before, a proposed trick lost them): a
+regular file named `.png`, `.jpg`, `.jpeg` or `.webp` whose first bytes are a PNG, JPEG or WebP, at most
+2 MB each and 50 in all (`PROPOSE_PICTURES`), never through a link, read after the code so a picture
+never pushes code past the caps. Every other file there stays behind, and the verb names each one
+with its reason. The files go as one line on the walky socket,
 `{"op":"trick.propose",...}`, which may be up to 8 MiB because it opens with that op; a line that does
 not is held to the walky cap. The bridge reads at most two such lines at once, each within 30 seconds;
 a line's slot comes back once the line is read, and the answer closes the connection. Before
@@ -582,9 +591,10 @@ member reads every file with the same reader and forwards the proposal to its le
 steps, no `.` or `..` step, no dot step, no `node_modules` or `inputs` step, no backslash or colon, no
 control, bidi or invisible character, NFC only; no two names that fold to one (case and Unicode
 compatibility forms, `NFKC` then lower case), files and folders alike, and the reserved names compared
-folded too; no name used as a file and a folder; nothing in `media/` or `captures/` and no
-`config.toml` ("A proposal cannot carry a config.toml. Your person sets the trick up on the
-machine."); `trick.toml` at most 64 KiB, read by the
+folded too; no name used as a file and a folder; in `media/` and `captures/` (spelled so) only
+pictures, checked by name and by their first bytes, at most 2 MB each, 50 in all, never marked
+executable; no `config.toml` ("A proposal cannot carry a config.toml. Your person sets the trick up on
+the machine."); `trick.toml` at most 64 KiB, read by the
 strict manifest reader; an id Collie does not keep for itself (`collie`, `trick`, `tricks`, `hill`,
 `settings`).
 
@@ -793,9 +803,12 @@ slice 1. Its value is the member id, never the host name.
   "decisions": [], "asOf": "2026-11-08T09:41:00Z", "fresh": "90s" }
 ```
 
-`v` is the contract number. There is no `draft` and no `open` (a document that still sends one has
-the key ignored, with a note). A trick never writes into a reply box, and a tap never moves the
-phone. What a trick wants to show is a `link`. What it wants to tell the person is a decision.
+`v` is the contract number. There is no `draft` and no `open` key (a document that still sends one has
+the key ignored, with a note). The one way a trick's text reaches a reply box is a button with `does`
+set to `draft`, for a trick whose manifest says `drafts = "session"`: on the phone, a tap fills the
+EMPTY reply box of the session the page was opened for and opens that session. It never sends, and
+the trick hears nothing back. Apart from that, a tap never moves the phone. What a trick wants to show
+is a `link`. What it wants to tell the person is a decision.
 
 A document with no `decisions` key leaves the trick's decisions on the hill as they are. An empty
 list, `"decisions": []`, withdraws every open one. So a run that only redraws its parts (a tap on a
@@ -1068,6 +1081,7 @@ answered on the Hill.
 | `tabbar`        | an item in the Dashboard's bottom bar, after the Hill | draws                           |
 | `header.line`   |                                           | refused, code `later`, the place named      |
 | `menu`          | rows in a session's settings, contract 2; see "Session settings rows" | draws             |
+| `float`         | a small moving picture over the app; see "Floating pictures" | draws                |
 | `settings`      |                                           | refused, code `later`, the place named      |
 
 In a program's output, a part at a place this Collie does not draw (a later place, a newer Collie's,
@@ -1130,6 +1144,44 @@ settle window (`hooks/use-settled.ts`, 500 ms, shared with agent views) on any c
 never flips a switch ahead of the document, keeps one footer line per group, and caps the sheet at 12
 trick rows by whole groups in trick id order. The agent view switches live in their trick's group.
 
+### Floating pictures
+
+A `float` part is `{ at: "float", id, mode, motion, sprite, edge?, mood?, opens?, sessions? }`.
+`mode` is `once` (one motion, at most 5 s, then gone) or `stay`. `motion` is from a fixed list:
+`fly-across`, `arc`, `pop` for `once`; `perch` (with `edge`), `wander`, `idle` for `stay`. `sprite` is
+`{ src, frames?, rows?, fps?, size?, loop?, after? }`: `src` a file of `media/` under the media route's own check (2 MiB, PNG,
+JPEG or WebP), `frames` frames side by side, each the sheet's width over `frames` wide and its height over
+`rows` (1 by default) high, so a frame need not be square; `size` (`s` 32, `m` 48, `l` 72 px) is the drawn
+frame HEIGHT and the width follows the frame's shape. With `rows` of 2 or more, one row per mood in `CHIP_STATES`
+order. `after` (only on a `stay` part whose sprite has `loop = false`, one level, `{ src, frames?, fps?, loop? }`, no `rows`, no `size`)
+is a second sprite that starts from its first frame when the first reaches its last: its frames are as high as
+the first sprite's and as wide as its own sheet, so the box takes the new width at once (no glide) on the part's anchor
+(`along` `start` keeps the left side, `end` the right, `middle` the centre; `afterRestOf` in `float.ts`), and its sheet is fetched and decoded
+while the first plays. A changed value plays both from the start; reduced motion shows the second sprite's last frame. A `once` part's
+`from` waits for, and starts from, the FIRST sprite only. `perch` stands ON its edge (its foot on the landmark below it, no gap) and `along` (`start`, `middle`, `end`;
+`end` by default) picks the place along it. A `once` part's `from` names a `stay` part of the same trick: while
+that picture is on screen the motion starts at its hand (its front edge, 40% down its height, the shot's centre
+there) and flies toward the farther side edge, else it starts as usual; a stay picture printed in the same run is
+waited for, up to 1.5 s; `from` naming no stay part of the trick is refused (`refuseUnknownFrom` in `schema.ts`). `opens = "page"`
+lets a parked picture (`perch`, `idle`) take a 44 px tap that opens the trick's Page. No view, no
+style, no coordinates and no code reach the phone. `readFloat` (`float.ts`) re-validates every field,
+because the wire carries a part as stored.
+
+The phone (`float.ts` pure maths, `hooks/use-float-region.ts`, `hooks/use-float-cover.ts`,
+`components/trick-float-layer.tsx`) computes a safe region: the visual viewport, less the safe-area
+insets and the landmark boxes (`data-slot` elements read with a ResizeObserver), as the largest empty
+rectangle. Every motion path lies inside it, so a picture never touches a landmark, except the exit of a `fly-across`: it flies on past the
+far edge of the region at full opacity (no fade at the end) and the layer clips the shot to the region's width, so it leaves
+and nothing paints outside it. A `fly-across` is set by speed (`flyMs`): a 390 px crossing takes 3.2 s, the time is its path over that
+speed, held between 2 s and 5 s. An `arc` takes 3.7 s and a `pop` 2.1 s. A region too small
+hides `stay` pictures and skips `once` ones. Pictures are hidden while a sheet, a dialog or a card that
+asks a question is open, while a field has focus and during a hold. At most two `stay` pictures show,
+one per trick; a trick's `once` pictures start 15 s apart, one plays at a time and one waits. A `once`
+picture plays when the phone first sees its part, or sees its value change; parts held at load do not
+play. Only transform and opacity move; a hidden page pauses all of them. Reduced motion: `once` does
+nothing, `stay` is a still image whose mood swaps the frame. "Floating things" (Settings, Appearance,
+per device, on by default) hides every picture. `sessions` binds a part like a belt mark's (contract 2).
+
 ## Rights
 
 | Who          | Action                               | Needs                                 |
@@ -1140,7 +1192,8 @@ trick rows by whole groups in trick id order. The agent view switches live in th
 | a phone      | tap an intent, answer a decision     | a device key with `write`             |
 | a phone      | switch a trick on or off             | a device key with `write`             |
 | the trick    | redraw its parts, post a decision    | its own run, from the bridge          |
-| the trick    | send, press a key, write a reply box, answer an ask | never                  |
+| the trick    | send, press a key, answer an ask     | never                                 |
+| the trick    | fill an empty reply box (`does: draft`) | a person's tap, with `drafts = "session"`; never sent |
 | the bridge   | set `composer.draft`                 | never                                 |
 
 `TRICKS_ROUTE_RIGHTS` in `bridge/tricks/routes.ts` is the one home of the route levels.

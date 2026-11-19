@@ -5,8 +5,8 @@ import { DECISION_VIEW_LIMITS, inputsSentence, TEXT_MAX, type MANIFEST_KEYS, typ
 import { unsafeText } from "./code-hash.ts";
 import { WARN_PLAIN } from "./scan.ts";
 import { addedDiff, codeGroup, changeCells, filesOnCards, GROUP_WIDE_GAP, groupOrder, helperNote, notesChangedNote, placesTables, shippedHelpers, shippedNotesDiff, sizeWords, type GroupRefusal, type ShippedFile } from "./card-group.ts";
-import { ACCESS_CHIPS, accessLine, asksForChange, asksForLines, bytesOf, checked, DECIDES_REPLY_CHIP, filesSentence, fitView, keepsRunning, listWords, newInputs, newRights, ON_CHIP, placeWords, raisedAccess, rightsHead, rulesView, runsAsYou, showsIn, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
-import { PROPOSAL_SETTINGS_LEFT, type ProposedFile } from "./propose-wire.ts";
+import { ACCESS_CHIPS, accessLine, addedDrafts, asksForChange, asksForLines, bytesOf, checked, DECIDES_REPLY_CHIP, draftsLine, DRAFTS_SESSION_CHIP, filesSentence, fitView, keepsRunning, listWords, newInputs, newRights, ON_CHIP, placeWords, raisedAccess, rightsHead, rulesView, runsAsYou, showsIn, versionTitle, WARN_VERBS, watchChip } from "./version-card.ts";
+import { PROPOSAL_SETTINGS_LEFT, splitPictures, type ProposedFile } from "./propose-wire.ts";
 import { rulesChange } from "./rules-diff.ts";
 import { canRunLine, type VersionDiff } from "./version-diff.ts";
 
@@ -39,6 +39,12 @@ import { canRunLine, type VersionDiff } from "./version-diff.ts";
 // the new rights and the new warnings, how much is shown. It names the proposer first, never
 // recommends, and has no "Use it and stop asking". Options: "Use the new version" (a hold on the phone, no confirm)
 // and "Keep the old version". A proposal never carries a config.toml (propose-wire.ts `PROPOSE_NO_CONFIG`).
+//
+// ── THE PICTURES IT BRINGS ─────────────────────────────────────────────────────────────────────────
+// A proposal may bring pictures of its `media/` and `captures/` (propose-wire.ts). They are not code and
+// never shown as code, but the person approves them too: the head of either card names each one by its
+// path, "It brings 2 pictures: media/fireball.png, media/pose.png.", at most {@link PROPOSAL_PICTURES_NAMED}
+// names and then how many more. The proposal hash, which the yes checks, binds their bytes.
 
 /** The card's sender name. Display only. */
 export const PROPOSAL_CARD_SENDER = "Collie";
@@ -86,6 +92,21 @@ export interface ProposalCardInput {
   executable?: ReadonlySet<string>;
   /** The machine that will run the trick, set only when the proposal came from another machine of the crew: the card says so under the proposer. */
   runsOn?: string | null;
+  /** The paths of the pictures the proposal brings (propose-wire.ts `splitPictures`): card 1 names them. */
+  pictures?: readonly string[];
+}
+
+/** The most picture paths a card names; past it, how many more. */
+export const PROPOSAL_PICTURES_NAMED = 8;
+
+/** "It brings 2 pictures: media/fireball.png, media/pose.png." on the head of a card, or nothing. */
+export function picturesLines(pictures: readonly string[] | undefined): ViewNode[] {
+  const all = pictures ?? [];
+  if (all.length === 0) return [];
+  const names = all.slice(0, PROPOSAL_PICTURES_NAMED).map((rel) => plain(rel, 80));
+  const more = all.length - names.length;
+  const count = all.length === 1 ? "1 picture" : `${String(all.length)} pictures`;
+  return [{ kind: "para", text: `It brings ${count}: ${names.join(", ")}${more > 0 ? `, and ${String(more)} more` : ""}.` }];
 }
 
 /** One line for each file a new trick marks executable, in path order (A5). */
@@ -183,6 +204,7 @@ export const PROPOSAL_KEY_RIGHTS = {
   places: "chip",
   env: "chip",
   decides: "chip",
+  drafts: "chip",
   access: "chip",
   inputs: "reads",
   rules: "refused",
@@ -191,11 +213,11 @@ export const PROPOSAL_KEY_RIGHTS = {
 
 /**
  * What the trick asks for, as chip words: its environment names, its places, `decides` (its answers go to a
- * session), and when it runs (`on`, `watch`: M105 step one).
+ * session), `drafts` (its buttons put text into your reply box), and when it runs (`on`, `watch`: M105 step one).
  */
-export function proposalRights(manifest: Pick<TrickManifest, "env" | "places" | "decides" | "on" | "watch" | "access">): string[] {
+export function proposalRights(manifest: Pick<TrickManifest, "env" | "places" | "decides" | "drafts" | "on" | "watch" | "access">): string[] {
   const reacts = [...(manifest.on !== undefined && manifest.on.length > 0 ? [ON_CHIP] : []), ...(manifest.watch !== undefined && manifest.watch.length > 0 ? [watchChip([...new Set(manifest.watch)])] : [])];
-  return [...(manifest.env ?? []), ...manifest.places.map((place) => placeWords(place)), ...(manifest.decides === "reply" ? [DECIDES_REPLY_CHIP] : []), ...(manifest.access === undefined ? [] : [ACCESS_CHIPS[manifest.access]]), ...reacts];
+  return [...(manifest.env ?? []), ...manifest.places.map((place) => placeWords(place)), ...(manifest.decides === "reply" ? [DECIDES_REPLY_CHIP] : []), ...(manifest.drafts === "session" ? [DRAFTS_SESSION_CHIP] : []), ...(manifest.access === undefined ? [] : [ACCESS_CHIPS[manifest.access]]), ...reacts];
 }
 
 /** The author's words on a card: at most this many paragraphs ... */
@@ -293,7 +315,7 @@ export function proposalCard(input: ProposalCardInput): ProposalCardResult {
   const reads = manifest.inputs ?? [];
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It ${alsoWords}.` : "It asks for no rights.";
-  const head = [...runsAsYou(manifest), ...accessLine(manifest.access), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...showsIn(manifest), ...keepsRunning(manifest), ...canRunLines(input.executable), ...settingsLines(input.settingsLeft)];
+  const head = [...runsAsYou(manifest), ...accessLine(manifest.access), ...draftsLine(manifest.drafts), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("It asks for", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...showsIn(manifest), ...keepsRunning(manifest), ...canRunLines(input.executable), ...settingsLines(input.settingsLeft), ...picturesLines(input.pictures)];
   // Contract 3: what the trick will ask the person for, its fields by label.
   head.push(...asksForLines(manifest));
   const words = authorWords(manifest);
@@ -334,10 +356,12 @@ export type ProposalCardCount = { ok: true; cards: number } | Extract<ProposalCa
  * proposer is a stand-in: the lead's sentence names the session, a few words longer.
  */
 export function proposalCardCount(input: Pick<ProposalCardInput, "manifest" | "warnings" | "crew"> & { files: readonly (Pick<ProposedFile, "rel" | "bytes"> & { executable?: boolean })[] }): ProposalCardCount {
-  const sizes = new Map(input.files.map((file) => [file.rel, file.bytes.byteLength]));
+  // The pictures are named on card 1, never shown as code.
+  const { code, pictures } = splitPictures(input.files);
+  const sizes = new Map(code.map((file) => [file.rel, file.bytes.byteLength]));
   const proposer: ProposerFacts = { by: "agent", host: "this machine", label: null };
-  const executable = new Set(input.files.filter((file) => file.executable === true).map((file) => file.rel));
-  const made = proposalCard({ id: input.manifest.id, manifest: input.manifest, proposer, warnings: input.warnings, crew: input.crew, sizes, executable, ...proposalDiff(input.manifest.id, input.files) });
+  const executable = new Set(code.filter((file) => file.executable === true).map((file) => file.rel));
+  const made = proposalCard({ id: input.manifest.id, manifest: input.manifest, proposer, warnings: input.warnings, crew: input.crew, sizes, executable, pictures: pictures.map((file) => file.rel), ...proposalDiff(input.manifest.id, code) });
   if (!made.ok) return made;
   return { ok: true, cards: made.card.group?.parts.length ?? 1 };
 }
@@ -369,6 +393,8 @@ export interface ProposalVersionCardInput {
   settingsLeft?: boolean;
   /** As {@link ProposalCardInput.runsOn}. */
   runsOn?: string | null;
+  /** As {@link ProposalCardInput.pictures}. */
+  pictures?: readonly string[];
 }
 
 /** The card for a proposed new version of a trick a proposal made: the version card, named and never recommended, one card or a group as {@link proposalCard}. */
@@ -378,7 +404,7 @@ export function proposalVersionCard(input: ProposalVersionCardInput): ProposalCa
   const reads = newInputs(input.baseManifest, input.manifest);
   const alsoWords = alsoSentence(rights, reads, input.warnings, input.crew);
   const fact = alsoWords !== "" ? `It now also ${alsoWords}.` : "It asks for no new rights.";
-  const head = [...runsAsYou(input.manifest), ...accessLine(raisedAccess(input.baseManifest, input.manifest)), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...showsIn(input.manifest), ...keepsRunning(input.manifest), ...settingsLines(input.settingsLeft)];
+  const head = [...runsAsYou(input.manifest), ...accessLine(raisedAccess(input.baseManifest, input.manifest)), ...draftsLine(addedDrafts(input.baseManifest, input.manifest)), ...(input.replaces === true ? [{ kind: "para", text: PROPOSAL_REPLACES } satisfies ViewNode] : []), ...rightsHead("New rights", rights, input.warnings, reads.length > 0 ? inputsSentence(reads, input.crew) : null), ...showsIn(input.manifest), ...keepsRunning(input.manifest), ...settingsLines(input.settingsLeft), ...picturesLines(input.pictures)];
   // Contract 3: a new or changed field is named, as on the runner's own version card.
   head.push(...asksForChange(input.baseManifest, input.manifest));
   // Contract 2: a proposed version never GIVES agents instructions (proposals.ts refuses that first), but it may

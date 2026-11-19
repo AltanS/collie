@@ -36,3 +36,5 @@ bridge/fixtures/** -text
 bridge/mux/herdr/captures/** -text
 bridge/mux/tern/captures/** -text
 bridge/mux/durable/fixtures/** -text
+# A released helper text, kept byte for byte: its SHA-256 is what makes a trick folder's trick.ts known (bridge/tricks/scan.ts).
+bridge/tricks/fixtures/helper-v*.txt -text

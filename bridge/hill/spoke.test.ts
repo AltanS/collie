@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AuditEntry } from "../audit.ts";
-import { hillSpokenClearRoute, sendSpoke, sendStartedTurn } from "../server.ts";
+import { hillSpokenClearRoute, sendSpoke, sendStartedTurn, sessionWaited } from "../server.ts";
 import type { HillPostInput } from "../../web/src/lib/hill/wire.ts";
 import { memoryHillReceipts } from "./receipts.ts";
 import { HILL_ANSWERED_IN_SESSION, HillService, NOT_ON_LEAD, type HillAgentSender, type HillCrewMode } from "./service.ts";
@@ -269,6 +269,15 @@ describe("a message that started the session's next turn (M96 spec 10)", () => {
     expect(sendStartedTurn("send", "sent", { queued: false, waited: false })).toBe(false);
     expect(sendStartedTurn("send", "held", { queued: false, waited: true })).toBe(false);
     expect(sendStartedTurn("command", "effective", { queued: false, waited: true })).toBe(false);
+  });
+
+  test("a session that stopped on an error waits for the person like an idle one; a question does not (PR 787)", () => {
+    expect(sessionWaited({ status: "blocked", blockedBy: "error" })).toBe(true);
+    expect(sessionWaited({ status: "idle" })).toBe(true);
+    expect(sessionWaited({ status: "done" })).toBe(true);
+    expect(sessionWaited({ status: "blocked" })).toBe(false);
+    expect(sessionWaited({ status: "working" })).toBe(false);
+    expect(sessionWaited(undefined)).toBe(false);
   });
 
   test("a close rests on the bridge's last read of the session, not on a read at the send (follow-up)", () => {

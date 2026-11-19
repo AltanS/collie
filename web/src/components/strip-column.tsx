@@ -25,6 +25,8 @@ import { t } from "@/lib/i18n";
 import { paneSessionLog, useMuxCapability } from "@/lib/mux-capability";
 import { useOperatorCommands } from "@/lib/operator-config";
 import { paneGitHead } from "@/lib/git-head";
+import { CrossfadeText } from "@/components/ui/crossfade-text";
+import { paneRowKey } from "@/lib/hosts";
 import { paneName } from "@/lib/pane-name";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { isUnseen, shownStatus } from "@/lib/triage";
@@ -123,7 +125,8 @@ export function ColumnHeader({ pane, controls, onFocus }: { pane: AgentView; con
       {/* The name is the column's way in for a keyboard: Enter on it gives the column the focus. */}
       <button type="button" onClick={own(onFocus)} className="min-h-11 min-w-0 flex-1 pl-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
         <div className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate text-sm font-medium text-muted-foreground">{paneName(pane)}</span>
+          <span className="min-w-0 truncate text-sm font-medium text-muted-foreground"><CrossfadeText text={paneName(pane)} identity={paneRowKey(pane)} />
+          </span>
           <UnseenMark on={isUnseen(pane)} reserve />
         </div>
         {/* No space name: the space header above the strip is the one bar that names it. What is the

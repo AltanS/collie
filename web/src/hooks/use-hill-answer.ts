@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { postHillAnswer } from "@/lib/api";
 import { HILL_LIST_READ_AFTER_MS } from "@/lib/hill/motion";
-import { noteHillAnswer, noteHillSendEnded, noteHillSending, readHillNow, useHillAnswerHeld } from "@/lib/hill/store";
+import { isHeldTrickCard, noteHillAnswer, noteHillSendEnded, noteHillSending, readHillNow, useHillAnswerHeld } from "@/lib/hill/store";
+import { stampTricks } from "@/lib/poll-intent";
 import { hillNode, type HillAnswerRequest, type HillGroupAnswer, type HillReceipt } from "@/lib/hill/wire";
 import { mintRequestId } from "@/lib/worktree-name";
 
@@ -63,10 +64,14 @@ export function useHillAnswer(decisionId: string): HillAnswer {
       const tappedAt = Date.now();
       setLocal({ phase: "sending", intent, text });
       try {
+        // Read before the answer goes: the answer closes the card, and a closed card is no longer an open one.
+        const trickCard = isHeldTrickCard(decisionId);
         const request: HillAnswerRequest = { rid, node: hillNode(decisionId), intent, value: { text } };
         if (group !== undefined) request.group = group;
         const receipt = await postHillAnswer(request);
         attempt.current = null;
+        // A yes to a trick's code starts the new version at once; poll fast to draw what it makes.
+        if (trickCard && receipt.code === "ok") stampTricks();
         noteHillAnswer(decisionId, { receipt, intent, text });
         setLocal(HILL_IDLE);
         // The bridge closed it: read the list once the card has settled on its receipt, so it leaves then.

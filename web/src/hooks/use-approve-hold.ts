@@ -26,9 +26,9 @@ import { beginHold, endHold } from "@/lib/hold-flag";
 // a line (hooks/use-auto-scroll.ts), a browser fires `scroll` for that, and a page-wide scroll listener took it as
 // the person's. Those were guards of the look, not of the yes: the bridge binds the yes to the digest, and a new
 // digest still ends a hold. While a hold is under way the chat does not follow its tail (lib/hold-flag.ts), so the
-// card stays under the finger. The button carries `touch-action: none` (hold-to-approve.tsx), so the browser never
-// takes a thumb that drifts a few px for a pan: Chrome on Android starts a pan, and fires `pointercancel`, past its
-// touch slop of about 8 px, well inside MOVE_CANCEL_PX.
+// card stays under the finger. The button carries `touch-action: pan-y` (hold-to-approve.tsx): a vertical swipe that
+// begins on it is the browser's pan of the chat and ends the hold with `pointercancel` (a card taller than the screen
+// scrolls from its buttons too, 2026-11-18), while a sideways drift of the thumb is never a pan.
 //
 // WHAT DOES NOTHING. A second finger while one holds, and any press while `enabled` is false (an answer in
 // flight, a locked card).

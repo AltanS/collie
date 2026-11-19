@@ -27,6 +27,16 @@
 // `console.info("collie: …")` channel. It fires only when the disagreement is there, so a healthy
 // device never prints it.
 
+// WHAT THE PIN LAST DID, READ-ONLY. composer-offscreen.ts adds it to the record it sends when the reply box
+// sits below the screen, so the cause can tell "the pin acted and it was not enough" from "the pin never
+// acted". Reading it changes nothing here.
+let lastAction: { readonly at: number; readonly kind: "pinned" | "released" } | null = null;
+
+/** What the pin did last in this page (`pinned` or `released`) and when (`Date.now()`), or null when it never acted. */
+export function lastViewportPinAction(): { readonly at: number; readonly kind: "pinned" | "released" } | null {
+  return lastAction;
+}
+
 /** Below this many pixels the two heights agree: sub-pixel rounding and a 1px hairline are not a bug. */
 export const PIN_SLACK_PX = 4;
 
@@ -79,6 +89,7 @@ export function startViewportPin(win: Window = window): () => void {
   const release = () => {
     if (pinned === null) return;
     pinned = null;
+    lastAction = { at: Date.now(), kind: "released" };
     root.style.removeProperty("--app-h");
   };
 
@@ -94,6 +105,7 @@ export function startViewportPin(win: Window = window): () => void {
     });
     if (target === null || target === pinned) return;
     pinned = target;
+    lastAction = { at: Date.now(), kind: "pinned" };
     root.style.setProperty("--app-h", `${target}px`);
     console.info(
       `collie: viewport re-pinned inner=${win.innerHeight} visual=${Math.round(vv.height)} client=${root.clientHeight} scrollY=${Math.round(win.scrollY)}`,

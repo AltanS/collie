@@ -144,6 +144,12 @@ export interface DashPrefs {
    * (lib/usage-row.ts). Read by the model tag, wherever it is drawn (components/model-tag.tsx).
    */
   usageRow: UsageRow;
+  /**
+   * Whether tricks may draw small moving pictures over the app (the `float` place of a trick, lib/tricks/float.ts).
+   * ON by default (decided 2026-11-18): the pictures never cover a question and never block a tap. Off hides
+   * every one at once, on this device.
+   */
+  floatingThings: boolean;
 }
 
 const STORAGE_KEY = "collie:dash-prefs:v1";
@@ -180,6 +186,7 @@ const DEFAULTS: DashPrefs = {
   zoomPill: null,
   pageZoom: true,
   usageRow: DEFAULT_USAGE_ROW,
+  floatingThings: true,
 };
 
 function coerceDepth(raw: JsonValue | undefined): number {
@@ -261,6 +268,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     zoomPill: coerceZoomPill(p.zoomPill),
     pageZoom: asJsonBoolean(p.pageZoom) ?? DEFAULTS.pageZoom,
     usageRow: coerceUsageRow(p.usageRow),
+    floatingThings: asJsonBoolean(p.floatingThings) ?? DEFAULTS.floatingThings,
   };
 }
 
@@ -323,6 +331,7 @@ export interface UseDashPrefsReturn {
   setZoomPill: (choice: ZoomPill) => void;
   setPageZoom: (on: boolean) => void;
   setUsageRow: (choice: UsageRow) => void;
+  setFloatingThings: (on: boolean) => void;
 }
 
 /**
@@ -373,6 +382,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
   const setPaneOrder = useCallback((paneOrder: PaneOrder) => update({ paneOrder }), [update]);
   const setPaneView = useCallback((paneView: PaneView) => update({ paneView }), [update]);
   const setUsageRow = useCallback((usageRow: UsageRow) => update({ usageRow }), [update]);
+  const setFloatingThings = useCallback((floatingThings: boolean) => update({ floatingThings }), [update]);
   const setZoomPill = useCallback((zoomPill: ZoomPill) => update({ zoomPill }), [update]);
   const setPageZoom = useCallback(
     (pageZoom: boolean) => {
@@ -428,5 +438,6 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setZoomPill,
     setPageZoom,
     setUsageRow,
+    setFloatingThings,
   };
 }

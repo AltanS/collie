@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 
 import { LAST_RESORT_NO_JOURNAL_MS } from "@/lib/chat-gate";
 import type { AgentStatus } from "@/lib/types";
-import { NO_RECORD, activityOf, nextRecord, nextSeen, usePaneStart } from "./use-pane-start";
+import { NO_RECORD, activityOf, nextRecord, nextSeen, startStatusOf, usePaneStart } from "./use-pane-start";
 
 // What the Chat gate needs about how an agent began, and the one rule that keeps it honest: it
 // belongs to ONE agent in ONE pane, so anything that starts another one starts over. Every reading
@@ -84,6 +84,14 @@ describe("nextRecord: the events, as latches", () => {
     expect(activityOf(r)).toBe("blocked");
     r = step(r, "done");
     expect(activityOf(r)).toBe("blocked");
+  });
+
+  it("a turn that stopped on an error ends the turn and latches no question (PR 787)", () => {
+    expect(startStatusOf({ status: "blocked", blockedBy: "error" })).toBe("done");
+    expect(startStatusOf({ status: "blocked" })).toBe("blocked");
+    expect(startStatusOf(undefined)).toBeUndefined();
+    const r = step(step(step(NO_RECORD, "idle"), "working"), startStatusOf({ status: "blocked", blockedBy: "error" })!);
+    expect(activityOf(r)).toBe("ended");
   });
 
   it("a shell's statuses never count for the agent that replaces it", () => {

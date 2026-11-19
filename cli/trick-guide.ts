@@ -1,6 +1,6 @@
 import { GROUP_CARD_CODE_BYTES, GROUP_CODE_BYTES, GROUP_CODE_CARDS } from "../bridge/tricks/card-group.ts";
 import { EXIT, type Io } from "./io.ts";
-import { PROPOSE_LIMITS } from "../bridge/tricks/propose-wire.ts";
+import { PROPOSE_LIMITS, PROPOSE_PICTURES } from "../bridge/tricks/propose-wire.ts";
 import { PROPOSALS_MACHINE_HOUR_MAX, PROPOSALS_SENDER_HOUR_MAX, PROPOSALS_SENDER_OPEN_MAX, PROPOSAL_EXPIRY_MS } from "../bridge/tricks/proposals.ts";
 import { RUN_TIMEOUT_MS, STDOUT_CAP_BYTES } from "../bridge/tricks/run.ts";
 import { MANIFEST, PLACES, type ManifestEntry } from "../web/src/lib/tricks/catalogue.ts";
@@ -65,7 +65,7 @@ export function trickGuide(): string[] {
     "  program.ts    the program, or any file the run line names.",
     "  trick.ts      the helper. collie trick init writes it. Do not edit it.",
     "  config.toml   settings the program reads. Optional. Your person writes it on the machine.",
-    "  media/        PNG, JPEG or WebP pictures the view shows. Optional. Your person adds them.",
+    "  media/        PNG, JPEG or WebP pictures the view shows. Optional. collie trick propose brings them.",
     "  AGENTS.md     the full contract, written by collie trick init. Read it.",
     "Start with: collie trick init <id>",
     "In your pane it makes ./<id>/ in your current folder: your draft, outside this machine's tricks. --dir <folder> picks another place.",
@@ -93,11 +93,10 @@ export function trickGuide(): string[] {
     `With contract ${String(MENU_CONTRACT)}, list "menu" in places and print a menu part: 1 to ${String(MENU_ROWS_MAX)} rows in a session's settings sheet.`,
     `A row is a button or a switch, with an id, a label of at most ${String(MENU_LABEL_MAX)} characters, an intent and an optional icon.`,
     "A switch carries on, your state. The phone never flips it: it waits for your next document. A button may carry confirm.",
-    "A label that reads like one of Collie's own rows is refused, never cut.",
-    "A tap names its session in from.session. Collie gives your trick no way to type into that session.",
+    "A label that reads like one of Collie's own rows is refused, never cut. A tap names its session in from.session.",
     `A belt mark or a menu part may name sessions: 1 to ${String(BOUND_SESSIONS_MAX)} session ids from the facts. It then shows only there.`,
     "Collie binds each id to the pane open now. A pane id that goes to a new session shows nothing and taps nothing.",
-    "An unbound menu part shows on this machine's sessions only. Name the sessions to reach a crew member's.",
+    "An unbound menu part shows on this machine's sessions only. Name the sessions to reach a crew member's. A float part with no sessions shows on the Dashboard.",
     "",
     "AGENT VIEWS",
     `A trick may add a view of a session that the session's own agent draws: list "${AGENT_VIEW_PLACE}" in places.`,
@@ -120,13 +119,13 @@ export function trickGuide(): string[] {
     "  t.tap          the tap that started this run, or null.",
     "  t.belt, t.status, t.dashboard, t.tabbar   one part in each place. A status text is 12 characters at most.",
     "  t.menu         rows in a session's settings. t.menu(rows, { sessions }) and t.belt({ ..., sessions }) bind to sessions.",
+    "  t.parts.push   a float part, a small moving picture: t.parts.push({ at: \"float\", id, mode, motion, sprite }). Original art only.",
     "  t.session      the trick's Page (the place session): a row on the Dashboard and a screen.",
     "  v.row, v.para, v.chip and the rest of v   one builder per view node.",
     "  t.decide       ask the person a question on the Hill. The answer comes back as a tap.",
     "  t.state        small JSON files in the trick's own state folder.",
     "  t.tool, t.sh   find and run a program without a shell.",
-    "The AGENTS.md of collie trick init lists every call.",
-    "Every place, part, manifest key, limit and command, complete, is one page: collie docs tricks-reference",
+    "The AGENTS.md of collie trick init lists every call. Every place, part, manifest key, limit and command is one page: collie docs tricks-reference",
     "",
     "LIMITS",
     `One run at a time, ${String(RUN_TIMEOUT_MS / 1000)} seconds, ${String(STDOUT_CAP_BYTES / 1024)} KiB of output.`,
@@ -150,7 +149,8 @@ export function trickGuide(): string[] {
     "HAND IT TO THE PERSON",
     "  collie trick propose <folder>",
     "It sends the folder, your draft ./<id>, to the lead of your crew, or to this Collie when it has no crew.",
-    "Dot files, node_modules, logs, inputs/, media/, captures/ and config.toml stay behind.",
+    `It brings the pictures of media/ and captures/ (PNG, JPEG or WebP, at most ${String(PROPOSE_PICTURES.bytes / (1024 * 1024))} MB each, ${String(PROPOSE_PICTURES.files)} in all), and the card names each one.`,
+    "Dot files, node_modules, logs, inputs/, config.toml and any other file in media/ or captures/ stay behind.",
     "A proposal cannot carry a config.toml: the program reads it, so your person writes it.",
     "The person sees a card with your code in this session on the phone, and in Settings, Tricks (on the Hill too, while it is on). One tap on its Switch it on approves the code and switches the trick on. Nothing runs before their yes. Nothing is added to this machine's tricks before it.",
     `Code that does not fit one card shows on a group of up to ${String(GROUP_CODE_CARDS + 1)} cards, every line of it.`,

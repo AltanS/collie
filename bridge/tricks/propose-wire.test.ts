@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { ADD_LIMITS } from "../../cli/trick-add.ts";
 import type { JsonObject } from "../json.ts";
-import { checkProposedFiles, foldKey, manifestGivesRules, proposalHash, proposedPathProblem, PROPOSE_HAS_RULES, PROPOSE_LIMITS, PROPOSE_NO_CONFIG, readProposal, RESERVED_PROPOSAL_IDS, wireFiles, type ProposedFile } from "./propose-wire.ts";
+import { codeHashOfFiles, isCodePath } from "./code-hash.ts";
+import { checkProposedFiles, foldKey, isProposedPicture, manifestGivesRules, proposalHash, proposedPathProblem, PROPOSE_HAS_RULES, PROPOSE_LIMITS, PROPOSE_NO_CONFIG, PROPOSE_PICTURES, readProposal, RESERVED_PROPOSAL_IDS, splitPictures, wireFiles, type ProposedFile } from "./propose-wire.ts";
 
 // THE ONE READER OF A PROPOSAL'S FILES (crew slice 8): the CLI, the member and the lead all read with it,
 // and the lead treats every byte as hostile. Each refusal below is one a hostile member could try.
@@ -11,6 +12,7 @@ const RID = "11111111-2222-4333-8444-555555555555";
 const MANIFEST = 'id = "legs"\nname = "Browser leg"\nrun = "program.ts"\nplaces = ["belt"]\ncontract = 1\n';
 const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1]);
 
 function file(rel: string, text = "x", executable = false): ProposedFile {
   return { rel, bytes: enc(text), executable };
@@ -67,12 +69,44 @@ describe("the paths a proposal may carry", () => {
     expect(proposedPathProblem(rel)).toContain(words);
   });
 
-  test("media, captures and inputs, as a folder or a file, in any case, are refused", () => {
-    for (const rel of ["media/a.png", "Media/run.ts", "CAPTURES/x.png", "media", "captures", "Inputs"]) {
+  test("media and captures bring pictures only: another name, another spelling, a file of that name, and inputs are refused", () => {
+    for (const rel of ["media/notes.txt", "media/run.ts", "Media/a.png", "Media/run.ts", "CAPTURES/x.png", "media", "captures", "Inputs", "inputs/a.png"]) {
       expect(proposedPathProblem(rel)).not.toBeNull();
     }
-    expect(refusedWith(wire([...base(), { rel: "media/a.png", bytes: PNG, executable: false }]))).toContain("your person adds pictures on the machine");
-    expect(refusedWith(wire([...base(), file("media", "x")]))).toContain("your person adds pictures on the machine");
+    expect(refusedWith(wire([...base(), file("media/run.ts", "x")]))).toContain("bring only .png, .jpg, .jpeg and .webp pictures");
+    expect(refusedWith(wire([...base(), file("media", "x")]))).toContain("bring only .png, .jpg, .jpeg and .webp pictures");
+    expect(refusedWith(wire([...base(), { rel: "Media/a.png", bytes: PNG, executable: false }]))).toContain("bring only");
+  });
+
+  test("a picture is taken: under media/ or captures/, a picture's name, a picture's first bytes; it is no code", () => {
+    for (const rel of ["media/a.png", "media/sprites/b.webp", "captures/c.JPG", "media/d.jpeg"]) {
+      expect(proposedPathProblem(rel)).toBeNull();
+      expect(isProposedPicture(rel)).toBe(true);
+    }
+    const read = readProposal(wire([...base(), { rel: "media/a.png", bytes: PNG, executable: false }, { rel: "captures/b.jpg", bytes: JPEG, executable: false }]));
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    const split = splitPictures(read.proposal.files);
+    expect(split.pictures.map((f) => f.rel)).toEqual(["captures/b.jpg", "media/a.png"]);
+    expect(split.code.map((f) => f.rel)).toEqual(["program.ts", "trick.toml"]);
+    // The proposal hash binds the pictures: the yes installs exactly the bytes the card named.
+    expect(read.proposal.hash).not.toBe(proposalHash(split.code));
+    // The code hash reads no picture, as it reads none in any trick folder.
+    expect(codeHashOfFiles(split.code)).toBe(codeHashOfFiles(read.proposal.files.filter((f) => isCodePath(f.rel))));
+  });
+
+  test("a picture that is not one by its first bytes, too large, marked executable, or past the count is refused", () => {
+    expect(refusedWith(wire([...base(), file("media/a.png", "<svg onload=alert(1)>")]))).toContain("is not a PNG, JPEG or WebP picture by its first bytes");
+    const big = new Uint8Array(PROPOSE_PICTURES.bytes + 1);
+    big.set(PNG);
+    expect(refusedWith(wire([...base(), { rel: "media/big.png", bytes: big, executable: false }]))).toContain("larger than 2 MB");
+    const edge = new Uint8Array(PROPOSE_PICTURES.bytes);
+    edge.set(PNG);
+    expect(readProposal(wire([...base(), { rel: "media/edge.png", bytes: edge, executable: false }])).ok).toBe(true);
+    expect(refusedWith(wire([...base(), { rel: "media/a.png", bytes: PNG, executable: true }]))).toContain("marked executable");
+    const many = Array.from({ length: PROPOSE_PICTURES.files + 1 }, (_, i): ProposedFile => ({ rel: `media/p${String(i)}.png`, bytes: PNG, executable: false }));
+    expect(refusedWith(wire([...base(), ...many]))).toContain(`more than ${String(PROPOSE_PICTURES.files)} pictures`);
+    expect(readProposal(wire([...base(), ...many.slice(1)])).ok).toBe(true);
   });
 
   test("ordinary names and a nested folder are taken", () => {

@@ -925,6 +925,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "basePath",
   },
   {
+    key: "auth_return",
+    env: "COLLIE_AUTH_RETURN",
+    section: "serve",
+    kind: "bool",
+    default: false,
+    doc: "Send /auth/ back to the app. Set it when your front door signs in on every path and serves nothing at /auth/.",
+    configField: "authReturn",
+  },
+  {
     key: "serve_mode",
     env: "COLLIE_SERVE_MODE",
     section: "serve",

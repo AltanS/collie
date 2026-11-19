@@ -18,6 +18,8 @@ import { useMuxCapability, useMuxName } from "@/lib/mux-capability";
 import { branchOffOffered } from "@/lib/branch-off";
 import { setStatus } from "@/lib/status";
 import { stampTopology } from "@/lib/poll-intent";
+import { CrossfadeText } from "@/components/ui/crossfade-text";
+import { paneRowKey } from "@/lib/hosts";
 import { paneName } from "@/lib/pane-name";
 import { dropPin, pinMatcher, setPinned, usePins } from "@/lib/pins";
 import type { PaneView } from "@/lib/pane-view";
@@ -420,7 +422,7 @@ export function PaneActionsSheet({
           // acting on the wrong one.
           <span className="flex min-w-0 items-center gap-1.5">
             <span data-slot="pane-actions-title-name" className="min-w-0 truncate">
-              {paneName(pane)}
+              <CrossfadeText text={paneName(pane)} identity={paneRowKey(pane)} />
             </span>
             <HostChip host={pane.host} variant="target" />
           </span>

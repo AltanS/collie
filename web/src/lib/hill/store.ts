@@ -361,6 +361,11 @@ export function useTrickCards(): readonly HillDecision[] {
   );
 }
 
+/** Whether the open decision `decisionId` is one of Collie's own cards about a trick (a new trick, a new version). */
+export function isHeldTrickCard(decisionId: string): boolean {
+  return held.open.some((decision) => decision.id === decisionId && isTrickCard(decision.from));
+}
+
 let trickCardsFrom: readonly HillDecision[] | null = null;
 let trickCards: readonly HillDecision[] = NO_DECISIONS;
 function trickCardsOf(): readonly HillDecision[] {

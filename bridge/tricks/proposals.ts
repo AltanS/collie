@@ -13,7 +13,7 @@ import type { ProposalOrigin } from "./origin.ts";
 import { hash16, tricksConfigDir, tricksStateDir } from "./paths.ts";
 import { recoverProposalWrites } from "./proposal-install.ts";
 import { proposalCard, proposalDiff, proposalRequestId, proposalVersionCard, PROPOSAL_CARD_SENDER, PROPOSAL_LATER, PROPOSAL_ON, type ProposalCardResult, type ProposerFacts } from "./proposal-card.ts";
-import { checkProposedFiles, foldKey, proposalHash, PROPOSE_HAS_RULES, PROPOSE_LIMITS, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
+import { checkProposedFiles, foldKey, proposalHash, PROPOSE_HAS_RULES, PROPOSE_LIMITS, splitPictures, type ProposalRead, type ProposedFile, type ProposeRefusalCode } from "./propose-wire.ts";
 import { trickWarnings, WARN_PLAIN } from "./scan.ts";
 import type { ProposalPlaced, ProposalTarget } from "./service.ts";
 import { keepsFileModes, versionDiff, type VersionDiff } from "./version-diff.ts";
@@ -436,12 +436,15 @@ export class TrickProposals {
     // Tricks run on this bridge, so a proposal that came from another machine of the crew runs elsewhere than it was written.
     const runsOn = this.deps.self === undefined || proposer.memberId === this.deps.self.memberId ? null : clean(this.deps.self.machine);
     const kinds = await this.warningKinds(dir, proposal.manifest);
+    // The pictures it brings are named on the card, never shown as code (proposal-card.ts).
+    const split = splitPictures(proposal.files);
+    const pictures = split.pictures.map((file) => file.rel);
     if (base === null) {
       // A new trick's code is its files' own bytes, every line added: no git run, nothing left out.
-      const sizes = new Map(proposal.files.map((file) => [file.rel, file.bytes.byteLength]));
+      const sizes = new Map(split.code.map((file) => [file.rel, file.bytes.byteLength]));
       // A mode counts only where the platform keeps one: on Windows no file can run as a program by its mode.
-      const executable = new Set(keepsFileModes(this.platform) ? proposal.files.filter((file) => file.executable).map((file) => file.rel) : []);
-      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), warnings: kinds, crew, replaces, runsOn, sizes, executable, settingsLeft: proposal.settingsLeft === true, ...proposalDiff(id, proposal.files) });
+      const executable = new Set(keepsFileModes(this.platform) ? split.code.filter((file) => file.executable).map((file) => file.rel) : []);
+      return proposalCard({ id, manifest: proposal.manifest, proposer: facts(proposer), warnings: kinds, crew, replaces, runsOn, sizes, executable, settingsLeft: proposal.settingsLeft === true, pictures, ...proposalDiff(id, split.code) });
     }
     const exec = new Set(proposal.files.filter((file) => file.executable).map((file) => file.rel));
     const diff = await this.diff(base.baseDir, dir, exec).catch((): VersionDiff => ({ files: [], counted: false }));
@@ -452,7 +455,7 @@ export class TrickProposals {
     // The same code as the one that runs: nothing for a yes to approve, so no card at all (the lead's decision, 2026-11-17).
     if (diff.files.length === 0) return { ok: false, code: "exists", error: PROPOSAL_NO_CHANGE };
     const had = new Set(base.baseManifest === undefined ? [] : await this.warningKinds(base.baseDir, base.baseManifest));
-    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces, runsOn, settingsLeft: proposal.settingsLeft === true, helpers: shippedHelpers(proposal.files, id) });
+    return proposalVersionCard({ id, manifest: proposal.manifest, baseManifest: base.baseManifest, proposer: facts(proposer), diff, warnings: kinds.filter((kind) => !had.has(kind)), crew, replaces, runsOn, settingsLeft: proposal.settingsLeft === true, pictures, helpers: shippedHelpers(split.code, id) });
   }
 
   private async newProposal(state: ProposalsState, proposal: ProposalRead, proposer: Proposer, old: OpenProposal | null, base: Extract<ProposalTarget, { kind: "version" }> | null, now: number): Promise<ProposeAnswer> {

@@ -3289,3 +3289,99 @@ describe("walky talky in a crew of four, on the real wire", () => {
     );
   }, 90_000);
 });
+
+// ── Issue 785: a member's second Herdr session, browsed through the lead ─────
+// A member that runs two Herdr sessions with different spaces. The lead's sweep body holds both
+// sessions' panes but the primary's spaces and tabs only, so the lead fetches the named session's own
+// lists. Asserted through the real lead's `/api/snapshot`, the request the phone makes.
+
+describe("a member's second Herdr session shows its own spaces through the lead (issue 785)", () => {
+  let ml: Instance;
+  let mm: Instance;
+  let personal: FakeHerdr | undefined;
+
+  beforeAll(async () => {
+    ml = new Instance("slead", "w1:p1", "");
+    // Multi-session on, for this member only: every other block here pins it off.
+    mm = new Instance("twosess", "w1:p2", "", { COLLIE_MULTI_SESSION: "1" });
+    ml.startHerdr();
+    mm.herdr = startFakeHerdr({
+      socketPath: mm.socketPath,
+      workspaceLabel: "Work",
+      panes: [{ paneId: "w1:p2", tabId: "t1", workspaceId: "w1", label: "work pane", text: "" }],
+    });
+    // Herdr's layout for a named session: `<configRoot>/sessions/<name>/herdr.sock`. Ids collide
+    // with the default session's on purpose, as they do in Herdr.
+    const personalSocket = join(mm.configRoot, "sessions", "personal", "herdr.sock");
+    mkdirSync(dirname(personalSocket), { recursive: true });
+    personal = startFakeHerdr({
+      socketPath: personalSocket,
+      workspaceLabel: "Personal",
+      panes: [{ paneId: "w1:p2", tabId: "t1", workspaceId: "w1", label: "personal pane", text: "" }],
+    });
+    await Promise.all([ml.start(), mm.start()]);
+    const invited = await verb(ml, (d) => cmdCrewInvite(d, ["--label", mm.name]));
+    expect(invited.code).toBe(EXIT.OK);
+    const token = invited.out.split("\n")[0]!.trim();
+    const joined = await verb(mm, (d) =>
+      cmdJoin(d, [`http://127.0.0.1:${ml.port}`, token, "--insecure", "--address", `127.0.0.1:${mm.port}`]),
+    );
+    expect(joined.code).toBe(EXIT.OK);
+    // Nothing restarts the LEAD after an enrollment lands (§8.2's note): the operator's step, here the harness's.
+    await ml.restart();
+  }, 120_000);
+
+  afterAll(async () => {
+    if (process.env.COLLIE_HARNESS_DEBUG === "1") {
+      for (const i of [ml, mm]) console.log(`\n──── ${i?.name} ────\n${i?.log}`);
+    }
+    await Promise.all([ml?.stop(), mm?.stop()]);
+    ml?.herdr?.stop();
+    mm?.herdr?.stop();
+    personal?.stop();
+  });
+
+  interface Topology {
+    sessions?: Array<{ name: string; host?: string }>;
+    workspaces?: Array<{ label?: string; host?: string }>;
+    agents?: Array<{ workspaceLabel?: string; host?: string }>;
+  }
+
+  /** The member's spaces and its panes' space labels, as the lead serves them for one session. */
+  async function memberView(session: string): Promise<{ spaces: string[]; panes: string[] }> {
+    const memberId = mm.store()!.self.memberId;
+    const res = await ml.api(`/api/snapshot?host=${encodeURIComponent(memberId)}&session=${encodeURIComponent(session)}`);
+    // SAFETY: the handler emits its body `satisfies SnapshotResponse` (server.ts); `Topology` is a
+    // structural subset of it with every field optional.
+    const body = (await res.json()) as Topology;
+    return {
+      spaces: (body.workspaces ?? []).filter((w) => w.host === memberId).map((w) => w.label ?? ""),
+      panes: (body.agents ?? []).filter((p) => p.host === memberId).map((p) => p.workspaceLabel ?? ""),
+    };
+  }
+
+  test("the primary session shows its spaces, and the second session shows its own", async () => {
+    const memberId = () => mm.store()!.self.memberId;
+    await waitFor(
+      async () => {
+        const res = await ml.api("/api/snapshot");
+        // SAFETY: as in memberView.
+        const body = (await res.json()) as Topology;
+        return (body.sessions ?? []).some((s) => s.host === memberId() && s.name === "personal");
+      },
+      30_000,
+      async () => `the lead never listed the member's second session:\n${mm.log}`,
+    );
+    expect(await memberView("default")).toEqual({ spaces: ["Work"], panes: ["Work"] });
+    // The phone keeps polling the session it switched to; the sweep after its first poll brings the
+    // session's own lists, and the pane list was right from the start.
+    await waitFor(
+      async () => (await memberView("personal")).spaces.join() === "Personal",
+      15_000,
+      async () => `the lead kept serving ${JSON.stringify(await memberView("personal"))}`,
+    );
+    expect(await memberView("personal")).toEqual({ spaces: ["Personal"], panes: ["Personal"] });
+    // And the primary is still the primary's.
+    expect(await memberView("default")).toEqual({ spaces: ["Work"], panes: ["Work"] });
+  }, 60_000);
+});

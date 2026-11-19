@@ -458,6 +458,12 @@ export interface NavState {
    * own "Preview" offer asked for it.
    */
   fileView?: "preview";
+  /**
+   * A trick's page opened from an agent pane, for that pane's session (`from`): a belt mark, a status item or
+   * the switcher. A button with `does = "draft"` on the page puts its text into that pane's reply box. A
+   * sideways move does not carry it, so a page reached through the bottom bar fills no box.
+   */
+  forSession?: true;
 }
 
 /** The fields a move may carry beside `from`, which the move itself writes. */
@@ -471,6 +477,11 @@ export type NavExtras = Omit<NavState, "from">;
 export function readFrom(state: JsonValue | undefined): string | undefined {
   const from = asJsonString(asJsonObject(state)?.from);
   return from?.startsWith("/") ? from : undefined;
+}
+
+/** Whether this trick page was opened for the session of the pane in `from` (see {@link NavState.forSession}). */
+export function readForSession(state: JsonValue | undefined): boolean {
+  return asJsonBoolean(asJsonObject(state)?.forSession) === true;
 }
 
 /** Whether the entry this location came from was a Files `link` row (see {@link NavState.viaLink}). */

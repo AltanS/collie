@@ -396,7 +396,8 @@ Each line is a thing the core could do that would close a gap Collie cannot clos
   demand only (M79 spec 01): the phone's poll, and every read of the bridge's own, reads the screen
   (`lines: 0`) and marks the scrollback as cut. A history read starts only when a person taps Load
   older, at most one per terminal, none while the program reports `blocked` or while Collie reads an
-  ask on the screen (the phone then says that Load older waits), and past a 2 s budget the screen
+  ask on the screen (the phone then says that Load older waits; a program that reports `error`
+  waits on no answer, so its history is read), and past a 2 s budget the screen
   answers while the core finishes the read. A key call that timed out is reported as not confirmed
   instead of failed. The 1.25.2 backoff (one read per terminal, then screen-only reads for 30 s to
   5 min) is gone: it still let the one read hold the keys for up to 25 s after a dialog appeared. The

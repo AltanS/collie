@@ -11,7 +11,7 @@ import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { syncTricks } from "@/lib/tricks/store";
 import { clearStatus, useStatus } from "@/lib/status";
 import type { AgentView } from "@/lib/types";
-import { TrickSessionRoute } from "./trick-session";
+import { draftTargetOf, TrickSessionRoute } from "./trick-session";
 
 // A TRICK'S OWN SESSION (M94 slice 03): the Header, the view, the actions at the foot, and no Composer.
 // The tricks store is the app's own, brought to a rev the test serves at the wire.
@@ -63,7 +63,7 @@ let rev = 100;
  * Serve one tricks reply with the legs session part, and bring the store to it. `tabbar` adds a bar item
  * for legs and one for a second trick, tracker, after it.
  */
-async function serveTricks(opts: { tabbar?: boolean } = {}): Promise<void> {
+async function serveTricks(opts: { tabbar?: boolean; draft?: { right: boolean } } = {}): Promise<void> {
   rev += 1;
   const asOf = new Date().toISOString();
   const tabbar = opts.tabbar === true
@@ -72,10 +72,12 @@ async function serveTricks(opts: { tabbar?: boolean } = {}): Promise<void> {
         { host: "lodge", trick: "tracker", part: "bar", rev, asOf, value: { at: "tabbar", id: "bar", item: { label: "Tracker" } } },
       ]
     : [];
+  const legsRow: JsonObject = { host: "lodge", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["session", "tabbar"] };
+  if (opts.draft?.right === true) legsRow.draftsSession = true;
   const reply = {
     rev,
     tricks: [
-      { host: "lodge", id: "legs", name: "Browser leg", icon: "flask", on: true, state: "ok", places: ["session", "tabbar"] },
+      legsRow,
       ...(opts.tabbar === true ? [{ host: "lodge", id: "tracker", name: "Tracker", icon: "file", on: true, state: "ok", places: ["tabbar"] }] : []),
     ],
     parts: [
@@ -97,6 +99,7 @@ async function serveTricks(opts: { tabbar?: boolean } = {}): Promise<void> {
           view: [
             { kind: "para", text: "23 of 34 green" },
             { kind: "list", kids: [{ kind: "row", text: "case 24", attrs: { href: "lodge:w6X:3" }, kids: [{ kind: "button", attrs: { label: "Rerun case", intent: "rerun", value: "24" } }] }] },
+            ...(opts.draft === undefined ? [] : [{ kind: "bar", kids: [{ kind: "button", attrs: { label: "Use the prompt", does: "draft", value: DRAFT_TEXT } }] }]),
           ],
         },
       },
@@ -117,7 +120,11 @@ function Status() {
   return <output aria-label="status">{status?.text ?? ""}</output>;
 }
 
-function mount(path = "/trick/trick%3Alodge%3Alegs%3Alegs", data: HomeData = home()) {
+/** The text of the legs page's draft button: two lines, kept exactly. */
+const DRAFT_TEXT = "Rerun case 24,\nthen tell me what failed.";
+const TRICK_PATH = "/trick/trick%3Alodge%3Alegs%3Alegs";
+
+function mount(path: string | { pathname: string; state: JsonObject } = TRICK_PATH, data: HomeData = home(), behind = "/") {
   const router = createMemoryRouter(
     [
       {
@@ -139,7 +146,7 @@ function mount(path = "/trick/trick%3Alodge%3Alegs%3Alegs", data: HomeData = hom
         ],
       },
     ],
-    { initialEntries: ["/", path], initialIndex: 1 },
+    { initialEntries: [behind, path], initialIndex: 1 },
   );
   render(<RouterProvider router={router} />);
   return router;
@@ -276,5 +283,79 @@ describe("the Dashboard's bar on a trick's Session (amended 2026-11-10)", () => 
     fireEvent.click(hill);
     await waitFor(() => expect(where()).toBe("/hill"));
     expect(router.state.historyAction).toBe("REPLACE");
+  });
+});
+
+// A DRAFT BUTTON (1.29.1): `does = "draft"` puts its text into the EMPTY reply box of the session the page was
+// opened for, and goes back up to that session. It never sends, and a box with words is never touched.
+describe("a draft button on the trick session", () => {
+  const PANE = "/pane/w6X%3A3";
+  const forPane = { pathname: TRICK_PATH, state: { from: PANE, forSession: true } };
+  const draftButton = () => screen.findByRole("button", { name: /^Use the prompt/u });
+
+  it("opened for a session with an empty box: fills the box with the text exactly and goes up to that session", async () => {
+    await serveTricks({ draft: { right: true } });
+    const bodies: JsonObject[] = [];
+    server.use(http.post<never, JsonObject>("/api/tricks/lodge/legs/tap", async ({ request }) => void bodies.push(await request.json())));
+    mount(forPane, home(), PANE);
+    const use = await draftButton();
+    expect(use).not.toBeDisabled();
+    fireEvent.click(use);
+    expect(loadDraft({}, REAL.paneId)).toBe(DRAFT_TEXT);
+    await waitFor(() => expect(where()).toBe(PANE));
+    // Nothing went to the program, and nothing was sent.
+    expect(bodies).toEqual([]);
+  });
+
+  it("a box that holds words: refuses with one line, the words stay as they were, the page stays", async () => {
+    await serveTricks({ draft: { right: true } });
+    saveDraft({}, REAL.paneId, "half a thought");
+    mount(forPane, home(), PANE);
+    fireEvent.click(await draftButton());
+    expect(loadDraft({}, REAL.paneId)).toBe("half a thought");
+    expect(screen.getByRole("status", { name: "status" }).textContent).toBe("The box holds your words. Send or clear them first.");
+    expect(where()).toBe(TRICK_PATH);
+  });
+
+  it("opened from the Dashboard, the page is for no session: the button is disabled and says to open a session first", async () => {
+    await serveTricks({ draft: { right: true } });
+    mount();
+    const off = await draftButton();
+    expect(off).toBeDisabled();
+    expect(off.textContent).toContain("Open a session first");
+    expect(loadDraft({}, REAL.paneId)).toBeNull();
+  });
+
+  it("a page reached sideways keeps its from but not forSession, so it fills no box", async () => {
+    await serveTricks({ draft: { right: true } });
+    mount({ pathname: TRICK_PATH, state: { from: PANE } }, home(), PANE);
+    expect(await draftButton()).toBeDisabled();
+  });
+
+  it("a trick whose row does not carry the right draws the button disabled, also for a session", async () => {
+    await serveTricks({ draft: { right: false } });
+    mount(forPane, home(), PANE);
+    expect(await draftButton()).toBeDisabled();
+  });
+});
+
+describe("draftTargetOf", () => {
+  const root = { agents: [REAL, { ...REAL, paneId: "w2:1", host: "badger" }], servers: [], sessions: [] };
+
+  it("is the agent pane the page was opened for, with its own address", () => {
+    expect(draftTargetOf({ from: "/pane/w6X%3A3", forSession: true }, root)).toEqual({ paneId: "w6X:3", scope: {}, path: "/pane/w6X%3A3" });
+    // A crew member's pane: its address carries the member, and the draft lands in that pane's box.
+    expect(draftTargetOf({ from: "/pane/w2%3A1?h=badger", forSession: true }, root)).toEqual({ paneId: "w2:1", scope: { host: "badger" }, path: "/pane/w2%3A1?h=badger" });
+  });
+
+  it("is no session without forSession, from anything but a pane, or for a pane that is no listed agent session", () => {
+    expect(draftTargetOf({ from: "/pane/w6X%3A3" }, root)).toBeUndefined();
+    expect(draftTargetOf({ from: "/", forSession: true }, root)).toBeUndefined();
+    expect(draftTargetOf({ from: "/pane/w6X%3A3/history", forSession: true }, root)).toBeUndefined();
+    expect(draftTargetOf({ from: "/pane/gone%3A1", forSession: true }, root)).toBeUndefined();
+    expect(draftTargetOf({ from: "/pane/w2%3A1", forSession: true }, root)).toBeUndefined();
+    expect(draftTargetOf({ from: "/pane/%E0%A4%A", forSession: true }, root)).toBeUndefined();
+    expect(draftTargetOf(undefined, root)).toBeUndefined();
+    expect(draftTargetOf({ from: "/pane/w6X%3A3", forSession: true }, { ...root, agents: [{ ...REAL, kind: "shell" }] })).toBeUndefined();
   });
 });

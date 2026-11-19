@@ -50,11 +50,11 @@ import { HOST, hostFor, type Host } from "../host.ts";
 import { buildFacts, type FactsWorld } from "./facts.ts";
 import type { TrickInputs } from "./inputs.ts";
 import { codeFile, codeIndex, codeShowsWhole, codeSource, type CodeFile, type CodeIndex } from "./code-view.ts";
-import { readTrickMedia, type TrickMediaFile } from "./media.ts";
+import { readTrickMedia, TrickMediaSync, TrickMediaVersions, type TrickMediaFile } from "./media.ts";
 import { isUnlistedOfficialOrigin, shippedOfficialList, type OfficialEntry } from "./official.ts";
 import { originRepoName, type ProposalOrigin } from "./origin.ts";
 import { replaceTrickCode, writeProposedTrick } from "./proposal-install.ts";
-import { proposalHash, type ProposedFile } from "./propose-wire.ts";
+import { proposalHash, splitPictures, type ProposedFile } from "./propose-wire.ts";
 import { PROPOSAL_CHANGED } from "./proposals.ts";
 import type { TrickHillRun, TrickHillTrick } from "./hill.ts";
 import { approvedCopyDir, approvedTrickDir, pendingTrickDir, tricksConfigDir, trickStateDir } from "./paths.ts";
@@ -72,7 +72,7 @@ import { fieldValueProblem, isRequestId, isTrickId, type FieldRefusal, type Fiel
 import { BACKOFF_MS, HILL_QUEUE_MAX, RUNS_MAX, WATCH_WINDOW_MS } from "../../web/src/lib/tricks/limits.ts";
 import { menuMessageLine } from "../../web/src/lib/tricks/menu-message.ts";
 import type { EventBus } from "../events/bus.ts";
-import { TrickReactions, type Admit, type FloorTimers, type ReactionCounts, type ReactTrigger } from "./triggers.ts";
+import { systemTimers, TrickReactions, type Admit, type FloorTimers, type ReactionCounts, type ReactTrigger } from "./triggers.ts";
 import { WATCH_POLL_MS, type WatchOptions } from "./watch.ts";
 
 // The run caps live in web/src/lib/tricks/limits.ts, which the tricks catalogue reads too.
@@ -193,6 +193,8 @@ export const PENDING_LINE = "A new version waits for your yes.";
 export const NOT_APPROVED_LINE = "No version of this trick is approved yet. Switch it on again to approve its code as it is now.";
 /** The answer to a tap on a trick that is only an agent view: it has no program, so nothing runs. */
 export const NO_PROGRAM_LINE = "This trick has no program, so nothing runs.";
+/** The reply of a run that a new version or new settings overtook while it went (its output is dropped). */
+export const SUPERSEDED_LINE = "The trick changed while it ran, so it runs again with the new version.";
 /** The line of a trick whose approved copy changed on disk. */
 export const TAMPERED_LINE = "The approved copy changed on disk, so the trick stopped. Switch it on again to approve its code as it is now.";
 /**
@@ -526,6 +528,8 @@ export interface TricksServiceDeps {
   watchOptions?: WatchOptions;
   /** The timer of the 10 second floor between two event or watch runs, for a test (triggers.ts). Absent: `setTimeout`. */
   reactionTimers?: FloorTimers;
+  /** The timer of a changed value's restart ({@link VALUE_RESTART_MS} after the last write), for a test. Absent: `setTimeout`. */
+  valueTimers?: FloorTimers;
 }
 
 /** The approved copy a trick runs from, as read and verified. */
@@ -600,6 +604,8 @@ interface TrickRuntime {
   approved: ApprovedRun | null;
   /** Why the approved copy cannot run (it changed on disk, or it is gone), or null. */
   copyProblem: string | null;
+  /** The content version of each picture in the approved copy's `media/` (`WireTrickInfo.media`), as the last scan read it. Absent: none. */
+  media?: Record<string, string>;
   /** The approval (`<hash>@<at>`) whose copy was found changed: not checked again until a new approval. */
   tampered: string | null;
   /**
@@ -620,6 +626,13 @@ interface TrickRuntime {
   nextAt: number;
   /** A changed value asked for a restart at this time; each later write moves it (`tick` starts the one run). Absent: none asked. */
   valueRestartAt?: number;
+  /**
+   * An immediate start run was asked for ({@link TricksService.startSoon}) and has not gone yet: it waits for the run
+   * or tap ahead to end, then `begin` asks again. Cleared when the start run begins or cannot begin.
+   */
+  soon?: boolean;
+  /** A microtask for {@link TricksService.startNow} is queued, so a burst of restarts in one turn is one start. */
+  soonQueued?: boolean;
   /** The run this trick has going or waiting for a slot. */
   running: Promise<void> | null;
   /** A phone tap waiting, one deep. */
@@ -752,6 +765,11 @@ export class TricksService implements TricksSurface {
   private readonly receiptFile: TrickReceiptSurface;
   private receiptsLoaded: Promise<void> | null = null;
   private readonly slots = new RunSlots(RUNS_MAX);
+  /** The immediate start runs going now ({@link startNow}), so a test (and `tick`) can wait for them. */
+  private readonly soonRuns = new Set<Promise<void>>();
+  private readonly valueTimers: FloorTimers;
+  /** The open restart timer of each trick whose value was written, by trick id. */
+  private readonly valueTimerOf = new Map<string, number>();
   private watchedAt = -Infinity;
   private folderExists = false;
   private scannedAt = -Infinity;
@@ -792,6 +810,10 @@ export class TricksService implements TricksSurface {
   private readonly watchPolled = new Set<string>();
   /** The values a person keeps for each trick (contract 3, values.ts). */
   private readonly values: TrickValues;
+  /** The versions of the approved copies' pictures, read again only for a file whose size or time moved. */
+  private readonly mediaVersions = new TrickMediaVersions();
+  /** What the installed folders' `media/` last gave the approved copies: a picture changed by hand reaches the copy. */
+  private readonly mediaSync = new TrickMediaSync();
   /** The request ids of value writes already taken, with their receipts: the same id twice writes once. */
   private readonly valueWrites = new SeenWrites<ValueAnswer>();
 
@@ -808,6 +830,7 @@ export class TricksService implements TricksSurface {
       { admit: (id) => this.reactAdmit(id), start: (id, trigger) => this.reactStart(id, trigger), due: (id) => this.reactDue(id), note: (id, note) => this.reactNote(id, note), warn: this.warn },
       { bus: deps.bus, watch: deps.watchOptions, now: this.now, timers: deps.reactionTimers },
     );
+    this.valueTimers = deps.valueTimers ?? systemTimers();
     this.feature = deps.feature ?? new TricksFeatureSwitch(deps.stateDir, this.warn);
     // A move of the switch folds in at once (after the read that saw it), so the parts go and the rows move.
     this.feature.onChange?.((on) => {
@@ -962,6 +985,8 @@ export class TricksService implements TricksSurface {
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
     this.reactions.close();
+    for (const handle of this.valueTimerOf.values()) this.valueTimers.clear(handle);
+    this.valueTimerOf.clear();
     // The bridge stops: no run token outlives it (spec 05, decision 2).
     this.runTokens.clear();
   }
@@ -998,6 +1023,11 @@ export class TricksService implements TricksSurface {
   runnerPath(): string {
     const host = this.host();
     return envPath(scrubEnv(this.deps.env, [], { host }), host) ?? "";
+  }
+
+  /** Resolves when the immediate start runs going now ({@link startNow}) are done. For a test. */
+  async idle(): Promise<void> {
+    while (this.soonRuns.size > 0) await Promise.all(this.soonRuns);
   }
 
   /** How many programs run (or hold a slot) now. For a test. */
@@ -1096,6 +1126,7 @@ export class TricksService implements TricksSurface {
         const runtimes = [...this.runtimes.values()];
         for (const rt of runtimes) await this.ensureApproved(rt);
         for (const rt of runtimes) await this.notePending(rt);
+        this.syncMedia();
         this.syncVersions();
         this.syncRights();
         this.syncReactions();
@@ -1470,6 +1501,37 @@ export class TricksService implements TricksSurface {
     }
   }
 
+  /**
+   * Read the content version of each picture in every runnable trick's approved copy, and publish a row whose
+   * versions moved: a picture replaced under the same name takes a new version, so the phone asks for it again.
+   * The versions are a name for the phone's cache; no approval or hash reads them. Never throws.
+   */
+  private syncMedia(): void {
+    const dirs = new Set<string>();
+    const folders = new Set<string>();
+    try {
+      for (const rt of this.runtimes.values()) {
+        const approved = rt.approved;
+        const serves = rt.on && approved !== null && rt.copyProblem === null;
+        // Pictures are not code: one changed by hand in the installed folder reaches the approved copy with no new yes.
+        if (serves) {
+          this.mediaSync.sync(rt.found.dir, approved.dir);
+          folders.add(rt.found.dir);
+        }
+        const next = serves ? this.mediaVersions.of(approved.dir) : {};
+        if (serves) dirs.add(approved.dir);
+        if (JSON.stringify(next) === JSON.stringify(rt.media ?? {})) continue;
+        if (Object.keys(next).length === 0) delete rt.media;
+        else rt.media = next;
+        this.publish(rt.found.id);
+      }
+      this.mediaVersions.retain(dirs);
+      this.mediaSync.retain(folders);
+    } catch (err) {
+      this.warn(`the picture versions could not be read: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   /** Tell the "new version" card every trick that is on, as it is now. Never throws. */
   private syncVersions(): void {
     const port = this.deps.versions;
@@ -1698,11 +1760,76 @@ export class TricksService implements TricksSurface {
     return host === this.deps.memberId || (this.deps.previousId != null && host === this.deps.previousId);
   }
 
+  /**
+   * Run the trick's start run again: a new approved copy (a yes, an undo, a switch on), a changed
+   * `config.toml` or a changed value. The start run goes at once ({@link startSoon}), not at the next tick,
+   * and never waits for the trick's `every`.
+   */
   private restart(rt: TrickRuntime): void {
     rt.failures = 0;
     rt.stopped = false;
     rt.pendingStart = true;
     rt.nextAt = 0;
+    this.startSoon(rt);
+  }
+
+  /**
+   * Ask for the start run right after the event that restarted the trick, in the next microtask, so the
+   * steps of one event (a scan restarts a trick twice, a promote and its scan) are ONE run. Every gate of
+   * {@link tick} holds: a phone must be looking, tricks on as a whole, this bridge scheduling, the trick
+   * runnable (an approved copy that holds) and not backing off. Nothing here weakens an approval check:
+   * `begin` reads the switch and the copy again right before the program starts, as for any run.
+   */
+  private startSoon(rt: TrickRuntime): void {
+    rt.soon = true;
+    if (rt.soonQueued === true) return;
+    rt.soonQueued = true;
+    queueMicrotask(() => {
+      rt.soonQueued = false;
+      this.startNow(rt);
+    });
+  }
+
+  /**
+   * The start run {@link startSoon} asked for. A run or a tap ahead of it is never overlapped: the ask is kept
+   * and the run's end (`begin`) asks again, so the new code runs right after, not at the next tick. An ask that
+   * cannot be served for any other reason is dropped (the next tick decides, as before); that also bounds the
+   * loop: one ask is one start run at most.
+   */
+  private startNow(rt: TrickRuntime): void {
+    if (rt.soon !== true) return;
+    if (this.runtimes.get(rt.found.id) !== rt) {
+      rt.soon = false;
+      return;
+    }
+    if (rt.running !== null || rt.queued !== null || rt.hillQueue.length > 0) return;
+    rt.soon = false;
+    if (this.gated() || this.deps.active?.() === false || this.switchedOff() || !this.watched()) return;
+    if (!rt.pendingStart || !this.due(rt, this.now())) return;
+    const run = this.begin(rt, { kind: "start" }, null);
+    this.soonRuns.add(run);
+    void run.finally(() => this.soonRuns.delete(run));
+  }
+
+  /**
+   * The one restart a run of value writes asks for, on a timer of its own: {@link VALUE_RESTART_MS} after the
+   * last write, so a changed setting shows about a second after the person stops, not at the tick after.
+   * Each write moves the timer; `tick` still honours `valueRestartAt` as the fallback.
+   */
+  private armValueRestart(rt: TrickRuntime, wait = VALUE_RESTART_MS): void {
+    const id = rt.found.id;
+    const open = this.valueTimerOf.get(id);
+    if (open !== undefined) this.valueTimers.clear(open);
+    const handle = this.valueTimers.set(() => {
+      this.valueTimerOf.delete(id);
+      const at = rt.valueRestartAt;
+      if (this.runtimes.get(id) !== rt || at === undefined) return;
+      // The clock counts too: a timer that fired early (a test, a clock set back) re-arms for the rest.
+      if (this.now() < at) return this.armValueRestart(rt, at - this.now());
+      delete rt.valueRestartAt;
+      this.restart(rt);
+    }, wait);
+    this.valueTimerOf.set(id, handle);
   }
 
   /** The official list's entries: the deps' or the one this binary carries, none when it is refused. */
@@ -1789,6 +1916,10 @@ export class TricksService implements TricksSurface {
     if (m?.agentView === true) info.agentView = true;
     // Declared in the manifest of what runs, so the phone knows it before any Decision (the token label).
     if (m?.decides === "reply") info.decidesReply = true;
+    // And whether its buttons may put text into a reply box: the About sheet's line, and the phone's own check.
+    if (m?.drafts === "session") info.draftsSession = true;
+    // The versions of the pictures the route would serve (media.ts), so the phone asks again for a replaced one.
+    if (rt.media !== undefined && Object.keys(rt.media).length > 0) info.media = rt.media;
     if (m?.rules !== undefined && m.rulesText !== undefined) info.rules = { file: m.rules, text: m.rulesText };
     // A trick with rules never takes a change without asking, whatever an older switch file says.
     if (info.on && rt.entry !== undefined) info.auto = rt.entry.auto && !hasRules(rt);
@@ -1867,7 +1998,9 @@ export class TricksService implements TricksSurface {
       const trigger: FactsTrigger = rt.pendingStart ? { kind: "start" } : { kind: "timer" };
       started.push(this.begin(rt, trigger, null));
     }
-    await Promise.all(started);
+    // The immediate start runs going now too ({@link startNow}), so what a tick resolves on does not depend on
+    // whether a scan before it already started the run.
+    await Promise.all([...started, ...this.soonRuns]);
   }
 
   /**
@@ -1953,6 +2086,8 @@ export class TricksService implements TricksSurface {
       this.syncReactions();
       this.reactions.ended(rt.found.id);
       this.pump(rt);
+      // A restart asked while this run (or a tap) was going: the new code runs now, not at the next tick.
+      if (rt.soon === true) this.startSoon(rt);
     });
     return rt.running;
   }
@@ -2067,6 +2202,8 @@ export class TricksService implements TricksSurface {
     const command = manifest.run;
     if (command === undefined) return { rid, code: "rejected", message: NO_PROGRAM_LINE };
     const startedAt = this.now();
+    // The settings this run reads, to tell afterwards whether they moved while it went (see below).
+    const configAtStart = run.found.configHash;
     const state = trickStateDir(this.deps.stateDir, id);
     // The program's own folder under <stateDir>/tricks, owner only like the rest of the state folder.
     await mkdir(state, { recursive: true, mode: 0o700 }).catch(() => {});
@@ -2132,6 +2269,14 @@ export class TricksService implements TricksSurface {
     }
     // A copy that stopped while the program ran (it changed on disk) keeps nothing of that run.
     if (!this.runnable(rt)) return { rid, code: "rejected", message: rt.copyProblem ?? NOT_APPROVED_LINE };
+    // A yes to a new version, an undo or a changed `config.toml` landed while this run went: what it made
+    // is the old code's or the old settings', so nothing of it is kept, and it neither counts as a success
+    // (which would clear the restart and make the new code wait for `every`) nor as a failure. The restart
+    // that landed asked for the start run, and `begin` starts it as this run ends. A tap's program may have
+    // done its work, so a tap says `unknown`.
+    if (rt.approved !== run || run.found.configHash !== configAtStart) {
+      return { rid, code: trigger.kind === "tap" ? "unknown" : "rejected", message: SUPERSEDED_LINE };
+    }
     let problem = outcomeProblem(outcome, 200);
     let parsed: ParsedTrickDocument | null = null;
     let decisionsListed = false;
@@ -2139,7 +2284,7 @@ export class TricksService implements TricksSurface {
       // Masked in run.ts already; again here, so no runner behind the seam can hand the parser a key.
       const text = redactText(outcome.stdout);
       // `manifest` is the approved copy's: a Decision with `replyTo` needs `decides = "reply"` there, never in the folder.
-      parsed = parseTrickDocumentText(text, { declared: manifest.places, contract: manifest.contract, decidesReply: manifest.decides === "reply" });
+      parsed = parseTrickDocumentText(text, { declared: manifest.places, contract: manifest.contract, decidesReply: manifest.decides === "reply", draftsSession: manifest.drafts === "session" });
       if (parsed.documentRefused) problem = `The output was refused: ${parsed.refusals[0]?.reason ?? "not a document"}`;
       // An absent `decisions` key means "unchanged"; an empty list withdraws them all.
       decisionsListed = asJsonObject(parseJson(text))?.decisions !== undefined;
@@ -2517,7 +2662,8 @@ export class TricksService implements TricksSurface {
       // Nothing is removed while a folder of this name is there; the write below refuses one anyway.
       await forgetLeftovers({ stateDir: this.deps.stateDir, configDir: this.deps.configDir, id, at: new Date(this.now()).toISOString(), forget: this.deps.forgetTrick });
       // ... and the stage on disk must hash to those same bytes right before it is renamed into place.
-      const written = await writeProposedTrick(tricksConfigDir(this.deps.configDir), id, files, origin, { expect: codeHashOfFiles(files) });
+      // The code hash reads no picture the proposal brings (propose-wire.ts `splitPictures`).
+      const written = await writeProposedTrick(tricksConfigDir(this.deps.configDir), id, files, origin, { expect: codeHashOfFiles(splitPictures(files).code) });
       if (!written.ok) return { ok: false, message: written.code === "mismatch" ? PROPOSAL_CHANGED : written.reason };
       const placed = await this.approveWritten(id, written.codeHash, "The trick was written but changed before it could be approved, so it stays off.", { fresh: true });
       await this.freshScan();
@@ -2545,7 +2691,7 @@ export class TricksService implements TricksSurface {
       this.scanning = held;
       let placed: ProposalPlaced;
       try {
-        const written = await replaceTrickCode(tricksConfigDir(this.deps.configDir), id, files, origin, { expect: codeHashOfFiles(files) });
+        const written = await replaceTrickCode(tricksConfigDir(this.deps.configDir), id, files, origin, { expect: codeHashOfFiles(splitPictures(files).code) });
         placed = written.ok ? await this.approveWritten(id, written.codeHash, "The new version was written but changed before it could be approved.") : { ok: false, message: written.reason };
       } finally {
         if (this.scanning === held) this.scanning = null;
@@ -2680,7 +2826,10 @@ export class TricksService implements TricksSurface {
         this.deps.audit?.({ action: "trick.value", detail: { trick: id, field: key, by: "phone" } });
         // A changed value asks nothing again: it runs the trick once more, as a config.toml edit does, one
         // second after the last write (a debounce: `tick` starts the run), so a run of writes costs one run.
-        if (rt.on) rt.valueRestartAt = this.now() + VALUE_RESTART_MS;
+        if (rt.on) {
+          rt.valueRestartAt = this.now() + VALUE_RESTART_MS;
+          this.armValueRestart(rt);
+        }
       }
       this.publish(id);
       const info = this.store.reply(this.store.rev).tricks.find((trick) => trick.id === id);

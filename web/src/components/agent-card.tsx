@@ -17,6 +17,7 @@ import { paneGitHead } from "@/lib/git-head";
 import { paneProgress, paneSubtitle } from "@/lib/pane-marks";
 import { Progress } from "@/components/ui/progress";
 import { t } from "@/lib/i18n";
+import { paneRowKey, paneSpaceKey, tabKey } from "@/lib/hosts";
 import { paneCwdLine, paneName, panePlaceParts, soleTabName } from "@/lib/pane-name";
 import { statusLabel, statusLabelPast } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
@@ -170,7 +171,8 @@ export function AgentCard({
       }),
   );
   const isShell = agent.kind === "shell";
-  const blocked = agent.status === "blocked";
+  // A pane that stopped on an error loses the tint once seen, as its dot does (shownStatus).
+  const blocked = shownStatus(agent) === "blocked";
   const inTab = scope === "tab";
   // ── THE WORKSPACE-GROUPED ROW CARRIES ITS TAB, AT ONE HEIGHT ─────────────────
   // Under a WORKSPACE heading (lib/pane-groups.ts) line 2 has one fact left worth saying: the tab.
@@ -226,6 +228,9 @@ export function AgentCard({
           tailPositional: place.tab?.positional ?? false,
         };
   const { primary, detailLead, detailTail } = lines;
+  // A RENAME FADES (ui/crossfade-text.tsx): the pane's name, its space and its tab. The tail is a tab's
+  // name only when the row draws the tab; a live title or a folder path is not a name someone gave.
+  const tailFade = nameIsTab || inTab ? undefined : tabKey(agent.host, agent.tabId);
   // THE FILTER'S MARKS (M97). A range indexes the string `paneFields` read, which is the string drawn
   // here, except the tab: a one-pane tab named for the pane draws the live title in its place, so no tab
   // mark applies then. The tab of a `tab` scope row is the path, not a tab.
@@ -392,7 +397,7 @@ export function AgentCard({
                 sits right after whatever survives the truncation. `PaneMeta`'s own `ml-auto` is what
                 claims the row's spare width now, so it still lands at the end. */}
             <span data-glide="name" className="min-w-0 truncate self-baseline font-medium">
-              <MatchText text={primary} ranges={marks?.name} />
+              <MatchText text={primary} ranges={marks?.name} fade={paneRowKey(agent)} />
             </span>
             {/* A finished pane you haven't opened yet: the square (ui/unseen-mark.tsx). Right after
                 the name, never before it, and its slot is reserved on a flat row so the name
@@ -453,7 +458,7 @@ export function AgentCard({
                 // The unnamed tab's position, a shade lighter than an ordinary tab name so it never
                 // reads as one.
                 <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
-                  <MatchText text={detailTail} ranges={tabMarks} />
+                  <MatchText text={detailTail} ranges={tabMarks} fade={tailFade} />
                 </span>
               ) : (
                 <>
@@ -463,7 +468,7 @@ export function AgentCard({
                       2`) takes the same shade-lighter ink here as it does alone above. */}
                   {detailLead !== null && (
                     <span className="min-w-0 shrink truncate">
-                      <MatchText text={detailLead} ranges={leadMarks} />
+                      <MatchText text={detailLead} ranges={leadMarks} fade={paneSpaceKey(agent)} />
                     </span>
                   )}
                   {detailLead !== null && detailTail !== null && (
@@ -481,7 +486,7 @@ export function AgentCard({
                         lines.tailPositional && "text-muted-foreground/70",
                       )}
                     >
-                      <MatchText text={detailTail} ranges={tabMarks} />
+                      <MatchText text={detailTail} ranges={tabMarks} fade={tailFade} />
                     </span>
                   )}
                 </>

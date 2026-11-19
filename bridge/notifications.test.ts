@@ -508,6 +508,17 @@ describe("NotificationCoordinator — a finished pane you opened", () => {
     expect(sink.last).toMatchObject({ paneId: "p1", renotify: false, badge: 1 });
   });
 
+  test("retracts the alert of a pane that stopped on an error, as for a finished one, and still pushes it first (PR 787)", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agentNamed("p1", "claude", "blocked", { blockedBy: "error" }), "working", "blocked");
+    clock.fireAll();
+    expect(sink.last).toMatchObject({ paneId: "p1", title: "claude needs you", renotify: true, badge: 1 });
+    coord.retractSeen([{ paneId: "p1", lastActiveAt: 20, lastSeenAt: 10 }]);
+    expect(sink.last).toMatchObject({ paneId: "p1" });
+    coord.retractSeen([{ paneId: "p1", lastActiveAt: 10, lastSeenAt: 20 }]);
+    expect(sink.events.at(-1)).toEqual({ kind: "clear" });
+  });
+
   test("clears the herd when it was the last alert, and cancels one still in its window", () => {
     const { clock, sink, coord } = setup();
     coord.onTransition(agent("p1", "done"), "working", "done");
@@ -1055,12 +1066,12 @@ describe("pushName — the given name, never the terminal title", () => {
     );
   });
 
-  test("keeps the order of the one name rule: Collie rename, person's name, agent's title, tab", () => {
+  test("keeps the order of the one name rule: Collie rename, person's name, tab, agent's title", () => {
     const all = { ...base, paneLabel: "release", sessionName: "migrate", agentTitle: "Auto title", soleTabName: "work" };
     expect(pushName(all)).toBe("release");
     expect(pushName({ ...all, paneLabel: undefined })).toBe("migrate");
-    expect(pushName({ ...all, paneLabel: undefined, sessionName: undefined })).toBe("Auto title");
-    expect(pushName({ ...all, paneLabel: undefined, sessionName: undefined, agentTitle: undefined })).toBe("work");
+    expect(pushName({ ...all, paneLabel: undefined, sessionName: undefined })).toBe("work");
+    expect(pushName({ ...all, paneLabel: undefined, sessionName: undefined, soleTabName: undefined })).toBe("Auto title");
   });
 
   test("never falls back to the terminal title, and strips control and bidi characters", () => {
