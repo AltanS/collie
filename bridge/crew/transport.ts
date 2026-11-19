@@ -59,9 +59,12 @@ export interface CrewTlsOptions {
  * A crew dial's fetch options. `decompress` is Bun's own switch: the dial sets it to `false`, so the
  * runtime never inflates a member's body. `bodyMax` is the caller's cap on the answer's bytes: the
  * member's bytes as sent (guarded-body.ts) and, for a gzip answer, its inflated bytes too
- * (bounded-gunzip.ts). The dial strips it before the fetch.
+ * (bounded-gunzip.ts). `bodyDeadlineMs` is a total deadline on the answer, from the start of the dial,
+ * for an answer that is read in full (forward.ts `bodyRuleOf`); a body the lead reads itself always has
+ * one. A `signal` is the caller's: when it aborts, the dial aborts. The dial strips the first two before
+ * the fetch and dials on a signal of its own.
  */
-export type CrewRequestInit = RequestInit & { tls?: CrewTlsOptions; decompress?: boolean; bodyMax?: number };
+export type CrewRequestInit = RequestInit & { tls?: CrewTlsOptions; decompress?: boolean; bodyMax?: number; bodyDeadlineMs?: number };
 
 /**
  * The init of a dial whose answer the lead streams on ({@link CrewRequestInit} with `bodyMax` required): the

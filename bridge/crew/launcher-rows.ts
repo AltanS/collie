@@ -345,7 +345,8 @@ export function leadRowCarry(rows: () => Promise<Launcher[]>, leadHome: string):
       const headers = new Headers(req.headers);
       headers.delete("content-length");
       return {
-        request: new Request(req.url, { method: req.method, headers, body: JSON.stringify(out) }),
+        // The phone's signal stays on the rebuilt request, so a phone that goes away aborts the dial.
+        request: new Request(req.url, { method: req.method, headers, body: JSON.stringify(out), signal: req.signal }),
         leadRow: out[ROW_FIELD] !== undefined,
       };
     },

@@ -18,7 +18,7 @@ import {
   WRITE_BUDGET_MS,
 } from "./peer-client.ts";
 import { HOST_PARAM, type PeerState } from "./registry.ts";
-import { BodyRefused, CREW_BYTES_MAX, CREW_FILES_MAX, CREW_JSON_MAX, CREW_LOG_MAX } from "./guarded-body.ts";
+import { BodyRefused, CREW_BYTES_MAX, CREW_FILES_MAX, CREW_JSON_MAX, CREW_LOG_MAX, wholeDeadlineMs } from "./guarded-body.ts";
 import type { CappedRequestInit } from "./transport.ts";
 
 // The LEAD side of a per-pane request: `?host=laptop` came in, the pane lives on the laptop, so the
@@ -282,6 +282,14 @@ export interface LeadMerge {
   answer(member: Response): Promise<Response>;
 }
 
+/**
+ * The request a {@link LeadMerge} asks the member with: a new GET on the merge's own URL that keeps the
+ * phone's signal, so a phone that goes away aborts the member's read too (review round 9).
+ */
+export function mergeAskRequest(askUrl: URL, req: Request): Request {
+  return new Request(askUrl, { method: req.method, signal: req.signal });
+}
+
 /** A forwarded read (proxied byte-for-byte, §9.1) or a forwarded write (§10.3, §12). */
 export type ForwardKind = "read" | "write";
 
@@ -374,27 +382,43 @@ const PANE_SCREEN_ROUTE = /^pane\/[^/]+$/;
 const CREATE_ROUTES: ReadonlySet<string> = new Set(["launch", "tab", "workspace"]);
 
 /**
- * ── EVERY FORWARDED ROUTE'S CAP ON THE MEMBER'S ANSWER (review round 7) ────────────────────────────
- * The most bytes the lead takes from a member for one forwarded answer, as sent and, for gzip, inflated
- * (guarded-body.ts holds the numbers and their reasons). One table, so a reviewer can check the list:
+ * ── EVERY FORWARDED ROUTE'S RULE FOR THE MEMBER'S ANSWER (review rounds 7 and 9) ──────────────────────
+ * Two facts per route, in one table so the two cannot drift apart and a reviewer can check the list:
  *
- * | route                                                        | cap                         |
- * | ------------------------------------------------------------ | --------------------------- |
- * | `project-picture/<v>`                                        | 256 KB (the picture limit)  |
- * | `blobs/<hash>`, `pane/<id>/files/image`, `workspace/<id>/files/image` | 32 MB, raw bytes   |
- * | `pane/<id>/history`, `pane/<id>/chat`, `durable/conversation/<id>/items`, `sent`, `pane/<id>/pins` | 32 MB, log answers |
- * | `pane/<id>/changes`, `pane/<id>/files`, `workspace/<id>/changes`, `workspace/<id>/files` | 8 MB |
- * | every other route: the screen read, lists, writes' answers   | 2 MB, JSON                  |
+ * - the CAP, the most bytes the lead takes from a member for one answer, as sent and, for gzip, inflated
+ *   (guarded-body.ts holds the numbers and their reasons);
+ * - the CLASS: `stream` passes through to the phone byte by byte and keeps the idle limit only; `whole`
+ *   is an answer the lead or the phone reads in full before it is of any use (the lead masks it, merges
+ *   it, or reads it for a caller, or it is JSON the phone parses whole), and it also ends by a total
+ *   deadline (`WHOLE_ANSWER_DEADLINE_MS` in guarded-body.ts).
+ *
+ * | route                                                        | cap                         | class  |
+ * | ------------------------------------------------------------ | --------------------------- | ------ |
+ * | `project-picture/<v>`                                        | 256 KB (the picture limit)  | stream (its own 10 s total limit) |
+ * | `blobs/<hash>`, `pane/<id>/files/image`, `workspace/<id>/files/image` | 32 MB, raw bytes   | stream |
+ * | `pane/<id>/history`, `pane/<id>/chat`, `durable/conversation/<id>/items`, `sent`, `pane/<id>/pins` | 32 MB, log answers | whole |
+ * | `pane/<id>/changes`, `pane/<id>/files`, `workspace/<id>/changes`, `workspace/<id>/files` | 8 MB | whole |
+ * | every other route: the screen read, lists, writes' answers   | 2 MB, JSON                  | whole  |
  *
  * A text answer the lead masks (§9.1) is parsed on the lead; its parse is bounded again by the mask's own
  * count of values ({@link MASK_VALUES_MAX}).
  */
+export interface BodyRule {
+  readonly cap: number;
+  readonly whole: boolean;
+}
+
+export function bodyRuleOf(route: string): BodyRule {
+  if (route.startsWith("project-picture/")) return { cap: PROJECT_PICTURE_BYTES_MAX, whole: false };
+  if (route.startsWith("blobs/") || /^(?:pane|workspace)\/[^/]+\/files\/image$/.test(route)) return { cap: CREW_BYTES_MAX, whole: false };
+  if (/^pane\/[^/]+\/(?:history|chat|pins)$/.test(route) || /^durable\/conversation\/[^/]+\/items$/.test(route) || route === "sent") return { cap: CREW_LOG_MAX, whole: true };
+  if (/^(?:pane|workspace)\/[^/]+\/(?:changes|files)$/.test(route)) return { cap: CREW_FILES_MAX, whole: true };
+  return { cap: CREW_JSON_MAX, whole: true };
+}
+
+/** The cap column of {@link bodyRuleOf}. */
 export function bodyCapOf(route: string): number {
-  if (route.startsWith("project-picture/")) return PROJECT_PICTURE_BYTES_MAX;
-  if (route.startsWith("blobs/") || /^(?:pane|workspace)\/[^/]+\/files\/image$/.test(route)) return CREW_BYTES_MAX;
-  if (/^pane\/[^/]+\/(?:history|chat|pins)$/.test(route) || /^durable\/conversation\/[^/]+\/items$/.test(route) || route === "sent") return CREW_LOG_MAX;
-  if (/^(?:pane|workspace)\/[^/]+\/(?:changes|files)$/.test(route)) return CREW_FILES_MAX;
-  return CREW_JSON_MAX;
+  return bodyRuleOf(route).cap;
 }
 
 /**
@@ -1240,7 +1264,13 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     else headers.set("if-none-match", kept);
   }
   // The member's answer, gzip or plain, is cut off at the route's own cap ({@link bodyCapOf}).
-  const init: CappedRequestInit & { duplex?: "half" } = { method: req.method, headers, bodyMax: bodyCapOf(route) };
+  // The phone's own signal rides the dial: when the phone goes away, the member's read is aborted and its
+  // stream cancelled (review round 9). A write the member may have received still answers the phone
+  // `write_outcome_unknown`, the answer for any dial that ends before the member's headers.
+  const rule = bodyRuleOf(route);
+  const budget = budgetOf(kind, route);
+  const init: CappedRequestInit & { duplex?: "half" } = { method: req.method, headers, bodyMax: rule.cap, signal: req.signal };
+  if (rule.whole) init.bodyDeadlineMs = wholeDeadlineMs(budget);
   // The body is STREAMED, not buffered: an upload is up to 10 MB of multipart and the lead never
   // stores a copy of it (§13). Assigned, never conditionally spread: a bodyless method must carry
   // NEITHER key.
@@ -1261,7 +1291,7 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     route,
     forwardParams(url),
     init,
-    budgetOf(kind, route),
+    budget,
   );
   const action = forwardAuditAction(route, req.method);
   const paneId = forwardPaneId(route) ?? askPane;

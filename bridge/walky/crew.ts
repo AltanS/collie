@@ -446,7 +446,7 @@ export interface LeadRouteDeps {
    */
   readonly senderCert?: (memberId: string) => string | null;
   /** POST one body to `/crew/v1/pane/<segment>/walky` on one member, through the lead's forward. */
-  readonly post: (memberId: string, segment: string, payload: string) => Promise<CrewDialAnswer>;
+  readonly post: (memberId: string, segment: string, payload: string, signal?: AbortSignal) => Promise<CrewDialAnswer>;
   /**
    * Whether a member's reported version predates walky talky (`olderThanWalky`). Such a member is
    * refused `older member` at once, without a dial; its 404 stays the backstop for one that reported
@@ -617,8 +617,13 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
         const attest = attestFor(legMessage, signing.keyPem, signing.crewId, memberId);
         // Every member is dialled at once, and each leg is cut at WALKY_LEG_MS.
         const body = sender === null || plain ? { message: legMessage, attest } : { message: legMessage, attest, sender };
-        const answer = await within(deps.post(memberId, segment, JSON.stringify(body)), deps.legMs ?? WALKY_LEG_MS);
-        if (answer === null) return [ownReceipt(message, target, "unknown", deps.self, now(), MEMBER_SLOW)];
+        // At the leg's bound the dial is aborted too, not only no longer waited for (review round 9).
+        const stop = new AbortController();
+        const answer = await within(deps.post(memberId, segment, JSON.stringify(body), stop.signal), deps.legMs ?? WALKY_LEG_MS);
+        if (answer === null) {
+          stop.abort();
+          return [ownReceipt(message, target, "unknown", deps.self, now(), MEMBER_SLOW)];
+        }
         const receipts = receiptsOfAnswer(message, target, answer, deps.self, now(), "older member");
         // Only a 200 carries the member's own receipts; every other answer is this lead's word.
         if (answer.kind !== "answer" || answer.status !== 200) return receipts;

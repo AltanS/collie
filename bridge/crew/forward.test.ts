@@ -11,6 +11,7 @@ import {
   budgetOf,
   jsonValuesWithin,
   MASK_VALUES_MAX,
+  mergeAskRequest,
   forwardAuditAction,
   forwardHeaders,
   forwardKind,
@@ -785,6 +786,31 @@ describe("the lead compresses the phone hop itself (.adr/0023)", () => {
     const res2 = await forward(write, new URL(write.url), { transport: transportOf(cut).transport, log: (l) => lines.push(l), audit: (e) => audit.push(e) });
     await res2.arrayBuffer().catch(() => null);
     expect(audit.map((e) => e.outcome)).toEqual(["http 200", "http 200, body cut: the answer passed 10 bytes"]);
+  });
+
+  test("the phone's signal reaches the dial: a forward, a merged ask and a carried launch all abort with the phone (review round 9)", async () => {
+    const seen: (AbortSignal | null | undefined)[] = [];
+    const { transport } = transportOf((init) => {
+      seen.push(init.signal);
+      return ok(Response.json({ ok: true }));
+    });
+    // A plain forward.
+    const phone = new AbortController();
+    const [req, url] = get("/api/launchers?host=laptop");
+    const plain = new Request(req, { signal: phone.signal });
+    await forward(plain, url, { transport });
+    // The launcher merge's own ask (bridge/server.ts), built from the phone's request.
+    const merged = mergeAskRequest(new URL("https://lead.example/api/launchers?host=laptop&scope=member"), plain);
+    await forward(merged, new URL(merged.url), { transport });
+    // A launch the lead's row carry rebuilt.
+    const launch = new Request("https://lead.example/api/launch?host=laptop", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ command: "make serve" }), signal: phone.signal });
+    const carried = await leadRowCarry(() => Promise.resolve([{ command: "make serve", label: "Serve", cwd: "/srv/site", noPrompts: true }]), "/var/home/op").request(launch);
+    expect(carried.request).not.toBe(launch);
+    await forward(carried.request, new URL(carried.request.url), { transport });
+    expect(seen).toHaveLength(3);
+    expect(seen.every((signal) => signal !== undefined && signal !== null && !signal.aborted)).toBe(true);
+    phone.abort();
+    expect(seen.map((signal) => signal?.aborted)).toEqual([true, true, true]);
   });
 
   test("the table of forwarded caps: each route of each tier, and the JSON cap for the rest (review round 7)", () => {

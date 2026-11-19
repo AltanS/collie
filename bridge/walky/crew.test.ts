@@ -945,6 +945,25 @@ describe("the outcome report", () => {
 });
 
 describe("a member that never answers", () => {
+  test("at the leg cap the dial itself is aborted, not only no longer waited for (review round 9)", async () => {
+    const signals: (AbortSignal | undefined)[] = [];
+    const routeRemote = leadRouteRemote({
+      self: "desk",
+      members: () => ["laptop"],
+      signing: () => ({ keyPem: material("desk").keyPem, crewId: CREW.crewId }),
+      legMs: 40,
+      now: () => AT,
+      post: (_memberId, _segment, _payload, signal) => {
+        signals.push(signal);
+        return new Promise<CrewDialAnswer>(() => undefined);
+      },
+    });
+    const lead = service("desk", [pane("w1:p1")], undefined, { routeRemote });
+    await lead.service.send({ id: "wt_aaaaaaaaaaa3", to: "all", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(true);
+  });
+
   test("its leg is the lead's own `unknown: member slow` at the leg cap, the rest answer at once, and its report still lands", async () => {
     const routeRemote = leadRouteRemote({
       self: "desk",

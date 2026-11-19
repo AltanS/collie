@@ -437,7 +437,8 @@ export type SentMemberReply =
 export interface SentMember {
   readonly host: string;
   readonly label: string;
-  readonly ask: (params: URLSearchParams) => Promise<Response>;
+  /** Asks the member; `signal` aborts the whole ask, the member's read included. */
+  readonly ask: (params: URLSearchParams, signal?: AbortSignal) => Promise<Response>;
 }
 
 /** One entry off a member's answer, or `null` when it is not one. Its `host` is the lead's name for it. */
@@ -493,7 +494,9 @@ export async function askSentMember(member: SentMember, params: URLSearchParams,
   // its body would otherwise hold the merge of every member (review round 8). At the budget the body
   // is cancelled, also when it is already being read.
   const stop = new AbortController();
-  const read = member.ask(params).then((res) => readSentReply(cancelledBy(res, stop.signal), member.host));
+  // The signal reaches the forward too: with redaction on, `ask` resolves only after the lead's mask read
+  // the whole answer, so cancelling the body here alone would come too late.
+  const read = member.ask(params, stop.signal).then((res) => readSentReply(cancelledBy(res, stop.signal), member.host));
   try {
     const first = await Promise.race([read, late]);
     if (first === "timeout") {

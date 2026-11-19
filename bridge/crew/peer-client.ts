@@ -1,6 +1,6 @@
 import type { JsonObject, JsonValue } from "../json.ts";
 import { inflatedResponse } from "./bounded-gunzip.ts";
-import { BodyRefused, bodyDeadlineMs, bodyIdleMs, CREW_JSON_MAX, guardedResponse } from "./guarded-body.ts";
+import { BodyRefused, bodyDeadlineMs, bodyIdleMs, CREW_JSON_MAX, guardedResponse, wholeDeadlineMs } from "./guarded-body.ts";
 import { LAUNCH_BUDGET_MS } from "../create-confirm.ts";
 import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import {
@@ -850,7 +850,7 @@ export class PeerClient {
       link,
       route,
       undefined,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), bodyMax: CREW_JSON_MAX },
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), bodyMax: CREW_JSON_MAX, bodyDeadlineMs: wholeDeadlineMs(CARRY_CALL_MS) },
       CARRY_CALL_MS,
       true,
     );
@@ -969,7 +969,7 @@ export class PeerClient {
       link,
       WALKY_OUTCOMES_ROUTE,
       undefined,
-      { method: "POST", headers: { "content-type": "application/json" }, body: payload, bodyMax: CREW_JSON_MAX },
+      { method: "POST", headers: { "content-type": "application/json" }, body: payload, bodyMax: CREW_JSON_MAX, bodyDeadlineMs: wholeDeadlineMs(WRITE_BUDGET_MS) },
       WRITE_BUDGET_MS,
       false,
     );
@@ -988,7 +988,7 @@ export class PeerClient {
       link,
       TRICKS_INPUTS_ROUTE,
       undefined,
-      { method: "POST", headers: { "content-type": "application/json" }, body: payload, bodyMax: INPUT_ANSWER_BODY_MAX_BYTES },
+      { method: "POST", headers: { "content-type": "application/json" }, body: payload, bodyMax: INPUT_ANSWER_BODY_MAX_BYTES, bodyDeadlineMs: wholeDeadlineMs(TRICKS_INPUTS_BUDGET_MS) },
       TRICKS_INPUTS_BUDGET_MS,
       false,
     );
@@ -1167,6 +1167,18 @@ export class PeerClient {
     // The start of the dial: a body the lead reads itself must end by a deadline counted from here.
     const startedAt = performance.now();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // The caller's signal (a phone that went away, a caller that stopped waiting) aborts this dial, at
+    // any stage: before the headers, and while the body is read or streamed on.
+    let callerLeft = false;
+    const outer = init.signal;
+    const leave = () => {
+      callerLeft = true;
+      controller.abort();
+    };
+    if (outer !== undefined && outer !== null) {
+      if (outer.aborted) leave();
+      else outer.addEventListener("abort", leave, { once: true });
+    }
     let res: Response;
     try {
       // `tls` rides the init: Bun's fetch takes the pinned material per request, so there is no agent
@@ -1175,7 +1187,7 @@ export class PeerClient {
       // `decompress: false`: Bun's fetch would otherwise inflate a brotli, deflate or gzip body before
       // any reader sees it, with no bound, so a member's 1 KB body could cost the lead gigabytes. A gzip
       // answer is inflated below through a capped decoder; any other encoding is refused unread.
-      const { bodyMax: _cap, ...sent } = init;
+      const { bodyMax: _cap, bodyDeadlineMs: _deadline, signal: _outer, ...sent } = init;
       // `redirect` is set AFTER the caller's init, so no caller can turn following back on. A crew dial
       // never follows a redirect: a followed hop would carry this request, its body, the member and
       // device headers and the dial attestation to an address the far side picked, and hand that
@@ -1189,12 +1201,13 @@ export class PeerClient {
       // next strict-budget request can ride. Status is irrelevant here; it is read further down.
       this.settle(link, true);
     } catch (err) {
-      this.settle(link, false);
+      // A caller that went away says nothing about the link, so it does not cool it.
+      if (!callerLeft) this.settle(link, false);
       // Timeout, connection refused, DNS, TLS — one state, because the phone's answer is the same in
       // all of them: last-good state, marked stale (§10.2). The peer's address is named; the secret
       // never appears in a reason string, and nothing here interpolates one.
-      const aborted = controller.signal.aborted;
-      const reason = aborted ? `timed out after ${timeoutMs}ms` : errorReason(err);
+      const aborted = controller.signal.aborted && !callerLeft;
+      const reason = callerLeft ? "the caller went away" : aborted ? `timed out after ${timeoutMs}ms` : errorReason(err);
       // `attempted` is left absent, i.e. "possibly sent". The runtime does not tell us whether the
       // request had already been written when the socket died, and §10.3 is explicit that an
       // unresolvable ambiguity is surfaced rather than guessed.
@@ -1239,7 +1252,8 @@ export class PeerClient {
     // same abort the budget uses. A gzip body is inflated on top of that, with its own count of output.
     // A body the lead reads itself also ends by a total deadline, so every such dial, and with it the
     // sweep that waits for every member, ends inside a bound however slowly a member drips its bytes.
-    const deadline = mode === "consumed" ? startedAt + bodyDeadlineMs(timeoutMs) : undefined;
+    const deadline =
+      mode === "consumed" ? startedAt + bodyDeadlineMs(timeoutMs) : init.bodyDeadlineMs === undefined ? undefined : startedAt + init.bodyDeadlineMs;
     res = guardedResponse(res, { idleMs: bodyIdleMs(mode, timeoutMs), max: cap, deadline, onStop: () => controller.abort() });
     if (encoding === "gzip") res = inflatedResponse(res, cap);
 

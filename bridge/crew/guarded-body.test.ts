@@ -3,8 +3,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { bodyCapOf, proxiedResponse } from "./forward.ts";
-import { BODY_IDLE_MS, bodyIdleMs, CREW_BYTES_MAX, guardedBody } from "./guarded-body.ts";
+import { bodyCapOf, forwardToPeer, proxiedResponse } from "./forward.ts";
+import { maskForwardedAnswer } from "./mask.ts";
+import { askSentMember, type SentMember } from "../sent.ts";
+import { BODY_IDLE_MS, bodyIdleMs, CREW_BYTES_MAX, guardedBody, WHOLE_ANSWER_DEADLINE_MS } from "./guarded-body.ts";
 import { CrewLead } from "./lead.ts";
 import { member as trusted, neverProxy } from "./fixtures.ts";
 import { PeerClient, type CrewFetch } from "./peer-client.ts";
@@ -31,6 +33,7 @@ const json = { ...crew, "content-type": "application/json" };
 const bin = { ...crew, "content-type": "application/octet-stream" };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const piece = new Uint8Array(1024 * 1024).fill(7);
+const held = { opened: 0, closed: 0, aborted: 0 };
 const server = Bun.serve({
   hostname: "127.0.0.1", port: 0, idleTimeout: 0,
   fetch(req) {
@@ -53,6 +56,18 @@ const server = Bun.serve({
     }
     // The reviewer's member: the snapshot headers, then one byte every 700 ms for ever, under the 1 s idle limit.
     if (p.endsWith("/drip-forever")) return new Response(new ReadableStream({ async pull(c) { await sleep(700); c.enqueue(new TextEncoder().encode(" ")); } }), { headers: json });
+    // The reviewer's masked read: 1.9 MB of a History answer at once, then one byte every 8 s (under the
+    // 10 s idle limit), for ever. Each stream counts itself open, and closed when it is cancelled.
+    if (p.endsWith("/stats")) return Response.json(held);
+    if (p.endsWith("/history") || p.endsWith("/crew/v1/sent")) {
+      held.opened += 1;
+      req.signal.addEventListener("abort", () => { held.aborted += 1; });
+      let first = true;
+      return new Response(new ReadableStream({
+        async pull(c) { if (first) { first = false; c.enqueue(new TextEncoder().encode('{"entries":["' + "x".repeat(1900 * 1024))); return; } await sleep(8000); c.enqueue(new TextEncoder().encode("x")); },
+        cancel() { held.closed += 1; },
+      }), { headers: json });
+    }
     // 4 MB announced as chunks: the first 2 MB, then silence.
     if (p.endsWith("/half")) {
       let sent = 0;
@@ -225,6 +240,88 @@ describe("B1: the idle limit on a member's body", () => {
     expect(run.ms).toBeGreaterThan(BODY_IDLE_MS - 500);
     expect(run.ms).toBeLessThan(BODY_IDLE_MS + 5_000);
   }, 30_000);
+});
+
+describe("X1: a read the lead masks ends by a total deadline, and a phone that leaves aborts it (review round 9)", () => {
+  /** The lead's real forward, the real dial and the lead's real mask, against the child member. */
+  const forwardOnce = (req: Request) =>
+    forwardToPeer(req, new URL(req.url), {
+      link,
+      state: { memberId: "laptop", health: "reachable", lastSeenAt: Date.now(), reason: null, version: "1.30.0", conflict: null, preflight: null },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
+      transport: (l, route, params, init, budgetMs) => dial().proxy(l, route, params, init, budgetMs),
+      mask: maskForwardedAnswer,
+      log: () => undefined,
+    });
+  const stats = async (): Promise<{ opened: number; closed: number }> => {
+    const body: unknown = await (await fetch(`${base}/stats`)).json();
+    if (typeof body !== "object" || body === null || !("opened" in body) || !("closed" in body)) throw new Error("no stats");
+    const { opened, closed } = body;
+    if (typeof opened !== "number" || typeof closed !== "number") throw new Error("no stats");
+    return { opened, closed };
+  };
+
+  test("twenty polls of a dripping History: each ends at the deadline as a member out of reach, every member stream closes, the lead's memory is level", async () => {
+    const before = await stats();
+    Bun.gc(true);
+    const rss = process.memoryUsage().rss / MB;
+    const polls = Array.from({ length: 20 }, async (_, i) => {
+      await Bun.sleep(i * 300);
+      const started = performance.now();
+      const res = await forwardOnce(new Request("https://lead.example/api/pane/w1:p1/history?host=laptop"));
+      const body: unknown = await res.json();
+      const code = typeof body === "object" && body !== null && "code" in body ? body.code : undefined;
+      return { status: res.status, code, ms: performance.now() - started };
+    });
+    const answers = await Promise.all(polls);
+    for (const a of answers) {
+      expect([a.status, a.code]).toEqual([503, "host_unreachable"]);
+      expect(a.ms).toBeGreaterThan(WHOLE_ANSWER_DEADLINE_MS - 500);
+      expect(a.ms).toBeLessThan(WHOLE_ANSWER_DEADLINE_MS + 1_500);
+    }
+    await Bun.sleep(300);
+    const after = await stats();
+    expect(after.opened - before.opened).toBe(20);
+    expect(after.closed - before.closed).toBe(20);
+    Bun.gc(true);
+    expect(process.memoryUsage().rss / MB - rss).toBeLessThan(40);
+  }, 60_000);
+
+  test("Sent for all machines, redaction on: at its budget the member's read is aborted, not left held", async () => {
+    const before = await stats();
+    const dripping: SentMember = {
+      host: "laptop",
+      label: "laptop",
+      ask: (params, signal) => {
+        const url = new URL(`https://lead.example/api/sent?${params.toString()}`);
+        url.searchParams.set("host", "laptop");
+        return forwardOnce(new Request(url, { signal }));
+      },
+    };
+    const started = performance.now();
+    expect(await askSentMember(dripping, new URLSearchParams({ scope: "here" }), 1_000)).toEqual({ ok: false, reason: "timeout" });
+    expect(performance.now() - started).toBeLessThan(2_500);
+    await Bun.sleep(500);
+    const after = await stats();
+    expect(after.opened - before.opened).toBe(1);
+    expect(after.closed - before.closed).toBe(1);
+  }, 20_000);
+
+  test("a phone that goes away aborts the member's read at once", async () => {
+    const lead = Bun.serve({ hostname: "127.0.0.1", port: 0, idleTimeout: 0, fetch: (req) => forwardOnce(new Request(`https://lead.example${new URL(req.url).pathname}${new URL(req.url).search}`, { signal: req.signal })) });
+    try {
+      const before = await stats();
+      const leaving = new AbortController();
+      setTimeout(() => leaving.abort(), 500);
+      await fetch(`http://127.0.0.1:${String(lead.port)}/api/pane/w1:p1/history?host=laptop`, { signal: leaving.signal }).catch(() => null);
+      await Bun.sleep(500);
+      const after = await stats();
+      expect(after.opened - before.opened).toBe(1);
+      expect(after.closed - before.closed).toBe(1);
+    } finally {
+      await lead.stop(true);
+    }
+  }, 20_000);
 });
 
 describe("B2: the size cap on an identity body", () => {

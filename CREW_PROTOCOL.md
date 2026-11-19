@@ -1435,8 +1435,16 @@ version.
   answer on a slow link passes. A body the lead reads itself also has a total deadline from the start of
   the dial, three times the call's budget (3.6 s on the sweep): a member that drips one byte under the
   idle limit would otherwise hold that read, and the sweep that waits for every member, for ever. A
-  body streamed to the phone has no total deadline, on purpose: a large blob on a slow link is honest,
-  and a member that drips one costs one phone read and one socket, never the sweep. On any bound the member's stream is cancelled and the request aborted. Where
+  forwarded answer that is read in full before it is of any use (every route but a blob, a file's
+  picture and a project picture: the lead masks or merges it, or the phone parses it whole) has a
+  total deadline too, 8 s from the start of the dial, or the route's write budget when that is longer:
+  the lead's own server drops a phone request that heard nothing for 10 s, so a longer read only holds
+  memory for an answer no one waits for. `bodyRuleOf` in `bridge/crew/forward.ts` holds each route's cap
+  and class in one table. Only a body that truly streams on to the phone has no total deadline, on
+  purpose: a large blob on a slow link is honest, and a member that drips one costs one phone read and
+  one socket, never the sweep. The phone's own request signal rides the dial, so a phone that goes away
+  aborts the member's read and cancels its stream; a write the member may have received still answers
+  `write_outcome_unknown`. On any bound the member's stream is cancelled and the request aborted. Where
   the answer ends depends on where it was going. A body the lead reads ends as an unreachable peer (an
   idle cut counts as the lead's own time-out, §10.4), and so does a masked text answer, which the lead
   reads whole before the phone gets a byte. A body already streaming to the phone, which has its
@@ -1645,6 +1653,11 @@ never crosses a crew link.
   is decided by a probe on its own budget, never by this one.
 - The peer sweep is a *part of* the existing poll, not a second timer. A solo lead runs no sweep at
   all (§11).
+- **A member that drips its answer slows the crew's refresh.** *(added 2026-11-19)* The sweep waits
+  for every member, and a snapshot body may take up to three times the budget (§9.1, 3.6 s at the
+  default 1200 ms). While one member sends its snapshot slowly, each sweep takes that long, so every
+  member's state refreshes no faster than once in that time, not once a poll. The member reads as
+  unreachable for those sweeps, and the others stay fresh at that slower pace.
 - **An input makes the poll hot on both machines.** *(added 2026-10-05)* A `/reply` or `/keys` that
   lands tightens the owning engine to `COLLIE_POLL_MS` for `HOT_POLLS` polls (`ARCHITECTURE.md` §5).
   Forwarded to a member, it lands through the member's own dispatch, so the member goes hot there;

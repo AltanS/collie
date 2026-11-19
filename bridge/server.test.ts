@@ -5035,7 +5035,7 @@ describe("POST /api/launch and /api/worktree?host= — the lead's row rides the 
     // Nothing before the peer branch touches `write`; inside it, the rewritten request is what is sent.
     expect(peer).not.toContain("write.request");
     expect(gate).toContain("const carried = write === undefined ? { request: req, leadRow: false } : await write.request(req);");
-    expect(gate).toContain("const askReq = merge === undefined ? carried.request : new Request(askUrl, { method: req.method });");
+    expect(gate).toContain("const askReq = merge === undefined ? carried.request : mergeAskRequest(askUrl, req);");
     // The mark rides the forward as the carry's own flag, never as a header of the phone's.
     expect(gate).toContain("leadRow: carried.leadRow,");
   });

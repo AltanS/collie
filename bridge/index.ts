@@ -124,7 +124,7 @@ import {
 } from "./crew/deposed.ts";
 import { LeadContact } from "./crew/lead-contact.ts";
 import { forwardAuditDetail } from "./crew/forward.ts";
-import { CREW_JSON_MAX } from "./crew/guarded-body.ts";
+import { CREW_JSON_MAX, wholeDeadlineMs } from "./crew/guarded-body.ts";
 import { deputyAnchorOf, dialTls, peerListenerTls } from "./crew/transport.ts";
 import { commitCrewChange, CREW_PROTOCOL_VERSION } from "./crew/enrollment.ts";
 import { CrewLead } from "./crew/lead.ts";
@@ -3527,12 +3527,14 @@ if (crewLead !== undefined && walkyMemberId !== null) {
         const held = trustStore.current();
         return held === null || held.crew === null ? null : { keyPem: held.self.keyPem, crewId: held.crew.crewId };
       },
-      post: async (memberId, segment, payload): Promise<CrewDialAnswer> => {
+      post: async (memberId, segment, payload, signal): Promise<CrewDialAnswer> => {
         const resolved = lead.resolve({ kind: "member", id: memberId });
         if (resolved === undefined || resolved.kind !== "peer") return { kind: "refused", reason: "no such member" };
         const url = new URL(`http://collie.invalid/api/pane/${encodeURIComponent(segment)}/walky`);
         url.searchParams.set("host", memberId);
-        const req = new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: payload });
+        // The leg's signal rides the forward: at the leg's bound the member's dial is aborted, its answer
+        // body included, not only no longer waited for (review round 9).
+        const req = new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: payload, signal });
         const res = await lead.forward(req, url, resolved, {
           device: null,
           audit: (entry) => audit.record({ action: entry.action, host: entry.host, device: null, detail: forwardAuditDetail(entry) }),
@@ -3771,7 +3773,8 @@ async function walkyToLead(payload: string, route: string = CREW_WALKY_ROUTE, bu
     { memberId: lead.memberId, address: lead.address },
     route,
     undefined,
-    { method: "POST", headers: { "content-type": "application/json" }, body: payload, bodyMax: CREW_JSON_MAX },
+    // Read in full below, so it ends by the whole-answer deadline (review round 9).
+    { method: "POST", headers: { "content-type": "application/json" }, body: payload, bodyMax: CREW_JSON_MAX, bodyDeadlineMs: wholeDeadlineMs(budgetMs) },
     budgetMs,
     true,
   );

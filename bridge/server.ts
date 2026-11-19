@@ -218,7 +218,7 @@ import {
   maskTodoList,
 } from "./answer-mask.ts";
 import { maskForwardedAnswer } from "./crew/mask.ts";
-import { forwardAuditDetail, forwardError, type LeadMerge } from "./crew/forward.ts";
+import { forwardAuditDetail, forwardError, mergeAskRequest, type LeadMerge } from "./crew/forward.ts";
 import { CWD_PARAM, folderAnswers, leadRowCarry, leadRowMarked, leadRowsRead, ROW_FIELD, rowFromLead, type LeadWrite } from "./crew/launcher-rows.ts";
 import { withCopyRows, type LauncherCopySeam } from "./crew/standby-launchers.ts";
 import { redactAnsi } from "./redact.ts";
@@ -3281,7 +3281,8 @@ export function startServer(opts: {
             // A launch of a lead row carries the row (ADR 0127 point 3): only here, on a forward. The
             // forward marks it `X-Collie-Lead-Row` only when the carry itself set the row.
             const carried = write === undefined ? { request: req, leadRow: false } : await write.request(req);
-            const askReq = merge === undefined ? carried.request : new Request(askUrl, { method: req.method });
+            // A merged ask is a new request; it keeps the phone's signal, so a phone that goes away aborts it.
+            const askReq = merge === undefined ? carried.request : mergeAskRequest(askUrl, req);
             // The lead's own record of the forward (§12): one line, the same `action` the peer will
             // write, plus the target host — two independent logs of one event, neither depending on
             // the other machine's disk.
@@ -8308,12 +8309,14 @@ export function sentMembersOf(lead: Pick<CrewLead, "contributions" | "resolve" |
   return lead.contributions().map(({ state, name }) => ({
     host: state.memberId,
     label: name,
-    ask: async (params) => {
+    ask: async (params, signal) => {
       const resolved = lead.resolve({ kind: "member", id: state.memberId });
       if (resolved === undefined || resolved.kind !== "peer") return new Response("host unreachable", { status: 503 });
       const url = new URL(`http://collie.invalid/api/sent?${params.toString()}`);
       url.searchParams.set("host", state.memberId);
-      return lead.forward(new Request(url), url, resolved, { device, mask: redact ? maskForwardedAnswer : undefined });
+      // The merge's own signal rides the forward: at its budget the member's read is aborted, also while
+      // the lead's mask is still reading the whole answer (review round 9).
+      return lead.forward(new Request(url, { signal }), url, resolved, { device, mask: redact ? maskForwardedAnswer : undefined });
     },
   }));
 }

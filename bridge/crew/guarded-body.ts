@@ -3,18 +3,21 @@
 // The dial's budget ends when the member's headers arrive. Without this module a member that sent its
 // headers and then went silent held the lead's read open for ever, and a member that sent an identity
 // body with no end could send as many bytes as it liked. So every member body, whatever the route and
-// whatever its encoding, comes through {@link guardedBody}, which holds two bounds:
+// whatever its encoding, comes through {@link guardedBody}, which holds three bounds:
 //
 // - An IDLE limit, not a total one: the read fails when no byte arrived for `idleMs` while the lead was
 //   waiting for one. A big honest answer on a slow link passes, however long it takes in all, as long as
 //   its bytes keep coming. The clock runs only while a reader waits: a phone that reads slowly holds the
 //   member's stream back and never trips it.
-// - A TOTAL deadline, only for a body the lead reads itself, from the start of the dial: the idle limit
-//   alone lets a member that drips one byte a second hold such a read, and the sweep with it, for ever.
+// - A TOTAL deadline, from the start of the dial, for every body that is read in full before it is of
+//   any use: one the lead reads itself (round 8), and a forwarded answer the lead masks or merges, or the
+//   phone parses whole (round 9, the `whole` class in forward.ts `bodyRuleOf`). The idle limit alone
+//   lets a member that drips one byte a second hold such a read for ever. Only a body that truly streams
+//   on to the phone (a blob, a picture) keeps the idle limit alone.
 // - A SIZE cap on the bytes the member sent, counted as they pass. Past it the read fails. A gzip body is
 //   also capped on its inflated output, in bounded-gunzip.ts, on top of this.
 //
-// On either limit the member's stream is cancelled, `onStop` releases the socket, and the reader gets an
+// On any limit the member's stream is cancelled, `onStop` releases the socket, and the reader gets an
 // error, never a short body that looks whole: a body streamed on to the phone breaks off there too.
 
 /** Why a member's body was cut off. The message is plain ASCII, never a byte from the member. */
@@ -73,6 +76,22 @@ export const CREW_BYTES_MAX = 32 * 1024 * 1024;
 export const BODY_IDLE_MS = 10_000;
 
 /**
+ * The total deadline for a body the lead reads itself, from the start of the dial to its last byte:
+ * three times the call's budget, 3.6 s on the sweep's 1.2 s. The headers may take one budget; the
+ * honest bodies (a 300-pane snapshot is about 190 KB) arrive in one round trip after them, so two more
+ * budgets are room, not a squeeze. The idle limit alone does not bound such a read: a member that sends
+ * one byte a second never trips it, and the sweep, which waits for every member, would never end (review
+ * round 8). A forwarded answer that is read in full has its own, longer deadline
+ * ({@link WHOLE_ANSWER_DEADLINE_MS}); only one that streams on to the phone has none: a large blob on a
+ * slow link is honest, and one phone read holds one socket and stalls nothing else.
+ */
+export const BODY_DEADLINE_FACTOR = 3;
+
+export function bodyDeadlineMs(budgetMs: number): number {
+  return BODY_DEADLINE_FACTOR * budgetMs;
+}
+
+/**
  * The idle limit for one dial's body, from what the dial is for.
  *
  * A body the LEAD consumes (the sweep's snapshot, hello, the warrant and the other `json` calls) may be
@@ -83,21 +102,6 @@ export const BODY_IDLE_MS = 10_000;
  * A body the lead streams on to the phone may be silent for {@link BODY_IDLE_MS}, or the call's budget
  * when that is longer (a deputy copy on 30 s).
  */
-/**
- * The total deadline for a body the lead reads itself, from the start of the dial to its last byte:
- * three times the call's budget, 3.6 s on the sweep's 1.2 s. The headers may take one budget; the
- * honest bodies (a 300-pane snapshot is about 190 KB) arrive in one round trip after them, so two more
- * budgets are room, not a squeeze. The idle limit alone does not bound such a read: a member that sends
- * one byte a second never trips it, and the sweep, which waits for every member, would never end (review
- * round 8). A body streamed to the phone has no deadline: a large blob on a slow link is honest, and one
- * phone read holds one socket and stalls nothing else.
- */
-export const BODY_DEADLINE_FACTOR = 3;
-
-export function bodyDeadlineMs(budgetMs: number): number {
-  return BODY_DEADLINE_FACTOR * budgetMs;
-}
-
 export function bodyIdleMs(mode: "consumed" | "passthrough", budgetMs: number): number {
   return mode === "consumed" ? budgetMs : Math.max(budgetMs, BODY_IDLE_MS);
 }
@@ -109,7 +113,7 @@ export interface BodyGuard {
   readonly max: number;
   /**
    * A total deadline, as a `performance.now()` time: past it the read fails however steadily bytes come.
-   * Set for a body the lead reads itself ({@link bodyDeadlineMs}); absent for one streamed to the phone.
+   * Set for a body read in full ({@link bodyDeadlineMs}, {@link wholeDeadlineMs}); absent for one streamed to the phone.
    */
   readonly deadline?: number;
   /** Called once when any limit fires, to release the socket (the dial aborts its request). */
@@ -181,4 +185,19 @@ const NO_BODY = new Set([204, 205, 304]);
 export function guardedResponse(res: Response, guard: BodyGuard): Response {
   if (res.body === null || NO_BODY.has(res.status)) return res;
   return new Response(guardedBody(res.body, guard), { status: res.status, statusText: res.statusText, headers: res.headers });
+}
+
+/**
+ * The total deadline of a `whole` answer, from the start of the dial to its last byte: 8 s, or the
+ * call's own budget when that is longer (a launch, a worktree create). The lead's server drops a request
+ * whose socket stays silent for 10 s (Bun's default `idleTimeout`, which the bridge does not set), and a
+ * whole answer sends the phone nothing until it is complete; 8 s leaves 2 s for the lead's own work on it
+ * (the mask, a merge). A 32 MB History page needs about 7 s on a 5 MB/s link, so the deadline does not cut
+ * an honest one on a reasonable link, and 3 times the poll budget (3.6 s) would.
+ */
+export const WHOLE_ANSWER_DEADLINE_MS = 8_000;
+
+/** The deadline of a whole answer on a call with `budgetMs` (absent: the poll budget, which is shorter). */
+export function wholeDeadlineMs(budgetMs?: number): number {
+  return Math.max(WHOLE_ANSWER_DEADLINE_MS, budgetMs ?? 0);
 }
