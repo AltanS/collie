@@ -256,22 +256,18 @@ export function autoLine(trick: Pick<WireTrickInfo, "on" | "autoAt">, now: numbe
 
 /** The row under a trick that is on and took a change without asking: when, and the Undo beside it. */
 function TrickChanges({
-  trick,
   line,
   canWrite,
   undoing,
   onUndo,
 }: {
-  trick: WireTrickInfo;
   line: string;
   canWrite: boolean;
   undoing: boolean;
   onUndo: () => void;
 }) {
-  const { armed, tap, disarm } = useArm<"undo">();
+  const { armed, tap } = useArm<"undo">();
   const undoArmed = armed === "undo";
-  // An arm was for the version as it read when it was armed: a new one needs a new first tap.
-  useEffect(() => disarm(), [trick.autoAt, disarm]);
   return (
     <div data-line="changes" className="mt-3 border-t border-border pt-3">
       <div data-line="auto-at" className="flex min-h-11 items-center justify-between gap-4">
@@ -547,7 +543,9 @@ function TrickRow({ trick, clock, checked, canWrite, hillOff, undoing, onFlip, o
             yes from here; a trick that is on can still go off. */}
         <Switch checked={checked} onCheckedChange={onFlip} disabled={!canWrite || ((trick.rulesUnshown === true || trick.access === ACCESS_UNKNOWN) && !checked)} aria-label={trick.name} className={ROW_OPEN_SWITCH} />
       </div>
-      {trick.on && changed !== null && <TrickChanges trick={trick} line={changed} canWrite={canWrite} undoing={undoing} onUndo={onUndo} />}
+      {/* An arm was for the version as it read when it was armed: a new one remounts the row and needs a new first
+          tap. Never an effect that calls `disarm`: its first run, on mount, can land after a first tap and undo it. */}
+      {trick.on && changed !== null && <TrickChanges key={trick.autoAt} line={changed} canWrite={canWrite} undoing={undoing} onUndo={onUndo} />}
       {update !== undefined && <OfficialUpdateLine name={trick.name} busy={update.busy} canWrite={canWrite} onUpdate={update.onUpdate} />}
     </div>
   );
