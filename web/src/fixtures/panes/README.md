@@ -3819,6 +3819,9 @@ same characters, so no rule or box width moves.
 | `v2310-auth-refresh-before-output-spinner--w52` | Title-only box after a message was sent, `✢ Whirlpooling… ` (no timer yet) under it: a turn runs, and the surface reads it free because the running sign needs the timer |
 | `v2310-auth-refresh-output-spinner--w52` | Filled box, 48 content cells, `✶ Garnishing… ` (no timer yet) under it: the same free read of a running turn |
 | `v2310-auth-refresh-output-spinner-timer--w52` | Filled box, `✻ Moonwalking… (49s)` under it: the timer is drawn, and the surface reads the turn as running |
+| `v2328-auth-refresh-before-output-spinner--w52` | Claude Code 2.1.328 titles the box `Sign-in` (issue 816): title-only, 11 cells wide, `✢ Seasoning… ` (no timer yet) under it, the same free read as on 2.1.310 |
+| `v2328-auth-refresh-output-spinner-timer--w52` | `Sign-in` box filled, 48 content cells, the code-prefilled address broken after `user_` at the last column, `✳ Seasoning… (34s)` under it: the spinner's `✳` frame |
+| `v2328-auth-refresh-output-spinner-timer--w120` | `Sign-in` box filled, a 97-wide edge on a 120-column pane (the box shrinks to its longest row), no break, `✳ Enchanting… (22s)` under it |
 
 ## Codex Ultra prompt glyph (derived 2026-10-29, issue 615)
 

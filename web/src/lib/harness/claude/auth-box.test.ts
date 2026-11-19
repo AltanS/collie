@@ -490,6 +490,7 @@ describe("a turn spinner row between the box and the input box leaves the card l
     "✶ Hashing… · tool use (4s · thinking with high effort)",
     "✽ Brewing… (1m 27s)",
     "* Cooking… (4s · ↓ 304 tokens)",
+    "✳ Enchanting… (22s)",
   ];
   const baseRows = lines(SPINNER_FILLED).map(lineText);
   const SPINNER_AT = baseRows.findIndex((row) => row.startsWith("✶ Garnishing"));
@@ -552,5 +553,43 @@ describe("the API retry row Claude prints while it refreshes expired credentials
     ["a retry row with no countdown", ["✻ API error · Retrying in · attempt 1/2"]],
   ])("lifts no card with %s under the box's bottom edge", (_name, under) => {
     expect(liftsNoCard(filledWith(under))).toBe(true);
+  });
+});
+
+describe("the Sign-in box Claude Code 2.1.328 draws in the Authentication box's place lifts the same card", () => {
+  const SIGN_IN_WAITING = "claude--v2328-auth-refresh-before-output-spinner--w52.txt";
+  const SIGN_IN_FILLED_W52 = "claude--v2328-auth-refresh-output-spinner-timer--w52.txt";
+  const SIGN_IN_FILLED_W120 = "claude--v2328-auth-refresh-output-spinner-timer--w120.txt";
+  const CODE_URL = "https://example.awsapps.com/start/#/device?user_code=ABCD-EFGH";
+  const linksOf = (card: { text: readonly (readonly BoxTextRun[])[] }): string[] =>
+    card.text.flatMap((row) => row.filter((run) => run.kind === "link").map((run) => run.text));
+
+  it("lifts the title-only box as a waiting card headed Sign-in, after the transcript", () => {
+    expect(kinds(claudeBuildBlocks(lines(SIGN_IN_WAITING)))).toEqual(["raw", "box-text"]);
+    expect(cardOf(lines(SIGN_IN_WAITING))).toEqual({ title: "Sign-in", phase: "waiting", text: [] });
+  });
+
+  it.each([SIGN_IN_FILLED_W52, SIGN_IN_FILLED_W120])(
+    "lifts the filled box under a ✳ spinner row as a card headed Sign-in, the address one link, from %s",
+    (name) => {
+      const card = cardOf(lines(name));
+      expect(card.title).toBe("Sign-in");
+      expect(card.phase).toBe("filled");
+      expect(linksOf(card)).toEqual([CODE_URL]);
+      expect(card.text.map(textOf).join("\n")).not.toMatch(/Enchanting|Seasoning/u);
+    },
+  );
+
+  it("lifts no card from a box whose title only starts with Sign-in", () => {
+    const screen = lines(SIGN_IN_WAITING).map(lineText);
+    const top = screen.findIndex((row) => row.startsWith("╭"));
+    const renamed = [
+      ...screen.slice(0, top),
+      "╭───────────╮",
+      "│ Sign-in 2 │",
+      "╰───────────╯",
+      ...screen.slice(top + 3),
+    ];
+    expect(kinds(claudeBuildBlocks(rowsOf(renamed.join("\n"))))).not.toContain("box-text");
   });
 });

@@ -2804,6 +2804,54 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2328-auth-refresh-before-output-spinner--w52.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 18,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2328-auth-refresh-output-spinner-timer--w120.txt",
+  "frame": {
+   "top": 18,
+   "prompt": 19,
+   "bottom": 20,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 21,
+    "last": 22
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2328-auth-refresh-output-spinner-timer--w52.txt",
+  "frame": {
+   "top": 20,
+   "prompt": 21,
+   "bottom": 22,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 23,
+    "last": 24
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

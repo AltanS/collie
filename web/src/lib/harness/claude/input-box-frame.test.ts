@@ -225,6 +225,10 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2310-auth-refresh-before-output-spinner--w52.txt",
     "claude--v2310-auth-refresh-output-spinner--w52.txt",
     "claude--v2310-auth-refresh-output-spinner-timer--w52.txt",
+    // Claude Code 2.1.328 titles the box Sign-in, and the input box stands under it.
+    "claude--v2328-auth-refresh-before-output-spinner--w52.txt",
+    "claude--v2328-auth-refresh-output-spinner-timer--w52.txt",
+    "claude--v2328-auth-refresh-output-spinner-timer--w120.txt",
     // Remote Control on, 2.1.319: the lone `/rc` row is the last statusline row, and the box stands.
     "claude--v2319-rc-footer-idle--w100.txt",
     // Claude Code 2.1.323 with Remote Control on (lab 2026-11-13): the pill `/rc active` right-aligned on the mode
