@@ -5,6 +5,7 @@ import { useDurableBarItems } from "@/components/harness-bar";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { TOOLBAR_TAP_TARGET } from "@/components/ui/tap-target";
+import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useLocale } from "@/hooks/use-locale";
 import { SendRefusalNotice, phoneRefusal, programRefusal, type SendRefusal } from "@/components/send-notice";
 import { NOTICE_ACTION } from "@/components/ui/notice";
@@ -12,6 +13,8 @@ import { Collapse } from "@/components/ui/collapse";
 import { abortPane, apiErrorStatus, postProgramSend, runPaneAction, sendToPane, type ControlResult } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
+import { enterKeyAnswer } from "@/lib/enter-key";
+import { useEnterSendsChoice } from "@/lib/enter-sends-store";
 import { addPending, dropNotSent, setPendingState } from "@/lib/durable-pending";
 import {
   controlTarget,
@@ -160,6 +163,9 @@ export function DurableComposer({
   const [input, setInput] = useState(() => loadDraft(scope, paneId) ?? "");
   const [steer, setSteer] = useState(false);
   const [sending, setSending] = useState(false);
+  // The person's "Enter sends" choice and whether the on-screen keyboard is up, for the key rule (ADR 0157).
+  const enterChoice = useEnterSendsChoice();
+  const softKeyboard = useKeyboardOpen();
   const [stopping, setStopping] = useState(false);
   // The id of the program button whose tap is in flight, so a second tap on it waits for the first.
   const [running, setRunning] = useState<string | null>(null);
@@ -417,10 +423,29 @@ export function DurableComposer({
           value={input}
           onChange={(e) => edit(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              void send();
-            }
+            // The same rule as the main reply box (lib/enter-key.ts, ADR 0157), so one switch means one
+            // behaviour. `send` takes the path Ctrl+Enter always took; `send()` itself refuses an empty
+            // draft, an off pane and a send in flight. The offer of the switch lives in the main reply box
+            // only, so `hint` is a plain new line here.
+            const answer = enterKeyAnswer(
+              {
+                key: e.key,
+                code: e.code,
+                shiftKey: e.shiftKey,
+                altKey: e.altKey,
+                ctrlKey: e.ctrlKey,
+                metaKey: e.metaKey,
+                isComposing: e.nativeEvent.isComposing,
+                keyCode: e.keyCode,
+                repeat: e.repeat,
+              },
+              softKeyboard,
+              enterChoice,
+            );
+            if (answer === "default" || answer === "hint") return;
+            e.preventDefault();
+            if (answer === "send") void send();
+            // "swallow": a held Enter. The first press sent; a repeat adds no new line.
           }}
           placeholder={locked ? lockedWhy : sending ? t("durable.composer.sending") : t("durable.composer.placeholder")}
           className={cn("min-w-0 flex-1 min-h-9 pl-2 py-1.5 font-mono", hand === "left" && "pr-2")}

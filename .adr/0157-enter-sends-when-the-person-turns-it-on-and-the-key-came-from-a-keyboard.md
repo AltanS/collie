@@ -9,7 +9,8 @@
   chosen by device (a mouse, a screen size), and a switch that decides from a guess. "A guess must never
   change what Enter does. Only the person's tap does."
   Files: `web/src/lib/enter-key.ts`, `web/src/lib/enter-sends-store.ts`, `web/src/components/composer.tsx`
-  (the key handler, the offer above the box), `web/src/components/enter-sends-control.tsx`,
+  (the key handler, the offer above the box),
+  `web/src/components/durable-composer.tsx`, `web/src/components/enter-sends-control.tsx`,
   `docs/configure.md`
 
 ## Context
@@ -45,7 +46,9 @@ It comes from each key press.
    message the person did not send.
 5. **What stays:** Ctrl/Cmd+Enter sends, with the choice on, off or nothing. Type mode has its own handler.
    The Send button is the way on a phone. The sign-in code field, the menus and suggestion lists above the
-   box take no Enter. The expanded editor and the durable composer keep Ctrl/Cmd+Enter only.
+   box take no Enter. The durable agent's reply box follows the same rule with the same switch, and offers
+   no switch of its own, since the offer stays in the main reply box. The expanded full-screen editor keeps
+   Ctrl/Cmd+Enter only, on purpose: it is the place for long text with many lines.
 
 ## Consequences
 
