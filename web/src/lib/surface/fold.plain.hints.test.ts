@@ -54,3 +54,29 @@ describe.each(CASES)("%s", (fixture, hint) => {
     expect(typed.frame?.interior.text).toBe(hint);
   });
 });
+
+// Claude Code 2.1.328 after a turn fails on an API error (a refused connection, lab 2026-11-19): the
+// empty box holds `Resend your message to try again` (a no-break space after the marker). herdr-core
+// reads it as plain text, so only the profile's known placeholder text (`idle.placeholders.texts`)
+// keeps it from reading as a draft. The rows are the last rows of that plain-text capture.
+describe("claude: the resend hint after a failed turn", () => {
+  const RULE = "─".repeat(120);
+  const screen = (prompt: string) =>
+    rowsOf(["", "❯ say hi", "", "● API Error: Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)", "", RULE, prompt, RULE, "  ⏸ manual mode on · ? for shortcuts"].join("\n"));
+  const readPlain = (prompt: string) => readScreen(screen(prompt), agentOf("claude"), idleFor("claude"));
+
+  it("reads as an empty box on a plain-text read", () => {
+    const seen = readPlain("❯ Resend your message to try again");
+    expect(seen.surface.composer).toBe("empty");
+    expect(seen.frame?.placeholder).toBe(true);
+    expect(seen.frame?.anchorsHit).toContain("placeholder-text");
+  });
+
+  it("keeps other words, and the same words with more typed after them, as a draft", () => {
+    for (const draft of ["Resend your note to try again", "Resend your message to try again now please"]) {
+      const seen = readPlain(`❯ ${draft}`);
+      expect(seen.surface.composer, draft).toBe("draft");
+      expect(seen.frame?.interior.text, draft).toBe(draft);
+    }
+  });
+});

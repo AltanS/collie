@@ -61,7 +61,8 @@
     "signInSettleMs": 15000,
     "signInSettleMsNote": "After a code is submitted Claude Code checks it with its server before it draws `Login successful` or the error (2026-11-16, Altan's run on the dev lane: a good code ended `unknown`, S2's 3 s were not enough). The screen between the two is not captured yet; this bound is a guess on the safe side, and only delays the receipt.",
     "placeholders": {
-      "texts": ["Press up to edit queued messages"],
+      "texts": ["Press up to edit queued messages", "Resend your message to try again"],
+      "textsNote": "Claude Code 2.1.328 paints `Resend your message to try again` (a no-break space after the prompt marker) inside the empty box after a turn fails on an API error. It is faint on a styled read; on herdr-core the read is plain text, so only these exact words tell it from a draft (capture 2026-11-19, a refused connection). The text must match whole: the same words with more typed after them stay a draft.",
       "patterns": ["^Try \"[^\"]*\"$"],
       "patternsNote": "Live 2026-10-30, Claude Code 2.1.314 on herdr-core: the empty box rotates faint hints (`Try \"refactor <filepath>\"`, `Try \"fix lint errors\"`, `Try \"how do I log an error?\"`). herdr-core reads the screen as plain text, so the faint attribute is gone and the hint read as a draft; a walky talky delivery stayed held as draft present. The shape counts only on a read with no styling at all; on a styled read the faint attribute decides, so a typed `Try \"…\"` stays a draft. Fixture surface/claude--v2-1-314-placeholder-plain--w120 (plain text, as herdr-core reads it).",
       "sgr": 2,
