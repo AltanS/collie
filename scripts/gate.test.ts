@@ -191,8 +191,9 @@ describe("what the gate did not run", () => {
     });
   });
 
+  const names = Array.from({ length: 13 }, (_, index) => `f${index}.ts`);
+
   test("a list of names is cut at ten, with the rest counted", () => {
-    const names = Array.from({ length: 13 }, (_, index) => `f${index}.ts`);
     expect(capNames(names.slice(0, 10))).toBe(names.slice(0, 10).join(", "));
     expect(capNames(names)).toBe(`${names.slice(0, 10).join(", ")} and 3 more`);
   });
@@ -211,6 +212,8 @@ describe("what the gate did not run", () => {
     ]);
     for (const lines of [quiet, loud]) expect(lines.at(-1)).toStartWith("not run here: the full suites, Windows, WebKit; CI runs them");
     expect(gateFooter(null)).toHaveLength(1);
+    const many = gateFooter({ bunFiles: 1, shellFiles: 0, noNearTest: [], slowNear: names.map((name) => name.replace(".ts", ".slow.test.ts")) });
+    expect(many.at(-2)).toStartWith("run them: bun test .slow.test");
   });
 });
 

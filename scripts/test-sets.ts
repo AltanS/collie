@@ -309,7 +309,9 @@ export function gateFooter(report: NearReport | null): string[] {
     if (report.noNearTest.length > 0) lines.push(`no near test for: ${capNames(report.noNearTest)}`);
     if (report.slowNear.length > 0) {
       lines.push(`slow tests near the change, not run: ${capNames(report.slowNear)}`);
-      lines.push(`run them: bun test ${report.slowNear.join(" ")}`);
+      // Past the cap the command would fill the screen, so it names every slow file instead.
+      const command = report.slowNear.length > NAME_CAP ? "bun test .slow.test (every slow file, the list above is cut)" : `bun test ${report.slowNear.join(" ")}`;
+      lines.push(`run them: ${command}`);
     }
   }
   lines.push("not run here: the full suites, Windows, WebKit; CI runs them (bun run gate --full runs the suites here)");
