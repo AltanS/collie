@@ -232,3 +232,18 @@ describe("keepSgrOnly lets no control byte through", () => {
     expect(out).toBe(`a\tb\n${ESC}[1mbold${ESC}[0m`);
   });
 });
+
+describe("a status record's fields are bounded before use", () => {
+  const status = (record: Record<string, string>) => JSON.stringify({ records: [record] });
+
+  test("a record with an overlong app, state or id is not read", () => {
+    expect(parseProgramStatus(status({ state: "blocked", app: "claude-code".repeat(10) }))).toEqual([]);
+    expect(parseProgramStatus(status({ state: "x".repeat(17), app: "claude-code" }))).toEqual([]);
+    expect(parseProgramStatus(status({ state: "working", app: "codex", id: "i".repeat(65) }))).toEqual([]);
+  });
+
+  test("an ordinary record is read, and kind and msg are never carried", () => {
+    const [record] = parseProgramStatus(status({ state: "blocked", kind: "permission", msg: "Run rm -rf?", app: "claude-code" }));
+    expect(record).toEqual({ state: "blocked", app: "claude-code", id: "" });
+  });
+});

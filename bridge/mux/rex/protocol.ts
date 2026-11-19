@@ -188,6 +188,14 @@ export function parseProcess(stdout: string): RexProcess {
   };
 }
 
+/**
+ * The longest `state` a status record may carry (the protocol's states are words like `working`), and
+ * the longest `app` or record `id` (the protocol caps an id at 32 bytes). `kind` and `msg` are never
+ * read: no card text comes from a record, only from the screen.
+ */
+export const STATUS_STATE_CAP = 16;
+export const STATUS_FIELD_CAP = 64;
+
 /** `rex block call -b <id> program_status`: `{ records: [{ state, app, effective_app, id, … }] }`. */
 export function parseProgramStatus(stdout: string): RexStatusRecord[] {
   const parsed = parseObject(stdout, "rex block call program_status");
@@ -196,8 +204,13 @@ export function parseProgramStatus(stdout: string): RexStatusRecord[] {
     const raw = asObject(entry);
     if (raw === null) continue;
     const state = str(raw.state);
+    const app = str(raw.effective_app) || str(raw.app);
+    const id = str(raw.id);
     if (state === "") continue;
-    records.push({ state, app: str(raw.effective_app) || str(raw.app), id: str(raw.id) });
+    // The record is what the program in the block says about itself, so its fields are bounded
+    // before use: a record with a field past the cap is not a report this adapter reads.
+    if (state.length > STATUS_STATE_CAP || app.length > STATUS_FIELD_CAP || id.length > STATUS_FIELD_CAP) continue;
+    records.push({ state, app, id });
   }
   return records;
 }
