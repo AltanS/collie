@@ -1173,6 +1173,7 @@ export class PeerClient {
     const deadline = deadlineMs === undefined ? undefined : AbortSignal.timeout(deadlineMs);
     const outer = init.signal ?? undefined;
     const signals = [controller.signal, deadline, outer].filter((signal): signal is AbortSignal => signal !== undefined);
+    // Never pass a signal that outlives the dial (one shared across dials): `any` keeps it joined.
     const signal = AbortSignal.any(signals);
     let res: Response;
     try {

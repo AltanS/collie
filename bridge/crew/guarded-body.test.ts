@@ -35,7 +35,11 @@ const json = { ...crew, "content-type": "application/json" };
 const bin = { ...crew, "content-type": "application/octet-stream" };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const piece = new Uint8Array(1024 * 1024).fill(7);
-const held = { opened: 0, closed: 0, aborted: 0 };
+const held = { opened: 0, closed: 0, aborted: 0, packedSent: 0, plainSent: 0 };
+// 64 MB of hex text, gzipped at about 2 to 1: a runtime that inflated the whole body before the reader
+// saw it would have to take most of the packed bytes, one that streams takes little more than the limit.
+const hexText = Buffer.from(crypto.getRandomValues(new Uint8Array(32 * 1024 * 1024)).buffer).toString("hex");
+const packedText = Bun.gzipSync(new TextEncoder().encode(hexText), { level: 1 });
 const packedHuge = Bun.gzipSync(new Uint8Array(256 * 1024 * 1024));
 const server = Bun.serve({
   hostname: "127.0.0.1", port: 0, idleTimeout: 0,
@@ -76,8 +80,14 @@ const server = Bun.serve({
       let sent = 0;
       return new Response(new ReadableStream({ async pull(c) { if (sent >= 2) { await new Promise(() => {}); } c.enqueue(piece); sent += 1; } }), { headers: bin });
     }
-    // An identity body with no length and no end, 1 MB at a time.
-    if (p.endsWith("/endless")) return new Response(new ReadableStream({ pull(c) { c.enqueue(piece); } }), { headers: bin });
+    // An identity body with no length and no end, 1 MB at a time, counted as the socket takes it.
+    if (p.endsWith("/endless")) return new Response(new ReadableStream({ pull(c) { held.plainSent += piece.length; c.enqueue(piece); } }), { headers: bin });
+    // The packed hex text, 64 KB at a time, counted as the socket takes it.
+    if (p.endsWith("/packed-text")) {
+      let at = 0;
+      return new Response(new ReadableStream({ pull(c) { if (at >= packedText.length) { c.close(); return; } const next = packedText.subarray(at, at + 65536); at += next.length; held.packedSent += next.length; c.enqueue(next); } }), { headers: { ...json, "content-encoding": "gzip" } });
+    }
+    if (p.endsWith("/packed-size")) return Response.json({ packed: packedText.length });
     // A gzip answer that inflates to 256 MB of zeros, from about 256 KB on the wire.
     if (p.endsWith("/packed-huge")) return new Response(packedHuge, { headers: { ...json, "content-encoding": "gzip" } });
     // An honest snapshot, gzipped as a member gzips it.
@@ -358,6 +368,74 @@ describe("the size limit: a far too large answer never bloats the lead", () => {
     Bun.gc(true);
     expect(process.memoryUsage().rss / MB - before).toBeLessThan(160);
   }, 30_000);
+
+  test("the real fetch inflates as a stream: a 64 MB gzip answer stops near the 2 MB limit, and so does an endless plain one at 32 MB", async () => {
+    const started = performance.now();
+    const counter = { pulled: 0 };
+    // The real fetch; only its body is wrapped, to count the inflated bytes the dial pulls through it.
+    const counting: CrewFetch = async (url, init) => {
+      const res = await globalThis.fetch(url.replace(/^https?:\/\/[^/]+/, base), init);
+      if (res.body === null) return res;
+      const reader = res.body.getReader();
+      const body = new ReadableStream<Uint8Array>(
+        {
+          async pull(c) {
+            const next = await reader.read();
+            if (next.done) {
+              c.close();
+              return;
+            }
+            counter.pulled += next.value.length;
+            c.enqueue(next.value);
+          },
+          cancel: (reason) => reader.cancel(reason),
+        },
+        { highWaterMark: 0 },
+      );
+      return new Response(body, { status: res.status, headers: res.headers });
+    };
+    const client = new PeerClient({ self: "desk", secret: () => "s".repeat(32), timeoutMs: 1_000, fetch: counting, now: () => Date.now() });
+    const sent = async () => {
+      const body: unknown = await (await fetch(`${base}/stats`)).json();
+      if (typeof body !== "object" || body === null || !("packedSent" in body) || !("plainSent" in body)) throw new Error("no stats");
+      const { packedSent, plainSent } = body;
+      if (typeof packedSent !== "number" || typeof plainSent !== "number") throw new Error("no stats");
+      return { packedSent, plainSent };
+    };
+    const sizeBody: unknown = await (await fetch(`${base}/packed-size`)).json();
+    const packed = typeof sizeBody === "object" && sizeBody !== null && "packed" in sizeBody && typeof sizeBody.packed === "number" ? sizeBody.packed : 0;
+    expect(packed).toBeGreaterThan(30 * MB);
+
+    const before = await sent();
+    const read = await client.json(link, "packed-text");
+    expect(read.ok).toBe(false);
+    if (!read.ok) expect(read.reason).toBe(`packed-text: the answer passed ${String(CREW_JSON_MAX)} bytes`);
+    // The inflated bytes the dial pulled: the limit and at most one more piece of the runtime's.
+    expect(counter.pulled).toBeGreaterThan(CREW_JSON_MAX);
+    expect(counter.pulled).toBeLessThan(CREW_JSON_MAX + MB);
+    const jsonPulled = counter.pulled;
+    await Bun.sleep(100);
+    const afterPacked = await sent();
+    // The packed bytes the member got to send: a small part of the whole, never most of it.
+    const packedTaken = afterPacked.packedSent - before.packedSent;
+    expect(packedTaken).toBeLessThan(packed / 4);
+
+    counter.pulled = 0;
+    const endless = await client.proxy(link, "blobs/endless");
+    expect(endless.ok).toBe(true);
+    if (!endless.ok) return;
+    const error = await endless.value.arrayBuffer().then(
+      () => null,
+      (err: Error) => err.message,
+    );
+    expect(error).toBe(`the answer passed ${String(CREW_BODY_MAX)} bytes`);
+    expect(counter.pulled).toBeLessThan(CREW_BODY_MAX + 2 * MB);
+    await Bun.sleep(100);
+    const plainTaken = (await sent()).plainSent - afterPacked.plainSent;
+    expect(plainTaken).toBeLessThan(CREW_BODY_MAX + 16 * MB);
+    console.log(`packed ${String(packed)} B; json read pulled ${String(jsonPulled)} inflated, member sent ${String(packedTaken)} packed; endless sent ${String(plainTaken)}; ${String(Math.round(performance.now() - started))} ms`);
+    expect(performance.now() - started).toBeLessThan(3_000);
+  }, 20_000);
 
   test("an honest gzip answer arrives whole and equal", async () => {
     const outcome = await dial().json(link, "packed-snapshot");

@@ -37,4 +37,7 @@ limits are for a member that is slow, stuck or broken, not for one that attacks.
 - The sweep is gzipped between machines again.
 - An answer that inflates past its limit is cut at the limit; the lead's cost is the limit plus the
   runtime's stream buffers, about 100 MB at the peak.
+- One number for every answer but the lead's own JSON is a known cost: a 32 MB answer the lead masks
+  (History, Chat, Changes, Files) peaks at about 390 MB above the lead's base while the mask parses it
+  (measured, review round 10). No member sends a Changes or Files answer near that size today.
 - No version bump: every released member gzips on request (`bridge/http-cache.ts`, since 0.10.0).
