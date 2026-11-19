@@ -2123,7 +2123,7 @@ describe("pairedLabel — the name Settings credits a change to", () => {
 // Reads need the pairing token, and pairing is always on. The open-route list is short and named:
 // `/api/health` and `/api/pair`. The crew surface (`/crew/v1/*`) and the standby door have their own
 // admission and never reach `guard`. `bun test` cannot stand up `Bun.serve` (CLAUDE.md), so the
-// route table is read from the source, the way `solo-baseline.test.ts` pins it: every block that
+// route table is read from the source, the way `solo-baseline.test.ts` reads it: every block that
 // claims an `/api` path must ask a gate before it answers, except the two named here.
 describe("open routes — every /api route but health and pair asks the pairing gate", () => {
   const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
