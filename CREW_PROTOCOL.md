@@ -1238,6 +1238,15 @@ Stated plainly, because a crew link is remote shell access to a second machine.
   is unchanged — see the next bullet; nothing here constrains the machine that holds the keys to
   everything. And `--force` (§14) strands every peer: a promoted lead a peer does not pin is refused
   at that peer's handshake, and re-enrollment is the recovery path §14 and §8.4 already name.
+
+  **WalkyTalky reaches past "its own machine", by design.** A peer can send a WalkyTalky message to an
+  agent pane on any other machine of the crew, through the lead. The message carries the peer's
+  signature, so the receiver knows which machine sent it, and it arrives as a peer's words: the pane
+  gets one header line, and the agent reads the body as the output of a command, not as its operator's
+  instruction. What the receiving agent then does is that agent's judgment, with the operator's rights
+  on its machine. So "its own machine" is the limit of what a compromised peer can do on the wire by
+  itself. It is not the limit of what it can ask another machine's agent to do. `COLLIE_WALKY=off` on a
+  machine refuses every message for its panes.
 - **A compromised lead** reaches **everything, on every member**. This is total, and it is inherent:
   the lead holds the crew secret and a pinned link to every peer, and its whole job is driving
   terminals. **The lead is a lateral-movement hub by construction.** Naming it is the mitigation
@@ -1912,10 +1921,11 @@ nothing.**
 **Where the gate lives.** `bridge/solo-baseline.test.ts` (+ goldens under
 `bridge/fixtures/solo-baseline/`) and `web/src/lib/solo-baseline.test.ts`. Both were landed in
 1.0.0-alpha.1, *before* any federation code existed — written afterwards they would only re-record
-whatever the new code does. They pin the table above in two layers: an exhaustive
-`Record<keyof T, true>` per wire type (so adding `servers?:`/`host?:` fails `bun run typecheck` at the
-line it was added, and `satisfies SnapshotResponse` in `server.ts` closes the loop), plus a
-byte-compared golden body and its ETag. **A failure there is not a stale golden** — it is a solo
+whatever the new code does. They hold the table above as rules: a byte-compared golden body and its
+ETag, no crew field in a solo body, no `/crew` route in `server.ts`, no crew key in the config or the
+env, and no crew state file named outside `bridge/crew/`. Since 2026-11-19 they no longer keep a
+hand-written list of every route, wire key, setting and state file: a normal addition needs no edit
+there. **A failure there is not a stale golden** — it is a solo
 instance's behaviour moving. Regenerating is a deliberate act
 (`COLLIE_REGEN_SOLO_BASELINE=1 bun test bridge/solo-baseline.test.ts`) and **must** be called out in
 the PR description with the reason and the row it renegotiates.

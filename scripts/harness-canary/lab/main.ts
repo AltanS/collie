@@ -10,7 +10,9 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { exitCodeOf, fileNotify, parseCli, repoProblem, runCandidates, stateDirOf, summaryLine, sweepAtStart, USAGE, pending, type Candidate } from "./cli";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { allowed, exitCodeOf, fileNotify, lightCandle, parseCli, repoProblem, runCandidates, stateDirOf, summaryLine, sweepAtStart, USAGE, pending, type Candidate } from "./cli";
+import { guardTick, realLoad } from "./load-guard";
 import { FEEDS, readFeed } from "./feeds";
 import { realPorts } from "./ports";
 import { findRow, loadLedger, shouldRun } from "./lab-ledger";
@@ -30,6 +32,17 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  // The loop's log: one file in the state folder. The guard line and each outcome go there and to the console.
+  const driftLog = (line: string): void => {
+    console.log(line);
+    if (!cli.loop) return;
+    mkdirSync(stateDirOf(cli.ledger), { recursive: true });
+    appendFileSync(join(stateDirOf(cli.ledger), "drift.log"), `${line}\n`);
+  };
+
+  // The load guard comes first: a busy machine does nothing, marks nothing and exits 0. The next tick tries again.
+  if (!cli.plan && guardTick(cli.maxLoad, realLoad(), Date.now(), driftLog)) return 0;
+
   // Before any plan or run: a night with nothing to run still cleans up what an earlier run left.
   for (const line of await sweepAtStart(cli)) console.log(line);
 
@@ -41,10 +54,14 @@ async function main(): Promise<number> {
     }
   }
 
-  const candidates: Candidate[] = cli.pairs.map((pair) => ({ ...pair, source: "named on the command line", named: true }));
+  const candidates: Candidate[] = allowed(
+    cli.pairs.map((pair) => ({ ...pair, source: "named on the command line", named: true })),
+    cli.agents,
+  );
   let feedErrors = 0;
   if (cli.pairs.length === 0) {
     for (const harness of cli.harnesses) {
+      if (cli.agents !== null && !cli.agents.includes(harness)) continue;
       const feed = FEEDS[harness];
       if (feed === undefined) continue;
       try {
@@ -60,7 +77,7 @@ async function main(): Promise<number> {
     const ledger = loadLedger(cli.ledger, Date.now());
     for (const candidate of candidates) {
       const row = findRow(ledger, candidate.harness, candidate.version);
-      const runs = shouldRun(ledger, candidate.harness, candidate.version, candidate.named === true);
+      const runs = shouldRun(ledger, candidate.harness, candidate.version, candidate.named === true, Date.now());
       console.log(`${candidate.harness} ${candidate.version}: ${row === undefined ? "would run" : runs ? `would run again, ledger says ${row.result} on ${row.date}` : `skip, ledger says ${row.result} on ${row.date}`}  (${candidate.source})`);
     }
     const next = pending(candidates, cli.ledger, Date.now(), cli.maxRuns);
@@ -68,9 +85,9 @@ async function main(): Promise<number> {
     return feedErrors > 0 && candidates.length === 0 ? 1 : 0;
   }
 
-  const report = await runCandidates(candidates, cli, realPorts(), fileNotify(stateDirOf(cli.ledger)));
-  for (const outcome of report.outcomes) console.log(summaryLine(outcome));
-  if (report.outcomes.length === 0) console.log("nothing to run: every version the feeds name is in the ledger");
+  const report = await runCandidates(candidates, cli, realPorts(), fileNotify(stateDirOf(cli.ledger)), () => Date.now(), (candle) => lightCandle(candle));
+  for (const outcome of report.outcomes) driftLog(`${new Date().toISOString()} ${summaryLine(outcome)}`);
+  if (report.outcomes.length === 0) driftLog(`${new Date().toISOString()} nothing to run: every version the feeds name is in the ledger or waits for its retry`);
   return Math.max(exitCodeOf(report.outcomes), feedErrors > 0 && candidates.length === 0 ? 1 : 0);
 }
 

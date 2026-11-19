@@ -113,7 +113,7 @@ jobs:
             {
               echo "✗ CI on $SHA concluded '$latest_conclusion'. This release is not published."
               jq -r '.workflow_runs[] | "  \(.conclusion // .status) \(.html_url)"' <<<"$runs"
-              echo "  cancelled: ci.yml's concurrency group cancels the main run when a second push lands while a release is being cut. Re-run CI for this commit with 'gh run rerun $latest_id', then re-run this Release workflow from $RUN_URL."
+              echo "  cancelled: someone cancelled the CI run (ci.yml cancels only pull-request runs on its own). Re-run CI for this commit with 'gh run rerun $latest_id', then re-run this Release workflow from $RUN_URL."
               echo "  failure: fix it on main and cut a follow-up patch release with a new tag. Never move or re-point a published tag."
             } >&2
             exit 1

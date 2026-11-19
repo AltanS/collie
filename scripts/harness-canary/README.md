@@ -326,6 +326,7 @@ so two hand runs with two ledgers in one folder would delete each other's run fo
 - Keys: the lab presses about 150 keys. Most of them are Down presses that read the menu.
 - Network: the feed reads, and one npm install of about 250 MB.
 - A `(harness, version)` pair that has a row in the lab ledger never runs again. Pass, fail, failed and walk-only all count.
+  The one exception is a `retry` row (the drift loop, below): it runs again after its wait, five tries at most.
   The ledger is `~/.local/state/collie-harness-lab/ledger.json`. Set `COLLIE_HARNESS_LAB_LEDGER` to use another path.
 - The lab writes a `running` row, with its process id, before its first paid step.
   A run that dies leaves that row. The next run start turns a row with a dead process into `failed`.
@@ -334,6 +335,27 @@ so two hand runs with two ledgers in one folder would delete each other's run fo
 - A run that cannot start writes no row and costs nothing. This happens when the Claude login has less than 25 minutes left, or tmux or npm is missing.
   It writes one line to `notify.log`, so a silent night is visible. The next run tries again.
 - The operator is told once per version and verdict. The ledger row keeps what was told.
+
+### The drift loop (2026-11-19)
+
+`bun run harness:lab --loop` is one tick of a daily loop. A drift failure lights a darius candle with `--deliver email`, so the candle also sends a mail. Draft systemd units are kept outside the repo; nothing installs them.
+
+- Agents: Claude Code and OpenCode only (`--agents claude,opencode`). Both are free. The loop refuses a paid agent
+  (omp, Codex) by flag and by `--version`. `--agents` alone narrows any run to the named harnesses.
+- Per tick: `--max-runs 2`, `--max-load 4.0`, `--pair-timeout-min 15`.
+- Load guard: with a 1-minute load average above the limit, the tick does nothing, writes one line to `drift.log` next to the ledger,
+  and exits 0. It marks nothing.
+- Environment failures are not final. A `failed` run whose note names the registry (`notarget`), an OpenRouter 402, a Claude login that is
+  too short or expired, load, a timeout or a killed process (`lab/failure-class.ts`) is a `retry` row with `tries`, `firstTry`, `lastTry` and
+  `cause`. The wait grows by 50 minutes per try. After 5 tries or 7 days the row becomes `failed`. A drift verdict (`fail`) stays final and
+  writes the issue draft, except that a `fail` read on a busy machine is a `retry` while tries are left. An unclassified `failed` stays final.
+  `--version` runs a `retry` row at once, like a `failed` one.
+- Notices: a drift failure, a final `failed` and a pass each write one line to `notify.log`, once. A drift failure and a final `failed` also
+  light a darius candle: `darius candle light drift:<agent>@<version> --title ... --severity medium --project collie-workspace --source harness-lab --stdin`.
+  The body holds the issue-draft path and the run log. One key per version, so one version never lights twice. A pass lights none.
+  A missing `darius` or a failed call writes one more `notify.log` line and never fails the run. A repeated line inside 12 hours is written once.
+- Cleanup: `bun scripts/harness-canary/lab/retry-old.ts` prints which `failed` rows of 2026-10-23 with a `notarget` note would become `retry`.
+  `--apply` writes them, after a copy of the ledger.
 
 ### How it protects the login
 

@@ -1,6 +1,6 @@
 // The free-text reply since M56 spec 06: one Send Protocol request, its request id and the meaning of
 // its answer. The phone reads nothing before a send and sends no key of its own; the bridge's Send
-// Protocol owns the guard against issue #34 (bridge/surface/protocol.test.ts pins it on fake panes).
+// Protocol owns the guard against issue #34 (bridge/surface/protocol.*.test.ts pins it on fake panes).
 
 import { http, HttpResponse } from "msw";
 

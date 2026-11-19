@@ -1,25 +1,38 @@
 name: Windows
 
+# WHEN IT RUNS. Nightly on `main`, on a push to a `release-*` branch (a hotfix), and by hand. NOT on
+# a pull request and NOT on a push to `main`: the Windows host is frozen in behaviour, a run costs a
+# Windows runner for several minutes, and a break shows in the nightly run within a day. The release
+# recipe in CLAUDE.md dispatches it on the release commit before every tag (`gh workflow run
+# windows.yml --ref main`); a patch still needs that green run.
+#
+# WHAT A NIGHTLY RED DOES. The `report` job opens ONE issue labelled `windows-nightly` and adds a
+# comment to it on each further red night, so a break that lasts a week is one issue with seven
+# lines, never seven issues. The first green nightly closes it. Cost of one night: one Windows run
+# plus a few seconds on a Linux runner. Nothing repeats inside a night, and a manual or release run
+# never touches the issue.
 on:
-  pull_request:
+  schedule:
+    - cron: "30 3 * * *" # 03:30 UTC, on the default branch
   push:
-    branches: [main, "release-*"]
+    branches: ["release-*"]
+  workflow_dispatch:
 
 # Same rule as ci.yml: a new push supersedes the old run.
 concurrency:
-  group: windows-${{ github.ref }}
+  group: windows-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 # The Windows suites (M43 spec 02): `bun test` over bridge, cli and scripts. The commands live in `scripts/windows-suites.ps1`, the same file the Windows VM runs
-# (`make win-test` in the workspace), so CI and the VM cannot drift. The script also fails when
-# a suite skips more tests than its own budget (`-MaxSkipsBridge`, `-MaxSkipsCli`,
-# `-MaxSkipsScripts`) allows, so no test is skipped just to get green.
+# (`make win-test` in the workspace), so CI and the VM cannot drift. It prints each suite's skip
+# count; a skip says its own reason where it is declared.
 #
 # ITS OWN WORKFLOW, not a job in ci.yml. `release.yml`'s gate reads the conclusion of the whole
 # `ci.yml` run, so a red Windows job inside it would stop a Linux hotfix. Here a Windows break shows
 # red on its own check and blocks nothing. The job is NEVER `continue-on-error`: it must be able to
-# be red. After about ten green runs in a row on main (no re-runs), promote it: make the check
-# required and let the release gate read this workflow too.
+# be red. After about ten green nightly runs in a row (no re-runs), promote it: make the check
+# required and let the release gate read this workflow too. A required check needs a run on every
+# pull request, so promoting it also means putting `pull_request` back under `on:`.
 #
 # `windows-latest` is Windows Server, not Windows 11. Defender, symlink privilege and long paths
 # differ. The VM stays the second truth. The image moves on its own; pin it (`windows-2025`) when
@@ -75,3 +88,52 @@ jobs:
           path: ${{ runner.temp }}\collie-suites
           retention-days: 7
           if-no-files-found: warn
+
+  # The nightly report. Only a scheduled run reports; the label is the one thing that finds the issue.
+  report:
+    name: nightly report
+    needs: windows
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RESULT: ${{ needs.windows.result }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+    steps:
+      - name: Open, update or close the issue
+        run: |
+          set -euo pipefail
+          label="windows-nightly"
+          # A cancelled run says nothing about Windows.
+          if [ "${RESULT}" = "cancelled" ]; then
+            echo "The Windows run was cancelled; leaving the issue as it is."
+            exit 0
+          fi
+          gh label create "${label}" --repo "${REPO}" --color B60205 \
+            --description "The nightly Windows run is red" 2>/dev/null || true
+          number="$(gh issue list --repo "${REPO}" --label "${label}" --state open --json number --jq '.[0].number // empty')"
+          if [ "${RESULT}" = "success" ]; then
+            if [ -n "${number}" ]; then
+              gh issue close "${number}" --repo "${REPO}" \
+                --comment "The nightly Windows run is green again: ${RUN_URL} (commit ${SHA:0:9})."
+            fi
+            exit 0
+          fi
+          body="The nightly Windows run is ${RESULT}: ${RUN_URL} (commit ${SHA:0:9}). The failing tests are in the run summary and in the artifact windows-suite-logs. A maintainer can run the same suites on a Windows 11 VM with make win-test."
+          last_green="$(gh run list --repo "${REPO}" --workflow windows.yml --event schedule --status success --limit 1 --json headSha --jq '.[0].headSha // empty')"
+          if [ -n "${last_green}" ]; then
+            body="${body} Commits since the last green nightly: https://github.com/${REPO}/compare/${last_green}...${SHA}"
+          fi
+          if [ -n "${number}" ]; then
+            gh issue comment "${number}" --repo "${REPO}" --body "${body}"
+            exit 0
+          fi
+          gh issue create --repo "${REPO}" --label "${label}" \
+            --title "The nightly Windows run is red" --body "${body} This issue closes itself on the next green nightly run."

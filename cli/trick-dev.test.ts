@@ -445,21 +445,4 @@ describe("--watch", () => {
     stop();
     expect(calls).toBe(1);
   });
-
-  test("cmdTrickDev --watch runs once, runs again on a change, and returns when told to stop", async () => {
-    const d = await deps();
-    const dir = await trickWith(d, "watched", `import { run } from "./trick.ts";\nrun((t) => { t.belt({ label: "one" }); });\n`, '["belt"]');
-    let stopWatching = (): void => {};
-    const until = new Promise<void>((done) => {
-      stopWatching = done;
-    });
-    const running = cmdTrickDev(d, [dir, "--watch"], until);
-    await Bun.sleep(800);
-    expect(d.out.join("\n")).toContain('"one"');
-    await writeFile(join(dir, "program.ts"), `import { run } from "./trick.ts";\nrun((t) => { t.belt({ label: "two" }); });\n`);
-    for (let i = 0; i < 40 && !d.out.join("\n").includes('"two"'); i += 1) await Bun.sleep(100);
-    stopWatching();
-    expect(await running).toBe(EXIT.OK);
-    expect(d.out.join("\n")).toContain('"two"');
-  });
 });

@@ -29,7 +29,7 @@ function setup(patch: Partial<CliOptions> = {}): Rig {
   const root = mkdtempSync(join(tmpdir(), "lab-watch-"));
   dirs.push(root);
   const told: string[] = [];
-  const cli: CliOptions = { harnesses: ["claude"], pairs: [], repo: "/repo", labRoot: root, ledger: join(root, "state", "ledger.json"), openIssue: false, issueRepo: null, publish: true, plan: false, maxRuns: 4, fakeVersions: [], legs: "all", bridge: null, ...patch };
+  const cli: CliOptions = { harnesses: ["claude"], pairs: [], repo: "/repo", labRoot: root, ledger: join(root, "state", "ledger.json"), openIssue: false, issueRepo: null, publish: true, plan: false, maxRuns: 4, fakeVersions: [], legs: "all", bridge: null, agents: null, loop: false, maxLoad: 0, pairTimeoutMs: undefined, ...patch };
   return { cli, told, notify: (line) => told.push(line) };
 }
 
@@ -160,14 +160,15 @@ describe("watch: retry", () => {
 });
 
 describe("watch: pass", () => {
-  test("pass: a pass makes the branch commit, tells nobody and exits 0", async () => {
+  test("pass: a pass makes the branch commit, tells once and exits 0", async () => {
     const { cli, told, notify } = setup();
     const seen: string[] = [];
     const done = await runCandidates(CAND, cli, ports(async () => facts(false), undefined, seen), notify, () => NOW);
     expect(done.outcomes[0]?.status).toBe("pass");
     expect(seen).toContain("publish");
     expect(seen).not.toContain("open-issue");
-    expect(told).toEqual([]);
+    expect(told).toHaveLength(1);
+    expect(told[0]).toContain("claude 2.1.301 pass");
     expect(exitCodeOf(done.outcomes)).toBe(0);
   });
 

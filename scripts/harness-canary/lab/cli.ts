@@ -2,7 +2,7 @@
 // entry (../watch.ts). Pure parts first, so the parse and the one-per-version rules are tested.
 
 import { createHash } from "node:crypto";
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { realLiveness, sweepLab, type Liveness } from "./sweep";
@@ -13,6 +13,7 @@ import { ledgerPath, loadLedger, markNotified, findRow, shouldRun } from "./lab-
 import type { LabOptions, LabOutcome, LabPorts } from "./run";
 import { runLab } from "./run";
 import { LAB_LEGS, type LabLegs } from "./verdict";
+import { LOAD_LIMIT } from "./load-guard";
 
 export interface Candidate {
   /** True when a person named the pair with `--version`: a `failed` ledger row does not skip it. */
@@ -41,7 +42,24 @@ export interface CliOptions {
   readonly legs: LabLegs;
   /** `--bridge URL --token-file PATH`: the phone leg against a bridge that already runs. Null: a scratch bridge. */
   readonly bridge: { readonly url: string; readonly tokenFile: string } | null;
+  /** The harnesses this invocation may plan or run (`--agents`, or `--loop`). Null: every harness the lab knows. Nothing outside it is planned, run or spent. */
+  readonly agents: readonly string[] | null;
+  /** `--loop`: the daily drift loop (free agents only, two runs a tick, the load guard, a limit per pair). */
+  readonly loop: boolean;
+  /** The 1-minute load average above which a run does nothing and exits 0. 0: no guard. */
+  readonly maxLoad: number;
+  /** The most one pair may take, in ms. Undefined: no limit beyond each step's own wait. */
+  readonly pairTimeoutMs: number | undefined;
 }
+
+/**
+ * The agents the drift loop may run (owner's decision, 2026-11-19): the free ones. Claude Code runs on the
+ * subscription, OpenCode on its free model. No paid agent runs unattended: omp spends OpenRouter credit, Codex
+ * spends an OpenAI key. Those run by hand, without `--loop`.
+ */
+export const LOOP_AGENTS: readonly string[] = ["claude", "opencode"];
+export const LOOP_MAX_RUNS = 2;
+export const LOOP_PAIR_TIMEOUT_MS = 15 * 60_000;
 
 /** The suffix a phone-only run puts on its lab root and its ledger, so it never blocks or sweeps the nightly run. */
 export const PHONE_ONLY_SUFFIX = "leg-phone";
@@ -95,6 +113,14 @@ a pair you name with --version runs again when its row says "failed" (no verdict
   --no-publish        a pass settles the row and makes no commit (a dry run of the legs)
   --plan              read the feeds and the ledger, print what would run, run nothing
   --max-runs N        most pairs one invocation runs (default: ${String(DEFAULT_MAX_RUNS)})
+  --agents a,b        only these harnesses are planned or run, whatever the feeds or --version name. A pair
+                      outside the list is refused. Default: every harness the lab knows
+  --loop              the daily drift loop: --agents ${LOOP_AGENTS.join(",")} (only free agents are allowed with it),
+                      --max-runs ${String(LOOP_MAX_RUNS)}, --max-load ${String(LOAD_LIMIT)}, --pair-timeout-min ${String(LOOP_PAIR_TIMEOUT_MS / 60_000)}.
+                      An environment failure (registry, login, load, timeout) is a retry row, not a final one
+  --max-load N        a run with a 1-minute load average above N does nothing, logs one line and exits 0
+                      (0 turns the guard off; default ${String(LOAD_LIMIT)} with --loop, off otherwise)
+  --pair-timeout-min N  a pair that takes longer is stopped and retried (default ${String(LOOP_PAIR_TIMEOUT_MS / 60_000)} with --loop, off otherwise)
   --leg all|phone     all legs (default), or the phone leg alone: a hand run that needs one --version,
                       makes no commit, and keeps its own ledger and run folders (${PHONE_ONLY_SUFFIX})
   --bridge URL        with --leg phone: drive this running bridge on this machine instead of a scratch
@@ -126,6 +152,12 @@ export function parseCli(argv: readonly string[], repoRoot: string, env: Readonl
   let legs: LabLegs = "all";
   let bridgeUrl: string | null = null;
   let tokenFile: string | null = null;
+  let agents: string[] | null = null;
+  let loop = false;
+  let maxLoad: number | null = null;
+  let pairMinutes: number | null = null;
+  let maxRunsGiven = false;
+  let harnessesGiven = false;
   const value = (i: number, flag: string): string => {
     const v = argv[i + 1];
     if (v === undefined || v.startsWith("--")) throw new Error(`${flag} needs a value`);
@@ -139,6 +171,7 @@ export function parseCli(argv: readonly string[], repoRoot: string, env: Readonl
         return "help";
       case "--harness":
         harnesses = value(i, arg).split(",");
+        harnessesGiven = true;
         for (const harness of harnesses) if (HARNESSES[harness] === undefined) throw new Error(`unknown harness "${harness}" (known: ${Object.keys(HARNESSES).join(", ")})`);
         i++;
         break;
@@ -180,6 +213,29 @@ export function parseCli(argv: readonly string[], repoRoot: string, env: Readonl
         const n = Number(value(i, arg));
         if (!Number.isInteger(n) || n < 1) throw new Error("--max-runs takes a whole number from 1");
         maxRuns = n;
+        maxRunsGiven = true;
+        i++;
+        break;
+      }
+      case "--agents":
+        agents = value(i, arg).split(",");
+        for (const agent of agents) if (HARNESSES[agent] === undefined) throw new Error(`--agents: unknown harness "${agent}" (known: ${Object.keys(HARNESSES).join(", ")})`);
+        i++;
+        break;
+      case "--loop":
+        loop = true;
+        break;
+      case "--max-load": {
+        const n = Number(value(i, arg));
+        if (!Number.isFinite(n) || n < 0) throw new Error("--max-load takes a number from 0 (0 turns the guard off)");
+        maxLoad = n;
+        i++;
+        break;
+      }
+      case "--pair-timeout-min": {
+        const n = Number(value(i, arg));
+        if (!Number.isFinite(n) || n <= 0) throw new Error("--pair-timeout-min takes a number above 0");
+        pairMinutes = n;
         i++;
         break;
       }
@@ -214,7 +270,20 @@ export function parseCli(argv: readonly string[], repoRoot: string, env: Readonl
     labRoot = phoneOnlyRoot(labRoot, ledger);
   }
   const bridge = bridgeUrl === null || tokenFile === null ? null : { url: bridgeUrl, tokenFile };
-  return { harnesses, pairs, repo, labRoot, ledger, openIssue: open, issueRepo, publish, plan, maxRuns, fakeVersions, legs, bridge };
+  if (loop) {
+    // The loop runs unattended, so it may spend only what is free. A paid agent is never in it.
+    agents ??= [...LOOP_AGENTS];
+    for (const agent of agents) if (!LOOP_AGENTS.includes(agent)) throw new Error(`--loop runs the free agents only (${LOOP_AGENTS.join(", ")}), not ${agent}: a paid agent runs by hand, without --loop`);
+    if (!maxRunsGiven) maxRuns = LOOP_MAX_RUNS;
+    if (legs !== "all" || bridge !== null) throw new Error("--loop runs every leg on a scratch bridge: it does not take --leg phone or --bridge");
+  }
+  if (agents !== null) {
+    if (!harnessesGiven) harnesses = [...agents];
+    for (const harness of harnesses) if (!agents.includes(harness)) throw new Error(`--harness ${harness} is outside --agents ${agents.join(",")}`);
+    for (const pair of pairs) if (!agents.includes(pair.harness)) throw new Error(`--version ${pair.harness}=${pair.version} is outside --agents ${agents.join(",")}`);
+  }
+  const pairTimeoutMs = pairMinutes === null ? (loop ? LOOP_PAIR_TIMEOUT_MS : undefined) : pairMinutes * 60_000;
+  return { harnesses, pairs, repo, labRoot, ledger, openIssue: open, issueRepo, publish, plan, maxRuns, fakeVersions, legs, bridge, agents, loop, maxLoad: maxLoad ?? (loop ? LOAD_LIMIT : 0), pairTimeoutMs };
 }
 
 /** The pairs the ledger has no row for, in the order given, at most `max`. A pair named twice counts once. A named pair with a `failed` row counts as pending too. */
@@ -224,11 +293,16 @@ export function pending(candidates: readonly Candidate[], ledgerFile: string, no
   const out: Candidate[] = [];
   for (const candidate of candidates) {
     const key = `${candidate.harness}@${candidate.version}`;
-    if (seen.has(key) || !shouldRun(ledger, candidate.harness, candidate.version, candidate.named === true)) continue;
+    if (seen.has(key) || !shouldRun(ledger, candidate.harness, candidate.version, candidate.named === true, now)) continue;
     seen.add(key);
     if (out.length < max) out.push(candidate);
   }
   return out;
+}
+
+/** The candidates of the allowlist. Null: all of them. A paid agent that no list names is never planned, run or spent. */
+export function allowed(candidates: readonly Candidate[], agents: readonly string[] | null): Candidate[] {
+  return agents === null ? [...candidates] : candidates.filter((candidate) => agents.includes(candidate.harness));
 }
 
 /** The sentence a person is told when a run ends badly. One per (harness, version, verdict). */
@@ -239,23 +313,92 @@ export function notifyLine(outcome: LabOutcome): string {
 
 export type Notify = (line: string) => void;
 
-export function fileNotify(stateDir: string): Notify {
-  return (line) => {
-    mkdirSync(stateDir, { recursive: true });
-    appendFileSync(join(stateDir, "notify.log"), `${new Date().toISOString()} ${line}\n`);
-    console.log(`NOTIFY ${line}`);
-  };
+/** The same line inside this window is written once: a loop must not repeat a notice on every tick. */
+export const NOTIFY_DEDUPE_MS = 12 * 60 * 60 * 1000;
+
+export interface NotifyOptions {
+  readonly now?: () => number;
 }
 
 /**
- * Tell the person once per (harness, version, verdict). A pass tells nobody. The ledger row remembers
- * what it told, so a second night with the same verdict is silent (M44 spec 06).
+ * Tell the person, locally. Every line goes to the console and to `notify.log` in the state folder. The same
+ * line inside {@link NOTIFY_DEDUPE_MS} is written once. Nothing is posted anywhere public.
  */
-export function tellOnce(ledgerFile: string, outcome: LabOutcome, notify: Notify): boolean {
-  if (outcome.status !== "fail" && outcome.status !== "failed") return false;
+export function fileNotify(stateDir: string, options: NotifyOptions = {}): Notify {
+  const now = options.now ?? ((): number => Date.now());
+  return (line) => {
+    console.log(`NOTIFY ${line}`);
+    mkdirSync(stateDir, { recursive: true });
+    const file = join(stateDir, "notify.log");
+    const last = existsSync(file) ? readFileSync(file, "utf8").trimEnd().split("\n").pop() ?? "" : "";
+    const [stamp, ...rest] = last.split(" ");
+    if (rest.join(" ") === line && now() - Date.parse(stamp ?? "") < NOTIFY_DEDUPE_MS) return;
+    appendFileSync(file, `${new Date(now()).toISOString()} ${line}\n`);
+  };
+}
+
+/** The darius project the candles belong to. Passed as `--project`, so the timer's own working directory does not matter. */
+export const CANDLE_PROJECT = "collie-workspace";
+
+/** A candle the loop asks darius to light: one problem that needs the operator. */
+export interface Candle {
+  readonly key: string;
+  readonly title: string;
+  readonly body: string;
+}
+
+/** Runs a command with a text on stdin. Injected, so a test never lights a real candle. */
+export type CommandRunner = (argv: readonly string[], stdin: string) => { readonly code: number; readonly out: string };
+
+export const realRunner: CommandRunner = (argv, stdin) => {
+  const done = Bun.spawnSync([...argv], { stdin: new TextEncoder().encode(stdin), stdout: "pipe", stderr: "pipe" });
+  return { code: done.exitCode, out: `${done.stdout.toString()}${done.stderr.toString()}`.trim() };
+};
+
+const HARNESS_NAMES = new Map([["claude", "Claude Code"], ["opencode", "OpenCode"], ["codex", "Codex"]]);
+
+/** The candle of a version the lab could not clear: one key per version, so one version never lights twice. */
+export function candleOf(outcome: LabOutcome): Candle {
+  const name = HARNESS_NAMES.get(outcome.harness) ?? outcome.harness;
+  const title = outcome.status === "fail" ? `Collie misreads ${name} ${outcome.version} (harness lab)` : `The harness lab could not finish ${name} ${outcome.version}`;
+  const where = outcome.issue === undefined ? `Run log: ${outcome.logPath}` : `Issue draft: ${outcome.issue.json}\nRun log: ${outcome.logPath}`;
+  return { key: `drift:${outcome.harness}@${outcome.version}`, title, body: `${outcome.note}\n\n${where}\n` };
+}
+
+/**
+ * Light a candle with `darius candle light`. Severity medium: it needs the operator soon, and it is not urgent.
+ * Lighting a key again at the same severity sends nothing; darius counts the report. Never throws: a missing
+ * darius or a failed call returns a line for notify.log, and the run goes on.
+ */
+export function lightCandle(candle: Candle, run: CommandRunner = realRunner, hasDarius: () => boolean = () => Bun.which("darius") !== null): string | null {
+  if (!hasDarius()) return `darius is not on PATH, so no candle was lit for ${candle.key}`;
+  const argv = ["darius", "candle", "light", candle.key, "--title", candle.title, "--severity", "medium", "--project", CANDLE_PROJECT, "--source", "harness-lab", "--deliver", "email", "--stdin"];
+  try {
+    const done = run(argv, candle.body);
+    return done.code === 0 ? null : `darius candle light ${candle.key} exited ${String(done.code)}: ${done.out.split("\n").pop() ?? ""}`;
+  } catch (err) {
+    return `darius candle light ${candle.key} failed: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+/** Lights one candle. Returns the line for notify.log when it could not, else null. Only a real drift failure and a final `failed` row call it. */
+export type Light = (candle: Candle) => string | null;
+
+/**
+ * Tell the person once per (harness, version, verdict): a real drift failure (`fail`), a final `failed` (a
+ * retry that ran out, or a cause that is no environment) and a new pass. A `retry` row tells nobody: the loop
+ * tries it again. A `fail` and a `failed` also light a candle (`light`). A pass writes its `notify.log` line only.
+ * The ledger row remembers what it told, so a second tick with the same verdict is silent (M44 spec 06).
+ */
+export function tellOnce(ledgerFile: string, outcome: LabOutcome, notify: Notify, light?: Light): boolean {
+  if (outcome.status !== "fail" && outcome.status !== "failed" && outcome.status !== "pass") return false;
   const row = findRow(loadLedger(ledgerFile, Date.now()), outcome.harness, outcome.version);
   if (row === undefined || row.notified === outcome.status) return false;
   notify(notifyLine(outcome));
+  if (outcome.status !== "pass" && light !== undefined) {
+    const trouble = light(candleOf(outcome));
+    if (trouble !== null) notify(`harness lab: ${trouble}`);
+  }
   markNotified(ledgerFile, outcome.harness, outcome.version, outcome.status);
   return true;
 }
@@ -279,12 +422,12 @@ export function readTokenFile(path: string, read: (path: string) => string = (fi
   return token;
 }
 
-export async function runCandidates(candidates: readonly Candidate[], cli: CliOptions, ports: LabPorts, notify: Notify, now: () => number = () => Date.now()): Promise<RunReport> {
+export async function runCandidates(candidates: readonly Candidate[], cli: CliOptions, ports: LabPorts, notify: Notify, now: () => number = () => Date.now(), light?: Light): Promise<RunReport> {
   const outcomes: LabOutcome[] = [];
   let told = 0;
   // Read once, before any run: a missing token stops the command before anything is spent.
   const bridge = cli.bridge === null ? undefined : { url: cli.bridge.url, token: readTokenFile(cli.bridge.tokenFile) };
-  for (const candidate of pending(candidates, cli.ledger, now(), cli.maxRuns)) {
+  for (const candidate of pending(allowed(candidates, cli.agents), cli.ledger, now(), cli.maxRuns)) {
     const options: LabOptions = {
       harness: candidate.harness,
       version: candidate.version,
@@ -298,12 +441,14 @@ export async function runCandidates(candidates: readonly Candidate[], cli: CliOp
       legs: cli.legs,
       named: candidate.named,
       bridge,
+      pairTimeoutMs: cli.pairTimeoutMs,
+      loadLimit: cli.maxLoad > 0 ? cli.maxLoad : undefined,
     };
     const outcome = await runLab(options, ports);
     outcomes.push(outcome);
     // A deferral writes no row, so it would be a silent night. One notify line makes it visible.
     if (outcome.status === "deferred") notify(`harness lab: ${outcome.harness} ${outcome.version} deferred: ${outcome.note}`);
-    if (tellOnce(cli.ledger, outcome, notify)) told++;
+    if (tellOnce(cli.ledger, outcome, notify, light)) told++;
   }
   return { outcomes, told };
 }

@@ -32,6 +32,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The lead stops reading a crew member's answer at a size limit.** Before, the lead read a member's answer whole, however large it was or grew once unpacked, so one broken member could fill the lead's memory. Now the lead stops at 2 MB for its own regular check of each machine and at 32 MB for everything else, counted after unpacking, and treats that member as out of reach. The data between your machines stays compressed.
+- **The harness lab can run as a daily loop for the free agents.** It checks Claude Code and OpenCode for a new version, never runs a paid agent, and does nothing while the machine is busy. A failure the environment caused (the registry has no such version yet, a login that ran out, a timeout) is tried again, up to five times, instead of hiding the version for good.
+- **The harness lab loop lights a darius candle when a version needs a look.** A real drift failure, or a run that ends without a verdict after its tries, lights one candle per agent version. A pass stays a log line.
 
 ### Fixed
 
@@ -40,6 +42,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Masking secrets no longer stalls the app on long, odd text.** Collie hides keys and tokens in a session's text before it reaches your phone. Some long runs of text that only look a little like a token, printed by an agent, read from a file or sent by a crew member, made that check take seconds to minutes, and the whole app stopped answering until it was done; a long secret-like value could also take more than a gigabyte of memory. The check now takes a few milliseconds per megabyte and little memory, and it hides exactly what it hid before.
 - **Sent for all machines answers in time when one machine sends its list slowly.** The lead waited for every machine's whole list, so a crew member that started its answer and then sent it very slowly kept the Sent screen waiting. The lead now stops waiting for that machine at the usual two seconds, stops reading its answer, shows it as not answering, and shows the lines of the others.
 - **A session whose log holds certain unfinished markup no longer stops the app.** Collie reads each session's log to draw Chat and History. A long stretch of text with an opening tag or bracket that never closes, typed or pasted by you, printed by an agent or read from a file, made that read take seconds to minutes in Claude Code, pi, Oh My Pi, Grok and Antigravity sessions, and the whole app stopped answering until it was done. Those reads now take a few milliseconds per megabyte and give the same result as before. The scan that lists a trick's warnings had the same fault on long lines of a trick's code and is fixed too.
+
+### Docs
+
+- **Contributors get one quick check before a push.** It runs the type checks, the lint and the tests near the change in a few minutes, and the full suites run in CI.
 
 ## [1.29.1] - 2026-11-19
 

@@ -40,7 +40,7 @@ const KEPT = {
   "bridge/pair-audit.ts": "comment names the CGNAT range 100.64/10",
   "bridge/stt/whistle-model.ts": "the private-range table holds the CGNAT block 100.64/10 (code, behaviour)",
   "bridge/surface/protocol.not-sure.test.ts": "reads the captured pane file the starship motd pane fixture by name",
-  "bridge/surface/protocol.test.ts": "reads the captured pane file the starship motd pane fixture by name",
+  "bridge/surface/protocol.rig.ts": "names the captured pane file the starship motd pane fixture",
   "bridge/themes/registry.ts": "comments name the CGNAT range 100.64/10",
   "cli/testdata/walky-skill-v2.golden.md": "golden copy of the skill text; its digest keys the cassettes",
   "experiments/harnesses/steer-queue-2026-10-23.md": "dated lab note about the real lab path; history, not code",
