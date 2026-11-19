@@ -213,6 +213,44 @@ export function parseRows(stdout: string): number | null {
   return typeof rows === "number" && Number.isInteger(rows) && rows >= 1 ? rows : null;
 }
 
+/** `rex block call format` with `max_bytes`: the first part, the byte `total`, and an `id` when more remains. */
+export interface RexFormatted {
+  readonly content: string;
+  /** Set only when the output did not fit; `blob_read` reads the rest by it. */
+  readonly id: number | null;
+  readonly total: number;
+}
+
+/**
+ * `rex block call -b <id> format '{"format":"vt","max_bytes":n}'`. Probed on API revision 19: the
+ * reply holds `content` (the START of the output, cut once its JSON string reaches `max_bytes`),
+ * `total` (the whole output in bytes) and, only when more remains, an `id` for `blob_read`.
+ */
+export function parseFormatted(stdout: string): RexFormatted {
+  const parsed = parseObject(stdout, "rex block call format");
+  if (typeof parsed.content !== "string") throw new Error("unexpected response from rex block call format: missing content");
+  const id = typeof parsed.id === "number" && Number.isInteger(parsed.id) ? parsed.id : null;
+  const total = typeof parsed.total === "number" && Number.isInteger(parsed.total) ? parsed.total : null;
+  if (id !== null && total === null) throw new Error("unexpected response from rex block call format: an id with no total");
+  return { content: parsed.content, id, total: total ?? 0 };
+}
+
+/** `rex block call blob_read`: the text from the asked offset, and whether it reaches the end. */
+export interface RexBlobPart {
+  readonly data: string;
+  readonly eof: boolean;
+}
+
+/**
+ * `rex block call -b <id> blob_read '{"id":n,"offset":o}'`. Probed: `data` never ends inside a
+ * character, but an `offset` inside one reads as U+FFFD, so a reader drops the part row at the start.
+ */
+export function parseBlobPart(stdout: string): RexBlobPart {
+  const parsed = parseObject(stdout, "rex block call blob_read");
+  if (typeof parsed.data !== "string") throw new Error("unexpected response from rex block call blob_read: missing data");
+  return { data: parsed.data, eof: parsed.eof === true };
+}
+
 /**
  * The primary listener's address in `rex api call server.status`, or null when it names none.
  * Probed: `listeners: [{ endpoint: "unix:///run/user/1000/rex/server.sock", primary: true }, …]`.

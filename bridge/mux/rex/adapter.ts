@@ -76,13 +76,17 @@ import {
   parseProgramStatus,
   parseRows,
   parseSessions,
+  parseBlobPart,
+  parseFormatted,
   parseTitle,
   parseView,
   REX_TERMINAL_CREATOR,
   saysNotFound,
   saysUnreachable,
   stripEscapes,
+  type RexBlobPart,
   type RexCreated,
+  type RexFormatted,
   type RexProcess,
   type RexSession,
   type RexStatusRecord,
@@ -103,6 +107,24 @@ export const DEFAULT_REX_TIMEOUT_MS = 5000;
  * puts at roughly 100,000 lines of 80 columns.
  */
 export const REX_READABLE_LINES = 100_000;
+
+/**
+ * A tail read asks for this many bytes per row it needs, and never fewer than the minimum: a styled row
+ * runs 70 to 300 bytes. The maximum keeps the JSON form of the tail inside one `blob_read`, whose own
+ * ceiling is 960 KiB counted as a JSON string, even when every byte is an escape (`\u001b`, 6 bytes).
+ */
+const TAIL_BYTES_PER_ROW = 512;
+const TAIL_MIN_BYTES = 64 * 1024;
+const TAIL_MAX_BYTES = 160 * 1024;
+const BLOB_READ_MAX = 983_040;
+/** How a VT row that holds anything opens (probed on API revision 19). */
+const VT_ROW_START = "\u001b[0m";
+
+/** What a read of a block's output gave: VT text, and whether older rows were left on the server. */
+interface RexCapture {
+  readonly text: string;
+  readonly cut: boolean;
+}
 
 /** How many per-block reads one snapshot runs at once: each is one short `rex` process. */
 const BLOCK_READ_CONCURRENCY = 8;
@@ -244,14 +266,14 @@ export class RexMux implements MuxAdapter {
 
   async readGrid(paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> {
     if (!isRexId("block", paneId)) return notRexId("block", paneId);
-    // Rex's capture is always screen AND scrollback (its help: "Print the screen and scrollback"),
-    // so a viewport read keeps the last screenful, sized by the terminal's own rows.
+    // Rex's output is always screen AND scrollback, so a viewport read keeps the last screenful,
+    // sized by the terminal's own rows, and every read takes only the tail it needs (captureTail).
     const [captured, sized] = await Promise.all([
-      this.attemptRun(["capture", "-b", paneId, "--format=vt"]),
+      this.captureTail(paneId, request.lines, false),
       request.scope === "viewport" ? this.attemptRun(["block", "call", "-b", paneId, "size"]) : Promise.resolve(null),
     ]);
     if (!captured.ok) return captured;
-    const raw = keepSgrOnly(captured.value.stdout).replace(/\n$/u, "");
+    const raw = keepSgrOnly(captured.value.text);
     const styled = request.styling === "strip" ? stripEscapes(raw) : raw;
     let rows = styled.split("\n");
     if (sized !== null && sized.ok) {
@@ -263,7 +285,7 @@ export class RexMux implements MuxAdapter {
     return muxOk({
       paneId,
       text,
-      truncated: rows.length > kept.length,
+      truncated: captured.value.cut || rows.length > kept.length,
       revision: this.advanceRevision(paneId, `${request.scope}|${request.styling}|${String(request.lines)}`, text),
     });
   }
@@ -271,10 +293,60 @@ export class RexMux implements MuxAdapter {
   /** The same rows with soft wraps joined: `--unwrap`, probed, joins lines the terminal wrapped. */
   async readLogicalText(paneId: string, lines: number): Promise<MuxOutcome<string>> {
     if (!isRexId("block", paneId)) return notRexId("block", paneId);
-    const result = await this.attemptRun(["capture", "-b", paneId, "--format=vt", "--unwrap"]);
+    const result = await this.captureTail(paneId, lines, true);
     if (!result.ok) return result;
-    const captured = keepSgrOnly(result.value.stdout).replace(/\n$/u, "").split("\n");
+    const captured = keepSgrOnly(result.value.text).split("\n");
     return muxOk(captured.slice(Math.max(0, captured.length - lines)).join("\n"));
+  }
+
+  /**
+   * The last `rows` rows of a block's output as VT text, without moving the whole scrollback.
+   *
+   * `rex capture` has no line limit, so on a block with 96,000 lines of scrollback every read moved
+   * 7 MB and cost the server about 240 ms of CPU (measured on API revision 19). `format` with
+   * `max_bytes` answers the start, the byte `total` and an `id`; one `blob_read` from `total` minus
+   * the budget then gives the end: 17 kB and about 70 ms of server CPU on that block. A small output
+   * fits the first reply and costs one call, as the capture did.
+   *
+   * The cut lands inside a row, so everything up to the first row break is dropped, and the first row
+   * kept must open with `ESC [ 0 m`, as every VT row that holds anything does (probed). Whenever the
+   * tail cannot be trusted to hold what was asked, the read falls back to the whole capture: the
+   * server kept only a few results and dropped this one, the part did not reach the end, the rows do
+   * not start where a row starts, or there are fewer rows than asked (Load older).
+   */
+  private async captureTail(paneId: string, rows: number, unwrap: boolean): Promise<MuxOutcome<RexCapture>> {
+    const budget = Math.min(TAIL_MAX_BYTES, Math.max(TAIL_MIN_BYTES, rows * TAIL_BYTES_PER_ROW));
+    const first = await this.attemptRun(["block", "call", "-b", paneId, "format", JSON.stringify({ format: "vt", unwrap, max_bytes: budget })]);
+    if (!first.ok) return first;
+    let head: RexFormatted;
+    try {
+      head = parseFormatted(first.value.stdout);
+    } catch (err) {
+      return muxRefused(err instanceof Error ? err.message : String(err));
+    }
+    if (head.id === null) return muxOk({ text: head.content, cut: false });
+    const offset = Math.max(0, head.total - budget);
+    const read = await this.attemptRun(["block", "call", "-b", paneId, "blob_read", JSON.stringify({ id: head.id, offset, max_bytes: BLOB_READ_MAX })]);
+    const part = read.ok ? safeBlobPart(read.value.stdout) : null;
+    if (part === null || !part.eof) return this.captureWhole(paneId, unwrap);
+    const rowStart = offset === 0 ? 0 : part.data.indexOf("\r\n") + 2;
+    if (rowStart < 2 && offset > 0) return this.captureWhole(paneId, unwrap);
+    const text = part.data.slice(rowStart);
+    const tailRows = text.split("\r\n");
+    const firstFilled = tailRows.find((row) => row !== "");
+    if (firstFilled !== undefined && !firstFilled.startsWith(VT_ROW_START)) return this.captureWhole(paneId, unwrap);
+    if (offset > 0 && tailRows.length < rows) return this.captureWhole(paneId, unwrap);
+    return muxOk({ text, cut: offset > 0 });
+  }
+
+  /** The whole screen and scrollback, the read every tail falls back to. */
+  private async captureWhole(paneId: string, unwrap: boolean): Promise<MuxOutcome<RexCapture>> {
+    const args = ["capture", "-b", paneId, "--format=vt"];
+    if (unwrap) args.push("--unwrap");
+    const res = await this.attemptRun(args);
+    if (!res.ok) return res;
+    // The CLI ends what it prints with one `\n` that is no row of the output (probed).
+    return muxOk({ text: res.value.stdout.replace(/\n$/u, ""), cut: false });
   }
 
   /**
@@ -713,6 +785,15 @@ function createdIds(stdout: string): RexCreated {
     return parseCreated(stdout);
   } catch {
     return { sessionId: null, windowId: null, blockId: null };
+  }
+}
+
+/** A part read of `blob_read`, or null when its answer did not parse. */
+function safeBlobPart(stdout: string): RexBlobPart | null {
+  try {
+    return parseBlobPart(stdout);
+  } catch {
+    return null;
   }
 }
 

@@ -72,6 +72,40 @@ const notFound = (kind: "block" | "window" | "session", target: string): RexRunR
   stderr: `Error: ${kind} target "${target}" not found\n`,
 });
 
+/** A block method's JSON arguments, as the adapter wrote them: only the fields this fake reads. */
+interface BlockArgs {
+  readonly format?: string;
+  readonly max_bytes?: number;
+  readonly id?: number;
+  readonly offset?: number;
+}
+
+function requestOf(raw: string | undefined): BlockArgs {
+  const parsed: BlockArgs = JSON.parse(raw ?? "{}");
+  return parsed;
+}
+
+function byteLength(text: string): number {
+  return Buffer.byteLength(text, "utf8");
+}
+
+/** How long `text` is once written as a JSON string, without its quotes: what `max_bytes` counts. */
+function jsonLength(text: string): number {
+  return byteLength(JSON.stringify(text)) - 2;
+}
+
+/** The longest start of `text` whose JSON form fits in `limit`. */
+function fitJson(text: string, limit: number): string {
+  let used = 0;
+  let end = 0;
+  for (const char of text) {
+    used += jsonLength(char);
+    if (used > limit) break;
+    end += char.length;
+  }
+  return text.slice(0, end);
+}
+
 /** The value after `name` in argv, or undefined. */
 function flag(args: readonly string[], name: string): string | undefined {
   const at = args.indexOf(name);
@@ -106,6 +140,10 @@ export class FakeRex implements RexExec {
   nextWrite: "stall" | "refuse" | null = null;
   /** The next key write fails once, the same two ways. */
   nextKeys: "stall" | "refuse" | null = null;
+  /** The server forgets every stored `format` result, as it does once newer reads push one out. */
+  forgetResults = false;
+  /** What a VT row that holds anything opens with. The real server writes `ESC [ 0 m`. */
+  vtRowStart = RESET;
 
   private sessions = new Map<string, FakeSession>();
   private windows = new Map<string, FakeWindow>();
@@ -113,6 +151,9 @@ export class FakeRex implements RexExec {
   private readonly listeners = new Set<FakeListener>();
   private readonly recorded: MuxWrite[] = [];
   private serial = 0x100;
+  /** `format` results kept for `blob_read`, by id. */
+  private readonly results = new Map<number, string>();
+  private resultSerial = 0;
   private connected = true;
 
   constructor() {
@@ -178,6 +219,27 @@ export class FakeRex implements RexExec {
 
     this.sessions.set(work, { id: work, label: "work", attached: 1, activeWindowId: main, windowIds: [main, logs] });
     this.sessions.set(notes, { id: notes, label: "notes", attached: 0, activeWindowId: scratch, windowIds: [scratch] });
+  }
+
+  /** Put `lines` above a block's screen, as a long-running program leaves them in its scrollback. */
+  fillHistory(paneId: string, lines: readonly string[]): void {
+    const block = this.blocks.get(paneId);
+    if (block) block.history = [...block.history, ...lines];
+  }
+
+  /**
+   * A block's screen AND scrollback, always, padded to the terminal's rows as a real screen is. As
+   * probed: VT rows are joined by `\r\n`, each row that holds anything opens with `ESC [ 0 m`, a run
+   * of blank cells is `ESC [ n C`, and links are OSC 8.
+   */
+  private render(block: FakeBlock, vt: boolean): string {
+    const screen = [...block.screen, ...Array.from({ length: Math.max(0, block.rows - block.screen.length) }, () => "")];
+    const lines = [...block.history, ...screen].map((line) =>
+      vt && line !== ""
+        ? `${this.vtRowStart}${GREEN}${LINK_OPEN}${line.replace(/ +/gu, (run) => `${CURSOR_FORWARD}${String(run.length)}C`)}${LINK_CLOSE}${RESET}`
+        : line,
+    );
+    return lines.join(vt ? "\r\n" : "\n");
   }
 
   writes(): readonly MuxWrite[] {
@@ -293,6 +355,8 @@ export class FakeRex implements RexExec {
       }
       if (method === "title") return ok(JSON.stringify({ title: block.title, owner: { pid: 4243, name: block.foreground } }));
       if (method === "size") return ok(JSON.stringify({ columns: 80, rows: block.rows, owner: null, desired: [] }));
+      if (method === "format") return this.format(block, positionals(args.slice(2), ["-b", "-s", "-w"])[1]);
+      if (method === "blob_read") return this.blobRead(positionals(args.slice(2), ["-b", "-s", "-w"])[1]);
       return { code: 1, stdout: "", stderr: `Error: unknown method ${String(method)}\n` };
     }
 
@@ -301,14 +365,8 @@ export class FakeRex implements RexExec {
       const block = this.blocks.get(id);
       if (!block) return notFound("block", id);
       const vt = args.includes("--format=vt");
-      // Screen AND scrollback, always, padded to the terminal's rows as a real screen is.
-      const screen = [...block.screen, ...Array.from({ length: Math.max(0, block.rows - block.screen.length) }, () => "")];
-      // As probed: VT rows end `\r\n`, a run of blank cells is `ESC [ n C`, and links are OSC 8.
-      const lines = [...block.history, ...screen].map((line) =>
-        vt && line !== "" ? `${GREEN}${LINK_OPEN}${line.replace(/ +/gu, (run) => `${CURSOR_FORWARD}${String(run.length)}C`)}${LINK_CLOSE}${RESET}` : line,
-      );
-      const eol = vt ? "\r\n" : "\n";
-      return ok(`${lines.join(eol)}${eol}`);
+      // The CLI prints the output and ends it with one `\n`, also after VT's `\r\n` rows (probed).
+      return ok(`${this.render(block, vt)}\n`);
     }
 
     if (verb === "send") {
@@ -453,6 +511,31 @@ export class FakeRex implements RexExec {
         ];
       }),
     };
+  }
+
+  /**
+   * `block call format`: the whole output, or with `max_bytes` its first part, the byte `total`, and
+   * an `id` to read the rest with `blob_read`. As on the server, `max_bytes` counts the JSON string.
+   */
+  private format(block: FakeBlock, raw: string | undefined): RexRunResult {
+    const request = requestOf(raw);
+    const content = this.render(block, request.format === "vt");
+    const limit = request.max_bytes ?? 0;
+    if (limit <= 0 || jsonLength(content) <= limit) return ok(JSON.stringify(limit > 0 ? { content, total: byteLength(content) } : { content }));
+    this.resultSerial += 1;
+    this.results.set(this.resultSerial, content);
+    return ok(JSON.stringify({ content: fitJson(content, limit), id: this.resultSerial, total: byteLength(content) }));
+  }
+
+  /** `block call blob_read`: bytes from `offset`; a cut through a character reads as U+FFFD, as probed. */
+  private blobRead(raw: string | undefined): RexRunResult {
+    const request = requestOf(raw);
+    const content = this.forgetResults ? undefined : this.results.get(request.id ?? 0);
+    if (content === undefined) return { code: 3, stdout: "", stderr: "Error: not_found: the result is no longer kept\n" };
+    const rest = Buffer.from(content, "utf8").subarray(request.offset ?? 0).toString("utf8");
+    const limit = request.max_bytes ?? 0;
+    const data = fitJson(rest, limit > 0 ? limit : 49152);
+    return ok(JSON.stringify({ id: request.id, data, total: byteLength(content), eof: data.length === rest.length }));
   }
 
   events(handlers: RexStreamHandlers): RexStreamClient {

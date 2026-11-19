@@ -212,7 +212,8 @@ Some things work differently on Rex:
   that session. With no app attached, it says so and moves nothing.
 - Pane rename is not offered: Rex gives every block a label of its own choosing, so Collie cannot
   tell your name from its default. Tab rename works.
-- Every read of a pane fetches its whole scrollback, because `rex capture` has no line limit.
+- A read of a pane takes only the end of its output, in two short `rex` calls. Load older past
+  about a thousand rows reads the whole scrollback, so it is slower on a very long one.
 
 Collie does not detect Rex on its own: name it with `COLLIE_MUX=rex`.
 

@@ -143,3 +143,69 @@ describe("Focus in rex with no Rex app on the session", () => {
     expect(await adapter.setFocus("block:01a1f140-f804-7d10-b29f-00000000ffff")).toMatchObject({ ok: false, reason: "gone" });
   });
 });
+
+describe("a read takes the tail of the output, not the whole scrollback", () => {
+  const VIEWPORT: MuxGridRequest = { scope: "viewport", lines: 60, styling: "preserve" };
+  const history = Array.from({ length: 5000 }, (_, i) => `build step ${String(i).padStart(5, "0")} finished in 12 ms`);
+
+  async function filled() {
+    const fake = new FakeRex();
+    const rex = new RecordingRex(fake);
+    const adapter = new RexMux(rex);
+    const pane = (await adapter.snapshot()).panes[0]!;
+    fake.fillHistory(pane.paneId, history);
+    rex.calls.length = 0;
+    return { fake, rex, adapter, paneId: pane.paneId };
+  }
+  const verbs = (calls: readonly string[][]) => calls.map((argv) => (argv[0] === "block" ? argv[4] : argv[0]));
+
+  test("a short output fits the first reply: one call, as the capture was", async () => {
+    const { adapter, rex } = world();
+    const pane = (await adapter.snapshot()).panes[0]!;
+    rex.calls.length = 0;
+    expect((await adapter.readGrid(pane.paneId, { ...VIEWPORT, scope: "recent" })).ok).toBe(true);
+    expect(verbs(rex.calls)).toEqual(["format"]);
+  });
+
+  test("a long output is read as format plus one blob_read, and gives the rows the whole capture gives", async () => {
+    const { fake, rex, adapter, paneId } = await filled();
+    const tail = await adapter.readGrid(paneId, VIEWPORT);
+    expect(verbs(rex.calls).toSorted()).toEqual(["blob_read", "format", "size"]);
+    fake.forgetResults = true;
+    const whole = await adapter.readGrid(paneId, VIEWPORT);
+    expect(rex.calls.some((argv) => argv[0] === "capture")).toBe(true);
+    expect(tail.ok && whole.ok).toBe(true);
+    if (!tail.ok || !whole.ok) return;
+    expect(tail.value.text).toBe(whole.value.text);
+    expect(tail.value.truncated).toBe(true);
+  });
+
+  test("the unwrapped text reads the same tail", async () => {
+    const { fake, adapter, paneId } = await filled();
+    const tail = await adapter.readLogicalText(paneId, 30);
+    fake.forgetResults = true;
+    expect(tail).toEqual(await adapter.readLogicalText(paneId, 30));
+    expect(tail.ok && tail.value.includes("build step 04999")).toBe(true);
+  });
+
+  test("a result the server no longer keeps falls back to the whole capture", async () => {
+    const { fake, rex, adapter, paneId } = await filled();
+    fake.forgetResults = true;
+    expect((await adapter.readGrid(paneId, VIEWPORT)).ok).toBe(true);
+    expect(verbs(rex.calls)).toContain("capture");
+  });
+
+  test("a tail whose rows do not open where a row opens falls back to the whole capture", async () => {
+    const { fake, rex, adapter, paneId } = await filled();
+    fake.vtRowStart = "";
+    expect((await adapter.readGrid(paneId, VIEWPORT)).ok).toBe(true);
+    expect(verbs(rex.calls)).toContain("capture");
+  });
+
+  test("Load older, more rows than the tail holds, reads the whole capture", async () => {
+    const { rex, adapter, paneId } = await filled();
+    const older = await adapter.readGrid(paneId, { scope: "recent", lines: 4000, styling: "preserve", purpose: "older" });
+    expect(verbs(rex.calls)).toContain("capture");
+    expect(older.ok && older.value.text.split("\n").length).toBe(4000);
+  });
+});
