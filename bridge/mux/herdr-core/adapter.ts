@@ -32,6 +32,7 @@
 
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
+import { isQuestionPane } from "../../types.ts";
 import { declareCapabilities } from "../capabilities.ts";
 import type { ForegroundProcess } from "../../journal/types.ts";
 import { EXTENDED_ONLY_CHORDS } from "../keys.ts";
@@ -232,7 +233,10 @@ export class HerdrCoreMux implements MuxAdapter {
 
   /** Per pane, the history read the core still runs, until it settles; Collie's budget does not end it. */
   private readonly historyPending = new Map<string, Promise<WireRead>>();
-  /** Panes whose program reported `blocked` in the last snapshot: a dialog is up. */
+  /**
+   * Panes whose program reported `blocked` in the last snapshot: a dialog is up. Not a pane that stopped
+   * on an error (`blockedBy: "error"`): no dialog is open there, so Load older reads its history.
+   */
   private readonly blockedPanes = new Set<string>();
   private readonly historyBudgetMs: number;
   private readonly log: (line: string) => void;
@@ -367,7 +371,10 @@ export class HerdrCoreMux implements MuxAdapter {
    *
    * At most one history read per pane runs on the core. While the program reports `blocked` or the
    * bridge's hint does (`hintBlocked`), none starts and the screen answers with
-   * {@link OLDER_NOTE_BLOCKED}. While one runs, a second `older` read waits for that one within the
+   * {@link OLDER_NOTE_BLOCKED}. A pane that stopped on an error is neither (`noteHistoryState`,
+   * server.ts `paneReadHint`), so its history is read. On a full-screen program the core may answer
+   * that read with the screen alone and `complete: false`; that answer carries no note, because
+   * neither note is true for it. While one runs, a second `older` read waits for that one within the
    * budget. Past the budget the screen answers with {@link OLDER_NOTE_READING}.
    */
   private async olderRows(paneId: string, lines: number, hintBlocked: boolean): Promise<{ read: WireRead; screen: WireRead; note?: string }> {
@@ -654,11 +661,11 @@ export class HerdrCoreMux implements MuxAdapter {
     }
   }
 
-  /** What the last snapshot says about history reads: which panes are blocked. */
+  /** What the last snapshot says about history reads: which panes are blocked on a question. */
   private noteHistoryState(snapshot: MuxSnapshot): void {
     this.blockedPanes.clear();
     for (const pane of snapshot.panes) {
-      if (pane.status === "blocked") this.blockedPanes.add(pane.paneId);
+      if (isQuestionPane(pane)) this.blockedPanes.add(pane.paneId);
     }
   }
 

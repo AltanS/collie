@@ -34,7 +34,7 @@ import { PaneBadge } from "@/components/pane-badge";
 import { PaneGlyph } from "@/components/ui/pane-glyph";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { shortenHome } from "@/lib/shorten-home";
-import { bucketOf, isAttention, isUnseen, worstTriage, type TriageKey } from "@/lib/triage";
+import { bucketOf, isAttention, isUnseen, shownStatus, worstTriage, type TriageKey } from "@/lib/triage";
 import type { AgentStatus, AgentView, Launcher, ServerSummary, SessionSummary, TabView, WorkspaceView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 import { t } from "@/lib/i18n";
@@ -707,8 +707,9 @@ function PaneRow({
         // The border is applied even to the ACTIVE row, so the two cues compose: the pane you're in
         // AND blocked keeps both its accent fill and its alarm edge. Only the fill is withheld,
         // because two backgrounds can't both win.
-        isAttention(pane.status) && "border-status-blocked/40",
-        !active && isAttention(pane.status) && "bg-status-blocked/5",
+        // The SHOWN status, so a pane that stopped on an error loses the edge once seen (shownStatus).
+        isAttention(shownStatus(pane)) && "border-status-blocked/40",
+        !active && isAttention(shownStatus(pane)) && "bg-status-blocked/5",
       )}
     >
       {isShell ? (

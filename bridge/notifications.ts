@@ -204,6 +204,16 @@ interface Alert {
   /** Where it sits — `space › tab`, or the space alone. The one place rule, same module. */
   place: string;
   status: NotifiableStatus;
+  /**
+   * A `blocked` alert for a pane that stopped on an error (AgentView.blockedBy): it asks for a look, not
+   * an answer, so seeing the pane retracts it like a finished one ({@link retractSeen}).
+   */
+  error?: true;
+}
+
+/** Whether seeing the pane is the end of this alert: a finished pane, or one that stopped on an error. */
+function endsWhenSeen(alert: { readonly status: NotifiableStatus; readonly error?: true }): boolean {
+  return alert.status === "done" || alert.error === true;
 }
 
 /**
@@ -221,7 +231,7 @@ function digestLabels(alerts: readonly Alert[]): string[] {
 
 export class NotificationCoordinator<H = unknown> {
   /** paneId → debouncing alert (timer + its kind) that hasn't entered the summary yet. */
-  private readonly pending = new Map<string, { handle: H; status: NotifiableStatus }>();
+  private readonly pending = new Map<string, { handle: H; status: NotifiableStatus; error?: true }>();
   /** paneId → alert that has fired and is reflected in the current summary (insertion-ordered). */
   private readonly outstanding = new Map<string, Alert>();
   /** Which shape is on the lock screen right now, so a switch of the preference can move it over. */
@@ -273,13 +283,15 @@ export class NotificationCoordinator<H = unknown> {
     if (cause === "ask" && to === "blocked") {
       alert.ask = true;
       if (askText !== undefined) alert.askText = cleanAskText(askText);
+    } else if (to === "blocked" && agent.blockedBy === "error") {
+      alert.error = true;
     }
     const handle = this.clock.schedule(() => {
       this.pending.delete(id);
       this.outstanding.set(id, alert);
       this.emitAlert(id, true);
     }, this.delayMs);
-    this.pending.set(id, { handle, status: alert.status });
+    this.pending.set(id, alert.error === true ? { handle, status: alert.status, error: true } : { handle, status: alert.status });
   }
 
   /** Wire to `StateEngine.onRemove` — a vanished pane is implicitly resolved. */
@@ -334,15 +346,18 @@ export class NotificationCoordinator<H = unknown> {
   /**
    * Retract the finished alerts of panes opened since they finished, from each poll's timestamps
    * (bridge/activity.ts). A finished pane stays `done` or `idle` after you read it, so no transition
-   * would ever retract its alert, and it would sit on the lock screen and in the icon's count. A
-   * blocked alert stays: only an answer clears it. A pane without both timestamps is left alone.
+   * would ever retract its alert, and it would sit on the lock screen and in the icon's count. A pane
+   * that stopped on an error goes the same way, since it waits on no answer. Any other blocked alert
+   * stays: only an answer clears it. A pane without both timestamps is left alone.
    */
   retractSeen(panes: Iterable<SeenStamps>): void {
     const removed: string[] = [];
     for (const { paneId, lastActiveAt, lastSeenAt } of panes) {
       if (lastActiveAt === undefined || lastSeenAt === undefined || lastSeenAt < lastActiveAt) continue;
-      if (this.pending.get(paneId)?.status === "done") this.cancelPending(paneId);
-      if (this.outstanding.get(paneId)?.status === "done") {
+      const pending = this.pending.get(paneId);
+      if (pending !== undefined && endsWhenSeen(pending)) this.cancelPending(paneId);
+      const outstanding = this.outstanding.get(paneId);
+      if (outstanding !== undefined && endsWhenSeen(outstanding)) {
         this.outstanding.delete(paneId);
         removed.push(paneId);
       }

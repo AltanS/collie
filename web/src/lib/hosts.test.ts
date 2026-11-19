@@ -286,6 +286,12 @@ describe("hostCounts", () => {
     expect(countsFor(counts, "workshop")).toEqual({ agents: 3, working: 0, blocked: 2 });
     expect(countsFor(counts, "nobody")).toEqual({ agents: 0, working: 0, blocked: 0 });
   });
+
+  it("counts a member's pane that stopped on an error until it is seen (PR 787)", () => {
+    const errored = (seen: number): AgentView => ({ ...pane("w2:p1", "workshop", "blocked"), blockedBy: "error", lastActiveAt: 100, lastSeenAt: seen });
+    expect(countsFor(hostCounts([errored(50)]), "workshop").blocked).toBe(1);
+    expect(countsFor(hostCounts([errored(150)]), "workshop").blocked).toBe(0);
+  });
 });
 
 // ── A ROW'S IDENTITY ─────────────────────────────────────────────────────────

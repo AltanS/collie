@@ -203,6 +203,16 @@ describe("SessionRegistry — list()", () => {
     ]);
   });
 
+  test("a pane that stopped on an error counts as blocked until it is seen; a question counts while it waits (PR 787)", async () => {
+    const h = makeRegistry({
+      snapshots: { default: { bridge: "connected", agents: [{ ...agent("e1", "blocked"), blockedBy: "error" }, agent("q1", "blocked")] } },
+    });
+    await h.registry.refresh();
+    expect(h.registry.list()[0]?.blocked).toBe(2);
+    expect(h.registry.list(() => true)[0]?.blocked).toBe(2);
+    expect(h.registry.list(() => false)[0]?.blocked).toBe(1);
+  });
+
   test("an unreachable session reports reachable:false and zeroed counts", async () => {
     const h = makeRegistry({
       sessions: [

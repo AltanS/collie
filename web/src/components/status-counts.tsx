@@ -5,7 +5,7 @@ import { StatusDot } from "@/components/status-badge";
 import { hasResizeObserver } from "@/lib/env";
 import { MASK, useOverflowEdges } from "@/components/ui/overflow-edges";
 import { UnseenMark } from "@/components/ui/unseen-mark";
-import { isUnseen } from "@/lib/triage";
+import { isUnseen, shownStatus } from "@/lib/triage";
 import { statusLabel, type AgentStatus, type AgentView } from "@/lib/types";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -35,12 +35,14 @@ export function countStates(panes: readonly AgentView[]): StateCounts {
   const n: StateCounts = { blocked: 0, unseen: 0, working: 0, idle: 0 };
   for (const p of panes) {
     if (p.kind === "shell") continue;
-    if (p.status === "blocked") n.blocked++;
+    // A pane that stopped on an error needs you until it is seen, then rests with the idle ones (shownStatus).
+    const shown = shownStatus(p);
+    if (shown === "blocked") n.blocked++;
     else if (isUnseen(p)) n.unseen++;
     else if (p.status === "working") n.working++;
     // A finished pane you opened rests: a seen `done` counts with the idle ones (issue 665). The
     // unseen ones were split off above, so no pane is counted as `done` any more.
-    else if (p.status === "idle" || p.status === "done") n.idle++;
+    else if (shown === "idle" || shown === "done") n.idle++;
   }
   return n;
 }

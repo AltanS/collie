@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { computeEtag } from "../http-cache.ts";
 import type { JsonValue } from "../json.ts";
-import type { PaneWire, SessionSummary, SnapshotResponse, TabView, WorkspaceView } from "../types.ts";
+import { toPaneWire, type AgentView, type PaneWire, type SessionSummary, type SnapshotResponse, type TabView, type WorkspaceView } from "../types.ts";
 import { NARROW_VIEW } from "../sessions.ts";
 import {
   leadLabel,
@@ -106,6 +106,36 @@ describe("a member's pin count (M90)", () => {
   test("keeps a whole number above zero and drops everything else", () => {
     expect(parsed(3)?.pins).toBe(3);
     for (const bad of [0, -1, 1.5, "3", null, true]) expect(parsed(bad) !== undefined && "pins" in parsed(bad)!).toBe(false);
+  });
+});
+
+describe("why a member's blocked pane needs a look (blockedBy, PR 787)", () => {
+  const parsed = (over: Record<string, JsonValue>) =>
+    // SAFETY: a test body shaped as a member's snapshot; the fields are deliberately of any type, the member's word.
+    parsePeerSnapshot({ sessions: [], agents: [{ ...pane({ paneId: "w1:p1" }), ...over }], shellPanes: [], workspaces: [], tabs: [] } as never)?.agents[0];
+
+  test("travels from the member's wire body to the lead as the member wrote it", () => {
+    const { hasSession: _flag, ...view } = pane({ paneId: "w1:p1", status: "blocked" });
+    // SAFETY: a member's own pane, AgentView minus the two server-only fields, which toPaneWire strips anyway.
+    const wire = toPaneWire({ ...view, blockedBy: "error" } as AgentView, () => false);
+    expect(wire.blockedBy).toBe("error");
+    // SAFETY: the wire pane as JSON, which is how the lead reads it.
+    expect(parsed(JSON.parse(JSON.stringify(wire)) as Record<string, JsonValue>)).toMatchObject({ status: "blocked", blockedBy: "error" });
+  });
+
+  test("an older member's blocked pane, without the field, stays a plain blocked", () => {
+    const old = parsed({ status: "blocked" });
+    expect(old?.status).toBe("blocked");
+    expect(old !== undefined && "blockedBy" in old).toBe(false);
+  });
+
+  test("is kept only as error on a blocked pane; anything else is dropped", () => {
+    for (const bad of ["question", "", 1, true, null]) {
+      const got = parsed({ status: "blocked", blockedBy: bad });
+      expect(got !== undefined && "blockedBy" in got).toBe(false);
+    }
+    const idle = parsed({ status: "idle", blockedBy: "error" });
+    expect(idle !== undefined && "blockedBy" in idle).toBe(false);
   });
 });
 

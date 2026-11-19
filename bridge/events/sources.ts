@@ -47,6 +47,8 @@ import { encodeSessionId } from "./session-id.ts";
 export interface TransitionPane {
   readonly paneId: string;
   readonly kind?: string;
+  /** `"error"` on a `blocked` pane that stopped on a failure: it opens no ask (AgentView.blockedBy). */
+  readonly blockedBy?: string;
 }
 
 /** The part of a state engine this source needs: its transition and removal feeds. */
@@ -86,11 +88,15 @@ export function endsTurn(from: AgentStatus, to: AgentStatus): boolean {
   return (from === "working" || from === "blocked") && (to === "idle" || to === "done");
 }
 
-/** What one transition publishes, in order, for a pane whose turn has `ended` or not. */
-export function eventsOf(session: string, from: AgentStatus, to: AgentStatus, ended: boolean): PublishInput[] {
+/**
+ * What one transition publishes, in order, for a pane whose turn has `ended` or not. A move into
+ * `blocked` opens an ask, unless the pane stopped on an `error`: that one asks nothing, and its
+ * `session.status` still says `blocked`.
+ */
+export function eventsOf(session: string, from: AgentStatus, to: AgentStatus, ended: boolean, error = false): PublishInput[] {
   const out: PublishInput[] = [{ type: "session.status", session, data: { state: stateOf(to) } }];
   if (!ended && endsTurn(from, to)) out.push({ type: "turn.end", session });
-  if (to === "blocked") out.push({ type: "ask.open", session });
+  if (to === "blocked" && !error) out.push({ type: "ask.open", session });
   return out;
 }
 
@@ -106,7 +112,7 @@ export function attachSessionSource(opts: SessionSourceOptions): () => void {
       const instance = opts.instanceOf(opts.muxSession, paneId);
       if (instance === null) return;
       const session = encodeSessionId({ machine: opts.machine(), paneId, instance });
-      const events = eventsOf(session, from, to, ended.has(paneId));
+      const events = eventsOf(session, from, to, ended.has(paneId), agent.blockedBy === "error");
       if (events.some((event) => event.type === "turn.end")) ended.add(paneId);
       for (const event of events) opts.publish(event);
     } catch (error) {

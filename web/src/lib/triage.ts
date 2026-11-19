@@ -44,18 +44,43 @@ export interface TriageSection {
  * Both timestamps absent (an older bridge) yields `false`, so the section is simply empty there.
  */
 export function isUnseen(a: AgentView): boolean {
-  return a.kind !== "shell" &&
-    (a.status === "done" || a.status === "idle") &&
-    (a.lastActiveAt ?? 0) > (a.lastSeenAt ?? 0);
+  return a.kind !== "shell" && (a.status === "done" || a.status === "idle") && settledUnseen(a);
+}
+
+/**
+ * Whether a pane stopped on an error (`blockedBy: "error"`): `blocked`, so it needs you, but it waits on
+ * no answer. No question card, no dialog guard; it rests like a finished pane once seen ({@link shownStatus}).
+ */
+export function isErrorBlocked(a: Pick<AgentView, "status" | "blockedBy">): boolean {
+  return a.status === "blocked" && a.blockedBy === "error";
+}
+
+/**
+ * Whether a pane waits on an answer: a question, a dialog or an answer box. Every `blocked` pane but one
+ * that stopped on an error; a plain `blocked` from an older machine is a question.
+ */
+export function isQuestion(a: Pick<AgentView, "status" | "blockedBy">): boolean {
+  return a.status === "blocked" && a.blockedBy !== "error";
 }
 
 /**
  * The status a pane's dot draws. The multiplexer's `done` means "finished its turn", and the green
  * disc means "finished and nobody opened it yet" (issue 665). Once the shared seen mark has caught up
- * (ADR 0003) a finished pane rests as `idle`, a ring. Shell panes and every other status pass through.
+ * (ADR 0003) a finished pane rests as `idle`, a ring. A pane that stopped on an error
+ * ({@link isErrorBlocked}) needs you until then and rests the same way, because it asks for a look and
+ * not for an answer; the next status the agent reports replaces it. Shell panes and every other
+ * status pass through.
  */
 export function shownStatus(a: AgentView): AgentStatus {
-  return a.kind !== "shell" && a.status === "done" && !isUnseen(a) ? "idle" : a.status;
+  if (a.kind === "shell") return a.status;
+  if (a.status === "done" && !isUnseen(a)) return "idle";
+  if (isErrorBlocked(a) && !settledUnseen(a)) return "idle";
+  return a.status;
+}
+
+/** Whether the pane's last status change is newer than the last time it was seen (both from the bridge). */
+function settledUnseen(a: AgentView): boolean {
+  return (a.lastActiveAt ?? 0) > (a.lastSeenAt ?? 0);
 }
 
 /** Which section an agent belongs to. The single classifier — {@link triage} and
@@ -64,7 +89,8 @@ export function bucketOf(a: AgentView): TriageKey {
   // A trick session is outside triage (M94): it never needs you, is never ready and never counts as
   // working. Every list function below reads `realAgentPanes`; this holds for a single pane too.
   if (isTrickPane(a)) return "recent";
-  if (a.status === "blocked") return "needs";
+  // A pane that stopped on an error needs you only until it is seen (shownStatus).
+  if (shownStatus(a) === "blocked") return "needs";
   if (isUnseen(a)) return "ready";
   if (a.status === "working") return "working";
   return "recent";

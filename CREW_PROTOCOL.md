@@ -1560,6 +1560,13 @@ prevents (`web/src/lib/api.ts:201-203`).
   read. It only shows: the member's accounts are its own, read and changed with `?host=` on
   `/api/accounts`. `CREW_PROTOCOL_VERSION` stays `2`, no new route on the link, no new verb and no new
   header.
+- **A pane may carry `blockedBy`** (additive-optional, §7.1, added 2026-11-19, PR 787): `"error"` on a
+  pane whose `status` is `blocked` because its program reported that its turn stopped on a failure
+  (herdr-core's `state=error`). The status stays `blocked`, so a lead or phone that predates the field
+  still shows the pane as needing you. A collie that reads it treats the pane as needing a look, not
+  an answer: no ask is open, Load older reads, and its push goes once the pane is seen. The lead keeps
+  it only as `"error"` and only on a `blocked` pane, and drops anything else; a pane without it is a
+  plain `blocked`, which is what every older member sends. `CREW_PROTOCOL_VERSION` stays `2`.
 - **A session may carry `label`** (additive-optional, §7.1, added 2026-10-19): the display label
   the member's own operator wrote in its `spaces.toml`. It is display-only: `name` stays the
   session's identity on the link and in every address. The lead keeps it only as a string and runs

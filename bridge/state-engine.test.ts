@@ -14,6 +14,8 @@ import {
   type ArgvNameProbe,
 } from "./state-engine.ts";
 import { HerdrMux } from "./mux/herdr/adapter.ts";
+import { HerdrCoreMux } from "./mux/herdr-core/adapter.ts";
+import { FakeHcCore } from "./mux/herdr-core/fake-core.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
 import { muxOk, muxUnreachable } from "./mux/types.ts";
 import type { MuxAdapter, MuxOutcome, MuxPane, MuxTab } from "./mux/types.ts";
@@ -215,6 +217,30 @@ describe("StateEngine — the screen's ask wins for blocked", () => {
     herdr.panes = [pane("w1:p1", "w1", "idle", "pi"), pane("w1:p2", "w1", "done", "pi"), pane("w1:p3", "w1", "blocked", "pi"), pane("w1:p4", "w1", "working", "pi")];
     await poll();
     expect(engine.current().agents.map((a) => a.status)).toEqual(["blocked", "blocked", "blocked", "working"]);
+  });
+
+  test("a pane blocked by an error is a question once its screen shows an ask: the error's mark goes (PR 787)", async () => {
+    const fake = new FakeHcCore();
+    const engine = new StateEngine(new HerdrCoreMux(fake, "/home/dev"), 1500);
+    const poll = () => engine["poll"]();
+    const asking = new Set<string>();
+    engine.liftScreenAsks((paneId) => asking.has(paneId));
+    const t1 = () => engine.current().agents.find((a) => a.paneId === "t1");
+    fake.reportState("t1", "error");
+    await poll();
+    expect(t1()).toMatchObject({ status: "blocked", blockedBy: "error" });
+    asking.add("t1");
+    await poll();
+    expect(t1()?.status).toBe("blocked");
+    expect(t1()?.blockedBy).toBeUndefined();
+    asking.delete("t1");
+    await poll();
+    expect(t1()).toMatchObject({ status: "blocked", blockedBy: "error" });
+    // The next status the agent reports replaces it.
+    fake.reportState("t1", "working");
+    await poll();
+    expect(t1()?.status).toBe("working");
+    expect(t1()?.blockedBy).toBeUndefined();
   });
 
   test("with no screen reader wired the mux status stands", async () => {

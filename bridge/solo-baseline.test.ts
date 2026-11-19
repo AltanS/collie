@@ -439,6 +439,9 @@ const PANE_WIRE_KEYS = {
   // `collie.toml` names a picture, and this harness builds its body with no picture cache, so no golden
   // byte moved.
   picture: true,
+  // Not a crew dimension: why a blocked pane needs a look (PR 787). Present only on a herdr-core pane whose
+  // program reported `error`, and this harness reports none, so no golden byte moved.
+  blockedBy: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -588,6 +591,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "askRoute",
       "asks",
       "badge",
+      "blockedBy",
       "cache",
       "canSteer",
       "canStop",

@@ -285,7 +285,7 @@ import {
   type WhistleRouteDeps,
 } from "./stt/whistle-http.ts";
 import { uploadTooLarge } from "./uploads.ts";
-import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, journalAgentOf, toPaneWire } from "./types.ts";
+import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, isErrorBlocked, isQuestionPane, journalAgentOf, toPaneWire } from "./types.ts";
 import type { LaunchCheckResponse, MachineAlertsResponse } from "./types.ts";
 import { parseMachineAlerts } from "./machine-parse.ts";
 import { SPARK_MAX_MINUTES } from "./machine-history.ts";
@@ -2109,7 +2109,14 @@ export function startServer(opts: {
       workspaces: withSpacesContext(workspaces, { gitHeads, bases: worktreeBases }),
       tabs,
       // A label is display-only: `name` stays the identity the phone sends back as `?session=`.
-      sessions: withSessionLabels(registry.list(), sessionLabels.labelOf),
+      // A pane that stopped on an error counts as needing you until it is seen, the phone's own rule.
+      sessions: withSessionLabels(
+        registry.list((session, pane) => {
+          const a = activity.get(session, pane.paneId);
+          return a !== undefined && a.activeAt > a.seenAt;
+        }),
+        sessionLabels.labelOf,
+      ),
       notifications: { snoozedUntil: snooze.until() },
       update: updateStatusWithPeers(),
       ts: Date.now(),
@@ -5261,16 +5268,18 @@ export function hasSplitUrl(ansiText: string): boolean {
 /**
  * What the bridge knows about a pane that its multiplexer may not, for a `recent` read of it
  * (mux/types.ts `MuxReadHint`): `blocked` when the state engine reads the pane as waiting on a
- * person. The engine lifts a pane whose screen shows an ask to `blocked` even when the multiplexer
- * reports `working` (state-engine.ts `liftScreenAsks`), which is the case herdr-core cannot see on
- * its own: pi under a dialog. `undefined` when the engine knows nothing to add.
+ * person's answer. The engine lifts a pane whose screen shows an ask to `blocked` even when the
+ * multiplexer reports `working` (state-engine.ts `liftScreenAsks`), which is the case herdr-core cannot
+ * see on its own: pi under a dialog. A pane that stopped on an error (`blockedBy: "error"`) waits on no
+ * answer, so it gets no hint and Load older reads its history. `undefined` when the engine knows
+ * nothing to add.
  */
 export function paneReadHint(
-  engine: { current(): { readonly agents: readonly Pick<AgentView, "paneId" | "status">[] } },
+  engine: { current(): { readonly agents: readonly Pick<AgentView, "paneId" | "status" | "blockedBy">[] } },
   paneId: string,
 ): MuxReadHint | undefined {
   const pane = engine.current().agents.find((agent) => agent.paneId === paneId);
-  return pane?.status === "blocked" ? { blocked: true } : undefined;
+  return pane !== undefined && isQuestionPane(pane) ? { blocked: true } : undefined;
 }
 
 /**
@@ -10077,7 +10086,7 @@ export interface SendRouteRuntime {
   readonly name: string;
   readonly herdr: Pick<MuxAdapter, "controlTurn">;
   readonly engine: {
-    current(): { readonly agents: readonly (Pick<AgentView, "paneId" | "agent"> & { readonly status?: AgentView["status"] })[]; readonly shellPanes?: readonly Pick<AgentView, "paneId">[] };
+    current(): { readonly agents: readonly (Pick<AgentView, "paneId" | "agent"> & { readonly status?: AgentView["status"]; readonly blockedBy?: AgentView["blockedBy"] })[]; readonly shellPanes?: readonly Pick<AgentView, "paneId">[] };
     noteInput(): void;
     pokeNow(): void;
   };
@@ -10098,6 +10107,16 @@ export function sendSpoke(mode: SendRequest["mode"], outcome: string): boolean {
 
 /** The pane states in which a session waits for the person: no turn runs, and no question or dialog is open. */
 const WAITING_STATES: ReadonlySet<string> = new Set(["idle", "done"]);
+
+/**
+ * Whether the session waits for the person, by the bridge's last read of its pane: {@link WAITING_STATES},
+ * or `blocked` by an error (`blockedBy: "error"`), which also runs no turn and shows no dialog (PR 787).
+ */
+export function sessionWaited(pane: { readonly status?: AgentView["status"] | undefined; readonly blockedBy?: AgentView["blockedBy"] } | undefined): boolean {
+  const status = pane?.status;
+  if (status === undefined) return false;
+  return WAITING_STATES.has(status) || isErrorBlocked({ status, blockedBy: pane?.blockedBy });
+}
 
 /**
  * Whether one phone send that spoke ALSO started the session's next turn (M96 spec 10): the Hill then
@@ -10180,8 +10199,7 @@ export async function sendRoute(
     sendRequest = { ...plain, text: source.text, mode: source.mode };
   }
   // Whether the session waited for the person right before this send, by the bridge's own last read.
-  const status = rt.engine.current().agents.find((agent) => agent.paneId === paneId)?.status;
-  const waited = status !== undefined && WAITING_STATES.has(status);
+  const waited = sessionWaited(rt.engine.current().agents.find((agent) => agent.paneId === paneId));
   let answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
   let receipt = answer.receipt;
   // The old row goes once the new request was taken; a refusal keeps it, text and all.
