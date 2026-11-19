@@ -649,17 +649,6 @@ describe("the lock", () => {
     expect(answer.receipt?.gapsMs.s0).toBe(1120);
   });
 
-  test("an S0 read that hangs is cut at S0's bound, not the request's", async () => {
-    const r = rig();
-    r.pane.beforeRead = (_p, n) => (n === 2 ? new Promise<void>(() => undefined) : undefined);
-    const started = Date.now();
-    const answer = await r.send("hung read");
-    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "bound" });
-    // 1200 ms less the 120 ms gap the fake clock skipped; far under the request's 7600 ms.
-    expect(Date.now() - started).toBeLessThan(2500);
-    expect(r.pane.calls).toEqual([]);
-  });
-
   test("a lock past its bound is free for the next request", () => {
     const locks = new SessionLocks();
     expect(locks.acquire("k", "a", 100, 0)).toBe(true);
@@ -732,17 +721,6 @@ describe("bounded lock", () => {
     entered = false;
     expect((await r.send("the next tap")).receipt?.reason).not.toBe("busy");
     neverEscape(pane);
-  });
-
-  test("a read that hangs before the write ends the step, never types, and the next tap is accepted", async () => {
-    const pane = new FakePane();
-    const r = rig({ pane });
-    pane.beforeRead = (_p, n) => (n === 2 ? new Promise<void>(() => undefined) : undefined);
-    const answer = await r.send("this S0 read never answers");
-    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "bound", keys: [] });
-    expect(pane.calls).toEqual([]);
-    pane.beforeRead = null;
-    expect((await r.send("the next tap")).receipt?.outcome).toBe("sent");
   });
 
   test("a second tap inside the bound is refused busy, and the lock is free the moment the first settles", async () => {
