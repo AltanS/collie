@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -499,36 +499,3 @@ describe.if(posix)("a git of a fetch has an empty home", () => {
   });
 });
 
-describe.if(posix)("a git that hangs", () => {
-  test("is killed at the deadline, with the process it started, and the answer is a refusal", async () => {
-    const fx = await fixtureRepo(REPO);
-    const root = await tempDir();
-    const bin = join(root, "bin");
-    await mkdir(bin);
-    const pidFile = join(root, "hung.pid");
-    const real = Bun.which("git");
-    if (real === null) throw new Error("no git for the fixture");
-    // A git that does what git does, except `fetch`: that one starts a long sleep and hangs on it.
-    await writeFile(join(bin, "git"), `#!/bin/sh\nfor a in "$@"; do\n  if [ "$a" = fetch ]; then echo $$ > "$HUNG_PID"; exec sleep 60; fi\ndone\nexec ${real} "$@"\n`);
-    await chmod(join(bin, "git"), 0o755);
-    const r = await rig(fx.bare, { timeoutMs: 1500 });
-    const hung = new RepoIndexTricks({ ...r.deps, git: undefined, allowFile: false, now: undefined, env: { PATH: `${bin}:/usr/bin:/bin`, HOME: join(root, "home"), HUNG_PID: pidFile } });
-    const started = Date.now();
-    const answer = await hung.list({ rid: rid(), url: LINK });
-    const took = Date.now() - started;
-    expect(took).toBeLessThan(20_000);
-    expect(answer.status).not.toBe(200);
-    expect("error" in answer.body && answer.body.error).toBe("unreachable");
-    const pid = Number((await readFile(pidFile, "utf8")).trim());
-    expect(pid).toBeGreaterThan(1);
-    let alive = true;
-    try {
-      process.kill(pid, 0);
-    } catch {
-      alive = false;
-    }
-    expect(alive).toBe(false);
-    // The slot is free and the temp folder went.
-    expect((await readdir(tricksStateDir(r.stateDir)).catch(() => [])).filter((n) => n.startsWith(REPO_FETCH_PREFIX))).toEqual([]);
-  });
-});

@@ -36,6 +36,7 @@ describe("near tests", () => {
     "bridge/foo.part.test.ts",
     "bridge/foo.slow.test.ts",
     "bridge/foo.quarantine.test.ts",
+    "bridge/foo.rig.ts",
     "bridge/foobar.test.ts",
     "bridge/other.test.ts",
     "bridge/sub/foo.test.ts",
@@ -58,6 +59,10 @@ describe("near tests", () => {
     expect(nearTests(["bridge/foo.slow.test.ts"], all, BUN_NEAR_AREAS, "bun")).toEqual(["bridge/foo.part.test.ts", "bridge/foo.test.ts"]);
     expect(isExcludedFromNear("bridge/foo.quarantine.test.ts")).toBe(true);
     expect(isExcludedFromNear("bridge/foo.test.ts")).toBe(false);
+  });
+
+  test("a changed rig beside a test and its slow file picks the quick tests only", () => {
+    expect(nearTests(["bridge/foo.rig.ts"], all, BUN_NEAR_AREAS, "bun")).toEqual(["bridge/foo.part.test.ts", "bridge/foo.test.ts"]);
   });
 
   test("a file outside the bun areas, or one that does not exist, picks nothing", () => {

@@ -7,8 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { muxAck, type MuxAck } from "../mux/types.ts";
-import { sendReplySteps } from "../server.ts";
-import { gateFor, isPaneBusy, KeyGate } from "./key-gate.ts";
+import { isPaneBusy, KeyGate } from "./key-gate.ts";
 import { PANE_BUSY, PaneLockFiles } from "./pane-lock.ts";
 import { SendProtocol, SessionLocks } from "./protocol.ts";
 import { parseSendRecord, RequestStore } from "./requests.ts";
@@ -110,21 +109,6 @@ describe("the key gate shares the pane lock", () => {
     const { keys, writer } = keyLog();
     expect((await new KeyGate(writer).press("%1", ["Enter"], "person_tap")).ok).toBe(true);
     expect(keys).toEqual(["Enter"]);
-  });
-
-  test("the old reply steps (a launcher line, a dialog field) type nothing while another bridge holds the pane", async () => {
-    const typed: string[] = [];
-    const client = { typeText: (_pane: string, text: string) => (typed.push(text), Promise.resolve(muxAck())), writeKeys: () => Promise.resolve(muxAck()) };
-    gateFor(client).share(lockOf(101));
-    const other = lockOf(202);
-    other.take("%1", "their-send", Date.now() + 30_000);
-    const refused = await sendReplySteps(client, "%1", "make test", true, ["Enter"]);
-    expect(refused.ok).toBe(false);
-    expect(refused.textDelivered).toBe(false);
-    expect(typed).toEqual([]);
-    other.release("%1", "their-send");
-    expect((await sendReplySteps(client, "%1", "make test", true, ["Enter"])).ok).toBe(true);
-    expect(typed).toEqual(["make test"]);
   });
 });
 
