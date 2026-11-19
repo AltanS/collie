@@ -29,7 +29,7 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { openFiles as defaultOpenFiles, pathsOf, type OpenFiles } from "./open-files.ts";
-import { hasLock, LINUX_PROC, type ProcReader } from "./proc-locks.ts";
+import { heldCandidates, LINUX_PROC, type ProcReader } from "./proc-locks.ts";
 import { readSqlite } from "./sqlite-read.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
@@ -588,11 +588,14 @@ export function agyJournal(
       try {
         const locked = await proc.flocks(procHint.pid);
         if (locked !== null && locked.size > 0) {
-          for (const root of source.roots) {
+          // Every root's presence locks, so the btrfs rule in heldCandidates sees all of them.
+          // A root listed twice is scanned once, or its one lock would count as two.
+          const lockRoots = [...new Set(source.roots)];
+          const candidates: { path: string; dev: bigint; ino: bigint; id: string; presenceDir: string }[] = [];
+          for (const root of lockRoots) {
             const presenceDir = join(root, "presence");
             const entries = await readdir(presenceDir).catch(() => null);
             if (entries === null) continue;
-            const ids: string[] = [];
             for (const entry of entries) {
               if (!entry.endsWith(".lock")) continue;
               const id = entry.slice(0, -5);
@@ -600,9 +603,15 @@ export function agyJournal(
               const lockPath = join(presenceDir, entry);
               const st = await stat(lockPath, { bigint: true }).catch(() => null);
               if (st === null || !st.isFile()) continue;
-              if (hasLock(locked, st.dev, st.ino)) {
-                if (await containedRealpath(lockPath, presenceDir)) ids.push(id);
-              }
+              candidates.push({ path: lockPath, dev: st.dev, ino: st.ino, id, presenceDir });
+            }
+          }
+          const held = await heldCandidates(locked, candidates, proc);
+          for (const root of lockRoots) {
+            const presenceDir = join(root, "presence");
+            const ids: string[] = [];
+            for (const c of held) {
+              if (c.presenceDir === presenceDir && (await containedRealpath(c.path, presenceDir))) ids.push(c.id);
             }
             if (ids.length !== 1) continue;
             const ref = { kind: "id" as const, value: ids[0]! };

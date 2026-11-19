@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { statSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -426,11 +426,18 @@ describe("AGY read-only source and exact discovery", () => {
     await writeFile(lock, "");
     const st = statSync(lock, { bigint: true });
     // Simulate BTRFS: stat.dev is subvolume anon_dev (e.g. 0:53), but /proc/locks reports filesystem superblock (0:36)
+    // and so does the mount table for the mount that holds the root.
+    const mountPoint = realpathSync(root).replaceAll(" ", "\\040");
     const proc: ProcReader = {
       flocks: async (pid) => (pid === 42 ? new Set([`0:36:${st.ino}`]) : new Set()),
+      mounts: async () => `61 1 0:36 /home ${mountPoint} rw,relatime shared:1 - btrfs /dev/sda1 rw\n`,
     };
     const adapter = agyJournal(root, () => Promise.reject(new Error("lsof unavailable")), proc);
-    expect(await adapter.discover!("/cwd", { processes: [{ pid: 42, argv: ["agy"] }] })).toEqual({ kind: "id", value: ID });
+    const found = await adapter.discover!("/cwd", { processes: [{ pid: 42, argv: ["agy"] }] });
+    // The device split is only bridged for a file on an anonymous device (major 0, as btrfs and tmpfs
+    // report). A temp folder on a block device (CI's ext4) must find nothing instead.
+    const anonymous = ((st.dev >> 8n) & 0xfffn) === 0n && st.dev >> 32n === 0n;
+    expect(found).toEqual(anonymous ? { kind: "id", value: ID } : null);
   });
 });
 
