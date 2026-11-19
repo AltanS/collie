@@ -2,7 +2,8 @@
 // wake a CI job, and that the lists name files that exist. A list that drifts from the tree fails here.
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { changedPaths, decide } from "./ci-changes.ts";
@@ -135,10 +136,25 @@ describe("changedPaths", () => {
     expect(changedPaths("deadbeef".repeat(5), head)).toBeNull();
   });
 
-  test("two real commits give a list of paths", () => {
-    const paths = changedPaths("HEAD~1", head);
-    expect(paths).not.toBeNull();
-    expect(Array.isArray(paths)).toBe(true);
+  // In a repo of its own: CI checks out one commit, so this repo has no HEAD~1 there.
+  test("two real commits give the paths the second one changed", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ci-changes-"));
+    try {
+      const git = (...args: string[]): void => {
+        const done = Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", ...args], { cwd: repo });
+        if (done.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${done.stderr.toString()}`);
+      };
+      git("init", "-q");
+      writeFileSync(join(repo, "a.txt"), "a\n");
+      git("add", "a.txt");
+      git("commit", "-q", "-m", "one");
+      writeFileSync(join(repo, "b.txt"), "b\n");
+      git("add", "b.txt");
+      git("commit", "-q", "-m", "two");
+      expect(changedPaths("HEAD~1", "HEAD", repo)).toEqual(["b.txt"]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 });
 

@@ -26,10 +26,10 @@ const OUTPUTS: readonly (readonly [CiJob, string])[] = [
 ];
 
 /** The changed paths, or null when they cannot be worked out. */
-export function changedPaths(base: string, head: string): string[] | null {
+export function changedPaths(base: string, head: string, cwd: string = ROOT): string[] | null {
   if (base === "" || head === "" || /^0+$/.test(base)) return null;
   // Three dots: what the head holds that the merge base does not, which is what a PR adds.
-  const diff = Bun.spawnSync(["git", "diff", "--name-only", `${base}...${head}`], { cwd: ROOT });
+  const diff = Bun.spawnSync(["git", "diff", "--name-only", `${base}...${head}`], { cwd });
   if (diff.exitCode !== 0) return null;
   return diff.stdout.toString().split("\n").filter((line) => line !== "");
 }
