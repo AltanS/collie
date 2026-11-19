@@ -1555,10 +1555,11 @@ That works on Linux and macOS, not on Windows. When two Grok panes sit in one fo
 the list does not name yet keeps its terminal view rather than show the other pane's chat.
 
 Antigravity CLI (`agy`, which Herdr may also call `antigravity`) needs no Herdr integration for Chat
-either. Collie asks `lsof` which `presence/<uuid>.lock` file the pane's foreground agy process holds,
-and reads that conversation from `conversations/<uuid>.db` under `~/.gemini/antigravity-cli`,
+either. Collie asks which `presence/<uuid>.lock` file the pane's foreground agy process holds, and
+reads that conversation from `conversations/<uuid>.db` under `~/.gemini/antigravity-cli`,
 read-only, or from its `transcript.jsonl` when the database is empty. It never guesses the newest
-conversation in a folder. This needs `lsof` on the machine, so it works on Linux and macOS, not on
+conversation in a folder. On Linux, Collie reads `/proc/locks` without needing `lsof` or extra privileges;
+on macOS, it asks `lsof` which files the process holds open. This works on Linux and macOS, not on
 Windows; without it an agy pane keeps its terminal view. Set `agy_root`, or `COLLIE_AGY_ROOT`, when
 Antigravity keeps its home somewhere else.
 
