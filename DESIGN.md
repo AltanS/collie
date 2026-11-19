@@ -678,6 +678,16 @@ fails loudly.
    that makes its `font-mono` descendants inherit, rather than by re-pointing the token. The
    full note is in `hooks/use-display-prefs.ts`.
 
+4. **Preflight gives a button the default cursor, not the hand.** Tailwind v4 dropped
+   `button { cursor: pointer }`, so on a desktop nothing clickable showed the pointer. One rule in
+   the base layer of `web/src/index.css` (a `:where()` list, so it adds no specificity) gives
+   `cursor: pointer` to enabled buttons, `a[href]`, `summary`, `select`, a control's `label`, the
+   box-like inputs and the ARIA roles `button`, `link`, `tab`, `switch`, `checkbox`, `radio`,
+   `menuitem`, `option`. A disabled control and a text field keep their own. So a new control
+   needs no `cursor-pointer`, a custom clickable that is not one of those elements needs the
+   role, and a deliberate cursor (`cursor-grab`, `cursor-default`) is a class that wins. The
+   rule is a cursor only, never a hover style. `e2e/cursor-pointer.spec.ts` reads it.
+
 ---
 
 ## 8. Not negotiable

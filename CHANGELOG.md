@@ -47,6 +47,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **The sign-in card of an `awsAuthRefresh` login lifts again on Claude Code 2.1.328.** Claude Code now titles that box "Sign-in" instead of "Authentication", so Chat showed no card and the sign-in link was only in the terminal view. Collie reads both titles and shows the one the box prints. The card also stays while the turn spinner under the box shows its `✳` frame. Thanks @cooldaemon (#816).
 - **A trick's approval card no longer blocks scrolling in Chat.** A swipe that started on the Hold button did nothing, so a card taller than the screen could only be scrolled from above it. A vertical swipe on the button now scrolls the conversation, and holding the button still works.
 - **A floating picture that flies across now leaves past the far edge, and moves a little slower.** It used to fade out before it got there. It now keeps going at one even speed until it is gone, and a fly-across, an arc and a pop each take about a third longer.
 - **A floating picture that plays once is no longer lost on a trick's first run.** When a trick printed its first floating part and a once picture together, the once picture arrived before the phone had measured the free area and was dropped. It is now kept for up to two seconds and plays as soon as the area is known.
@@ -65,6 +66,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A picture a trick replaces under the same name shows its new version.** The phone kept drawing the old file for that address. The bridge now gives each picture a short version of its bytes, and the phone asks again when it changes.
 - **A picture you replace in a trick's folder shows on the next scan.** Collie served a copy of the folder made at your yes and never looked at its pictures again. A changed picture in `media/` now reaches the copy with no new yes. A file the trick wrote itself is never deleted.
 - **A crew member with two Herdr sessions shows the right spaces and tabs for each.** When you picked a member's second Herdr session, the phone listed its panes under the first Herdr session's spaces and tabs, so you could not browse it. The lead now asks the member for the spaces and tabs of the Herdr session you picked, and only while you look at it. Thanks @ZionYin (#785).
+- **Buttons and links show the hand cursor on a desktop.** Moving the mouse over a button, link, switch, tab, row or menu item now shows the pointer cursor. Disabled controls and text fields keep their own. A touch screen is unchanged.
 
 ### Docs
 

@@ -1,10 +1,10 @@
 // The AUTHENTICATION BOX — the rounded box Claude Code draws over its input box while the
-// `awsAuthRefresh` command runs. It holds its title alone until the command prints, and lifts then as a
+// `awsAuthRefresh` command runs (titled "Sign-in" from 2.1.328). It holds its title alone until the command prints, and lifts then as a
 // waiting card; once filled it holds that command's output (a login URL and a device code) or, when
 // another process already runs it, a one-sentence lock message:
 //
 //     ╭────────────────────────────╮
-//     │ Authentication             │      ← title row, exactly "Authentication"
+//     │ Authentication             │      ← title row, exactly "Authentication", or "Sign-in" from 2.1.328
 //     │                            │
 //     │ Browser will not be …      │      ← content rows, one padding cell inside each border
 //     ╰────────────────────────────╯
@@ -44,7 +44,9 @@ import { joinBrokenUrls } from "../box-url-join";
 import { inputBoxTail } from "./chrome";
 import { CLAUDE_IDLE, isBlank } from "./markers";
 
-const TITLE = "Authentication";
+// The title row, exactly. Claude Code 2.1.328 renamed the box from "Authentication" to "Sign-in" and changed
+// nothing else about it (issue 816), so both name the same box. The card shows the title the box prints.
+const TITLES: ReadonlySet<string> = new Set(["Authentication", "Sign-in"]);
 /** The border and its one padding cell, on each side of a row. */
 const EDGE_CELLS = 2;
 
@@ -69,8 +71,9 @@ function runsOf(content: string): BoxTextRun[] {
 
 // A message sent while the box is up starts a turn, and Claude Code (2.1.310) draws that turn's spinner
 // in the gap under the box while it waits for the login, which is how a prompt that triggers the refresh
-// meets the box. The row belongs to the turn, not to a dialog, so the card stays keyless.
-const TURN_SPINNER_ROW = /^[·*✢✶✻✽] [^\s…]+…(?: · tool use)?(?: ?\(.*)?$/;
+// meets the box. The row belongs to the turn, not to a dialog, so the card stays keyless. A macOS
+// capture of 2.1.328 draws the frame `✳` where the earlier captures draw `*` (issue 816).
+const TURN_SPINNER_ROW = /^[·*✢✳✶✻✽] [^\s…]+…(?: · tool use)?(?: ?\(.*)?$/;
 
 // When the credentials expire mid-session, the turn's API call fails first, and Claude Code (2.1.318)
 // draws its retry row in the spinner's place while the refresh runs. Its lead is "API error" on the
@@ -124,11 +127,12 @@ export function detectAuthBox(lines: StyledLine[]): AuthBoxRegion | null {
   const titleRow = box.top + 1;
   if (titleRow === box.bottom) return null;
   // The title row is read up to the right border, so a title that spills into the padding cell is not the title.
-  if (texts[titleRow]!.trimEnd().slice(EDGE_CELLS, box.width - 1).trim() !== TITLE) return null;
+  const title = texts[titleRow]!.trimEnd().slice(EDGE_CELLS, box.width - 1).trim();
+  if (!TITLES.has(title)) return null;
   const contentWidth = box.width - 2 * EDGE_CELLS;
   const rows = texts.slice(titleRow + 1, box.bottom).map((text) => text.trimEnd().slice(EDGE_CELLS, EDGE_CELLS + contentWidth));
   const model: BoxTextModel = rows.every(isBlank)
-    ? { title: TITLE, phase: "waiting", text: [] }
-    : { title: TITLE, phase: "filled", text: joinBrokenUrls(rows, contentWidth).map(runsOf) };
+    ? { title, phase: "waiting", text: [] }
+    : { title, phase: "filled", text: joinBrokenUrls(rows, contentWidth).map(runsOf) };
   return { startLine: box.top, endLine: box.bottom, model };
 }
