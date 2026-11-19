@@ -67,6 +67,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A picture you replace in a trick's folder shows on the next scan.** Collie served a copy of the folder made at your yes and never looked at its pictures again. A changed picture in `media/` now reaches the copy with no new yes. A file the trick wrote itself is never deleted.
 - **A crew member with two Herdr sessions shows the right spaces and tabs for each.** When you picked a member's second Herdr session, the phone listed its panes under the first Herdr session's spaces and tabs, so you could not browse it. The lead now asks the member for the spaces and tabs of the Herdr session you picked, and only while you look at it. Thanks @ZionYin (#785).
 - **Buttons and links show the hand cursor on a desktop.** Moving the mouse over a button, link, switch, tab, row or menu item now shows the pointer cursor. Disabled controls and text fields keep their own. A touch screen is unchanged.
+- **The dashboard filter and the Changes screens say "Space", the app's word.** The filter read "All workspaces", and the Changes list and back button, the missing-folder notice and the New tab warning still said "workspace". They now say Space, in every language the app has a word for it.
 
 ### Docs
 

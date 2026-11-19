@@ -92,7 +92,7 @@ function renderHome(data: HomeData, initialPath?: string) {
 /** Wait for the herd list to be on screen. The workspace filter (components/agent-list.tsx) is the one
  *  control every render with at least one pane produces — there is no "Needs you" heading to wait
  *  on any more, since a pane no longer moves to a section of its own. */
-const settled = () => screen.findByRole("button", { name: /^Workspace / });
+const settled = () => screen.findByRole("button", { name: /^Space / });
 
 /** The `<section>` a workspace heading owns, scoped away from the workspace filter's own rows,
  *  which carry the same workspace name a heading does (agent-list.tsx). */
@@ -463,14 +463,14 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     renderHome(data);
     await settled();
     // The Dashboard has all three, so the absence below is the tab's doing and not the fixture's.
-    expect(screen.getByRole("button", { name: /^Workspace / })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Space / })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Pane order" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Pinned" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /need you/i })).toBeInTheDocument();
 
     await userEvent.click(tab(/^Crew$/));
     expect(screen.getByTestId("crew-tab")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Workspace / })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Space / })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Pane order" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Pinned" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /need you/i })).not.toBeInTheDocument();
@@ -479,7 +479,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
 
     // Back on the Dashboard the chrome is as it was left.
     await userEvent.click(tab(/^Dashboard/));
-    expect(screen.getByRole("button", { name: /^Workspace / })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Space / })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Pinned" })).toBeInTheDocument();
   });
 
@@ -575,8 +575,8 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(screen.queryByRole("heading", { name: "collie" })).not.toBeInTheDocument();
     // The filter still offers every workspace: the switch removes rows, never places.
     await userEvent.click(await settled());
-    expect(within(screen.getByRole("dialog", { name: "Workspaces" })).getByRole("checkbox", { name: /^collie/ })).toBeInTheDocument();
-    await userEvent.click(within(screen.getByRole("dialog", { name: "Workspaces" })).getByRole("button", { name: "Close" }));
+    expect(within(screen.getByRole("dialog", { name: "Spaces" })).getByRole("checkbox", { name: /^collie/ })).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole("dialog", { name: "Spaces" })).getByRole("button", { name: "Close" }));
     expect(stored().needsYouOnly).toBe(true);
     // A new mount reads it back.
     cleanup();
@@ -611,10 +611,10 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
   it("the workspace filter shows chosen workspaces alone, and the choice is remembered", async () => {
     renderHome(solo());
     await userEvent.click(await settled());
-    const sheet = () => screen.getByRole("dialog", { name: "Workspaces" });
-    expect(within(sheet()).getByRole("checkbox", { name: "All workspaces" })).toBeChecked();
+    const sheet = () => screen.getByRole("dialog", { name: "Spaces" });
+    expect(within(sheet()).getByRole("checkbox", { name: "All Spaces" })).toBeChecked();
     expect(within(sheet()).getAllByRole("checkbox").map((o) => o.textContent)).toEqual([
-      "All workspaces",
+      "All Spaces",
       expect.stringMatching(/^webapp/),
       expect.stringMatching(/^collie/),
     ]);
@@ -628,13 +628,13 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(screen.getByRole("heading", { name: "collie" })).toBeInTheDocument();
     expect(stored().isolatedSpaces).toHaveLength(2);
     await userEvent.click(within(sheet()).getByRole("checkbox", { name: /^webapp/ }));
-    // A new mount reads it back, and "All workspaces" clears it.
+    // A new mount reads it back, and "All Spaces" clears it.
     cleanup();
     renderHome(solo());
     await userEvent.click(await settled());
     expect(within(sheet()).getByRole("checkbox", { name: /^collie/ })).toBeChecked();
     expect(screen.queryByRole("heading", { name: "webapp" })).not.toBeInTheDocument();
-    await userEvent.click(within(sheet()).getByRole("checkbox", { name: "All workspaces" }));
+    await userEvent.click(within(sheet()).getByRole("checkbox", { name: "All Spaces" }));
     expect(screen.getByRole("heading", { name: "webapp" })).toBeInTheDocument();
     expect(stored().isolatedSpaces).toEqual([]);
   });
@@ -691,11 +691,11 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     });
     renderHome(data);
     await userEvent.click(await settled());
-    const sheet = () => screen.getByRole("dialog", { name: "Workspaces" });
+    const sheet = () => screen.getByRole("dialog", { name: "Spaces" });
     // Only the root workspace and the unrelated workspace are listed in the filter sheet;
     // the root's state word reflects its blocked worktree pane.
     expect(within(sheet()).getAllByRole("checkbox").map((o) => o.textContent)).toEqual([
-      "All workspaces",
+      "All Spaces",
       "membero · needs you",
       "collie",
     ]);
@@ -712,7 +712,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     // On the Files tab, both the root checkout and its linked worktree keep their own change rows.
     await userEvent.click(within(sheet()).getByRole("button", { name: "Close" }));
     await userEvent.click(tab(/^Files$/));
-    const changesList = await screen.findByRole("list", { name: "Changes by workspace" });
+    const changesList = await screen.findByRole("list", { name: "Changes by Space" });
     expect(within(changesList).getAllByRole("button").map((r) => r.textContent)).toEqual([
       expect.stringMatching(/^membero/),
       expect.stringMatching(/^lucky-meadow-d1ec/),
@@ -884,9 +884,9 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     const data = await rootLoader({ request: new Request("http://localhost/") });
     renderHome(data);
     await userEvent.click(await settled());
-    const sheet = () => screen.getByRole("dialog", { name: "Workspaces" });
+    const sheet = () => screen.getByRole("dialog", { name: "Spaces" });
     expect(within(sheet()).getAllByRole("checkbox").map((o) => o.textContent)).toEqual([
-      "All workspaces",
+      "All Spaces",
       "collie",
       "audiolink · working",
     ]);
@@ -897,7 +897,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     // Learn the key the collie workspace is remembered by from a first visit.
     renderHome(solo());
     await userEvent.click(await settled());
-    await userEvent.click(within(screen.getByRole("dialog", { name: "Workspaces" })).getByRole("checkbox", { name: /^collie/ }));
+    await userEvent.click(within(screen.getByRole("dialog", { name: "Spaces" })).getByRole("checkbox", { name: /^collie/ }));
     const key: unknown = stored().isolatedSpaces[0];
     expect(key).toEqual(expect.stringContaining("collie"));
     cleanup();
@@ -907,7 +907,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     await settled();
     expect(screen.queryByRole("heading", { name: "webapp" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "collie" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Workspace / })).toHaveAccessibleName("Workspace collie");
+    expect(screen.getByRole("button", { name: /^Space / })).toHaveAccessibleName("Space collie");
   });
 
   it("the order select changes the list to one ranked list, and the choice is remembered", async () => {
@@ -973,7 +973,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     const router = renderHome(solo());
     await settled();
     await userEvent.click(tab(/^Files$/));
-    const list = await screen.findByRole("list", { name: "Changes by workspace" });
+    const list = await screen.findByRole("list", { name: "Changes by Space" });
     // fixtureChanges: 3 files in webapp's root repo and 2 in packages/api, +10 −2 over all five.
     await within(list).findByText("5 files");
     await within(list).findByText("No folder");
