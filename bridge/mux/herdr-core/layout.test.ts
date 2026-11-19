@@ -121,7 +121,7 @@ describe("the herdr-core snapshot mapping", () => {
       ["t1", "claude", "blocked", "claude"],
       ["t2", "claude", "unknown", "claude"],
       ["t3", "shell", "unknown", "bash"],
-      ["t4", "codex", "unknown", "bash"],
+      ["t4", "codex", "blocked", "bash"],
       ["t5", "omp", "unknown", "omp"],
       ["t6", "shell", "unknown", "zsh"],
       ["t7", "codex", "idle", "omp"],
@@ -159,7 +159,7 @@ describe("status and app words", () => {
     ["working", "working"],
     ["blocked", "blocked"],
     ["done", "done"],
-    ["error", "unknown"],
+    ["error", "blocked"],
     ["", "unknown"],
   ])("%s reads as %s", (word, collie) => {
     expect(agentStatus(word)).toBe(collie);

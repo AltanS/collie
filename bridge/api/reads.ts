@@ -64,7 +64,7 @@ import type { BusEvent } from "../events/bus.ts";
 import { stripAnsi } from "../journal/text.ts";
 import type { JsonObject } from "../json.ts";
 import { personName } from "../pane-name.ts";
-import type { AccountRow, AgentStatus, AgentView, CrewMemberStatus, MachineRow } from "../types.ts";
+import { isQuestionPane, type AccountRow, type AgentStatus, type AgentView, type CrewMemberStatus, type MachineRow } from "../types.ts";
 import type { HillDecision } from "../../web/src/lib/hill/wire.ts";
 import { idOf, resolveSession, type PaneSighting, type SessionView } from "./ids.ts";
 import { apiListedPane } from "./listed.ts";
@@ -278,8 +278,9 @@ export function buildReads(deps: ReadsDeps): ReadHandlers {
       answer: {
         session: found.id,
         state: source.pane.status,
-        // The ask observer is the move into `blocked` (events/sources.ts): a pane that stands there has an ask open.
-        ask: source.pane.status === "blocked",
+        // The ask observer is the move into `blocked` (events/sources.ts): a pane that stands there has an ask
+        // open, unless it stopped on an error (`blockedBy: "error"`), which asks nothing.
+        ask: isQuestionPane(source.pane),
         lastTurnEnd: lastTurnEnd(found.id),
         draft: deps.draftState(found.muxSession, found.paneId),
       },

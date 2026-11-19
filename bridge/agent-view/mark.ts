@@ -22,6 +22,8 @@ export interface MarkablePane {
   readonly agentSession?: { readonly kind: string; readonly value: string };
   /** The pane's status as the snapshot holds it: `blocked` is a question, a dialog or an answer box on screen. */
   readonly status?: string;
+  /** `"error"` on a `blocked` pane that stopped on a failure and asks nothing (AgentView.blockedBy). */
+  readonly blockedBy?: string;
 }
 
 /**
@@ -50,10 +52,14 @@ export function viewWorking(opts: Parameters<typeof viewPaneOf>[0]): (session: s
 /**
  * Whether a question, a dialog or an answer box shows in the pane a walky address names (status
  * `blocked`). A send from the view is then refused, or typed text goes plain as the person's answer.
+ * A pane that stopped on an error (`blockedBy: "error"`) shows none, so it is no question here.
  */
 export function viewQuestion(opts: Parameters<typeof viewPaneOf>[0]): (session: string) => boolean {
   const paneOf = viewPaneOf(opts);
-  return (session) => paneOf(session)?.status === "blocked";
+  return (session) => {
+    const pane = paneOf(session);
+    return pane?.status === "blocked" && pane.blockedBy !== "error";
+  };
 }
 
 /**

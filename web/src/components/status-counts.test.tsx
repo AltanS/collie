@@ -29,6 +29,11 @@ describe("countStates", () => {
     });
   });
 
+  it("counts a pane that stopped on an error under blocked until seen, then with the idle ones (PR 787)", () => {
+    expect(countStates([pane("blocked", { blockedBy: "error", lastActiveAt: 200, lastSeenAt: 100 })])).toEqual({ blocked: 1, unseen: 0, working: 0, idle: 0 });
+    expect(countStates([pane("blocked", { blockedBy: "error", lastActiveAt: 100, lastSeenAt: 200 })])).toEqual({ blocked: 0, unseen: 0, working: 0, idle: 1 });
+  });
+
   it("counts a settled pane as unseen, over its own done/idle status, when it finished after you last looked", () => {
     const doneUnseen = pane("done", { lastActiveAt: 200, lastSeenAt: 100 });
     const idleUnseen = pane("idle", { lastActiveAt: 200, lastSeenAt: 100 });

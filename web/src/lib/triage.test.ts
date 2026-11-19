@@ -5,6 +5,8 @@ import {
   countBlocked,
   flipDir,
   hasReady,
+  isErrorBlocked,
+  isQuestion,
   isUnseen,
   shownStatus,
   triage,
@@ -60,6 +62,39 @@ describe("shownStatus", () => {
 
   it("leaves a shell pane as it is", () => {
     expect(shownStatus({ ...agent("p", "done", { active: 100, seen: 200 }), kind: "shell" })).toBe("done");
+  });
+});
+
+describe("a pane that stopped on an error (blockedBy, PR 787)", () => {
+  const errored = (ts: { active?: number; seen?: number }): AgentView => ({ ...agent("e", "blocked", ts), blockedBy: "error" });
+
+  it("needs you until you have seen it: the mark, the needs bucket and the count", () => {
+    const fresh = errored({ active: 200, seen: 100 });
+    expect(shownStatus(fresh)).toBe("blocked");
+    expect(sectionOf(triage([fresh]), "e")).toBe("needs");
+    expect(countBlocked([fresh])).toBe(1);
+    expect(countAlerting([fresh], { blocked: true, done: false })).toBe(1);
+    expect(worstTriage([fresh])).toBe("needs");
+  });
+
+  it("rests as idle once seen, as a finished pane does, and leaves every needs-you count", () => {
+    const seen = errored({ active: 100, seen: 200 });
+    expect(shownStatus(seen)).toBe("idle");
+    expect(sectionOf(triage([seen]), "e")).toBe("recent");
+    expect(countBlocked([seen])).toBe(0);
+    expect(countAlerting([seen], { blocked: true, done: true })).toBe(0);
+    expect(worstTriage([seen])).toBe("recent");
+  });
+
+  it("is no question; a plain blocked pane, also from an older machine, is one and never steps down", () => {
+    const fresh = errored({ active: 200, seen: 100 });
+    expect(isErrorBlocked(fresh)).toBe(true);
+    expect(isQuestion(fresh)).toBe(false);
+    const asking = agent("q", "blocked", { active: 100, seen: 200 });
+    expect(isQuestion(asking)).toBe(true);
+    expect(isErrorBlocked(asking)).toBe(false);
+    expect(shownStatus(asking)).toBe("blocked");
+    expect(countBlocked([asking])).toBe(1);
   });
 });
 

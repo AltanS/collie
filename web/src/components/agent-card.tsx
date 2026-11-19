@@ -171,7 +171,8 @@ export function AgentCard({
       }),
   );
   const isShell = agent.kind === "shell";
-  const blocked = agent.status === "blocked";
+  // A pane that stopped on an error loses the tint once seen, as its dot does (shownStatus).
+  const blocked = shownStatus(agent) === "blocked";
   const inTab = scope === "tab";
   // ── THE WORKSPACE-GROUPED ROW CARRIES ITS TAB, AT ONE HEIGHT ─────────────────
   // Under a WORKSPACE heading (lib/pane-groups.ts) line 2 has one fact left worth saying: the tab.

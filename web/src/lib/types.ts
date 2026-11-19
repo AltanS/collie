@@ -38,6 +38,13 @@ export interface AgentView {
   tabId: string;
   agent: string;
   status: AgentStatus;
+  /**
+   * `"error"` on a `blocked` pane whose program reported that its turn stopped on a failure (bridge
+   * `AgentView.blockedBy`, herdr-core only): it needs a look, not an answer. Absent on every other pane
+   * and from an older machine, whose `blocked` is a question. Read through `isErrorBlocked` and
+   * `isQuestion` (lib/triage.ts).
+   */
+  blockedBy?: "error";
   cwd: string;
   focused: boolean;
   /**

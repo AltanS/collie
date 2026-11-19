@@ -5931,6 +5931,21 @@ describe("the state engine's blocked hint reaches the pane's recent reads (herdr
   });
 });
 
+describe("a pane that stopped on an error is no question (PR 787)", () => {
+  test("it gets no blocked hint, so Load older reads its history; a plain blocked and a lifted ask still get one", () => {
+    const engine = {
+      current: () => ({
+        agents: [
+          { paneId: "w1:p1", status: "blocked" as const, blockedBy: "error" as const },
+          { paneId: "w1:p2", status: "blocked" as const },
+        ],
+      }),
+    };
+    expect(paneReadHint(engine, "w1:p1")).toBeUndefined();
+    expect(paneReadHint(engine, "w1:p2")).toEqual({ blocked: true });
+  });
+});
+
 describe("the read's purpose: the mirror's poll, or Load older (M79 spec 01)", () => {
   test("`?purpose=older` reaches the adapter as purpose older with its note on the body; any other read carries no purpose and no note", async () => {
     const requests: MuxGridRequest[] = [];
