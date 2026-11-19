@@ -487,6 +487,7 @@ describe("a turn spinner row between the box and the input box leaves the card l
     "✢ Whirlpooling… ",
     "✶ Garnishing… ",
     "✻ Moonwalking… (49s)",
+    "✳ Enchanting… (22s)",
     "✶ Hashing… · tool use (4s · thinking with high effort)",
     "✽ Brewing… (1m 27s)",
     "* Cooking… (4s · ↓ 304 tokens)",
@@ -552,5 +553,84 @@ describe("the API retry row Claude prints while it refreshes expired credentials
     ["a retry row with no countdown", ["✻ API error · Retrying in · attempt 1/2"]],
   ])("lifts no card with %s under the box's bottom edge", (_name, under) => {
     expect(liftsNoCard(filledWith(under))).toBe(true);
+  });
+});
+
+// Claude Code 2.1.328 titles the box "Sign-in" (issue 816). The two screens are the report's captures
+// (detached tmux, macOS), ANSI stripped, rebuilt row for row: no pane fixture until an ANSI capture exists.
+describe("the box Claude Code 2.1.328 titles Sign-in lifts as the same card", () => {
+  const CODE_URL = "https://example.awsapps.com/start/#/device?user_code=ABCD-EFGH";
+  const screenOf = (rows: readonly string[]): StyledLine[] => rowsOf(rows.join("\n"));
+  const boxOf = (width: number, rows: readonly string[]): string[] => [
+    `╭${"─".repeat(width - 2)}╮`,
+    ...rows.map((row) => `│ ${row.padEnd(width - 4)} │`),
+    `╰${"─".repeat(width - 2)}╯`,
+  ];
+  const W120_ROWS = [
+    "Browser will not be automatically opened. Please visit the following URL:",
+    `${CODE_URL} Then enter the code: ABCD-EFGH`,
+  ];
+  const W120 = [
+    ...boxOf(W120_ROWS[1]!.length + 4, ["Sign-in", "", ...W120_ROWS]),
+    "✳ Enchanting… (22s)",
+    "─".repeat(120),
+    "❯  ",
+    "─".repeat(120),
+    "  Context: --% │ 💰 $0.00",
+    "  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle)",
+  ];
+  const W52_ROWS = [
+    "Browser will not be automatically opened. Please",
+    "visit the following URL:",
+    "https://example.awsapps.com/start/#/device?user_",
+    "code=ABCD-EFGH Then enter the code: ABCD-EFGH",
+  ];
+  const W52 = [...boxOf(52, ["Sign-in", "", ...W52_ROWS]), "✻ Incubating… ", "─".repeat(52), "❯  ", "─".repeat(52)];
+  const linksOf = (card: { text: readonly (readonly BoxTextRun[])[] }): string[] =>
+    card.text.flatMap((row) => row.filter((run) => run.kind === "link").map((run) => run.text));
+
+  it("draws the report's 120-column box 97 cells wide, as captured", () => {
+    expect(W120[0]!.length).toBe(97);
+  });
+
+  it("lifts the 120-column capture, the `✳` spinner frame with its timer under the box, headed Sign-in", () => {
+    expect(kinds(claudeBuildBlocks(screenOf(W120)))).toEqual(["box-text"]);
+    const card = cardOf(screenOf(W120));
+    expect(card.title).toBe("Sign-in");
+    expect(card.phase).toBe("filled");
+    expect(card.text.map(textOf)).toEqual(["", ...W120_ROWS].map((row) => row.padEnd(W120_ROWS[1]!.length)));
+    expect(linksOf(card)).toEqual([CODE_URL]);
+  });
+
+  it("lifts the 52-column capture and joins the address the box broke at its right edge", () => {
+    const card = cardOf(screenOf(W52));
+    expect(card.title).toBe("Sign-in");
+    expect(card.phase).toBe("filled");
+    expect(linksOf(card)).toEqual([CODE_URL]);
+    expect(card.text.map(textOf).join("\n")).not.toMatch(/Incubating/u);
+  });
+
+  it("lifts a title-only Sign-in box as a waiting card", () => {
+    const waiting = [...boxOf(11, ["Sign-in"]), ...W52.slice(-3)];
+    expect(cardOf(screenOf(waiting))).toEqual({ title: "Sign-in", phase: "waiting", text: [] });
+  });
+
+  it("still heads the older box with its own title", () => {
+    expect(cardOf(lines(FILLED_W61)).title).toBe("Authentication");
+  });
+
+  it.each(["Sign in", "sign-in", "SIGN-IN", "Signin", "Sign-in needed", "Sign-in:", "Re-Sign-in"])(
+    "lifts no card from a box whose title row reads %j",
+    (title) => {
+      const retitled = [...boxOf(52, [title, "", ...W52_ROWS]), ...W52.slice(-4)];
+      expect(kinds(claudeBuildBlocks(screenOf(retitled)))).not.toContain("box-text");
+    },
+  );
+
+  it("owns no keyboard and names no dialog, like the older box", () => {
+    const blocks = claudeBuildBlocks(screenOf(W120));
+    expect(blocks.some(blockOwnsKeyboard)).toBe(false);
+    expect(dialogNounOf(blocks)).toBeNull();
+    expect(claudeAdapter.composerReady?.(screenOf(W120))).toBe(true);
   });
 });
