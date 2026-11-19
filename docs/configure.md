@@ -966,6 +966,8 @@ every repository's file off on a machine, set this in the instance's `.env` and 
 COLLIE_PROJECT_FILES=0
 ```
 
+The config file takes the same switch as `project_files = false` under `[access]`.
+
 ## Your own cache rules
 
 Use `cache-rules.toml` to change a prompt-cache lifetime that your provider changed.
