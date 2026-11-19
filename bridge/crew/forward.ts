@@ -1,5 +1,4 @@
 import { apiError } from "../error-codes.ts";
-import { PROJECT_PICTURE_BYTES_MAX } from "../../web/src/lib/project-picture-wire.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { MASK_VERSION } from "../redact.ts";
 import { REASON_HEADER, REFUSED_BY_HEADER, isRefusalReason, withRefusal, type RefusalReason } from "../refusal.ts";
@@ -18,8 +17,8 @@ import {
   WRITE_BUDGET_MS,
 } from "./peer-client.ts";
 import { HOST_PARAM, type PeerState } from "./registry.ts";
-import { BodyRefused, CREW_BYTES_MAX, CREW_FILES_MAX, CREW_JSON_MAX, CREW_LOG_MAX, wholeDeadlineMs } from "./guarded-body.ts";
-import type { CappedRequestInit } from "./transport.ts";
+import { BodyRefused, wholeDeadlineMs } from "./guarded-body.ts";
+import type { CrewRequestInit } from "./transport.ts";
 
 // The LEAD side of a per-pane request: `?host=laptop` came in, the pane lives on the laptop, so the
 // request is forwarded over the crew link and the laptop's answer is handed back (CREW_PROTOCOL.md
@@ -382,43 +381,13 @@ const PANE_SCREEN_ROUTE = /^pane\/[^/]+$/;
 const CREATE_ROUTES: ReadonlySet<string> = new Set(["launch", "tab", "workspace"]);
 
 /**
- * ── EVERY FORWARDED ROUTE'S RULE FOR THE MEMBER'S ANSWER (review rounds 7 and 9) ──────────────────────
- * Two facts per route, in one table so the two cannot drift apart and a reviewer can check the list:
- *
- * - the CAP, the most bytes the lead takes from a member for one answer, as sent and, for gzip, inflated
- *   (guarded-body.ts holds the numbers and their reasons);
- * - the CLASS: `stream` passes through to the phone byte by byte and keeps the idle limit only; `whole`
- *   is an answer the lead or the phone reads in full before it is of any use (the lead masks it, merges
- *   it, or reads it for a caller, or it is JSON the phone parses whole), and it also ends by a total
- *   deadline (`WHOLE_ANSWER_DEADLINE_MS` in guarded-body.ts).
- *
- * | route                                                        | cap                         | class  |
- * | ------------------------------------------------------------ | --------------------------- | ------ |
- * | `project-picture/<v>`                                        | 256 KB (the picture limit)  | stream (its own 10 s total limit) |
- * | `blobs/<hash>`, `pane/<id>/files/image`, `workspace/<id>/files/image` | 32 MB, raw bytes   | stream |
- * | `pane/<id>/history`, `pane/<id>/chat`, `durable/conversation/<id>/items`, `sent`, `pane/<id>/pins` | 32 MB, log answers | whole |
- * | `pane/<id>/changes`, `pane/<id>/files`, `workspace/<id>/changes`, `workspace/<id>/files` | 8 MB | whole |
- * | every other route: the screen read, lists, writes' answers   | 2 MB, JSON                  | whole  |
- *
- * A text answer the lead masks (§9.1) is parsed on the lead; its parse is bounded again by the mask's own
- * count of values ({@link MASK_VALUES_MAX}).
+ * Whether a forwarded route's answer STREAMS on to the phone: a blob, a file's picture, a project picture.
+ * Such a download keeps the idle limit only, as a big honest file on a slow link must pass. Every other
+ * forwarded answer is read in full before it is of any use (the lead masks or merges it, or the phone
+ * parses it whole), and ends by a total deadline (guarded-body.ts, `wholeDeadlineMs`).
  */
-export interface BodyRule {
-  readonly cap: number;
-  readonly whole: boolean;
-}
-
-export function bodyRuleOf(route: string): BodyRule {
-  if (route.startsWith("project-picture/")) return { cap: PROJECT_PICTURE_BYTES_MAX, whole: false };
-  if (route.startsWith("blobs/") || /^(?:pane|workspace)\/[^/]+\/files\/image$/.test(route)) return { cap: CREW_BYTES_MAX, whole: false };
-  if (/^pane\/[^/]+\/(?:history|chat|pins)$/.test(route) || /^durable\/conversation\/[^/]+\/items$/.test(route) || route === "sent") return { cap: CREW_LOG_MAX, whole: true };
-  if (/^(?:pane|workspace)\/[^/]+\/(?:changes|files)$/.test(route)) return { cap: CREW_FILES_MAX, whole: true };
-  return { cap: CREW_JSON_MAX, whole: true };
-}
-
-/** The cap column of {@link bodyRuleOf}. */
-export function bodyCapOf(route: string): number {
-  return bodyRuleOf(route).cap;
+export function streamsToPhone(route: string): boolean {
+  return route.startsWith("blobs/") || route.startsWith("project-picture/") || /^(?:pane|workspace)\/[^/]+\/files\/image$/.test(route);
 }
 
 /**
@@ -577,16 +546,15 @@ export const MEMBER_VERSION_HEADER = "x-collie-member-version";
  * - `content-type` — carries the multipart boundary an upload cannot be re-assembled without (§13).
  *
  * **The phone's `accept-encoding` is never forwarded, and the member hop's own is the dial's.** The
- * dial (peer-client.ts) asks every member for gzip only, turns the runtime's own decompression off, and
- * inflates a gzip answer itself through a capped decoder (bounded-gunzip.ts, ADR 0161), so the body the
- * lead holds is plain bytes it produced, under headers that describe them. Compression is **hop-local**
+ * dial (peer-client.ts) asks every member for gzip, and the runtime inflates it as a stream under the
+ * lead's size limit (guarded-body.ts, ADR 0161), so the body the lead holds is plain bytes. Compression
+ * is **hop-local**
  * (ADR 0144 rule 10): {@link proxiedResponse} compresses the lead→phone hop itself, on the phone's own
  * `accept-encoding`.
  *
- * Why the lead inflates and never the runtime: Bun's `fetch` inflates any encoded body with no bound,
- * and before 0.32.0-beta.9 it also left `content-encoding: gzip` on the bytes it had already inflated,
- * so the lead re-emitted a gzip header over plain bytes and every member pane rendered "(no recent
- * output)". {@link PROXIED_RESPONSE_HEADERS} not carrying the member's `content-encoding` stays the belt.
+ * Bun leaves `content-encoding: gzip` and the packed `content-length` on the bytes it has already
+ * inflated. Before 0.32.0-beta.9 the lead re-emitted that header over plain bytes and every member pane
+ * rendered "(no recent output)", so {@link PROXIED_RESPONSE_HEADERS} carries neither.
  * The ETag is unaffected either way: it is hashed over the pre-gzip body (`bridge/http-cache.ts`).
  *
  * `X-Crew-Device` is added here rather than on the client because it is a property of the PHONE's
@@ -607,7 +575,7 @@ export function forwardHeaders(req: Request, device?: string | null): Headers {
   if (device !== null && device !== undefined && device !== "") {
     headers.set(DEVICE_HEADER, encodeDeviceHeader(device));
   }
-  // No `accept-encoding` here: the dial sets it for every call (gzip, inflated by the lead with a cap).
+  // No `accept-encoding` here: the dial sets it for every call (gzip, inflated by the runtime).
   return headers;
 }
 
@@ -857,7 +825,7 @@ export type ForwardTransport = (
   link: CrewLink,
   route: string,
   params: CrewParams,
-  init: CappedRequestInit,
+  init: CrewRequestInit,
   budgetMs?: number,
 ) => Promise<PeerOutcome<Response>>;
 
@@ -937,34 +905,6 @@ export interface ForwardDeps {
  * `content-length` is copied ({@link proxiedResponse}), so the new body is framed by its own length.
  */
 /**
- * The most JSON values a text answer may hold before the lead's mask parses it. A parse costs about 90
- * bytes per value (measured: 11 M empty objects, 32 MB of text, 1 GB), so this bounds a mask's parse near
- * 90 MB. The fullest honest answer, a Changes list of 20 repositories of 1000 files, holds about 160,000.
- */
-export const MASK_VALUES_MAX = 1_000_000;
-
-/** Whether `raw` holds at most `max` JSON values, counted as openers and separators outside strings. */
-export function jsonValuesWithin(raw: string, max: number): boolean {
-  let values = 1;
-  let inString = false;
-  for (let i = 0; i < raw.length; i += 1) {
-    const c = raw.charCodeAt(i);
-    if (inString) {
-      if (c === 0x5c) i += 1;
-      else if (c === 0x22) inString = false;
-      continue;
-    }
-    if (c === 0x22) inString = true;
-    // `{`, `[` and `,` each open a place for one more value.
-    else if (c === 0x7b || c === 0x5b || c === 0x2c) {
-      values += 1;
-      if (values > max) return false;
-    }
-  }
-  return true;
-}
-
-/**
  * `res` with its body watched: a body the lead's bounds cut off mid-stream (guarded-body.ts) calls `onCut`
  * with the reason, so the audit line says the phone's `200` broke off, and the error goes on to the phone.
  */
@@ -1002,7 +942,7 @@ async function maskedAnswer(res: Response, answer: TextAnswer, mask: AnswerMask,
   }
   // The mask parses the answer, and a parse costs about 90 bytes per value: a body of tiny values is
   // refused before it, as one the mask could not read.
-  const masked = jsonValuesWithin(raw, MASK_VALUES_MAX) ? mask(answer, raw) : null;
+  const masked = mask(answer, raw);
   if (masked === null) {
     return forwardError(
       "answer_unmaskable",
@@ -1264,14 +1204,12 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     if (kept === null) headers.delete("if-none-match");
     else headers.set("if-none-match", kept);
   }
-  // The member's answer, gzip or plain, is cut off at the route's own cap ({@link bodyCapOf}).
   // The phone's own signal rides the dial: when the phone goes away, the member's read is aborted and its
   // stream cancelled (review round 9). A write the member may have received still answers the phone
   // `write_outcome_unknown`, the answer for any dial that ends before the member's headers.
-  const rule = bodyRuleOf(route);
   const budget = budgetOf(kind, route);
-  const init: CappedRequestInit & { duplex?: "half" } = { method: req.method, headers, bodyMax: rule.cap, signal: req.signal };
-  if (rule.whole) init.bodyDeadlineMs = wholeDeadlineMs(budget);
+  const init: CrewRequestInit & { duplex?: "half" } = { method: req.method, headers, signal: req.signal };
+  if (!streamsToPhone(route)) init.bodyDeadlineMs = wholeDeadlineMs(budget);
   // The body is STREAMED, not buffered: an upload is up to 10 MB of multipart and the lead never
   // stores a copy of it (§13). Assigned, never conditionally spread: a bodyless method must carry
   // NEITHER key.

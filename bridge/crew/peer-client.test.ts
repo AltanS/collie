@@ -1679,104 +1679,20 @@ describe("parseMuxReport — a member's declaration, bounded and re-checked", ()
   });
 });
 
-// ── A member's gzip is inflated by the lead, with a cap (§9.1, ADR 0161) ─────────────────────────
+// ── A member answers in gzip, and the runtime inflates it (§9.1, ADR 0161) ──────────────────────
 
-/** A fake member that answers `body` with the given `content-encoding` (null: no header). */
-function encoded(body: BodyInit, encoding: string | null, status = 200) {
-  const calls: CrewRequestInit[] = [];
-  const fetch: CrewFetch = async (_url, init) => {
-    // SAFETY: the dial builds a CrewRequestInit; the fake fetch's type only widened it to RequestInit.
-    calls.push(init as CrewRequestInit);
-    const headers = new Headers({ "content-type": "application/json" });
-    if (encoding !== null) headers.set("content-encoding", encoding);
-    headers.set("content-length", "1");
-    headers.set(PROTOCOL_HEADER, String(CREW_PROTOCOL_VERSION));
-    headers.set(MEMBER_HEADER, "laptop");
-    return new Response(status === 304 ? null : body, { status, headers });
-  };
-  return { fetch, calls };
-}
-
-describe("the dial asks for gzip and inflates it itself (ADR 0161)", () => {
-  test("every dial asks for gzip only, turns the runtime's decompression off, and never sends the cap", async () => {
+describe("the dial asks a member for gzip", () => {
+  test("every dial asks for gzip, leaves the runtime's decompression on, and never sends its own limits", async () => {
     const { fetch, calls } = replying({ protocol: 2, member: "laptop" });
     await client(fetch).hello(laptop);
-    await client(fetch).proxy(laptop, "pane/w1:p1", undefined, { headers: { "accept-encoding": "br" }, bodyMax: 1024 });
+    await client(fetch).proxy(laptop, "pane/w1:p1", undefined, { headers: { "accept-encoding": "br" }, bodyMax: 1024, bodyDeadlineMs: 8_000 });
     for (const call of calls) {
       expect(new Headers(call.init.headers).get("accept-encoding")).toBe("gzip");
-      // SAFETY: as in `encoded` above.
+      // SAFETY: the dial builds a CrewRequestInit; the fake fetch's type only widened it to RequestInit.
       const init = call.init as CrewRequestInit;
-      expect(init.decompress).toBe(false);
-      expect("bodyMax" in init).toBe(false);
+      expect(init.decompress).toBeUndefined();
+      expect("bodyMax" in init || "bodyDeadlineMs" in init).toBe(false);
     }
-  });
-
-  test("an honest gzip answer arrives whole and equal, with no member encoding or length left on it", async () => {
-    const doc = { agents: Array.from({ length: 30 }, (_, i) => ({ paneId: `w1:p${String(i)}`, status: "idle" })) };
-    const { fetch } = encoded(Bun.gzipSync(JSON.stringify(doc)), "gzip");
-    const outcome = await client(fetch).json(laptop, "snapshot");
-    expect(outcome.ok && outcome.value).toEqual(doc);
-    const raw = await client(encoded(Bun.gzipSync("{}"), " GZIP ").fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
-    expect(raw.ok).toBe(true);
-    if (!raw.ok) return;
-    expect(raw.value.headers.get("content-encoding")).toBeNull();
-    expect(raw.value.headers.get("content-length")).toBeNull();
-    expect(await raw.value.text()).toBe("{}");
-  });
-
-  test("a gzip bomb stops at the caller's cap", async () => {
-    const bomb = Bun.gzipSync(new Uint8Array(64 * 1024 * 1024));
-    const outcome = await client(encoded(bomb, "gzip").fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: 1024 * 1024 });
-    expect(outcome.ok).toBe(true);
-    if (!outcome.ok) return;
-    await expect(outcome.value.arrayBuffer()).rejects.toThrow("passed 1048576 bytes");
-    const consumed = await client(encoded(bomb, "gzip").fetch, { timeoutMs: 5_000 }).json(laptop, "snapshot", undefined, { bodyMax: 1024 * 1024 });
-    expect(consumed.ok).toBe(false);
-  });
-
-  test.each(["br", "deflate", "zstd", "gzip, br", "x-unknown"])("%s is refused before its body is read", async (encoding) => {
-    let pulled = 0;
-    const body = new ReadableStream<Uint8Array>({
-      pull(controller) {
-        pulled += 1;
-        controller.enqueue(new Uint8Array(1024));
-      },
-    });
-    const outcome = await client(encoded(body, encoding).fetch).proxy(laptop, "project-picture/abcdef012345abcdef012345", undefined, { bodyMax: CREW_JSON_MAX });
-    expect(outcome.ok).toBe(false);
-    if (!outcome.ok) expect(outcome.reason).toBe("project-picture/abcdef012345abcdef012345: the peer answered in an encoding the lead does not decode");
-    // The stream may have been asked for its first chunk when it was built; nothing read it after.
-    expect(pulled).toBeLessThanOrEqual(1);
-  });
-
-  test("a hostile encoding value never reaches the reason (S1)", async () => {
-    // Bytes 0x80 to 0xFF read as latin1: U+009B is a one-byte CSI.
-    const outcome = await client(encoded(new Uint8Array(1), "br\u009b2J\u00ff").fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
-    expect(outcome.ok).toBe(false);
-    if (outcome.ok) return;
-    expect([...outcome.reason].every((ch) => (ch.codePointAt(0) ?? 0) < 0x7f)).toBe(true);
-  });
-
-  test("identity and no header are read as they are", async () => {
-    for (const encoding of [null, "identity"]) {
-      const outcome = await client(encoded(new TextEncoder().encode("{}"), encoding).fetch).json(laptop, "snapshot");
-      expect(outcome.ok && outcome.value).toEqual({});
-    }
-  });
-
-  test("a lying member: a gzip header over plain bytes is refused, plain bytes that are gzip pass raw", async () => {
-    const lied = await client(encoded(new TextEncoder().encode("{}"), "gzip").fetch).json(laptop, "snapshot");
-    expect(lied.ok).toBe(false);
-    if (!lied.ok) expect(lied.reason).toBe("snapshot: the body is not valid gzip");
-    const raw = await client(encoded(Bun.gzipSync("{}"), null).fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
-    expect(raw.ok).toBe(true);
-    if (raw.ok) expect(new Uint8Array(await raw.value.arrayBuffer())).toEqual(Bun.gzipSync("{}"));
-  });
-
-  test("a 304 marked gzip comes back with no body and no encoding", async () => {
-    const outcome = await client(encoded(new Uint8Array(0), "gzip", 304).fetch).proxy(laptop, "pane/w1:p1", undefined, { bodyMax: CREW_JSON_MAX });
-    expect(outcome.ok && outcome.value.status).toBe(304);
-    if (outcome.ok) expect(outcome.value.headers.get("content-encoding")).toBeNull();
   });
 });
 

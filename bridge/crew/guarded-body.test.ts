@@ -3,18 +3,20 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { bodyCapOf, forwardToPeer, proxiedResponse } from "./forward.ts";
+import { forwardToPeer, proxiedResponse } from "./forward.ts";
 import { maskForwardedAnswer } from "./mask.ts";
 import { askSentMember, type SentMember } from "../sent.ts";
-import { BODY_IDLE_MS, bodyIdleMs, CREW_BYTES_MAX, guardedBody, WHOLE_ANSWER_DEADLINE_MS } from "./guarded-body.ts";
+import { BODY_IDLE_MS, CREW_BODY_MAX, CREW_JSON_MAX, limitedBody, WHOLE_ANSWER_DEADLINE_MS } from "./guarded-body.ts";
 import { CrewLead } from "./lead.ts";
 import { member as trusted, neverProxy } from "./fixtures.ts";
 import { PeerClient, type CrewFetch } from "./peer-client.ts";
 import { CrewRegistry } from "./registry.ts";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
 
-// THE LEAD'S TWO BOUNDS ON A MEMBER'S BODY (review round 6, B1 and B2), through the real dial against a
-// member in its own process: the idle limit after the headers, and the size cap on an identity body.
+// THE LEAD'S LIMITS ON A MEMBER'S ANSWER (CREW_PROTOCOL.md §9.1), through the real dial against a member
+// in its own process: a slow, stuck or broken member cannot stall or bloat the lead. The time limit (a
+// total deadline on a read the lead takes in full, an idle limit on a download), and the size limit on
+// the bytes the lead reads, after the runtime's own decompression.
 
 const dir = mkdtempSync(join(tmpdir(), "collie-body-member-"));
 let member: ReturnType<typeof Bun.spawn> | null = null;
@@ -34,6 +36,7 @@ const bin = { ...crew, "content-type": "application/octet-stream" };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const piece = new Uint8Array(1024 * 1024).fill(7);
 const held = { opened: 0, closed: 0, aborted: 0 };
+const packedHuge = Bun.gzipSync(new Uint8Array(256 * 1024 * 1024));
 const server = Bun.serve({
   hostname: "127.0.0.1", port: 0, idleTimeout: 0,
   fetch(req) {
@@ -75,8 +78,10 @@ const server = Bun.serve({
     }
     // An identity body with no length and no end, 1 MB at a time.
     if (p.endsWith("/endless")) return new Response(new ReadableStream({ pull(c) { c.enqueue(piece); } }), { headers: bin });
-    // An identity body that says 40 MB up front.
-    if (p.endsWith("/long-declared")) return new Response(new Uint8Array(40 * 1024 * 1024), { headers: bin });
+    // A gzip answer that inflates to 256 MB of zeros, from about 256 KB on the wire.
+    if (p.endsWith("/packed-huge")) return new Response(packedHuge, { headers: { ...json, "content-encoding": "gzip" } });
+    // An honest snapshot, gzipped as a member gzips it.
+    if (p.endsWith("/packed-snapshot")) return new Response(Bun.gzipSync(new TextEncoder().encode(JSON.stringify({ ok: "packed", panes: Array.from({ length: 300 }, (_, i) => ({ id: "w1:p" + i })) }))), { headers: { ...json, "content-encoding": "gzip" } });
     // A 16 MB blob, the largest an honest member serves, in one go.
     if (p.endsWith("/blob-whole")) return new Response(new Uint8Array(16 * 1024 * 1024).fill(9), { headers: bin });
     return new Response(JSON.stringify({ ok: "snapshot" }), { headers: json });
@@ -116,7 +121,7 @@ async function throughThePhone(route: string): Promise<{ bytes: number; error: s
     idleTimeout: 0,
     async fetch(req) {
       const asked = new URL(req.url).pathname.slice(1);
-      const outcome = await dial().proxy(link, asked, undefined, { bodyMax: bodyCapOf(asked) });
+      const outcome = await dial().proxy(link, asked);
       if (!outcome.ok) return new Response(outcome.reason, { status: 503 });
       return proxiedResponse(outcome.value, null);
     },
@@ -138,13 +143,7 @@ async function throughThePhone(route: string): Promise<{ bytes: number; error: s
   }
 }
 
-describe("B1: the idle limit on a member's body", () => {
-  test("the limit is the call's budget for a body the lead reads, at least 10 s for one it streams on", () => {
-    expect(bodyIdleMs("consumed", 1_200)).toBe(1_200);
-    expect(bodyIdleMs("passthrough", 1_200)).toBe(BODY_IDLE_MS);
-    expect(bodyIdleMs("passthrough", 30_000)).toBe(30_000);
-  });
-
+describe("the time limit: a stuck member never holds the lead", () => {
   test("headers then silence: the read ends within the budget, as a member out of reach", async () => {
     // A Bun member sends no headers before its first body byte, so this one meets the header budget.
     const started = performance.now();
@@ -155,23 +154,23 @@ describe("B1: the idle limit on a member's body", () => {
     expect(performance.now() - started).toBeLessThan(2_500);
   });
 
-  test("headers and a first byte, then silence: the body's idle limit ends it, on the lead's own clock", async () => {
+  test("headers and a first byte, then silence: the total deadline ends it, on the lead's own clock", async () => {
     const started = performance.now();
     const outcome = await dial().json(link, "open");
     expect(outcome.ok).toBe(false);
     if (outcome.ok) return;
-    expect(outcome.reason).toBe("open: no byte of the answer for 1000ms");
+    expect(outcome.reason).toBe("open: the answer did not end in time");
     // An unreachable member, on the lead's own clock: §10.4 re-asks on the patient budget, as after a header timeout.
     expect(outcome.state === "unreachable" && outcome.timedOut).toBe(true);
-    expect(performance.now() - started).toBeLessThan(2_500);
-  });
+    expect(performance.now() - started).toBeLessThan(3_600);
+  }, 10_000);
 
-  test("a body the lead reads may drip under the idle limit only until its total deadline (review round 8)", async () => {
+  test("a body the lead reads ends by its total deadline, however steadily it drips", async () => {
     // 7 bytes over about 1.5 s: inside three budgets, so it passes.
     const short = await dial().json(link, "drip-short");
     expect(short.ok).toBe(true);
     if (short.ok) expect(short.value).toEqual({ a: 1 });
-    // 17 bytes over about 4 s: no gap reaches the 1 s idle limit, but the 3 s deadline ends it.
+    // 17 bytes over about 4 s: the 3 s deadline ends it.
     const started = performance.now();
     const long = await dial().json(link, "drip");
     expect(long.ok).toBe(false);
@@ -182,14 +181,14 @@ describe("B1: the idle limit on a member's body", () => {
     expect(performance.now() - started).toBeLessThan(3_600);
   }, 15_000);
 
-  test("a body streamed to the phone has no deadline: the same 4 s drip reaches the phone whole", async () => {
+  test("a download streamed to the phone has no deadline: the same 4 s drip reaches the phone whole", async () => {
     const run = await throughThePhone("blobs/drip");
     expect(run.error).toBeNull();
     expect(run.bytes).toBe('{"ok":"dripping"}'.length);
     expect(run.ms).toBeGreaterThan(3_000);
   }, 15_000);
 
-  test("the reviewer's case: one member drips for ever, the sweep still ends, the honest member is fresh, and the next sweep runs", async () => {
+  test("one member drips for ever: the sweep still ends, the honest member is fresh, and the next sweep runs", async () => {
     // Two members on one child: the dripping one's snapshot is rewritten to the dripping route.
     const fetch: CrewFetch = (url, init) =>
       globalThis.fetch(url.replace(/^https?:\/\/drip\.example:8787\/crew\/v1\/snapshot/, `${base}/crew/v1/drip-forever`).replace(/^https?:\/\/[^/]+/, base), init);
@@ -223,7 +222,7 @@ describe("B1: the idle limit on a member's body", () => {
     for (let round = 0; round < 3; round += 1) {
       const outcome = await dial().json(link, "half");
       expect(outcome.ok).toBe(false);
-      if (!outcome.ok) expect(outcome.reason).toBe("half: no byte of the answer for 1000ms");
+      if (!outcome.ok) expect(outcome.reason).toBe("half: the answer did not end in time");
       // The next sweep's dial to the same member runs and answers.
       const next = await dial().json(link, "snapshot");
       expect(next.ok).toBe(true);
@@ -233,7 +232,7 @@ describe("B1: the idle limit on a member's body", () => {
     expect(rss() - before).toBeLessThan(16);
   }, 30_000);
 
-  test("a body streamed on to the phone that stalls half way breaks off there after 10 s: the phone sees an error", async () => {
+  test("a download that stalls half way breaks off at the idle limit: the phone sees an error", async () => {
     const run = await throughThePhone("blobs/half");
     expect(run.error).not.toBeNull();
     expect(run.bytes).toBeLessThan(4 * MB);
@@ -242,7 +241,7 @@ describe("B1: the idle limit on a member's body", () => {
   }, 30_000);
 });
 
-describe("X1: a read the lead masks ends by a total deadline, and a phone that leaves aborts it (review round 9)", () => {
+describe("a forwarded read taken in full ends by its deadline, and a phone that leaves ends it", () => {
   /** The lead's real forward, the real dial and the lead's real mask, against the child member. */
   const forwardOnce = (req: Request) =>
     forwardToPeer(req, new URL(req.url), {
@@ -261,7 +260,7 @@ describe("X1: a read the lead masks ends by a total deadline, and a phone that l
     return { opened, closed };
   };
 
-  test("twenty polls of a dripping History: each ends at the deadline as a member out of reach, every member stream closes, the lead's memory is level", async () => {
+  test("twenty polls of a stalled History: each ends at the deadline as a member out of reach, every member stream closes, the lead's memory is level", async () => {
     const before = await stats();
     Bun.gc(true);
     const rss = process.memoryUsage().rss / MB;
@@ -307,34 +306,6 @@ describe("X1: a read the lead masks ends by a total deadline, and a phone that l
     expect(after.closed - before.closed).toBe(1);
   }, 20_000);
 
-  test("a caller's signal shared across dials holds no listener once each dial has ended (review round 10)", async () => {
-    const shared = new AbortController().signal;
-    let live = 0;
-    const add = shared.addEventListener.bind(shared);
-    const remove = shared.removeEventListener.bind(shared);
-    shared.addEventListener = (...args: Parameters<AbortSignal["addEventListener"]>) => {
-      live += 1;
-      add(...args);
-    };
-    shared.removeEventListener = (...args: Parameters<AbortSignal["removeEventListener"]>) => {
-      live -= 1;
-      remove(...args);
-    };
-    const client = dial();
-    // A body read to its end, as the lead reads a JSON answer.
-    const whole = await client.proxy(link, "drip-short", undefined, { bodyMax: CREW_BYTES_MAX, signal: shared });
-    expect(whole.ok).toBe(true);
-    if (whole.ok) await whole.value.arrayBuffer();
-    // A body the reader cancels.
-    const cancelled = await client.proxy(link, "history", undefined, { bodyMax: CREW_BYTES_MAX, signal: shared });
-    expect(cancelled.ok).toBe(true);
-    if (cancelled.ok) await cancelled.value.body?.cancel();
-    // A dial that fails on its budget before the headers.
-    const failedDial = await client.proxy(link, "silent", undefined, { bodyMax: CREW_BYTES_MAX, signal: shared });
-    expect(failedDial.ok).toBe(false);
-    expect(live).toBe(0);
-  }, 20_000);
-
   test("a phone that goes away aborts the member's read at once", async () => {
     const lead = Bun.serve({ hostname: "127.0.0.1", port: 0, idleTimeout: 0, fetch: (req) => forwardOnce(new Request(`https://lead.example${new URL(req.url).pathname}${new URL(req.url).search}`, { signal: req.signal })) });
     try {
@@ -352,7 +323,7 @@ describe("X1: a read the lead masks ends by a total deadline, and a phone that l
   }, 20_000);
 });
 
-describe("B2: the size cap on an identity body", () => {
+describe("the size limit: a far too large answer never bloats the lead", () => {
   test("an honest 16 MB blob reaches the phone whole", async () => {
     const run = await throughThePhone("blobs/blob-whole");
     expect(run.error).toBeNull();
@@ -364,33 +335,41 @@ describe("B2: the size cap on an identity body", () => {
     const before = process.memoryUsage().rss / MB;
     const run = await throughThePhone("blobs/endless");
     expect(run.error).not.toBeNull();
-    expect(run.bytes).toBeLessThanOrEqual(CREW_BYTES_MAX);
+    expect(run.bytes).toBeLessThanOrEqual(CREW_BODY_MAX);
     // Streamed through: the lead holds no copy of the 32 MB it passed on.
     expect(process.memoryUsage().rss / MB - before).toBeLessThan(64);
   }, 30_000);
 
-  test("a body that declares more than the cap is refused before a byte is read", async () => {
-    const outcome = await dial().proxy(link, "blobs/long-declared", undefined, { bodyMax: CREW_BYTES_MAX });
-    expect(outcome.ok).toBe(false);
-    if (!outcome.ok) expect(outcome.reason).toBe(`blobs/long-declared: the peer's answer is larger than the lead reads (${String(CREW_BYTES_MAX)} bytes)`);
-  });
-
-  test("the cap holds on a route's own smaller number too", async () => {
-    const outcome = await dial().proxy(link, "project-picture/endless", undefined, { bodyMax: 256 * 1024 });
-    expect(outcome.ok).toBe(true);
-    if (!outcome.ok) return;
-    const error = await outcome.value.arrayBuffer().then(
+  test("a gzip answer that inflates far past the limit is cut at the limit, and the lead's memory stays level", async () => {
+    // The runtime inflates as a stream, so the lead holds about the limit, never the 256 MB.
+    Bun.gc(true);
+    const before = process.memoryUsage().rss / MB;
+    const read = await dial().json(link, "packed-huge");
+    expect(read.ok).toBe(false);
+    if (!read.ok) expect(read.reason).toBe(`packed-huge: the answer passed ${String(CREW_JSON_MAX)} bytes`);
+    const passed = await dial().proxy(link, "packed-huge");
+    expect(passed.ok).toBe(true);
+    if (!passed.ok) return;
+    const error = await passed.value.arrayBuffer().then(
       () => null,
       (err: Error) => err.message,
     );
-    expect(error).toBe(`the answer passed ${String(256 * 1024)} bytes`);
+    expect(error).toBe(`the answer passed ${String(CREW_BODY_MAX)} bytes`);
+    Bun.gc(true);
+    expect(process.memoryUsage().rss / MB - before).toBeLessThan(160);
+  }, 30_000);
+
+  test("an honest gzip answer arrives whole and equal", async () => {
+    const outcome = await dial().json(link, "packed-snapshot");
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.value).toMatchObject({ ok: "packed" });
   });
 });
 
-describe("guardedBody on its own", () => {
+describe("limitedBody on its own", () => {
   test("a body exactly at the cap passes, one byte over does not", async () => {
     const read = (n: number) =>
-      new Response(guardedBody(new Response(new Uint8Array(n)).body!, { idleMs: 1_000, max: 4096 })).arrayBuffer().then(
+      new Response(limitedBody(new Response(new Uint8Array(n)).body!, { max: 4096, onStop: () => undefined, late: () => false })).arrayBuffer().then(
         (b) => b.byteLength,
         (err: Error) => err.message,
       );
@@ -399,7 +378,7 @@ describe("guardedBody on its own", () => {
   });
 
   test("a slow reader never trips the idle limit: the clock runs only while a read waits", async () => {
-    const body = guardedBody(new Response(new Uint8Array(3)).body!, { idleMs: 50, max: 10 });
+    const body = limitedBody(new Response(new Uint8Array(3)).body!, { max: 10, idleMs: 50, onStop: () => undefined, late: () => false });
     const reader = body.getReader();
     await Bun.sleep(200);
     const first = await reader.read();

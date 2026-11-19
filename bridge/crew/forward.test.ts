@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BodyRefused, CREW_BYTES_MAX, CREW_FILES_MAX, CREW_JSON_MAX, CREW_LOG_MAX } from "./guarded-body.ts";
+import { BodyRefused, WHOLE_ANSWER_DEADLINE_MS } from "./guarded-body.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -7,10 +7,7 @@ import { computeEtag } from "../http-cache.ts";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
 import {
   apiPathFor,
-  bodyCapOf,
   budgetOf,
-  jsonValuesWithin,
-  MASK_VALUES_MAX,
   mergeAskRequest,
   forwardAuditAction,
   forwardHeaders,
@@ -748,8 +745,8 @@ describe("the lead compresses the phone hop itself (.adr/0023)", () => {
   });
 
   test("the phone's accept-encoding never reaches the member hop (the beta.9 invariant, ADR 0161)", async () => {
-    // The dial sets the member hop's own `accept-encoding: gzip` and inflates it with a cap
-    // (peer-client.test.ts); the forward passes none of the phone's value on.
+    // The dial sets the member hop's own `accept-encoding: gzip` (peer-client.test.ts); the forward
+    // passes none of the phone's value on.
     const [, peer] = peerJson();
     const { transport, calls } = transportOf(() => ok(peer));
     const [req, url] = get("/api/pane/w1:p1?host=laptop", { "accept-encoding": "gzip, deflate, br, zstd" });
@@ -813,50 +810,20 @@ describe("the lead compresses the phone hop itself (.adr/0023)", () => {
     expect(seen.map((signal) => signal?.aborted)).toEqual([true, true, true]);
   });
 
-  test("the table of forwarded caps: each route of each tier, and the JSON cap for the rest (review round 7)", () => {
-    const cases: [string, number][] = [
-      ["project-picture/0123456789ab0123456789ab", 256 * 1024],
-      ["blobs/abc", CREW_BYTES_MAX],
-      ["pane/w1:p1/files/image", CREW_BYTES_MAX],
-      ["workspace/w1/files/image", CREW_BYTES_MAX],
-      ["pane/w1:p1/history", CREW_LOG_MAX],
-      ["pane/w1:p1/chat", CREW_LOG_MAX],
-      ["pane/w1:p1/pins", CREW_LOG_MAX],
-      ["durable/conversation/c1/items", CREW_LOG_MAX],
-      ["sent", CREW_LOG_MAX],
-      ["pane/w1:p1/changes", CREW_FILES_MAX],
-      ["pane/w1:p1/files", CREW_FILES_MAX],
-      ["workspace/w1/changes", CREW_FILES_MAX],
-      ["workspace/w1/files", CREW_FILES_MAX],
-      ["pane/w1:p1", CREW_JSON_MAX],
-      ["pane/w1:p1/reply", CREW_JSON_MAX],
-      ["pane/w1:p1/upload", CREW_JSON_MAX],
-      ["launchers", CREW_JSON_MAX],
-      ["folders/browse", CREW_JSON_MAX],
-      ["durable/conversations", CREW_JSON_MAX],
-      ["sent/clear", CREW_JSON_MAX],
-    ];
-    for (const [route, cap] of cases) expect([route, bodyCapOf(route)]).toEqual([route, cap]);
-  });
-
-  test("the mask's count of values: an honest answer passes, a body of tiny values does not", () => {
-    // One value, then one per opener and separator outside a string: 6 here; the string's own count none.
-    expect(jsonValuesWithin('{"a":[1,2,3],"b":"x,y{z["}', 6)).toBe(true);
-    expect(jsonValuesWithin('{"a":[1,2,3],"b":"x,y{z["}', 5)).toBe(false);
-    // An escaped backslash does not escape the closing quote, so the `,[` after it count.
-    expect(jsonValuesWithin('"\\\\",[', 3)).toBe(true);
-    expect(jsonValuesWithin('"\\\\",[', 2)).toBe(false);
-    expect(jsonValuesWithin(`[${"{},".repeat(MASK_VALUES_MAX)}{}]`, MASK_VALUES_MAX)).toBe(false);
-  });
-
-  test("every forward names its route's cap: the picture's own, the screen read the JSON one", async () => {
+  test("a download streams with no total deadline; every other forward is read in full and has one", async () => {
     const { transport, calls } = transportOf(() => ok(peerJson()[1]));
-    const [req, url] = get("/api/project-picture/0123456789ab0123456789ab?host=laptop");
-    await forward(req, url, { transport });
-    const [req2, url2] = get("/api/pane/w1:p1?host=laptop");
-    await forward(req2, url2, { transport });
-    expect(calls[0]!.init.bodyMax).toBe(256 * 1024);
-    expect(calls[1]!.init.bodyMax).toBe(CREW_JSON_MAX);
+    const routes = ["blobs/abc", "pane/w1:p1/files/image", "project-picture/0123456789ab0123456789ab", "pane/w1:p1", "pane/w1:p1/history"];
+    for (const route of routes) {
+      const [req, url] = get(`/api/${route}?host=laptop`);
+      await forward(req, url, { transport });
+    }
+    expect(calls.map((call) => [call.route, call.init.bodyDeadlineMs])).toEqual([
+      ["blobs/abc", undefined],
+      ["pane/w1:p1/files/image", undefined],
+      ["project-picture/0123456789ab0123456789ab", undefined],
+      ["pane/w1:p1", WHOLE_ANSWER_DEADLINE_MS],
+      ["pane/w1:p1/history", WHOLE_ANSWER_DEADLINE_MS],
+    ]);
   });
 });
 

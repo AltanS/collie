@@ -1,26 +1,23 @@
-// THE LEAD'S BOUNDS ON EVERY BODY A MEMBER SENDS (CREW_PROTOCOL.md §9.1 and §10.1, review round 6).
+// THE LEAD'S LIMITS ON A MEMBER'S ANSWER (CREW_PROTOCOL.md §9.1).
 //
-// The dial's budget ends when the member's headers arrive. Without this module a member that sent its
-// headers and then went silent held the lead's read open for ever, and a member that sent an identity
-// body with no end could send as many bytes as it liked. So every member body, whatever the route and
-// whatever its encoding, comes through {@link guardedBody}, which holds three bounds:
+// The goal: a slow, stuck or broken member cannot stall or bloat the lead. A laptop that sleeps in the
+// middle of an answer, a member on an old or buggy build, a history that is far too large. Every crew
+// machine is the operator's own and the link is pinned mutual TLS (§8.5), so these limits are written
+// for a member that fails, not for one that attacks: such a member already has better doors.
 //
-// - An IDLE limit, not a total one: the read fails when no byte arrived for `idleMs` while the lead was
-//   waiting for one. A big honest answer on a slow link passes, however long it takes in all, as long as
-//   its bytes keep coming. The clock runs only while a reader waits: a phone that reads slowly holds the
-//   member's stream back and never trips it.
-// - A TOTAL deadline, from the start of the dial, for every body that is read in full before it is of
-//   any use: one the lead reads itself (round 8), and a forwarded answer the lead masks or merges, or the
-//   phone parses whole (round 9, the `whole` class in forward.ts `bodyRuleOf`). The idle limit alone
-//   lets a member that drips one byte a second hold such a read for ever. Only a body that truly streams
-//   on to the phone (a blob, a picture) keeps the idle limit alone.
-// - A SIZE cap on the bytes the member sent, counted as they pass. Past it the read fails. A gzip body is
-//   also capped on its inflated output, in bounded-gunzip.ts, on top of this.
+// Two limits, on the bytes the lead reads (after the runtime's own decompression):
 //
-// On any limit the member's stream is cancelled, `onStop` releases the socket, and the reader gets an
-// error, never a short body that looks whole: a body streamed on to the phone breaks off there too.
+// - SIZE: counted as the bytes arrive, here. Past the limit the read fails: 2 MB for JSON the lead parses
+//   itself, 32 MB for the rest.
+// - TIME: a read the lead takes in full ends by a total deadline, an `AbortSignal.timeout` on the dial
+//   (peer-client.ts). A download that streams on to the phone (a blob, a picture) has no total limit, as a
+//   big honest file on a slow link must pass; it ends when no byte came for {@link BODY_IDLE_MS} while
+//   the phone waited for one.
+//
+// Past either limit the member's stream is cancelled, the dial is aborted, and the reader gets an error,
+// never a short body that looks whole.
 
-/** Why a member's body was cut off. The message is plain ASCII, never a byte from the member. */
+/** Why a member's answer was cut off. The message is plain ASCII, never a byte from the member. */
 export class BodyRefused extends Error {
   /** `idle`: the lead's own clock fired, so §10.4 may read it as a slow link rather than a dead host. */
   constructor(
@@ -31,59 +28,30 @@ export class BodyRefused extends Error {
   }
 }
 
-// ── THE CAPS (review round 7) ───────────────────────────────────────────────────────────────────
-// A cap bounds the member's bytes as sent AND, for gzip, the inflated bytes. Each one is the largest
-// honest answer of its kind times a small factor. JSON is the expensive kind: `JSON.parse` turns a body of
-// tiny values (`[{},{},...]`) into about 30 times its size in memory, so every body the lead PARSES has a
-// small cap. A body the lead only streams on to the phone costs the lead nothing per byte. The table of
-// forwarded routes and their caps is `bodyCapOf` in forward.ts.
-
 /**
- * Every body the lead parses as JSON itself: the sweep's snapshot, hello, warrant, pairing, takeover, the
- * 403 and 409 bodies, the deputy copies, a lead's walky answer, and every forwarded route with no larger
- * tier in `bodyCapOf`. An honest 300-pane snapshot is about 190 KB (30 panes: 19 KB), so 2 MB is ten
- * times the largest herd. At the cap a hostile body costs the lead about 64 MB while it is parsed.
+ * Every body the lead parses as JSON itself: the sweep's snapshot, hello, the warrant, pairing, takeover,
+ * the carry and walky answers. An honest 300-pane snapshot is about 190 KB, so 2 MB is ten times the
+ * largest herd.
  */
 export const CREW_JSON_MAX = 2 * 1024 * 1024;
 
 /**
- * A Changes or Files answer: a file is read up to 1 MB and a diff up to 512 KB (changes.ts), and a
- * Changes list holds up to 20 repositories of 1000 files each, about 4 MB at its fullest.
+ * Every other answer: a forwarded read or write, a log page, a blob. The member reads at most 32 MB of a
+ * log for one answer (`MAX_TRANSCRIPT_BYTES`) and serves a blob or a picture up to 16 MB.
  */
-export const CREW_FILES_MAX = 8 * 1024 * 1024;
+export const CREW_BODY_MAX = 32 * 1024 * 1024;
 
 /**
- * An answer read out of a log: a History or Chat page, a durable conversation's items, Sent (200 lines of
- * up to 64 KB, 12.8 MB) and pins. A page carries a session's inline pictures, and the member reads at most
- * 32 MB of a log for one answer (`MAX_TRANSCRIPT_BYTES`), so the cap is that number.
- */
-export const CREW_LOG_MAX = 32 * 1024 * 1024;
-
-/**
- * Raw bytes: a blob and a file's picture, each served up to 16 MB (`BLOB_MAX_BYTES`, `MAX_IMAGE_READ_BYTES`),
- * twice that. A member never gzips them; they stream to the phone and the lead holds no copy.
- */
-export const CREW_BYTES_MAX = 32 * 1024 * 1024;
-
-/**
- * The idle limit of a body the lead streams on to the phone (a forwarded read or a write's answer).
- *
- * Ten seconds: past TCP's own recovery of a lost burst on a bad link (three back-to-back retransmission
- * timeouts from a one second start are 1 + 2 + 4 = 7 s), and the same number as the picture route's
- * total limit, so a picture never meets the idle limit first. A stall here costs one phone read, never
- * the sweep.
+ * The idle limit of a download that streams on to the phone. Ten seconds: past TCP's own recovery of a
+ * lost burst on a bad link (1 + 2 + 4 = 7 s of back-to-back retransmission timeouts).
  */
 export const BODY_IDLE_MS = 10_000;
 
 /**
- * The total deadline for a body the lead reads itself, from the start of the dial to its last byte:
- * three times the call's budget, 3.6 s on the sweep's 1.2 s. The headers may take one budget; the
- * honest bodies (a 300-pane snapshot is about 190 KB) arrive in one round trip after them, so two more
- * budgets are room, not a squeeze. The idle limit alone does not bound such a read: a member that sends
- * one byte a second never trips it, and the sweep, which waits for every member, would never end (review
- * round 8). A forwarded answer that is read in full has its own, longer deadline
- * ({@link WHOLE_ANSWER_DEADLINE_MS}); only one that streams on to the phone has none: a large blob on a
- * slow link is honest, and one phone read holds one socket and stalls nothing else.
+ * The total deadline of a body the lead reads itself (`json`, `raw`), from the start of the dial: three
+ * times the call's budget, 3.6 s on the sweep's 1.2 s. The headers may take one budget; an honest body
+ * arrives one round trip after them. The sweep waits for every member, so this is also how long one stuck
+ * member can hold it (§10.1).
  */
 export const BODY_DEADLINE_FACTOR = 3;
 
@@ -92,98 +60,81 @@ export function bodyDeadlineMs(budgetMs: number): number {
 }
 
 /**
- * The idle limit for one dial's body, from what the dial is for.
+ * The total deadline of a forwarded answer that is read in full before it is of any use (the lead masks
+ * or merges it, or the phone parses it whole): 8 s, or the call's own budget when that is longer (a
+ * launch, a worktree create).
  *
- * A body the LEAD consumes (the sweep's snapshot, hello, the warrant and the other `json` calls) may be
- * silent no longer than the call's own budget: the sweep awaits every member together, so a member that
- * stalls its body would otherwise hold every other member's freshness for as long as the limit, every
- * poll (§10.1). Those bodies are small JSON that arrives right behind its headers.
- *
- * A body the lead streams on to the phone may be silent for {@link BODY_IDLE_MS}, or the call's budget
- * when that is longer (a deputy copy on 30 s).
+ * 8 s is a choice. The phone gives up on its own after 6 s for a poll read and 10 s for a long read
+ * (`POLL_TIMEOUT_MS`, `GET_TIMEOUT_MS` in web/src/lib/api.ts), and its abort reaches the member read. A
+ * read past that holds memory for an answer no one waits for; 8 s leaves 2 s for the mask. An honest
+ * answer that needs longer is cut, for example a 32 MB History over a link slower than about 4 MB/s. The
+ * fix for that is smaller reads (pages), never a longer deadline.
  */
-export function bodyIdleMs(mode: "consumed" | "passthrough", budgetMs: number): number {
-  return mode === "consumed" ? budgetMs : Math.max(budgetMs, BODY_IDLE_MS);
+export const WHOLE_ANSWER_DEADLINE_MS = 8_000;
+
+export function wholeDeadlineMs(budgetMs?: number): number {
+  return Math.max(WHOLE_ANSWER_DEADLINE_MS, budgetMs ?? 0);
 }
 
-export interface BodyGuard {
-  /** No byte for this long, while a reader waits, fails the read. */
-  readonly idleMs: number;
-  /** The most bytes the member may send. */
+export interface BodyLimit {
+  /** The most bytes the lead reads. */
   readonly max: number;
-  /**
-   * A total deadline, as a `performance.now()` time: past it the read fails however steadily bytes come.
-   * Set for a body read in full ({@link bodyDeadlineMs}, {@link wholeDeadlineMs}); absent for one streamed to the phone.
-   */
-  readonly deadline?: number;
-  /** Called once when any limit fires, to release the socket (the dial aborts its request). */
-  readonly onStop?: () => void;
-  /** Called once when the body ends in any way: closed, cut by a limit, failed, or cancelled. */
-  readonly onEnd?: () => void;
+  /** For a download that streams on: no byte for this long, while a reader waits, fails the read. */
+  readonly idleMs?: number;
+  /** Called once when a limit fires, to release the socket (the dial aborts its request). */
+  readonly onStop: () => void;
+  /** Whether the dial's own total deadline ended the read, so its error is named as such. */
+  readonly late: () => boolean;
 }
 
-/** `source`, a member's body, under the two bounds of {@link BodyGuard}. Cancelling the result cancels the member's stream. */
-export function guardedBody(source: ReadableStream<Uint8Array>, guard: BodyGuard): ReadableStream<Uint8Array> {
+/**
+ * `source`, a member's body, under its {@link BodyLimit}. Cancelling the result cancels the member's
+ * stream.
+ *
+ * A pull, not a `TransformStream`: the idle clock must run only while a reader waits, or a phone that
+ * reads a big download slowly would trip it.
+ */
+export function limitedBody(source: ReadableStream<Uint8Array>, limit: BodyLimit): ReadableStream<Uint8Array> {
   const reader = source.getReader();
   let seen = 0;
-  let ended = false;
-  const end = () => {
-    if (ended) return;
-    ended = true;
-    guard.onEnd?.();
-  };
-
   const stop = async (controller: ReadableStreamDefaultController<Uint8Array>, error: BodyRefused) => {
     await reader.cancel(error.message).catch(() => undefined);
-    guard.onStop?.();
-    end();
+    limit.onStop();
     controller.error(error);
   };
-
   return new ReadableStream<Uint8Array>(
     {
       async pull(controller) {
-        // The wait for this piece ends at the idle limit or at the total deadline, whichever comes first.
-        const left = guard.deadline === undefined ? Infinity : guard.deadline - performance.now();
-        const late = left < guard.idleMs;
-        if (left <= 0) {
-          await stop(controller, new BodyRefused("the answer did not end in time", true));
-          return;
-        }
         let timer: ReturnType<typeof setTimeout> | undefined;
         const idle = new Promise<"idle">((resolve) => {
-          timer = setTimeout(() => resolve("idle"), late ? left : guard.idleMs);
+          if (limit.idleMs !== undefined) timer = setTimeout(() => resolve("idle"), limit.idleMs);
         });
         let next: Awaited<ReturnType<typeof reader.read>> | "idle";
         try {
           next = await Promise.race([reader.read(), idle]);
         } catch {
-          clearTimeout(timer);
-          await stop(controller, new BodyRefused("the answer broke off", false));
+          // The dial's abort errors the read: its total deadline, or a caller that went away.
+          await stop(controller, limit.late() ? new BodyRefused("the answer did not end in time", true) : new BodyRefused("the answer broke off", false));
           return;
+        } finally {
+          clearTimeout(timer);
         }
-        clearTimeout(timer);
         if (next === "idle") {
-          const why = late ? "the answer did not end in time" : `no byte of the answer for ${String(guard.idleMs)}ms`;
-          await stop(controller, new BodyRefused(why, true));
+          await stop(controller, new BodyRefused(`no byte of the answer for ${String(limit.idleMs)}ms`, true));
           return;
         }
         if (next.done) {
-          end();
           controller.close();
           return;
         }
         seen += next.value.length;
-        if (seen > guard.max) {
-          await stop(controller, new BodyRefused(`the answer passed ${String(guard.max)} bytes`, false));
+        if (seen > limit.max) {
+          await stop(controller, new BodyRefused(`the answer passed ${String(limit.max)} bytes`, false));
           return;
         }
         controller.enqueue(next.value);
       },
-      async cancel(reason) {
-        end();
-        await reader.cancel(reason).catch(() => undefined);
-      },
+      cancel: (reason) => reader.cancel(reason).catch(() => undefined),
     },
     { highWaterMark: 0 },
   );
@@ -192,33 +143,8 @@ export function guardedBody(source: ReadableStream<Uint8Array>, guard: BodyGuard
 /** Statuses whose answer carries no body (a `Response` may not be built with one). */
 const NO_BODY = new Set([204, 205, 304]);
 
-/** `res` with its body under {@link guardedBody}: the same status and headers, since the bytes do not change. */
-export function guardedResponse(res: Response, guard: BodyGuard): Response {
-  if (res.body === null || NO_BODY.has(res.status)) {
-    guard.onEnd?.();
-    return res;
-  }
-  return new Response(guardedBody(res.body, guard), { status: res.status, statusText: res.statusText, headers: res.headers });
-}
-
-/**
- * The total deadline of a `whole` answer, from the start of the dial to its last byte: 8 s, or the
- * call's own budget when that is longer (a launch, a worktree create).
- *
- * 8 s is a CHOICE, not a number the runtime imposes. What holds: the phone gives up on its own, after
- * 6 s for a poll read and 10 s for a long read (History, a file; `POLL_TIMEOUT_MS` and `GET_TIMEOUT_MS`
- * in web/src/lib/api.ts), and its abort reaches the member read through the dial. A whole answer sends
- * the phone nothing until it is complete, so a read past the phone's 10 s holds memory for an answer no
- * one waits for. 8 s ends the read inside that, with 2 s left for the lead's own work (the mask, a
- * merge). It is NOT Bun's server: Bun 1.4.4 prints "timed out a request after 10 seconds" for a silent
- * request but still delivers the answer when it comes (probed: a handler that answered at 12 s arrived
- * whole). A 32 MB History page needs about 7 s on a 5 MB/s link; an honest whole answer on a link slower
- * than about 4 MB/s is cut. That is availability, not security: the fix is smaller reads (pages), never a
- * longer deadline, which is the pile-up again (review rounds 9 and 10).
- */
-export const WHOLE_ANSWER_DEADLINE_MS = 8_000;
-
-/** The deadline of a whole answer on a call with `budgetMs` (absent: the poll budget, which is shorter). */
-export function wholeDeadlineMs(budgetMs?: number): number {
-  return Math.max(WHOLE_ANSWER_DEADLINE_MS, budgetMs ?? 0);
+/** `res` with its body under {@link limitedBody}; the status and headers stay. */
+export function limitedResponse(res: Response, limit: BodyLimit): Response {
+  if (res.body === null || NO_BODY.has(res.status)) return res;
+  return new Response(limitedBody(res.body, limit), { status: res.status, statusText: res.statusText, headers: res.headers });
 }

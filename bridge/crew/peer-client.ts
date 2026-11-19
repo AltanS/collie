@@ -1,6 +1,5 @@
 import type { JsonObject, JsonValue } from "../json.ts";
-import { inflatedResponse } from "./bounded-gunzip.ts";
-import { BodyRefused, bodyDeadlineMs, bodyIdleMs, CREW_JSON_MAX, guardedResponse, wholeDeadlineMs } from "./guarded-body.ts";
+import { BODY_IDLE_MS, BodyRefused, bodyDeadlineMs, CREW_BODY_MAX, CREW_JSON_MAX, limitedResponse, wholeDeadlineMs } from "./guarded-body.ts";
 import { LAUNCH_BUDGET_MS } from "../create-confirm.ts";
 import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import {
@@ -26,7 +25,7 @@ import {
 import { cleanHost } from "./machine-host.ts";
 import { LEAD_LINE_HEADER, LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
-import type { CappedRequestInit, CrewRequestInit, CrewTlsOptions } from "./transport.ts";
+import type { CrewRequestInit, CrewTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
 import { NARROW_VIEW, SESSIONS_ALL, SESSIONS_PARAM, SESSION_PARAM, type SnapshotView } from "../sessions.ts";
 import type { MuxConfig, SessionCard, SessionState } from "../types.ts";
@@ -37,7 +36,7 @@ import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warrant.ts";
 import { CREW_VERSION_FIELD } from "../update-action.ts";
 import { WALKY_ACK_HEADER, WALKY_OUTCOMES_ROUTE } from "../walky/crew.ts";
-import { INPUT_ANSWER_BODY_MAX_BYTES, INPUT_CALL_MS, TRICKS_INPUTS_ROUTE } from "../tricks/inputs.ts";
+import { INPUT_CALL_MS, TRICKS_INPUTS_ROUTE } from "../tricks/inputs.ts";
 
 // The LEAD side of a crew link: the client that dials a peer's `/crew/v1/*` surface.
 //
@@ -993,7 +992,7 @@ export class PeerClient {
       link,
       TRICKS_INPUTS_ROUTE,
       undefined,
-      { method: "POST", headers: { "content-type": "application/json" }, body: payload, bodyMax: INPUT_ANSWER_BODY_MAX_BYTES, bodyDeadlineMs: wholeDeadlineMs(TRICKS_INPUTS_BUDGET_MS) },
+      { method: "POST", headers: { "content-type": "application/json" }, body: payload, bodyDeadlineMs: wholeDeadlineMs(TRICKS_INPUTS_BUDGET_MS) },
       TRICKS_INPUTS_BUDGET_MS,
       false,
     );
@@ -1014,9 +1013,9 @@ export class PeerClient {
       const value: JsonValue = await outcome.value.json();
       return { ...outcome, value };
     } catch (err) {
-      // A body cut off by the lead's own bounds (guarded-body.ts, bounded-gunzip.ts) is a member out of
-      // reach this time, in the same shape as a dial that timed out; an idle cut is this process's own
-      // clock, so §10.4 may re-ask on the patient budget, as it does after a header timeout.
+      // A body cut off by the lead's own limits (guarded-body.ts) is a member out of reach this time, in
+      // the same shape as a dial that timed out; a cut on the clock is this process's own, so §10.4 may
+      // re-ask on the patient budget, as it does after a header timeout.
       if (err instanceof BodyRefused) return this.fail({ state: "unreachable", reason: `${route}: ${err.message}`, timedOut: err.idle });
       // A body that will not parse, from a peer whose version header matched, is a broken peer — not
       // a version problem. §7's rule runs the other way (a version mismatch is never *reported* as a
@@ -1054,8 +1053,8 @@ export class PeerClient {
   async proxy(
     link: CrewLink,
     route: string,
-    params: CrewParams | undefined,
-    init: CappedRequestInit,
+    params?: CrewParams,
+    init: CrewRequestInit = {},
     budgetMs?: number,
     sign = false,
   ): Promise<PeerOutcome<Response>> {
@@ -1075,9 +1074,7 @@ export class PeerClient {
     budgetMs?: number,
     sign = true,
   ): Promise<PeerOutcome<Response>> {
-    // A body the lead reads itself is JSON, so it takes the small JSON cap; a caller may only lower it.
-    const bodyMax = Math.min(init.bodyMax ?? CREW_JSON_MAX, CREW_JSON_MAX);
-    return this.dial(link, route, params, { ...init, bodyMax }, "consumed", budgetMs, sign);
+    return this.dial(link, route, params, init, "consumed", budgetMs, sign);
   }
 
   /**
@@ -1097,7 +1094,7 @@ export class PeerClient {
     link: CrewLink,
     route: string,
     params: CrewParams | undefined,
-    init: CappedRequestInit,
+    init: CrewRequestInit,
     mode: "consumed" | "passthrough",
     // The one knob a caller may widen, and three callers do: the verdict probe's patient budget
     // (§10.4), §19's fresh preflight, and a forwarded WRITE on WRITE_BUDGET_MS (§10.1's 2026-09-08
@@ -1135,9 +1132,9 @@ export class PeerClient {
     headers.set("authorization", `Bearer ${secret}`);
     headers.set(PROTOCOL_HEADER, String(CREW_PROTOCOL_VERSION));
     headers.set(MEMBER_HEADER, this.deps.self);
-    // A member may answer in gzip and in nothing else (CREW_PROTOCOL.md §9.1). The lead inflates it
-    // itself, with a cap (bounded-gunzip.ts), never the runtime. Set for EVERY dial, not negotiable by a
-    // caller: a caller names only the cap (`bodyMax`).
+    // A member answers in gzip (CREW_PROTOCOL.md §9.1, ADR 0161), and the runtime inflates it as a
+    // stream; the size limit below counts the inflated bytes. Set for EVERY dial, so the phone's own
+    // `accept-encoding` never reaches the member hop.
     headers.set("accept-encoding", "gzip");
     // A per-call device (a forwarded phone request, §12) wins over the client-wide one: it is the
     // operator the LEAD authenticated for *this* action, where the client-level source is a process
@@ -1168,44 +1165,27 @@ export class PeerClient {
       headers.set(DIAL_HEADER, this.deps.dialSign({ method, path, timestamp: stampedAt, to: link.memberId }));
     }
 
+    // `controller` is the header budget and the limits' own stop; the dial also ends on the caller's signal
+    // (a phone that went away) and, for a body read in full, on its total deadline from here.
     const controller = new AbortController();
-    // The start of the dial: a body the lead reads itself must end by a deadline counted from here.
-    const startedAt = performance.now();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    // The caller's signal (a phone that went away, a caller that stopped waiting) aborts this dial, at
-    // any stage: before the headers, and while the body is read or streamed on.
-    let callerLeft = false;
-    const outer = init.signal;
-    const leave = () => {
-      callerLeft = true;
-      controller.abort();
-    };
-    if (outer !== undefined && outer !== null) {
-      if (outer.aborted) leave();
-      else outer.addEventListener("abort", leave, { once: true });
-    }
-    // The listener lives as long as the dial: until a failure below, or until the answer's body ends
-    // (closed, cut, cancelled, or none at all), so a caller's signal shared across dials collects none.
-    const release = () => outer?.removeEventListener("abort", leave);
-    const failed = (failure: PeerFailure): PeerOutcome<never> => {
-      release();
-      return this.fail(failure);
-    };
+    const deadlineMs = mode === "consumed" ? bodyDeadlineMs(timeoutMs) : init.bodyDeadlineMs;
+    const deadline = deadlineMs === undefined ? undefined : AbortSignal.timeout(deadlineMs);
+    const outer = init.signal ?? undefined;
+    const signals = [controller.signal, deadline, outer].filter((signal): signal is AbortSignal => signal !== undefined);
+    const signal = AbortSignal.any(signals);
     let res: Response;
     try {
       // `tls` rides the init: Bun's fetch takes the pinned material per request, so there is no agent
       // to construct, cache or invalidate — the pin is read fresh on every dial, from the store.
       const tls = this.deps.tls?.(link);
-      // `decompress: false`: Bun's fetch would otherwise inflate a brotli, deflate or gzip body before
-      // any reader sees it, with no bound, so a member's 1 KB body could cost the lead gigabytes. A gzip
-      // answer is inflated below through a capped decoder; any other encoding is refused unread.
       const { bodyMax: _cap, bodyDeadlineMs: _deadline, signal: _outer, ...sent } = init;
       // `redirect` is set AFTER the caller's init, so no caller can turn following back on. A crew dial
       // never follows a redirect: a followed hop would carry this request, its body, the member and
       // device headers and the dial attestation to an address the far side picked, and hand that
       // address's answer back as the peer's (§9.1). `manual` rather than `error`, because the 3xx is
       // then handed back and its target can be named in the reason below.
-      const dialInit: CrewRequestInit = { ...sent, headers, signal: controller.signal, decompress: false, redirect: "manual" };
+      const dialInit: CrewRequestInit = { ...sent, headers, signal, redirect: "manual" };
       // Assigned, never conditionally spread: an unpinned link must carry NO `tls` key at all.
       if (tls) dialInit.tls = tls;
       res = await this.deps.fetch(url, dialInit);
@@ -1214,11 +1194,12 @@ export class PeerClient {
       this.settle(link, true);
     } catch (err) {
       // A caller that went away says nothing about the link, so it does not cool it.
+      const callerLeft = outer?.aborted === true;
       if (!callerLeft) this.settle(link, false);
       // Timeout, connection refused, DNS, TLS — one state, because the phone's answer is the same in
       // all of them: last-good state, marked stale (§10.2). The peer's address is named; the secret
       // never appears in a reason string, and nothing here interpolates one.
-      const aborted = controller.signal.aborted && !callerLeft;
+      const aborted = !callerLeft && (controller.signal.aborted || deadline?.aborted === true);
       const reason = callerLeft ? "the caller went away" : aborted ? `timed out after ${timeoutMs}ms` : errorReason(err);
       // `attempted` is left absent, i.e. "possibly sent". The runtime does not tell us whether the
       // request had already been written when the socket died, and §10.3 is explicit that an
@@ -1226,8 +1207,8 @@ export class PeerClient {
       //
       // `timedOut` is NOT the same ambiguity: the abort is this process's own clock firing, so it is
       // known rather than guessed, and it is what lets §10.4 tell a slow link from a dead host.
-      if (callerLeft) return failed({ state: "unreachable", reason: `${route}: ${reason}`, timedOut: false, callerLeft: true });
-      return failed({ state: "unreachable", reason: `${route}: ${reason}`, timedOut: aborted });
+      if (callerLeft) return this.fail({ state: "unreachable", reason: `${route}: ${reason}`, timedOut: false, callerLeft: true });
+      return this.fail({ state: "unreachable", reason: `${route}: ${reason}`, timedOut: aborted });
     } finally {
       clearTimeout(timer);
     }
@@ -1238,37 +1219,18 @@ export class PeerClient {
     // answer can never hand the phone a `Location`. Its body is not read, only cancelled.
     if (isRedirectAnswer(res)) {
       void res.body?.cancel().catch(() => undefined);
-      return failed({ state: "unreachable", reason: `${route}: ${redirectReason(res, url)}` });
+      return this.fail({ state: "unreachable", reason: `${route}: ${redirectReason(res, url)}` });
     }
-    // ── gzip is inflated by the lead, with a cap; any other encoding is refused unread ──
-    // The dial asked for gzip and does not inflate (above). A plain answer (no header, or `identity`) is
-    // read as it is. Exactly `gzip` goes through the capped decoder, which stops and errors the moment
-    // its output or input passes the cap. Anything else (br, deflate, zstd, a list, an unknown word) is
-    // a member this lead cannot read safely, and its body is cancelled unread.
-    const encoding = (res.headers.get("content-encoding") ?? "").trim().toLowerCase();
-    const cap = init.bodyMax;
-    if (encoding !== "" && encoding !== "identity" && encoding !== "gzip") {
-      await res.body?.cancel().catch(() => undefined);
-      // The member's value stays out of the reason: a header may hold any byte from 0x80 up (a C1 control
-      // such as U+009B among them), and this reason reaches the journal and the phone's crew status.
-      return failed({ state: "unreachable", reason: `${route}: the peer answered in an encoding the lead does not decode` });
-    }
-    // A body the member itself says is past the cap is refused unread, before a byte is counted.
-    const declared = Number(res.headers.get("content-length") ?? "");
-    if (res.headers.has("content-length") && Number.isFinite(declared) && declared > cap) {
-      await res.body?.cancel().catch(() => undefined);
-      return failed({ state: "unreachable", reason: `${route}: the peer's answer is larger than the lead reads (${String(cap)} bytes)` });
-    }
-    // ── Every body, in every encoding, under the two bounds of guarded-body.ts ──
-    // The budget above ended at the headers. From here the member's bytes are counted against the cap,
-    // and a member that goes silent mid-body is cut off on the idle limit, its socket released by the
-    // same abort the budget uses. A gzip body is inflated on top of that, with its own count of output.
-    // A body the lead reads itself also ends by a total deadline, so every such dial, and with it the
-    // sweep that waits for every member, ends inside a bound however slowly a member drips its bytes.
-    const deadline =
-      mode === "consumed" ? startedAt + bodyDeadlineMs(timeoutMs) : init.bodyDeadlineMs === undefined ? undefined : startedAt + init.bodyDeadlineMs;
-    res = guardedResponse(res, { idleMs: bodyIdleMs(mode, timeoutMs), max: cap, deadline, onStop: () => controller.abort(), onEnd: release });
-    if (encoding === "gzip") res = inflatedResponse(res, cap);
+    // ── Every body under the limits of guarded-body.ts ──────────────────────
+    // The header budget ended above. From here the bytes the lead reads (inflated by the runtime) are
+    // counted against the size limit; a body read in full ends by its deadline, and only a download that
+    // streams on keeps an idle limit.
+    res = limitedResponse(res, {
+      max: init.bodyMax ?? (mode === "consumed" ? CREW_JSON_MAX : CREW_BODY_MAX),
+      idleMs: deadline === undefined ? Math.max(timeoutMs, BODY_IDLE_MS) : undefined,
+      onStop: () => controller.abort(),
+      late: () => deadline?.aborted === true,
+    });
 
     // ── Version first, before status and before the body ─────────────────────
     // §7: "The lead applies the same rule to a peer's RESPONSE header: a reply with a version it
@@ -1290,7 +1252,7 @@ export class PeerClient {
       // the exact cost the branch above was written to avoid.
       // `authRefused` is what lets the operator-facing split call this Attention rather than
       // Reconnecting (§10.2): the peer answered, so there is nothing to wait for.
-      return failed({
+      return this.fail({
         state: "unreachable",
         reason: `${route}: refused by the peer (unauthorized)`,
         authRefused: true,
@@ -1321,12 +1283,12 @@ export class PeerClient {
         // spent, once there is any, so the move onto the ladder is not a surprise when it comes.
         const seconds = Math.floor(waited / 1000);
         const plain = `${route}: peer answered ${res.status} with no crew protocol header`;
-        return failed({
+        return this.fail({
           state: "unreachable",
           reason: seconds < 1 ? plain : `${plain}, ${seconds}s so far`,
         });
       }
-      return failed({
+      return this.fail({
         state: "incompatible",
         reason: `${route}: peer answered ${res.status} with no crew protocol header for over ${Math.round(HEADERLESS_PATIENCE_MS / 1000)}s, this build speaks ${CREW_PROTOCOL_VERSION}`,
         expected: CREW_PROTOCOL_VERSION,
@@ -1334,7 +1296,7 @@ export class PeerClient {
       });
     }
     if (received !== null && received !== CREW_PROTOCOL_VERSION) {
-      const mismatch = failed({
+      const mismatch = this.fail({
         state: "incompatible",
         reason: `${route}: peer answered protocol ${received}, this build speaks ${CREW_PROTOCOL_VERSION}`,
         expected: CREW_PROTOCOL_VERSION,
@@ -1351,7 +1313,7 @@ export class PeerClient {
       if (conflict !== null) {
         // Not a version skew and not a refusal: this member answered precisely, and what it said is
         // that the caller's whole premise about who leads is out of date (§10.2's fourth state).
-        return failed({
+        return this.fail({
           state: "conflicted",
           reason: `${route}: ${conflict.error}`,
           leadMemberId: conflict.leadMemberId,
@@ -1365,7 +1327,7 @@ export class PeerClient {
       // name the labels, which is the one thing its operator can act on.
       const collision = pairingCollisionOf(body);
       if (collision !== null) {
-        return failed({
+        return this.fail({
           state: "refused",
           reason: `${route}: ${collision.error}`,
           code: PAIRING_LABEL_COLLISION,
@@ -1380,7 +1342,7 @@ export class PeerClient {
       // body says about versions, it is not a 1.7.0 collie. The overlap reads the header and the
       // status, never a body (§0.1).
       const mismatch = readMismatch(body);
-      return failed({
+      return this.fail({
         state: "incompatible",
         reason: `${route}: ${mismatch.reason}`,
         expected: mismatch.expected,
@@ -1393,13 +1355,13 @@ export class PeerClient {
       // proxy's own 403 never masquerades as a considered answer from a member.
       const refusal = await readRefusal(res);
       if (refusal !== null) {
-        return failed({ state: "refused", reason: refusal.error, code: refusal.code, status: res.status });
+        return this.fail({ state: "refused", reason: refusal.error, code: refusal.code, status: res.status });
       }
     }
     if (mode === "consumed" && !res.ok) {
       // Includes 401 — an auth failure is `unreachable`, per §10.2's table, and not a distinct state:
       // a rotated secret and a pulled cable both mean "the lead cannot see this member right now".
-      return failed({ state: "unreachable", reason: `${route}: HTTP ${res.status}` });
+      return this.fail({ state: "unreachable", reason: `${route}: HTTP ${res.status}` });
     }
 
     return {

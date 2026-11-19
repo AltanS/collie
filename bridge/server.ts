@@ -10798,8 +10798,8 @@ export async function projectPictureRoute(version: string, source: ProjectPictur
  * Exported for the route test.
  */
 export async function forwardedPictureRoute(version: string, member: Response): Promise<Response> {
-  // A picture is never compressed on the link (crew/forward.ts compresses text types only), so an answer
-  // with an encoding is not the member's picture, and the cap below would count compressed bytes.
+  // A member never compresses a picture (its bridge gzips text types only), so an answer that names an
+  // encoding is not the member's picture.
   if (!member.ok || member.headers.get("content-encoding") !== null) {
     await member.body?.cancel().catch(() => undefined);
     return text(HILL_MEDIA_MISSING, 404);

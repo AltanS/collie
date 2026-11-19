@@ -1,6 +1,6 @@
 # 0144: A crew has one lead and one door, and only the operator moves the crown
 
-- **Status:** Accepted (2026-11-16); Superseded in part by [ADR 0161](./0161-a-members-gzip-is-inflated-by-the-lead-with-a-cap.md) (rule 10's second sentence)
+- **Status:** Accepted (2026-11-16); Superseded in part by [ADR 0161](./0161-a-members-gzip-is-inflated-by-the-runtime-under-the-leads-limits.md) (rule 10's second sentence)
 - **Date:** 2026-11-16
 - **Supersedes:** ADR 0011, ADR 0012, ADR 0014, ADR 0015, ADR 0016, ADR 0023, ADR 0027, ADR 0028, ADR 0038, ADR 0039
 - **Trail:** the other roads were argued in discussion #67 (a Collie with its own remote protocol,

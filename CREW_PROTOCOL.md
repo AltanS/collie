@@ -1406,54 +1406,37 @@ body is the secret mask below, and that change keeps the status and salts the ET
 version.
 
 - `If-None-Match` from the phone is passed through to the peer.
-- **Compression is hop-local, and the lead inflates the member hop itself** *(changed in 1.30.0,
-  ADR 0161)*. On every crew request, not only a forwarded read, the lead sends
-  `Accept-Encoding: gzip` and nothing else, and its runtime never inflates a member's body
-  (`decompress: false`). An answer with no `content-encoding`, or `identity`, is read as it is. An
-  answer whose `content-encoding` is exactly `gzip` is inflated by the lead through a streaming decoder
-  that counts its output and its input: the moment either passes the dial's cap (below), the decoder
-  stops and the member's stream is cancelled. Any other encoding (br, deflate, zstd, a list, an unknown word) is
-  refused the same way before its body is read, with a reason that quotes none of the member's bytes.
-  The answer the lead then holds carries no `content-encoding` and no `content-length`: the lead's
-  headers describe the lead's bytes, never the member's. Every released bridge compresses only gzip and
-  only when the request names it (since 0.10.0), so a member of any version already answers this way
-  and no version moves. Before 1.30.0 the lead asked a forwarded read for identity and let the runtime
-  inflate everything else without a bound, so a member's small brotli body could cost the lead
-  hundreds of MB.
-- **Every member body is read under two bounds of the lead's own** *(added in 1.30.0)*. The call's
-  budget (§10.1) ends at the headers; from there the lead counts the member's bytes, in either
-  encoding, against the dial's cap, and refuses unread an answer whose `content-length` already
-  passes it. Every dial names its cap, none has a default, and the cap follows what the lead does with
-  the answer: 2 MB for a body the lead parses itself (the sweep, hello and every other JSON call); for
-  a forwarded answer, its route's cap (`bodyCapOf` in `bridge/crew/forward.ts`): 256 KB for a project
-  picture, 8 MB for Changes and Files, 32 MB for History, Chat, Sent and pins, 32 MB for a blob or a
-  file's picture, 2 MB for every other route. A text answer the lead masks is also refused past a
-  million JSON values, before the mask parses it. It also ends a body when no byte arrived for an idle limit while
-  the lead waited: the call's own budget for a body the lead reads itself (the sweep and every other
-  JSON call, so one stalled member cannot hold the sweep), and 10 s, or the budget when longer, for a
-  body the lead streams on to the phone. The idle limit is on silence, not on the total, so a large
-  answer on a slow link passes. A body the lead reads itself also has a total deadline from the start of
-  the dial, three times the call's budget (3.6 s on the sweep): a member that drips one byte under the
-  idle limit would otherwise hold that read, and the sweep that waits for every member, for ever. A
-  forwarded answer that is read in full before it is of any use (every route but a blob, a file's
-  picture and a project picture: the lead masks or merges it, or the phone parses it whole) has a
-  total deadline too, 8 s from the start of the dial, or the route's write budget when that is longer.
-  The number is a choice: the phone itself gives up on a read after 6 s (a poll) or 10 s (History, a
-  file), so a longer read only holds memory for an answer no one waits for, and 8 s leaves the lead 2 s
-  for the mask. An honest whole answer that needs more is cut, for example a 32 MB History over a link
-  slower than about 4 MB/s. That is availability, not security, and the fix is smaller reads (pages),
-  never a longer deadline. `bodyRuleOf` in `bridge/crew/forward.ts` holds each route's cap
-  and class in one table. Only a body that truly streams on to the phone has no total deadline, on
-  purpose: a large blob on a slow link is honest, and a member that drips one costs one phone read and
-  one socket, never the sweep. The phone's own request signal rides the dial, so a phone that goes away
-  aborts the member's read and cancels its stream; a write the member may have received still answers
-  `write_outcome_unknown`; its audit line says `caller_left`, not a lost link. On any bound the member's stream is cancelled and the request aborted. Where
-  the answer ends depends on where it was going. A body the lead reads ends as an unreachable peer (an
-  idle cut counts as the lead's own time-out, §10.4), and so does a masked text answer, which the lead
-  reads whole before the phone gets a byte. A body already streaming to the phone, which has its
-  status and headers, breaks off there with an error, never as a short body that looks whole, and the
-  lead logs that the answer was cut (and writes a second audit line for an audited route). Nothing on
-  the wire changes.
+- **Compression is hop-local, and the member hop is gzipped** *(changed in 1.30.0, ADR 0161)*. On
+  every crew request the lead sends `Accept-Encoding: gzip`, never the phone's value, and its runtime
+  inflates a gzip answer as a stream: measured on Bun 1.4.4, a read cut at 2 MB peaks at about 100 MB
+  whether the answer inflates to 32 MB or to 1 GB. The size limit below counts the inflated bytes, so
+  it holds in one place for every encoding. The runtime leaves the member's `content-encoding` and
+  `content-length` on the inflated bytes; the lead copies neither to the phone. Every released bridge
+  compresses only gzip and only when the request names it (since 0.10.0), so no version moves.
+- **A slow, stuck or broken member cannot stall or bloat the lead** *(added in 1.30.0)*. Every crew
+  machine is the operator's own and the link is pinned mutual TLS (§8.5), so these limits are written
+  for a member that fails, not for one that attacks. Two limits, on the bytes the lead reads:
+  - **Size:** 2 MB for a body the lead parses itself (the sweep, hello and every other JSON call), 32 MB
+    for every other answer (a forwarded read or write, a log page, a blob). Past it the read fails.
+  - **Time:** the call's budget (§10.1) ends at the headers. A body the lead reads itself then ends by
+    a total deadline of three times the budget from the start of the dial (3.6 s on the sweep), so a
+    stuck member never holds the sweep. A forwarded answer that is read in full before it is of any use
+    (every route but a blob, a file's picture and a project picture: the lead masks or merges it, or
+    the phone parses it whole) ends by 8 s, or the route's write budget when that is longer. The number
+    is a choice: the phone itself gives up on a read after 6 s (a poll) or 10 s (History, a file), and
+    8 s leaves the lead 2 s for the mask. An honest whole answer that needs more is cut, for example a
+    32 MB History over a link slower than about 4 MB/s; the fix for that is smaller reads (pages), never
+    a longer deadline. A download that streams on to the phone has no total deadline, as a large blob
+    on a slow link is honest; it ends when no byte came for 10 s while the phone waited for one.
+  - **The phone:** its request signal rides the dial, so a phone that goes away ends the member's read.
+    A write the member may have received still answers `write_outcome_unknown`, and its audit line says
+    `caller_left`, not a lost link.
+
+  Past a limit the member's stream is cancelled and the request aborted. A body the lead reads ends as
+  an unreachable peer (a cut on the clock counts as the lead's own time-out, §10.4), and so does a
+  masked text answer, which the lead reads whole before the phone gets a byte. A body already streaming
+  to the phone breaks off there with an error, never as a short body that looks whole, and the lead
+  logs that the answer was cut. Nothing on the wire changes.
 - **A peer never follows a redirect** *(added after 1.29.1)*. This holds for every crew dial, the
   lead's to a member and a member's to its lead, and for the enrollment POST of `crew join`. No
   collie answers a crew route with a redirect, so a 3xx other than `304` is a peer that answers
