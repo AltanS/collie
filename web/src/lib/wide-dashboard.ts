@@ -1,17 +1,19 @@
-// THE DASHBOARD ON A LARGE SCREEN, the numbers (proposal round `dashboard-wide`, not wired to a route yet).
+// THE DASHBOARD ON A LARGE SCREEN, the numbers (ADR 0158).
 //
 // A Space keeps ONE fixed width, the column of a large phone, and Spaces wrap across the free width. The
-// count of columns is a function of the screen's width and nothing else: no status, no row count, no name
-// can change it, so a Space never changes column while the window keeps its size. The order is the
-// list's own (machine, then Space number, then tab number, lib/pane-groups.ts), the order the phone list
-// and the large screen's sidebar already show.
+// count of columns is a function of the width the dashboard is given and nothing else: no status, no row
+// count, no name can change it, so a Space never changes column while the window keeps its size. The order
+// is the list's own (machine, then Space number, then tab number, lib/pane-groups.ts), the order the phone
+// list and the large screen's sidebar already show.
 //
-// Below two columns the dashboard is the phone's column, exactly as today. Two columns need
-// 2 × 384 + 24 + 2 × 24 = 840px, so the grid begins inside the `expanded` width class (900px, ADR 0120)
-// and never in `medium`.
+// The grid begins in the `expanded` width class (900px, ADR 0120) and never in `medium`: two columns need
+// 2 × 384 + 24 + 2 × 24 = 840px, which the class's 900px floor always holds. Below the class, and with
+// Large-screen layout Off, the dashboard is the phone's column, exactly as it was.
 
-import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { groupHost } from "@/lib/dash-view";
+import type { WorkspaceGroup } from "@/lib/pane-groups";
+import { needsYou } from "@/lib/triage";
+import type { AgentView } from "@/lib/types";
 
 /** One Space's width in px: the content column of a 412px phone (380px) rounded up to 24rem. */
 export const SPACE_WIDTH = 384;
@@ -36,20 +38,9 @@ export function gridWidth(columns: number): number {
   return columns * SPACE_WIDTH + (columns - 1) * SPACE_GAP_X;
 }
 
-/** Whether a screen this wide draws the Space grid at all; below two columns it keeps the phone's column. */
-export function isWideDashboard(screenWidth: number): boolean {
-  return spaceColumns(screenWidth) >= 2;
-}
-
-/**
- * Items dealt into `columns` columns by their index: item i goes to column i mod `columns`. A masonry whose
- * column is fixed by the item's place in the order, never by the heights above it, so a Space that grows
- * moves only the Spaces under it in its own column, and never to another column.
- */
-export function dealIntoColumns<T>(items: readonly T[], columns: number): T[][] {
-  const out: T[][] = Array.from({ length: Math.max(1, columns) }, () => []);
-  items.forEach((item, i) => out[i % out.length]!.push(item));
-  return out;
+/** The width in px of the dashboard's column on a screen that holds `columns` Space columns: the grid and its two gutters. The header and the tab bar are this wide. */
+export function contentWidth(columns: number): number {
+  return gridWidth(columns) + 2 * WIDE_GUTTER;
 }
 
 /**
@@ -88,4 +79,14 @@ export function machineRuns<G extends { group: WorkspaceGroup }>(items: readonly
     out.push({ host, items: [item] });
   }
   return out;
+}
+
+/**
+ * The sessions the band above the grid repeats: every one that needs the person or finished unseen, in the
+ * list's own order (machine, Space, tab, position), never by urgency or age, so the band does not reshuffle
+ * while a person reads it. A copy: no row leaves its Space (ADR 0158). `needs` says who needs you, the live
+ * `needsYou` unless the list is held under a finger (`AgentList` hands the answer the finger found).
+ */
+export function waitingPanes(groups: readonly WorkspaceGroup[], needs: (pane: AgentView) => boolean = needsYou): AgentView[] {
+  return groups.flatMap((group) => group.panes).filter(needs);
 }

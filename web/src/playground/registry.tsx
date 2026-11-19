@@ -141,6 +141,10 @@ export const ENTRIES: readonly SectionEntry[] = [
     load: () => import("./sections/dashboard-top").then((m) => ({ default: m.DashboardTopSection })),
   },
   {
+    def: { id: "dashboard-wide", group: "Dashboard", title: "Dashboard on a large screen", keywords: ["dashboard", "large-screen", "wide", "grid", "columns", "AgentList", "needs-you", "band", "waiting", "Spaces", "tab-bar", "fab", "expanded"] },
+    load: () => import("./sections/dashboard-wide").then((m) => ({ default: m.DashboardWideSection })),
+  },
+  {
     def: { id: "usage-row", group: "Pane", title: "Usage row", keywords: ["usage", "ModelTag", "model", "tag", "context", "limits", "percent", "dots", "statusline"] },
     load: () => import("./sections/usage-row").then((m) => ({ default: m.UsageRowSection })),
   },

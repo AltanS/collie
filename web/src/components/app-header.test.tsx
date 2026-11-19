@@ -722,6 +722,7 @@ const SettingsLikeRoute = () => (
 );
 // The pane's shape, as a fourth type: `width="wide"` rather than the dashboard's `column`.
 const WideRoute = () => <HoistedRoute name="wide" width="wide" onHome={() => {}} />;
+const GridRoute = () => <HoistedRoute name="grid" width={1248} onHome={() => {}} />;
 
 function renderHoisted(initialEntry = "/") {
   const router = createMemoryRouter(
@@ -740,6 +741,7 @@ function renderHoisted(initialEntry = "/") {
           { path: "pane", element: <PaneRoute /> },
           { path: "settings", element: <SettingsLikeRoute /> },
           { path: "wide", element: <WideRoute /> },
+          { path: "grid", element: <GridRoute /> },
         ],
       },
     ],
@@ -877,6 +879,18 @@ describe("the ONE header — hoisted above the outlet", () => {
     expect(header?.className).not.toContain("max-w-screen-sm");
     await go("/settings");
     expect(header?.className).toContain("max-w-screen-sm");
+  });
+
+  it("gives a numeric claim exactly that many px, centred: the large-screen dashboard's grid (ADR 0158)", async () => {
+    const { container, go } = renderHoisted();
+    const header = container.querySelector("header")!;
+    await go("/grid");
+    expect(header.style.maxWidth).toBe("1248px");
+    expect(header.className).toContain("mx-auto");
+    expect(header.className).not.toContain("max-w-screen-sm");
+    await go("/settings");
+    expect(header.style.maxWidth).toBe("");
+    expect(header.className).toContain("max-w-screen-sm");
   });
 
   it("gives the wide claim the md column, not the sm one the other routes take", async () => {

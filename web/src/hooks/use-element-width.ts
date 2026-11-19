@@ -8,15 +8,18 @@ import { useLayoutEffect, useState } from "react";
  * It is a callback ref, not a ref object, because the element can come and go: a chart draws a
  * placeholder until its data arrives and its column only then exists. It measures in a layout effect,
  * so the width is known before the first paint and a chart is drawn once at its real width.
+ *
+ * `box` says which width: the border box (default), or `client`, the room inside a scrolling element
+ * without its scrollbar, which is what a grid inside a scroller has to fit.
  */
-export function useElementWidth<T extends HTMLElement>(fallback: number): [(el: T | null) => void, number] {
+export function useElementWidth<T extends HTMLElement>(fallback: number, box: "border" | "client" = "border"): [(el: T | null) => void, number] {
   const [el, setEl] = useState<T | null>(null);
   const [width, setWidth] = useState(fallback);
 
   useLayoutEffect(() => {
     if (el === null) return;
     const read = () => {
-      const w = Math.round(el.getBoundingClientRect().width);
+      const w = Math.round(box === "client" ? el.clientWidth : el.getBoundingClientRect().width);
       // `setState` with the same value draws nothing, so a resize that moves nothing is free.
       if (w > 0) setWidth(w);
     };
@@ -25,7 +28,7 @@ export function useElementWidth<T extends HTMLElement>(fallback: number): [(el: 
     const observer = new ResizeObserver(read);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [el]);
+  }, [el, box]);
 
   return [setEl, width];
 }
