@@ -18,7 +18,7 @@ import type {
 } from "@/lib/types";
 
 /** The wire shape of `operatorShortcuts`, read-only once held. */
-type OperatorShortcutsWire = { readonly [name: string]: readonly string[] };
+export type OperatorShortcutsWire = { readonly [name: string]: readonly string[] };
 
 // The startup-resolved half of /api/config, read ONCE and held in module state: the operator's own
 // rows (their `commands.toml` palette, their `keys.toml` tray presets and their
@@ -378,6 +378,14 @@ export function useOperatorKeys(): readonly OperatorKeyRow[] {
     void loadOperatorCommands();
   }, []);
   return useSyncExternalStore(subscribeOperatorConfig, getOperatorKeys, getOperatorKeys);
+}
+
+/** Reactive read of the operator's keyboard shortcuts, raw as the bridge sent them. Same one-shot fetch, same contract. */
+export function useOperatorShortcuts(): OperatorShortcutsWire | null {
+  useEffect(() => {
+    void loadOperatorCommands();
+  }, []);
+  return useSyncExternalStore(subscribeOperatorConfig, getOperatorShortcuts, getOperatorShortcuts);
 }
 
 /** Reactive read of the operator's typefaces. Same one-shot fetch, same contract. */

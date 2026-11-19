@@ -26,6 +26,7 @@ import {
   shownPreset,
   spaceKeyOf,
   spaceSwipe,
+  stepWidth,
   wholeColumnStart,
   widthClassOf,
   type SpaceStrip,
@@ -212,6 +213,25 @@ describe("the focus rules", () => {
     const next = cycleWidth(s, "b", ["half", "fourfifths", "full"]);
     expect(next.cols[1]?.preset).toBe("fourfifths");
     expect(next.focus).toBe("a");
+  });
+
+  it("a keyboard step goes one width along and stops at the ends", () => {
+    const all = ["half", "fourfifths", "full"] as const;
+    const s = strip(["a", "b"], "a");
+    const wider = stepWidth(s, "b", all, 1);
+    expect(wider.cols[1]?.preset).toBe("fourfifths");
+    expect(wider.focus).toBe("a");
+    expect(stepWidth(wider, "b", all, -1).cols[1]?.preset).toBe("half");
+    expect(stepWidth(s, "b", all, -1)).toBe(s);
+    const full = stepWidth(stepWidth(s, "b", all, 1), "b", all, 1);
+    expect(stepWidth(full, "b", all, 1)).toBe(full);
+  });
+
+  it("a keyboard step skips a width the strip is too narrow for, and ignores a column it does not have", () => {
+    const s = strip(["a"], "a");
+    expect(stepWidth(s, "a", ["fourfifths", "full"], 1).cols[0]?.preset).toBe("full");
+    expect(stepWidth(s, "a", ["full"], 1)).toBe(s);
+    expect(stepWidth(s, "zzz", ["half", "full"], 1)).toBe(s);
   });
 
   it("Remove from view keeps the last column and hands the focus to a neighbour", () => {

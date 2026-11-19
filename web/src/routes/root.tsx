@@ -12,6 +12,7 @@ import {
 
 import { useNavTrail } from "@/hooks/use-nav";
 import { useSlotMemory } from "@/hooks/use-slot-memory";
+import { useShortcuts } from "@/hooks/use-shortcuts";
 import { readAgentLaunch } from "@/lib/agent-startup";
 import { usePolling } from "@/hooks/use-polling";
 import { usePollBusy } from "@/hooks/use-poll-busy";
@@ -113,6 +114,8 @@ export function RootLayout() {
   useBusyWhile(useNavigation().state !== "idle");
   // The history the tab has walked, for the Files breadcrumb's pop (lib/nav-trail.ts).
   useNavTrail();
+  // The desktop keyboard shortcuts (M108): one listener for the whole app, on the machine and session in view.
+  useShortcuts(pane?.scope ?? data.scope);
   // Which pane this tab reopens on, when it came through `/slot/<n>` (lib/slots.ts).
   useSlotMemory();
   // The open pane as a ROW, so a peer's pane that shares its id is not silenced along with it.

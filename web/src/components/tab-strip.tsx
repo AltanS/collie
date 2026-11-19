@@ -25,6 +25,7 @@ import { useMuxCapability, useMuxDeclared } from "@/lib/mux-capability";
 import type { Scope } from "@/lib/scope";
 import { t as translate } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
+import { useShortcutHandler } from "@/hooks/use-shortcut-handler";
 import type { WidthClass } from "@/lib/wide-layout";
 
 interface TabStripProps {
@@ -238,6 +239,20 @@ export function TabStrip({
   // agent onto the lead's tab. Solo panes are untagged and `host` is undefined — same set as before.
   const here = agents.filter((a) => hostKey(a) === (host ?? ""));
   const wsTabs = tabs.filter((t) => t.workspaceId === workspaceId);
+  // ── The keyboard (M108): the same acts the row's tabs and its "+" make, for the space you are in.
+  // Not on the space page's row, which has an "All" and no tab of its own to step from. The "+" is
+  // offered only where it is drawn, so a multiplexer that makes no tab by hand gets no `new_tab`.
+  const at = wsTabs.findIndex((tab) => tab.tabId === selected);
+  const toTabAt = (to: number) => {
+    const tab = wsTabs[to];
+    if (tab !== undefined && tab.tabId !== selected) onSelect(tab.tabId);
+  };
+  const canAdd = !allowAll && !creatingTab && (newTab.capable || startersOpen);
+  useShortcutHandler("new_tab", canAdd ? () => (newTab.capable ? onNewTab(workspaceId) : onNewStarters?.()) : undefined);
+  useShortcutHandler("previous_tab", !allowAll && at > 0 ? () => toTabAt(at - 1) : undefined);
+  useShortcutHandler("next_tab", !allowAll && at >= 0 && at < wsTabs.length - 1 ? () => toTabAt(at + 1) : undefined);
+  useShortcutHandler("switch_tab", allowAll ? undefined : (index) => (index === undefined ? undefined : toTabAt(index - 1)));
+
   if (wsTabs.length === 0) return null;
 
   return (

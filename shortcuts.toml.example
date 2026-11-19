@@ -13,8 +13,7 @@
 # below are the defaults: uncomment the `[keys]` line and the lines you want, then change them. Your
 # value replaces that action's default whole.
 #
-# Edits are picked up live, no restart. Reload the page to see them. `prefix+shift+r` reads the
-# file again without a reload.
+# Edits are picked up live, no restart. Reload the page to see them.
 #
 # A value is a string or a list of strings. A binding is `prefix+<key>` (the prefix, then the key)
 # or a direct chord such as `ctrl+alt+c`. A direct chord needs a modifier: a bare letter is refused.
@@ -71,11 +70,19 @@
 # resize_mode = "prefix+r"
 # workspace_picker = "prefix+w"
 
-# Chat or Terminal for this pane, the composer, the find bar, a fresh read of this file.
+# The keys inside the picker and inside resize. They are bare keys, only valid in their mode.
+# navigate_left = ["h", "left"]
+# navigate_down = ["j", "down"]
+# navigate_up = ["k", "up"]
+# navigate_right = ["l", "right"]
+# navigate_tab = "1..9"
+# resize_narrower = ["h", "left"]
+# resize_wider = ["l", "right"]
+
+# Chat or Terminal for this pane, the composer, the find bar.
 # toggle_view = "prefix+t"
 # focus_composer = "prefix+i"
 # find = "prefix+/"
-# reload_config = "prefix+shift+r"
 
 # One action can have several bindings. Write a list, for example `["prefix+c", "ctrl+alt+c"]`.
 # An unbound action has an empty value: `""` or `[]`.

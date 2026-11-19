@@ -7,7 +7,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams, useRevalidator } from "react-router";
 
 import { __resetConnectionHealth, NETWORK_LATCH_MS, noteNetworkFailure } from "@/lib/connection-health";
-import type { JsonValue } from "@/lib/json";
+import { asJsonString, parseJsonObject, type JsonValue } from "@/lib/json";
 
 // Mock the race guard at AgentChat's seam so the frozen-revision tests can observe exactly what
 // `detectedRevision` the tap handler passes (the guard's own behaviour is covered in
@@ -43,6 +43,8 @@ vi.mock("@/lib/chat-gate", async (importOriginal) => ({
 import { server } from "@/test/setup";
 import { __resetBeltIntents, queueBeltIntent, takeBeltIntent } from "@/lib/belt-intent";
 import { paneScopeKey } from "@/lib/scope";
+import type { ActionId } from "@/lib/shortcuts/actions";
+import { __resetShortcutRegistry, runShortcutAction } from "@/lib/shortcuts/registry";
 import { __forgetTabPaneMemory, rememberTabPane } from "@/lib/tab-pane-memory";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
@@ -2536,6 +2538,66 @@ describe("the pane fits its viewport", () => {
 // bottom region leaves as one row through its own `Collapse`. Both leave the tree at the end of the
 // exit rather than at the start, which is why the disappearance is awaited — a control that is off
 // the screen must not still be focusable, and that is the half worth pinning.
+// THE KEYBOARD (M108 spec 03): each desktop shortcut calls the act a control of this pane already makes, and
+// is offered only where that control is drawn. The key tap is pinned in hooks/use-shortcuts.test.tsx.
+describe("AgentChat — desktop shortcuts", () => {
+  afterEach(() => __resetShortcutRegistry());
+
+  function run(id: ActionId): boolean {
+    let ran = false;
+    act(() => {
+      ran = runShortcutAction(id);
+    });
+    return ran;
+  }
+
+  it("zoom turns zen mode on and off, where the pane menu offers zen", async () => {
+    setZenEnabled(true);
+    const { container } = renderChat({ tabs: fixtureTabs });
+    expect(run("zoom")).toBe(true);
+    await waitFor(() => expect(container.querySelector('header [data-slot="header-row"]')).toBeNull());
+    expect(run("zoom")).toBe(true);
+    await waitFor(() => expect(container.querySelector('header [data-slot="header-row"]')).not.toBeNull());
+  });
+
+  it("zoom has no way in while the setting is off", () => {
+    renderChat();
+    expect(run("zoom")).toBe(false);
+  });
+
+  it("find opens the find bar over the output", async () => {
+    renderChat();
+    expect(run("find")).toBe(true);
+    expect(await screen.findByRole("textbox", { name: /find in output/i })).toBeInTheDocument();
+  });
+
+  it("find has no way in on a pane with no output", () => {
+    renderChat({ text: "" });
+    expect(run("find")).toBe(false);
+  });
+
+  it("goto opens the switcher, the sheet the pull handle opens", async () => {
+    renderChat();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(run("goto")).toBe(true);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("focus_composer focuses the reply box", () => {
+    renderChat();
+    expect(run("focus_composer")).toBe(true);
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveFocus();
+  });
+
+  it("toggle_view flips the device's choice between the terminal and Chat", async () => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" }));
+    renderChat();
+    const chosen = () => asJsonString(parseJsonObject(localStorage.getItem("collie:dash-prefs:v1") ?? "{}")?.paneView);
+    expect(run("toggle_view")).toBe(true);
+    await waitFor(() => expect(chosen()).toBe("chat"));
+  });
+});
+
 describe("AgentChat — zen mode", () => {
   const headerRowOf = (container: HTMLElement) =>
     container.querySelector('header [data-slot="header-row"]');

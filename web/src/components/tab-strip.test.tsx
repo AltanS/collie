@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
 import { __resetOperatorCommands } from "@/lib/operator-config";
+import { __resetShortcutRegistry, runShortcutAction } from "@/lib/shortcuts/registry";
 import { server } from "@/test/setup";
 import { cn } from "@/lib/utils";
 import { TabStrip } from "./tab-strip";
@@ -764,6 +765,72 @@ describe("TabStrip new-tab on a program that offers starters", () => {
     await user.click(await screen.findByRole("button", { name: "New tab" }));
     expect(onNewTab).toHaveBeenCalledWith("w1");
     expect(onNewStarters).not.toHaveBeenCalled();
+  });
+});
+
+// THE KEYBOARD (M108 spec 03): the shortcuts are a second path to the row's own controls, so each is
+// offered only where that control is: not on the space page's row (it has an "All" and no tab of its own
+// to step from), not at the ends of the row, and not for a "+" the machine does not draw.
+describe("TabStrip shortcuts", () => {
+  afterEach(() => {
+    __resetShortcutRegistry();
+    // The last case declares a machine with no plus; the cases after this block must not inherit it.
+    __resetOperatorCommands();
+  });
+
+  function renderRow(selected: string | null, extra: { onSelect?: () => void; onNewTab?: () => void; allowAll?: boolean } = {}) {
+    const onSelect = vi.fn(extra.onSelect);
+    const onNewTab = vi.fn(extra.onNewTab);
+    render(<TabStrip workspaceId="w1" tabs={tabs} agents={[]} selected={selected} onSelect={onSelect} onNewTab={onNewTab} allowAll={extra.allowAll ?? false} />);
+    return { onSelect, onNewTab };
+  }
+
+  it("steps to the tab after and before, and stops at the ends", () => {
+    const { onSelect } = renderRow("w1:t1");
+    expect(runShortcutAction("previous_tab")).toBe(false);
+    expect(runShortcutAction("next_tab")).toBe(true);
+    expect(onSelect).toHaveBeenCalledWith("w1:t2");
+  });
+
+  it("stops at the last tab", () => {
+    renderRow("w1:t2");
+    expect(runShortcutAction("next_tab")).toBe(false);
+    expect(runShortcutAction("previous_tab")).toBe(true);
+  });
+
+  it("opens a tab by its number, and does nothing for the open tab or a number past the row", () => {
+    const { onSelect } = renderRow("w1:t1");
+    runShortcutAction("switch_tab", 2);
+    expect(onSelect).toHaveBeenCalledWith("w1:t2");
+    onSelect.mockClear();
+    runShortcutAction("switch_tab", 1);
+    runShortcutAction("switch_tab", 7);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("makes a new tab the way the plus does", () => {
+    const { onNewTab } = renderRow("w1:t1");
+    expect(runShortcutAction("new_tab")).toBe(true);
+    expect(onNewTab).toHaveBeenCalledWith("w1");
+  });
+
+  it("offers nothing on the space page's row", () => {
+    const { onSelect, onNewTab } = renderRow(null, { allowAll: true });
+    for (const id of ["new_tab", "previous_tab", "next_tab", "switch_tab"] as const) expect(runShortcutAction(id, 1), id).toBe(false);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onNewTab).not.toHaveBeenCalled();
+  });
+
+  it("makes no tab where the machine draws no plus", async () => {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({ push: false, vapidPublicKey: "", mux: { name: "durable", capabilities: { createTab: false, starters: false }, unsupportedKeys: [], notes: {} } }),
+      ),
+    );
+    const { onNewTab } = renderRow("w1:t1");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "New tab" })).toBeNull());
+    expect(runShortcutAction("new_tab")).toBe(false);
+    expect(onNewTab).not.toHaveBeenCalled();
   });
 });
 

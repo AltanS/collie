@@ -12,6 +12,8 @@ import { panePath } from "@/lib/nav";
 import { readAgentLaunch } from "@/lib/agent-startup";
 import { __resetOpenBeside } from "@/lib/open-beside";
 import { paneScopeKey } from "@/lib/scope";
+import type { ActionId } from "@/lib/shortcuts/actions";
+import { __resetShortcutRegistry, runShortcutAction } from "@/lib/shortcuts/registry";
 import { statusLabel, type AgentView, type DeviceAuth, type TabView } from "@/lib/types";
 import { __resetWideLayoutStore, setWideLayoutMode } from "@/lib/wide-layout-store";
 import { DetailRoute } from "@/routes/detail";
@@ -1102,5 +1104,119 @@ describe("folded postures", () => {
     const phone = await mount("w1:p1", 599);
     expect(frame(phone.container).dataset.fold).toBe("flat");
     expect(q(phone.container, "aside")).toBeNull();
+  });
+});
+
+// THE KEYBOARD (M108 spec 03). A shortcut calls the act a control of this screen already makes, and is
+// offered only where that control is. The key tap itself is pinned in hooks/use-shortcuts.test.tsx; here
+// the registry is called directly, as the listener does.
+describe("the keyboard", () => {
+  afterEach(() => __resetShortcutRegistry());
+
+  function run(id: ActionId, index?: number): boolean {
+    let ran = false;
+    act(() => {
+      ran = runShortcutAction(id, index);
+    });
+    return ran;
+  }
+  const shownPane = (container: ParentNode) => q(container, '[data-testid="chat"]')?.textContent;
+
+  it("toggle_sidebar folds the sidebar to the rail and back, and goto opens it", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    expect(run("toggle_sidebar")).toBe(true);
+    await waitFor(() => expect(q(container, "aside")?.dataset.slot).toBe("rail"));
+    run("toggle_sidebar");
+    await waitFor(() => expect(q(container, "aside")?.dataset.slot).toBe("wide-sidebar"));
+    run("toggle_sidebar");
+    await waitFor(() => expect(q(container, "aside")?.dataset.slot).toBe("rail"));
+    run("goto");
+    await waitFor(() => expect(q(container, "aside")?.dataset.slot).toBe("wide-sidebar"));
+  });
+
+  it("offers nothing on the phone layout, where there is no sidebar or strip", async () => {
+    await mount("w1:p1", 599);
+    for (const id of ["toggle_sidebar", "goto", "focus_pane_left", "focus_pane_right", "close_column", "resize_wider"] as const) {
+      expect(run(id), id).toBe(false);
+    }
+  });
+
+  it("moves the focus along the columns, stops at the ends, and wraps for cycle", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    expect(run("focus_pane_right")).toBe(true);
+    expect(shownPane(container)).toBe("pane:w1:p2");
+    run("focus_pane_left");
+    await waitFor(() => expect(shownPane(container)).toBe("pane:w1:p1"));
+    run("focus_pane_left");
+    expect(shownPane(container)).toBe("pane:w1:p1");
+    run("cycle_pane_previous");
+    await waitFor(() => expect(shownPane(container)).toBe("pane:w1:p2"));
+    run("cycle_pane_next");
+    await waitFor(() => expect(shownPane(container)).toBe("pane:w1:p1"));
+    // The picker's keys run the same acts.
+    run("navigate_right");
+    await waitFor(() => expect(shownPane(container)).toBe("pane:w1:p2"));
+  });
+
+  it("cycle needs two columns", async () => {
+    await mount("w1:p1", 1200);
+    expect(run("cycle_pane_next")).toBe(false);
+    expect(run("cycle_pane_previous")).toBe(false);
+    expect(run("close_column")).toBe(false);
+  });
+
+  it("moves between spaces as the chevrons do, and not past the ends", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    expect(run("focus_pane_up")).toBe(false);
+    expect(run("focus_pane_down")).toBe(true);
+    await waitFor(() => expect(shownPane(container)).toBe("pane:w2:p1"));
+    expect(run("focus_pane_down")).toBe(false);
+    expect(run("navigate_up")).toBe(true);
+    await waitFor(() => expect(shownPane(container)).toBe("pane:w1:p1"));
+  });
+
+  it("closes the focused column from the view while another stands, and the pane keeps its row", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    expect(columns(container)).toHaveLength(2);
+    expect(run("close_column")).toBe(true);
+    await waitFor(() => expect(columns(container)).toHaveLength(1));
+    expect(sidebarRow(container, A2)).not.toBeNull();
+    expect(run("close_column")).toBe(false);
+  });
+
+  it("steps the width one preset at a time and stops at the ends", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    const first = () => within(columns(container)[0]!).getByRole("button", { name: /^Width / });
+    // The focus is the second column, so the step moves that one.
+    const label = () => q(container, '[data-slot="column-head"]')?.textContent ?? "";
+    expect(run("resize_narrower")).toBe(true);
+    expect(label()).toContain("1/2");
+    run("resize_wider");
+    await waitFor(() => expect(label()).toContain("4/5"));
+    run("resize_wider");
+    await waitFor(() => expect(label()).toContain("Full"));
+    run("resize_wider");
+    expect(label()).toContain("Full");
+    run("resize_narrower");
+    await waitFor(() => expect(label()).toContain("4/5"));
+    // The first column keeps its own width.
+    expect(first().textContent).toBe("1/2");
+  });
+
+  it("offers no width step where there is no width to choose", async () => {
+    // 700 less the 264 sidebar leaves 436, under two panes at the minimum width.
+    await mount("w1:p1", 700);
+    expect(run("resize_wider")).toBe(false);
+    expect(run("resize_narrower")).toBe(false);
+  });
+
+  it("gives the sidebar toggle no key in a book fold, where the toggle is not drawn", async () => {
+    posture = "book";
+    await mount("w1:p1", 1200);
+    expect(run("toggle_sidebar")).toBe(false);
+    expect(run("goto")).toBe(false);
   });
 });

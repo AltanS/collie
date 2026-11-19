@@ -7,6 +7,7 @@ import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useSheetPull } from "@/hooks/use-sheet-pull";
 import { usePaneNavigation } from "@/components/pane-nav";
 import { besideOf, useNewTabOrSheet } from "@/hooks/use-new-tab-or-sheet";
+import { useShortcutHandler } from "@/hooks/use-shortcut-handler";
 import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { isQuestion, shownStatus } from "@/lib/triage";
 import { useNav } from "@/hooks/use-nav";
@@ -2370,6 +2371,16 @@ export function AgentChat({
     if (sel && !sel.isCollapsed) return;
     composerRef.current?.focusInput();
   }
+
+  // ── The keyboard (M108): each shortcut calls the act a control of this pane already makes ─────────
+  // Offered only where that control is drawn. Zen's way in is the pane menu's row (and a floating way
+  // out), the switcher is the pull handle (the strip's sidebar stands in for it), find is withheld in
+  // Chat, and the Chat/Terminal choice is withdrawn on a pane with no screen.
+  useShortcutHandler("zoom", zen ? () => setZen(false) : zenAvailable && display ? enterZen : undefined);
+  useShortcutHandler("goto", pullHandle === undefined ? undefined : () => setDrawer("switcher"));
+  useShortcutHandler("find", display && !chatShown && !agentView.showing ? openFind : undefined);
+  useShortcutHandler("toggle_view", gridless ? undefined : () => paneViewChange(chatShown ? "terminal" : "chat"));
+  useShortcutHandler("focus_composer", () => composerRef.current?.focusInput());
 
   // A trick this session proposed (package I): Collie's own card, last in whichever body is on screen (Chat, the
   // mirror, or an agent view standing in for both), in that body's own scroll like a message (session-trick-card.tsx), never a band of its own. Opening its code brings
