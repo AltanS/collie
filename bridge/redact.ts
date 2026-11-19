@@ -43,9 +43,12 @@
 // scan: a pattern whose unbounded run holds its own opening and must be followed by something
 // (the JWT's dot) starts again at every opening and reads to the end each time. So no pattern may
 // start inside such a run, and every PEM read is done once per END or line, not once per BEGIN.
-// The mask's extra memory is a few bytes per input character (one piece per masked run, not per
-// character). `redact.test.ts` pins a 200 × 200 screen under 20 ms, and every pattern's hostile
-// inputs at 1 MB under 250 ms; a pattern added here gets its cases there.
+// The mask's memory is linear too, but not small: at its peak about 18 to 34 times the input on text
+// that is all matches (575 MB on 32 MB of `token=` pairs), mostly one span array per match. The
+// masked text it returns is one flat piece per masked run, about twice the input; the released
+// per-character mask returned a string of 1.4 GB on the same 32 MB. `redact.test.ts` pins a 200 × 200
+// screen under 20 ms, every pattern's hostile inputs at 1 MB under 250 ms, and what a masked 8 MB
+// text holds on to; a pattern added here gets its cases there.
 //
 // The switch is `COLLIE_REDACT` (`[access] redact`), default on (`config.ts`).
 

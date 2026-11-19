@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { heapStats } from "bun:jsc";
 
 import { MASK, MASK_VERSION, maskPatternsSource, redactAnsi, redactSegments, redactText } from "./redact.ts";
 
@@ -349,10 +350,39 @@ describe("redact — hostile text costs linear time", () => {
   });
 
   test("BEGIN markers on one 8 MB line: quadratic would be seconds", () => {
+    // Its own limit: about 40 ms on a desktop, about 9 s for the released scan.
     const text = `${fill(BEGIN, 8 * MB - 1)}\n`;
     const t0 = performance.now();
     expect(redactText(text)).toBe(text);
-    expect(performance.now() - t0).toBeLessThan(LIMIT_MS);
+    expect(performance.now() - t0).toBeLessThan(1_000);
+  });
+
+  // WHAT A MASKED TEXT HOLDS ON TO. The released mask added the mask one character at a time, so the
+  // string it returned was a chain of one piece per masked character (32 MB of `token=` cost 1.4 GB),
+  // and an ANSI read built two strings per escape. Counted here as the live strings a result keeps
+  // after a full collection: the released code left 8.4 M for this text and 4.2 M for this read, the
+  // fixed one about 20. A count of strings, not of bytes: the heap size moved between 0.5 and 7 times
+  // the input with what ran before, and the buffers of flat strings live outside it.
+  const stringsHeldBy = (mask: (text: string) => string, unit: string): number => {
+    const text = unit.repeat(Math.floor((8 * MB) / unit.length));
+    // A repeated string is built lazily; read it whole first, so its own pieces are not counted.
+    expect(text.includes("\u0000")).toBe(false);
+    const live = (): number => {
+      // The last regex input is kept for `RegExp.lastMatch`; point it at a tiny one first.
+      expect(/x/.exec("y")).toBeNull();
+      Bun.gc(true);
+      return heapStats().objectTypeCounts.string ?? 0;
+    };
+    const before = live();
+    const out = mask(text);
+    const held = live() - before;
+    expect(out.length).toBe(text.length);
+    return held;
+  };
+
+  test("a masked 8 MB text is one flat string, not a piece per masked character or per escape", () => {
+    expect(stringsHeldBy(redactText, "token=")).toBeLessThan(1_000);
+    expect(stringsHeldBy((t) => redactAnsi(t), `${ESC}[1mtoken=${ESC}[0m`)).toBeLessThan(1_000);
   });
 });
 
