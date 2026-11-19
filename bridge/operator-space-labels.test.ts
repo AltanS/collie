@@ -189,7 +189,9 @@ describe("server.ts wiring", () => {
   test("the snapshot's sessions carry the operator's labels, refreshed by the snapshot itself", () => {
     const builder = src.slice(src.indexOf("const localSnapshot = ("), src.indexOf("const watchedPaneIds = ()"));
     expect(builder).toContain("void sessionLabels.refresh();");
-    expect(builder).toContain("sessions: withSessionLabels(registry.list(), sessionLabels.labelOf),");
+    // The call may take arguments and span lines (`registry.list(...)` takes the seen rule), so the check
+    // is its shape: the registry's list wrapped by `withSessionLabels` with `sessionLabels.labelOf`.
+    expect(builder).toMatch(/sessions: withSessionLabels\(\s*registry\.list\([\s\S]*?\),\s*sessionLabels\.labelOf,?\s*\),/u);
     expect(src).toContain("createSessionLabels(cfg.spacesFile ?? null)");
   });
 });
