@@ -315,6 +315,8 @@ The lead is the managed front door, and it serves the PWA. The phone reaches it 
 TLS carrying the crew secret. A member is a full Collie with no front door, and it keeps its own
 agents, journal, uploads and audit log. Management runs entirely through the CLI, with no Herdr UI
 actions. The wire itself is specified in [`CREW_PROTOCOL.md`](../CREW_PROTOCOL.md).
+Every machine of a crew is trusted in full: read [the risk model](security.md#risk-model) before you
+join a machine that is not yours alone.
 
 A peer is one Collie instance, with one terminal multiplexer and the durable agents attached to it
 ([Durable agents in a crew](#durable-agents-in-a-crew)). A host with two terminal multiplexers runs one peer for
