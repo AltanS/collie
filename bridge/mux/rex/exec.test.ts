@@ -122,3 +122,17 @@ describe("the event stream's lines", () => {
     expect(lines).toEqual(['{"a":1}', '{"b":2}']);
   });
 });
+
+describe("REX_BIN_DIR counts only as an absolute folder", () => {
+  test("a relative or empty REX_BIN_DIR adds no candidate", () => {
+    const plain = rexBinaryCandidates("/home/o", "");
+    expect(rexBinaryCandidates("/home/o", "bin")).toEqual(plain);
+    expect(rexBinaryCandidates("/home/o", "./bin")).toEqual(plain);
+    expect(rexBinaryCandidates("/home/o", "   ")).toEqual(plain);
+    expect(plain[0]).toBe("/home/o/.local/bin/rex");
+  });
+
+  test("an absolute one comes first", () => {
+    expect(rexBinaryCandidates("/home/o", " /usr/bin ")[0]).toBe("/usr/bin/rex");
+  });
+});

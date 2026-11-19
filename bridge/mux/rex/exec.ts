@@ -61,7 +61,10 @@ export function rexBinaryCandidates(
   home: string = process.env.HOME ?? "",
   binDir: string = process.env.REX_BIN_DIR ?? "",
 ): readonly string[] {
-  const own = binDir.trim() ? [`${binDir.trim()}/rex`] : [];
+  // Only an absolute folder counts: a relative one would resolve against the bridge's own working
+  // directory, which is not where any Rex install put its binary.
+  const dir = binDir.trim();
+  const own = dir !== "" && isAbsolute(dir) ? [`${dir}/rex`] : [];
   const local = home.length > 0 ? [`${home}/.local/bin/rex`] : [];
   return [...own, ...local, "/usr/local/bin/rex", "/usr/bin/rex", "/bin/rex", "/opt/homebrew/bin/rex", "/opt/local/bin/rex"];
 }
