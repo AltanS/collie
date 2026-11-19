@@ -113,7 +113,18 @@ export function noRexBinaryMessage(configured: string, candidates: readonly stri
   return `no rex binary at ${candidates.join(", ")}; set COLLIE_REX_BIN to its absolute path`;
 }
 export const TIMED_OUT_CODE = 143;
-/** The code {@link SpawnRexExec.run} answers with when there is no binary to run. */
+/**
+ * Why an endpoint cannot be used, or null when it can. One that starts with a dash is never a host
+ * label or a server address. Probed on API revision 19: `rex -S --help` takes `--help` as the server
+ * and then dials `https://--help` over the network, so such an endpoint is refused before any call.
+ */
+export function badRexEndpoint(endpoint: string): string | null {
+  const server = endpoint.trim();
+  if (!server.startsWith("-")) return null;
+  return `the Rex endpoint "${server}" starts with a dash, so it is not a host label or a server address`;
+}
+
+/** The code {@link SpawnRexExec.run} answers with when there is no binary to run, or no usable endpoint. */
 export const NO_BINARY_CODE = 127;
 /** How long a child gets between SIGTERM and SIGKILL when it overruns its budget. */
 export const KILL_GRACE_MS = 1000;
@@ -188,6 +199,8 @@ export class SpawnRexExec implements RexExec {
 
   async run(args: readonly string[], stdin?: string): Promise<RexRunResult> {
     if (this.binary === null) return { code: NO_BINARY_CODE, stdout: "", stderr: this.noBinary };
+    const badEndpoint = badRexEndpoint(this.endpoint);
+    if (badEndpoint !== null) return { code: NO_BINARY_CODE, stdout: "", stderr: badEndpoint };
     const child = Bun.spawn([this.binary, ...globalArgs(this.endpoint), ...args], {
       stdin: stdin === undefined ? "ignore" : new TextEncoder().encode(stdin),
       stdout: "pipe",
@@ -238,6 +251,11 @@ export class SpawnRexExec implements RexExec {
     if (this.binary === null) {
       const why = this.noBinary;
       queueMicrotask(() => handlers.onExit(why));
+      return { kill: () => undefined };
+    }
+    const badEndpoint = badRexEndpoint(this.endpoint);
+    if (badEndpoint !== null) {
+      queueMicrotask(() => handlers.onExit(badEndpoint));
       return { kill: () => undefined };
     }
     // `--all` is the one stream that carries session creation, every session's structure AND every

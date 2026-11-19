@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  badRexEndpoint,
   CALL_OUTPUT_CAP,
   CAPTURE_OUTPUT_CAP,
   defaultRexSocket,
@@ -155,5 +156,25 @@ describe("the no rex binary message says where it looked", () => {
     expect(await exec.run(["ls"])).toEqual({ code: NO_BINARY_CODE, stdout: "", stderr: "no rex binary at /x/rex; set COLLIE_REX_BIN to its absolute path" });
     const reason = await new Promise<string>((resolve) => exec.events({ onLine: () => undefined, onExit: resolve }));
     expect(reason).toBe("no rex binary at /x/rex; set COLLIE_REX_BIN to its absolute path");
+  });
+});
+
+describe("an endpoint that starts with a dash is refused before any rex call", () => {
+  test("it is named as no address", () => {
+    expect(badRexEndpoint("--help")).toBe('the Rex endpoint "--help" starts with a dash, so it is not a host label or a server address');
+    expect(badRexEndpoint(" -x ")).not.toBeNull();
+    expect(badRexEndpoint("")).toBeNull();
+    expect(badRexEndpoint("unix:///run/user/1000/rex/server.sock")).toBeNull();
+    expect(badRexEndpoint("my-host")).toBeNull();
+  });
+
+  test("a call and the event stream answer the refusal and run nothing", async () => {
+    // /bin/false would exit 1 if it ran; the refusal must come first.
+    const exec = new SpawnRexExec("/bin/false", "--help", 1_000);
+    const result = await exec.run(["ls"]);
+    expect(result.code).toBe(NO_BINARY_CODE);
+    expect(result.stderr).toContain("starts with a dash");
+    const reason = await new Promise<string>((resolve) => exec.events({ onLine: () => undefined, onExit: resolve }));
+    expect(reason).toContain("starts with a dash");
   });
 });
