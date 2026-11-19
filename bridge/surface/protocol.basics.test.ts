@@ -1,4 +1,4 @@
-// The Send Protocol against the scripted fake multiplexer: part basics. The rig is `protocol-rig.ts`;
+// The Send Protocol against the scripted fake multiplexer: part basics. The rig is `protocol.rig.ts`;
 // the other parts sit beside this file as `protocol.<topic>.test.ts`.
 
 import { describe, expect, test } from "bun:test";
@@ -8,7 +8,7 @@ import { muxRefused, type MuxAck } from "../mux/types.ts";
 import { type Profile } from "../../web/src/lib/surface/profile.ts";
 import { BOUNDS, GENERIC_PROBE, SendProtocol, type SendRequest } from "./protocol.ts";
 import { HoldStore } from "./holds.ts";
-import { CODEX_WELCOME, CodexPane, DIALOG, FRAMELESS, FakePane, HerdrCodexPane, LIVE_ROW, NO_PROFILE, PROBE, type Rig, SHELL_SCREEN, dir, neverEscape, nextId, rig, shellText, steersWithNoQueueKey, useScratchDir } from "./protocol-rig.ts";
+import { CODEX_WELCOME, CodexPane, DIALOG, FRAMELESS, FakePane, HerdrCodexPane, LIVE_ROW, NO_PROFILE, PROBE, type Rig, SHELL_SCREEN, dir, neverEscape, nextId, rig, shellText, steersWithNoQueueKey, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 

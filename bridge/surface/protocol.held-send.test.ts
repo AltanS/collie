@@ -1,4 +1,4 @@
-// The Send Protocol against the scripted fake multiplexer: part held-send. The rig is `protocol-rig.ts`;
+// The Send Protocol against the scripted fake multiplexer: part held-send. The rig is `protocol.rig.ts`;
 // the other parts sit beside this file as `protocol.<topic>.test.ts`.
 
 import { describe, expect, test } from "bun:test";
@@ -11,7 +11,7 @@ import { neverHeldEntry, SendProtocol, type SendLedger } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HOLD_ENDED_KEEP_MS, HoldStore } from "./holds.ts";
-import { FakePane, LIVE_ROW, PiPane, type Rig, dir, neverEscape, noCommandQueue, omp, rig, steersWithNoQueueKey, useScratchDir } from "./protocol-rig.ts";
+import { FakePane, LIVE_ROW, PiPane, type Rig, dir, neverEscape, noCommandQueue, omp, rig, steersWithNoQueueKey, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 

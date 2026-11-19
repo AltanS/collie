@@ -1,4 +1,4 @@
-// The Send Protocol against the scripted fake multiplexer: part steps. The rig is `protocol-rig.ts`;
+// The Send Protocol against the scripted fake multiplexer: part steps. The rig is `protocol.rig.ts`;
 // the other parts sit beside this file as `protocol.<topic>.test.ts`.
 
 import { describe, expect, spyOn, test } from "bun:test";
@@ -9,7 +9,7 @@ import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import { type SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { BOUNDS, LATE_PROBE, boxMatches, commandBoxMatches, uploadAlone, wholePaste, LOCK_BOUND_MS, locateText, probeLanding, SendProtocol, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
-import { DIALOG, FRAMELESS, FakePane, HerdrCodexPane, PROBE, type Rig, dir, neverEscape, rig, useScratchDir } from "./protocol-rig.ts";
+import { DIALOG, FRAMELESS, FakePane, HerdrCodexPane, PROBE, type Rig, dir, neverEscape, rig, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 

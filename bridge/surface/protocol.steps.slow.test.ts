@@ -2,7 +2,7 @@
 // gate (`bun run gate`) leaves a `*.slow.test.*` file out; a full run keeps it.
 
 import { describe, expect, test } from "bun:test";
-import { FakePane, rig, useScratchDir } from "./protocol-rig.ts";
+import { FakePane, rig, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 

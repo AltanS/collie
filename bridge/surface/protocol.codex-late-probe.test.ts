@@ -1,4 +1,4 @@
-// The Send Protocol against the scripted fake multiplexer: part codex-late-probe. The rig is `protocol-rig.ts`;
+// The Send Protocol against the scripted fake multiplexer: part codex-late-probe. The rig is `protocol.rig.ts`;
 // the other parts sit beside this file as `protocol.<topic>.test.ts`.
 
 import { describe, expect, test } from "bun:test";
@@ -9,7 +9,7 @@ import { type SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { BOUNDS, LATE_PROBE, SendProtocol } from "./protocol.ts";
 import { sendReceiptsRoute } from "../server.ts";
 import { LaunchWindow } from "../launch-window.ts";
-import { DIALOG, FakePane, OmpPane, PROBE, type Rig, nextId, omp, rig, surfaceFixture, useScratchDir } from "./protocol-rig.ts";
+import { DIALOG, FakePane, OmpPane, PROBE, type Rig, nextId, omp, rig, surfaceFixture, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 

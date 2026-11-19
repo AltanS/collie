@@ -1,4 +1,4 @@
-// The Send Protocol against the scripted fake multiplexer: part corpus. The rig is `protocol-rig.ts`;
+// The Send Protocol against the scripted fake multiplexer: part corpus. The rig is `protocol.rig.ts`;
 // the other parts sit beside this file as `protocol.<topic>.test.ts`.
 
 import { describe, expect, test } from "bun:test";
@@ -11,7 +11,7 @@ import { lineText, splitLines } from "../../web/src/lib/blocks.ts";
 import { normalizePrompt } from "../../web/src/lib/surface/edges.ts";
 import { SendProtocol, type SendDeps } from "./protocol.ts";
 import { SurfaceLedger } from "./counters.ts";
-import { DIALOG, FRAMELESS, FakePane, LIVE_ROW, NO_PROFILE, PROBE, dir, fixture, nextId, rig, shellText, still, useScratchDir } from "./protocol-rig.ts";
+import { DIALOG, FRAMELESS, FakePane, LIVE_ROW, NO_PROFILE, PROBE, dir, fixture, nextId, rig, shellText, still, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 

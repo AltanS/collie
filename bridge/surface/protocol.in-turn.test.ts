@@ -1,4 +1,4 @@
-// The Send Protocol against the scripted fake multiplexer: part in-turn. The rig is `protocol-rig.ts`;
+// The Send Protocol against the scripted fake multiplexer: part in-turn. The rig is `protocol.rig.ts`;
 // the other parts sit beside this file as `protocol.<topic>.test.ts`.
 
 import { describe, expect, test } from "bun:test";
@@ -8,7 +8,7 @@ import { type Profile, type VersionRange } from "../../web/src/lib/surface/profi
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { steadyRow } from "./protocol.ts";
 import { HoldStore } from "./holds.ts";
-import { CODEX_WELCOME, DIALOG, FakePane, LIVE_ROW, PROBE, type Rig, dir, neverEscape, noCommandQueue, rig, useScratchDir } from "./protocol-rig.ts";
+import { CODEX_WELCOME, DIALOG, FakePane, LIVE_ROW, PROBE, type Rig, dir, neverEscape, noCommandQueue, rig, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 

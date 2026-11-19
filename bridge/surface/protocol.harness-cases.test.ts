@@ -1,4 +1,4 @@
-// The Send Protocol against the scripted fake multiplexer: part harness-cases. The rig is `protocol-rig.ts`;
+// The Send Protocol against the scripted fake multiplexer: part harness-cases. The rig is `protocol.rig.ts`;
 // the other parts sit beside this file as `protocol.<topic>.test.ts`.
 
 import { describe, expect, test } from "bun:test";
@@ -13,7 +13,7 @@ import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { isFree, type Surface } from "../../web/src/lib/surface/surface.ts";
 import { boxMatches, boxMatchesTail, neverHeldEntry, runsInTurnEntry, SendProtocol, STALE_SCREEN, steadyRow, type SendRequest } from "./protocol.ts";
 import { HoldStore } from "./holds.ts";
-import { ClaudeComposerOmpPane, FakePane, FieldOmpPane, OmpPane, PROBE, PiPane, type Rig, StaleOmpPane, TallOmpPane, dir, fixture, neverEscape, nextId, omp, rig, still, surfaceFixture, useScratchDir, withoutScroll, words } from "./protocol-rig.ts";
+import { ClaudeComposerOmpPane, FakePane, FieldOmpPane, OmpPane, PROBE, PiPane, type Rig, StaleOmpPane, TallOmpPane, dir, fixture, neverEscape, nextId, omp, rig, still, surfaceFixture, useScratchDir, withoutScroll, words } from "./protocol.rig.ts";
 
 useScratchDir();
 

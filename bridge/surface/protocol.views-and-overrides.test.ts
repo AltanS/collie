@@ -1,4 +1,4 @@
-// The Send Protocol against the scripted fake multiplexer: part views-and-overrides. The rig is `protocol-rig.ts`;
+// The Send Protocol against the scripted fake multiplexer: part views-and-overrides. The rig is `protocol.rig.ts`;
 // the other parts sit beside this file as `protocol.<topic>.test.ts`.
 
 import { describe, expect, test } from "bun:test";
@@ -17,7 +17,7 @@ import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
 import { AuditLog } from "../audit.ts";
 import { sendRoute, type SendRouteRuntime } from "../server.ts";
-import { CodexPane, DIALOG, FRAMELESS, FakePane, LIVE_ROW, NO_PROFILE, PROBE, type Rig, SHELL_SCREEN, dir, rig, useScratchDir } from "./protocol-rig.ts";
+import { CodexPane, DIALOG, FRAMELESS, FakePane, LIVE_ROW, NO_PROFILE, PROBE, type Rig, SHELL_SCREEN, dir, rig, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 

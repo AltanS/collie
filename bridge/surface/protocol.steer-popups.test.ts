@@ -1,4 +1,4 @@
-// The Send Protocol against the scripted fake multiplexer: part steer-popups. The rig is `protocol-rig.ts`;
+// The Send Protocol against the scripted fake multiplexer: part steer-popups. The rig is `protocol.rig.ts`;
 // the other parts sit beside this file as `protocol.<topic>.test.ts`.
 
 import { describe, expect, test } from "bun:test";
@@ -8,7 +8,7 @@ import { loadProfiles, type Profile } from "../../web/src/lib/surface/profile.ts
 import { type SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { BOUNDS, COMMAND_SETTLE_MS, type SendDeps, type SendRequest } from "./protocol.ts";
 import { HoldStore } from "./holds.ts";
-import { FakePane, LIVE_ROW, PROBE, PiPane, dir, neverEscape, omp, rig, useScratchDir } from "./protocol-rig.ts";
+import { FakePane, LIVE_ROW, PROBE, PiPane, dir, neverEscape, omp, rig, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 

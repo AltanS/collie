@@ -1,4 +1,4 @@
-// The Send Protocol against the scripted fake multiplexer: part slash-lists. The rig is `protocol-rig.ts`;
+// The Send Protocol against the scripted fake multiplexer: part slash-lists. The rig is `protocol.rig.ts`;
 // the other parts sit beside this file as `protocol.<topic>.test.ts`.
 
 import { describe, expect, test } from "bun:test";
@@ -10,7 +10,7 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { boxMatches, commandBoxMatches } from "./protocol.ts";
-import { FakePane, type Rig, neverEscape, rig, useScratchDir } from "./protocol-rig.ts";
+import { FakePane, type Rig, neverEscape, rig, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 
