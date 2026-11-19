@@ -227,8 +227,8 @@ export const ja: Dictionary = {
   // --- settings.notify ---
   "settings.notify.title": "通知条件",
   "settings.notify.description": "ペアリングされた全デバイスに適用されます。",
-  "settings.notify.blocked.label": "入力待ち",
-  "settings.notify.blocked.hint": "エージェントが入力を待機しているとき",
+  "settings.notify.blocked.label": "要対応",
+  "settings.notify.blocked.hint": "エージェントが対応を待っているとき、またはエラーで停止したとき",
   "settings.notify.done.label": "完了",
   "settings.notify.done.hint": "エージェントがタスクを完了したとき",
   "settings.notify.individual.label": "エージェントごとに1件の通知",

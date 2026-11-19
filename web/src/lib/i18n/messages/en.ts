@@ -254,8 +254,8 @@ export const en = {
   // --- settings.notify ---
   "settings.notify.title": "Notify when",
   "settings.notify.description": "Applies to all devices.",
-  "settings.notify.blocked.label": "Needs input",
-  "settings.notify.blocked.hint": "an agent is waiting on you",
+  "settings.notify.blocked.label": "Needs you",
+  "settings.notify.blocked.hint": "an agent waits on you or stopped on an error",
   "settings.notify.done.label": "Finished",
   "settings.notify.done.hint": "an agent completes its task",
   "settings.notify.individual.label": "One notification per agent",

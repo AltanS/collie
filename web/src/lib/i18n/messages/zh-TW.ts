@@ -223,8 +223,8 @@ export const zhTW: Dictionary = {
   // --- settings.notify ---
   "settings.notify.title": "通知觸發條件",
   "settings.notify.description": "設定將套用至所有已配對裝置。",
-  "settings.notify.blocked.label": "等待輸入",
-  "settings.notify.blocked.hint": "Agent 正在等待使用者操作",
+  "settings.notify.blocked.label": "待處理",
+  "settings.notify.blocked.hint": "Agent 正在等待使用者操作，或因錯誤而停止",
   "settings.notify.done.label": "工作完成",
   "settings.notify.done.hint": "Agent 已完成目前工作",
   "settings.notify.individual.label": "每個 Agent 一則通知",

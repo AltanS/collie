@@ -239,8 +239,8 @@ export const es: Dictionary = {
   // --- settings.notify ---
   "settings.notify.title": "Reglas de notificación",
   "settings.notify.description": "Aplica a todos los dispositivos vinculados.",
-  "settings.notify.blocked.label": "Requiere entrada",
-  "settings.notify.blocked.hint": "un agente espera intervención del usuario",
+  "settings.notify.blocked.label": "Requiere atención",
+  "settings.notify.blocked.hint": "un agente espera intervención del usuario o se detuvo por un error",
   "settings.notify.done.label": "Finalizado",
   "settings.notify.done.hint": "un agente completa su tarea",
   "settings.notify.individual.label": "Una notificación por agente",
