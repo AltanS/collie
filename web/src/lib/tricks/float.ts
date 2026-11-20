@@ -182,7 +182,16 @@ export function freeArea(area: Box, obstacles: readonly Box[]): Box | null {
 
 /**
  * The safe region: the free area left in the visual viewport after the insets and the landmarks (each held
- * `gap` apart), or null when it is smaller than {@link FLOAT_MIN_REGION}.
+ * `gap` apart), on whole pixels, or null when it is smaller than {@link FLOAT_MIN_REGION}.
+ *
+ * The four EDGES are rounded to the nearest pixel and the size follows from them, so a landmark at 734.984375
+ * (WebKit lays out on a 1/64 px grid) puts the bottom edge at 735 less the gap, as at 735 in Chromium, and costs no
+ * pixel. The landmarks are inflated by `gap` before the area is cut, so a rounding of at most half a pixel stays
+ * inside the gap and never meets a landmark. A `gap` under half a pixel has no such room, so then every edge
+ * rounds inward and the region can only shrink. The minimum is checked on the rounded region, which is the
+ * one returned, so it never comes back smaller than the minimum. An edge that sits at x.5 can flip by one
+ * pixel on a jitter across it; the next value is whole again and `sameBox` redraws once, not in a loop,
+ * because a picture is an overlay that moves no landmark.
  */
 export function safeRegion(opts: { viewport: Box; insets: Insets; landmarks: readonly Box[]; gap?: number }): Box | null {
   const gap = opts.gap ?? FLOAT_GAP_PX;
@@ -191,8 +200,15 @@ export function safeRegion(opts: { viewport: Box; insets: Insets; landmarks: rea
     area,
     opts.landmarks.map((box) => inflate(box, gap)),
   );
-  if (free === null || free.w < FLOAT_MIN_REGION.w || free.h < FLOAT_MIN_REGION.h) return null;
-  return { x: Math.round(free.x), y: Math.round(free.y), w: Math.floor(free.w), h: Math.floor(free.h) };
+  if (free === null) return null;
+  const inward = gap < 0.5;
+  const low = inward ? Math.ceil : Math.round;
+  const high = inward ? Math.floor : Math.round;
+  const left = low(free.x);
+  const top = low(free.y);
+  const region = { x: left, y: top, w: high(free.x + free.w) - left, h: high(free.y + free.h) - top };
+  if (region.w < FLOAT_MIN_REGION.w || region.h < FLOAT_MIN_REGION.h) return null;
+  return region;
 }
 
 /** Whether two regions are the same to the pixel, so an unchanged measure does not redraw. */
