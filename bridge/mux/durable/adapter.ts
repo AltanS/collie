@@ -1037,7 +1037,7 @@ export class DurableMux implements MuxAdapter {
       if (this.kept === null) return muxUnreachable("unreadable snapshot: 304 with nothing held");
       // The clock moved even when the program did not: an ask past its `expiresAt` leaves the open asks now.
       const fresh = withoutExpired(this.kept.snapshot, this.clock.now());
-      if (fresh !== this.kept.snapshot) this.kept = { ...this.kept, snapshot: fresh, mux: toMuxSnapshot(fresh) };
+      if (fresh !== this.kept.snapshot) this.kept = { ...this.kept, snapshot: fresh, mux: this.withLogRefs(toMuxSnapshot(fresh)) };
       return muxOk(this.kept.mux);
     }
     const refused = this.refusalFor(reply);
