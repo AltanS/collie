@@ -18,7 +18,7 @@ import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { MachineAlertStore } from "./machine-alerts.ts";
 import { loadMachineHistory, saveMachineHistory } from "./machine-history.ts";
 import { machineRosterOf, MachineWatch, SOLO_MACHINE_ID } from "./machines.ts";
-import { Push, type PushMessage } from "./push.ts";
+import { Push, pushPayloadData, type PushMessage } from "./push.ts";
 import { TrustStore } from "./crew/trust-store.ts";
 import { Snooze } from "./snooze.ts";
 import { bootSources, planPrograms, sourcesPath, type DurableSource } from "./sources.ts";
@@ -603,24 +603,20 @@ describe("solo zero-tax — notifications", () => {
   });
 
   test("push.ts stamps `session` and `host` only when the message names one", () => {
-    // Pinned at the source, because Push.send needs the web-push module to broadcast. The shape of
-    // the `data` payload is the contract an installed service worker already caches.
-    //
     // ── RENEGOTIATED BY M4/06, THE SAME WAY THE WIRE-TYPE ROWS WERE BY M4/04 ──
-    // This assertion used to read `expect(src).not.toMatch(/data\.host/)`. It was a source-text
-    // PROXY for the row it defends — "push payload unchanged: no `host` field, mirroring how
-    // `session` is stamped only for non-primary" (§11) — written before there was a host to stamp.
-    // The row itself is intact and is now pinned where it belongs: `host` is conditional exactly as
-    // `session` is, so a solo instance (which never has a host) emits the identical bytes, and
-    // `push.test.ts` asserts the produced `data` object for both cases rather than the source that
-    // builds it. What would be a real regression is an UNCONDITIONAL stamp — hence the two
-    // `if (… !== undefined)` lines below being the pinned form.
-    const src = readFileSync(join(import.meta.dir, "push.ts"), "utf8");
-    expect(src).toContain("if (msg.session !== undefined) data.session = msg.session;");
-    expect(src).toContain("if (msg.host !== undefined) data.host = msg.host;");
-    // Never stamped unconditionally: an unguarded assignment is what would change the solo payload.
-    const stamps = src.split(/\r?\n/).filter((l) => l.includes("data.host"));
-    expect(stamps).toEqual(["    if (msg.host !== undefined) data.host = msg.host;"]);
+    // The row it defends: "push payload unchanged: no `host` field, mirroring how `session` is stamped
+    // only for non-primary" (§11). `host` is conditional exactly as `session` is, so a solo instance
+    // (which never has a host) emits the identical bytes. What would be a real regression is an
+    // UNCONDITIONAL stamp. This read `push.ts` as source text while the payload was built inside
+    // Push.send, which needs the web-push module to run; since the push picture work (ADR 0164) the
+    // payload is `pushPayloadData`, a pure function, so the row is pinned on the payload it builds.
+    // The shape of `data` is the contract an installed service worker already caches.
+    const solo: PushMessage = { title: "t", body: "b", tag: "collie:herd", paneId: "w1:p1" };
+    // Keys, not `toEqual`: `toEqual` passes an unconditional stamp of `undefined`.
+    expect(Object.keys(pushPayloadData(solo))).toEqual(["paneId"]);
+    expect(JSON.stringify(pushPayloadData(solo))).toBe('{"paneId":"w1:p1"}');
+    const named: PushMessage = { ...solo, session: "work", host: "mini" };
+    expect(pushPayloadData(named)).toEqual({ paneId: "w1:p1", session: "work", host: "mini" });
   });
 
   test("a solo payload has no host: the sink stamps it only when a host is named", async () => {

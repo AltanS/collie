@@ -644,7 +644,8 @@ export class CodexTranscriptSource implements TranscriptSource {
     if (ref.kind !== "id" || !isCodexSessionId(ref.value)) return null;
     const sessionId = ref.value.toLowerCase();
     const cached = this.pathCache.get(sessionId);
-    if (cached !== undefined && this.now() - cached.at < CODEX_RESCAN_MS) {
+    // A root that left the config (an account removed) serves nothing more, cache or not.
+    if (cached !== undefined && this.now() - cached.at < CODEX_RESCAN_MS && this.roots.includes(cached.root)) {
       const real = await containedRealpath(cached.path, cached.root);
       if (real !== null) return real;
     }
