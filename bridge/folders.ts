@@ -166,7 +166,7 @@ export class FolderStore implements FolderSurface {
   private lists: FolderLists = { recent: [], favourites: [] };
   private readonly file: string;
   private readonly stateDir: string;
-  /** Saves run one after another, so two quick taps never race one temp file into two renames. */
+  /** Every change and its save run one after another ({@link FolderStore.turn}). */
   private queue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -191,11 +191,13 @@ export class FolderStore implements FolderSurface {
   }
 
   async recordRecent(folder: string): Promise<void> {
-    const next = withRecent(this.lists, folder, this.home);
-    if (next === null) return;
-    this.lists = next;
     try {
-      await this.save();
+      await this.turn(async () => {
+        const next = withRecent(this.lists, folder, this.home);
+        if (next === null) return;
+        this.lists = next;
+        await this.write();
+      });
     } catch (err) {
       // The space exists; the list is a convenience. The entry stays in memory and reaches disk with
       // the next write that succeeds.
@@ -204,25 +206,35 @@ export class FolderStore implements FolderSurface {
   }
 
   async star(folder: string, starred: boolean): Promise<StarOutcome> {
-    const outcome = withStar(this.lists, folder, starred);
-    if (!outcome.ok || !outcome.changed) return outcome;
-    const before = this.lists;
-    this.lists = outcome.lists;
-    try {
-      await this.save();
-    } catch (err) {
-      // A star the disk refused is not a star: put the lists back so what the phone reads next is
-      // what the file holds, and let the route answer the failure.
-      this.lists = before;
-      throw err;
-    }
-    return { ok: true, lists: copyOf(this.lists), changed: true };
+    return this.turn(async (): Promise<StarOutcome> => {
+      const outcome = withStar(this.lists, folder, starred);
+      if (!outcome.ok || !outcome.changed) return outcome;
+      const before = this.lists;
+      this.lists = outcome.lists;
+      try {
+        await this.write();
+      } catch (err) {
+        // A star the disk refused is not a star: put the lists back so what the phone reads next is
+        // what the file holds, and let the route answer the failure.
+        this.lists = before;
+        throw err;
+      }
+      return { ok: true, lists: copyOf(this.lists), changed: true };
+    });
   }
 
-  /** Queue one write of whatever the lists hold when its turn comes. */
-  private save(): Promise<void> {
-    const run = this.queue.then(() => this.write());
-    this.queue = run.catch(() => {});
+  /**
+   * Run `task` after every earlier one. A change is read, made, written and, when the write fails,
+   * put back inside ONE turn, so no other tap lands between a change and its rollback: a refused star
+   * then restores the lists its own turn started from, never another tap's unsaved ones (#821). The
+   * turns also keep two quick taps from racing one temp file into two renames.
+   */
+  private turn<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(task);
+    this.queue = run.then(
+      () => undefined,
+      () => undefined,
+    );
     return run;
   }
 
