@@ -191,7 +191,7 @@ export const ja: Dictionary = {
     "物理キーボードでは、Enter でメッセージを送信し、Shift+Enter で改行します。画面上のキーボードでは、Enter は常に改行です。",
   "settings.projectPictures.title": "プロジェクト画像",
   "settings.projectPictures.hint":
-    "リポジトリの collie.toml が指定する画像を、エージェントのロゴの代わりに表示します（ロゴは角に表示）。",
+    "リポジトリの collie.toml が指定する画像を、エージェントのロゴの代わりに表示します（ロゴは角に表示）。プッシュ通知のアイコンにも使います。",
   "settings.paneNav.title": "ペインの移動",
   "settings.paneNav.twoFingers": "2本指",
   "settings.paneNav.joystick": "ジョイスティック",

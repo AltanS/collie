@@ -18,6 +18,7 @@
 //
 // Imported by both sides, so this module holds no state, imports no React and has no side effect.
 
+import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "./json";
 import { isPictureVersion } from "./project-picture-wire";
 
 /**
@@ -92,35 +93,154 @@ function asDataUrl(bytes: Uint8Array): string {
 const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 /**
- * The icon for a push about `pane`, as a `data:` URL of the page's own copy for that pane's
- * machine and the version the page last wrote for it, or null for none. Never throws and never fetches.
+ * Why a push about a pane did or did not get its picture. A fixed list, and the whole of what the trace
+ * below may say: never a path, a version, a pane id or a word from a repository.
+ * `unreadable` is Cache Storage refusing the read.
  */
-export async function pushPictureFor(
+export const PUSH_PICTURE_VERDICTS = ["shown", "switch-off", "no-map", "no-entry", "no-copy", "not-png", "unreadable"] as const;
+export type PushPictureVerdict = (typeof PUSH_PICTURE_VERDICTS)[number];
+
+/** What the worker found for a push about a pane: the icon (or null) and why. */
+export interface PushPictureLook {
+  readonly picture: string | null;
+  readonly verdict: PushPictureVerdict;
+}
+
+/** No icon, and why. */
+function missed(verdict: PushPictureVerdict): PushPictureLook {
+  return { picture: null, verdict };
+}
+
+/**
+ * The icon for a push about `pane`, as a `data:` URL of the page's own copy for that pane's machine and
+ * the version the page last wrote for it, with the verdict; null when the push names no pane (an update or
+ * a machine alert), which has no picture to look for. Never throws and never fetches.
+ */
+export async function lookUpPushPicture(
   caches: PictureCaches,
   origin: string,
   mount: string,
   pane: { host?: string | null; paneId?: string | null } | undefined,
-): Promise<string | null> {
+): Promise<PushPictureLook | null> {
   if (pane?.paneId === undefined || pane.paneId === null || pane.paneId === "") return null;
   try {
     // The switch is off on this device, whatever another tab still holds in memory.
     const switchName = pictureSwitchCacheName(mount);
     if (await caches.has(switchName)) {
       const marker = await (await caches.open(switchName)).match(pictureSwitchKey(origin, mount));
-      if (marker !== undefined) return null;
+      if (marker !== undefined) return missed("switch-off");
     }
     const name = projectPictureCacheName(mount);
-    if (!(await caches.has(name))) return null;
+    if (!(await caches.has(name))) return missed("no-map");
     const cache = await caches.open(name);
     const map = await cache.match(paneMapKey(origin, mount));
-    if (map === undefined) return null;
+    if (map === undefined) return missed("no-map");
     const table = asTable(await map.text());
     const version = table.get(paneKey({ host: pane.host, paneId: pane.paneId }));
-    if (version === undefined || !isPictureVersion(version)) return null;
+    if (version === undefined || !isPictureVersion(version)) return missed("no-entry");
     const copy = await cache.match(iconCopyKey(origin, mount, pane.host, version));
-    if (copy === undefined) return null;
+    if (copy === undefined) return missed("no-copy");
     const bytes = new Uint8Array(await copy.arrayBuffer());
-    return PNG_HEAD.every((b, i) => bytes[i] === b) ? asDataUrl(bytes) : null;
+    return PNG_HEAD.every((b, i) => bytes[i] === b) ? { picture: asDataUrl(bytes), verdict: "shown" } : missed("not-png");
+  } catch {
+    return missed("unreadable");
+  }
+}
+
+/** The icon alone, for a caller that needs no verdict. */
+export async function pushPictureFor(
+  caches: PictureCaches,
+  origin: string,
+  mount: string,
+  pane: { host?: string | null; paneId?: string | null } | undefined,
+): Promise<string | null> {
+  return (await lookUpPushPicture(caches, origin, mount, pane))?.picture ?? null;
+}
+
+// ── THE TRACE: THE WORKER'S LAST VERDICT (round 19) ──────────────────────────────────────────────────
+//
+// Twice a phone showed a push with no picture and nobody could tell why: the bridge cannot see which
+// worker or page a phone runs. So the worker keeps the verdict of the last push about a pane, with the
+// build it was made from and the time, in a Cache of its own (the picture Cache goes when the switch goes
+// off, and the verdict must say so). The page takes it once at its next start and posts it, with its own
+// build, to `/api/diag/push-picture`; the bridge writes one log line (bridge/diag-push-picture.ts). Only
+// the list above, a machine KIND and two build ids ever leave the phone.
+
+/** The trace's record as the worker keeps it. */
+export interface PushPictureTrace {
+  readonly verdict: PushPictureVerdict;
+  /** Whose pane the push was about: the lead's own (no host in the push) or a crew member's. */
+  readonly machine: "lead" | "member";
+  /** When the worker decided, as `Date.now()`. */
+  readonly at: number;
+  /** The build id the worker was made from (lib/build.ts). */
+  readonly workerBuild: string;
+}
+
+/** The Cache the trace lives in, per mount, apart from the picture Cache. */
+export function pushPictureTraceCacheName(mount: string): string {
+  return mount === "/" ? "collie-push-picture-trace" : `collie-push-picture-trace:${mount}`;
+}
+
+/** The trace's key in its Cache. Never requested from the network. */
+export function pushPictureTraceKey(origin: string, mount: string): string {
+  return `${origin}${mount}push-picture-trace.json`;
+}
+
+/** A build id as the bundle stamps it (`<version>+<sha>[-dirty].<seconds>`), or `unknown`. Nothing else. */
+const BUILD_ID = /^[0-9A-Za-z][0-9A-Za-z.+-]{0,79}$/;
+
+export function isBuildId(value: string): boolean {
+  return BUILD_ID.test(value);
+}
+
+/** A stored trace, checked field by field; anything else reads as none. */
+export function asPushPictureTrace(value: JsonValue | undefined): PushPictureTrace | null {
+  const doc = asJsonObject(value);
+  if (doc === undefined) return null;
+  const verdict = PUSH_PICTURE_VERDICTS.find((v) => v === asJsonString(doc.verdict));
+  const machineWord = asJsonString(doc.machine);
+  const machine = machineWord === "lead" || machineWord === "member" ? machineWord : null;
+  const atNumber = asJsonNumber(doc.at);
+  const at = atNumber !== undefined && Number.isSafeInteger(atNumber) && atNumber > 0 ? atNumber : null;
+  const workerBuild = asJsonString(doc.workerBuild);
+  if (verdict === undefined || machine === null || at === null || workerBuild === undefined || !isBuildId(workerBuild)) return null;
+  return { verdict, machine, at, workerBuild };
+}
+
+/** What the page posts: the worker's trace, its age in whole seconds and the page's own build. */
+export interface PushPictureReport {
+  readonly verdict: PushPictureVerdict;
+  readonly machine: "lead" | "member";
+  readonly ageS: number;
+  readonly workerBuild: string;
+  readonly pageBuild: string;
+}
+
+/** The slice of Cache Storage the trace needs, so a test can fake it. */
+export interface TraceCaches {
+  open(cacheName: string): Promise<Pick<Cache, "match" | "put" | "delete">>;
+}
+
+/** The worker: keep this push's verdict, over the last one. Never throws. */
+export async function keepPushPictureTrace(caches: TraceCaches, origin: string, mount: string, trace: PushPictureTrace): Promise<void> {
+  try {
+    const cache = await caches.open(pushPictureTraceCacheName(mount));
+    await cache.put(pushPictureTraceKey(origin, mount), new Response(JSON.stringify(trace), { headers: { "content-type": "application/json" } }));
+  } catch {
+    // Cache Storage refused: the push still shows, the trace is simply missing.
+  }
+}
+
+/** The page: take the last verdict out, once, so the same one is never posted twice. Never throws. */
+export async function takePushPictureTrace(caches: TraceCaches, origin: string, mount: string): Promise<PushPictureTrace | null> {
+  try {
+    const cache = await caches.open(pushPictureTraceCacheName(mount));
+    const key = pushPictureTraceKey(origin, mount);
+    const held = await cache.match(key);
+    if (held === undefined) return null;
+    await cache.delete(key);
+    return asPushPictureTrace(parseJson(await held.text()));
   } catch {
     return null;
   }

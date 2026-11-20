@@ -349,7 +349,7 @@ describe("decidePush — a render replaces what a skipped clear left", () => {
   test("the worker shows a render on the decided tag, so it replaces the notification on that slot", () => {
     // The tag rides `pushOptions` (tested below), and the worker shows exactly what it builds.
     const sw = readFileSync(resolve(import.meta.dirname, "../sw.ts"), "utf8");
-    expect(sw).toContain("await self.registration.showNotification(decision.title, pushOptions(decision, { icon: ICON, badge: BADGE }, picture));");
+    expect(sw).toContain("await self.registration.showNotification(decision.title, pushOptions(decision, { icon: ICON, badge: BADGE }, look?.picture ?? null));");
     expect(pushOptions({ kind: "show", title: "t", body: "", tag: "collie:herd:w1:p1", renotify: true }, { icon: "i", badge: "b" }, null).tag).toBe("collie:herd:w1:p1");
   });
 });
@@ -374,8 +374,17 @@ describe("pushOptions", () => {
     expect("image" in options).toBe(false);
   });
 
+  test("the service worker keeps the verdict of a push about a pane, with its own build, after it shows it", () => {
+    const sw = readFileSync(resolve(import.meta.dirname, "../sw.ts"), "utf8");
+    const shown = sw.indexOf("await self.registration.showNotification(decision.title, pushOptions(");
+    const kept = sw.indexOf("await keepPushPictureTrace(self.caches, self.location.origin, MOUNT, { verdict: look.verdict, machine, at: Date.now(), workerBuild: BUILD.id });");
+    expect(shown).toBeGreaterThan(0);
+    expect(kept).toBeGreaterThan(shown);
+    expect(sw).toContain('const machine = decision.host === undefined || decision.host === "" ? "lead" : "member";');
+  });
+
   test("the service worker shows a push with these options and the picture it found", () => {
     const sw = readFileSync(resolve(import.meta.dirname, "../sw.ts"), "utf8");
-    expect(sw).toContain("await self.registration.showNotification(decision.title, pushOptions(decision, { icon: ICON, badge: BADGE }, picture));");
+    expect(sw).toContain("await self.registration.showNotification(decision.title, pushOptions(decision, { icon: ICON, badge: BADGE }, look?.picture ?? null));");
   });
 });

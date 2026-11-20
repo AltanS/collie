@@ -190,7 +190,7 @@ export const zhTW: Dictionary = {
     "使用實體鍵盤時，Enter 會傳送訊息，Shift+Enter 會換行。使用螢幕鍵盤時，Enter 一律換行。",
   "settings.projectPictures.title": "專案圖片",
   "settings.projectPictures.hint":
-    "以儲存庫 collie.toml 指定的圖片取代代理的標誌，標誌顯示在角落。",
+    "以儲存庫 collie.toml 指定的圖片取代代理的標誌，標誌顯示在角落，並作為推播通知的圖示。",
   "settings.paneNav.title": "窗格導覽",
   "settings.paneNav.twoFingers": "雙指",
   "settings.paneNav.joystick": "搖桿",

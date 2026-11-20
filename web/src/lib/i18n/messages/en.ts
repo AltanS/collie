@@ -217,7 +217,7 @@ export const en = {
     "With a physical keyboard, Enter sends the message and Shift+Enter adds a new line. With the on-screen keyboard, Enter always adds a new line.",
   "settings.projectPictures.title": "Project pictures",
   "settings.projectPictures.hint":
-    "Show the picture a repository names in its collie.toml in place of the agent logo, with the logo in the corner.",
+    "Show the picture a repository names in its collie.toml in place of the agent logo, with the logo in the corner, and as the icon of its pushes.",
   "settings.paneNav.title": "Pane navigation",
   "settings.paneNav.twoFingers": "Two fingers",
   "settings.paneNav.joystick": "Joystick",

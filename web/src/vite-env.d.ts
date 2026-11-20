@@ -2,11 +2,4 @@
 /// <reference types="vite-plugin-pwa/client" />
 /// <reference types="vitest/globals" />
 
-// Build stamp baked in at build time (see vite.config.ts → BUILD_INFO).
-declare const __BUILD_INFO__: {
-  version: string;
-  sha: string;
-  time: string;
-  id: string;
-  channel: "release" | "dev";
-};
+// The build stamp (`__BUILD_INFO__`) is declared in build-info.d.ts, which the worker config includes too.

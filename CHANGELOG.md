@@ -35,6 +35,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Keyboard shortcuts have a page, and Collie's names follow its glossary.** The new Keyboard shortcuts page of the docs lists every action with its default keys, the key grammar, `shortcuts.toml` and the keys the browser keeps. The actions use Collie's words: `new_space`, `navigate_mode`, `previous_space`, `next_space`, `remove_from_view` (it takes a pane out of the row of panes, and the agent keeps running), `zen_mode`, `switch_pane`, `open_dashboard` and `toggle_chat_terminal`, and every label says pane where it said column. A name copied from a Herdr file that Collie spells differently, such as `new_workspace`, is dropped, and the shortcut list says which name to write or that Collie has no such action. The one-time hint draws the key for the shortcut list as key caps, and leaves that sentence out when you unbind it.
 - **Experimental: Collie can mirror Rex, Superlogical's terminal.** Rex is a terminal server that keeps your sessions running; start Collie with `COLLIE_MUX=rex` and each Rex session shows as a space, each window as a tab, and each block as a pane. Claude Code, Codex, pi, Grok and omp 18.8.7 or later are recognised from the status they report to Rex, and a Claude pane's History needs the Claude hooks. `collie doctor` names the Rex server and its API revision. Thanks @dcvdiego (#814).
 
+- **The bridge's log says why a push came without its project picture.** When a push about a session shows Collie's icon instead of the session's picture, the phone now tells the bridge why the next time the app opens, and which app version the phone ran. The bridge writes one line to its log and keeps nothing else, so a missing picture can be explained without the phone in hand.
+
 ### Changed
 
 - **The lead stops reading a crew member's answer at a size limit.** Before, the lead read a member's answer whole, however large it was or grew once unpacked, so one broken member could fill the lead's memory. Now the lead stops at 2 MB for its own regular check of each machine and at 32 MB for everything else, counted after unpacking, and treats that member as out of reach. The lead also reads and cleans only one answer larger than 4 MB at a time, so several phones asking for a long History at once cannot fill its memory together; the others wait their turn. The data between your machines stays compressed.
@@ -44,6 +46,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The loading view of a session always shows a bubble, a tool block and text lines.** Before, a session whose last screen was only text loaded as bars of lines alone, and so did a short screen with the keyboard open. Now every loading view is a mix, and a session that has never been opened here shows a typical thread.
 
 - **A push shows the project picture as a small square icon.** Before, the picture came as a wide image under the text that filled about half of the notification on Android. Now it sits in the small square beside the title, where Collie's icon was, and a session with no picture keeps Collie's icon. Desktop Chrome and Firefox show it too.
+
+- **The Project pictures setting says the picture also marks pushes.** Its hint in Settings, Appearance now says that the picture shows as the icon of a session's pushes too, so turning it off is clearly the way to keep Collie's icon there.
 
 ### Fixed
 
