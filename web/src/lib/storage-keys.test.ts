@@ -95,6 +95,10 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:hidden-machines:v1", { area: "local", prefix: false, fate: "kept", why: "machine names hidden here" }],
   ["collie:mirror-native:", { area: "local", prefix: true, fate: "kept", why: "a per-pane colour choice" }],
   ["collie:tour:v1", { area: "local", prefix: false, fate: "kept", why: "the tour was seen" }],
+  // A fact about this device, never a person (lib/hardware-keyboard.ts, M108): a hardware key was pressed here. It holds no private data and decides only whether the Settings row "Keyboard shortcuts" is drawn.
+  ["collie:hardware-keyboard-seen:v1", { area: "local", prefix: false, fate: "kept", why: "device fact: a hardware key was pressed here, a bare value, no content" }],
+  // The one-time keyboard hint is done on this device (lib/keyboard-hint.ts, M108): closed, opened the list, or the prefix was pressed. A device fact with no private data.
+  ["collie:keyboard-hint-done:v1", { area: "local", prefix: false, fate: "kept", why: "device fact: the one-time keyboard hint is done here, a bare value, no content" }],
   ["collie:diff-comments:v1:", { area: "session", prefix: true, fate: "wiped", why: "the Changes batch of diff comments: quoted lines and the notes on them" }],
   ["collie:tab-pane:v1:", { area: "session", prefix: true, fate: "wiped", why: "the pane id each tab was last open on, per machine, session and tab (lib/tab-pane-memory.ts)" }],
   ["collie:chat-silhouette:v1:", { area: "session", prefix: true, fate: "wiped", why: "the silhouette of each pane's Chat page: row kinds, heights and line counts, never a word (lib/chat-silhouette.ts)" }],

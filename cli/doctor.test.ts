@@ -3788,3 +3788,16 @@ describe("doctor over the local key's view of the snapshot", () => {
     expect(await plain(localSnapshotView(FULL))).toBe(said);
   });
 });
+
+describe("the shortcuts-file row (M108)", () => {
+  const FILE = `${CONFIG}/shortcuts.toml`;
+  const run = (files: SeededFiles) => findings(harness(LEAD, [hello()], { files: { ...healthyFiles(), ...files } }));
+
+  test("a broken file warns with the dropped lines, a clean or missing file says nothing", async () => {
+    const broken = await run({ [FILE]: '[keys]\nZoom = "z"\nnew_tab = "ctrl+alt+c"\nzen_mode = "prefix+"\n' });
+    expect(broken.byCheck.get("shortcuts-file")?.status).toBe("warn");
+    expect(broken.byCheck.get("shortcuts-file")?.detail).toContain('"Zoom"');
+    expect((await run({ [FILE]: '[keys]\nnew_tab = "ctrl+alt+c"\n' })).byCheck.has("shortcuts-file")).toBe(false);
+    expect((await run({})).byCheck.has("shortcuts-file")).toBe(false);
+  });
+});

@@ -8,6 +8,7 @@ import { applyDraftFontSize, fontStack, inputFocusZoomsPage, reportOfferOf, sent
 import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
+import { usePaneKeySink } from "@/hooks/use-shortcut-handler";
 import { useLocale } from "@/hooks/use-locale";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { enterKeyAnswer } from "@/lib/enter-key";
@@ -2342,6 +2343,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
   }
   padKeysRef.current = (keys) => direct.sendPaneKeys(keys);
+  // The desktop shortcuts' literal prefix (`ctrl+b` twice) goes out the way a Keys-tray tap does, through
+  // the Type mode queue when it is armed, and while it is armed only the prefix is the shortcuts' (M108).
+  usePaneKeySink({ send: (keys) => direct.sendPaneKeys(keys), isDirectTyping: () => direct.active });
   typeAnywayRef.current = () => void typeAnyway();
   markArrivedRef.current = markUnknownArrived;
   closeCannotTellRef.current = endCannotTell;

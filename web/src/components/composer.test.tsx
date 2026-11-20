@@ -12,6 +12,7 @@ import { clearStatus, useStatus } from "@/lib/status";
 import { isReloadHeld, subscribeReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
 import { loadDraft, loadDraftEntry, saveDraft } from "@/lib/drafts";
 import { __resetOperatorCommands } from "@/lib/operator-config";
+import { paneKeySink } from "@/lib/shortcuts/registry";
 import { server } from "@/test/setup";
 import { fixtureServers, recordedSends, sendAnswer, sendHandler, type SentRequest } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
@@ -1407,6 +1408,39 @@ describe("Composer — typing into the terminal", () => {
     expect(box).toHaveValue("b a");
     expect(box).not.toHaveClass("[-webkit-text-security:disc]");
     expect(screen.getByTestId("status")).toHaveTextContent(/typing into the terminal/i);
+  });
+
+  // M108 spec 03: the desktop shortcuts reach the pane's keyboard through the composer, by the same write a
+  // Keys-tray tap makes, and ask it whether Type mode is armed (while it is, only the prefix is theirs).
+  it("hands the desktop shortcuts the pane's keyboard, and says when Type mode is armed", async () => {
+    const keyCalls: string[][] = [];
+    server.use(
+      http.post<never, { keys: string[] }>(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        keyCalls.push((await request.json()).keys);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposer();
+    const sink = paneKeySink();
+    expect(sink?.isDirectTyping()).toBe(false);
+    await act(async () => {
+      await sink?.send(["ctrl+b"]);
+    });
+    expect(keyCalls).toEqual([["ctrl+b"]]);
+
+    startDirectTyping();
+    await waitFor(() => expect(paneKeySink()?.isDirectTyping()).toBe(true));
+    await act(async () => {
+      await paneKeySink()?.send(["ctrl+b"]);
+    });
+    expect(keyCalls).toEqual([["ctrl+b"], ["ctrl+b"]]);
+  });
+
+  it("takes the pane's keyboard back from the shortcuts when the composer leaves", () => {
+    renderComposer();
+    expect(paneKeySink()).not.toBeNull();
+    cleanup();
+    expect(paneKeySink()).toBeNull();
   });
 
   it("sends a swiped/IME-composed word once when composition commits", async () => {

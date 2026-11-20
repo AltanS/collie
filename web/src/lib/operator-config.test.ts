@@ -10,6 +10,7 @@ import type { BridgeConfig } from "@/lib/types";
 import {
   __resetOperatorCommands,
   getOperatorCommands,
+  getOperatorShortcuts,
   loadOperatorCommands,
   useOperatorCommands,
   useOperatorKeys,
@@ -112,6 +113,22 @@ describe("the Keys-tray presets ride the same one read", () => {
     const keys = renderHook(() => useOperatorKeys());
     await waitFor(() => expect(asked).toHaveBeenCalled());
     expect(keys.result.current).toEqual([]);
+  });
+});
+
+describe("the keyboard shortcuts ride the same one read", () => {
+  it("holds the raw bindings the bridge sent, unparsed", async () => {
+    const bindings = { prefix: ["ctrl+a"], new_tab: ["prefix+c", "ctrl+alt+c"], zoom: [] };
+    asked.mockResolvedValue({ ...config(), operatorShortcuts: bindings });
+    await loadOperatorCommands();
+    expect(getOperatorShortcuts()).toEqual(bindings);
+    expect(asked).toHaveBeenCalledTimes(1);
+  });
+
+  it("a bridge that sends none leaves it null", async () => {
+    asked.mockResolvedValue(config());
+    await loadOperatorCommands();
+    expect(getOperatorShortcuts()).toBeNull();
   });
 });
 

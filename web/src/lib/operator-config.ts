@@ -17,6 +17,9 @@ import type {
   WhistleStatus,
 } from "@/lib/types";
 
+/** The wire shape of `operatorShortcuts`, read-only once held. */
+export type OperatorShortcutsWire = { readonly [name: string]: readonly string[] };
+
 // The startup-resolved half of /api/config, read ONCE and held in module state: the operator's own
 // rows (their `commands.toml` palette, their `keys.toml` tray presets and their
 // `quick-replies.toml` dock groups) and the multiplexer's declared
@@ -49,6 +52,9 @@ import type {
 
 let current: readonly OperatorCommand[] = [];
 let currentKeys: readonly OperatorKeyRow[] = [];
+// The operator's raw keyboard shortcuts (`shortcuts.toml`). `null` until a read succeeds and on a bridge
+// with no such file or older than the field. The strings are not parsed here: the keymap owns the grammar.
+let currentShortcuts: OperatorShortcutsWire | null = null;
 let currentReplies: readonly OperatorQuickReplyRow[] = [];
 // The operator's typefaces, already re-validated: nothing downstream of this store should ever see
 // a row this client would refuse to render (lib/operator-fonts.ts owns the grammar).
@@ -117,6 +123,7 @@ export function loadOperatorCommands(): Promise<void> {
       noteServerApiVersion(cfg.apiVersion);
       current = cfg.operatorCommands ?? [];
       currentKeys = cfg.operatorKeys ?? [];
+      currentShortcuts = cfg.operatorShortcuts ?? null;
       currentReplies = cfg.operatorQuickReplies ?? [];
       currentFonts = acceptOperatorFonts(cfg.operatorFonts ?? []);
       // The server's rows are now the authority, superseding the single face design.ts mirrored into
@@ -160,6 +167,15 @@ export function getOperatorCommands(): readonly OperatorCommand[] {
 
 export function getOperatorKeys(): readonly OperatorKeyRow[] {
   return currentKeys;
+}
+
+/**
+ * The operator's keyboard shortcuts exactly as the bridge sent them: action name to binding strings,
+ * `[]` meaning unbound. `null` when there is none to apply. Parsing and validating belong to the
+ * keymap, so one grammar lives in one place.
+ */
+export function getOperatorShortcuts(): OperatorShortcutsWire | null {
+  return currentShortcuts;
 }
 
 export function getOperatorQuickReplies(): readonly OperatorQuickReplyRow[] {
@@ -364,6 +380,14 @@ export function useOperatorKeys(): readonly OperatorKeyRow[] {
   return useSyncExternalStore(subscribeOperatorConfig, getOperatorKeys, getOperatorKeys);
 }
 
+/** Reactive read of the operator's keyboard shortcuts, raw as the bridge sent them. Same one-shot fetch, same contract. */
+export function useOperatorShortcuts(): OperatorShortcutsWire | null {
+  useEffect(() => {
+    void loadOperatorCommands();
+  }, []);
+  return useSyncExternalStore(subscribeOperatorConfig, getOperatorShortcuts, getOperatorShortcuts);
+}
+
 /** Reactive read of the operator's typefaces. Same one-shot fetch, same contract. */
 export function useOperatorFonts(): readonly OperatorFontFace[] {
   useEffect(() => {
@@ -400,6 +424,7 @@ export function __resetOperatorCommands(): void {
   sessionMuxInflight.clear();
   current = [];
   currentKeys = [];
+  currentShortcuts = null;
   currentReplies = [];
   currentFonts = [];
   currentMux = null;

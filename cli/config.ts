@@ -17,6 +17,7 @@ import {
 } from "../bridge/config-source.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
+import { readShortcutsReport } from "./shortcuts-file.ts";
 import type { Files } from "./sys.ts";
 
 // `config show | check | init` — the operator's half of the config file (ADR 0040).
@@ -185,11 +186,17 @@ export function cmdConfigCheck(deps: ConfigDeps, args: readonly string[]): numbe
   for (const file of layer.files) {
     deps.io.out(`${file.path}: ${file.present ? "checked" : "absent"}`);
   }
-  if (layer.problems.length === 0) {
+  // The operator's `shortcuts.toml` sits beside the config file and is read by the same bridge, so its
+  // dropped lines belong in the same list. A named path is checked alone, so this stays out of that.
+  const shortcuts = named === undefined ? readShortcutsReport({ configDir: deps.ctx.configDir, files: deps.files }) : null;
+  const shortcutLines = shortcuts?.lines ?? [];
+  if (shortcuts !== null) deps.io.out(`${shortcuts.path}: checked`);
+  if (layer.problems.length === 0 && shortcutLines.length === 0) {
     deps.io.out("ok: no problems.");
     return EXIT.OK;
   }
   for (const problem of layer.problems) deps.io.err(`error: ${problem.message}`);
+  for (const line of shortcutLines) deps.io.err(`error: shortcuts.toml: ${line}`);
   return EXIT.FAIL;
 }
 

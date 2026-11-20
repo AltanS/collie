@@ -185,6 +185,7 @@
         "**/bridge/activity.ts",
         "**/bridge/operator-commands.ts",
         "**/bridge/operator-keys.ts",
+        "**/bridge/operator-shortcuts.ts",
         "**/bridge/operator-quick-replies.ts",
         "**/bridge/operator-launchers.ts",
         "**/bridge/operator-cache-rules.ts",

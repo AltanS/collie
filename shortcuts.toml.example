@@ -1,0 +1,94 @@
+# Your own keyboard shortcuts for Collie on a desktop browser. Copy to your plugin config dir, next
+# to `.env`:
+#   cp shortcuts.toml.example "$(herdr plugin config-dir herdr.collie)/shortcuts.toml"
+#
+# This file configures ONE thing: the keys that drive the app from a keyboard. It works the way
+# Herdr's does. You press a prefix key, then one action key. The `[keys]` table is named like
+# Herdr's, so you can copy a block from your Herdr file. Where Collie names an action differently
+# (Herdr's `new_workspace` is `new_space` here), or has no such action, the shortcut list says what
+# to write and drops that line. Details: docs/keyboard-shortcuts.md.
+#
+# The prefix is `ctrl+b` by default, the same as Herdr. Change it with `prefix`. Press the prefix
+# twice to send it to the pane you are looking at.
+#
+# This file with every line commented out (as shipped) leaves every shortcut as shipped. The lines
+# below are the defaults: uncomment the `[keys]` line and the lines you want, then change them. Your
+# value replaces that action's default whole.
+#
+# Edits are picked up live, no restart. Reload the page to see them.
+#
+# A value is a string or a list of strings. A binding is `prefix+<key>` (the prefix, then the key)
+# or a direct chord such as `ctrl+alt+c`. A direct chord needs a modifier: a bare letter is refused.
+#   - Modifiers: `ctrl` (or `control`), `shift`, `alt` (or `option`, `meta`), `cmd` (or `command`,
+#     `super`), and `mod` (`cmd` on a Mac, `ctrl` elsewhere).
+#   - Named keys: `space`, `enter`, `esc`, `tab`, `backspace`, `left`, `right`, `up`, `down`,
+#     `f1` to `f12`, `minus`, `comma`, `period`, `slash`, `backslash`, `quote`, `semicolon`,
+#     `backtick`, `plus` (or `++`).
+#   - An upper-case letter adds shift. `1..9` is a range, for the action that takes a number.
+#   - Case does not matter for the rest.
+#
+# Limits: 256 names, 64 characters in a name, 8 bindings for one name, 64 characters in a binding.
+# An entry over a limit is dropped, and the names after the 256th are dropped.
+#
+# Unbind an action with `""` or `[]`.
+#
+# The browser owns a few chords, and a page cannot take them: `ctrl+w`, `ctrl+t`, `ctrl+n`,
+# `ctrl+tab`, `ctrl+shift+n` and `ctrl+l`. A direct binding on one of them is refused. Put them
+# behind the prefix instead.
+#
+# A bad line is dropped, and the rest of the file still loads. A bad `prefix` falls back to
+# `ctrl+b`. When two of your lines claim the same key, the first one wins. The shortcut list shows
+# each dropped line and why: press the prefix, then `?`, or open Settings, Keyboard shortcuts.
+#
+# Collie never uses a shortcut as the only way to reach something. Every action here has a button.
+
+# [keys]
+# prefix = "ctrl+b"
+
+# Show the shortcut list, open Settings, switch pane, open the dashboard, make a new space.
+# help = "prefix+?"
+# settings = "prefix+s"
+# switch_pane = "prefix+g"
+# open_dashboard = "prefix+q"
+# new_space = "prefix+shift+n"
+
+# Tabs of the space you are in: a new one, the one before, the one after, one by number.
+# new_tab = "prefix+c"
+# previous_tab = "prefix+p"
+# next_tab = "prefix+n"
+# switch_tab = "prefix+1..9"
+
+# Move between the panes of the row (left, right), and between spaces (up, down).
+# focus_pane_left = "prefix+h"
+# focus_pane_right = "prefix+l"
+# previous_space = "prefix+k"
+# next_space = "prefix+j"
+# cycle_pane_next = "prefix+tab"
+# cycle_pane_previous = "prefix+shift+tab"
+
+# Remove the pane from the view (it keeps running), zen mode, the sidebar.
+# remove_from_view = "prefix+x"
+# zen_mode = "prefix+z"
+# toggle_sidebar = "prefix+b"
+
+# Two modes that stay until you press `esc`. In resize mode, `h` and `l` step the pane width. In
+# navigate mode, `h` `j` `k` `l` and the arrows move, `1..9` picks a tab and `enter` leaves.
+# resize_mode = "prefix+r"
+# navigate_mode = "prefix+w"
+
+# The keys inside navigate mode and inside resize mode. They are bare keys, only valid in their mode.
+# navigate_left = ["h", "left"]
+# navigate_down = ["j", "down"]
+# navigate_up = ["k", "up"]
+# navigate_right = ["l", "right"]
+# navigate_tab = "1..9"
+# resize_narrower = ["h", "left"]
+# resize_wider = ["l", "right"]
+
+# Chat or Terminal for this pane, the composer, the find bar.
+# toggle_chat_terminal = "prefix+t"
+# focus_composer = "prefix+i"
+# find = "prefix+/"
+
+# One action can have several bindings. Write a list, for example `["prefix+c", "ctrl+alt+c"]`.
+# An unbound action has an empty value: `""` or `[]`.

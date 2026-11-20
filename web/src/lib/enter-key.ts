@@ -9,7 +9,10 @@
 // new line on every device, a computer with a mouse included. The first press that looks like a real
 // keyboard's earns the person one offer of the switch (`hint`); the switch is the choice.
 //
-// Pure on purpose: no React and no DOM types, so the table test can read every row.
+// Pure on purpose: no DOM types and no state of its own, so the table test can read every row. The
+// test of one press that no input method made, with a physical key's `code`, is lib/hardware-keyboard.ts's.
+
+import { isHardwareKeyPress } from "@/lib/hardware-keyboard";
 
 /** The facts of one keydown the rule reads. A DOM `KeyboardEvent` has all of them. */
 export interface EnterKeyFacts {
@@ -43,9 +46,6 @@ export type EnterChoice = "on" | "off" | null;
 /** The key codes a hardware Enter reports. */
 const HARDWARE_ENTER_CODES: ReadonlySet<string> = new Set(["Enter", "NumpadEnter"]);
 
-/** The key code an input method uses for a key it handled (`VK_PROCESSKEY`). */
-const IME_KEY_CODE = 229;
-
 /**
  * What a keydown does. `softKeyboardUp` is the app's own height test (hooks/use-keyboard.ts) and
  * `choice` is the per-device setting (lib/enter-sends-store.ts).
@@ -70,6 +70,6 @@ export function enterKeyAnswer(facts: EnterKeyFacts, softKeyboardUp: boolean, ch
  * keyboard is up (iOS may fill `code` in), is not trusted.
  */
 function fromRealKeyboard(facts: EnterKeyFacts, softKeyboardUp: boolean): boolean {
-  if (facts.isComposing || facts.keyCode === IME_KEY_CODE) return false;
+  if (!isHardwareKeyPress(facts)) return false;
   return HARDWARE_ENTER_CODES.has(facts.code) && !softKeyboardUp;
 }

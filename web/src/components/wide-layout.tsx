@@ -23,6 +23,7 @@ import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
 import type { FoldPosture } from "@/hooks/use-fold-posture";
 import { useRootOverscrollLock } from "@/hooks/use-root-overscroll-lock";
 import { useRowDrag, useVerticalSwipe, type DropTarget } from "@/hooks/use-row-drag";
+import { useShortcutHandler } from "@/hooks/use-shortcut-handler";
 import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { useStripSnap } from "@/hooks/use-strip-snap";
 import { queueBeltIntent, type BeltIntent } from "@/lib/belt-intent";
@@ -70,6 +71,7 @@ import {
   spaceKeyOf,
   spacesInOrder,
   spaceSwipe,
+  stepWidth,
   wholeColumnStart,
   type Places,
   type SpaceStrip,
@@ -292,6 +294,34 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     queueBeltIntent(columnKeyOf(pane, places), intent);
     goTo(pane);
   };
+
+  // ── The keyboard (M108): each shortcut calls the act a control on this screen already makes ─────
+  // A shortcut is a second path to a visible control, so each is offered only where its control is: the
+  // sidebar's toggle hides in the fold, the width button where there is a width to choose, the chevrons
+  // at the ends of the spaces, and "remove from view" while more than one column stands.
+  const stepFocus = (by: -1 | 1, wraps: boolean) => {
+    if (focusAt < 0) return;
+    const to = wraps ? (focusAt + by + shown.length) % shown.length : focusAt + by;
+    const key = shown[to]?.key;
+    const pane = key === undefined ? undefined : byColumn.get(key);
+    if (pane !== undefined && to !== focusAt) goTo(pane);
+  };
+  const stepWidthOf = (by: -1 | 1) => {
+    if (spaceKey !== null && strip.focus !== null) setSpaceStrip(spaceKey, stepWidth(strip, strip.focus, allowed, by));
+  };
+  const focusedKey = strip.focus;
+  useShortcutHandler("toggle_sidebar", book ? undefined : () => setSidebarOpen(!open));
+  // On the strip the sidebar IS the switcher (the pane view draws none), so opening it is "go to".
+  useShortcutHandler("switch_pane", book ? undefined : () => setSidebarOpen(true));
+  useShortcutHandler("focus_pane_left", () => stepFocus(-1, false));
+  useShortcutHandler("focus_pane_right", () => stepFocus(1, false));
+  useShortcutHandler("cycle_pane_next", framed ? () => stepFocus(1, true) : undefined);
+  useShortcutHandler("cycle_pane_previous", framed ? () => stepFocus(-1, true) : undefined);
+  useShortcutHandler("previous_space", spaceAt > 0 ? () => moveSpace(-1) : undefined);
+  useShortcutHandler("next_space", spaceAt >= 0 && spaceAt < spaces.length - 1 ? () => moveSpace(1) : undefined);
+  useShortcutHandler("remove_from_view", framed && focusedKey !== null ? () => remove(focusedKey) : undefined);
+  useShortcutHandler("resize_narrower", widthChoice ? () => stepWidthOf(-1) : undefined);
+  useShortcutHandler("resize_wider", widthChoice ? () => stepWidthOf(1) : undefined);
 
   // ── Row gestures: the menu, the drag ────────────────────────────────────────────────────────
   const [menuRow, setMenuRow] = useState<string | null>(null);

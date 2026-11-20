@@ -265,6 +265,19 @@ export function cycleWidth(strip: SpaceStrip, key: string, allowed: readonly Pre
 }
 
 /**
+ * One step along the allowed widths, narrower (`by` -1) or wider (+1), for the keyboard. Unlike the
+ * button it does not wrap: it stops at the narrowest and at Full, and gives back the same strip there.
+ */
+export function stepWidth(strip: SpaceStrip, key: string, allowed: readonly Preset[], by: -1 | 1): SpaceStrip {
+  const ladder = PRESETS.filter((p) => allowed.includes(p));
+  const column = strip.cols.find((c) => c.key === key);
+  if (column === undefined) return strip;
+  const next = ladder[ladder.indexOf(shownPreset(column.preset, allowed)) + by];
+  if (next === undefined) return strip;
+  return { ...strip, cols: strip.cols.map((c) => (c.key === key ? { ...c, preset: next } : c)) };
+}
+
+/**
  * "Remove from view": the column leaves this device's layout and the agent keeps running. The last
  * column stays. A removed focused column hands the focus to its right neighbour, or its left one
  * at the end, and the caller navigates there.
