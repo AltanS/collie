@@ -455,3 +455,40 @@ describe("the actions that need only the router", () => {
     expect(at()).toBe("/settings/updates");
   });
 });
+
+// A trick's Session names no machine in its own address, so the dashboard it goes home to is the one
+// it was opened from, as the Dashboard tab under it does (#826).
+describe("home from a screen whose address names no machine", () => {
+  function Root() {
+    useShortcuts({});
+    return <output data-testid="at">{`${useLocation().pathname}${useLocation().search}`}</output>;
+  }
+
+  it("goes back to the peer dashboard a trick's Session was opened from", async () => {
+    serveShortcuts(null);
+    const routes = ["/", "/trick/:id"].map((path) => ({ path, element: <Root /> }));
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/?h=peer", { pathname: "/trick/t1", state: { from: "/?h=peer" } }],
+      initialIndex: 1,
+    });
+    render(<RouterProvider router={router} />);
+    tap(document.body, CTRL_B);
+    await act(async () => void tap(document.body, { key: "q" }));
+    expect(screen.getByTestId("at").textContent).toBe("/?h=peer");
+    expect(router.state.historyAction).toBe("POP");
+  });
+
+  it("goes back to the peer dashboard from New on that peer, a named session included", async () => {
+    serveShortcuts(null);
+    const routes = ["/", "/new"].map((path) => ({ path, element: <Root /> }));
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/?h=peer&s=work", { pathname: "/new", search: "?machine=peer&s=work", state: { from: "/?h=peer&s=work" } }],
+      initialIndex: 1,
+    });
+    render(<RouterProvider router={router} />);
+    tap(document.body, CTRL_B);
+    await act(async () => void tap(document.body, { key: "q" }));
+    expect(screen.getByTestId("at").textContent).toBe("/?h=peer&s=work");
+    expect(router.state.historyAction).toBe("POP");
+  });
+});

@@ -22,10 +22,9 @@ import { useMuxLogo, useMuxName } from "@/lib/mux-capability";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
-import { homePath, settingsPath } from "@/lib/nav";
+import { homePath, resolveHomeScope, settingsPath } from "@/lib/nav";
 import { requestBundleFocus, useBundleApply } from "@/lib/bundle-apply";
 import { useReconnected } from "@/lib/reconnected";
-import { useScope } from "@/lib/session";
 import { useOptionalRootData } from "@/lib/route-data";
 import { releaseOffered } from "@/lib/update-ribbon";
 import { CollieHome, type MarkTarget } from "@/components/collie-home";
@@ -231,8 +230,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
   // keeps its ordinary meaning.
   const reconnected = useReconnected();
   const nav = useNav();
-  const scope = useScope();
-  const { pathname } = useLocation();
+  const { pathname, search, state } = useLocation();
   // What this collie drives, printed beside the wordmark. It ALWAYS describes the LOCAL collie and
   // never changes with the viewed scope: `/api/config`'s mux block is this bridge's own, and a peer's
   // is not fetched (the crew link carries runtime data, not a second config channel). So on `?h=peer`
@@ -305,7 +303,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
   const onHome = (target: MarkTarget) => {
     if (target === "update-line") {
       requestBundleFocus();
-      if (pathname !== "/") nav.upTo(homePath(scope));
+      if (pathname !== "/") nav.upTo(homePath(resolveHomeScope(pathname, search, state)));
       return;
     }
     home.current?.fn?.();

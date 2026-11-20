@@ -998,6 +998,23 @@ describe("MuseTranscriptSource resolve", () => {
     const source = museJournal([join(root, "2026")]).source;
     await expect(source.resolve({ kind: "id", value: UUID_A })).resolves.toBeNull();
   });
+
+  test("a cached log replaced by a symlink out of its root is refused", async () => {
+    const base = await fixtureRoot();
+    const root = join(base, "sessions");
+    const log = sessionLog(root, "2026-10-02", UUID_A, [metadataRow("/a")]);
+    const source = museJournal([root]).source;
+    await expect(source.resolve({ kind: "id", value: UUID_A })).resolves.toBe(log);
+
+    const outside = join(base, "outside.jsonl");
+    writeFileSync(outside, `${metadataRow("/secret")}\n`);
+    const { rm, symlink } = await import("node:fs/promises");
+    await rm(log);
+    await symlink(outside, log);
+
+    await expect(source.resolve({ kind: "id", value: UUID_A })).resolves.toBeNull();
+    await rm(base, { recursive: true, force: true });
+  });
 });
 
 describe("museJournal discover", () => {

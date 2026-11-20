@@ -157,3 +157,48 @@ describe("qr", () => {
     await expect(renderQr("https://" + "x".repeat(600))).rejects.toThrow(/too long/);
   });
 });
+
+// #822: a load failure of the package said "isn't installed" whatever it was, and dropped the error.
+// "Not installed" is now only for the package itself missing; anything else names the real error.
+describe("a qrcode-terminal that does not load", () => {
+  const URL = "http://127.0.0.1:8787/pair?code=abc";
+  const failing = (err: Error | string) => async () => {
+    throw err;
+  };
+  const missing = Object.assign(new Error("Cannot find package 'qrcode-terminal' imported from /x/scripts/qr.ts"), {
+    code: "ERR_MODULE_NOT_FOUND",
+  });
+
+  test("a package that is really absent says it is not installed, and keeps the cause", async () => {
+    await expect(renderQr(URL, failing(missing))).rejects.toMatchObject({ message: expect.stringMatching(/isn't installed/), cause: missing });
+  });
+
+  test("a package that is present but cannot load names the real error, not a missing package", async () => {
+    const denied = Object.assign(new Error("EACCES: permission denied, open '/x/node_modules/qrcode-terminal/lib/main.js'"), {
+      code: "EACCES",
+    });
+    const thrown = renderQr(URL, failing(denied));
+    await expect(thrown).rejects.toMatchObject({ message: expect.stringContaining("EACCES: permission denied"), cause: denied });
+    await expect(thrown).rejects.not.toThrow(/isn't installed/);
+  });
+
+  test("a module missing INSIDE the package is a broken package, not an absent one", async () => {
+    const inner = Object.assign(new Error("Cannot find module './lib/main' from '/x/node_modules/qrcode-terminal/index.js'"), {
+      code: "MODULE_NOT_FOUND",
+    });
+    const thrown = renderQr(URL, failing(inner));
+    await expect(thrown).rejects.toMatchObject({ message: expect.stringContaining("Cannot find module './lib/main'"), cause: inner });
+    await expect(thrown).rejects.not.toThrow(/isn't installed/);
+  });
+
+  test("a thrown value that is not an Error still reaches the message", async () => {
+    await expect(renderQr(URL, failing("parse failure"))).rejects.toThrow(/could not load: parse failure/);
+  });
+
+  test("the bitmap for the herdr-app mod tells the two apart the same way", async () => {
+    await expect(qrModules(URL, failing(missing))).rejects.toMatchObject({ message: expect.stringMatching(/isn't installed/), cause: missing });
+    const broken = new SyntaxError("Unexpected token in QRCode/index.js");
+    await expect(qrModules(URL, failing(broken))).rejects.toMatchObject({ message: expect.stringContaining("Unexpected token"), cause: broken });
+  });
+
+});

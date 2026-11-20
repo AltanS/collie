@@ -276,4 +276,24 @@ describe("FolderStore — the file", () => {
       expect(store.current()).toEqual({ recent: ["/srv/a"], favourites: [] });
     });
   });
+
+  // #821: two refused stars in flight at once. The second rolled back to the first one's unsaved
+  // state, so a favourite nobody saved showed on the phone and reached disk with the next good write.
+  test("two stars the disk refused at once leave the lists as they were, and no phantom reaches disk", async () => {
+    await withStateDir(async (root) => {
+      const dir = join(root, "state");
+      const store = new FolderStore({ stateDir: dir }, HOME, () => {});
+      await store.recordRecent("/srv/a");
+      await store.recordRecent("/srv/b");
+      await rm(dir, { recursive: true, force: true });
+      await writeFile(dir, "");
+      const [a, b] = await Promise.allSettled([store.star("/srv/a", true), store.star("/srv/b", true)]);
+      expect([a.status, b.status]).toEqual(["rejected", "rejected"]);
+      expect(store.current()).toEqual({ recent: ["/srv/b", "/srv/a"], favourites: [] });
+
+      await rm(dir, { force: true });
+      await store.recordRecent("/srv/c");
+      expect(await Bun.file(join(dir, "folders.json")).json()).toEqual({ recent: ["/srv/c", "/srv/b", "/srv/a"], favourites: [] });
+    });
+  });
 });

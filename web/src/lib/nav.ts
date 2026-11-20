@@ -7,7 +7,7 @@
 // The host stays in the QUERY, never in the path: a `/host/:h/pane/:paneId` shape would fork every
 // route, break every existing deep link, and force the loaders' isPaneUrl() to grow a parser.
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "./json";
-import { scopeFromSearchParams, scopeSearch, SESSION_PARAM, type Scope } from "./scope";
+import { internScope, scopeFromSearchParams, scopeKey, scopeSearch, SESSION_PARAM, type Scope } from "./scope";
 import type { AgentView } from "./types";
 import type { AgentLaunch } from "./agent-startup";
 
@@ -686,13 +686,54 @@ export function upTarget(here: string, from: string | undefined, fallback: strin
   return pathOnly(fallback);
 }
 
+function searchOf(href: string): string {
+  const cut = href.search(/[?#]/);
+  return cut === -1 || href[cut] === "#" ? "" : href.slice(cut + 1).split("#")[0] ?? "";
+}
+
+function sameScope(a: string, b: string): boolean {
+  const sa = scopeFromSearchParams(new URLSearchParams(searchOf(a)));
+  const sb = scopeFromSearchParams(new URLSearchParams(searchOf(b)));
+  return scopeKey(sa) === scopeKey(sb);
+}
+
+/**
+ * The dashboard scope a route returns to on `nav.upTo(homePath(...))`. Most routes carry `?h=` /
+ * `?s=` in their own URL; `/new` and `/new/add` carry `?machine=` / `?s=` instead, and `/trick/*`
+ * carries neither so its caller's scope lives on `state.from`.
+ */
+export function resolveHomeScope(pathname: string, search: string, state?: JsonValue): Scope {
+  const urlScope = scopeFromSearchParams(new URLSearchParams(search));
+  const path = pathOnly(pathname);
+  if (path === "/new" || path === "/new/add") {
+    const at = readNewAt(search);
+    const host = urlScope.host ?? at.machine;
+    const session = urlScope.session ?? at.session;
+    if (host !== undefined || session !== undefined) return internScope({ host, session });
+  }
+  if (urlScope.host !== undefined || urlScope.session !== undefined) return internScope(urlScope);
+  if (path === "/new" || path === "/new/add" || path.startsWith("/trick/")) {
+    const from = readFrom(state);
+    if (from !== undefined) return internScope(scopeFromSearchParams(new URLSearchParams(searchOf(from))));
+  }
+  return internScope({});
+}
+
 /**
  * An UP move to one NAMED parent, not the nearest one: the pane's space breadcrumb goes to its space
  * even when the dashboard opened the pane. It steps back only when the entry behind us is that very
- * parent, and otherwise replaces this entry with it, so the space's own up still finds the dashboard.
+ * parent on the same host and session (`?h=` / `?s=`, because workspace ids collide across both),
+ * and otherwise replaces this entry with it, so the space's own up still finds the dashboard.
  */
 export function resolveUpTo(from: string | undefined, target: string, canGoBack = true): UpMove {
-  if (canGoBack && from !== undefined && decodedPath(pathOnly(from)) === decodedPath(pathOnly(target))) return { kind: "back" };
+  if (
+    canGoBack &&
+    from !== undefined &&
+    decodedPath(pathOnly(from)) === decodedPath(pathOnly(target)) &&
+    sameScope(from, target)
+  ) {
+    return { kind: "back" };
+  }
   return { kind: "replace", to: target };
 }
 
@@ -700,16 +741,15 @@ export function resolveUpTo(from: string | undefined, target: string, canGoBack 
 function locationKey(href: string): string {
   const cut = href.search(/[?#]/);
   const pathname = cut === -1 ? href : href.slice(0, cut);
-  const search = cut === -1 || href[cut] === "#" ? "" : href.slice(cut + 1).split("#")[0] ?? "";
-  const pairs = [...new URLSearchParams(search).entries()].map(([k, v]) => `${k}=${v}`).toSorted();
+  const pairs = [...new URLSearchParams(searchOf(href)).entries()].map(([k, v]) => `${k}=${v}`).toSorted();
   return `${decodedPath(pathname)}?${pairs.join("&")}`;
 }
 
 /**
  * An UP move to one exact LOCATION: it steps back only when the entry behind is that very pathname
- * and query, and otherwise replaces this entry with it. `resolveUpTo` compares pathnames, which is
- * right between screens and wrong inside the Files view, where every folder shares one pathname and
- * only `?dir=` tells them apart (ADR 0083).
+ * and query, and otherwise replaces this entry with it. `resolveUpTo` compares pathname and scope,
+ * which is right between screens and wrong inside the Files view, where every folder shares one
+ * pathname and only `?dir=` tells them apart (ADR 0083).
  */
 export function resolveUpToExact(from: string | undefined, target: string, canGoBack = true): UpMove {
   if (canGoBack && from !== undefined && locationKey(from) === locationKey(target)) return { kind: "back" };

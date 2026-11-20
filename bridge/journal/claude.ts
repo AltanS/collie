@@ -1284,13 +1284,15 @@ export class ClaudeTranscriptSource implements TranscriptSource {
     const sessionId = ref.value;
     const cached = this.pathCache.get(sessionId);
     if (cached !== undefined) {
-      // Re-verify: a cached path can vanish when a session is deleted.
+      // Re-verify per-root containment on every hit: exists() follows symlinks, so a file replaced
+      // by an outward link after the first resolve would otherwise be served.
       //
       // The cache memoises only the EXPENSIVE part — the global scan that maps a uuid to its file,
       // which never changes. Continuation-following must still run on every call, because the
       // conversation rotates into a new file WHILE the bridge is up: caching its result would pin the
       // answer to whatever was true at the first request and go stale minutes later.
-      if (await exists(cached.path)) return this.follow(cached.path, cached.root);
+      const real = await containedRealpath(cached.path, cached.root);
+      if (real !== null) return this.follow(real, cached.root);
       this.pathCache.delete(sessionId);
     }
 

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { MUX_CAPABILITIES } from "../capabilities.ts";
 import { muxConfigBody } from "../../server.ts";
@@ -17,7 +19,8 @@ import {
   WRITE_TIMEOUT_MS,
 } from "./adapter.ts";
 import { CAPS } from "./clean.ts";
-import { DURABLE_SOCKET_ENV, DurableSocketClient, SOCKET_NOT_PRIVATE } from "./client.ts";
+import { DURABLE_SOCKET_ENV, DurableSocketClient, SOCKET_NOT_PRIVATE, type DurableTransport } from "./client.ts";
+import type { DurableEventSink } from "./events.ts";
 import { FakeDurableClock, FakeDurableProgram, hasHostileChars, hostileText, SOCKET_ONLY_SKIP } from "./fixture.ts";
 
 const programs: FakeDurableProgram[] = [];
@@ -482,6 +485,55 @@ describe("snapshot reads", () => {
     const snapshots = program.requests.filter((request) => request.path.endsWith("/snapshot"));
     expect(snapshots.map((request) => request.ifNoneMatch)).toEqual([null, `"${program.epoch}-12"`]);
     expect(second).toBe(first);
+  });
+
+  test("a 304 that prunes an expired ask preserves logRefs on the updated snapshot", async () => {
+    const program = await FakeDurableProgram.startWire();
+    programs.push(program);
+    const inner = program.wire();
+    const statuses: number[] = [];
+    const transport: DurableTransport = {
+      async get(request) {
+        const reply = await inner.get(request);
+        if (request.path === "/snapshot") statuses.push(reply.status);
+        return reply;
+      },
+      post: (request) => inner.post(request),
+    };
+    const logDir = join(tmpdir(), "collie-durable-304-log-refs");
+    const logSink: DurableEventSink = {
+      apply: async () => 0,
+      pathOf: (key) => join(logDir, `${key}.jsonl`),
+    };
+    const clock = new FakeDurableClock();
+    const adapter = new DurableMux(transport, clock, logSink);
+    const soon = new Date(clock.now() + 1000).toISOString();
+    program.raiseAsk("conv-01", {
+      id: "ask-expiring",
+      kind: "permission",
+      toolCallId: "call-expiring",
+      revision: 1,
+      title: "shell wants to run",
+      itemId: "item-expiring",
+      options: [{ id: "allow", label: "Allow", effect: "allow" }],
+      expiresAt: soon,
+    });
+
+    const first = await adapter.snapshot();
+    expect(first.panes.find((pane) => pane.paneId === "conv-01")?.agentSession).toEqual({
+      kind: "path",
+      value: join(logDir, "conv-01.jsonl"),
+    });
+
+    clock.advance(1000);
+    const second = await adapter.snapshot();
+    expect(statuses).toEqual([200, 304]);
+    expect(adapter.openAsks("conv-01")).toEqual([]);
+    expect(second.panes.find((pane) => pane.paneId === "conv-01")?.agentSession).toEqual({
+      kind: "path",
+      value: join(logDir, "conv-01.jsonl"),
+    });
+    expect(second.panes.every((pane) => pane.agentSession?.kind === "path")).toBe(true);
   });
 
   test("a change moves rev, the ETag no longer matches, and the new snapshot is read", async () => {
