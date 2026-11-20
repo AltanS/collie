@@ -75,13 +75,53 @@ describe("useNav", () => {
   });
 
   it("up replaces onto the structural parent when the entry behind is not one", async () => {
-    const { router, at } = mount("/pane/p1");
+    const { router, at, state } = mount("/pane/p1");
+    await act(async () => nav.down("/settings/updates"));
+    await act(async () => nav.up("/settings"));
+    expect(at()).toBe("/settings");
+    // Updates is gone from the stack, and Settings keeps the pane as its way up (ADR 0163).
+    expect(state()).toEqual({ from: "/pane/p1" });
+    await act(async () => nav.up("/"));
+    expect(at()).toBe("/pane/p1");
+    expect(router.state.historyAction).toBe("POP");
+  });
+
+  // ADR 0163: Settings' arrow steps back onto the screen that opened it, and the browser's Back does
+  // the same, because both are one history pop. The arrow marks the pop so its slide plays.
+  it.each([
+    ["a pane", "/pane/p1"],
+    ["a space", "/space/w1"],
+    ["the New page", "/new"],
+  ])("Settings opened from %s: the arrow and the browser's Back both land there", async (_name, origin) => {
+    const arrow = mount(origin);
     await act(async () => nav.down("/settings"));
     await act(async () => nav.up("/"));
-    expect(at()).toBe("/");
-    // Settings is gone from the stack: the next back is the pane, not Settings again.
-    await act(() => router.navigate(-1));
+    expect(arrow.at()).toBe(origin);
+    arrow.unmount();
+
+    const browser = mount(origin);
+    await act(async () => nav.down("/settings"));
+    await act(() => browser.router.navigate(-1));
+    expect(browser.at()).toBe(origin);
+  });
+
+  it("Settings opened from a pane: a section round trip keeps the pane as Settings' way up", async () => {
+    const { router, at, state } = mount("/pane/p1");
+    await act(async () => nav.down("/settings"));
+    await act(async () => nav.down("/settings/updates"));
+    await act(async () => nav.up("/settings"));
+    expect(at()).toBe("/settings");
+    expect(state()).toEqual({ from: "/pane/p1" });
+    await act(async () => nav.up("/"));
     expect(at()).toBe("/pane/p1");
+    expect(router.state.historyAction).toBe("POP");
+  });
+
+  it("a cold Settings goes up to the Dashboard and leaves the stack with nothing behind it", async () => {
+    const { at, state } = mount("/settings");
+    expect(state()).toBeNull();
+    await act(async () => nav.up("/"));
+    expect(at()).toBe("/");
   });
 
   it("open is a step down from a space and sideways from a pane", async () => {
