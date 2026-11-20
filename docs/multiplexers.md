@@ -176,7 +176,34 @@ Collie does not detect Tern on its own, as it does not detect tuios: name it wit
 
 ### rex notes
 
-Rex reports agents itself, so it needs no hooks to tell an agent from a shell:
+Rex is Superlogical's terminal server. Collie mirrors it as an experiment.
+
+> **Experimental.** Rex support is new and Rex itself is in beta. Collie drives Rex only when
+> `COLLIE_MUX=rex` names it, and a first run never picks it on its own.
+
+Rex names an agent from the status the agent reports about itself:
+
+| Agent | Rex names it | Chat and History |
+| --- | --- | --- |
+| Claude Code | yes, tested on 2.1.329 | yes, with `collie hooks install claude` |
+| Codex | yes, tested on 0.170.0, once you trust its folder | no |
+| pi | yes, tested on 1.3.0 | no |
+| Grok | yes, tested on 1.0.89 | no |
+| omp | from 18.8.7 on | no |
+| opencode | no, 1.19 reports nothing | no |
+
+An agent that Rex does not name shows as a shell. A tested version is the one Collie was checked
+with, and an older one may work too.
+
+What works: the terminal view, sends, the permission and question cards, the keys, and tabs and
+Spaces. Collie was developed and tested on a Linux Rex server, at API revisions 18 and 19. The
+contributor also ran the probe and the write test on a macOS Rex app at API revision 11, and the
+commit reports that both passed and that the keys arrived as on Linux. macOS reports are welcome.
+
+**Before you turn it on.** On Linux, `rex server install` enables systemd's `rex.socket`, and then
+any connection starts the server, Collie's too. Collie looks at the server every few seconds, so
+such a server never idles out while Collie runs. To keep it stopped, stop `rex.socket` and
+`rex.service` together.
 
 ```bash
 COLLIE_MUX=rex collie start
@@ -187,27 +214,19 @@ collie hooks install claude
 Collie shows each Rex session as a space, each window as a tab, and each block as a pane. A
 block that is not a terminal has no screen, and Collie leaves it out.
 
-Rex keeps the status a program reports about itself. Claude Code reports one on its own, so a
-Claude block shows as Claude, and as blocked while it waits for you. Codex, pi, Grok and omp report
-one too. Rex does not know the conversation id, so a pane's History needs the hooks; they name the
-session through `$REX_BLOCK` and `$REX_SERVER`, which Rex sets in every block.
-
-omp reports its status from version 18.8.7 on, and an older omp shows as a shell. opencode 1.19
-reports none, so it shows as a shell. Codex shows as a shell until you trust its folder, because it
-reports nothing at that question.
-
 The status is what the program in the block reports about itself, and any program can print one.
 Rex drops it when the program that printed it exits. Collie does not read a status that the block's
 own shell prints, for example with `printf` at the prompt, so a plain shell never shows as an agent
 that needs you. A program that you start from the shell can still claim any status while it runs.
 
+Rex does not know the conversation id, so a pane's History needs the hooks. They name the session
+through `$REX_BLOCK` and `$REX_SERVER`, which Rex sets in every block.
+
 The endpoint is the Rex server. Leave it empty to use the server that `rex` finds by itself, or set
 anything `rex -S` takes. Collie asks `rex` never to start a server: start yours with
-`rex server start`, or `rex server install` to start it at boot.
-
-On Linux, `rex server install` enables systemd's `rex.socket`, and then any connection starts the
-server, Collie's too. Collie looks at the server every few seconds, so such a server never idles out
-while Collie runs. To keep it stopped, stop `rex.socket` and `rex.service` together.
+`rex server start`, or `rex server install` to start it at boot. `collie doctor` prints the `rex`
+binary it found, the server's address and its API revision, and it warns on a revision that Collie
+was not tested with.
 
 Some things work differently on Rex:
 
@@ -220,8 +239,6 @@ Some things work differently on Rex:
   tell your name from its default. Tab rename works.
 - A read of a pane takes only the end of its output, in two short `rex` calls. Load older past
   about a thousand rows reads the whole scrollback, so it is slower on a very long one.
-
-Collie does not detect Rex on its own: name it with `COLLIE_MUX=rex`.
 
 ### durable notes
 
