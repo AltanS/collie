@@ -4,8 +4,10 @@
 
 import { Icon } from "@/components/icons/icon";
 import { Button } from "@/components/ui/button";
+import { ACTION_ICON_TAP, CAUTION_ACTION, CAUTION_ACTION_TAP } from "@/components/ui/notice";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import type { SendOffer } from "@/lib/surface/send";
 
 interface SendOfferStripProps {
@@ -33,14 +35,14 @@ const LABEL_KEYS = {
 export function SendOfferStrip({ offers, disabled, onOffer, onDismiss, capConfirm = false }: SendOfferStripProps) {
   useLocale();
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md bg-muted/40 px-2.5 py-2 text-sm text-muted-foreground" data-testid="send-offers">
+    <div className="mb-2 flex flex-wrap items-center gap-2 py-1.5" data-testid="send-offers">
       {offers.map((offer) => (
         <Button
           key={offer}
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
-          className="h-11 min-w-11 flex-1 px-3 text-sm font-medium touch-manipulation"
+          className={cn(CAUTION_ACTION, CAUTION_ACTION_TAP, "touch-manipulation")}
           disabled={disabled}
           onClick={() => onOffer(offer)}
         >
@@ -51,7 +53,7 @@ export function SendOfferStrip({ offers, disabled, onOffer, onDismiss, capConfir
         type="button"
         variant="ghost"
         size="icon"
-        className="ml-auto size-11 shrink-0 touch-manipulation text-muted-foreground"
+        className={cn("ml-auto size-8 shrink-0 touch-manipulation text-muted-foreground", ACTION_ICON_TAP)}
         aria-label={t("composer.protocol.dismissAria")}
         onClick={onDismiss}
       >

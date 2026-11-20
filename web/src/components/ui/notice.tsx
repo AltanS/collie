@@ -148,6 +148,39 @@ export const NOTICE_ACTION_TAP =
 export const NOTICE_ACTION = `h-6 gap-1 px-2 text-xs ${NOTICE_ACTION_TAP}`;
 
 /**
+ * A bordered action button in the caution tone that stands OUTSIDE a Notice: the Send Protocol's
+ * offers under the composer (`send-offer-strip.tsx`). Pass it as `className` to `ui/button.tsx`,
+ * `<Button variant="outline" size="sm" className={cn(CAUTION_ACTION, CAUTION_ACTION_TAP)}>`.
+ *
+ * It is the one place a caution tint is written outside {@link TONE}, because Tailwind reads only
+ * whole class names as text, so a `hover:` variant of the table's `bg-status-working/15` cannot be
+ * derived from it by string work. Keep the two in step: `status-working` is the caution tone's token,
+ * and the tint under a press is the table's `/15`. The edge is `/60`, not the table's `/40`: a notice
+ * edge sits on its own tint, while this edge is the only thing that makes a transparent button a
+ * button. Drawn 32px (`h-8`), as wide as its word. `shadow-none`, `hover:text-` and `bg-transparent`
+ * cancel what the `outline` variant brings (a shadow, the accent hover ink, the page ground).
+ */
+export const CAUTION_ACTION =
+  "h-8 px-3 text-sm font-medium shadow-none border-status-working/60 bg-transparent text-status-working hover:bg-status-working/15 hover:text-status-working active:bg-status-working/15";
+
+/**
+ * The 44px tap floor for the 32px button above, bought as HIT area. Same technique and same trap as
+ * {@link NOTICE_ACTION_TAP}: the inset resolves against the PADDING box, 1px inside the `ui/button.tsx`
+ * border that DESIGN.md §2 reserves. Padding box of an `h-8` button: 32 - 2 = 30px. 30 + 2 x 7 = 44px.
+ * So `-inset-y-[7px]`, not `-inset-y-1.5` (6px, which would measure 42). Vertical only: the offers are
+ * as wide as a word, never under 44px, and sit `gap-2` apart. Under an `overflow: hidden` ancestor the
+ * reach is eaten; `ui/collapse.tsx` drops its clip once it has opened (`settled`).
+ */
+export const CAUTION_ACTION_TAP = "relative before:absolute before:inset-x-0 before:-inset-y-[7px] before:content-['']";
+
+/**
+ * The same floor for a 32px square ghost icon button (the offers' ✕): 30px padding box, 7px out on
+ * all four sides is 44 by 44. Safe only because it is LAST in its row, with nothing to its right, and
+ * 7px is inside the row's 8px gap on its left.
+ */
+export const ACTION_ICON_TAP = "relative before:absolute before:-inset-[7px] before:content-['']";
+
+/**
  * A strip is a full-bleed one-liner of viewport chrome, and it NEVER wraps — by contract, not by
  * luck. The copy goes in a single `min-w-0 flex-1 truncate` span below, so no string a feature
  * passes can turn a 33px band into a 49px one behind its back.
