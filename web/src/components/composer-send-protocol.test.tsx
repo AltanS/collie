@@ -134,6 +134,22 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     expect(sends[1]!.id).not.toBe(sends[0]!.id);
   });
 
+  // The offer strip is the only control for a refused send; a 28px strip button is under the 44px
+  // floor and, on a phone at the keyboard, a near miss is a dead tap with no request (field case
+  // 2026-11-20: the bridge saw the refusal and no Add or Replace request followed).
+  it("the offers meet the 44px touch floor, the dismiss included", async () => {
+    const user = userEvent.setup();
+    bridge([{ body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } }]);
+    renderComposer();
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "new words");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByTestId("send-offers");
+    for (const name of ["Add to it", "Replace", "Cancel"]) {
+      expect(screen.getByRole("button", { name }).className).toMatch(/(?:^|\s)h-11(?=\s|$)/);
+    }
+    expect(screen.getByRole("button", { name: "Dismiss the send offers" }).className).toMatch(/(?:^|\s)size-11(?=\s|$)/);
+  });
+
   it("a draft refusal on a pane with a returned queued card points at that card, and keeps the offers (ADR 0122)", async () => {
     const user = userEvent.setup();
     bridge([{ body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } }]);

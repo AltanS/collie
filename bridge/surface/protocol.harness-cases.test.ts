@@ -962,6 +962,37 @@ describe("a profile whose probe is provisional never skips the probe (M56 spec 1
     expect((await provisional.send(LONG)).receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
   });
 
+  // A failed probe is no proof (#831's review, 2026-11-20): its clean Backspace only says the box is as
+  // it was. Add to it and Replace over a draft stay refused, the draft kept, and nothing of the text goes in.
+  test("an idle draft whose proof changed more than the box: Add to it and Replace are refused draft_present, the draft kept", async () => {
+    for (const mode of ["append", "replace"] as const) {
+      const provisional = rig({ version: "2.1.999", edit: (profile) => ({ ...profile, probe: { ...profile.probe, status: "provisional" } }) });
+      provisional.pane.box = "half a thought";
+      provisional.pane.afterInput = (p, what) => {
+        if (what === `type:${PROBE}`) p.status = [];
+      };
+      const answer = await provisional.send(" and the rest", { mode });
+      expect(answer.receipt, mode).toMatchObject({ outcome: "refused", reason: "draft_present", keys: ["probe", "Backspace"] });
+      expect(answer.offers, mode).toEqual(["append", "replace", "cancel"]);
+      expect(provisional.pane.calls, mode).toEqual([`type:${PROBE}`]);
+      expect(provisional.pane.box, mode).toBe("half a thought");
+    }
+  });
+
+  test("Add to it into a running turn whose probe changed more than the box is refused, nothing typed and no Enter", async () => {
+    const provisional = rig({ version: "2.1.999", edit: (profile) => ({ ...profile, probe: { ...profile.probe, status: "provisional" } }) });
+    provisional.pane.box = "half a thought";
+    provisional.pane.over = ["✻ Thinking… (2s · esc to interrupt)"];
+    provisional.pane.afterInput = (p, what) => {
+      if (what === `type:${PROBE}`) p.status = [];
+    };
+    const answer = await provisional.send(" and the rest", { mode: "append" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", keys: ["probe", "Backspace"] });
+    expect(provisional.pane.calls).toEqual([`type:${PROBE}`]);
+    expect(provisional.pane.keysSeen).toEqual(["Backspace"]);
+    expect(provisional.pane.box).toBe("half a thought");
+  });
+
   test("the profiles of every harness with no live send in its range are provisional", () => {
     for (const id of ["grok", "agy", "muse", "opencode", "omp"]) expect(loadProfiles().get(id)?.probe.status, id).toBe("provisional");
     expect(loadProfiles().get("pi")?.probe.status).toBe("verified");

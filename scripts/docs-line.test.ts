@@ -123,6 +123,12 @@ describe("hasPickTrailer", () => {
   });
 });
 
+/**
+ * Each case runs git several times and the script once: under half a second here, and three to five
+ * seconds on a Windows runner, where the nightly run timed out on two of them (#830).
+ */
+const END_TO_END_MS = 30_000;
+
 describe("docs-line end to end", () => {
   let root: string;
   let origin: string;
@@ -198,7 +204,7 @@ describe("docs-line end to end", () => {
     expect(originBranches()).toEqual([]);
     expect(git(clone, "worktree", "list", "--porcelain").match(/^worktree /gm)?.length).toBe(1);
     git(clone, "reset", "--quiet", "--hard", "HEAD~1");
-  });
+  }, END_TO_END_MS);
 
   test("--dry-run pushes nothing and prints the log", () => {
     const doc = commit("docs: fix a", { "docs/a.md": "dry\n" });
@@ -208,7 +214,7 @@ describe("docs-line end to end", () => {
     expect(res.out).toContain("dry run");
     expect(res.out).toContain("the site would not be told");
     expect(originBranches()).toEqual([]);
-  });
+  }, END_TO_END_MS);
 
   test("a docs-only commit lands on docs/v0.1.0 with -x", () => {
     const doc = git(clone, "rev-parse", "HEAD").trim();
@@ -222,7 +228,7 @@ describe("docs-line end to end", () => {
     expect(body).toContain(`(cherry picked from commit ${doc})`);
     expect(git(origin, "diff", "--name-only", "v0.1.0", "docs/v0.1.0").trim()).toBe("docs/a.md");
     expect(git(clone, "worktree", "list", "--porcelain").match(/^worktree /gm)?.length).toBe(1);
-  });
+  }, END_TO_END_MS);
 
   test("a second run appends to the existing branch", () => {
     const readme = commit("docs: readme", { "README.md": "# Collie, fixed\n" });
@@ -230,7 +236,7 @@ describe("docs-line end to end", () => {
     expect(res.code).toBe(0);
     const subjects = git(origin, "log", "--format=%s", "v0.1.0..docs/v0.1.0").trim().split("\n");
     expect(subjects).toEqual(["docs: readme", "docs: fix a"]);
-  });
+  }, END_TO_END_MS);
 
   test("an older docs branch is listed with its delete command, not deleted", () => {
     git(clone, "tag", "v0.2.0");
@@ -240,7 +246,7 @@ describe("docs-line end to end", () => {
     expect(res.code).toBe(0);
     expect(res.out).toContain("git push origin --delete docs/v0.1.0");
     expect(originBranches().toSorted()).toEqual(["docs/v0.1.0", "docs/v0.2.0"]);
-  });
+  }, END_TO_END_MS);
   test("a conflicting pick exits 1, pushes nothing and leaves no worktree", () => {
     const home = git(clone, "rev-parse", "--abbrev-ref", "HEAD").trim();
     git(clone, "checkout", "--quiet", "-b", "side", "v0.1.0");
@@ -252,7 +258,7 @@ describe("docs-line end to end", () => {
     expect(res.out).toContain("cherry-pick");
     expect(git(origin, "rev-parse", "docs/v0.2.0").trim()).toBe(before);
     expect(git(clone, "worktree", "list", "--porcelain").match(/^worktree /gm)?.length).toBe(1);
-  });
+  }, END_TO_END_MS);
   test("a rename out of cli/ into docs/ is refused, because both paths are listed", () => {
     rmSync(join(clone, "cli/x.ts"));
     const moved = commit("move code into docs", { "docs/x.md": "export const x = 1;\n" });
@@ -260,7 +266,7 @@ describe("docs-line end to end", () => {
     expect(res.code).toBe(1);
     expect(res.out).toContain("cli/x.ts");
     git(clone, "reset", "--quiet", "--hard", "HEAD~1");
-  });
+  }, END_TO_END_MS);
 
   test("a deleted docs page is refused, since the release run and the site name pages", () => {
     rmSync(join(clone, "docs/b.md"));
@@ -270,7 +276,7 @@ describe("docs-line end to end", () => {
     expect(res.out).toContain("docs/b.md");
     expect(res.out).toContain("docs page");
     git(clone, "reset", "--quiet", "--hard", "HEAD~1");
-  });
+  }, END_TO_END_MS);
 
   test("a commit that is not on origin/main is refused, and --allow-unmerged lifts that", () => {
     const local = unmerged("docs: local only", { "docs/local.md": "local\n" });
@@ -282,7 +288,7 @@ describe("docs-line end to end", () => {
     const allowed = docsLine("--dry-run", "--allow-unmerged", local);
     expect(allowed.code).toBe(0);
     git(clone, "reset", "--quiet", "--hard", "HEAD~1");
-  });
+  }, END_TO_END_MS);
 
   test("the same commit twice is skipped, not a conflict, and the branch gets one commit", () => {
     const doc = commit("docs: once", { "docs/once.md": "once\n" });
@@ -297,5 +303,5 @@ describe("docs-line end to end", () => {
       .split("\n")
       .filter((l) => l === "docs: once");
     expect(picks).toHaveLength(1);
-  });
+  }, END_TO_END_MS);
 });
