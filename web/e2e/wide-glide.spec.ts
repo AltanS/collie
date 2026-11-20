@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type CDPSession, type Page } from "@playwright/test";
 
 import { PRESET_FRACTION, restingScroll, stripGeometry, type Preset } from "@/lib/wide-layout";
 import type { AgentView, PaneChatResponse } from "@/lib/types";
@@ -491,4 +491,194 @@ test("a second tap that lands on Remove from view while the button glides away i
   await expect(page.locator('[data-slot="wide-layout"] section[data-col-key]')).toHaveCount(2);
   await expect(page).toHaveURL(new RegExp(`${encodeURIComponent("w2:p3")}$`));
   await expect(widthButton(page)).toHaveAccessibleName(en["wide.width.aria"].replace("{width}", "4/5"));
+});
+
+// TOUCH. On a touchscreen a second tap on the width button starts with a `touchstart` on the strip
+// while the first glide runs. A finger that only taps must not take the scroll from the glide; only one
+// that moves past the tap slop does. And a width act after the person scrolled takes the scroll back.
+
+/** The width button's centre and whether a glide runs, read in one go. */
+function buttonNow(page: Page) {
+  return page.evaluate(() => {
+    const b = document.querySelector<HTMLElement>("[data-slot='header-dock-trail'] [data-slot='column-width']")!.getBoundingClientRect();
+    return {
+      x: b.left + b.width / 2,
+      y: b.top + b.height / 2,
+      gliding: document.querySelector('[data-slot="strip"]')!.hasAttribute("data-gliding"),
+      label: document.querySelector("[data-slot='header-dock-trail'] [data-slot='column-width']")!.getAttribute("aria-label"),
+    };
+  });
+}
+
+/** Tap the width button with a finger, `then` act in between, and tap it again where it is now. */
+async function touchTwice(page: Page, gapMs: number, between?: () => Promise<void>): Promise<{ rest: Geometry; glidingAtSecond: boolean; samples: Sample[] }> {
+  await rest(page);
+  await cdpOf(page);
+  const first = await buttonNow(page);
+  await page.evaluate(() => window.__record(1, { x: 0, y: 0 }));
+  await fingerTap(page, first.x, first.y);
+  // The tap's click has landed: a glide runs, or (reduced motion) the width changed.
+  await page.waitForFunction((before) => document.querySelector("[data-slot='header-dock-trail'] [data-slot='column-width']")?.getAttribute("aria-label") !== before, first.label, { polling: "raf" });
+  await page.waitForTimeout(gapMs);
+  if (between !== undefined) await between();
+  const second = await buttonNow(page);
+  await fingerTap(page, second.x, second.y);
+  const samples = await page.evaluate(() => window.__recorded());
+  return { rest: await rest(page), glidingAtSecond: second.gliding, samples };
+}
+
+/** A finger tap as the touchscreen sends it, a touchstart and a touchend, without
+ *  `page.touchscreen.tap`'s wait for the page, so a tap can come down mid-glide. */
+async function fingerTap(page: Page, x: number, y: number): Promise<void> {
+  const cdp = await cdpOf(page);
+  // Both sent at once (one session keeps the order), so the finger comes down a round trip sooner.
+  await Promise.all([
+    cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] }),
+    cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }),
+  ]);
+}
+
+const sessions = new WeakMap<Page, CDPSession>();
+/** One CDP session per page, opened before the act, so no touch waits for a session to open. */
+async function cdpOf(page: Page): Promise<CDPSession> {
+  const had = sessions.get(page);
+  if (had !== undefined) return had;
+  const cdp = await page.context().newCDPSession(page);
+  sessions.set(page, cdp);
+  return cdp;
+}
+
+/** Wait, frame by frame, until the gliding width button moves under 8 px a frame, late in the glide,
+ *  so a finger lands on it where it was read. False when the glide ended first. */
+function slowButton(page: Page): Promise<boolean> {
+  return page.evaluate(
+    () =>
+      new Promise<boolean>((done) => {
+        const strip = document.querySelector('[data-slot="strip"]')!;
+        const left = () => strip.closest('[data-slot="wide-layout"]')!.querySelector("[data-slot='header-dock-trail'] [data-slot='column-width']")!.getBoundingClientRect().left;
+        let last = left();
+        let moved = false;
+        const tick = () => {
+          if (!strip.hasAttribute("data-gliding")) return done(false);
+          const now = left();
+          const step = Math.abs(now - last);
+          last = now;
+          if (step > 8) moved = true;
+          if (moved && step < 8) return done(true);
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+}
+
+/**
+ * A finger that scrolls the strip to `to`: a touchstart, touchmoves past the tap slop and a touchend
+ * dispatched on the strip, with the scroll that finger makes, in one task. A swipe through the engine's
+ * own touch pipeline takes about 400 ms in headless Chromium, longer than the glide it must land inside.
+ * `to` is a column start, so the snap that comes back at rest moves nothing under the second tap.
+ */
+async function swipe(page: Page, to: number): Promise<void> {
+  await page.evaluate((target) => {
+    const strip = document.querySelector<HTMLElement>('[data-slot="strip"]')!;
+    const from = strip.scrollLeft;
+    const touch = (x: number) => new Touch({ identifier: 1, target: strip, clientX: x, clientY: 500 });
+    const fire = (type: string, x: number) =>
+      strip.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === "touchend" ? [] : [touch(x)], changedTouches: [touch(x)] }));
+    const dx = target - from;
+    fire("touchstart", 900);
+    fire("touchmove", 900 - dx / 2);
+    strip.scrollLeft = from + dx / 2;
+    fire("touchmove", 900 - dx);
+    strip.scrollLeft = target;
+    fire("touchend", 900 - dx);
+  }, to);
+}
+
+/** The strip's scroll on the next `frames` frames. */
+function scrollOverFrames(page: Page, frames: number): Promise<number[]> {
+  return page.evaluate(
+    (n) =>
+      new Promise<number[]>((done) => {
+        const strip = document.querySelector<HTMLElement>('[data-slot="strip"]')!;
+        const out: number[] = [];
+        const tick = () => {
+          out.push(strip.scrollLeft);
+          if (out.length >= n) done(out);
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    frames,
+  );
+}
+
+async function reducedPage(page: Page, browser: import("@playwright/test").Browser) {
+  const context = await browser.newContext({ viewport: VIEW, hasTouch: true, deviceScaleFactor: 2, serviceWorkers: "block", baseURL: new URL(page.url()).origin });
+  const other = await context.newPage();
+  await installApiStub(other);
+  return { context, other };
+}
+
+const TWO = [
+  ["w2:p1", "half"],
+  ["w2:p3", "half"],
+] as const;
+
+test("a touch double tap on the width button rests where the reduced-motion double tap rests", async ({ page, browser }) => {
+  test.setTimeout(90_000);
+  await openStrip(page, TWO, "w2:p3", false);
+  // Late in the glide, where the button moves slowly, so the finger lands on it where it was read.
+  const glided = await touchTwice(page, 0, async () => {
+    await slowButton(page);
+  });
+  // The second finger came down while the first glide ran, or this case proves nothing.
+  expect(glided.glidingAtSecond).toBe(true);
+
+  const { context, other } = await reducedPage(page, browser);
+  await openStrip(other, TWO, "w2:p3", true);
+  const jumped = await touchTwice(other, 200);
+  await context.close();
+
+  expectSameRest(glided.rest, jumped.rest);
+  // The second glide drove the scroll to its end: no series reverses, and the scroll comes into its
+  // resting place on an eased step, not on the snap's correction once a frozen scroll is let go.
+  for (const series of ["width", "neighbour", "add", "scroll"] as const) expectMonotonic(glided.samples.map((x) => x[series]), series);
+  const scrolls = glided.samples.map((x) => x.scroll);
+  const moves = scrolls.slice(1).map((x, i) => Math.abs(x - scrolls[i]!)).filter((d) => d > 0);
+  expect(moves.at(-1), `the last scroll step, of ${moves.map((d) => d.toFixed(1)).join(" ")}`).toBeLessThanOrEqual(3);
+  expect(glided.rest.widths).toEqual([560, 1120]);
+  expect(glided.rest.scrollLeft).toBe(560);
+  await expect(widthButton(page)).toHaveAccessibleName(en["wide.width.aria"].replace("{width}", en["wide.width.full"]));
+});
+
+test("a swipe during a glide, then a width tap: it rests where reduced motion rests for the same acts", async ({ page, browser }) => {
+  test.setTimeout(90_000);
+  await openStrip(page, TWO, "w2:p3", false);
+  // The swipe early in the glide, ahead of where the glide's scroll stands; the second tap late in it,
+  // where the button moves slowly.
+  let held: number[] = [];
+  let early = -1;
+  const glided = await touchTwice(page, 0, async () => {
+    early = await page.locator('[data-slot="strip"]').evaluate((el) => el.scrollLeft);
+    await swipe(page, 560);
+    // The finger has the scroll: the glide no longer writes it, while the widths go on.
+    held = await scrollOverFrames(page, 3);
+    await slowButton(page);
+  });
+  expect(glided.glidingAtSecond).toBe(true);
+  expect(early).toBeLessThan(500);
+  expect(held).toEqual([560, 560, 560]);
+
+  const { context, other } = await reducedPage(page, browser);
+  await openStrip(other, TWO, "w2:p3", true);
+  const jumped = await touchTwice(other, 20, async () => {
+    await swipe(other, 560);
+    await rest(other);
+  });
+  await context.close();
+
+  expectSameRest(glided.rest, jumped.rest);
+  expect(glided.rest.focus).toBe(jumped.rest.focus);
+  console.log(`[glide] swipe at scroll ${early} to 560, then tap: rest scroll ${glided.rest.scrollLeft} (reduced ${jumped.rest.scrollLeft})`);
 });

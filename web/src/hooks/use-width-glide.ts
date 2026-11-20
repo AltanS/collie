@@ -59,6 +59,9 @@ interface Claim {
   scroll: number;
 }
 
+/** A touch that travels further than this is a scroll, not a tap: wide-layout.tsx's tap slop. */
+const TAP_SLOP_PX = 10;
+
 /** The width button, which keeps its taps during a glide. */
 const WIDTH_BUTTON = '[data-slot="column-width"]';
 /** Where a tap during a glide is dropped: the column heads, docked or not, and the add column. */
@@ -153,9 +156,11 @@ export function useWidthGlide(scroller: RefObject<HTMLElement | null>): WidthGli
 
       const g = running.current;
       // A tap during a glide goes on from where the strip is now to the new end; the end is computed
-      // from where the last glide was going, which is where the strip would stand without one.
+      // from where the last glide was going, which is where the strip would stand without one. If the
+      // person took the scroll during that glide, the strip stands where they left it, so the end is
+      // computed from there, as the jump computes it from the live position.
       const from = g?.now ?? prev;
-      const base = g?.scrollTo ?? ask.scroll;
+      const base = g !== null && !g.scrollFree ? g.scrollTo : ask.scroll;
       if (g !== null) cancelAnimationFrame(g.raf);
       const viewport = node.clientWidth;
       const scrollTo = restingScroll(stripGeometry(input.fractions, input.stripWidth, input.wide), input.focusAt, base, viewport);
@@ -168,7 +173,8 @@ export function useWidthGlide(scroller: RefObject<HTMLElement | null>): WidthGli
         scrollTo,
         start: performance.now(),
         now: from,
-        scrollFree: g?.scrollFree ?? false,
+        // A new width act owns the scroll again, from where the person left it.
+        scrollFree: false,
         onEnd,
       };
       running.current = next;
@@ -199,7 +205,9 @@ export function useWidthGlide(scroller: RefObject<HTMLElement | null>): WidthGli
     [scroller, finish],
   );
 
-  // A wheel or a finger on the strip during a glide: the person scrolls, the glide stops writing the scroll.
+  // A wheel, or a finger that MOVES on the strip, during a glide: the person scrolls, and the glide stops
+  // writing the scroll. A finger that only taps (a quick second tap on the width button) frees nothing:
+  // the touch frees the scroll at its first `touchmove` past the tap slop, the column's own 10 px.
   // A TAP IN FLIGHT: the width button sits at the trailing end of its column's header, so it travels with
   // the column's edge, and a quick second tap at the same screen point can land on what slides under it:
   // the column's Remove from view, the header's other buttons, a neighbour's header, the add column. While
@@ -212,6 +220,19 @@ export function useWidthGlide(scroller: RefObject<HTMLElement | null>): WidthGli
     const free = () => {
       if (running.current !== null) running.current.scrollFree = true;
     };
+    let touchAt: { x: number; y: number } | null = null;
+    const touchStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      touchAt = t === undefined ? null : { x: t.clientX, y: t.clientY };
+    };
+    const touchMove = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (touchAt === null || t === undefined) return;
+      if (Math.hypot(t.clientX - touchAt.x, t.clientY - touchAt.y) > TAP_SLOP_PX) free();
+    };
+    const touchEnd = () => {
+      touchAt = null;
+    };
     const hold = (e: Event) => {
       if (running.current === null || !(e.target instanceof Element)) return;
       if (e.target.closest(WIDTH_BUTTON) !== null || e.target.closest(HELD) === null) return;
@@ -219,12 +240,18 @@ export function useWidthGlide(scroller: RefObject<HTMLElement | null>): WidthGli
       e.stopPropagation();
     };
     node.addEventListener("wheel", free, { passive: true });
-    node.addEventListener("touchstart", free, { passive: true });
+    node.addEventListener("touchstart", touchStart, { passive: true });
+    node.addEventListener("touchmove", touchMove, { passive: true });
+    node.addEventListener("touchend", touchEnd, { passive: true });
+    node.addEventListener("touchcancel", touchEnd, { passive: true });
     node.addEventListener("click", hold, { capture: true });
     node.addEventListener("pointerup", hold, { capture: true });
     return () => {
       node.removeEventListener("wheel", free);
-      node.removeEventListener("touchstart", free);
+      node.removeEventListener("touchstart", touchStart);
+      node.removeEventListener("touchmove", touchMove);
+      node.removeEventListener("touchend", touchEnd);
+      node.removeEventListener("touchcancel", touchEnd);
       node.removeEventListener("click", hold, { capture: true });
       node.removeEventListener("pointerup", hold, { capture: true });
     };
