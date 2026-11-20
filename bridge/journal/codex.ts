@@ -646,10 +646,7 @@ export class CodexTranscriptSource implements TranscriptSource {
     const cached = this.pathCache.get(sessionId);
     if (cached !== undefined && this.now() - cached.at < CODEX_RESCAN_MS) {
       const real = await containedRealpath(cached.path, cached.root);
-      if (real !== null) {
-        if (real !== cached.path) this.pathCache.set(sessionId, { path: real, root: cached.root, at: cached.at });
-        return real;
-      }
+      if (real !== null) return real;
     }
     this.pathCache.delete(sessionId);
 

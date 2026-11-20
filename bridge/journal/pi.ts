@@ -1686,10 +1686,7 @@ export class PiTranscriptSource implements TranscriptSource {
     const cached = this.pathCache.get(sessionId);
     if (cached !== undefined) {
       const real = await containedRealpath(cached.path, cached.root);
-      if (real !== null) {
-        if (real !== cached.path) this.pathCache.set(sessionId, { path: real, root: cached.root });
-        return real;
-      }
+      if (real !== null) return real;
       this.pathCache.delete(sessionId);
     }
 

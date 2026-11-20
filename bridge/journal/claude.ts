@@ -1168,10 +1168,7 @@ export class ClaudeTranscriptSource implements TranscriptSource {
       // conversation rotates into a new file WHILE the bridge is up: caching its result would pin the
       // answer to whatever was true at the first request and go stale minutes later.
       const real = await containedRealpath(cached.path, cached.root);
-      if (real !== null) {
-        if (real !== cached.path) this.pathCache.set(sessionId, { path: real, root: cached.root });
-        return this.follow(real, cached.root);
-      }
+      if (real !== null) return this.follow(real, cached.root);
       this.pathCache.delete(sessionId);
     }
 
