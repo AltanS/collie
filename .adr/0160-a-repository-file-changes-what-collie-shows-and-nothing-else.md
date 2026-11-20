@@ -1,6 +1,6 @@
 # 0160: A repository's own file changes what Collie shows, and nothing else
 
-- **Status:** Accepted
+- **Status:** Accepted (2026-11-19); Superseded in part by [ADR 0164](./0164-a-push-shows-the-project-picture-as-its-icon.md) (rule 3's second and third sentences)
 - **Date:** 2026-11-19
 - **Trail:** Issue 811 (`@mfrep`): "maybe we add a collie.toml or collie config per repo? this could be
   used to set these workspace icons?", and the operator's answers of 2026-11-19: "we need some attributes

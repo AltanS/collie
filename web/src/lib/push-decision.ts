@@ -99,16 +99,16 @@ export type PushDecision =
       renotify: boolean;
     };
 
-/** The options of a shown push. `renotify` and `image` are not in this TS lib's NotificationOptions yet,
- *  though browsers that support them honour them (`renotify` needs a tag). */
-export type PushOptions = NotificationOptions & { renotify?: boolean; image?: string };
+/** The options of a shown push. `renotify` is not in this TS lib's NotificationOptions yet, though
+ *  browsers that support it honour it (it needs a tag). */
+export type PushOptions = NotificationOptions & { renotify?: boolean };
 
 /**
- * The options `showNotification` gets for a push to show. The icon and the badge are always Collie's.
- * `image`, the picture slot, is set only when the page's banner copy of the pane's project picture was
- * found (ADR 0160, lib/project-picture-push.ts); with none the key is absent, never `undefined`.
+ * The options `showNotification` gets for a push to show. The icon is the page's square copy of the pane's
+ * project picture when one was found (lib/project-picture-push.ts), else Collie's mark. The badge is always
+ * Collie's, and no push sets `image`: Android draws it full width, far larger than a picture needs.
  */
-export function pushOptions(decision: Extract<PushDecision, { kind: "show" }>, art: { icon: string; badge: string }, image: string | null): PushOptions {
+export function pushOptions(decision: Extract<PushDecision, { kind: "show" }>, art: { icon: string; badge: string }, picture: string | null): PushOptions {
   const options: PushOptions = {
     body: decision.body,
     data: {
@@ -119,12 +119,11 @@ export function pushOptions(decision: Extract<PushDecision, { kind: "show" }>, a
       machine: decision.machine,
       decision: decision.decision,
     } satisfies NotifData,
-    icon: art.icon,
+    icon: picture ?? art.icon,
     badge: art.badge,
     tag: decision.tag,
     renotify: decision.renotify,
   };
-  if (image !== null) options.image = image;
   return options;
 }
 

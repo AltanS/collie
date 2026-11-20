@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { bannerCopyKey, notificationsShowImage, paneKey, paneMapKey, projectPictureCacheName, pushPictureFor, type PictureCaches } from "./project-picture-push";
+import { iconCopyKey, paneKey, paneMapKey, projectPictureCacheName, pushPictureFor, type PictureCaches } from "./project-picture-push";
 
 // THE PUSH COPY, as the service worker reads it (issue 811, ADR 0160). The worker never fetches.
 
@@ -46,18 +46,18 @@ describe("the cache keys", () => {
   });
 });
 
-describe("bannerCopyKey", () => {
+describe("iconCopyKey", () => {
   it("names the machine and the version, and never the pane", () => {
-    expect(bannerCopyKey(ORIGIN, MOUNT, null, V)).toBe(`${ORIGIN}/project-pictures/lead/${V}.png`);
-    expect(bannerCopyKey(ORIGIN, MOUNT, undefined, V)).toBe(bannerCopyKey(ORIGIN, MOUNT, null, V));
-    expect(bannerCopyKey(ORIGIN, MOUNT, "", V)).toBe(bannerCopyKey(ORIGIN, MOUNT, null, V));
-    expect(bannerCopyKey(ORIGIN, "/collie/", "box 2", V)).toBe(`${ORIGIN}/collie/project-pictures/host-box%202/${V}.png`);
+    expect(iconCopyKey(ORIGIN, MOUNT, null, V)).toBe(`${ORIGIN}/project-pictures/lead/icon-${V}.png`);
+    expect(iconCopyKey(ORIGIN, MOUNT, undefined, V)).toBe(iconCopyKey(ORIGIN, MOUNT, null, V));
+    expect(iconCopyKey(ORIGIN, MOUNT, "", V)).toBe(iconCopyKey(ORIGIN, MOUNT, null, V));
+    expect(iconCopyKey(ORIGIN, "/collie/", "box 2", V)).toBe(`${ORIGIN}/collie/project-pictures/host-box%202/icon-${V}.png`);
   });
 
   it("cannot spell one machine as another, nor a member as the lead", () => {
-    expect(bannerCopyKey(ORIGIN, MOUNT, "lead", V)).not.toBe(bannerCopyKey(ORIGIN, MOUNT, null, V));
-    expect(bannerCopyKey(ORIGIN, MOUNT, "a/b", V)).not.toBe(bannerCopyKey(ORIGIN, MOUNT, "a", V));
-    expect(bannerCopyKey(ORIGIN, MOUNT, "../x", V)).not.toContain("../");
+    expect(iconCopyKey(ORIGIN, MOUNT, "lead", V)).not.toBe(iconCopyKey(ORIGIN, MOUNT, null, V));
+    expect(iconCopyKey(ORIGIN, MOUNT, "a/b", V)).not.toBe(iconCopyKey(ORIGIN, MOUNT, "a", V));
+    expect(iconCopyKey(ORIGIN, MOUNT, "../x", V)).not.toContain("../");
   });
 });
 
@@ -65,8 +65,8 @@ describe("pushPictureFor", () => {
   const full = (): PictureCaches =>
     caches({
       [paneMapKey(ORIGIN, MOUNT)]: map({ [paneKey({ paneId: "p1" })]: V, [paneKey({ host: "box", paneId: "p2" })]: V }),
-      [bannerCopyKey(ORIGIN, MOUNT, null, V)]: PNG,
-      [bannerCopyKey(ORIGIN, MOUNT, "box", V)]: PNG,
+      [iconCopyKey(ORIGIN, MOUNT, null, V)]: PNG,
+      [iconCopyKey(ORIGIN, MOUNT, "box", V)]: PNG,
     });
 
   it("returns the page's PNG as a data URL for a pane in the map", async () => {
@@ -84,8 +84,8 @@ describe("pushPictureFor", () => {
   it("uses the copy of the pane's own machine: another host's copy of the same version is not used", async () => {
     const c = caches({
       [paneMapKey(ORIGIN, MOUNT)]: map({ [paneKey({ host: "box", paneId: "p2" })]: V }),
-      [bannerCopyKey(ORIGIN, MOUNT, "other", V)]: PNG,
-      [bannerCopyKey(ORIGIN, MOUNT, null, V)]: PNG,
+      [iconCopyKey(ORIGIN, MOUNT, "other", V)]: PNG,
+      [iconCopyKey(ORIGIN, MOUNT, null, V)]: PNG,
     });
     expect(await pushPictureFor(c, ORIGIN, MOUNT, { host: "box", paneId: "p2" })).toBeNull();
   });
@@ -94,8 +94,8 @@ describe("pushPictureFor", () => {
     const other = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 9]);
     const c = caches({
       [paneMapKey(ORIGIN, MOUNT)]: map({ [paneKey({ paneId: "p1" })]: V2 }),
-      [bannerCopyKey(ORIGIN, MOUNT, null, V)]: PNG,
-      [bannerCopyKey(ORIGIN, MOUNT, null, V2)]: other,
+      [iconCopyKey(ORIGIN, MOUNT, null, V)]: PNG,
+      [iconCopyKey(ORIGIN, MOUNT, null, V2)]: other,
     });
     const url = await pushPictureFor(c, ORIGIN, MOUNT, { paneId: "p1" });
     expect([...Uint8Array.from(atob(url?.split(",")[1] ?? ""), (ch) => ch.charCodeAt(0))]).toEqual([...other]);
@@ -106,7 +106,7 @@ describe("pushPictureFor", () => {
   });
 
   it("returns null with no map", async () => {
-    expect(await pushPictureFor(caches({ [bannerCopyKey(ORIGIN, MOUNT, null, V)]: PNG }), ORIGIN, MOUNT, { paneId: "p1" })).toBeNull();
+    expect(await pushPictureFor(caches({ [iconCopyKey(ORIGIN, MOUNT, null, V)]: PNG }), ORIGIN, MOUNT, { paneId: "p1" })).toBeNull();
   });
 
   it("returns null for a pane the map does not name", async () => {
@@ -121,18 +121,18 @@ describe("pushPictureFor", () => {
   it("returns null for a copy that is not PNG bytes", async () => {
     const c = caches({
       [paneMapKey(ORIGIN, MOUNT)]: map({ [paneKey({ paneId: "p1" })]: V }),
-      [bannerCopyKey(ORIGIN, MOUNT, null, V)]: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0]),
+      [iconCopyKey(ORIGIN, MOUNT, null, V)]: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0]),
     });
     expect(await pushPictureFor(c, ORIGIN, MOUNT, { paneId: "p1" })).toBeNull();
   });
 
   it.each(["{oops", "[]", "null", "42", ""])("returns null for a malformed map (%j)", async (junk) => {
-    const c = caches({ [paneMapKey(ORIGIN, MOUNT)]: junk, [bannerCopyKey(ORIGIN, MOUNT, null, V)]: PNG });
+    const c = caches({ [paneMapKey(ORIGIN, MOUNT)]: junk, [iconCopyKey(ORIGIN, MOUNT, null, V)]: PNG });
     expect(await pushPictureFor(c, ORIGIN, MOUNT, { paneId: "p1" })).toBeNull();
   });
 
   it("returns null for a version in the map that is not 24 hex", async () => {
-    const c = caches({ [paneMapKey(ORIGIN, MOUNT)]: map({ [paneKey({ paneId: "p1" })]: "../../x" }), [bannerCopyKey(ORIGIN, MOUNT, null, V)]: PNG });
+    const c = caches({ [paneMapKey(ORIGIN, MOUNT)]: map({ [paneKey({ paneId: "p1" })]: "../../x" }), [iconCopyKey(ORIGIN, MOUNT, null, V)]: PNG });
     expect(await pushPictureFor(c, ORIGIN, MOUNT, { paneId: "p1" })).toBeNull();
   });
 
@@ -151,29 +151,5 @@ describe("pushPictureFor", () => {
     await pushPictureFor(full(), ORIGIN, MOUNT, { paneId: "p1" });
     await pushPictureFor(caches(null), ORIGIN, MOUNT, { paneId: "p1" });
     expect(spy).not.toHaveBeenCalled();
-  });
-});
-
-describe("notificationsShowImage", () => {
-  it("is true for a notification type whose prototype has an image slot", () => {
-    class WithImage {
-      get image(): string {
-        return "";
-      }
-    }
-    expect(notificationsShowImage(WithImage)).toBe(true);
-  });
-
-  it("is false for a prototype with no image slot (Safari, Firefox)", () => {
-    class Without {
-      get icon(): string {
-        return "";
-      }
-    }
-    expect(notificationsShowImage(Without)).toBe(false);
-  });
-
-  it("is false when there is no Notification type at all", () => {
-    expect(notificationsShowImage(undefined)).toBe(false);
   });
 });
