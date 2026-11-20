@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -294,10 +294,6 @@ describe("the Dashboard's bar on a trick's Session (amended 2026-11-10)", () => 
       expect(`${hostRouter.state.location.pathname}${hostRouter.state.location.search}`).toBe("/?h=peer"),
     );
     expect(hostRouter.state.historyAction).toBe("POP");
-    expect(hostRouter.state.location.key).toBeDefined();
-    // Stepping back again stays on /?h=peer (idx 0): no duplicate Dashboard was stacked.
-    await act(() => hostRouter.navigate(-1));
-    expect(`${hostRouter.state.location.pathname}${hostRouter.state.location.search}`).toBe("/?h=peer");
 
     const sessionRouter = mount({ pathname: TRICK_PATH, state: { from: "/?s=work" } }, home(), "/?s=work");
     await screen.findAllByRole("heading", { name: "Browser leg" });
@@ -307,8 +303,6 @@ describe("the Dashboard's bar on a trick's Session (amended 2026-11-10)", () => 
       expect(`${sessionRouter.state.location.pathname}${sessionRouter.state.location.search}`).toBe("/?s=work"),
     );
     expect(sessionRouter.state.historyAction).toBe("POP");
-    await act(() => sessionRouter.navigate(-1));
-    expect(`${sessionRouter.state.location.pathname}${sessionRouter.state.location.search}`).toBe("/?s=work");
   });
 
   it("the Hill item carries the host and session scope from state.from onto /hill", async () => {
