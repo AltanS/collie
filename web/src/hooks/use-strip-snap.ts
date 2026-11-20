@@ -76,7 +76,8 @@ export function useStripSnap(stripRef: RefObject<HTMLElement | null> | HTMLEleme
     const onWheel = (e: WheelEvent) => {
       // A plain vertical turn (a column's own scroller) never moves the strip; only a sideways or
       // a Shift one does.
-      if (touching || (!e.shiftKey && e.deltaX === 0)) return;
+      // An event a scroller inside a column already took (the Belt under a mouse wheel) is not the strip's.
+      if (touching || e.defaultPrevented || (!e.shiftKey && e.deltaX === 0)) return;
       // A wheel turn during our own ease is the person taking over; the gesture starts afresh.
       settling = false;
       busy = true;

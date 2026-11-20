@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Icon } from "@/components/icons/icon";
 
+import { decideBeltWheel } from "@/lib/belt-wheel";
 import { hasResizeObserver } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
@@ -83,7 +84,7 @@ function edgeOf(left: boolean, right: boolean): OverflowEdge {
  * `scrollWidth` a fraction over its `clientWidth` often enough that an exact test would fade a row
  * that fits.
  */
-export function useOverflowEdges<T extends HTMLElement = HTMLDivElement>() {
+export function useOverflowEdges<T extends HTMLElement = HTMLDivElement>(wheel = false) {
   const ref = useRef<T>(null);
   const [edge, setEdge] = useState<OverflowEdge>("none");
 
@@ -117,6 +118,34 @@ export function useOverflowEdges<T extends HTMLElement = HTMLDivElement>() {
     el.addEventListener("scroll", measure, { passive: true });
     return () => el.removeEventListener("scroll", measure);
   }, [measure]);
+
+  // A mouse wheel over the scroller moves it sideways (lib/belt-wheel.ts), for the caller that asks. NOT
+  // passive, because it calls `preventDefault` when it takes the event, and only then. A touch sends no
+  // wheel event, so a phone's scrolling is untouched. The strip's own wheel handler skips an event that is
+  // already taken (hooks/use-strip-snap.ts), so the Belt scrolls and the strip of columns does not.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !wheel) return;
+    const onWheel = (e: WheelEvent) => {
+      // A pinch on a trackpad arrives as a wheel event with Ctrl held: that is a zoom, not a scroll.
+      if (e.ctrlKey || e.defaultPrevented) return;
+      const decision = decideBeltWheel({
+        scrollLeft: el.scrollLeft,
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        rtl: getComputedStyle(el).direction === "rtl",
+        deltaX: e.deltaX,
+        deltaY: e.deltaY,
+        deltaMode: e.deltaMode,
+        shiftKey: e.shiftKey,
+      });
+      if (!decision.take || decision.scrollLeft === null) return;
+      e.preventDefault();
+      el.scrollLeft = decision.scrollLeft;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [wheel]);
 
   // The asynchronous half: a font finishing, the viewport narrowing, the keyboard opening. The
   // scroller's own box AND its children, because a capsule growing inside a flex-sized scroller
@@ -190,6 +219,12 @@ interface OverflowEdgesProps {
    * hit box and could not be tapped anyway (operator's call, 2026-09-14).
    */
   cue?: "soft" | "none";
+  /**
+   * Whether a mouse wheel over the scroller moves it sideways, while it overflows and has room in that
+   * direction (lib/belt-wheel.ts). Off by default: the actions belt asks, because a Belt under a
+   * desktop pointer had no way to scroll.
+   */
+  wheel?: boolean;
 }
 
 const CUE_GLYPH = {
@@ -218,8 +253,9 @@ export function OverflowEdges({
   insetRight = 0,
   cue = "soft",
   edges = "both",
+  wheel = false,
 }: OverflowEdgesProps) {
-  const { ref, edge } = useOverflowEdges<HTMLDivElement>();
+  const { ref, edge } = useOverflowEdges<HTMLDivElement>(wheel);
   // `edges="left"` downgrades a measured "right"/"both" so the right mask and chevron never
   // paint: "right" hides nothing on the left, so it becomes "none"; "both" keeps its left half.
   // `data-overflow` still publishes the MEASURED edge, unrestricted — it is read by the

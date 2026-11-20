@@ -762,7 +762,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
           SCALED since 2026-09-23: `py-1` is `py-(--belt-pad)` now, 4px at the default scale and 5px
           and 6px at the larger two, and the pills' `::before` reaches exactly that far again
           (`--belt-reach`, STRIP_ROW_PILL), so every pill answers the whole band. */}
-      <OverflowEdges edges={pinned ? (left ? "right" : "left") : "both"} cue="none">
+      <OverflowEdges edges={pinned ? (left ? "right" : "left") : "both"} cue="none" wheel>
         {(scrollerRef) => (
           <div
             ref={scrollerRef}

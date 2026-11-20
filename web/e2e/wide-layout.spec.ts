@@ -58,6 +58,71 @@ test("on a desktop window the focused pane's belt pins the Actions button, which
   await expect(palette).toHaveCount(0);
 });
 
+// THE BELT UNDER A MOUSE WHEEL. The Belt is a sideways scroller with no scrollbar, and a wheel turns vertically,
+// so on a desktop nothing moved it. Over its scrolling part a vertical turn now scrolls the pills sideways, and a
+// sideways one does too, while there is room; the transcript and the strip of columns stay where they are. At an
+// end the event goes on as it did.
+test("a mouse wheel over the Belt scrolls its pills sideways, and not the transcript or the strip", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/pane/w1:p1");
+  const belt = page.locator('[data-slot="composer-actions"]');
+  await expect(belt).toBeVisible();
+  const scroller = belt.locator(".overflow-x-auto").first();
+  // Make the Belt overflow by 800px, as a narrow column with many pills would.
+  await scroller.evaluate((el) => {
+    const room = document.createElement("div");
+    room.style.cssText = "width:2000px;height:8px;flex:none";
+    el.append(room);
+  });
+  const read = () =>
+    page.evaluate(() => {
+      const track = document.querySelector('[data-slot="composer-actions"] .overflow-x-auto')!;
+      const strip = document.querySelector('[data-slot="wide-layout"] [data-slot="strip"]')!;
+      const column = document.querySelector('[data-slot="wide-layout"] section[data-col-key]')!;
+      let transcript = 0;
+      for (const el of column.querySelectorAll("*")) if (!track.contains(el)) transcript += el.scrollTop;
+      return { belt: track.scrollLeft, strip: strip.scrollLeft, transcript, range: track.scrollWidth - track.clientWidth };
+    });
+  const before = await read();
+  expect(before.range).toBeGreaterThan(300);
+  const box = (await scroller.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 3, box.y + box.height / 2);
+
+  // The window is 2x pixel density, so a 300 turn moves the Belt about 150 CSS pixels.
+  await page.mouse.wheel(0, 300);
+  await expect.poll(async () => (await read()).belt).toBeGreaterThan(before.belt + 100);
+  const down = await read();
+  expect(down.strip).toBe(before.strip);
+  expect(down.transcript).toBe(before.transcript);
+
+  await page.mouse.wheel(300, 0);
+  await expect.poll(async () => (await read()).belt).toBeGreaterThan(down.belt + 100);
+  const right = await read();
+  expect(right.strip).toBe(before.strip);
+
+  await page.mouse.wheel(0, -100000);
+  await expect.poll(async () => (await read()).belt).toBe(0);
+  // At the start a turn back finds nothing to move: the Belt does not take it.
+  const stayed = await page.evaluate(async () => {
+    const track = document.querySelector('[data-slot="composer-actions"] .overflow-x-auto')!;
+    const events: boolean[] = [];
+    document.addEventListener("wheel", (e) => events.push(e.defaultPrevented));
+    track.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true }));
+    return { events, left: track.scrollLeft };
+  });
+  expect(stayed).toEqual({ events: [false], left: 0 });
+  // The pinned block does not scroll: a wheel over it leaves the pills where they are.
+  await page.mouse.wheel(0, 100000);
+  await expect.poll(async () => (await read()).belt).toBeGreaterThan(before.range - 2);
+  const end = await read();
+  const pinned = belt.getByRole("button", { name: en["actions.open.aria"], exact: true });
+  const pinnedBox = (await pinned.boundingBox())!;
+  await page.mouse.move(pinnedBox.x + pinnedBox.width / 2, pinnedBox.y + pinnedBox.height / 2);
+  await page.mouse.wheel(0, -200);
+  await page.waitForTimeout(150);
+  expect((await read()).belt).toBe(end.belt);
+});
+
 // THE ACTIONS PALETTE SWITCHED OFF (Settings, per device). The large screen has its sidebar for the pane list:
 // no pinned button on the Belt, no button in the space header, and the key that opened the palette runs
 // Switch pane, which opens the sidebar.
