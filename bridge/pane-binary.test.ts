@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -45,6 +45,52 @@ describe("paneBinaryOf — the file the pane's harness runs", () => {
     expect(paneBinaryOf([ps(["claude"], 7)], binaries, probe("/home/op/.local/share/claude/versions/2.1.299 (deleted)"), linux)).toBeNull();
     // No pid, or a host with no `/proc`: the PATH lookup stays.
     expect(paneBinaryOf([ps(["claude"])], binaries, probe("/x/claude"), linux)).toBeNull();
+  });
+
+  test("a bare argv[0] whose executable has another name runs through the PATH entry that links to it", () => {
+    const launcher = "/opt/tools/launcher/1.0/tool-exec";
+    const links = new Map([
+      ["/usr/local/bin/claude", "/opt/other/claude"],
+      ["/home/op/.tools/bin/claude", launcher],
+    ]);
+    const named = (path: string | null, seen: string[] = []): ProcessProbe => ({
+      ...probe(launcher),
+      environOf: (_pid, names) => {
+        seen.push(...names);
+        return path === null ? null : { PATH: path };
+      },
+      realpathOf: (file) => links.get(file) ?? null,
+    });
+    expect(paneBinaryOf([ps(["claude"], 7)], binaries, named("relative/bin:/usr/local/bin:/home/op/.tools/bin:/usr/bin"), linux)?.command).toEqual([
+      "/home/op/.tools/bin/claude",
+    ]);
+    expect(paneBinaryOf([ps(["claude"], 7)], binaries, named("/usr/local/bin:/usr/bin"), linux)?.command).toEqual([launcher]);
+    expect(paneBinaryOf([ps(["claude"], 7)], binaries, named("relative/bin"), linux)?.command).toEqual([launcher]);
+    expect(paneBinaryOf([ps(["claude"], 7)], binaries, named(null), linux)?.command).toEqual([launcher]);
+    expect(paneBinaryOf([ps(["claude"], 7)], binaries, { ...named("/home/op/.tools/bin"), realpathOf: undefined }, linux)?.command).toEqual([launcher]);
+    const seen: string[] = [];
+    const sameName: ProcessProbe = { ...named("/home/op/.tools/bin", seen), exeOf: () => "/opt/claude/bin/claude" };
+    expect(paneBinaryOf([ps(["claude"], 7)], binaries, sameName, linux)?.command).toEqual(["/opt/claude/bin/claude"]);
+    expect(seen).toEqual([]);
+  });
+
+  test.skipIf(process.platform !== "linux")("procProbe reads a live process's PATH and follows the link it ran through", () => {
+    const sleep = Bun.which("sleep");
+    expect(sleep).not.toBeNull();
+    const root = mkdtempSync(join(tmpdir(), "collie-pane-link-"));
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    const link = join(bin, "claude");
+    symlinkSync(realpathSync(sleep ?? ""), link);
+    const child = Bun.spawn(["claude", "30"], { env: { PATH: bin } });
+    try {
+      const real = procProbe(linux);
+      for (let i = 0; i < 100 && real.cmdlineOf(child.pid)?.length === 0; i++) Bun.sleepSync(10);
+      expect(paneBinaryOf([ps(["claude", "30"], child.pid)], binaries, real, linux)?.command).toEqual([link]);
+    } finally {
+      child.kill();
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("an interpreter and its script: the same interpreter, the script made absolute", () => {
