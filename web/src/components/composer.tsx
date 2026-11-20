@@ -2722,25 +2722,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   // A tap on an offer the last answer made: a new request with a new id, or nothing (`cancel`).
-  // Keep the strip on a state that cannot act: clearing it before the guard made a tap during a
-  // send or a locked field look like a dead button, with no request and no words.
   function onProtocolOffer(offer: SendOffer) {
+    if (starting) return;
     const held = protocolOffer;
-    if (held === null) return;
-    if (starting) {
-      sayTap(translate("newPage.starting"));
-      return;
-    }
-    if (sending) {
-      sayTap(translate("composer.held.sending"));
-      return;
-    }
-    if (locked) {
-      sayTap(lockWords ?? unreachableWords);
-      return;
-    }
     setProtocolOffer(null);
     setSendRefusal(null);
+    if (held === null || sending || locked) return;
     const mode = offerMode(offer, held.text);
     if (mode === null) return;
     // Added to a draft, the text starts after one space, as a person typing on would put it.
