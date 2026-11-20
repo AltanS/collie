@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
-import type { PaneChatResponse, TranscriptEntry } from "@/lib/types";
+import type { TranscriptEntry } from "@/lib/types";
 import { fixtureKiroChat, fixtureKiroHistory, fixtureKiroSnapshot, KIRO_PANE_ID } from "@/test/handlers";
 
 import { installApiStub, installPaneWorld, paneCapture, pinLocale } from "./fixtures/api";
@@ -33,7 +33,7 @@ const PICTURE = `data:image/svg+xml;base64,${Buffer.from(
 ).toString("base64")}`;
 
 /** Kiro's Chat with one more turn: the person sent a picture. */
-function chatWithPicture(): PaneChatResponse {
+function chatWithPicture(): typeof fixtureKiroChat {
   const last = fixtureKiroChat.upserts.at(-1)!;
   const picture: TranscriptEntry & { seq: number } = {
     uuid: "e2e-picture",
@@ -42,7 +42,7 @@ function chatWithPicture(): PaneChatResponse {
     parts: [{ kind: "image", url: PICTURE }],
     seq: last.seq + 1,
   };
-  return { ...fixtureKiroChat, head: picture.seq, upserts: [...fixtureKiroChat.upserts, picture] };
+  return Object.assign({}, fixtureKiroChat, { head: picture.seq, upserts: [...fixtureKiroChat.upserts, picture] });
 }
 
 async function kiroPane(page: Page) {
