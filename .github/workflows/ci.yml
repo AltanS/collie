@@ -1,22 +1,62 @@
 name: CI
 
+# WHEN EACH PART RUNS. Every push and pull request runs `check`, `web tests`, `crew drill`, the
+# Chromium browser job and `quarantine`. Four parts are slower or older than a push needs, and wake
+# only when their paths change (`scripts/ci-changes.ts`, the lists in `scripts/test-sets.ts`):
+#   - the frozen tests inside `check` and `web tests` (the plugin data path, the browser-leg rig, the
+#     harness lab): a path change runs them, a change elsewhere leaves them out;
+#   - `bun-floor`, `durable-example` and `e2e-swap`: whole jobs.
+# A NIGHTLY run (`schedule`, on `main`) and a manual dispatch run every part, whatever changed.
+# A job that does not wake is SKIPPED, not removed, and a skipped job reports as passed, so a check
+# that branch protection names never hangs. `release.yml` reads only the `push` run of the release
+# commit, and the nightly run has its own concurrency group, so it never cancels that run.
 on:
   pull_request:
   push:
     branches: [main, "release-*"]
+  schedule:
+    - cron: "15 2 * * *" # 02:15 UTC, on the default branch
+  workflow_dispatch:
 
-# A new push to a PR supersedes the old run — don't burn a runner on the stale one.
+# A new push to a PR supersedes the old run — don't burn a runner on the stale one. A push run is
+# NEVER cancelled: the `changes` job diffs `before..head` of its own push, so a cancelled push run
+# would take its changed paths with it, and no path-gated job would wake for them before the nightly
+# run. The event is in the group so a nightly run on `main` never cancels the push run of a release
+# commit.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Which of the heavy parts does this run need? About 15 s. The reading is `scripts/ci-changes.ts`;
+  # it fails open: when the changed files cannot be worked out, every part runs.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      frozen: ${{ steps.paths.outputs.frozen }}
+      bun_floor: ${{ steps.paths.outputs.bun_floor }}
+      durable: ${{ steps.paths.outputs.durable }}
+      swap: ${{ steps.paths.outputs.swap }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+      - name: Which parts changed
+        id: paths
+        env:
+          CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          CI_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bun scripts/ci-changes.ts
+
   # Lint, both typechecks, the backend suite and the corpus checks. The web suite is NOT here any
   # more (see `web-tests` below). Measured 2026-10-17 on run 39063808818, this job took 644 s and
   # `Test (web)` alone was 519 s of it (465 files, 31.7k tests on a 4-core runner), so every
   # developer waited on one runner for a suite that splits cleanly. It was the slowest job of the run.
   check:
     name: typecheck + tests
+    needs: changes
     runs-on: ubuntu-latest
     # bridge/walky/line-shells.test.ts feeds the typed WalkyTalky line to real shells, and leaves out a
     # shell a machine lacks. Here it must not: with this set, a missing bash, dash, zsh or fish fails
@@ -48,8 +88,10 @@ jobs:
       # bash and dash ship with the runner; the shell test needs zsh and fish too.
       - name: Install the shells the line test runs (zsh, fish)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh fish
+      # `--skip-frozen` leaves out the frozen tests (scripts/test-sets.ts) unless a path of theirs changed;
+      # the nightly run and a manual run keep them in.
       - name: Test (bridge)
-        run: bun run test
+        run: bun scripts/test.ts ${{ needs.changes.outputs.frozen != 'true' && '--skip-frozen' || '' }}
 
       - name: Install (web)
         run: cd web && bun install --frozen-lockfile
@@ -73,6 +115,7 @@ jobs:
   # the operator's call. The corpus rule stays in `check`, which runs `traces.test.ts` on its own.
   web-tests:
     name: web tests (${{ matrix.shard }}/3)
+    needs: changes
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -83,8 +126,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Install (web)
         run: cd web && bun install --frozen-lockfile
+      # Without a frozen path changed, only the `logic` and `dom` projects run: the `rig` project is the
+      # browser-leg tooling (scripts/test-sets.ts, FROZEN_PATHS).
       - name: Test (web, shard ${{ matrix.shard }}/3)
-        run: cd web && bunx vitest run --shard=${{ matrix.shard }}/3
+        run: cd web && bunx vitest run --shard=${{ matrix.shard }}/3 ${{ needs.changes.outputs.frozen != 'true' && '--project logic --project dom' || '' }}
 
   # The two-instance crew drill (integration/crew-harness.test.ts). ITS OWN JOB, and no `needs`, for
   # the same two reasons the browser tier has one. It is slow for a reason nothing can trim: it boots
@@ -108,8 +153,13 @@ jobs:
   # and this job is what measures it. The version is pinned here and scripts/check-flake-bun.test.ts
   # fails when it drifts from MIN_BUN. Its own job and no `needs`, like the crew drill, so a failure
   # lands in the same run as every other one. Backend only: the web suite is Bun-independent (vitest).
+  #
+  # Wakes on the paths that decide which Bun runs and how (`bunFloor` in scripts/test-sets.ts), and
+  # every night. A backend change that only the floor Bun rejects shows in the nightly run.
   bun-floor:
     name: backend tests on the Bun floor
+    needs: changes
+    if: needs.changes.outputs.bun_floor == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -131,8 +181,11 @@ jobs:
   # to agree. Linux only, and never in windows.yml: the example's descendant check needs /proc and
   # SO_PEERCRED, and a Windows socket has no owner for the adapter to check. The Cloudflare example
   # is parked under experiments/ (M55 spec 04) and is in no CI job.
+  # Wakes on a change under `examples/`, the SDK package, the durable adapter, and every night.
   durable-example:
     name: durable example
+    needs: changes
+    if: needs.changes.outputs.durable == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -247,8 +300,12 @@ jobs:
   # which makes them serial by design: about 3.3 min alone, about 6.7 min when one flake re-ran the
   # whole chain (run 39063808818). On their own runner that chain no longer holds up the other specs.
   # Same rules as `e2e`: NO `needs`, Chromium only, WebKit stays in `webkit.yml`.
+  # Wakes on a change to the service worker, the update screen, the swap server and its fixtures
+  # (`swap` in scripts/test-sets.ts), and every night.
   e2e-swap:
     name: browser (swap server)
+    needs: changes
+    if: needs.changes.outputs.swap == 'true'
     runs-on: ubuntu-latest
     env:
       E2E_WEBKIT: "0"
@@ -307,3 +364,91 @@ jobs:
             web/playwright-report
           retention-days: 7
           if-no-files-found: ignore
+
+  # The quarantined tests (`*.quarantine.test.*`), and only those. NOT BLOCKING: `continue-on-error`
+  # makes a red run here a green check, so a flaky test that moved to quarantine cannot stop a push or
+  # a release, and the log still shows whether it passes. With no such file the job ends after the
+  # file listing (about 20 s), without an install. Fix the test and give it its old name back.
+  quarantine:
+    name: quarantined tests (not blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Count the quarantined files
+        id: files
+        run: echo "count=$(git ls-files '*.quarantine.test.*' | wc -l)" >> "${GITHUB_OUTPUT}"
+      - name: Install (root)
+        if: steps.files.outputs.count != '0'
+        run: bun install --frozen-lockfile
+      - name: Install (web)
+        if: steps.files.outputs.count != '0'
+        run: cd web && bun install --frozen-lockfile
+      - name: Test (quarantined files)
+        if: steps.files.outputs.count != '0'
+        run: bun scripts/test.ts --quarantine
+      # No `continue-on-error` on this step: a file quarantined for more than 14 days (the date in its
+      # first line) turns this job red. The job is not a required check, so a push still goes through.
+      # `if: always()` so a red test run above does not hide an expired file.
+      - name: Check the 14-day limit
+        if: always()
+        run: bun scripts/check-quarantine.ts
+
+  # The nightly report, the same shape as the `report` job in `windows.yml`. Only a scheduled run
+  # reports. A red night opens ONE issue labelled `ci-nightly` and each further red night adds a
+  # comment; the first green night closes it. A cancelled run says nothing. Cost of one night: a few
+  # seconds on a Linux runner, nothing repeats inside a night, and a push, PR or manual run never
+  # touches the issue. `needs` names every job above, so a red job anywhere turns the night red.
+  report:
+    name: nightly report
+    needs: [changes, check, web-tests, crew, bun-floor, durable-example, e2e, e2e-swap, quarantine]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RESULTS: ${{ join(needs.*.result, ' ') }}
+      NEEDS_JSON: ${{ toJSON(needs) }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+    steps:
+      - name: Open, update or close the issue
+        run: |
+          set -euo pipefail
+          label="ci-nightly"
+          # Any failure is red. Without one, a cancelled job says nothing about the code.
+          case " ${RESULTS} " in
+            *" failure "*) result="red" ;;
+            *" cancelled "*)
+              echo "The nightly run was cancelled; leaving the issue as it is."
+              exit 0 ;;
+            *) result="green" ;;
+          esac
+          gh label create "${label}" --repo "${REPO}" --color B60205 \
+            --description "The nightly CI run is red" 2>/dev/null || true
+          number="$(gh issue list --repo "${REPO}" --label "${label}" --state open --json number --jq '.[0].number // empty')"
+          if [ "${result}" = "green" ]; then
+            if [ -n "${number}" ]; then
+              gh issue close "${number}" --repo "${REPO}" \
+                --comment "The nightly CI run is green again: ${RUN_URL} (commit ${SHA:0:9})."
+            fi
+            exit 0
+          fi
+          failed="$(printf '%s' "${NEEDS_JSON}" | jq -r 'to_entries[] | select(.value.result == "failure") | .key' | paste -sd ',' - | sed 's/,/, /g')"
+          body="The nightly CI run is red: ${RUN_URL} (commit ${SHA:0:9}). Failed jobs: ${failed}."
+          last_green="$(gh run list --repo "${REPO}" --workflow ci.yml --event schedule --status success --limit 1 --json headSha --jq '.[0].headSha // empty')"
+          if [ -n "${last_green}" ]; then
+            body="${body} Commits since the last green nightly: https://github.com/${REPO}/compare/${last_green}...${SHA}"
+          fi
+          if [ -n "${number}" ]; then
+            gh issue comment "${number}" --repo "${REPO}" --body "${body}"
+            exit 0
+          fi
+          gh issue create --repo "${REPO}" --label "${label}" \
+            --title "The nightly CI run is red" --body "${body} This issue closes itself on the next green nightly run."

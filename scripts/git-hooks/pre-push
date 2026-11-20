@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Pre-push guard: typecheck both sides, run the test suites (backend Bun + the web Vitest files the
-# push touches), then say so out loud if the push carries a release that has no tag. Install with:
-# scripts/install-hooks.sh (sets core.hooksPath). The web suite is 465 files and 31.7k tests and took
-# 519 s on a CI runner (2026-10-17), so the hook runs only the files whose import graph touches a
-# change against origin/main; CI runs the whole suite, in three shards, on every push.
-# Override once: SKIP_TYPECHECK=1 git push (skip typecheck) · SKIP_TESTS=1 git push (skip tests) ·
-# SKIP_TAG_CHECK=1 git push (skip the release-tag warning).
+# Pre-push guard: run the quick gate (`bun run gate`: typecheck both sides, lint, the guard tests and
+# the tests near the change), then say so out loud if the push carries a release that has no tag.
+# Install with: scripts/install-hooks.sh (sets core.hooksPath). The gate is about three minutes on an
+# idle machine for a small change. It does not run the full suites: CI runs them on every push (the web
+# suite is 465 files and 31.7k tests, 519 s on a CI runner on 2026-10-17), and the release recipe runs
+# them once more on the release head. Run `bun run gate --full` by hand to run them here.
+# Override once: SKIP_TYPECHECK=1 git push (skip both typechecks) · SKIP_LINT_CHECK=1 git push (skip the
+# lint) · SKIP_TESTS=1 git push (skip the guard tests and the near tests) · SKIP_TAG_CHECK=1 git push
+# (skip the release-tag warning). The three gate hatches are read by scripts/gate.ts itself.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -23,75 +25,20 @@ pushed_refs="$(cat)"
 # environment rather than a trap. ROOT is resolved above, while they still apply.
 unset "${!GIT_@}" 2>/dev/null || true
 
-# ── Typecheck (the Vite build does NOT typecheck; catch it before it ships) ──
-if [ "${SKIP_TYPECHECK:-}" = "1" ]; then
-  echo "pre-push: SKIP_TYPECHECK=1 — skipping typecheck" >&2
-else
-  echo "pre-push: typechecking backend (bun run typecheck)…" >&2
-  if ! (cd "$ROOT" && bun run typecheck); then
-    cat >&2 <<'EOF'
-✗ pre-push: backend typecheck failed — push aborted.
-  Fix the type errors, or override once with: SKIP_TYPECHECK=1 git push
+# ── The gate ────────────────────────────────────────────────────────────────
+# Typecheck (the Vite build does NOT typecheck; catch it before it ships), lint, the guard tests and
+# the tests near the change. `./integration` (the two-instance crew drill) is not in it on purpose: it
+# boots twenty child processes over real pinned TLS and CI gives it a job of its own. Run it by hand
+# with `bun run test:crew` when you touch the crew transport. With no `origin/main` to compare
+# against, the gate runs the full suites instead of the near tests.
+echo "pre-push: running the quick gate (bun run gate)…" >&2
+if ! (cd "$ROOT" && bun run gate); then
+  cat >&2 <<'EOF'
+✗ pre-push: the gate failed — push aborted.
+  Fix what it names above. Override one part once: SKIP_TYPECHECK=1, SKIP_LINT_CHECK=1 or
+  SKIP_TESTS=1 git push.
 EOF
-    exit 1
-  fi
-  echo "pre-push: typechecking web (bun run typecheck)…" >&2
-  if ! (cd "$ROOT/web" && bun run typecheck); then
-    cat >&2 <<'EOF'
-✗ pre-push: web typecheck failed — push aborted.
-  Fix the type errors, or override once with: SKIP_TYPECHECK=1 git push
-EOF
-    exit 1
-  fi
-fi
-
-# ── Tests ───────────────────────────────────────────────────────────────────
-if [ "${SKIP_TESTS:-}" = "1" ]; then
-  echo "pre-push: SKIP_TESTS=1 — skipping test suite" >&2
-else
-  # `./bridge` and NOT `./integration`: the two-instance crew drill lives there on purpose and CI
-  # gives it a job of its own. It boots twenty child processes over real pinned TLS and measured
-  # 58.3s of a 67.0s backend run on 2026-09-30, which is a minute every developer paid on every push
-  # for a lane that cannot be made fast. Run it by hand with `bun run test:crew` when you touch the
-  # crew transport. Do not put it back here.
-  echo "pre-push: running backend test suite (bun test ./bridge)…" >&2
-  if ! (cd "$ROOT" && bun test ./bridge); then
-    cat >&2 <<'EOF'
-✗ pre-push: backend tests failed — push aborted.
-  Fix the failing tests, or override once with: SKIP_TESTS=1 git push
-EOF
-    exit 1
-  fi
-
-  echo "pre-push: running control-script lifecycle suite (collie-ctl.test.sh)…" >&2
-  if ! (cd "$ROOT" && bash scripts/collie-ctl.test.sh); then
-    cat >&2 <<'EOF'
-✗ pre-push: collie-ctl lifecycle tests failed — push aborted.
-  Fix the failing tests, or override once with: SKIP_TESTS=1 git push
-EOF
-    exit 1
-  fi
-
-  # `vitest --changed origin/main` runs the test files whose import graph reaches a file that differs
-  # from origin/main (committed, staged or unstaged). A change to a shared module still pulls in
-  # every test that imports it; CI is the full run. If `origin/main` is not a valid ref in this
-  # checkout (a fresh clone of another branch, a remote with another name), there is nothing to
-  # compare against, so fall back to the full run rather than run nothing. `--passWithNoTests`: a
-  # push that touches no file any test imports is a pass, not an error.
-  if (cd "$ROOT" && git rev-parse --verify --quiet origin/main >/dev/null); then
-    echo "pre-push: running web tests that touch changes since origin/main (vitest --changed origin/main)…" >&2
-    web_test=(bunx vitest run --changed origin/main --passWithNoTests)
-  else
-    echo "pre-push: origin/main not found — running the full web test suite (bun run test)…" >&2
-    web_test=(bun run test)
-  fi
-  if ! (cd "$ROOT/web" && "${web_test[@]}"); then
-    cat >&2 <<'EOF'
-✗ pre-push: web tests failed — push aborted.
-  Fix the failing tests, or override once with: SKIP_TESTS=1 git push
-EOF
-    exit 1
-  fi
+  exit 1
 fi
 
 # ── Release tag (WARNS, never blocks) ───────────────────────────────────────

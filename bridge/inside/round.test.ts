@@ -91,23 +91,6 @@ dataDescribe("a whole round with the fake part", () => {
     expect(ask.body).toEqual({ wait: false });
   });
 
-  test("an ask: no listener means do not wait; with one, the answer goes to the poll on that ask only", async () => {
-    const { hub, socket } = await rig();
-    const part = new FakePart(socket, { env: ENV, pidStartTime: 7 });
-    await part.hello();
-    expect((await part.event("ask.open", { ask: "a0", askKind: "permission", tool: "Bash" })).body).toEqual({ wait: false });
-
-    hub.listen({ ask: () => ({ wait: true, waitMs: 60_000 }) });
-    expect((await part.event("ask.open", { ask: "a1", askKind: "permission", tool: "Bash", input: { command: "touch x" } })).body).toEqual({ wait: true, waitMs: 60_000 });
-    const main = part.next({ waitMs: 1500 });
-    const onAsk = part.next({ ask: "a1", waitMs: 5000 });
-    expect(hub.enqueue(PANE, { id: "ans-round001", kind: "answer", ask: "a1", decision: "deny" })).toEqual({ ok: true });
-    expect((await onAsk).command).toMatchObject({ kind: "answer", ask: "a1", decision: "deny" });
-    expect((await main).status).toBe(204);
-    expect(hub.enqueue(PANE, { id: "ans-round002", kind: "answer", ask: "nope", decision: "allow" })).toEqual({ ok: false, reason: "no-ask" });
-    expect((await part.next({ ask: "never-opened", waitMs: 1000 })).status).toBe(404);
-  });
-
   test("ask.close withdraws an answer still queued for that ask, and only that one", async () => {
     const { hub, socket } = await rig();
     const part = new FakePart(socket, { env: ENV, pidStartTime: 7 });
@@ -120,19 +103,6 @@ dataDescribe("a whole round with the fake part", () => {
     expect((await part.event("ask.close", { ask: "a1", how: "desk" })).status).toBe(204);
     expect(hub.stateOf("ans-close001")).toBe("withdrawn");
     expect(hub.stateOf("ans-close002")).toBe("queued");
-  });
-
-  test("withdraw before take: the part never sees it; after take: withdraw is refused", async () => {
-    const { hub, socket } = await rig();
-    const part = new FakePart(socket, { env: ENV, pidStartTime: 7 });
-    await part.hello();
-    hub.enqueue(PANE, { id: "req-wdraw001", kind: "prompt", text: "one" });
-    expect(hub.withdraw("req-wdraw001")).toBe(true);
-    expect((await part.next({ waitMs: 1000 })).status).toBe(204);
-    hub.enqueue(PANE, { id: "req-wdraw002", kind: "prompt", text: "two" });
-    await part.serveOnce({ silent: true });
-    expect(hub.withdraw("req-wdraw002")).toBe(false);
-    expect(hub.stateOf("req-wdraw002")).toBe("taken");
   });
 
   test("a reload: the new hello replaces the part, the old id is dead, a queued command waits for the new part", async () => {

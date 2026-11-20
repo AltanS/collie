@@ -265,6 +265,14 @@ Key security boundaries and risks:
   ([above](#pair-a-device--the-write-credential)), so revoke a lost phone at once. The built-in
   idle lock merely blanks an unattended screen and provides no actual security boundary
   ([ADR 0007](../.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)).
+- **Every machine of a crew is trusted in full.** A [crew](crew.md) is for machines that are all
+  yours. The lead drives the terminals of every member, so whoever controls the lead controls every
+  machine of the crew. A member drives only its own terminals, but its agents can send WalkyTalky
+  messages to agent sessions on your other machines, and an agent that acts on such a message acts
+  with your rights there ([WalkyTalky](#walkytalky)). So treat a crew machine that was taken over as
+  a crew that was taken over. Join only a machine that you would give a shell on the others. When you
+  lose one, run `collie crew remove <member>` and then `collie crew rotate` on the lead, and change
+  the keys that agents on the other machines can read.
 - **All local system users can reach the port.** Standard terminal multiplexer sockets (`tmux`,
   `zellij`, `herdr`) use filesystem permissions to restrict access to other local users. Collie
   listens on a local TCP port, which exposes it to every local UID. Reads need the pairing token,

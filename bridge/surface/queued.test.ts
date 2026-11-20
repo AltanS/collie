@@ -1,5 +1,5 @@
 // QueuedSends alone (ADR 0122): the cap and the memory bound, with a fake store and a fixed matcher.
-// The protocol-level cases (a real OMP fake pane, the routes, the Stop) are in protocol.test.ts.
+// The protocol-level cases (a real OMP fake pane, the routes, the Stop) are in protocol.*.test.ts.
 
 import { describe, expect, test } from "bun:test";
 import { IDLE_EMPTY_POLLS, QUEUED_SEND_MS, QUEUED_SENDS_MAX, QueuedSends } from "./queued.ts";

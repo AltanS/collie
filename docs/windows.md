@@ -627,8 +627,10 @@ Two words on this page have a fixed meaning:
 What the support rests on:
 
 - The `windows.yml` workflow, a CI workflow, runs the bridge, cli and scripts tests on
-  `windows-latest` for every pull request and every push to `main`. It is not yet a required check.
-  The maintainer plans to make it one after about ten green runs in a row.
+  `windows-latest` every night, on every push to a release branch, and before each release. A red
+  night opens one GitHub issue labelled `windows-nightly`, and the next green night closes it. It is
+  not a required check. The maintainer plans to make it one after about ten green nightly runs in a
+  row.
 - Each release builds `collie-<version>-windows-x64.zip` with a `.sha256` file.
 - Before each release tag, the maintainer runs a rehearsal, `make win-rehearse`. It installs a
   release on a fresh Windows 11 VM, updates it from the terminal and from the phone's endpoint,
