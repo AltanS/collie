@@ -428,15 +428,31 @@ describe("upTarget: naming an UP move's destination without performing it", () =
 });
 
 describe("resolveUpTo: a named parent", () => {
-  it("steps back only onto that very parent", () => {
+  it("steps back only onto that very parent (matching pathname and scope)", () => {
     expect(resolveUpTo("/space/w1", "/space/w1")).toEqual({ kind: "back" });
-    expect(resolveUpTo("/space/w1?h=a", "/space/w1")).toEqual({ kind: "back" });
+    expect(resolveUpTo("/space/w1?h=a", "/space/w1?h=a")).toEqual({ kind: "back" });
+    expect(resolveUpTo("/space/w1?s=demo", "/space/w1?s=demo")).toEqual({ kind: "back" });
+    expect(resolveUpTo("/space/w1?h=a&s=demo", "/space/w1?s=demo&h=a")).toEqual({ kind: "back" });
+    expect(resolveUpTo("/space/w1?h=a#top", "/space/w1?h=a")).toEqual({ kind: "back" });
+    expect(resolveUpTo("/space/w1?h=", "/space/w1")).toEqual({ kind: "back" });
+    expect(resolveUpTo("/?all=1", "/")).toEqual({ kind: "back" });
   });
 
-  it("replaces when the pane came from somewhere else", () => {
+  it("replaces when the pane came from somewhere else, or from another host or session with the same workspaceId", () => {
     expect(resolveUpTo("/", "/space/w1")).toEqual({ kind: "replace", to: "/space/w1" });
     expect(resolveUpTo("/space/w2", "/space/w1")).toEqual({ kind: "replace", to: "/space/w1" });
     expect(resolveUpTo(undefined, "/space/w1")).toEqual({ kind: "replace", to: "/space/w1" });
+    expect(resolveUpTo("/space/w1?h=a", "/space/w1")).toEqual({ kind: "replace", to: "/space/w1" });
+    expect(resolveUpTo("/space/w1", "/space/w1?h=a")).toEqual({ kind: "replace", to: "/space/w1?h=a" });
+    expect(resolveUpTo("/space/w1?h=a", "/space/w1?h=b")).toEqual({ kind: "replace", to: "/space/w1?h=b" });
+    expect(resolveUpTo("/space/w1?s=alpha", "/space/w1")).toEqual({ kind: "replace", to: "/space/w1" });
+    expect(resolveUpTo("/space/w1", "/space/w1?s=alpha")).toEqual({ kind: "replace", to: "/space/w1?s=alpha" });
+    expect(resolveUpTo("/space/w1?s=alpha", "/space/w1?s=beta")).toEqual({ kind: "replace", to: "/space/w1?s=beta" });
+    expect(resolveUpTo("/space/w1?h=a&s=alpha", "/space/w1?h=a&s=beta")).toEqual({ kind: "replace", to: "/space/w1?h=a&s=beta" });
+    expect(resolveUpTo("/space/w1?h=a&s=alpha", "/space/w1?h=b&s=alpha")).toEqual({ kind: "replace", to: "/space/w1?h=b&s=alpha" });
+    expect(resolveUpTo("/?h=a", "/?h=b")).toEqual({ kind: "replace", to: "/?h=b" });
+    expect(resolveUpTo("/?s=alpha", "/?s=beta")).toEqual({ kind: "replace", to: "/?s=beta" });
+    expect(resolveUpTo("/space/w1?h=a", "/space/w1?h=a", false)).toEqual({ kind: "replace", to: "/space/w1?h=a" });
   });
 });
 
