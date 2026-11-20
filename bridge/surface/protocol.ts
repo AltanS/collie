@@ -3137,6 +3137,8 @@ interface EndNote {
   offers?: SendOffer[];
   /** A failed probe whose one Backspace was read back: the box holds what it held at S0 (2026-10-17). */
   probeClean?: boolean;
+  /** The post-Backspace read of a clean probe that may pass for Add/Replace over a draft. */
+  probeBase?: Snap;
   /** S0's two reads differed in grid size ({@link gridSizeOf}): the pane's geometry moved between them (2026-10-26). */
   inFlux?: boolean;
   /** Which rule decided the end, copied onto the answer ({@link SendAnswer.cause}). */
@@ -6518,6 +6520,8 @@ export class SendProtocol {
       const why =
         typed.verdict === "wait" ? "The probe character did not show in the box." : screen !== null ? probeOtherScreen(screen) : "The probe character changed more than the box.";
       const ended = await this.probeCleanup(state, s0, typed.snap, probe, why);
+      // Add/Replace proved the same box at their own draft proof; a clean probe over that draft passes.
+      if (ended.extra.probeBase !== undefined) return { landing: null, base: ended.extra.probeBase };
       // A late probe that came with a repaint of the whole screen (the header): S0's rows are stale, so
       // the probe goes once more from a fresh S0. Once per send, and only after the window showed it.
       if (shownLate && typed.verdict === "fail" && screen === null && ended.extra.probeClean === true) {
@@ -6620,7 +6624,14 @@ export class SendProtocol {
       // row painted over the live box row while the live editor held a draft). It is refused with the
       // draft's offers, never held: a hold would type its text later, after the person's next choice.
       // Another screen's own box (the agents screen) is not the conversation's: its text is no draft there.
-      if (probeOnly(state) && look.frame !== null && look.otherScreen === null && look.surface.modal === "none" && look.surface.composer === "draft") return draftRefusal(state, look);
+      if (probeOnly(state) && look.frame !== null && look.otherScreen === null && look.surface.modal === "none" && look.surface.composer === "draft") {
+        // Add/Replace asked to edit this draft; their proof must not become the refusal of their own request.
+        if (state.request.mode !== "append" && state.request.mode !== "replace") return draftRefusal(state, look);
+        const clean = failed(PROBE_REMOVED, look);
+        clean.extra.probeClean = true;
+        clean.extra.probeBase = look;
+        return clean;
+      }
       const clean = failed(PROBE_REMOVED, look);
       clean.extra.probeClean = true;
       return clean;

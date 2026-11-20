@@ -962,6 +962,19 @@ describe("a profile whose probe is provisional never skips the probe (M56 spec 1
     expect((await provisional.send(LONG)).receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
   });
 
+  test("a provisional profile's Add to it and Replace over a draft are not refused by their own probe", async () => {
+    const provisional = rig({ version: "2.1.999", edit: (profile) => ({ ...profile, probe: { ...profile.probe, status: "provisional" } }) });
+    provisional.pane.box = "half a thought";
+    const added = await provisional.send(" and the rest", { mode: "append" });
+    expect(added.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "probe", "Backspace", "Enter"] });
+    expect(provisional.pane.transcript.at(-1)).toBe("> half a thought and the rest");
+
+    provisional.pane.box = "half a thought";
+    const replaced = await provisional.send("a new thought", { mode: "replace" });
+    expect(replaced.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional" });
+    expect(provisional.pane.transcript.at(-1)).toBe("> a new thought");
+  });
+
   test("the profiles of every harness with no live send in its range are provisional", () => {
     for (const id of ["grok", "agy", "muse", "opencode", "omp"]) expect(loadProfiles().get(id)?.probe.status, id).toBe("provisional");
     expect(loadProfiles().get("pi")?.probe.status).toBe("verified");
