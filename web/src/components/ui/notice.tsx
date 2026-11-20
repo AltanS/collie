@@ -168,7 +168,7 @@ export const CAUTION_ACTION =
  * {@link NOTICE_ACTION_TAP}: the inset resolves against the PADDING box, 1px inside the `ui/button.tsx`
  * border that DESIGN.md §2 reserves. Padding box of an `h-8` button: 32 - 2 = 30px. 30 + 2 x 7 = 44px.
  * So `-inset-y-[7px]`, not `-inset-y-1.5` (6px, which would measure 42). Vertical only: the offers are
- * as wide as a word, never under 44px, and sit `gap-2` apart. Under an `overflow: hidden` ancestor the
+ * as wide as a word, never under 44px, and sit `gap-x-2` apart. Wrapped rows stand `gap-y-3.5` (14px) apart, so two 7px reaches meet and never overlap. Under an `overflow: hidden` ancestor the
  * reach is eaten; `ui/collapse.tsx` drops its clip once it has opened (`settled`).
  */
 export const CAUTION_ACTION_TAP = "relative before:absolute before:inset-x-0 before:-inset-y-[7px] before:content-['']";

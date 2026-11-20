@@ -35,7 +35,7 @@ const LABEL_KEYS = {
 export function SendOfferStrip({ offers, disabled, onOffer, onDismiss, capConfirm = false }: SendOfferStripProps) {
   useLocale();
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-2 py-1.5" data-testid="send-offers">
+    <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-3.5 py-1.5" data-testid="send-offers">
       {offers.map((offer) => (
         <Button
           key={offer}
