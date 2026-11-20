@@ -797,6 +797,23 @@ describe("the descriptor check and the small-file reader (L4)", () => {
     }
   });
 
+  test("off Linux the descriptor's file named through a linked folder is refused, by its own path it passes", async () => {
+    // #830's Windows run: off Linux there is no kernel name for a descriptor, and `lstat` follows every
+    // step but the last, so the same file reached through a linked folder passed. Run here as win32.
+    const dir = folder();
+    mkdirSync(join(dir, "real"));
+    const inside = write(join(dir, "real", "a.png"), png());
+    symlinkSync(join(dir, "real"), join(dir, "flip"));
+    const handle = await open(inside, "r");
+    try {
+      const stat = await handle.stat();
+      expect(await descriptorIs(handle.fd, realpathSync(inside), stat, "win32")).toBe(true);
+      expect(await descriptorIs(handle.fd, join(realpathSync(dir), "flip", "a.png"), stat, "win32")).toBe(false);
+    } finally {
+      await handle.close();
+    }
+  });
+
   test("readSmallFile reads a plain file and refuses a final symlink, a folder and a file over the cap", async () => {
     const dir = folder();
     const path = write(join(dir, "a.txt"), "hello");

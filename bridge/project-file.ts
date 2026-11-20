@@ -239,11 +239,14 @@ async function kindOf(path: string): Promise<"file" | "dir" | "link" | "other" |
 /**
  * Whether an open descriptor is the file at `real`, the path's real path taken before the open. On
  * Linux the kernel's own name for the descriptor (`/proc/self/fd/<n>`) must be `real`; elsewhere a fresh
- * `lstat` of `real` must be a regular file with the descriptor's device and inode. So a folder on the
- * way swapped for a link between the check and the open reads nothing.
+ * `lstat` of `real` must be a regular file with the descriptor's device and inode, and `real` must be
+ * its own real path. So a folder on the way swapped for a link between the check and the open reads
+ * nothing. Without that last rule, off Linux a path through a linked folder passed whenever the link
+ * led to the same file (#830's Windows run, 2026-11-20): `lstat` follows every step but the last.
+ * `platform` is the host's; a test passes another to run the other branch here.
  */
-export async function descriptorIs(fd: number, real: string, opened: { dev: number; ino: number }): Promise<boolean> {
-  if (HOST.platform === "linux") {
+export async function descriptorIs(fd: number, real: string, opened: { dev: number; ino: number }, platform: NodeJS.Platform = HOST.platform): Promise<boolean> {
+  if (platform === "linux") {
     try {
       return (await readlink(`/proc/self/fd/${String(fd)}`)) === real;
     } catch {
@@ -252,7 +255,8 @@ export async function descriptorIs(fd: number, real: string, opened: { dev: numb
   }
   try {
     const now = await lstat(real);
-    return now.isFile() && now.dev === opened.dev && now.ino === opened.ino;
+    if (!now.isFile() || now.dev !== opened.dev || now.ino !== opened.ino) return false;
+    return (await realpath(real)) === real;
   } catch {
     return false;
   }
