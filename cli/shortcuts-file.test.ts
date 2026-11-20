@@ -70,6 +70,12 @@ describe("config check over shortcuts.toml", () => {
     expect(io.stderr.some((l) => l.startsWith("error: shortcuts.toml:") && l.includes('"Zoom"'))).toBe(true);
   });
 
+  test("a control character in a binding never reaches the printed output", () => {
+    const { io } = run({ [FILE]: '[keys]\nnew_tab = "prefix+\\u001b[31m"\n' });
+    expect(io.stderr.some((l) => l.includes('"new_tab"'))).toBe(true);
+    for (const line of [...io.stdout, ...io.stderr]) expect([...line].some((ch) => /\p{Cc}/u.test(ch))).toBe(false);
+  });
+
   test("a clean file and a missing file add nothing", () => {
     expect(run({ [FILE]: CLEAN }).code).toBe(EXIT.OK);
     const missing = run({});

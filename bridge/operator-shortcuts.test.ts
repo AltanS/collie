@@ -147,6 +147,25 @@ describe("validateOperatorShortcuts", () => {
     });
   });
 
+  describe("control characters in a binding", () => {
+    const hasControl = (line: string) => [...line].some((ch) => /\p{Cc}/u.test(ch));
+
+    test.each([
+      ["a newline", "prefix+\nc"],
+      ["an escape", "ctrl+\x1b[31m"],
+      ["a DEL", "ctrl+\x7f"],
+      ["a C1 control", "ctrl+\u009b"],
+    ])("a binding with %s drops that entry only, and the warn line holds no control character", (_label, binding) => {
+      const logged: string[] = [];
+      const out = validateOperatorShortcuts({ keys: { bad: binding, list: ["ctrl+a", binding], ok: "prefix+q" } }, (m) => logged.push(m));
+      expect(out).toEqual([{ ok: ["prefix+q"] }]);
+      expect(logged).toHaveLength(2);
+      expect(logged[0]).toContain('"bad"');
+      expect(logged[1]).toContain('"list"');
+      for (const line of logged) expect(hasControl(line)).toBe(false);
+    });
+  });
+
   test("`keys` that is not a table costs the file's bindings and nothing else", () => {
     const logged: string[] = [];
     expect(validateOperatorShortcuts({ keys: "ctrl+b" }, (m) => logged.push(m))).toEqual([]);
