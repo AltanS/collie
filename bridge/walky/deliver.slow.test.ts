@@ -152,6 +152,12 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
     return wiredRig;
   }
 
+  /**
+   * Each case reads a real clock for about 1.2 s on Linux and 2 s on the Windows VM alone, and ran past
+   * Bun's default 5 s there inside the full bridge run (the stage/next run, 2026-11-20).
+   */
+  const LOADED_GUEST_MS = 20_000;
+
   describe("a held message and Claude Code's suggestion on a plain-text read (M78 spec 06)", () => {
     const GHOST_ID = "wt_ghostghost01";
 
@@ -177,7 +183,7 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
       expect(r.box.keysSeen).toEqual(["Backspace"]);
       expect(r.box.box).toBe("a long thought");
       expect(r.box.calls.some((call) => call.includes(ghostHeader))).toBe(false);
-    });
+    }, LOADED_GUEST_MS);
 
     test("a styled read behaves as today: the faint suggestion is the empty box, and a typed draft is held with no extra write", async () => {
       const free = wired({ realSurface: true });
@@ -195,7 +201,7 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
       expect(held.service.status(GHOST_ID).receipts[0]).toMatchObject({ state: "inbox-only", reason: "held past 60 minutes" });
       expect(held.box.calls).toEqual([]);
       expect(held.box.keysSeen).toEqual([]);
-    });
+    }, LOADED_GUEST_MS);
   });
 });
 

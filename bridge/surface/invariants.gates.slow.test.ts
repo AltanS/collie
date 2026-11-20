@@ -13,5 +13,7 @@ afterAll(() => {
 describe("M102-15 part 1a, the bridge's gates over every Surface", () => {
   test("I6: one request id gives at most one text write and one Enter, and the same id again writes nothing", async () => {
     expect(breaks(await allOutcomes(), (o) => o.i6)).toEqual([]);
-  }, 120_000);
+    // About 9 s on Linux and 55 s alone on the Windows VM, which passed 120 s inside the full bridge run
+    // there (the stage/next run, 2026-11-20).
+  }, 300_000);
 });
