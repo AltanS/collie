@@ -1470,7 +1470,8 @@ export function resumeValueOf(processes: readonly ForegroundProcess[] | undefine
  *    per-cwd directory, so this is a scan of the project dirs, cached after the first hit.
  */
 export class PiTranscriptSource implements TranscriptSource {
-  private readonly pathCache = new Map<string, string>();
+  // The root must travel with the cached path so cache hits re-check per-root symlink containment.
+  private readonly pathCache = new Map<string, { path: string; root: string }>();
 
   private readonly rootsNow: () => string[];
 
@@ -1572,7 +1573,7 @@ export class PiTranscriptSource implements TranscriptSource {
       const contained = await containedRealpath(candidate.path, candidate.root);
       if (contained === null) continue;
       if (!(await sessionCwdMatches(await sessionCwdOf(contained), discovery))) continue;
-      this.pathCache.set(candidate.id, contained);
+      this.pathCache.set(candidate.id, { path: contained, root: candidate.root });
       return { kind: "id", value: candidate.id };
     }
     return null;
@@ -1634,7 +1635,7 @@ export class PiTranscriptSource implements TranscriptSource {
         if (hit === undefined) continue;
         const contained = await containedRealpath(join(root.path, folder, hit), root.path);
         if (contained === null) continue;
-        this.pathCache.set(id, contained);
+        this.pathCache.set(id, { path: contained, root: root.path });
         return { kind: "id", value: id };
       }
     }
@@ -1657,7 +1658,7 @@ export class PiTranscriptSource implements TranscriptSource {
         }
       }
       if (!matchesFolder) continue;
-      this.pathCache.set(id.toLowerCase(), contained);
+      this.pathCache.set(id.toLowerCase(), { path: contained, root: root.path });
       return { kind: "id", value: id.toLowerCase() };
     }
     return null;
@@ -1684,7 +1685,11 @@ export class PiTranscriptSource implements TranscriptSource {
     const sessionId = ref.value;
     const cached = this.pathCache.get(sessionId);
     if (cached !== undefined) {
-      if (await exists(cached)) return cached;
+      const real = await containedRealpath(cached.path, cached.root);
+      if (real !== null) {
+        if (real !== cached.path) this.pathCache.set(sessionId, { path: real, root: cached.root });
+        return real;
+      }
       this.pathCache.delete(sessionId);
     }
 
@@ -1692,7 +1697,7 @@ export class PiTranscriptSource implements TranscriptSource {
     for (const root of this.roots) {
       const hit = await this.findUnder(root, suffix);
       if (hit === null) continue; // absent here, or present but not this root's to serve
-      this.pathCache.set(sessionId, hit);
+      this.pathCache.set(sessionId, { path: hit, root });
       return hit;
     }
     return null;
