@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decideBeltWheel, type BeltWheelInput } from "./belt-wheel";
+import { decideBeltDrag, decideBeltWheel, startsBeltDrag, type BeltWheelInput } from "./belt-wheel";
 
 // THE BELT UNDER A MOUSE WHEEL: how far, and whether the Belt takes the event. A Belt 300px wide in a
 // 500px scroller has 200px of range.
@@ -63,5 +63,44 @@ describe("a right-to-left Belt (the left hand)", () => {
 
   it("moves a sideways delta in screen terms", () => {
     expect(wheel({ rtl: true, scrollLeft: -100, deltaX: 40 })).toEqual({ take: true, scrollLeft: -60 });
+  });
+});
+
+describe("the mouse drag", () => {
+  const DRAG = { startX: 500, x: 500, startScrollLeft: 0, scrollWidth: 500, clientWidth: 300, rtl: false, dragging: false } as const;
+
+  it("starts only for a mouse's primary button on a Belt that overflows", () => {
+    const start = { pointerType: "mouse", button: 0, scrollWidth: 500, clientWidth: 300 };
+    expect(startsBeltDrag(start)).toBe(true);
+    expect(startsBeltDrag({ ...start, pointerType: "touch" })).toBe(false);
+    expect(startsBeltDrag({ ...start, pointerType: "pen" })).toBe(false);
+    expect(startsBeltDrag({ ...start, button: 2 })).toBe(false);
+    expect(startsBeltDrag({ ...start, scrollWidth: 300 })).toBe(false);
+  });
+
+  it("stays a click inside the slop", () => {
+    expect(decideBeltDrag({ ...DRAG, x: 495 })).toEqual({ dragging: false, scrollLeft: null });
+    expect(decideBeltDrag({ ...DRAG, x: 505 })).toEqual({ dragging: false, scrollLeft: null });
+  });
+
+  it("follows the pointer one to one once past the slop, from where the press began", () => {
+    expect(decideBeltDrag({ ...DRAG, x: 300 })).toEqual({ dragging: true, scrollLeft: 200 });
+    expect(decideBeltDrag({ ...DRAG, startScrollLeft: 150, x: 520 })).toEqual({ dragging: true, scrollLeft: 130 });
+  });
+
+  it("keeps following once begun, even back inside the slop", () => {
+    expect(decideBeltDrag({ ...DRAG, dragging: true, x: 498 })).toEqual({ dragging: true, scrollLeft: 2 });
+  });
+
+  it("clamps to the range", () => {
+    expect(decideBeltDrag({ ...DRAG, x: 0 })).toEqual({ dragging: true, scrollLeft: 200 });
+    expect(decideBeltDrag({ ...DRAG, startScrollLeft: 50, x: 900 })).toEqual({ dragging: true, scrollLeft: 0 });
+  });
+
+  it("clamps a right-to-left Belt to -range..0", () => {
+    const rtl = { ...DRAG, rtl: true };
+    expect(decideBeltDrag({ ...rtl, startScrollLeft: -100, x: 560 })).toEqual({ dragging: true, scrollLeft: -160 });
+    expect(decideBeltDrag({ ...rtl, startScrollLeft: -100, x: 0 })).toEqual({ dragging: true, scrollLeft: 0 });
+    expect(decideBeltDrag({ ...rtl, startScrollLeft: -100, x: 1000 })).toEqual({ dragging: true, scrollLeft: -200 });
   });
 });

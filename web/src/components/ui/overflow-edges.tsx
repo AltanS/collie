@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Icon } from "@/components/icons/icon";
 
-import { decideBeltWheel } from "@/lib/belt-wheel";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { decideBeltDrag, decideBeltWheel, startsBeltDrag } from "@/lib/belt-wheel";
 import { hasResizeObserver } from "@/lib/env";
 import { cn } from "@/lib/utils";
 
@@ -84,7 +85,8 @@ function edgeOf(left: boolean, right: boolean): OverflowEdge {
  * `scrollWidth` a fraction over its `clientWidth` often enough that an exact test would fade a row
  * that fits.
  */
-export function useOverflowEdges<T extends HTMLElement = HTMLDivElement>(wheel = false) {
+export function useOverflowEdges<T extends HTMLElement = HTMLDivElement>(pointer: { wheel?: boolean; drag?: boolean } = {}) {
+  const { wheel = false, drag = false } = pointer;
   const ref = useRef<T>(null);
   const [edge, setEdge] = useState<OverflowEdge>("none");
 
@@ -146,6 +148,93 @@ export function useOverflowEdges<T extends HTMLElement = HTMLDivElement>(wheel =
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [wheel]);
+
+  // A mouse DRAG on the scroller pulls it sideways (lib/belt-wheel.ts `decideBeltDrag`), for the caller that asks.
+  // Only a mouse's primary button: touch and pen keep the browser's own scrolling, which none of this reaches.
+  // A press that moves past the slop becomes a drag: the pointer is captured, the pill that was pressed is
+  // cancelled with a synthetic `pointercancel` (its hold timers end, nothing fires), and the click that follows
+  // the release is swallowed once. A press that stays inside the slop is an ordinary click.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !drag) return;
+    let press: { id: number; startX: number; startScrollLeft: number; target: EventTarget | null; dragging: boolean } | null = null;
+    let swallowClick = false;
+    let cancellingPill = false;
+    const finish = () => {
+      const was = press;
+      press = null;
+      if (was === null || !was.dragging) return;
+      el.removeAttribute("data-belt-dragging");
+      el.style.removeProperty("user-select");
+      if (el.hasPointerCapture?.(was.id) === true) el.releasePointerCapture(was.id);
+      // The click that follows this release is the drag's end, not a tap. Gone with the task if none comes.
+      swallowClick = true;
+      setTimeout(() => {
+        swallowClick = false;
+      }, 0);
+    };
+    const onDown = (e: PointerEvent) => {
+      swallowClick = false;
+      if (!startsBeltDrag({ pointerType: e.pointerType, button: e.button, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth })) return;
+      press = { id: e.pointerId, startX: e.clientX, startScrollLeft: el.scrollLeft, target: e.target, dragging: false };
+    };
+    const onMove = (e: PointerEvent) => {
+      if (press === null || e.pointerId !== press.id) return;
+      // The release happened where nobody saw it (outside the window, a lost capture): the drag is over.
+      if ((e.buttons & 1) === 0) return finish();
+      const decision = decideBeltDrag({
+        startX: press.startX,
+        x: e.clientX,
+        startScrollLeft: press.startScrollLeft,
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        rtl: getComputedStyle(el).direction === "rtl",
+        dragging: press.dragging,
+      });
+      if (!decision.dragging || decision.scrollLeft === null) return;
+      if (!press.dragging) {
+        press.dragging = true;
+        el.setPointerCapture(e.pointerId);
+        // The pill under the press ends its own press (the hold tint, the hold-repeat, a long press) and fires nothing.
+        cancellingPill = true;
+        press.target?.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerId: e.pointerId, pointerType: e.pointerType }));
+        cancellingPill = false;
+        el.setAttribute("data-belt-dragging", "");
+        el.style.setProperty("user-select", "none");
+        getSelection()?.removeAllRanges();
+      }
+      el.scrollLeft = decision.scrollLeft;
+    };
+    const onEnd = (e: PointerEvent) => {
+      // Our own synthetic cancel to the pill reaches this listener too, and is not the pointer's end.
+      if (cancellingPill || press === null || e.pointerId !== press.id) return;
+      finish();
+    };
+    const onClick = (e: MouseEvent) => {
+      if (!swallowClick) return;
+      swallowClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onSelectStart = (e: Event) => {
+      if (press?.dragging === true) e.preventDefault();
+    };
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onEnd);
+    el.addEventListener("pointercancel", onEnd);
+    el.addEventListener("click", onClick, true);
+    el.addEventListener("selectstart", onSelectStart);
+    return () => {
+      finish();
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onEnd);
+      el.removeEventListener("pointercancel", onEnd);
+      el.removeEventListener("click", onClick, true);
+      el.removeEventListener("selectstart", onSelectStart);
+    };
+  }, [drag]);
 
   // The asynchronous half: a font finishing, the viewport narrowing, the keyboard opening. The
   // scroller's own box AND its children, because a capsule growing inside a flex-sized scroller
@@ -225,7 +314,34 @@ interface OverflowEdgesProps {
    * desktop pointer had no way to scroll.
    */
   wheel?: boolean;
+  /**
+   * Whether a mouse drag on the scroller pulls it sideways, past a 5px slop (lib/belt-wheel.ts). Off by
+   * default: the actions belt asks. A touch or a pen is the browser's own scrolling, unchanged.
+   */
+  drag?: boolean;
+  /**
+   * Whether a mouse gets an arrow button over each edge that still hides content, to scroll about 80% of the
+   * width. Drawn only where the pointer hovers and is fine (`(hover: hover) and (pointer: fine)`), never on
+   * a touch screen. Absolute over the edge, so no pill moves when one comes or goes. The numbers are the px
+   * each arrow stands in from its edge, for a caller that pins something there (the actions belt's Switch
+   * block). Off by default.
+   */
+  arrows?: { readonly left: number; readonly right: number; readonly leftLabel: string; readonly rightLabel: string };
 }
+
+/** The arrows each measured edge calls for: left while content hides on the left, right while it hides on the right. */
+export function arrowsOf(edge: OverflowEdge) {
+  return { left: edge === "left" || edge === "both", right: edge === "right" || edge === "both" };
+}
+
+const NO_ARROWS = { left: false, right: false };
+const FINE_POINTER = "(hover: hover) and (pointer: fine)";
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+/** One arrow click moves the scroller by this share of its visible width. */
+const ARROW_STEP = 0.8;
+
+const ARROW_CLASS =
+  "absolute top-1/2 z-[5] grid size-6 -translate-y-1/2 place-items-center rounded-full border border-border bg-chrome text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 const CUE_GLYPH = {
   soft: "size-3 text-muted-foreground",
@@ -254,8 +370,18 @@ export function OverflowEdges({
   cue = "soft",
   edges = "both",
   wheel = false,
+  drag = false,
+  arrows,
 }: OverflowEdgesProps) {
-  const { ref, edge } = useOverflowEdges<HTMLDivElement>(wheel);
+  const { ref, edge } = useOverflowEdges<HTMLDivElement>({ wheel, drag });
+  const finePointer = useMediaQuery(FINE_POINTER);
+  const reducedMotion = useMediaQuery(REDUCED_MOTION);
+  const shownArrows = arrows !== undefined && finePointer ? arrowsOf(edge) : NO_ARROWS;
+  const scrollBy = (direction: -1 | 1) => {
+    const el = ref.current;
+    if (el === null) return;
+    el.scrollBy({ left: direction * ARROW_STEP * el.clientWidth, behavior: reducedMotion ? "auto" : "smooth" });
+  };
   // `edges="left"` downgrades a measured "right"/"both" so the right mask and chevron never
   // paint: "right" hides nothing on the left, so it becomes "none"; "both" keeps its left half.
   // `data-overflow` still publishes the MEASURED edge, unrestricted — it is read by the
@@ -291,6 +417,16 @@ export function OverflowEdges({
       >
         {children(ref)}
       </div>
+      {arrows !== undefined && shownArrows.left && (
+        <button type="button" data-slot="scroll-arrow" data-side="left" aria-label={arrows.leftLabel} onClick={() => scrollBy(-1)} style={{ left: `${arrows.left + 4}px` }} className={ARROW_CLASS}>
+          <Icon name="scroll-hint-left" className="size-4" />
+        </button>
+      )}
+      {arrows !== undefined && shownArrows.right && (
+        <button type="button" data-slot="scroll-arrow" data-side="right" aria-label={arrows.rightLabel} onClick={() => scrollBy(1)} style={{ right: `${arrows.right + 4}px` }} className={ARROW_CLASS}>
+          <Icon name="scroll-hint-right" className="size-4" />
+        </button>
+      )}
       {cue !== "none" && (paintEdge === "left" || paintEdge === "both") && (
         <span aria-hidden className="pointer-events-none absolute top-1/2 left-1 flex -translate-y-1/2 items-center justify-center">
           <Icon name="scroll-hint-left" className={CUE_GLYPH[cue]} />

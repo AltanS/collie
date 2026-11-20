@@ -2145,3 +2145,11 @@ svg[data-mark].mark-steps .ct-tw {
 [data-fold="book"] .fold-left-full {
   width: var(--fold-a);
 }
+
+/* A MOUSE DRAG ON THE ACTIONS BELT (components/ui/overflow-edges.tsx, `drag`). While the pointer drags the
+   scrolling part, the whole of it shows the closed hand, the pills' own hand cursor included. At rest the
+   pills keep theirs. */
+[data-belt-dragging],
+[data-belt-dragging] * {
+  cursor: grabbing !important;
+}
