@@ -116,6 +116,33 @@ describe("useNav", () => {
     expect(at()).toBe("/");
     expect(router.state.historyAction).toBe("POP");
   });
+
+  it("upTo replaces onto the target host or session instead of stepping back to a different one with the same space id", async () => {
+    const crossHost = mount("/space/w1?h=host-a");
+    await act(async () => nav.down("/pane/w1%3Ap1?h=host-a"));
+    await act(async () => nav.side("/pane/w1%3Ap1?h=host-b"));
+    await act(async () => nav.upTo("/space/w1?h=host-b"));
+    expect(crossHost.at()).toBe("/space/w1?h=host-b");
+    expect(crossHost.router.state.historyAction).toBe("REPLACE");
+    expect(crossHost.state()).toBeNull();
+    crossHost.unmount();
+
+    const crossSession = mount("/space/w1?s=alpha");
+    await act(async () => nav.down("/pane/w1%3Ap1?s=alpha"));
+    await act(async () => nav.side("/pane/w1%3Ap1?s=beta"));
+    await act(async () => nav.upTo("/space/w1?s=beta"));
+    expect(crossSession.at()).toBe("/space/w1?s=beta");
+    expect(crossSession.router.state.historyAction).toBe("REPLACE");
+    expect(crossSession.state()).toBeNull();
+    crossSession.unmount();
+
+    const sameScope = mount("/space/w1?h=host-a&s=alpha");
+    await act(async () => nav.down("/pane/w1%3Ap1?h=host-a&s=alpha"));
+    await act(async () => nav.upTo("/space/w1?h=host-a&s=alpha"));
+    expect(sameScope.at()).toBe("/space/w1?h=host-a&s=alpha");
+    expect(sameScope.router.state.historyAction).toBe("POP");
+    sameScope.unmount();
+  });
 });
 
 describe("useNav: the Files tree's moves", () => {

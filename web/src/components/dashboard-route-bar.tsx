@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { useLocation } from "react-router";
 
 import { DashboardTabBar } from "@/components/dashboard-tab-bar";
 import type { TrickRef } from "@/components/trick-place-items";
@@ -7,7 +8,7 @@ import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useNav } from "@/hooks/use-nav";
 import type { DashView } from "@/lib/dash-view";
-import { hillPath, homePath, trickSessionPath } from "@/lib/nav";
+import { hillPath, homePath, resolveHomeScope, trickSessionPath } from "@/lib/nav";
 import { parseTrickSessionId } from "@/lib/tricks/schema";
 import type { AgentView } from "@/lib/types";
 
@@ -45,12 +46,16 @@ export function footAir(shown: boolean, air: "pb-3" | "pb-4"): string {
 
 export function DashboardRouteBar({ bar, at }: { bar: DashboardBar; at: DashboardRouteBarAt }) {
   const nav = useNav();
+  const { pathname, search, state } = useLocation();
   const { setDashView } = useDashPrefs();
   // Gone while the on-screen keyboard is up, as the Back bar and the New button are (DESIGN.md §1, §12):
   // the Hill's note field raises it, and the bar would ride up over the keys and cost the screen the
   // row it needs to show what is being typed.
   const keyboard = useKeyboardOpen();
-  const { scope } = bar;
+  const scope =
+    bar.scope.host !== undefined || bar.scope.session !== undefined
+      ? bar.scope
+      : resolveHomeScope(pathname, search, state);
   const onSelect = useCallback(
     (view: DashView) => {
       setDashView(view);
