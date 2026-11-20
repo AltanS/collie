@@ -1127,6 +1127,18 @@ describe("omp's queue-prefix draft (Queueing ➤) reads as a draft (18.6.1 and 1
   });
 });
 
+// omp 19.0.1 fills the empty box with a grey prompt suggestion after a turn
+// ("roda os testes"). It is the grey the profile already names for ghost text, but
+// not after a typed draft, so the inline-hint rule did not reach it; the box read
+// as a draft and every phone send was refused draft_present (field case 2026-11-20).
+describe("omp 19.0.1's prompt suggestion in an empty box", () => {
+  it("reads the grey suggestion as a placeholder, not a draft", () => {
+    const read = readScreen(fixtureRows("omp--v19-0-1-suggestion--w74.txt", SURFACE_FIXTURES_DIR), "omp", idleFor("omp"));
+    expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    expect(read.frame?.placeholder).toBe(true);
+  });
+});
+
 // Issue 747: pi-zentui 0.34.0 on pi 1.5.0 draws its Opencode editor as rail rows between pi's two rules
 // (a pad row, the editor rows, a pad row, then the model row), and the profile's wide column-zero prompt
 // took the rails and the model row for a draft, so every send was refused draft_present. Live captures
