@@ -124,6 +124,7 @@ The file has one table, `[keys]`. Each name is an action from the table above, o
 - Your value replaces the default keys of that action whole.
 - `""` or `[]` unbinds the action.
 - A name you leave out keeps its default keys.
+- The limits are 256 names, 64 characters in a name, 8 keys for one action and 64 characters in a key. An entry over a limit is dropped, and a table with more than 256 names loses the names after the 256th.
 
 The bridge reads the file again when it changes, with no restart. Reload the page to see it.
 `shortcuts.toml.example` lists every action and its default as a commented line.

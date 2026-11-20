@@ -20,6 +20,18 @@ interface ShortcutsDocument {
   keys?: JsonValue;
 }
 
+/**
+ * The bounds on the file, in one place. An entry over a cap is dropped with one warn line, never the
+ * file; over `maxNames` the rest of the table is dropped. They keep a huge or hostile file from
+ * becoming a huge wire message, and no real keymap comes near them.
+ */
+export const SHORTCUT_LIMITS = {
+  maxNames: 256,
+  maxNameLength: 64,
+  maxBindingsPerName: 8,
+  maxBindingLength: 64,
+} as const;
+
 /** An action name: lower-case words joined by `_` (`new_tab`, `focus_pane_left`, `prefix`). */
 const ACTION_NAME = /^[a-z_]+$/;
 
@@ -52,14 +64,35 @@ export function validateOperatorShortcuts(
     return [];
   }
   const entries = new Map<string, string[]>();
+  let seen = 0;
   for (const [name, value] of Object.entries(table)) {
+    seen += 1;
+    if (seen > SHORTCUT_LIMITS.maxNames) {
+      warn(`more than ${SHORTCUT_LIMITS.maxNames} names in [keys], ignoring the rest of the table`);
+      break;
+    }
+    // A name is file content: print it quoted and cut, so a newline or a control character in a
+    // quoted TOML key cannot forge a log line.
+    const shown = JSON.stringify(name.slice(0, SHORTCUT_LIMITS.maxNameLength));
+    if (name.length > SHORTCUT_LIMITS.maxNameLength) {
+      warn(`ignoring ${shown}, a name is at most ${SHORTCUT_LIMITS.maxNameLength} characters`);
+      continue;
+    }
     if (!ACTION_NAME.test(name)) {
-      warn(`ignoring "${name}", an action name is lower-case letters and underscores`);
+      warn(`ignoring ${shown}, an action name is lower-case letters and underscores`);
       continue;
     }
     const bindings = readBindings(value);
     if (bindings === null) {
-      warn(`ignoring "${name}", its value must be a string or a list of strings`);
+      warn(`ignoring ${shown}, its value must be a string or a list of strings`);
+      continue;
+    }
+    if (bindings.length > SHORTCUT_LIMITS.maxBindingsPerName) {
+      warn(`ignoring ${shown}, at most ${SHORTCUT_LIMITS.maxBindingsPerName} bindings for one name`);
+      continue;
+    }
+    if (bindings.some((binding) => binding.length > SHORTCUT_LIMITS.maxBindingLength)) {
+      warn(`ignoring ${shown}, a binding is at most ${SHORTCUT_LIMITS.maxBindingLength} characters`);
       continue;
     }
     entries.set(name, bindings);

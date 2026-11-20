@@ -27,6 +27,9 @@
 #   - An upper-case letter adds shift. `1..9` is a range, for the action that takes a number.
 #   - Case does not matter for the rest.
 #
+# Limits: 256 names, 64 characters in a name, 8 bindings for one name, 64 characters in a binding.
+# An entry over a limit is dropped, and the names after the 256th are dropped.
+#
 # Unbind an action with `""` or `[]`.
 #
 # The browser owns a few chords, and a page cannot take them: `ctrl+w`, `ctrl+t`, `ctrl+n`,

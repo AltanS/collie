@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { OperatorFileIo } from "./operator-file.ts";
-import { createOperatorShortcuts, validateOperatorShortcuts } from "./operator-shortcuts.ts";
+import { createOperatorShortcuts, SHORTCUT_LIMITS, validateOperatorShortcuts } from "./operator-shortcuts.ts";
 
 // The keyboard shortcuts file: the bridge checks the SHAPE of the `[keys]` table and nothing else,
 // because the web keymap owns the grammar. Driven like the keys.toml suite: the validator with parsed
@@ -66,6 +66,85 @@ describe("validateOperatorShortcuts", () => {
     for (const name of ["Zoom", "new-tab", "switch_pane", "help", "settings", "find"]) {
       expect(logged.some((line) => line.includes(`"${name}"`))).toBe(true);
     }
+  });
+
+  describe("bounds", () => {
+    const limits = SHORTCUT_LIMITS;
+
+    /** A lower-case, unique word for an index (action names are letters and underscores). */
+    function numberWord(i: number): string {
+      return i.toString(26).replace(/[0-9a-p]/g, (c) => String.fromCharCode("a".charCodeAt(0) + Number.parseInt(c, 26)));
+    }
+
+    function run(keys: Record<string, unknown>) {
+      const logged: string[] = [];
+      const out = validateOperatorShortcuts({ keys } as never, (m) => logged.push(m));
+      return { out: out[0] ?? {}, logged };
+    }
+
+    test("a name of exactly the cap loads, one over is dropped with one warn", () => {
+      const atCap = "a".repeat(limits.maxNameLength);
+      const overCap = "a".repeat(limits.maxNameLength + 1);
+      const { out, logged } = run({ [atCap]: "x", [overCap]: "y", ok: "z" });
+      expect(Object.keys(out)).toEqual([atCap, "ok"]);
+      expect(logged).toHaveLength(1);
+    });
+
+    test("a list of exactly the cap loads, one over drops that entry only", () => {
+      const list = (n: number) => Array.from({ length: n }, () => "ctrl+a");
+      const { out, logged } = run({
+        at: list(limits.maxBindingsPerName),
+        over: list(limits.maxBindingsPerName + 1),
+        ok: "z",
+      });
+      expect(Object.keys(out)).toEqual(["at", "ok"]);
+      expect(logged).toHaveLength(1);
+      expect(logged[0]).toContain('"over"');
+    });
+
+    test("a binding of exactly the cap loads, one over drops that entry only", () => {
+      const { out, logged } = run({
+        at: "k".repeat(limits.maxBindingLength),
+        over: ["ctrl+a", "k".repeat(limits.maxBindingLength + 1)],
+        ok: "z",
+      });
+      expect(Object.keys(out)).toEqual(["at", "ok"]);
+      expect(logged).toHaveLength(1);
+      expect(logged[0]).toContain('"over"');
+    });
+
+    test("the cap of names loads, the next one stops the table with one warn", () => {
+      const keys: Record<string, string> = {};
+      for (let i = 0; i < limits.maxNames + 5; i += 1) keys[`name_${numberWord(i)}`] = "x";
+      expect(Object.keys(keys)).toHaveLength(limits.maxNames + 5);
+      const { out, logged } = run(keys);
+      expect(Object.keys(out)).toHaveLength(limits.maxNames);
+      expect(logged).toHaveLength(1);
+      const exact = run(Object.fromEntries(Object.entries(keys).slice(0, limits.maxNames)));
+      expect(Object.keys(exact.out)).toHaveLength(limits.maxNames);
+      expect(exact.logged).toHaveLength(0);
+    });
+  });
+
+  describe("log forging", () => {
+    test("a rejected name with a newline or a control character is quoted onto one line", () => {
+      const logged: string[] = [];
+      validateOperatorShortcuts(
+        { keys: { "a\nb": "x", "bell\u0007\u001b[31m": "y", ["z".repeat(200)]: "w" } },
+        (m) => logged.push(m),
+      );
+      expect(logged).toHaveLength(3);
+      for (const line of logged) expect(line).not.toMatch(/[\u0000-\u001f\u007f]/);
+      expect(logged[0]).toContain('"a\\nb"');
+      expect(logged[2]?.length).toBeLessThan(200);
+    });
+
+    test("a quoted TOML key holding an escaped newline reaches the warn without a newline", () => {
+      const logged: string[] = [];
+      read('[keys]\n"fake\\n[shortcuts] all good" = "x"', (m) => logged.push(m));
+      expect(logged).toHaveLength(1);
+      expect(logged[0]).not.toContain("\n");
+    });
   });
 
   test("`keys` that is not a table costs the file's bindings and nothing else", () => {
