@@ -184,7 +184,7 @@ const probeTern: Probe = async (deps) => {
  */
 const probeRex: Probe = async (deps) => {
   const uid = deps.uid ?? process.getuid?.() ?? 1000;
-  const socket = defaultRexSocket(deps.ctx.env.XDG_RUNTIME_DIR, uid, deps.ctx.home, process.platform);
+  const socket = defaultRexSocket(deps.ctx.env.XDG_RUNTIME_DIR, uid, deps.ctx.home);
   if (deps.files.exists(socket)) return { present: true, answering: null, where: socket, version: null };
   const binary = resolveRexBinary((deps.ctx.env.COLLIE_REX_BIN ?? "").trim(), (path) => deps.files.exists(path), rexBinaryCandidates(deps.ctx.home));
   return binary === null ? absent() : absent(`${binary}, no server socket at ${socket}`);

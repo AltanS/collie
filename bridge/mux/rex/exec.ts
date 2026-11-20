@@ -21,6 +21,8 @@
 import { existsSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
+import { HOST } from "../../host.ts";
+
 /** What one finished `rex …` command said. */
 export interface RexRunResult {
   readonly code: number;
@@ -84,7 +86,7 @@ export function defaultRexSocket(
   runtimeDir: string | undefined = process.env.XDG_RUNTIME_DIR,
   uid: number = process.getuid?.() ?? 1000,
   home: string = process.env.HOME ?? "",
-  platform: NodeJS.Platform = process.platform,
+  platform: NodeJS.Platform = HOST.platform,
 ): string {
   const dir = runtimeDir?.trim();
   if (dir) return `${dir}/rex/server.sock`;

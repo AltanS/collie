@@ -47,11 +47,13 @@ describe("defaultRexSocket", () => {
     expect(defaultRexSocket("/run/user/1000", 1000, "/home/o", "linux")).toBe("/run/user/1000/rex/server.sock");
   });
 
+  // "" — not undefined: an explicit undefined wakes the parameter's own default, which reads this
+  // process's XDG_RUNTIME_DIR, and a Linux CI runner always has one (probed the hard way).
   test("a Mac with no XDG runtime dir reads the app-managed Application Support socket", () => {
-    expect(defaultRexSocket(undefined, 501, "/Users/o", "darwin")).toBe("/Users/o/Library/Application Support/rex/server.sock");
+    expect(defaultRexSocket("", 501, "/Users/o", "darwin")).toBe("/Users/o/Library/Application Support/rex/server.sock");
   });
 
   test("Linux keeps /run/user when nothing is configured", () => {
-    expect(defaultRexSocket(undefined, 1000, "/home/o", "linux")).toBe("/run/user/1000/rex/server.sock");
+    expect(defaultRexSocket("", 1000, "/home/o", "linux")).toBe("/run/user/1000/rex/server.sock");
   });
 });
