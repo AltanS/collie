@@ -32,6 +32,13 @@ export const SHORTCUT_LIMITS = {
   maxBindingLength: 64,
 } as const;
 
+/**
+ * A control character: C0 (U+0000-U+001F), DEL (U+007F) and C1 (U+0080-U+009F), which is exactly
+ * Unicode `Cc`. No real binding holds one, and one that reaches a terminal or a log can move the
+ * cursor or forge a line, so an entry that holds one is dropped.
+ */
+const CONTROL_CHARACTER = /\p{Cc}/u;
+
 /** An action name: lower-case words joined by `_` (`new_tab`, `focus_pane_left`, `prefix`). */
 const ACTION_NAME = /^[a-z_]+$/;
 
@@ -93,6 +100,10 @@ export function validateOperatorShortcuts(
     }
     if (bindings.some((binding) => binding.length > SHORTCUT_LIMITS.maxBindingLength)) {
       warn(`ignoring ${shown}, a binding is at most ${SHORTCUT_LIMITS.maxBindingLength} characters`);
+      continue;
+    }
+    if (bindings.some((binding) => CONTROL_CHARACTER.test(binding))) {
+      warn(`ignoring ${shown}, a binding holds a control character`);
       continue;
     }
     entries.set(name, bindings);
