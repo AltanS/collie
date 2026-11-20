@@ -40,3 +40,28 @@ sheet. The palette and the draft offers share one shell, `ui/modal.tsx`.**
   caller that needs a close button draws one.
 - Revisit if a decision needs more than one screen of content: that is a task, and a task is a sheet or
   a page.
+
+## Addendum — 2026-11-20: on a wide window a sheet is drawn as a centred dialog
+
+The operator, on a desktop window, of the Attachment sheet (a 640px panel stuck to the bottom edge, its
+grab handle, a small picture in it): "on desktop these sheets opening from the bottom need to be reworked,
+they don't work on desktop". The bottom edge is where a phone's thumb is; on a desktop it is where the eye
+is not, and a pull to close means nothing to a mouse.
+
+**A sheet still holds a task and a modal still holds a decision.** What changes is only how the sheet is
+drawn: on the `expanded` width class (ADR 0120) with the screen flat, `BottomSheet` stands in the middle
+of the window in this shell's look, through the constants `ui/modal.tsx` exports (`MODAL_FRAME`,
+`MODAL_PANEL_LOOK`, `MODAL_CENTER_ENTRANCE`, `MODAL_SCRIM`, `useModalRoom`): the scrim, four round
+corners, a uniform border, the soft shadow, the small zoom in (none under reduced motion), centred in the
+room above an on-screen keyboard. It keeps its title row, its close button and its `action` slot, and
+loses the grab handle, the pull down to close and the pull-up peek. It is at most 82% of the window tall
+and its body scrolls inside. `compact` and `medium`, and a foldable folded as a book or held as a
+tabletop, keep the bottom sheet as it was: there the thumb is at the bottom edge, or the middle of the
+window is the hinge. The component keeps its name.
+
+- **One size word.** `size="viewer"` lets a sheet whose content is a picture or a document page
+  (`ImageSheet`, `PagerSheet`) stand as wide as its picture, up to `min(92vw, 1200px)`, the picture
+  fitted in the height left (`SHEET_PICTURE_FIT`) and never drawn past its own pixels. The pager's stage
+  takes the viewer's whole room, so a page of another shape does not move Previous and Next.
+- **No second shell.** A sheet drawn as a dialog is not a modal and does not become one: a new task is
+  still a sheet, a new blocking decision still uses `Modal`.
