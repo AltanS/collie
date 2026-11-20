@@ -40,7 +40,7 @@ import type { Cursor } from "./cursor.ts";
 import { NO_CURSOR } from "./cursor.ts";
 import type { RowReducer } from "./reduce.ts";
 import type { TranscriptStore } from "./store.ts";
-import { receiptQueue, unnamedFill, type QueuedSendWire, type ReceiptQueued } from "./receipt-queue.ts";
+import { receiptQueue, spelledQueue, unnamedFill, type QueuedSendWire, type ReceiptQueued } from "./receipt-queue.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry } from "./types.ts";
 import { LIVE_TURNS, MAX_PAGE_ROWS, pageStart } from "./turns.ts";
 import { redactText } from "../redact.ts";
@@ -750,12 +750,17 @@ class LiveWindow {
     if (this.adapter.sendQueuedNow !== undefined) body.sendQueuedNow = [...this.adapter.sendQueuedNow];
     // Collie's own queued sends (ADR 0122), checked against every prompt the window holds, not the page.
     if (receipts.length > 0) {
+      const entries = this.rows.map((row) => row.entry);
+      const spells = this.adapter.spellsSend;
+      // A place the journal wrote in the harness's own spelling of a send (a picture's `[Image #N]`) shows the
+      // send's own words, so the phone's line for that send finds them and hands over (receipt-queue.ts).
+      body.queued = spelledQueue(receipts, entries, body.queued, spells);
       // A place the journal holds without words takes an open send's text first, on the journal's own
       // card, so the receipt cards below see it listed and never draw it twice (receipt-queue.ts).
       const unnamed = this.reducer?.unnamedQueued?.() ?? 0;
-      const named = unnamedFill(receipts, this.rows.map((row) => row.entry), body.queued, unnamed);
+      const named = unnamedFill(receipts, entries, body.queued, unnamed, spells);
       if (named.length > 0) body.queued = [...body.queued, ...named];
-      const cards = receiptQueue(receipts, this.rows.map((row) => row.entry), this.adapter.recordsQueue === true, body.queued);
+      const cards = receiptQueue(receipts, entries, this.adapter.recordsQueue === true, body.queued, spells);
       if (cards.length > 0) body.queuedSends = cards;
     }
     // Over every row the window holds, not the `limit` sent: the point is the prompt the first paint
