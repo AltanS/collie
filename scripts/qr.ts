@@ -56,14 +56,42 @@ function colourAndPad(code: string): string {
   return [...Array(QUIET_TEXT_ROWS).fill(blank), ...body, ...Array(QUIET_TEXT_ROWS).fill(blank)].join("\n");
 }
 
-export async function renderQr(url: string): Promise<string> {
-  if (url.length > MAX_URL_LEN) throw new Error(`url too long to render as a QR code (${url.length} > ${MAX_URL_LEN})`);
-  let qrcode: QrModule;
+const PACKAGE = "qrcode-terminal";
+
+/**
+ * `load()`, or the error that says why the package did not load. "Isn't installed" only when the
+ * package ITSELF is missing: a module-not-found error whose missing name (the first quoted name of its
+ * message, in Bun and in Node) is the package or a path under it. A file that a module of an installed
+ * copy requires is named by its own relative path, and a copy that is there but unreadable or
+ * unparsable throws something else; both say the real error, because `bun install` is not the fix for
+ * them. One limit: Bun names the package, not the file, when an imported path under it is missing, so
+ * a copy that lost one of `qrModules`' two vendor files still reads as not installed. The original error
+ * rides along as `cause` either way (#822).
+ */
+async function loadPackage<T>(load: () => Promise<T>): Promise<T> {
   try {
-    qrcode = (await import("qrcode-terminal")).default;
-  } catch {
-    throw new Error("qrcode-terminal isn't installed — run 'bun install' in the plugin root");
+    return await load();
+  } catch (err) {
+    if (err instanceof Error && packageMissing(err)) {
+      throw new Error(`${PACKAGE} isn't installed, run 'bun install' in the plugin root`, { cause: err });
+    }
+    throw new Error(`${PACKAGE} is installed but could not load: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
+}
+
+function packageMissing(err: Error): boolean {
+  const code = "code" in err ? err.code : undefined;
+  if (code !== "ERR_MODULE_NOT_FOUND" && code !== "MODULE_NOT_FOUND") return false;
+  const named = /'([^']+)'/u.exec(err.message)?.[1] ?? "";
+  return named === PACKAGE || named.startsWith(`${PACKAGE}/`);
+}
+
+/** Loads the renderer; a test passes its own to stand in for a package that fails to load. */
+export type QrLoader = () => Promise<{ default: QrModule }>;
+
+export async function renderQr(url: string, load: QrLoader = () => import("qrcode-terminal")): Promise<string> {
+  if (url.length > MAX_URL_LEN) throw new Error(`url too long to render as a QR code (${url.length} > ${MAX_URL_LEN})`);
+  const qrcode: QrModule = (await loadPackage(load)).default;
   const code = await new Promise<string>((resolve) =>
     qrcode.generate(url, { small: true }, (out: string) => resolve(out)),
   );
@@ -76,16 +104,9 @@ export async function renderQr(url: string): Promise<string> {
  * light one, with NO quiet zone, since the drawer owns its margins. The encoder and the error level
  * are the ones `renderQr`'s library uses (`L`), so both spellings of one URL are the same symbol.
  */
-export async function qrModules(url: string): Promise<string[]> {
+export async function qrModules(url: string, load: EncoderLoader = loadEncoder): Promise<string[]> {
   if (url.length > MAX_URL_LEN) throw new Error(`url too long to render as a QR code (${url.length} > ${MAX_URL_LEN})`);
-  let QRCode: typeof import("qrcode-terminal/vendor/QRCode/index.js").default;
-  let level: typeof import("qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js").default;
-  try {
-    QRCode = (await import("qrcode-terminal/vendor/QRCode/index.js")).default;
-    level = (await import("qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js")).default;
-  } catch {
-    throw new Error("qrcode-terminal isn't installed, run 'bun install' in the plugin root");
-  }
+  const { QRCode, level } = await loadPackage(load);
   const qr = new QRCode(-1, level.L);
   qr.addData(url);
   qr.make();
@@ -93,6 +114,20 @@ export async function qrModules(url: string): Promise<string[]> {
   return Array.from({ length: n }, (_row, r) =>
     Array.from({ length: n }, (_col, c) => (qr.isDark(r, c) ? "1" : "0")).join(""),
   );
+}
+
+interface Encoder {
+  readonly QRCode: typeof import("qrcode-terminal/vendor/QRCode/index.js").default;
+  readonly level: typeof import("qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js").default;
+}
+
+/** Loads the encoder {@link qrModules} draws from; a test passes its own, as for {@link renderQr}. */
+export type EncoderLoader = () => Promise<Encoder>;
+
+async function loadEncoder(): Promise<Encoder> {
+  const QRCode = (await import("qrcode-terminal/vendor/QRCode/index.js")).default;
+  const level = (await import("qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js")).default;
+  return { QRCode, level };
 }
 
 if (import.meta.main) {
