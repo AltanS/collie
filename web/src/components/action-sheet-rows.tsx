@@ -73,6 +73,8 @@ export function DestructiveActionRow({
   closingLabel,
   armed,
   closing,
+  hint,
+  disabled = false,
   onClick,
 }: {
   icon: ReactNode;
@@ -82,13 +84,18 @@ export function DestructiveActionRow({
   closingLabel: string;
   armed: boolean;
   closing: boolean;
+  /** As {@link ActionRow}'s: one line that says what the tap does. Absent on every other row. */
+  hint?: string;
+  /** As {@link ActionRow}'s: the row stays and takes no tap. Absent on every other row. */
+  disabled?: boolean;
   onClick: () => void;
 }) {
+  const words = closing ? closingLabel : armed ? confirmLabel : label;
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={closing}
+      disabled={closing || disabled}
       className={cn(
         // Same 44px floor as ActionRow above — and it matters more here, because this is the row a
         // mis-tap arms.
@@ -99,7 +106,14 @@ export function DestructiveActionRow({
       )}
     >
       {closing ? <Icon name="busy" className="size-4 shrink-0 animate-spin" /> : icon}
-      {closing ? closingLabel : armed ? confirmLabel : label}
+      {hint === undefined ? (
+        words
+      ) : (
+        <span className="min-w-0">
+          <span className="block">{words}</span>
+          <span className="block text-xs font-normal leading-snug text-muted-foreground">{hint}</span>
+        </span>
+      )}
     </button>
   );
 }

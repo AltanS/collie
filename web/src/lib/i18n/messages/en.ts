@@ -756,6 +756,13 @@ export const en = {
   "composer.protocol.append": "Add to it",
   "composer.protocol.replace": "Replace",
   "composer.protocol.cancel": "Cancel",
+  // The draft offers as a sheet (send-offer-sheet.tsx, a trial of 2026-11-20). Each line says what the
+  // bridge does: Add types one space and the message after the draft, then Enter; Replace empties the
+  // box, types the message, then Enter; Cancel sends nothing and the message stays in the phone's box.
+  "composer.protocol.draftSheet.title": "The box already holds a draft",
+  "composer.protocol.draftSheet.appendHint": "Your message goes after the draft. Both are sent as one message.",
+  "composer.protocol.draftSheet.replaceHint": "The draft is deleted. Only your message is sent.",
+  "composer.protocol.draftSheet.cancelHint": "Nothing is sent. Your message stays here.",
   "composer.protocol.submit": "Submit",
   "composer.protocol.discard": "Discard",
   "composer.protocol.commit": "Type here",
@@ -4401,6 +4408,10 @@ export const PENDING_TRANSLATION = [
   "shortcuts.hint.seeDirect",
   "shortcuts.hint.show",
   "shortcuts.hint.close",
+  "composer.protocol.draftSheet.title",
+  "composer.protocol.draftSheet.appendHint",
+  "composer.protocol.draftSheet.replaceHint",
+  "composer.protocol.draftSheet.cancelHint",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

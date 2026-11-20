@@ -36,6 +36,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { BottomSheet } from "@/components/ui/sheet";
 import { SendOfferStrip } from "@/components/send-offer-strip";
+import { opensAsSheet, SendOfferSheet } from "@/components/send-offer-sheet";
 import { HeldCard, drawnHeldRows, type HeldAction } from "@/components/composer-held";
 import { offerMode, type SendNote } from "@/lib/send-protocol";
 import { SecretField } from "@/components/secret-field";
@@ -2870,7 +2871,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // (M102 spec 04). Only that one: a later refusal (a link that is down, a lock) has words the card does not.
   const cannotTellInScreen = cannotTellFacts !== null && (cannotTellInView ?? true);
   const cardStandsIn = cannotTellInScreen && unknownAnswer !== null && shownRefusalKey === unknownAnswer.noticeKey;
-  const refusalShown = sendRefusal !== null && shownRefusalKey !== hiddenRefusalKey && !underPasswordNotice && !cardStandsIn;
+  // The draft offers open as a sheet (trial, send-offer-sheet.tsx), which says the refusal itself: its notice waits.
+  const draftSheetOpen = protocolOffer !== null && opensAsSheet(protocolOffer.offers);
+  const refusalShown = sendRefusal !== null && shownRefusalKey !== hiddenRefusalKey && !underPasswordNotice && !cardStandsIn && !draftSheetOpen;
+  // The offers' ✕, and the sheet's close without a choice: the offer goes, its notice hides, nothing is sent.
+  const dismissOffers = () => {
+    setProtocolOffer(null);
+    hideRefusal();
+  };
   // The way on, as buttons in the notice: the card, the screen, the Keys dock. Each only where it can do
   // something: the Screen when it is not showing, the Keys dock when it can open and is not open.
   const refusalCard = sendRefusal?.toCard === true && onAnswerDialog !== undefined && dialogCard;
@@ -4273,22 +4281,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {/* The Send Protocol's offers (M56 spec 05), at the thumb: Add / Replace / Cancel on a draft,
             Submit / Discard on text that was typed and not sent, and the second tap on a screen
             Collie cannot read. Each is a new request; the ✕ drops the strip and sends nothing. */}
-        <Collapse open={protocolOffer !== null}>
-          {protocolOffer !== null && (
+        <Collapse open={protocolOffer !== null && !draftSheetOpen}>
+          {protocolOffer !== null && !draftSheetOpen && (
             <SendOfferStrip
               offers={protocolOffer.offers}
               disabled={starting || sending || locked}
               onOffer={onProtocolOffer}
               // The ✕ drops the strip and hides the notice over it: a notice that still says "tap Send
               // anyway" with no Send anyway to tap is a sentence about a button that is gone.
-              onDismiss={() => {
-                setProtocolOffer(null);
-                hideRefusal();
-              }}
+              onDismiss={dismissOffers}
               capConfirm={protocolOffer.capAck}
             />
           )}
         </Collapse>
+        {draftSheetOpen && (
+          <SendOfferSheet
+            offers={protocolOffer.offers}
+            disabled={starting || sending || locked}
+            onOffer={onProtocolOffer}
+            onDismiss={dismissOffers}
+            sentence={sendRefusal?.sentence ?? null}
+          />
+        )}
         {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other
             strips, because that is where the eye already is when a send is refused — and it is a
             NOTICE beside the unchanged two-tap Send ("Send anyway"), never a replacement for it. */}

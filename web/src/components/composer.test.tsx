@@ -479,14 +479,14 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     expect(recordedSends()[0]!.mode).toBe("command");
   });
 
-  it("composer draft: the bridge refuses draft_present and the strip offers Add, Replace and Cancel", async () => {
+  it("composer draft: the bridge refuses draft_present and the sheet offers Add, Replace and Cancel", async () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "draft_present", { offers: ["append", "replace", "cancel"], surface: DRAFT })));
     renderComposerWithStatus({ surface: DRAFT });
     await typeAndSend("my message");
-    await waitFor(() => expect(screen.getByRole("button", { name: "Add to it" })).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Replace" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
-    expect(screen.getByText(/already holds a draft/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Add to it/ })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /^Replace/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Cancel/ })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /already holds a draft/i })).toBeInTheDocument();
     expect(screen.getByTestId("status").textContent).toBe("");
     expect(screen.getByRole("textbox")).toHaveValue("my message");
   });
@@ -2227,7 +2227,7 @@ describe("Composer — terminal-draft preview", () => {
 
     // The host line still holds the draft (takeover never touched it), so the bridge refuses the send.
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await user.click(await screen.findByRole("button", { name: "Replace" }));
+    await user.click(await screen.findByRole("button", { name: /^Replace/ }));
     await waitFor(() => expect(box).toHaveValue("")); // cleared after the replace went out
     expect(callOrder).toEqual(["reply:adopted line", "reply:adopted line"]);
     expect(recordedSends().map((r) => r.mode)).toEqual(["send", "replace"]);
@@ -5300,7 +5300,7 @@ describe("outcome at the thumb", () => {
 
   it("refused draft_present: Add to it, Replace and Cancel, with the draft kept", async () => {
     await send(() => sendAnswer("x", "refused", "draft_present", { offers: ["append", "replace", "cancel"], surface: wayOutCase("draft").surface }));
-    const strip = await screen.findByTestId("send-offers");
+    const strip = await screen.findByTestId("send-offer-sheet");
     for (const word of ["Add to it", "Replace", "Cancel"]) expect(strip).toHaveTextContent(word);
     expect(screen.getByRole("textbox")).toHaveValue("hello there");
     expect(header()).toBe("");

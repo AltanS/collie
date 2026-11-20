@@ -122,13 +122,12 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     renderComposer();
     await user.type(screen.getByPlaceholderText(/type a reply/i), "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    const strip = await screen.findByTestId("send-offers");
-    expect(strip).toHaveTextContent("Add to it");
-    expect(strip).toHaveTextContent("Replace");
-    expect(strip).toHaveTextContent("Cancel");
-    expect(screen.getByText("The box already holds a draft. Add to it, replace it, or cancel.")).toBeInTheDocument();
+    const sheet = await screen.findByTestId("send-offer-sheet");
+    expect(sheet).toHaveTextContent("Add to it");
+    expect(sheet).toHaveTextContent("Replace");
+    expect(sheet).toHaveTextContent("Cancel");
     expect(loadDraft(undefined, "w1:p1")).toBe("new words"); // a refusal keeps the draft
-    await user.click(screen.getByRole("button", { name: "Replace" }));
+    await user.click(screen.getByRole("button", { name: /^Replace/ }));
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends[1]).toMatchObject({ text: "new words", mode: "replace" });
     expect(sends[1]!.id).not.toBe(sends[0]!.id);
@@ -140,12 +139,12 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
   // (`CAUTION_ACTION_TAP`: 30px padding box + 2 x 7px). They are as wide as their word, not blocks.
   it("the offers are compact buttons that keep the 44px reach, the dismiss included", async () => {
     const user = userEvent.setup();
-    bridge([{ body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } }]);
+    bridge([{ body: { receipt: receipt("typed_not_submitted", "changed"), offers: ["submit", "discard"] } }]);
     renderComposer();
     await user.type(screen.getByPlaceholderText(/type a reply/i), "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await screen.findByTestId("send-offers");
-    for (const name of ["Add to it", "Replace", "Cancel"]) {
+    for (const name of ["Submit", "Discard"]) {
       const { className } = screen.getByRole("button", { name });
       expect(className).toContain("before:-inset-y-[7px]");
       expect(className).not.toMatch(/(?:^|\s)flex-1(?=\s|$)/);
@@ -163,7 +162,9 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     await user.click(screen.getByRole("button", { name: "Send" }));
     expect(await screen.findByText("Your queued message is back in the agent as a draft. Use its card.")).toBeInTheDocument();
     expect(screen.queryByText("The box already holds a draft. Add to it, replace it, or cancel.")).toBeNull();
-    expect(screen.getByTestId("send-offers")).toHaveTextContent("Replace");
+    // The sheet carries the sentence, because the notice waits behind it.
+    expect(screen.getByTestId("send-offer-sheet")).toHaveTextContent("Use its card.");
+    expect(screen.getByTestId("send-offer-sheet")).toHaveTextContent("Replace");
   });
 
   it("a slash command onto a draft offers Replace and Cancel only, says so, and Replace sends it as a replace", async () => {
@@ -175,13 +176,12 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     renderComposer();
     await user.type(screen.getByPlaceholderText(/type a reply/i), "/model");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    const strip = await screen.findByTestId("send-offers");
+    const sheet = await screen.findByTestId("send-offer-sheet");
     expect(sends[0]).toMatchObject({ text: "/model", mode: "command" });
-    expect(strip).not.toHaveTextContent("Add to it");
-    expect(strip).toHaveTextContent("Replace");
-    expect(strip).toHaveTextContent("Cancel");
-    expect(screen.getByText("The box already holds a draft. Replace it, or cancel.")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Replace" }));
+    expect(sheet).not.toHaveTextContent("Add to it");
+    expect(sheet).toHaveTextContent("Replace");
+    expect(sheet).toHaveTextContent("Cancel");
+    await user.click(screen.getByRole("button", { name: /^Replace/ }));
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends[1]).toMatchObject({ text: "/model", mode: "replace" });
   });
@@ -195,7 +195,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     renderComposer();
     await user.type(screen.getByPlaceholderText(/type a reply/i), "more words");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await user.click(await screen.findByRole("button", { name: "Add to it" }));
+    await user.click(await screen.findByRole("button", { name: /^Add to it/ }));
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends[1]).toMatchObject({ text: " more words", mode: "append" });
   });
@@ -267,6 +267,112 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     expect(screen.getByPlaceholderText("Sending is off on this machine")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("aria-disabled", "true");
     expect(sends).toEqual([]);
+  });
+});
+
+// The draft offers open as a sheet (trial, 2026-11-20, send-offer-sheet.tsx): Add to it, Replace and Cancel act on a
+// draft the person may have typed at the desk, so they are a choice in the app's modal, each row with its line. Every
+// other offer set keeps the strip under the field.
+describe("the draft offers as a sheet", () => {
+  const DRAFT = { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } };
+  const NOTICE = "The box already holds a draft. Add to it, replace it, or cancel.";
+  const field = () => screen.getByPlaceholderText(/type a reply/i);
+
+  async function refuse(user: ReturnType<typeof userEvent.setup>, text: string) {
+    await user.type(field(), text);
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    return screen.findByRole("dialog", { name: "The box already holds a draft" });
+  }
+
+  it("opens the sheet with three rows and their lines, and draws no strip and no notice", async () => {
+    const user = userEvent.setup();
+    bridge([DRAFT]);
+    renderComposer();
+    await refuse(user, "new words");
+    expect(screen.queryByTestId("send-offers")).toBeNull();
+    expect(screen.queryByText(NOTICE)).toBeNull();
+    expect(screen.getByRole("button", { name: /^Add to it/ })).toHaveTextContent("Your message goes after the draft. Both are sent as one message.");
+    const replace = screen.getByRole("button", { name: /^Replace/ });
+    expect(replace).toHaveTextContent("The draft is deleted. Only your message is sent.");
+    // Replace wipes the desk's draft: it wears the destructive row.
+    expect(replace.className).toContain("text-destructive");
+    expect(screen.getByRole("button", { name: /^Cancel/ })).toHaveTextContent("Nothing is sent. Your message stays here.");
+  });
+
+  it("a command onto a draft shows no Add row", async () => {
+    const user = userEvent.setup();
+    bridge([{ body: { receipt: receipt("refused", "draft_present"), offers: ["replace", "cancel"] } }]);
+    renderComposer();
+    await refuse(user, "/model");
+    expect(screen.queryByRole("button", { name: /^Add to it/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Replace/ })).toBeInTheDocument();
+    expect(screen.queryByText("The box already holds a draft. Replace it, or cancel.")).toBeNull();
+  });
+
+  it.each([
+    ["Add to it", "append", " more words"],
+    ["Replace", "replace", "more words"],
+  ])("%s sends its offer as a new request and closes the sheet", async (row, mode, text) => {
+    const user = userEvent.setup();
+    const { sends } = bridge([DRAFT, { body: { receipt: receipt("sent"), offers: [] } }]);
+    renderComposer();
+    await refuse(user, "more words");
+    await user.click(screen.getByRole("button", { name: new RegExp(`^${row}`) }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(sends).toHaveLength(2));
+    expect(sends[1]).toMatchObject({ text, mode });
+  });
+
+  it("Cancel closes the sheet, sends nothing and keeps the text", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([DRAFT]);
+    renderComposer();
+    await refuse(user, "keep me");
+    await user.click(screen.getByRole("button", { name: /^Cancel/ }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("send-offers")).toBeNull();
+    expect(screen.queryByText(NOTICE)).toBeNull();
+    expect(sends).toHaveLength(1);
+    expect(field()).toHaveValue("keep me");
+  });
+
+  it.each([
+    ["the close button", () => fireEvent.click(screen.getByRole("button", { name: "Close" }))],
+    ["Escape", () => fireEvent.keyDown(window, { key: "Escape" })],
+  ])("a close without a choice (%s) drops the offer, hides the notice and sends nothing", async (_how, close) => {
+    const user = userEvent.setup();
+    const { sends } = bridge([DRAFT]);
+    renderComposer();
+    await refuse(user, "keep me");
+    act(() => close());
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The strip's ✕ path: no strip comes back, and the notice stays hidden.
+    expect(screen.queryByTestId("send-offers")).toBeNull();
+    expect(screen.queryByText(NOTICE)).toBeNull();
+    expect(sends).toHaveLength(1);
+    expect(field()).toHaveValue("keep me");
+  });
+
+  it("the rows wait while a launch starts, as the strip's buttons do", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([DRAFT]);
+    renderComposer();
+    await refuse(user, "wait");
+    setStarting(true);
+    for (const row of [/^Add to it/, /^Replace/, /^Cancel/]) expect(screen.getByRole("button", { name: row })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /^Replace/ }));
+    expect(sends).toHaveLength(1);
+  });
+
+  it("another offer set (Submit and Discard) keeps the strip and opens no sheet", async () => {
+    const user = userEvent.setup();
+    bridge([{ body: { receipt: receipt("typed_not_submitted", "changed"), offers: ["submit", "discard", "keys"] } }]);
+    renderComposer();
+    await user.type(field(), "half way");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByTestId("send-offers")).toHaveTextContent("Submit");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("send-offer-sheet")).toBeNull();
   });
 });
 
