@@ -173,7 +173,11 @@ describe("a send right after a resize: the old frame re-wrapped is a frame on it
   test("a Replace in the resize window empties the draft and sends, instead of being held", async () => {
     const pane = new Pane([rewrapped(W200, 60), W60]);
     pane.live = "a3 draft typed by api";
-    const answer = await rig(pane).send("race replace d0", { mode: "replace" });
+    // The offer the person tapped was made over the settled screen (ADR 0166).
+    const seenPane = new Pane([W60]);
+    seenPane.live = pane.live;
+    const seen = (await rig(seenPane).send("", { mode: "prepare" })).rowsHash;
+    const answer = await rig(pane).send("race replace d0", { mode: "replace", rowsHash: seen });
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.gapsMs.settle).toBeGreaterThanOrEqual(150);
     expect(pane.submitted).toEqual(["race replace d0"]);
@@ -241,8 +245,8 @@ describe("a stale row over a live draft (h 21 and 23, omp 18.12.6): the probe pr
   test("h 23: the Replace that follows sends only its own text, and no held send goes out after it", async () => {
     const pane = h21();
     const r = rig(pane);
-    await r.send("h2 plain send");
-    const replace = await r.send("h2 replace", { mode: "replace" });
+    const offer = await r.send("h2 plain send");
+    const replace = await r.send("h2 replace", { mode: "replace", rowsHash: offer.rowsHash });
     expect(replace.receipt).toMatchObject({ outcome: "sent" });
     // Before: the plain send was held, and went out after the Replace (journal `h2 replace`, `h2 plain send`).
     for (let i = 0; i < 6; i++) {

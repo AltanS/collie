@@ -3279,8 +3279,12 @@ export class SendProtocol {
    * the screen road for the rest of their life, a release from the hold queue included. Gone at settle.
    */
   private readonly droppedByData = new Set<string>();
-  /** Rows hashes this bridge handed out (each read's), with their loose form, newest last (M102 spec 12, {@link rowsSeen}). */
-  private readonly issued = new Map<string, string>();
+  /**
+   * Rows hashes this bridge handed out (each read's), newest last, with their loose form (M102 spec 12,
+   * {@link rowsSeen}) and a hash of the box's text as that read showed it, or null with no box (an
+   * offer is a yes to one draft, {@link offerDraftSeen}).
+   */
+  private readonly issued = new Map<string, { readonly loose: string; readonly draft: string | null }>();
 
   constructor(private readonly deps: SendDeps) {
     this.now = deps.now ?? (() => Date.now());
@@ -5098,6 +5102,7 @@ export class SendProtocol {
     // The person's override on a screen that is not free (M102 spec 12): refused only for a moved screen
     // or a menu, typed with no key on a reading that would have refused, else on as before.
     await this.overrideAtS0(state, s0, lines);
+    this.offerDraftSeen(state, s0);
     // At most one of Collie's probe characters unaccounted for per pane (2026-10-26): while one an
     // earlier send typed into a starting box has not shown, a request that would type into the box
     // types no probe of its own. Once it shows, the residue rule below takes it out first.
@@ -5176,16 +5181,12 @@ export class SendProtocol {
       }
       case "replace": {
         const frame = this.draftFrame(state, s0);
+        // A draft the clear would refuse is refused here, before the probe types anything.
+        if (boxText(frame).length > 0) clearLength(s0, frame, null);
         // The box would end up holding one of the notice's keys alone, which answers the notice.
         if (this.answersNotice(state, s0)) throw noticeRefusal(s0);
-        // S0 ends with its two reads; emptying the box is its own step with its own bound.
+        // S0 ends with its two reads. The box is emptied after the probe, below.
         this.lap(state, "s0");
-        if (boxText(frame).length > 0) {
-          // The draft is the person's (or one a refusal left there): Collie knows only what the box shows.
-          s0 = await this.clear(state, s0, null);
-          state.marks.s0 = s0;
-          this.lap(state, "clear");
-        }
         break;
       }
       case "append": {
@@ -5205,6 +5206,11 @@ export class SendProtocol {
     }
     if (request.mode !== "replace") this.lap(state, "s0");
 
+    // Replace probes over the draft it is about to empty (Brief 5, 2026-11-20): the draft is the person's,
+    // so it goes only once every check that can still refuse before a write has passed. A probe that ran
+    // after the clear could fail (a dialog that opens in a running turn) and leave the box empty and the
+    // text not typed. So the probe goes after the draft, as Add to it's does, and the clear follows it.
+    const clears = request.mode === "replace" && s0.frame !== null && boxText(s0.frame).length > 0;
     const prefix = request.mode === "append" && s0.frame !== null ? boxText(s0.frame) : "";
     const text = lines.join("");
     // A manual send (the person confirmed a screen that is not free) is always probed, and so is any
@@ -5227,7 +5233,7 @@ export class SendProtocol {
     let landing: Landing | null = null;
     try {
       if (state.probed) {
-        const probed = await this.probe(state, s0, prefix);
+        const probed = await this.probe(state, s0, clears && s0.frame !== null ? boxText(s0.frame) : prefix);
         landing = probed.landing;
         // A late probe's second chance went from a fresh S0 (the header): the request goes on from it.
         if (probed.base !== s0) {
@@ -5241,6 +5247,13 @@ export class SendProtocol {
     }
     // The probe showed in the box and went again: the starting harness reads keys, its window ends.
     if (state.starting && state.probed) this.noteFramed(state);
+    if (clears) {
+      // The draft is the person's (or one a refusal left there): Collie knows only what the box shows.
+      // Emptying the box is its own step with its own bound.
+      s0 = await this.clear(state, s0, null);
+      state.marks.s0 = s0;
+      this.lap(state, "clear");
+    }
 
     if (!state.command && !state.noticeKey) {
       // A lone upload path is one paste on every multiplexer (the write per line), so the harness may attach it there too (uploadAlone).
@@ -5759,9 +5772,9 @@ export class SendProtocol {
   }
 
   /** A rows hash a read handed out, with its loose form ({@link Snap.looseHash}); the oldest goes past {@link ISSUED_MAX}. */
-  private noteIssued(exact: string, loose: string): void {
+  private noteIssued(exact: string, loose: string, draft: string | null): void {
     this.issued.delete(exact);
-    this.issued.set(exact, loose);
+    this.issued.set(exact, { loose, draft });
     if (this.issued.size <= ISSUED_MAX) return;
     const oldest = this.issued.keys().next();
     if (oldest.done !== true) this.issued.delete(oldest.value);
@@ -5776,7 +5789,7 @@ export class SendProtocol {
     const seen = state.request.rowsHash;
     if (seen === undefined) return false;
     if (seen === snap.rowsHash) return true;
-    return overrideAsked(state.request) && this.issued.get(seen) === snap.looseHash;
+    return overrideAsked(state.request) && this.issued.get(seen)?.loose === snap.looseHash;
   }
 
   /**
@@ -5785,6 +5798,33 @@ export class SendProtocol {
    */
   private looseOnly(state: RunState, snap: Snap): boolean {
     return state.request.rowsHash !== snap.rowsHash && this.rowsSeen(state, snap);
+  }
+
+  /**
+   * An offer is a yes to one draft (ADR 0166). Add to it and Replace answer the `draft_present` refusal
+   * that showed the person a draft, and they act on that draft and on no other. So at S0, before any key
+   * (the draft's probe included), a box that holds a draft must hold the one the offer showed: the rows
+   * hash the request carries is S0's own, or a hash this bridge handed out for a read whose box held the
+   * same text (a turn that streams above the box moves the rows, not the draft). Anything else is the
+   * same refusal again, over the draft as it is now and with its hash, so the phone shows the offer again
+   * over it. A request with no hash is refused the same way: Submit and Discard need the hash wherever
+   * the box holds a text the request does not name, and a draft is always such a text here. After a
+   * bridge restart nothing is remembered, and the exact hash alone decides.
+   *
+   * Only a box whose draft the steps would act on is checked: an empty box is a plain send of the text
+   * (the draft went out or was deleted at the desk), a box of Collie's own probe characters is emptied
+   * of them first, and a box that is not free keeps its own refusal ({@link draftFrame}).
+   */
+  private offerDraftSeen(state: RunState, s0: Snap): void {
+    const { request } = state;
+    if (request.mode !== "append" && request.mode !== "replace") return;
+    const { frame, surface } = s0;
+    if (frame === null || surface.turn === "unknown" || surface.modal !== "none" || surface.composer !== "draft") return;
+    const box = boxText(frame);
+    if (box.length === 0 || this.residueOf(state, s0) > 0) return;
+    const seen = request.rowsHash;
+    if (seen !== undefined && (seen === s0.rowsHash || this.issued.get(seen)?.draft === shortHash(box))) return;
+    throw draftRefusal(state, s0);
   }
 
   /** The manual Send: the first tap is refused `unconfirmed` with the rows hash, the commit goes ahead
@@ -6224,7 +6264,7 @@ export class SendProtocol {
       rowsHash: shortHash(checked.slice(win.first, win.end).join("\n")),
       looseHash: shortHash(checked.slice(frame === null ? win.first : Math.max(win.first, Math.min(frame.top, win.end)), win.end).map(looseRow).join("\n")),
     };
-    this.noteIssued(read.rowsHash, read.looseHash);
+    this.noteIssued(read.rowsHash, read.looseHash, frame === null ? null : shortHash(boxText(frame)));
     const snap = secretView(state.request.text, ghostView(state.ghost, read));
     state.previousRead = state.lastRead;
     state.lastRead = snap;
@@ -7199,10 +7239,7 @@ export class SendProtocol {
     if (from.frame === null || from.cueStrength !== "none") throw gone();
     const shown = [...boxText(from.frame)].length;
     if (shown === 0) return from;
-    const scrolled = from.frame.scrolled === true;
-    if (scrolled && known === null) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: TALL_DRAFT }));
-    const length = scrolled && known !== null ? Math.max(known, shown) : shown;
-    if (length > CLEAR_MAX_CHARS) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: LONG_DRAFT }));
+    const length = clearLength(from, from.frame, known);
     let budget = length + clearKey.slack;
     // The profile's one stroke key (`keys.clearAll`) is pressed at most once, after reads showed the box
     // unchanged since the last batch, never on a box that reads empty.
@@ -7274,6 +7311,20 @@ export class SendProtocol {
  * Whether a request is a command for the draft offers: mode `command`, or a submit whose first line
  * carries a reserved lead. One rule for a fresh refusal ({@link draftRefusal}) and a replayed one.
  */
+/**
+ * How many characters a clear of `frame` takes, or the refusal before any key ({@link SendProtocol.clear}):
+ * a box at its scroll height with no length Collie knows (TALL_DRAFT), or a draft past
+ * {@link CLEAR_MAX_CHARS} (LONG_DRAFT). A Replace asks it at S0 too, before its probe.
+ */
+function clearLength(from: Snap, frame: Frame, known: number | null): number {
+  const shown = [...boxText(frame)].length;
+  const scrolled = frame.scrolled === true;
+  if (scrolled && known === null) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: TALL_DRAFT }));
+  const length = scrolled && known !== null ? Math.max(known, shown) : shown;
+  if (length > CLEAR_MAX_CHARS) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: LONG_DRAFT }));
+  return length;
+}
+
 function draftCommand(request: SendRequest, match: ProfileMatch | null): boolean {
   const leads = match?.profile.reservedLeads ?? GENERIC_LEADS;
   return request.mode === "command" || (request.mode === "submit" && reservedLead(sendLines(request.text)[0] ?? "", leads) !== null);
@@ -7286,8 +7337,11 @@ function draftCommand(request: SendRequest, match: ProfileMatch | null): boolean
  */
 function draftRefusal(state: RunState, s0: Snap): Ended {
   const framed = s0.frame !== null;
-  const offers = offersFor("refused", "draft_present", framed, draftCommand(state.request, state.match));
-  return new Ended("refused", "draft_present", { surface: s0.surface, framed, offers, detail: "The box already holds a draft." });
+  // A Replace whose text is a command answers a command's offer, which has no Add to it.
+  const command = draftCommand(state.request, state.match) || (state.request.mode === "replace" && state.command);
+  const offers = offersFor("refused", "draft_present", framed, command);
+  // The rows hash binds Add to it and Replace to this draft (ADR 0166, offerDraftSeen).
+  return new Ended("refused", "draft_present", { surface: s0.surface, framed, rowsHash: s0.rowsHash, offers, detail: "The box already holds a draft." });
 }
 
 /**

@@ -11,7 +11,7 @@ import { neverHeldEntry, SendProtocol, type SendLedger } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HOLD_ENDED_KEEP_MS, HoldStore } from "./holds.ts";
-import { FakePane, LIVE_ROW, PiPane, type Rig, dir, neverEscape, noCommandQueue, omp, rig, steersWithNoQueueKey, useScratchDir } from "./protocol.rig.ts";
+import { OFFERED, FakePane, LIVE_ROW, PiPane, type Rig, dir, neverEscape, noCommandQueue, omp, rig, steersWithNoQueueKey, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 
@@ -689,7 +689,7 @@ describe("the held send (M56 spec 15)", () => {
   test("Add to it in a turn is not held: it names the draft in the box now (review of spec 15, H3)", async () => {
     const r = untrusted();
     r.pane.box = "half a thought";
-    expect((await r.send(" and more", { mode: "append" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect((await r.send(" and more", { mode: "append", rowsHash: OFFERED })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
     expect(r.holds.list()).toEqual([]);
   });
 
@@ -854,7 +854,7 @@ describe("the held send (M56 spec 15)", () => {
     const holds = new HoldStore(join(dir, "held"), () => clock.now);
     const r = rig({ harness: "hermes", version: "0.22.2", holds, clock });
     r.pane.fixed = capture("hermes--running.txt");
-    expect((await r.send("then summarize the changes", { id: "held-answer-02", mode: "replace" })).receipt?.outcome).toBe("held");
+    expect((await r.send("then summarize the changes", { id: "held-answer-02", mode: "replace", rowsHash: OFFERED })).receipt?.outcome).toBe("held");
     r.pane.fixed = capture("hermes--clarify-other.txt");
     // Far past the five tries a pane that is not ready gets: the question stays open for minutes.
     for (let i = 0; i < 30; i++) {

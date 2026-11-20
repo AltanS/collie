@@ -2733,10 +2733,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (mode === null) return;
     // Added to a draft, the text starts after one space, as a person typing on would put it.
     const words = offer === "append" && !/^\s/u.test(held.text) ? ` ${held.text}` : held.text;
-    // The commit, Submit and Discard carry the rows hash of the answer the person read: the bridge goes
-    // ahead only while the screen still hashes the same. After the cap's notice the commit is the extra
-    // confirm: it carries `capAck` (M56 spec 09).
-    const seen = offer === "commit" || offer === "submit" || offer === "discard" ? held.rowsHash : null;
+    // Every offer that acts carries the rows hash of the answer the person read: the bridge goes ahead
+    // only while the screen still shows what they saw. Add to it and Replace are a yes to the draft the
+    // offer showed, and to no other (ADR 0166). After the cap's notice the commit is the extra confirm:
+    // it carries `capAck` (M56 spec 09).
+    const seen = held.rowsHash;
     // The commit is the person's tap through a screen Collie could not read: it says so (M102 spec 01).
     void sendThroughProtocol(words, held.isDraft, mode, seen, offer === "commit" && held.capAck, undefined, undefined, undefined, undefined, offer === "commit");
   }

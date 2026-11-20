@@ -9,7 +9,7 @@ import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import { type SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { BOUNDS, LATE_PROBE, boxMatches, commandBoxMatches, uploadAlone, wholePaste, LOCK_BOUND_MS, locateText, probeLanding, SendProtocol, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
-import { DIALOG, FRAMELESS, FakePane, HerdrCodexPane, PROBE, type Rig, dir, neverEscape, rig, useScratchDir } from "./protocol.rig.ts";
+import { OFFERED, DIALOG, FRAMELESS, FakePane, HerdrCodexPane, PROBE, type Rig, dir, neverEscape, rig, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 
@@ -381,7 +381,7 @@ describe("the offers as new requests", () => {
   test("append: the text goes after the draft, then Enter", async () => {
     const { pane, send } = rig();
     pane.box = "first half";
-    const answer = await send(" second half", { mode: "append" });
+    const answer = await send(" second half", { mode: "append", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(pane.transcript.at(-1)).toBe("> first half second half");
   });
@@ -389,7 +389,7 @@ describe("the offers as new requests", () => {
   test("replace: the draft is cleared with Backspace (never Escape), then the text is sent", async () => {
     const { pane, send } = rig();
     pane.box = "old draft";
-    const answer = await send("new words", { mode: "replace" });
+    const answer = await send("new words", { mode: "replace", rowsHash: OFFERED });
     expect(answer.receipt?.outcome).toBe("sent");
     expect(pane.transcript.at(-1)).toBe("> new words");
     expect(pane.keysSeen.filter((k) => k === "Backspace").length).toBeGreaterThanOrEqual("old draft".length);
@@ -414,7 +414,7 @@ describe("the offers as new requests", () => {
     const plain = await send("a plain thought");
     expect(plain.offers).toEqual(["append", "replace", "cancel"]);
     expect((await send("a plain thought", { id: plain.receipt!.requestId })).offers).toEqual(["append", "replace", "cancel"]);
-    const answer = await send("/model", { mode: "replace" });
+    const answer = await send("/model", { mode: "replace", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("Enter");
     // Each request that read the draft proved it with one probe; a replay reads nothing and types nothing.
@@ -433,7 +433,7 @@ describe("the offers as new requests", () => {
       // Every read is slow; two of them fit S0's 1200 ms, the clear's reads would not.
       r.clock.now += 400;
     };
-    const answer = await r.send("new words", { mode: "replace" });
+    const answer = await r.send("new words", { mode: "replace", rowsHash: OFFERED });
     console.log("DEBUG", JSON.stringify(answer.receipt));
     expect(answer.receipt?.outcome).toBe("sent");
     expect(answer.receipt?.gapsMs.s0).toBeLessThanOrEqual(1200);
@@ -451,7 +451,7 @@ describe("the offers as new requests", () => {
       r.pane.backspaceRestores = false;
       return ack;
     };
-    const answer = await r.send("new words", { mode: "replace" });
+    const answer = await r.send("new words", { mode: "replace", rowsHash: OFFERED });
     expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
     expect(r.pane.calls).toEqual(["type:⌁"]);
     neverEscape(r.pane);

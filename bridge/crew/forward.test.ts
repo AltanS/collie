@@ -854,6 +854,19 @@ describe("a text reply to a member that sent no Surface reader version (an older
     }
   });
 
+  // An offer is a yes to one draft (ADR 0166): the phone's Add to it and Replace carry the rows hash of the
+  // offer, and the member compares it before any key. The lead reads none of it and adds no field.
+  test("an Add to it or a Replace streams on with its rows hash, byte for byte", async () => {
+    for (const mode of ["append", "replace"]) {
+      const body = `{"text":"new words","submit":true,"id":"phone-req-0002","mode":"${mode}","rowsHash":"0abc12"}`;
+      const { transport, calls } = transportOf(() => ok(new Response(`{"ok":true}`)));
+      const [req, url] = post(REPLY, body);
+      await forward(req, url, { transport, surfaceVersion: 2 });
+      expect(calls.map((c) => c.route), mode).toEqual(["pane/w1:p1/reply"]);
+      expect(await new Response(calls[0]?.init.body).text(), mode).toBe(body);
+    }
+  });
+
   test("keys, raw text with submit false, other routes and a body that is not JSON go to the old member as before", async () => {
     const sent: [string, string][] = [
       ["/api/pane/w1:p1/keys?host=laptop", `{"keys":["1"]}`],
