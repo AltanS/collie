@@ -94,6 +94,9 @@ export interface ProcLivenessDeps {
 }
 
 function defaultPidAlive(pid: number): boolean {
+  // `process.kill(0, 0)` and `process.kill(-1, 0)` do not throw: they address the process group and
+  // every process. Without this guard a pid of 0 or -1 would read as alive.
+  if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
     return true;
@@ -136,7 +139,7 @@ async function runCommand(command: StartTimeCommand, pid: number): Promise<strin
  * Every failure (no such process, no `/proc`, a `ps` that failed or timed out, a platform with no
  * probe) answers null, which means the same thing to the reader: it cannot confirm the writer is
  * alive, so the beacon is expired rather than live. On macOS an answer is kept for
- * {@link COMMAND_PROBE_CACHE_MS}, so an agent that ended reads live that much longer at most. The
+ * {@link COMMAND_PROBE_CACHE_MS}, but a pid that no longer exists reads null at once, cached or not. The
  * Windows read takes well under a millisecond and is not cached.
  */
 export function procBeaconLiveness(deps: ProcLivenessDeps = {}): BeaconLiveness {

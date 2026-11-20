@@ -225,6 +225,37 @@ describe("procBeaconLiveness", () => {
     expect(ps.runs).toHaveLength(1);
   });
 
+  test("on macOS the default pid check lets a live pid through to ps once", async () => {
+    const ps = fakePs(() => LSTART);
+    const liveness = procBeaconLiveness({ platform: "darwin", readText: () => null, run: ps.run });
+    expect(await liveness.startTimeOf(process.pid)).toBe(STORED);
+    expect(ps.runs).toEqual([["/bin/ps", "-o", "lstart=", "-p", String(process.pid)]]);
+  });
+
+  test("on macOS the default pid check reads a free pid as null without running ps", async () => {
+    let free = 4_194_000;
+    while (free > 1) {
+      try {
+        process.kill(free, 0);
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ESRCH") break;
+      }
+      free--;
+    }
+    const ps = fakePs(() => LSTART);
+    const liveness = procBeaconLiveness({ platform: "darwin", readText: () => null, run: ps.run });
+    expect(await liveness.startTimeOf(free)).toBeNull();
+    expect(ps.runs).toEqual([]);
+  });
+
+  test("on macOS the default pid check refuses pid 0 and -1, which process.kill would answer for a group or every process", async () => {
+    const ps = fakePs(() => LSTART);
+    const liveness = procBeaconLiveness({ platform: "darwin", readText: () => null, run: ps.run });
+    expect(await liveness.startTimeOf(0)).toBeNull();
+    expect(await liveness.startTimeOf(-1)).toBeNull();
+    expect(ps.runs).toEqual([]);
+  });
+
   test("on macOS overflowing 256 live pids evicts only the oldest entries instead of clearing the whole cache", async () => {
     let clock = 1000;
     const ps = fakePs(() => LSTART);
