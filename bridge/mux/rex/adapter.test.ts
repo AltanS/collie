@@ -311,3 +311,28 @@ describe("one capture per pane at a time", () => {
     expect(formats(rex.calls)).toBe(2);
   });
 });
+
+describe("a multi-byte character across the tail offset", () => {
+  // `blob_read` counts bytes, so an offset inside a character reads as U+FFFD (probed). The cut row is
+  // dropped whole; the rows kept must be the whole capture's, at every byte the cut can land on.
+  const VIEWPORT: MuxGridRequest = { scope: "recent", lines: 60, styling: "preserve" };
+
+  test.each([0, 1, 2, 3])("with %i bytes after the last emoji, the tail equals the whole capture", async (extra) => {
+    const fake = new FakeRex();
+    const logged: string[] = [];
+    const adapter = new RexMux(fake, { log: (line) => logged.push(line) });
+    const pane = (await adapter.snapshot()).panes[0]!;
+    const rows = Array.from({ length: 4000 }, (_, i) => `${"🦊".repeat(20)} ${String(i)}`);
+    fake.fillHistory(pane.paneId, [...rows, "x".repeat(extra)]);
+    const tail = await adapter.readGrid(pane.paneId, VIEWPORT);
+    // The tail itself answered: a fallback would have said so.
+    expect(logged).toEqual([]);
+    fake.forgetResults = true;
+    const whole = await adapter.readGrid(pane.paneId, VIEWPORT);
+    expect(tail.ok && whole.ok).toBe(true);
+    if (!tail.ok || !whole.ok) return;
+    expect(tail.value.text.includes("�")).toBe(false);
+    expect(tail.value.text).toBe(whole.value.text);
+    expect(tail.value.truncated).toBe(true);
+  });
+});

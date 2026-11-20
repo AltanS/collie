@@ -424,3 +424,31 @@ describe("the _mux-probe verb", () => {
     });
   });
 });
+
+describe("a first run never picks rex on its own", () => {
+  // Rex is experimental: it is driven only when COLLIE_MUX=rex says so. A running Rex server, its
+  // binary and its socket are all on this host, and the pick still does not see it.
+  const rexFiles = {
+    [`${HOME}/.local/bin/rex`]: "",
+    "/run/user/1000/rex/server.sock": "",
+  };
+  const rexAnswers: Scripted["answers"] = [[`${HOME}/.local/bin/rex`, { stdout: JSON.stringify({ api_revision: 19, sessions: [] }) }]];
+
+  test("rex alone on the host: nothing is found, and start refuses rather than pick it", async () => {
+    const h = host({ env: { XDG_RUNTIME_DIR: "/run/user/1000" }, files: rexFiles, answers: rexAnswers });
+    expect(probeMuxes(h.deps).map((sighting) => sighting.mux)).toEqual([]);
+    const decision = await chooseMux(h.deps);
+    expect(decision.kind).toBe("refused");
+  });
+
+  test("rex beside tmux: tmux is the one pick, never rex", async () => {
+    const h = host({
+      env: { XDG_RUNTIME_DIR: "/run/user/1000" },
+      files: { ...rexFiles, [TMUX_BIN]: "" },
+      answers: [...TMUX_RUNNING!, ...rexAnswers!],
+    });
+    expect(probeMuxes(h.deps).map((sighting) => sighting.mux)).toEqual(["tmux"]);
+    const decision = await chooseMux(h.deps);
+    expect(decision.kind === "auto" ? decision.sighting.mux : decision.kind).toBe("tmux");
+  });
+});
