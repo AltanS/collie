@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 // (components/shortcut-bar-host.tsx keeps it out of the flow: DESIGN.md §2).
 //
 // THE KEYS COME FROM THE KEYMAP, so a rebound key shows as rebound. The words are the bar's own short
-// forms, because the list's labels ("Move between spaces and tabs") are sentences. They are English
+// forms, because the list's labels ("Navigate the spaces, tabs and panes") are sentences. They are English
 // only until the next translation pass (`PENDING_TRANSLATION`).
 
 export type BarMode = "prefix" | ModeId;

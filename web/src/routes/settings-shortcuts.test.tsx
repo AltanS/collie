@@ -57,7 +57,7 @@ describe("Settings → Device → Keyboard shortcuts", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     await userEvent.click(await screen.findByRole("button", { name: "Show keyboard shortcuts" }));
     expect(screen.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
-    expect(screen.getByText("Open the switcher")).toBeInTheDocument();
+    expect(screen.getByText("Switch pane")).toBeInTheDocument();
   });
 
   it("is still there after a reload of the page", async () => {
