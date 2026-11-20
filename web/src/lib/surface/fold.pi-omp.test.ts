@@ -1127,6 +1127,31 @@ describe("omp's queue-prefix draft (Queueing ➤) reads as a draft (18.6.1 and 1
   });
 });
 
+// omp 19.0.1 fills the empty box with a grey prompt suggestion after a turn
+// ("roda os testes"). It is the grey the profile already names for ghost text, but
+// not after a typed draft, so the inline-hint rule did not reach it; the box read
+// as a draft and every phone send was refused draft_present (field case 2026-11-20).
+describe("omp 19.0.1's prompt suggestion in an empty box", () => {
+  it("reads the grey suggestion as a placeholder, not a draft", () => {
+    const read = readScreen(fixtureRows("omp--v19-0-1-suggestion--w74.txt", SURFACE_FIXTURES_DIR), "omp", idleFor("omp"));
+    expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    expect(read.frame?.placeholder).toBe(true);
+  });
+
+  // The short side (#832's review): only the suggestion's own grey makes the box empty. The same words
+  // in the box's ink, or with one character in ink, are a draft the person typed, and a send must not
+  // treat the box as empty.
+  it("the same words typed in the box's ink, or half in ink, still read as a draft", () => {
+    const raw = readFileSync(join(SURFACE_FIXTURES_DIR, "omp--v19-0-1-suggestion--w74.txt"), "utf8");
+    const grey = "\u001b[38;2;107;114;128mroda os testes";
+    expect(raw).toContain(grey);
+    for (const typed of ["roda os testes", "\u001b[38;2;107;114;128mroda os teste\u001b[0ms"]) {
+      const read = readScreen(rowsOf(raw.replace(grey, typed)), "omp", idleFor("omp"));
+      expect(read.surface, typed).toMatchObject({ turn: "idle", composer: "draft" });
+    }
+  });
+});
+
 // Issue 747: pi-zentui 0.34.0 on pi 1.5.0 draws its Opencode editor as rail rows between pi's two rules
 // (a pad row, the editor rows, a pad row, then the model row), and the profile's wide column-zero prompt
 // took the rails and the model row for a draft, so every send was refused draft_present. Live captures

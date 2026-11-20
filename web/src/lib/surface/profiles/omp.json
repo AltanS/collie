@@ -228,7 +228,10 @@
     ],
     "placeholders": {
       "texts": [],
-      "sgr": 2
+      "sgr": 2,
+      "fg": [
+        "rgb(107,114,128)"
+      ]
     },
     "volatile": {
       "above": {
