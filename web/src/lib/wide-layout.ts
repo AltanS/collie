@@ -331,6 +331,88 @@ export function wholeColumnStart(lefts: readonly number[], scrollLeft: number): 
   return best === null || Math.abs(best - scrollLeft) <= 0.5 ? null : best;
 }
 
+/**
+ * Where the strip scrolls after its columns changed, given the boxes as they now are: to the focused
+ * column when it is not whole in view ({@link scrollTargetFor}), else to the nearest column start when
+ * the left edge cuts one and the focused column stays whole from there ({@link wholeColumnStart}), else
+ * to the focused column's start. Null: the strip stays where it is.
+ */
+export function followTarget(focusAt: number, lefts: readonly number[], widths: readonly number[], scrollLeft: number, viewport: number, contentWidth: number): number | null {
+  const to = scrollTargetFor(focusAt, lefts, widths, scrollLeft, viewport, contentWidth);
+  if (to !== null) return to;
+  const whole = wholeColumnStart(lefts, scrollLeft);
+  const left = lefts[focusAt];
+  const width = widths[focusAt];
+  if (whole === null || left === undefined || width === undefined) return whole;
+  const keepsFocus = left >= whole - 0.5 && left + width <= whole + viewport + 0.5;
+  return keepsFocus ? whole : left;
+}
+
+/** The boxes of a flat strip in scroll coordinates: each column's start and width, the add column's
+ *  width, and the scrolled content's width. */
+export interface StripGeometry {
+  readonly lefts: readonly number[];
+  readonly widths: readonly number[];
+  readonly addWidth: number;
+  readonly contentWidth: number;
+}
+
+/**
+ * The flat strip's geometry as the layout draws it, from the columns' fractions alone: a column is its
+ * fraction of the strip, never under `minPane` in wide mode (its `min-width`), and the add column ends
+ * the strip, at least a pane wide and as wide as the room the last column leaves.
+ */
+export function stripGeometry(fractions: readonly number[], stripWidth: number, wide: boolean, minPane: number = MIN_PANE_WIDTH): StripGeometry {
+  const widths = fractions.map((f) => (wide ? Math.max(f * stripWidth, minPane) : f * stripWidth));
+  const lefts: number[] = [];
+  let at = 0;
+  for (const w of widths) {
+    lefts.push(at);
+    at += w;
+  }
+  const addWidth = Math.max(minPane, (1 - (fractions.at(-1) ?? 1)) * stripWidth);
+  return { lefts, widths, addWidth, contentWidth: at + addWidth };
+}
+
+/**
+ * Where the strip comes to rest after a width change, with no glide: the browser first clamps the old
+ * scroll position to the new scroll range, then the focus scroll ({@link followTarget}) runs, and
+ * `scrollTo` clamps its target to the range. A glide travels to exactly this place.
+ */
+export function restingScroll(geometry: StripGeometry, focusAt: number, scrollLeft: number, viewport: number): number {
+  const end = Math.max(0, geometry.contentWidth - viewport);
+  const clamped = Math.min(Math.max(scrollLeft, 0), end);
+  const to = followTarget(focusAt, geometry.lefts, geometry.widths, clamped, viewport, geometry.contentWidth);
+  return to === null ? clamped : Math.min(Math.max(to, 0), end);
+}
+
+/**
+ * CSS `ease-out`, `cubic-bezier(0, 0, 0.58, 1)`, at time `t` from 0 to 1: the curve the app's in-flow
+ * motion uses (ui/collapse.tsx), solved for x by bisection, so a glide driven from script draws the
+ * same path a CSS transition would. Monotonic, 0 at 0 and 1 at 1.
+ */
+export function easeOut(t: number): number {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 40; i += 1) {
+    const mid = (lo + hi) / 2;
+    if (easeOutX(mid) < t) lo = mid;
+    else hi = mid;
+  }
+  return easeOutY((lo + hi) / 2);
+}
+
+// The ease-out Bezier with P0 = P1 = (0, 0), P2 = (0.58, 1), P3 = (1, 1), at parameter s: the P1 term
+// is zero on both axes.
+function easeOutX(s: number): number {
+  return 3 * (1 - s) * s * s * 0.58 + s * s * s;
+}
+function easeOutY(s: number): number {
+  return 3 * (1 - s) * s * s + s * s * s;
+}
+
 /** Where a dragged row at `x` would land: the insert index (0 = before the first column, n = after
  *  the last) and that boundary's x, over the columns' left edges and widths. */
 export interface DropPoint {

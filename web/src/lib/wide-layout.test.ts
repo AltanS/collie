@@ -8,6 +8,8 @@ import {
   columnKeyOf,
   cycleWidth,
   dropIndexAt,
+  easeOut,
+  followTarget,
   EMPTY_STRIP,
   focusIndex,
   hasWidthChoice,
@@ -22,10 +24,12 @@ import {
   presetOf,
   prune,
   removeColumn,
+  restingScroll,
   scrollTargetFor,
   shownPreset,
   spaceKeyOf,
   spaceSwipe,
+  stripGeometry,
   stepWidth,
   wholeColumnStart,
   widthClassOf,
@@ -288,5 +292,67 @@ describe("strip geometry", () => {
     expect(spaceSwipe(5, 70)).toBe(-1);
     expect(spaceSwipe(60, 50)).toBeNull();
     expect(spaceSwipe(0, 30)).toBeNull();
+  });
+});
+
+// THE GLIDE'S END (a width change eases, wide-layout.tsx): the target is computed from the final
+// fractions before the columns have moved, so it must be the place the strip comes to rest without one.
+// The e2e case (e2e/wide-layout.spec.ts, "a width change glides") holds the same numbers to the
+// measured page at 1440px.
+describe("the width glide", () => {
+  const W = 1120;
+
+  it("lays out the columns and the add column from the fractions", () => {
+    expect(stripGeometry([1 / 2, 4 / 5], W, true)).toEqual({ lefts: [0, 560], widths: [560, 896], addWidth: 440, contentWidth: 1896 });
+    // One column at 1/2: the add column takes the rest of the strip.
+    expect(stripGeometry([1 / 2], W, true).addWidth).toBe(560);
+    // A column never goes under the minimum in wide mode, so a fraction past the cut is its floor.
+    expect(stripGeometry([1 / 2], 900, true).widths).toEqual([450]);
+    expect(stripGeometry([1 / 2], 860, true).widths).toEqual([440]);
+    // Not wide: every column is the strip's width, with no floor.
+    expect(stripGeometry([1, 1], 700, false)).toEqual({ lefts: [0, 700], widths: [700, 700], addWidth: 440, contentWidth: 1840 });
+  });
+
+  it("grows the last column: the strip scrolls to its start", () => {
+    // 1/2 + 1/2 at scroll 0, the second focused, then the second at 4/5.
+    expect(restingScroll(stripGeometry([1 / 2, 4 / 5], W, true), 1, 0, W)).toBe(560);
+    // 4/5 to Full: already at its start.
+    expect(restingScroll(stripGeometry([1 / 2, 1], W, true), 1, 560, W)).toBe(560);
+  });
+
+  it("shrinks the last column: the old position is clamped to the new range first", () => {
+    // Full at scroll 560 back to 1/2: the range ends at 560, the column is whole, nothing moves.
+    expect(restingScroll(stripGeometry([1 / 2, 1 / 2], W, true), 1, 560, W)).toBe(560);
+    // A lone Full column scrolled to the add column's start, back to 1/2: the range ends at 0.
+    expect(restingScroll(stripGeometry([1 / 2], W, true), 0, 900, W)).toBe(0);
+  });
+
+  it("grows a column in view while the strip is scrolled right: the strip stays", () => {
+    expect(restingScroll(stripGeometry([1 / 2, 4 / 5, 1 / 2], W, true), 1, 560, W)).toBe(560);
+    expect(restingScroll(stripGeometry([1 / 2, 1, 1 / 2], W, true), 1, 560, W)).toBe(560);
+  });
+
+  it("follows the focus the way the jump did", () => {
+    const lefts = [0, 560, 1120];
+    const widths = [560, 560, 560];
+    // Not whole: to its start.
+    expect(followTarget(2, lefts, widths, 0, W, 2240)).toBe(1120);
+    // Whole, the left edge on a start: nothing.
+    expect(followTarget(1, lefts, widths, 560, W, 2240)).toBeNull();
+    // Whole, the left edge cutting a column: the nearest start that keeps the focus whole.
+    expect(followTarget(1, lefts, widths, 500, W, 2240)).toBe(560);
+  });
+
+  it("eases out on the CSS curve: monotonic, 0 to 1, fast at first", () => {
+    expect(easeOut(0)).toBe(0);
+    expect(easeOut(1)).toBe(1);
+    let last = 0;
+    for (let i = 1; i <= 100; i += 1) {
+      const v = easeOut(i / 100);
+      expect(v).toBeGreaterThanOrEqual(last);
+      last = v;
+    }
+    // cubic-bezier(0, 0, 0.58, 1) at x = 0.5 is about 0.685: ahead of a straight line.
+    expect(easeOut(0.5)).toBeCloseTo(0.6846, 3);
   });
 });
