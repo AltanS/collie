@@ -33,20 +33,29 @@ const LABEL_KEYS = {
 export function SendOfferStrip({ offers, disabled, onOffer, onDismiss, capConfirm = false }: SendOfferStripProps) {
   useLocale();
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground" data-testid="send-offers">
+    <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md bg-muted/40 px-2.5 py-2 text-sm text-muted-foreground" data-testid="send-offers">
       {offers.map((offer) => (
-        <Button key={offer} variant="ghost" size="sm" className="h-7 px-2 text-xs font-medium" disabled={disabled} onClick={() => onOffer(offer)}>
+        <Button
+          key={offer}
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-11 min-w-11 flex-1 px-3 text-sm font-medium touch-manipulation"
+          disabled={disabled}
+          onClick={() => onOffer(offer)}
+        >
           {t(offer === "commit" && capConfirm ? "composer.protocol.commitCapPast" : LABEL_KEYS[offer])}
         </Button>
       ))}
       <Button
+        type="button"
         variant="ghost"
         size="icon"
-        className="ml-auto size-6 shrink-0 text-muted-foreground"
+        className="ml-auto size-11 shrink-0 touch-manipulation text-muted-foreground"
         aria-label={t("composer.protocol.dismissAria")}
         onClick={onDismiss}
       >
-        <Icon name="dismiss" className="size-3" />
+        <Icon name="dismiss" className="size-4" />
       </Button>
     </div>
   );
