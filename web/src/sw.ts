@@ -7,7 +7,7 @@ import { decidePush, notificationPath, pushOptions, type NotifData, type PushPay
 import { askInApp, openNotificationTarget, type OpenOutcome, type OpenTargetClient } from "./lib/notification-open";
 import { recordSlots, showBadge, slotUpdates } from "./lib/app-badge";
 import { readPushTitles } from "./lib/push-title-store";
-import { notificationsShowImage, pushPictureFor } from "./lib/project-picture-push";
+import { pushPictureFor } from "./lib/project-picture-push";
 import { FONT_URLS, navigationNetworkOnlyUnder } from "./lib/sw-routes";
 import { stripMount, sttCacheName, sttCopyToStore, sttStorable, sttSweepKeeps } from "./lib/stt-cache";
 
@@ -323,11 +323,11 @@ async function handlePush(event: PushEvent): Promise<void> {
     }
     return;
   }
-  // The project picture of the pane the push is about (ADR 0160) goes ONLY in the picture slot, `image`,
-  // where the system has one: the page's own banner copy out of Cache Storage, never a fetch. The icon
-  // and the badge are always Collie's.
-  const image = notificationsShowImage(globalThis.Notification) ? await pushPictureFor(self.caches, self.location.origin, MOUNT, { paneId: decision.paneId, host: decision.host }) : null;
-  await self.registration.showNotification(decision.title, pushOptions(decision, { icon: ICON, badge: BADGE }, image));
+  // The project picture of the pane the push is about (ADR 0160) is the notification's icon: the page's own
+  // square copy out of Cache Storage, never a fetch. With none the icon is the Collie mark; the badge is
+  // always Collie's, and no push sets `image` (lib/push-decision.ts pushOptions).
+  const picture = await pushPictureFor(self.caches, self.location.origin, MOUNT, { paneId: decision.paneId, host: decision.host });
+  await self.registration.showNotification(decision.title, pushOptions(decision, { icon: ICON, badge: BADGE }, picture));
 }
 
 // Tap a notification: an update push routes to the Updates page under Settings; everything else deep-links to the agent's

@@ -19,7 +19,7 @@ import {
   setProjectPictures,
   useProjectPicture,
 } from "./project-picture";
-import { BANNER_HEIGHT, BANNER_WIDTH, bannerCopyKey, paneMapKey, pictureSwitchCacheName, pictureSwitchKey, projectPictureCacheName, pushPictureFor } from "./project-picture-push";
+import { iconCopyKey, paneMapKey, pictureSwitchCacheName, pictureSwitchKey, projectPictureCacheName, PUSH_ICON_PX, pushPictureFor } from "./project-picture-push";
 import { PROJECT_PICTURE_BYTES_MAX } from "./project-picture-wire";
 
 // THE PROJECT PICTURE STORE (issue 811, ADR 0160). The browser's decoder and canvas are the module's
@@ -149,11 +149,11 @@ describe("loadPicture", () => {
     expect(s.fetch).toHaveBeenCalledWith(`/api/project-picture/${V1}`);
     expect(s.draw).toHaveBeenCalledWith(expect.any(Blob), [
       { width: SMALL_PX, height: SMALL_PX },
-      { width: BANNER_WIDTH, height: BANNER_HEIGHT },
+      { width: PUSH_ICON_PX, height: PUSH_ICON_PX },
     ]);
     expect(pictureCopy(null, V1)).toBe(URL1);
     expect(JSON.parse(localStorage.getItem(COPIES_KEY) ?? "{}")).toEqual({ [K(V1)]: URL1 });
-    const stored = await (await fake.storage.open(cacheName)).match(bannerCopyKey(location.origin, "/", null, V1));
+    const stored = await (await fake.storage.open(cacheName)).match(iconCopyKey(location.origin, "/", null, V1));
     expect(stored?.headers.get("content-type")).toBe("image/png");
   });
 
@@ -182,15 +182,15 @@ describe("loadPicture", () => {
     await loadPicture(V1, "box 2");
     expect(s.draw).toHaveBeenCalledTimes(1);
     const cache = await fake.storage.open(cacheName);
-    expect(await cache.match(bannerCopyKey(location.origin, "/", "box 2", V1))).toBeDefined();
-    expect(await cache.match(bannerCopyKey(location.origin, "/", null, V1))).toBeUndefined();
-    expect(await cache.match(bannerCopyKey(location.origin, "/", "box 3", V1))).toBeUndefined();
+    expect(await cache.match(iconCopyKey(location.origin, "/", "box 2", V1))).toBeDefined();
+    expect(await cache.match(iconCopyKey(location.origin, "/", null, V1))).toBeUndefined();
+    expect(await cache.match(iconCopyKey(location.origin, "/", "box 3", V1))).toBeUndefined();
   });
 
-  it("asks the canvas for the small box and the 2:1 banner box, and stores the second blob as the banner", async () => {
+  it("asks the canvas for the small box and the 192 px push icon box, and stores the second blob as the icon", async () => {
     const small = new Blob(["small"], { type: "image/png" });
-    const banner = new Blob(["banner!"], { type: "image/png" });
-    const draw = vi.fn(async () => [small, banner]);
+    const icon = new Blob(["icon!"], { type: "image/png" });
+    const draw = vi.fn(async () => [small, icon]);
     __setProjectPictureSeams({ canvas: { draw, dataUrl: vi.fn(async () => URL1) }, fetch: async () => bytes() });
     // jsdom's Blob is not a body Node's Response can read, so the test records what the module hands over.
     const bodies: unknown[] = [];
@@ -207,11 +207,11 @@ describe("loadPicture", () => {
     await loadPicture(V1, "box");
     expect(draw).toHaveBeenCalledWith(expect.any(Blob), [
       { width: 96, height: 96 },
-      { width: 1024, height: 512 },
+      { width: 192, height: 192 },
     ]);
-    const stored = await (await fake.storage.open(cacheName)).match(bannerCopyKey(location.origin, "/", "box", V1));
+    const stored = await (await fake.storage.open(cacheName)).match(iconCopyKey(location.origin, "/", "box", V1));
     expect(stored).toBeDefined();
-    expect(bodies).toEqual([banner]);
+    expect(bodies).toEqual([icon]);
     expect(bodies[0]).not.toBe(small);
   });
 
@@ -613,17 +613,27 @@ describe("useProjectPicture", () => {
   });
 });
 
-describe("the banner copies are bounded (R5)", () => {
-  it("keeps only the banners of the newest COPIES_MAX copies, and the pane map", async () => {
+describe("the push icon copies are bounded (R5)", () => {
+  it("keeps only the icon copies of the newest COPIES_MAX copies, and the pane map", async () => {
     seams();
     rememberPanePictures([{ paneId: "p1", picture: version(1) }]);
     for (let n = 1; n <= COPIES_MAX + 5; n++) await loadPicture(version(n));
     const store = fake.stores.get(cacheName)!;
-    const banners = [...store.keys()].filter((k) => k.endsWith(".png"));
-    expect(banners).toHaveLength(COPIES_MAX);
-    expect(store.has(bannerCopyKey(location.origin, "/", null, version(1)))).toBe(false);
-    expect(store.has(bannerCopyKey(location.origin, "/", null, version(COPIES_MAX + 5)))).toBe(true);
+    const icons = [...store.keys()].filter((k) => k.endsWith(".png"));
+    expect(icons).toHaveLength(COPIES_MAX);
+    expect(store.has(iconCopyKey(location.origin, "/", null, version(1)))).toBe(false);
+    expect(store.has(iconCopyKey(location.origin, "/", null, version(COPIES_MAX + 5)))).toBe(true);
     expect(store.has(paneMapKey(location.origin, "/"))).toBe(true);
+  });
+  it("drops a 2:1 banner an older build kept, at the first icon copy it writes", async () => {
+    seams();
+    const store = await fake.storage.open(cacheName);
+    const oldBanner = `${location.origin}/project-pictures/lead/${V1}.png`;
+    await store.put(oldBanner, new Response("old"));
+    await loadPicture(V1);
+    const keys = [...fake.stores.get(cacheName)!.keys()];
+    expect(keys).not.toContain(oldBanner);
+    expect(keys).toContain(iconCopyKey(location.origin, "/", null, V1));
   });
 });
 
@@ -664,9 +674,9 @@ describe("the switch reaches every tab and the worker (R6)", () => {
   it("the worker attaches no picture while the marker is there, even with a copy and a map", async () => {
     rememberPanePictures([{ paneId: "p1", picture: V1 }]);
     await vi.waitFor(() => expect(fake.stores.get(cacheName)?.has(paneMapKey(location.origin, "/"))).toBe(true));
-    // A banner copy as plain bytes (jsdom's Blob does not reach a Response's body as bytes).
+    // A push icon copy as plain bytes (jsdom's Blob does not reach a Response's body as bytes).
     const pictures = await fake.storage.open(cacheName);
-    await pictures.put(bannerCopyKey(location.origin, "/", null, V1), new Response(Uint8Array.from(pngBytes(256, 256))));
+    await pictures.put(iconCopyKey(location.origin, "/", null, V1), new Response(Uint8Array.from(pngBytes(256, 256))));
     expect(await pushPictureFor(fake.storage, location.origin, "/", { paneId: "p1" })).not.toBeNull();
     // Another tab (or a stale page) still holds the copies: only the marker says off.
     const marker = await fake.storage.open(pictureSwitchCacheName("/"));

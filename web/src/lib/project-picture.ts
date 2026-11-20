@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { fetchAuthedBytes } from "@/lib/api";
 import { basePath } from "@/lib/base-path";
-import { BANNER_HEIGHT, BANNER_WIDTH, bannerCopyKey, paneKey, paneMapKey, pictureSwitchCacheName, pictureSwitchKey, projectPictureCacheName } from "@/lib/project-picture-push";
+import { iconCopyKey, paneKey, paneMapKey, pictureSwitchCacheName, pictureSwitchKey, projectPictureCacheName, PUSH_ICON_PX } from "@/lib/project-picture-push";
 import { isPictureVersion, pictureHeaderFits, PROJECT_PICTURE_BYTES_MAX, projectPicturePath } from "@/lib/project-picture-wire";
 import { onWipe } from "@/lib/wipe";
 import type { AgentView } from "@/lib/types";
@@ -23,10 +23,10 @@ import type { AgentView } from "@/lib/types";
 //
 //   - a small copy ({@link SMALL_PX} px square), a `data:` URL in localStorage, so a cold open draws the
 //     picture in the first frame instead of the agent logo (bounded to {@link COPIES_MAX});
-//   - a banner copy (2:1, lib/project-picture-push.ts), a PNG in Cache Storage, which the service worker
-//     puts in a notification's picture slot. The operating system decodes it outside the browser's
-//     sandbox, so it gets this re-encoded copy and never the repository's bytes (sw.ts). The
-//     notification's icon is always Collie's.
+//   - a push icon copy ({@link PUSH_ICON_PX} px square, lib/project-picture-push.ts), a PNG in Cache
+//     Storage, which the service worker puts in a notification's icon. The operating system decodes it
+//     outside the browser's sandbox, so it gets this re-encoded copy and never the repository's bytes
+//     (sw.ts). The badge is always Collie's.
 //
 // Beside them, a small map from a pane (machine and pane id) to its version, rewritten from each snapshot
 // (a pane that left the herd or changed its picture loses its old entry), in localStorage for the page's
@@ -120,19 +120,19 @@ const loading = new Map<string, Promise<void>>();
 const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 // THE WORKER'S HALF IS REPAIRED, NOT TRUSTED (round 17). The small copies and the pane memory live in
-// localStorage; the banners and the map the worker reads live in Cache Storage. The two can part: a stuck
+// localStorage; the push icon copies and the map the worker reads live in Cache Storage. The two can part: a stuck
 // update's escape (lib/pwa.ts) deletes every Cache and keeps localStorage, and so may the browser. Before,
 // the page then saw its copy and an unchanged map and wrote neither again, so every push came without its
 // picture while the dashboard still showed it (the operator's phone, 2026-11-20). Now each page life writes
-// the map once, and checks once per picture that its banner is in the Cache, drawing it again when not.
-/** Banner URLs this page life has seen in the Cache, or written there. */
-const bannersHeld = new Set<string>();
+// the map once, and checks once per picture that its icon copy is in the Cache, drawing it again when not.
+/** Icon copy URLs this page life has seen in the Cache, or written there. */
+const iconsHeld = new Set<string>();
 /** The map this page life last wrote to the Cache, as its JSON, or null for none yet. */
 let mapWritten: string | null = null;
 
 // THE LEAD'S OWN PANES, AS A PUSH NAMES THEM (round 17). In a crew the merged snapshot tags the lead's own
 // panes with the lead's id, while the lead's own push names no host at all (bridge/push.ts). The worker
-// reads by the push's words, so the map and the banners name the lead's panes with no host.
+// reads by the push's words, so the map and the icon copies name the lead's panes with no host.
 let leadHost: string | null = null;
 
 /** A pane's machine as its push names it: none for the lead's own panes, the member's id for a member's. */
@@ -194,7 +194,7 @@ async function writeSwitchMarker(isOn: boolean): Promise<void> {
 
 /**
  * The switch as another tab set it. Every tab of this device holds the switch in memory, so a tab that
- * missed the change would write the map and the banners again; the `storage` event brings it along.
+ * missed the change would write the map and the icon copies again; the `storage` event brings it along.
  */
 function followOtherTabs(event: StorageEvent): void {
   if (event.key !== SWITCH_KEY && event.key !== null) return;
@@ -216,7 +216,7 @@ if (globalThis.window !== undefined) {
 export async function forgetProjectPictures(): Promise<void> {
   copies = new Map();
   panes = new Map();
-  bannersHeld.clear();
+  iconsHeld.clear();
   mapWritten = null;
   failed.clear();
   clearRetries(() => true);
@@ -304,7 +304,7 @@ export function __resetProjectPictures(): void {
   on = true;
   copies = new Map();
   panes = new Map();
-  bannersHeld.clear();
+  iconsHeld.clear();
   mapWritten = null;
   leadHost = null;
   failed.clear();
@@ -324,7 +324,7 @@ export function __reloadProjectPictures(): void {
   on = read(SWITCH_KEY) !== "off";
   copies = readTable(COPIES_KEY, isCopy);
   panes = readTable(PANES_KEY, isPane);
-  bannersHeld.clear();
+  iconsHeld.clear();
   mapWritten = null;
   failed.clear();
   clearRetries(() => true);
@@ -352,27 +352,27 @@ function keepCopy(key: string, url: string): void {
   writeTable(COPIES_KEY, copies);
 }
 
-/** The banner key of a copy key, for the pruning below. */
-function bannerKeyOf(key: string): string {
+/** The icon copy key of a small copy key, for the pruning below. */
+function iconKeyOf(key: string): string {
   const cut = key.lastIndexOf("\u0000");
   const host = key.slice(0, cut);
-  return bannerCopyKey(location.origin, basePath(), pushHost(host), key.slice(cut + 1));
+  return iconCopyKey(location.origin, basePath(), pushHost(host), key.slice(cut + 1));
 }
 
 /**
- * Keep one banner copy, and drop every banner that is not among the newest {@link COPIES_MAX}: the same
+ * Keep one push icon copy, and drop every other key that is not among the newest {@link COPIES_MAX}: the same
  * pictures the small copies hold, so a repository that changes its picture every few seconds costs the
- * device at most {@link COPIES_MAX} banners (about 1 MB each).
+ * device at most {@link COPIES_MAX} icon copies (a few KB each). The 2:1 banners an older build kept go at the first write.
  */
-async function keepBannerCopy(host: string | null | undefined, version: string, png: Blob): Promise<void> {
+async function keepIconCopy(host: string | null | undefined, version: string, png: Blob): Promise<void> {
   const storage: CacheStorage | undefined = globalThis.caches;
   if (storage === undefined || !on) return;
   try {
     const cache = await storage.open(projectPictureCacheName(basePath()));
-    const url = bannerCopyKey(location.origin, basePath(), pushHost(host), version);
+    const url = iconCopyKey(location.origin, basePath(), pushHost(host), version);
     await cache.put(url, new Response(png, { headers: { "content-type": "image/png" } }));
-    bannersHeld.add(url);
-    const kept = new Set([...copies.keys()].map(bannerKeyOf));
+    iconsHeld.add(url);
+    const kept = new Set([...copies.keys()].map(iconKeyOf));
     const map = paneMapKey(location.origin, basePath());
     for (const request of await cache.keys()) {
       if (request.url !== map && !kept.has(request.url)) await cache.delete(request);
@@ -406,20 +406,20 @@ async function writePaneMap(): Promise<void> {
 export function loadPicture(version: string, host?: string | null): Promise<void> {
   const key = copyKey(host, version);
   if (!on) return Promise.resolve();
-  if (copies.has(key)) return holdBanner(version, host);
+  if (copies.has(key)) return holdIcon(version, host);
   return drawPicture(version, host);
 }
 
-/** A copy the page holds: check once per page life that the worker's banner of it is in the Cache too. */
-async function holdBanner(version: string, host: string | null | undefined): Promise<void> {
+/** A copy the page holds: check once per page life that the worker's icon copy of it is in the Cache too. */
+async function holdIcon(version: string, host: string | null | undefined): Promise<void> {
   const storage: CacheStorage | undefined = globalThis.caches;
   if (storage === undefined) return;
-  const url = bannerCopyKey(location.origin, basePath(), pushHost(host), version);
-  if (bannersHeld.has(url)) return;
+  const url = iconCopyKey(location.origin, basePath(), pushHost(host), version);
+  if (iconsHeld.has(url)) return;
   try {
     const held = await (await storage.open(projectPictureCacheName(basePath()))).match(url);
     if (held !== undefined) {
-      bannersHeld.add(url);
+      iconsHeld.add(url);
       return;
     }
   } catch {
@@ -428,7 +428,7 @@ async function holdBanner(version: string, host: string | null | undefined): Pro
   await drawPicture(version, host);
 }
 
-/** Fetch, check, decode and keep one machine's version, once at a time: the copy and the banner. */
+/** Fetch, check, decode and keep one machine's version, once at a time: the small copy and the push icon copy. */
 function drawPicture(version: string, host: string | null | undefined): Promise<void> {
   const key = copyKey(host, version);
   const retry = failed.get(key);
@@ -440,17 +440,17 @@ function drawPicture(version: string, host: string | null | undefined): Promise<
       const bytes = await fetchBytes(projectPicturePath(version, host));
       // The header before the decoder: a hostile picture's harm is in decoding it.
       if (bytes.size > PROJECT_PICTURE_BYTES_MAX || !pictureHeaderFits(new Uint8Array(await bytes.arrayBuffer()))) throw new Error("refused");
-      const [small, banner] = await canvas.draw(bytes, [
+      const [small, icon] = await canvas.draw(bytes, [
         { width: SMALL_PX, height: SMALL_PX },
-        { width: BANNER_WIDTH, height: BANNER_HEIGHT },
+        { width: PUSH_ICON_PX, height: PUSH_ICON_PX },
       ]);
-      if (small === undefined || banner === undefined) throw new Error("no copy");
+      if (small === undefined || icon === undefined) throw new Error("no copy");
       const url = await canvas.dataUrl(small);
       if (!on) return;
       failed.delete(key);
       clearRetries((k) => k === key);
       keepCopy(key, url);
-      await keepBannerCopy(host, version, banner);
+      await keepIconCopy(host, version, icon);
       emit();
     } catch {
       const wait = Math.min((retry?.wait ?? RETRY_FIRST_MS / 2) * 2, RETRY_MAX_MS);

@@ -349,31 +349,33 @@ describe("decidePush — a render replaces what a skipped clear left", () => {
   test("the worker shows a render on the decided tag, so it replaces the notification on that slot", () => {
     // The tag rides `pushOptions` (tested below), and the worker shows exactly what it builds.
     const sw = readFileSync(resolve(import.meta.dirname, "../sw.ts"), "utf8");
-    expect(sw).toContain("await self.registration.showNotification(decision.title, pushOptions(decision, { icon: ICON, badge: BADGE }, image));");
+    expect(sw).toContain("await self.registration.showNotification(decision.title, pushOptions(decision, { icon: ICON, badge: BADGE }, picture));");
     expect(pushOptions({ kind: "show", title: "t", body: "", tag: "collie:herd:w1:p1", renotify: true }, { icon: "i", badge: "b" }, null).tag).toBe("collie:herd:w1:p1");
   });
 });
 
-// THE PUSH'S PICTURE SLOT (issue 811, ADR 0160): the service worker puts the page's banner copy of the
-// pane's project picture in `image`, and nothing in the icon or the badge.
+// THE PUSH'S PICTURE (issue 811, ADR 0160): the service worker puts the page's square copy of the pane's
+// project picture in the icon, sets no `image`, and keeps Collie's badge. With none, the icon is the mark.
 describe("pushOptions", () => {
   const show = { kind: "show" as const, title: "Done", body: "Claude finished", tag: "collie:w1:p1", paneId: "w1:p1", host: "laptop", renotify: true };
   const art = { icon: "/notification-icon-192x192.png", badge: "/badge-96x96.png" };
 
-  test("a found banner copy goes in `image`, and the icon and badge stay Collie's", () => {
-    const options = pushOptions(show, art, "blob:banner");
-    expect(options.image).toBe("blob:banner");
-    expect([options.icon, options.badge]).toEqual([art.icon, art.badge]);
+  test("a found picture is the icon, the badge stays Collie's, and no `image` is set", () => {
+    const options = pushOptions(show, art, "data:image/png;base64,AAAA");
+    expect([options.icon, options.badge]).toEqual(["data:image/png;base64,AAAA", art.badge]);
+    expect("image" in options).toBe(false);
     expect(options.data).toEqual({ paneId: "w1:p1", session: undefined, host: "laptop", target: undefined, machine: undefined, decision: undefined });
     expect([options.tag, options.renotify, options.body]).toEqual(["collie:w1:p1", true, "Claude finished"]);
   });
 
-  test("with no banner copy the key is absent, never undefined", () => {
-    expect("image" in pushOptions(show, art, null)).toBe(false);
+  test("with no picture the icon is the Collie mark, and still no `image`", () => {
+    const options = pushOptions(show, art, null);
+    expect([options.icon, options.badge]).toEqual([art.icon, art.badge]);
+    expect("image" in options).toBe(false);
   });
 
   test("the service worker shows a push with these options and the picture it found", () => {
     const sw = readFileSync(resolve(import.meta.dirname, "../sw.ts"), "utf8");
-    expect(sw).toContain("await self.registration.showNotification(decision.title, pushOptions(decision, { icon: ICON, badge: BADGE }, image));");
+    expect(sw).toContain("await self.registration.showNotification(decision.title, pushOptions(decision, { icon: ICON, badge: BADGE }, picture));");
   });
 });

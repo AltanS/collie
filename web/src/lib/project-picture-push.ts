@@ -1,29 +1,33 @@
 // THE PUSH PICTURE OF A PROJECT (issue 811, ADR 0160), read by the service worker.
 //
-// A notification's ICON is always Collie's, and so is its badge: no repository, setting or session
-// changes them (the owner, 2026-11-19). A project picture travels only in the notification's own picture
-// slot, `image`, which Android shows as a wide banner when the notification is expanded. Nothing is drawn
-// on top of it: no agent logo, no badge, no ring.
+// A push about a session whose repository names a picture shows that picture as the notification's ICON,
+// the small square beside the title, and sets no `image`: Android draws `image` as a full-width picture
+// about half the notification tall, which the owner found far too large (2026-11-20, "yes approve small
+// square"). The badge stays Collie's, and with no picture the icon is the Collie mark as before. Nothing
+// is drawn on top of the picture: no agent logo, no badge, no ring.
 //
-// The page keeps its own banner PNG of each picture (lib/project-picture.ts), drawn on a canvas of the
-// banner's shape ({@link BANNER_WIDTH} x {@link BANNER_HEIGHT}, 2:1) from the bytes it fetched, the picture
-// whole and centred on a transparent ground, never cropped or stretched. Beside the copies sits a map
+// The page keeps its own square PNG of each picture for this (lib/project-picture.ts), drawn on a canvas
+// of {@link PUSH_ICON_PX} px from the bytes it fetched, the picture whole and centred on a transparent
+// ground, never cropped or stretched. Beside the copies sits a map
 // from a pane to the version it showed when the page last wrote it, both in one Cache per mount. A push
 // names its pane; the worker looks the pane up and takes the copy of THAT machine and THAT version, as a
 // `data:` URL. Nothing is fetched at push time, and the repository's own bytes never reach the operating
 // system, which decodes a notification's pictures outside the browser's sandbox. No map, no entry, no
-// copy, a copy that is not a PNG, or a system with no `image` slot (Safari, Firefox): the push has no
-// picture and is otherwise unchanged.
+// copy, or a copy that is not a PNG: the push shows the Collie mark and is otherwise unchanged. A system
+// that draws its own icon in place of `icon` (Safari) shows that, as it did before.
 //
 // Imported by both sides, so this module holds no state, imports no React and has no side effect.
 
 import { isPictureVersion } from "./project-picture-wire";
 
-/** The banner copy's size in px: the 2:1 shape Chrome on Android shows an expanded notification's image in. */
-export const BANNER_WIDTH = 1024;
-export const BANNER_HEIGHT = 512;
+/**
+ * The push icon copy's side in px. Android draws a notification's large icon at 64 dp, which is 192 px on
+ * a 3x screen and less on most phones, and desktop browsers draw theirs smaller still, so the copy is
+ * scaled down and never up. A few KB, where the 1024 x 512 banner it replaced was up to 1 MB.
+ */
+export const PUSH_ICON_PX = 192;
 
-/** The Cache the banner copies and the pane map live in, per mount (two collies on one origin keep their own). */
+/** The Cache the push icon copies and the pane map live in, per mount (two collies on one origin keep their own). */
 export function projectPictureCacheName(mount: string): string {
   return mount === "/" ? "collie-project-pictures" : `collie-project-pictures:${mount}`;
 }
@@ -34,11 +38,12 @@ function machinePart(host: string | null | undefined): string {
 }
 
 /**
- * The key of one banner copy in that Cache, by machine AND version, so one machine can never supply the
- * picture another machine's pane shows. Never requested from the network.
+ * The key of one push icon copy in that Cache, by machine AND version, so one machine can never supply the
+ * picture another machine's pane shows. Never requested from the network. `icon-` keeps it apart from the
+ * 2:1 banner copies an older build kept under `<version>.png`, which the page's pruning then deletes.
  */
-export function bannerCopyKey(origin: string, mount: string, host: string | null | undefined, version: string): string {
-  return `${origin}${mount}project-pictures/${machinePart(host)}/${version}.png`;
+export function iconCopyKey(origin: string, mount: string, host: string | null | undefined, version: string): string {
+  return `${origin}${mount}project-pictures/${machinePart(host)}/icon-${version}.png`;
 }
 
 /**
@@ -87,7 +92,7 @@ function asDataUrl(bytes: Uint8Array): string {
 const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 /**
- * The banner picture for a push about `pane`, as a `data:` URL of the page's own copy for that pane's
+ * The icon for a push about `pane`, as a `data:` URL of the page's own copy for that pane's
  * machine and the version the page last wrote for it, or null for none. Never throws and never fetches.
  */
 export async function pushPictureFor(
@@ -112,18 +117,13 @@ export async function pushPictureFor(
     const table = asTable(await map.text());
     const version = table.get(paneKey({ host: pane.host, paneId: pane.paneId }));
     if (version === undefined || !isPictureVersion(version)) return null;
-    const copy = await cache.match(bannerCopyKey(origin, mount, pane.host, version));
+    const copy = await cache.match(iconCopyKey(origin, mount, pane.host, version));
     if (copy === undefined) return null;
     const bytes = new Uint8Array(await copy.arrayBuffer());
     return PNG_HEAD.every((b, i) => bytes[i] === b) ? asDataUrl(bytes) : null;
   } catch {
     return null;
   }
-}
-
-/** Whether this system's notifications have a picture slot. Safari and Firefox have none. */
-export function notificationsShowImage(kind: { prototype: object } | undefined): boolean {
-  return kind !== undefined && "image" in kind.prototype;
 }
 
 /** A stored `{ pane: version }` table; anything malformed reads as empty. */

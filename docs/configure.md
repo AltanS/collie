@@ -939,9 +939,9 @@ The picture replaces the logo on the session's row, on the dashboard, in the sid
 closed, and beside the session's name at the top of the session. A small agent logo sits in its
 corner, so you still see which agent runs there. The Collie mark is never replaced.
 
-A push about that session keeps the Collie icon and shows the picture as a wide image when you
-expand the notification. Chrome on Android shows it. Safari and Firefox have no slot for it, so
-there the push stays as it was.
+A push about that session shows the picture as its icon, the small square beside the title. A
+session with no picture keeps the Collie icon. Chrome on Android and desktop Chrome and Firefox
+show it. Safari always shows the site's own icon, so there the push stays as it was.
 
 > **Note.** The file can change what Collie shows and nothing else. It never adds a command, a
 > launcher, a key or a hook, and a table with such a name is ignored
