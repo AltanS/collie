@@ -186,7 +186,7 @@ The rule today: A send goes through the Send Protocol, which reads the screen be
 | [0123](./0123-report-a-problem-three-failed-sends-offer-a-prefilled-issue.md) | Three failed sends in a row offer a prefilled GitHub issue that the person opens. | Accepted |
 | [0124](./0124-a-sends-bound-starts-after-its-profile.md) | A send's time bound starts after its profile is known. | Accepted |
 | [0140](./0140-a-part-inside-the-agent-dials-the-bridge.md) | A part inside the agent program dials the bridge over a Unix socket. | Proposed |
-| [0166](./0166-an-offer-is-a-yes-to-one-draft.md) | Add to it and Replace act only on the draft the offer showed; another draft is the offer again. | Accepted |
+| [0166](./0166-an-offer-is-a-yes-to-one-draft.md) | Add to it and Replace act only on the draft the offer showed; another draft is the offer again, and Replace probes before it clears. | Accepted |
 
 ### Dialogs, cards and screen readers
 

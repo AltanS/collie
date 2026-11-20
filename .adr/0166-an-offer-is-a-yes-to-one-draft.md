@@ -6,7 +6,7 @@
   draft the phone never showed. The other road, that Add to it and Replace act on the box as it is at
   the tap, was the design until then, and the operator ruled it out for 1.30.0. PR 831 had asked for the
   opposite direction, a failed probe that lets Add to it go on; it was declined the same day. Files:
-  `bridge/surface/protocol.ts` (`offerDraftSeen`, `draftRefusal`), the composer's
+  `bridge/surface/protocol.ts` (`offerDraftSeen`, `draftRefusal`, the Replace order), the composer's
   `onProtocolOffer` in `web/src/components/composer.tsx`, `docs/multiplexers.md`
 
 ## Context
@@ -17,6 +17,9 @@ the bridge went ahead only while the screen still hashed the same. Add to it and
 hash: they acted on whatever the box held at the tap. A person at the desk who typed another draft in
 the seconds between the offer and the tap lost it to Replace, or had the phone's text glued onto it by
 Add to it. Neither is what the person said yes to.
+
+Replace also emptied the box before the probe of a send into a running turn. The probe is the check
+that a dialog opens in a turn, so a probe that failed left the draft deleted and the text not typed.
 
 ## Decision
 
@@ -40,6 +43,9 @@ Add to it. Neither is what the person said yes to.
   wherever the box holds a text the request does not name, and a draft always is one here. A request
   with no hash over a draft gets the offer again with its hash. A phone page from before this change
   therefore cannot Add to it or Replace until it reloads; a new page sends the hash.
+- **Replace probes before it clears.** Its probe goes in after the draft, as Add to it's does, and the
+  clear follows the probe. A draft the clear would refuse (taller than the box, or past the clear's
+  length) is refused before the probe.
 
 ## Consequences
 
@@ -47,5 +53,7 @@ Add to it. Neither is what the person said yes to.
   turn that moves the rows, the first tap after a restart gets the offer again; the next one goes.
 - The crew link needs nothing new. A member's reply route takes the same body, and the lead streams
   it on as it is. A member on an older build ignores the hash for these two modes and acts as before.
+- A window stays between the clear and the write: a dialog that opens in those milliseconds still
+  leaves an empty box. The write and S1 then end the send as today, and the phone keeps the text.
 - Revisit if a harness can delete its box in one key that the bridge can undo, or if the bridge learns
   to hand the old draft back into the box after a failed write.

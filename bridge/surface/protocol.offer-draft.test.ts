@@ -3,7 +3,7 @@
 // on that draft and on no other. The rig is `protocol.rig.ts`.
 
 import { describe, expect, test } from "bun:test";
-import { LIVE_ROW, rig, useScratchDir } from "./protocol.rig.ts";
+import { DIALOG, LIVE_ROW, OFFERED, PROBE, rig, useScratchDir } from "./protocol.rig.ts";
 
 useScratchDir();
 
@@ -121,5 +121,38 @@ describe("Add to it and Replace act on the draft the offer showed (ADR 0166)", (
     const second = rig();
     second.pane.box = "half a thought";
     expect((await second.send(" and more", { mode: "append", rowsHash: offer.rowsHash })).receipt).toMatchObject({ outcome: "sent" });
+  });
+});
+
+describe("Replace never empties the draft before its probe passed (Brief 5, item two)", () => {
+  // A running turn may open a dialog at any moment: a probe that fails there must find the draft still in the box.
+  test("a dialog that opens as Replace's probe goes in, verified and provisional: probe_failed, the draft kept, nothing cleared", async () => {
+    for (const version of ["2.1.200", "2.1.301"]) {
+      const { pane, send } = rig({ version });
+      pane.over = [LIVE_ROW];
+      pane.box = "half a thought";
+      pane.afterInput = (p, what) => {
+        if (what === `type:${PROBE}`) p.dialog = DIALOG;
+      };
+      const answer = await send("a new thought", { mode: "replace", rowsHash: OFFERED });
+      expect(answer.receipt, version).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+      expect(pane.keysSeen.filter((key) => key === "Backspace").length, version).toBeLessThanOrEqual(1);
+      // The probe character may stay behind the dialog (Collie's own residue, taken out by the next send).
+      expect(pane.box.replace(PROBE, ""), version).toBe("half a thought");
+      expect(pane.calls.filter((call) => call.includes("a new thought")), version).toEqual([]);
+    }
+  });
+
+  test("the order on a running turn: the probe goes in after the draft, then the clear, then the text", async () => {
+    const { pane, send } = rig({ version: "2.1.301" });
+    pane.over = [LIVE_ROW];
+    pane.box = "half";
+    const answer = await send("a new thought", { mode: "replace", rowsHash: OFFERED });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    // The probe and its Backspace first, over the draft; then the clear; then the text, written once.
+    expect(answer.receipt?.keys.slice(0, 2)).toEqual(["probe", "Backspace"]);
+    expect(answer.receipt?.keys.filter((key) => key === "probe")).toHaveLength(1);
+    expect(pane.calls).toEqual([`type:${PROBE}`, "paste:a new thought"]);
+    expect(pane.box).toBe("");
   });
 });

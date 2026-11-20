@@ -5181,16 +5181,12 @@ export class SendProtocol {
       }
       case "replace": {
         const frame = this.draftFrame(state, s0);
+        // A draft the clear would refuse is refused here, before the probe types anything.
+        if (boxText(frame).length > 0) clearLength(s0, frame, null);
         // The box would end up holding one of the notice's keys alone, which answers the notice.
         if (this.answersNotice(state, s0)) throw noticeRefusal(s0);
-        // S0 ends with its two reads; emptying the box is its own step with its own bound.
+        // S0 ends with its two reads. The box is emptied after the probe, below.
         this.lap(state, "s0");
-        if (boxText(frame).length > 0) {
-          // The draft is the person's (or one a refusal left there): Collie knows only what the box shows.
-          s0 = await this.clear(state, s0, null);
-          state.marks.s0 = s0;
-          this.lap(state, "clear");
-        }
         break;
       }
       case "append": {
@@ -5210,6 +5206,11 @@ export class SendProtocol {
     }
     if (request.mode !== "replace") this.lap(state, "s0");
 
+    // Replace probes over the draft it is about to empty (Brief 5, 2026-11-20): the draft is the person's,
+    // so it goes only once every check that can still refuse before a write has passed. A probe that ran
+    // after the clear could fail (a dialog that opens in a running turn) and leave the box empty and the
+    // text not typed. So the probe goes after the draft, as Add to it's does, and the clear follows it.
+    const clears = request.mode === "replace" && s0.frame !== null && boxText(s0.frame).length > 0;
     const prefix = request.mode === "append" && s0.frame !== null ? boxText(s0.frame) : "";
     const text = lines.join("");
     // A manual send (the person confirmed a screen that is not free) is always probed, and so is any
@@ -5232,7 +5233,7 @@ export class SendProtocol {
     let landing: Landing | null = null;
     try {
       if (state.probed) {
-        const probed = await this.probe(state, s0, prefix);
+        const probed = await this.probe(state, s0, clears && s0.frame !== null ? boxText(s0.frame) : prefix);
         landing = probed.landing;
         // A late probe's second chance went from a fresh S0 (the header): the request goes on from it.
         if (probed.base !== s0) {
@@ -5246,6 +5247,13 @@ export class SendProtocol {
     }
     // The probe showed in the box and went again: the starting harness reads keys, its window ends.
     if (state.starting && state.probed) this.noteFramed(state);
+    if (clears) {
+      // The draft is the person's (or one a refusal left there): Collie knows only what the box shows.
+      // Emptying the box is its own step with its own bound.
+      s0 = await this.clear(state, s0, null);
+      state.marks.s0 = s0;
+      this.lap(state, "clear");
+    }
 
     if (!state.command && !state.noticeKey) {
       // A lone upload path is one paste on every multiplexer (the write per line), so the harness may attach it there too (uploadAlone).
@@ -7231,10 +7239,7 @@ export class SendProtocol {
     if (from.frame === null || from.cueStrength !== "none") throw gone();
     const shown = [...boxText(from.frame)].length;
     if (shown === 0) return from;
-    const scrolled = from.frame.scrolled === true;
-    if (scrolled && known === null) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: TALL_DRAFT }));
-    const length = scrolled && known !== null ? Math.max(known, shown) : shown;
-    if (length > CLEAR_MAX_CHARS) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: LONG_DRAFT }));
+    const length = clearLength(from, from.frame, known);
     let budget = length + clearKey.slack;
     // The profile's one stroke key (`keys.clearAll`) is pressed at most once, after reads showed the box
     // unchanged since the last batch, never on a box that reads empty.
@@ -7306,6 +7311,20 @@ export class SendProtocol {
  * Whether a request is a command for the draft offers: mode `command`, or a submit whose first line
  * carries a reserved lead. One rule for a fresh refusal ({@link draftRefusal}) and a replayed one.
  */
+/**
+ * How many characters a clear of `frame` takes, or the refusal before any key ({@link SendProtocol.clear}):
+ * a box at its scroll height with no length Collie knows (TALL_DRAFT), or a draft past
+ * {@link CLEAR_MAX_CHARS} (LONG_DRAFT). A Replace asks it at S0 too, before its probe.
+ */
+function clearLength(from: Snap, frame: Frame, known: number | null): number {
+  const shown = [...boxText(frame)].length;
+  const scrolled = frame.scrolled === true;
+  if (scrolled && known === null) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: TALL_DRAFT }));
+  const length = scrolled && known !== null ? Math.max(known, shown) : shown;
+  if (length > CLEAR_MAX_CHARS) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: LONG_DRAFT }));
+  return length;
+}
+
 function draftCommand(request: SendRequest, match: ProfileMatch | null): boolean {
   const leads = match?.profile.reservedLeads ?? GENERIC_LEADS;
   return request.mode === "command" || (request.mode === "submit" && reservedLead(sendLines(request.text)[0] ?? "", leads) !== null);
