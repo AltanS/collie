@@ -89,8 +89,9 @@ function directProblem(input: { chord: Chord; raw: string }): Problem | null {
 
 function parseOrThrow(text: string, mac: boolean): Chord {
   const parsed = parseBinding(text, { mac });
-  if (!parsed.ok || parsed.bindings.length !== 1) throw new Error(`shortcuts: the built-in key "${text}" does not parse`);
-  return parsed.bindings[0].chord;
+  const [only] = parsed.ok ? parsed.bindings : [];
+  if (!parsed.ok || parsed.bindings.length !== 1 || only === undefined) throw new Error(`shortcuts: the built-in key "${text}" does not parse`);
+  return only.chord;
 }
 
 interface PrefixSetting {
@@ -103,9 +104,10 @@ function resolvePrefix(input: { user: UserShortcuts; mac: boolean; diagnostics: 
   const { user, mac, diagnostics } = input;
   if (!Object.hasOwn(user, "prefix")) return { chords: [parseOrThrow(DEFAULT_PREFIX, mac)], source: "default" };
 
+  const entries = user.prefix ?? [];
   const chords: Chord[] = [];
   const seen = new Set<string>();
-  for (const entry of user.prefix) {
+  for (const entry of entries) {
     const raw = entry.trim();
     const problem = prefixProblem({ raw, mac });
     if (problem !== null) {
@@ -121,7 +123,7 @@ function resolvePrefix(input: { user: UserShortcuts; mac: boolean; diagnostics: 
 
   report(diagnostics, {
     action: "prefix",
-    binding: user.prefix.join(", "),
+    binding: entries.join(", "),
     code: "invalid-prefix",
     message: `no valid prefix; using ${DEFAULT_PREFIX}`,
   });
@@ -133,6 +135,7 @@ function prefixProblem(input: { raw: string; mac: boolean }): Problem | null {
   const parsed = parseBinding(raw, { mac });
   if (!parsed.ok) return { code: parsed.error.code, message: `invalid prefix: ${parsed.error.message}` };
   const [binding] = parsed.bindings;
+  if (binding === undefined) return { code: "invalid-binding", message: "the prefix holds no key" };
   if (binding.prefix) return { code: "invalid-binding", message: "the prefix cannot start with prefix+" };
   return directProblem({ chord: binding.chord, raw });
 }
@@ -237,7 +240,7 @@ function hitsOf<Id extends string>(registry: Registry<Id>): Map<string, Hit<Id>>
 function reportUnknownActions(input: { user: UserShortcuts; known: ReadonlySet<string>; diagnostics: Diagnostic[] }): void {
   for (const name of Object.keys(input.user)) {
     if (name === "prefix" || input.known.has(name)) continue;
-    const binding = input.user[name].join(", ");
+    const binding = (input.user[name] ?? []).join(", ");
     if (HERDR_NAMES.has(name)) {
       report(input.diagnostics, { action: name, binding, code: "herdr-name", message: herdrNameMessage({ name, collie: HERDR_NAMES.get(name) ?? null }) });
       continue;
@@ -278,7 +281,7 @@ export function buildKeymap<Id extends string = ActionId>(input: BuildInput<Id>)
     for (const def of input.defaults) {
       const isUser = Object.hasOwn(user, def.id);
       if (isUser !== (source === "user")) continue;
-      const texts = isUser ? user[def.id] : def.defaults;
+      const texts = isUser ? (user[def.id] ?? []) : def.defaults;
       bindings.set(def.id, registerAction(ctx, { def, texts, source }));
     }
   }

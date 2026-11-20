@@ -488,7 +488,7 @@ unbinds the action. The example file lists every default as a commented line.
 - The browser owns `ctrl+w`, `ctrl+t`, `ctrl+n`, `ctrl+tab`, `ctrl+shift+n` and `ctrl+l`. A direct
   binding on one of them is refused.
 - A bad line is dropped and the rest of the file loads. The shortcut list names each dropped line and
-  the reason, in a note at its foot.
+  the reason, in a note at its foot. `collie config check` and `collie doctor` name the dropped lines too.
 - A Herdr name that Collie spells differently, such as `new_workspace`, is dropped too. The list
   says which Collie name to write.
 

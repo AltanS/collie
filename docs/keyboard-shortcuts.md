@@ -132,6 +132,7 @@ The bridge reads the file again when it changes, with no restart. Reload the pag
 A bad line is dropped, and the rest of the file still loads. A bad `prefix` falls back to
 `ctrl+b`. When two of your lines claim one key, the first wins. The shortcut list shows each
 dropped line and the reason, in a note at its foot.
+`collie config check` and `collie doctor` name the dropped lines too, so you can check the file from a terminal.
 
 ## The key grammar
 

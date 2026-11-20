@@ -16,7 +16,7 @@ import type { OperatorShortcuts } from "./types.ts";
 // copy a block from their Herdr file. It has nothing to do with `keys.toml`'s `[[keys]]` rows.
 
 /** A parsed `shortcuts.toml` document, before a byte of it is believed. */
-interface ShortcutsDocument {
+export interface ShortcutsDocument {
   keys?: JsonValue;
 }
 
