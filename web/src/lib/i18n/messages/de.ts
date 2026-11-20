@@ -204,7 +204,7 @@ export const de: Dictionary = {
     "Mit einer physischen Tastatur sendet Enter die Nachricht und Umschalt+Enter fügt eine neue Zeile ein. Mit der Bildschirmtastatur fügt Enter immer eine neue Zeile ein.",
   "settings.projectPictures.title": "Projektbilder",
   "settings.projectPictures.hint":
-    "Zeigt das Bild, das ein Repository in seiner collie.toml nennt, statt des Agent-Logos, mit dem Logo in der Ecke.",
+    "Zeigt das Bild, das ein Repository in seiner collie.toml nennt, statt des Agent-Logos, mit dem Logo in der Ecke und als Icon seiner Push-Benachrichtigungen.",
   "settings.paneNav.title": "Pane-Navigation",
   "settings.paneNav.twoFingers": "Zwei Finger",
   "settings.paneNav.joystick": "Joystick",

@@ -194,7 +194,7 @@ export const it: Dictionary = {
     "Con una tastiera fisica, Invio invia il messaggio e Maiusc+Invio aggiunge una nuova riga. Con la tastiera sullo schermo, Invio aggiunge sempre una nuova riga.",
   "settings.projectPictures.title": "Immagini di progetto",
   "settings.projectPictures.hint":
-    "Mostra l'immagine che un repository indica nel suo collie.toml al posto del logo dell'agente, con il logo nell'angolo.",
+    "Mostra l'immagine che un repository indica nel suo collie.toml al posto del logo dell'agente, con il logo nell'angolo e come icona delle sue notifiche push.",
   "settings.paneNav.title": "Navigazione tra riquadri",
   "settings.paneNav.twoFingers": "Due dita",
   "settings.paneNav.joystick": "Joystick",

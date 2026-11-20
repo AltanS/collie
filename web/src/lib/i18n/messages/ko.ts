@@ -194,7 +194,7 @@ export const ko: Dictionary = {
     "물리 키보드에서는 Enter가 메시지를 전송하고 Shift+Enter가 줄바꿈을 합니다. 화면 키보드에서는 Enter가 항상 줄바꿈을 합니다.",
   "settings.projectPictures.title": "프로젝트 이미지",
   "settings.projectPictures.hint":
-    "저장소의 collie.toml에 지정된 이미지를 에이전트 로고 대신 표시하고 로고는 모서리에 둡니다.",
+    "저장소의 collie.toml에 지정된 이미지를 에이전트 로고 대신 표시하고 로고는 모서리에 둡니다. 푸시 알림의 아이콘으로도 사용합니다.",
   "settings.paneNav.title": "창 탐색",
   "settings.paneNav.twoFingers": "두 손가락",
   "settings.paneNav.joystick": "조이스틱",

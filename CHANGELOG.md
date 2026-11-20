@@ -42,6 +42,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A push shows the project picture as a small square icon.** Before, the picture came as a wide image under the text that filled about half of the notification on Android. Now it sits in the small square beside the title, where Collie's icon was, and a session with no picture keeps Collie's icon. Desktop Chrome and Firefox show it too.
 
+- **The Project pictures setting says the picture also marks pushes.** Its hint in Settings, Appearance now says that the picture shows as the icon of a session's pushes too, so turning it off is clearly the way to keep Collie's icon there.
+
 ### Fixed
 
 - **A trick's picture that stands on an edge now stands on it on an iPhone.** Before, a picture perched on the Belt, the status line or the composer sat about one pixel above that edge on an iPhone, because the free space was cut down to whole pixels from the wrong side. Now the picture stands on the edge, as it already did in other browsers.
