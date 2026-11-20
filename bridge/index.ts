@@ -76,6 +76,7 @@ import {
   factoryFor,
   type MuxTarget,
 } from "./mux/registry.ts";
+import { REX_BINARY_OPTION } from "./mux/rex/adapter.ts";
 import { TERN_BINARY_OPTION } from "./mux/tern/adapter.ts";
 import { TMUX_BINARY_OPTION } from "./mux/tmux/adapter.ts";
 import type { MuxAdapter } from "./mux/types.ts";
@@ -1788,6 +1789,7 @@ function terminalAdapter(socketPath: string): BuiltAdapter {
       [TMUX_BINARY_OPTION]: cfg.tmuxBin,
       [ZELLIJ_BINARY_OPTION]: cfg.zellijBin,
       [TERN_BINARY_OPTION]: cfg.ternBin,
+      [REX_BINARY_OPTION]: cfg.rexBin,
     },
   };
   return { adapter: createMux(muxRegistry, cfg.mux, target), target };

@@ -10,9 +10,9 @@
 // - SIZE: counted as the bytes arrive, here. Past the limit the read fails: 2 MB for JSON the lead parses
 //   itself, 32 MB for the rest.
 // - TIME: a read the lead takes in full ends by a total deadline, an `AbortSignal.timeout` on the dial
-//   (peer-client.ts). A download that streams on to the phone (a blob, a picture) has no total limit, as a
-//   big honest file on a slow link must pass; it ends when no byte came for {@link BODY_IDLE_MS} while
-//   the phone waited for one.
+//   (peer-client.ts). A download that streams on to the phone (a blob, a picture) ends when no byte came
+//   for {@link BODY_IDLE_MS} while the phone waited for one, and in any case by
+//   {@link STREAM_DEADLINE_MS}, which a big honest file on a slow link stays well inside.
 //
 // Past either limit the member's stream is cancelled, the dial is aborted, and the reader gets an error,
 // never a short body that looks whole.
@@ -76,11 +76,22 @@ export function wholeDeadlineMs(budgetMs?: number): number {
   return Math.max(WHOLE_ANSWER_DEADLINE_MS, budgetMs ?? 0);
 }
 
+/**
+ * The total limit of a download that streams on to the phone: 10 minutes. The idle limit alone lets a
+ * member that sends one byte every 9 s hold a lead connection for as long as the phone waits. The largest
+ * answer the lead passes, {@link CREW_BODY_MAX} (32 MB), needs about 55 KB/s to arrive inside it, and a
+ * blob or a picture (at most 16 MB) half that: slower than a weak mobile link, where a person has long
+ * given up on the download.
+ */
+export const STREAM_DEADLINE_MS = 10 * 60_000;
+
 export interface BodyLimit {
   /** The most bytes the lead reads. */
   readonly max: number;
   /** For a download that streams on: no byte for this long, while a reader waits, fails the read. */
   readonly idleMs?: number;
+  /** For a download that streams on: the read fails at this `performance.now()` time, however steady. */
+  readonly endsAt?: number;
   /** Called once when a limit fires, to release the socket (the dial aborts its request). */
   readonly onStop: () => void;
   /** Whether the dial's own total deadline ended the read, so its error is named as such. */
@@ -105,11 +116,19 @@ export function limitedBody(source: ReadableStream<Uint8Array>, limit: BodyLimit
   return new ReadableStream<Uint8Array>(
     {
       async pull(controller) {
+        // The wait for this piece ends at the idle limit or at the end time, whichever comes first.
+        const left = limit.endsAt === undefined ? Infinity : limit.endsAt - performance.now();
+        if (left <= 0) {
+          await stop(controller, new BodyRefused("the answer did not end in time", true));
+          return;
+        }
+        const late = limit.idleMs === undefined ? left !== Infinity : left < limit.idleMs;
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const idle = new Promise<"idle">((resolve) => {
-          if (limit.idleMs !== undefined) timer = setTimeout(() => resolve("idle"), limit.idleMs);
+        const idle = new Promise<"idle" | "late">((resolve) => {
+          if (late) timer = setTimeout(() => resolve("late"), left);
+          else if (limit.idleMs !== undefined) timer = setTimeout(() => resolve("idle"), limit.idleMs);
         });
-        let next: Awaited<ReturnType<typeof reader.read>> | "idle";
+        let next: Awaited<ReturnType<typeof reader.read>> | "idle" | "late";
         try {
           next = await Promise.race([reader.read(), idle]);
         } catch {
@@ -118,6 +137,10 @@ export function limitedBody(source: ReadableStream<Uint8Array>, limit: BodyLimit
           return;
         } finally {
           clearTimeout(timer);
+        }
+        if (next === "late") {
+          await stop(controller, new BodyRefused("the answer did not end in time", true));
+          return;
         }
         if (next === "idle") {
           await stop(controller, new BodyRefused(`no byte of the answer for ${String(limit.idleMs)}ms`, true));

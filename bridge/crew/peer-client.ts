@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue } from "../json.ts";
-import { BODY_IDLE_MS, BodyRefused, bodyDeadlineMs, CREW_BODY_MAX, CREW_JSON_MAX, limitedResponse, wholeDeadlineMs } from "./guarded-body.ts";
+import { BODY_IDLE_MS, BodyRefused, bodyDeadlineMs, CREW_BODY_MAX, CREW_JSON_MAX, limitedResponse, STREAM_DEADLINE_MS, wholeDeadlineMs, type BodyLimit } from "./guarded-body.ts";
 import { LAUNCH_BUDGET_MS } from "../create-confirm.ts";
 import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import {
@@ -615,6 +615,8 @@ export interface PeerClientDeps {
    * the two docs above describe — so every production wiring supplies it.
    */
   readonly patientTimeoutMs?: number;
+  /** The total limit of a streamed download ({@link STREAM_DEADLINE_MS}); a test sets a short one. */
+  readonly streamDeadlineMs?: number;
   readonly fetch: CrewFetch;
   readonly now?: () => number;
   /** The operator's device id, forwarded for the peer's audit trail (§6, §12). Off ⇒ `null`. */
@@ -1166,11 +1168,14 @@ export class PeerClient {
     }
 
     // `controller` is the header budget and the limits' own stop; the dial also ends on the caller's signal
-    // (a phone that went away) and, for a body read in full, on its total deadline from here.
+    // (a phone that went away) and, for a body read in full, on its total deadline from here. A download
+    // that streams on has its long total limit in the body's own reader (`endsAt` below), whose timer ends
+    // with the body: a 10-minute `AbortSignal.timeout` cannot be cleared and would outlive every download.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const deadlineMs = mode === "consumed" ? bodyDeadlineMs(timeoutMs) : init.bodyDeadlineMs;
     const deadline = deadlineMs === undefined ? undefined : AbortSignal.timeout(deadlineMs);
+    const streamEndsAt = performance.now() + (this.deps.streamDeadlineMs ?? STREAM_DEADLINE_MS);
     const outer = init.signal ?? undefined;
     const signals = [controller.signal, deadline, outer].filter((signal): signal is AbortSignal => signal !== undefined);
     // Never pass a signal that outlives the dial (one shared across dials): `any` keeps it joined.
@@ -1225,13 +1230,14 @@ export class PeerClient {
     // ── Every body under the limits of guarded-body.ts ──────────────────────
     // The header budget ended above. From here the bytes the lead reads (inflated by the runtime) are
     // counted against the size limit; a body read in full ends by its deadline, and only a download that
-    // streams on keeps an idle limit.
-    res = limitedResponse(res, {
+    // streams on keeps an idle limit and its long end time.
+    const cut: BodyLimit = {
       max: init.bodyMax ?? (mode === "consumed" ? CREW_JSON_MAX : CREW_BODY_MAX),
-      idleMs: deadline === undefined ? Math.max(timeoutMs, BODY_IDLE_MS) : undefined,
       onStop: () => controller.abort(),
       late: () => deadline?.aborted === true,
-    });
+    };
+    const limit: BodyLimit = deadline === undefined ? { ...cut, idleMs: Math.max(timeoutMs, BODY_IDLE_MS), endsAt: streamEndsAt } : cut;
+    res = limitedResponse(res, limit);
 
     // ── Version first, before status and before the body ─────────────────────
     // §7: "The lead applies the same rule to a peer's RESPONSE header: a reply with a version it

@@ -382,7 +382,8 @@ const CREATE_ROUTES: ReadonlySet<string> = new Set(["launch", "tab", "workspace"
 
 /**
  * Whether a forwarded route's answer STREAMS on to the phone: a blob, a file's picture, a project picture.
- * Such a download keeps the idle limit only, as a big honest file on a slow link must pass. Every other
+ * Such a download has the idle limit and the long total one (guarded-body.ts, `STREAM_DEADLINE_MS`), as a
+ * big honest file on a slow link must pass. Every other
  * forwarded answer is read in full before it is of any use (the lead masks or merges it, or the phone
  * parses it whole), and ends by a total deadline (guarded-body.ts, `wholeDeadlineMs`).
  */
@@ -930,16 +931,63 @@ function watchedBody(res: Response, onCut: (why: string) => void): Response {
   return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
 }
 
-async function maskedAnswer(res: Response, answer: TextAnswer, mask: AnswerMask, memberId: string): Promise<Response> {
+// ── ONE LARGE MASKED READ AT A TIME (round 16) ──────────────────────────────────────────────────
+// Masking a 32 MB answer peaks at about 390 MB (the parse is about 12 times the text). The mask itself
+// is synchronous, so two masks never overlap; what piles up is the reads, each holding its text. So a
+// masked answer that passes LARGE_MASKED_BYTES takes the lead's one large-read slot before it reads on,
+// and keeps it until its mask is done. Ordinary answers (a screen, a diff, a file, most History pages)
+// stay below it and never wait. A read that waits does so inside its own deadline and the phone's signal.
+
+/** The size past which a masked answer needs the large-read slot: 4 MB, at most about 50 MB at its mask. */
+export const LARGE_MASKED_BYTES = 4 * 1024 * 1024;
+let largeReadTail: Promise<void> = Promise.resolve();
+
+/** Wait for the large-read slot. Its release, or null when `wait` ended first (the slot is then given on). */
+async function largeReadSlot(wait: AbortSignal): Promise<(() => void) | null> {
+  const ahead = largeReadTail;
+  const { promise, resolve: free } = Promise.withResolvers<void>();
+  largeReadTail = promise;
+  // Never before the read ahead is done, so a waiter that gives up never lets two large reads overlap.
+  const release = () => void ahead.then(free);
+  const gaveUp = new Promise<false>((resolve) => {
+    if (wait.aborted) resolve(false);
+    wait.addEventListener("abort", () => resolve(false), { once: true });
+  });
+  if (await Promise.race([ahead.then(() => true), gaveUp])) return release;
+  release();
+  return null;
+}
+
+async function maskedAnswer(res: Response, answer: TextAnswer, mask: AnswerMask, memberId: string, wait: AbortSignal): Promise<Response> {
   if (res.status < 200 || res.status >= 300 || res.status === 204 || res.body === null) return res;
-  let raw: string;
+  let release: (() => void) | null = null;
   try {
-    raw = await res.text();
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let raw = "";
+    let seen = 0;
+    for (let next = await reader.read(); !next.done; next = await reader.read()) {
+      seen += next.value.length;
+      raw += decoder.decode(next.value, { stream: true });
+      if (release !== null || seen <= LARGE_MASKED_BYTES) continue;
+      release = await largeReadSlot(wait);
+      if (release === null) {
+        await reader.cancel("the lead was reading another large answer").catch(() => undefined);
+        return forwardError("host_unreachable", `host ${memberId}: the answer did not end in time`, 503, { host: memberId });
+      }
+    }
+    raw += decoder.decode();
+    return maskedResponse(res, answer, mask, memberId, raw);
   } catch (err) {
     return forwardError("host_unreachable", `host ${memberId}: the answer broke off (${String(err)})`, 503, {
       host: memberId,
     });
+  } finally {
+    release?.();
   }
+}
+
+function maskedResponse(res: Response, answer: TextAnswer, mask: AnswerMask, memberId: string, raw: string): Response {
   // The mask parses the answer, and a parse costs about 90 bytes per value: a body of tiny values is
   // refused before it, as one the mask could not read.
   const masked = mask(answer, raw);
@@ -1208,6 +1256,8 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   // stream cancelled (review round 9). A write the member may have received still answers the phone
   // `write_outcome_unknown`, the answer for any dial that ends before the member's headers.
   const budget = budgetOf(kind, route);
+  // A large masked read waits its turn no later than its own whole deadline (`maskedAnswer`).
+  const maskWaitEnds = performance.now() + wholeDeadlineMs(budget);
   const init: CrewRequestInit & { duplex?: "half" } = { method: req.method, headers, signal: req.signal };
   if (!streamsToPhone(route)) init.bodyDeadlineMs = wholeDeadlineMs(budget);
   // The body is STREAMED, not buffered: an upload is up to 10 MB of multipart and the lead never
@@ -1296,7 +1346,7 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
           record(`http ${String(status)}, body cut: ${why}`, memberRefusal);
           log(`[crew] ${deps.link.memberId}: the answer to ${route} broke off after http ${String(status)}: ${why}`);
         })
-      : withSaltedTag(await maskedAnswer(outcome.value, answer, deps.mask, deps.link.memberId));
+      : withSaltedTag(await maskedAnswer(outcome.value, answer, deps.mask, deps.link.memberId, AbortSignal.any([req.signal, AbortSignal.timeout(Math.max(0, maskWaitEnds - performance.now()))])));
   // The phone's own `accept-encoding`, never the member hop's, which the dial set and inflated itself.
   // Compression is decided once per hop (ADR 0144 rule 10, ADR 0161).
   const proxied = proxiedResponse(answered, req.headers.get("accept-encoding"));

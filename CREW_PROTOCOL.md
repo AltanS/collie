@@ -1435,8 +1435,12 @@ version.
     is a choice: the phone itself gives up on a read after 6 s (a poll) or 10 s (History, a file), and
     8 s leaves the lead 2 s for the mask. An honest whole answer that needs more is cut, for example a
     32 MB History over a link slower than about 4 MB/s; the fix for that is smaller reads (pages), never
-    a longer deadline. A download that streams on to the phone has no total deadline, as a large blob
-    on a slow link is honest; it ends when no byte came for 10 s while the phone waited for one.
+    a longer deadline. A download that streams on to the phone ends when no byte came for 10 s while the
+    phone waited for one, and in any case after 10 minutes: the largest answer, 32 MB, needs about
+    55 KB/s to arrive inside it.
+  - **Memory:** past 4 MB a masked answer waits for the lead's one large-read slot before it reads on,
+    and keeps it until its mask is done, so at most one such answer is held and masked at a time. It
+    waits inside its own deadline and the phone's signal; ordinary answers stay below 4 MB and never wait.
   - **The phone:** its request signal rides the dial, so a phone that goes away ends the member's read.
     A write the member may have received still answers `write_outcome_unknown`, and its audit line says
     `caller_left`, not a lost link.

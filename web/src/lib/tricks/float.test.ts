@@ -36,6 +36,7 @@ import {
   restOf,
   rowFor,
   safeRegion,
+  sameBox,
   spriteInBox,
   stepBox,
   afterRestOf,
@@ -111,6 +112,56 @@ describe("the safe region", () => {
   it("is null when the free area is smaller than a picture needs", () => {
     expect(safeRegion({ viewport: PHONE, insets: NO_INSETS, landmarks: [{ x: 0, y: 40, w: 390, h: 680 }] })).toBeNull();
     expect(safeRegion({ viewport: { x: 0, y: 0, w: 100, h: 700 }, insets: NO_INSETS, landmarks: [] })).toBeNull();
+  });
+
+  it("puts the bottom edge a gap above a landmark at 734.984375 (WebKit's 1/64 px grid), as at 735 in Chromium", () => {
+    const below = (y: number): Box => ({ x: 0, y, w: 390, h: 760 - y });
+    const chromium = must(safeRegion({ viewport: PHONE, insets: NO_INSETS, landmarks: [below(735)] }));
+    const webkit = must(safeRegion({ viewport: PHONE, insets: NO_INSETS, landmarks: [below(734.984375)] }));
+    expect(chromium).toEqual({ x: 0, y: 0, w: 390, h: 731 });
+    expect(webkit.y + webkit.h).toBe(735 - 4);
+    expect(webkit).toEqual(chromium);
+  });
+
+  it("rounds a fractional top and left to the nearest pixel and keeps the size from the edges", () => {
+    const region = must(safeRegion({ viewport: PHONE, insets: NO_INSETS, landmarks: [{ x: 0, y: 0, w: 99.6, h: 760 }, { x: 0, y: 0, w: 390, h: 49.6 }] }));
+    // Free: left 103.6, top 53.6, right 390, bottom 760, with the larger of the two bands taken.
+    expect(region.x + region.w).toBe(390);
+    expect(Number.isInteger(region.x) && Number.isInteger(region.y) && Number.isInteger(region.w) && Number.isInteger(region.h)).toBe(true);
+    expect(region.y).toBe(54);
+    expect(region.y + region.h).toBe(760);
+  });
+
+  it("rounds inward when the gap is 0, so the region cannot overlap a landmark", () => {
+    const landmark: Box = { x: 0, y: 300.4, w: 390, h: 460 };
+    const region = must(safeRegion({ viewport: PHONE, insets: NO_INSETS, landmarks: [landmark], gap: 0 }));
+    expect(region.y + region.h).toBe(300);
+    expect(region.h).toBeGreaterThanOrEqual(96);
+    expect(overlaps(region, landmark)).toBe(false);
+    const lower = must(safeRegion({ viewport: PHONE, insets: NO_INSETS, landmarks: [{ x: 0, y: 0, w: 390, h: 400.6 }], gap: 0 }));
+    expect(lower.y).toBe(401);
+  });
+
+  it("never returns a region under the minimum: the rounded one is checked", () => {
+    // 120 by 96 before rounding, at a half pixel: rounded inward (gap 0) it is 119 by 95 and is refused.
+    const area: Box = { x: 0.5, y: 0.5, w: 120, h: 96 };
+    expect(safeRegion({ viewport: area, insets: NO_INSETS, landmarks: [], gap: 0 })).toBeNull();
+    expect(safeRegion({ viewport: area, insets: NO_INSETS, landmarks: [] })).toEqual({ x: 1, y: 1, w: 120, h: 96 });
+    // 119.6 by 95.6 before rounding rounds up to 120 by 96 and is kept.
+    expect(safeRegion({ viewport: { x: 0.2, y: 0.2, w: 119.6, h: 95.6 }, insets: NO_INSETS, landmarks: [] })).toEqual({ x: 0, y: 0, w: 120, h: 96 });
+    expect(safeRegion({ viewport: { x: 0, y: 0, w: 119.4, h: 300 }, insets: NO_INSETS, landmarks: [] })).toBeNull();
+  });
+
+  it("moves by one pixel across .5 and by none on a jitter that stays on one side, so sameBox redraws once", () => {
+    const at = (y: number) => must(safeRegion({ viewport: PHONE, insets: NO_INSETS, landmarks: [{ x: 0, y, w: 390, h: 760 - y }] }));
+    const below = at(500.49);
+    const above = at(500.51);
+    expect(above.h - below.h).toBe(1);
+    expect(sameBox(below, above)).toBe(false);
+    expect(sameBox(at(500.2), at(500.4))).toBe(true);
+    expect(sameBox(at(500.6), at(500.8))).toBe(true);
+    // The value after the flip is stable: measuring the same layout again gives the same region.
+    expect(sameBox(above, at(500.51))).toBe(true);
   });
 
   it("follows the visual viewport when the soft keyboard has shrunk it", () => {

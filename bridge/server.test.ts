@@ -226,6 +226,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     tmuxBin: "",
     zellijBin: "",
     ternBin: "",
+    rexBin: "",
     socketPath: "/tmp/herdr.sock",
     port: 8787,
     host: "127.0.0.1",

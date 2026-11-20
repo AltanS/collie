@@ -998,7 +998,11 @@ A table or key Collie does not know is ignored, never an error. Run `collie doct
 repository to see which file speaks for that folder, what it ignored, and whether the picture
 passed. A repository that holds other repositories as folders, such as a workspace, can name one
 picture for all of them: a member with no `collie.toml` of its own takes the workspace's, and
-`collie doctor` says so. A changed picture shows within a few seconds and fades in.
+`collie doctor` says so. A member that wants no picture puts its own `collie.toml` with no `icon`:
+the nearest file wins and names none. A changed picture shows within a few seconds and fades in.
+
+`icon` stays a text path for good. A later release that lets the file say more adds a new key,
+and never changes what `icon` takes.
 
 To turn the pictures off on one phone, open **Settings → Appearance → Project pictures**. To turn
 every repository's file off on a machine, set this in the instance's `.env` and restart Collie:
@@ -1610,7 +1614,7 @@ cannot work this out.
 | Multiplexer | What reports the session | Chat works for |
 | --- | --- | --- |
 | Herdr | The matching Herdr integration for that agent, installed once with `herdr integration install <agent>` (for example `claude`, `codex`, `opencode`, `pi`, `omp`, `grok`, `hermes`), then restart the agent | Every agent that has an integration and a session log Collie reads |
-| tmux, zellij, Tern (experimental) | Collie's [beacon hooks](multiplexers.md#agent-beacons-optional-linux) | Claude Code only, after `collie hooks install claude` |
+| tmux, zellij, Tern, Rex (experimental) | Collie's [beacon hooks](multiplexers.md#agent-beacons-optional-linux) | Claude Code only, after `collie hooks install claude` |
 | tuios | The tuios daemon | The agents the daemon reports |
 
 OpenClaw needs no Herdr integration for Chat. Herdr does not pass an OpenClaw session on, so Collie

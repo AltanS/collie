@@ -111,12 +111,7 @@ test("a session shows a picture bound to it, clear of the header, the strip and 
   for (const landmark of landmarks) expect(meets(pets[0]!, landmark), `meets ${landmark.slot}`).toBe(false);
 });
 
-test("a tall perched picture stands at full height on the landmark below it, with no gap", async ({ page, browserName }) => {
-  // KNOWN FAILURE ON WEBKIT. WebKit lays out on a 1/64 px grid and puts `pane-bottom` at 734.984375 where Chromium has 735.
-  // `safeRegion()` in `src/lib/tricks/float.ts` floors the free area's height, so the picture's bottom edge lands on 734,
-  // about 1 CSS px above the edge it stands on. The assertion is right and the app is not: remove this mark with the fix
-  // in `safeRegion()`. The test goes red by itself on that day (an expected failure that passes).
-  test.fail(browserName === "webkit", "safeRegion floors the free height, so the picture stands 1 px above a fractional landmark");
+test("a tall perched picture stands at full height on the landmark below it, with no gap", async ({ page }) => {
   await stubPet(page, [pet({ bound: [{ session: "lodge:w1:p1", instance: "ab12" }] }, { mode: "stay", motion: "perch", edge: "bottom", sprite: { src: "media/pet.png", frames: 2, size: "l" } })], PNG_148X120);
   await page.goto("/pane/w1:p1");
   await expect(page.locator('[data-slot="float-pet"]')).toBeVisible();

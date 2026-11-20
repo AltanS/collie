@@ -115,23 +115,28 @@ afterAll(() => {
 });
 
 /** The real dial, with the member's address swapped for the child's loopback port. */
-function dial(timeoutMs = 1_000): PeerClient {
+function dial(timeoutMs = 1_000, streamDeadlineMs?: number): PeerClient {
   const fetch: CrewFetch = (url, init) => globalThis.fetch(url.replace(/^https?:\/\/[^/]+/, base), init);
-  return new PeerClient({ self: "desk", secret: () => "s".repeat(32), timeoutMs, fetch, now: () => Date.now() });
+  const deps = { self: "desk", secret: () => "s".repeat(32), timeoutMs, fetch, now: () => Date.now() };
+  return new PeerClient(streamDeadlineMs === undefined ? deps : { ...deps, streamDeadlineMs });
 }
 
 const link = { memberId: "laptop", address: "laptop.example:8787" };
 
+/** The stream limit the next {@link throughThePhone} dials with (absent: the real 10 minutes). */
+let phoneStreamDeadlineMs: number | undefined;
+
 /** The lead's own front door for one forwarded body: what the phone's fetch sees when the lead streams it on. */
-async function throughThePhone(route: string): Promise<{ bytes: number; error: string | null; ms: number }> {
+async function throughThePhone(route: string, streamDeadlineMs?: number): Promise<{ bytes: number; error: string | null; ms: number }> {
   const started = performance.now();
+  phoneStreamDeadlineMs = streamDeadlineMs;
   phone ??= Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     idleTimeout: 0,
     async fetch(req) {
       const asked = new URL(req.url).pathname.slice(1);
-      const outcome = await dial().proxy(link, asked);
+      const outcome = await dial(1_000, phoneStreamDeadlineMs).proxy(link, asked);
       if (!outcome.ok) return new Response(outcome.reason, { status: 503 });
       return proxiedResponse(outcome.value, null);
     },
@@ -191,11 +196,21 @@ describe("the time limit: a stuck member never holds the lead", () => {
     expect(performance.now() - started).toBeLessThan(3_600);
   }, 15_000);
 
-  test("a download streamed to the phone has no deadline: the same 4 s drip reaches the phone whole", async () => {
+  test("a download streamed to the phone has no short deadline: the same 4 s drip reaches the phone whole", async () => {
     const run = await throughThePhone("blobs/drip");
     expect(run.error).toBeNull();
     expect(run.bytes).toBe('{"ok":"dripping"}'.length);
     expect(run.ms).toBeGreaterThan(3_000);
+  }, 15_000);
+
+  test("a download that drips for ever, never idle, ends at its total limit: the phone sees an error (round 16)", async () => {
+    // One byte every 700 ms never trips the 10 s idle limit. The total limit is set to 2 s here; it is
+    // STREAM_DEADLINE_MS, 10 minutes, in the lead.
+    const run = await throughThePhone("blobs/drip-forever", 2_000);
+    expect(run.error).not.toBeNull();
+    expect(run.bytes).toBeGreaterThan(0);
+    expect(run.ms).toBeGreaterThan(1_800);
+    expect(run.ms).toBeLessThan(4_000);
   }, 15_000);
 
   test("one member drips for ever: the sweep still ends, the honest member is fresh, and the next sweep runs", async () => {
