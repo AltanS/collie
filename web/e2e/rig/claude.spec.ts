@@ -368,19 +368,19 @@ test.describe("claude", () => {
         const refusal = model.answers.find((answer) => answer.path === "/api/send");
         const refusedDraft = refusal?.outcome === "refused" && refusal.reason === "draft_present";
         notes.push(tapWords(model));
-        const strip = page.getByTestId("send-offers");
+        // The draft offers open as a sheet (trial, 2026-11-20): found by its role and title. Each row's name
+        // is its label and the line under it, so a row is matched by the start of its name.
+        const strip = page.getByRole("dialog", { name: message("composer.protocol.draftSheet.title") });
         const stripShown = await strip
           .waitFor({ state: "visible", timeout: 10_000 })
           .then(() => true)
           .catch(() => false);
-        const offer = (key: "composer.protocol.append" | "composer.protocol.replace" | "composer.protocol.cancel") => strip.getByRole("button", { name: message(key), exact: true });
+        const offer = (key: "composer.protocol.append" | "composer.protocol.replace" | "composer.protocol.cancel") => strip.getByRole("button", { name: new RegExp(`^${message(key)}`) });
         const hasReplace = stripShown && (await offer("composer.protocol.replace").isVisible().catch(() => false));
         const hasCancel = stripShown && (await offer("composer.protocol.cancel").isVisible().catch(() => false));
         const hasAdd = stripShown && (await offer("composer.protocol.append").count()) > 0;
-        const sentence = await page
-          .getByText(message("composer.protocol.draftCommand"), { exact: true })
-          .isVisible()
-          .catch(() => false);
+        // The sheet stands for the notice: with no Add row it names only Replace and Cancel.
+        const sentence = stripShown && !hasAdd;
         notes.push(`offers ${stripShown ? `${hasReplace ? "Replace" : "no Replace"}, ${hasCancel ? "Cancel" : "no Cancel"}, ${hasAdd ? "ADD" : "no Add"}` : "not shown"}; the notice ${sentence ? "names only Replace and Cancel" : "does not say Replace it, or cancel"}`);
         const shotOffer = await capture(page, "claude-22-belt-model-offer");
         // No Replace on the strip is the bug itself: the case fails, it is not "not reached".

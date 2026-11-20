@@ -212,13 +212,14 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     const field = screen.getByPlaceholderText(/type a reply/i);
     await user.type(field, "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
-    await user.click(await screen.findByRole("button", { name: "Replace" }));
+    await user.click(await screen.findByRole("button", { name: /^Replace/ }));
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends[1]).toMatchObject({ text: "new words", mode: "replace", rowsHash: "0abc12" });
-    // The offer is back, the same sentence as the first time, and the text stays in the field.
-    expect(await screen.findByText("The box already holds a draft. Add to it, replace it, or cancel.")).toBeInTheDocument();
+    // The offer is back, the same words as the first time (the sheet's title; its notice waits behind it),
+    // and the text stays in the field.
+    expect(await screen.findByRole("dialog", { name: "The box already holds a draft" })).toBeInTheDocument();
     expect(field).toHaveValue("new words");
-    await user.click(await screen.findByRole("button", { name: "Add to it" }));
+    await user.click(await screen.findByRole("button", { name: /^Add to it/ }));
     await waitFor(() => expect(sends).toHaveLength(3));
     expect(sends[2]).toMatchObject({ text: " new words", mode: "append", rowsHash: "0def34" });
   });
@@ -374,6 +375,33 @@ describe("the draft offers as a sheet", () => {
     expect(screen.queryByText(NOTICE)).toBeNull();
     expect(sends).toHaveLength(1);
     expect(field()).toHaveValue("keep me");
+  });
+
+  // ADR 0166 in the sheet: a tap over a draft that changed at the desk meets the same refusal again, with
+  // the new draft's hash. The sheet opens again over it, and the next tap carries the new hash, never the old.
+  it.each([
+    ["Replace", "replace", "Add to it", "append"],
+    ["Add to it", "append", "Replace", "replace"],
+  ])("after %s over a changed draft the sheet opens again, and %s's next tap carries the new hash", async (first, firstMode, second, secondMode) => {
+    const user = userEvent.setup();
+    const { sends } = bridge([
+      { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0aaa11" } },
+      { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0bbb22" } },
+      { body: { receipt: receipt("sent"), offers: [] } },
+    ]);
+    renderComposer();
+    await refuse(user, "words");
+    await user.click(screen.getByRole("button", { name: new RegExp(`^${first}`) }));
+    await waitFor(() => expect(sends).toHaveLength(2));
+    expect(sends[1]).toMatchObject({ mode: firstMode, rowsHash: "0aaa11" });
+    expect(await screen.findByRole("dialog", { name: "The box already holds a draft" })).toBeInTheDocument();
+    expect(screen.queryByTestId("send-offers")).toBeNull();
+    expect(screen.queryByText(NOTICE)).toBeNull();
+    expect(field()).toHaveValue("words");
+    await user.click(screen.getByRole("button", { name: new RegExp(`^${second}`) }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(sends).toHaveLength(3));
+    expect(sends[2]).toMatchObject({ mode: secondMode, rowsHash: "0bbb22" });
   });
 
   it("the rows wait while a launch starts, as the strip's buttons do", async () => {
