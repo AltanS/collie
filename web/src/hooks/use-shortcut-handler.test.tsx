@@ -76,7 +76,7 @@ describe("useShortcutActionAvailable", () => {
     render(<Available id="navigate_mode" />);
     expect(screen.getByTestId("available")).toHaveTextContent("false");
     act(() => {
-      registerShortcutHandler("previous_space", vi.fn());
+      registerShortcutHandler("navigate_up", vi.fn());
     });
     expect(screen.getByTestId("available")).toHaveTextContent("true");
   });
