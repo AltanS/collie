@@ -767,18 +767,21 @@ export function AgentChat({
   // pane you are in, and the pane on screen already shows its own state.
   const hereKey = agent ? paneRowKey(agent) : null;
   const elsewhereNeedsYou = agents.some((a) => shownStatus(a) === "blocked" && paneRowKey(a) !== hereKey);
-  // On a large screen's strip the sidebar beside it is the switcher, so the pill would be a second one.
-  const pullHandle =
-    !inStrip && (agents.length + shellPanes.length > 0 || launchers.length > 0)
-      ? {
-          ref: sheetPull.ref,
-          // The pill opens the Actions palette (ADR 0165); the drag up on the belt, and the pane-nav handle's,
-          // still bring up the Switch pane sheet.
-          onClick: openActionsPalette,
-          label: t(elsewhereNeedsYou ? "actions.open.ariaNeedsYou" : "actions.open.aria"),
-          alert: elsewhereNeedsYou,
-        }
-      : undefined;
+  // The Actions button is pinned on every width class. On a large screen's strip the sidebar beside it is
+  // the switcher, so there the belt is not a drag surface (no `ref`) and `pullHandle` is only the button;
+  // `switcherReachable` keeps the drag, the pane-nav handle and the `switch_pane` shortcut a phone-only thing.
+  const hasSomewhereToGo = agents.length + shellPanes.length > 0 || launchers.length > 0;
+  const switcherReachable = !inStrip && hasSomewhereToGo;
+  const pullHandle = hasSomewhereToGo
+    ? {
+        ref: inStrip ? undefined : sheetPull.ref,
+        // The pill opens the Actions palette (ADR 0165); the drag up on the belt, and the pane-nav handle's,
+        // still bring up the Switch pane sheet.
+        onClick: openActionsPalette,
+        label: t(elsewhereNeedsYou ? "actions.open.ariaNeedsYou" : "actions.open.aria"),
+        alert: elsewhereNeedsYou,
+      }
+    : undefined;
   // ── PANE NAVIGATION BY GESTURE (M70 spec 03, ADR 0121) ────────────────────────
   // Two fingers (the default): hold one finger still on the reading area, then swipe a second finger.
   // Joystick: hold the handle above the belt, then steer with the same finger. Off: neither. The axes
@@ -797,7 +800,7 @@ export function AgentChat({
     scope,
     // A quick drag up on the handle is the Switch pill's drag: the switcher sheet, where there is one.
     onSwitcher:
-      pullHandle === undefined
+      !switcherReachable
         ? undefined
         : () => {
             buzz();
@@ -2385,7 +2388,7 @@ export function AgentChat({
   // out), the switcher is the pull handle (the strip's sidebar stands in for it), find is withheld in
   // Chat, and the Chat/Terminal choice is withdrawn on a pane with no screen.
   useShortcutHandler("zen_mode", zen ? () => setZen(false) : zenAvailable && display ? enterZen : undefined);
-  useShortcutHandler("switch_pane", pullHandle === undefined ? undefined : () => setDrawer("switcher"));
+  useShortcutHandler("switch_pane", !switcherReachable ? undefined : () => setDrawer("switcher"));
   useShortcutHandler("find", display && !chatShown && !agentView.showing ? openFind : undefined);
   useShortcutHandler("toggle_chat_terminal", gridless ? undefined : () => paneViewChange(chatShown ? "terminal" : "chat"));
   useShortcutHandler("focus_composer", () => composerRef.current?.focusInput());

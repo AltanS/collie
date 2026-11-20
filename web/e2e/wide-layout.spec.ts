@@ -8,8 +8,8 @@ import { keepPhoneLayout } from "./fixtures/layout";
 import { actionsButton } from "./fixtures/actions";
 
 // THE LARGE-SCREEN LAYOUT APPEARS ON THE TABLET (ADR 0120). From 600px wide and 480px tall the pane
-// screen is a sidebar beside a strip, and the belt's Switch pill is not drawn, because the sidebar is
-// the switcher. Large-screen layout set to Off brings the phone pane screen back at the same size.
+// screen is a sidebar beside a strip. The belt keeps its pinned Actions button there, as on a phone,
+// but not the phone's drag up to the pane list, because the sidebar is the switcher. Large-screen layout set to Off brings the phone pane screen back at the same size.
 // `app-tablet` (820x1180) is the one project past that line; the phone pane specs run with Off
 // (`fixtures/layout.ts`), so this is where Auto is held to drawing the large-screen layout.
 
@@ -20,14 +20,42 @@ test.beforeEach(async ({ page }, testInfo) => {
   await installApiStub(page);
 });
 
-test("on Auto the pane screen is a sidebar beside a strip, with no Actions pill on the belt", async ({ page }) => {
+test("on Auto the pane screen is a sidebar beside a strip, and the belt pins the Actions button", async ({ page }) => {
   await page.goto("/pane/w1:p1");
   await expect(page.locator('[data-slot="wide-layout"]')).toBeVisible();
   await expect(page.getByRole("complementary", { name: en["wide.sidebar.label"] })).toBeVisible();
   await expect(page.locator('[data-slot="composer-actions"]')).toBeVisible();
-  await expect(page.locator('[data-slot="composer-actions"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toHaveCount(0);
-  // The large screen's door to Actions is the space header's button (ADR 0165).
+  await expect(page.locator('[data-slot="composer-actions"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toHaveCount(1);
+  // The space header keeps its own button (ADR 0165): two doors to the same palette.
   await expect(page.locator('[data-slot="space-header"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toBeVisible();
+});
+
+// THE BELT'S ACTIONS BUTTON ON A DESKTOP. The pinned button was left out of the focused column of a large
+// screen's strip ("it has a shortcut, but it should still be there"). It is the phone's button, whole inside
+// the belt, and a press opens the palette like the shortcut does.
+test("on a desktop window the focused pane's belt pins the Actions button, which opens the palette", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/pane/w1:p1");
+  await expect(page.locator('[data-slot="wide-layout"]')).toBeVisible();
+  const belt = page.locator('[data-slot="composer-actions"]');
+  await expect(belt).toBeVisible();
+  const button = belt.getByRole("button", { name: en["actions.open.aria"], exact: true });
+  await expect(button).toHaveCount(1);
+  await expect(button).toBeVisible();
+  const box = (await button.boundingBox())!;
+  const beltBox = (await belt.boundingBox())!;
+  expect(box.width).toBeGreaterThanOrEqual(32);
+  expect(box.height).toBeGreaterThanOrEqual(32);
+  expect(box.x).toBeGreaterThanOrEqual(beltBox.x);
+  expect(box.y).toBeGreaterThanOrEqual(beltBox.y);
+  expect(box.x + box.width).toBeLessThanOrEqual(beltBox.x + beltBox.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(beltBox.y + beltBox.height);
+  const palette = page.getByRole("dialog", { name: en["actions.title"] });
+  await expect(palette).toHaveCount(0);
+  await button.click();
+  await expect(palette).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(palette).toHaveCount(0);
 });
 
 test("on Off the same window keeps the phone pane screen", async ({ page }) => {

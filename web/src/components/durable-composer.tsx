@@ -115,7 +115,7 @@ export interface DurableComposerProps {
   composing?: boolean;
   display: { open: boolean; onToggle: () => void };
   pullHandle?: {
-    ref: (node: HTMLElement | null) => void;
+    ref?: (node: HTMLElement | null) => void;
     onClick: () => void;
     label: string;
     alert?: boolean;

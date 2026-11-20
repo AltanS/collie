@@ -602,7 +602,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           </div>
           {bookPair && <span aria-hidden className="fold-gutter shrink-0" />}
           {bookPair && <span aria-hidden className="flex-1" />}
-          {/* The Actions palette (ADR 0165), the large screen's door to it: the belt here has no Actions pill. */}
+          {/* The Actions palette (ADR 0165), the header's door to it; the focused pane's belt pins the same button. */}
           <ActionsButton />
           <Button variant="ghost" size="lg" className="size-11 px-0" aria-label={t("wide.space.previous")} disabled={spaceAt <= 0} onClick={() => moveSpace(-1)}>
             <Icon name="space-prev" className="size-5" />

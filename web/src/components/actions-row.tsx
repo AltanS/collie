@@ -466,9 +466,11 @@ export interface ActionsRowProps {
    */
   handle?: {
     /** {@link import("@/hooks/use-sheet-pull").useSheetPull}'s ref — the finger-tracked drag. It
-     *  lands on the BELT, not on the pill: the whole band is the drag surface. */
-    ref: (node: HTMLElement | null) => void;
-    /** The tap, on the SWITCH PILL. Opens the same switcher sheet the drag opens. */
+     *  lands on the BELT, not on the pill: the whole band is the drag surface. Absent on a large
+     *  screen's strip, where the button is drawn and the drag is not (the sidebar is the switcher,
+     *  and `touch-pan-x` with no listener behind it would forbid a vertical gesture for nothing). */
+    ref?: (node: HTMLElement | null) => void;
+    /** The tap, on the pinned button: the Actions palette. */
     onClick: () => void;
     /** ALREADY TRANSLATED. The button's accessible name — "Switch pane". */
     label: string;
@@ -712,7 +714,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
       }
       className={cn(
         "relative -mx-3 mb-1 flex items-center border-b border-border bg-foreground/6",
-        handle && "touch-pan-x",
+        handle?.ref && "touch-pan-x",
       )}
     >
       {/* OverflowEdges measures this scroller and fades only the end that still hides something.
