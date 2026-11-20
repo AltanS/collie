@@ -49,8 +49,7 @@ export const TRIGGER_OPEN =
 // silently painting nothing.
 const buttonVariants = cva(
   [
-    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-transparent text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 active:scale-[0.98] select-none",
-    FOCUS_RING,
+    `inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-transparent text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 ${FOCUS_RING} active:scale-[0.98] select-none`,
     // While pressed, the scale's share of the hit area is given back (ui/tap-target.ts).
     PRESS_REACH_SOFT,
   ],

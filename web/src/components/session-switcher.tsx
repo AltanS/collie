@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
+import { FOCUS_RING } from "@/components/ui/button";
 import { HEADER_PILL_TAP_TARGET } from "@/components/ui/tap-target";
 import { useNav } from "@/hooks/use-nav";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -92,6 +93,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
         // treatment the sibling trigger already used.
         className={cn(
           "flex min-w-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent active:scale-95",
+          FOCUS_RING,
           HEADER_PILL_TAP_TARGET,
         )}
       >

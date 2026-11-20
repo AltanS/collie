@@ -533,11 +533,13 @@ function Tab({
         step.cell,
         "relative flex shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap transition-colors before:inset-y-0",
         FOCUS_RING_INSET,
-        // The open look and the hover are fills: the plain cell has no corner of its own, so it takes the house one (the folder tab keeps its own).
-        look === "plain" && "rounded-md",
+        // The open look and the hover are fills: the plain cell has no corner of its own, so the one that opens a menu takes the house one (the folder tab keeps its own).
+        opensMenu && look === "plain" && "rounded-md",
         // INK AND WEIGHT ARE THE ONLY MARK. Full ink and semibold for the open tab; the muted ink
         // and medium weight for every other, with the full ink as the hover answer on a device that
-        // has one.
+        // has one. Two exceptions paint a fill, and only while they last: the open tab answers a pointer
+        // with the accent fill when a tap on it opens a menu, and wears the shared open look while that
+        // menu stands (TRIGGER_OPEN below). Neither changes the box.
         active
           ? cn("font-semibold text-foreground", opensMenu && HOVER_FILL)
           : "font-medium text-muted-foreground hover:text-foreground",
@@ -552,7 +554,7 @@ function Tab({
             ? cn("rounded-t-sm border-x-[1px] border-x-rule bg-background shadow-[inset_0_2px_0_0_var(--tab-active)]", step.folderPx)
             : cn("border-x-[1px] border-x-transparent", step.folderPx)),
         // Last, so the open look wins over the folder tab's page fill and over hover.
-        TRIGGER_OPEN,
+        opensMenu && TRIGGER_OPEN,
         // NO DESKTOP-FOCUS RING. `TabView.focused` (the tab the desktop TUI is looking at) used to
         // paint a dashed outline on its cell. On the phone that read as a second selection beside the
         // solid pill, and the phone's reader does not care where the desktop is looking. It is gone;

@@ -5,6 +5,7 @@ import { StatusDot } from "@/components/status-badge";
 import type { AgentStatus } from "@/lib/types";
 import { CrossfadeText } from "@/components/ui/crossfade-text";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING, HOVER_FILL } from "@/components/ui/button";
 import { HEADING_TAP_TARGET } from "@/components/ui/tap-target";
 
 interface SectionHeaderProps {
@@ -132,6 +133,8 @@ export function SectionHeader({
             // min-h-9 keeps the row on the 36px touch floor even though the text is tiny.
             className={cn(
               "flex min-h-9 min-w-0 flex-1 items-center gap-1.5 rounded text-left transition-colors",
+              FOCUS_RING,
+              HOVER_FILL,
               HEADING_TAP_TARGET,
               type,
               tone,

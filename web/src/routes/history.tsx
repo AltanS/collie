@@ -21,6 +21,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING, HOVER_FILL } from "@/components/ui/button";
 
 // Pane history route — the agent's own transcript, which is the ONLY conversation history a Claude
 // pane can have. Its terminal runs on the alternate screen, so Herdr retains no scrollback ring at
@@ -254,7 +255,7 @@ export function HistoryRoute() {
               type="button"
               onClick={() => setFindOpen(true)}
               aria-label={t("history.findAria")}
-              className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+              className={cn("flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60", FOCUS_RING, HOVER_FILL)}
             >
               <Icon name="find-in-pane" className="size-4" />
             </button>
@@ -273,7 +274,7 @@ export function HistoryRoute() {
             type="button"
             onClick={() => nav.up(panePath(paneId, scope))}
             aria-label={t("history.closeAria")}
-            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+            className={cn("flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60", FOCUS_RING, HOVER_FILL)}
           >
             <Icon name="close" className="size-4" />
           </button>

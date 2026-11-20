@@ -153,7 +153,7 @@ export function Chip({
           ? cn("bg-primary text-primary-foreground", opensMenu && "hover:bg-primary/90")
           : "bg-muted text-muted-foreground hover:bg-muted/70",
         // After the fills above so the open look is the last word; it matches only while `aria-expanded` is true.
-        TRIGGER_OPEN,
+        opensMenu && TRIGGER_OPEN,
         ring && !active && "border-primary/40",
         dimmed && !active && "bg-transparent border-dashed border-border text-muted-foreground/60 line-through",
       )}

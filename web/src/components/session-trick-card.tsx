@@ -20,6 +20,7 @@ import { TrickBoundary } from "@/lib/tricks/boundary";
 import { Placeholder, renderView, type LinkTarget, type RenderCtx } from "@/lib/tricks/render";
 import type { View } from "@/lib/tricks/schema";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING, HOVER_FILL } from "@/components/ui/button";
 
 // A TRICK PROPOSAL IN THE SESSION THAT PROPOSED IT (package I, 2026-11-17). `collie trick propose` in an
 // agent's pane makes a proposal card of Collie's own (bridge/tricks/proposals.ts), tied to that session:
@@ -281,7 +282,7 @@ function ApprovalBody({ decision, answer, onSend, onLater, onReadCode, mediaSour
                 aria-controls={codeOpen ? foldId : undefined}
                 data-slot="chat-approval-code-toggle"
                 onClick={toggleCode}
-                className="flex min-h-11 w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className={cn("flex min-h-11 w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-sm font-medium", FOCUS_RING, HOVER_FILL)}
               >
                 <span className="min-w-0 flex-1">{t("settings.tricks.about.code.title")}</span>
                 <Icon name="expand" aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", codeOpen && "rotate-180")} />

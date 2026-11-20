@@ -16,6 +16,7 @@ import { useNav } from "@/hooks/use-nav";
 import { SettingsNavRow } from "@/components/settings-nav-row";
 import type { TelemetryDecider, TelemetrySetting, TelemetryView } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING_INSET, HOVER_FILL } from "@/components/ui/button";
 import { mintRequestId } from "@/lib/worktree-name";
 
 // ── TELEMETRY (M86 spec 02, ADR 0129) ──────────────────────────────────────────────
@@ -225,7 +226,7 @@ export function TelemetrySettingsCard() {
             aria-expanded={nextOpen}
             aria-controls={nextId}
             onClick={() => setNextOpen((open) => !open)}
-            className="flex min-h-11 w-full items-center justify-between gap-3 px-4 text-left text-sm active:bg-muted/60"
+            className={cn("flex min-h-11 w-full items-center justify-between gap-3 px-4 text-left text-sm active:bg-muted/60", FOCUS_RING_INSET, HOVER_FILL)}
           >
             <span>{nextOpen ? t("telemetry.card.next.hide") : t("telemetry.card.next.show")}</span>
             <Icon name="expand" aria-hidden="true" className={cn("size-4 shrink-0 text-muted-foreground transition-transform", nextOpen && "rotate-180")} />

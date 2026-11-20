@@ -75,6 +75,7 @@ import {
 import type { Hunk, ToolQuestion } from "@/lib/types";
 import type { DiffRow } from "@/lib/unified-diff";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING, HOVER_FILL } from "@/components/ui/button";
 import { USER_WELL, USER_WELL_HUG, USER_WELL_META, USER_WELL_TEXT, USER_WELL_TIME } from "@/components/user-well";
 import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
@@ -259,7 +260,7 @@ function useRunFrame(): string | false {
  * the same shape as the pane's own "Show entire history" row (agent-chat.tsx).
  */
 const FOLD_ROW =
-  "flex min-h-11 w-full min-w-0 items-center justify-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors active:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+  `flex min-h-11 w-full min-w-0 items-center justify-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors active:bg-muted ${FOCUS_RING} ${HOVER_FILL}`;
 
 export const ToolGroup = memo(
   function ToolGroup({ items, liveOpens = true }: { items: ChatItem[]; liveOpens?: boolean }) {
@@ -352,7 +353,7 @@ export const ToolGroup = memo(
         type="button"
         aria-expanded={false}
         onClick={() => setOpen(true)}
-        className={`flex min-h-11 w-full min-w-0 flex-col justify-center gap-0.5 ${FOLDED_RUN[steps]} px-3 py-1.5 text-left transition-colors active:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring`}
+        className={`flex min-h-11 w-full min-w-0 flex-col justify-center gap-0.5 ${FOLDED_RUN[steps]} px-3 py-1.5 text-left transition-colors active:bg-muted ${FOCUS_RING} ${HOVER_FILL}`}
       >
         <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <Icon name="disclosure" className="size-3.5 shrink-0" />
@@ -1497,7 +1498,7 @@ function LineTool({
           type="button"
           aria-expanded={onTap === undefined ? open : undefined}
           onClick={() => (onTap !== undefined ? onTap() : setOpen(!open))}
-          className="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs transition-colors active:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className={cn("flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs transition-colors active:bg-muted", FOCUS_RING, HOVER_FILL)}
         >
           {row}
         </button>

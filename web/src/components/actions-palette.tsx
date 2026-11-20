@@ -29,6 +29,7 @@ import { runShortcutAction } from "@/lib/shortcuts/registry";
 import type { ActionId } from "@/lib/shortcuts/actions";
 import type { AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING, TRIGGER_OPEN } from "@/components/ui/button";
 
 // THE ACTIONS PALETTE (ADR 0165). One modal at the TOP of the screen, over a dimmed scrim, because the
 // soft keyboard owns the bottom half: a search field, then one list. Before anything is typed the list
@@ -432,15 +433,18 @@ export function ActionsPaletteDoor({ scope, openPane }: { scope: Scope; openPane
 /** The header's Actions button: the dashboard's right cluster and the large screen's space header. */
 export function ActionsButton({ className }: { className?: string }) {
   useLocale();
+  const open = useActionsPaletteOpen();
   return (
     <button
       type="button"
       onClick={openActionsPalette}
       aria-label={t("actions.open.aria")}
       aria-haspopup="dialog"
+      // While the palette is open the button wears the shared open look (ui/button.tsx `TRIGGER_OPEN`).
+      aria-expanded={open}
       data-slot="actions-button"
-      // A real 44px box, as the Settings gear beside it (app-header.tsx `SettingsGear`).
-      className={cn("grid size-11 shrink-0 place-items-center text-muted-foreground transition-colors hover:text-foreground", className)}
+      // A real 44px box, as the Settings gear beside it (app-header.tsx `SettingsGear`). `rounded-md` gives the open fill the house corner.
+      className={cn("grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground", FOCUS_RING, TRIGGER_OPEN, className)}
     >
       <Icon name="open-actions" className="size-5" />
     </button>

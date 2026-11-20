@@ -23,6 +23,7 @@ import { t, tn } from "@/lib/i18n";
 import { asJsonBoolean, asJsonObject, asJsonString, type JsonValue } from "@/lib/json";
 import { parseJsonTree } from "@/lib/json-tree";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING_INSET, HOVER_FILL } from "@/components/ui/button";
 import type { FilesAt } from "@/lib/nav";
 import type { FileRead } from "@/lib/types";
 
@@ -304,7 +305,7 @@ function JsonNode({ name, value, depth }: { name: string | null; value: JsonValu
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="flex min-h-6 w-full items-start gap-1.5 text-left active:bg-muted/50"
+        className={cn("flex min-h-6 w-full items-start gap-1.5 text-left active:bg-muted/50", FOCUS_RING_INSET, HOVER_FILL)}
       >
         <Icon name={open ? "expand" : "disclosure"} aria-hidden className="mt-1 size-3.5 shrink-0 text-muted-foreground" />
         {label ?? <span className="text-muted-foreground">{brackets}</span>}

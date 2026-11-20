@@ -3,7 +3,7 @@ import { Icon } from "@/components/icons/icon";
 import type { IconKey } from "@/components/icons/keys";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, FOCUS_RING_INSET, HOVER_FILL } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { Notice } from "@/components/ui/notice";
@@ -1101,7 +1101,7 @@ function ChangeDisclosure({ open, onToggle, children }: { open: boolean; onToggl
           aria-expanded={open}
           aria-controls={id}
           onClick={onToggle}
-          className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-muted/60"
+          className={cn("flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-muted/60", FOCUS_RING_INSET, HOVER_FILL)}
         >
           <Icon name="change-options" aria-hidden className="size-5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 text-sm font-medium">{t("settings.voice.change")}</span>

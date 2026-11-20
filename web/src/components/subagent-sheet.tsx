@@ -18,6 +18,7 @@ import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
 import type { TranscriptEntry } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { FOCUS_RING_INSET } from "@/components/ui/button";
 
 const SUBAGENT_POLL_MS = 2_000;
 
@@ -243,7 +244,7 @@ export function SubagentSheet({
                 type="button"
                 aria-expanded={promptOpen}
                 onClick={() => setPromptOpen((v) => !v)}
-                className="flex min-h-10 w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-xs transition-colors active:bg-status-working/15"
+                className={cn("flex min-h-10 w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-status-working/10 active:bg-status-working/15", FOCUS_RING_INSET)}
               >
                 <Icon
                   name="disclosure"

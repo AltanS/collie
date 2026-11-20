@@ -46,7 +46,7 @@ import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, TailRoomContext, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { StretchTextContext } from "@/components/markdown-text";
 import { FabButton } from "@/components/ui/fab";
-import { FOCUS_RING, TRIGGER_OPEN } from "@/components/ui/button";
+import { FOCUS_RING, FOCUS_RING_INSET, HOVER_FILL, TRIGGER_OPEN } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { BottomSheet, SHEET_BODY_STICKY } from "@/components/ui/sheet";
 import { DisplayPrefsContent } from "@/components/display-prefs";
@@ -2669,7 +2669,7 @@ export function AgentChat({
                   onClick={() => setDrawer("paneSettings")}
                   aria-label={t("chat.header.openPaneSettingsAria", { name })}
                   data-slot="pane-identity-name"
-                  className="min-h-0 flex-1 rounded-t-lg transition-colors active:bg-muted/60"
+                  className={cn("min-h-0 flex-1 rounded-t-lg transition-colors active:bg-muted/60", FOCUS_RING_INSET, HOVER_FILL)}
                 />
                 <button
                   type="button"
@@ -2690,7 +2690,7 @@ export function AgentChat({
                   // so it is asserted mechanically in agent-chat.test.tsx. These slots are what that
                   // test reads; renaming one without updating it fails there rather than on a phone.
                   data-slot="pane-identity"
-                  className="min-h-0 flex-1 rounded-b-lg transition-colors active:bg-muted/60"
+                  className={cn("min-h-0 flex-1 rounded-b-lg transition-colors active:bg-muted/60", FOCUS_RING_INSET, HOVER_FILL)}
                 />
               </div>
               )}
@@ -3058,6 +3058,7 @@ export function AgentChat({
                         className={cn(
                           TAB_ROW_SQUARE_TAP_TARGET,
                           "flex size-7 shrink-0 items-center justify-center rounded-full border border-transparent text-muted-foreground transition-colors hover:bg-accent active:scale-95",
+                          FOCUS_RING,
                         )}
                       >
                         <Icon name="tab-fold" className="size-4" />

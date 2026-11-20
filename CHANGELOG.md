@@ -53,7 +53,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The Project pictures setting says the picture also marks pushes.** Its hint in Settings, Appearance now says that the picture shows as the icon of a session's pushes too, so turning it off is clearly the way to keep Collie's icon there.
 
-- **A button shows that its menu is open.** The three dots in a pane's header, the open tab and the open Space chip take the blue of an open dock while their menu is open, on a phone as well as beside the button on a computer. Several buttons that showed no ring under the keyboard or no change under the mouse now show both.
+- **A button shows that its menu is open.** The three dots in a pane's header, the open tab, the open Space chip and the Actions button take the blue of an open dock while their menu is open, on a phone as well as beside the button on a computer. Fold rows in Chat, Changes and Settings and a few header buttons that showed no ring under the keyboard or no change under the mouse now show both.
 
 ### Fixed
 

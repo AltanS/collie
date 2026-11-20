@@ -322,6 +322,35 @@ describe("TabStrip — long-press actions", () => {
     expect(screen.getByRole("button", { name: "Close tab" })).toBeInTheDocument();
   });
 
+  it("the open tab says its menu is open while the sheet stands, and the other tabs say nothing", async () => {
+    const user = userEvent.setup();
+    render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected="w1:t2"
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+        onRenamed={vi.fn()}
+        onClosed={vi.fn()}
+      />,
+    );
+    const open = screen.getByRole("button", { name: "tab 2" });
+    const other = screen.getByRole("button", { name: "tab 1" });
+    expect(open).toHaveAttribute("aria-haspopup", "dialog");
+    expect(open).toHaveAttribute("aria-expanded", "false");
+    expect(open.className).toContain("aria-expanded:bg-control-on");
+    expect(other).not.toHaveAttribute("aria-expanded");
+    await user.click(open);
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(open).toHaveAttribute("aria-expanded", "true");
+    expect(other).not.toHaveAttribute("aria-expanded");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Rename" })).toBeNull());
+    expect(open).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("passes a saved copy to the sheet: a note in place of Rename and Close tab", () => {
     render(
       <TabStrip
