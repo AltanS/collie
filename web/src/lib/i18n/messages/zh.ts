@@ -189,6 +189,9 @@ export const zh: Dictionary = {
   "settings.enterSends.title": "回车发送",
   "settings.enterSends.hint":
     "使用实体键盘时，回车键发送消息，Shift+回车键换行。使用屏幕键盘时，回车键始终换行。",
+  "settings.scrollClosesKeyboard.title": "滚动时收起键盘",
+  "settings.scrollClosesKeyboard.hint":
+    "用手指在窗格中向前回滚时会收起屏幕键盘，回复框保留草稿。关闭后，回看时键盘保持打开。",
   "settings.paneNav.title": "窗格导航",
   "settings.paneNav.twoFingers": "双指",
   "settings.paneNav.joystick": "摇杆",

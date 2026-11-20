@@ -215,6 +215,9 @@ export const en = {
   "settings.enterSends.title": "Enter sends",
   "settings.enterSends.hint":
     "With a physical keyboard, Enter sends the message and Shift+Enter adds a new line. With the on-screen keyboard, Enter always adds a new line.",
+  "settings.scrollClosesKeyboard.title": "Scroll closes the keyboard",
+  "settings.scrollClosesKeyboard.hint":
+    "Scrolling back through a pane with a finger puts the on-screen keyboard away, and the reply box keeps its draft. Off keeps the keyboard up while you read back.",
   "settings.paneNav.title": "Pane navigation",
   "settings.paneNav.twoFingers": "Two fingers",
   "settings.paneNav.joystick": "Joystick",

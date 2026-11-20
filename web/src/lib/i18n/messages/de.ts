@@ -202,6 +202,9 @@ export const de: Dictionary = {
   "settings.enterSends.title": "Enter sendet",
   "settings.enterSends.hint":
     "Mit einer physischen Tastatur sendet Enter die Nachricht und Umschalt+Enter fügt eine neue Zeile ein. Mit der Bildschirmtastatur fügt Enter immer eine neue Zeile ein.",
+  "settings.scrollClosesKeyboard.title": "Scrollen schließt die Tastatur",
+  "settings.scrollClosesKeyboard.hint":
+    "Wenn du in einem Bereich mit dem Finger zurückscrollst, wird die Bildschirmtastatur ausgeblendet und das Antwortfeld behält seinen Entwurf. Aus lässt die Tastatur beim Zurücklesen offen.",
   "settings.paneNav.title": "Pane-Navigation",
   "settings.paneNav.twoFingers": "Zwei Finger",
   "settings.paneNav.joystick": "Joystick",

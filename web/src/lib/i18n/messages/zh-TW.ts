@@ -188,6 +188,9 @@ export const zhTW: Dictionary = {
   "settings.enterSends.title": "Enter 傳送",
   "settings.enterSends.hint":
     "使用實體鍵盤時，Enter 會傳送訊息，Shift+Enter 會換行。使用螢幕鍵盤時，Enter 一律換行。",
+  "settings.scrollClosesKeyboard.title": "捲動時收起鍵盤",
+  "settings.scrollClosesKeyboard.hint":
+    "用手指在窗格中往回捲動時會收起螢幕鍵盤，回覆框保留草稿。關閉後，回看時鍵盤保持開啟。",
   "settings.paneNav.title": "窗格導覽",
   "settings.paneNav.twoFingers": "雙指",
   "settings.paneNav.joystick": "搖桿",

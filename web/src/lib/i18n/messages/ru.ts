@@ -190,6 +190,9 @@ export const ru: Dictionary = {
   "settings.enterSends.title": "Enter отправляет",
   "settings.enterSends.hint":
     "С физической клавиатурой Enter отправляет сообщение, а Shift+Enter добавляет новую строку. С экранной клавиатурой Enter всегда добавляет новую строку.",
+  "settings.scrollClosesKeyboard.title": "Прокрутка закрывает клавиатуру",
+  "settings.scrollClosesKeyboard.hint":
+    "Прокрутка панели пальцем назад убирает экранную клавиатуру, а поле ответа сохраняет черновик. Когда выключено, клавиатура остается открытой, пока вы перечитываете.",
   "settings.paneNav.title": "Навигация по панелям",
   "settings.paneNav.twoFingers": "Два пальца",
   "settings.paneNav.joystick": "Джойстик",

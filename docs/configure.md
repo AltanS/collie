@@ -1386,6 +1386,16 @@ still adds its new line, and one line above the reply box says "Using a keyboard
 **Turn on** switches it on. The close button switches it off. Either way the line does not come back
 on this device, and **Enter sends** in Settings still changes the choice.
 
+## Scroll closes the keyboard
+
+Open **Settings → Appearance → Scroll closes the keyboard** and turn it off to keep the on-screen
+keyboard up while you scroll back through a pane.
+
+With the switch on, the default, a one-finger scroll towards older text puts the keyboard away. The
+reply box keeps its draft, and a tap on it brings the keyboard back. With the switch off, the reply
+box keeps its focus through the scroll, so you can read back and go on typing. The choice is stored
+per device.
+
 ## Large screens
 
 > **Note.** On a tablet or an open Fold the pane screen shows several panes side by side, and from 900 pixels wide the dashboard shows its Spaces in columns. A phone held upright and flat is not changed.

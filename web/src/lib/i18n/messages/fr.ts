@@ -190,6 +190,9 @@ export const fr: Dictionary = {
   "settings.enterSends.title": "Entrée envoie",
   "settings.enterSends.hint":
     "Avec un clavier physique, Entrée envoie le message et Maj+Entrée ajoute une nouvelle ligne. Avec le clavier à l'écran, Entrée ajoute toujours une nouvelle ligne.",
+  "settings.scrollClosesKeyboard.title": "Le défilement ferme le clavier",
+  "settings.scrollClosesKeyboard.hint":
+    "Faire défiler un volet vers l'arrière avec le doigt range le clavier à l'écran, et la zone de réponse garde son brouillon. Désactivé garde le clavier ouvert pendant que vous relisez.",
   "settings.paneNav.title": "Navigation entre les volets",
   "settings.paneNav.twoFingers": "Deux doigts",
   "settings.paneNav.joystick": "Joystick",

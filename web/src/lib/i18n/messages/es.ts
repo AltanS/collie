@@ -200,6 +200,9 @@ export const es: Dictionary = {
   "settings.enterSends.title": "Enter envía",
   "settings.enterSends.hint":
     "Con un teclado físico, Intro envía el mensaje y Mayús+Intro añade una línea nueva. Con el teclado en pantalla, Intro siempre añade una línea nueva.",
+  "settings.scrollClosesKeyboard.title": "Desplazar cierra el teclado",
+  "settings.scrollClosesKeyboard.hint":
+    "Al desplazarte hacia atrás en un panel con el dedo, el teclado en pantalla se oculta y el cuadro de respuesta conserva su borrador. Desactivado mantiene el teclado abierto mientras relees.",
   "settings.paneNav.title": "Navegación de paneles",
   "settings.paneNav.twoFingers": "Dos dedos",
   "settings.paneNav.joystick": "Joystick",

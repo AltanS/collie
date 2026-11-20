@@ -192,6 +192,9 @@ export const ko: Dictionary = {
   "settings.enterSends.title": "Enter로 전송",
   "settings.enterSends.hint":
     "물리 키보드에서는 Enter가 메시지를 전송하고 Shift+Enter가 줄바꿈을 합니다. 화면 키보드에서는 Enter가 항상 줄바꿈을 합니다.",
+  "settings.scrollClosesKeyboard.title": "스크롤하면 키보드 닫기",
+  "settings.scrollClosesKeyboard.hint":
+    "손가락으로 패널을 이전 내용 쪽으로 스크롤하면 화면 키보드가 닫히고 답장 상자의 초안은 유지됩니다. 끄면 다시 읽는 동안 키보드가 열려 있습니다.",
   "settings.paneNav.title": "창 탐색",
   "settings.paneNav.twoFingers": "두 손가락",
   "settings.paneNav.joystick": "조이스틱",

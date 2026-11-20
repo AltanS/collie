@@ -804,7 +804,6 @@ export function AgentChat({
     },
     [setPaneNavReading],
   );
-  useReadingReleasesKeyboard(readingArea);
   // ── COMPOSING MODE — read ONCE, here, for the whole pane ──────────────────────
   // The soft keyboard takes roughly 45% of a phone. What is left has to hold the header, the tab
   // strip, the agent's statusline, the grab handle, the status band, the controls row and the draft
@@ -930,6 +929,8 @@ export function AgentChat({
   // Fold state for the "Switch pane" sheet's two long tails, shared with the dashboard so one
   // "hide the long tail" preference means the same thing in both places.
   const dash = useDashPrefs();
+  // The per-device switch for the scroll release above (Settings, Appearance).
+  useReadingReleasesKeyboard(readingArea, dash.prefs.scrollClosesKeyboard);
   // The theme on screen: its `zoom` word is the fallback for the Zoom pill (lib/zoom-pill.ts).
   const activeTheme = useActiveTheme();
   // Where the belt's Files button goes. The root of Files is the workspace's folder (ADR 0083), and a

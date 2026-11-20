@@ -188,6 +188,9 @@ export const tr: Dictionary = {
   "settings.enterSends.title": "Enter gönderir",
   "settings.enterSends.hint":
     "Fiziksel klavyede Enter mesajı gönderir, Shift+Enter yeni satır ekler. Ekran klavyesinde Enter her zaman yeni satır ekler.",
+  "settings.scrollClosesKeyboard.title": "Kaydırma klavyeyi kapatır",
+  "settings.scrollClosesKeyboard.hint":
+    "Bir bölmede parmakla geriye kaydırmak ekran klavyesini kapatır ve yanıt kutusu taslağını korur. Kapalıyken geriye okurken klavye açık kalır.",
   "settings.paneNav.title": "Bölme gezintisi",
   "settings.paneNav.twoFingers": "İki parmak",
   "settings.paneNav.joystick": "Joystick",

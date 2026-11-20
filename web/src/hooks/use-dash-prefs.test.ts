@@ -48,6 +48,7 @@ describe("coerceDashPrefs", () => {
       paneView: "chat",
       zoomPill: null,
       pageZoom: true,
+      scrollClosesKeyboard: true,
       floatingThings: true,
       usageRow: "percent",
     });
@@ -96,9 +97,16 @@ describe("coerceDashPrefs", () => {
       paneView: "terminal",
       zoomPill: "off",
       pageZoom: true,
+      scrollClosesKeyboard: true,
       floatingThings: true,
       usageRow: "percent",
     });
+  });
+
+  it("reads scrollClosesKeyboard as on unless a boolean false is stored", () => {
+    expect(coerceDashPrefs({}).scrollClosesKeyboard).toBe(true);
+    expect(coerceDashPrefs({ scrollClosesKeyboard: "no" }).scrollClosesKeyboard).toBe(true);
+    expect(coerceDashPrefs({ scrollClosesKeyboard: false }).scrollClosesKeyboard).toBe(false);
   });
 
   it("reads pageZoom as on unless a boolean false is stored", () => {
@@ -241,6 +249,7 @@ describe("coerceDashPrefs", () => {
       paneView: "chat",
       zoomPill: null,
       pageZoom: true,
+      scrollClosesKeyboard: true,
       floatingThings: true,
       usageRow: "percent",
     });
@@ -273,6 +282,7 @@ describe("useDashPrefs", () => {
       paneView: "chat",
       zoomPill: null,
       pageZoom: true,
+      scrollClosesKeyboard: true,
       floatingThings: true,
       usageRow: "percent",
     });
@@ -324,6 +334,7 @@ describe("useDashPrefs", () => {
       paneView: "terminal",
       zoomPill: "off",
       pageZoom: true,
+      scrollClosesKeyboard: true,
       floatingThings: true,
       usageRow: "dots",
     });

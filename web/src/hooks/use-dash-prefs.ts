@@ -140,6 +140,12 @@ export interface DashPrefs {
    */
   pageZoom: boolean;
   /**
+   * Whether a finger scroll towards older text in a pane closes the soft keyboard while the reply box
+   * has focus (hooks/use-reading-releases-keyboard.ts). ON by default, as designed on 2026-11-07; off keeps
+   * the keyboard up while the person reads back and goes on typing.
+   */
+  scrollClosesKeyboard: boolean;
+  /**
    * How the usage row of a session draws its gauges: a whole `percent` (the default) or five `dots`
    * (lib/usage-row.ts). Read by the model tag, wherever it is drawn (components/model-tag.tsx).
    */
@@ -185,6 +191,7 @@ const DEFAULTS: DashPrefs = {
   paneView: "chat",
   zoomPill: null,
   pageZoom: true,
+  scrollClosesKeyboard: true,
   usageRow: DEFAULT_USAGE_ROW,
   floatingThings: true,
 };
@@ -267,6 +274,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     paneView: coercePaneView(p.paneView),
     zoomPill: coerceZoomPill(p.zoomPill),
     pageZoom: asJsonBoolean(p.pageZoom) ?? DEFAULTS.pageZoom,
+    scrollClosesKeyboard: asJsonBoolean(p.scrollClosesKeyboard) ?? DEFAULTS.scrollClosesKeyboard,
     usageRow: coerceUsageRow(p.usageRow),
     floatingThings: asJsonBoolean(p.floatingThings) ?? DEFAULTS.floatingThings,
   };
@@ -330,6 +338,7 @@ export interface UseDashPrefsReturn {
   setPaneView: (view: PaneView) => void;
   setZoomPill: (choice: ZoomPill) => void;
   setPageZoom: (on: boolean) => void;
+  setScrollClosesKeyboard: (on: boolean) => void;
   setUsageRow: (choice: UsageRow) => void;
   setFloatingThings: (on: boolean) => void;
 }
@@ -382,6 +391,10 @@ export function useDashPrefs(): UseDashPrefsReturn {
   const setPaneOrder = useCallback((paneOrder: PaneOrder) => update({ paneOrder }), [update]);
   const setPaneView = useCallback((paneView: PaneView) => update({ paneView }), [update]);
   const setUsageRow = useCallback((usageRow: UsageRow) => update({ usageRow }), [update]);
+  const setScrollClosesKeyboard = useCallback(
+    (scrollClosesKeyboard: boolean) => update({ scrollClosesKeyboard }),
+    [update],
+  );
   const setFloatingThings = useCallback((floatingThings: boolean) => update({ floatingThings }), [update]);
   const setZoomPill = useCallback((zoomPill: ZoomPill) => update({ zoomPill }), [update]);
   const setPageZoom = useCallback(
@@ -437,6 +450,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setPaneView,
     setZoomPill,
     setPageZoom,
+    setScrollClosesKeyboard,
     setUsageRow,
     setFloatingThings,
   };

@@ -3,9 +3,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 import { RELEASE_TRAVEL_PX, readsOlder, useReadingReleasesKeyboard } from "./use-reading-releases-keyboard";
 
-function Harness() {
+function Harness({ enabled }: { enabled?: boolean }) {
   const [reading, setReading] = useState<HTMLElement | null>(null);
-  useReadingReleasesKeyboard(reading);
+  useReadingReleasesKeyboard(reading, enabled);
   return (
     <div>
       <div ref={setReading} data-testid="reading" />
@@ -57,6 +57,16 @@ describe("useReadingReleasesKeyboard", () => {
     fireEvent.touchEnd(reading, { touches: [] });
     fireEvent.touchStart(reading, { touches: [{ clientX: 100, clientY: 300 }, { clientX: 200, clientY: 300 }] });
     fireEvent.touchMove(reading, { touches: [{ clientX: 100, clientY: 360 }, { clientX: 200, clientY: 360 }] });
+    expect(field).toHaveFocus();
+  });
+
+  it("keeps the field focused through a finger scroll up when the device switch is off", () => {
+    render(<Harness enabled={false} />);
+    const field = screen.getByRole("textbox", { name: "reply" });
+    field.focus();
+    const reading = screen.getByTestId("reading");
+    fireEvent.touchStart(reading, finger(200, 300));
+    fireEvent.touchMove(reading, finger(201, 400));
     expect(field).toHaveFocus();
   });
 
