@@ -71,4 +71,17 @@ describe("the project-file row", () => {
     writeFileSync(join(root, "logo.png"), png());
     expect(await projectFileFindings({ env: {}, folder: root, stateDir, configDir })).toEqual([expect.objectContaining({ status: "ok", detail: expect.stringContaining("passes") })]);
   });
+
+  test("an icon that is not text is a warning that names the key and why", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "collie-finding-")));
+    made.push(root);
+    mkdirSync(join(root, ".git", "objects"), { recursive: true });
+    writeFileSync(join(root, ".git", "HEAD"), "ref: refs/heads/main\n");
+    for (const icon of ["5", '{ path = "a.png" }']) {
+      writeFileSync(join(root, "collie.toml"), `[project]\nicon = ${icon}\n`);
+      expect(await projectFileFindings({ env: {}, folder: root, stateDir: join(root, "state"), configDir: join(root, "config") })).toEqual([
+        expect.objectContaining({ check: "project-file", status: "warn", detail: expect.stringContaining("refused: project.icon is not a text") }),
+      ]);
+    }
+  });
 });

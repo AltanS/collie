@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
 import {
   forwardToPeer,
+  LARGE_MASKED_BYTES,
   mergeAskRequest,
   type ForwardDeps,
   type ForwardErrorCode,
@@ -259,5 +260,96 @@ describe("a redirect on a forwarded read answers the phone as a member out of re
       await redirector.stop(true);
       await target.stop(true);
     }
+  });
+});
+
+// ── One large masked read at a time (round 16) ──────────────────────────────────────────────────
+// Past LARGE_MASKED_BYTES a masked answer takes the lead's one large-read slot before it reads on, and
+// keeps it until its mask is done. A small answer never waits, and a phone that leaves stops the wait.
+describe("a large masked answer waits for the one before it", () => {
+  const MB = 1024 * 1024;
+  /** A member body of `chunks` MB, one MB per pull; `hold` (if given) stops it after `holdAt` MB. */
+  function body(chunks: number, hold?: { at: number; until: Promise<void> }) {
+    const seen = { pulls: 0 };
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        if (hold !== undefined && seen.pulls === hold.at) await hold.until;
+        if (seen.pulls === chunks) {
+          controller.close();
+          return;
+        }
+        seen.pulls += 1;
+        controller.enqueue(new Uint8Array(MB).fill(0x61));
+      },
+    }, { highWaterMark: 0 });
+    return { stream, seen };
+  }
+  const viaLead = (stream: ReadableStream<Uint8Array>, signal?: AbortSignal) => {
+    const url = new URL("https://lead.example/api/pane/w1:p1/history?host=laptop");
+    const transport = async (): Promise<PeerOutcome<Response>> => ({ ok: true, value: new Response(stream, { status: 200 }), status: 200, member: "laptop", receivedAt: 1, date: null });
+    return forwardToPeer(new Request(url, signal === undefined ? {} : { signal }), url, {
+      link: LINK,
+      state: REACHABLE,
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
+      transport,
+      mask: (_answer, raw) => raw,
+    });
+  };
+  const until = async (done: () => boolean) => {
+    for (let i = 0; i < 200 && !done(); i++) await Bun.sleep(5);
+  };
+
+  test("the second large read pauses past 4 MB until the first is masked; a small one never waits", async () => {
+    expect(LARGE_MASKED_BYTES).toBe(4 * MB);
+    let open = () => {};
+    const held = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const first = body(6, { at: 5, until: held });
+    const firstDone = viaLead(first.stream);
+    await until(() => first.seen.pulls === 5);
+
+    const second = body(6);
+    const secondDone = viaLead(second.stream);
+    await until(() => second.seen.pulls === 5);
+    await Bun.sleep(50);
+    // Past 4 MB it waits for the slot: no sixth pull while the first holds it.
+    expect(second.seen.pulls).toBe(5);
+
+    // A small answer passes at once, the slot taken or not.
+    const small = body(1);
+    const smallRes = await viaLead(small.stream);
+    expect(smallRes.status).toBe(200);
+    expect((await smallRes.text()).length).toBe(MB);
+
+    open();
+    const [a, b] = await Promise.all([firstDone, secondDone]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(second.seen.pulls).toBe(6);
+    expect((await b.text()).length).toBe(6 * MB);
+  });
+
+  test("a phone that leaves while its large read waits gets no answer held for it, and the slot moves on", async () => {
+    let open = () => {};
+    const held = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const first = body(6, { at: 5, until: held });
+    const firstDone = viaLead(first.stream);
+    await until(() => first.seen.pulls === 5);
+
+    const phone = new AbortController();
+    const waiting = body(6);
+    const waitingDone = viaLead(waiting.stream, phone.signal);
+    await until(() => waiting.seen.pulls === 5);
+    phone.abort();
+    expect((await waitingDone).status).toBe(503);
+    expect(waiting.seen.pulls).toBe(5);
+
+    open();
+    expect((await firstDone).status).toBe(200);
+    // The slot is free again: the next large read runs through.
+    const next = body(6);
+    expect((await viaLead(next.stream)).status).toBe(200);
   });
 });

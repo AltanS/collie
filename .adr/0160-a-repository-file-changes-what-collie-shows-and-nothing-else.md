@@ -46,14 +46,16 @@ someone will propose to grow into the operator's files.
    keys (`PROJECT_KEYS`), each key with its own validator. Keys are only ever added. An unknown table or
    key is ignored, never an error, and `collie doctor` lists it by name. A known key with a bad value is
    refused alone; the rest of the file still counts. A later key (`name`, `color`) is one more entry with
-   its own validator, and it must pass rule 1.
+   its own validator, and it must pass rule 1. `icon` stays a text path for good: growth comes only as
+   new keys, never as a new shape of an old one.
 4. **The nearest file wins, and a workspace speaks for its members.** From the session's real folder up
    to its repository root, the first `collie.toml` speaks; files are never merged. A linked worktree
    reads its own tree, then the main checkout from the same folder. When the session's repository has no
    file, an ENCLOSING repository's does (a workspace that holds member repositories, or a submodule, as
    folders): from the folder holding the member up to the workspace's root, by the same rules, through
-   at most 4 enclosing repositories. The member's own file always wins, and an icon stays inside the
-   repository of the file that names it. A parent folder is the operator's own ground more than the
+   at most 4 enclosing repositories. The member's own file always wins, even with no icon in it, which is
+   how a member opts out of its workspace's picture; an icon stays inside the repository of the file that
+   names it. A parent folder is the operator's own ground more than the
    session's folder is, and the file changes display only. So a home folder that is a repository with a
    `collie.toml` gives every session below it that picture, which is what that file says. A folder
    outside any repository reads only its own `collie.toml`. A refused nearest file means no settings,
@@ -85,6 +87,10 @@ The wire carries a version (24 hex of the sha256), never a path, and the read ro
 picture the bridge itself resolved. A lead checks a crew member's picture again before the phone sees
 it, and the phone reads the header before it decodes.
 
+A repository can show any picture, another project's included, so the picture is never proof of which
+project or agent asks. What Collie draws itself says that: the agent's logo in the tile's corner and the
+session's name beside the tile.
+
 ## Consequences
 
 - A cloned repository can change a picture on the operator's phone without asking. That is the whole of
@@ -93,7 +99,8 @@ it, and the phone reads the header before it decodes.
 - What remains of a stale picture: the push map is keyed by machine and pane id, because a push names
   no session. A reused pane id can show the old pane's picture in a push until the phone's next poll
   rewrites the map.
-- The rule is tested at the line that would break it: `project-file.test.ts` fails when a table named in
-  rule 1 enters the fixed list.
+- The rule is tested at the line that would break it: `project-picture.test.ts` fails when a table named
+  in rule 1 enters the fixed list, and `project-file.test.ts` when a key whose validator is not on its
+  display list does.
 - A setting that would need more than display (a repository's own launcher, say) is a new ADR that
   supersedes this one, not a new key.
