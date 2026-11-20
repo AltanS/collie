@@ -762,7 +762,20 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
           SCALED since 2026-09-23: `py-1` is `py-(--belt-pad)` now, 4px at the default scale and 5px
           and 6px at the larger two, and the pills' `::before` reaches exactly that far again
           (`--belt-reach`, STRIP_ROW_PILL), so every pill answers the whole band. */}
-      <OverflowEdges edges={pinned ? (left ? "right" : "left") : "both"} cue="none" wheel>
+      {/* A mouse scrolls it three ways (ui/overflow-edges.tsx): the wheel, a drag, and an arrow over each edge that still
+          hides pills. The arrows stand in from the end the pinned block owns, by that block's own measured width. */}
+      <OverflowEdges
+        edges={pinned ? (left ? "right" : "left") : "both"}
+        cue="none"
+        wheel
+        drag
+        arrows={{
+          left: pinned && left ? switchInset : 0,
+          right: pinned && !left ? switchInset : 0,
+          leftLabel: translate("belt.scroll.left"),
+          rightLabel: translate("belt.scroll.right"),
+        }}
+      >
         {(scrollerRef) => (
           <div
             ref={scrollerRef}

@@ -4216,6 +4216,8 @@ export const en = {
   // --- the Actions palette (ADR 0165): one searchable list of the commands of this screen and the panes to go to ---
   "settings.actionsPalette.title": "Actions palette",
   "settings.actionsPalette.hint": "One searchable list of commands and panes. Off: the button and the shortcut open the pane list.",
+  "belt.scroll.left": "Scroll left",
+  "belt.scroll.right": "Scroll right",
   "actions.title": "Actions",
   "actions.open.aria": "Actions",
   "actions.open.ariaNeedsYou": "Actions, another pane needs you",
@@ -4351,6 +4353,8 @@ export const PENDING_TRANSLATION = [
   "shortcuts.bar.actions",
   "settings.actionsPalette.title",
   "settings.actionsPalette.hint",
+  "belt.scroll.left",
+  "belt.scroll.right",
   "actions.title",
   "actions.open.aria",
   "actions.open.ariaNeedsYou",

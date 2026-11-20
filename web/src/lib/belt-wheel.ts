@@ -64,3 +64,58 @@ export function decideBeltWheel(input: BeltWheelInput): BeltWheelDecision {
   if (next === input.scrollLeft) return PASS;
   return { take: true, scrollLeft: next };
 }
+
+// THE BELT UNDER A MOUSE DRAG. The same scroller, pulled by the pointer: a press that moves past a small
+// slop sideways becomes a drag, and `scrollLeft` then follows the pointer one to one from where the press
+// began, with no momentum. Only a mouse's primary button starts one; touch and pen keep the browser's own
+// scrolling.
+
+/** A press moving less than this (px, sideways) stays an ordinary click. */
+export const BELT_DRAG_SLOP_PX = 5;
+
+export interface BeltDragStartInput {
+  readonly pointerType: string;
+  /** `PointerEvent.button`: 0 is the primary one. */
+  readonly button: number;
+  readonly scrollWidth: number;
+  readonly clientWidth: number;
+}
+
+/** Whether a press on the scrolling part may become a drag: a mouse's primary button, on a Belt that overflows. */
+export function startsBeltDrag(input: BeltDragStartInput): boolean {
+  if (input.pointerType !== "mouse" || input.button !== 0) return false;
+  return input.scrollWidth - input.clientWidth > SLACK_PX;
+}
+
+export interface BeltDragInput {
+  /** Where the press began and where the pointer is now, `clientX`. */
+  readonly startX: number;
+  readonly x: number;
+  /** The Belt's `scrollLeft` when the press began. */
+  readonly startScrollLeft: number;
+  readonly scrollWidth: number;
+  readonly clientWidth: number;
+  readonly rtl: boolean;
+  /** The drag has already begun: the slop no longer applies. */
+  readonly dragging: boolean;
+}
+
+export interface BeltDragDecision {
+  readonly dragging: boolean;
+  /** Where to put `scrollLeft`. Null while the press is still inside the slop. */
+  readonly scrollLeft: number | null;
+}
+
+/**
+ * The drag's state and the Belt's new position for one pointer move. Dragging the pointer left pulls the
+ * content left, so `scrollLeft` grows by the distance moved; it is clamped to the Belt's range, which for a
+ * right-to-left Belt runs from `-range` to 0.
+ */
+export function decideBeltDrag(input: BeltDragInput): BeltDragDecision {
+  const moved = input.x - input.startX;
+  if (!input.dragging && Math.abs(moved) <= BELT_DRAG_SLOP_PX) return { dragging: false, scrollLeft: null };
+  const range = Math.max(0, input.scrollWidth - input.clientWidth);
+  const low = input.rtl ? -range : 0;
+  const high = input.rtl ? 0 : range;
+  return { dragging: true, scrollLeft: Math.min(Math.max(input.startScrollLeft - moved, low), high) };
+}
