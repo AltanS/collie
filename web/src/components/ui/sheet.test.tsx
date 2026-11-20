@@ -2,7 +2,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 import { act } from "react";
 
-import { BottomSheet, SHEET_BODY_STICKY, useAnySheetOpen } from "./sheet";
+import { cn } from "@/lib/utils";
+
+import { BottomSheet, SHEET_BODY_STICKY, TALL_SHEET_CLEARANCE, useAnySheetOpen } from "./sheet";
 
 // Focus + labelling: the sheets are role=dialog/aria-modal, so they should be named by their title,
 // move focus inside on open, restore it on close, and expose exactly ONE accessible "Close" (the
@@ -533,5 +535,247 @@ describe("SHEET_BODY_STICKY", () => {
     expect(SHEET_BODY_STICKY).toContain("top-[calc(3.75rem+1px)]");
     expect(classes(head.nextElementSibling)).toContain("px-4");
     expect(SHEET_BODY_STICKY).toContain("-mx-4 px-4");
+  });
+});
+
+// ON A WIDE WINDOW THE SHEET IS A CENTRED DIALOG (ADR 0167, addendum 2026-11-20). The width class is read
+// from the window's media queries (hooks/use-width-class.ts), the fold from the viewport segments
+// (hooks/use-fold-posture.ts); this stub answers both from a width, a height and a posture.
+describe("BottomSheet: the presentation by width class", () => {
+  let width = 1440;
+  let height = 900;
+  let posture: "flat" | "book" | "tabletop" = "flat";
+  function answer(query: string): boolean {
+    if (query.includes("vertical-viewport-segments")) return posture === "tabletop";
+    if (query.includes("horizontal-viewport-segments")) return posture === "book";
+    const minW = /min-width:\s*(\d+)px/.exec(query);
+    const minH = /min-height:\s*(\d+)px/.exec(query);
+    return minW !== null && width >= Number(minW[1]) && (minH === null || height >= Number(minH[1]));
+  }
+  beforeEach(() => {
+    vi.stubGlobal(
+      "matchMedia",
+      (query: string) =>
+        // SAFETY: a stand-in for the browser's MediaQueryList with every member the app reads.
+        ({
+          matches: answer(query),
+          media: query,
+          onchange: null,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => false,
+        }) as MediaQueryList,
+    );
+  });
+  afterEach(() => {
+    width = 1440;
+    height = 900;
+    posture = "flat";
+    vi.unstubAllGlobals();
+  });
+  const panelOf = (container: HTMLElement) => container.querySelector<HTMLElement>('div[tabindex="-1"]')!;
+  const classes = (el: Element) => (el.getAttribute("class") ?? "").split(/\s+/u);
+  const at = (y: number) => ({ clientX: 100, clientY: y, identifier: 1 });
+
+  it("draws a centred dialog in the modal's look on expanded: four round corners, a uniform edge, no handle", () => {
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Actions" action={<button type="button">Go</button>}>
+        body
+      </BottomSheet>,
+    );
+    const panel = panelOf(container);
+    expect(panel.dataset.presentation).toBe("dialog");
+    expect(classes(panel)).toEqual(expect.arrayContaining(["rounded-md", "border", "border-border", "bg-card", "shadow-2xl", "zoom-in-95", "motion-reduce:animate-none"]));
+    expect(classes(panel)).not.toContain("rounded-t-md");
+    expect(classes(panel)).not.toContain("border-t");
+    expect(classes(panel)).not.toContain("slide-in-from-bottom");
+    expect(classes(panel)).toEqual(expect.arrayContaining(["w-full", "max-w-screen-sm"]));
+    // Centred in the window: the frame is the modal's centre frame, not the bottom-aligned column.
+    const frame = screen.getByRole("dialog", { name: "Actions" });
+    expect(classes(frame)).toEqual(expect.arrayContaining(["items-center", "justify-center"]));
+    expect(classes(frame)).not.toContain("justify-end");
+    expect(frame.style.getPropertyValue("--modal-room")).not.toBe("");
+    // No grab handle; the title row, its action and the close button stay.
+    expect(container.querySelector(".h-1.w-9")).toBeNull();
+    expect(container.querySelector('[data-slot="sheet-action"]')).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
+  it("keeps the head at the height SHEET_BODY_STICKY states, the handle's row given to the title row", () => {
+    render(
+      <BottomSheet open onClose={() => {}} title="Switch pane">
+        <p>body</p>
+      </BottomSheet>,
+    );
+    const head = document.querySelector<HTMLElement>(".sticky.top-0")!;
+    expect(head.children).toHaveLength(1);
+    const titleRow = head.children[0]!;
+    // 0.875 + 2 (the close button) + 0.875 = 3.75rem, the bottom sheet's 1rem handle row plus its 2.75rem title row.
+    expect(classes(titleRow)).toContain("py-3.5");
+    expect(classes(titleRow.querySelector("button")!)).toContain("size-8");
+    expect(classes(head)).toContain("border-b");
+    expect(SHEET_BODY_STICKY).toContain("top-[calc(3.75rem+1px)]");
+  });
+
+  it("caps the dialog's height inline and lets a bottom sheet's clearance, square top and taller cap give way", () => {
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Tour" className={cn("h-(--app-h) max-h-[92dvh] rounded-t-none", TALL_SHEET_CLEARANCE)}>
+        body
+      </BottomSheet>,
+    );
+    const panel = panelOf(container);
+    expect(panel.style.maxHeight).toContain("82dvh");
+    expect(panel.style.maxHeight).toContain("--modal-room");
+    expect(classes(panel)).toEqual(expect.arrayContaining(["rounded-md", "pb-1"]));
+    expect(classes(panel)).not.toContain("rounded-t-none");
+    expect(classes(panel)).not.toContain(TALL_SHEET_CLEARANCE);
+    // The caller's `max-h-[92dvh]` may stay in the list: an inline max-height outranks every class.
+    expect(panel.style.getPropertyValue("--sheet-body-room")).toContain("82dvh");
+  });
+
+  it("takes no pull: a touch drag on the panel writes no transform and never closes", () => {
+    const onClose = vi.fn();
+    const { container } = render(
+      <BottomSheet open onClose={onClose} title="Switch pane">
+        body
+      </BottomSheet>,
+    );
+    const panel = panelOf(container);
+    fireEvent.touchStart(panel, { touches: [at(100)] });
+    fireEvent.touchMove(panel, { touches: [at(300)], cancelable: true });
+    fireEvent.touchEnd(panel, { touches: [] });
+    expect(panel.style.transform).toBe("");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("draws no peek: a pull before the open renders nothing, and the open that follows plays its entrance", () => {
+    const { container, rerender } = render(
+      <BottomSheet open={false} onClose={vi.fn()} title="Switch pane" pull={120} pullFrom={40}>
+        body
+      </BottomSheet>,
+    );
+    expect(container.firstElementChild).toBeNull();
+    rerender(
+      <BottomSheet open onClose={vi.fn()} title="Switch pane" pull={120} pullFrom={40}>
+        body
+      </BottomSheet>,
+    );
+    const panel = panelOf(container);
+    expect(panel.style.transform).toBe("");
+    expect(classes(panel)).toContain("animate-in");
+  });
+
+  it("closes by Escape, the close button and a press and release on the scrim, and not by a release alone", () => {
+    const onClose = vi.fn();
+    const { container } = render(
+      <BottomSheet open onClose={onClose} title="Actions">
+        body
+      </BottomSheet>,
+    );
+    const scrim = container.querySelector<HTMLElement>('button[aria-hidden="true"]')!;
+    fireEvent.click(scrim);
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.pointerDown(scrim);
+    fireEvent.click(scrim);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(2);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(3);
+  });
+
+  it("moves the focus in and gives it back, and counts as an open sheet", () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    function Probe() {
+      return <output>{useAnySheetOpen() ? "open" : "none"}</output>;
+    }
+    const { rerender } = render(
+      <>
+        <Probe />
+        <BottomSheet open onClose={vi.fn()} title="Keys">
+          body
+        </BottomSheet>
+      </>,
+    );
+    expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true);
+    expect(screen.getByRole("status")).toHaveTextContent("open");
+    rerender(
+      <>
+        <Probe />
+        <BottomSheet open={false} onClose={vi.fn()} title="Keys">
+          body
+        </BottomSheet>
+      </>,
+    );
+    expect(document.activeElement).toBe(opener);
+    expect(screen.getByRole("status")).toHaveTextContent("none");
+    opener.remove();
+  });
+
+  it("opens a viewer as wide as its picture, up to min(92vw, 1200px), never narrower than the column", () => {
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Attachment" size="viewer">
+        <img alt="" />
+      </BottomSheet>,
+    );
+    const panel = panelOf(container);
+    expect(classes(panel)).toEqual(expect.arrayContaining(["w-fit", "min-w-[min(40rem,100%)]", "max-w-[min(92vw,1200px)]"]));
+    expect(classes(panel)).not.toContain("max-w-screen-sm");
+  });
+
+  it("stays a bottom sheet on medium and compact, and the viewer size changes nothing there", () => {
+    for (const w of [390, 820]) {
+      width = w;
+      const { container, unmount } = render(
+        <BottomSheet open onClose={vi.fn()} title="Attachment" size="viewer">
+          body
+        </BottomSheet>,
+      );
+      const panel = panelOf(container);
+      expect(panel.dataset.presentation).toBe("sheet");
+      expect(classes(panel)).toEqual(expect.arrayContaining(["rounded-t-md", "border-t", "max-w-screen-sm", "slide-in-from-bottom"]));
+      expect(container.querySelector(".h-1.w-9")).not.toBeNull();
+      expect(panel.style.getPropertyValue("--sheet-body-room")).toBe("");
+      unmount();
+    }
+  });
+
+  it("stays a bottom sheet on a wide window under 480px tall, and on a foldable folded as a book or held as a tabletop", () => {
+    const cases: Array<[number, typeof posture]> = [
+      [400, "flat"],
+      [900, "book"],
+      [900, "tabletop"],
+    ];
+    for (const [h, p] of cases) {
+      height = h;
+      posture = p;
+      const { container, unmount } = render(
+        <BottomSheet open onClose={vi.fn()} title="Actions">
+          body
+        </BottomSheet>,
+      );
+      expect(panelOf(container).dataset.presentation).toBe("sheet");
+      unmount();
+    }
+  });
+});
+
+// The bottom sheet's panel, pinned whole: the dialog work must leave a phone's sheet exactly as it was.
+describe("BottomSheet: the compact panel is unchanged", () => {
+  it("draws the same class list as before the dialog", () => {
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Actions">
+        body
+      </BottomSheet>,
+    );
+    const panel = container.querySelector<HTMLElement>('div[tabindex="-1"]')!;
+    expect(panel.getAttribute("class")).toBe(
+      "relative z-10 mx-auto max-h-[82dvh] w-full max-w-screen-sm overflow-y-auto overscroll-contain rounded-t-md border-t border-rule bg-card shadow-2xl duration-200 animate-in slide-in-from-bottom pb-[calc(env(safe-area-inset-bottom)_+_1rem)]",
+    );
+    expect(container.firstElementChild?.getAttribute("class")).toBe("fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col justify-end");
   });
 });

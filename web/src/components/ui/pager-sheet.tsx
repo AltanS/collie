@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { Icon } from "@/components/icons/icon";
@@ -22,6 +22,14 @@ import { PICTURE_SHEET } from "@/components/ui/zoom-picture";
 // new one fitted, and closing the sheet drops the zoom with it. The panel takes no page zoom from a
 // pinch anywhere on it (`PICTURE_SHEET`), and the pager row is outside the picture, so a pan of a
 // zoomed picture never pages.
+
+/**
+ * The height a page's picture may take in a pager drawn as a dialog: the dialog body's room
+ * (`--sheet-body-room`, ui/sheet.tsx) less the pager row and its gap when there is one. The caller's
+ * picture reads it with a fallback, `max-h-[min(70dvh,var(--pager-picture-room,70dvh))]`, so on a bottom
+ * sheet, where the room is unset, the property is invalid and the fallback holds.
+ */
+const PAGER_ROW_ROOM = "3.5rem";
 
 export function PagerSheet({
   open,
@@ -51,9 +59,16 @@ export function PagerSheet({
   children: ReactNode;
 }) {
   if (!open) return null;
+  const pagerRoom: CSSProperties & Record<"--pager-picture-room", string> = {
+    "--pager-picture-room": count > 1 ? `calc(var(--sheet-body-room) - ${PAGER_ROW_ROOM})` : "var(--sheet-body-room)",
+  };
   return createPortal(
-    <BottomSheet open onClose={onClose} title={title} className={PICTURE_SHEET}>
-      <div data-slot="pager-sheet" className="flex flex-col gap-3">
+    <BottomSheet open onClose={onClose} title={title} className={PICTURE_SHEET} size="viewer">
+      <div
+        data-slot="pager-sheet"
+        className="flex flex-col gap-3"
+        style={pagerRoom}
+      >
         <div key={index} className="flex min-w-0 justify-center">
           {children}
         </div>
