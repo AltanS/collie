@@ -26,6 +26,7 @@ import { useRowDrag, useVerticalSwipe, type DropTarget } from "@/hooks/use-row-d
 import { useShortcutHandler } from "@/hooks/use-shortcut-handler";
 import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { useStripSnap } from "@/hooks/use-strip-snap";
+import { useWidthGlide } from "@/hooks/use-width-glide";
 import { queueBeltIntent, type BeltIntent } from "@/lib/belt-intent";
 import { writeRefusal } from "@/lib/host-health";
 import { hostKey, hostName, isMultiHost, paneRowKey } from "@/lib/hosts";
@@ -53,6 +54,7 @@ import {
   columnKeyOf,
   cycleWidth,
   dropIndexAt,
+  followTarget,
   hasWidthChoice,
   insertAt,
   isWideMode,
@@ -65,14 +67,13 @@ import {
   RAIL_WIDTH,
   removeColumn,
   scopeOfPane,
-  scrollTargetFor,
   shownPreset,
   SIDEBAR_WIDTH,
   spaceKeyOf,
   spacesInOrder,
   spaceSwipe,
   stepWidth,
-  wholeColumnStart,
+  stripGeometry,
   type Places,
   type SpaceStrip,
 } from "@/lib/wide-layout";
@@ -198,14 +199,17 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   const allowed = allowedPresets(stripWidth, MIN_PANE_WIDTH);
   const widthChoice = wide && hasWidthChoice(stripWidth, MIN_PANE_WIDTH);
 
-  const shown = strip.cols.filter((c) => c.key === strip.focus || byColumn.has(c.key));
+  const shownOf = (s: SpaceStrip) => s.cols.filter((c) => c.key === s.focus || byColumn.has(c.key));
+  const fractionsOf = (s: SpaceStrip) => shownOf(s).map((c) => (wide ? PRESET_FRACTION[shownPreset(c.preset, allowed)] : 1));
+  const shown = shownOf(strip);
   const framed = shown.length > 1;
-  const fractions = shown.map((c) => (wide ? PRESET_FRACTION[shownPreset(c.preset, allowed)] : 1));
+  const fractions = fractionsOf(strip);
+  const signature = fractions.join(",");
   // THE ADD COLUMN ends every flat strip: a scroll or a swipe right always lands on it. It is at least
   // a pane wide, and as wide as the room the last column leaves, so the last column can still rest at
   // the left edge and one column at 1/2 has the rest of the strip as its add column. It is no column
   // of the strip: no focus, no frame, no count, never a landing for the focus that follows the view.
-  const addWidth = book ? 0 : Math.max(MIN_PANE_WIDTH, (1 - (fractions.at(-1) ?? 1)) * stripWidth);
+  const addWidth = book ? 0 : stripGeometry(fractions, stripWidth, wide).addWidth;
   const tail = stripWidth > 0 ? addWidth / stripWidth : 0;
   const focusAt = shown.findIndex((c) => c.key === strip.focus);
   // BOOK: exactly two columns, one per segment: the focused one and its right neighbour, or its left
@@ -233,9 +237,16 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     const target = key === strip.focus && next.focus !== null ? byColumn.get(next.focus) : undefined;
     if (target !== undefined) goTo(target);
   };
-  const cycle = (key: string) => {
-    if (spaceKey !== null) setSpaceStrip(spaceKey, cycleWidth(strip, key, allowed));
+  // A width the person picks GLIDES (hooks/use-width-glide.ts); every other change of the bases, a
+  // window that crosses wide mode, a column that opens or closes, is drawn in one frame as before.
+  const { claim: claimGlide, run: runGlide, gliding } = useWidthGlide(scroller);
+  const resize = (next: SpaceStrip) => {
+    if (spaceKey === null) return;
+    const drawn = fractionsOf(next).join(",");
+    if (drawn !== signature) claimGlide(drawn);
+    setSpaceStrip(spaceKey, next);
   };
+  const cycle = (key: string) => resize(cycleWidth(strip, key, allowed));
   const moveSpace = (by: -1 | 1) => {
     const target = spaces[spaceAt + by];
     const targetKey = spaceKeys[spaceAt + by];
@@ -307,7 +318,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     if (pane !== undefined && to !== focusAt) goTo(pane);
   };
   const stepWidthOf = (by: -1 | 1) => {
-    if (spaceKey !== null && strip.focus !== null) setSpaceStrip(spaceKey, stepWidth(strip, strip.focus, allowed, by));
+    if (strip.focus !== null) resize(stepWidth(strip, strip.focus, allowed, by));
   };
   const focusedKey = strip.focus;
   useShortcutHandler("toggle_sidebar", book ? undefined : () => setSidebarOpen(!open));
@@ -383,23 +394,22 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     restTimer.current = setTimeout(() => setMoving(false), 900);
   }, [measure]);
   useEffect(() => () => clearTimeout(restTimer.current), []);
-  const signature = fractions.join(",");
   useLayoutEffect(() => {
     const node = scroller.current;
-    if (node === null || book) return;
+    if (node === null) return;
+    // The signature is the fractions joined, and a number's text reads back to the same number.
+    const drawn = signature === "" ? [] : signature.split(",").map(Number);
+    const input = { signature, fractions: drawn, addWidth: stripGeometry(drawn, stripWidth, wide).addWidth, stripWidth, wide, focusAt };
+    // A width the person picked: the glide moves the columns and the scroll to the same end as below.
+    if (runGlide(input, { reduced, book, onEnd: measure })) return;
+    if (book) return;
     const cols = [...node.querySelectorAll<HTMLElement>("[data-col-index]")];
     const lefts = cols.map((c) => c.offsetLeft);
     const widths = cols.map((c) => c.offsetWidth);
-    let to = scrollTargetFor(focusAt, lefts, widths, node.scrollLeft, node.clientWidth, node.scrollWidth);
-    if (to === null) {
-      const whole = wholeColumnStart(lefts, node.scrollLeft);
-      const f = cols[focusAt];
-      const keepsFocus = whole === null || f === undefined || (f.offsetLeft >= whole - 0.5 && f.offsetLeft + f.offsetWidth <= whole + node.clientWidth + 0.5);
-      to = keepsFocus ? whole : (f?.offsetLeft ?? null);
-    }
+    const to = followTarget(focusAt, lefts, widths, node.scrollLeft, node.clientWidth, node.scrollWidth);
     if (to !== null) node.scrollTo?.({ left: to, behavior: reduced ? "auto" : "smooth" });
     measure();
-  }, [focusAt, signature, stripWidth, reduced, measure, book]);
+  }, [focusAt, signature, stripWidth, wide, reduced, measure, book, runGlide]);
 
   // ── Wheel and trackpad settle on a column start; the focus follows the view, as in niri ─────
   // Touch is the browser's own momentum and mandatory snap. After a wheel gesture settles, a focused
@@ -600,6 +610,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           <div
             ref={setScroller}
             data-slot="strip"
+            data-gliding={gliding || undefined}
             onScroll={onStripScroll}
             className={cn(
               "relative flex min-h-0 flex-1 overflow-y-hidden",
@@ -707,7 +718,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
               <span aria-hidden data-slot="drop-bar" className="pointer-events-none absolute inset-y-0 z-20 w-1 bg-primary" style={{ left: drag.drop.markerX - 2 }} />
             )}
           </div>
-          {!book && shown.length > 1 && <PositionStrip widths={fractions} focus={focusAt} view={view} tail={tail} moving={moving} />}
+          {!book && shown.length > 1 && <PositionStrip widths={fractions} focus={focusAt} view={view} tail={tail} moving={moving} glide={gliding} />}
         </div>
       </div>
 
@@ -946,7 +957,22 @@ function Rail({ spaces, hereKey, onSelect }: { spaces: readonly WorkspaceGroup[]
 /** Where the strip is: one segment per column, the focused one solid, the visible window framed.
  *  It floats over the strip's top edge and takes no row of its own: shown while the strip moves, it
  *  fades out once the strip rests, the way an overlay scroll bar does. It never takes a pointer. */
-function PositionStrip({ widths, focus, view, tail, moving }: { widths: readonly number[]; focus: number; view: { start: number; size: number }; tail: number; moving: boolean }) {
+function PositionStrip({
+  widths,
+  focus,
+  view,
+  tail,
+  moving,
+  glide,
+}: {
+  widths: readonly number[];
+  focus: number;
+  view: { start: number; size: number };
+  tail: number;
+  moving: boolean;
+  /** A width change glides: the segments ease to their new shares on the glide's speed and curve. */
+  glide: boolean;
+}) {
   const total = widths.reduce((n, w) => n + w, 0) + tail || 1;
   return (
     <div
@@ -960,7 +986,11 @@ function PositionStrip({ widths, focus, view, tail, moving }: { widths: readonly
     >
       <div className="relative flex min-w-0 flex-1 gap-px">
         {widths.map((w, i) => (
-          <span key={i} className={cn("h-full", i === focus ? "bg-foreground" : "bg-muted-foreground/40")} style={{ width: `${(w / total) * 100}%` }} />
+          <span
+            key={i}
+            className={cn("h-full", i === focus ? "bg-foreground" : "bg-muted-foreground/40", glide && "transition-[width] duration-[240ms] ease-out motion-reduce:transition-none")}
+            style={{ width: `${(w / total) * 100}%` }}
+          />
         ))}
         <span className="pointer-events-none absolute inset-y-[-1px] border border-foreground" style={{ left: `${view.start * 100}%`, width: `${view.size * 100}%` }} />
       </div>
