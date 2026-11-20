@@ -27,7 +27,7 @@
 // Claude writes when a session is compacted.
 
 import { readdir, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { observedClaim, type Sourced } from "../cache/claims.ts";
 import type { CacheProbe, ChoiceOnly } from "../cache/engine.ts";
@@ -1133,6 +1133,29 @@ export function handedOverTo(lines: readonly string[]): string | null {
  * resolution (continuation-following, and the containment check that guards it) must stay inside THAT
  * root rather than whichever root happened to be configured first.
  */
+/** Bounds on the shared per-directory sibling metadata snapshot for continuation following. */
+const DIR_SCAN_MAX = 64;
+/** Matches CacheTracker's 5 s floor so N panes in one project folder share a single directory scan. */
+export const DIR_SCAN_TTL_MS = 5_000;
+
+interface DirFileMeta {
+  readonly size: number;
+  readonly mtimeMs: number;
+}
+
+interface DirScan {
+  readonly dirMtimeMs: number;
+  readonly scannedAt: number;
+  readonly files: ReadonlyMap<string, DirFileMeta>;
+}
+
+/** Optional seams for testing continuation directory caching without stubbing node:fs globally. */
+export interface ClaudeTranscriptSourceDeps {
+  readonly now?: () => number;
+  readonly stat?: (path: string) => Promise<DirFileMeta>;
+  readonly readdir?: (path: string) => Promise<readonly string[]>;
+}
+
 export class ClaudeTranscriptSource implements TranscriptSource {
   private readonly pathCache = new Map<string, { path: string; root: string }>();
 
@@ -1142,15 +1165,29 @@ export class ClaudeTranscriptSource implements TranscriptSource {
    */
   private readonly handOvers = new Map<string, { size: number; mtimeMs: number; next: string | null }>();
 
+  /**
+   * Shared short-TTL per-directory `.jsonl` stat snapshots for {@link followContinuation}, plus
+   * in-flight coalescing, so N panes in a large project folder share one scan per tick instead of
+   * executing N full `readdir` + `stat` sweeps.
+   */
+  private readonly dirScans = new Map<string, DirScan>();
+  private readonly inFlightDirScans = new Map<string, Promise<ReadonlyMap<string, DirFileMeta> | null>>();
+
   private readonly rootsNow: () => string[];
+  private readonly now: () => number;
+  private readonly statFs: (path: string) => Promise<DirFileMeta>;
+  private readonly readdirFs: (path: string) => Promise<readonly string[]>;
 
   /** The roots now: fixed, or the live list an added account joins (M101). */
   private get roots(): string[] {
     return this.rootsNow();
   }
 
-  constructor(roots: RootSource) {
+  constructor(roots: RootSource, deps: ClaudeTranscriptSourceDeps = {}) {
     this.rootsNow = rootReader(roots);
+    this.now = deps.now ?? Date.now;
+    this.statFs = deps.stat ?? stat;
+    this.readdirFs = deps.readdir ?? readdir;
   }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
@@ -1244,9 +1281,9 @@ export class ClaudeTranscriptSource implements TranscriptSource {
    */
   private async scanRoot(sessionId: string, root: string): Promise<string | null> {
     const file = `${sessionId}.jsonl`;
-    let dirs: string[];
+    let dirs: readonly string[];
     try {
-      dirs = await readdir(root);
+      dirs = await this.readdirFs(root);
     } catch {
       return null; // this projects dir doesn't exist — a profile that isn't on this machine
     }
@@ -1346,31 +1383,88 @@ export class ClaudeTranscriptSource implements TranscriptSource {
    * recently than the pane's own session would win. That needs a per-pane session id Herdr doesn't
    * expose; showing the freshest branch of the right conversation beats showing a stale one.
    */
+  /**
+   * Return a shared short-TTL `(size, mtimeMs)` snapshot for `.jsonl` siblings in `dir`.
+   * Re-scans immediately when `stat(dir).mtimeMs` changes (a new rotation file created or deleted)
+   * or after {@link DIR_SCAN_TTL_MS} (so in-place writes to existing siblings and transient `stat`
+   * failures are picked up on the next tick). Concurrent callers for the same directory share one
+   * in-flight scan.
+   */
+  private async dirEntries(dir: string): Promise<ReadonlyMap<string, DirFileMeta> | null> {
+    const pending = this.inFlightDirScans.get(dir);
+    if (pending !== undefined) return pending;
+
+    const at = this.now();
+    let dirMtimeMs: number;
+    try {
+      dirMtimeMs = (await this.statFs(dir)).mtimeMs;
+    } catch {
+      return null;
+    }
+
+    // Re-check after the async stat so callers that raced into statFs(dir) still coalesce.
+    const inFlight = this.inFlightDirScans.get(dir);
+    if (inFlight !== undefined) return inFlight;
+
+    const cached = this.dirScans.get(dir);
+    if (cached !== undefined && at - cached.scannedAt < DIR_SCAN_TTL_MS && dirMtimeMs === cached.dirMtimeMs) {
+      return cached.files;
+    }
+
+    const scan = (async (): Promise<ReadonlyMap<string, DirFileMeta> | null> => {
+      let names: readonly string[];
+      try {
+        names = await this.readdirFs(dir);
+      } catch {
+        return null;
+      }
+      const files = new Map<string, DirFileMeta>();
+      for (const name of names) {
+        if (!name.endsWith(".jsonl")) continue;
+        try {
+          const st = await this.statFs(join(dir, name));
+          files.set(name, { size: st.size, mtimeMs: st.mtimeMs });
+        } catch {
+          continue;
+        }
+      }
+      if (!this.dirScans.has(dir) && this.dirScans.size >= DIR_SCAN_MAX) {
+        const oldest = this.dirScans.keys().next().value;
+        if (oldest !== undefined) this.dirScans.delete(oldest);
+      }
+      this.dirScans.set(dir, { dirMtimeMs, scannedAt: this.now(), files });
+      return files;
+    })();
+
+    this.inFlightDirScans.set(dir, scan);
+    try {
+      return await scan;
+    } finally {
+      this.inFlightDirScans.delete(dir);
+    }
+  }
+
   private async followContinuation(path: string, root: string): Promise<string> {
     const dir = dirname(path);
+    const selfName = basename(path);
     let self: LogStamp;
     try {
-      const st = await stat(path);
+      const st = await this.statFs(path);
       self = { root: conversationRoot(await head(path)), size: st.size, mtimeMs: st.mtimeMs };
     } catch {
       return path;
     }
     if (self.root === null) return path;
 
+    const entries = await this.dirEntries(dir);
+    if (entries === null) return path;
+
     let best = { path, size: self.size, mtimeMs: self.mtimeMs };
-    let names: string[];
-    try {
-      names = await readdir(dir);
-    } catch {
-      return path;
-    }
-    for (const name of names) {
-      if (!name.endsWith(".jsonl")) continue;
+    for (const [name, st] of entries) {
+      if (name === selfName) continue;
+      if (st.mtimeMs <= best.mtimeMs || st.size < self.size) continue;
       const candidate = join(dir, name);
-      if (candidate === path) continue;
       try {
-        const st = await stat(candidate);
-        if (st.mtimeMs <= best.mtimeMs || st.size < self.size) continue;
         // Containment AGAIN, before a byte of the candidate is read. The directory got here from a
         // path `resolve` already validated, but a sibling INSIDE it can still be a symlink out of the
         // root — and anything that writes into the projects tree can plant one. Following it would

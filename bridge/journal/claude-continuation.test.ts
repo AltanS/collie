@@ -1,0 +1,200 @@
+import { describe, expect, test } from "bun:test";
+import { mkdir, readdir, rm, stat, utimes } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { ClaudeTranscriptSource, DIR_SCAN_TTL_MS } from "./claude.ts";
+
+describe("ClaudeTranscriptSource — continuation scan caching", () => {
+  const ROOT = "11111111-1111-4111-8111-111111111111";
+  const OLD = "22222222-2222-4222-8222-222222222222";
+  const NEW = "33333333-3333-4333-8333-333333333333";
+  const ACTIVE_B = "44444444-4444-4444-8444-444444444444";
+
+  const row = (uuid: string, text: string) =>
+    JSON.stringify({
+      type: "user",
+      uuid,
+      timestamp: "2026-11-20T07:00:00.000Z",
+      message: { role: "user", content: text },
+    });
+
+  async function makeLargeProject(coldCount: number) {
+    const dir = join(tmpdir(), `collie-cont-cache-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
+    const project = join(dir, "-Users-dev-projects");
+    await mkdir(project, { recursive: true });
+
+    const nowSec = Date.now() / 1000;
+    const coldSec = nowSec - 7200; // 2 hours old — cold
+    for (let i = 0; i < coldCount; i++) {
+      const hex = i.toString(16).padStart(12, "0");
+      const file = join(project, `00000000-0000-4000-8000-${hex}.jsonl`);
+      await Bun.write(file, row(`cold-${i}`, "old"));
+      await utimes(file, coldSec, coldSec);
+    }
+
+    await Bun.write(join(project, `${OLD}.jsonl`), [row(ROOT, "one"), row("u2", "two")].join("\n"));
+    await utimes(join(project, `${OLD}.jsonl`), nowSec - 60, nowSec - 60);
+    await Bun.write(join(project, `${ACTIVE_B}.jsonl`), [row("other-root", "hi")].join("\n"));
+
+    return { dir, project };
+  }
+
+  function countingFs() {
+    let statCalls = 0;
+    let readdirCalls = 0;
+    return {
+      get statCalls() {
+        return statCalls;
+      },
+      get readdirCalls() {
+        return readdirCalls;
+      },
+      reset() {
+        statCalls = 0;
+        readdirCalls = 0;
+      },
+      stat(path: string) {
+        statCalls += 1;
+        return stat(path);
+      },
+      readdir(path: string) {
+        readdirCalls += 1;
+        return readdir(path);
+      },
+    };
+  }
+
+  test("multiple panes sharing a large project directory share one scan per TTL window", async () => {
+    const { dir } = await makeLargeProject(60);
+    const fs = countingFs();
+    let clock = Date.now();
+    try {
+      const src = new ClaudeTranscriptSource(dir, { now: () => clock, stat: fs.stat, readdir: fs.readdir });
+
+      // Populate pathCache and the first shared directory snapshot.
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${OLD}.jsonl`);
+      expect(await src.resolve({ kind: "id", value: ACTIVE_B })).toEndWith(`${ACTIVE_B}.jsonl`);
+      fs.reset();
+
+      // Within the same TTL window, 10 resolves across panes do zero extra readdirs and never re-stat the 60 siblings.
+      clock += DIR_SCAN_TTL_MS - 1;
+      for (let i = 0; i < 5; i++) {
+        expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${OLD}.jsonl`);
+        expect(await src.resolve({ kind: "id", value: ACTIVE_B })).toEndWith(`${ACTIVE_B}.jsonl`);
+      }
+
+      expect(fs.readdirCalls).toBe(0);
+      expect(fs.statCalls).toBeLessThan(30);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("detects a newly created rotation file immediately when directory mtime changes", async () => {
+    const { dir, project } = await makeLargeProject(60);
+    const fs = countingFs();
+    const clock = Date.now();
+    try {
+      const src = new ClaudeTranscriptSource(dir, { now: () => clock, stat: fs.stat, readdir: fs.readdir });
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${OLD}.jsonl`);
+      fs.reset();
+
+      const newPath = join(project, `${NEW}.jsonl`);
+      await Bun.write(newPath, [row(ROOT, "one"), row("u2", "two"), row("u3", "three")].join("\n"));
+      const futureSec = Date.now() / 1000 + 2;
+      await utimes(newPath, futureSec, futureSec);
+      await utimes(project, futureSec, futureSec);
+
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${NEW}.jsonl`);
+      expect(fs.readdirCalls).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("detects in-place growth of a previously cold sibling after one TTL window", async () => {
+    const { dir, project } = await makeLargeProject(60);
+    const fs = countingFs();
+    let clock = Date.now();
+    try {
+      // Seed NEW smaller and >1h old (cold) so OLD wins on the initial scan.
+      const newPath = join(project, `${NEW}.jsonl`);
+      await Bun.write(newPath, row(ROOT, "one"));
+      const coldSec = Date.now() / 1000 - 7200;
+      await utimes(newPath, coldSec, coldSec);
+
+      const src = new ClaudeTranscriptSource(dir, { now: () => clock, stat: fs.stat, readdir: fs.readdir });
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${OLD}.jsonl`);
+      fs.reset();
+
+      // Grow NEW in place without touching directory mtime.
+      await Bun.write(newPath, [row(ROOT, "one"), row("u2", "two"), row("u3", "three")].join("\n"));
+      const futureSec = Date.now() / 1000 + 5;
+      await utimes(newPath, futureSec, futureSec);
+
+      clock += DIR_SCAN_TTL_MS;
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${NEW}.jsonl`);
+      expect(fs.readdirCalls).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("recovers on the next TTL window after a transient sibling stat failure", async () => {
+    const { dir, project } = await makeLargeProject(10);
+    const newPath = join(project, `${NEW}.jsonl`);
+    await Bun.write(newPath, [row(ROOT, "one"), row("u2", "two"), row("u3", "three")].join("\n"));
+    const futureSec = Date.now() / 1000 + 5;
+    await utimes(newPath, futureSec, futureSec);
+
+    let clock = Date.now();
+    let failNewOnce = true;
+    try {
+      const src = new ClaudeTranscriptSource(dir, {
+        now: () => clock,
+        stat(path: string) {
+          if (failNewOnce && path.endsWith(`${NEW}.jsonl`)) {
+            failNewOnce = false;
+            return Promise.reject(new Error("transient EIO"));
+          }
+          return stat(path);
+        },
+        readdir,
+      });
+
+      // First scan misses NEW due to transient stat failure.
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${OLD}.jsonl`);
+
+      // Next TTL window retries and discovers NEW even with unchanged directory mtime.
+      clock += DIR_SCAN_TTL_MS;
+      expect(await src.resolve({ kind: "id", value: OLD })).toEndWith(`${NEW}.jsonl`);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("coalesces concurrent resolves in the same directory into one scan", async () => {
+    const { dir } = await makeLargeProject(40);
+    const fs = countingFs();
+    let clock = Date.now();
+    try {
+      const src = new ClaudeTranscriptSource(dir, { now: () => clock, stat: fs.stat, readdir: fs.readdir });
+      // Prime pathCache so both panes hit followContinuation simultaneously.
+      await src.resolve({ kind: "id", value: OLD });
+      await src.resolve({ kind: "id", value: ACTIVE_B });
+      fs.reset();
+
+      clock += DIR_SCAN_TTL_MS;
+      const [r1, r2] = await Promise.all([
+        src.resolve({ kind: "id", value: OLD }),
+        src.resolve({ kind: "id", value: ACTIVE_B }),
+      ]);
+      expect(r1).toEndWith(`${OLD}.jsonl`);
+      expect(r2).toEndWith(`${ACTIVE_B}.jsonl`);
+      expect(fs.readdirCalls).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
