@@ -247,6 +247,17 @@ describe("GrokTranscriptSource", () => {
 
     expect(await src.resolve({ kind: "id", value: SID })).toBeNull();
   });
+
+  test("a cached path is not served once its root leaves the config", async () => {
+    const { root, log } = await sessionRoot();
+    const roots = [root];
+    const src = new GrokTranscriptSource(() => roots);
+    expect(await src.resolve({ kind: "id", value: SID })).toBe(log);
+
+    roots.splice(0, 1);
+
+    expect(await src.resolve({ kind: "id", value: SID })).toBeNull();
+  });
 });
 
 // Herdr keeps the FIRST id a grok pane reported: `/resume` inside a running grok reports the resumed

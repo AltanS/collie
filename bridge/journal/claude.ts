@@ -1291,7 +1291,8 @@ export class ClaudeTranscriptSource implements TranscriptSource {
       // which never changes. Continuation-following must still run on every call, because the
       // conversation rotates into a new file WHILE the bridge is up: caching its result would pin the
       // answer to whatever was true at the first request and go stale minutes later.
-      const real = await containedRealpath(cached.path, cached.root);
+      // A root that left the config (an account removed) serves nothing more, cache or not.
+      const real = this.roots.includes(cached.root) ? await containedRealpath(cached.path, cached.root) : null;
       if (real !== null) return this.follow(real, cached.root);
       this.pathCache.delete(sessionId);
     }

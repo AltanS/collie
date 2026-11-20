@@ -402,6 +402,18 @@ describe("CodexTranscriptSource — several sessions roots", () => {
     expect(await src.resolve({ kind: "id", value: A })).toBeNull();
     await rm(base, { recursive: true, force: true });
   });
+
+  test("a cached rollout is not served once its root leaves the config", async () => {
+    const { base, a, b } = await fixture();
+    const roots = [a, b];
+    const src = new CodexTranscriptSource(() => roots, () => 0);
+    expect(await src.resolve({ kind: "id", value: B })).toEndWith(`${B}.jsonl`);
+
+    roots.splice(1, 1);
+
+    expect(await src.resolve({ kind: "id", value: B })).toBeNull();
+    await rm(base, { recursive: true, force: true });
+  });
 });
 
 // ── custom_tool_call: the shape codex reaches for most (spec M41/12) ─────────

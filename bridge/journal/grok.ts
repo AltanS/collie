@@ -514,7 +514,8 @@ export class GrokTranscriptSource implements TranscriptSource {
     const sessionId = ref.value;
     const cached = this.pathCache.get(sessionId);
     if (cached !== undefined) {
-      const real = await containedRealpath(cached.path, cached.root);
+      // A root that left the config (an account removed) serves nothing more, cache or not.
+      const real = this.roots.includes(cached.root) ? await containedRealpath(cached.path, cached.root) : null;
       if (real !== null) {
         if (real !== cached.path) this.pathCache.set(sessionId, { path: real, root: cached.root });
         return real;
