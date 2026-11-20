@@ -76,6 +76,11 @@ export function isShortcutActionAvailable(id: ActionId): boolean {
   return handlers.has(ownerOf(id));
 }
 
+/** Every action of the table that would do something on this screen now, in table order. */
+export function availableShortcutActions(): ActionId[] {
+  return ACTIONS.filter((action) => isShortcutActionAvailable(action.id)).map((action) => action.id);
+}
+
 /**
  * Call `listener` when an action gains or loses its handler, so an answer from
  * {@link isShortcutActionAvailable} may have changed. A handler replaced by a newer one is no change.

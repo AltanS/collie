@@ -15,6 +15,12 @@ The first time a hardware key press reaches the page, a small card at the top ri
 Open the shortcut list with the prefix, then `?`. On a wide window you can also open it from
 **Settings → Device → Keyboard shortcuts**. That row shows once the device has seen a key press.
 
+The bar and the list follow the screen you are on. On the dashboard the bar names no tab or pane
+key. The list opened with `?` shows what works here first, and ends with a section called "Not on
+this screen" that holds the rest, dimmed, with their keys. The list opened from Settings is complete
+and plain. A key that does nothing on this screen does nothing to the page, and the bar says "Not on
+this screen" for two seconds.
+
 ## The prefix
 
 The prefix is one key that says "the next key is for Collie". It is `Ctrl+B` by default, the same

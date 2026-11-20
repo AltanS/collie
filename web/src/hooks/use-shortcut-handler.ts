@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
-import type { ActionId } from "@/lib/shortcuts/actions";
+import { ACTIONS, type ActionId } from "@/lib/shortcuts/actions";
 import {
+  availableShortcutActions,
   isShortcutActionAvailable,
   registerPaneKeySink,
   registerShortcutHandler,
@@ -38,6 +39,27 @@ export function useShortcutActionAvailable(id: ActionId): boolean {
     () => isShortcutActionAvailable(id),
     () => false,
   );
+}
+
+/**
+ * The actions that do something on this screen now, as a set the mode bar and the shortcut list read.
+ * It follows the handlers as they mount and unmount. The store's snapshot is one string, so a render
+ * that finds the same answer keeps the same set.
+ */
+export function useAvailableShortcutActions(): ReadonlySet<ActionId> {
+  const key = useSyncExternalStore(
+    subscribeShortcutAvailability,
+    () => availableShortcutActions().join(","),
+    () => "",
+  );
+  return useMemo(() => new Set(key === "" ? [] : key.split(",").map(toActionId)), [key]);
+}
+
+/** A name from the snapshot string back to an id, checked against the table. */
+function toActionId(name: string): ActionId {
+  const known = ACTIONS.find((action) => action.id === name);
+  if (known === undefined) throw new Error(`No shortcut action ${name}`);
+  return known.id;
 }
 
 /**

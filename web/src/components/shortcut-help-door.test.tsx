@@ -50,7 +50,7 @@ describe("ShortcutHelpDoor", () => {
 
   it("opens from the store the Settings row uses, and closes on Escape", () => {
     mountWith();
-    act(() => openShortcutHelp());
+    act(() => openShortcutHelp("all"));
     expect(sheet()).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(sheet()).toBeNull();
@@ -66,7 +66,7 @@ describe("ShortcutHelpDoor", () => {
 
   it("lists the actions of the table in groups, with the nine tab keys as one row", () => {
     mountWith();
-    act(() => openShortcutHelp());
+    act(() => openShortcutHelp("all"));
     const dialog = found(sheet(), "sheet");
     expect(within(dialog).getByRole("region", { name: "Tabs" })).toBeInTheDocument();
     expect(within(dialog).getAllByText("Tab by number")).toHaveLength(2);
@@ -76,7 +76,7 @@ describe("ShortcutHelpDoor", () => {
 
   it("narrows the rows as the filter is typed", async () => {
     mountWith();
-    act(() => openShortcutHelp());
+    act(() => openShortcutHelp("all"));
     expect(screen.getByText("Zen mode on or off")).toBeInTheDocument();
     await userEvent.type(screen.getByRole("textbox", { name: "Filter shortcuts" }), "sidebar");
     // The matched word is drawn as a mark, so the row's text is read as a whole.
@@ -88,7 +88,7 @@ describe("ShortcutHelpDoor", () => {
 
   it("moves the cursor to the filter on /", () => {
     mountWith();
-    act(() => openShortcutHelp());
+    act(() => openShortcutHelp("all"));
     const field = screen.getByRole("textbox", { name: "Filter shortcuts" });
     expect(field).not.toHaveFocus();
     expect(fireEvent.keyDown(document.body, { key: "/" })).toBe(false);
@@ -97,14 +97,14 @@ describe("ShortcutHelpDoor", () => {
 
   it("reads unset for an action the file unbound", () => {
     mountWith({ zen_mode: [""] });
-    act(() => openShortcutHelp());
+    act(() => openShortcutHelp("all"));
     const row = found(screen.getByText("Zen mode on or off").closest("li"), "zen_mode row");
     expect(within(row).getByText("unset")).toBeInTheDocument();
   });
 
   it("shows what the file got wrong in the foot, with the reason", () => {
     mountWith({ zen_mode: ["ctrl+w"], find: ["no+such+key"] });
-    act(() => openShortcutHelp());
+    act(() => openShortcutHelp("all"));
     const foot = found(document.querySelector('[data-slot="shortcut-list-foot"]'), "foot");
     expect(within(foot).getByText("Dropped from shortcuts.toml (2)")).toBeInTheDocument();
     expect(foot.textContent).toContain("zen_mode = ctrl+w");
@@ -113,13 +113,13 @@ describe("ShortcutHelpDoor", () => {
 
   it("shows no note when the file loaded clean", () => {
     mountWith();
-    act(() => openShortcutHelp());
+    act(() => openShortcutHelp("all"));
     expect(screen.queryByText(/Dropped from shortcuts.toml/)).toBeNull();
   });
 
   it("follows a change of the keymap while it is open", () => {
     mountWith();
-    act(() => openShortcutHelp());
+    act(() => openShortcutHelp("all"));
     act(() => publishShortcutKeymap(buildKeymap({ defaults: ACTIONS, user: { zen_mode: [""] }, mac: false })));
     const row = found(screen.getByText("Zen mode on or off").closest("li"), "zen_mode row");
     expect(within(row).getByText("unset")).toBeInTheDocument();

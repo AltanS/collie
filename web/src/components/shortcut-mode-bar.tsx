@@ -10,6 +10,11 @@ import { cn } from "@/lib/utils";
 // it holds no listener and decides nothing about where it sits or when it shows. The caller places it
 // (components/shortcut-bar-host.tsx keeps it out of the flow: DESIGN.md §2).
 //
+// THE BAR FOLLOWS THE SCREEN. It names only the actions that do something here (`available`, from
+// `useAvailableShortcutActions`): on the dashboard no tab or pane key shows. The ways out and the hint
+// that opens the list always show. A key with no target here puts the notice in the hints' place for a
+// moment (lib/shortcuts/state.ts).
+//
 // THE KEYS COME FROM THE KEYMAP, so a rebound key shows as rebound. The words are the bar's own short
 // forms, because the list's labels ("Navigate the spaces, tabs and panes") are sentences. They are English
 // only until the next translation pass (`PENDING_TRANSLATION`).
@@ -51,6 +56,8 @@ const MODE_HINTS = {
 } as const satisfies Record<ModeId, readonly Hint[]>;
 
 const HELP_HINT: Hint = { ids: ["help"], labelKey: "shortcuts.bar.help" };
+// The way to the list is not about the screen: it shows wherever the person is.
+const HELP_ALWAYS: ReadonlySet<ActionId> = new Set<ActionId>(["help"]);
 
 const EXIT_KEY = { esc: "shortcuts.bar.leave", enter: "shortcuts.bar.done" } as const satisfies Record<string, MessageKey>;
 
@@ -64,11 +71,12 @@ function capitalised(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
-/** The caps of a hint: the first key of each action that has one in this mode, `[]` when none has. */
-function hintCaps(input: { hint: Hint; keymap: Keymap; viaPrefix: boolean }): string[] {
-  const { hint, keymap, viaPrefix } = input;
+/** The caps of a hint: the first key of each available action that has one in this mode, `[]` when none has. */
+function hintCaps(input: { hint: Hint; keymap: Keymap; viaPrefix: boolean; available: ReadonlySet<ActionId> }): string[] {
+  const { hint, keymap, viaPrefix, available } = input;
   const caps: string[] = [];
   for (const id of hint.ids) {
+    if (!available.has(id)) continue;
     const combo = actionCombos({ keymap, id }).find((candidate) => candidate.viaPrefix === viaPrefix);
     if (combo !== undefined) caps.push(...combo.caps);
   }
@@ -95,9 +103,23 @@ export function ModePill({ mode }: { mode: BarMode }) {
   );
 }
 
+/** The line a key with no target here leaves behind. */
+export function ShortcutNoticeText() {
+  useLocale();
+  return (
+    <span data-slot="shortcut-notice" className="text-xs text-muted-foreground">
+      {t("shortcuts.bar.notHere")}
+    </span>
+  );
+}
+
 export interface ShortcutModeBarProps {
   mode: BarMode;
   keymap: Keymap;
+  /** The actions that do something on this screen now. */
+  available: ReadonlySet<ActionId>;
+  /** A key had no target here: say so where the hints stand. */
+  isNoticeShown?: boolean;
   className?: string;
 }
 
@@ -105,15 +127,15 @@ export interface ShortcutModeBarProps {
  * The pill, the keys that work next, and the ways out. `Esc` leaves every mode. In the prefix the last
  * hint is the shortcut list; in a sticky mode it is `Enter`, which the mode names.
  */
-export function ShortcutModeBar({ mode, keymap, className }: ShortcutModeBarProps) {
+export function ShortcutModeBar({ mode, keymap, available, isNoticeShown = false, className }: ShortcutModeBarProps) {
   useLocale();
   const viaPrefix = mode === "prefix";
   const hints = viaPrefix ? PREFIX_HINTS : MODE_HINTS[mode];
   const shown = hints
-    .map((hint) => ({ hint, caps: hintCaps({ hint, keymap, viaPrefix }) }))
+    .map((hint) => ({ hint, caps: hintCaps({ hint, keymap, viaPrefix, available }) }))
     .filter((entry) => entry.caps.length > 0);
   const exits = exitIds({ mode, keymap });
-  const help = viaPrefix ? hintCaps({ hint: HELP_HINT, keymap, viaPrefix: true }) : [];
+  const help = viaPrefix ? hintCaps({ hint: HELP_HINT, keymap, viaPrefix: true, available: HELP_ALWAYS }) : [];
   return (
     <div
       role="status"
@@ -123,9 +145,11 @@ export function ShortcutModeBar({ mode, keymap, className }: ShortcutModeBarProp
     >
       <ModePill mode={mode} />
       <div className="flex min-w-0 flex-1 gap-x-4 overflow-hidden [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
-        {shown.map(({ hint, caps }) => (
-          <HintPair key={hint.labelKey} caps={caps} label={t(hint.labelKey)} />
-        ))}
+        {isNoticeShown ? (
+          <ShortcutNoticeText />
+        ) : (
+          shown.map(({ hint, caps }) => <HintPair key={hint.labelKey} caps={caps} label={t(hint.labelKey)} />)
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-x-4">
         {help.length > 0 && <HintPair caps={help} label={t(HELP_HINT.labelKey)} />}

@@ -13,7 +13,7 @@ import { ACTIONS } from "@/lib/shortcuts/actions";
 import { buildKeymap } from "@/lib/shortcuts/keymap";
 import { hasShortcutTarget, paneKeySink, runShortcutAction, type PaneKeySink } from "@/lib/shortcuts/registry";
 import { createResolver, type Resolver } from "@/lib/shortcuts/resolve";
-import { publishShortcutKeymap, publishShortcutMode } from "@/lib/shortcuts/state";
+import { publishShortcutKeymap, publishShortcutMode, publishShortcutNotice } from "@/lib/shortcuts/state";
 import type { Keymap, KeyLike, Outcome, UserShortcuts } from "@/lib/shortcuts/types";
 import { chordToWireKey } from "@/lib/shortcuts/wire-key";
 
@@ -75,7 +75,9 @@ function act(outcome: Outcome, sink: PaneKeySink | null): void {
     if (sink !== null) void sink.send([chordToWireKey(outcome.chord)]);
     return;
   }
-  if (outcome.type === "run") runShortcutAction(outcome.action, outcome.index);
+  if (outcome.type !== "run") return;
+  // The key is ours and stays ours: no target here means the bar says so, and nothing else happens.
+  if (!runShortcutAction(outcome.action, outcome.index)) publishShortcutNotice();
 }
 
 function handleKeyDown(event: KeyboardEvent, resolver: Resolver): void {
@@ -89,10 +91,12 @@ function handleKeyDown(event: KeyboardEvent, resolver: Resolver): void {
   const answered = resolver.press(toKeyLike(event));
   const outcome = startedNormal && sink?.isDirectTyping() === true ? onlyPrefixWhileTyping(answered, resolver) : answered;
   // A sticky mode with no key that has a target here would only swallow typing.
-  if (outcome.type === "mode" && !hasShortcutTarget(outcome.id)) resolver.reset();
+  const isModeWithoutTarget = outcome.type === "mode" && !hasShortcutTarget(outcome.id);
+  if (isModeWithoutTarget) resolver.reset();
   publishShortcutMode(resolver.mode);
   // The first press of the prefix means the person found the keys, so the one-time hint is done.
   if (outcome.type === "enter-prefix") markKeyboardHintDone();
+  if (isModeWithoutTarget) publishShortcutNotice();
   if (outcome.type === "pass") return;
   event.preventDefault();
   event.stopPropagation();

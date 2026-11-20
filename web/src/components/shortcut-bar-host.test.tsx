@@ -1,8 +1,9 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ACTIONS } from "@/lib/shortcuts/actions";
+import { ACTIONS, type ActionId } from "@/lib/shortcuts/actions";
 import { buildKeymap } from "@/lib/shortcuts/keymap";
+import { __resetShortcutRegistry, registerShortcutHandler } from "@/lib/shortcuts/registry";
 import { __resetShortcutState, publishShortcutKeymap, publishShortcutMode } from "@/lib/shortcuts/state";
 import type { Mode, UserShortcuts } from "@/lib/shortcuts/types";
 
@@ -11,7 +12,13 @@ import { ShortcutBarHost } from "./shortcut-bar-host";
 afterEach(() => {
   cleanup();
   __resetShortcutState();
+  __resetShortcutRegistry();
 });
+
+/** A screen that answers these actions, as the pane view answers its tab and pane keys. */
+function offer(...ids: ActionId[]) {
+  for (const id of ids) registerShortcutHandler(id, () => undefined);
+}
 
 function keymapOf(user: UserShortcuts = {}) {
   return buildKeymap({ defaults: ACTIONS, user, mac: false });
@@ -39,6 +46,7 @@ describe("ShortcutBarHost", () => {
   });
 
   it("names the prefix, its keys and the way out while the prefix waits", () => {
+    offer("new_tab");
     show("prefix");
     expect(bar()).toHaveAttribute("data-mode", "prefix");
     expect(screen.getByText("Prefix")).toBeInTheDocument();
@@ -48,6 +56,7 @@ describe("ShortcutBarHost", () => {
   });
 
   it("names the Navigate mode and its own keys, and leaves with Enter or Esc", () => {
+    offer("focus_pane_left", "focus_pane_right", "new_tab");
     show("navigate");
     expect(bar()).toHaveAttribute("data-mode", "navigate");
     expect(screen.getByText("Navigate")).toBeInTheDocument();
@@ -74,6 +83,7 @@ describe("ShortcutBarHost", () => {
   });
 
   it("shows the keys of the live keymap, so a change in shortcuts.toml shows", () => {
+    offer("new_tab");
     show("prefix", { new_tab: ["prefix+y"] });
     const row = screen.getByText("new tab").parentElement;
     expect(row?.textContent).toContain("y");

@@ -25,7 +25,7 @@ export function ShortcutSettingsRow() {
             <p className="text-sm text-muted-foreground">{t("shortcuts.settings.description")}</p>
           </div>
         </div>
-        <Button type="button" variant="outline" className="min-h-11 shrink-0 px-4" aria-label={t("shortcuts.settings.buttonAria")} onClick={openShortcutHelp}>
+        <Button type="button" variant="outline" className="min-h-11 shrink-0 px-4" aria-label={t("shortcuts.settings.buttonAria")} onClick={() => openShortcutHelp("all")}>
           {t("shortcuts.settings.button")}
         </Button>
       </div>

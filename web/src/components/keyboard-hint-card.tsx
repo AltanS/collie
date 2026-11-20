@@ -57,7 +57,7 @@ function seeAllSentence(keymap: Keymap): ReactNode[] | null {
 
 function showShortcuts(): void {
   markKeyboardHintDone();
-  openShortcutHelp();
+  openShortcutHelp("screen");
 }
 
 function HintCard({ keymap }: { keymap: Keymap }) {
