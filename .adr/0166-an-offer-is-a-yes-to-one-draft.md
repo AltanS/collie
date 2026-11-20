@@ -27,7 +27,10 @@ that a dialog opens in a turn, so a probe that failed left the draft deleted and
 
 - **The offer carries its proof.** The `draft_present` refusal carries the rows hash of the read it
   refused on, the same field Commit, Submit and Discard use. The bridge keeps, for each hash it handed
-  out, a hash of the box's text in that read, beside the loose form it already kept (M102 spec 12).
+  out, a hash of the box's text in that read, beside the loose form it already kept (M102 spec 12). The
+  same refusal carries that read's box text as `draftText` (masked as the mirror is, at most 2000
+  characters with `draftCut`, never for a sign-in field or a box shown only in part), so the phone
+  can show what Replace would delete.
 - **The tap sends it back, and the bridge compares before any key.** At S0, before the draft's probe,
   a box that holds a draft must hold the one the offer showed: the request's hash is S0's own, or a
   hash this bridge handed out for a read whose box held the same text. A turn that streams above the

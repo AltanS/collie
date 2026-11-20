@@ -10268,13 +10268,16 @@ export async function sendRoute(
 }
 
 /**
- * A send answer as it leaves a bridge that masks secret shapes: its surface masked, and the rows of a
- * refused override (M102 spec 12) masked row by row. The rows hash stays the hash of the plain rows.
+ * A send answer as it leaves a bridge that masks secret shapes: its surface masked, the rows of a
+ * refused override (M102 spec 12) masked row by row, and the draft an offer quotes (ADR 0166). The
+ * rows hash stays the hash of the plain rows.
  */
 export function maskedAnswer(answer: SendAnswer): SendAnswer {
   const surface = answer.surface === undefined ? {} : { surface: maskSurface(answer.surface) };
   const rows = answer.rows === undefined ? {} : { rows: answer.rows.map(redactText) };
-  return { ...answer, ...surface, ...rows };
+  // The draft an offer quotes (ADR 0166) is masked like the mirror's text and the held rows.
+  const draft = answer.draftText === undefined ? {} : { draftText: redactText(answer.draftText) };
+  return { ...answer, ...surface, ...rows, ...draft };
 }
 
 /** A view send's refusal before the Send Protocol: HTTP 409 with the code, so the phone shows it and never retries. */

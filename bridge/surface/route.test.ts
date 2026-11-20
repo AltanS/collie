@@ -385,6 +385,8 @@ describe("the reply route runs the protocol (M56 spec 06)", () => {
       const offer = await (await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "new words", submit: true, id: "phone-req-0101" }, context(audit))).json();
       expect(offer).toMatchObject({ ok: false, send: { receipt: { outcome: "refused", reason: "draft_present" }, offers: ["append", "replace", "cancel"] } });
       expect(offer.send.rowsHash).toBeString();
+      // The draft the offer is over comes with it, from the same read (Brief 6).
+      expect(offer.send.draftText).toBe("half a thought");
       pane.setBox("a different draft");
       // The offer's draft was proven with one probe character and its Backspace; nothing is typed after it.
       const typed = pane.written.length;
@@ -392,6 +394,7 @@ describe("the reply route runs the protocol (M56 spec 06)", () => {
         const again = await (await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "new words", submit: true, id, mode, rowsHash: offer.send.rowsHash }, context(audit))).json();
         expect(again, mode).toMatchObject({ ok: false, send: { receipt: { outcome: "refused", reason: "draft_present", keys: [] }, offers: ["append", "replace", "cancel"] } });
         expect(again.send.rowsHash, mode).not.toBe(offer.send.rowsHash);
+        expect(again.send.draftText, mode).toBe("a different draft");
         expect(pane.written.slice(typed), mode).toEqual([]);
         expect(pane.box(), mode).toBe("a different draft");
       }
@@ -400,6 +403,25 @@ describe("the reply route runs the protocol (M56 spec 06)", () => {
       expect(replaced).toMatchObject({ ok: true, send: { receipt: { outcome: "sent" } } });
       expect(pane.written.filter((text) => text === "new words")).toHaveLength(1);
       expect(pane.box()).toBe("");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a member's offer quotes the draft masked, as the mirror is, and keeps it out of the audit line (Brief 6)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt, pane } = runtime(true, dir);
+      const { audit, lines } = auditLines();
+      // A shape the mask catches; a made-up value, not a real key.
+      const key = `ghp_${"a1B2".repeat(9)}`;
+      pane.setBox(`use ${key} here`);
+      const masked = await (await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "new words", submit: true, id: "phone-req-0201" }, { audit, device: "phone", redact: true, acceptEncoding: null })).json();
+      expect(masked.send.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+      expect(masked.send.draftText).toStartWith("use ghp_");
+      expect(masked.send.draftText).not.toContain(key);
+      expect(lines.join("\n")).not.toContain("ghp_");
+      expect(lines.join("\n")).not.toContain("use ");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
