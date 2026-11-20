@@ -55,6 +55,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **An opencode turn reads as running after one press of Escape.** opencode asks for a second Escape before it stops a turn, and until then its status row says "esc again to interrupt". Collie read that row as a finished turn, so the phone showed the session as free while it still worked. It now reads it as running, on opencode 1.x and 2.x.
 - **The Settings back arrow returns to the page you opened Settings from.** Before, the arrow took you to the dashboard from a session, a Space, Crew, the Hill, New or Conversations. Now it steps back to that page, like the phone's back swipe always did. Opened with nothing behind it, Settings still goes to the dashboard.
 
+- **A push shows its project picture again after the app's storage was partly cleared.** The phone keeps two copies of each picture: one for the screen and one for notifications. When the browser or a stuck update deleted only the second, the dashboard still showed the picture but every push came without it, and nothing put it back. Now the app checks and repairs the notification copy each time it opens. The picture also shows on a push from the lead machine's own sessions in a crew, which before showed it only for the other machines.
+
 ### Docs
 
 - **Contributors get one quick check before a push.** It runs the type checks, the lint and the tests near the change in a few minutes, and the full suites run in CI.
