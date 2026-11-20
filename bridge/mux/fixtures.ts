@@ -34,6 +34,9 @@ import { herdrCoreMuxFactory } from "./herdr-core/adapter.ts";
 import { FakeHcCore } from "./herdr-core/fake-core.ts";
 import { herdrCoreConformanceFixture, herdrCoreWorld } from "./herdr-core/fixture.ts";
 import { herdrCoreBeaconMatcher } from "./herdr-core/markers.ts";
+import { rexMuxFactory } from "./rex/adapter.ts";
+import { FakeRex, FAKE_REX_SERVER, rexConformanceFixture, rexWorld } from "./rex/fixture.ts";
+import { rexBeaconMatcher } from "./rex/markers.ts";
 import { tmuxMuxFactory } from "./tmux/adapter.ts";
 import { FakeTmux, FAKE_TMUX_SOCKET, tmuxConformanceFixture, tmuxWorld } from "./tmux/fixture.ts";
 import { tmuxBeaconMatcher } from "./tmux/markers.ts";
@@ -168,6 +171,29 @@ async function herdrCoreDecoratedWorld(hooksInstalled: boolean): Promise<MuxConf
   }));
 }
 
+/**
+ * Rex's decorated world, in SESSION-ONLY mode, as herdr-core's is: the adapter names the agent from
+ * the program's own OSC 7501 report, and the hooks add the conversation id. `REX_BLOCK` is the Collie
+ * pane id unchanged, and `REX_SERVER` carries the `unix://` address the server reports as its primary
+ * listener, so the marker holds exactly what the emitter read out of a block.
+ */
+async function rexDecoratedWorld(hooksInstalled: boolean): Promise<MuxConformanceWorld> {
+  const fake = new FakeRex();
+  const world = rexWorld(fake);
+  const namespace = rexMuxFactory.mux;
+  const beacons = (await paneIdsOf(world)).map((paneId, index) =>
+    seedBeacon([{ namespace, scope: FAKE_REX_SERVER, pane: paneId }], index === 0 ? "waiting" : "working", 900 + index),
+  );
+  // The scope check's negative control: the same block ids on another rex server.
+  const foreign = (await paneIdsOf(world)).map((paneId) =>
+    seedBeacon([{ namespace, scope: "unix:///run/user/1001/rex/server.sock", pane: paneId }], "idle", 999),
+  );
+  return decorated(world, withAgentBeacons(world.adapter, fakeBeaconReader([...beacons, ...foreign]), {
+    matcher: rexBeaconMatcher(namespace, fake),
+    hooksInstalled: () => hooksInstalled,
+  }));
+}
+
 /** The same world, driven through the decorated adapter. Every perturbation stays the fixture's. */
 function decorated(world: MuxConformanceWorld, adapter: MuxAdapter): MuxConformanceWorld {
   return { ...world, adapter };
@@ -186,6 +212,7 @@ export const MUX_CONFORMANCE_FIXTURES: readonly MuxConformanceFixture[] = [
   durableConformanceFixture,
   durableHttpConformanceFixture,
   herdrCoreConformanceFixture,
+  rexConformanceFixture,
   { mux: ternMuxFactory.mux, variant: "beacons, hooks installed", create: () => ternDecoratedWorld(true) },
   { mux: ternMuxFactory.mux, variant: "beacons, hooks absent", create: () => ternDecoratedWorld(false) },
   { mux: tmuxMuxFactory.mux, variant: "beacons, hooks installed", create: () => tmuxDecoratedWorld(true) },
@@ -194,6 +221,8 @@ export const MUX_CONFORMANCE_FIXTURES: readonly MuxConformanceFixture[] = [
   { mux: zellijMuxFactory.mux, variant: "beacons, hooks absent", create: () => zellijDecoratedWorld(false) },
   { mux: herdrCoreMuxFactory.mux, variant: "beacons (session only), hooks installed", create: () => herdrCoreDecoratedWorld(true) },
   { mux: herdrCoreMuxFactory.mux, variant: "beacons (session only), hooks absent", create: () => herdrCoreDecoratedWorld(false) },
+  { mux: rexMuxFactory.mux, variant: "beacons (session only), hooks installed", create: () => rexDecoratedWorld(true) },
+  { mux: rexMuxFactory.mux, variant: "beacons (session only), hooks absent", create: () => rexDecoratedWorld(false) },
 ];
 
 /**

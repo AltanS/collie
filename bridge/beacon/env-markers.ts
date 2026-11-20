@@ -88,6 +88,15 @@ const MUX_ENV_MARKERS: readonly MuxEnvMarker[] = [
     scopeVar: "HC_TERMINAL_SOCKET",
     scopeOf: (raw) => raw,
   },
+  {
+    // Rex exports the block's full id and the address of the server that owns it into every block
+    // (probed on rex 0.0.1795019727): `REX_BLOCK=block:01a1…`, `REX_SERVER=unix:///run/user/1000/rex/
+    // server.sock`. Rex names its agents itself, so the marker adds only the conversation id.
+    namespace: "rex",
+    paneVar: "REX_BLOCK",
+    scopeVar: "REX_SERVER",
+    scopeOf: (raw) => raw,
+  },
 ];
 
 /**

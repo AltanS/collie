@@ -22,6 +22,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 `docs/crew.md` → *Updating from 1.7.0*.
 
 ## [Unreleased]
+- **The experimental rex adapter works on a Mac too.** The `rex` binary is found through the `REX_BIN_DIR` the Mac app exports into every terminal, the read-only probe and the end-to-end suite pass unchanged against the app's own server, and a collie started inside one Rex session no longer loses sight of the server's other sessions (#814).
 
 ### Changed
 
