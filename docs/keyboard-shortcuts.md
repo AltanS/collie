@@ -83,7 +83,7 @@ is written `prefix+<key>`. A key inside a mode is a bare key.
 | --- | --- | --- | --- | --- |
 | `help` | `prefix+?` | General | Shows the shortcut list. | [Shortcut list](terminology.md#shortcut-list) |
 | `settings` | `prefix+s` | General | Opens Settings. | - |
-| `open_actions` | `prefix+g` | General | Opens Actions: the commands of this screen and the panes to go to, in one list you search. | [Actions](terminology.md#actions) |
+| `open_actions` | `prefix+g` | General | Opens Actions: the commands of this screen and the panes to go to, in one list you search. With Actions palette off in Settings, this key, or the key you gave it, runs `switch_pane`. | [Actions](terminology.md#actions) |
 | `open_shortcuts` | - | General | Shows every shortcut, as the Settings row does. | [Shortcut list](terminology.md#shortcut-list) |
 | `open_crew` | - | General | Opens Crew, while a crew is set up. | [Crew](terminology.md#crew) |
 | `open_files` | - | General | Opens Files for the pane you are in. | - |

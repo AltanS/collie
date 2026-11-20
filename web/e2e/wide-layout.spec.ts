@@ -58,6 +58,29 @@ test("on a desktop window the focused pane's belt pins the Actions button, which
   await expect(palette).toHaveCount(0);
 });
 
+// THE ACTIONS PALETTE SWITCHED OFF (Settings, per device). The large screen has its sidebar for the pane list:
+// no pinned button on the Belt, no button in the space header, and the key that opened the palette runs
+// Switch pane, which opens the sidebar.
+test("with the Actions palette off, a desktop window has no Actions button, and prefix+g opens the sidebar", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("collie:actions-palette:v1", "off");
+    localStorage.setItem("collie:wide-sidebar:v1", "0");
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/pane/w1:p1");
+  await expect(page.locator('[data-slot="wide-layout"]')).toBeVisible();
+  await expect(page.locator('[data-slot="composer-actions"]')).toBeVisible();
+  await expect(page.locator('[data-slot="composer-actions"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-slot="composer-actions"]').getByRole("button", { name: en["chat.switcher.aria"], exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-slot="space-header"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-slot="rail"]')).toBeVisible();
+  await expect(page.locator('[data-slot="wide-sidebar"]')).toHaveCount(0);
+  await page.keyboard.press("Control+b");
+  await page.keyboard.press("g");
+  await expect(page.locator('[data-slot="wide-sidebar"]')).toBeVisible();
+  await expect(page.getByRole("dialog", { name: en["actions.title"] })).toHaveCount(0);
+});
+
 test("on Off the same window keeps the phone pane screen", async ({ page }) => {
   await keepPhoneLayout(page);
   await page.goto("/pane/w1:p1");

@@ -472,8 +472,10 @@ export interface ActionsRowProps {
     ref?: (node: HTMLElement | null) => void;
     /** The tap, on the pinned button: the Actions palette. */
     onClick: () => void;
-    /** ALREADY TRANSLATED. The button's accessible name — "Switch pane". */
+    /** ALREADY TRANSLATED. The button's accessible name: "Actions", or "Switch pane" with the palette off. */
     label: string;
+    /** The mark. Absent is the Actions mark; the pane list's own mark when the palette is off (Settings). */
+    icon?: "pane-switcher";
     /** Another pane needs you: a red dot on the mark's corner. The label says so in words. */
     alert?: boolean;
   };
@@ -1147,7 +1149,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!agents && !jobs && !pins && !clear && !changes && !zoom, true, hand))}
               >
                 {/* The Actions mark since ADR 0165: this pill opens the Actions palette, not the pane list. */}
-                <Icon name="open-actions" className={cn(BELT_ICON, "text-primary")} />
+                <Icon name={handle.icon ?? "open-actions"} className={cn(BELT_ICON, "text-primary")} />
                 {/* The needs-you mark (the triangle), on the mark's top-right corner, absolutely placed
                     so it never moves the belt. The chrome-coloured disc and ring cut it out of the
                     glyph it overlaps. 10px since 2026-10-14: at 12px the triangle read as heavy as the

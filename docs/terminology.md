@@ -76,6 +76,7 @@ The searchable list of everything Collie can do on this screen, and of the panes
 is one thing Collie can do, by a key or by its name. A pane's own actions also sit in its pane menu.
 Open it with the Actions button, or with the [prefix key](#prefix-key) and then `g`
 ([Keyboard shortcuts](keyboard-shortcuts.md#the-actions)).
+You can turn it off in Settings: the pane list then takes the button and the key.
 
 ## Navigate mode
 

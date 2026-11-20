@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { __resetActionsPaletteStore, setActionsPaletteOn } from "@/lib/actions-palette-store";
 import { __resetHardwareKeyboard, hasSeenHardwareKeyboard } from "@/lib/hardware-keyboard";
 import { __resetOperatorCommands, getOperatorShortcuts } from "@/lib/operator-config";
 import { __resetShortcutRegistry, registerPaneKeySink, registerShortcutHandler } from "@/lib/shortcuts/registry";
@@ -68,9 +69,36 @@ beforeEach(() => {
   __resetHardwareKeyboard();
 });
 afterEach(() => {
+  __resetActionsPaletteStore();
   __resetOperatorCommands();
   __resetHardwareKeyboard();
   vi.restoreAllMocks();
+});
+
+describe("the Actions palette setting", () => {
+  it("prefix+g runs open_actions while on, and switch_pane once it is off, with no reload", async () => {
+    const open = vi.fn();
+    const switchPane = vi.fn();
+    registerShortcutHandler("open_actions", open);
+    registerShortcutHandler("switch_pane", switchPane);
+    await renderPage();
+    tap(document.body, CTRL_B);
+    tap(document.body, { key: "g" });
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(switchPane).not.toHaveBeenCalled();
+
+    act(() => setActionsPaletteOn(false));
+    expect(getShortcutKeymap()?.bindings.get("switch_pane")?.map((binding) => binding.chord.key)).toEqual(["g"]);
+    tap(document.body, CTRL_B);
+    tap(document.body, { key: "g" });
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(switchPane).toHaveBeenCalledTimes(1);
+
+    act(() => setActionsPaletteOn(true));
+    tap(document.body, CTRL_B);
+    tap(document.body, { key: "g" });
+    expect(open).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("the prefix and an action key", () => {

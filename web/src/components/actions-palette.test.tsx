@@ -2,7 +2,8 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 
-import { __resetActionsPalette, isActionsPaletteOpen } from "@/lib/actions-palette/state";
+import { __resetActionsPalette, isActionsPaletteOpen, openActionsPalette } from "@/lib/actions-palette/state";
+import { __resetActionsPaletteStore, setActionsPaletteOn } from "@/lib/actions-palette-store";
 import { __resetPins, setPinned, usePins } from "@/lib/pins";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { forgetRecentPanes, rememberRecentPane } from "@/lib/recent-panes";
@@ -83,6 +84,26 @@ beforeEach(() => {
 afterEach(() => {
   __resetShortcutRegistry();
   __resetActionsPalette();
+  __resetActionsPaletteStore();
+});
+
+describe("the Actions palette switched off in Settings", () => {
+  it("draws no header button, answers no key, opens from no door, and closes one that was open", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(palette()).toBeInTheDocument();
+    act(() => setActionsPaletteOn(false));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Actions" })).toBeNull();
+    expect(runShortcutAction("open_actions")).toBe(false);
+    act(() => openActionsPalette());
+    expect(isActionsPaletteOpen()).toBe(false);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    act(() => setActionsPaletteOn(true));
+    expect(screen.getByRole("button", { name: "Actions" })).toBeInTheDocument();
+    expect(runShortcutAction("open_actions")).toBe(true);
+  });
 });
 
 describe("the Actions palette", () => {

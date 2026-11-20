@@ -53,6 +53,13 @@ export interface ActionDef<Id extends string = string> {
   readonly destructive?: true;
   /** Running the action ends the sticky mode it lives in, after it ran. */
   readonly leavesMode?: true;
+  /**
+   * The action that answers this one's keys while this one is switched off (a setting, today the Actions
+   * palette's). The keymap moves every key bound to this action, the default or a person's own, onto the
+   * stand-in: the key runs the stand-in's handler, and the shortcut bar and the list name it as the
+   * stand-in, never as this action (lib/shortcuts/keymap.ts, `disabled`).
+   */
+  readonly standIn?: Id;
 }
 
 export interface ModeDef {
@@ -81,7 +88,7 @@ export const GROUPS = [
 export const ACTIONS = [
   { id: "help", group: "global", defaults: ["prefix+?"], labelKey: "shortcuts.action.help" },
   { id: "settings", group: "global", defaults: ["prefix+s"], labelKey: "shortcuts.action.settings" },
-  { id: "open_actions", group: "global", defaults: ["prefix+g"], labelKey: "shortcuts.action.open_actions" },
+  { id: "open_actions", group: "global", defaults: ["prefix+g"], labelKey: "shortcuts.action.open_actions", standIn: "switch_pane" },
   { id: "open_shortcuts", group: "global", defaults: [], labelKey: "shortcuts.action.open_shortcuts" },
   { id: "open_crew", group: "global", defaults: [], labelKey: "shortcuts.action.open_crew" },
   { id: "open_files", group: "global", defaults: [], labelKey: "shortcuts.action.open_files" },
