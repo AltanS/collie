@@ -1145,6 +1145,133 @@ describe("the header — the mark while the app updates", () => {
     expect(screen.getByTestId("loc").textContent).toBe("/settings");
     expect(bundleFocusPending()).toBe(false);
   });
+
+  it("from /new?machine=peer opened from /?h=peer, tapping the mark while updating steps back (POP) to /?h=peer", async () => {
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          element: (
+            <AppHeaderHost bridge="connected" error={false}>
+              <Outlet />
+            </AppHeaderHost>
+          ),
+          children: [
+            { index: true, element: <><RouteHeader wordmark /><LocationProbe /></> },
+            { path: "new", element: <><RouteHeader onHome={() => {}} /><LocationProbe /></> },
+            { path: "new/add", element: <><RouteHeader onHome={() => {}} /><LocationProbe /></> },
+            { path: "trick/:paneId", element: <><RouteHeader onHome={() => {}} /><LocationProbe /></> },
+            { path: "pane/:id", element: <><RouteHeader onHome={() => {}} /><LocationProbe /></> },
+          ],
+        },
+      ],
+      {
+        initialEntries: [
+          "/?h=peer",
+          { pathname: "/new", search: "?machine=peer", state: { from: "/?h=peer" } },
+        ],
+      },
+    );
+    render(<RouterProvider router={router} />);
+    applyBundle();
+    await userEvent.click(screen.getByRole("button", { name: "Collie is updating the app. Open the dashboard." }));
+    expect(screen.getByTestId("loc").textContent).toBe("/?h=peer");
+    expect(router.state.historyAction).toBe("POP");
+  });
+
+  it("from /new/add?kind=agent&machine=peer&s=work while updating, tapping the mark lands on /?h=peer&s=work", async () => {
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          element: (
+            <AppHeaderHost bridge="connected" error={false}>
+              <Outlet />
+            </AppHeaderHost>
+          ),
+          children: [
+            { index: true, element: <><RouteHeader wordmark /><LocationProbe /></> },
+            { path: "new/add", element: <><RouteHeader onHome={() => {}} /><LocationProbe /></> },
+          ],
+        },
+      ],
+      {
+        initialEntries: [
+          "/?h=peer&s=work",
+          { pathname: "/new/add", search: "?kind=agent&machine=peer&s=work", state: { from: "/new?machine=peer&s=work" } },
+        ],
+      },
+    );
+    render(<RouterProvider router={router} />);
+    applyBundle();
+    await userEvent.click(screen.getByRole("button", { name: "Collie is updating the app. Open the dashboard." }));
+    expect(screen.getByTestId("loc").textContent).toBe("/?h=peer&s=work");
+    expect(router.state.historyAction).toBe("REPLACE");
+  });
+
+  it("from /trick/:paneId opened from /?h=peer while updating, tapping the mark steps back (POP) to /?h=peer", async () => {
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          element: (
+            <AppHeaderHost bridge="connected" error={false}>
+              <Outlet />
+            </AppHeaderHost>
+          ),
+          children: [
+            { index: true, element: <><RouteHeader wordmark /><LocationProbe /></> },
+            { path: "trick/:paneId", element: <><RouteHeader onHome={() => {}} /><LocationProbe /></> },
+          ],
+        },
+      ],
+      {
+        initialEntries: [
+          "/?h=peer",
+          { pathname: "/trick/trick%3Alodge%3Alegs%3Alegs", state: { from: "/?h=peer" } },
+        ],
+      },
+    );
+    render(<RouterProvider router={router} />);
+    applyBundle();
+    await userEvent.click(screen.getByRole("button", { name: "Collie is updating the app. Open the dashboard." }));
+    expect(screen.getByTestId("loc").textContent).toBe("/?h=peer");
+    expect(router.state.historyAction).toBe("POP");
+  });
+
+  it("from a lead pane whose state.from carried a peer scope from a sideways switch, tapping the mark lands on /", async () => {
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          element: (
+            <AppHeaderHost bridge="connected" error={false}>
+              <Outlet />
+            </AppHeaderHost>
+          ),
+          children: [
+            { index: true, element: <><RouteHeader wordmark /><LocationProbe /></> },
+            { path: "pane/:id", element: <><RouteHeader onHome={() => {}} /><LocationProbe /></> },
+          ],
+        },
+      ],
+      {
+        initialEntries: [
+          "/?h=peer",
+          { pathname: "/pane/w1:p1", state: { from: "/space/w1?h=peer" } },
+        ],
+      },
+    );
+    render(<RouterProvider router={router} />);
+    applyBundle();
+    await userEvent.click(screen.getByRole("button", { name: "Collie is updating the app. Open the dashboard." }));
+    expect(screen.getByTestId("loc").textContent).toBe("/");
+    expect(router.state.historyAction).toBe("REPLACE");
+  });
 });
 
 // ── THE LINK COMING BACK (2026-11-07) ───────────────────────────────────────────────────────────

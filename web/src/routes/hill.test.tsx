@@ -376,6 +376,17 @@ describe("the Dashboard's bar on the hill route (amended 2026-11-10)", () => {
     expect(router.state.location.state).toEqual({ from: "/" });
   });
 
+  it("from /hill?h=peer, opening a trick Session sideways keeps /?h=peer in state.from", async () => {
+    await seedTabbar(["legs"]);
+    const router = renderHill(["/?h=peer", { pathname: "/hill", search: "?h=peer", state: { from: "/?h=peer" } }]);
+    await screen.findByRole("heading", { name: "Hill" });
+    const legs = bar().querySelector<HTMLElement>('[data-slot="tab-extra"][data-trick="legs"]')!;
+    await userEvent.click(legs);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/trick/trick%3Alodge%3Alegs%3Alegs"));
+    expect(router.state.historyAction).toBe("REPLACE");
+    expect(router.state.location.state).toEqual({ from: "/?h=peer" });
+  });
+
   it("draws no Hill item and the bar without it where the snapshot carries no hill", async () => {
     renderHill(undefined, home({ hill: false }));
     await screen.findByRole("heading", { name: "Hill" });

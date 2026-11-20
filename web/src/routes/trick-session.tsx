@@ -24,7 +24,7 @@ import { findTrickSession } from "@/lib/tricks/places";
 import { ACTIONS_MAX, parseTrickSessionId, type TrickAction } from "@/lib/tricks/schema";
 import type { LinkTarget } from "@/lib/tricks/render";
 import { tricksStore, trickTapper, useTrickPart, type TricksStore } from "@/lib/tricks/store";
-import { homePath, pathOnly, readForSession, readFrom } from "@/lib/nav";
+import { homePath, pathOnly, readForSession, readFrom, resolveHomeScope } from "@/lib/nav";
 import { scopeFromSearchParams, type Scope } from "@/lib/scope";
 import { paneName } from "@/lib/pane-name";
 import { useRootData } from "@/lib/route-data";
@@ -205,7 +205,7 @@ export function TrickSessionRoute() {
   const nav = useNav();
   // Whatever the navigation attached: `draftTargetOf` reads it through the JSON narrowing helpers alone
   // (`readFrom`, `readForSession`), so any other shape reads as no session.
-  const { state } = useLocation();
+  const { pathname, search, state } = useLocation();
   const target = useMemo(() => draftTargetOf(state, data), [state, data]);
   // Fill the empty box and go up to the pane, or say why not and change nothing. Never a send.
   const onDraft = useMemo(() => {
@@ -222,7 +222,7 @@ export function TrickSessionRoute() {
   const host = parseTrickSessionId(paneId)?.host ?? "";
   const { linkFor } = useTrickHandlers();
   const onLink = useMemo(() => linkFor(host), [linkFor, host]);
-  const back = () => nav.up(homePath(data.scope));
+  const back = () => nav.up(homePath(resolveHomeScope(pathname, search, state)));
   // The Dashboard's bar stays under a trick's Session, with this trick's own item as the current one
   // when it has one (amended 2026-11-10, components/dashboard-route-bar.tsx).
   const bar = useDashboardBar();
