@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import { useLocation } from "react-router";
 
 import { useNav } from "@/hooks/use-nav";
+import { trackSoftKeyboard } from "@/hooks/use-keyboard";
 import { useShortcutHandler } from "@/hooks/use-shortcut-handler";
 import { noteKeyPress } from "@/lib/hardware-keyboard";
 import { isCatchingUp, isLocked } from "@/lib/idle";
@@ -112,6 +113,9 @@ export function useShortcutKeyboard(routeKey: string): Keymap {
   const user = useOperatorShortcuts();
   const keymap = useMemo(() => buildKeymap({ defaults: ACTIONS, user: userBindings(user), mac: isMacPlatform() }), [user]);
   const resolver = useMemo(() => createResolver(keymap), [keymap]);
+
+  // The on-screen keyboard's state, read by `noteKeyPress` (lib/hardware-keyboard.ts): a key it makes is no proof of a hardware one.
+  useEffect(() => trackSoftKeyboard(), []);
 
   // The help list reads the keymap and its diagnostics from the store; the console gets each one once
   // per change of the file.

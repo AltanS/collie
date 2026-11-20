@@ -8,12 +8,14 @@ This page lists every action, its default keys, and how to change them in `short
 The shortcuts are for a desktop browser, or a tablet with a hardware keyboard. A phone with no
 keyboard never needs them. Nothing changes for you until a key press reaches the page.
 
-The first time a hardware key press reaches the page, a small card at the top right says
-"You have a keyboard" and names the prefix. It is gone for good once you close it, open the
+The first time a key that only a hardware keyboard makes reaches the page, a small card at the top
+right says "You have a keyboard" and names the prefix. Such a key is a letter, `Ctrl`, `Alt`, `Cmd`,
+`Esc` or an F key, pressed while the on-screen keyboard is down. A phone's on-screen keyboard never
+counts. The card is gone for good once you close it, open the
 [shortcut list](terminology.md#shortcut-list) from it, or press the prefix.
 
 Open the shortcut list with the prefix, then `?`. On a wide window you can also open it from
-**Settings → Device → Keyboard shortcuts**. That row shows once the device has seen a key press.
+**Settings → Device → Keyboard shortcuts**. That row shows once the device has seen such a key press.
 
 The bar and the list follow the screen you are on. On the dashboard the bar names no tab or pane
 key. The list opened with `?` shows what works here first, and ends with a section called "Not on
