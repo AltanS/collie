@@ -162,6 +162,10 @@ for (const viewport of VIEWPORTS) {
     await openCard(page);
     await context.setOffline(true);
     await expect(page.locator(DOCK).locator('[data-slot="prompt-offline-note"]')).toHaveText(en["prompt.reconnectNote"]);
+    // The note shrinks the subject box with its scroll offset unchanged, and the box goes back to its
+    // last row from its ResizeObserver (useHiddenRows, prompt-select-block.tsx), which reports at the
+    // next frame. Measured in between, the box is 22 px short of its bottom: give it the frames.
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const fit = await measure(page);
     console.log(`fit offline ${size} ${JSON.stringify(fit)}`);
     expect(fit.offlineNoteIn).toBe(true);
