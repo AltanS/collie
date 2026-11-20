@@ -1,8 +1,8 @@
-import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation } from "react-router";
 
 import { ActionRow, DestructiveActionRow } from "@/components/action-sheet-rows";
-import { PaneRow } from "@/components/agent-sidebar";
+import { PALETTE_HIGHLIGHT, PaneRow, ThreadSidebar } from "@/components/agent-sidebar";
 import { useCrew } from "@/components/crew-provider";
 import { Icon } from "@/components/icons/icon";
 import { SectionHeader } from "@/components/section-header";
@@ -11,6 +11,8 @@ import { SearchField } from "@/components/ui/search-field";
 import { useAvailableShortcutActions, useShortcutHandler } from "@/hooks/use-shortcut-handler";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
+import { openForCount, useDashPrefs } from "@/hooks/use-dash-prefs";
+import { useVisibleHeight } from "@/hooks/use-visible-height";
 import { availableCommands, isDestructive, suggestedCommands, type PaletteCommand } from "@/lib/actions-palette/commands";
 import { hitKey, searchPalette, type CommandEntry, type Hit } from "@/lib/actions-palette/rank";
 import { closeActionsPalette, openActionsPalette, useActionsPaletteOpen } from "@/lib/actions-palette/state";
@@ -18,7 +20,8 @@ import type { Range } from "@/lib/fuzzy";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { useMuxHasSpaces } from "@/lib/mux-capability";
-import { crewPath, panePath, spacePath } from "@/lib/nav";
+import { crewPath, panePath, spacePath, trickSessionPath } from "@/lib/nav";
+import { usePins } from "@/lib/pins";
 import { recentLivePanes, useRecentPanes } from "@/lib/recent-panes";
 import { useRootData } from "@/lib/route-data";
 import type { Scope } from "@/lib/scope";
@@ -30,7 +33,8 @@ import { cn } from "@/lib/utils";
 // THE ACTIONS PALETTE (ADR 0165). One modal at the TOP of the screen, over a dimmed scrim, because the
 // soft keyboard owns the bottom half: a search field, then one list. Before anything is typed the list
 // is "Recent", the last panes this device opened (lib/recent-panes.ts), then "Suggested", four commands
-// for this screen. Typed, it is one ranked list of commands, spaces and panes (lib/actions-palette/rank.ts).
+// for this screen, then "All panes", the Switch pane sheet's own list, so scrolling down lands in the
+// switcher. Typed, it is one ranked list of commands, spaces and panes (lib/actions-palette/rank.ts).
 //
 // A COMMAND IS LISTED ONLY WHERE IT WORKS. The registry answers that (`useAvailableShortcutActions`, the
 // same query the mode bar reads), never a list of screens kept here: a command's handler registers where
@@ -46,6 +50,13 @@ import { cn } from "@/lib/utils";
 
 /** Recent shows this many panes. */
 const RECENT_COUNT = 4;
+
+/** The key of a row of the All panes list: this prefix and the pane's `paneRowKey`. */
+const ALL_PANES_KEY = "a:";
+/** The rows of the All panes list, the Switch pane sheet's own `PaneRow`s. */
+const ALL_PANE_ROWS = '[data-slot="actions-all-panes"] [data-slot="pane-row"]';
+/** Every row the arrows walk, in document order. */
+const WALKED = `[data-palette-row], ${ALL_PANE_ROWS}`;
 
 type Row =
   | { readonly key: string; readonly kind: "command"; readonly command: PaletteCommand; readonly marks?: readonly Range[] }
@@ -81,8 +92,8 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
   const recentStore = useRecentPanes();
   const hasSpaces = useMuxHasSpaces();
   const [query, setQuery] = useState("");
-  // The row Enter or Go runs; null until an arrow moves it, which means the list's first row.
-  const [highlight, setHighlight] = useState<number | null>(null);
+  // The row Enter or Go runs, by its key; null until an arrow moves it, which means the list's first row.
+  const [highlight, setHighlight] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const typed = query.trim() !== "";
@@ -125,8 +136,27 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
 
   const flat = typed ? rows.typed : [...rows.recent, ...rows.suggested];
   // The first row is highlighted unless it closes something: ranking puts a safe row first wherever
-  // one matches, so this is the list with nothing but Close rows, where Enter waits for an arrow.
-  const at = highlight === null ? (flat[0] !== undefined && !isDestructiveRow(flat[0]) ? 0 : -1) : Math.min(highlight, flat.length - 1);
+  // one matches, so this is the list with nothing but Close rows, where Enter waits for an arrow. With
+  // no Recent and no Suggested row, the first highlight is the arrow's to give.
+  const first = flat[0];
+  const current = highlight ?? (first !== undefined && !isDestructiveRow(first) ? first.key : null);
+  const paneByKey = useMemo(() => new Map(herd.map((pane) => [paneRowKey(pane), pane])), [herd]);
+  const pins = usePins();
+  const dash = useDashPrefs();
+
+  function openPaneRow(pane: AgentView): void {
+    onClose();
+    if (paneRowKey(pane) === hereKey) return;
+    const to = panePath(pane.paneId, paneScope(data.scope, pane, data.servers, data.sessions));
+    // Pane to pane is sideways, as the Switch pane sheet moves (ADR 0067); from any other screen, down.
+    if (inPane) nav.side(to);
+    else nav.down(to);
+  }
+
+  function openTrick(pane: AgentView): void {
+    onClose();
+    nav.down(trickSessionPath(pane.paneId), inPane ? { forSession: true } : undefined);
+  }
 
   function run(row: Row): void {
     onClose();
@@ -141,11 +171,43 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
       else nav.down(to);
       return;
     }
-    if (paneRowKey(row.pane) === hereKey) return;
-    const to = panePath(row.pane.paneId, paneScope(data.scope, row.pane, data.servers, data.sessions));
-    // Pane to pane is sideways, as the Switch pane sheet moves (ADR 0067); from any other screen, down.
-    if (inPane) nav.side(to);
-    else nav.down(to);
+    openPaneRow(row.pane);
+  }
+
+  /**
+   * The rows the arrows walk, in the order they are drawn: Recent and Suggested (or the ranked list),
+   * then the All panes list's rows. Read from the list itself at the key press, so the sheet's own list
+   * needs no second copy of its order and nothing is measured on open.
+   */
+  function walkKeys(): string[] {
+    const list = listRef.current;
+    if (list === null) return [];
+    return [...list.querySelectorAll(WALKED)].flatMap((el) => {
+      const own = el.getAttribute("data-palette-row");
+      if (own !== null) return [own];
+      const pane = el.getAttribute("data-pane-key");
+      return pane === null ? [] : [`${ALL_PANES_KEY}${pane}`];
+    });
+  }
+
+  function rowElement(key: string): Element | null {
+    const list = listRef.current;
+    if (list === null) return null;
+    if (key.startsWith(ALL_PANES_KEY)) {
+      const paneKey = key.slice(ALL_PANES_KEY.length);
+      return [...list.querySelectorAll(ALL_PANE_ROWS)].find((el) => el.getAttribute("data-pane-key") === paneKey) ?? null;
+    }
+    return [...list.querySelectorAll("[data-palette-row]")].find((el) => el.getAttribute("data-palette-row") === key) ?? null;
+  }
+
+  function runKey(key: string): void {
+    if (key.startsWith(ALL_PANES_KEY)) {
+      const pane = paneByKey.get(key.slice(ALL_PANES_KEY.length));
+      if (pane !== undefined) openPaneRow(pane);
+      return;
+    }
+    const row = flat.find((r) => r.key === key);
+    if (row !== undefined) run(row);
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLInputElement>): void {
@@ -157,16 +219,19 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
     }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      if (flat.length === 0) return;
-      const next = event.key === "ArrowDown" ? Math.min(at + 1, flat.length - 1) : Math.max(at - 1, 0);
+      const keys = walkKeys();
+      if (keys.length === 0) return;
+      const at = current === null ? -1 : keys.indexOf(current);
+      const nextAt = at < 0 ? 0 : event.key === "ArrowDown" ? Math.min(at + 1, keys.length - 1) : Math.max(at - 1, 0);
+      const next = keys[nextAt];
+      if (next === undefined) return;
       setHighlight(next);
-      listRef.current?.querySelector(`[data-row-index="${next}"]`)?.scrollIntoView({ block: "nearest" });
+      rowElement(next)?.scrollIntoView({ block: "nearest" });
       return;
     }
     if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
     event.preventDefault();
-    const row = flat[at];
-    if (row !== undefined) run(row);
+    if (current !== null) runKey(current);
   }
 
   function changeQuery(next: string): void {
@@ -175,15 +240,21 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
     listRef.current?.scrollTo({ top: 0 });
   }
 
-  let index = 0;
-  const rowAt = (row: Row): ReactNode => {
-    const i = index;
-    index += 1;
-    return <PaletteRow key={row.key} row={row} index={i} highlighted={i === at} here={hereKey} onRun={run} />;
-  };
+  const rowAt = (row: Row): ReactNode => (
+    <PaletteRow key={row.key} row={row} highlighted={row.key === current} here={hereKey} onRun={run} />
+  );
+  const highlightedPane = current?.startsWith(ALL_PANES_KEY) ? current.slice(ALL_PANES_KEY.length) : null;
+  // The panel's room: from its top down to a small margin, above the keyboard. `--app-h` follows the
+  // keyboard where the browser resizes the page for it; the visible height covers the one that only
+  // overlays it (iOS). On a large screen at most 70% of the window.
+  const visible = useVisibleHeight();
+  const roomStyle: CSSProperties & Record<"--palette-room", string> = { "--palette-room": `${visible}px` };
 
   return (
-    <div className="fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col items-center px-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
+    <div
+      className="fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col items-center px-3 pt-[calc(0.75rem+env(safe-area-inset-top))]"
+      style={roomStyle}
+    >
       {/* The scrim: a tap that went down AND up on it closes, so the release of the tap that opened
           the palette never closes it again (ui/sheet.tsx, the backdrop's rule). */}
       <Scrim onClose={onClose} />
@@ -193,9 +264,9 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
         aria-label={t("actions.title")}
         data-slot="actions-palette"
         // Rounded with the house radius, a uniform border and a soft shadow; no accent edge (DESIGN.md).
-        className="relative z-10 flex w-full max-w-[560px] flex-col overflow-hidden rounded-md border border-border bg-card shadow-2xl duration-150 animate-in fade-in slide-in-from-top-2"
+        className="relative z-10 flex max-h-[calc(min(var(--app-h),var(--palette-room))-1.5rem-env(safe-area-inset-top))] w-full max-w-[560px] flex-col overflow-hidden rounded-md border border-border bg-card shadow-2xl duration-150 animate-in fade-in slide-in-from-top-2 lg:max-h-[min(70dvh,calc(var(--palette-room)-1.5rem-env(safe-area-inset-top)))]"
       >
-        <div className="p-2">
+        <div className="shrink-0 p-2">
           <SearchField
             ref={inputRef}
             value={query}
@@ -225,7 +296,7 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
           data-slot="actions-palette-list"
           // The list scrolls inside itself. Its lower edge fades over the bottom padding, so a row cut by
           // the edge reads as "more below", and the last row scrolls clear of the fade.
-          className="max-h-[min(26rem,calc(var(--app-h)*0.5))] overflow-y-auto overscroll-contain border-t border-rule pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-rule pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]"
         >
           {typed ? (
             rows.typed.length === 0 ? (
@@ -237,6 +308,31 @@ export function ActionsPalette({ openPane, onClose }: ActionsPaletteProps) {
             <div className="flex flex-col gap-2 p-1">
               {rows.recent.length > 0 && <Block label={t("actions.recent")}>{rows.recent.map(rowAt)}</Block>}
               {rows.suggested.length > 0 && <Block label={t("actions.suggested")}>{rows.suggested.map(rowAt)}</Block>}
+              {/* ALL PANES: the Switch pane sheet's own list (agent-sidebar.tsx), with the props that sheet
+                  gives it, so scrolling down lands in the switcher a person knows. Its own filter field
+                  is off: the palette's field is the search. No order toggle and no Launch rows. */}
+              <Block label={t("actions.allPanes")} slot="actions-all-panes">
+                <ThreadSidebar
+                  agents={data.agents}
+                  shellPanes={data.shellPanes}
+                  currentPaneKey={hereKey ?? ""}
+                  onSelect={openPaneRow}
+                  trickSessions={data.trickSessions}
+                  onSelectTrick={openTrick}
+                  tabs={data.tabs}
+                  servers={data.servers}
+                  workspaces={data.workspaces}
+                  scope={data.scope}
+                  sessions={data.sessions}
+                  pins={pins}
+                  shellsOpen={openForCount(dash.prefs.shellsOpen, data.shellPanes.length)}
+                  onShellsOpenChange={dash.setShellsOpen}
+                  order={dash.prefs.paneOrder}
+                  className="px-0 py-1"
+                  filter={false}
+                  highlightedKey={highlightedPane}
+                />
+              </Block>
             </div>
           )}
         </div>
@@ -270,9 +366,9 @@ function Scrim({ onClose }: { onClose: () => void }) {
   );
 }
 
-function Block({ label, children }: { label: string; children: ReactNode }) {
+function Block({ label, slot, children }: { label: string; slot?: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-0.5">
+    <section className="flex flex-col gap-0.5" data-slot={slot}>
       <SectionHeader level={3} label={label} className="px-2" />
       {children}
     </section>
@@ -297,13 +393,11 @@ const ROW_ICON = "size-4 shrink-0";
 
 function PaletteRow({
   row,
-  index,
   highlighted,
   here,
   onRun,
 }: {
   row: Row;
-  index: number;
   highlighted: boolean;
   here: string | null;
   onRun: (row: Row) => void;
@@ -344,7 +438,7 @@ function PaletteRow({
   }
   return (
     // The row Enter or Go runs: a filled ground, no accent edge.
-    <div data-row-index={index} data-highlighted={highlighted ? "true" : undefined} className={cn("rounded-lg", highlighted && "bg-accent")}>
+    <div data-palette-row={row.key} data-highlighted={highlighted ? "true" : undefined} className={cn("rounded-lg", highlighted && PALETTE_HIGHLIGHT)}>
       {body}
     </div>
   );

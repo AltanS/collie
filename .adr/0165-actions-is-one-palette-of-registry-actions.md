@@ -42,7 +42,9 @@ command in it is an action of the shortcut table.**
   nothing itself; the palette never highlights such a row first, so Enter or Go never reaches one.
 - **Before typing: Recent, then Suggested.** Recent is the last four panes this device showed, newest
   first, the open pane left out, stored on the device and wiped with the pairing. Suggested is four
-  commands for the screen, taken from a short list in order, the first four that answer.
+  commands for the screen, taken from a short list in order, the first four that answer. The empty state
+  ends with the full pane list: the Switch pane sheet's own list under "All panes", so scrolling down
+  lands in the switcher.
 
 ## Consequences
 

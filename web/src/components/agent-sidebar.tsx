@@ -142,6 +142,16 @@ interface ThreadSidebarProps {
   filterClassName?: string;
   /** The query the field starts with. The app passes none: the query starts empty and is never stored. */
   initialQuery?: string;
+  /**
+   * Whether this list draws its own filter field. The Actions palette (ADR 0165) passes false: its own
+   * field is the search there, and this list is its empty state's last part. Default true.
+   */
+  filter?: boolean;
+  /**
+   * The row the Actions palette's arrow keys stand on ({@link paneRowKey}), drawn with the palette's
+   * highlight. Absent everywhere else.
+   */
+  highlightedKey?: string | null;
 }
 
 // The pane switcher behind the swipe-up "Switch pane" sheet: every agent pane under the WORKSPACE it
@@ -241,6 +251,8 @@ export function ThreadSidebar({
   filterHidden = PANE_FILTER.hidden,
   filterClassName = "top-0",
   initialQuery = "",
+  filter = true,
+  highlightedKey = null,
 }: ThreadSidebarProps) {
   useLocale();
   // THE ORDER, AND WHY IT IS READ ONCE: see `useFrozenRanks` and the long note below. Called here, above
@@ -259,7 +271,7 @@ export function ThreadSidebar({
   // field filters nothing, whatever was typed before it shrank.
   const [query, setQuery] = useState(initialQuery);
   const total = agents.length + shellPanes.length + trickRows.length;
-  const offered = filterOffered(total);
+  const offered = filter && filterOffered(total);
   const activeQuery = offered ? query : "";
   const hits = useMemo(() => {
     const options = { level: filterLevel, hidden: filterHidden, ctx: { servers } };
@@ -410,6 +422,7 @@ export function ThreadSidebar({
         onSelect={onSelect}
         roomy={roomy}
         match={hitOf(a)}
+        highlighted={highlightedKey !== null && paneRowKey(a) === highlightedKey}
       />
     );
 
@@ -647,6 +660,9 @@ function Section({
 const ROW_RULES =
   "[&>*+*]:relative [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:inset-x-2 [&>*+*]:before:-top-px [&>*+*]:before:h-px [&>*+*]:before:bg-rule";
 
+/** The Actions palette's highlight, an inset ring on the row's own rounded box (ADR 0165). */
+export const PALETTE_HIGHLIGHT = "ring-2 ring-inset ring-ring";
+
 export function PaneRow({
   id,
   pane,
@@ -654,6 +670,7 @@ export function PaneRow({
   onSelect,
   roomy,
   match,
+  highlighted = false,
 }: {
   /** The row's DOM id, for the summary line's jump. Every row has one, shells too. */
   id?: string;
@@ -664,6 +681,8 @@ export function PaneRow({
   roomy: boolean;
   /** How the filter's query matched this row (lib/pane-filter.ts). Absent with no query: the row is drawn as before. */
   match?: PaneMatch | undefined;
+  /** The Actions palette's highlight: the row Enter opens (ADR 0165). An inset ring, so it shows on the open row too. */
+  highlighted?: boolean;
 }) {
   const isShell = pane.kind === "shell";
   // ONE NAME, ONE PLACE (lib/pane-name.ts), the same way round as every other row in the app: the
@@ -691,6 +710,7 @@ export function PaneRow({
       data-pane-key={paneRowKey(pane)}
       onClick={() => onSelect(pane)}
       aria-current={active ? "page" : undefined}
+      data-highlighted={highlighted ? "true" : undefined}
       className={cn(
         // The border is in the base string and transparent at rest, so an alarm edge only ever
         // changes the paint. Added by state it would pull the text 1px in and grow the row 2px,
@@ -711,6 +731,7 @@ export function PaneRow({
         // The SHOWN status, so a pane that stopped on an error loses the edge once seen (shownStatus).
         isAttention(shownStatus(pane)) && "border-status-blocked/40",
         !active && isAttention(shownStatus(pane)) && "bg-status-blocked/5",
+        highlighted && PALETTE_HIGHLIGHT,
       )}
     >
       {isShell ? (

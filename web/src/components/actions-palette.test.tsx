@@ -3,12 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 
 import { __resetActionsPalette, isActionsPaletteOpen } from "@/lib/actions-palette/state";
+import { __resetPins, setPinned, usePins } from "@/lib/pins";
 import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { forgetRecentPanes, rememberRecentPane } from "@/lib/recent-panes";
 import { __resetShortcutRegistry, registerShortcutHandler, runShortcutAction } from "@/lib/shortcuts/registry";
 import type { AgentView } from "@/lib/types";
 
 import { ActionsButton, ActionsPaletteDoor } from "./actions-palette";
+import { ThreadSidebar } from "./agent-sidebar";
 
 // THE ACTIONS PALETTE (ADR 0165): one modal at the top, a search field, Recent and Suggested before
 // typing, one ranked list after, and a command only where its handler answers.
@@ -28,7 +30,11 @@ function pane(id: string, label: string): AgentView {
   };
 }
 
-const PANES = [pane("p1", "alpha"), pane("p2", "bravo"), pane("p3", "charlie")];
+const PANES = [pane("p1", "alpha"), pane("p2", "bravo"), pane("p3", "charlie"), { ...pane("p4", "delta"), workspaceId: "w2", workspaceLabel: "api", workspaceNumber: 2, tabId: "w2:t1" }];
+const WORKSPACES = [
+  { workspaceId: "w1", number: 1, label: "webapp", focused: true, activeTabId: "w1:t1", tabCount: 1, paneCount: 3 },
+  { workspaceId: "w2", number: 2, label: "api", focused: false, activeTabId: "w2:t1", tabCount: 1, paneCount: 1 },
+];
 
 function Where() {
   const { pathname } = useLocation();
@@ -50,7 +56,7 @@ function mount(path = "/", openPane?: AgentView) {
         [ROOT_ROUTE_ID]: {
           agents: PANES,
           shellPanes: [],
-          workspaces: [{ workspaceId: "w1", number: 1, label: "webapp", focused: true, activeTabId: "w1:t1", tabCount: 1, paneCount: 3 }],
+          workspaces: WORKSPACES,
           tabs: [],
           scope: {},
         },
@@ -72,6 +78,7 @@ beforeAll(() => {
 beforeEach(() => {
   localStorage.clear();
   forgetRecentPanes();
+  __resetPins();
 });
 afterEach(() => {
   __resetShortcutRegistry();
@@ -192,10 +199,10 @@ describe("the Actions palette", () => {
     await user.click(screen.getByRole("button", { name: "Actions" }));
     // "c" matches Close pane first on the tie rule, and panes after it: a pane leads instead.
     await user.type(field(), "c");
-    const rows = [...palette().querySelectorAll("[data-row-index]")].map((row) => row.textContent ?? "");
-    expect(rows.some((text) => text.startsWith("Close pane"))).toBe(true);
+    const rows = [...palette().querySelectorAll("[data-palette-row]")];
+    expect(rows.some((row) => (row.textContent ?? "").startsWith("Close pane"))).toBe(true);
     expect(highlighted()?.textContent).not.toContain("Close pane");
-    expect(Number(highlighted()?.getAttribute("data-row-index"))).toBe(0);
+    expect(highlighted()).toBe(rows[0]);
   });
 
   it("opens a pane row the way the switcher does", async () => {
@@ -204,5 +211,78 @@ describe("the Actions palette", () => {
     await user.click(screen.getByRole("button", { name: "Actions" }));
     await user.type(field(), "charlie{Enter}");
     await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/pane/w1%3Ap3"));
+  });
+
+  it("before typing holds Recent, Suggested and All panes, in that order", async () => {
+    const user = userEvent.setup();
+    rememberRecentPane(PANES[0]!, 1);
+    registerShortcutHandler("new_tab", () => {});
+    mount("/pane/w1%3Ap2", PANES[1]);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    const labels = within(palette())
+      .getAllByRole("heading")
+      .map((h) => h.textContent)
+      .filter((text) => ["Recent", "Suggested", "All panes"].includes(text ?? ""));
+    expect(labels).toEqual(["Recent", "Suggested", "All panes"]);
+    // A pane in Recent is also in All panes, and the palette's field is the only search field.
+    const all = palette().querySelector<HTMLElement>('[data-slot="actions-all-panes"]')!;
+    expect(within(all).getByText("alpha")).toBeInTheDocument();
+    expect(within(palette()).getAllByRole("textbox")).toHaveLength(1);
+  });
+
+  it("lists in All panes exactly what the Switch pane sheet lists, pinned first", async () => {
+    const user = userEvent.setup();
+    act(() => setPinned(PANES[3]!, true, PANES));
+    mount("/pane/w1%3Ap1", PANES[0]);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    const inPalette = [...palette().querySelectorAll('[data-slot="actions-all-panes"] [data-slot="pane-row"]')].map((row) =>
+      row.getAttribute("data-pane-key"),
+    );
+    function Sheet() {
+      const pins = usePins();
+      return (
+        <div data-testid="sheet">
+          <ThreadSidebar agents={PANES} shellPanes={[]} currentPaneKey="" onSelect={() => {}} tabs={[]} workspaces={WORKSPACES} scope={{}} pins={pins} />
+        </div>
+      );
+    }
+    render(<Sheet />);
+    const inSheet = [...screen.getByTestId("sheet").querySelectorAll('[data-slot="pane-row"]')].map((row) => row.getAttribute("data-pane-key"));
+    expect(inPalette).toEqual(inSheet);
+    expect(inPalette[0]).toBe(palette().querySelector('[data-slot="actions-all-panes"] [data-slot="pane-row"]')?.getAttribute("data-pane-key"));
+    expect(inSheet[0]).toContain("w1:p4");
+    // The open pane is marked the way the sheet marks it.
+    const open = [...palette().querySelectorAll('[data-slot="actions-all-panes"] [aria-current="page"]')];
+    expect(open.map((row) => row.textContent)).toEqual([expect.stringContaining("alpha")]);
+  });
+
+  it("walks with the arrows from Suggested into All panes, and Enter opens that pane", async () => {
+    const user = userEvent.setup();
+    registerShortcutHandler("settings", () => {});
+    mount();
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    expect(highlighted()?.textContent).toContain("Settings");
+    await user.keyboard("{ArrowDown}");
+    const row = highlighted()!;
+    expect(row.getAttribute("data-slot")).toBe("pane-row");
+    expect(row.closest('[data-slot="actions-all-panes"]')).not.toBeNull();
+    await user.keyboard("{ArrowDown}{ArrowUp}");
+    expect(highlighted()).toBe(row);
+    await user.keyboard("{Enter}");
+    const key = row.getAttribute("data-pane-key") ?? "";
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent(`/pane/${encodeURIComponent(key.split("\u0000").at(-1) ?? "")}`));
+  });
+
+  it("drops all three parts for the one ranked list once something is typed", async () => {
+    const user = userEvent.setup();
+    rememberRecentPane(PANES[0]!, 1);
+    registerShortcutHandler("settings", () => {});
+    mount();
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    await user.type(field(), "settings");
+    expect(within(palette()).queryByRole("heading", { name: "All panes" })).toBeNull();
+    expect(within(palette()).queryByRole("heading", { name: "Recent" })).toBeNull();
+    expect(palette().querySelector('[data-slot="actions-all-panes"]')).toBeNull();
+    expect(highlighted()?.textContent).toContain("Settings");
   });
 });
