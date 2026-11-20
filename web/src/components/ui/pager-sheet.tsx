@@ -69,7 +69,10 @@ export function PagerSheet({
         className="flex flex-col gap-3"
         style={pagerRoom}
       >
-        <div key={index} className="flex min-w-0 justify-center">
+        {/* On a wide window the stage is the viewer's whole room, whatever the page's picture: a picture
+            of another shape on the next page must not move the pager row under the finger that pressed
+            Next. Both properties are unset on a bottom sheet, so the stage is as tall as its picture. */}
+        <div key={index} data-slot="pager-sheet-stage" className="flex h-(--pager-picture-room) w-(--sheet-body-width) min-w-0 max-w-full items-center justify-center">
           {children}
         </div>
         {count > 1 && (

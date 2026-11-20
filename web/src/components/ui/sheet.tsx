@@ -99,6 +99,15 @@ const DIALOG_BODY_ROOM = `calc(${DIALOG_MAX_H} - 5.5rem - 1px)`;
  */
 export const SHEET_PICTURE_FIT = "max-h-(--sheet-body-room)";
 
+/** The widest a `size="viewer"` dialog stands. */
+const VIEWER_MAX_W = "min(92vw, 1200px)";
+/**
+ * The body's inner width of a `viewer` dialog at its widest (less the body's `px-4` and the panel's 1px
+ * edges), published as `--sheet-body-width` on a viewer dialog only. A content that must not change the
+ * dialog's size from one page to the next (`PagerSheet`) takes it as its width; unset elsewhere.
+ */
+const VIEWER_BODY_W = `calc(${VIEWER_MAX_W} - 2rem - 2px)`;
+
 /**
  * How the sheet is drawn: from the bottom edge, or as a centred dialog. A dialog on the `expanded` width
  * class with the screen flat; a bottom sheet on `compact` and `medium`, where the thumb is at the bottom
@@ -168,7 +177,8 @@ interface BottomSheetProps {
    * The dialog's width on a wide window. `column` (the default): the 640px column every sheet has.
    * `viewer`: as wide as its picture, up to `min(92vw, 1200px)` and never narrower than the column, for a
    * sheet whose content is a picture or a document page (`ImageSheet`, `PagerSheet`); its picture caps its
-   * height with `SHEET_PICTURE_FIT`. A bottom sheet ignores it.
+   * height with `SHEET_PICTURE_FIT`, and a content that pages may take the widest body width,
+   * `--sheet-body-width`. A bottom sheet ignores it.
    */
   size?: "column" | "viewer";
 }
@@ -338,10 +348,11 @@ function SheetLayer({
 
   // A dialog's cap stands inline, so no caller's `max-h-*` outgrows it, and it publishes the height its
   // body has left for a picture (`SHEET_PICTURE_FIT`). It never carries a transform.
-  const dialogStyle: React.CSSProperties & Record<"--sheet-body-room", string> = {
+  const dialogStyle: React.CSSProperties & Partial<Record<"--sheet-body-room" | "--sheet-body-width", string>> = {
     maxHeight: DIALOG_MAX_H,
     "--sheet-body-room": DIALOG_BODY_ROOM,
   };
+  if (size === "viewer") dialogStyle["--sheet-body-width"] = VIEWER_BODY_W;
   // Peeking: no dialog role, no aria-modal, no pointer events on the page underneath. Nothing has
   // opened yet, so nothing about this render should read as a modal to assistive tech or the mouse.
   const panelStyle: React.CSSProperties = dialog
@@ -438,7 +449,7 @@ function SheetLayer({
           {/* Not on a dialog, which takes no pull. Its title row takes the handle's 1rem as padding
               instead (`py-3.5` for `pb-3`), so the head keeps the height SHEET_BODY_STICKY states. */}
           {dialog ? null : (
-            <div className="flex justify-center pt-2 pb-1">
+            <div data-slot="sheet-handle" className="flex justify-center pt-2 pb-1">
               {/* 4px tall, 36px wide — a stadium, so it takes the house 2px rather than full-round. */}
               <span className="h-1 w-9 rounded-md bg-muted-foreground/40" />
             </div>

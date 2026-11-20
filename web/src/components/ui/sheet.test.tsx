@@ -598,7 +598,7 @@ describe("BottomSheet: the presentation by width class", () => {
     expect(classes(frame)).not.toContain("justify-end");
     expect(frame.style.getPropertyValue("--modal-room")).not.toBe("");
     // No grab handle; the title row, its action and the close button stay.
-    expect(container.querySelector(".h-1.w-9")).toBeNull();
+    expect(container.querySelector('[data-slot="sheet-handle"]')).toBeNull();
     expect(container.querySelector('[data-slot="sheet-action"]')).not.toBeNull();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
   });
@@ -633,6 +633,7 @@ describe("BottomSheet: the presentation by width class", () => {
     expect(classes(panel)).not.toContain(TALL_SHEET_CLEARANCE);
     // The caller's `max-h-[92dvh]` may stay in the list: an inline max-height outranks every class.
     expect(panel.style.getPropertyValue("--sheet-body-room")).toContain("82dvh");
+    expect(panel.style.getPropertyValue("--sheet-body-width")).toBe("");
   });
 
   it("takes no pull: a touch drag on the panel writes no transform and never closes", () => {
@@ -725,6 +726,8 @@ describe("BottomSheet: the presentation by width class", () => {
     const panel = panelOf(container);
     expect(classes(panel)).toEqual(expect.arrayContaining(["w-fit", "min-w-[min(40rem,100%)]", "max-w-[min(92vw,1200px)]"]));
     expect(classes(panel)).not.toContain("max-w-screen-sm");
+    // The widest body width, for a content that pages (PagerSheet); a column dialog publishes none.
+    expect(panel.style.getPropertyValue("--sheet-body-width")).toContain("1200px");
   });
 
   it("stays a bottom sheet on medium and compact, and the viewer size changes nothing there", () => {
@@ -738,7 +741,7 @@ describe("BottomSheet: the presentation by width class", () => {
       const panel = panelOf(container);
       expect(panel.dataset.presentation).toBe("sheet");
       expect(classes(panel)).toEqual(expect.arrayContaining(["rounded-t-md", "border-t", "max-w-screen-sm", "slide-in-from-bottom"]));
-      expect(container.querySelector(".h-1.w-9")).not.toBeNull();
+      expect(container.querySelector('[data-slot="sheet-handle"]')).not.toBeNull();
       expect(panel.style.getPropertyValue("--sheet-body-room")).toBe("");
       unmount();
     }
