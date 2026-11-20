@@ -3,13 +3,16 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 import { pictureHeader, pictureHeaderFits, PROJECT_PICTURE_BYTES_MAX } from "../web/src/lib/project-picture-wire.ts";
 import { hillImageMime, hillImageSize } from "./hill/media.ts";
 import { forwardedPictureRoute, HILL_MEDIA_HEADERS, HILL_MEDIA_MISSING, PROJECT_PICTURE_ROUTE, projectPictureRoute } from "./server.ts";
 import { checkIconPath, cleanName, descriptorIs, ENCLOSING_MAX, isControlCode, locateProjectFile, NEVER_TABLES, parseProjectFile, PROJECT_FILE_BYTES_MAX, PROJECT_KEYS, readProjectFile, readSmallFile } from "./project-file.ts";
 import { checkProjectPicture, iconTarget, pictureVersion, pngAnimated, ProjectPictures, readCappedBody, readProjectPicture, READS_MAX, STAMP_TTL_MS, LOCATE_TTL_MS, webpAnimated, type PictureReader } from "./project-picture.ts";
+
+/** A FIFO is a file on disk on Linux and macOS; Windows has none (its named pipes live under `\\.\pipe\`). */
+const NAMED_PIPES_ON_DISK = process.platform !== "win32";
 
 const made: string[] = [];
 afterAll(() => {
@@ -203,8 +206,11 @@ describe("reading the file off disk", () => {
     expect((await readProjectFile(big)).problem).toContain("larger than 16 KB");
     mkdirSync(join(dir, "dir.toml"));
     expect((await readProjectFile(join(dir, "dir.toml"))).problem).toBe("is not a regular file");
-    execFileSync("mkfifo", [join(dir, "fifo.toml")]);
-    expect((await readProjectFile(join(dir, "fifo.toml"))).problem).toBe("is not a regular file");
+    // Windows has no FIFO in its file system and no `mkfifo`: only that step is left out there.
+    if (NAMED_PIPES_ON_DISK) {
+      execFileSync("mkfifo", [join(dir, "fifo.toml")]);
+      expect((await readProjectFile(join(dir, "fifo.toml"))).problem).toBe("is not a regular file");
+    }
     symlinkSync(big, join(dir, "link.toml"));
     expect((await readProjectFile(join(dir, "link.toml"))).problem).toBe("is a symlink");
     const latin = write(join(dir, "latin.toml"), new Uint8Array([0x23, 0xff, 0xfe, 0x0a]));
@@ -273,17 +279,23 @@ describe("the picture's rules", () => {
     expect((await readProjectPicture(join(dir, "link.png"), [])).ok).toBe(false);
     symlinkSync(join(dir, "real"), join(dir, "linked"));
     expect((await readProjectPicture(join(dir, "linked", "a.png"), [])).ok).toBe(false);
-    execFileSync("mkfifo", [join(dir, "fifo.png")]);
-    expect((await readProjectPicture(join(dir, "fifo.png"), [])).ok).toBe(false);
+    if (NAMED_PIPES_ON_DISK) {
+      execFileSync("mkfifo", [join(dir, "fifo.png")]);
+      expect((await readProjectPicture(join(dir, "fifo.png"), [])).ok).toBe(false);
+    }
     expect((await readProjectPicture(real, [join(dir, "real")])).ok).toBe(false);
   });
 
   test("the joined path must stay strictly below the repository root", () => {
-    const located = { file: "/repo/web/collie.toml", root: "/repo" };
-    expect(iconTarget(located, "assets/a.png")).toBe("/repo/web/assets/a.png");
+    // The host's own absolute paths: `/repo` on Linux and macOS, `C:\repo` (the current drive) on Windows.
+    const repoRoot = resolve("/repo");
+    const located = { file: join(repoRoot, "web", "collie.toml"), root: repoRoot };
+    expect(iconTarget(located, "assets/a.png")).toBe(join(repoRoot, "web", "assets", "a.png"));
     // checkIconPath refuses `..` first; this is the second check on the joined path.
     expect(iconTarget(located, "../../etc/a.png")).toBeNull();
-    expect(iconTarget({ file: "/repo/collie.toml", root: "/repo" }, "..")).toBeNull();
+    expect(iconTarget({ file: join(repoRoot, "collie.toml"), root: repoRoot }, "..")).toBeNull();
+    // A sibling whose name starts with the root's is not below it.
+    expect(iconTarget(located, "../../repo-other/a.png")).toBeNull();
   });
 });
 
