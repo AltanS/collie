@@ -243,6 +243,7 @@ export const ICON_KEYS = {
   "notifications-snooze": { meaning: "snooze notifications", area: "settings", lucide: "BellOff" },
   "offline": { meaning: "the phone is offline", area: "status", lucide: "WifiOff" },
   "ok": { meaning: "a calm tick in a notice: it went through", area: "updates", lucide: "Check" },
+  "open-actions": { meaning: "open the Actions palette (belt and header)", area: "navigation", lucide: "TextSearch" },
   "open-beside": { meaning: "open beside the current pane", area: "navigation", lucide: "Columns2" },
   "open-external": { meaning: "open in another place", area: "sheets", lucide: "ExternalLink" },
   "open-here": { meaning: "open here", area: "navigation", lucide: "Replace" },

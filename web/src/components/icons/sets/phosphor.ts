@@ -204,6 +204,7 @@ export const PHOSPHOR = {
   "notifications-snooze": "bell-z", // snooze notifications · lucide BellOff
   "offline": "wifi-slash", // the phone is offline · lucide WifiOff
   "ok": "check", // a calm tick in a notice: it went through · lucide Check
+  "open-actions": "list-magnifying-glass", // open the Actions palette (belt and header) · lucide TextSearch
   "open-beside": "columns", // open beside the current pane · lucide Columns2
   "open-external": "arrow-square-out", // open in another place · lucide ExternalLink
   "open-here": "swap", // open here · lucide Replace
