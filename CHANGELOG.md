@@ -62,6 +62,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The Settings back arrow returns to the page you opened Settings from.** Before, the arrow took you to the dashboard from a session, a Space, Crew, the Hill, New or Conversations. Now it steps back to that page, like the phone's back swipe always did. Opened with nothing behind it, Settings still goes to the dashboard.
 
 - **A push shows its project picture again after the app's storage was partly cleared.** The phone keeps two copies of each picture: one for the screen and one for notifications. When the browser or a stuck update deleted only the second, the dashboard still showed the picture but every push came without it, and nothing put it back. Now the app checks and repairs the notification copy each time it opens. The picture also shows on a push from the lead machine's own sessions in a crew, which before showed it only for the other machines.
+- **On macOS, Collie no longer starts `ps` over and over for sessions that ended long ago.** Collie checks whether the process behind each session record is still alive. On a Mac that had run many sessions, every pass started `ps` once for each process that was long gone, hundreds of times, and threw away what it had learned as soon as 256 were counted. Now a process that is gone is recognised without `ps`, and only the oldest answer is dropped when the table is full. Thanks @GGGODLIN (#828).
 
 ### Docs
 
