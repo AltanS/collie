@@ -9,6 +9,11 @@ import { join } from "node:path";
 // difference between "the check ran" and "the check works".
 
 const SCRIPT = join(import.meta.dir, "check-mux-names.sh");
+/**
+ * A scan of the real tree runs bash, find, xargs and grep over every file: under a second here, and
+ * close to Bun's default 5 s on a Windows runner, where the nightly run timed out on it (#830).
+ */
+const REAL_TREE_MS = 30_000;
 
 interface Run {
   code: number;
@@ -62,14 +67,14 @@ describe("check-mux-names — the real tree", () => {
     const { code, out } = run();
     expect(out).toContain("✓");
     expect(code).toBe(0);
-  });
+  }, REAL_TREE_MS);
 
   test("the banned names are DERIVED from the adapters, so a fourth is covered on arrival", () => {
     // Printed on success precisely so the list can be read back — a guard whose alphabet is
     // invisible is a guard nobody notices going empty.
     const { out } = run();
     for (const name of ["herdr", "tmux", "zellij"]) expect(out).toContain(name);
-  });
+  }, REAL_TREE_MS);
 });
 
 /**
@@ -97,7 +102,7 @@ describe("check-mux-names, the bridge above the seam", () => {
     const { code, out } = run();
     expect(out).toContain("no multiplexer name is compared");
     expect(code).toBe(0);
-  });
+  }, REAL_TREE_MS);
 
   test("a name literal compared with === fails the check", () => {
     const { code, out } = scanBridge({ "gate.ts": 'export const g = (m: string) => m === "tmux";\n' });
