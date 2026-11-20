@@ -93,6 +93,24 @@ test("settings, its back arrow, then back does not reopen settings", async ({ pa
   expect(at(page)).not.toMatch(/settings/u);
 });
 
+// ADR 0163: Settings' arrow returns to the page Settings was opened from, and the swipe agrees.
+test("settings opened from a space: its back arrow is that space, then back is the dashboard", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("main").getByRole("button", { name: /^working collie 2 panes/u }).click();
+  await landed(page, "/space/w2");
+
+  await page.getByRole("button", { name: en["settings.title"] }).first().click();
+  await landed(page, "/settings");
+
+  await page.getByRole("button", { name: en["settings.nav.back"] }).click();
+  await landed(page, "/space/w2");
+
+  // The arrow stepped back, so Settings is forward of the space and the swipe goes up to the dashboard.
+  await page.goBack();
+  await landed(page, "/");
+  await expect(dashboard(page)).toBeVisible();
+});
+
 test("C: the dashboard's Changes tab, a workspace's Changes, then the header back is the dashboard", async ({ page }) => {
   await page.goto("/");
   await dashboard(page).getByRole("button", { name: new RegExp(`^${en["files.title"]}$`, "u") }).click();

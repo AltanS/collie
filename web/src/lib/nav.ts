@@ -511,7 +511,7 @@ const ANY_TRICK = "/trick/*";
  * Every pathname that may legitimately sit above `pathname` in the level tree, nearest first.
  *
  *   L0 `/`
- *   L1 `/space/:id`, `/settings`, `/crew`, `/hill`, `/new` (from the dashboard, a space or a pane)
+ *   L1 `/space/:id`, `/settings` (opened from the screen it was left, ADR 0163), `/crew`, `/hill`, `/new` (from the dashboard, a space or a pane)
  *   L1 `/trick/:id`, a trick session (M94 slice 03)
  *   L2 `/pane/:id`, `/new/add` (below the New page), `/space/:id/changes`, `/settings/:section`, `/settings/updates`, `/machines`
  *   L3 `/settings/accounts/add`, `/settings/accounts/:id`, `/settings/voice/host`, `/settings/voice/model`, `/settings/system/install-count`, `/settings/appearance/character`, `/pane/:id/history`, `/pane/:id/zoom`, `/pane/:id/changes` (a file view is the same path with `?repo=&path=`),
@@ -551,7 +551,10 @@ export function ancestorsOf(pathname: string): string[] {
   // A trick session sits on the Dashboard (M94 slice 03). It is opened from a pane too (Switch session,
   // a belt mark), and a trick's own view may open another trick's session.
   if (head === "trick" && seg.length === 2) return ["/", ANY_PANE, ANY_TRICK];
-  if (head === "settings" && seg.length === 1) return ["/"];
+  // Settings is opened from the Dashboard's and a space's gear and from the large screen's sidebar, which
+  // stands beside a pane, and a person may arrive from Crew, the Hill, New or Conversations too. It goes
+  // back to whichever opened it (ADR 0163); a cold open has no entry behind and goes to the Dashboard.
+  if (head === "settings" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE, "/crew", "/hill", "/new", "/conversations"];
   // The hill is opened from the bottom bar's fixed Hill item (M96): down from the Dashboard, or sideways
   // from a trick's Session, where the bar stays too (amended 2026-11-10). A sideways move carries `from`,
   // so the Dashboard is its only parent either way.
@@ -662,7 +665,7 @@ export function historyIdx(): number | undefined {
 /**
  * The back arrow, the Collie mark inside a level, and every automatic exit (a pane or a space that
  * closed under you). `fallback` is the structural parent, used when the entry behind us is not a
- * parent: a cold deep link, a Settings opened from a pane, an Updates page opened from the ribbon.
+ * parent: a cold deep link, an Updates page opened from the ribbon.
  *
  * `canGoBack` is false when the router sits on its first entry (`history.state.idx === 0`), which
  * a stale `from` could otherwise send out of the app.
