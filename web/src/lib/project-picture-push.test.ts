@@ -1,6 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { iconCopyKey, paneKey, paneMapKey, projectPictureCacheName, pushPictureFor, type PictureCaches } from "./project-picture-push";
+import {
+  asPushPictureTrace,
+  iconCopyKey,
+  keepPushPictureTrace,
+  lookUpPushPicture,
+  paneKey,
+  paneMapKey,
+  pictureSwitchCacheName,
+  pictureSwitchKey,
+  projectPictureCacheName,
+  pushPictureFor,
+  takePushPictureTrace,
+  type PictureCaches,
+  type TraceCaches,
+} from "./project-picture-push";
 
 // THE PUSH COPY, as the service worker reads it (issue 811, ADR 0160). The worker never fetches.
 
@@ -151,5 +165,69 @@ describe("pushPictureFor", () => {
     await pushPictureFor(full(), ORIGIN, MOUNT, { paneId: "p1" });
     await pushPictureFor(caches(null), ORIGIN, MOUNT, { paneId: "p1" });
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+// THE TRACE (round 19): the worker says why a push got its picture or not, from a fixed list.
+describe("lookUpPushPicture's verdict", () => {
+  const full = () => caches({ [paneMapKey(ORIGIN, MOUNT)]: map({ [paneKey({ paneId: "p1" })]: V }), [iconCopyKey(ORIGIN, MOUNT, null, V)]: PNG });
+  const verdictOf = async (c: PictureCaches, pane: { paneId?: string; host?: string } = { paneId: "p1" }) => (await lookUpPushPicture(c, ORIGIN, MOUNT, pane))?.verdict;
+
+  it("names each way a picture is found or missed", async () => {
+    expect(await verdictOf(full())).toBe("shown");
+    expect(await verdictOf(caches(null))).toBe("no-map");
+    expect(await verdictOf(caches({}))).toBe("no-map");
+    expect(await verdictOf(caches({ [paneMapKey(ORIGIN, MOUNT)]: map({}) }))).toBe("no-entry");
+    expect(await verdictOf(caches({ [paneMapKey(ORIGIN, MOUNT)]: map({ [paneKey({ paneId: "p1" })]: V }) }))).toBe("no-copy");
+    expect(await verdictOf(caches({ [paneMapKey(ORIGIN, MOUNT)]: map({ [paneKey({ paneId: "p1" })]: V }), [iconCopyKey(ORIGIN, MOUNT, null, V)]: "<svg/>" }))).toBe("not-png");
+    expect(await verdictOf(full(), { paneId: "p1", host: "box" })).toBe("no-entry");
+  });
+
+  it("says the switch is off when its marker is there", async () => {
+    const c: PictureCaches = {
+      has: async () => true,
+      open: async (name: string) => ({ match: async (key: string) => (name === pictureSwitchCacheName(MOUNT) && key === pictureSwitchKey(ORIGIN, MOUNT) ? new Response("off") : undefined) }),
+    };
+    expect(await verdictOf(c)).toBe("switch-off");
+  });
+
+  it("says unreadable when Cache Storage throws, and nothing at all for a push about no pane", async () => {
+    const broken: PictureCaches = { has: async () => { throw new Error("refused"); }, open: async () => { throw new Error("refused"); } };
+    expect(await lookUpPushPicture(broken, ORIGIN, MOUNT, { paneId: "p1" })).toEqual({ picture: null, verdict: "unreadable" });
+    expect(await lookUpPushPicture(full(), ORIGIN, MOUNT, { paneId: "" })).toBeNull();
+    expect(await lookUpPushPicture(full(), ORIGIN, MOUNT, undefined)).toBeNull();
+  });
+});
+
+describe("the worker's trace", () => {
+  function traceCaches(): TraceCaches & { store: Map<string, Response> } {
+    const store = new Map<string, Response>();
+    return {
+      store,
+      open: async () => ({
+        match: async (key: RequestInfo | URL) => store.get(String(key))?.clone(),
+        put: async (key: RequestInfo | URL, res: Response) => void store.set(String(key), res),
+        delete: async (key: RequestInfo | URL) => store.delete(String(key)),
+      }),
+    };
+  }
+  const trace = { verdict: "no-copy", machine: "member", at: 1_700_000_000_000, workerBuild: "1.29.1-dev+0072de30c4.1795163609" } as const;
+
+  it("is kept by the worker and taken once by the page", async () => {
+    const c = traceCaches();
+    await keepPushPictureTrace(c, ORIGIN, MOUNT, trace);
+    expect(await takePushPictureTrace(c, ORIGIN, MOUNT)).toEqual(trace);
+    expect(await takePushPictureTrace(c, ORIGIN, MOUNT)).toBeNull();
+  });
+
+  it("reads anything but its own fields from the fixed list as none", () => {
+    expect(asPushPictureTrace(trace)).toEqual(trace);
+    expect(asPushPictureTrace({ ...trace, verdict: "maybe" })).toBeNull();
+    expect(asPushPictureTrace({ ...trace, machine: "laptop" })).toBeNull();
+    expect(asPushPictureTrace({ ...trace, workerBuild: "../../etc/passwd" })).toBeNull();
+    expect(asPushPictureTrace({ ...trace, workerBuild: "a b" })).toBeNull();
+    expect(asPushPictureTrace({ ...trace, at: -1 })).toBeNull();
+    expect(asPushPictureTrace("no-copy")).toBeNull();
+    expect(asPushPictureTrace(null)).toBeNull();
   });
 });

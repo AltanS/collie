@@ -137,6 +137,7 @@ import {
   type SentWriteAnswer,
 } from "./sent.ts";
 import { ComposerDiagStore, DIAG_COMPOSER_BODY_MAX, diagFileIo, parseComposerDiag } from "./diag-composer.ts";
+import { DIAG_PUSH_PICTURE_BODY_MAX, parsePushPictureDiag, PushPictureDiagLimit, pushPictureDiagLine } from "./diag-push-picture.ts";
 import {
   clearRecentRuns,
   memoryRecentRuns,
@@ -1765,6 +1766,7 @@ export function startServer(opts: {
   const whois = (req: Request): DeviceAuth => requestDevice(req, cfg, pairingGate);
   // The composer diagnostic's file (bridge/diag-composer.ts): nothing touches the disk until a phone reports one.
   const composerDiag = new ComposerDiagStore(diagFileIo(cfg.stateDir), { version: opts.version });
+  const pushPictureDiag = new PushPictureDiagLimit();
   const crewLead = opts.crewLead;
   const crewStatus = opts.crewStatus;
   const peerNotifier = opts.peerNotifier;
@@ -3653,6 +3655,28 @@ export function startServer(opts: {
         const diag = parseComposerDiag(body);
         if (diag === null) return text("bad composer record", 400);
         if ((await composerDiag.record(diag, pairedLabel(req, pairingGate))) === "unwritable") return text("could not keep the record", 500);
+        return secure(new Response(null, { status: 204 }));
+      }
+      // The push picture trace (bridge/diag-push-picture.ts): why a phone's last push about a pane came with or
+      // without its project picture, and the builds of its worker and page. A verdict from a fixed list, a
+      // machine kind and two build ids; read-gated like the composer diagnostic; one log line, rate-limited,
+      // nothing kept. This machine only: `bridge/crew/forward.ts` names no `/api/diag/` route.
+      if (pathname === "/api/diag/push-picture" && req.method === "POST") {
+        const denied = browserGate("read");
+        if (denied) return denied;
+        const raw = await req.text().catch(() => "");
+        if (raw.length > DIAG_PUSH_PICTURE_BODY_MAX) return text("bad push picture record", 400);
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `JSON.parse` output IS a JsonValue by construction; `parsePushPictureDiag` checks every key and value.
+          body = JSON.parse(raw) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        const report = parsePushPictureDiag(body);
+        if (report === null) return text("bad push picture record", 400);
+        const device = pairedLabel(req, pairingGate);
+        if (pushPictureDiag.allow(device ?? "", Date.now())) console.log(pushPictureDiagLine(report, device));
         return secure(new Response(null, { status: 204 }));
       }
       // Report a problem (ADR 0123): the setup block and, on `screen=1`, the pane's last rows, always

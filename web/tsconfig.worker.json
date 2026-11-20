@@ -9,6 +9,6 @@
     "lib": ["ESNext", "WebWorker"],
     "types": []
   },
-  "include": ["src/sw.ts", "src/stt/worker.ts"],
+  "include": ["src/sw.ts", "src/stt/worker.ts", "src/build-info.d.ts"],
   "exclude": []
 }

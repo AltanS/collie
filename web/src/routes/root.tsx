@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { rememberPanePictures } from "@/lib/project-picture";
+import { reportPushPictureTrace } from "@/lib/push-picture-trace";
 import {
   Outlet,
   useLoaderData,
@@ -131,6 +132,10 @@ export function RootLayout() {
   useEffect(() => {
     rememberPanePictures(agents, lead);
   }, [agents, lead]);
+  // The worker's last push picture verdict goes to the bridge's log once per page life (lib/push-picture-trace.ts).
+  useEffect(() => {
+    void reportPushPictureTrace();
+  }, []);
   // THE PUSH RACE. `usePushSetup` can raise the browser's permission prompt on its own, behind the
   // tour's backdrop, so it waits until the tour has decided it is not showing. "pending" is what
   // makes this correct rather than racy: a child's effect runs before the parent's, but the state it

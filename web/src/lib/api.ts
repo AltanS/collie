@@ -21,6 +21,7 @@ import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply }
 import { readReportContext, type ReportContext } from "./report/context";
 import type { TroubleSignal } from "./report/signal";
 import type { ComposerDiagRecord } from "./composer-offscreen";
+import type { PushPictureReport } from "./project-picture-push";
 import { REQUEST_ID, type HeldCancelAnswer, type SendReceiptRow, type SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
 import { boundedDraft, CLEAR_OUTCOMES, CLEAR_REASONS, type ClearBody, type ClearReceipt } from "./surface/clear";
@@ -2825,6 +2826,19 @@ export async function postComposerDiag(record: ComposerDiagRecord): Promise<void
     await doReq<undefined>("/api/diag/composer", { method: "POST", body: JSON.stringify(record) });
   } catch {
     // Nothing to do: an older bridge answers 404, an offline phone throws, and neither is a person's problem.
+  }
+}
+
+/**
+ * The push picture trace (lib/push-picture-trace.ts): the worker's last verdict and the two builds. A fixed
+ * list and build ids only; the bridge writes one log line and keeps nothing. Fire and forget, like the
+ * composer diagnostic: an older bridge answers 404, an offline phone throws, neither is a person's problem.
+ */
+export async function postPushPictureDiag(report: PushPictureReport): Promise<void> {
+  try {
+    await doReq<undefined>("/api/diag/push-picture", { method: "POST", body: JSON.stringify(report) });
+  } catch {
+    // Nothing to do.
   }
 }
 
