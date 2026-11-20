@@ -641,15 +641,10 @@ test("a touch double tap on the width button rests where the reduced-motion doub
   await context.close();
 
   expectSameRest(glided.rest, jumped.rest);
-  // The second glide drove the scroll to its end: no series reverses, and the scroll moves on every
-  // frame from its first step to its last. A scroll the glide stopped writing would sit still for frames
-  // and then come to rest on the snap's correction.
+  // No series reverses across the two glides. Which half of the scroll the second glide drives
+  // depends on when the finger lands, so the claim that a tap does not free the scroll is held frame by
+  // frame in src/hooks/use-width-glide.test.tsx, where the clock is the test's.
   for (const series of ["width", "neighbour", "add", "scroll"] as const) expectMonotonic(glided.samples.map((x) => x[series]), series);
-  const steps = glided.samples.slice(1).map((x, i) => Math.abs(x.scroll - glided.samples[i]!.scroll));
-  const first = steps.findIndex((d) => d > 0);
-  const last = steps.findLastIndex((d) => d > 0);
-  const still = steps.slice(first, last + 1).filter((d) => d === 0).length;
-  expect(still, `frames the scroll sat still mid-glide, of ${steps.map((d) => d.toFixed(1)).join(" ")}`).toBe(0);
   expect(glided.rest.widths).toEqual([560, 1120]);
   expect(glided.rest.scrollLeft).toBe(560);
   await expect(widthButton(page)).toHaveAccessibleName(en["wide.width.aria"].replace("{width}", en["wide.width.full"]));
