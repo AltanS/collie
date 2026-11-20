@@ -32,6 +32,7 @@ import { ReportDoor } from "@/components/report-door";
 import { CrewProvider } from "@/components/crew-provider";
 import { CollieMark } from "@/components/collie-mark";
 import { TourHost } from "@/components/tour-sheet";
+import { KeyboardHintCard } from "@/components/keyboard-hint-card";
 import { ShortcutBarHost } from "@/components/shortcut-bar-host";
 import { ShortcutHelpDoor } from "@/components/shortcut-help-door";
 import { TrickFloatLayer } from "@/components/trick-float-layer";
@@ -276,6 +277,9 @@ export function RootLayout() {
           Settings row open. Both read the keymap that `useShortcuts` above publishes. */}
       <ShortcutBarHost />
       <ShortcutHelpDoor />
+      {/* The one-time hint for a device that has shown a hardware key press: a card at the top right,
+          below the header (components/keyboard-hint-card.tsx). */}
+      <KeyboardHintCard />
     </CrewProvider>
   );
 }

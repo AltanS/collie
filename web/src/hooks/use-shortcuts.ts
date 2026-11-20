@@ -5,6 +5,7 @@ import { useNav } from "@/hooks/use-nav";
 import { useShortcutHandler } from "@/hooks/use-shortcut-handler";
 import { noteKeyPress } from "@/lib/hardware-keyboard";
 import { isCatchingUp, isLocked } from "@/lib/idle";
+import { markKeyboardHintDone } from "@/lib/keyboard-hint";
 import { homePath, newPath, settingsPath } from "@/lib/nav";
 import { useOperatorShortcuts, type OperatorShortcutsWire } from "@/lib/operator-config";
 import type { Scope } from "@/lib/scope";
@@ -90,6 +91,8 @@ function handleKeyDown(event: KeyboardEvent, resolver: Resolver): void {
   // A sticky mode with no key that has a target here would only swallow typing.
   if (outcome.type === "mode" && !hasShortcutTarget(outcome.id)) resolver.reset();
   publishShortcutMode(resolver.mode);
+  // The first press of the prefix means the person found the keys, so the one-time hint is done.
+  if (outcome.type === "enter-prefix") markKeyboardHintDone();
   if (outcome.type === "pass") return;
   event.preventDefault();
   event.stopPropagation();

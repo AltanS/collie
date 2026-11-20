@@ -4218,6 +4218,10 @@ export const en = {
   "shortcuts.settings.description": "See every key and how to change it.",
   "shortcuts.settings.button": "Show",
   "shortcuts.settings.buttonAria": "Show keyboard shortcuts",
+  "shortcuts.hint.title": "You have a keyboard",
+  "shortcuts.hint.body": "Collie takes Herdr's keys. Press {prefix} then ? to see them all.",
+  "shortcuts.hint.show": "Show shortcuts",
+  "shortcuts.hint.close": "Close the keyboard hint",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */
@@ -4304,6 +4308,10 @@ export const PENDING_TRANSLATION = [
   "shortcuts.settings.description",
   "shortcuts.settings.button",
   "shortcuts.settings.buttonAria",
+  "shortcuts.hint.title",
+  "shortcuts.hint.body",
+  "shortcuts.hint.show",
+  "shortcuts.hint.close",
 ] as const satisfies readonly MessageKey[];
 
 /** A key a bundle may leave out until the translation pass. */

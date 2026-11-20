@@ -350,6 +350,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
           route's own content column, so it inherited that column's width for free. Hoisted, it has to
           state it — otherwise the dashboard's 640px rule would silently become the viewport's. */}
       <header
+        data-slot="app-header"
         className={cn(
           "sticky top-0 z-20 flex flex-col border-b bg-band-ground",
           /*
