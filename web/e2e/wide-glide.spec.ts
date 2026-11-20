@@ -641,12 +641,15 @@ test("a touch double tap on the width button rests where the reduced-motion doub
   await context.close();
 
   expectSameRest(glided.rest, jumped.rest);
-  // The second glide drove the scroll to its end: no series reverses, and the scroll comes into its
-  // resting place on an eased step, not on the snap's correction once a frozen scroll is let go.
+  // The second glide drove the scroll to its end: no series reverses, and the scroll moves on every
+  // frame from its first step to its last. A scroll the glide stopped writing would sit still for frames
+  // and then come to rest on the snap's correction.
   for (const series of ["width", "neighbour", "add", "scroll"] as const) expectMonotonic(glided.samples.map((x) => x[series]), series);
-  const scrolls = glided.samples.map((x) => x.scroll);
-  const moves = scrolls.slice(1).map((x, i) => Math.abs(x - scrolls[i]!)).filter((d) => d > 0);
-  expect(moves.at(-1), `the last scroll step, of ${moves.map((d) => d.toFixed(1)).join(" ")}`).toBeLessThanOrEqual(3);
+  const steps = glided.samples.slice(1).map((x, i) => Math.abs(x.scroll - glided.samples[i]!.scroll));
+  const first = steps.findIndex((d) => d > 0);
+  const last = steps.findLastIndex((d) => d > 0);
+  const still = steps.slice(first, last + 1).filter((d) => d === 0).length;
+  expect(still, `frames the scroll sat still mid-glide, of ${steps.map((d) => d.toFixed(1)).join(" ")}`).toBe(0);
   expect(glided.rest.widths).toEqual([560, 1120]);
   expect(glided.rest.scrollLeft).toBe(560);
   await expect(widthButton(page)).toHaveAccessibleName(en["wide.width.aria"].replace("{width}", en["wide.width.full"]));
