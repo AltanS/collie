@@ -511,6 +511,9 @@ export function ImageEditor({ file, startInEdit = false, onConfirm, onCancel, on
       onClose={() => onCancelRef.current()}
       title={translate("composer.imageEdit.title")}
       className="max-h-[92dvh]"
+      // A picture task: on a wide window the dialog is as wide as the picture's stage, up to the viewer's
+      // cap. The canvas reads its pointer through its own live box (`pointOnCanvas`), so any size maps.
+      size="viewer"
     >
       <div className="collie-image-editor flex flex-col gap-3">
         <h2 id={titleId} className="sr-only">

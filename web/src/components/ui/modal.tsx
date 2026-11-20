@@ -41,6 +41,33 @@ const PLACEMENT = {
   center: { frame: "justify-center pt-[calc(0.75rem+env(safe-area-inset-top))]", enter: "zoom-in-95" },
 } as const;
 
+// THE SHELL'S LOOK, shared with a `BottomSheet` drawn as a centred dialog on a wide window (ui/sheet.tsx,
+// ADR 0167's addendum). One place for the classes, so the two panels cannot drift apart.
+
+/** The fixed layer that holds the scrim and the panel, before the placement's own classes. */
+export const MODAL_FRAME = "fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col items-center px-3";
+/** The `center` placement's frame classes. */
+export const MODAL_CENTER_FRAME = PLACEMENT.center.frame;
+/** The panel's look: `--card`, the house radius, a uniform border on all four sides, the soft shadow. */
+export const MODAL_PANEL_LOOK = "rounded-md border border-border bg-card shadow-2xl";
+/** The `center` entrance: a short fade and a small zoom in. */
+export const MODAL_CENTER_ENTRANCE = `duration-150 animate-in fade-in ${PLACEMENT.center.enter}`;
+/** The dimmed scrim's classes. */
+export const MODAL_SCRIM = "absolute inset-0 bg-black/50 duration-150 animate-in fade-in";
+
+/**
+ * The frame's style: the room above the soft keyboard as `--modal-room`, and for `center` the bottom
+ * padding that keeps the panel centred in that room, not in the page.
+ */
+export function useModalRoom(placement: "top" | "center"): CSSProperties {
+  const visible = useVisibleHeight();
+  const room: CSSProperties & Record<"--modal-room", string> = { "--modal-room": `${visible}px` };
+  // Centred in the room, not in the page: the part of the page under an overlaying keyboard is padded off.
+  return placement === "center"
+    ? { ...room, paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom) + max(0px, var(--app-h) - var(--modal-room)))` }
+    : room;
+}
+
 export function Modal({ placement, onClose, labelledBy, label, initialFocus, className, slot, scrimSlot, children }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   // Focus on open, in the layout phase, so a field that takes it can raise the soft keyboard inside the
@@ -66,17 +93,11 @@ export function Modal({ placement, onClose, labelledBy, label, initialFocus, cla
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const visible = useVisibleHeight();
-  const room: CSSProperties & Record<"--modal-room", string> = { "--modal-room": `${visible}px` };
-  // Centred in the room, not in the page: the part of the page under an overlaying keyboard is padded off.
-  const frameStyle: CSSProperties =
-    placement === "center"
-      ? { ...room, paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom) + max(0px, var(--app-h) - var(--modal-room)))` }
-      : room;
+  const frameStyle = useModalRoom(placement);
   const { frame, enter } = PLACEMENT[placement];
 
   return createPortal(
-    <div className={cn("fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col items-center px-3", frame)} style={frameStyle}>
+    <div className={cn(MODAL_FRAME, frame)} style={frameStyle}>
       {/* The scrim: a tap that went down AND up on it closes, so the release of the tap that opened
           the modal never closes it again (ui/sheet.tsx, the backdrop's rule). */}
       <Scrim onClose={onClose} slot={scrimSlot} />
@@ -90,7 +111,8 @@ export function Modal({ placement, onClose, labelledBy, label, initialFocus, cla
         data-slot={slot}
         data-placement={placement}
         className={cn(
-          "relative z-10 flex flex-col overflow-hidden rounded-md border border-border bg-card shadow-2xl outline-none duration-150 animate-in fade-in",
+          "relative z-10 flex flex-col overflow-hidden outline-none duration-150 animate-in fade-in",
+          MODAL_PANEL_LOOK,
           enter,
           className,
         )}
@@ -110,7 +132,7 @@ function Scrim({ onClose, slot }: { onClose: () => void; slot: string | undefine
       aria-hidden="true"
       tabIndex={-1}
       data-slot={slot}
-      className="absolute inset-0 bg-black/50 duration-150 animate-in fade-in"
+      className={MODAL_SCRIM}
       onPointerDown={() => {
         armed.current = true;
       }}

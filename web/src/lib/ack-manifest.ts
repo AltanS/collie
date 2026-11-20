@@ -328,6 +328,10 @@ export const ACK_MANIFEST = {
     channel: "silent",
     why: "A measurement, not a command: the phone sends the heights of a reply box that sits below the screen, by itself, with no tap of the person's behind it, no text in it, and a failure ignored. There is nothing to acknowledge and nothing for the person to act on (lib/composer-offscreen.ts).",
   },
+  postPushPictureDiag: {
+    channel: "silent",
+    why: "A trace, not a command: the phone sends the worker's last verdict and two build ids by itself, with no tap of the person's behind it, no text of the person's in it, and a failure ignored. There is nothing to acknowledge and nothing for the person to act on.",
+  },
   setReleaseLine: {
     channel: "inline",
     why: "The answer is the line this machine is on now, and what that means for it (an Edge build ahead of Stable, a Stable offer above): a standing fact the Release line card states beside the two buttons, and a refusal the operator reads there too (components/release-line-card.tsx).",

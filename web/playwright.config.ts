@@ -188,6 +188,19 @@ export default defineConfig({
           stderr: "pipe",
           timeout: 60_000,
         },
+        {
+          // The DESIGN REFERENCE on 4176, Vite's dev server under `COLLIE_PLAYGROUND=1` (no bridge: every
+          // `/api/*` answers 404 from the playground plugin, vite.config.ts). Its phone frames carry a
+          // transform, as the website's do, and `e2e/wide-sheets.spec.ts` checks that a sheet in one stays
+          // a bottom sheet in a wide window. Its own port: 5199 is the always-on design app.
+          command: "bunx vite --host 127.0.0.1 --port 4176 --strictPort",
+          env: { COLLIE_PLAYGROUND: "1", COLLIE_DEV_TARGET: "http://127.0.0.1:9" },
+          url: "http://127.0.0.1:4176/design.html",
+          reuseExistingServer: !process.env.CI,
+          stdout: "ignore",
+          stderr: "pipe",
+          timeout: 60_000,
+        },
       ] satisfies WebServer[]
       : []),
     ...(RUN_SWAP

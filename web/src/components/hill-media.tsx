@@ -124,7 +124,8 @@ function PagerPicture({ src, alt }: { src: string; alt: string }) {
   const { url, failed } = useAuthedUrl(src);
   if (failed) return <Unavailable />;
   if (url === null) return <span aria-hidden className="block h-40 w-full" />;
-  return <ZoomPicture src={url} alt={alt} className="max-h-[70dvh]" />;
+  // 70% of the screen on a phone; on a wide window at most the pager's dialog room (ui/pager-sheet.tsx).
+  return <ZoomPicture src={url} alt={alt} className="max-h-[min(70dvh,var(--pager-picture-room,70dvh))]" />;
 }
 
 /** A frame a Decision's view placed: the picture cropped in it, near the screen only; a tap opens the pager on it. */

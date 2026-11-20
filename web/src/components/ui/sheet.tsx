@@ -3,8 +3,14 @@ import { Icon } from "@/components/icons/icon";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { MODAL_CENTER_ENTRANCE, MODAL_CENTER_FRAME, MODAL_FRAME, MODAL_PANEL_LOOK, MODAL_SCRIM, useModalRoom } from "@/components/ui/modal";
 import { t as translate } from "@/lib/i18n";
+import { useFoldPosture } from "@/hooks/use-fold-posture";
 import { useLocale } from "@/hooks/use-locale";
+import { useWidthClass } from "@/hooks/use-width-class";
+import { hasResizeObserver } from "@/lib/env";
+import { isAnchorShown, placeMenu } from "@/lib/menu-place";
+import { EXPANDED_MIN_PX, WIDE_MIN_HEIGHT_PX } from "@/lib/wide-layout";
 
 // Minimal modal focus handling (no deps, no full trap): on open move focus into the panel so
 // keyboard / screen-reader users land inside the dialog; on close restore focus to whatever was
@@ -78,8 +84,97 @@ export const TALL_SHEET_CLEARANCE = "pb-[calc(env(safe-area-inset-bottom)_+_1.5r
  */
 export const SHEET_BODY_STICKY = "top-[calc(3.75rem+1px)] -mx-4 px-4";
 
+/**
+ * The tallest a sheet drawn as a dialog stands: about 82% of the window, as the bottom sheet, and never
+ * past the room above an on-screen keyboard (`--modal-room`, ui/modal.tsx) less the frame's padding.
+ */
+const DIALOG_MAX_H = "min(82dvh, calc(var(--modal-room) - 1.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom)))";
+/**
+ * The height left for the body's content in a dialog: the panel's cap less the head (3.75rem and its 1px
+ * rule, the same sum as {@link SHEET_BODY_STICKY}), the body's `py-3` and the panel's `pb-1`.
+ */
+const DIALOG_BODY_ROOM = `calc(${DIALOG_MAX_H} - 5.5rem - 1px)`;
+
+/**
+ * The cap of a picture in a `size="viewer"` sheet: the height its dialog leaves for the body. Set only on
+ * a dialog (`--sheet-body-room`); on a bottom sheet the property is unset, so the cap is `none` and the
+ * picture is drawn exactly as before.
+ */
+export const SHEET_PICTURE_FIT = "max-h-(--sheet-body-room)";
+
+/** The widest a `size="viewer"` dialog stands. */
+const VIEWER_MAX_W = "min(92vw, 1200px)";
+/**
+ * The body's inner width of a `viewer` dialog at its widest (less the body's `px-4` and the panel's 1px
+ * edges), published as `--sheet-body-width` on a viewer dialog only. A content that must not change the
+ * dialog's size from one page to the next (`PagerSheet`) takes it as its width; unset elsewhere.
+ */
+const VIEWER_BODY_W = `calc(${VIEWER_MAX_W} - 2rem - 2px)`;
+
+/**
+ * How the sheet is drawn: from the bottom edge, or as a centred dialog. A dialog on the `expanded` width
+ * class with the screen flat, when the sheet's own layer has an expanded room too; a bottom sheet on
+ * `compact` and `medium`, where the thumb is at the bottom edge, on a foldable folded as a book or held as
+ * a tabletop, where the middle of the window is the hinge, and in a phone-size frame. Read only while a
+ * sheet is up (`SheetLayer`), so a closed sheet listens to nothing.
+ */
+export type SheetPresentation = "sheet" | "dialog";
+
+/**
+ * A sheet's drawing, as its panel's `data-presentation` names it: the two above, or `menu`, a dialog
+ * drawn beside the button that opened it (`anchor`).
+ */
+export type SheetDrawing = SheetPresentation | "menu";
+
+/**
+ * Whether a box the size of the sheet's fixed layer is an expanded room: at least `EXPANDED_MIN_PX` wide
+ * and `WIDE_MIN_HEIGHT_PX` tall. A box with no size at all has no layout to read (nothing laid out, or a
+ * test's DOM), and then the window decides alone.
+ */
+export function isExpandedRoom(room: { width: number; height: number }): boolean {
+  if (room.width === 0 && room.height === 0) return true;
+  return room.width >= EXPANDED_MIN_PX && room.height >= WIDE_MIN_HEIGHT_PX;
+}
+
+/**
+ * THE ROOM IS THE LAYER'S, NOT ONLY THE WINDOW'S. The website and the design reference draw the app's
+ * screens in phone frames in the page, no iframe, and a frame's stage carries a transform, so a `fixed`
+ * layer inside it is laid out in the stage. The width class still comes from the window, so a phone-size
+ * demo on a desktop would draw a dialog inside the phone. The probe is a `fixed inset-0` box in the
+ * layer: its box is the layer's containing block, the window or the stage, read in the layout phase
+ * before the first paint, and again when it resizes. No frame has to set anything.
+ */
+function useLayerRoom(probe: React.RefObject<HTMLElement | null>): boolean {
+  const [roomy, setRoomy] = React.useState(true);
+  React.useLayoutEffect(() => {
+    const el = probe.current;
+    if (el === null) return;
+    const read = () => setRoomy(isExpandedRoom(el.getBoundingClientRect()));
+    read();
+    const resizes = hasResizeObserver() ? new ResizeObserver(read) : null;
+    resizes?.observe(el);
+    window.addEventListener("resize", read);
+    return () => {
+      resizes?.disconnect();
+      window.removeEventListener("resize", read);
+    };
+  }, [probe]);
+  return roomy;
+}
+
+function useSheetPresentation(probe: React.RefObject<HTMLElement | null>, only: "auto" | "sheet"): SheetPresentation {
+  const widthClass = useWidthClass();
+  const posture = useFoldPosture();
+  const roomy = useLayerRoom(probe);
+  return only === "auto" && widthClass === "expanded" && posture === "flat" && roomy ? "dialog" : "sheet";
+}
+
 // A minimal bottom sheet — no Radix, no portals, no extra deps. Renders nothing when closed.
 // Dismisses on backdrop tap or Escape. Animations come from tw-animate-css (already imported).
+//
+// ON A WIDE WINDOW IT IS A CENTRED DIALOG (ADR 0167, addendum 2026-11-20). Same component, same task, same
+// rows: on the `expanded` width class the panel stands in the middle of the window in the modal's look
+// (ui/modal.tsx), with no grab handle, no pull down to close and no peek. See `useSheetPresentation`.
 interface BottomSheetProps {
   open: boolean;
   onClose: () => void;
@@ -125,9 +220,41 @@ interface BottomSheetProps {
    * own (`ui/tap-target.ts`). The sheet knows nothing about what the control does.
    */
   action?: React.ReactNode;
+  /**
+   * The dialog's width on a wide window. `column` (the default): the 640px column every sheet has.
+   * `viewer`: as wide as its picture, up to `min(92vw, 1200px)` and never narrower than the column, for a
+   * sheet whose content is a picture or a document page (`ImageSheet`, `PagerSheet`); its picture caps its
+   * height with `SHEET_PICTURE_FIT`, and a content that pages may take the widest body width,
+   * `--sheet-body-width`. A bottom sheet ignores it.
+   */
+  size?: "column" | "viewer";
+  /**
+   * `auto` (the default): a centred dialog on a wide window, a bottom sheet elsewhere. `sheet`: a bottom
+   * sheet on every width class, for a sheet that is the whole screen on purpose while it is up (the tour,
+   * `tour-sheet.tsx`, its one caller). Nothing else passes it.
+   */
+  presentation?: "auto" | "sheet";
+  /**
+   * The button that opened the sheet, for a small menu opened from it (the pane, tab and space menus).
+   * Where the sheet is a dialog and the button is in the document and in view when it opens, the sheet is
+   * drawn as a MENU beside it: below the button, trailing edges aligned, flipped above when the room
+   * below is too small, kept 8px inside the window (`lib/menu-place.ts`), 20rem wide, in the modal's look,
+   * with no dimming and no entrance (the reasons of `ui/anchored-menu.tsx`). It follows a scroll and a
+   * resize. No title row and no close button unless the caller passes `action`; the title stays the
+   * dialog's name. On close the focus goes back to the button. Absent, gone or hidden, and on a bottom
+   * sheet: no change at all. Pass it only when the sheet was opened by a tap on that button.
+   */
+  anchor?: React.RefObject<HTMLElement | null>;
 }
 
-export function BottomSheet({
+export function BottomSheet(props: BottomSheetProps) {
+  // Closed and not pulled: nothing is drawn, and nothing below runs, so the many closed sheets of a
+  // screen hold no width or focus listeners of their own.
+  if (!props.open && !((props.pull ?? 0) > 0)) return null;
+  return <SheetLayer {...props} />;
+}
+
+function SheetLayer({
   open,
   onClose,
   title,
@@ -137,15 +264,26 @@ export function BottomSheet({
   pullFrom = 0,
   dragToDismiss = true,
   action,
+  size = "column",
+  presentation: only = "auto",
+  anchor,
 }: BottomSheetProps) {
   useLocale();
   const panelRef = React.useRef<HTMLDivElement>(null);
   const drag = React.useRef({ startY: 0, atTop: false, engaged: false, dy: 0 });
   const [dragY, setDragY] = React.useState(0);
   const titleId = React.useId();
+  const probeRef = React.useRef<HTMLSpanElement>(null);
+  const presentation = useSheetPresentation(probeRef, only);
+  const dialog = presentation === "dialog";
+  const room = useModalRoom("center");
+  const menu = useAnchoredMenu({ open, dialog, anchor, panel: panelRef, probe: probeRef });
+  const drawing: SheetDrawing = menu ? "menu" : presentation;
   // A peek never opened, so it must never claim focus or block the page behind it from the a11y
   // tree's point of view either way; the dialog role below is only meaningful once `open` is true.
-  const peeking = !open && pull > 0;
+  // A dialog never peeks: the pull is a touch gesture of the compact layout, and a dialog drawn half
+  // way up from nowhere would mean nothing.
+  const peeking = !dialog && !open && pull > 0;
   // Remembers whether the LAST render was a peek, so the render where `open` flips true can tell
   // "this is a drag continuing into an open" from "this open had nothing before it". That one render
   // takes the 180ms glide below; it is true for that render only.
@@ -156,6 +294,13 @@ export function BottomSheet({
   // translateY(100%) — the sheet dropped out of view and slid back in.
   const openedFromPeek = React.useRef(false);
   useDialogFocus(open, panelRef);
+  // A menu gives the focus back to its button, also where the browser did not focus it on the tap
+  // (Safari): declared after `useDialogFocus`, so this cleanup runs after that one's restore.
+  React.useEffect(() => {
+    if (!menu) return;
+    const trigger = anchor?.current;
+    return () => trigger?.focus({ preventScroll: true });
+  }, [menu, anchor]);
   React.useEffect(() => {
     if (!open) return;
     bumpOpenSheets(1);
@@ -200,7 +345,9 @@ export function BottomSheet({
   onCloseRef.current = onClose;
   React.useEffect(() => {
     const panel = panelRef.current;
-    if (!open || !panel || !dragToDismiss) return;
+    // A dialog takes no pull: no listener, so no touch (a touchscreen laptop, a tablet held sideways)
+    // moves its panel, and its style never reads `dragY`.
+    if (!open || !panel || !dragToDismiss || dialog) return;
     setDragY(0);
     const SLOP = 6; // ignore taps / tiny jitter before engaging the drag
     const CLOSE = 90; // px past which release closes instead of snapping back
@@ -259,7 +406,7 @@ export function BottomSheet({
       panel.removeEventListener("touchend", onEnd);
       panel.removeEventListener("touchcancel", onEnd);
     };
-  }, [open, dragToDismiss]);
+  }, [open, dragToDismiss, dialog]);
 
   // Read BEFORE updating: this render's "did the one before me peek" answer, which is what tells a
   // fresh open from a drag continuing into one. Updated for the NEXT render right after.
@@ -268,16 +415,31 @@ export function BottomSheet({
   openedFromPeek.current = open && (openedFromPeek.current || continuingFromPeek);
   const skipEntrance = openedFromPeek.current;
 
-  if (!open && !peeking) return null;
+  // The room probe (`useLayerRoom`): a box the size of this layer's containing block, drawn nothing.
+  const probe = <span ref={probeRef} aria-hidden="true" data-slot="sheet-room" className="pointer-events-none invisible fixed inset-0" />;
+  // A pull the window's class turned down (a dialog never peeks) still measures the room: in a phone-size
+  // frame the layer is a bottom sheet after all, and the peek follows the finger there.
+  if (!open && !peeking) return pull > 0 ? probe : null;
 
   // Optional chaining is the jsdom guard here, not a `typeof` check: `matchMedia` is simply absent
   // on `window` in a test environment that hasn't polyfilled it, same as `navigator.vibrate` is
   // absent on iOS Safari in lib/haptics.ts.
   const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
+  // A dialog's cap stands inline, so no caller's `max-h-*` outgrows it, and it publishes the height its
+  // body has left for a picture (`SHEET_PICTURE_FIT`). It never carries a transform.
+  const dialogStyle: React.CSSProperties & Partial<Record<"--sheet-body-room" | "--sheet-body-width", string>> = {
+    maxHeight: DIALOG_MAX_H,
+    "--sheet-body-room": DIALOG_BODY_ROOM,
+  };
+  if (size === "viewer") dialogStyle["--sheet-body-width"] = VIEWER_BODY_W;
   // Peeking: no dialog role, no aria-modal, no pointer events on the page underneath. Nothing has
   // opened yet, so nothing about this render should read as a modal to assistive tech or the mouse.
-  const panelStyle: React.CSSProperties = peeking
+  const panelStyle: React.CSSProperties | undefined = menu
+    ? undefined
+    : dialog
+    ? dialogStyle
+    : peeking
     ? {
         // `pullFrom + pull`, not `pull` alone: `pullFrom` is the handle's own distance from the
         // viewport bottom (useSheetPull's `onAnchor`), so the panel's TOP edge starts there instead
@@ -298,13 +460,14 @@ export function BottomSheet({
 
   return (
     <div
-      className="fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col justify-end"
+      className={menu ? "fixed inset-0 z-50" : dialog ? cn(MODAL_FRAME, MODAL_CENTER_FRAME) : "fixed inset-x-0 top-0 z-50 flex h-(--app-h) flex-col justify-end"}
       role={peeking ? undefined : "dialog"}
       aria-modal={peeking ? undefined : true}
       aria-labelledby={!peeking && title ? titleId : undefined}
       aria-hidden={peeking ? "true" : undefined}
-      style={peeking ? { pointerEvents: "none" } : undefined}
+      style={peeking ? { pointerEvents: "none" } : dialog && !menu ? room : undefined}
     >
+      {probe}
       {/* Backdrop: still dismisses on tap, but hidden from assistive tech — the ✕ in the header is
           the single accessible "Close", so the dialog isn't announced with a giant duplicate. Dismiss
           fires only when the pointer went DOWN on the backdrop too (see backdropArmed above).
@@ -315,10 +478,15 @@ export function BottomSheet({
         type="button"
         aria-hidden="true"
         tabIndex={-1}
-        className={cn(
-          "absolute inset-0 bg-black/50",
-          !peeking && !skipEntrance && "duration-200 animate-in fade-in",
-        )}
+        className={
+          menu
+            ? // A menu dims nothing: its button stays in plain view (ui/anchored-menu.tsx). A clear layer
+              // that closes on an outside press, by the same press-and-release rule.
+              "absolute inset-0 cursor-default"
+            : dialog
+            ? cn(MODAL_SCRIM, "motion-reduce:animate-none")
+            : cn("absolute inset-0 bg-black/50", !peeking && !skipEntrance && "duration-200 animate-in fade-in")
+        }
         style={peeking ? { opacity: Math.min(1, pull / 120) * 0.5 } : undefined}
         onPointerDown={() => {
           backdropArmed.current = true;
@@ -333,7 +501,8 @@ export function BottomSheet({
         ref={panelRef}
         tabIndex={peeking ? undefined : -1}
         style={panelStyle}
-        className={cn(
+        data-presentation={drawing}
+        className={menu ? menuPanelClass(className) : dialog ? dialogPanelClass(size, className) : cn(
           // `rounded-t-md` (2px), not `rounded-t-2xl`: 16px was the roundest corner left in the app and it
           // sat on the most-seen surface. The sheet is a panel, and a panel has an edge.
           //
@@ -362,13 +531,23 @@ export function BottomSheet({
       >
         {/* Solid, never a blur: a sheet's rows animate (a working dot, a spinner) as they scroll under
             this row, and a blur over an animation redraws every frame (issue 748). */}
+        {menu && !action ? (
+          // A menu beside its button needs no heading and no close: the title is the dialog's name only.
+          <span id={title ? titleId : undefined} data-slot="sheet-title" className="sr-only">
+            {title}
+          </span>
+        ) : (
         <div className="sticky top-0 z-10 border-b border-rule bg-card">
           {/* Grab handle — pull down (from anywhere at the top) to dismiss. */}
-          <div className="flex justify-center pt-2 pb-1">
-            {/* 4px tall, 36px wide — a stadium, so it takes the house 2px rather than full-round. */}
-            <span className="h-1 w-9 rounded-md bg-muted-foreground/40" />
-          </div>
-          <div data-slot="sheet-title-row" className="flex items-center justify-between px-4 pb-3">
+          {/* Not on a dialog, which takes no pull. Its title row takes the handle's 1rem as padding
+              instead (`py-3.5` for `pb-3`), so the head keeps the height SHEET_BODY_STICKY states. */}
+          {dialog ? null : (
+            <div data-slot="sheet-handle" className="flex justify-center pt-2 pb-1">
+              {/* 4px tall, 36px wide — a stadium, so it takes the house 2px rather than full-round. */}
+              <span className="h-1 w-9 rounded-md bg-muted-foreground/40" />
+            </div>
+          )}
+          <div data-slot="sheet-title-row" className={cn("flex items-center justify-between px-4", dialog ? "py-3.5" : "pb-3")}>
             <span
               id={title ? titleId : undefined}
               data-slot="sheet-title"
@@ -400,8 +579,103 @@ export function BottomSheet({
             </Button>
           </div>
         </div>
-        <div className="px-4 py-3">{children}</div>
+        )}
+        <div data-slot="sheet-body" className="px-4 py-3">{children}</div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The panel of a sheet drawn as a menu beside its button: the modal's look, 20rem wide, placed by
+ * `useAnchoredMenu`, no entrance. The caller's sizes give way as they do in a dialog.
+ */
+function menuPanelClass(className: string | undefined): string {
+  return cn(
+    "absolute z-10 w-80 max-w-[calc(100%-1rem)] overflow-y-auto overscroll-contain outline-none",
+    MODAL_PANEL_LOOK,
+    className,
+    "h-auto max-h-none rounded-md pb-0",
+  );
+}
+
+/**
+ * Whether the open sheet is drawn as a menu beside `anchor`, and its place. Decided in the layout phase
+ * of the open, before the first paint: a dialog, and the button in the document and in view. The panel
+ * is placed by writing its `top`, `left` and `max-height` straight to it, measured against the layer's
+ * own box (the probe's), and again on any scroll, a resize, or a change of the rows' height. It follows;
+ * it never closes on a scroll, because a pane's own output scrolls the page under it.
+ */
+function useAnchoredMenu({
+  open,
+  dialog,
+  anchor,
+  panel,
+  probe,
+}: {
+  open: boolean;
+  dialog: boolean;
+  anchor: React.RefObject<HTMLElement | null> | undefined;
+  panel: React.RefObject<HTMLDivElement | null>;
+  probe: React.RefObject<HTMLSpanElement | null>;
+}): boolean {
+  const [shown, setShown] = React.useState(false);
+  React.useLayoutEffect(() => {
+    const decide = () => setShown(open && dialog && isAnchorShown(anchor?.current ?? null, { width: window.innerWidth, height: window.innerHeight }));
+    decide();
+  }, [open, dialog, anchor]);
+  const menu = open && dialog && shown;
+  React.useLayoutEffect(() => {
+    const el = panel.current;
+    const body = el?.querySelector('[data-slot="sheet-body"]');
+    if (!menu || el === null || anchor === undefined) return;
+    const place = () => {
+      const trigger = anchor.current;
+      const layer = probe.current?.getBoundingClientRect();
+      if (trigger === null || !trigger.isConnected || layer === undefined) return;
+      const a = trigger.getBoundingClientRect();
+      // The panel's own height, whatever its cap: the rows plus its 1px edges.
+      const height = el.scrollHeight + (el.offsetHeight - el.clientHeight);
+      const at = placeMenu({
+        anchor: { left: a.left - layer.left, top: a.top - layer.top, width: a.width, height: a.height },
+        panel: { width: el.offsetWidth, height },
+        window: { width: layer.width || window.innerWidth, height: layer.height || window.innerHeight },
+      });
+      el.style.left = `${at.left}px`;
+      el.style.top = `${at.top}px`;
+      el.style.maxHeight = `${at.maxHeight}px`;
+      el.dataset.side = at.side;
+    };
+    place();
+    const resizes = hasResizeObserver() && body ? new ResizeObserver(place) : null;
+    if (body) resizes?.observe(body);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, { capture: true, passive: true });
+    return () => {
+      resizes?.disconnect();
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, { capture: true });
+    };
+  }, [menu, anchor, panel, probe]);
+  return menu;
+}
+
+/**
+ * The panel of a sheet drawn as a dialog: the modal's look and entrance (none under reduced motion), the
+ * body scrolling inside. The caller's `className` comes before the dialog's own corner and bottom padding,
+ * so a bottom sheet's square top (`rounded-t-none`), its safe-area clearance (`TALL_SHEET_CLEARANCE`) or
+ * its fixed height (`h-[85dvh]`, the key board editor and Pins) gives way: a dialog has four round
+ * corners, stands clear of the bottom edge and is as tall as its content. Its height cap is the
+ * inline `DIALOG_MAX_H`, above any caller's `max-h-*`.
+ */
+function dialogPanelClass(size: "column" | "viewer", className: string | undefined): string {
+  return cn(
+    "relative z-10 overflow-y-auto overscroll-contain outline-none",
+    MODAL_PANEL_LOOK,
+    MODAL_CENTER_ENTRANCE,
+    "motion-reduce:animate-none",
+    size === "viewer" ? "w-fit min-w-[min(40rem,100%)] max-w-[min(92vw,1200px)]" : "w-full max-w-screen-sm",
+    className,
+    "h-auto rounded-md pb-1",
   );
 }
