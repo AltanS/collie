@@ -535,6 +535,8 @@ export interface SendAnswer {
   readonly rows?: readonly string[];
   /** The sign a blind-road `menu_open` read (see {@link SendReceipt.menuSign}). */
   readonly menuSign?: MenuSign;
+  readonly draftText?: string;
+  readonly draftCut?: true;
 }
 
 /**

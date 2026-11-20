@@ -3,7 +3,8 @@
 // on that draft and on no other. The rig is `protocol.rig.ts`.
 
 import { describe, expect, test } from "bun:test";
-import { DIALOG, LIVE_ROW, OFFERED, PROBE, rig, useScratchDir } from "./protocol.rig.ts";
+import { DIALOG, LIVE_ROW, OFFERED, PROBE, TallOmpPane, omp, rig, useScratchDir, words } from "./protocol.rig.ts";
+import { DRAFT_TEXT_MAX } from "./protocol.ts";
 
 useScratchDir();
 
@@ -154,5 +155,53 @@ describe("Replace never empties the draft before its probe passed (Brief 5, item
     expect(answer.receipt?.keys.filter((key) => key === "probe")).toHaveLength(1);
     expect(pane.calls).toEqual([`type:${PROBE}`, "paste:a new thought"]);
     expect(pane.box).toBe("");
+  });
+});
+
+describe("the offer carries the draft's text from the read of its rows hash (Brief 6)", () => {
+  test("the first refusal and the offer made again each carry the box's text as that read showed it", async () => {
+    const { pane, send } = rig();
+    pane.box = "half a thought";
+    const offer = await send("hello there");
+    expect(offer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(offer.draftText).toBe("half a thought");
+    expect(offer.draftCut).toBeUndefined();
+    pane.box = "a different draft";
+    const again = await send("hello there", { mode: "replace", rowsHash: offer.rowsHash });
+    expect(again.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(again.draftText).toBe("a different draft");
+    // The receipt the bridge keeps holds the hash and the reason, never the draft.
+    expect(JSON.stringify(again.receipt)).not.toContain("a different draft");
+  });
+
+  test("a draft past the limit is cut from the end at a whole character, with the flag", async () => {
+    const { pane, send } = rig();
+    // A two-unit character on the boundary: the cut keeps whole code points.
+    pane.box = "😀".repeat(DRAFT_TEXT_MAX + 50);
+    const offer = await send("hello there");
+    expect(offer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(offer.draftCut).toBe(true);
+    expect([...offer.draftText!]).toHaveLength(DRAFT_TEXT_MAX);
+    // Whole characters only (the box's wrapped rows join with a space, as the protocol reads the box).
+    expect(offer.draftText!.replace(/[😀 ]/gu, "")).toBe("");
+    expect(offer.draftText!.startsWith("😀😀")).toBe(true);
+  });
+
+  test("a box that shows only the end of its draft carries neither field", async () => {
+    const pane = new TallOmpPane();
+    pane.box = words(3000);
+    const { send } = omp({ pane });
+    const answer = await send("hello there");
+    expect(answer.receipt?.reason).toBe("draft_present");
+    expect(answer.draftText).toBeUndefined();
+    expect(answer.draftCut).toBeUndefined();
+  });
+
+  test("Collie's own probe characters are not part of the draft it shows", async () => {
+    const { pane, send } = rig();
+    pane.box = `half a thought${PROBE}`;
+    const offer = await send("hello there");
+    expect(offer.receipt?.reason).toBe("draft_present");
+    expect(offer.draftText).toBe("half a thought");
   });
 });

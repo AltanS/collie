@@ -867,6 +867,15 @@ describe("a text reply to a member that sent no Surface reader version (an older
     }
   });
 
+  // The member's answer to such a tap comes back to the phone as the member sent it, the draft's text included (Brief 6).
+  test("a member's draft offer comes back with its draftText and draftCut, byte for byte", async () => {
+    const answer = `{"ok":false,"textDelivered":false,"send":{"offers":["append","replace","cancel"],"rowsHash":"0def34","draftText":"half a thought","draftCut":true}}`;
+    const { transport } = transportOf(() => ok(new Response(answer, { headers: { "content-type": "application/json" } })));
+    const [req, url] = post(REPLY, `{"text":"new words","submit":true,"id":"phone-req-0003"}`);
+    const res = await forward(req, url, { transport, surfaceVersion: 2 });
+    expect(await res.text()).toBe(answer);
+  });
+
   test("keys, raw text with submit false, other routes and a body that is not JSON go to the old member as before", async () => {
     const sent: [string, string][] = [
       ["/api/pane/w1:p1/keys?host=laptop", `{"keys":["1"]}`],

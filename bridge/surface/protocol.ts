@@ -3147,6 +3147,10 @@ interface EndNote {
   rows?: readonly string[];
   /** The sign a blind-road `menu_open` read (M102 spec 12): its kind and row, on the answer and the receipt. */
   menuSign?: MenuSign;
+  /** The draft the offer is over ({@link draftShown}); the answer only, never the receipt, a log or a trace. */
+  draftText?: string;
+  /** {@link draftText} holds only the first {@link DRAFT_TEXT_MAX} characters of the draft. */
+  draftCut?: true;
 }
 
 /** The most requests {@link SendProtocol} keeps on the screen road after a dropped data try. */
@@ -3202,6 +3206,8 @@ function answerWith(draft: AnswerDraft, note: EndNote): SendAnswer {
   if (note.cause !== undefined) draft.cause = note.cause;
   if (note.rows !== undefined) draft.rows = note.rows;
   if (note.menuSign !== undefined) draft.menuSign = note.menuSign;
+  if (note.draftText !== undefined) draft.draftText = note.draftText;
+  if (note.draftCut === true) draft.draftCut = true;
   return draft;
 }
 
@@ -7340,8 +7346,38 @@ function draftRefusal(state: RunState, s0: Snap): Ended {
   // A Replace whose text is a command answers a command's offer, which has no Add to it.
   const command = draftCommand(state.request, state.match) || (state.request.mode === "replace" && state.command);
   const offers = offersFor("refused", "draft_present", framed, command);
-  // The rows hash binds Add to it and Replace to this draft (ADR 0166, offerDraftSeen).
-  return new Ended("refused", "draft_present", { surface: s0.surface, framed, rowsHash: s0.rowsHash, offers, detail: "The box already holds a draft." });
+  // The rows hash binds Add to it and Replace to this draft (ADR 0166, offerDraftSeen), and the draft's
+  // text from the same read lets the phone show what Replace would delete.
+  const note: EndNote = { surface: s0.surface, framed, rowsHash: s0.rowsHash, offers, detail: "The box already holds a draft." };
+  const shown = draftShown(s0, probeCharOf(state.match));
+  if (shown !== null) {
+    note.draftText = shown.text;
+    if (shown.cut) note.draftCut = true;
+  }
+  return new Ended("refused", "draft_present", note);
+}
+
+/** The most characters (code points) of a draft an offer carries ({@link draftShown}). */
+export const DRAFT_TEXT_MAX = 2000;
+
+/**
+ * The draft as the offer shows it (ADR 0166): the box's own text in this read, as Add to it would go after
+ * it and Replace would delete it. The frame's read already leaves out the prompt mark, the border, a
+ * placeholder and the profile's ghost text, and joins the box's rows into one line the way the protocol
+ * compares them; Collie's own probe characters come out here. Its first {@link DRAFT_TEXT_MAX}
+ * characters at most, so the start of the draft shows. Null where the read does not hold the whole text
+ * (a box at its scroll height shows only a slice), on a sign-in field (its content is never sent), and on
+ * an empty box. The route masks it like every other text it sends (`maskedAnswer`).
+ */
+function draftShown(snap: Snap, probe: string): { readonly text: string; readonly cut: boolean } | null {
+  const { frame } = snap;
+  if (frame === null || frame.placeholder || frame.scrolled === true) return null;
+  if (frame.secret !== undefined || snap.surface.field === "secret") return null;
+  const text = boxText(frame).split(probe).join("").trim();
+  if (text.length === 0) return null;
+  const points = [...text];
+  if (points.length <= DRAFT_TEXT_MAX) return { text, cut: false };
+  return { text: points.slice(0, DRAFT_TEXT_MAX).join(""), cut: true };
 }
 
 /**

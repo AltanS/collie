@@ -211,6 +211,18 @@ describe("Claude Code's sign-in field hides the code: the send is checked by its
     expect(requestFiles()).not.toContain(SHORT);
   });
 
+  test("a field that already holds text never sends it back: no answer carries a draft's text (ADR 0166)", async () => {
+    const field = new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, LOGIN_OK);
+    field.box = "FAKECODE-HALF";
+    const { send } = rig(field, "claude", "2.1.325");
+    for (const mode of ["send", "append", "replace"] as const) {
+      const answer = await send("an ordinary message", { mode });
+      expect(answer.receipt, mode).toMatchObject({ outcome: "refused", reason: "draft_present" });
+      expect(answer.draftText, mode).toBeUndefined();
+      expect(JSON.stringify(answer), mode).not.toContain("FAKECODE-HALF");
+    }
+  });
+
   test("a code meant for the field is never held: a held text waits on disk in plain form", async () => {
     // The field closed under the send: the method list is up, a modal, which holds an ordinary send.
     const field = new SignInPane({ fixture: "claude--v2325-login-methods--w61.txt" }, /^ {2}Esc to cancel$/u, () => "  Esc to cancel", "");
