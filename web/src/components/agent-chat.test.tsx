@@ -42,6 +42,8 @@ vi.mock("@/lib/chat-gate", async (importOriginal) => ({
 
 import { server } from "@/test/setup";
 import { __resetBeltIntents, queueBeltIntent, takeBeltIntent } from "@/lib/belt-intent";
+import { __resetActionsPalette, isActionsPaletteOpen } from "@/lib/actions-palette/state";
+import { __resetActionsPaletteStore, setActionsPaletteOn } from "@/lib/actions-palette-store";
 import { paneScopeKey } from "@/lib/scope";
 import { __forgetTabPaneMemory, rememberTabPane } from "@/lib/tab-pane-memory";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
@@ -5303,16 +5305,66 @@ describe("AgentChat: Stop on a pane with a screen", () => {
   });
 });
 
-describe("AgentChat — the focused column of a large screen's strip (ADR 0120)", () => {
-  afterEach(() => __resetBeltIntents());
+describe("AgentChat — the Actions palette switched off in Settings", () => {
+  afterEach(() => __resetActionsPaletteStore());
 
-  it("hides the belt's Switch pill, which the sidebar replaces, and keeps it below 600 px", () => {
-    const phone = renderChat();
-    expect(within(phone.container).queryByRole("button", { name: "Actions" })).not.toBeNull();
-    cleanup();
+  it("pins the Switch pane button again on a phone, and a press opens the pane list, not the palette", async () => {
+    setActionsPaletteOn(false);
+    const user = userEvent.setup();
+    const { container } = renderChat();
+    expect(within(container).queryByRole("button", { name: "Actions" })).toBeNull();
+    const belt = container.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
+    const button = within(belt).getByRole("button", { name: "Switch pane" });
+    expect(belt.querySelector(".overflow-x-auto")!.contains(button)).toBe(false);
+    expect(belt.className).toContain("touch-pan-x");
+    await user.click(button);
+    expect(isActionsPaletteOpen()).toBe(false);
+    expect(await screen.findByRole("dialog", { name: "Switch pane" })).toBeInTheDocument();
+  });
+
+  it("draws no pinned button in a large screen's strip, where the sidebar is the pane list", () => {
+    setActionsPaletteOn(false);
     const { container } = renderChat({ inStrip: true });
     expect(within(container).queryByRole("button", { name: "Actions" })).toBeNull();
-    // The belt itself stays, with the reply box under it.
+    expect(within(container).queryByRole("button", { name: "Switch pane" })).toBeNull();
+    expect(within(container).getByRole("button", { name: "Keys" })).toBeInTheDocument();
+  });
+
+  it("brings the Actions button back at once when it is turned on again", () => {
+    setActionsPaletteOn(false);
+    const { container } = renderChat();
+    expect(within(container).queryByRole("button", { name: "Actions" })).toBeNull();
+    act(() => setActionsPaletteOn(true));
+    expect(within(container).getByRole("button", { name: "Actions" })).toBeInTheDocument();
+    expect(within(container).queryByRole("button", { name: "Switch pane" })).toBeNull();
+  });
+});
+
+describe("AgentChat — the focused column of a large screen's strip (ADR 0120)", () => {
+  afterEach(() => {
+    __resetBeltIntents();
+    __resetActionsPalette();
+  });
+
+  it("keeps the belt's pinned Actions button, as on a phone, but not the phone's drag up to the pane list", async () => {
+    const user = userEvent.setup();
+    const phone = renderChat();
+    const phoneButton = within(phone.container).getByRole("button", { name: "Actions" });
+    expect(phone.container.querySelector('[data-slot="composer-actions"]')!.className).toContain("touch-pan-x");
+    cleanup();
+    const { container } = renderChat({ inStrip: true });
+    const belt = container.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
+    const button = within(belt).getByRole("button", { name: "Actions" });
+    // The same button: the same label, outside the scrolling track, pinned in the belt.
+    expect(button.getAttribute("aria-label")).toBe(phoneButton.getAttribute("aria-label"));
+    expect(belt.querySelector(".overflow-x-auto")!.contains(button)).toBe(false);
+    // The drag up is the phone's gesture: the wide belt is not a drag surface.
+    expect(belt.className).not.toContain("touch-pan-x");
+    // A press opens the Actions palette, as the shortcut does.
+    expect(isActionsPaletteOpen()).toBe(false);
+    await user.click(button);
+    expect(isActionsPaletteOpen()).toBe(true);
+    // The belt stays whole, with the reply box under it.
     expect(within(container).getByRole("button", { name: "Keys" })).toBeInTheDocument();
     expect(within(container).getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
     // The column is the bound, so the phone's width ladder stands down.

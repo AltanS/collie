@@ -22,6 +22,13 @@ export interface BuildInput<Id extends string = ActionId> {
   /** The action table. Production passes `ACTIONS`. */
   readonly defaults: readonly ActionDef<Id>[];
   readonly user?: UserShortcuts;
+  /**
+   * Actions switched off by a setting. A disabled action with a `standIn` hands its keys, the default
+   * or the file's, to the stand-in: they resolve to the stand-in's id, and `bindings` lists them under
+   * the stand-in, so the bar, the list and the key handler all read the same answer. One without a
+   * `standIn` simply holds no key.
+   */
+  readonly disabled?: ReadonlySet<Id>;
   /** `mod` means Cmd and the key caps read Cmd and Option. Default false. */
   readonly mac?: boolean;
 }
@@ -59,6 +66,8 @@ type Registry<Id extends string> = Map<string, Slot<Id>>;
 
 interface Context<Id extends string> {
   readonly mac: boolean;
+  /** Who answers an action's keys while it is disabled, by the disabled action's id. */
+  readonly standIns: ReadonlyMap<Id, Id | undefined>;
   readonly diagnostics: Diagnostic[];
   readonly direct: Registry<Id>;
   readonly prefixed: Registry<Id>;
@@ -140,8 +149,8 @@ function prefixProblem(input: { raw: string; mac: boolean }): Problem | null {
   return directProblem({ chord: binding.chord, raw });
 }
 
-function hitFor<Id extends string>(def: ActionDef<Id>, binding: Binding): Hit<Id> {
-  return { action: def.id, index: binding.index, opensMode: def.opensMode, leavesMode: def.leavesMode };
+function hitFor<Id extends string>(def: ActionDef<Id>, binding: Binding, standIn: Id | undefined): Hit<Id> {
+  return { action: standIn ?? def.id, index: binding.index, opensMode: def.opensMode, leavesMode: def.leavesMode };
 }
 
 /** Put a binding in a namespace, or say why it did not fit. */
@@ -153,7 +162,7 @@ function claim<Id extends string>(
   const id = chordId(binding.chord);
   const held = registry.get(id);
   if (held === undefined) {
-    registry.set(id, { field: def.id, source, hit: hitFor(def, binding) });
+    registry.set(id, { field: def.id, source, hit: hitFor(def, binding, ctx.standIns.get(def.id)) });
     placed.push(binding);
     return;
   }
@@ -210,6 +219,8 @@ function registerAction<Id extends string>(
 ): Binding[] {
   const { def, texts, source } = input;
   const placed: Binding[] = [];
+  // Switched off with nobody to answer for it: it holds no key.
+  if (ctx.standIns.has(def.id) && ctx.standIns.get(def.id) === undefined) return placed;
   for (const text of texts) {
     const raw = text.trim();
     if (raw === "") continue;
@@ -249,6 +260,20 @@ function reportUnknownActions(input: { user: UserShortcuts; known: ReadonlySet<s
   }
 }
 
+/** What an action lists as its keys: none while it is disabled; its own plus those it stands in for otherwise. */
+function bindingsShown<Id extends string>(input: {
+  def: ActionDef<Id>;
+  bindings: ReadonlyMap<Id, Binding[]>;
+  ctx: Context<Id>;
+  defaults: readonly ActionDef<Id>[];
+}): readonly Binding[] {
+  const { def, bindings, ctx, defaults } = input;
+  if (ctx.standIns.has(def.id)) return [];
+  const own = bindings.get(def.id) ?? [];
+  const lent = defaults.filter((other) => ctx.standIns.get(other.id) === def.id).flatMap((other) => bindings.get(other.id) ?? []);
+  return [...own, ...lent];
+}
+
 export function buildKeymap<Id extends string = ActionId>(input: BuildInput<Id>): Keymap<Id> {
   const mac = input.mac ?? false;
   const user = input.user ?? {};
@@ -259,8 +284,10 @@ export function buildKeymap<Id extends string = ActionId>(input: BuildInput<Id>)
   const prefixIds = prefix.chords.map(chordId);
   const modeEntries: { mode: ModeDef; registry: Registry<Id> }[] = [];
   for (const mode of MODES) modeEntries.push({ mode, registry: new Map() });
+  const disabled = input.disabled ?? new Set<Id>();
   const ctx: Context<Id> = {
     mac,
+    standIns: new Map(input.defaults.filter((def) => disabled.has(def.id)).map((def): [Id, Id | undefined] => [def.id, def.standIn])),
     diagnostics,
     direct: new Map(),
     prefixed: new Map(),
@@ -296,7 +323,8 @@ export function buildKeymap<Id extends string = ActionId>(input: BuildInput<Id>)
         { keys: hitsOf(registry), exits: new Set(exitIds(mode, mac)) },
       ]),
     ),
-    bindings: new Map(input.defaults.map((def): [Id, readonly Binding[]] => [def.id, bindings.get(def.id) ?? []])),
+    bindings: new Map(input.defaults.map((def): [Id, readonly Binding[]] => [def.id, bindingsShown({ def, bindings, ctx, defaults: input.defaults })])),
+    disabled,
     diagnostics,
     mac,
   };

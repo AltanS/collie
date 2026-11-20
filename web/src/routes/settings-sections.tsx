@@ -32,6 +32,7 @@ import { ProjectPicturesControl } from "@/components/project-pictures-control";
 import { PaneNavControl } from "@/components/pane-nav-control";
 import { PaneOrderControl } from "@/components/pane-order-control";
 import { WideLayoutControl } from "@/components/wide-layout-control";
+import { ActionsPaletteControl } from "@/components/actions-palette-control";
 import { PairedDevices } from "@/components/paired-devices";
 import { PushControl, usePushAvailability } from "@/components/push-control";
 import { ReportControl } from "@/components/report-control";
@@ -146,6 +147,10 @@ export function SettingsAppearanceRoute() {
           way out for a screen where the layout misbehaves, so it sits with the other arrangement
           choices. Stored per device. */}
       <WideLayoutControl />
+      {/* Whether the Belt's button and the pane list's key open the Actions palette (ADR 0165) or the pane
+          list. Directly under Large-screen layout, because the palette's header button and the strip's
+          sidebar are the two surfaces it moves between. Stored per device. */}
+      <ActionsPaletteControl />
       {/* Whether Enter from a physical keyboard sends the reply (ADR 0157). Beside Large-screen layout, because
           both are about a keyboard and a screen big enough to have one. Off until the person turns it on;
           stored per device. */}

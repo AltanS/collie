@@ -58,3 +58,21 @@ command in it is an action of the shortcut table.**
   shared modal of [0167](./0167-a-modal-for-a-blocking-decision.md), at its top placement.
 - Revisit when a command needs an argument the screen cannot supply (a target pane, a folder): the
   palette has no second step today.
+
+## Addendum — 2026-11-20: the palette has a setting, and the pane list stays
+
+Altan, after trying the palette: "use the regular session switcher instead". Settings has one switch,
+Actions palette, stored on the device like the Large-screen layout choice, on by default. With it off
+everything returns to how it was before the palette: the Belt's pinned button is the Switch pane button
+again and opens the pane list, no header carries an Actions button, and the palette never opens, from a
+button or from a key. The large screen keeps its sidebar as the pane list and draws no pinned button.
+
+The key follows through the action table, not through a check in a component. An action may name a
+`standIn`. `open_actions` names `switch_pane`. While the palette is off, the keymap hands every key bound
+to `open_actions`, the default `prefix+g` or a person's own, to the stand-in. The key then runs the
+stand-in's handler, and the mode bar and the shortcut list read the same keymap, so they name that key
+Switch pane and never Open Actions. A key bound to `switch_pane` itself works in both states. The change
+takes effect at once, without a reload.
+
+The same pinned button also stays in the large screen's Belt while the palette is on, without the drag
+up to the pane list, which is a phone gesture. The space header's Actions button stays too.

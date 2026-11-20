@@ -4214,6 +4214,8 @@ export const en = {
   "shortcuts.bar.prefix": "Prefix",
   "shortcuts.bar.actions": "Open Actions",
   // --- the Actions palette (ADR 0165): one searchable list of the commands of this screen and the panes to go to ---
+  "settings.actionsPalette.title": "Actions palette",
+  "settings.actionsPalette.hint": "One searchable list of commands and panes. Off: the button and the shortcut open the pane list.",
   "actions.title": "Actions",
   "actions.open.aria": "Actions",
   "actions.open.ariaNeedsYou": "Actions, another pane needs you",
@@ -4347,6 +4349,8 @@ export const PENDING_TRANSLATION = [
   "shortcuts.action.conversation_history",
   "shortcuts.action.walky_messages",
   "shortcuts.bar.actions",
+  "settings.actionsPalette.title",
+  "settings.actionsPalette.hint",
   "actions.title",
   "actions.open.aria",
   "actions.open.ariaNeedsYou",

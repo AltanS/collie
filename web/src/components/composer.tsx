@@ -400,9 +400,10 @@ interface ComposerProps {
    * to.
    */
   pullHandle?: {
-    ref: (node: HTMLElement | null) => void;
+    ref?: (node: HTMLElement | null) => void;
     onClick: () => void;
     label: string;
+    icon?: "pane-switcher";
     /** Another pane needs you: the switcher mark wears a red dot. */
     alert?: boolean;
   };

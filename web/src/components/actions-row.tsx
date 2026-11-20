@@ -466,12 +466,16 @@ export interface ActionsRowProps {
    */
   handle?: {
     /** {@link import("@/hooks/use-sheet-pull").useSheetPull}'s ref — the finger-tracked drag. It
-     *  lands on the BELT, not on the pill: the whole band is the drag surface. */
-    ref: (node: HTMLElement | null) => void;
-    /** The tap, on the SWITCH PILL. Opens the same switcher sheet the drag opens. */
+     *  lands on the BELT, not on the pill: the whole band is the drag surface. Absent on a large
+     *  screen's strip, where the button is drawn and the drag is not (the sidebar is the switcher,
+     *  and `touch-pan-x` with no listener behind it would forbid a vertical gesture for nothing). */
+    ref?: (node: HTMLElement | null) => void;
+    /** The tap, on the pinned button: the Actions palette. */
     onClick: () => void;
-    /** ALREADY TRANSLATED. The button's accessible name — "Switch pane". */
+    /** ALREADY TRANSLATED. The button's accessible name: "Actions", or "Switch pane" with the palette off. */
     label: string;
+    /** The mark. Absent is the Actions mark; the pane list's own mark when the palette is off (Settings). */
+    icon?: "pane-switcher";
     /** Another pane needs you: a red dot on the mark's corner. The label says so in words. */
     alert?: boolean;
   };
@@ -712,7 +716,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
       }
       className={cn(
         "relative -mx-3 mb-1 flex items-center border-b border-border bg-foreground/6",
-        handle && "touch-pan-x",
+        handle?.ref && "touch-pan-x",
       )}
     >
       {/* OverflowEdges measures this scroller and fades only the end that still hides something.
@@ -758,7 +762,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
           SCALED since 2026-09-23: `py-1` is `py-(--belt-pad)` now, 4px at the default scale and 5px
           and 6px at the larger two, and the pills' `::before` reaches exactly that far again
           (`--belt-reach`, STRIP_ROW_PILL), so every pill answers the whole band. */}
-      <OverflowEdges edges={pinned ? (left ? "right" : "left") : "both"} cue="none">
+      <OverflowEdges edges={pinned ? (left ? "right" : "left") : "both"} cue="none" wheel>
         {(scrollerRef) => (
           <div
             ref={scrollerRef}
@@ -1145,7 +1149,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
                 className={cn(`${STRIP_ROW_PILL} ${PINNED_PILL}`, pinnedReach(!agents && !jobs && !pins && !clear && !changes && !zoom, true, hand))}
               >
                 {/* The Actions mark since ADR 0165: this pill opens the Actions palette, not the pane list. */}
-                <Icon name="open-actions" className={cn(BELT_ICON, "text-primary")} />
+                <Icon name={handle.icon ?? "open-actions"} className={cn(BELT_ICON, "text-primary")} />
                 {/* The needs-you mark (the triangle), on the mark's top-right corner, absolutely placed
                     so it never moves the belt. The chrome-coloured disc and ring cut it out of the
                     glyph it overlaps. 10px since 2026-10-14: at 12px the triangle read as heavy as the

@@ -115,9 +115,10 @@ export interface DurableComposerProps {
   composing?: boolean;
   display: { open: boolean; onToggle: () => void };
   pullHandle?: {
-    ref: (node: HTMLElement | null) => void;
+    ref?: (node: HTMLElement | null) => void;
     onClick: () => void;
     label: string;
+    icon?: "pane-switcher";
     alert?: boolean;
   };
   changesPill?: { onClick: () => void; label: string };

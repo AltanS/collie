@@ -8,8 +8,8 @@ import { keepPhoneLayout } from "./fixtures/layout";
 import { actionsButton } from "./fixtures/actions";
 
 // THE LARGE-SCREEN LAYOUT APPEARS ON THE TABLET (ADR 0120). From 600px wide and 480px tall the pane
-// screen is a sidebar beside a strip, and the belt's Switch pill is not drawn, because the sidebar is
-// the switcher. Large-screen layout set to Off brings the phone pane screen back at the same size.
+// screen is a sidebar beside a strip. The belt keeps its pinned Actions button there, as on a phone,
+// but not the phone's drag up to the pane list, because the sidebar is the switcher. Large-screen layout set to Off brings the phone pane screen back at the same size.
 // `app-tablet` (820x1180) is the one project past that line; the phone pane specs run with Off
 // (`fixtures/layout.ts`), so this is where Auto is held to drawing the large-screen layout.
 
@@ -20,14 +20,130 @@ test.beforeEach(async ({ page }, testInfo) => {
   await installApiStub(page);
 });
 
-test("on Auto the pane screen is a sidebar beside a strip, with no Actions pill on the belt", async ({ page }) => {
+test("on Auto the pane screen is a sidebar beside a strip, and the belt pins the Actions button", async ({ page }) => {
   await page.goto("/pane/w1:p1");
   await expect(page.locator('[data-slot="wide-layout"]')).toBeVisible();
   await expect(page.getByRole("complementary", { name: en["wide.sidebar.label"] })).toBeVisible();
   await expect(page.locator('[data-slot="composer-actions"]')).toBeVisible();
-  await expect(page.locator('[data-slot="composer-actions"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toHaveCount(0);
-  // The large screen's door to Actions is the space header's button (ADR 0165).
+  await expect(page.locator('[data-slot="composer-actions"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toHaveCount(1);
+  // The space header keeps its own button (ADR 0165): two doors to the same palette.
   await expect(page.locator('[data-slot="space-header"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toBeVisible();
+});
+
+// THE BELT'S ACTIONS BUTTON ON A DESKTOP. The pinned button was left out of the focused column of a large
+// screen's strip ("it has a shortcut, but it should still be there"). It is the phone's button, whole inside
+// the belt, and a press opens the palette like the shortcut does.
+test("on a desktop window the focused pane's belt pins the Actions button, which opens the palette", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/pane/w1:p1");
+  await expect(page.locator('[data-slot="wide-layout"]')).toBeVisible();
+  const belt = page.locator('[data-slot="composer-actions"]');
+  await expect(belt).toBeVisible();
+  const button = belt.getByRole("button", { name: en["actions.open.aria"], exact: true });
+  await expect(button).toHaveCount(1);
+  await expect(button).toBeVisible();
+  const box = (await button.boundingBox())!;
+  const beltBox = (await belt.boundingBox())!;
+  expect(box.width).toBeGreaterThanOrEqual(32);
+  expect(box.height).toBeGreaterThanOrEqual(32);
+  expect(box.x).toBeGreaterThanOrEqual(beltBox.x);
+  expect(box.y).toBeGreaterThanOrEqual(beltBox.y);
+  expect(box.x + box.width).toBeLessThanOrEqual(beltBox.x + beltBox.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(beltBox.y + beltBox.height);
+  const palette = page.getByRole("dialog", { name: en["actions.title"] });
+  await expect(palette).toHaveCount(0);
+  await button.click();
+  await expect(palette).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(palette).toHaveCount(0);
+});
+
+// THE BELT UNDER A MOUSE WHEEL. The Belt is a sideways scroller with no scrollbar, and a wheel turns vertically,
+// so on a desktop nothing moved it. Over its scrolling part a vertical turn now scrolls the pills sideways, and a
+// sideways one does too, while there is room; the transcript and the strip of columns stay where they are. At an
+// end the event goes on as it did.
+test("a mouse wheel over the Belt scrolls its pills sideways, and not the transcript or the strip", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/pane/w1:p1");
+  const belt = page.locator('[data-slot="composer-actions"]');
+  await expect(belt).toBeVisible();
+  const scroller = belt.locator(".overflow-x-auto").first();
+  // Make the Belt overflow by 800px, as a narrow column with many pills would.
+  await scroller.evaluate((el) => {
+    const room = document.createElement("div");
+    room.style.cssText = "width:2000px;height:8px;flex:none";
+    el.append(room);
+  });
+  const read = () =>
+    page.evaluate(() => {
+      const track = document.querySelector('[data-slot="composer-actions"] .overflow-x-auto')!;
+      const strip = document.querySelector('[data-slot="wide-layout"] [data-slot="strip"]')!;
+      const column = document.querySelector('[data-slot="wide-layout"] section[data-col-key]')!;
+      let transcript = 0;
+      for (const el of column.querySelectorAll("*")) if (!track.contains(el)) transcript += el.scrollTop;
+      return { belt: track.scrollLeft, strip: strip.scrollLeft, transcript, range: track.scrollWidth - track.clientWidth };
+    });
+  const before = await read();
+  expect(before.range).toBeGreaterThan(300);
+  const box = (await scroller.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 3, box.y + box.height / 2);
+
+  // The window is 2x pixel density, so a 300 turn moves the Belt about 150 CSS pixels.
+  await page.mouse.wheel(0, 300);
+  await expect.poll(async () => (await read()).belt).toBeGreaterThan(before.belt + 100);
+  const down = await read();
+  expect(down.strip).toBe(before.strip);
+  expect(down.transcript).toBe(before.transcript);
+
+  await page.mouse.wheel(300, 0);
+  await expect.poll(async () => (await read()).belt).toBeGreaterThan(down.belt + 100);
+  const right = await read();
+  expect(right.strip).toBe(before.strip);
+
+  await page.mouse.wheel(0, -100000);
+  await expect.poll(async () => (await read()).belt).toBe(0);
+  // At the start a turn back finds nothing to move: the Belt does not take it.
+  const stayed = await page.evaluate(async () => {
+    const track = document.querySelector('[data-slot="composer-actions"] .overflow-x-auto')!;
+    const events: boolean[] = [];
+    document.addEventListener("wheel", (e) => events.push(e.defaultPrevented));
+    track.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, bubbles: true, cancelable: true }));
+    return { events, left: track.scrollLeft };
+  });
+  expect(stayed).toEqual({ events: [false], left: 0 });
+  // The pinned block does not scroll: a wheel over it leaves the pills where they are.
+  await page.mouse.wheel(0, 100000);
+  await expect.poll(async () => (await read()).belt).toBeGreaterThan(before.range - 2);
+  const end = await read();
+  const pinned = belt.getByRole("button", { name: en["actions.open.aria"], exact: true });
+  const pinnedBox = (await pinned.boundingBox())!;
+  await page.mouse.move(pinnedBox.x + pinnedBox.width / 2, pinnedBox.y + pinnedBox.height / 2);
+  await page.mouse.wheel(0, -200);
+  await page.waitForTimeout(150);
+  expect((await read()).belt).toBe(end.belt);
+});
+
+// THE ACTIONS PALETTE SWITCHED OFF (Settings, per device). The large screen has its sidebar for the pane list:
+// no pinned button on the Belt, no button in the space header, and the key that opened the palette runs
+// Switch pane, which opens the sidebar.
+test("with the Actions palette off, a desktop window has no Actions button, and prefix+g opens the sidebar", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("collie:actions-palette:v1", "off");
+    localStorage.setItem("collie:wide-sidebar:v1", "0");
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/pane/w1:p1");
+  await expect(page.locator('[data-slot="wide-layout"]')).toBeVisible();
+  await expect(page.locator('[data-slot="composer-actions"]')).toBeVisible();
+  await expect(page.locator('[data-slot="composer-actions"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-slot="composer-actions"]').getByRole("button", { name: en["chat.switcher.aria"], exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-slot="space-header"]').getByRole("button", { name: en["actions.open.aria"], exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-slot="rail"]')).toBeVisible();
+  await expect(page.locator('[data-slot="wide-sidebar"]')).toHaveCount(0);
+  await page.keyboard.press("Control+b");
+  await page.keyboard.press("g");
+  await expect(page.locator('[data-slot="wide-sidebar"]')).toBeVisible();
+  await expect(page.getByRole("dialog", { name: en["actions.title"] })).toHaveCount(0);
 });
 
 test("on Off the same window keeps the phone pane screen", async ({ page }) => {
