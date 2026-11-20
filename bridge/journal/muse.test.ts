@@ -1281,3 +1281,17 @@ describe("museSessionNameReader", () => {
     expect(shown.endsWith("…")).toBe(true);
   });
 });
+
+// A picture's path as Muse writes it back (`[Image #N]`, N in attach order): the live window asks the adapter
+// whether a queued place or a prompt is the send Collie made (journal/receipt-queue.ts).
+describe("museJournal — the spelling of a send with a picture", () => {
+  const spells = museJournal(tmpdir()).spellsSend;
+  test("a chip in place of the path is the same send, a chip too many or other words are not", () => {
+    expect(spells?.("look /tmp/a.png", "look [Image #1]")).toBe(true);
+    expect(spells?.("/tmp/a.png", "[Image #1] [Image #2]")).toBe(false);
+    expect(spells?.("look /tmp/a.png", "see [Image #1]")).toBe(false);
+  });
+  test("a text with no chip is matched by its words alone, never here", () => {
+    expect(spells?.("open /tmp/x", '"open /tmp/x"')).toBe(false);
+  });
+});

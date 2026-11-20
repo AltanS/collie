@@ -54,6 +54,7 @@ import { choicesBeforeFirstTurn, claudeResets, effortChosenAfter, lastTwoTurns, 
 // from there for the same reason. The rule it enforces is not pi's, though: a journal is an AGENT's
 // output, so an `http://` value in a block never becomes a fetch the phone makes.
 import { resolveImage } from "./pi.ts";
+import { liftedSpelling } from "../../web/src/lib/harness/claude/paste.ts";
 import {
   containedRealpath,
   exists,
@@ -1516,6 +1517,8 @@ export function claudeJournal(roots: RootSource): JournalAdapter {
     sendQueuedNow: ["ctrl+Enter"],
     // The `queue-operation` rows are the queue (createQueueTracker): the cards come from them (ADR 0122).
     recordsQueue: true,
+    // A picture's path is written `[Image #N]` in the queue row and the prompt (the paste grammar's own rule).
+    spellsSend: liftedSpelling,
   };
 }
 

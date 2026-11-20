@@ -76,6 +76,7 @@ import type {
   TranscriptPart,
   TranscriptSource,
 } from "./types.ts";
+import { museAttachCarriesSend } from "../../web/src/lib/harness/muse/attach.ts";
 
 /** Muse names sessions with the same canonical uuid shape Claude and Codex do. */
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1186,5 +1187,8 @@ export function museJournal(roots: string | readonly string[]): JournalAdapter {
     sharedFolderBlind: true,
     // The `run/inbox_item_queued` and `inbox_item_drained` rows are the queue: the cards come from them (ADR 0122).
     recordsQueue: true,
+    // Muse writes an attached picture as `[Image #N]`, N in attach order, in the prompt (see the user turn
+    // above); its attach grammar maps the chips back to the sent paths. Only a text with a chip is asked.
+    spellsSend: (sent, written) => written.includes("[Image #") && museAttachCarriesSend(sent, written),
   };
 }

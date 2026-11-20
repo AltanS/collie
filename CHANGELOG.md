@@ -62,6 +62,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The Settings back arrow returns to the page you opened Settings from.** Before, the arrow took you to the dashboard from a session, a Space, Crew, the Hill, New or Conversations. Now it steps back to that page, like the phone's back swipe always did. Opened with nothing behind it, Settings still goes to the dashboard.
 
 - **A push shows its project picture again after the app's storage was partly cleared.** The phone keeps two copies of each picture: one for the screen and one for notifications. When the browser or a stuck update deleted only the second, the dashboard still showed the picture but every push came without it, and nothing put it back. Now the app checks and repairs the notification copy each time it opens. The picture also shows on a push from the lead machine's own sessions in a crew, which before showed it only for the other machines.
+- **A picture sent while the agent works shows once in Chat.** Before, a screenshot sent during a Claude Code turn showed twice: as your own line with a clock, and as the Waiting to send card, which said only `[Image #24]`. Now the card stands alone and shows what you sent: the picture's path and the words beside it.
 
 ### Docs
 
