@@ -20,6 +20,7 @@ import {
   newPath,
   pairLandingPath,
   panePath,
+  pathOnly,
   parentChain,
   readFrom,
   readNewAddKind,
@@ -358,7 +359,16 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/settings/voice/host", "/settings/voice", false],
     ["/settings/voice/host", "/settings/voice/model", false],
     ["/", "/settings", true],
-    ["/pane/w1%3Ap1", "/settings", false],
+    // Settings goes back to whichever screen opened it (ADR 0163).
+    ["/pane/w1%3Ap1", "/settings", true],
+    ["/space/w1?h=badger", "/settings", true],
+    ["/crew", "/settings", true],
+    ["/hill", "/settings", true],
+    ["/new", "/settings", true],
+    ["/conversations", "/settings", true],
+    ["/pane/w1%3Ap1/history", "/settings", false],
+    ["/settings/system", "/settings", false],
+    ["/machines", "/settings", false],
     ["/settings", "/settings/updates", true],
     ["/", "/settings/updates", true],
     ["/", "/crew", true],
@@ -388,6 +398,45 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
   });
 });
 
+// ADR 0163: Settings' arrow returns to the page Settings was opened from.
+describe("Settings' back arrow", () => {
+  it.each([
+    ["the Dashboard", "/?h=badger"],
+    ["a space", "/space/w1?h=badger"],
+    ["a pane", "/pane/w1%3Ap1?h=badger"],
+    ["Crew", "/crew?h=badger"],
+    ["the Hill", "/hill?h=badger"],
+    ["the New page", "/new?pane=w1%3Ap1"],
+    ["Conversations", "/conversations?pane=w1%3Ap1"],
+  ])("steps back onto %s, where it was opened", (_name, from) => {
+    expect(resolveUp("/settings", from, "/?h=badger")).toEqual({ kind: "back" });
+    expect(upTarget("/settings", from, "/?h=badger")).toBe(pathOnly(from));
+  });
+
+  it("goes to the Dashboard on a cold open, with no entry behind", () => {
+    expect(resolveUp("/settings", undefined, "/?h=badger")).toEqual({ kind: "replace", to: "/?h=badger" });
+  });
+
+  it("goes to the Dashboard when the router sits on its first entry", () => {
+    expect(resolveUp("/settings", "/pane/w1%3Ap1", "/", false)).toEqual({ kind: "replace", to: "/" });
+  });
+
+  it("goes to the Dashboard, replacing, when the entry behind is not an opener", () => {
+    expect(resolveUp("/settings", "/pane/w1%3Ap1/history", "/")).toEqual({ kind: "replace", to: "/" });
+  });
+
+  it("keeps the opener across a section round trip", () => {
+    // Pane, Settings, a section: the section's arrow steps back onto Settings, whose own entry still
+    // holds the pane as its `from`, so Settings' arrow steps back onto the pane.
+    expect(resolveUp("/settings/system", "/settings", "/settings")).toEqual({ kind: "back" });
+    expect(resolveUp("/settings", "/pane/w1%3Ap1", "/")).toEqual({ kind: "back" });
+    // A section reached with no Settings entry behind it (the update ribbon on a pane) is replaced by
+    // Settings, and `useNav` keeps the pane as its `from` because the pane is now a parent of Settings.
+    expect(resolveUp("/settings/updates", "/pane/w1%3Ap1", "/settings")).toEqual({ kind: "replace", to: "/settings" });
+    expect(isAncestor("/pane/w1%3Ap1", "/settings")).toBe(true);
+  });
+});
+
 describe("resolveUp: the back arrow", () => {
   it("steps back when the entry behind is a parent", () => {
     expect(resolveUp("/pane/p1", "/space/w1", "/")).toEqual({ kind: "back" });
@@ -395,8 +444,8 @@ describe("resolveUp: the back arrow", () => {
   });
 
   it("replaces onto the structural parent when the entry behind is not one", () => {
-    expect(resolveUp("/settings", "/pane/p1", "/")).toEqual({ kind: "replace", to: "/" });
     expect(resolveUp("/settings/updates", "/pane/p1", "/settings")).toEqual({ kind: "replace", to: "/settings" });
+    expect(resolveUp("/settings", "/settings/system", "/")).toEqual({ kind: "replace", to: "/" });
   });
 
   it("replaces on a cold entry with no from", () => {

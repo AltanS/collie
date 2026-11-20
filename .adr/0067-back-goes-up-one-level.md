@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-23
+- **Amended in scope by:** [ADR 0163](./0163-settings-goes-back-to-the-page-that-opened-it.md) — Settings' parents are every screen that can open it, so its arrow no longer lands on a second Dashboard.
 - **Trail:** the operator's report from the installed app on an iPhone: the edge swipe often lands
   on the last screen instead of one level up · `web/src/lib/nav.ts` (`ancestorsOf`, `resolveUp`,
   `resolveUpTo`, `parentChain`) · `web/src/hooks/use-nav.ts` (`useNav`) ·
